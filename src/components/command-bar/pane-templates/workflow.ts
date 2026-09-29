@@ -137,6 +137,10 @@ export function useCommandBarPaneTemplateActions({
 
     if (argKind === "ticker-list") {
       const trimmedList = trimmedArg || normalizeTickerInput(activeTickerSymbol, undefined) || "";
+      if (!trimmedList && template.shortcut?.openWithoutArg) {
+        await openPaneTemplateDirect(template);
+        return;
+      }
       if (!trimmedList || /[,\n]\s*$/.test(trimmedList)) {
         openPaneTemplateWorkflow(template, { arg: trimmedArg });
         return;

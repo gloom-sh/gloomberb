@@ -1,17 +1,16 @@
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCallback, useMemo, useState } from "react";
-import { Box } from "../../../ui";
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableView,
-  EmptyState,
+  PaneStatusBody,
   usePaneFooter,
   type DataTableColumn,
 } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { useCloudSyncStatus } from "../../../sync/react";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
@@ -96,19 +95,11 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const remove = useCallback(async () => {
     if (!selectedRule) return;
     const id = selectedRule.id;
-    const confirmed = await dialog
-      .prompt<boolean>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<boolean>) => (
-          <ConfirmDialog
-            {...context}
-            title="Delete event alert?"
-            body={[eventAlertTarget(selectedRule)]}
-            confirmLabel="Delete"
-          />
-        ),
-      })
-      .catch(() => false);
+    const confirmed = await confirmDialog(dialog, {
+      title: "Delete event alert?",
+      body: [eventAlertTarget(selectedRule)],
+      confirmLabel: "Delete",
+    });
     if (confirmed)
       setJson((current) => {
         const result = readEventAlerts(current);
@@ -193,13 +184,12 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       })}
       emptyStateTitle={error ?? "No event alerts"}
       emptyContent={error ? undefined : (
-        <Box paddingX={1} paddingY={1}>
-          <EmptyState
-            title="No event alerts"
-            message="Follow filings, news, earnings, members, funds or market moves."
-            actions={<Button label="Add event alert" compact onPress={add} />}
-          />
-        </Box>
+        <PaneStatusBody
+          empty
+          emptyTitle="No event alerts"
+          emptyMessage="Follow filings, news, earnings, members, funds or market moves."
+          actions={<Button label="Add event alert" compact onPress={add} />}
+        />
       )}
     />
   );

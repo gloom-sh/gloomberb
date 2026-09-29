@@ -96,24 +96,6 @@ export function latestLikely13FQuarter(now = new Date()): string {
   return "";
 }
 
-export function dateYearsAgo(years: number, now = new Date()): string {
-  return new Date(Date.UTC(now.getUTCFullYear() - years, now.getUTCMonth(), now.getUTCDate()))
-    .toISOString()
-    .slice(0, 10);
-}
-
-export function todayIso(now = new Date()): string {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-    .toISOString()
-    .slice(0, 10);
-}
-
-export function recentIso(days: number, now = new Date()): string {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days))
-    .toISOString()
-    .slice(0, 10);
-}
-
 export function buildBrowserRows(options: {
   funds?: ThirteenFFund[];
   topFunds?: ThirteenFTopFund[];

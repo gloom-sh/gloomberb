@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import { Box } from "../../../ui";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import {
+  chartTableChromeRows,
+  ChartTableHeader,
   DataTableStackView,
   PaneStatusBody,
   CompositeChart,
@@ -25,6 +27,7 @@ import {
 import { useThemeColors } from "../../../theme/theme-context";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { ScatterTrailSurface } from "../../../components/chart/static/trail-chart-surface";
 import {
   staticSeries,
@@ -73,6 +76,8 @@ const number = (value: number | null | undefined) =>
 const rank = (value: number | null) =>
   value == null ? "--" : value.toFixed(0);
 const PANELS = [{ id: "main" }];
+/** Axis row plus enough plot rows to keep eleven symbols apart. */
+const SCATTER_MIN_ROWS = 9;
 function RotationDetail({
   row,
   width,
@@ -109,7 +114,7 @@ function RotationDetail({
   );
   // A thin percentile window is flagged in the footer notices, and the footer
   // carries the observation week every row shares, so neither repeats here.
-  const rankDetail = (value: RotationRow["strengthRank"]) => `${rank(value.percentile)} pctl`;
+  const rankDetail = (value: RotationRow["strengthRank"]) => formatPercentileRank(value.percentile);
   const stats: StatItem[] = [
     { id: "strength", label: "Strength", value: number(row.strength), detail: rankDetail(row.strengthRank) },
     { id: "momentum", label: "Momentum", value: number(row.momentum), detail: rankDetail(row.momentumRank) },
@@ -266,11 +271,8 @@ function RotationView({
       }),
     [data, sort],
   );
-  const tableHeight = Math.min(
-    rows.length + 2,
-    Math.max(4, Math.floor(height * 0.42)),
-  );
-  const chartHeight = Math.max(6, height - tableHeight);
+  // The first row stands selected until the user moves, so its trail and the cursor show.
+  const selectedRowId = rows.find((row) => row.id === selectedId)?.id ?? rows[0]?.id ?? null;
   usePaneTitle(`RRG vs ${benchmark.symbol}`);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
@@ -312,26 +314,37 @@ function RotationView({
         subject="relative rotation"
       >
         {data ? (
-          <>
-            {!selected ? (
-              <ScatterTrailSurface
-                trails={trails}
-                width={width}
-                height={chartHeight}
-                selectedId={selectedId}
-                xLabel={`Strength vs ${benchmark.symbol}`}
-              />
-            ) : null}
             <DataTableStackView
+              rootBefore={
+                <ChartTableHeader
+                  width={width}
+                  height={height}
+                  tableRows={rows.length}
+                  tableChromeRows={chartTableChromeRows(COLUMNS, width)}
+                  chart={trails.length ? {
+                    render: (size) => (
+                      <ScatterTrailSurface
+                        trails={trails}
+                        width={size.width}
+                        height={size.height}
+                        selectedId={selectedRowId}
+                        fadeOthers={rows.some((row) => row.id === selectedId)}
+                      />
+                    ),
+                    minRows: SCATTER_MIN_ROWS,
+                    strip: null,
+                  } : null}
+                />
+              }
               columns={COLUMNS}
               items={rows}
               focused={focused}
               rootWidth={width}
-              rootHeight={tableHeight}
+              rootHeight={height}
               getItemKey={(row) => row.id}
               selection={{
                 kind: "id",
-                selectedId,
+                selectedId: selectedRowId,
                 getId: (row) => row.id,
                 onChange: setSelectedId,
               }}
@@ -365,7 +378,6 @@ function RotationView({
               })}
               emptyStateTitle="No aligned weekly observations."
             />
-          </>
         ) : null}
       </PaneStatusBody>
     </Box>

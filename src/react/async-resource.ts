@@ -10,7 +10,16 @@ interface ResourceState<T> {
 /** A stable loader owns a resource; null disables it and discards pending results. */
 export function useAsyncResource<T>(
   loader: ((force: boolean) => Promise<T>) | null,
-  options: { initialData?: () => T | null; clearOnError?: boolean | ((error: unknown) => boolean) } = {},
+  options: {
+    initialData?: () => T | null;
+    clearOnError?: boolean | ((error: unknown) => boolean);
+    /**
+     * Leave the previous loader's data on screen, loading, until the new
+     * loader answers, and through its failure as a failed refresh does.
+     * Without it a new loader starts from no data. Null still clears.
+     */
+    keepPreviousData?: boolean;
+  } = {},
 ) {
   const [state, setState] = useState<ResourceState<T> & { owner: typeof loader }>(() => ({
     owner: loader,
@@ -23,14 +32,15 @@ export function useAsyncResource<T>(
   // Read at failure time so an inline predicate cannot recreate load and refetch every render.
   const clearOnErrorRef = useRef(options.clearOnError ?? false);
   clearOnErrorRef.current = options.clearOnError ?? false;
+  const keepPreviousData = options.keepPreviousData === true;
   const load = useCallback(async (force = false) => {
     const currentGeneration = ++generation.current;
     if (!loader) {
       setState({ owner: loader, data: null, loading: false, error: null, updatedAt: null });
       return;
     }
-    setState((current) => current.owner === loader
-      ? { ...current, loading: true, error: null }
+    setState((current) => current.owner === loader || keepPreviousData
+      ? { ...current, owner: loader, loading: true, error: null }
       : { owner: loader, data: null, loading: true, error: null, updatedAt: null });
     try {
       const data = await loader(force);
@@ -51,7 +61,7 @@ export function useAsyncResource<T>(
         }));
       }
     }
-  }, [loader]);
+  }, [keepPreviousData, loader]);
 
   useEffect(() => {
     void load();
@@ -62,7 +72,8 @@ export function useAsyncResource<T>(
   // Hide a previous resource during the render before the new loader's effect
   // runs, as well as throughout a failed request for the new security.
   const { data, loading, error, updatedAt } = state.owner === loader ? state
-    : { data: null, loading: !!loader, error: null, updatedAt: null };
+    : keepPreviousData && loader ? { ...state, loading: true, error: null }
+      : { data: null, loading: !!loader, error: null, updatedAt: null };
   const status = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
   return { data, loading, error, updatedAt, status, load, reload };
 }

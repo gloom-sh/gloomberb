@@ -4,6 +4,7 @@ import type {
   RemoteControlResponse,
   RemoteJsonPatchOperation,
 } from "../../../../remote/types";
+import { normalizeJson, shortReason } from "./json";
 import type { JsonValue, ToolResultStatus } from "./protocol";
 
 export type InProcessRemoteControlHandler = (
@@ -43,6 +44,7 @@ export interface ASKGUndoManagerOptions {
 
 const DEFAULT_MAX_ENTRIES = 50;
 const DEFAULT_TTL_MS = 10 * 60_000;
+const REASON_MAX_LENGTH = 240;
 
 const LAYOUT_UNDO_OPERATIONS = new Set([
   "pane.setSetting",
@@ -51,33 +53,6 @@ const LAYOUT_UNDO_OPERATIONS = new Set([
   "layout.placePane",
   "layout.setGrid",
 ]);
-
-function shortReason(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  return text.replace(/\s+/g, " ").trim().slice(0, 240) || "Unknown error.";
-}
-
-function normalizeJson(value: unknown, seen = new WeakSet<object>()): JsonValue {
-  if (value == null) return null;
-  if (typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "bigint") return value.toString();
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value !== "object") return String(value);
-  if (seen.has(value)) return "[Circular]";
-  seen.add(value);
-  if (Array.isArray(value)) {
-    const result = value.map((entry) => normalizeJson(entry, seen));
-    seen.delete(value);
-    return result;
-  }
-  const result: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-    result[key] = normalizeJson((value as Record<string, unknown>)[key], seen);
-  }
-  seen.delete(value);
-  return result;
-}
 
 function paneStateResource(args: Record<string, JsonValue>): string | null {
   const paneId = args.paneId;
@@ -263,7 +238,7 @@ export class ASKGUndoManager {
       return {
         status: "error",
         elapsedMs: Math.max(0, this.now() - startedAt),
-        note: shortReason(error),
+        note: shortReason(error, REASON_MAX_LENGTH),
       };
     }
   }

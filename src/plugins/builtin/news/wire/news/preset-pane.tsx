@@ -4,10 +4,10 @@ import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../.
 import type { MarketNewsItem } from "../../../../../types/news-source";
 import type { PaneProps } from "../../../../../types/plugin";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../../runtime";
+import { PaneStatusBody } from "../../../../../components";
 import { NewsDetailView, useNewsArticleDetail } from "./detail-view";
 import {
   NewsArticleStackView,
-  newsTableStatusContent,
   type NewsColumnId,
   type NewsSortPreference,
 } from "./table";
@@ -139,13 +139,16 @@ export function NewsPresetPane({
     <NewsArticleStackView
       {...stack}
       rootHeight={height}
-      emptyContent={newsTableStatusContent({
-        loading,
-        error,
-        subject: title,
-        emptyTitle: emptyStateTitle,
-        emptyMessage: emptyStateHint,
-      })}
+      emptyContent={(
+        <PaneStatusBody
+          loading={loading}
+          error={error}
+          empty
+          subject={title}
+          emptyTitle={emptyStateTitle}
+          emptyMessage={emptyStateHint}
+        />
+      )}
       emptyStateTitle={emptyStateTitle}
       emptyStateHint={emptyStateHint}
       scrollRef={scrollRef}

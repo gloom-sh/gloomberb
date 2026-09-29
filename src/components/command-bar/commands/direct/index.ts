@@ -27,6 +27,7 @@ import {
 } from "../../helpers";
 import { parseWindowModeCommandArg } from "../../layout-items";
 import type { CommandBarRoute } from "../../workflow/types";
+import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
 
@@ -87,6 +88,10 @@ export function runDirectCommandAction(options: {
     cancelThemePreview,
   } = options;
   const state = getState();
+  // DES is counted where the research pane opens (pinTicker, focusTicker).
+  if (command.id !== "security-description") {
+    recordFunctionOpen({ shortcut: command.prefix, externalPluginId: null });
+  }
 
   switch (command.id) {
     case "help":
@@ -289,6 +294,17 @@ export function runDirectCommandAction(options: {
       };
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       persistConfig(nextConfig);
+      closeAll({ revertThemePreview: false });
+      return;
+    }
+    case "toggle-crash-reports":
+    case "toggle-usage-counts": {
+      const key = command.id === "toggle-crash-reports" ? "crashReports" : "usage";
+      const enabled = state.config.telemetry?.[key] === false;
+      const nextConfig = { ...state.config, telemetry: { ...state.config.telemetry, [key]: enabled } };
+      dispatch({ type: "SET_CONFIG", config: nextConfig });
+      persistConfig(nextConfig);
+      notify(`${t(command.label)}: ${t(enabled ? "on" : "off")}`, { type: "success" });
       closeAll({ revertThemePreview: false });
       return;
     }

@@ -1,4 +1,4 @@
-import { Box, ScrollBox, Text } from "../../ui";
+import { Box, Text } from "../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { t } from "../../i18n";
@@ -6,19 +6,18 @@ import { useAppLanguage } from "../../i18n/react";
 import { formatTimeAgo } from "../../utils/datetime-format";
 import { displayWidth } from "../../utils/format";
 import { colors } from "../../theme/colors";
-import { isPlainKey } from "../../utils/keyboard";
 import { nextHeaderSort } from "../../utils/sort-values";
 import { toTimestampMillis } from "../../utils/timestamp";
 import { DataTableStackView } from "../data-table/stack-view";
 import { usePaneFooter } from "../layout/pane/footer";
-import type { DataTableRootKeyContext } from "../data-table/view";
+import type { DataTableKeyEvent, DataTableRootKeyContext } from "../data-table/view";
 import {
   activeStackIndex,
   sortIndexedStackRows,
   type IndexedStackRow,
   type StackSortPreference,
 } from "../feed-stack-controller";
-import { ExternalLink, type DataTableCell, type DataTableColumn } from "../ui";
+import { DetailScrollBody, ExternalLink, type DataTableCell, type DataTableColumn } from "../ui";
 import { PaneLinkMenu } from "../ui/external-link";
 import { wrapTextLines } from "../../utils/text-wrap";
 import { tableColumnWidth } from "../ui/table-layout";
@@ -50,18 +49,7 @@ interface FeedDataTableStackViewProps {
   onSelect: (index: number) => void;
   rootBefore?: ReactNode;
   rootAfter?: ReactNode;
-  onRootKeyDown?: (event: {
-    name?: string;
-    sequence?: string;
-    ctrl?: boolean;
-    meta?: boolean;
-    super?: boolean;
-    alt?: boolean;
-    option?: boolean;
-    shift?: boolean;
-    preventDefault?: () => void;
-    stopPropagation?: () => void;
-  }, context: DataTableRootKeyContext) => boolean | void;
+  onRootKeyDown?: (event: DataTableKeyEvent, context: DataTableRootKeyContext) => boolean | void;
   sourceLabel?: string;
   titleLabel?: string;
   emptyStateTitle?: string;
@@ -182,19 +170,6 @@ export function FeedDataTableStackView({
   );
   const activeOpenItemId = openItem ? openItem.id : null;
 
-  const scrollDetailBy = useCallback((delta: number) => {
-    const scrollBox = detailScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const maxScrollTop = Math.max(
-      0,
-      scrollBox.scrollHeight - scrollBox.viewport.height,
-    );
-    scrollBox.scrollTop = Math.max(
-      0,
-      Math.min(maxScrollTop, scrollBox.scrollTop + delta),
-    );
-  }, []);
-
   const openRow = useCallback((row: DetailRow | undefined) => {
     if (!row) return;
     onOpenItem?.(row.item, row.itemIndex);
@@ -233,12 +208,6 @@ export function FeedDataTableStackView({
   }, [activeOpenItemId, controlled, onOpenItemIdChange]);
 
   useEffect(() => {
-    if (!openItemId) return;
-    const scrollBox = detailScrollRef.current;
-    if (scrollBox) scrollBox.scrollTop = 0;
-  }, [openItemId]);
-
-  useEffect(() => {
     if (items.length > 0 && selectedIdx >= items.length) {
       onSelect(Math.max(0, items.length - 1));
     }
@@ -250,22 +219,21 @@ export function FeedDataTableStackView({
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "time":
         return {
           text: row.item.timestamp ? formatTimeAgo(row.item.timestamp) : "",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "source":
         return {
           text: row.item.eyebrow ?? "",
-          color: selectedColor ?? colors.textMuted,
+          color: colors.textMuted,
         };
       case "title":
         return {
           text: row.item.title,
-          color: selectedColor ?? colors.text,
+          color: colors.text,
           attributes: isItemRead
             ? isItemRead(row.item)
               ? TextAttributes.NONE
@@ -277,81 +245,44 @@ export function FeedDataTableStackView({
     }
   }, [isItemRead]);
 
-  const handleDetailKeyDown = useCallback((event: {
-    name?: string;
-    preventDefault?: () => void;
-    stopPropagation?: () => void;
-  }) => {
-    if (isPlainKey(event, "j", "down")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      scrollDetailBy(1);
-      return true;
-    }
-    if (isPlainKey(event, "k", "up")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      scrollDetailBy(-1);
-      return true;
-    }
-    return false;
-  }, [scrollDetailBy]);
-
   const detailContent = openItem ? (
-    <Box
-      flexDirection="column"
-      flexGrow={1}
-      flexBasis={0}
-      minHeight={0}
-      overflow="hidden"
-      paddingX={1}
-      paddingY={1}
-    >
-      <ScrollBox
-        ref={detailScrollRef}
-        flexGrow={1}
-        flexBasis={0}
-        minHeight={0}
-        scrollY
-        focusable={false}
-      >
-        <Box flexDirection="column">
-          {(openItem.detailMeta ?? [])
-            .flatMap((entry) => wrapTextLines(entry, detailTextWidth, 2))
-            .map((line, index) => (
-              <Box key={`meta-${index}`} height={1}>
-                <Text fg={colors.textMuted}>{line}</Text>
-              </Box>
-            ))}
+    <DetailScrollBody ref={detailScrollRef} resetScrollKey={openItem.id}>
+      <Box flexDirection="column">
+        {(openItem.detailMeta ?? [])
+          .flatMap((entry) => wrapTextLines(entry, detailTextWidth, 2))
+          .map((line, index) => (
+            <Box key={`meta-${index}`} height={1}>
+              <Text fg={colors.textMuted}>{line}</Text>
+            </Box>
+          ))}
 
-          <Box height={1} />
+        <Box height={1} />
 
-          {wrapTextLines(openItem.detailBody ?? "", detailTextWidth).map(
-            (line, index) => (
-              <Box key={`body-${index}`} height={1}>
-                <Text fg={colors.text}>{line}</Text>
-              </Box>
-            ),
-          )}
+        {wrapTextLines(openItem.detailBody ?? "", detailTextWidth).map(
+          (line, index) => (
+            <Box key={`body-${index}`} height={1}>
+              <Text fg={colors.text}>{line}</Text>
+            </Box>
+          ),
+        )}
 
-          {openItem.detailNote ? (
-            <>
-              <Box height={1} />
-              {wrapTextLines(openItem.detailNote, detailTextWidth).map(
-                (line, index) =>
-                  /^https?:\/\/\S+$/.test(line.trim()) ? (
-                    <ExternalLink key={`note-${index}`} url={line.trim()} />
-                  ) : (
-                    <Box key={`note-${index}`} height={1}>
-                      <Text fg={colors.textDim}>{line}</Text>
-                    </Box>
-                  ),
-              )}
-            </>
-          ) : null}
-        </Box>
-      </ScrollBox>
-    </Box>
+        {openItem.detailNote ? (
+          <>
+            <Box height={1} />
+            {wrapTextLines(openItem.detailNote, detailTextWidth).map(
+              (line, index) =>
+                /^https?:\/\/\S+$/.test(line.trim()) ? (
+                  <ExternalLink key={`note-${index}`} url={line.trim()} />
+                ) : (
+                  <Box key={`note-${index}`} height={1}>
+                    <Text fg={colors.textDim}>{line}</Text>
+                  </Box>
+                ),
+            )}
+          </>
+        ) : null}
+      </Box>
+    </DetailScrollBody>
   ) : (
     <Box flexGrow={1} />
   );
@@ -375,7 +306,7 @@ export function FeedDataTableStackView({
       rootWidth={width}
       rootHeight={height}
       onRootKeyDown={onRootKeyDown}
-      onDetailKeyDown={handleDetailKeyDown}
+      detailScrollRef={detailScrollRef}
       columns={columns}
       items={sortedRows}
       sortColumnId={sortPreference.columnId}
@@ -386,6 +317,7 @@ export function FeedDataTableStackView({
         )}
       getItemKey={(row) => row.item.id}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={t(emptyStateTitle)}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}

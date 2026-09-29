@@ -1,6 +1,6 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
-import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, formatAnalystPrice, formatRecommendationMix, latestRecommendation, recommendationMix, recommendationTotal, targetUpside } from "./analyst-model";
+import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, buildRatingColumns, formatAnalystPrice, formatRatingTarget, formatRecommendationMix, latestRecommendation, ratingSplit, ratingTargetDelta, recommendationMix, recommendationTotal, sortRatingRows, targetUpside, type RatingSortPreference } from "./analyst-model";
 const data: AnalystResearchData = { symbol: "FIX", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] };
 const complete = { period: "current month", strongBuy: 2, buy: 3, hold: 4, sell: 0, strongSell: 0 };
 
@@ -38,12 +38,14 @@ test("status segments name an older mix's period and never claim fresh stale dat
   const text = (research: AnalystResearchData) => buildAnalystStatusSegments(research)
     .map((segment) => segment.parts.map((part) => part.text).join(" ")).join(" · ");
 
+  // The Buy/Hold/Sell split is a figure above the chart, not a footer segment.
   expect(text(research)).toBe(
-    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · SB 2  B 3  H 4  S 0 9 analysts"
-    + " · upside vs $467.50 · fetched 2h ago",
+    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · upside vs $467.50 · fetched 2h ago",
   );
-  expect(text({ ...research, recommendations: [{ ...complete, period: "previous month" }] }))
-    .toContain("9 analysts (prev month)");
+  expect(ratingSplit(research)).toEqual({ buy: 5, hold: 4, sell: 0, period: null });
+  expect(ratingSplit({ ...research, recommendations: [{ ...complete, period: "previous month" }] })?.period)
+    .toBe("prev month");
+  expect(ratingSplit({ ...research, recommendations: [{ ...complete, strongSell: undefined }] })).toBeNull();
   const stale = text({ ...research, stale: true });
   expect(stale.startsWith("stale · ")).toBe(true);
   expect(stale).not.toContain("fetched");
@@ -53,7 +55,7 @@ test("status segments name an older mix's period and never claim fresh stale dat
   const info = (width: number, error: string | null = null) =>
     buildAnalystFooterInfo(research, { width, loading: false, error })
       .map((segment) => segment.parts.map((part) => part.text).join(" "));
-  expect(info(200)).toHaveLength(5);
+  expect(info(200)).toHaveLength(4);
   expect(info(60)).toEqual(["low $225.00 med $482.50 high $625.00", "rating 8.8/10"]);
   expect(info(60, "provider down")).toEqual(["provider down", "low $225.00 med $482.50 high $625.00"]);
 });
@@ -122,4 +124,141 @@ test("upside follows the live price only when it is quoted in the target's curre
     .find((segment) => segment.id === "analyst-reference-price")!
     .parts.map((part) => part.text).join(" ");
   expect(footer).toBe("upside vs $110.00 real-time");
+});
+
+test("the mean-target line starts once five firms, or every covering firm, are in it", () => {
+  const rating = (date: string, firm: string, currentPriceTarget: number) => ({ date, firm, currentPriceTarget });
+  const eight = Array.from({ length: 8 }, (_, index) => rating(`2026-03-${String(10 + index).padStart(2, "0")}`, `Firm ${index}`, 100 + index * 10));
+  const line = buildMeanTargetHistory(eight);
+  expect(line[0]).toEqual({ date: "2026-03-14", average: 120, firms: 5 });
+  expect(line.at(-1)).toEqual({ date: "2026-03-17", average: 135, firms: 8 });
+  // Three firms cover the stock, so the line starts when all three are in.
+  expect(buildMeanTargetHistory(eight.slice(0, 3))).toEqual([{ date: "2026-03-12", average: 110, firms: 3 }]);
+  expect(buildMeanTargetHistory([])).toEqual([]);
+});
+
+describe("analyst rating sorting", () => {
+  const ratings: AnalystRatingRecord[] = [
+    {
+      date: "2026-05-06",
+      firm: "Beta Capital",
+      action: "Raises",
+      current: "Neutral",
+      prior: "Neutral",
+      currentPriceTarget: 385,
+      priorPriceTarget: 270,
+    },
+    {
+      date: "2026-05-07",
+      firm: "Alpha Research",
+      action: "Downgrade",
+      current: "Hold",
+      prior: "Buy",
+      currentPriceTarget: 340,
+      priorPriceTarget: 335,
+    },
+    {
+      date: "2026-05-06",
+      firm: "Zenith",
+      action: "Upgrade",
+      current: "Buy",
+      prior: "Neutral",
+      currentPriceTarget: 525,
+      priorPriceTarget: 265,
+    },
+    {
+      date: "2026-05-05",
+      firm: "No Target",
+      action: "Reiterates",
+      current: "Buy",
+      prior: "Buy",
+    },
+  ];
+
+  test("sorts date newest first by default", () => {
+    const preference: RatingSortPreference = { columnId: "date", direction: "desc" };
+
+    expect(sortRatingRows(ratings, preference).map((row) => row.firm)).toEqual([
+      "Alpha Research",
+      "Beta Capital",
+      "Zenith",
+      "No Target",
+    ]);
+  });
+
+  test("sorts target by current target value with missing targets last", () => {
+    const preference: RatingSortPreference = { columnId: "target", direction: "desc" };
+
+    expect(sortRatingRows(ratings, preference).map((row) => row.firm)).toEqual([
+      "Zenith",
+      "Beta Capital",
+      "Alpha Research",
+      "No Target",
+    ]);
+  });
+
+  test("sorts text columns alphabetically with recent dates as a tie-breaker", () => {
+    const preference: RatingSortPreference = { columnId: "firm", direction: "asc" };
+
+    expect(sortRatingRows(ratings, preference).map((row) => row.firm)).toEqual([
+      "Alpha Research",
+      "Beta Capital",
+      "No Target",
+      "Zenith",
+    ]);
+  });
+});
+
+describe("analyst rating columns", () => {
+  test("widens the target column for formatted price target changes", () => {
+    const columns = buildRatingColumns(
+      [
+        {
+          date: "2026-04-16",
+          firm: "RBC Capital",
+          action: "Raises",
+          current: "Outperform",
+          prior: "Outperform",
+          currentPriceTarget: 1725,
+          priorPriceTarget: 1625,
+        },
+      ],
+      "USD",
+    );
+
+    expect(columns.find((column) => column.id === "target")?.width).toBe(16);
+  });
+
+  test("aligns target arrows across mixed price widths", () => {
+    const narrowPrior: AnalystRatingRecord = {
+      date: "2026-05-01",
+      firm: "Alpha",
+      action: "Raises",
+      current: "Outperform",
+      prior: "Outperform",
+      currentPriceTarget: 220,
+      priorPriceTarget: 9,
+    };
+    const widePrior: AnalystRatingRecord = {
+      date: "2026-05-02",
+      firm: "Beta",
+      action: "Raises",
+      current: "Outperform",
+      prior: "Outperform",
+      currentPriceTarget: 230,
+      priorPriceTarget: 230,
+    };
+    const targetColumn = buildRatingColumns([narrowPrior, widePrior], "USD")
+      .find((column) => column.id === "target");
+
+    expect(formatRatingTarget(narrowPrior, "USD", targetColumn).indexOf("→")).toBe(
+      formatRatingTarget(widePrior, "USD", targetColumn).indexOf("→"),
+    );
+  });
+
+  test("a cached first target's 0 prior reads as no prior target", () => {
+    const first: AnalystRatingRecord = { date: "2026-08-04", firm: "China Renaissance", currentPriceTarget: 280, priorPriceTarget: 0 };
+    expect(formatRatingTarget(first, "USD")).toBe(" $280");
+    expect(ratingTargetDelta(first)).toBeNull();
+  });
 });

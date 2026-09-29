@@ -1,7 +1,9 @@
+import type { CurveSeries } from "../../../components/chart/curve/model";
 import type { StaticChartOverlay } from "../../../components/chart/static/chart-surface";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
+import type { VolatilityCurve, VolatilityCurveLookback, VolatilityCurvePoint } from "./model";
 
 const DAY_MS = 86_400_000;
 
@@ -36,6 +38,40 @@ export function volatilityCurveChartModel(curve: readonly VolatilityCurveDatum[]
     ticks: ordered.map((point) => ({ label: point.tenor, ratio: (point.days - first) / span })),
     formatCursor: (ratio: number) => `${Math.round(first + Math.max(0, Math.min(1, ratio)) * span)} days`,
   };
+}
+
+export interface VolatilityCurveRow extends VolatilityCurvePoint {
+  change1w: number | null;
+  change1m: number | null;
+}
+
+/** The curve's tenors with how far each moved since a week and a month back. */
+export function volatilityCurveRows(curve: VolatilityCurve, lookbacks: readonly VolatilityCurveLookback[]): VolatilityCurveRow[] {
+  const change = (point: VolatilityCurvePoint, id: VolatilityCurveLookback["id"]) => {
+    const past = lookbacks.find((lookback) => lookback.id === id)?.values[point.id];
+    return point.value == null || past == null ? null : point.value - past;
+  };
+  return curve.points.map((point) => ({ ...point, change1w: change(point, "1W"), change1m: change(point, "1M") }));
+}
+
+/**
+ * The curve by tenor in days, named as the table's IV column, then each
+ * look-back that has a close as a ghost on the same tenors.
+ */
+export function volatilityCurveSeries(
+  curve: VolatilityCurve,
+  lookbacks: readonly VolatilityCurveLookback[],
+  colors: { current: string; ghosts: Readonly<Record<string, string>> },
+): CurveSeries[] {
+  const points = (value: (point: VolatilityCurvePoint) => number | null) => curve.points
+    .map((point) => ({ id: point.id, label: point.tenor, x: point.days, value: value(point) }));
+  return [
+    { id: "iv", label: "IV", role: "primary", color: colors.current, points: points((point) => point.value) },
+    ...lookbacks.filter((lookback) => Object.keys(lookback.values).length > 0).map((lookback): CurveSeries => ({
+      id: lookback.id, label: lookback.id, role: "ghost", asOf: lookback.date, color: colors.ghosts[lookback.id],
+      points: points((point) => lookback.values[point.id] ?? null),
+    })),
+  ];
 }
 
 function observationMap(history: readonly VolatilityHistoryDatum[], missingDates: readonly string[] = []) {

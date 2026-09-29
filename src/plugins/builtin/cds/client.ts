@@ -1,4 +1,10 @@
-import { apiClient, type CloudCdsResponse } from "../../../api-client";
+import {
+  apiClient,
+  type CloudCdsHistoryPointPayload,
+  type CloudCdsHistoryResponse,
+  type CloudCdsResponse,
+} from "../../../api-client";
+import type { CloudCdsHistoryParams } from "../../../api-client/paths";
 import type { InstrumentSearchResult } from "../../../types/instrument";
 import { normalizeCdsTrades, type CdsTrade } from "./model";
 
@@ -74,4 +80,30 @@ export async function loadCdsActivity(
     issuer: resolved,
     trades: normalizeCdsTrades(response.trades ?? []),
   };
+}
+
+/** Two years: what DTCC keeps readable, so the backend holds no more. */
+const CDS_SPREAD_HISTORY_DAYS = 730;
+
+export interface CdsSpreadHistory {
+  issuer: string | null;
+  points: CloudCdsHistoryPointPayload[];
+}
+
+export type CdsSpreadHistoryLoader = (issuer: string) => Promise<CdsSpreadHistory>;
+export type CdsHistoryFetch = (params: CloudCdsHistoryParams) => Promise<CloudCdsHistoryResponse>;
+
+/**
+ * Daily on-the-run 5Y levels for the name the trade request already resolved,
+ * so no second instrument search runs. Oldest first.
+ */
+export async function loadCdsSpreadHistory(
+  issuer: string,
+  fetchHistory: CdsHistoryFetch = (params) => apiClient.getCloudCdsHistory(params),
+): Promise<CdsSpreadHistory> {
+  const response = await fetchHistory({ issuer, days: CDS_SPREAD_HISTORY_DAYS });
+  const points = (response.points ?? [])
+    .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(point.spreadBp))
+    .toSorted((left, right) => left.date.localeCompare(right.date));
+  return { issuer: response.issuer, points };
 }

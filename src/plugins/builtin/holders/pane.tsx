@@ -3,15 +3,14 @@ import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import {
   Badge,
   DataTableView,
-  QueryBar,
-  Tabs,
   usePaneFooter,
-  usePaneHeaderTabs,
+  usePaneTabs,
   usePaneTicker,
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
@@ -52,16 +51,21 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const { symbol, ticker, financials } = usePaneTicker();
   const dataProvider = useAssetData();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const [viewMode, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "chart");
+  const [viewMode, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "table");
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>("sortPreference", DEFAULT_SORT);
-  const [data, setData] = useState<HolderData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [fundMatches, setFundMatches] = useState<Map<string, Holder13FMatch>>(() => new Map());
   const [fundMatching, setFundMatching] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const fetchGenRef = useRef(0);
   const fundMatchAbortRef = useRef<AbortController | null>(null);
+
+  const exchange = ticker?.metadata.exchange ?? "";
+  const loadHolders = useMemo(() => symbol ? async (forceRefresh: boolean) => {
+    if (!dataProvider) throw new Error("Holder data unavailable");
+    return loadHolderData(dataProvider, symbol, exchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
+  } : null, [dataProvider, exchange, symbol]);
+  // Another ticker's holders stay up until its own answer, and a failed
+  // refresh keeps the last holders; the failure goes to the footer.
+  const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, { keepPreviousData: true });
 
   const currency = data?.currency ?? ticker?.metadata.currency ?? "USD";
   // A stake without a reported percentage is the holding's value over the
@@ -71,7 +75,6 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const quoteMarketCap = financials?.quote?.marketCap;
   const liveMarketCap = financials?.quote?.currency && financials.quote.currency !== currency ? undefined : quoteMarketCap;
   const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
-  const exchange = ticker?.metadata.exchange ?? "";
   const rows = useMemo(() => buildRows(data), [data]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
   const columns = useMemo(() => buildColumns(width), [width]);
@@ -80,41 +83,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     : -1;
   const activeIdx = selectedIdx >= 0 ? selectedIdx : (sortedRows.length > 0 ? 0 : -1);
 
-  const loadHolders = useCallback(async (forceRefresh = false) => {
-    if (!symbol || !dataProvider?.getHolders) {
-      setData(null);
-      setLoading(false);
-      setError(dataProvider?.getHolders ? null : "Holder data unavailable");
-      return;
-    }
-
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const nextData = await loadHolderData(
-        dataProvider,
-        symbol,
-        exchange,
-        forceRefresh ? { cacheMode: "refresh" } : undefined,
-      );
-      if (fetchGenRef.current !== gen) return;
-      setData(nextData);
-      setSelectedId(null);
-    } catch (err) {
-      if (fetchGenRef.current !== gen) return;
-      // A failed refresh keeps the last holders; the failure goes to the footer.
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (fetchGenRef.current === gen) setLoading(false);
-    }
-  }, [dataProvider, exchange, symbol]);
-
-  useEffect(() => {
-    void loadHolders(false);
-  }, [loadHolders]);
+  // Fresh holders start from the top row.
+  useEffect(() => { setSelectedId(null); }, [data]);
 
   useEffect(() => {
     if (selectedId && sortedRows.some((row) => row.id === selectedId)) return;
@@ -179,8 +149,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   }, [setViewMode]);
 
   const refresh = useCallback(() => {
-    void loadHolders(true);
-  }, [loadHolders]);
+    void reload();
+  }, [reload]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (event.name === "r") {
@@ -242,10 +212,9 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "holder": {
-        const color = selectedColor ?? colors.textBright;
+        const color = rowState.selected ? colors.selectedText : colors.textBright;
         if (!fundMatches.has(row.id)) return { text: row.name, color, attributes: TextAttributes.BOLD };
         // A fund with a 13F opens on Enter or o. The name gives way first, so
         // the marker survives a narrow column.
@@ -262,26 +231,26 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         };
       }
       case "value":
-        return { text: formatMoneyCompact(row.value, currency), color: selectedColor ?? colors.text };
+        return { text: formatMoneyCompact(row.value, currency), color: colors.text };
       case "shares":
-        return { text: formatCompact(row.shares), color: selectedColor ?? colors.text };
+        return { text: formatCompact(row.shares), color: colors.text };
       case "changeShares":
         return {
           text: formatSignedCompact(row.changeShares),
-          color: selectedColor ?? (row.changeShares != null ? priceColor(row.changeShares) : colors.textDim),
+          color: row.changeShares != null ? priceColor(row.changeShares) : colors.textDim,
         };
       case "changePercent":
         return {
           text: formatMaybePercent(row.changePercent),
-          color: selectedColor ?? (row.changePercent != null ? priceColor(row.changePercent) : colors.textDim),
+          color: row.changePercent != null ? priceColor(row.changePercent) : colors.textDim,
         };
       case "percentHeld":
         return {
           text: formatHolderOwnershipPercent(resolveHolderOwnershipPercent(row, marketCap)),
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "reportDate":
-        return { text: displayDate(row.reportDate), color: selectedColor ?? colors.textDim };
+        return { text: displayDate(row.reportDate), color: colors.textDim };
     }
   }, [currency, fundMatches, marketCap]);
 
@@ -302,9 +271,18 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   }, [data, error, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: VIEW_TABS, activeValue: viewMode, onSelect: selectView, focused });
   // As a research tab, h/l move between research tabs; `s` switches the view.
   const inResearchTab = useInResearchTab();
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
+    tabs: VIEW_TABS,
+    activeValue: viewMode,
+    onSelect: selectView,
+    focused,
+    keyboardNavigation: !inResearchTab,
+    compact: true,
+    variant: "bare",
+    queryBarWidth: width,
+  });
 
   // Both views share one status; the treemap must not claim "no chartable
   // values" while the request is still in flight or the pane has no ticker.
@@ -313,27 +291,11 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     : loading && !data
       ? "Loading holders..."
       : !data && error ? error : sortedRows.length === 0 ? "No holders available" : null;
-  const tabRows = tabsInHeader ? 0 : 1;
   const chartHeight = Math.max(1, height - tabRows - (nativePaneChrome ? 1 : 0));
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {!tabsInHeader && nativePaneChrome && (
-        <QueryBar width={width} view={{ value: viewMode, options: VIEW_TABS, onChange: selectView }} />
-      )}
-      {!tabsInHeader && !nativePaneChrome && (
-        <Box height={1} paddingX={1}>
-          <Tabs
-            tabs={VIEW_TABS}
-            activeValue={viewMode}
-            onSelect={selectView}
-            compact
-            variant="bare"
-            focused={focused}
-            keyboardNavigation={!inResearchTab}
-          />
-        </Box>
-      )}
+      {nativePaneChrome ? tabStrip : tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
 
       {viewMode === "table" ? (
         <DataTableView<HolderRow, HolderColumn>
@@ -355,6 +317,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           onHeaderClick={handleHeaderClick}
           getItemKey={(row) => row.id}
           renderCell={renderCell}
+          selectedTextOverridesCellColor
           emptyStateTitle={statusTitle ?? "No holders available"}
         />
       ) : (

@@ -73,6 +73,8 @@ export function createYieldCurveHeadless(
           asOf: curveAsOf(points),
           inverted: isInverted(points),
           spread2Y10YBasisPoints: spreadBasisPoints(points),
+          spread3M10YBasisPoints: spreadBasisPoints(points, "3M", "10Y"),
+          spread5Y30YBasisPoints: spreadBasisPoints(points, "5Y", "30Y"),
           missingTenors,
           stale: points.some((point) => point.stale),
         },

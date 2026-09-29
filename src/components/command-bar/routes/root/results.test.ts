@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneTemplateDef } from "../../../../types/plugin";
 import { orderListResults, type ResultItem } from "../../list/model";
+import { PLUGIN_INSTALL_CATEGORY } from "../../view-model";
 import { buildRootResultModel, type RootResultModelOptions } from "./results";
 
 function rootOptions(overrides: Partial<RootResultModelOptions>): RootResultModelOptions {
@@ -157,5 +158,36 @@ describe("assist rows in the root result model", () => {
       paneShortcutItems: () => [optionsRow],
     }));
     expect(abbreviated.map((item) => item.id)).toEqual([optionsRow.id]);
+  });
+});
+
+describe("the plugin install row in the root result model", () => {
+  const installRow: ResultItem = {
+    id: "plugin-install:prediction-markets:PM",
+    label: "Prediction Markets",
+    detail: "Event markets",
+    category: PLUGIN_INSTALL_CATEGORY,
+    kind: "action",
+    right: "PM",
+    action: () => {},
+  };
+
+  test("leads without claiming the query, so the AI and provider rows stay below it", () => {
+    const { items } = buildRootResultModel(rootOptions({
+      rootQuery: "PM",
+      assist: {
+        enabled: true,
+        auto: true,
+        state: { status: "idle" as const },
+        onAsk: () => {},
+        onSignUp: () => {},
+        onRunCandidate: () => {},
+      },
+      pluginInstallItem: installRow,
+      providerResultItems: [documentRow],
+    }));
+
+    expect(orderListResults(items, { categoryPriorities: new Map([["Documents", 200]]) }).map((item) => item.id))
+      .toEqual([installRow.id, "assist:pending", documentRow.id]);
   });
 });

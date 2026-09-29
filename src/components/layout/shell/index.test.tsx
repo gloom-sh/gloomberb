@@ -13,6 +13,7 @@ import {
 } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { TICKER_RESEARCH_PANE_ID, cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
+import type { DesktopWindowBridge } from "../../../types/desktop-window";
 import type { PaneProps } from "../../../types/plugin";
 import { Text, Textarea } from "../../../ui";
 import { TransientLayoutProvider, useTransientLayout, type TransientLayoutState } from "../transient-layout";
@@ -23,6 +24,7 @@ import {
   resolveAppHeaderHeightCells,
   resolvePaneManagementShortcut,
 } from "./index";
+import { inputCaptureAllowsPaneManagementShortcut } from "./shortcuts";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -83,28 +85,68 @@ function requireLayoutInstance(config: ReturnType<typeof createDefaultConfig>, i
   return instance;
 }
 
-function createShellStateWithLayout(
-  config: ReturnType<typeof createDefaultConfig>,
-  layout: LayoutConfig,
-  focusedPaneId: string | null,
-) {
+/** The default portfolio pane docked alone, optionally locked. */
+function singleDockedPaneLayout(config: ReturnType<typeof createDefaultConfig>, locked = false): LayoutConfig {
+  const mainPane = requireLayoutInstance(config, "portfolio-list:main");
   return {
-    ...createInitialState({
-      ...config,
-      layout,
-      layouts: [{ name: "Default", layout: cloneLayout(layout) }],
-    }),
-    focusedPaneId,
+    dockRoot: { kind: "pane", instanceId: mainPane.instanceId },
+    instances: [locked ? { ...mainPane, locked } : { ...mainPane }],
+    floating: [],
+    detached: [],
   };
 }
 
-async function renderShellForWindowModeTest(
+/** The default portfolio pane docked, with Ticker Research panes floating over it. */
+function floatingOverDockLayout(
+  config: ReturnType<typeof createDefaultConfig>,
+  floating: Array<{ instanceId: string; x: number; y: number; locked?: boolean }>,
+): LayoutConfig {
+  const mainPane = requireLayoutInstance(config, "portfolio-list:main");
+  const detailPane = requireLayoutInstance(config, "ticker-detail:main");
+  return {
+    dockRoot: { kind: "pane", instanceId: mainPane.instanceId },
+    instances: [
+      { ...mainPane },
+      ...floating.map(({ instanceId, locked }) => (locked ? { ...detailPane, instanceId, locked } : { ...detailPane, instanceId })),
+    ],
+    floating: floating.map(({ instanceId, x, y }) => ({ instanceId, x, y, width: 30, height: 8 })),
+    detached: [],
+  };
+}
+
+/** Click the "..." header action on the first row and return the frame with the menu open. */
+async function openPaneMenu() {
+  const actionCol = testSetup!.captureCharFrame().split("\n")[0]?.indexOf("...");
+  expect(actionCol).toBeGreaterThanOrEqual(0);
+  await act(async () => {
+    await testSetup!.mockMouse.click(actionCol! + 1, 1);
+  });
+  await testSetup!.renderOnce();
+  return testSetup!.captureCharFrame();
+}
+
+/** State for `layout`; without a `focusedPaneId` the initial state picks the focus. */
+function createShellStateWithLayout(
+  config: ReturnType<typeof createDefaultConfig>,
+  layout: LayoutConfig,
+  focusedPaneId?: string | null,
+) {
+  const state = createInitialState({
+    ...config,
+    layout,
+    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
+  });
+  return focusedPaneId === undefined ? state : { ...state, focusedPaneId };
+}
+
+async function renderShell(
   state: ReturnType<typeof createInitialState>,
   options: {
     registry?: PluginRegistry;
     width?: number;
     height?: number;
     dispatch?: (action: ShellTestAction) => void;
+    desktopWindowBridge?: DesktopWindowBridge;
   } = {},
 ) {
   const actions: ShellTestAction[] = [];
@@ -112,7 +154,7 @@ async function renderShellForWindowModeTest(
   testSetup = await testRender(
     <AppContext value={createStaticAppStore(state, options.dispatch ?? ((action) => actions.push(action)))}>
       <TestDialogProvider>
-        <Shell pluginRegistry={registry} />
+        <Shell pluginRegistry={registry} desktopWindowBridge={options.desktopWindowBridge} />
       </TestDialogProvider>
     </AppContext>,
     { width: options.width ?? 80, height: options.height ?? 24 },
@@ -182,7 +224,7 @@ describe("Shell", () => {
     const registry = createShellPluginRegistry(floating
       ? { tickerDetailComponent: EdgeValues }
       : { portfolioListComponent: EdgeValues });
-    await renderShellForWindowModeTest(createShellStateWithLayout(config, layout, floating ? detail.instanceId : main.instanceId), { registry });
+    await renderShell(createShellStateWithLayout(config, layout, floating ? detail.instanceId : main.instanceId), { registry });
     await testSetup!.renderOnce();
     expect(contentWidth).toBe((floating ? 50 : 80) - 2);
     expect(testSetup!.captureCharFrame()).toContain(`49.6%${".".repeat(contentWidth - 10)}-8.5%`);
@@ -221,40 +263,9 @@ describe("Shell", () => {
 
   test("opens the pane menu when clicking the docked header action area", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    if (!mainPane) throw new Error("missing default portfolio pane");
+    await renderShell(createShellStateWithLayout(config, singleDockedPaneLayout(config)), { width: 40, height: 10 });
 
-    const singlePaneLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [{ ...mainPane }],
-      floating: [],
-    };
-    const nextConfig = {
-      ...config,
-      layout: cloneLayout(singlePaneLayout),
-      layouts: [{ name: "Default", layout: cloneLayout(singlePaneLayout) }],
-    };
-    const state = createInitialState(nextConfig);
-    const pluginRegistry = createShellPluginRegistry();
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state)}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={pluginRegistry} />
-        </TestDialogProvider>
-      </AppContext>,
-      { width: 40, height: 10 },
-    );
-
-    await testSetup.renderOnce();
-    const actionCol = testSetup.captureCharFrame().split("\n")[0]?.indexOf("...");
-    expect(actionCol).toBeGreaterThanOrEqual(0);
-    await act(async () => {
-      await testSetup!.mockMouse.click(actionCol! + 1, 1);
-    });
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
+    const frame = await openPaneMenu();
     expect(frame).toContain("Settings");
     expect(frame).toContain("Ctrl+,");
     expect(frame).not.toContain("Layout Actions");
@@ -263,90 +274,32 @@ describe("Shell", () => {
 
   test("shows a Pop Out action in the pane menu when a desktop bridge is available", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    if (!mainPane) throw new Error("missing default portfolio pane");
-
-    const singlePaneLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [{ ...mainPane }],
-      floating: [],
-      detached: [],
-    };
-    const nextConfig = {
-      ...config,
-      layout: cloneLayout(singlePaneLayout),
-      layouts: [{ name: "Default", layout: cloneLayout(singlePaneLayout) }],
-    };
-    const state = createInitialState(nextConfig);
-    const pluginRegistry = createShellPluginRegistry();
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state)}>
-        <TestDialogProvider>
-          <Shell
-            pluginRegistry={pluginRegistry}
-            desktopWindowBridge={{
-              kind: "main",
-              popOutPane: async () => {},
-              subscribeState: () => () => {},
-              subscribeDockPreview: () => () => {},
-            }}
-          />
-        </TestDialogProvider>
-      </AppContext>,
-      { width: 40, height: 10 },
-    );
-
-    await testSetup.renderOnce();
-    const floatingActionCol = testSetup.captureCharFrame().split("\n")[0]?.indexOf("...");
-    expect(floatingActionCol).toBeGreaterThanOrEqual(0);
-    await act(async () => {
-      await testSetup!.mockMouse.click(floatingActionCol! + 1, 1);
+    await renderShell(createShellStateWithLayout(config, singleDockedPaneLayout(config)), {
+      width: 40,
+      height: 10,
+      desktopWindowBridge: {
+        kind: "main",
+        popOutPane: async () => {},
+        subscribeState: () => () => {},
+        subscribeDockPreview: () => () => {},
+      },
     });
-    await testSetup.renderOnce();
 
-    expect(testSetup.captureCharFrame()).toContain("Pop Out");
+    expect(await openPaneMenu()).toContain("Pop Out");
   });
 
   test("shows the pane menu above a high z-index floating pane", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const detailPane = config.layout.instances.find((instance) => instance.instanceId === "ticker-detail:main");
-    if (!detailPane) throw new Error("missing default Ticker Research pane");
-
-    const floatingOnlyLayout = {
+    const detailPane = requireLayoutInstance(config, "ticker-detail:main");
+    const floatingOnlyLayout: LayoutConfig = {
       dockRoot: null,
       instances: [{ ...detailPane }],
       floating: [{ instanceId: "ticker-detail:main", x: 0, y: 0, width: 40, height: 8, zIndex: 195 }],
+      detached: [],
     };
-    const nextConfig = {
-      ...config,
-      layout: cloneLayout(floatingOnlyLayout),
-      layouts: [{ name: "Default", layout: cloneLayout(floatingOnlyLayout) }],
-    };
-    const state = {
-      ...createInitialState(nextConfig),
-      focusedPaneId: "ticker-detail:main",
-    };
-    const pluginRegistry = createShellPluginRegistry();
+    await renderShell(createShellStateWithLayout(config, floatingOnlyLayout, "ticker-detail:main"), { width: 40, height: 10 });
 
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state)}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={pluginRegistry} />
-        </TestDialogProvider>
-      </AppContext>,
-      { width: 40, height: 10 },
-    );
-
-    await testSetup.renderOnce();
-    const highZActionCol = testSetup.captureCharFrame().split("\n")[0]?.indexOf("...");
-    expect(highZActionCol).toBeGreaterThanOrEqual(0);
-    await act(async () => {
-      await testSetup!.mockMouse.click(highZActionCol! + 1, 1);
-    });
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
+    const frame = await openPaneMenu();
     expect(frame).toContain("Dock Pane");
     expect(frame).not.toContain("Layout Actions");
   });
@@ -371,12 +324,21 @@ describe("Shell", () => {
     expect(resolvePaneManagementShortcut({ ...base, name: "d", key: "d", meta: false, super: false })).toBeNull();
   });
 
+  test("allows the screenshot chord while a pane composer captures input", () => {
+    const mac = { ctrl: false, meta: true, super: true, targetEditable: true };
+    const windows = { ctrl: true, meta: false, super: false, targetEditable: true };
+    expect(inputCaptureAllowsPaneManagementShortcut("copy-screenshot", mac)).toBe(true);
+    expect(inputCaptureAllowsPaneManagementShortcut("copy-screenshot", windows)).toBe(true);
+    expect(inputCaptureAllowsPaneManagementShortcut("copy-screenshot", { ...windows, ctrl: false })).toBe(false);
+    expect(inputCaptureAllowsPaneManagementShortcut("share", mac)).toBe(false);
+  });
+
   test("opens the layout browser from the primary Shift-L shortcut", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-layout-browser-shortcut-test");
     const opened: string[] = [];
     const registry = createShellPluginRegistry();
     registry.showPane = (paneId) => opened.push(paneId);
-    await renderShellForWindowModeTest(createInitialState(config), { registry });
+    await renderShell(createInitialState(config), { registry });
 
     await emitKeypress({ name: "l", ctrl: true, shift: true });
 
@@ -399,7 +361,7 @@ describe("Shell", () => {
       floating: [],
       detached: [],
     };
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, dockedLayout, "portfolio-list:main"),
       { width: 80, height: 18 },
     );
@@ -457,7 +419,7 @@ describe("Shell", () => {
       floating: [],
       detached: [],
     };
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, dockedLayout, "portfolio-list:main"),
       { width: 80, height: 18 },
     );
@@ -480,7 +442,7 @@ describe("Shell", () => {
     const floatingLayout = cloneLayout(config.layout);
     floatingLayout.dockRoot = { kind: "pane", instanceId: "portfolio-list:main" };
     floatingLayout.floating = [{ instanceId: "ticker-detail:main", x: 8, y: 2, width: 32, height: 10, zIndex: 75 }];
-    await renderShellForWindowModeTest(
+    await renderShell(
       createShellStateWithLayout(config, floatingLayout, "ticker-detail:main"),
       { width: 80, height: 18 },
     );
@@ -525,7 +487,7 @@ describe("Shell", () => {
       floating: [{ instanceId: "ticker-detail:main", x: 30, y: 2, width: 24, height: 8, zIndex: 75 }],
       detached: [],
     };
-    await renderShellForWindowModeTest(
+    await renderShell(
       createShellStateWithLayout(config, layout, "portfolio-list:main"),
       { registry, width: 80, height: 18 },
     );
@@ -555,7 +517,7 @@ describe("Shell", () => {
       floating: [{ instanceId: "ticker-detail:main", x: 0, y: 0, width: 40, height: 8, zIndex: 75 }],
       detached: [],
     };
-    await renderShellForWindowModeTest(
+    await renderShell(
       createShellStateWithLayout(config, layout, "portfolio-list:main"),
       { registry, width: 80, height: 18 },
     );
@@ -581,7 +543,7 @@ describe("Shell", () => {
       floating: [{ instanceId: "ticker-detail:main", x: 4, y: 2, width: 40, height: 10, zIndex: 50 }],
       detached: [],
     };
-    await renderShellForWindowModeTest(
+    await renderShell(
       createShellStateWithLayout(config, floatingLayout, "ticker-detail:main"),
       { registry, width: 80, height: 18 },
     );
@@ -615,7 +577,7 @@ describe("Shell", () => {
       floating: [],
       detached: [],
     };
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       {
         ...createShellStateWithLayout(config, dockedLayout, "portfolio-list:main"),
         inputCaptured: true,
@@ -833,7 +795,7 @@ describe("Shell", () => {
       floating: [],
       detached: [],
     };
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, dockedLayout, "portfolio-list:main"),
     );
 
@@ -864,7 +826,7 @@ describe("Shell", () => {
       floating: [],
       detached: [],
     };
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, dockedLayout, "portfolio-list:main"),
     );
 
@@ -885,7 +847,7 @@ describe("Shell", () => {
     const floatingLayout = cloneLayout(config.layout);
     floatingLayout.dockRoot = { kind: "pane", instanceId: "portfolio-list:main" };
     floatingLayout.floating = [{ instanceId: "ticker-detail:main", x: 8, y: 2, width: 32, height: 10, zIndex: 75 }];
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, floatingLayout, "ticker-detail:main"),
     );
 
@@ -914,7 +876,7 @@ describe("Shell", () => {
       { instanceId: "portfolio-list:main", x: 2, y: 1, width: 32, height: 10, zIndex: 50 },
       { instanceId: "ticker-detail:main", x: 8, y: 2, width: 32, height: 10, zIndex: 75 },
     ];
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, floatingLayout, "ticker-detail:main"),
     );
 
@@ -952,7 +914,7 @@ describe("Shell", () => {
     const floatingLayout = cloneLayout(config.layout);
     floatingLayout.dockRoot = { kind: "pane", instanceId: "portfolio-list:main" };
     floatingLayout.floating = [{ instanceId: "ticker-detail:main", x: 8, y: 2, width: 32, height: 10, zIndex: 75 }];
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, floatingLayout, "portfolio-list:main"),
     );
 
@@ -976,7 +938,7 @@ describe("Shell", () => {
       instances: [{ ...mainPane }],
       floating: [],
     };
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, dockedLayout, "portfolio-list:main"),
     );
 
@@ -1011,7 +973,7 @@ describe("Shell", () => {
       floating: [],
       detached: [],
     };
-    const { actions } = await renderShellForWindowModeTest(
+    const { actions } = await renderShell(
       createShellStateWithLayout(config, dockedLayout, "portfolio-list:main"),
     );
 
@@ -1057,7 +1019,7 @@ describe("Shell", () => {
       };
       desktopLayout.floating = [];
       const registry = createShellPluginRegistry();
-      await renderShellForWindowModeTest(
+      await renderShell(
         createShellStateWithLayout(config, desktopLayout, null),
         { registry, width: 100, height: 26, dispatch: () => {} },
       );
@@ -1079,34 +1041,11 @@ describe("Shell", () => {
 
   test("closes the focused docked pane with Ctrl+W", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    if (!mainPane) throw new Error("missing default portfolio pane");
-
-    const singlePaneLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [{ ...mainPane }],
-      floating: [],
-    };
-    const state = {
-      ...createInitialState({
-        ...config,
-        layout: cloneLayout(singlePaneLayout),
-        layouts: [{ name: "Default", layout: cloneLayout(singlePaneLayout) }],
-      }),
-      focusedPaneId: "portfolio-list:main",
-    };
-    const actions: Array<any> = [];
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={createShellPluginRegistry()} />
-        </TestDialogProvider>
-      </AppContext>,
+    const { actions } = await renderShell(
+      createShellStateWithLayout(config, singleDockedPaneLayout(config), "portfolio-list:main"),
       { width: 40, height: 10 },
     );
 
-    await testSetup.renderOnce();
     await act(async () => {
       testSetup!.mockInput.pressKey("w", { ctrl: true });
       await testSetup!.renderOnce();
@@ -1121,34 +1060,11 @@ describe("Shell", () => {
 
   test("closes the focused pane after double Escape", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    if (!mainPane) throw new Error("missing default portfolio pane");
-
-    const singlePaneLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [{ ...mainPane }],
-      floating: [],
-    };
-    const state = {
-      ...createInitialState({
-        ...config,
-        layout: cloneLayout(singlePaneLayout),
-        layouts: [{ name: "Default", layout: cloneLayout(singlePaneLayout) }],
-      }),
-      focusedPaneId: "portfolio-list:main",
-    };
-    const actions: Array<any> = [];
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={createShellPluginRegistry()} />
-        </TestDialogProvider>
-      </AppContext>,
+    const { actions } = await renderShell(
+      createShellStateWithLayout(config, singleDockedPaneLayout(config), "portfolio-list:main"),
       { width: 40, height: 10 },
     );
 
-    await testSetup.renderOnce();
     await emitKeypress({ name: "escape", sequence: "\u001b" });
     expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
 
@@ -1163,37 +1079,12 @@ describe("Shell", () => {
 
   test("closes the focused floating pane with Ctrl+W", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    const detailPane = config.layout.instances.find((instance) => instance.instanceId === "ticker-detail:main");
-    if (!mainPane || !detailPane) throw new Error("missing default panes");
-
-    const mixedLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [{ ...mainPane }, { ...detailPane }],
-      floating: [{ instanceId: "ticker-detail:main", x: 4, y: 2, width: 30, height: 8 }],
-      detached: [],
-    };
-    const state = {
-      ...createInitialState({
-        ...config,
-        layout: cloneLayout(mixedLayout),
-        layouts: [{ name: "Default", layout: cloneLayout(mixedLayout) }],
-      }),
-      focusedPaneId: "ticker-detail:main",
-      previousFocusedPaneId: "portfolio-list:main",
-    };
-    const actions: Array<any> = [];
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={createShellPluginRegistry()} />
-        </TestDialogProvider>
-      </AppContext>,
+    const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 4, y: 2 }]);
+    const { actions } = await renderShell(
+      { ...createShellStateWithLayout(config, layout, "ticker-detail:main"), previousFocusedPaneId: "portfolio-list:main" },
       { width: 40, height: 12 },
     );
 
-    await testSetup.renderOnce();
     await act(async () => {
       testSetup!.mockInput.pressKey("w", { ctrl: true });
       await testSetup!.renderOnce();
@@ -1209,36 +1100,9 @@ describe("Shell", () => {
 
   test("closes the focused floating pane with Cmd+W", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    const detailPane = config.layout.instances.find((instance) => instance.instanceId === "ticker-detail:main");
-    if (!mainPane || !detailPane) throw new Error("missing default panes");
+    const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 4, y: 2 }]);
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, "ticker-detail:main"), { width: 40, height: 12 });
 
-    const mixedLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [{ ...mainPane }, { ...detailPane }],
-      floating: [{ instanceId: "ticker-detail:main", x: 4, y: 2, width: 30, height: 8 }],
-      detached: [],
-    };
-    const state = {
-      ...createInitialState({
-        ...config,
-        layout: cloneLayout(mixedLayout),
-        layouts: [{ name: "Default", layout: cloneLayout(mixedLayout) }],
-      }),
-      focusedPaneId: "ticker-detail:main",
-    };
-    const actions: Array<any> = [];
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={createShellPluginRegistry()} />
-        </TestDialogProvider>
-      </AppContext>,
-      { width: 40, height: 12 },
-    );
-
-    await testSetup.renderOnce();
     await emitKeypress({ name: "w", super: true });
 
     const updateLayout = actions.find((action) => action.type === "UPDATE_LAYOUT");
@@ -1248,43 +1112,12 @@ describe("Shell", () => {
 
   test("closes all floating panes with Ctrl+Alt+W", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    const firstDetailPane = config.layout.instances.find((instance) => instance.instanceId === "ticker-detail:main");
-    if (!mainPane || !firstDetailPane) throw new Error("missing default panes");
-    const secondDetailPane = {
-      ...firstDetailPane,
-      instanceId: "ticker-detail:secondary",
-    };
+    const layout = floatingOverDockLayout(config, [
+      { instanceId: "ticker-detail:main", x: 4, y: 2 },
+      { instanceId: "ticker-detail:secondary", x: 8, y: 3 },
+    ]);
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, "portfolio-list:main"), { width: 40, height: 12 });
 
-    const mixedLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [{ ...mainPane }, { ...firstDetailPane }, secondDetailPane],
-      floating: [
-        { instanceId: "ticker-detail:main", x: 4, y: 2, width: 30, height: 8 },
-        { instanceId: "ticker-detail:secondary", x: 8, y: 3, width: 30, height: 8 },
-      ],
-      detached: [],
-    };
-    const state = {
-      ...createInitialState({
-        ...config,
-        layout: cloneLayout(mixedLayout),
-        layouts: [{ name: "Default", layout: cloneLayout(mixedLayout) }],
-      }),
-      focusedPaneId: "portfolio-list:main",
-    };
-    const actions: Array<any> = [];
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={createShellPluginRegistry()} />
-        </TestDialogProvider>
-      </AppContext>,
-      { width: 40, height: 12 },
-    );
-
-    await testSetup.renderOnce();
     await emitKeypress({ name: "w", ctrl: true, alt: true });
 
     const updateLayout = actions.find((action) => action.type === "UPDATE_LAYOUT");
@@ -1296,32 +1129,11 @@ describe("Shell", () => {
 
   test("keeps a locked pane when Ctrl+W is pressed", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    if (!mainPane) throw new Error("missing default portfolio pane");
-
-    const lockedLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [{ ...mainPane, locked: true }],
-      floating: [],
-      detached: [],
-    };
-    const state = createShellStateWithLayout(
-      { ...config, layout: cloneLayout(lockedLayout) },
-      cloneLayout(lockedLayout),
-      "portfolio-list:main",
-    );
-    const actions: Array<any> = [];
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={createShellPluginRegistry()} />
-        </TestDialogProvider>
-      </AppContext>,
+    const { actions } = await renderShell(
+      createShellStateWithLayout(config, singleDockedPaneLayout(config, true), "portfolio-list:main"),
       { width: 40, height: 10 },
     );
 
-    await testSetup.renderOnce();
     await emitKeypress({ name: "w", ctrl: true });
     expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
 
@@ -1332,40 +1144,12 @@ describe("Shell", () => {
 
   test("closes only the unlocked floating panes with Ctrl+Alt+W", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
-    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
-    const detailPane = config.layout.instances.find((instance) => instance.instanceId === "ticker-detail:main");
-    if (!mainPane || !detailPane) throw new Error("missing default panes");
+    const layout = floatingOverDockLayout(config, [
+      { instanceId: "ticker-detail:main", x: 4, y: 2, locked: true },
+      { instanceId: "ticker-detail:secondary", x: 8, y: 3 },
+    ]);
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, "portfolio-list:main"), { width: 40, height: 12 });
 
-    const mixedLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
-      instances: [
-        { ...mainPane },
-        { ...detailPane, locked: true },
-        { ...detailPane, instanceId: "ticker-detail:secondary" },
-      ],
-      floating: [
-        { instanceId: "ticker-detail:main", x: 4, y: 2, width: 30, height: 8 },
-        { instanceId: "ticker-detail:secondary", x: 8, y: 3, width: 30, height: 8 },
-      ],
-      detached: [],
-    };
-    const state = createShellStateWithLayout(
-      { ...config, layout: cloneLayout(mixedLayout) },
-      cloneLayout(mixedLayout),
-      "portfolio-list:main",
-    );
-    const actions: Array<any> = [];
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
-        <TestDialogProvider>
-          <Shell pluginRegistry={createShellPluginRegistry()} />
-        </TestDialogProvider>
-      </AppContext>,
-      { width: 40, height: 12 },
-    );
-
-    await testSetup.renderOnce();
     await emitKeypress({ name: "w", ctrl: true, alt: true });
 
     const updateLayout = actions.find((action) => action.type === "UPDATE_LAYOUT");

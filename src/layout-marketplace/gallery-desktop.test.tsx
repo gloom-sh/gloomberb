@@ -2,9 +2,9 @@
 import { expect, test } from "bun:test";
 import { act, useState, type ReactNode } from "react";
 import { cloneLayout, createDefaultConfig } from "../types/config";
-import type { PaneDef } from "../types/plugin";
 import { LayoutGalleryDesktop } from "./gallery-desktop";
 import { buildOwnedEntries, type GalleryEntry } from "./model";
+import { testPanes as panes } from "./test-fixture";
 import type { LayoutGalleryController } from "./gallery";
 import { createDomTestHarness } from "../renderers/electrobun/view/test-utils";
 import { WebInputHostProvider } from "../renderers/electrobun/view/input-host";
@@ -12,16 +12,6 @@ import { AppContext, createInitialState } from "../state/app/context";
 import { createStaticAppStore } from "../test-support/app-store";
 
 const { window: testWindow, render: renderDom } = createDomTestHarness();
-
-function paneDef(id: string, name: string, icon: string): PaneDef {
-  return { id, name, icon, component: () => null, defaultPosition: "left" };
-}
-
-const panes = new Map<string, PaneDef>([
-  ["portfolio-list", paneDef("portfolio-list", "Portfolio", "P")],
-  ["ticker-research", paneDef("ticker-research", "Ticker Research", "T")],
-  ["chat", paneDef("chat", "Chat", "M")],
-]);
 
 function createController(overrides: Partial<LayoutGalleryController> = {}): {
   controller: LayoutGalleryController;

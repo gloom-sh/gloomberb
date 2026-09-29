@@ -1,5 +1,3 @@
-import type { DataTableScrollAlign } from "../types";
-
 interface DataTableVisibleWindowOptions<T> {
   appViewportHeight: number;
   items: T[];
@@ -14,25 +12,6 @@ export interface DataTableVisibleWindow<T> {
   startIndex: number;
   viewportHeight: number;
   visibleItems: T[];
-}
-
-export function resolveDataTableScrollTop(
-  targetIndex: number,
-  currentTop: number,
-  visibleHeight: number,
-  itemCount: number,
-  align: DataTableScrollAlign,
-): number {
-  const maxTop = Math.max(0, itemCount - visibleHeight);
-  let nextTop = currentTop;
-  if (align === "center") {
-    nextTop = targetIndex - Math.floor(visibleHeight / 2);
-  } else if (targetIndex < currentTop) {
-    nextTop = targetIndex;
-  } else if (targetIndex >= currentTop + visibleHeight) {
-    nextTop = targetIndex - visibleHeight + 1;
-  }
-  return Math.max(0, Math.min(maxTop, nextTop));
 }
 
 export function resolveDataTableVisibleWindow<T>({

@@ -9,22 +9,12 @@ import { cleanupChatTest, installChatApiTestDefaults } from "../../chat/test-har
 import { TeamPane } from "./pane";
 import { requestTeamPaneView } from "./pane-request";
 import { teamStore } from "./store";
+import { createTestTeam } from "./test-fixture";
 
 type Setup = Awaited<ReturnType<typeof testRender>>;
 let setup: Setup | undefined;
 
-const macroDesk = {
-  id: "org-1",
-  name: "Macro Desk",
-  slug: "macro-desk",
-  accentColor: "magenta" as const,
-  shortName: "MD",
-  allowMemberInvites: false,
-  channelId: "team:org-1",
-  createdAt: "2026-09-14T12:00:00.000Z",
-  role: "owner" as const,
-  memberCount: 3,
-};
+const macroDesk = createTestTeam({ role: "owner" });
 
 const members = [
   { id: "m-1", role: "owner", joinedAt: "2026-09-01T00:00:00.000Z", user: { id: "u0", username: "ada", displayName: "Ada" } },

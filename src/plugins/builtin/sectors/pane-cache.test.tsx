@@ -47,8 +47,8 @@ for (const version of ["v3", "v4"]) test(`opening without a provider handles the
   await exportPaneTable("sector-cache", `${version}.csv`);
   const csv = takeSavedTextFile()!.text;
   expect(frame).toContain("GDX");
-  expect(csv).not.toContain("+50.00%");
+  expect(csv).not.toContain("50.00");
   expect(frame).not.toContain("+50.00%");
-  expect(csv.includes("+10.00%")).toBe(version === "v4");
+  expect(csv.includes(",10.00,10.00")).toBe(version === "v4");
   expect(frame.includes("+10.00%")).toBe(version === "v4");
 });

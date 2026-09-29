@@ -225,6 +225,27 @@ describe("CommandBar", () => {
     expect(testSetup.captureCharFrame()).not.toContain("GitHub Light");
   });
 
+  test("preselects the theme named exactly over the committed one it also matches", async () => {
+    testSetup = await testRender(<CommandBarHarness
+      query="TH nord"
+      live
+      configureConfig={(config) => ({ ...config, theme: "nord-light" })}
+    />, {
+      width: 80,
+      height: 24,
+    });
+
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).toContain("Nord Light");
+
+    await act(async () => {
+      testSetup!.mockInput.pressEnter();
+      await testSetup!.renderOnce();
+    });
+    await waitForFrameToContain("theme:nord");
+    expect(testSetup.captureCharFrame()).not.toContain("theme:nord-light");
+  });
+
   test("starts focused window resize mode from WIN argument", async () => {
     const opened: Array<{ paneId: string | undefined; mode: string | undefined }> = [];
 

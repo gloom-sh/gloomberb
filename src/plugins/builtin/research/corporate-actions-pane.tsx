@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Box, ScrollBox, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
+  DetailScrollBody,
   KeyValueRow,
   Prose,
   SectionHeading,
@@ -17,7 +18,6 @@ import type {
   CorporateActionsData,
 } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
-import { isPlainKey } from "../../../utils/keyboard";
 import { formatPercent } from "../../../utils/format";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
@@ -45,8 +45,6 @@ import {
   type EventRow,
   type EventStatus,
 } from "./event-model";
-
-export { buildEventRows } from "./event-model";
 
 type EventColumnId = "date" | "status" | "period" | "qEps" | "qRevenue" | "annualEps" | "annualRevenue" | "value" | "detail";
 type EventColumn = DataTableColumn & { id: EventColumnId };
@@ -539,12 +537,6 @@ export function CorporateActionsView({
     }
   }, [openRowId, rows]);
 
-  useEffect(() => {
-    if (!openRowId) return;
-    const scrollBox = detailScrollRef.current;
-    if (scrollBox) scrollBox.scrollTop = 0;
-  }, [openRowId]);
-
   const detailSections = openRow
     ? buildEventDetail({
         row: openRow,
@@ -559,49 +551,10 @@ export function CorporateActionsView({
     : [];
   // Leave room for both horizontal padding cells and the vertical scrollbar.
   const detailTextWidth = Math.max(width - 3, 12);
-  const scrollDetailBy = useCallback((delta: number) => {
-    const scrollBox = detailScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
-  }, []);
-
-  const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKey(event, "j", "down")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      scrollDetailBy(1);
-      return true;
-    }
-    if (isPlainKey(event, "k", "up")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      scrollDetailBy(-1);
-      return true;
-    }
-    return false;
-  }, [scrollDetailBy]);
   const detailContent = openRow ? (
-    <Box
-      flexDirection="column"
-      flexGrow={1}
-      flexBasis={0}
-      minHeight={0}
-      overflow="hidden"
-      paddingX={1}
-      paddingY={1}
-    >
-      <ScrollBox
-        ref={detailScrollRef}
-        flexGrow={1}
-        flexBasis={0}
-        minHeight={0}
-        scrollY
-        focusable={false}
-      >
-        <EventDetailSections sections={detailSections} width={detailTextWidth} />
-      </ScrollBox>
-    </Box>
+    <DetailScrollBody ref={detailScrollRef} resetScrollKey={openRow.id}>
+      <EventDetailSections sections={detailSections} width={detailTextWidth} />
+    </DetailScrollBody>
   ) : (
     <Box flexGrow={1} />
   );
@@ -609,29 +562,26 @@ export function CorporateActionsView({
   const renderCell = useCallback((
     row: EventRow,
     column: EventColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "date":
-        return { text: row.date, color: selectedColor ?? colors.textDim };
+        return { text: row.date, color: colors.textDim };
       case "status":
-        return { text: row.status, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: row.status, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "period":
-        return { text: row.period, color: selectedColor ?? colors.textDim };
+        return { text: row.period, color: colors.textDim };
       case "qEps":
-        return { text: formatEventMetric(row.qEps, unit ? undefined : row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.qEps, unit ? undefined : row.epsCurrency, "eps"), color: colors.textDim };
       case "qRevenue":
-        return { text: formatEventMetric(row.qRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.qRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: colors.textDim };
       case "annualEps":
-        return { text: formatEventMetric(row.annualEps, unit ? undefined : row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.annualEps, unit ? undefined : row.epsCurrency, "eps"), color: colors.textDim };
       case "annualRevenue":
-        return { text: formatEventMetric(row.annualRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.annualRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: colors.textDim };
       case "value":
-        return { text: row.value, color: selectedColor ?? toneColor(row.tone) };
+        return { text: row.value, color: toneColor(row.tone) };
       case "detail":
-        return { text: row.detail, color: selectedColor ?? colors.text };
+        return { text: row.detail, color: colors.text };
     }
   }, [unit]);
 
@@ -671,7 +621,7 @@ export function CorporateActionsView({
         onChange: (_index, row) => setSelectedKey(eventRowKey(row)),
       }}
       onActivate={(row) => setOpenRowId(row.id)}
-      onDetailKeyDown={handleDetailKeyDown}
+      detailScrollRef={detailScrollRef}
       rootWidth={width}
       rootHeight={height}
       onRootKeyDown={handleKeyDown}
@@ -681,6 +631,7 @@ export function CorporateActionsView({
       sortDirection="desc"
       getItemKey={eventRowKey}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       getRowBackgroundColor={rowBackground}
       emptyStateTitle={loading
         ? (variant === "earnings-estimates" ? "Loading earnings estimates..." : "Loading events...")

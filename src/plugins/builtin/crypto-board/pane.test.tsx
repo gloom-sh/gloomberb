@@ -112,8 +112,8 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
   await exportPaneTable("cryp", "coins.csv");
   const csv = takeSavedTextFile()!.text;
   expect(csv).toContain("BTC");
-  expect(csv).toContain("+2.04%");
-  expect(csv).toContain("1.00T");
+  expect(csv).toContain(",2.04,");
+  expect(csv).toContain(",1000000000000");
 
   await emitKeypress(setup!, { name: "l" });
   await settleFrame(setup!, 8);

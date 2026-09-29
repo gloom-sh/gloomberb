@@ -1,5 +1,5 @@
 import { setCapabilityStreamClient } from "../../../capabilities";
-import { backendRequest, onCapabilityEvent } from "./backend-rpc";
+import { backendRequest, subscribeBackendCapability } from "./backend-rpc";
 
 let nextSubscriptionId = 1;
 
@@ -18,34 +18,14 @@ export function installElectrobunCapabilityStreamClient(): void {
       return backendRequest("capability.invoke", { capabilityId, operationId, payload });
     },
     subscribe({ capabilityId, operationId, payload, onEvent, onError }) {
-      const subscriptionId = `capability-stream:${nextSubscriptionId++}`;
-      let disposed = false;
-      const unsubscribe = () => {
-        void backendRequest("capability.unsubscribe", { subscriptionId }).catch(() => {});
-      };
-      const disposeMessages = onCapabilityEvent(subscriptionId, (message) => {
-        if (!disposed) onEvent(message.event);
-      });
-
-      void backendRequest("capability.subscribe", {
-        subscriptionId,
+      return subscribeBackendCapability({
+        subscriptionId: `capability-stream:${nextSubscriptionId++}`,
         capabilityId,
         operationId,
         payload,
-      }).catch((error) => {
-        if (!disposed) onError?.(error);
-      }).finally(() => {
-        // Unsubscribing can race the subscribe it cancels, so a late
-        // subscription is torn down again once the request settles.
-        if (disposed) unsubscribe();
+        onEvent,
+        onError,
       });
-
-      return () => {
-        if (disposed) return;
-        disposed = true;
-        disposeMessages();
-        unsubscribe();
-      };
     },
   });
 }

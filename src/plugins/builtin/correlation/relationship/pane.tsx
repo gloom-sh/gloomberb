@@ -355,7 +355,7 @@ export function createRelationshipPaneTemplate(): PaneTemplateDef {
     label: "Relationship Graph",
     description: "Graph ratio, rolling correlation, and regression between two tickers.",
     keywords: ["relationship", "ratio", "graph", "correlation", "regression", "gr"],
-    shortcut: { prefix: "GR", argPlaceholder: "tickers", argKind: "ticker-list" },
+    shortcut: { prefix: "GR", aliases: ["BETA", "HRA"], argPlaceholder: "tickers", argKind: "ticker-list" },
     wizard: [
       {
         key: "tickers",

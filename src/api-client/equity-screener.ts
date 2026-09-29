@@ -22,6 +22,31 @@ export const NUMERIC_FIELDS = [
   "institutionalHolders",
   "institutionalNewHolders",
   "institutionalExits",
+  "xPostsPerDay",
+  "xPostsVsMedian",
+  "wikiViewsPerDay",
+  "wikiViewsVsMedian",
+  "return1WPercent",
+  "return1MPercent",
+  "return3MPercent",
+  "returnYtdPercent",
+  "return1YPercent",
+  "fromHigh52WPercent",
+  "beta",
+  "priceToBook",
+  "evToEbitda",
+  "roePercent",
+  "epsRevision30dPercent",
+  "analystUpsidePercent",
+  "ivRank",
+  "ivToHv",
+] as const;
+/** Social attention; a server from before them omits these metrics. */
+export const SOCIAL_FIELDS = ["xPostsPerDay", "xPostsVsMedian", "wikiViewsPerDay", "wikiViewsVsMedian"] as const;
+/** Returns, valuation, estimates and options; a server from before them omits these metrics. */
+export const RESEARCH_FIELDS = [
+  "return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent", "return1YPercent", "fromHigh52WPercent",
+  "beta", "priceToBook", "evToEbitda", "roePercent", "epsRevision30dPercent", "analystUpsidePercent", "ivRank", "ivToHv",
 ] as const;
 export const CATEGORY_FIELDS = [
   "symbol",

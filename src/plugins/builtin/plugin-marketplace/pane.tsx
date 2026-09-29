@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableStackView,
   EmptyState,
   KeyValueRow,
   PaneStatusBody,
   QueryBar,
   useExternalLinkFooter,
+  useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -17,8 +18,8 @@ import {
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../../../ui";
-import { type PromptContext, useDialog } from "../../../ui/dialog";
+import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
+import { useDialog } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { requiredGloomberb } from "../../../utils/semver";
@@ -33,6 +34,7 @@ import {
   collectCategories,
   filterEntries,
   hasUpdate,
+  installConsent,
   isInstallable,
   isManaged,
   mergeCatalog,
@@ -47,7 +49,8 @@ import {
   type MarketplaceStatusKind,
   type RegistryPlugin,
 } from "./model";
-import { getMarketplaceHost, getPluginManager, type MarketplaceHost, type PluginManager } from "./store";
+import { activateInstalledPlugin } from "./activation";
+import { getMarketplaceHost, getPluginManager, type MarketplaceHost } from "./store";
 
 import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
 
@@ -214,9 +217,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const [showBuiltin, setShowBuiltin] = useState(false);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   const [registry, setRegistry] = useState<RegistryPlugin[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -304,71 +305,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   const bump = useCallback(() => setLocalRevision((value) => value + 1), []);
 
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((token) => token + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
-
-  const confirm = useCallback((options: {
-    title: string;
-    body: string[];
-    confirmLabel: string;
-    danger?: boolean;
-  }) => dialog.prompt<boolean>({
-    closeOnClickOutside: true,
-    content: (ctx: PromptContext<boolean>) => (
-      <ConfirmDialog
-        {...ctx}
-        title={options.title}
-        body={options.body}
-        confirmLabel={options.confirmLabel}
-        cancelLabel="Cancel"
-        confirmVariant={options.danger ? "danger" : "primary"}
-        width={Math.min(64, Math.max(44, width - 8))}
-        footer={`Enter ${options.confirmLabel.toLowerCase()} · Esc cancel`}
-      />
-    ),
-  }).catch(() => false), [dialog, width]);
-
-  /**
-   * Brings a freshly installed or updated checkout into this session. What
-   * cannot be activated is still recorded, with its error, so the row says
-   * `failed` and the detail says why rather than the plugin simply not
-   * appearing until a restart.
-   */
-  const activate = useCallback(async (
-    directory: string,
-    activeHost: MarketplaceHost,
-    activeManager: PluginManager,
-  ): Promise<{ ok: true; pluginId: string; name: string; restart?: boolean } | { ok: false; error: string }> => {
-    const loaded = await activeManager.load(directory);
-    if (!loaded) return { ok: false, error: "The plugin has no entry file." };
-    // Registering it here, or where data calls run, would mix the new files
-    // with modules this process already imported; the host keeps what runs.
-    if (loaded.needsRestart) {
-      await activeHost.activate(loaded).catch(() => {});
-      return { ok: true, pluginId: loaded.plugin.id, name: loaded.plugin.name, restart: true };
-    }
-    if (loaded.error) {
-      await activeHost.activate(loaded).catch(() => {});
-      return { ok: false, error: loaded.error };
-    }
-    // Where data calls execute first, so a pane that renders can also fetch.
-    if (activeManager.activate && !loaded.unsupportedTarget) {
-      const backend = await activeManager.activate(directory);
-      if (!backend.ok) {
-        await activeHost.activate({ ...loaded, error: backend.error }).catch(() => {});
-        return { ok: false, error: backend.error };
-      }
-    }
-    try {
-      await activeHost.activate(loaded);
-      return { ok: true, pluginId: loaded.plugin.id, name: loaded.plugin.name };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  }, []);
+  const confirmWidth = Math.min(64, Math.max(44, width - 8));
 
   const announceAdded = useCallback((pluginId: string, name: string, verb: string, activeHost: MarketplaceHost) => {
     const added = activeHost.contributions(pluginId);
@@ -418,13 +355,14 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (!repo) return;
     if (refuseTooNew(selected)) return;
     const pin = registryPin(selected);
-    const body = [
-      `${selected.name} runs with your full permissions. It is not sandboxed.`,
-      `Source: github.com/${repo}${pin?.ref ? ` at ${pin.ref}` : ""}${pin?.commit ? ` (${pin.commit.slice(0, 7)})` : ""}`,
-      selected.tier === "official" ? "Published by Gloom." : selected.tier === "verified" ? "Reviewed by Gloom." : "Community plugin, not reviewed.",
-      ...(selected.hosts.length > 0 ? [`Declares access to ${selected.hosts.join(", ")}.`] : []),
-    ];
-    const confirmed = await confirm({ title: `Install ${selected.name}?`, body, confirmLabel: "Install" });
+    const consent = installConsent({ ...selected, repo }, pin);
+    const confirmed = await confirmDialog(dialog, {
+      title: consent.title,
+      body: consent.body,
+      confirmLabel: "Install",
+      confirmVariant: "primary",
+      width: confirmWidth,
+    });
     if (!confirmed) return;
 
     const entry = selected;
@@ -437,13 +375,13 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       notify({ body: `Could not install ${entry.name}: ${result.error}`, type: "error" });
       return;
     }
-    const activated = await activate(result.directory, host, manager);
+    const activated = await activateInstalledPlugin(result.directory, host, manager);
     setBusy(null);
     bump();
     if (activated.ok && activated.restart) notify({ body: `Restart to finish installing ${entry.name}.`, type: "info" });
     else if (activated.ok) announceAdded(activated.pluginId, activated.name, "Installed", host);
     else notify({ body: `${entry.name} installed but did not load: ${activated.error}`, type: "error" });
-  }, [activate, announceAdded, bump, busy, confirm, host, manager, notify, refuseTooNew, selected]);
+  }, [announceAdded, bump, busy, confirmWidth, dialog, host, manager, notify, refuseTooNew, selected]);
 
   const updateSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy || selected.linked) return;
@@ -465,7 +403,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       notify({ body: `Kept ${entry.name}: ${result.kept}.`, type: "info" });
       return;
     }
-    const activated = await activate(directory, host, manager);
+    const activated = await activateInstalledPlugin(directory, host, manager);
     setBusy(null);
     bump();
     if (activated.ok && activated.restart) {
@@ -475,18 +413,18 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     } else {
       notify({ body: `${entry.name} updated but did not load: ${activated.error}`, type: "error" });
     }
-  }, [activate, announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected]);
+  }, [announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected]);
 
   const removeSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy) return;
     const entry = selected;
-    const confirmed = await confirm({
+    const confirmed = await confirmDialog(dialog, {
       title: `Remove ${entry.name}?`,
       body: entry.linked
         ? ["Removes the link. Your local checkout is left alone."]
         : [`Deletes ~/.gloomberb/plugins/${entry.directory}.`, "Its panes close now. Settings it saved are kept."],
       confirmLabel: "Remove",
-      danger: true,
+      width: confirmWidth,
     });
     if (!confirmed) return;
     setBusy({ id: entry.id, verb: "removing" });
@@ -501,7 +439,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       setLastError(result.error);
       notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
     }
-  }, [bump, busy, confirm, host, manager, notify, selected]);
+  }, [bump, busy, confirmWidth, dialog, host, manager, notify, selected]);
 
   const toggleSelected = useCallback(() => {
     if (!host || !selected || !selected.installed || !selected.toggleable || selected.loadError) return;
@@ -551,10 +489,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       case "d": openLog(); return true;
       case "r": refresh(true); return true;
       case "b": setShowBuiltin((value) => !value); return true;
-      case "/": focusSearch(); return true;
       default: return false;
     }
-  }, [focusSearch, installSelected, openLog, openSelected, refresh, removeSelected, setupSelected, toggleSelected, updateSelected]);
+  }, [installSelected, openLog, openSelected, refresh, removeSelected, setupSelected, toggleSelected, updateSelected]);
 
   /**
    * Pane keys go through the table's key handler, which runs while the pane
@@ -672,11 +609,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
               onChange: setQuery,
               placeholder: "name",
               focused: focused && !detailOpen,
-              active: searchFocused,
-              onActiveChange: (active) => { if (active) focusSearch(); else blurSearch(); },
-              focusToken: searchFocusToken,
-              inputRef: searchInputRef,
-              onNavigateDown: blurSearch,
+              ...searchProps,
             }}
             filters={[
               ...(categories.length > 1 || category ? [{

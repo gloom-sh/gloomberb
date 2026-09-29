@@ -452,18 +452,17 @@ export function TweetSearchTable({
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "time":
-        return { text: formatTimeAgo(tweet.createdAt, { short: true }), color: selectedColor ?? colors.textDim };
+        return { text: formatTimeAgo(tweet.createdAt, { short: true }), color: colors.textDim };
       case "author":
         return {
           text: `@${tweet.author.userName || tweet.author.name}`,
-          color: selectedColor ?? colors.textBright,
+          color: colors.textBright,
           attributes: TextAttributes.BOLD,
         };
       case "text":
-        return { text: normalizeTweetCellText(tweet.text), color: selectedColor ?? colors.text };
+        return { text: normalizeTweetCellText(tweet.text), color: colors.text };
       case "tickers": {
         const tickers = tweetTickers(tweet);
         return {
@@ -472,16 +471,16 @@ export function TweetSearchTable({
             <TickerBadgeList
               symbols={tickers}
               width={column.width}
-              fallbackColor={selectedColor ?? colors.positive}
+              fallbackColor={rowState.selected ? colors.selectedText : colors.positive}
             />
           ),
-          color: selectedColor ?? colors.positive,
+          color: colors.positive,
         };
       }
       case "likes":
-        return { text: formatMetric(tweet.metrics.likes), color: selectedColor ?? colors.textDim };
+        return { text: formatMetric(tweet.metrics.likes), color: colors.textDim };
       case "views":
-        return { text: formatMetric(tweet.metrics.views), color: selectedColor ?? colors.textDim };
+        return { text: formatMetric(tweet.metrics.views), color: colors.textDim };
     }
   }, []);
 
@@ -543,6 +542,7 @@ export function TweetSearchTable({
       onHeaderClick={handleHeaderClick}
       getItemKey={(tweet) => tweet.id}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyContent={emptyContent}
       emptyStateTitle={emptyStateTitle ?? "No tweets"}
       emptyStateHint={emptyStateHint ?? data?.query}

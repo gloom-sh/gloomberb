@@ -10,6 +10,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneVisible } from "../../../state/app/activity";
 import type { PaneProps } from "../../../types/plugin";
@@ -22,7 +23,7 @@ import {
   FILTER_CYCLE,
   attachEconCalendarPersistence,
   actualColor,
-  dateKey,
+  calendarDisplayRows,
   dayLabel,
   formatCountdown,
   formatStaleness,
@@ -36,6 +37,7 @@ import {
   type CountryFilter,
   type DisplayRow,
   type EconCalendarColumn,
+  type EconCalendarLoadResult,
   type ImpactFilter,
 } from "./calendar-model";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
@@ -48,14 +50,22 @@ const IMPACT_LABELS: Record<ImpactFilter, string> = {
   low: "Low",
 };
 
+const NO_EVENTS: EconEvent[] = [];
+/** A result says whether a forced reload asked for it, so its answer can reset the cursor. */
+type CalendarResult = EconCalendarLoadResult & { forced?: boolean };
+const loadEvents = async (force: boolean): Promise<CalendarResult> => ({ ...await loadCalendar(force), forced: force });
+const cachedEvents = () => getCalendarCache();
+
 function EconCalendarPane({ focused, width, height }: PaneProps) {
-  const [initialCache] = useState(() => getCalendarCache());
-  const [events, setEvents] = useState<EconEvent[]>(initialCache?.data ?? []);
-  const [loading, setLoading] = useState(true);
-  const [settled, setSettled] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(initialCache?.stale ?? false);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(initialCache?.fetchedAt ?? null);
+  // loadCalendar serves a fresh cache without a request, so the pane can always
+  // ask and still follow the global cadence once the cache goes stale.
+  const calendar = useAsyncResource<CalendarResult>(loadEvents, { initialData: cachedEvents });
+  const { loading } = calendar;
+  const events = calendar.data?.data ?? NO_EVENTS;
+  const stale = calendar.data?.stale ?? false;
+  const fetchedAt = calendar.data?.fetchedAt ?? null;
+  // A cache that could not be refreshed arrives as a result, not a failure.
+  const error = calendar.error ?? (loading ? null : calendar.data?.refreshError ?? null);
   // The selected row and the open event are remembered by event id, so a
   // reload or a shared layout comes back to the same release.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
@@ -64,40 +74,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const [now, setNow] = useState(Date.now());
   const [openKey, setOpenKey] = usePluginPaneState<string | null>("openKey", null);
 
-  const fetchGenRef = useRef(0);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const headerScrollRef = useRef<ScrollBoxRenderable>(null);
 
-  const load = useCallback(async (force = false) => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await loadCalendar(force);
-      if (fetchGenRef.current !== gen) return;
-      setEvents(result.data);
-      setFetchedAt(result.fetchedAt);
-      setStale(result.stale);
-      setError(result.refreshError ?? null);
-      if (force) setSelectedKey(null);
-    } catch (err) {
-      if (fetchGenRef.current !== gen) return;
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (fetchGenRef.current === gen) {
-        setLoading(false);
-        setSettled(true);
-      }
-    }
-  }, [setSelectedKey]);
-
-  // loadCalendar serves a fresh cache without a request, so the pane can always
-  // ask and still follow the global cadence once the cache goes stale.
-  useEffect(() => { void load(); }, [load]);
-  const refresh = useCallback(() => { void load(false); }, [load]);
-  useAutoRefresh(stale ? null : fetchedAt, refresh);
+  useAutoRefresh(stale ? null : fetchedAt, calendar.load);
 
   // Tick every 30s to update staleness + countdown, only while the pane can be seen.
   const paneVisible = usePaneVisible();
@@ -110,40 +90,16 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
   const filtered = useMemo(() => events
     .filter((ev) => matchesImpact(ev, impactFilter) && matchesCountry(ev, countryFilter))
-    .sort((a, b) => b.date.getTime() - a.date.getTime()),
+    .sort((a, b) => a.date.getTime() - b.date.getTime()),
   [countryFilter, events, impactFilter]);
-  const selectedIdx = Math.max(0, filtered.findIndex((ev) => ev.id === selectedKey));
   const detailEvent = useMemo(
     () => (openKey ? events.find((ev) => ev.id === openKey) ?? null : null),
     [events, openKey],
   );
 
-  // Build display rows with separator headers and NOW marker
+  // Day headers and the NOW marker between the past and the upcoming events.
   const today = new Date(now);
-  const rows: DisplayRow[] = [];
-  let lastDateKey = "";
-  let nowInserted = false;
-  const hasPastEvents = filtered.some((ev) => ev.date.getTime() <= now);
-  const hasFutureEvents = filtered.some((ev) => ev.date.getTime() > now);
-
-  for (let i = 0; i < filtered.length; i++) {
-    const ev = filtered[i]!;
-    const dk = dateKey(ev.date);
-
-    // Insert date separator if new day
-    if (dk !== lastDateKey) {
-      lastDateKey = dk;
-      rows.push({ kind: "separator", key: `separator-${dk}`, label: dayLabel(ev.date, today) });
-    }
-
-    // Reverse chronological order puts upcoming events above the present marker.
-    if (hasPastEvents && hasFutureEvents && !nowInserted && ev.date.getTime() <= now) {
-      nowInserted = true;
-      rows.push({ kind: "now", key: "now" });
-    }
-
-    rows.push({ kind: "event", key: `event-${ev.id}-${i}`, event: ev, eventIdx: i });
-  }
+  const rows = calendarDisplayRows(filtered, now);
 
   // Map from eventIdx to flat row index (for scroll tracking)
   const eventIdxToRowIdx = new Map<number, number>();
@@ -163,6 +119,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       nowRowIdx = r;
     }
   }
+  // Without a remembered row the pane sits at the present: the next release,
+  // or the latest one once the week's releases are all out.
+  const rememberedIdx = filtered.findIndex((ev) => ev.id === selectedKey);
+  const selectedIdx = rememberedIdx >= 0 ? rememberedIdx
+    : nextUpcomingEventIdx >= 0 ? nextUpcomingEventIdx : Math.max(0, filtered.length - 1);
 
   // On initial load, scroll to NOW and select the first upcoming event
   const initialScrollDone = useRef(false);
@@ -197,9 +158,15 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     setSelectedKey(null);
   }, [setCountryFilter, setSelectedKey]);
 
+  // A forced reload goes back to the present once it answers.
+  const forcedResult = calendar.data?.forced ? calendar.data : null;
+  useEffect(() => {
+    if (forcedResult) setSelectedKey(null);
+  }, [forcedResult, setSelectedKey]);
+
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => (
-    handleRefreshKey(event, () => load(true), { stopPropagation: true })
-  ), [load]);
+    handleRefreshKey(event, () => void calendar.reload(), { stopPropagation: true })
+  ), [calendar.reload]);
 
   const columns = useMemo<EconCalendarColumn[]>(() => {
     const timeWidth = 6;
@@ -227,7 +194,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
-  const emptyStateHint = settled && !loading && !error
+  const emptyStateHint = !loading && !error
     ? [
         impactFilter !== "all" ? `impact: ${impactFilter}` : null,
         countryFilter !== "all" ? `country: ${countryFilter}` : null,
@@ -240,8 +207,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // The countdown changes every tick, so it is footer status, not query bar
   // context; the footer ellipsizes a long event name.
   const nextText = nextEvent && nextCountdown ? `next ${nextEvent.event} ${nextCountdown}` : null;
-  // The cached first paint is being replaced; its age only counts once that load settles.
-  const showStale = stale && (settled || !loading);
+  // The cached first paint is being replaced; its age only counts once a load has answered.
+  const showStale = stale && (!loading || calendar.updatedAt !== null);
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
     ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
     ...(showStale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
@@ -295,39 +262,35 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: DisplayRow,
     column: EconCalendarColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
     if (row.kind !== "event") return { text: "" };
 
     const ev = row.event;
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
-
     switch (column.id) {
       case "time":
-        return { text: timeLabel(ev.date), color: selectedColor ?? colors.textMuted };
+        return { text: timeLabel(ev.date), color: colors.textMuted };
       case "impact": {
         const indicator = impactIndicator(ev.impact);
         return {
           text: indicator.text,
-          color: selectedColor ?? indicator.color,
+          color: indicator.color,
         };
       }
       case "country":
         // The ISO code, not a flag emoji: emoji widths do not match a fixed
         // column and pushed the right-hand columns off the pane.
-        return { text: ev.country, color: selectedColor ?? colors.textMuted };
+        return { text: ev.country, color: colors.textMuted };
       case "event":
-        return { text: ev.event, color: selectedColor ?? colors.text };
+        return { text: ev.event, color: colors.text };
       case "actual":
         return {
           text: ev.actual ?? "—",
-          color: selectedColor ?? actualColor(ev.actual, ev.forecast),
+          color: actualColor(ev.actual, ev.forecast),
         };
       case "forecast":
-        return { text: ev.forecast ?? "—", color: selectedColor ?? colors.textDim };
+        return { text: ev.forecast ?? "—", color: colors.textDim };
       case "prior":
-        return { text: ev.prior ?? "—", color: selectedColor ?? colors.textDim };
+        return { text: ev.prior ?? "—", color: colors.textDim };
     }
   }, []);
 
@@ -387,7 +350,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       onActivate={openDisplayRow}
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
-      emptyStateTitle={loading || !settled ? "Loading economic events..." : "No events"}
+      selectedTextOverridesCellColor
+      emptyStateTitle={loading ? "Loading economic events..." : "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
     />

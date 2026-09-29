@@ -207,8 +207,10 @@ export function renderCompositePanelText(
   cursorXRatio: number | null,
   cursorYRatio: number | null,
 ): string[] {
-  const height = Math.max(1, panel.height);
-  const plotWidth = Math.max(1, width);
+  // The web terminal sizes panes from the viewport in fractional cells, and
+  // Array() throws on a fractional length.
+  const height = Math.max(1, Math.floor(panel.height));
+  const plotWidth = Math.max(1, Math.floor(width));
   const rows = Array.from({ length: height }, () => Array(plotWidth).fill(" "));
   for (const ratio of compositeGridRatios(panel)) {
     const row = Math.round((height - 1) * ratio);

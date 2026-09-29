@@ -100,8 +100,9 @@ export function formatChange(change: CloudJobsChange | null | undefined): string
   return `${sign}${change.count}${percent}`;
 }
 
-export function changeTone(value: number | null | undefined): "positive" | "negative" | "neutral" {
-  if (value == null || value === 0) return "neutral";
+/** A rise reads positive, a fall negative, and no change muted. */
+export function changeTone(value: number | null | undefined): "positive" | "negative" | "muted" {
+  if (value == null || value === 0) return "muted";
   return value > 0 ? "positive" : "negative";
 }
 
@@ -175,8 +176,11 @@ export function buildPostingRows(postings: readonly CloudJobsPosting[], now = ne
 export function buildPostingColumns(width: number, hasSalary: boolean): PostingColumn[] {
   const narrow = width < 96;
   const fixed = narrow ? 14 + 18 + 7 : 24 + 24 + 8 + (hasSalary ? 14 : 0);
+  const count = hasSalary && !narrow ? 5 : 4;
+  // A gap after each column, the table's padding and the vertical scrollbar,
+  // so the columns never overflow into a horizontal scrollbar.
   const columns: PostingColumn[] = [
-    { id: "title", label: "ROLE", width: Math.max(18, width - fixed - 6), align: "left", flexGrow: 1 },
+    { id: "title", label: "ROLE", width: Math.max(18, width - fixed - count - 3), align: "left", flexGrow: 1 },
     { id: "function", label: "FUNCTION", width: narrow ? 14 : 24, align: "left" },
     { id: "location", label: "LOCATION", width: narrow ? 18 : 24, align: "left" },
     { id: "posted", label: "POSTED", width: narrow ? 7 : 8, align: "right" },

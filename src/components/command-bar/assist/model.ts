@@ -127,6 +127,7 @@ function assistRow(options: {
   badge?: string;
   action?: () => void;
   defaultSelectable?: boolean;
+  searchChoice?: ResultItem["searchChoice"];
 }): ResultItem {
   return {
     id: options.id,
@@ -135,6 +136,7 @@ function assistRow(options: {
     category: ASSIST_CATEGORY,
     kind: options.kind,
     badge: options.badge,
+    searchChoice: options.searchChoice,
     // Right-aligned like a shortcut, so the glyph never crowds the answer.
     right: ASSIST_GLYPH,
     accent: true,
@@ -212,6 +214,7 @@ export function buildAssistResultItems({
         kind: "action",
         action: () => onAskGloom(trimmed),
         defaultSelectable,
+        searchChoice: { kind: "ask-gloom" },
       })
       : null
   );
@@ -268,6 +271,7 @@ export function buildAssistResultItems({
     badge: candidate.prefix.trim() || undefined,
     kind: "action",
     action: () => onRunCandidate(candidate.input, candidate.prefix),
+    searchChoice: { kind: "assist", input: candidate.input },
   }));
   // A resolved command is the faster answer, so it keeps the default selection.
   const askGloom = askGloomRow(false);

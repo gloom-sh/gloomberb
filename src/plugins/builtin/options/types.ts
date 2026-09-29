@@ -1,6 +1,6 @@
 import type { DataTableColumn } from "../../../components";
 import type { OptionContract } from "../../../types/financials";
-import type { OptionSide, OptionValuation } from "../options-calculator/model";
+import type { OptionSide, OptionValuation } from "../shared/volatility";
 
 export type OptionFieldId =
   | "bid"

@@ -1,22 +1,23 @@
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
 import { unpackQuoteEvents } from "../../shared/quote-event-batch";
+import type { CapabilitySubscriptionOptions } from "../capability-subscription";
 
 interface BackendQuoteSubscription {
-  id: string;
   signature: string;
   retired: boolean;
-  /** Whether the backend has answered the subscribe request. */
-  settled: boolean;
   /** The set this one replaces; it is retired once this one is registered. */
   predecessor: BackendQuoteSubscription | null;
-  disposeEvents: () => void;
+  dispose: () => void;
 }
 
 export interface BackendQuoteSubscriptionDeps {
-  subscribe(subscriptionId: string, targets: QuoteSubscriptionTarget[]): Promise<unknown>;
-  unsubscribe(subscriptionId: string): void;
-  onEvent(subscriptionId: string, listener: (event: unknown) => void): () => void;
+  /** Starts one target set in the backend and returns its dispose, as `subscribeCapability` does. */
+  subscribe(
+    subscriptionId: string,
+    targets: QuoteSubscriptionTarget[],
+    handlers: Pick<CapabilitySubscriptionOptions, "onEvent" | "onSubscribed" | "onError">,
+  ): () => void;
   dispatch(target: QuoteSubscriptionTarget, quote: Quote): void;
   onClockOffset?(offsetMs: number): void;
   onError?(error: unknown): void;
@@ -54,10 +55,7 @@ export function createBackendQuoteSubscription(deps: BackendQuoteSubscriptionDep
   const retire = (subscription: BackendQuoteSubscription | null) => {
     if (!subscription || subscription.retired) return;
     subscription.retired = true;
-    subscription.disposeEvents();
-    // An unsubscribe that overtakes its own subscribe would leave it running;
-    // an in-flight one is torn down when it settles.
-    if (subscription.settled) deps.unsubscribe(subscription.id);
+    subscription.dispose();
   };
 
   const retireChain = (subscription: BackendQuoteSubscription | null) => {
@@ -91,40 +89,38 @@ export function createBackendQuoteSubscription(deps: BackendQuoteSubscriptionDep
         return;
       }
 
-      const id = `quote:${nextId++}`;
       const subscription: BackendQuoteSubscription = {
-        id,
         signature,
         retired: false,
-        settled: false,
         predecessor: previous,
-        disposeEvents: deps.onEvent(id, receive),
+        dispose: () => {},
       };
       current = subscription;
-      deps.subscribe(id, targets).then(() => {
-        subscription.settled = true;
-        if (subscription.retired) deps.unsubscribe(id);
-        const older = subscription.predecessor;
-        subscription.predecessor = null;
-        retireChain(older);
-      }, (error) => {
-        subscription.settled = true;
-        const older = subscription.predecessor;
-        subscription.predecessor = null;
-        retire(subscription);
-        if (current === subscription) {
-          // The older set is still live in the backend; the next change retries.
-          current = older && !older.retired ? older : null;
-          currentSignature = current?.signature ?? "";
-        } else if (current) {
-          // A newer set is on its way and retires the older ones once it lands.
-          let newer: BackendQuoteSubscription = current;
-          while (newer.predecessor && newer.predecessor !== subscription) newer = newer.predecessor;
-          if (newer.predecessor === subscription) newer.predecessor = older;
-        } else {
+      subscription.dispose = deps.subscribe(`quote:${nextId++}`, targets, {
+        onEvent: receive,
+        onSubscribed: () => {
+          const older = subscription.predecessor;
+          subscription.predecessor = null;
           retireChain(older);
-        }
-        deps.onError?.(error);
+        },
+        onError: (error) => {
+          const older = subscription.predecessor;
+          subscription.predecessor = null;
+          retire(subscription);
+          if (current === subscription) {
+            // The older set is still live in the backend; the next change retries.
+            current = older && !older.retired ? older : null;
+            currentSignature = current?.signature ?? "";
+          } else if (current) {
+            // A newer set is on its way and retires the older ones once it lands.
+            let newer: BackendQuoteSubscription = current;
+            while (newer.predecessor && newer.predecessor !== subscription) newer = newer.predecessor;
+            if (newer.predecessor === subscription) newer.predecessor = older;
+          } else {
+            retireChain(older);
+          }
+          deps.onError?.(error);
+        },
       });
     },
   };

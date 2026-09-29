@@ -11,6 +11,7 @@ import { PluginRenderProvider } from "../../runtime";
 import { gloomberbCloudPlugin } from "../cloud";
 import { TeamStatusWidget } from "../cloud/team/status-widget";
 import { teamStore } from "../cloud/team/store";
+import { createTestTeam } from "../cloud/team/test-fixture";
 import { formatChatPaneTitle } from "./channel-labels";
 import { ChatContent } from "./content";
 import { chatController } from "./controller";
@@ -617,6 +618,7 @@ describe("ChatContent channel sidebar", () => {
       showPane: () => {},
       hidePane: () => {},
       notify: () => {},
+      log: { error: () => {} },
     } as any);
     const ChatPaneComponent = gloomberbCloudPlugin.panes?.find((pane) => pane.id === "chat")?.component;
     expect(ChatPaneComponent).toBeDefined();
@@ -727,18 +729,7 @@ describe("ChatContent channel sidebar", () => {
 });
 
 describe("team channels in the sidebar", () => {
-  const macroDesk = {
-    id: "org-1",
-    name: "Macro Desk",
-    slug: "macro-desk",
-    accentColor: "magenta" as const,
-    shortName: "MD",
-    allowMemberInvites: false,
-    channelId: "team:org-1",
-    createdAt: "2026-09-14T12:00:00.000Z",
-    role: "member" as const,
-    memberCount: 3,
-  };
+  const macroDesk = createTestTeam();
 
   afterEach(() => {
     (teamStore as any).update({ teams: [] });

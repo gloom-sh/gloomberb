@@ -10,8 +10,6 @@ import { teamStore } from "./store";
 import { installTeamStateHost } from "./team-state-host";
 import { createCloudViewsCapability, teamViewsStore } from "./views";
 
-export { teamStore } from "./store";
-
 /**
  * Teams inside the cloud plugin: the store every surface reads, the team pane
  * where a team is created and run, the `TEAM` and `FOCUS` commands, the

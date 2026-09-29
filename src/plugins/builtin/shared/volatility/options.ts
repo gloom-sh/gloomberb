@@ -1,4 +1,4 @@
-import { DEFAULT_OPTION_CALC_DRAFT, valueOption, type OptionSide } from "../../options-calculator/model";
+import { valueOption, type OptionSide } from "./pricing";
 
 export interface VolatilityInputs {
   spot: number;
@@ -18,8 +18,8 @@ function validInputs(input: VolatilityInputs): boolean {
 /** Spot delta, including continuous dividend carry, from the shared pricer. */
 export function optionDelta(input: VolatilityInputs, strike: number, side: OptionSide): number | null {
   if (!validInputs(input) || !positive(strike)) return null;
-  const delta = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, ...input, strike, side,
-    daysToExpiry: input.years * 365, dividendYield: input.dividendYield ?? 0 }).delta;
+  const delta = valueOption({ side, spot: input.spot, strike, daysToExpiry: input.years * 365,
+    rate: input.rate, volatility: input.volatility, dividendYield: input.dividendYield ?? 0 }).delta;
   return Number.isFinite(delta) ? delta : null;
 }
 

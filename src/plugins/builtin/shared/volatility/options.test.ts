@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_OPTION_CALC_DRAFT, solveImpliedVolatility, valueOption } from "../../options-calculator/model";
+import { solveImpliedVolatility, valueOption } from "./pricing";
 import { expectedMove, extractImpliedForward, forwardFromCarry, logForwardMoneyness, optionDelta,
   optionMid, smileSkew, strikeForDelta, strikeFromLogMoneyness, volatilityTermSlope } from "./options";
 
 const input = { spot: 100, years: 0.5, rate: 0.04, dividendYield: 0.015, volatility: 0.3 };
 function quote(strike: number, side: "call" | "put") {
-  const price = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, ...input, strike, side, daysToExpiry: input.years * 365 }).price;
+  const price = valueOption({ ...input, strike, side, daysToExpiry: input.years * 365 }).price;
   return { strike, bid: price - 0.01, ask: price + 0.01, contractSymbol: `${side}${strike}` };
 }
 
@@ -89,7 +89,7 @@ describe("parity forward", () => {
   test("the existing IV solver recovers volatility when forward is the underlying", () => {
     const forward = forwardFromCarry(input.spot, input.years, input.rate, input.dividendYield)!;
     // Setting q=r gives discounted Black forward pricing without duplicating a pricer.
-    const draft = { ...DEFAULT_OPTION_CALC_DRAFT, ...input, spot: forward, strike: 110,
+    const draft = { ...input, side: "call" as const, spot: forward, strike: 110,
       daysToExpiry: input.years * 365, dividendYield: input.rate };
     const mid = (quote(110, "call").bid + quote(110, "call").ask) / 2;
     expect(solveImpliedVolatility(draft, mid).volatility).toBeCloseTo(input.volatility, 6);

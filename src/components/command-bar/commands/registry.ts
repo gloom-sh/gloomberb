@@ -1,5 +1,8 @@
 import type { AppAction } from "../../../state/app/context";
 import type { Dispatch } from "react";
+import { describeLanguagePreference, LANGUAGE_PREFERENCES } from "../../../i18n/languages";
+import { getTheme, getThemeIds } from "../../../theme/themes";
+import type { ShortcutArgOption } from "../../../types/plugin";
 
 type CommandExecutor = (dispatch: Dispatch<AppAction>, context: CommandContext) => void | Promise<void>;
 
@@ -16,6 +19,8 @@ export interface Command {
   description: string;
   hasArg?: boolean;       // true if prefix takes an argument (e.g., "DES AMD")
   argPlaceholder?: string;
+  /** Named values the argument accepts, when it is one of a set (a theme, a language). */
+  argOptions?: () => readonly ShortcutArgOption[];
   shortcut?: string;
   category: string;
   execute?: CommandExecutor;
@@ -36,6 +41,7 @@ export const commands: Command[] = [
   {
     id: "help",
     prefix: "HELP",
+    aliases: ["HL"],
     label: "Help",
     description: "Open the help window",
     category: "Navigation",
@@ -148,6 +154,7 @@ export const commands: Command[] = [
   {
     id: "layout-marketplace",
     prefix: "LAY",
+    aliases: ["BLP"],
     label: "Layouts",
     description: "Open the layout browser to switch, publish, or add layouts",
     category: "Config",
@@ -225,6 +232,20 @@ export const commands: Command[] = [
     description: "Check GitHub releases for a newer version",
     category: "Config",
   },
+  {
+    id: "toggle-crash-reports",
+    prefix: "",
+    label: "Crash Reports",
+    description: "Turn automatic crash reports on or off",
+    category: "Config",
+  },
+  {
+    id: "toggle-usage-counts",
+    prefix: "",
+    label: "Usage Counts",
+    description: "Turn usage counts and the command bar search log on or off",
+    category: "Config",
+  },
 
   // Theme
   {
@@ -234,6 +255,7 @@ export const commands: Command[] = [
     description: "Switch color theme",
     hasArg: true,
     argPlaceholder: "theme name",
+    argOptions: () => getThemeIds().map((id) => ({ value: id, label: getTheme(id).name })),
     category: "Config",
   },
   {
@@ -250,6 +272,7 @@ export const commands: Command[] = [
     description: "Switch the interface language",
     hasArg: true,
     argPlaceholder: "locale",
+    argOptions: () => LANGUAGE_PREFERENCES.map((value) => ({ value, label: describeLanguagePreference(value) })),
     category: "Config",
   },
 

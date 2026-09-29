@@ -181,6 +181,34 @@ function isNarrowing(filter: QueryBarFilter): boolean {
   return filter.defaultValue !== undefined && filter.value !== filter.defaultValue;
 }
 
+export interface QueryBarSearchFocus {
+  /** The search field owns the keyboard; the pane's own keys wait. */
+  active: boolean;
+  /** Hands the keyboard to the field, again if it already has it. */
+  focus: () => void;
+  /** Gives the keyboard back to the pane. */
+  blur: () => void;
+  /** Spread into `QueryBar`'s `search` beside `value`, `onChange`, `placeholder` and `focused`. */
+  searchProps: Pick<QueryBarSearch, "active" | "onActiveChange" | "focusToken" | "inputRef">;
+}
+
+/**
+ * Whether a pane's `QueryBar` search owns the keyboard. `/` already focuses
+ * it through the bar, so a pane binds `/` itself only to add a condition.
+ */
+export function useQueryBarSearch(): QueryBarSearchFocus {
+  const [active, setActive] = useState(false);
+  const [focusToken, setFocusToken] = useState(0);
+  const inputRef = useRef<InputRenderable | null>(null);
+  const focus = useCallback(() => {
+    setActive(true);
+    setFocusToken((token) => token + 1);
+  }, []);
+  const blur = useCallback(() => setActive(false), []);
+  const onActiveChange = useCallback((next: boolean) => (next ? focus() : blur()), [blur, focus]);
+  return { active, focus, blur, searchProps: { active, onActiveChange, focusToken, inputRef } };
+}
+
 /**
  * The one row above a list that narrows or reorders it: search, filters, a view
  * switch. Every pane with query controls uses it, so they read and behave the
@@ -448,9 +476,14 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
         <Box onMouseDown={resetAll} cursor="pointer"><Text fg={colors.textDim}>clear</Text></Box>
       )}
       {(view || meta) && <Box flexGrow={1} />}
-      {meta && <Text fg={colors.textMuted}>{meta}</Text>}
+      {/* Context gives way before the controls when the row runs short. */}
+      {meta && (
+        <Box flexShrink={1} minWidth={0} height={1} overflow="hidden">
+          <Text fg={colors.textMuted} wrapMode="none" truncate flexShrink={1} minWidth={0}>{meta}</Text>
+        </Box>
+      )}
       {view && (
-        <>
+        <Box flexShrink={view.options.length > TERMINAL_SEGMENT_LIMIT ? 1 : 0} minWidth={0}>
           <TerminalChoiceStrip
             options={view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled }))}
             value={view.value}
@@ -458,7 +491,7 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
             focused={view.focused}
             shortcutScope={view.shortcutScope}
           />
-        </>
+        </Box>
       )}
     </Box>
   );

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { boardOrder, buildVolatilityData, withLiveVolatilityLevels, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
+import { boardOrder, buildVolatilityData, volatilityCurveLookbacks, volatilityLookbackDate, withLiveVolatilityLevels, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
 
 function history(rows: Array<[string, number]>, source = "yahoo"): VolatilityHistoryInput {
   return { source, history: rows.map(([date, close]) => ({ date: new Date(date), close })) };
@@ -148,5 +148,35 @@ describe("cross-asset daily statistics", () => {
     expect(row(history([["2026-09-18", 20], ["2026-09-20", 0], ["2026-09-21", 22]])).change1d).toBeNull();
     expect(row(history([["2026-09-18", 0], ["2026-09-21", Infinity]])))
       .toMatchObject({ value: null, date: null, change1d: null, percentile1y: null, status: "unavailable" });
+  });
+});
+
+describe("curve look-backs", () => {
+  test("a week and a month back read the tenors on one date the 30D and 3M share", () => {
+    expect(volatilityLookbackDate("2026-09-25", "1W")).toBe("2026-09-18");
+    expect(volatilityLookbackDate("2026-03-31", "1M")).toBe("2026-02-28");
+    const data = buildVolatilityData({ history: {
+      vix9d: history([["2026-08-24", 11], ["2026-09-17", 12], ["2026-09-25", 13]]),
+      // The 3M has no close on Sep 18, so the week back falls to Sep 17, the last date both closed.
+      vix: history([["2026-08-21", 15], ["2026-08-25", 16], ["2026-09-17", 15.5], ["2026-09-18", 14.8], ["2026-09-25", 14.9]]),
+      vix3m: history([["2026-08-21", 18], ["2026-08-25", 18.6], ["2026-09-17", 18.5], ["2026-09-25", 17.9]]),
+      vix6m: history([["2026-08-25", 21], ["2026-09-25", 20]]),
+      vix1y: history([["2026-09-25", 21.6]]),
+    } });
+    expect(data.curve.date).toBe("2026-09-25");
+    const [week, month] = volatilityCurveLookbacks(data);
+    expect(week).toEqual({ id: "1W", date: "2026-09-17", values: { vix9d: 12, vix: 15.5, vix3m: 18.5 } });
+    expect(month).toEqual({ id: "1M", date: "2026-08-25", values: { vix: 16, vix3m: 18.6, vix6m: 21 } });
+  });
+
+  test("the FRED pair looks back through its own history, and a curve without a date has none", () => {
+    const data = buildVolatilityData({ fred: {
+      VIXCLS: fred([["2026-08-25", 16], ["2026-09-18", 15], ["2026-09-25", 14]]),
+      VXVCLS: fred([["2026-08-25", 19], ["2026-09-18", 18], ["2026-09-25", 17]]),
+    } });
+    expect(data.curve.source).toBe("fred");
+    expect(volatilityCurveLookbacks(data).map((lookback) => [lookback.date, lookback.values])).toEqual([
+      ["2026-09-18", { vix: 15, vix3m: 18 }], ["2026-08-25", { vix: 16, vix3m: 19 }]]);
+    expect(volatilityCurveLookbacks(buildVolatilityData({}))).toEqual([]);
   });
 });

@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { effectiveBinomialSteps, solveBinomialImpliedVolatility, valueBinomialOption } from "./binomial";
 import { CALCULATOR_IGNORED_DIVIDENDS_NOTICE, calculatorSemanticEvidence, readCalculatorEvidence,
   normalizeCalculatorEvidenceDraft, type CalculatorEvidenceInput } from "./evidence";
-import { DEFAULT_OPTION_CALC_DRAFT, solveImpliedVolatility, valueOption, type OptionCalcDraft } from "./model";
+import { DEFAULT_OPTION_CALC_DRAFT, type OptionCalcDraft } from "./model";
+import { solveImpliedVolatility, valueOption } from "../shared/volatility";
 import type { CalculatorSurfaceVol } from "./surface";
 
 function rendered(draft: OptionCalcDraft, patch: Partial<CalculatorEvidenceInput> = {}) {
@@ -104,7 +105,7 @@ test("surface evidence must use its effective IV while preserving source limitat
 test("European evidence preserves the ignored schedule notice and values without cash jumps", () => {
   const draft: OptionCalcDraft = { ...DEFAULT_OPTION_CALC_DRAFT, dividends: [{ days: 10, amount: 5 }] };
   const evidence = rendered(draft, { notices: [CALCULATOR_IGNORED_DIVIDENDS_NOTICE] });
-  expect(evidence.valuation).toEqual(valueOption({ ...draft, dividends: [] }));
+  expect(evidence.valuation).toEqual(valueOption(draft));
   expect(evidence.draft.dividends).toEqual(draft.dividends!);
   expect(readCalculatorEvidence(evidence)).toEqual(evidence);
   expect(readCalculatorEvidence({ ...evidence, notices: [] })).toBeNull();

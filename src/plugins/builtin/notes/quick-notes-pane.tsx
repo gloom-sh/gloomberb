@@ -5,8 +5,8 @@ import { isPlainKey } from "../../../utils/keyboard";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
-import { ConfirmDialog, EmptyState, Tabs, TextField, usePaneFooter, usePaneHeaderTabs } from "../../../components";
-import { type PromptContext, useDialog } from "../../../ui/dialog";
+import { confirmDialog, EmptyState, TextField, usePaneFooter, usePaneTabs } from "../../../components";
+import { useDialog } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { debugLog } from "../../../utils/debug-log";
 import { MarkdownNotePreview } from "./markdown-note-preview";
@@ -279,25 +279,18 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
         : await store.load(store.quickNoteKey(id));
 
       if (text.trim().length > 0) {
-        const confirmed = await dialog.prompt<boolean>({
-          closeOnClickOutside: true,
-          content: (ctx: PromptContext<boolean>) => (
-            <ConfirmDialog
-              {...ctx}
-              title="Delete note?"
-              body={[
-                `Delete "${formatDeleteNoteTitle(tab?.title ?? "Note")}"?`,
-                "This note has content.",
-                "Deleting it cannot be undone.",
-              ]}
-              confirmLabel="Delete"
-              cancelLabel="Cancel"
-              width={44}
-              footer="Enter delete · Esc cancel"
-            />
-          ),
-        }).catch(() => false);
-        if (confirmed !== true) return;
+        const confirmed = await confirmDialog(dialog, {
+          title: "Delete note?",
+          body: [
+            `Delete "${formatDeleteNoteTitle(tab?.title ?? "Note")}"?`,
+            "This note has content.",
+            "Deleting it cannot be undone.",
+          ],
+          confirmLabel: "Delete",
+          width: 44,
+          footer: "Enter delete · Esc cancel",
+        });
+        if (!confirmed) return;
       }
 
       removeTab(id);
@@ -412,7 +405,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       setActiveTabId(id);
       setEditing(false);
     };
-    const tabsInHeader = usePaneHeaderTabs({
+    const { strip: tabStrip } = usePaneTabs({
       tabs: noteTabs,
       activeValue: activeTabId,
       onSelect: selectTab,
@@ -421,25 +414,13 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       onAdd: () => { void addTab(); },
       // New, Rename and Delete Note are footer hints, so already in the pane menu.
       paneMenu: false,
+      compact: true,
+      variant: "pill",
     });
 
     return (
       <Box flexDirection="column" flexGrow={1}>
-        {!tabsInHeader && (
-          <Box height={1}>
-            <Tabs
-              tabs={noteTabs}
-              activeValue={activeTabId}
-              onSelect={selectTab}
-              compact
-              variant="pill"
-              closeMode="active"
-              onAdd={() => { void addTab(); }}
-              paneMenu={false}
-              focused={focused && !editing && !renaming}
-            />
-          </Box>
-        )}
+        {tabStrip && <Box height={1}>{tabStrip}</Box>}
         {renaming && (
           <Box height={1} flexDirection="row" paddingLeft={1}>
             <Text fg={colors.textDim}>{"Rename: "}</Text>

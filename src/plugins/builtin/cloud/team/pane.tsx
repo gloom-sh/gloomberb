@@ -9,7 +9,7 @@ import {
   type TeamSummary,
 } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
-import { QueryBar, Tabs, loadingText, usePaneFooter, usePaneHeaderTabs, usePaneMenuItems, type PaneFooterSegment, type PaneHint } from "../../../../components";
+import { QueryBar, loadingText, useFieldRing, usePaneFooter, usePaneMenuItems, usePaneTabs, type PaneFooterSegment, type PaneHint } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
@@ -27,7 +27,7 @@ import { isPlainKey } from "../../../../utils/keyboard";
 import { usePluginAppActions, usePluginPaneState } from "../../../runtime";
 import { chatController } from "../../chat/controller";
 import { SignInWall } from "../auth-actions";
-import { afterLayout, revealInScrollBox } from "../reveal-in-scroll-box";
+import { afterLayout, revealInScrollBox } from "../../../../components/ui/reveal-in-scroll-box";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../../api-client/plan-access";
 import {
@@ -51,7 +51,6 @@ import {
   draftProblem,
   emptyTeamDraft,
   isTextFieldId,
-  nextFieldId,
   nextNonTextFieldId,
   restingFieldId,
   sectionFieldIds,
@@ -59,7 +58,6 @@ import {
 } from "./pane-model";
 import {
   TEAM_PANE_ID,
-  consumeRequestedTeamPaneView,
   subscribeRequestedTeamPaneView,
   type TeamPaneSection,
   type TeamPaneView,
@@ -75,6 +73,8 @@ import { Muted, PaneButton, TeamPaneFocusContext, type TeamPaneFocus } from "./p
 import { teamStore } from "./store";
 
 type Message = { tone: "info" | "success" | "error"; text: string } | null;
+
+const TEAM_RING_SCOPE = "team-pane:ring";
 
 function errorText(error: unknown, fallback: string): string {
   if (error instanceof ApiRequestError) {
@@ -226,11 +226,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     if (view.section) setSection(view.section);
     setMessage(null);
   }, []);
-  useEffect(() => {
-    const pending = consumeRequestedTeamPaneView();
-    if (pending) applyView(pending);
-    return subscribeRequestedTeamPaneView(applyView);
-  }, [applyView]);
+  useEffect(() => subscribeRequestedTeamPaneView(applyView), [applyView]);
 
   // The settings draft follows the team until the person starts editing.
   const draftTeamId = useRef<string | null>(null);
@@ -465,6 +461,16 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   }, [showCreate, snapshot.teams, team?.id]);
   const canCycleTeams = snapshot.teams.length > (showCreate ? 0 : 1);
 
+  // Tab, j/k and Enter on the ring; the keys below are the pane's own.
+  useFieldRing({
+    ids: fieldIds,
+    activeId: activeField,
+    onActivate: setActiveField,
+    enabled: focused,
+    scope: TEAM_RING_SCOPE,
+    wrapArrows: true,
+    actions: (id) => actions.current.get(id),
+  });
   useShortcut((event) => {
     const consume = () => {
       event.preventDefault?.();
@@ -486,40 +492,11 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
       }
       return;
     }
-    const tab = event.name === "tab" && !event.ctrl && !event.meta && !event.alt;
-    if (tab) {
-      // Tab walks the ring and, past either end, moves on to the next pane as
-      // it does everywhere else, so the pane never traps the keyboard.
-      const index = activeField ? fieldIds.indexOf(activeField) : -1;
-      const next = event.shift ? (index > 0 ? fieldIds[index - 1] : undefined) : fieldIds[index + 1];
-      if (!next) return;
-      consume();
-      setActiveFieldState(next);
-      return;
-    }
-    if (!event.targetEditable && isPlainKey(event, "down", "j")) {
-      consume();
-      setActiveFieldState((current) => nextFieldId(fieldIds, current, 1));
-      return;
-    }
-    if (!event.targetEditable && isPlainKey(event, "up", "k")) {
-      consume();
-      setActiveFieldState((current) => nextFieldId(fieldIds, current, -1));
-      return;
-    }
     if (activeField === "accent" && isPlainKey(event, "left", "right", "h", "l")) {
       consume();
       const delta = event.name === "left" || event.name === "h" ? -1 : 1;
       if (showCreate) setCreateDraft((current) => ({ ...current, accentColor: cycleAccent(current.accentColor, delta) }));
       else setDraft((current) => ({ ...current, accentColor: cycleAccent(current.accentColor, delta) }));
-      return;
-    }
-    if (!event.targetEditable && activeField && isPlainKey(event, "enter", "return", "space")) {
-      const action = actions.current.get(activeField);
-      if (action) {
-        consume();
-        action();
-      }
       return;
     }
     if (!event.targetEditable && canCycleTeams && isPlainKey(event, "[", "]")) {
@@ -534,8 +511,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
         setSection(target.value);
       }
     }
-    // Scoped in "before", so the ring sees Tab ahead of the app's pane cycling.
-  }, { allowEditable: true, phase: "before", scope: "team-pane:ring", enabled: focused });
+  }, { allowEditable: true, phase: "before", scope: TEAM_RING_SCOPE, enabled: focused });
 
   usePaneMenuItems("team-pane:teams", () => (canCycleTeams ? [
     { id: "team-previous", label: "Previous Team", accelerator: "[", onSelect: () => cycleTeam(-1) },
@@ -599,7 +575,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     setCreating(true);
     setMessage(null);
   }, []);
-  const tabsInHeader = usePaneHeaderTabs(signedIn ? {
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(signedIn ? {
     tabs: teamTabs,
     activeValue: showCreate ? "__create" : team?.id ?? null,
     onSelect: selectTeam,
@@ -607,6 +583,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     keyboardNavigation: false,
     addLabel: showCreate ? undefined : "+",
     onAdd: showCreate ? undefined : startCreate,
+    variant: "pill",
+    compact: true,
   } : null);
 
   if (!signedIn) {
@@ -615,7 +593,6 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
 
   const contentWidth = Math.max(24, width - 2);
   const banners = snapshot.invitations;
-  const tabRows = tabsInHeader ? 0 : 1;
   // The section bar or the teams status line; the create form has neither.
   const sectionRows = showCreate ? 0 : 1;
   const headerRows = sectionRows + tabRows + (banners.length > 0 ? banners.length + 1 : 0);
@@ -637,21 +614,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
         {banners.length > 0 ? <Box height={1} /> : null}
 
         {/* Team switcher: one pill per team in its accent, plus the form. */}
-        {!tabsInHeader && (
-          <Box height={1} flexDirection="row" alignItems="center" paddingX={1}>
-            <Tabs
-              tabs={teamTabs}
-              activeValue={showCreate ? "__create" : team?.id ?? null}
-              onSelect={selectTeam}
-              focused={focused}
-              variant="pill"
-              compact
-              keyboardNavigation={false}
-              addLabel={showCreate ? undefined : "+"}
-              onAdd={showCreate ? undefined : startCreate}
-            />
-          </Box>
-        )}
+        {tabStrip && <Box height={1} flexDirection="row" alignItems="center" paddingX={1}>{tabStrip}</Box>}
 
         {showCreate ? null : team ? (
           <QueryBar

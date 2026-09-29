@@ -6,52 +6,13 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { Box, Text } from "../../../ui";
 import type { PluginRuntimeAccess } from "../../runtime";
-import { createNotesTab } from "./ticker-notes-tab";
-import type { NotesFiles } from "./files";
-import { NotesStoreRegistry } from "./store";
-
-/** The tabs take a registry; while signed out it hands back the disk store. */
-function registryFor(files: NotesFiles): NotesStoreRegistry {
-  return new NotesStoreRegistry({ persistence: null, files, isSignedIn: () => false });
-}
 import { TestPaneProvider, createTestTicker as makeTicker, createTestPaneConfig } from "../../../test-support/pane";
+import { createTestNotesFiles, registryFor } from "./test-fixture";
+import { createNotesTab } from "./ticker-notes-tab";
 
 const TEST_PANE_ID = "ticker-detail:notes-test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-function createMockNotesFiles(options?: {
-  loadDelayMs?: number;
-  notes?: Record<string, string>;
-  saveError?: Error;
-}) {
-  const saves: Array<{ symbol: string; text: string }> = [];
-  const notes = new Map(Object.entries(options?.notes ?? {}));
-  const loadDelayMs = options?.loadDelayMs ?? 0;
-  return {
-    saves,
-    readOnly: false,
-    owner: { kind: "user" },
-    async load(symbol: string) {
-      if (loadDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, loadDelayMs));
-      }
-      return notes.get(symbol) ?? "";
-    },
-    async save(symbol: string, text: string) {
-      saves.push({ symbol, text });
-      if (options?.saveError) throw options.saveError;
-    },
-    async delete() {},
-    quickNoteKey(id: string) {
-      return `__quick__/${id}`;
-    },
-    async loadQuickNotesIndex() {
-      return [];
-    },
-    async saveQuickNotesIndex() {},
-  } as unknown as NotesFiles & { saves: Array<{ symbol: string; text: string }> };
-}
 
 function createNotesHarnessConfig(symbol: string) {
   return createTestPaneConfig("/tmp/gloomberb-notes-tab", {
@@ -131,7 +92,7 @@ afterEach(async () => {
 describe("createNotesTab", () => {
   test("surfaces a save failure when the tab loses focus", async () => {
     const notifications: string[] = [];
-    const notesFiles = createMockNotesFiles({ saveError: new Error("disk full") });
+    const notesFiles = createTestNotesFiles({ saveError: new Error("disk full") });
     const NotesTab = createNotesTab(registryFor(notesFiles));
     const runtime = createTestPluginRuntime({
       notify: ({ body }) => { notifications.push(body); },
@@ -172,12 +133,12 @@ describe("createNotesTab", () => {
       await testSetup!.renderOnce();
     });
 
-    expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "ab" }]);
+    expect(notesFiles.saves).toEqual([{ key: "AAPL", text: "ab" }]);
     expect(notifications).toEqual(["disk full"]);
   });
 
   test("does not save stale buffer text to a new ticker before its notes load", async () => {
-    const notesFiles = createMockNotesFiles({
+    const notesFiles = createTestNotesFiles({
       loadDelayMs: 50,
       notes: { MSFT: "msft-note" },
     });
@@ -223,11 +184,11 @@ describe("createNotesTab", () => {
       await testSetup!.renderOnce();
     });
 
-    expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "aapl-note" }]);
+    expect(notesFiles.saves).toEqual([{ key: "AAPL", text: "aapl-note" }]);
   });
 
   test("does not overwrite notes when switching away before initial load completes", async () => {
-    const notesFiles = createMockNotesFiles({
+    const notesFiles = createTestNotesFiles({
       loadDelayMs: 100,
       notes: { AAPL: "existing-aapl-note", MSFT: "" },
     });
@@ -257,7 +218,7 @@ describe("createNotesTab", () => {
   });
 
   test("loads new ticker notes after switching away from edit mode", async () => {
-    const notesFiles = createMockNotesFiles({
+    const notesFiles = createTestNotesFiles({
       loadDelayMs: 100,
       notes: { MSFT: "msft-note" },
     });
@@ -308,11 +269,11 @@ describe("createNotesTab", () => {
 
     frame = testSetup.captureCharFrame();
     expect(frame).toContain("msft-note");
-    expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "aapl-note" }]);
+    expect(notesFiles.saves).toEqual([{ key: "AAPL", text: "aapl-note" }]);
   });
 
   test("applies loaded notes if edit mode starts before load finishes", async () => {
-    const notesFiles = createMockNotesFiles({
+    const notesFiles = createTestNotesFiles({
       loadDelayMs: 100,
       notes: { AAPL: "existing-note" },
     });

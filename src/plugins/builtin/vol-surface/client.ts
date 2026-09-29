@@ -4,7 +4,7 @@ import type { InstrumentRef, OptionsRequest } from "../../../market-data/request
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain } from "../../../types/financials";
-import { daysToExpiryFrom } from "../options-calculator/model";
+import { daysToExpiryFrom } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 import {
   buildSurfaceExpiry, normalizeSurfaceSettings, pendingSurfaceExpiry, surfaceCalendarWarnings, withSurfaceTermSlopes,

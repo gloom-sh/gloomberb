@@ -9,6 +9,7 @@ import {
   EmptyState,
   PaneStatusBody, QueryBar, Spinner,
   usePaneFooter,
+  useQueryBarSearch,
   useTableLoadMore,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -23,9 +24,9 @@ import {
   Box,
   Text,
   useRendererHost,
-  type InputRenderable,
   type ScrollBoxRenderable,
 } from "../../../ui";
+import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
@@ -214,9 +215,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   const openedQuarter = useRef<string | null>(null);
   const [sort, setSort] = useState<CallSort>(DEFAULT_SORT);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
   const transcriptScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   // An exact symbol query asks for the company's shelf, including older calls.
@@ -226,12 +225,6 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   const [producing, setProducing] = useState(false);
   // The list answered "pending": the server is still searching for calls.
   const [listPending, setListPending] = useState(false);
-
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
 
   const ticker = symbol ? symbol.toUpperCase() : null;
 
@@ -551,10 +544,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   }, [detailOpen, selectedCallId, ticker, access.emailVerified, access.hasProAccess]);
 
   const scrollTranscriptBy = useCallback((delta: number) => {
-    const scrollBox = transcriptScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
+    if (transcriptScrollRef.current) scrollByLines(transcriptScrollRef.current, delta);
   }, []);
 
   // A new call or a narrowed transcript should start at the top.
@@ -594,11 +584,6 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         focusSearch();
         return true;
       }
-      if (isPlainKey(event, "/")) {
-        stopSearchFocusNavigation(event);
-        focusSearch();
-        return true;
-      }
       return handleRefreshKey(event, () => {
         fetchCalls(true);
         if (lookupTicker) setLookupRefresh((current) => ({ ticker: lookupTicker, request: (current?.request ?? 0) + 1 }));
@@ -633,11 +618,6 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
 
   const handleDetailKey = useCallback(
     (event: DataTableKeyEvent) => {
-      if (readerSearchable && isPlainKey(event, "/")) {
-        stopSearchFocusNavigation(event);
-        focusSearch();
-        return true;
-      }
       if (isPlainKey(event, "s")) {
         stopSearchFocusNavigation(event);
         setReaderTab("summary");
@@ -670,7 +650,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       }
       return false;
     },
-    [focusSearch, readerSearchable, scrollTranscriptBy, openSource],
+    [focusSearch, scrollTranscriptBy, openSource],
   );
 
   usePaneFooter(
@@ -825,12 +805,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
           onChange: changeTranscriptQuery,
           placeholder: "find in transcript",
           focused: focused && readerOpen,
-          active: searchFocused,
-          onActiveChange: (active) => active ? focusSearch() : blurSearch(),
-          focusToken: searchFocusToken,
-          inputRef: searchInputRef,
+          ...searchProps,
           debounceMs: 80,
-          onNavigateDown: blurSearch,
         }}
         transcript={selectedTranscript}
         loading={transcriptLoading}
@@ -865,12 +841,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
             onChange: setSearchQuery,
             placeholder: "ticker, company, or period",
             focused: focused && !readerOpen,
-            active: searchFocused,
-            onActiveChange: (active) => active ? focusSearch() : blurSearch(),
-            focusToken: searchFocusToken,
-            inputRef: searchInputRef,
+            ...searchProps,
             debounceMs: 80,
-            onNavigateDown: blurSearch,
           }}
         />
       }

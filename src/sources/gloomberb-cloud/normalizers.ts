@@ -1,3 +1,4 @@
+import { futuresGenericListing, futuresGenericPriceBasis } from "../../utils/futures-generic";
 import type { TimeRange } from "../../time-series/range";
 import type {
   FinancialStatement,
@@ -51,8 +52,12 @@ export function mapQuote(
   const changePercent = typeof quote.changePercent === "number" && Number.isFinite(quote.changePercent)
     ? quote.changePercent
     : Number.NaN;
+  // A generic future (VX1, TY1) reads in points or 32nds, not dollars.
+  const generic = futuresGenericListing(quote.symbol, quote.listingExchangeName ?? quote.exchangeName);
+  const priceBasis = generic ? futuresGenericPriceBasis(generic) : null;
   return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
+    ...priceBasis ? { priceBasis } : {},
     currency: currency || quote.currency,
     price: normalizePriceValueByDivisor(quote.price, divisor) ?? quote.price,
     change,

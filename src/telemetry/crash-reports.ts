@@ -87,7 +87,12 @@ export function crashReportsEnabled(
   env: Record<string, string | undefined> = {},
 ): boolean {
   if (config?.telemetry?.crashReports === false) return false;
-  return !isOptOut(env.GLOOMBERB_NO_TELEMETRY) && !isOptOut(env.DO_NOT_TRACK);
+  return !telemetryOptedOut(env);
+}
+
+/** `GLOOMBERB_NO_TELEMETRY` or `DO_NOT_TRACK` turns off everything the app sends on its own. */
+export function telemetryOptedOut(env: Record<string, string | undefined>): boolean {
+  return isOptOut(env.GLOOMBERB_NO_TELEMETRY) || isOptOut(env.DO_NOT_TRACK);
 }
 
 function isOptOut(value: string | undefined): boolean {
@@ -255,40 +260,40 @@ function scheduleFlush(delayMs: number): void {
 
 async function flushNow(): Promise<void> {
   if (inFlight) return inFlight;
+  // `finally` runs on a later tick, so a flush that ends before its first
+  // await (switched off, nothing queued) clears `inFlight` after it is set.
   inFlight = (async () => {
-    try {
-      while (host && pending.length > 0) {
-        const current = host;
-        if (!current.isEnabled()) {
-          pending = [];
-          return;
-        }
-        const installId = await current.getInstallId();
-        if (!installId) return;
-        const batch = takeBatch(pending, current);
-        pending = pending.slice(batch.length);
-        const errors = batch.map((entry) => scrub(entry.error, current.homeDir));
-        try {
-          await send(current, {
-            installId,
-            surface: current.surface,
-            appVersion: VERSION,
-            ...(current.os ? { os: current.os } : {}),
-            errors,
-          });
-          if (spooledKeys.length > 0 && batch.some((entry) => spooledKeys.includes(entry.key))) {
-            spooledKeys = [];
-            current.clearSpool?.();
-          }
-        } catch {
-          // One request that could not be sent is not retried; the spool, when
-          // the host has one, still carries it into the next session.
-        }
+    while (host && pending.length > 0) {
+      const current = host;
+      if (!current.isEnabled()) {
+        pending = [];
+        return;
       }
-    } finally {
-      inFlight = null;
+      const installId = await current.getInstallId();
+      if (!installId) return;
+      const batch = takeBatch(pending, current);
+      pending = pending.slice(batch.length);
+      const errors = batch.map((entry) => scrub(entry.error, current.homeDir));
+      try {
+        await send(current, {
+          installId,
+          surface: current.surface,
+          appVersion: VERSION,
+          ...(current.os ? { os: current.os } : {}),
+          errors,
+        });
+        if (spooledKeys.length > 0 && batch.some((entry) => spooledKeys.includes(entry.key))) {
+          spooledKeys = [];
+          current.clearSpool?.();
+        }
+      } catch {
+        // One request that could not be sent is not retried; the spool, when
+        // the host has one, still carries it into the next session.
+      }
     }
-  })();
+  })().finally(() => {
+    inFlight = null;
+  });
   return inFlight;
 }
 

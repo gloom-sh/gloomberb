@@ -59,10 +59,14 @@ export function getFormDescription(form: string): string {
     case "4": return "Insider Transaction";
     case "3": return "Initial Insider Ownership";
     case "5": return "Annual Insider Ownership";
-    case "SC 13G": return "Beneficial Ownership (Passive)";
-    case "SC 13G/A": return "Beneficial Ownership (Amended)";
-    case "SC 13D": return "Beneficial Ownership (Active)";
-    case "SC 13D/A": return "Beneficial Ownership (Amended)";
+    case "SC 13G":
+    case "SCHEDULE 13G": return "Beneficial Ownership (Passive)";
+    case "SC 13G/A":
+    case "SCHEDULE 13G/A": return "Beneficial Ownership (Passive, Amended)";
+    case "SC 13D":
+    case "SCHEDULE 13D": return "Beneficial Ownership (Active)";
+    case "SC 13D/A":
+    case "SCHEDULE 13D/A": return "Beneficial Ownership (Active, Amended)";
     case "DEF 14A": return "Proxy Statement";
     case "S-1": return "Registration Statement";
     case "20-F": return "Annual Report (Foreign)";

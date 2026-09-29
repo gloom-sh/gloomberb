@@ -2,7 +2,7 @@ import type { CapabilityManifest } from "../../../../capabilities";
 import type { NewsArticle, NewsQuery } from "../../../../news/types";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { TickerFinancials } from "../../../../types/financials";
-import { backendRequest, getElectrobunBackendInitSnapshot, onCapabilityEvent } from "../backend-rpc";
+import { backendRequest, getElectrobunBackendInitSnapshot, subscribeBackendCapability } from "../backend-rpc";
 import { setForwardedServerClockOffset } from "../../../../market-data/quotes/clock";
 import { createBackendQuoteSubscription } from "./backend-quote-subscription";
 import { createCapabilityInvoker } from "./capability-invoker";
@@ -94,16 +94,13 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
 
   const quoteSubscriptions = new RemoteQuoteSubscriptionRegistry(scheduleQuoteBackendSubscriptionFlush);
   const quoteBackend = createBackendQuoteSubscription({
-    subscribe: (subscriptionId, targets) => backendRequest("capability.subscribe", {
+    subscribe: (subscriptionId, targets, handlers) => subscribeBackendCapability({
       subscriptionId,
       capabilityId: ASSET_DATA_CAPABILITY_ID,
       operationId: "subscribeQuotes",
       payload: { targets },
+      ...handlers,
     }),
-    unsubscribe: (subscriptionId) => {
-      void backendRequest("capability.unsubscribe", { subscriptionId }).catch(() => {});
-    },
-    onEvent: (subscriptionId, listener) => onCapabilityEvent(subscriptionId, (message) => listener(message.event)),
     dispatch: (target, quote) => quoteSubscriptions.dispatch(target, quote),
     onClockOffset: setForwardedServerClockOffset,
     onError: (error) => console.error("Failed to subscribe to backend quotes", error),

@@ -20,6 +20,7 @@ import {
   svgPath,
   type PriceSparklinePeriod,
   type PriceSparklineTrend,
+  type SparklineWindow,
 } from "./model";
 import { renderPriceSparkline } from "./index";
 
@@ -141,13 +142,16 @@ export function PriceSparkline({
   period = "1M",
   height = SPARKLINE_HEIGHT,
   area = false,
+  color: colorOverride,
 }: {
   priceHistory: PricePoint[] | undefined;
   width: number;
   trend?: PriceSparklineTrend;
-  period?: PriceSparklinePeriod;
+  period?: SparklineWindow;
   height?: number;
   area?: boolean;
+  /** A series colour instead of the trend's, for a sparkline standing in for a chart. */
+  color?: string;
 }) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
@@ -157,7 +161,7 @@ export function PriceSparkline({
     return <Text fg={colors.textMuted}>{" "}</Text>;
   }
 
-  const color = sparklineColor(values, trend, colors);
+  const color = colorOverride ?? sparklineColor(values, trend, colors);
   return nativePaneChrome
     ? <DesktopPriceSparkline values={values} width={width} height={height} color={color} emptyColor={colors.textMuted} />
     : <TerminalPriceSparkline priceHistory={sparklineHistory} values={values} width={width} height={height} color={color} area={area} />;

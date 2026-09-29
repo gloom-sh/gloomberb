@@ -60,5 +60,3 @@ export interface TreasuryAuctionRaw {
   floating_rate?: string;
   high_discnt_margin?: string;
 }
-
-export type LoadStatus = "idle" | "loading" | "loaded" | "error";

@@ -10,20 +10,25 @@ export const paneSchemas = {
       FINANCIAL_PERIOD_OPTION,
       {
         key: "statement",
-        description: "Statement to display.",
+        description: "Statement or ratio tab to display.",
         type: "enum",
         aliases: ["tab", "financialStatement"],
         values: [
           { value: "income", aliases: ["income statement", "is"] },
           { value: "balance", aliases: ["balance sheet", "bs"] },
           { value: "cashflow", aliases: ["cash flow", "cash flow statement", "cf", "cashflows"] },
+          { value: "profitability", aliases: ["ratios", "returns", "profit"] },
+          { value: "leverage", aliases: ["coverage", "credit"] },
+          { value: "liquidity" },
+          { value: "efficiency", aliases: ["working capital"] },
+          { value: "valuation", aliases: ["multiples"] },
         ],
         defaultValue: "income",
       },
     ],
     discovery: {
       id: "financial-statements",
-      aliases: ["financials", "financial statement", "income statement", "balance sheet", "cash flow statement"],
+      aliases: ["financials", "financial statement", "income statement", "balance sheet", "cash flow statement", "financial ratios"],
       limitations: [
         "One company per invocation; use GF for cross-company metric comparisons.",
         "Excludes bank regulatory capital (CET1, risk-weighted assets) and REIT FFO/AFFO.",

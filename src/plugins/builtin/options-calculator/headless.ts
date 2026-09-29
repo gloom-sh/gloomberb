@@ -2,7 +2,8 @@ import type { HeadlessBundleResult, HeadlessPaneDefinition, HeadlessPaneEntry } 
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { effectiveBinomialSteps, valueBinomialOption, solveBinomialImpliedVolatility } from "./binomial";
 import { draftFromCalculatorInputs } from "./inputs";
-import { solveImpliedVolatility, valueOption, type OptionCalcDraft, type OptionValuation } from "./model";
+import type { OptionCalcDraft } from "./model";
+import { solveImpliedVolatility, valueOption, type OptionValuation } from "../shared/volatility";
 import { createCalculatorSurfaceDependencies, loadCalculatorSurfaceVol, type CalculatorSurfaceVol } from "./surface";
 
 const number = (value: number) => Number.isFinite(value) ? value.toFixed(6) : "--";

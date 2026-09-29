@@ -1,6 +1,7 @@
 import { join } from "path";
 import { VERSION } from "../../version";
 import { saveConfig } from "../../data/config/store";
+import type { TelemetryConfig } from "../../types/config";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
@@ -14,9 +15,17 @@ import {
 } from "./keybindings";
 
 const DOCTOR_COUNT_UNITS: Record<string, string> = { plugins: "loaded", capabilities: "registered" };
-/** Automatic crash reports; the app reads the switch at launch. */
-const CRASH_REPORTS_CONFIG_KEY = "telemetry.crashReports";
-const EDITABLE_CONFIG_KEYS = ["baseCurrency", "refreshIntervalMinutes", "theme", "valueFlashingEnabled", CRASH_REPORTS_CONFIG_KEY];
+/** Automatic crash reports and anonymous usage counts, keyed by their field in `telemetry`. */
+const TELEMETRY_CONFIG_KEYS = {
+  "telemetry.crashReports": "crashReports",
+  "telemetry.usage": "usage",
+} as const satisfies Record<string, keyof TelemetryConfig>;
+type TelemetryConfigKey = keyof typeof TELEMETRY_CONFIG_KEYS;
+const EDITABLE_CONFIG_KEYS = ["baseCurrency", "refreshIntervalMinutes", "theme", "valueFlashingEnabled", ...Object.keys(TELEMETRY_CONFIG_KEYS)];
+
+function isTelemetryConfigKey(key: string): key is TelemetryConfigKey {
+  return Object.prototype.hasOwnProperty.call(TELEMETRY_CONFIG_KEYS, key);
+}
 
 function describeConfigValue(value: unknown): string {
   if (value == null) return "nothing";
@@ -151,6 +160,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "config get <key>",
         "config set <key> <value>",
         "config set telemetry.crashReports false",
+        "config set telemetry.usage false",
         "config get keybindings",
         "config set keybindings.actions.<action> <keys>|null|default",
         "config set keybindings.commands.<keys> <command>|null",
@@ -183,7 +193,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
           [KEYBINDINGS_CONFIG_KEY]: describeKeybindingsForCli(context.config),
           // Last, so CSV readers that go by position keep their columns.
           valueFlashingEnabled: context.config.valueFlashingEnabled,
-          [CRASH_REPORTS_CONFIG_KEY]: context.config.telemetry?.crashReports !== false,
+          "telemetry.crashReports": context.config.telemetry?.crashReports !== false,
+          "telemetry.usage": context.config.telemetry?.usage !== false,
         };
 
         if (action === "list") {
@@ -231,16 +242,16 @@ export function createSystemCliCommands(): CliCommandDef[] {
           if (!EDITABLE_CONFIG_KEYS.includes(key)) {
             ctx.fail(`Config key "${key}" is not editable from the CLI.`, `Editable keys: ${EDITABLE_CONFIG_KEYS.join(", ")}, keybindings.*`);
           }
-          if (key === CRASH_REPORTS_CONFIG_KEY && value !== "true" && value !== "false") {
-            ctx.fail(`Usage: gloomberb config set ${CRASH_REPORTS_CONFIG_KEY} true|false`);
+          if (isTelemetryConfigKey(key) && value !== "true" && value !== "false") {
+            ctx.fail(`Usage: gloomberb config set ${key} true|false`);
           }
           const parsedValue = key === "refreshIntervalMinutes"
             ? Number(value)
-            : key === "valueFlashingEnabled" || key === CRASH_REPORTS_CONFIG_KEY
+            : key === "valueFlashingEnabled" || isTelemetryConfigKey(key)
               ? value === "true"
               : value;
-          const nextConfig = key === CRASH_REPORTS_CONFIG_KEY
-            ? { ...context.config, telemetry: { ...context.config.telemetry, crashReports: parsedValue as boolean } }
+          const nextConfig = isTelemetryConfigKey(key)
+            ? { ...context.config, telemetry: { ...context.config.telemetry, [TELEMETRY_CONFIG_KEYS[key]]: parsedValue as boolean } }
             : { ...context.config, [key]: parsedValue };
           if (!ctx.cliOptions.dryRun) await saveConfig(nextConfig);
           ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, key, value: parsedValue } }, {

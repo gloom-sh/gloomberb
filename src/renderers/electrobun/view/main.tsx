@@ -8,6 +8,7 @@ import { measurePerfAsync } from "../../../utils/perf-marks";
 import {
   backendRequest,
   initElectrobunBackend,
+  onBackendMessage,
   replaceElectrobunCapabilityManifests,
   setElectrobunRemoteRequestHandler,
 } from "./backend-rpc";
@@ -26,22 +27,26 @@ import { installDomMarketDataFrames } from "./data-frames";
 import { DomErrorBoundary, DomHostProviders } from "./dom-host-providers";
 import { DesktopFatalScreen } from "./fatal-screen";
 import { createWebUiHost, webRendererHost } from "./ui-host";
-import { createApplicationMenuBridge } from "./application-menu-bridge";
-import { createDesktopDeepLinkBridge } from "./desktop-deeplink-bridge";
 import {
   initializeDesktopResearchActivity,
   observeDesktopDeepLinks,
 } from "../../../api-client/research-activity";
 import { createDesktopWindowBridge } from "./desktop/window/bridge";
+import type { DesktopApplicationMenuBridge } from "../../../types/desktop-menu";
 import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
 import { getRendererPlugins } from "../../../plugins/catalog-ui";
 import { loadDesktopExternalPlugin, loadDesktopExternalPlugins } from "./external-plugins";
-import { setPluginManager } from "../../../plugins/builtin/plugin-marketplace/store";
+import { activateUpdatedPlugins } from "../../../plugins/builtin/plugin-marketplace/activation";
+import { getMarketplaceHost, setPluginManager, type PluginManager } from "../../../plugins/builtin/plugin-marketplace/store";
 import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/notes/files";
 import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
-import { installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
+import { loadOfficialPluginIds } from "../../../plugins/builtin/plugin-marketplace/feed";
+import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
 import { installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
+import { currentTelemetryConfig } from "../../../telemetry/live-config";
+import { installUsageCounter, usageCountsEnabled } from "../../../telemetry/usage-counts";
+import { installWindowUsageFlush } from "../../../telemetry/usage-counts-dom";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -50,6 +55,7 @@ setCurrentPluginTarget("desktop");
 // id and the off switch; the reports themselves go out over the same RPC
 // transport as every other Cloud call.
 installWindowCrashListeners();
+installWindowUsageFlush();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -113,12 +119,21 @@ async function boot() {
     backendRequest("capability.invoke", { capabilityId: NOTES_FILES_CAPABILITY_ID, operationId, payload })
   )));
   const init = await measurePerfAsync("startup.electrobun.backend-init", () => backendInitPromise);
+  // The environment's opt-out comes from the Bun process; the config
+  // switches are read live, so the command bar toggles apply at once.
   installCrashReporter({
     surface: "desktop",
     os: init.telemetry.os,
     homeDir: init.telemetry.homeDir,
-    isEnabled: () => init.telemetry.crashReports,
+    isEnabled: () => !init.telemetry.optedOut && crashReportsEnabled(currentTelemetryConfig(init.config)),
     getInstallId: () => init.telemetry.installId,
+  });
+  installUsageCounter({
+    surface: "desktop",
+    os: init.telemetry.os,
+    isEnabled: () => !init.telemetry.optedOut && usageCountsEnabled(currentTelemetryConfig(init.config)),
+    getInstallId: () => init.telemetry.installId,
+    officialPluginIds: loadOfficialPluginIds,
   });
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
@@ -131,9 +146,13 @@ async function boot() {
   const config = desktopSnapshot?.config ?? init.config;
   applyLanguageFromConfig(config);
   const desktopWindowBridge = createDesktopWindowBridge(init.windowKind, init.paneId);
-  const desktopApplicationMenuBridge = createApplicationMenuBridge();
+  const desktopApplicationMenuBridge: DesktopApplicationMenuBridge = {
+    subscribe: (listener) => onBackendMessage("application-menu.select", ({ command }) => listener(command)),
+  };
   initializeDesktopResearchActivity();
-  const desktopDeepLinkBridge = observeDesktopDeepLinks(createDesktopDeepLinkBridge());
+  const desktopDeepLinkBridge = observeDesktopDeepLinks({
+    subscribe: (listener) => onBackendMessage("desktop.deepLink", listener),
+  });
   const webUiHost = createWebUiHost(init.desktopPlatform);
   // Compiled by the Bun process, which owns the filesystem. A failure here must
   // not stop the app from starting: the marketplace reports broken plugins, and
@@ -154,7 +173,7 @@ async function boot() {
   // it, and `load` is that process compiling the result for this renderer.
   // `activate` registers the plugin over there too, where its capabilities and
   // brokers actually run, and adopts the manifests that come back.
-  setPluginManager({
+  const pluginManager: PluginManager = {
     install: (repo, pin) => backendRequest("plugins.install", { ref: repo, ...(pin ? { pin } : {}) }),
     update: (directory, pin) => backendRequest("plugins.update", { directory, ...(pin ? { pin } : {}) }),
     remove: (directory) => backendRequest("plugins.remove", { directory }),
@@ -173,6 +192,13 @@ async function boot() {
       const result = await backendRequest("plugins.deactivate", { pluginId });
       replaceElectrobunCapabilityManifests(result.capabilityManifests);
     },
+  };
+  setPluginManager(pluginManager);
+  // Official plugins the Bun process updated in the background, brought into
+  // this session the way the Plugins pane does after an update.
+  onBackendMessage("plugins.updated", ({ directories }) => {
+    const marketplace = getMarketplaceHost();
+    if (marketplace) void activateUpdatedPlugins(directories, marketplace, pluginManager);
   });
 
   const remoteControlAdapter = init.windowKind === "main"

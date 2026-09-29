@@ -1,10 +1,18 @@
 import { basename, join, resolve } from "path";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "fs";
-import { execFile as execFileCallback, execFileSync } from "child_process";
+import { execFile as execFileCallback, execFileSync, spawn } from "child_process";
 import { promisify } from "util";
+import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./builtin/plugin-marketplace/store";
 import { linkHostPackages } from "./host-link";
-import { getPluginsDir, isDirectoryOrLink, isPluginDirectory, readPluginCommit, resolvePluginEntry } from "./loader";
+import {
+  findAbsorbedCheckout,
+  getPluginsDir,
+  isDirectoryOrLink,
+  isPluginDirectory,
+  readPluginCommit,
+  resolvePluginEntry,
+} from "./loader";
 import { pluginFromModule } from "./plugin-export";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
@@ -94,16 +102,44 @@ class GitError extends Error {
   }
 }
 
-function git(args: string[], cwd: string, quiet: boolean, failure: string): string {
-  try {
-    const output = execFileSync("git", args, { cwd, stdio: quiet ? ["ignore", "pipe", "pipe"] : ["ignore", "pipe", "inherit"] });
-    return output.toString("utf-8").trim();
-  } catch (error) {
-    const stderr = error && typeof error === "object" && "stderr" in error && error.stderr
-      ? String(error.stderr)
-      : "";
-    throw new GitError(failure, stderr);
-  }
+interface RunResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Runs a command without blocking the event loop: a fetch or `bun install`
+ * takes seconds, and the terminal UI and the desktop's Bun process keep
+ * serving the app while a plugin updates in the background. Rejects only
+ * when the command cannot be started at all.
+ */
+function run(
+  command: string,
+  args: string[],
+  cwd: string,
+  output: { stdout: "pipe" | "inherit"; stderr: "pipe" | "inherit" },
+  env?: NodeJS.ProcessEnv,
+): Promise<RunResult> {
+  return new Promise((resolveRun, reject) => {
+    const child = spawn(command, args, { cwd, env, stdio: ["ignore", output.stdout, output.stderr] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.setEncoding("utf-8").on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr?.setEncoding("utf-8").on("data", (chunk: string) => { stderr += chunk; });
+    child.once("error", reject);
+    child.once("close", (code) => resolveRun({ code, stdout, stderr }));
+  });
+}
+
+async function git(args: string[], cwd: string, quiet: boolean, failure: string): Promise<string> {
+  // Quiet means the app owns the screen, or there is no terminal at all: a
+  // repository that wants credentials fails instead of prompting on it.
+  const env = quiet ? { ...process.env, GIT_TERMINAL_PROMPT: "0" } : undefined;
+  const result = await run("git", args, cwd, { stdout: "pipe", stderr: quiet ? "pipe" : "inherit" }, env)
+    .catch((): RunResult => ({ code: null, stdout: "", stderr: "" }));
+  if (result.code !== 0) throw new GitError(failure, result.stderr);
+  return result.stdout.trim();
 }
 
 function isOnBranch(dir: string): boolean {
@@ -125,12 +161,12 @@ function pinMatches(commit: string | null, expected: string | undefined): boolea
  * is what the ref names and the pinned commit (when known) only verifies it;
  * with a commit alone, that commit is fetched directly.
  */
-function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean): string {
+async function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean): Promise<string> {
   const wanted = pin.ref ?? pin.commit;
   if (!wanted) throw new Error("The registry pin names no ref or commit.");
   if (pin.commit && !COMMIT_PATTERN.test(pin.commit)) throw new Error(`Invalid commit in registry pin: ${pin.commit}`);
-  git(["fetch", "--depth", "1", "origin", wanted], targetDir, quiet, `Could not fetch ${wanted}`);
-  const commit = git(["rev-parse", "FETCH_HEAD^{commit}"], targetDir, quiet, `Could not read ${wanted}`);
+  await git(["fetch", "--depth", "1", "origin", wanted], targetDir, quiet, `Could not fetch ${wanted}`);
+  const commit = await git(["rev-parse", "FETCH_HEAD^{commit}"], targetDir, quiet, `Could not read ${wanted}`);
   if (!pinMatches(commit, pin.commit)) {
     throw new Error(`${pin.ref ?? "The pinned ref"} now points at ${commit.slice(0, 7)}, the registry reviewed ${pin.commit!.slice(0, 7)}.`);
   }
@@ -138,8 +174,8 @@ function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean): string {
 }
 
 /** Leaves HEAD detached at one exact commit, which is the state `update` expects to find. */
-function checkoutCommit(targetDir: string, commit: string, quiet: boolean): void {
-  git(["checkout", "--detach", "--force", commit], targetDir, quiet, `Could not check out ${commit.slice(0, 7)}`);
+async function checkoutCommit(targetDir: string, commit: string, quiet: boolean): Promise<void> {
+  await git(["checkout", "--detach", "--force", commit], targetDir, quiet, `Could not check out ${commit.slice(0, 7)}`);
 }
 
 function gitSucceeds(args: string[], cwd: string): boolean {
@@ -191,24 +227,22 @@ export function describeOlderCommit(dir: string, installed: string, candidate: s
 }
 
 /** Brings `targetDir` to the pinned commit. */
-function checkoutPin(targetDir: string, pin: PluginPin, quiet: boolean): void {
+async function checkoutPin(targetDir: string, pin: PluginPin, quiet: boolean): Promise<void> {
   if (!pin.ref && !pin.commit) return;
-  checkoutCommit(targetDir, fetchPin(targetDir, pin, quiet), quiet);
+  await checkoutCommit(targetDir, await fetchPin(targetDir, pin, quiet), quiet);
 }
 
 async function installDependencies(targetDir: string, quiet: boolean): Promise<void> {
   const pkgPath = join(targetDir, "package.json");
   if (!existsSync(pkgPath)) return;
   if (!quiet) console.log(cliStyles.muted("Installing plugin dependencies..."));
-  try {
-    // --production: plugin repos depend on `gloomberb` as a devDependency so
-    // their own CI can typecheck against the real API. At runtime the host is
-    // symlinked in instead, and pulling a second full copy here would both
-    // waste a lot of disk and risk a duplicate React.
-    execFileSync("bun", ["install", "--production"], { cwd: targetDir, stdio: quiet ? "pipe" : "inherit" });
-  } catch {
-    if (!quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
-  }
+  // --production: plugin repos depend on `gloomberb` as a devDependency so
+  // their own CI can typecheck against the real API. At runtime the host is
+  // symlinked in instead, and pulling a second full copy here would both
+  // waste a lot of disk and risk a duplicate React.
+  const output = quiet ? "pipe" : "inherit";
+  const result = await run("bun", ["install", "--production"], targetDir, { stdout: output, stderr: output }).catch(() => null);
+  if (result?.code !== 0 && !quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
 
   // After `bun install`, which prunes links it does not know about.
   const link = linkHostPackages(targetDir);
@@ -228,6 +262,15 @@ async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "i
   return { id: plugin.id, name: plugin.name, version: plugin.version || "0.0.0" };
 }
 
+/**
+ * Refuses a plugin that is built into Gloomberb now (see absorbed.ts): the
+ * loader would skip it, so installing or updating it only fetches code that
+ * never runs.
+ */
+function refuseAbsorbed(absorbed: AbsorbedPlugin | null): void {
+  if (absorbed) fail(`${absorbed.name} is built into Gloomberb now.`);
+}
+
 function describe(targetDir: string, directory: string, plugin: PluginDirectoryInfo["plugin"]): PluginDirectoryInfo {
   return { directory, path: targetDir, commit: readPluginCommit(targetDir), plugin };
 }
@@ -237,8 +280,9 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   const say = (message: string) => {
     if (!quiet) console.log(message);
   };
-  ensurePluginsDir();
   const { url, name } = parseGitHubRef(ref);
+  refuseAbsorbed(findAbsorbedPlugin({ directory: name }));
+  ensurePluginsDir();
   const targetDir = join(PLUGINS_DIR, name);
 
   if (existsSync(targetDir)) {
@@ -253,15 +297,17 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
     const cloneArgs = ["clone", "--depth", "1"];
     if (pin.ref) cloneArgs.push("--branch", pin.ref);
     cloneArgs.push(url, targetDir);
-    git(cloneArgs, PLUGINS_DIR, quiet, `Failed to clone ${url}`);
+    await git(cloneArgs, PLUGINS_DIR, quiet, `Failed to clone ${url}`);
     if (pin.ref) {
       const commit = readPluginCommit(targetDir);
       if (!pinMatches(commit, pin.commit)) {
         throw new Error(`${pin.ref} now points at ${commit?.slice(0, 7) ?? "?"}, the registry reviewed ${pin.commit!.slice(0, 7)}.`);
       }
     } else if (pin.commit) {
-      checkoutPin(targetDir, pin, quiet);
+      await checkoutPin(targetDir, pin, quiet);
     }
+    // A fork under another name says what it is in its gloom.json.
+    refuseAbsorbed(findAbsorbedCheckout(targetDir));
   } catch (error) {
     rmSync(targetDir, { recursive: true, force: true });
     fail(error instanceof Error ? error.message : String(error));
@@ -367,10 +413,23 @@ export async function readPluginRemoteHeads(names?: readonly string[]): Promise<
   return heads;
 }
 
+/**
+ * Whether the checkout has edits to tracked files, which `update` would
+ * discard: it checks commits out with --force. Untracked files, such as a
+ * lockfile `bun install` wrote, survive a checkout and do not count. When git
+ * cannot answer, the checkout counts as changed.
+ */
+export async function hasLocalChanges(dir: string): Promise<boolean> {
+  const result = await run("git", ["status", "--porcelain", "--untracked-files=no"], dir, { stdout: "pipe", stderr: "pipe" })
+    .catch(() => null);
+  return result?.code !== 0 || result.stdout.trim().length > 0;
+}
+
 export async function updatePlugin(name: string, options: PluginInstallOptions = {}): Promise<PluginUpdateResult> {
   const quiet = options.quiet === true;
   const targetDir = join(PLUGINS_DIR, validatePluginDirectoryName(name));
   if (!existsSync(targetDir)) fail(`Plugin "${name}" was not found.`, PLUGINS_DIR);
+  refuseAbsorbed(findAbsorbedCheckout(targetDir));
   if (lstatSync(targetDir).isSymbolicLink()) {
     fail(`"${name}" is linked to a local checkout; pull it there instead.`);
   }
@@ -381,7 +440,7 @@ export async function updatePlugin(name: string, options: PluginInstallOptions =
 
   const pin = options.pin;
   if (pin?.ref || pin?.commit) {
-    const commit = fetchPin(targetDir, pin, quiet);
+    const commit = await fetchPin(targetDir, pin, quiet);
     // Updates only move forward: a checkout installed from the default
     // branch can be ahead of the tag the registry reviewed.
     const kept = before ? describeOlderCommit(targetDir, before, commit, pin.ref ?? commit.slice(0, 7)) : null;
@@ -389,16 +448,16 @@ export async function updatePlugin(name: string, options: PluginInstallOptions =
       if (!quiet) console.log(cliStyles.muted(`Kept ${name}: ${kept}.`));
       return { ...describe(targetDir, name, null), before, changed: false, kept };
     }
-    checkoutCommit(targetDir, commit, quiet);
+    await checkoutCommit(targetDir, commit, quiet);
   } else {
     // Not in the registry, so there is nothing reviewed to land on: follow the
     // remote's default branch, whether the checkout is on a branch or detached
     // from an earlier pin.
     if (isOnBranch(targetDir)) {
-      git(["pull", "--ff-only"], targetDir, quiet, `Failed to update ${name}`);
+      await git(["pull", "--ff-only"], targetDir, quiet, `Failed to update ${name}`);
     } else {
-      git(["fetch", "--depth", "1", "origin", "HEAD"], targetDir, quiet, `Failed to fetch ${name}`);
-      git(["checkout", "--detach", "--force", "FETCH_HEAD"], targetDir, quiet, `Failed to update ${name}`);
+      await git(["fetch", "--depth", "1", "origin", "HEAD"], targetDir, quiet, `Failed to fetch ${name}`);
+      await git(["checkout", "--detach", "--force", "FETCH_HEAD"], targetDir, quiet, `Failed to update ${name}`);
     }
   }
 
@@ -483,11 +542,12 @@ export function installedPluginDirectories(): string[] {
  * what the loader sees, so edits are live on the next reload or restart.
  */
 export async function linkPlugin(sourcePath: string, options: PluginInstallOptions = {}): Promise<PluginDirectoryInfo> {
-  ensurePluginsDir();
   const source = resolve(sourcePath);
   if (!existsSync(source)) fail(`No such directory: ${source}`);
   const entry = await resolvePluginEntry(source);
   if (!entry) fail(`${source} has no plugin entry (index.ts or package.json "main").`);
+  refuseAbsorbed(findAbsorbedCheckout(source));
+  ensurePluginsDir();
   const name = validatePluginDirectoryName(basename(source));
   const targetDir = join(PLUGINS_DIR, name);
   const existing = lstatSync(targetDir, { throwIfNoEntry: false });

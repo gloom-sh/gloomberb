@@ -1,6 +1,5 @@
-import { useCallback, type RefObject } from "react";
-import type { InputRenderable } from "../../../ui";
-import { QueryBar } from "../../../components";
+import { useCallback } from "react";
+import { QueryBar, type QueryBarSearchFocus } from "../../../components";
 import {
   TWEET_SEARCH_DEBOUNCE_MS,
   type TwitterFeed,
@@ -9,24 +8,14 @@ import {
 export function TwitterFeedSearchBar({
   feed,
   focused,
-  active,
   width,
-  focusToken,
-  inputRef,
-  onFocus,
-  onBlur,
-  onNavigateDown,
+  searchProps,
   onQueryChange,
 }: {
   feed: TwitterFeed;
   focused: boolean;
-  active: boolean;
   width: number;
-  focusToken: number;
-  inputRef: RefObject<InputRenderable | null>;
-  onFocus: () => void;
-  onBlur: () => void;
-  onNavigateDown?: () => void;
+  searchProps: QueryBarSearchFocus["searchProps"];
   onQueryChange: (feedId: string, query: string) => void;
 }) {
   const updateQuery = useCallback((value: string) => {
@@ -41,12 +30,8 @@ export function TwitterFeedSearchBar({
         onChange: updateQuery,
         placeholder: "$AAPL -filter:replies",
         focused,
-        active,
-        onActiveChange: (next) => (next ? onFocus() : onBlur()),
-        focusToken,
-        inputRef,
+        ...searchProps,
         debounceMs: TWEET_SEARCH_DEBOUNCE_MS,
-        onNavigateDown,
       }}
     />
   );

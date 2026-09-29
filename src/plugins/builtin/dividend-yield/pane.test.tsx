@@ -7,6 +7,7 @@ import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils"
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
 import { fetchDividendData } from "./client";
+import { chartResponse, yahooTransport } from "./test-fixture";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 afterEach(async () => {
@@ -14,6 +15,20 @@ afterEach(async () => {
   setup = undefined;
   setHttpFetchTransport(null);
 });
+
+/** Render the pane bound to `symbol` in its footer frame. */
+async function mountDividendPane(symbol: string, width = 80) {
+  const id = `dividend-yield:${symbol}`;
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-dividend-pane-test", {
+    instanceId: id, paneId: "dividend-yield", binding: { kind: "fixed", symbol },
+  }));
+  state.tickers.set(symbol, createTestTicker(symbol));
+  await act(async () => {
+    setup = await testRender(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
+      {(body) => <DividendYieldPane focused {...body} />}
+    </TestPaneFrame>, { width, height: 24 });
+  });
+}
 
 async function frame() {
   for (let i = 0; i < 3; i++) await act(async () => {
@@ -29,16 +44,13 @@ test("summary failures retain cash and recover dated payment information through
   const payDate = day + 30 * 86400;
   let mode: "valid" | "failed" | "invalid-ex" | "invalid-pay" = "valid";
   let chartRequests = 0;
-  setHttpFetchTransport(async (url) => {
-    if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-    if (url.includes("getcrumb")) return new Response("fixture");
+  setHttpFetchTransport(yahooTransport(async (url) => {
     if (url.includes("/chart/")) {
       chartRequests++;
-      return Response.json({ chart: { result: [{
+      return chartResponse({
         meta: { currency: "USD", regularMarketPrice: 100, regularMarketTime: day, dataGranularity: "1mo" },
-        timestamp: [day], indicators: { quote: [{ close: [100] }] },
-        events: { dividends: { cash: { date: day - 86400, amount: 4 } } },
-      }] } });
+        time: day, dividends: { cash: { date: day - 86400, amount: 4 } },
+      });
     }
     if (url.includes("/quoteSummary/")) {
       if (mode === "failed") throw new Error("Controlled summary unavailable");
@@ -48,15 +60,8 @@ test("summary failures retain cash and recover dated payment information through
       } }] } });
     }
     throw new Error(`Unexpected controlled request: ${url}`);
-  });
-  const id = "dividend-summary-refresh";
-  const state = createInitialState(createTestPaneConfig("/tmp/dividend-summary-refresh", {
-    instanceId: id, paneId: "dividend-yield", binding: { kind: "fixed", symbol: "INCOME" },
   }));
-  state.tickers.set("INCOME", createTestTicker("INCOME"));
-  setup = await testRender(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={80} height={24}>
-    {(body) => <DividendYieldPane focused {...body} />}
-  </TestPaneFrame>, { width: 80, height: 24 });
+  await mountDividendPane("INCOME");
   expect(await frame()).toContain(new Date(payDate * 1000).toISOString().slice(0, 10));
   for (const nextMode of ["failed", "invalid-ex", "invalid-pay", "valid"] as const) {
     mode = nextMode;
@@ -81,29 +86,17 @@ test.each([48, 80, 120])("native dividend refresh keeps the selected price's tim
   const oldTime = sourceTime - 10 * 86_400;
   let priceTime: number | undefined = oldTime;
   let fail = false;
-  setHttpFetchTransport(async (url) => {
-    if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-    if (url.includes("getcrumb")) return new Response("fixture");
+  setHttpFetchTransport(yahooTransport(async (url) => {
     if (url.includes("/chart/")) {
       if (fail) throw new Error("Controlled cash source unavailable");
-      return Response.json({ chart: { result: [{
+      return chartResponse({
         meta: { currency: "USD", exchangeName: "NMS", regularMarketPrice: 100, regularMarketTime: priceTime, dataGranularity: "1mo" },
-        timestamp: [sourceTime], indicators: { quote: [{ close: [100] }] },
-        events: { dividends: { cash: { date: sourceTime - 86_400, amount: 4 } } },
-      }] } });
+        time: sourceTime, dividends: { cash: { date: sourceTime - 86_400, amount: 4 } },
+      });
     }
     return Response.json({ quoteSummary: { result: [] } });
-  });
-  const id = "income-price-test";
-  const state = createInitialState(createTestPaneConfig("/tmp/gloom-dividend-price-test", {
-    instanceId: id, paneId: "dividend-yield", binding: { kind: "fixed", symbol: "FUND" },
   }));
-  state.tickers.set("FUND", createTestTicker("FUND"));
-  await act(async () => {
-    setup = await testRender(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
-      {(body) => <DividendYieldPane focused {...body} />}
-    </TestPaneFrame>, { width, height: 24 });
-  });
+  await mountDividendPane("FUND", width);
   const before = await frame();
   expect(before).toContain("4.00%");
   expect(before).toContain(new Date(oldTime * 1000).toISOString());
@@ -139,35 +132,24 @@ test.each([48, 80, 120])("cash integrity failures preserve usable rows and recov
   const recent = day - 10 * 86_400 + 14 * 3600;
   const recentDate = new Date(recent * 1000).toISOString().slice(0, 10);
   let mode: "complete" | "partial" | "invalid" | "empty" | "unknown-currency" = "complete";
-  setHttpFetchTransport(async (url) => {
-    if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-    if (url.includes("getcrumb")) return new Response("fixture");
+  setHttpFetchTransport(yahooTransport(async (url) => {
     if (url.includes("/chart/")) {
       const cash = { date: recent, amount: 4 };
       const old = { date: recent - 3 * 365 * 86_400, amount: 1 };
       const invalid = { date: day - 86_400 };
       const dividends = mode === "empty" ? {} : mode === "invalid" ? { invalid }
         : mode === "partial" ? { cash, old, invalid } : { cash, old };
-      return Response.json({ chart: { result: [{
+      return chartResponse({
         meta: { currency: mode === "unknown-currency" ? undefined : "USD", exchangeTimezoneName: "America/New_York", regularMarketPrice: 100, regularMarketTime: day, dataGranularity: "1mo" },
-        timestamp: [day], indicators: { quote: [{ close: [100] }] }, events: { dividends },
-      }] } });
+        time: day, dividends,
+      });
     }
     return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency: "USD", dividendRate: { raw: 20 } } }] } });
-  });
-  const id = "cash-integrity-test";
-  const state = createInitialState(createTestPaneConfig("/tmp/gloom-dividend-integrity-test", {
-    instanceId: id, paneId: "dividend-yield", binding: { kind: "fixed", symbol: "CASHFUND" },
   }));
-  state.tickers.set("CASHFUND", createTestTicker("CASHFUND"));
-  await act(async () => {
-    setup = await testRender(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
-      {(body) => <DividendYieldPane focused {...body} />}
-    </TestPaneFrame>, { width, height: 24 });
-  });
+  await mountDividendPane("CASHFUND", width);
   const complete = await frame();
   expect(complete).toContain("4.00%");
-  expect(complete).toContain("TTM cash/share");
+  expect(complete).toContain("TTM dividend");
   expect(complete).toContain(recentDate);
 
   mode = "partial";
@@ -177,7 +159,7 @@ test.each([48, 80, 120])("cash integrity failures preserve usable rows and recov
   expect(partial).toContain("$4.00");
   expect(partial).toContain("$20.00");
   expect(partial).not.toContain("4.00%");
-  expect(partial).not.toContain("TTM cash/share");
+  expect(partial).not.toContain("TTM dividend");
   expect(partial.match(/Incomplete cash history/g)).toHaveLength(1);
   expect(partial.trimEnd().split("\n").at(-1)).toContain("Incomplete cash history");
 
@@ -208,7 +190,7 @@ test.each([48, 80, 120])("cash integrity failures preserve usable rows and recov
   const recovered = await frame();
   expect(recovered).toContain("4.00%");
   expect(recovered).toContain(recentDate);
-  expect(recovered).toContain("TTM cash/share");
+  expect(recovered).toContain("TTM dividend");
   expect(recovered).not.toContain("Dividend currency is unavailable");
 });
 
@@ -222,19 +204,17 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   const cashLabel = cashCurrency === "GBP" ? "£4.00" : "$4.00";
   // The payment row: a round axis tick can share the amount.
   const cashRow = `${cashLabel} ${cashCurrency}`;
-  setHttpFetchTransport(async (url) => {
-    if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-    if (url.includes("getcrumb")) return new Response("fixture");
+  setHttpFetchTransport(yahooTransport(async (url) => {
     if (url.includes("/chart/")) {
       const dividends = mode === "empty" ? {} : mode === "failure" && failure === "invalid" ? { invalid: { date: recent } }
         : { cash: { date: recent, amount: url.includes("OTHER") ? 7 : 4 }, old: { date: recent - 3 * 365 * 86400, amount: 1 } };
-      return Response.json({ chart: { result: [{ meta: {
+      return chartResponse({ meta: {
         currency: mode === "failure" && failure === "unknown-currency" ? undefined : cashCurrency,
         exchangeTimezoneName: "America/New_York", regularMarketPrice: 100, regularMarketTime: day, dataGranularity: "1mo",
-      }, timestamp: [day], indicators: { quote: [{ close: [100] }] }, events: { dividends } }] } });
+      }, time: day, dividends });
     }
     return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency: "USD", dividendRate: { raw: 20 } } }] } });
-  });
+  }));
   const runtime = createTestPluginRuntime();
   const loadData = (symbol: string) => fetchDividendData(symbol, 100, "", "USD");
   let changeSymbol!: (symbol: string) => void;
@@ -253,7 +233,7 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   await act(async () => { setup = await testRender(<Harness />, { width, height: 24 }); });
   const complete = await frame();
   expect(complete).toContain("4.00%");
-  expect(complete).toContain("TTM cash/share");
+  expect(complete).toContain("TTM dividend");
   mode = "failure";
   await emitKeypress(setup!, { name: "r", sequence: "r" });
   const failed = await frame();
@@ -262,14 +242,14 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   expect(failed).toContain("$20.00");
   expect(failed).toContain("20.00%");
   expect(failed).not.toContain("4.00%");
-  expect(failed).not.toContain("TTM cash/share");
+  expect(failed).not.toContain("TTM dividend");
   expect(failed).toContain(failure === "invalid" ? "Incomplete cash history" : "Dividend currency is unavailable");
   if (cashCurrency === "GBP") expect(failed).not.toContain("$4.00");
   mode = "complete";
   await emitKeypress(setup!, { name: "r", sequence: "r" });
   const recovered = await frame();
   expect(recovered).toContain("4.00%");
-  expect(recovered).toContain("TTM cash/share");
+  expect(recovered).toContain("TTM dividend");
   mode = "empty";
   await emitKeypress(setup!, { name: "r", sequence: "r" });
   const empty = await frame();
@@ -279,7 +259,8 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   await emitKeypress(setup!, { name: "r", sequence: "r" });
   const failedAfterEmpty = await frame();
   expect(failedAfterEmpty).not.toContain(recentDate);
-  expect(failedAfterEmpty).toMatch(/TTM yield\s+—/);
+  // Four columns at 80 are too narrow for the full label, so it reads "TTM yld".
+  expect(failedAfterEmpty).toMatch(/TTM yi?e?ld\s+—/);
   mode = "complete";
   await emitKeypress(setup!, { name: "r", sequence: "r" });
   const restored = await frame();
@@ -297,41 +278,69 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   expect(newSecurity).not.toContain(cashRow);
 });
 
-test("short dividend panes keep history navigable while paging the complete summary", async () => {
-  const { buildDividendMetrics } = await import("./client");
-  const { toDividendPayment } = await import("./client");
+async function renderLoaded(data: Awaited<ReturnType<typeof fetchDividendData>>, width: number, height: number) {
+  const id = "dividend-kit";
+  const state = createInitialState(createTestPaneConfig("/tmp/dividend-kit", {
+    instanceId: id, paneId: "dividend-yield", binding: { kind: "fixed", symbol: "INCOME" },
+  }));
+  state.tickers.set("INCOME", createTestTicker("INCOME"));
+  await act(async () => {
+    setup = await testRender(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()}>
+      <DividendYieldPane focused width={width} height={height} loadData={async () => data} />
+    </TestPaneProvider>, { width, height });
+  });
+  return frame();
+}
+
+/** Quarterly payments, oldest first, raised by a cent a quarter each year. */
+async function quarterlyIncome(currencyOf: (index: number) => string = () => "USD") {
+  const { buildDividendMetrics, toDividendPayment } = await import("./client");
+  const now = new Date();
+  const payments = Array.from({ length: 20 }, (_, index) => {
+    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index * 3, 1));
+    return toDividendPayment(date.toISOString().slice(0, 10), 0.3 - Math.floor(index / 4) / 100, currencyOf(index))!;
+  });
+  return { payments, currency: "USD", price: 50, historyAvailable: true, metrics: buildDividendMetrics(payments, null, 50) };
+}
+
+test("short dividend panes keep the yields and every payment row within reach", async () => {
+  const { buildDividendMetrics, toDividendPayment } = await import("./client");
   const now = new Date();
   const payments = Array.from({ length: 24 }, (_, index) => {
     const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 1));
     return toDividendPayment(date.toISOString().slice(0, 10), 0.25 + index / 100, "USD")!;
   });
-  const data = {
-    payments, currency: "USD", price: 50, historyAvailable: true,
-    metrics: { ...buildDividendMetrics(payments, null, 50), nextPayDate: new Date("2030-01-15T00:00:00Z") },
-  };
-  const loader = async () => data;
-  const id = "short-dividend-summary";
-  const state = createInitialState(createTestPaneConfig("/tmp/short-dividend-summary", {
-    instanceId: id, paneId: "dividend-yield", binding: { kind: "fixed", symbol: "INCOME" },
-  }));
-  state.tickers.set("INCOME", createTestTicker("INCOME"));
-  const runtime = createTestPluginRuntime();
-  await act(async () => {
-    setup = await testRender(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={runtime}>
-      <DividendYieldPane focused width={40} height={9} loadData={loader} />
-    </TestPaneProvider>, { width: 40, height: 9 });
-  });
   const latest = payments[0]!.exDate.toISOString().slice(0, 10);
-  expect(await frame()).toContain(latest);
-  expect(await frame()).toContain("TTM yield");
-  for (let index = 0; index < 2; index++) await emitKeypress(setup!, { name: "pagedown" }, { trackPropagation: true });
-  expect(await frame()).toContain("Next pay");
-  expect(await frame()).toContain("2030-01-15");
-  expect(await frame()).toContain(latest);
+  const lines = (await renderLoaded({ payments, currency: "USD", price: 50, historyAvailable: true,
+    metrics: { ...buildDividendMetrics(payments, null, 50), nextPayDate: new Date("2030-01-15T00:00:00Z") } }, 40, 9)).split("\n");
+  // One row of figures, the strip, then the table with its header and rows.
+  expect(lines[0]).toContain("7.32%");
+  expect(lines[1]).toContain("●");
+  expect(lines[2]).toContain("EX-DATE");
+  expect(lines[3]).toContain(latest);
   await emitKeypress(setup!, Array.from({ length: 8 }, () => ({ name: "down" })), { trackPropagation: true });
-  expect((await frame()).split("EX-DATE")[1]).not.toContain(latest);
-  expect(await frame()).toContain(payments[8]!.exDate.toISOString().slice(0, 10));
-  for (let index = 0; index < 2; index++) await emitKeypress(setup!, { name: "pageup" }, { trackPropagation: true });
-  expect(await frame()).toContain("TTM yield");
-  expect(await frame()).toContain(payments[8]!.exDate.toISOString().slice(0, 10));
+  const moved = await frame();
+  expect(moved.split("EX-DATE")[1]).not.toContain(latest);
+  expect(moved).toContain(payments[8]!.exDate.toISOString().slice(0, 10));
+});
+
+test("the TTM dividend steps up at each raise and follows the selected payment", async () => {
+  const data = await quarterlyIncome();
+  const initial = await renderLoaded(data, 88, 26);
+  // Four $0.30 payments in the trailing year; the legend names the series in the AMOUNT column's units.
+  expect(initial).toContain("● TTM dividend $1.20");
+  // One currency: the amount's symbol says it, so no CCY column.
+  expect(initial).toMatch(/EX-DATE ▼ +AMOUNT\s*\n/);
+  expect(initial).not.toContain("CCY");
+  // Four payments back, the year before the last raise.
+  await emitKeypress(setup!, Array.from({ length: 4 }, () => ({ name: "down" })));
+  await act(async () => { await Bun.sleep(200); });
+  expect(await frame()).toContain("● TTM dividend $1.16");
+  await emitKeypress(setup!, { name: "right" });
+  expect(await frame()).toContain("● TTM dividend $1.17");
+});
+
+test("mixed-currency payments keep the currency column", async () => {
+  const data = await quarterlyIncome((index) => index < 2 ? "USD" : "CAD");
+  expect(await renderLoaded(data, 88, 26)).toContain("CCY");
 });

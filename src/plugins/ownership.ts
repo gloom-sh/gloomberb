@@ -27,6 +27,7 @@ const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
   "short-interest": "ticker-research",
   "crypto-board": "market-overview",
   "short-volume": "ticker-research",
+  "social-mentions": "ticker-research",
   "kelly-sizer": "portfolio",
   "layout-manager": "application",
   "macro-tv": "macro",

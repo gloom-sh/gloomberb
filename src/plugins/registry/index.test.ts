@@ -13,6 +13,7 @@ import {
 } from "../builtin/composite-plugins";
 import { composeBuiltinPlugin } from "../builtin/plugin-module";
 import { useAssetData, usePluginAppActions } from "../runtime";
+import { usePluginRenderContext } from "../runtime/context";
 import { PluginRegistry } from "./index";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 
@@ -447,9 +448,15 @@ describe("PluginRegistry pane settings", () => {
         defaultPosition: "right",
         component: () => null,
         settings: {
+          values: { autoUpdate: true },
           fields: [{
             key: "breakingNewsNotificationsEnabled",
             label: "Notifications",
+            type: "toggle",
+            storage: "plugin",
+          }, {
+            key: "autoUpdate",
+            label: "Auto-update",
             type: "toggle",
             storage: "plugin",
           }],
@@ -461,6 +468,8 @@ describe("PluginRegistry pane settings", () => {
 
     expect(descriptor?.pluginId).toBe("news");
     expect(descriptor?.context.settings.breakingNewsNotificationsEnabled).toBe(true);
+    // Never set: the declared default, so a setting can be on until turned off.
+    expect(descriptor?.context.settings.autoUpdate).toBe(true);
   });
 
   test("resolves and applies toggle-backed pane quick settings", async () => {
@@ -531,6 +540,14 @@ test("composed slots receive plugin context and keep extracted actions bound", a
   expect(renderToStaticMarkup(registry.renderSlot("status:widget", {}))).toBe("test-providertest-provider");
   notify!({ body: "Bound action" });
   expect(delivered).toEqual(["Bound action"]);
+});
+
+test("slots skip disabled plugins and share their plugin's state namespace", async () => {
+  const registry = createRegistry({ disabledPlugins: ["slot-off"] });
+  const widget = () => usePluginRenderContext().pluginId;
+  await registry.register({ id: "slot-on", stateId: "shared-state", name: "On", version: "1", slots: { "status:widget": widget } });
+  await registry.register({ id: "slot-off", name: "Off", version: "1", slots: { "status:widget": widget } });
+  expect(renderToStaticMarkup(registry.renderSlot("status:widget", {}))).toBe("shared-state");
 });
 
 test("ticker actions follow their owner's live enabled state and unregister cleanly", async () => {

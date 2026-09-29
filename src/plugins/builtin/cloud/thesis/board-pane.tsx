@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { apiClient, type CloudThesis } from "../../../../api-client";
 import {
   DataTableStackView,
   PaneStatusBody,
   QueryBar,
   usePaneFooter,
+  useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -15,11 +16,10 @@ import { useShortcut } from "../../../../react/input";
 import { useAppSelector, usePaneStateValue } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
-import { Box, TextAttributes, type InputRenderable } from "../../../../ui";
+import { Box, TextAttributes } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
 import { formatCompactAmount } from "../../../../utils/format";
 import { isPlainKey } from "../../../../utils/keyboard";
-import { stopSearchFocusNavigation } from "../../../../utils/search-focus-navigation";
 import { usePluginAppActions } from "../../../runtime";
 import { SignInWall } from "../auth-actions";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
@@ -51,7 +51,7 @@ import {
   type UntrackedRow,
 } from "./model";
 import { promptChoice, promptText } from "./prompts";
-import { consumeRequestedThesis, subscribeRequestedThesis, type ThesisPaneRequest } from "./pane-request";
+import { subscribeRequestedThesis, type ThesisPaneRequest } from "./pane-request";
 import { thesisStore } from "./store";
 
 export const THESIS_PANE_ID = "thesis-board";
@@ -136,14 +136,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
   const [mode, setMode] = usePaneStateValue<"board" | "weights">("mode", "board");
   const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   const ctx = useMemo<flows.FlowContext>(() => ({ dialog, notify, hasProAccess: plan.hasProAccess, openUpgrade }), [dialog, notify, openUpgrade, plan.hasProAccess]);
 
@@ -244,11 +237,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
       else setSelectedId(`untracked:${symbols[0] ?? ""}`);
     }
   }, [setOpenId, startFor]);
-  useEffect(() => {
-    const pending = consumeRequestedThesis();
-    if (pending) applyRequest(pending);
-    return subscribeRequestedThesis(applyRequest);
-  }, [applyRequest]);
+  useEffect(() => subscribeRequestedThesis(applyRequest), [applyRequest]);
 
   const cycleScope = useCallback((delta: number) => {
     const index = exposure.scopes.findIndex((entry) => entry.collectionId === exposure.scope.collectionId);
@@ -267,11 +256,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     if (isPlainKey(event, "n")) void startFor();
     else if (isPlainKey(event, "w")) setMode(mode === "board" ? "weights" : "board");
     else if (isPlainKey(event, "p")) cycleScope(1);
-    else if (searchable && isPlainKey(event, "/")) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return;
-    } else if (isPlainKey(event, "r")) void thesisStore.refresh();
+    else if (isPlainKey(event, "r")) void thesisStore.refresh();
     else return;
     event.stopPropagation?.();
     event.preventDefault?.();
@@ -282,40 +267,39 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     [mode, teams.length, width],
   );
 
-  const renderBoardCell = useCallback((item: BoardItem, column: BoardColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const renderBoardCell = useCallback((item: BoardItem, column: BoardColumn): DataTableCell => {
     if (item.kind === "header") return { text: "" };
     if (item.kind === "untracked") {
-      if (column.id === "title") return { text: item.row.symbol, color: selectedColor ?? colors.text, attributes: TextAttributes.BOLD };
-      if (column.id === "name") return { text: item.row.name ?? "", color: selectedColor ?? colors.textDim };
-      if (column.id === "health") return { text: item.row.held ? "no thesis" : "watching", color: selectedColor ?? colors.textDim };
-      if (column.id === "weight") return { text: item.row.weight > 0 ? pct(item.row.weight) : "", color: selectedColor ?? colors.textDim };
+      if (column.id === "title") return { text: item.row.symbol, color: colors.text, attributes: TextAttributes.BOLD };
+      if (column.id === "name") return { text: item.row.name ?? "", color: colors.textDim };
+      if (column.id === "health") return { text: item.row.held ? "no thesis" : "watching", color: colors.textDim };
+      if (column.id === "weight") return { text: item.row.weight > 0 ? pct(item.row.weight) : "", color: colors.textDim };
       return { text: "" };
     }
     const { thesis } = item;
     const reason = attentionReason(thesis);
     switch (column.id) {
       case "title":
-        return { text: thesis.title, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: thesis.title, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "name":
-        return { text: item.names, color: selectedColor ?? colors.textDim };
+        return { text: item.names, color: colors.textDim };
       case "health": {
         const color = thesis.health === "broken" ? colors.negative : thesis.health === "weakening" ? colors.warning : thesis.health === "intact" ? colors.positive : colors.textDim;
-        return { text: thesis.status === "closed" ? (thesis.outcome?.verdict ?? "closed") : healthLabel(thesis.health).toLowerCase(), color: selectedColor ?? color };
+        return { text: thesis.status === "closed" ? (thesis.outcome?.verdict ?? "closed") : healthLabel(thesis.health).toLowerCase(), color };
       }
       case "conviction":
-        return { text: String(thesis.conviction), color: selectedColor ?? colors.text };
+        return { text: String(thesis.conviction), color: colors.text };
       case "signals":
-        return { text: thesis.openSignals ? String(thesis.openSignals) : "", color: selectedColor ?? colors.warning, attributes: thesis.openSignals ? TextAttributes.BOLD : undefined };
+        return { text: thesis.openSignals ? String(thesis.openSignals) : "", color: colors.warning, attributes: thesis.openSignals ? TextAttributes.BOLD : undefined };
       case "weight": {
         const entry = exposureById.get(thesis.id);
         const text = !entry || thesis.status === "watching" || (entry.missingQuotes && entry.value === 0)
           ? ""
           : entry.weight > 0 ? `${pct(entry.weight)}${entry.hasOptions ? "*" : ""}` : "0%";
-        return { text, color: selectedColor ?? colors.text };
+        return { text, color: colors.text };
       }
       case "reviewed":
-        return { text: relative(thesis.reviewedAt), color: selectedColor ?? (reason === "review" ? colors.warning : colors.textDim) };
+        return { text: relative(thesis.reviewedAt), color: reason === "review" ? colors.warning : colors.textDim };
       case "catalyst": {
         const next = nextCatalyst(thesis.document);
         const days = next?.date ? daysUntil(next.date) : null;
@@ -323,33 +307,32 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
           ? describeAttention(reason, thesis)
           : next ? `${next.text} ${days !== null ? describeDays(days) : ""}`.trim() : "";
         const color = reason === "signals" || reason === "broken" ? colors.negative : reason === "weakening" || reason === "catalyst" ? colors.warning : days !== null && days <= 14 ? colors.warning : colors.textDim;
-        return { text, color: selectedColor ?? color };
+        return { text, color };
       }
       case "owner": {
         const team = thesis.owner.kind === "team" ? teamStore.getTeam(thesis.owner.id) : null;
-        return { text: team ? team.shortName ?? team.name : "", color: selectedColor ?? colors.textDim };
+        return { text: team ? team.shortName ?? team.name : "", color: colors.textDim };
       }
       default:
         return { text: "" };
     }
   }, [exposureById]);
 
-  const renderWeightCell = useCallback((row: ReturnType<typeof convictionRows>[number], column: BoardColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const renderWeightCell = useCallback((row: ReturnType<typeof convictionRows>[number], column: BoardColumn): DataTableCell => {
     switch (column.id) {
       case "title":
-        return { text: row.thesis.title, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: row.thesis.title, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "conviction":
-        return { text: String(row.conviction), color: selectedColor ?? colors.text };
+        return { text: String(row.conviction), color: colors.text };
       case "weight":
-        return { text: `${pct(row.weight)}${row.hasOptions ? "*" : ""}`, color: selectedColor ?? colors.text };
+        return { text: `${pct(row.weight)}${row.hasOptions ? "*" : ""}`, color: colors.text };
       case "value":
         // A thesis can be worth under 1000, where formatCompactCurrency would trim the cents as prices move.
-        return { text: `${formatCompactAmount(row.value)} ${exposure.baseCurrency}`, color: selectedColor ?? colors.textDim };
+        return { text: `${formatCompactAmount(row.value)} ${exposure.baseCurrency}`, color: colors.textDim };
       case "gap": {
         const text = row.gap > 0 ? "under-sized" : row.gap < 0 ? "grew big" : "in line";
         const color = row.gap > 0 ? colors.warning : row.gap < 0 ? colors.negative : colors.textDim;
-        return { text: row.gap === 0 ? text : `${text} (${row.gap > 0 ? "+" : ""}${row.gap})`, color: selectedColor ?? color };
+        return { text: row.gap === 0 ? text : `${text} (${row.gap > 0 ? "+" : ""}${row.gap})`, color };
       }
       default:
         return { text: "" };
@@ -419,12 +402,8 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
         onChange: setSearchQuery,
         placeholder: "ticker or company",
         focused: focused && !openThesis,
-        active: searchFocused,
-        onActiveChange: (active) => (active ? focusSearch() : blurSearch()),
-        focusToken: searchFocusToken,
-        inputRef: searchInputRef,
+        ...searchProps,
         debounceMs: 80,
-        onNavigateDown: blurSearch,
       }}
       filters={[{
         id: "scope",
@@ -465,6 +444,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
         sortDirection="desc"
         getItemKey={(row) => row.thesis.id}
         renderCell={renderWeightCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={query ? "Nothing matches." : "No active thesis with a position."}
         emptyStateHint={query ? undefined : "Conviction is compared with weight once a thesis holds something."}
         showHorizontalScrollbar={false}
@@ -491,6 +471,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
       sortDirection="desc"
       getItemKey={(item) => item.id}
       renderCell={renderBoardCell}
+      selectedTextOverridesCellColor
       isNavigable={(item) => item.kind !== "header"}
       renderSectionHeader={(item) => (item.kind === "header"
         ? { text: item.group === "untracked" ? "Positions without a thesis" : groupLabel(item.group), color: colors.textDim, attributes: TextAttributes.BOLD }

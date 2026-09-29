@@ -13,6 +13,11 @@ import { createAppRuntime } from "../../../core/app-runtime";
 import { JsonPersistence } from "../../../data/json-persistence";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
+import {
+  SHOT_API_PROXY_PREFIX,
+  SHOT_HTTP_BRIDGE_PATH,
+  SHOT_MARKET_BRIDGE_PATH,
+} from "../../../cli/desktop-pane-shot-routes";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import type { RendererHost } from "../../../ui/host";
 import { DomHostProviders } from "./dom-host-providers";
@@ -79,10 +84,6 @@ const SHOT_READY_STABLE_FRAMES = 10;
 // content contains the word "loading" (a changelog release note, a news
 // headline) wait forever and time out.
 const SHOT_LOADING_SELECTOR = "[data-gloom-status=\"loading\"]";
-const SHOT_API_PROXY_PREFIX = "/__gloom_cli_api__";
-// Served by the Bun process that owns this page, see src/cli/desktop-pane-shot.ts.
-const SHOT_MARKET_BRIDGE_PATH = "/__gloom_cli_market__";
-const SHOT_HTTP_BRIDGE_PATH = "/__gloom_cli_http__";
 const TRACKED_RESPONSE_METHODS = new Set<PropertyKey>([
   "arrayBuffer",
   "blob",
@@ -231,24 +232,10 @@ function isShotLoadingTextVisible(): boolean {
   return document.querySelector(SHOT_LOADING_SELECTOR) !== null;
 }
 
+/** A chart pane holds the capture by publishing `ready: false` on its chart-data node. */
 function hasUnresolvedChartData(): boolean {
   return (window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ ?? []).some((node) => (
-    node.role === "chart-data"
-    && (
-      node.metadata?.kind === "stock-price"
-      || node.metadata?.kind === "price-comparison"
-      || node.metadata?.kind === "chart-composer"
-      || node.metadata?.kind === "realized-volatility"
-      || node.metadata?.kind === "volatility-indices"
-      || node.metadata?.kind === "options-scenario"
-    )
-    && (
-      node.metadata.loading === true
-      || (!["chart-composer", "realized-volatility", "volatility-indices", "options-scenario"].includes(String(node.metadata.kind)) && (
-        typeof node.metadata.projectedPointCount !== "number"
-        || node.metadata.projectedPointCount <= 0
-      ))
-    )
+    node.role === "chart-data" && node.metadata?.ready === false
   ));
 }
 

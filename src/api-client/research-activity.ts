@@ -5,6 +5,8 @@ import type { DesktopDeepLinkBridge } from "../types/desktop-deeplink";
 export type ResearchActivity =
   | "workspace_opened"
   | "research_viewed"
+  // A ticker research (DES) tab someone stayed on. Keep in sync with the server's list.
+  | "research_tab_viewed"
   | "ticker_saved"
   | "pro_feature_used"
   | "upgrade_intent"
@@ -36,6 +38,8 @@ const ATTRIBUTION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** Another device's clock may run slightly ahead; a touch from a minute in the future is still fresh. */
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const ANONYMOUS_ID = /^[a-f0-9-]{36}$/;
+/** The server accepts a tab id only in this shape. */
+const RESEARCH_TAB_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const CAMPAIGN_KEYS = [
   "utm_source",
   "utm_medium",
@@ -319,12 +323,13 @@ function attributionPayload(): Record<string, string> | undefined {
 export function recordResearchActivity(
   event: ResearchActivity,
   feature?: ResearchFeature,
+  tab?: string,
 ): void {
   const target = getCurrentPluginTarget();
   const user = apiClient.getCurrentUser();
   if (!user && !anonymousId) return;
   if (!user && target !== "web" && target !== "desktop") return;
-  const key = `${user?.id ?? "guest"}:${event}:${feature ?? ""}`;
+  const key = `${user?.id ?? "guest"}:${event}:${feature ?? ""}:${tab ?? ""}`;
   if (sent.has(key)) return;
   sent.add(key);
   if (event !== "workspace_opened") recordResearchActivity("workspace_opened");
@@ -336,10 +341,21 @@ export function recordResearchActivity(
       anonymousId: target === "web" || target === "desktop" ? anonymousId : undefined,
       attribution: attributionPayload(),
       feature,
+      tab,
     })
     .catch(() => {
       sent.delete(key);
     });
+}
+
+/**
+ * Counts a ticker research tab by its id, once per session like every
+ * milestone. External plugin tabs are sent only as "plugin", so the plugins
+ * someone installed stay private; so is any id the server would refuse.
+ */
+export function recordResearchTabView(tabId: string, fromExternalPlugin: boolean): void {
+  const tab = !fromExternalPlugin && RESEARCH_TAB_ID.test(tabId) ? tabId : "plugin";
+  recordResearchActivity("research_tab_viewed", undefined, tab);
 }
 
 /**

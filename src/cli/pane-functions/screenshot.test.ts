@@ -14,15 +14,10 @@ import {
   shotSemanticRowCount,
   shotUnavailableSymbols,
   stripDesktopShotCredentials,
-  volSurfaceEvidenceMismatchesFor,
-  realizedVolEvidenceMismatchesFor,
-  volatilityEvidenceMismatchesFor,
-  scenarioEvidenceMismatchesFor,
-  calculatorEvidenceMismatchesFor,
-  calculatorVisibilityMismatchesFor,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
 } from "./screenshot";
+import { paneEvidenceMismatches } from "./screenshot-evidence";
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { coneChartSeries, realizedChartSeries } from "../../plugins/builtin/realized-vol/chart-model";
 import { collectShotSymbols } from "./data";
@@ -40,7 +35,7 @@ import { optionsScenarioHeadless } from "../../plugins/builtin/options-scenario/
 import { calculatorSemanticEvidence } from "../../plugins/builtin/options-calculator/evidence";
 import { draftFromCalculatorInputs } from "../../plugins/builtin/options-calculator/inputs";
 import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calculator/headless";
-import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/options-calculator/model";
+import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/shared/volatility";
 
 test("calculator screenshots freeze percent inputs without market requests, including an inactive cash schedule", async () => {
   const request = { pane: { id: "options-calculator" }, capability: { id: "options-calculator-pane", options: optionsCalculatorHeadless.options },
@@ -68,20 +63,21 @@ test("calculator screenshot evidence must match the requested inputs, not just a
     implied: solveImpliedVolatility(inputs, inputs.marketPrice), loading: false, surface: null });
   const evidence = project();
   const nodes = (metadata: unknown = evidence) => [{ id: "calculator-data", role: "chart-data", actions: [], metadata }] as RemoteUiNodeSnapshot[];
+  const visibleKeyValues = ["Model", "Implied IV", "Delta", "Gamma", "Theta", "Vega", "Rho"].map((label) => ({ label, text: `${label} 1` }));
+  const mismatches = (req: ResolvedPaneFunction, shot: DesktopPaneShotPayload, semanticUi: RemoteUiNodeSnapshot[], visible = visibleKeyValues) => (
+    paneEvidenceMismatches(req, shot, { semanticUi, visibleKeyValues: visible }));
   expect(shotDataEvidenceFor(request, source, nodes())).toEqual(evidence);
   expect(shotSemanticRowCount(request, source, nodes())).toBe(7);
   expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
-  expect(calculatorEvidenceMismatchesFor(request, source, nodes())).toEqual([]);
-  expect(calculatorEvidenceMismatchesFor({ ...request, options: { ...options, model: "american", volSource: "surface" } }, source, nodes()))
+  expect(mismatches(request, source, nodes())).toEqual([]);
+  expect(mismatches({ ...request, options: { ...options, model: "american", volSource: "surface" } }, source, nodes()))
     .toEqual(["option calculator snapshot does not match requested inputs"]);
-  expect(calculatorEvidenceMismatchesFor(request, source, nodes(project({ ...draft, spot: 100 })))).toEqual(["rendered option calculator inputs do not match"]);
-  expect(calculatorEvidenceMismatchesFor(request, { ...source, config: {} as typeof source.config }, nodes())).toHaveLength(1);
+  expect(mismatches(request, source, nodes(project({ ...draft, spot: 100 })))).toEqual(["rendered option calculator inputs do not match"]);
+  expect(mismatches(request, { ...source, config: {} as typeof source.config }, nodes())).toHaveLength(1);
   expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, complete: true, loading: true }))).toBeNull();
   expect(shotSemanticRowCount(request, source, [])).toBe(0);
   expect(shotUnavailableSymbols(request, source, [])).toEqual(["AAPL"]);
-  const visibleKeyValues = ["Model", "Implied IV", "Delta", "Gamma", "Theta", "Vega", "Rho"].map((label) => ({ label, text: `${label} 1` }));
-  expect(calculatorVisibilityMismatchesFor(request, { visibleKeyValues })).toEqual([]);
-  expect(calculatorVisibilityMismatchesFor(request, { visibleKeyValues: visibleKeyValues.slice(0, 5) }))
+  expect(mismatches(request, source, nodes(), visibleKeyValues.slice(0, 5)))
     .toEqual(["option calculator metrics are clipped or missing: Vega, Rho"]);
 });
 
@@ -122,10 +118,12 @@ test("option scenario screenshots require the active numeric model and consumed 
   expect(shotSemanticRowCount(request, source, nodes())).toBe(scenario.payoff.length * 2);
   expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
   expect(shotDataEvidenceFor(request, source, nodes())).toEqual(evidence);
-  expect(scenarioEvidenceMismatchesFor(request, source, nodes())).toEqual([]);
-  expect(scenarioEvidenceMismatchesFor({ ...request, options: { tab: "grid" } }, source, nodes())).toHaveLength(1);
+  expect(paneEvidenceMismatches(request, source, { semanticUi: nodes() })).toEqual([]);
+  expect(paneEvidenceMismatches({ ...request, options: { tab: "grid" } }, source, { semanticUi: nodes() })).toHaveLength(1);
   const changed = buildScenario({ ...scenario.position, legs: scenario.position.legs.map((leg) => ({ ...leg, quantity: -1 })) });
-  expect(scenarioEvidenceMismatchesFor(request, source, nodes(scenarioSemanticEvidence({ scenario: changed, view: "payoff", loading: false })))).toHaveLength(1);
+  expect(paneEvidenceMismatches(request, source, {
+    semanticUi: nodes(scenarioSemanticEvidence({ scenario: changed, view: "payoff", loading: false })),
+  })).toHaveLength(1);
   expect(shotDataEvidenceFor(request, source, [])).toBeNull();
   expect(shotSemanticRowCount(request, source, [])).toBe(0);
   expect(shotUnavailableSymbols(request, source, nodes({ ...evidence, loading: true, complete: false }))).toEqual(["AAPL"]);
@@ -143,12 +141,12 @@ test("volatility history screenshot readiness requires dated plotted values and 
   expect(shotSemanticRowCount(request, source, nodes)).toBe(3);
   expect(shotUnavailableSymbols(request, source, nodes)).toEqual([]);
   expect(shotDataEvidenceFor(request, source, nodes)).toEqual(metadata);
-  expect(volatilityEvidenceMismatchesFor(request, source, nodes)).toEqual([]);
+  expect(paneEvidenceMismatches(request, source, { semanticUi: nodes })).toEqual([]);
   source.config.layout.instances[0]!.settings = { initialTab: "board" };
-  expect(volatilityEvidenceMismatchesFor(request, source, nodes)).toEqual(["rendered volatility index view does not match"]);
+  expect(paneEvidenceMismatches(request, source, { semanticUi: nodes })).toEqual(["rendered volatility index view does not match"]);
   expect(shotSemanticRowCount(request, source, [])).toBe(0);
   expect(shotDataEvidenceFor(request, source, [])).toBeNull();
-  expect(volatilityEvidenceMismatchesFor(request, source, [])).toHaveLength(1);
+  expect(paneEvidenceMismatches(request, source, { semanticUi: [] })).toHaveLength(1);
 });
 
 describe("realized volatility screenshot history", () => {
@@ -231,7 +229,7 @@ describe("volatility surface screenshot evidence", () => {
   test("verifies numeric surface cells and provenance despite a live-dom capability with no table rows", () => {
     expect(shotSemanticRowCount(request, source, nodes())).toBe(4);
     expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
-    expect(volSurfaceEvidenceMismatchesFor(request, source, nodes())).toEqual([]);
+    expect(paneEvidenceMismatches(request, source, { semanticUi: nodes() })).toEqual([]);
     expect(shotDataEvidenceFor(request, source, nodes())).toMatchObject({
       kind: "volatility-surface", grid: metadata.grid, spotAsOf: "2026-09-22T14:00:00Z", plottedValueCount: 4,
     });
@@ -244,9 +242,9 @@ describe("volatility surface screenshot evidence", () => {
     const partial = nodes({ ...metadata, complete: false, failedExpiries: 1, failures: [{ expiration: 1_800_000_000, message: "offline" }] });
     expect(shotUnavailableSymbols(request, source, partial)).toEqual(["AAPL"]);
     expect(shotSemanticRowCount(request, source, partial)).toBe(4);
-    expect(volSurfaceEvidenceMismatchesFor({ ...request, options: { ...request.options, tab: "smile" } }, source, nodes())).toContain("rendered volatility view does not match");
-    expect(volSurfaceEvidenceMismatchesFor(request, source, nodes({ ...metadata, symbol: "TSLA" }))).toContain("rendered volatility symbol does not match");
-    expect(volSurfaceEvidenceMismatchesFor(request, source, nodes({ ...metadata, ivSource: "provider" }))).toContain("rendered volatility source does not match");
+    expect(paneEvidenceMismatches({ ...request, options: { ...request.options, tab: "smile" } }, source, { semanticUi: nodes() })).toContain("rendered volatility view does not match");
+    expect(paneEvidenceMismatches(request, source, { semanticUi: nodes({ ...metadata, symbol: "TSLA" }) })).toContain("rendered volatility symbol does not match");
+    expect(paneEvidenceMismatches(request, source, { semanticUi: nodes({ ...metadata, ivSource: "provider" }) })).toContain("rendered volatility source does not match");
     const empty = nodes({ ...metadata, plottedValueCount: 0, validQuadCount: 0,
       grid: { ...metadata.grid, values: [[null, null], [null, null]] } });
     expect(shotSemanticRowCount(request, source, empty)).toBe(0);
@@ -273,7 +271,7 @@ describe("realized volatility screenshot evidence", () => {
   test("certifies actual HVG values and one dated IV point without table rows", () => {
     expect(shotSemanticRowCount(request, source, nodes())).toBe(4);
     expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
-    expect(realizedVolEvidenceMismatchesFor(request, source, nodes())).toEqual([]);
+    expect(paneEvidenceMismatches(request, source, { semanticUi: nodes() })).toEqual([]);
     expect(shotDataEvidenceFor(request, source, nodes())).toMatchObject({ series: [
       { id: "hv-10", points: [{ date: dates[0]!.toISOString(), value: null }, { date: dates[1]!.toISOString(), value: 20 }] },
       { id: "current-iv", points: [{ date: status.currentIv.date, value: 22 }] },
@@ -286,7 +284,7 @@ describe("realized volatility screenshot evidence", () => {
       mean: 0.25, median: 0.22, percentile: 40, sampleSize: 250 }], ["a", "b", "c", "d"]), { ...status, view: "cone" });
     const hvt = { ...request, options: { ...request.options, tab: "cone" } };
     expect(shotSemanticRowCount(hvt, source, nodes(cone))).toBe(4);
-    expect(realizedVolEvidenceMismatchesFor(hvt, source, nodes(cone))).toEqual([]);
+    expect(paneEvidenceMismatches(hvt, source, { semanticUi: nodes(cone) })).toEqual([]);
     expect(shotUnavailableSymbols(hvt, source, nodes(cone))).toEqual([]);
   });
 
@@ -295,7 +293,9 @@ describe("realized volatility screenshot evidence", () => {
     expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, plottedValueCount: 200 }))).toBeNull();
     expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, series: evidence.series.slice(-1), plottedValueCount: 2 }))).toBeNull();
     expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, currentIv: { ...status.currentIv, value: 99 } }))).toBeNull();
-    expect(realizedVolEvidenceMismatchesFor(request, source, nodes({ ...evidence, symbol: "SPY", estimator: "parkinson", view: "cone" }))).not.toEqual([]);
+    expect(paneEvidenceMismatches(request, source, {
+      semanticUi: nodes({ ...evidence, symbol: "SPY", estimator: "parkinson", view: "cone" }),
+    })).not.toEqual([]);
     for (const state of [{ stale: true }, { loading: true }, { errors: ["History unavailable"] }]) {
       expect(shotUnavailableSymbols(request, source, nodes({ ...evidence, ...state, complete: false }))).toEqual(["AAPL"]);
       expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, ...state }))).toBeNull();

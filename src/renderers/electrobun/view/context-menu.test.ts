@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { contextMenuDivider, type ContextMenuItem } from "../../../types/context-menu";
-import { ELECTROBUN_CONTEXT_MENU_ACTION } from "../shared/protocol";
+import { ELECTROBUN_CONTEXT_MENU_ACTION, type ContextMenuSelectMessage } from "../shared/protocol";
 import {
   DesktopContextMenuActionScope,
   prepareDesktopContextMenu,
-  type DesktopContextMenuSelectMessage,
 } from "./context-menu";
 
 describe("Electrobun desktop context menu serialization", () => {
@@ -87,7 +86,7 @@ describe("Electrobun desktop context menu serialization", () => {
 
 describe("DesktopContextMenuActionScope", () => {
   test("selection messages call the matching callback once", () => {
-    let listener: ((message: DesktopContextMenuSelectMessage) => void) | null = null;
+    let listener: ((message: ContextMenuSelectMessage) => void) | null = null;
     let disposeCount = 0;
     let runCount = 0;
     const scope = new DesktopContextMenuActionScope(
@@ -103,7 +102,7 @@ describe("DesktopContextMenuActionScope", () => {
     );
 
     scope.bind("request-3", new Map([["item", () => { runCount += 1; }]]));
-    const emitSelection = listener as ((message: DesktopContextMenuSelectMessage) => void) | null;
+    const emitSelection = listener as ((message: ContextMenuSelectMessage) => void) | null;
     expect(emitSelection).toBeTruthy();
     emitSelection?.({ requestId: "request-3", itemId: "item" });
     emitSelection?.({ requestId: "request-3", itemId: "item" });
@@ -113,7 +112,7 @@ describe("DesktopContextMenuActionScope", () => {
   });
 
   test("stale callbacks are cleaned up after the timeout", () => {
-    let listener: ((message: DesktopContextMenuSelectMessage) => void) | null = null;
+    let listener: ((message: ContextMenuSelectMessage) => void) | null = null;
     let timeoutCallback: (() => void) | null = null;
     let disposeCount = 0;
     let runCount = 0;
@@ -134,7 +133,7 @@ describe("DesktopContextMenuActionScope", () => {
 
     scope.bind("request-4", new Map([["item", () => { runCount += 1; }]]));
     const expireSelection = timeoutCallback as (() => void) | null;
-    const emitSelection = listener as ((message: DesktopContextMenuSelectMessage) => void) | null;
+    const emitSelection = listener as ((message: ContextMenuSelectMessage) => void) | null;
     expect(expireSelection).toBeTruthy();
     expect(emitSelection).toBeTruthy();
     expireSelection?.();

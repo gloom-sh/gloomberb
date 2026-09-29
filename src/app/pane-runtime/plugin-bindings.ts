@@ -25,6 +25,7 @@ import {
 } from "../../plugins/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import { reportCrash } from "../../telemetry/crash-reports";
+import { recordFunctionOpen, usageFunctionForPane } from "../../telemetry/usage-counts";
 import {
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
@@ -37,6 +38,7 @@ import type {
   LayoutConfig,
   PaneInstanceConfig,
 } from "../../types/config";
+import { TICKER_RESEARCH_PANE_ID } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type {
   PaneDef,
@@ -238,12 +240,16 @@ export function bindAppPanePluginRegistry({
 
     focusVisiblePane(instanceId, layout);
   };
+  // Ticker links in panes and menus, and DES from the command bar, open the
+  // research pane (or the pane asked for) through these two.
   pluginRegistry.pinTickerFn = (symbol, options) => {
     if (isDetachedWindow) return;
+    recordFunctionOpen(usageFunctionForPane(pluginRegistry, options?.paneType ?? TICKER_RESEARCH_PANE_ID));
     void openPinnedTicker(symbol, options);
   };
   pluginRegistry.navigateTickerFn = (rawSymbol, options) => {
     if (isDetachedWindow) return;
+    recordFunctionOpen(usageFunctionForPane(pluginRegistry, TICKER_RESEARCH_PANE_ID));
     const sourcePaneId = options?.sourcePaneId ?? stateRef.current.focusedPaneId;
     const requests = tickerNavigationRequests.get(pluginRegistry) ?? new Map<string | null, symbol>();
     tickerNavigationRequests.set(pluginRegistry, requests);
@@ -447,6 +453,9 @@ export function bindAppPanePluginRegistry({
         .filter((manifest) => pluginRegistry.getCapabilityPluginId(manifest.id) === pluginId).length;
       const broker = [...pluginRegistry.brokers.keys()].some((type) => pluginRegistry.getBrokerPluginId(type) === pluginId);
       return { panes, templates, commands, capabilities, broker };
+    },
+    notify: (notification) => {
+      pluginRegistry.notify(notification);
     },
     setPluginEnabled: (pluginId, enabled) => {
       const current = stateRef.current.config;

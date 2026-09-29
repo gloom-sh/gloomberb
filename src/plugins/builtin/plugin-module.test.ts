@@ -8,7 +8,7 @@ import {
 } from "./plugin-module";
 
 function context(): GloomPluginContext {
-  return {} as GloomPluginContext;
+  return { log: debugLog.createLogger("parent") } as GloomPluginContext;
 }
 
 describe("composeBuiltinPlugin", () => {
@@ -76,7 +76,7 @@ describe("composeBuiltinPlugin", () => {
     }
     plugin.dispose?.();
 
-    expect(errors[0]?.data).toEqual({ pluginId: "parent", error: "setup failed" });
+    expect(errors[0]).toMatchObject({ source: "parent", data: { error: "setup failed" } });
     expect(lifecycle).toEqual([
       "setup:first",
       "setup:second",

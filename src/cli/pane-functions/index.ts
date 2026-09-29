@@ -10,9 +10,6 @@ import {
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import {
-  normalizeLookupToken,
-  optionPaneState,
-  parseArgumentsOption,
   parsePaneCatalogArgs,
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
@@ -23,12 +20,6 @@ import { defaultScreenshotPath, renderDesktopShot } from "./screenshot";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
-import {
-  capabilityPluginState,
-  getPaneFunctionCapability,
-  isDataPaneForDomFallback,
-  normalizeCapabilityOptions,
-} from "./capabilities";
 import { withPersistedCloudSession } from "./cloud-session";
 
 async function withPaneRuntime<T>(
@@ -182,17 +173,3 @@ function displayPath(path: string): string {
 function ensurePngExtension(path: string): string {
   return extname(path) ? path : `${path}.png`;
 }
-
-export const paneFunctionTestInternals = {
-  parsePaneFunctionArgs,
-  parsePaneCatalogArgs,
-  normalizeLookupToken,
-  parseArgumentsOption,
-  optionPaneState,
-  filterPaneCatalogEntries,
-  renderPaneCatalogReport,
-  getPaneFunctionCapability,
-  isDataPaneForDomFallback,
-  normalizeCapabilityOptions,
-  capabilityPluginState,
-};

@@ -21,6 +21,7 @@ import {
   type ToolResultPayload,
   type ToolResultStatus,
 } from "./protocol";
+import { normalizeJson, shortReason } from "./json";
 import {
   remoteRequestForTool,
   resolveRemoteToolBinding,
@@ -80,40 +81,13 @@ interface ExecutionValue {
 }
 
 const ARGUMENT_KEYS = new Set(["symbol", "symbols", "text"]);
+const REASON_MAX_LENGTH = 320;
 
 class ToolTimeoutError extends Error {}
 class ToolCancelledError extends Error {}
 
-function shortReason(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  return text.replace(/\s+/g, " ").trim().slice(0, 320) || "Unknown error.";
-}
-
 function appendNote(current: string | undefined, next: string): string {
   return current ? `${current} ${next}` : next;
-}
-
-function normalizeJson(value: unknown, seen = new WeakSet<object>()): JsonValue {
-  if (value == null) return null;
-  if (typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "bigint") return value.toString();
-  if (value instanceof Date) return value.toISOString();
-  if (value instanceof Error) return { name: value.name, message: value.message };
-  if (typeof value !== "object") return String(value);
-  if (seen.has(value)) return "[Circular]";
-  seen.add(value);
-  if (Array.isArray(value)) {
-    const result = value.map((entry) => normalizeJson(entry, seen));
-    seen.delete(value);
-    return result;
-  }
-  const result: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-    result[key] = normalizeJson((value as Record<string, unknown>)[key], seen);
-  }
-  seen.delete(value);
-  return result;
 }
 
 function encodedSize(value: unknown): number {
@@ -368,7 +342,7 @@ export function createASKGToolExecutor(
             rowCount: loaded.rowCount,
             ...(errors.length > 0 ? {
               truncated: loaded.rowCount > 0,
-              note: errors.map(shortReason).join(" "),
+              note: errors.map((error) => shortReason(error, REASON_MAX_LENGTH)).join(" "),
             } : {}),
           };
         }
@@ -381,7 +355,7 @@ export function createASKGToolExecutor(
           try {
             preparedUndo = await undoManager.prepare(binding.operation, call.args, signal);
           } catch (error) {
-            undoNote = `Undo is unavailable: ${shortReason(error)}`;
+            undoNote = `Undo is unavailable: ${shortReason(error, REASON_MAX_LENGTH)}`;
           }
         }
 
@@ -390,7 +364,7 @@ export function createASKGToolExecutor(
           return {
             status: "error",
             result: { code: response.error.code, ...(response.error.details !== undefined ? { details: response.error.details } : {}) },
-            note: shortReason(response.error.message),
+            note: shortReason(response.error.message, REASON_MAX_LENGTH),
           };
         }
 
@@ -399,7 +373,7 @@ export function createASKGToolExecutor(
           try {
             undoToken = await undoManager.commit(preparedUndo, signal) ?? undefined;
           } catch (error) {
-            undoNote = `Undo is unavailable: ${shortReason(error)}`;
+            undoNote = `Undo is unavailable: ${shortReason(error, REASON_MAX_LENGTH)}`;
           }
         }
         return {
@@ -419,7 +393,7 @@ export function createASKGToolExecutor(
       if (error instanceof ToolCancelledError || options.signal?.aborted) {
         return base({ status: "cancelled", note: "Tool call was cancelled." });
       }
-      return base({ status: "error", note: shortReason(error) });
+      return base({ status: "error", note: shortReason(error, REASON_MAX_LENGTH) });
     }
   };
 

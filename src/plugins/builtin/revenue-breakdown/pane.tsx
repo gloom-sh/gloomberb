@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import {
   useAsyncResource,
@@ -9,7 +9,6 @@ import {
 import {
   DataTableView,
   EmptyState,
-  Icon,
   PaneFooterScope,
   PaneStatusBody,
   Popover,
@@ -27,6 +26,7 @@ import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -70,52 +70,6 @@ function placeholderLevels(count: number, seed: number): number[] {
     const x = Math.sin((index + 1) * 12.9898 + seed * 78.233) * 43758.5453;
     return 0.25 + 0.7 * (x - Math.floor(x));
   });
-}
-
-function Blurred({ children }: { children: ReactNode }) {
-  return (
-    <Box flexDirection="row" style={{ filter: "blur(5px)", userSelect: "none" }}>
-      {children}
-    </Box>
-  );
-}
-
-function UpgradeLabel({ noun, onPress }: { noun: string; onPress: () => void }) {
-  const colors = useThemeColors();
-  return (
-    <Box flexDirection="row" gap={1} onMouseDown={onPress} data-gloom-role="revenue-upgrade">
-      <Icon name="lock" size={11} color={colors.textBright} />
-      <Text fg={colors.textBright}>{`Upgrade to see every ${noun}`}</Text>
-    </Box>
-  );
-}
-
-/**
- * Desktop: the prompt floats centred over the blurred rows, like a paywall
- * over the real table. It sits in the table's after-body slot, which starts
- * where the rows end, so it reaches back up over the last `rows` rows.
- */
-function LockedOverlay({ rows, noun, onPress }: { rows: number; noun: string; onPress: () => void }) {
-  const { cellHeightPx = 18 } = useUiCapabilities();
-  return (
-    <Box
-      style={{
-        position: "absolute",
-        top: -rows * cellHeightPx,
-        left: 0,
-        width: "100%",
-        height: rows * cellHeightPx,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        pointerEvents: "none",
-      }}
-    >
-      <Box style={{ pointerEvents: "auto", cursor: "pointer" }}>
-        <UpgradeLabel noun={noun} onPress={onPress} />
-      </Box>
-    </Box>
-  );
 }
 
 function RevenueBreakdownView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
@@ -207,7 +161,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     if (item.kind === "locked") {
       if (column.id === "label" && item.label && !isDesktopWeb) {
         const text = `Upgrade to see every ${noun.plural}`;
-        return { text, content: <UpgradeLabel noun={noun.plural} onPress={openUpgrade} />, onMouseDown: openUpgrade };
+        return { text, content: <UpgradeLabel text={text} onPress={openUpgrade} role="revenue-upgrade" />, onMouseDown: openUpgrade };
       }
       const periods = payload?.periods.length ?? 0;
       if (column.id === "trend") {
@@ -272,8 +226,9 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
           bodyAfter={preview && isDesktopWeb ? (
             <LockedOverlay
               rows={items.length - rows.length}
-              noun={noun.plural}
+              text={`Upgrade to see every ${noun.plural}`}
               onPress={openUpgrade}
+              role="revenue-upgrade"
             />
           ) : undefined}
           resetScrollKey={`${payload.symbol}:${payload.view}:${mode}`}

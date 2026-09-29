@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
-  type DataTableColumn, type StatItem } from "../../../components";
+import { ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection,
+  usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type StatItem } from "../../../components";
+import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
+import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -16,8 +19,9 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
-import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES, withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";
-import { VolatilityCurveChart, VolatilityHistoryChart, VolatilityIndexHistoryChart } from "./charts";
+import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES, volatilityCurveLookbacks, withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";
+import { VolatilityHistoryChart, VolatilityIndexHistoryChart } from "./charts";
+import { volatilityCurveRows, volatilityCurveSeries, type VolatilityCurveRow } from "./chart-model";
 import { useVolatilityEvidence } from "./evidence";
 
 /** Streamed index levels rebuild the board at most this often. */
@@ -34,9 +38,16 @@ const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "date", label: "As of", width: 12, align: "left" },
 ];
 const CURVE_COLUMNS: DataTableColumn[] = [
-  { id: "tenor", label: "Tenor", width: 12, align: "left" },
-  { id: "value", label: "IV %", width: 12, align: "right" },
+  { id: "tenor", label: "Tenor", width: 7, align: "left" },
+  { id: "value", label: "IV", width: 8, align: "right" },
+  { id: "change1w", label: "1W chg", width: 8, align: "right" },
+  { id: "change1m", label: "1M chg", width: 8, align: "right" },
 ];
+const CURVE_CAPTION = "IV % by tenor";
+const curveRowKey = (row: VolatilityCurveRow) => row.id;
+// Left and Right step along the tenors, the way the curve reads.
+const curveRowPosition = (row: VolatilityCurveRow) => new Date(row.days * 86_400_000);
+const formatIv = (value: number) => value.toFixed(2);
 const number = (value: number | null | undefined, signed = false) => value == null || !Number.isFinite(value)
   ? "--" : `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}`;
 const percentile = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(0);
@@ -44,6 +55,8 @@ const TERM_STATE_LABELS: Record<string, string> = { normal: "Contango", inverted
 
 export function VolatilityPane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
+  // By the sign the two-decimal text shows, so a move that rounds to zero stays neutral.
+  const signColor = (value: number) => priceColor(Number(value.toFixed(2)), colors);
   const [initialTab] = usePaneSettingValue("initialTab", "curve");
   const [tab, setTab] = usePluginPaneState("activeTabId", initialTab);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedIndexId", "vix");
@@ -144,36 +157,56 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     ...(data ? [{ id: "basis", parts: [{ text: observationBasis, tone: "muted" as const }] }] : []),
     ...(asOf ? [{ id: "date", parts: [{ text: observationTime && (tab === "board" || liveObservation) ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
   ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis, tab, liveObservation]);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const contentHeight = Math.max(5, height - tabRows);
   // The board needs only its rows; the selected index history takes the rest.
   const boardHeight = Math.max(5, Math.min(rows.length + 2, Math.floor(contentHeight * 0.62)));
   const curve = data?.curve;
-  // The tenor table needs only its rows; the curve chart takes the rest.
-  const curveTableHeight = Math.min(Math.max(2, (curve?.points.length ?? 0) + 1), 8, Math.max(4, Math.floor(contentHeight * 0.3)));
+  // The week- and month-back curves come from the histories the board already loaded.
+  const lookbacks = useMemo(() => data ? volatilityCurveLookbacks(data) : [], [data]);
+  const curveRows = useMemo(() => curve ? volatilityCurveRows(curve, lookbacks) : [], [curve, lookbacks]);
+  const curveSeries = useMemo(() => curve ? volatilityCurveSeries(curve, lookbacks, {
+    current: curve.termState === "inverted" ? colors.negative : colors.positive, ghosts: curveGhostColors(colors),
+  }) : [], [colors, curve, lookbacks]);
+  const curveSelectedId = curveRows.some((row) => row.id === selectedId) ? selectedId : curveRows[0]?.id ?? null;
+  useChartTableSelection({ rows: curveRows, getId: curveRowKey, getDate: curveRowPosition, selectedId: curveSelectedId,
+    onSelect: setSelectedId, focused, enabled: tab === "curve" });
+  const curveHeight = Math.max(1, height - tabRows);
+  // The strip's label shares its row with the curve's shape and the point. A
+  // curve with fewer than two closes has neither, so the tenors take the band.
+  const curveBandStrip = curveStrip(curveSeries, formatIv, { caption: "IV %", selectedPointId: curveSelectedId });
   const curveStats: StatItem[] = curve ? [
     { id: "structure", label: "Structure", value: TERM_STATE_LABELS[curve.termState] ?? curve.termState,
       tone: curve.termState === "inverted" ? "warning" : curve.termState === "normal" ? "positive" : "neutral" },
     { id: "ratio", label: "3M/30D", value: number(curve.ratio),
-      detail: curve.ratio == null ? undefined : `${percentile(curve.ratioPercentile1y)} pctl 1Y` },
+      detail: curve.ratio == null ? undefined : formatPercentileRank(curve.ratioPercentile1y, "1Y") },
     { id: "spread", label: "Spread", value: `${number(curve.slope, true)} pts` },
   ] : [];
   const ready = !!data && (data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null));
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused} />}
+    {tabStrip}
     <PaneStatusBody subject="volatility" loading={resource.loading && !ready} error={!ready ? resource.error ?? result?.errors[0] ?? null : null} empty={!resource.loading && !ready}>
-      {data && tab === "curve" && <>
-        <StatGrid items={curveStats} width={width} />
-        <VolatilityCurveChart curve={data.curve} width={width} height={Math.max(4, contentHeight - curveTableHeight - statGridRows(curveStats, width))} focused={focused} />
-        <DataTableView focused={focused} columns={CURVE_COLUMNS} items={data.curve.points} rootWidth={width} rootHeight={curveTableHeight}
-          emptyStateTitle="VIX curve unavailable." getItemKey={(row) => row.id} selection={{ kind: "id", selectedId, getId: (row) => row.id, onChange: setSelectedId }}
-          onActivate={(row) => { setSelectedId(row.id); setTab("board"); }}
-          sortColumnId={null} sortDirection="asc"
-          getExportMetadata={() => [["as of", data.curve.date], ["source", data.curve.source], ["units", "IV percent"], ["warnings", ...notices]]}
-          renderCell={(row, column) => ({ text: column.id === "value" ? number(row.value) : String(row.tenor),
-            color: row.value == null ? colors.textMuted : column.id === "value" ? colors.warning : colors.text })} />
-      </>}
+      {data && tab === "curve" && <DataTableView<VolatilityCurveRow> focused={focused} columns={CURVE_COLUMNS} items={curveRows}
+        rootWidth={width} rootHeight={curveHeight}
+        emptyStateTitle="VIX curve unavailable." getItemKey={curveRowKey}
+        selection={{ kind: "id", selectedId: curveSelectedId, getId: curveRowKey, onChange: setSelectedId }}
+        onActivate={(row) => { setSelectedId(row.id); setTab("board"); }}
+        sortColumnId={null} sortDirection="asc"
+        getExportMetadata={() => [["as of", data.curve.date], ["source", data.curve.source], ["units", "IV percent"], ["warnings", ...notices]]}
+        renderCell={(row, column) => {
+          if (column.id === "tenor") return { text: row.tenor, color: row.value == null ? colors.textMuted : colors.text };
+          if (column.id === "value") return { text: number(row.value), color: row.value == null ? colors.textMuted : colors.warning };
+          const change = column.id === "change1w" ? row.change1w : row.change1m;
+          // Up and down colors, as on every board; the board's 1Y percentile says whether vol is high.
+          return { text: number(change, true), color: change == null ? colors.textMuted : signColor(change) };
+        }}
+        rootBefore={<ChartTableHeader width={width} height={curveHeight} tableRows={curveRows.length} figures={curveStats} chart={curveBandStrip ? {
+          render: (size) => <CurveSurface series={curveSeries} width={size.width} height={size.height} display="chart"
+            caption={CURVE_CAPTION} xScale="log" formatValue={formatIv} formatAxisValue={formatPercentAxis}
+            selectedPointId={curveSelectedId} onSelectedPointChange={(id) => setSelectedId(id)} />,
+          minRows: curveSurfaceMinRows({ series: curveSeries, width, caption: CURVE_CAPTION }),
+          strip: curveBandStrip,
+        } : null} />} />}
       {data && tab === "history" && <VolatilityHistoryChart fred={data.fred} width={width} height={contentHeight} focused={focused} />}
       {data && tab === "board" && <>
         <DataTableView<VolatilityBoardRow> focused={focused} columns={BOARD_COLUMNS} items={rows} rootWidth={width} rootHeight={boardHeight}
@@ -189,7 +222,9 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
             : ["value", "change1d", "change1dPercent"].includes(column.id)
               ? number(row[column.id as "value" | "change1d" | "change1dPercent"], column.id.startsWith("change"))
               : String(row.date ?? "--"),
-            color: column.id.startsWith("change") && row.change1d != null ? row.change1d > 0 ? colors.warning : row.change1d < 0 ? colors.positive : colors.text
+            // Changes take the sign; vol high for its year is the warning a rise used to carry.
+            color: column.id.startsWith("change") && row.change1d != null ? signColor(row.change1d)
+              : column.id === "percentile1y" && row.percentile1y != null && Math.round(row.percentile1y) >= 80 ? colors.warning
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>
           <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? "--"}`}</Text></Box>

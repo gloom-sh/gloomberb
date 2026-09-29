@@ -29,25 +29,23 @@ export function renderBuildoutCell(
   rowState: { selected: boolean },
   context: BuildoutCellContext,
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
-
   if (row.kind === "list") {
     const list = row.item;
     switch (column.id) {
       case "listName":
-        return { text: list.name, color: selectedColor ?? colors.text };
+        return { text: list.name, color: colors.text };
       case "listDescription":
-        return { text: text(list.shortDescription ?? list.description), color: selectedColor ?? colors.textDim };
+        return { text: text(list.shortDescription ?? list.description), color: colors.textDim };
       case "companyCount":
-        return { text: list.companyCount == null ? "-" : String(list.companyCount), color: selectedColor ?? colors.textDim };
+        return { text: list.companyCount == null ? "-" : String(list.companyCount), color: colors.textDim };
       case "totalMarketCap":
-        return { text: text(list.totalMarketCap), color: selectedColor ?? colors.textDim };
+        return { text: text(list.totalMarketCap), color: colors.textDim };
       case "avgSectorGrowth":
-        return { text: text(list.avgSectorGrowth), color: selectedColor ?? metricColor(list.avgSectorGrowth) };
+        return { text: text(list.avgSectorGrowth), color: metricColor(list.avgSectorGrowth) };
       case "avgReturn1y":
-        return { text: text(list.avgReturn1y), color: selectedColor ?? metricColor(list.avgReturn1y) };
+        return { text: text(list.avgReturn1y), color: metricColor(list.avgReturn1y) };
       case "avgMargin":
-        return { text: text(list.avgMargin), color: selectedColor ?? metricColor(list.avgMargin) };
+        return { text: text(list.avgMargin), color: metricColor(list.avgMargin) };
     }
   }
 
@@ -81,32 +79,32 @@ export function renderBuildoutCell(
           ),
         };
       case "description":
-        return { text: text(company.description), color: selectedColor ?? colors.textDim };
+        return { text: text(company.description), color: colors.textDim };
       case "sectorTech":
-        return { text: text([company.primarySector, company.primaryTechnology].filter(Boolean).join(" / ")), color: selectedColor ?? colors.textDim };
+        return { text: text([company.primarySector, company.primaryTechnology].filter(Boolean).join(" / ")), color: colors.textDim };
       case "criticality":
-        return { text: text(company.aiCriticality), color: criticalityColor(company.aiCriticality, rowState.selected), attributes: TextAttributes.BOLD };
+        return { text: text(company.aiCriticality), color: criticalityColor(company.aiCriticality), attributes: TextAttributes.BOLD };
       case "marketCap":
-        return { text: text(company.marketCap), color: selectedColor ?? colors.textDim };
+        return { text: text(company.marketCap), color: colors.textDim };
       case "revenue":
-        return { text: text(company.revenue), color: selectedColor ?? colors.textDim };
+        return { text: text(company.revenue), color: colors.textDim };
       case "revenueGrowth":
         return {
           text: text(company.revenueGrowthYoy ?? company.lastQuarterGrowth),
-          color: selectedColor ?? metricColor(company.revenueGrowthYoy ?? company.lastQuarterGrowth),
+          color: metricColor(company.revenueGrowthYoy ?? company.lastQuarterGrowth),
         };
       case "netIncome":
-        return { text: text(company.netIncome), color: selectedColor ?? metricColor(company.netIncome) };
+        return { text: text(company.netIncome), color: metricColor(company.netIncome) };
       case "margin":
-        return { text: text(company.profitMargins), color: selectedColor ?? metricColor(company.profitMargins) };
+        return { text: text(company.profitMargins), color: metricColor(company.profitMargins) };
       case "forwardPE":
-        return { text: text(company.forwardPE), color: selectedColor ?? colors.textDim };
+        return { text: text(company.forwardPE), color: colors.textDim };
       case "dividendYield":
-        return { text: text(company.dividendYield), color: selectedColor ?? metricColor(company.dividendYield) };
+        return { text: text(company.dividendYield), color: metricColor(company.dividendYield) };
       case "return1y":
-        return { text: text(company.return1y), color: selectedColor ?? metricColor(company.return1y) };
+        return { text: text(company.return1y), color: metricColor(company.return1y) };
       case "employees":
-        return { text: text(company.employeeCount), color: selectedColor ?? colors.textDim };
+        return { text: text(company.employeeCount), color: colors.textDim };
     }
   }
 
@@ -130,9 +128,9 @@ export function renderBuildoutCell(
         };
       }
       case "site":
-        return { text: site.name, color: selectedColor ?? colors.text };
+        return { text: site.name, color: colors.text };
       case "type":
-        return { text: text(site.type), color: selectedColor ?? colors.textDim };
+        return { text: text(site.type), color: colors.textDim };
       case "owner": {
         const ownerTicker = tickerSymbol(site.ownerTicker);
         if (ownerTicker) {
@@ -141,26 +139,26 @@ export function renderBuildoutCell(
             content: tickerBadges({
               symbols: [ownerTicker],
               width: column.width,
-              fallbackColor: selectedColor ?? colors.textBright,
+              fallbackColor: rowState.selected ? colors.selectedText : colors.textBright,
             }),
           };
         }
-        return { text: text(site.ownerName), color: selectedColor ?? colors.textDim };
+        return { text: text(site.ownerName), color: colors.textDim };
       }
       case "location":
-        return { text: text(location), color: selectedColor ?? colors.textDim };
+        return { text: text(location), color: colors.textDim };
       case "park":
-        return { text: text(site.parkName), color: selectedColor ?? colors.textDim };
+        return { text: text(site.parkName), color: colors.textDim };
       case "power":
-        return { text: text(site.powerCapacity), color: selectedColor ?? colors.textDim };
+        return { text: text(site.powerCapacity), color: colors.textDim };
       case "construction":
-        return { text: activityLabel(site.constructionActivity), color: activityColor(site.constructionActivity, rowState.selected) };
+        return { text: activityLabel(site.constructionActivity), color: activityColor(site.constructionActivity) };
       case "parking":
-        return { text: activityLabel(site.parkingActivity), color: activityColor(site.parkingActivity, rowState.selected) };
+        return { text: activityLabel(site.parkingActivity), color: activityColor(site.parkingActivity) };
       case "capture":
-        return { text: formatRelativeTime(site.latestCapture), color: selectedColor ?? colors.textDim };
+        return { text: formatRelativeTime(site.latestCapture), color: colors.textDim };
       case "area":
-        return { text: text(site.areaKm2), color: selectedColor ?? colors.textDim };
+        return { text: text(site.areaKm2), color: colors.textDim };
     }
   }
 
@@ -168,7 +166,7 @@ export function renderBuildoutCell(
     const update = row.item;
     switch (column.id) {
       case "time":
-        return { text: formatRelativeTime(update.publishedAt), color: selectedColor ?? colors.textDim };
+        return { text: formatRelativeTime(update.publishedAt), color: colors.textDim };
       case "companies": {
         const symbols = (update.companies ?? [])
           .map((company) => tickerSymbol(company.ticker))
@@ -179,13 +177,13 @@ export function renderBuildoutCell(
             content: tickerBadges({
               symbols,
               width: column.width,
-              fallbackColor: selectedColor ?? colors.textBright,
+              fallbackColor: rowState.selected ? colors.selectedText : colors.textBright,
             }),
           }
-          : { text: text(update.companies?.map((company) => company.name).filter(Boolean).join(", ")), color: selectedColor ?? colors.textDim };
+          : { text: text(update.companies?.map((company) => company.name).filter(Boolean).join(", ")), color: colors.textDim };
       }
       case "headline":
-        return { text: update.headline, color: selectedColor ?? colors.text };
+        return { text: update.headline, color: colors.text };
     }
   }
 

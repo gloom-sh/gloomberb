@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState, PaneStatusBody, QueryBar, StatGrid, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, useTableLoadMore, type DataTableKeyEvent,
-  type DataTableRootKeyContext, type PaneFooterSegment, type PaneHint, type StatItem
+  EmptyState, PaneStatusBody, QueryBar, StatGrid, usePagedRows, usePaneNoticeFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableKeyEvent,
+  type DataTableRootKeyContext, type PageRequest, type PaneFooterSegment, type PaneHint, type StatItem
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -13,7 +13,6 @@ import type { PaneProps } from "../../../types/plugin";
 import {
   Box,
   useRendererHost,
-  type InputRenderable,
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
@@ -76,7 +75,6 @@ import type {
   FundTimelineRow,
   LoadStatus,
   ThirteenFDetailTab,
-  ThirteenFHoldingRecord,
 } from "./types";
 
 interface FundSeed {
@@ -89,17 +87,7 @@ const SEARCH_DEBOUNCE_MS = 250;
 const LOAD_MORE_THRESHOLD = 10;
 const THIRTEENF_TABS = [{ label: "Funds", value: "funds" }, { label: "Crowding", value: "crowding" }];
 
-function appendUniqueRows(currentRows: FundBrowserRow[], nextRows: FundBrowserRow[]): FundBrowserRow[] {
-  if (nextRows.length === 0) return currentRows;
-  const seen = new Set(currentRows.map((row) => row.id));
-  const merged = [...currentRows];
-  for (const row of nextRows) {
-    if (seen.has(row.id)) continue;
-    seen.add(row.id);
-    merged.push(row);
-  }
-  return merged;
-}
+const rowId = (row: { id: string }) => row.id;
 
 function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PaneProps & { onDetailChange: (open: boolean) => void }) {
   const [storedQuery] = usePaneSettingValue("query", "");
@@ -117,15 +105,19 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   const showTickerHoldings = browserMode === "byTicker" && tickerFallbackQuery !== query;
   // Selection is pane state, so a reload or a shared layout keeps the row.
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
-  const [rows, setRows] = useState<FundBrowserRow[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
-  const [period, setPeriod] = useState<string | undefined>();
-  const [quarter, setQuarter] = useState<string | undefined>();
-  const [hasMore, setHasMore] = useState(false);
-  const [nextOffset, setNextOffset] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const loadPage = useCallback(({ offset, signal, force }: PageRequest) => (
+    loadBrowserRows(browserMode, query, signal, offset > 0 ? { offset } : { forceRefresh: force })
+  ), [browserMode, query]);
+  // A new query starts from an empty list; a refresh keeps the rows it has.
+  const browser = usePagedRows(showTickerHoldings ? null : loadPage, { getId: rowId });
+  const { loading, loadingMore, rows } = browser;
+  const error = browser.error?.message ?? null;
+  // A refresh clears the pages' warnings until it answers.
+  const pagesSettled = !loading && !browser.error;
+  const warning = useMemo(() => {
+    const notes = [...(pagesSettled ? browser.pages.map((page) => page.warning) : []), browser.moreError?.message];
+    return [...new Set(notes.filter(Boolean))].join(" ") || null;
+  }, [browser.moreError, browser.pages, pagesSettled]);
   const [detailSeed, setDetailSeed] = useState<FundSeed | null>(() => (
     initialCik ? { cik: String(initialCik), name: normalizedQuery || String(initialCik) } : null
   ));
@@ -137,90 +129,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     onDetailChange(open);
   }, [onDetailChange]);
   const detailOpen = !!detailSeed || tickerFundOpen;
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const moreAbortRef = useRef<AbortController | null>(null);
   const didOpenInitialCikRef = useRef(false);
-
-  const load = useCallback((refresh = false) => {
-    abortRef.current?.abort();
-    moreAbortRef.current?.abort();
-    if (showTickerHoldings) {
-      abortRef.current = null;
-      setRows([]);
-      setStatus("idle");
-      return;
-    }
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStatus("loading");
-    setError(null);
-    setWarning(null);
-    setHasMore(false);
-    setNextOffset(0);
-    setLoadingMore(false);
-    // A new query starts from an empty list; a refresh keeps the rows it has.
-    if (!refresh) setRows([]);
-    void loadBrowserRows(browserMode, query, controller.signal, { forceRefresh: refresh })
-      .then((result) => {
-        if (abortRef.current !== controller) return;
-        setRows(result.rows);
-        setPeriod(result.period);
-        setQuarter(result.quarter);
-        setWarning(result.warning ?? null);
-        setHasMore(result.hasMore === true);
-        setNextOffset(result.nextOffset ?? result.rows.length);
-        setStatus("loaded");
-      })
-      .catch((loadError) => {
-        if (abortRef.current !== controller) return;
-        if (loadError instanceof Error && loadError.name === "AbortError") return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setHasMore(false);
-        setNextOffset(0);
-        setStatus("error");
-      });
-  }, [browserMode, query, showTickerHoldings]);
-
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore || status !== "loaded") return;
-    moreAbortRef.current?.abort();
-    const controller = new AbortController();
-    moreAbortRef.current = controller;
-    setLoadingMore(true);
-    void loadBrowserRows(browserMode, query, controller.signal, { offset: nextOffset })
-      .then((result) => {
-        if (moreAbortRef.current !== controller) return;
-        setRows((currentRows) => appendUniqueRows(currentRows, result.rows));
-        if (result.period) setPeriod(result.period);
-        if (result.quarter) setQuarter(result.quarter);
-        if (result.warning) setWarning(current => [...new Set([current, result.warning].filter(Boolean))].join(" "));
-        setHasMore(result.hasMore === true);
-        setNextOffset(result.nextOffset ?? nextOffset + result.rows.length);
-      })
-      .catch((loadError) => {
-        if (moreAbortRef.current !== controller) return;
-        if (loadError instanceof Error && loadError.name === "AbortError") return;
-        setWarning(loadError instanceof Error ? loadError.message : "More 13F rows failed");
-      })
-      .finally(() => {
-        if (moreAbortRef.current !== controller) return;
-        setLoadingMore(false);
-      });
-  }, [browserMode, hasMore, loadingMore, nextOffset, query, status]);
-
-  useEffect(() => {
-    load(false);
-    return () => {
-      abortRef.current?.abort();
-      abortRef.current = null;
-      moreAbortRef.current?.abort();
-      moreAbortRef.current = null;
-    };
-  }, [load]);
 
   useEffect(() => {
     if (!initialCik || didOpenInitialCikRef.current) return;
@@ -234,19 +145,13 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
       if (isPlainKey(event, "escape")) {
         event.stopPropagation?.();
         event.preventDefault?.();
-        setSearchFocused(false);
+        blurSearch();
       }
       return;
     }
     if (event.targetEditable) return;
     // The ticker holdings view refreshes itself.
-    if (!showTickerHoldings && handleRefreshKey(event, () => load(true), { stopPropagation: true })) return;
-    if (isPlainKey(event, "/")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      setSearchFocused(true);
-      setSearchFocusToken((current) => current + 1);
-    }
+    if (!showTickerHoldings) handleRefreshKey(event, browser.reload, { stopPropagation: true });
   }, { allowEditable: true });
 
   const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode), [sortPreference, browserMode]);
@@ -262,18 +167,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     setSelectedId(sortedRows[0]?.id ?? null);
   }, [selectedId, setSelectedId, sortedRows]);
 
-  const loadMoreFromScroll = useTableLoadMore(tableScrollRef, hasMore && !loadingMore && status === "loaded", loadMore, LOAD_MORE_THRESHOLD);
+  const loadMoreFromScroll = useTableLoadMore(tableScrollRef, browser.hasMore, browser.loadMore, LOAD_MORE_THRESHOLD);
 
-  const refresh = useCallback(() => load(true), [load]);
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-
-  const blurSearch = useCallback(() => {
-    setSearchFocused(false);
-  }, []);
-
+  const refresh = browser.reload;
   const updateQuery = useCallback((nextQuery: string) => {
     const trimmed = nextQuery.trim();
     setQuery(trimmed);
@@ -281,9 +177,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   }, [setQuery]);
 
   const openDetail = useCallback((row: FundBrowserRow) => {
-    setSearchFocused(false);
+    blurSearch();
     setDetailSeed({ cik: row.cik, name: row.name });
-  }, []);
+  }, [blurSearch]);
   // Every request behind a fund detail is cached per path, so warming it
   // while the cursor rests on the row makes Enter read from cache.
   const prefetchDetail = useCallback((row: FundBrowserRow) => {
@@ -298,7 +194,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   usePaneStatusFooter({
     registrationId: THIRTEENF_PANE_ID,
     enabled: !detailSeed && !showTickerHoldings,
-    loading: status === "loading",
+    loading,
     error,
     info: browserStatusInfo,
     hints: searchHints,
@@ -313,19 +209,15 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         onChange: updateQuery,
         placeholder: "fund, ticker, CIK, or latest",
         focused: focused && !detailOpen,
-        active: searchFocused,
-        onActiveChange: (active) => active ? focusSearch() : blurSearch(),
-        focusToken: searchFocusToken,
-        inputRef: searchInputRef,
+        ...searchProps,
         debounceMs: SEARCH_DEBOUNCE_MS,
-        onNavigateDown: blurSearch,
         normalizeValue: trimSearchValue,
       }}
     />
   );
   const rootBefore = renderQueryBar();
 
-  const emptyTitle = status === "loading" || status === "idle"
+  const emptyTitle = loading
     ? "Loading 13F funds..."
     : error ?? warning ?? "No 13F funds found.";
 
@@ -344,12 +236,6 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
       refresh();
       return true;
     }
-    if (event.name === "/") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      focusSearch();
-      return true;
-    }
     return false;
   }, [focusSearch, refresh]);
 
@@ -357,7 +243,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if ((context.selectedIndex <= 0 && isPlainArrowUp(event)) || event.name === "/") {
+    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
@@ -424,6 +310,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         }}
         getItemKey={(row) => row.id}
         renderCell={renderBrowserCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={emptyTitle}
       />
     </Box>
@@ -696,6 +583,7 @@ export function FundDetailView({
           }))}
           getItemKey={(row) => row.id}
           renderCell={renderTimelineCell}
+          selectedTextOverridesCellColor
           emptyStateTitle="No 13F filings."
         />
       ) : (
@@ -722,7 +610,8 @@ export function FundDetailView({
           onActivate={(row) => {
             if (row.ticker) pinTicker(row.ticker, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
           }}
-          renderCell={(row, column, index, state) => column.id === "mine" ? { text: mine.has(row.ticker) ? "yes" : "", color: state.selected ? colors.selectedText : colors.positive } : renderHoldingCell(row, column, index, state)}
+          renderCell={(row, column, index, state) => column.id === "mine" ? { text: mine.has(row.ticker) ? "yes" : "", color: colors.positive } : renderHoldingCell(row, column, index, state)}
+          selectedTextOverridesCellColor
           emptyStateTitle="No 13F holdings."
         />
       )}
@@ -747,82 +636,20 @@ function FilingDetailView({
     DEFAULT_FILING_POSITION_SORT,
   );
   const [selectedPositionId, setSelectedPositionId] = usePluginPaneState<string | null>("selectedPositionId", null);
-  const [holdings, setHoldings] = useState<ThirteenFHoldingRecord[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [nextOffset, setNextOffset] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const moreAbortRef = useRef<AbortController | null>(null);
   const positionScrollRef = useRef<ScrollBoxRenderable | null>(null);
-
-  const load = useCallback((refresh = false) => {
-    abortRef.current?.abort();
-    moreAbortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStatus("loading");
-    setError(null);
-    setWarnings([]);
-    // Another filing starts empty; a refresh keeps its positions on screen.
-    if (!refresh) setHoldings([]);
-    setHasMore(false);
-    setNextOffset(0);
-    void loadFilingPositions(filing.cik, filing.accessionNumber, controller.signal, { forceRefresh: refresh, offset: 0 })
-      .then((result) => {
-        if (abortRef.current !== controller) return;
-        setHoldings(result.rows);
-        setWarnings(result.warnings);
-        setHasMore(result.hasMore);
-        setNextOffset(result.rows.length);
-        setStatus("loaded");
-      })
-      .catch((loadError) => {
-        if (abortRef.current !== controller) return;
-        if (loadError instanceof Error && loadError.name === "AbortError") return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setStatus("error");
-      });
-  }, [filing.accessionNumber, filing.cik]);
-
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore || status !== "loaded") return;
-    moreAbortRef.current?.abort();
-    const controller = new AbortController();
-    moreAbortRef.current = controller;
-    setLoadingMore(true);
-    void loadFilingPositions(filing.cik, filing.accessionNumber, controller.signal, { offset: nextOffset })
-      .then((result) => {
-        if (moreAbortRef.current !== controller) return;
-        setHoldings((current) => [...current, ...result.rows]);
-        setWarnings((current) => [...new Set([...current, ...result.warnings])]);
-        setHasMore(result.hasMore);
-        setNextOffset(nextOffset + result.rows.length);
-      })
-      .catch((loadError) => {
-        if (moreAbortRef.current !== controller) return;
-        if (loadError instanceof Error && loadError.name === "AbortError") return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-      })
-      .finally(() => {
-        if (moreAbortRef.current !== controller) return;
-        setLoadingMore(false);
-      });
-  }, [filing.accessionNumber, filing.cik, hasMore, loadingMore, nextOffset, status]);
-
-  const onBodyScrollActivity = useTableLoadMore(positionScrollRef, hasMore && !loadingMore && status === "loaded", loadMore);
-
-  useEffect(() => {
-    load(false);
-    return () => {
-      abortRef.current?.abort();
-      abortRef.current = null;
-      moreAbortRef.current?.abort();
-      moreAbortRef.current = null;
-    };
-  }, [load]);
+  const loadPage = useCallback(({ offset, signal, force }: PageRequest) => (
+    loadFilingPositions(filing.cik, filing.accessionNumber, signal, offset > 0 ? { offset } : { forceRefresh: force, offset })
+  ), [filing.accessionNumber, filing.cik]);
+  // Another filing starts empty; a refresh keeps its positions on screen.
+  const positions = usePagedRows(loadPage);
+  const holdings = positions.rows;
+  const error = (positions.error ?? positions.moreError)?.message ?? null;
+  // A refresh clears the pages' warnings until it answers.
+  const pagesSettled = !positions.loading && !positions.error;
+  const warnings = useMemo(() => (
+    pagesSettled ? [...new Set(positions.pages.flatMap((page) => page.warnings))] : []
+  ), [pagesSettled, positions.pages]);
+  const onBodyScrollActivity = useTableLoadMore(positionScrollRef, positions.hasMore, positions.loadMore);
 
   const positionRows = useMemo(() => (
     sortFilingPositionRows(
@@ -837,7 +664,7 @@ function FilingDetailView({
     setSelectedPositionId(positionRows[0]?.id ?? null);
   }, [positionRows, selectedPositionId]);
 
-  const refresh = useCallback(() => load(true), [load]);
+  const refresh = positions.reload;
   const openPositionTicker = useCallback((row: FilingPositionRow | null | undefined) => {
     if (!row?.ticker) return;
     pinTicker(row.ticker, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
@@ -870,7 +697,7 @@ function FilingDetailView({
     { id: "accession", label: "Accession", value: filing.accessionNumber },
   ];
   const summary = <StatGrid items={summaryItems} width={width} />;
-  const emptyTitle = status === "loading" || status === "idle"
+  const emptyTitle = positions.loading
     ? "Loading filing positions..."
     : error ?? "No positions in filing.";
 
@@ -902,6 +729,7 @@ function FilingDetailView({
         }}
         getItemKey={(row) => row.id}
         renderCell={renderFilingPositionCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={emptyTitle}
       />
     </Box>
@@ -911,10 +739,9 @@ function FilingDetailView({
 export function ThirteenFPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("browserTab", "funds");
   const [detailOpen, setDetailOpen] = useState(false);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: THIRTEENF_TABS, activeValue: tab, onSelect: setTab, focused: props.focused && !detailOpen });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: THIRTEENF_TABS, activeValue: tab, onSelect: setTab, focused: props.focused && !detailOpen, compact: true });
   return <Box flexDirection="column" width={props.width} height={props.height}>
-    {!tabsInHeader && <Tabs tabs={THIRTEENF_TABS} activeValue={tab} onSelect={setTab} focused={props.focused && !detailOpen} compact />}
+    {tabStrip}
     <PaneFooterScope active>
       {tab === "crowding" ? <ThirteenFCrowdingPane {...props} height={Math.max(1, props.height - tabRows)} /> : <ThirteenFBrowserPane {...props} onDetailChange={setDetailOpen} height={Math.max(1, props.height - tabRows)} />}
     </PaneFooterScope>

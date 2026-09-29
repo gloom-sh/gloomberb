@@ -6,7 +6,6 @@ import {
   type RefObject,
 } from "react";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../ui";
-import { isPlainKeyboardEvent } from "../utils/keyboard";
 import type { DataTableProps } from "./ui/data-table/types";
 
 function listenToScrollBarChange(
@@ -23,20 +22,6 @@ function listenToScrollBarChange(
 
   scrollBar.on("change", handler);
   return () => scrollBar.off?.("change", handler);
-}
-
-export interface TableViewKeyEvent {
-  name?: string;
-  ctrl?: boolean;
-  meta?: boolean;
-  super?: boolean;
-  alt?: boolean;
-  option?: boolean;
-  shift?: boolean;
-  readonly defaultPrevented?: boolean;
-  readonly propagationStopped?: boolean;
-  preventDefault?: () => void;
-  stopPropagation?: () => void;
 }
 
 export interface TableViewFrameProps {
@@ -79,35 +64,6 @@ export function TableViewFrame({
       {after}
     </Box>
   );
-}
-
-export function isTableActivationKey(name: string | undefined): boolean {
-  return name === "enter" || name === "return";
-}
-
-function getTableKeyName(event: TableViewKeyEvent | string | undefined): string | undefined {
-  return typeof event === "string" ? event : event?.name;
-}
-
-function isPlainTableKey(event: TableViewKeyEvent | string | undefined): boolean {
-  return typeof event !== "object" || isPlainKeyboardEvent(event);
-}
-
-export function isNextTableRowKey(event: TableViewKeyEvent | string | undefined): boolean {
-  const name = getTableKeyName(event);
-  if (!isPlainTableKey(event)) return false;
-  return name === "j" || name === "down";
-}
-
-export function isPreviousTableRowKey(event: TableViewKeyEvent | string | undefined): boolean {
-  const name = getTableKeyName(event);
-  if (!isPlainTableKey(event)) return false;
-  return name === "k" || name === "up";
-}
-
-export function stopTableKey(event: TableViewKeyEvent) {
-  event.stopPropagation?.();
-  event.preventDefault?.();
 }
 
 export function useTableViewState({

@@ -2,6 +2,8 @@ import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "./contracts";
+import type { FuturesReturnHorizon } from "./returns";
+import type { FrontReturnsMap } from "./use-front-returns";
 
 export type FuturesTableRow =
   | { type: "header"; sector: FuturesSector }
@@ -14,6 +16,9 @@ export type FuturesColumnId =
   | "price"
   | "change"
   | "changePercent"
+  | "return1w"
+  | "return1m"
+  | "returnYtd"
   | "volume"
   | "prevClose"
   | "time";
@@ -42,11 +47,24 @@ const CONTRACT_MONTH = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[ -](
  * rather than guessed.
  */
 export function futuresContractName(contract: FuturesContract, quote?: Quote | null): string {
-  if (quote?.symbol?.trim().toUpperCase() !== contract.symbol.toUpperCase()) return contract.name;
+  const month = quotedContractMonth(contract, quote);
+  if (!month) return contract.name;
+  return `${contract.name} ${MONTH_NAMES[month.month]} ${String(month.year).slice(-2)}`;
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The delivery month the alias's quote names, month 0-11, or null when its name carries none. */
+export function quotedContractMonth(
+  contract: FuturesContract,
+  quote?: Quote | null,
+): { year: number; month: number } | null {
+  if (quote?.symbol?.trim().toUpperCase() !== contract.symbol.toUpperCase()) return null;
   const match = CONTRACT_MONTH.exec(quote.name?.trim() ?? "");
-  if (!match) return contract.name;
-  const month = match[1]!;
-  return `${contract.name} ${month[0]!.toUpperCase()}${month.slice(1).toLowerCase()} ${match[2]!.slice(-2)}`;
+  if (!match) return null;
+  const month = MONTH_NAMES.findIndex((name) => name.toLowerCase() === match[1]!.toLowerCase());
+  const year = match[2]!.length === 2 ? 2000 + Number(match[2]) : Number(match[2]);
+  return { year, month };
 }
 
 function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: Quote | null): boolean {
@@ -60,10 +78,17 @@ function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: 
   );
 }
 
+export const FUTURES_RETURN_COLUMNS: Readonly<Partial<Record<FuturesColumnId, FuturesReturnHorizon>>> = {
+  return1w: "1W",
+  return1m: "1M",
+  returnYtd: "YTD",
+};
+
 function getSortValue(
   columnId: FuturesColumnId,
   contract: FuturesContract,
   quotes: BoardQuoteMap,
+  returns?: FrontReturnsMap,
 ): string | number | null {
   const quote = quotes.get(contract.symbol)?.quote;
   switch (columnId) {
@@ -79,6 +104,10 @@ function getSortValue(
       return quote?.change ?? null;
     case "changePercent":
       return quote?.changePercent ?? null;
+    case "return1w":
+    case "return1m":
+    case "returnYtd":
+      return returns?.get(contract.symbol)?.values[FUTURES_RETURN_COLUMNS[columnId]!] ?? null;
     case "volume":
       return quote?.volume ?? null;
     case "prevClose":
@@ -92,12 +121,13 @@ function sortContracts(
   contracts: FuturesContract[],
   sortPreference: FuturesSortPreference,
   quotes: BoardQuoteMap,
+  returns?: FrontReturnsMap,
 ): FuturesContract[] {
   const columnId = sortPreference.columnId;
   if (!columnId) return contracts;
   return [...contracts].sort((left, right) => compareSortValues(
-    getSortValue(columnId, left, quotes),
-    getSortValue(columnId, right, quotes),
+    getSortValue(columnId, left, quotes, returns),
+    getSortValue(columnId, right, quotes, returns),
     sortPreference.direction,
   ));
 }
@@ -107,6 +137,8 @@ export interface BuildFuturesRowsOptions {
   query?: string;
   /** Sectors whose contracts are hidden under their header. */
   collapsed?: ReadonlySet<FuturesSector>;
+  /** Front-contract returns, for sorting on a returns column. */
+  returns?: FrontReturnsMap;
 }
 
 const NO_COLLAPSED_SECTORS: ReadonlySet<FuturesSector> = new Set();
@@ -134,7 +166,7 @@ export function buildFuturesRows(
   const query = options?.query ?? "";
   const collapsed = effectiveCollapsedSectors(options?.collapsed, query);
   for (const sector of FUTURES_SECTOR_ORDER) {
-    const contracts = sortContracts(contractsBySector.get(sector) ?? [], sortPreference, quotes)
+    const contracts = sortContracts(contractsBySector.get(sector) ?? [], sortPreference, quotes, options?.returns)
       .filter((contract) => matchesFuturesSearch(contract, query, quotes.get(contract.symbol)?.quote));
     if (contracts.length === 0) continue;
     rows.push({ type: "header", sector });

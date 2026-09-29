@@ -7,7 +7,7 @@ import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { t } from "../../../i18n";
-import { useFieldLabel } from "./form-components";
+import { MIN_ACCOUNT_PASSWORD_LENGTH } from "../cloud/auth-model";
 
 type PasswordDialogField = "current" | "new" | "confirm";
 
@@ -31,7 +31,7 @@ export function PasswordChangeDialog({
       setError(t("Current and new password are required."));
       return;
     }
-    if (newPassword.length < 8) {
+    if (newPassword.length < MIN_ACCOUNT_PASSWORD_LENGTH) {
       setError(t("New password must be at least 8 characters."));
       return;
     }
@@ -75,12 +75,12 @@ export function PasswordChangeDialog({
   }, { allowEditable: true });
 
   const fieldWidth = 42;
-  const fieldLabel = useFieldLabel();
   return (
     <DialogFrame title={t("Change Password")}>
       <Box flexDirection="column" gap={1}>
         <TextField
-          label={fieldLabel(t("Current Password"), activeField === "current")}
+          label={t("Current Password")}
+          active={activeField === "current"}
           value={currentPassword}
           focused={activeField === "current"}
           width={fieldWidth}
@@ -90,7 +90,8 @@ export function PasswordChangeDialog({
           onSubmit={() => setActiveField("new")}
         />
         <TextField
-          label={fieldLabel(t("New Password"), activeField === "new")}
+          label={t("New Password")}
+          active={activeField === "new"}
           value={newPassword}
           focused={activeField === "new"}
           width={fieldWidth}
@@ -100,7 +101,8 @@ export function PasswordChangeDialog({
           onSubmit={() => setActiveField("confirm")}
         />
         <TextField
-          label={fieldLabel(t("Confirm Password"), activeField === "confirm")}
+          label={t("Confirm Password")}
+          active={activeField === "confirm"}
           value={confirmPassword}
           focused={activeField === "confirm"}
           width={fieldWidth}

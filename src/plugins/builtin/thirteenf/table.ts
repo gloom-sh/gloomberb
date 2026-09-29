@@ -17,10 +17,12 @@ import {
 import { amendmentKind, positionType } from "./model";
 import type {
   FilingPositionColumn,
+  FilingPositionColumnId,
   FilingPositionRow,
   FundBrowserColumn,
   FundBrowserRow,
   FundHoldingColumn,
+  FundHoldingColumnId,
   FundHoldingRow,
   FundTimelineColumn,
   FundTimelineRow,
@@ -29,36 +31,73 @@ import type {
 export function renderBrowserCell(
   row: FundBrowserRow,
   column: FundBrowserColumn,
-  _index: number,
-  rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "return1": case "return2": case "return3": {
       const value = row.priorReturns?.[Number(column.id.at(-1)) - 1]?.value;
-      return { text: formatRawPercentMaybe(value), color: selectedColor ?? (value == null ? colors.textDim : priceColor(value)) };
+      return { text: formatRawPercentMaybe(value), color: value == null ? colors.textDim : priceColor(value) };
     }
     case "fund":
       return {
         text: row.name,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "cik":
-      return { text: row.cik, color: selectedColor ?? colors.textDim };
+      return { text: row.cik, color: colors.textDim };
     case "period":
-      return { text: row.periodOfReport ?? "--", color: selectedColor ?? colors.textDim };
+      return { text: row.periodOfReport ?? "--", color: colors.textDim };
     case "filed":
-      return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
+      return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "value":
-      return { text: formatMoneyCompact(row.tableValueTotal), color: selectedColor ?? colors.text };
+      return { text: formatMoneyCompact(row.tableValueTotal), color: colors.text };
     case "rows":
-      return { text: row.tableEntryTotal == null ? "--" : String(row.tableEntryTotal), color: selectedColor ?? colors.textDim };
+      return { text: row.tableEntryTotal == null ? "--" : String(row.tableEntryTotal), color: colors.textDim };
     case "estQuarterReturn":
       return {
         text: formatRawPercentMaybe(row.estQuarterReturn),
-        color: selectedColor ?? (row.estQuarterReturn == null ? colors.textDim : priceColor(row.estQuarterReturn)),
+        color: row.estQuarterReturn == null ? colors.textDim : priceColor(row.estQuarterReturn),
       };
+  }
+}
+
+type PositionColumnId = FundHoldingColumnId & FilingPositionColumnId;
+
+/** The columns fund holdings and a filing's positions share; an unmapped holding shows its CUSIP. */
+function renderPositionCell(
+  row: FundHoldingRow | FilingPositionRow,
+  columnId: PositionColumnId,
+  width: number,
+  selected: boolean,
+): DataTableCell {
+  switch (columnId) {
+    case "ticker":
+      if (row.ticker) {
+        return {
+          text: row.ticker,
+          content: createElement(TickerBadgeList, {
+            symbols: [row.ticker],
+            width,
+            fallbackColor: selected ? colors.selectedText : colors.textBright,
+          }),
+          color: colors.textBright,
+        };
+      }
+      return {
+        text: row.cusip,
+        color: colors.textBright,
+        attributes: TextAttributes.BOLD,
+      };
+    case "type":
+      return { text: positionType(row), color: colors.textDim };
+    case "issuer":
+      return { text: row.issuer, color: colors.text };
+    case "value":
+      return { text: formatMoneyCompact(row.value), color: colors.text };
+    case "weight":
+      return { text: formatWeightMaybe(row.weight), color: colors.textDim };
+    case "shares":
+      return { text: formatShares(row.shares), color: colors.text };
   }
 }
 
@@ -68,51 +107,25 @@ export function renderHoldingCell(
   _index: number,
   rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "mine": return { text: "" };
-    case "ticker":
-      if (row.ticker) {
-        return {
-          text: row.ticker,
-          content: createElement(TickerBadgeList, {
-            symbols: [row.ticker],
-            width: column.width,
-            fallbackColor: selectedColor ?? colors.textBright,
-          }),
-          color: selectedColor ?? colors.textBright,
-        };
-      }
-      return {
-        text: row.cusip,
-        color: selectedColor ?? colors.textBright,
-        attributes: TextAttributes.BOLD,
-      };
-    case "type":
-      return { text: positionType(row), color: selectedColor ?? colors.textDim };
-    case "issuer":
-      return { text: row.issuer, color: selectedColor ?? colors.text };
-    case "value":
-      return { text: formatMoneyCompact(row.value), color: selectedColor ?? colors.text };
     case "estimatedPnl":
       return {
         text: formatMoneyCompact(row.estimatedPnl),
-        color: selectedColor ?? (row.estimatedPnl == null ? colors.textDim : priceColor(row.estimatedPnl)),
+        color: row.estimatedPnl == null ? colors.textDim : priceColor(row.estimatedPnl),
       };
-    case "weight":
-      return { text: formatWeightMaybe(row.weight), color: selectedColor ?? colors.textDim };
-    case "shares":
-      return { text: formatShares(row.shares), color: selectedColor ?? colors.text };
     case "sharesChange":
       return {
         text: formatChangeShares(row.sharesChange),
-        color: selectedColor ?? (row.sharesChange == null ? colors.textDim : priceColor(row.sharesChange)),
+        color: row.sharesChange == null ? colors.textDim : priceColor(row.sharesChange),
       };
     case "action":
       return {
         text: actionLabel(row.action),
-        color: selectedColor ?? actionColor(row.action),
+        color: actionColor(row.action),
       };
+    default:
+      return renderPositionCell(row, column.id, column.width, rowState.selected);
   }
 }
 
@@ -122,39 +135,13 @@ export function renderFilingPositionCell(
   _index: number,
   rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
-    case "ticker":
-      if (row.ticker) {
-        return {
-          text: row.ticker,
-          content: createElement(TickerBadgeList, {
-            symbols: [row.ticker],
-            width: column.width,
-            fallbackColor: selectedColor ?? colors.textBright,
-          }),
-          color: selectedColor ?? colors.textBright,
-        };
-      }
-      return {
-        text: row.cusip,
-        color: selectedColor ?? colors.textBright,
-        attributes: TextAttributes.BOLD,
-      };
-    case "type":
-      return { text: positionType(row), color: selectedColor ?? colors.textDim };
-    case "issuer":
-      return { text: row.issuer, color: selectedColor ?? colors.text };
-    case "value":
-      return { text: formatMoneyCompact(row.value), color: selectedColor ?? colors.text };
-    case "weight":
-      return { text: formatWeightMaybe(row.weight), color: selectedColor ?? colors.textDim };
-    case "shares":
-      return { text: formatShares(row.shares), color: selectedColor ?? colors.text };
     case "cusip":
-      return { text: row.cusip, color: selectedColor ?? colors.textDim };
+      return { text: row.cusip, color: colors.textDim };
     case "discretion":
-      return { text: row.investmentDiscretion || "--", color: selectedColor ?? colors.textDim };
+      return { text: row.investmentDiscretion || "--", color: colors.textDim };
+    default:
+      return renderPositionCell(row, column.id, column.width, rowState.selected);
   }
 }
 
@@ -167,32 +154,29 @@ function amendmentLabel(row: FundTimelineRow): string | null {
 export function renderTimelineCell(
   row: FundTimelineRow,
   column: FundTimelineColumn,
-  _index: number,
-  rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "period":
       return {
         text: row.periodOfReport,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "filed":
-      return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
+      return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "value":
-      return { text: formatMoneyCompact(row.tableValueTotal), color: selectedColor ?? colors.text };
+      return { text: formatMoneyCompact(row.tableValueTotal), color: colors.text };
     case "rows":
-      return { text: row.tableEntryTotal == null ? "--" : String(row.tableEntryTotal), color: selectedColor ?? colors.textDim };
+      return { text: row.tableEntryTotal == null ? "--" : String(row.tableEntryTotal), color: colors.textDim };
     case "valueChange":
       return {
         text: formatPercentMaybe(row.valueChangePercent),
-        color: selectedColor ?? (row.valueChangePercent == null ? colors.textDim : priceColor(row.valueChangePercent)),
+        color: row.valueChangePercent == null ? colors.textDim : priceColor(row.valueChangePercent),
       };
     case "form":
       return {
         text: amendmentLabel(row) ?? row.submissionType,
-        color: selectedColor ?? (amendmentKind(row) === "unknown" ? colors.warning : colors.textDim),
+        color: amendmentKind(row) === "unknown" ? colors.warning : colors.textDim,
       };
   }
 }

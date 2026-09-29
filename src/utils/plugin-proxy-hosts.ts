@@ -18,6 +18,9 @@ import allowed from "./plugin-proxy-hosts.json";
  */
 export const PROXY_ALLOWED_HOSTS: readonly string[] = allowed.hosts;
 
+/** The worker route the browser posts proxied requests to. */
+export const HTTP_PROXY_PATH = "/http-proxy";
+
 /** Matches a host exactly, or as a subdomain of an allowed parent. */
 export function isProxiedHost(hostname: string, hosts: readonly string[] = PROXY_ALLOWED_HOSTS): boolean {
   const host = hostname.toLowerCase();

@@ -19,13 +19,17 @@ import type { Portfolio, Watchlist } from "../../../types/ticker";
 import { isLanguagePreference } from "../../../i18n/languages";
 import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
-import { migrateSavedConfig } from "./migrations";
+import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
 
-export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: string): { config: AppConfig; needsSave: boolean } {
+export function normalizeLoadedConfig(
+  saved: Record<string, unknown>,
+  dataDir: string,
+  host?: ConfigMigrationHost,
+): { config: AppConfig; needsSave: boolean } {
   const defaults = createDefaultConfig(dataDir);
-  const migration = migrateSavedConfig(saved, dataDir);
+  const migration = migrateSavedConfig(saved, dataDir, host);
   const candidate = migration.config;
   const directLayout = sanitizeLayout(candidate.layout, defaults.layout);
   const layouts = sanitizeSavedLayouts(candidate.layouts, directLayout);
@@ -145,8 +149,11 @@ function withTelemetry(telemetry: TelemetryConfig | undefined): Pick<AppConfig, 
 /** Only the switches that are set survive; an empty object is the same as none. */
 function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
   if (!isRecord(value)) return undefined;
-  if (typeof value.crashReports !== "boolean") return undefined;
-  return { crashReports: value.crashReports };
+  const telemetry: TelemetryConfig = {
+    ...(typeof value.crashReports === "boolean" ? { crashReports: value.crashReports } : {}),
+    ...(typeof value.usage === "boolean" ? { usage: value.usage } : {}),
+  };
+  return Object.keys(telemetry).length > 0 ? telemetry : undefined;
 }
 
 /**

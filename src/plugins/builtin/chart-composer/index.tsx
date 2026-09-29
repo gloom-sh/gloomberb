@@ -191,6 +191,7 @@ function selectedInstanceFor(spec: ChartSpec, prefix: string, context: PaneTempl
 function securityTemplate({
   id,
   prefix,
+  aliases,
   label,
   description,
   argKind,
@@ -199,6 +200,7 @@ function securityTemplate({
 }: {
   id: Parameters<typeof chartHeadless>[0];
   prefix: "GP" | "GIP" | "CMP" | "GF" | "GE";
+  aliases?: readonly string[];
   label: string;
   description: string;
   argKind: "ticker" | "ticker-list";
@@ -214,6 +216,7 @@ function securityTemplate({
     keywords: ["chart", "graph", prefix.toLowerCase(), ...label.toLowerCase().split(" ")],
     shortcut: {
       prefix,
+      ...(aliases ? { aliases } : {}),
       argPlaceholder: argKind === "ticker" ? "ticker" : "tickers",
       argKind,
     },
@@ -365,6 +368,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
   securityTemplate({
     id: "comparison-chart-pane",
     prefix: "CMP",
+    aliases: ["COMP", "TRA"],
     label: "Comparison Chart",
     description: "Compare price returns over shared observation dates for two or more tickers.",
     argKind: "ticker-list",

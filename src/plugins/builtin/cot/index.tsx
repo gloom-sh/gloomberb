@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { cotBoardCache } from "./client";
 import { cotHeadless } from "./headless";
-import { cotContractCode, cotRoot } from "./model";
+import { COT_ROOT_OPTIONS, cotContractCode, cotRoot } from "./model";
 import { CotPane } from "./pane";
 
 export const cotModule: PluginModule = {
@@ -11,7 +11,8 @@ export const cotModule: PluginModule = {
   paneTemplates: [{ id: "cot-cot", paneId: "cot", label: "CFTC Positioning",
     description: "Weekly futures positioning, changes, historical percentiles and cross-market extremes.",
     keywords: ["cot", "cftc", "positioning", "commitments", "managed money", "net spec"],
-    shortcut: { prefix: "COT", aliases: ["CFTC"], argKind: "text" as const, argPlaceholder: "code or root", argOptional: true }, headless: cotHeadless,
+    shortcut: { prefix: "COT", aliases: ["CFTC"], argKind: "text" as const, argPlaceholder: "code or root", argOptional: true,
+      argOptions: () => COT_ROOT_OPTIONS }, headless: cotHeadless,
     createInstance: (context, options) => {
       const input = options?.arg?.trim();
       const code = cotContractCode(input || context.activeTicker);

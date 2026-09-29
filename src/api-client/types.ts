@@ -176,6 +176,15 @@ export interface CloudPricingTier {
   amount: number;
 }
 
+/** `/account/cloud`, reduced to the plan fields the apps read. */
+export interface CloudAccountPlan {
+  effectivePlan?: "free" | "pro";
+  /** Whether a checkout started now comes with the free trial attached. */
+  trialAvailable?: boolean;
+  /** The last charge failed; checkout opens the unpaid invoice instead. */
+  paymentFailed?: boolean;
+}
+
 /** Public `/pricing` payload; no session required. */
 export interface CloudPricing {
   currency: "usd";
@@ -192,6 +201,10 @@ export interface AssistCommandDescriptor {
   arg?: {
     placeholder?: string;
     kind: "text" | "ticker" | "ticker-list";
+    /** The command also runs with no argument at all. */
+    optional?: boolean;
+    /** Named values the argument accepts; a command may take others too (COT takes any CFTC code). */
+    options?: { value: string; label: string }[];
   };
 }
 
@@ -206,6 +219,11 @@ export interface AssistCommandCandidate {
 
 export interface AssistCommandResponse {
   candidates: AssistCommandCandidate[];
+  /**
+   * The server's record of this ask, for the command-search report to point
+   * at. Only present when the ask was sent with `log: true`.
+   */
+  searchId?: string;
 }
 
 export type AccountProfileUpdate = Partial<{
@@ -402,6 +420,28 @@ export interface CloudCdsResponse {
   source: string;
   asOf: string | null;
   trades: CloudCdsTradePayload[];
+}
+
+/** One New York trade date of an issuer's on-the-run 5Y spread. */
+export interface CloudCdsHistoryPointPayload {
+  date: string;
+  /** Median of the day's prints in basis points. */
+  spreadBp: number;
+  prints: number;
+  /** Prints that reported the spread; the rest were converted from their upfront. */
+  reported: number;
+  /** The contract on the run that day, e.g. "2031-12-20". */
+  maturity: string;
+}
+
+export interface CloudCdsHistoryResponse {
+  source: string;
+  /** The matched reference entity, or null when nothing on the tape matched. */
+  issuer: string | null;
+  tenor: string;
+  currency: string | null;
+  asOf: string | null;
+  points: CloudCdsHistoryPointPayload[];
 }
 
 export interface CloudShortInterestPointPayload {

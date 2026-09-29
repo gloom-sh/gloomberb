@@ -5,11 +5,22 @@ import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
-import { EmptyState, SectionHeading, Tabs, usePaneHeaderTabs, usePaneNoticeFooter } from "../../../components";
+import {
+  chartTableChromeRows,
+  ChartTableHeader,
+  EmptyState,
+  formatPercentAxis,
+  PaneStatusBody,
+  scalarPoint,
+  staticSeries,
+  usePaneNoticeFooter,
+  usePaneTabs,
+  type ChartTableChart,
+} from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
-import { convertCurrency } from "../../../utils/format";
+import { convertCurrency, formatCompactAmount } from "../../../utils/format";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import {
   getFocusedCollectionId,
@@ -27,6 +38,7 @@ import { accountDailyReturns, buildAccountRiskRows } from "./account-returns";
 import {
   buildPerformanceChartPoints,
   performanceHistoryNote,
+  resolvePerformanceMetric,
   useBrokerPortfolioPerformance,
 } from "./broker-performance";
 import {
@@ -41,8 +53,8 @@ import {
   buildPortfolioChartTargets,
   buildPortfolioReturnSeries,
   buildPortfolioBetaResult,
+  formatHistoryValueAxis,
   PORTFOLIO_BENCHMARK,
-  formatHistoryAxisValue,
   resolvePerformancePalette,
 } from "./pane-model";
 import {
@@ -56,12 +68,13 @@ import {
 } from "./sector-model";
 import { describePortfolioTab, resolvePortfolioId, resolveTemplatePortfolioId } from "./portfolio-selection";
 import {
-  AnalyticsMetricsPanel,
-  PortfolioHistorySection,
+  analyticsFigures,
+  riskFigureNotices,
   SectorAllocationTable,
 } from "./view";
 
 const ANALYTICS_STATS_SAMPLE_MS = 5_000;
+const unavailableHistory = "Account history unavailable.";
 
 function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const focusedCollectionId = useAppSelector((state) => getFocusedCollectionId(state));
@@ -103,13 +116,14 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     setCurrentPortfolioId(portfolioId);
     setSelectedSectorId(null);
   }, [setCurrentPortfolioId]);
-  const tabsInHeader = usePaneHeaderTabs(portfolioTabs.length > 0 ? {
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(portfolioTabs.length > 0 ? {
     tabs: portfolioTabs,
     activeValue: activePortfolioId,
     onSelect: handlePortfolioSelect,
     focused,
+    compact: true,
   } : null);
-  const tabRows = tabsInHeader ? 0 : 1;
+  const bodyHeight = Math.max(3, height - tabRows);
 
   const portfolioTickers = useMemo(() => {
     if (!activePortfolioId) return [];
@@ -291,31 +305,54 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     }),
     [accountReturns, beta, betaResult, hasPositions, returnSeriesResult, spyReturnSeries, sharpe],
   );
-  const metricsHeight = summaryRows.length === 0 && riskRows.length === 0
-    ? 0 : summaryRows.length + (riskRows.length > 0 ? riskRows.length + 5 : 3);
+  const figures = useMemo(() => analyticsFigures(summaryRows, riskRows, width), [riskRows, summaryRows, width]);
   const historyNote = performanceHistoryNote(brokerPerformance.performance);
+  const performance = brokerPerformance.performance;
+  const historyValues = performanceChartPoints.filter((point) => Number.isFinite(point.close)).length;
+  // Nothing else to show: the history's own state replaces the body instead of a footer warning.
+  const historyOnly = !hasPositions && figures.length === 0 && historyValues < 2;
   usePaneNoticeFooter({
     registrationId: "analytics:data-notices",
-    notices: [...allocationNotices.map((notice) => notice.text), ...(historyNote ? [historyNote] : [])],
+    notices: [
+      ...allocationNotices.map((notice) => notice.text),
+      ...(historyNote ? [historyNote] : []),
+      ...riskFigureNotices(riskRows),
+      ...(!historyOnly && brokerPerformance.error && !performance
+        ? [`${unavailableHistory} ${brokerPerformance.error}`] : []),
+      ...(performance && historyValues < 2 && !historyNote ? ["Account history needs at least two observations for a chart."] : []),
+    ],
     focused,
     enabled: hasPositions || hasAccountContent,
     title: "Portfolio data",
   });
-  const availableHistoryChartHeight = height - metricsHeight - 6 - tabRows;
-  const historyChartHeight = performanceChartPoints.filter((point) => Number.isFinite(point.close)).length >= 2 && availableHistoryChartHeight >= 5
-    ? Math.min(8, availableHistoryChartHeight)
-    : 0;
-  const showHistoryChart = historyChartHeight >= 5;
   const performancePalette = useMemo(
-    () => resolvePerformancePalette(brokerPerformance.performance),
-    [brokerPerformance.performance],
+    () => resolvePerformancePalette(performance),
+    [performance],
   );
-  const historyAxisLabel = buildHistoryAxisLabel({
-    performance: brokerPerformance.performance,
-  });
-  const formatHistoryAxis = useCallback((value: number) => (
-    formatHistoryAxisValue(value, brokerPerformance.performance)
-  ), [brokerPerformance.performance]);
+  // The account's own history: its value in the account currency, or its
+  // cumulative return in percent when the broker reports no value.
+  const historyChart = useMemo<ChartTableChart | null>(() => {
+    if (historyValues < 2) return brokerPerformance.loading && !performance ? { loading: true } : null;
+    const returns = resolvePerformanceMetric(performance) === "cumulativeReturn";
+    const series = [staticSeries(
+      performanceChartPoints.map((point) => scalarPoint(point.date, Number.isFinite(point.close) ? point.close * (returns ? 100 : 1) : null)),
+      {
+        id: "account-history",
+        label: returns ? "Broker return" : buildHistoryAxisLabel({ performance }),
+        color: performancePalette.lineColor,
+        calendarSpaced: true,
+      },
+    )];
+    return {
+      series,
+      formatValue: returns
+        ? (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(2)}%`
+        : (value: number) => formatCompactAmount(value),
+      formatAxisValue: returns ? formatPercentAxis : formatHistoryValueAxis,
+      ...(performance?.stale ? { legendAccessory: <Text fg={colors.textDim}>cached</Text>, legendAccessoryWidth: 6 } : {}),
+      remoteKind: "portfolio-account-history",
+    };
+  }, [brokerPerformance.loading, historyValues, performance, performanceChartPoints, performancePalette]);
 
   const handleSectorHeaderClick = useCallback((columnId: string) => {
     setSectorSort((current) => nextHeaderSort(current, columnId as SectorTableColumn["id"], {
@@ -337,17 +374,9 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
         </Box>
       ) : (
         <>
-          {!tabsInHeader && (
+          {tabStrip && (
             <Box flexDirection="row" height={1}>
-              <Box flexShrink={1} overflow="hidden">
-                <Tabs
-                  tabs={portfolioTabs}
-                  activeValue={activePortfolioId}
-                  onSelect={handlePortfolioSelect}
-                  compact
-                  focused={focused}
-                />
-              </Box>
+              <Box flexShrink={1} overflow="hidden">{tabStrip}</Box>
             </Box>
           )}
 
@@ -361,47 +390,39 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
                   : "Add holdings from the Portfolio pane (PF), or connect a broker in BR to sync them."}
               />
             </Box>
-          ) : (
-            <>
-              {metricsHeight > 0 && <AnalyticsMetricsPanel
-                summaryRows={summaryRows}
-                riskRows={riskRows}
-                height={metricsHeight}
-              />}
-
-              <PortfolioHistorySection
-                show={showHistoryChart}
-                loading={brokerPerformance.loading}
-                error={brokerPerformance.error}
-                width={width}
-                height={historyChartHeight}
-                points={performanceChartPoints}
-                palette={performancePalette}
-                axisLabel={historyAxisLabel}
-                period={brokerPerformance.performance?.period}
-                stale={brokerPerformance.performance?.stale}
-                formatAxisValue={formatHistoryAxis}
-              />
-
-              {hasPositions && (
-                <>
-                  <Box height={1} paddingX={1}>
-                    <SectionHeading title="Holdings by sector" />
-                  </Box>
-
-                  <SectorAllocationTable
-                    focused={focused}
-                    resetScrollKey={activePortfolioId}
-                    columns={sectorColumns}
-                    rows={sortedSectorRows}
-                    sort={sectorSort}
-                    selectedSectorId={effectiveSelectedSectorId}
-                    onHeaderClick={handleSectorHeaderClick}
-                    onSelectSector={setSelectedSectorId}
-                  />
-                </>
+          ) : historyOnly ? (
+            <PaneStatusBody
+              loading={brokerPerformance.loading}
+              error={brokerPerformance.error}
+              empty
+              subject="account history"
+              errorTitle={unavailableHistory}
+              emptyTitle="Account history needs at least two observations for a chart."
+            />
+          ) : hasPositions ? (
+            <SectorAllocationTable
+              focused={focused}
+              resetScrollKey={activePortfolioId}
+              columns={sectorColumns}
+              rows={sortedSectorRows}
+              sort={sectorSort}
+              selectedSectorId={effectiveSelectedSectorId}
+              onHeaderClick={handleSectorHeaderClick}
+              onSelectSector={setSelectedSectorId}
+              width={width}
+              height={bodyHeight}
+              before={(
+                <ChartTableHeader width={width} height={bodyHeight} tableRows={sortedSectorRows.length}
+                  tableChromeRows={chartTableChromeRows(sectorColumns, width)}
+                  figures={figures} chart={historyChart} />
               )}
-            </>
+            />
+          ) : (
+            // A cash-only account: the figures and its history take the body.
+            <Box flexDirection="column" height={bodyHeight}>
+              <ChartTableHeader width={width} height={bodyHeight} tableRows={0} tableChromeRows={0}
+                figures={figures} chart={historyChart} />
+            </Box>
           )}
         </>
       )}

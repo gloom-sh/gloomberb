@@ -1,4 +1,5 @@
 import type { PluginRegistry } from "../../../../plugins/registry";
+import { describeUsageFunction, recordFunctionOpen } from "../../../../telemetry/usage-counts";
 import type { CommandDef, CommandResultDef } from "../../../../types/plugin";
 import type { OpenInlineConfirm } from "../../routing/confirm";
 import type { ResultItem } from "../../list/model";
@@ -27,14 +28,21 @@ export function getAvailablePluginCommandsForState(
     });
 }
 
+/** Counts a plugin command the user ran, under its shortcut. */
+export function recordPluginCommandOpen(pluginRegistry: PluginRegistry, command: CommandDef): void {
+  recordFunctionOpen(describeUsageFunction(pluginRegistry, pluginRegistry.getCommandPluginId(command.id), command.shortcut));
+}
+
 export async function runPluginCommandDirect(options: {
   command: CommandDef;
   values?: Record<string, string>;
+  pluginRegistry: PluginRegistry;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   notify: NotifyFn;
 }): Promise<void> {
   try {
     await options.command.execute(options.values);
+    recordPluginCommandOpen(options.pluginRegistry, options.command);
     options.closeAll({ revertThemePreview: false });
   } catch (error) {
     options.notify(
@@ -122,6 +130,7 @@ export function buildPluginCommandItem(options: {
           tone: confirm.tone || "danger",
           onConfirm: async () => {
             await options.command.execute();
+            recordPluginCommandOpen(options.pluginRegistry, options.command);
           },
         });
         return;
@@ -154,6 +163,7 @@ export function buildPluginCommandResultItem(options: {
     action: async () => {
       try {
         await options.result.execute();
+        recordPluginCommandOpen(options.pluginRegistry, options.command);
         options.closeAll({ revertThemePreview: false });
       } catch (error) {
         options.notify(

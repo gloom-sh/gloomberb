@@ -1,5 +1,6 @@
-import type { CloudCdsTradePayload } from "../../../api-client";
-import type { DataTableColumn } from "../../../components";
+import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../../api-client";
+import type { DataTableColumn, StatItem } from "../../../components";
+import type { TimeSeriesPoint } from "../../../time-series/types";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
@@ -398,4 +399,59 @@ export function sortTrades(rows: readonly CdsTrade[], sort: TradeSortPreference)
     );
     return compared !== 0 ? compared : right.eventAt - left.eventAt;
   });
+}
+
+const DAY_MS = 86_400_000;
+
+/** Three weeks without a level breaks the line instead of drawing one nobody traded. */
+const CHART_GAP_MS = 21 * DAY_MS;
+
+export function spreadChartPoints(points: readonly CloudCdsHistoryPointPayload[]): TimeSeriesPoint[] {
+  const out: TimeSeriesPoint[] = [];
+  let previous: number | null = null;
+  for (const point of points) {
+    const time = Date.parse(`${point.date}T00:00:00Z`);
+    if (!Number.isFinite(time)) continue;
+    if (previous !== null && time - previous > CHART_GAP_MS) {
+      const gap = new Date(previous + DAY_MS);
+      out.push({ date: gap, observedAt: gap, value: null });
+    }
+    const date = new Date(time);
+    out.push({ date, observedAt: date, value: point.spreadBp });
+    previous = time;
+  }
+  return out;
+}
+
+function formatSpreadChange(value: number): string {
+  const rounded = Math.round(value);
+  return `${rounded > 0 ? "+" : ""}${rounded}bp`;
+}
+
+/**
+ * The latest level, its move over a month, and the range of what the chart
+ * shows. The month compares against the last level 30 to 45 days older on the
+ * same contract, so neither a gap nor a roll to the next contract, which
+ * trades wider, passes for a move.
+ */
+export function spreadFigures(points: readonly CloudCdsHistoryPointPayload[]): StatItem[] {
+  const latest = points.at(-1);
+  if (!latest) return [];
+  const latestTime = Date.parse(`${latest.date}T00:00:00Z`);
+  const monthAgo = points.findLast((point) => {
+    if (point.maturity !== latest.maturity) return false;
+    const age = latestTime - Date.parse(`${point.date}T00:00:00Z`);
+    return age >= 30 * DAY_MS && age <= 45 * DAY_MS;
+  });
+  const levels = points.map((point) => point.spreadBp);
+  return [
+    { id: "spread", label: "5Y spread", value: formatBp(latest.spreadBp), detail: latest.date },
+    ...(monthAgo ? [{ id: "change", label: "1M", value: formatSpreadChange(latest.spreadBp - monthAgo.spreadBp) }] : []),
+    ...(points.length >= 2 ? [{
+      id: "range",
+      label: "Range",
+      value: `${formatBp(Math.min(...levels)).slice(0, -2)} to ${formatBp(Math.max(...levels))}`,
+      detail: `since ${points[0]!.date}`,
+    }] : []),
+  ];
 }

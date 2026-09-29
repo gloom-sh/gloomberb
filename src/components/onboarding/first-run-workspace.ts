@@ -153,10 +153,11 @@ export function buildFirstRunLayout({
         : null;
   if (secondary) instances.push(secondary);
 
-  // The float is a market read that stands on its own: sentiment when the
-  // plugin is installed, else the indices. The shell clamps floats into the
-  // window, so an off-screen origin lands it in the bottom-right corner on
-  // any size, over the news list rather than the chart.
+  // The float is a market read that stands on its own: the Fear & Greed
+  // gauge, else the indices where a host has no gauge. The shell clamps floats
+  // into the window, so an off-screen origin lands it in the bottom-right
+  // corner on any size, over the news list rather than the chart. The gauge
+  // takes 16 rows to reach its reading in the terminal, under the prior scores.
   const floatingPaneId = hasPane("fear-greed")
     ? "fear-greed"
     : secondary?.paneId !== "world-indices" && hasPane("world-indices")
@@ -164,9 +165,10 @@ export function buildFirstRunLayout({
       : null;
   const floating: LayoutConfig["floating"] = [];
   if (floatingPaneId) {
-    const instanceId = floatingPaneId === "fear-greed" ? FIRST_RUN_PANE_IDS.sentiment : FIRST_RUN_PANE_IDS.indices;
+    const gauge = floatingPaneId === "fear-greed";
+    const instanceId = gauge ? FIRST_RUN_PANE_IDS.sentiment : FIRST_RUN_PANE_IDS.indices;
     instances.push({ instanceId, paneId: floatingPaneId, binding: { kind: "none" } });
-    floating.push({ instanceId, x: 9999, y: 9999, width: floatingPaneId === "fear-greed" ? 46 : 60, height: 12 });
+    floating.push({ instanceId, x: 9999, y: 9999, width: gauge ? 46 : 60, height: gauge ? 16 : 12 });
   }
 
   const layout: LayoutConfig = {

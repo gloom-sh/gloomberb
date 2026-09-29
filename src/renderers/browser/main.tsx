@@ -15,11 +15,12 @@ import {
   restoreBrowserCloudSession,
 } from "./cloud-transport";
 import { loadWebBundledPlugins } from "./bundled-plugins";
-import { BROWSER_DATA_DIR, installBrowserConfigStore } from "./config-host";
+import { BROWSER_DATA_DIR, hasSavedBrowserConfig, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
 import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
+import { loadOfficialPluginIds } from "../../plugins/builtin/plugin-marketplace/feed";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../telemetry/crash-reports";
 import {
   browserDoNotTrack,
@@ -27,12 +28,16 @@ import {
   installWindowCrashListeners,
   readOrCreateBrowserInstallId,
 } from "../../telemetry/crash-reports-dom";
+import { currentTelemetryConfig } from "../../telemetry/live-config";
+import { installUsageCounter, recordRestoredFunctions, usageCountsEnabled } from "../../telemetry/usage-counts";
+import { installWindowUsageFlush } from "../../telemetry/usage-counts-dom";
 import type { AppConfig } from "../../types/config";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
 setCurrentPluginTarget("web");
 installWindowCrashListeners();
+installWindowUsageFlush();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing root element");
@@ -47,8 +52,15 @@ async function boot(): Promise<void> {
   installCrashReporter({
     surface: "web",
     os: describeBrowserOs(),
-    isEnabled: () => !browserDoNotTrack() && crashReportsEnabled(loadedConfig),
+    isEnabled: () => !browserDoNotTrack() && crashReportsEnabled(currentTelemetryConfig(loadedConfig)),
     getInstallId: () => readOrCreateBrowserInstallId(),
+  });
+  installUsageCounter({
+    surface: "web",
+    os: describeBrowserOs(),
+    isEnabled: () => !browserDoNotTrack() && usageCountsEnabled(currentTelemetryConfig(loadedConfig)),
+    getInstallId: () => readOrCreateBrowserInstallId(),
+    officialPluginIds: loadOfficialPluginIds,
   });
   // A document reload does not unmount React. Flush both config and session
   // timers while localStorage is still available, including background tabs.
@@ -68,6 +80,8 @@ async function boot(): Promise<void> {
   const bundledPlugins = loadWebBundledPlugins().catch(() => []);
   await restoreBrowserCloudSession();
   recordResearchActivity("workspace_opened");
+  // Nothing was restored on a first visit, only the starter workspace shown.
+  if (!hasSavedBrowserConfig()) recordRestoredFunctions([]);
   const config = await loadConfig(BROWSER_DATA_DIR);
   loadedConfig = config;
   applyLanguageFromConfig(config);

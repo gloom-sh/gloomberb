@@ -6,7 +6,7 @@ import { flushCrashReports, reportCrash } from "./crash-reports";
 const INSTALL_ID_STORAGE_KEY = "gloomberb.web.install-id";
 const INSTALL_ID = /^[a-f0-9-]{36}$/;
 
-/** A random id kept in local storage; created on first use and used for nothing else. */
+/** A random id kept in local storage, created on first use; crash reports and usage counts carry it, nothing else. */
 export function readOrCreateBrowserInstallId(storage: StorageLike | undefined = readLocalStorage()): string | null {
   try {
     const stored = storage?.getItem(INSTALL_ID_STORAGE_KEY);

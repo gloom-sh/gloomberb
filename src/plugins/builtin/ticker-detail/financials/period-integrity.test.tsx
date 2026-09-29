@@ -148,10 +148,11 @@ test("actual financial table and CSV retain the derived TTM window and known fie
     aggregation: { kind: "trailing-four-quarters", periodEnd: "2024-12-31" },
   });
   expect(columns(result)[0]!.aggregation!.sourcePeriods.map((period) => period.date)).toEqual(quarterEnds);
-  expect(csv).toContain("TTM 2024-12-31");
+  expect(csv).toContain("TTM Q4 FY24");
   expect(csv).toContain("Currency,USD");
-  expect(frame()).toContain("TTM 2024-12-31");
-  expect(frame()).toContain("USD · YoY");
+  expect(frame()).toContain("TTM Q4 FY24");
+  expect(frame()).toContain("FY2025");
+  expect(frame()).toContain("USD k · YoY · as of 2025-12-31");
   expect(row(result, "income:revenue").TTM).toBe(400);
 });
 
@@ -238,7 +239,9 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
 
   await clickPeriod();
   const annual = await outputs(financials);
-  expect(annual.csv).toContain("TTM 2025-12-31");
+  // The four 2025 quarters are FY2025, so the year stands alone.
+  expect(annual.csv).not.toContain("TTM");
+  expect(annual.csv).toContain("FY2025");
   expect(annual.csv).toContain("Currency,USD");
   expect(annual.csv).toContain("Growth,YoY");
   expect(frame()).toContain("USD · YoY");
@@ -259,7 +262,7 @@ for (const reportedCurrency of [undefined, "USD"]) {
     const { result, csv, text } = await outputs(financials);
     const header = columns(result).find((column) => column.date === "2024-12-31")!;
     // Mixed reporting currencies: each column names its own.
-    const expectedHeader = reportedCurrency ? "2024-12-31 P USD" : "2024-12-31 P";
+    const expectedHeader = reportedCurrency ? "FY2024 USD" : "FY2024";
     expect(header.currency).toBe(reportedCurrency ?? null);
     expect(result.metadata!.currency).toBeNull();
     expect(row(result, "income:revenue").cells[0]!.growth).toBe(reportedCurrency ? 1 : null);

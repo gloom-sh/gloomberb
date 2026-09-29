@@ -1,4 +1,5 @@
 import { handleHttpProxy } from "./http-proxy";
+import { HTTP_PROXY_PATH } from "../../utils/plugin-proxy-hosts";
 
 interface StaticAssetsBinding {
   fetch(request: Request): Promise<Response>;
@@ -11,7 +12,6 @@ export interface WorkerEnv {
 const SHARE_PATH = /^\/s\/[a-f0-9]{32}\/?$/;
 const LAYOUT_SHARE_PATH = /^\/l\/[a-f0-9]{32}\/?$/;
 const API_PATH = /^\/api(?:\/|$)/;
-const HTTP_PROXY_PATH = "/http-proxy";
 const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
 const ROBOTS_PATH = "/robots.txt";
 

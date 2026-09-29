@@ -21,6 +21,43 @@ import {
   type SyncTransport,
 } from "./types";
 
+/** A controller syncing through `transport`; state and dispatch default to an idle app. */
+function startController({
+  transport,
+  contributors = [],
+  getState = () => ({} as AppState),
+  dispatch = () => {},
+  baselineStore,
+}: {
+  transport: SyncTransport;
+  contributors?: SyncContributor[];
+  getState?: () => AppState;
+  dispatch?: (action: AppAction) => void;
+  baselineStore?: SyncBaselineStore;
+}): CloudSyncController {
+  const controller = new CloudSyncController();
+  controller.setRuntime({
+    getState,
+    dispatch,
+    tickerRepository: {} as TickerRepository,
+    ...(baselineStore ? { baselineStore } : {}),
+    getContributors: () => contributors.map((contributor) => ({ pluginId: "test", contributor })),
+    getTransport: () => ({ pluginId: "test", transport }),
+  });
+  return controller;
+}
+
+/** Another client's snapshot holding one schema 1 contributor payload, written at `createdAt`. */
+function remoteSnapshot(contributorId: string, payload: unknown, createdAt: string, clientId = "remote-client"): SyncSnapshot {
+  return {
+    schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
+    appId: "gloomberb",
+    clientId,
+    createdAt,
+    contributors: { [contributorId]: { schemaVersion: 1, updatedAt: createdAt, payload } },
+  };
+}
+
 test("keeps workspace edits made while the app was closed and uploads them", async () => {
   // The CLI writes config.json directly, so at launch local state looks
   // pristine and the cloud copy used to overwrite it.
@@ -45,19 +82,7 @@ test("keeps workspace edits made while the app was closed and uploads them", asy
     id: "offline-edit",
     isAvailable: () => true,
     pullSnapshot: async () => ({
-      snapshot: {
-        schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
-        appId: "gloomberb",
-        clientId: "remote-client",
-        createdAt: "2026-08-23T10:00:00.000Z",
-        contributors: {
-          "core.config": {
-            schemaVersion: 1,
-            updatedAt: "2026-08-23T10:00:00.000Z",
-            payload: syncedPayload,
-          },
-        },
-      },
+      snapshot: remoteSnapshot("core.config", syncedPayload, "2026-08-23T10:00:00.000Z"),
       revision: 4,
       updatedAt: "2026-08-23T10:00:00.000Z",
     }),
@@ -67,15 +92,7 @@ test("keeps workspace edits made while the app was closed and uploads them", asy
     },
   };
 
-  const controller = new CloudSyncController();
-  controller.setRuntime({
-    getState: () => state,
-    dispatch,
-    tickerRepository: {} as TickerRepository,
-    baselineStore,
-    getContributors: () => [{ pluginId: "core", contributor: coreConfigSyncContributor }],
-    getTransport: () => ({ pluginId: "test", transport }),
-  });
+  const controller = startController({ transport, contributors: [coreConfigSyncContributor], getState: () => state, dispatch, baselineStore });
 
   await controller.requestSync({ reason: "startup" });
 
@@ -98,14 +115,7 @@ test("does not push local state when the initial pull fails", async () => {
       return { revision: 1, updatedAt: new Date().toISOString() };
     },
   };
-  const controller = new CloudSyncController();
-  controller.setRuntime({
-    getState: () => ({} as AppState),
-    dispatch: () => {},
-    tickerRepository: {} as TickerRepository,
-    getContributors: () => [],
-    getTransport: () => ({ pluginId: "test", transport }),
-  });
+  const controller = startController({ transport });
 
   await controller.requestSync({ force: true });
 
@@ -140,14 +150,7 @@ test("rejects incompatible snapshot versions before applying or pushing", async 
       return { revision: 2, updatedAt: snapshot.createdAt };
     },
   };
-  const controller = new CloudSyncController();
-  controller.setRuntime({
-    getState: () => ({} as AppState),
-    dispatch: () => {},
-    tickerRepository: {} as TickerRepository,
-    getContributors: () => [{ pluginId: "test", contributor }],
-    getTransport: () => ({ pluginId: "test", transport }),
-  });
+  const controller = startController({ transport, contributors: [contributor] });
 
   await controller.requestSync({ force: true });
 
@@ -170,19 +173,7 @@ test("rejects incompatible contributor versions before applying or pushing", asy
       applied += 1;
     },
   };
-  const snapshot: SyncSnapshot = {
-    schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
-    appId: "gloomberb",
-    clientId: "old-client",
-    createdAt: "2026-07-26T00:00:00.000Z",
-    contributors: {
-      "test.settings": {
-        schemaVersion: 1,
-        updatedAt: "2026-07-26T00:00:00.000Z",
-        payload: { remote: true },
-      },
-    },
-  };
+  const snapshot = remoteSnapshot("test.settings", { remote: true }, "2026-07-26T00:00:00.000Z", "old-client");
   const transport: SyncTransport = {
     id: "old-contributor",
     isAvailable: () => true,
@@ -192,14 +183,7 @@ test("rejects incompatible contributor versions before applying or pushing", asy
       return { revision: 2, updatedAt: snapshot.createdAt };
     },
   };
-  const controller = new CloudSyncController();
-  controller.setRuntime({
-    getState: () => ({} as AppState),
-    dispatch: () => {},
-    tickerRepository: {} as TickerRepository,
-    getContributors: () => [{ pluginId: "test", contributor }],
-    getTransport: () => ({ pluginId: "test", transport }),
-  });
+  const controller = startController({ transport, contributors: [contributor] });
 
   await controller.requestSync({ force: true });
 
@@ -248,14 +232,7 @@ test("keeps startup layout changes while serializing pull and push", async () =>
       if (config) context.dispatch({ type: "SET_CONFIG", config });
     },
   };
-  const controller = new CloudSyncController();
-  controller.setRuntime({
-    getState: () => state,
-    dispatch,
-    tickerRepository: {} as TickerRepository,
-    getContributors: () => [{ pluginId: "test", contributor }],
-    getTransport: () => ({ pluginId: "test", transport }),
-  });
+  const controller = startController({ transport, contributors: [contributor], getState: () => state, dispatch });
 
   const startupSync = controller.requestSync({ reason: "startup" });
   const startupPane = {
@@ -286,19 +263,11 @@ test("keeps startup layout changes while serializing pull and push", async () =>
   const remoteConfig = createDefaultConfig("/remote/path-is-not-synced");
   remoteConfig.theme = "green";
   resolvePull({
-    snapshot: {
-      schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
-      appId: "gloomberb",
-      clientId: "remote-client",
-      createdAt: "2026-07-13T10:00:07.000Z",
-      contributors: {
-        "core.config": {
-          schemaVersion: 1,
-          updatedAt: "2026-07-13T10:00:07.000Z",
-          payload: __syncContributorInternalsForTests.collectCoreConfigPayload(remoteConfig),
-        },
-      },
-    },
+    snapshot: remoteSnapshot(
+      "core.config",
+      __syncContributorInternalsForTests.collectCoreConfigPayload(remoteConfig),
+      "2026-07-13T10:00:07.000Z",
+    ),
     revision: 7,
     updatedAt: "2026-07-13T10:00:07.000Z",
   });
@@ -337,14 +306,7 @@ test("keeps the latest layout when switching away and back during a pull", async
       return { revision: 12, updatedAt: "2026-07-21T10:00:12.000Z" };
     },
   };
-  const controller = new CloudSyncController();
-  controller.setRuntime({
-    getState: () => state,
-    dispatch,
-    tickerRepository: {} as TickerRepository,
-    getContributors: () => [{ pluginId: "test", contributor: coreConfigSyncContributor }],
-    getTransport: () => ({ pluginId: "test", transport }),
-  });
+  const controller = startController({ transport, contributors: [coreConfigSyncContributor], getState: () => state, dispatch });
 
   const startupSync = controller.requestSync({ reason: "startup" });
   dispatch({ type: "SWITCH_LAYOUT", index: 1 });
@@ -356,19 +318,11 @@ test("keeps the latest layout when switching away and back during a pull", async
   remoteConfig.layout = remoteConfig.layouts[1]!.layout;
   remoteConfig.activeLayoutIndex = 1;
   resolvePull({
-    snapshot: {
-      schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
-      appId: "gloomberb",
-      clientId: "remote-client",
-      createdAt: "2026-07-21T10:00:11.000Z",
-      contributors: {
-        "core.config": {
-          schemaVersion: 1,
-          updatedAt: "2026-07-21T10:00:11.000Z",
-          payload: __syncContributorInternalsForTests.collectCoreConfigPayload(remoteConfig),
-        },
-      },
-    },
+    snapshot: remoteSnapshot(
+      "core.config",
+      __syncContributorInternalsForTests.collectCoreConfigPayload(remoteConfig),
+      "2026-07-21T10:00:11.000Z",
+    ),
     revision: 11,
     updatedAt: "2026-07-21T10:00:11.000Z",
   });
@@ -419,19 +373,7 @@ test("another device's layout never replaces this device's view", async () => {
     id: "remote-view",
     isAvailable: () => true,
     pullSnapshot: async () => ({
-      snapshot: {
-        schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
-        appId: "gloomberb",
-        clientId: "remote-client",
-        createdAt: "2026-09-20T10:00:00.000Z",
-        contributors: {
-          "core.config": {
-            schemaVersion: 1,
-            updatedAt: "2026-09-20T10:00:00.000Z",
-            payload: remotePayload,
-          },
-        },
-      },
+      snapshot: remoteSnapshot("core.config", remotePayload, "2026-09-20T10:00:00.000Z"),
       revision: 3,
       updatedAt: "2026-09-20T10:00:00.000Z",
     }),
@@ -440,14 +382,7 @@ test("another device's layout never replaces this device's view", async () => {
       return { revision: 4, updatedAt: "2026-09-20T10:00:01.000Z" };
     },
   };
-  const controller = new CloudSyncController();
-  controller.setRuntime({
-    getState: () => state,
-    dispatch,
-    tickerRepository: {} as TickerRepository,
-    getContributors: () => [{ pluginId: "core", contributor: coreConfigSyncContributor }],
-    getTransport: () => ({ pluginId: "test", transport }),
-  });
+  const controller = startController({ transport, contributors: [coreConfigSyncContributor], getState: () => state, dispatch });
 
   await controller.requestSync({ reason: "startup" });
 
@@ -489,33 +424,14 @@ test("pulls remote changes on later syncs instead of only once per session", asy
     pullSnapshot: async () => {
       pulls += 1;
       return {
-        snapshot: {
-          schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
-          appId: "gloomberb",
-          clientId: "remote-client",
-          createdAt: "2026-08-27T00:00:00.000Z",
-          contributors: {
-            "test.data": {
-              schemaVersion: 1,
-              updatedAt: "2026-08-27T00:00:00.000Z",
-              payload: remote,
-            },
-          },
-        },
+        snapshot: remoteSnapshot("test.data", remote, "2026-08-27T00:00:00.000Z"),
         revision: remoteRevision,
         updatedAt: "2026-08-27T00:00:00.000Z",
       };
     },
     pushSnapshot: async () => ({ revision: remoteRevision + 1, updatedAt: "2026-08-27T00:00:01.000Z" }),
   };
-  const controller = new CloudSyncController();
-  controller.setRuntime({
-    getState: () => ({} as AppState),
-    dispatch: () => {},
-    tickerRepository: {} as TickerRepository,
-    getContributors: () => [{ pluginId: "test", contributor }],
-    getTransport: () => ({ pluginId: "test", transport }),
-  });
+  const controller = startController({ transport, contributors: [contributor] });
 
   await controller.requestSync({ reason: "startup" });
   remote = { value: 2 };

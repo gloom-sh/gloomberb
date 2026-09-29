@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudSearchHit } from "../../../api-client";
-import { appendUniqueHits } from "./model";
+import { hitDocumentKey } from "./model";
 
 function hit(overrides: Partial<CloudSearchHit>): CloudSearchHit {
   return {
@@ -19,22 +19,18 @@ function hit(overrides: Partial<CloudSearchHit>): CloudSearchHit {
   };
 }
 
-describe("appendUniqueHits", () => {
-  test("drops a document that arrives again under a different chunk", () => {
-    const first = [hit({ id: "chunk-4", chunkIndex: 4 })];
-    const second = [
-      hit({ id: "chunk-9", chunkIndex: 9 }),
-      hit({ id: "other", sourceId: "0000320193-26-000002" }),
-    ];
-
-    expect(appendUniqueHits(first, second).map((entry) => entry.id))
-      .toEqual(["chunk-4", "other"]);
+// Later pages are deduped on this key, so it has to name the document rather
+// than whichever chunk of it scored best on that page.
+describe("hitDocumentKey", () => {
+  test("a document is the same row under a different chunk", () => {
+    expect(hitDocumentKey(hit({ id: "chunk-9", chunkIndex: 9 })))
+      .toBe(hitDocumentKey(hit({ id: "chunk-4", chunkIndex: 4 })));
+    expect(hitDocumentKey(hit({ id: "other", sourceId: "0000320193-26-000002" })))
+      .not.toBe(hitDocumentKey(hit({ id: "chunk-4", chunkIndex: 4 })));
   });
 
-  test("keeps documents of different types that share a source id", () => {
-    const first = [hit({ id: "news", docType: "news", sourceId: "shared" })];
-    const second = [hit({ id: "filing", docType: "filing", sourceId: "shared" })];
-
-    expect(appendUniqueHits(first, second)).toHaveLength(2);
+  test("documents of different types that share a source id stay apart", () => {
+    expect(hitDocumentKey(hit({ docType: "news", sourceId: "shared" })))
+      .not.toBe(hitDocumentKey(hit({ docType: "filing", sourceId: "shared" })));
   });
 });

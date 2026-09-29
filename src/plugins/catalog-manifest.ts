@@ -1,3 +1,4 @@
+import { ABSORBED_PLUGINS } from "./absorbed";
 import { getPluginCatalog } from "./catalog";
 
 /**
@@ -46,7 +47,10 @@ const EDITORIAL: Record<
   broker: { categories: ["broker"] },
   "custom-view": { categories: ["data", "productivity"] },
   debug: { categories: ["developer"] },
+  "fear-greed": { categories: ["markets", "sentiment"], icon: "plugin-icons/fear-greed.webp" },
   macro: { categories: ["macro"] },
+  "market-halts": { categories: ["markets"], icon: "plugin-icons/market-halts.webp" },
+  "market-heatmap": { categories: ["markets"], icon: "plugin-icons/market-heatmap.webp" },
   "market-overview": { categories: ["markets"] },
   news: { categories: ["news"] },
   notes: { categories: ["productivity"] },
@@ -67,6 +71,11 @@ export function buildBuiltinManifest(): BuiltinManifest {
   const uncategorised: string[] = [];
 
   const plugins = getPluginCatalog()
+    // Built in again, but released apps from before that still install these
+    // from their repositories, and the directory drops a repository row whose
+    // id a built-in claims. This build shows that row as its built-in, so they
+    // join the manifest once those releases have updated.
+    .filter(({ plugin }) => !ABSORBED_PLUGINS.some((absorbed) => absorbed.id === plugin.id))
     .map(({ plugin }) => {
       const editorial = EDITORIAL[plugin.id];
       if (!editorial) uncategorised.push(plugin.id);

@@ -2,7 +2,7 @@ import type { Portfolio, Watchlist } from "./ticker";
 import type { BrokerContractRef, TickerListingRef } from "./instrument";
 import type { LanguagePreference } from "../i18n/languages";
 
-export const CURRENT_CONFIG_VERSION = 22;
+export const CURRENT_CONFIG_VERSION = 23;
 
 type ChartRendererPreference = "auto" | "kitty" | "braille";
 
@@ -185,6 +185,13 @@ export interface TelemetryConfig {
    * failures) to Gloom's API. `false` turns them off; absent means on.
    */
   crashReports?: boolean;
+  /**
+   * Anonymous counts of which functions are opened and which are on screen
+   * at launch, to Gloom's API, and, when signed in, the searches finished in
+   * the command bar, kept with the account to improve search. `false` turns
+   * both off; absent means on.
+   */
+  usage?: boolean;
 }
 
 export interface AppConfig {
@@ -369,6 +376,11 @@ const DEFAULT_MACRO_LAYOUT: LayoutConfig = {
       paneId: "econ-statistics",
       binding: { kind: "none" },
       settings: { stat: "cpi-yoy", range: "20Y" },
+    },
+    {
+      instanceId: "fear-greed:macro",
+      paneId: "fear-greed",
+      binding: { kind: "none" },
     },
     {
       instanceId: "volatility-term-structure:macro",

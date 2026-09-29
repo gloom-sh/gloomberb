@@ -26,8 +26,9 @@ Contract prices in Overview, quote reports and quote-monitor text retain up to
 eight decimal places; contract changes use the same price precision instead of
 rounding to currency cents. This ceiling preserves the supplied price, without
 declaring a minimum tick or converting the quote's currency. The futures board
-continues to use its existing catalog tick precision, with `c` for source `USX`
-prices. Quantity and cost formatting are separate from quote-price formatting.
+continues to use its existing catalog tick precision. Dollar prices print bare;
+source `USX` prices and changes carry a `c`, and other currencies their symbol
+(Dutch TTF gas in `€`). Quantity and cost formatting are separate from quote-price formatting.
 
 Historical Prices uses numeric observation formatting for its OHLC table and
 reports, including when history carries no instrument type. It retains up to

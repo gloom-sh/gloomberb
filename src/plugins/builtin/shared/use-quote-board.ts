@@ -314,6 +314,23 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
 
 /** Rows streamed beyond the visible window so a short scroll lands on live prices. */
 const BOARD_STREAM_OVERSCAN = 4;
+/** The same margin for the long scrolling tables that stream by window. */
+const TABLE_STREAM_OVERSCAN = 8;
+/** Before the table reports its window, stream what a full-height pane shows. */
+export const INITIAL_STREAM_RANGE: DataTableVisibleRange = { start: 0, end: 40 };
+
+/**
+ * The rows a long table streams: those on screen plus overscan, and the
+ * selected row wherever it is, so its detail stays live after a scroll.
+ */
+export function streamWindowRows<T>(
+  rows: readonly T[],
+  range: DataTableVisibleRange,
+  selected: T | undefined,
+): T[] {
+  const window = rows.slice(Math.max(0, range.start - TABLE_STREAM_OVERSCAN), range.end + TABLE_STREAM_OVERSCAN);
+  return selected && !window.includes(selected) ? [...window, selected] : window;
+}
 
 /**
  * The symbols of the rows on screen plus overscan, as a set that keeps its
@@ -383,7 +400,8 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
 /**
  * Board session indicator: one glyph whose color carries the whole signal.
  * `marketStateDot` in `src/market-data/market/status.ts` encodes the state in
- * the glyph instead, which reads poorly in a one-cell column.
+ * the glyph instead, which reads poorly in a one-cell column. A closed market
+ * is muted, not red: on a weekend every row is closed and nothing is wrong.
  */
 export function marketStatusDot(state: MarketState | undefined): { char: string; color: string } {
   switch (state) {
@@ -395,22 +413,28 @@ export function marketStatusDot(state: MarketState | undefined): { char: string;
     case "POSTPOST":
       return { char: "●", color: colors.warning };
     default:
-      return { char: "●", color: colors.negative };
+      return { char: "●", color: colors.textMuted };
   }
 }
 
 const ERROR_MESSAGE_MAX_LENGTH = 48;
 
-/** The reason a board is empty, taken from the per-symbol errors the board records. */
+/**
+ * The reason a board is empty, taken from the per-symbol errors the board
+ * records. It speaks for the whole board, so a trailing "for ES=F" goes.
+ */
 export function boardErrorMessage(quotes: BoardQuoteMap): string | null {
   let total = 0;
   let unavailable = 0;
   let message: string | null = null;
-  for (const state of quotes.values()) {
+  for (const [symbol, state] of quotes) {
     total += 1;
     if (state.quote || state.loading) continue;
     unavailable += 1;
-    message ??= state.error;
+    if (!message && state.error) {
+      const suffix = ` for ${symbol}`;
+      message = state.error.endsWith(suffix) ? state.error.slice(0, -suffix.length) : state.error;
+    }
   }
   if (total === 0 || unavailable < total || !message) return null;
   return message.length > ERROR_MESSAGE_MAX_LENGTH
@@ -456,14 +480,11 @@ export function isBoardRowLoading(state: BoardQuoteState | undefined): boolean {
 export function renderQuoteBoardCell(
   kind: QuoteBoardCellKind,
   state: BoardQuoteState | undefined,
-  selected: boolean,
   format: QuoteBoardCellFormat,
 ): DataTableCell {
   const quote = state?.quote;
-  const selectedColor = selected ? colors.selectedText : undefined;
-  const dimmed = selected ? colors.selectedText : colors.textDim;
   // One row must not mix a loading marker with a no-data marker.
-  if (isBoardRowLoading(state)) return { text: kind === "status" ? "" : "…", color: dimmed };
+  if (isBoardRowLoading(state)) return { text: kind === "status" ? "" : "…", color: colors.textDim };
 
   switch (kind) {
     case "status": {
@@ -471,26 +492,33 @@ export function renderQuoteBoardCell(
         const marketState = quote?.marketState;
         return {
           text: marketState ? marketStateLabel(marketState) : "—",
-          color: selectedColor ?? (marketState ? marketStateColor(marketState) : colors.textDim),
+          color: marketState ? marketStateColor(marketState) : colors.textDim,
         };
       }
       const dot = marketStatusDot(quote?.marketState);
-      return { text: dot.char, color: selectedColor ?? dot.color };
+      // The dot is a picture; the export says which session it means.
+      return { text: dot.char, value: quote?.marketState ? marketStateLabel(quote.marketState) : null, color: dot.color };
     }
     case "price":
-      if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: dimmed };
+      if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: colors.textDim };
       // A retained quote still beats a dash; dim it so stale is visible.
-      return { text: format.formatPrice(quote), color: state?.stale ? dimmed : selectedColor };
+      return { text: format.formatPrice(quote), value: quote.price, color: state?.stale ? colors.textDim : undefined };
     case "change":
-      if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: dimmed };
-      return { text: format.formatChange(quote), color: selectedColor ?? priceColor(quote.change) };
+      if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: colors.textDim };
+      // No raw value: a change is a difference of two prices, so its float noise would outlive the text.
+      return { text: format.formatChange(quote), color: priceColor(quote.change) };
     case "changePercent":
-      if (!quote || !Number.isFinite(quote.changePercent)) return { text: "—", color: dimmed };
+      if (!quote || !Number.isFinite(quote.changePercent)) return { text: "—", color: colors.textDim };
       return {
         text: formatPercentRaw(quote.changePercent),
-        color: selectedColor ?? priceColor(quote.changePercent),
+        value: quote.changePercent,
+        color: priceColor(quote.changePercent),
       };
     case "time":
-      return { text: formatQuoteTime(quote?.lastUpdated), color: dimmed };
+      return {
+        text: formatQuoteTime(quote?.lastUpdated),
+        value: quote?.lastUpdated ? new Date(quote.lastUpdated).toISOString().replace(".000Z", "Z") : null,
+        color: colors.textDim,
+      };
   }
 }

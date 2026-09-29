@@ -142,11 +142,29 @@ export function createRootCommandItemBuilder({
         return command.description;
       case "toggle-value-flashing":
         return state.config.valueFlashingEnabled ? "Currently on" : "Currently off";
+      case "toggle-crash-reports":
+        return state.config.telemetry?.crashReports === false ? "Currently off" : "Currently on";
+      case "toggle-usage-counts":
+        return state.config.telemetry?.usage === false ? "Currently off" : "Currently on";
       case "font-size-increase":
       case "font-size-decrease":
         return `Currently ${state.config.fontSize ?? 12}px`;
       default:
         return command.description;
+    }
+  }
+
+  /** The shortcut on the right; the telemetry switches show their state there instead. */
+  function smartRight(command: Command, arg: string): string | undefined {
+    switch (command.id) {
+      case "language":
+        return arg || command.prefix;
+      case "toggle-crash-reports":
+        return state.config.telemetry?.crashReports === false ? "off" : "on";
+      case "toggle-usage-counts":
+        return state.config.telemetry?.usage === false ? "off" : "on";
+      default:
+        return command.prefix || undefined;
     }
   }
 
@@ -167,7 +185,7 @@ export function createRootCommandItemBuilder({
       detail: smartDetail(command),
       category: command.category,
       kind: "command",
-      right: command.id === "language" && arg ? arg : command.prefix || undefined,
+      right: smartRight(command, arg),
       shortcutQuery: command.prefix || undefined,
       searchText: smartSearchText(command),
       disabled:

@@ -1,34 +1,10 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
-import { cloneLayout, createDefaultConfig } from "../types/config";
-import type { PaneDef } from "../types/plugin";
 import { MiniWorkspace } from "./mini-workspace";
+import { testLayout, testPanes as panes } from "./test-fixture";
 import { createDomTestHarness } from "../renderers/electrobun/view/test-utils";
 
 const { render: renderDom } = createDomTestHarness();
-
-function paneDef(id: string, name: string, icon: string): PaneDef {
-  return { id, name, icon, component: () => null, defaultPosition: "left" };
-}
-
-const panes = new Map<string, PaneDef>([
-  ["portfolio-list", paneDef("portfolio-list", "Portfolio", "P")],
-  ["ticker-research", paneDef("ticker-research", "Ticker Research", "T")],
-  ["chat", paneDef("chat", "Chat", "M")],
-  ["ticker-chart", paneDef("ticker-chart", "Chart", "C")],
-]);
-
-function testLayout() {
-  const layout = cloneLayout(createDefaultConfig("/tmp/gloomberb-mini-workspace-test").layout);
-  layout.instances = [
-    ...layout.instances,
-    { instanceId: "ticker-chart:1", paneId: "ticker-chart", binding: { kind: "fixed", symbol: "NVDA" } },
-    { instanceId: "mystery:1", paneId: "mystery-pane" },
-  ];
-  layout.floating = [{ instanceId: "ticker-chart:1", x: 20, y: 6, width: 60, height: 20 }];
-  layout.detached = [{ instanceId: "mystery:1", x: 120, y: 4, width: 50, height: 18 }];
-  return layout;
-}
 
 async function renderPreview() {
   const container = await renderDom(

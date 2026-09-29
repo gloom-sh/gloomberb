@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { BrokerAdapter } from "../../types/broker";
 import type {
   CommandBarSearchProvider,
@@ -23,8 +24,7 @@ export interface PluginItems {
 }
 
 interface RegistryContributionsOptions {
-  wrapPaneDef: (pluginId: string, pane: PaneDef) => PaneDef;
-  wrapTickerResearchTabDef: (pluginId: string, tab: TickerResearchTabDef) => TickerResearchTabDef;
+  wrapComponent: <P>(pluginId: string, component: (props: P) => ReactNode) => (props: P) => ReactNode;
   wrapBrokerAdapter?: (broker: BrokerAdapter, pluginId: string) => BrokerAdapter;
 }
 
@@ -82,7 +82,10 @@ export class RegistryContributions {
   }
 
   registerPane(pluginId: string, pane: PaneDef): void {
-    this.panesMap.register(pluginId, pane.id, this.options.wrapPaneDef(pluginId, pane));
+    this.panesMap.register(pluginId, pane.id, {
+      ...pane,
+      component: this.options.wrapComponent(pluginId, pane.component),
+    });
   }
 
   registerPaneTemplate(pluginId: string, template: PaneTemplateDef, replace = false): () => void {
@@ -110,7 +113,10 @@ export class RegistryContributions {
   }
 
   registerTickerResearchTab(pluginId: string, tab: TickerResearchTabDef): void {
-    this.tickerResearchTabsMap.register(pluginId, tab.id, this.options.wrapTickerResearchTabDef(pluginId, tab));
+    this.tickerResearchTabsMap.register(pluginId, tab.id, {
+      ...tab,
+      component: this.options.wrapComponent(pluginId, tab.component),
+    });
   }
 
   registerShortcut(pluginId: string, shortcut: KeyboardShortcut): void {

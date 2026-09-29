@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { describeOlderCommit, parseRemoteHead } from "./installer";
+import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseRemoteHead } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does
@@ -93,5 +93,49 @@ describe("describeOlderCommit", () => {
   test("lets a newer commit through", () => {
     const { dir, head, fetched } = shallowCheckout(remote(["1.0.0", "1.0.0"]), "v1", "main");
     expect(describeOlderCommit(dir, head, fetched)).toBeNull();
+  });
+});
+
+/**
+ * `update` checks commits out with --force, so a checkout with edits never
+ * updates on its own. A lockfile `bun install` wrote beside the tracked files
+ * is not an edit, or no plugin with dependencies would ever update.
+ */
+describe("hasLocalChanges", () => {
+  test("counts edits to tracked files, not untracked ones", async () => {
+    const dir = remote(["1.0.0", "1.1.0"]);
+    expect(await hasLocalChanges(dir)).toBe(false);
+    writeFileSync(join(dir, "bun.lock"), "{}");
+    expect(await hasLocalChanges(dir)).toBe(false);
+    writeFileSync(join(dir, "package.json"), "{}");
+    expect(await hasLocalChanges(dir)).toBe(true);
+  });
+});
+
+/**
+ * Market Heatmap, Market Halts and Fear & Greed are built in again. A copy of
+ * any of them only fetches code the loader skips, so it is refused before
+ * anything is cloned or linked: under either product name, from a fork, or
+ * from a checkout whose gloom.json says what it is under a folder name of its
+ * own.
+ */
+describe("plugins that are built in now", () => {
+  test.each([
+    "gloom-sh/gloom-market-heatmap",
+    "gloom-sh/gloom-fear-greed",
+    "https://github.com/someone/gloomberb-market-halts",
+  ])("refuses to install %s", async (ref) => {
+    await expect(installPlugin(ref, { quiet: true })).rejects.toThrow(/is built into Gloomberb now\./);
+  });
+
+  test("refuses to link a checkout whose gloom.json names one", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "gloom-dev-"));
+    scratch.push(parent);
+    const dir = join(parent, "halts-dev");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "gloom.json"), JSON.stringify({ id: "market-halts" }));
+    writeFileSync(join(dir, "index.ts"), `export default { id: "market-halts", name: "Market Halts" };\n`);
+
+    await expect(linkPlugin(dir, { quiet: true })).rejects.toThrow("Market Halts is built into Gloomberb now.");
   });
 });

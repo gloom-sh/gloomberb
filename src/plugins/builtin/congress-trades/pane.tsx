@@ -3,11 +3,10 @@ import { Box, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
   PaneStatusBody,
-  Tabs,
   usePaneNoticeFooter,
   usePaneFooter,
-  usePaneHeaderTabs,
   usePaneMenuItems,
+  usePaneTabs,
   ChoiceDialog,
   useTableLoadMore,
 } from "../../../components";
@@ -399,29 +398,14 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
       ? detailMember.memberName
       : undefined;
 
-  const tabsInHeader = usePaneHeaderTabs(tickerFilter ? null : {
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(tickerFilter ? null : {
     tabs: CONGRESS_TABS,
     activeValue: activeTab,
     onSelect: selectTab,
     focused: focused && !detailMode,
+    compact: true,
   });
-  const tabRows = tickerFilter || tabsInHeader ? 0 : 1;
-  const tabs = tickerFilter || tabsInHeader ? null : (
-    <Box height={1}>
-      <Tabs
-        tabs={[
-          { label: "Trades", value: "trades" },
-          { label: "Members", value: "members" },
-          { label: "Tickers", value: "tickers" },
-        ]}
-        activeValue={activeTab}
-        onSelect={selectTab}
-        compact
-        variant="underline"
-        focused={focused && !detailMode}
-      />
-    </Box>
-  );
+  const tabs = tabStrip && <Box height={1}>{tabStrip}</Box>;
 
   if (!payload && (status === "loading" || error)) {
     return (
@@ -472,6 +456,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
             const cell = renderCongressTradeCell(trade, column, index, row);
             return !row.selected && trade.ticker && mineTickers.has(trade.ticker) && column.id === "member" ? { ...cell, color: colors.borderFocused } : cell;
           }}
+          selectedTextOverridesCellColor
           emptyStateTitle="No matching trades in this filing window."
           scrollRef={tradeScrollRef}
           onBodyScrollActivity={onTradeScroll}
@@ -485,10 +470,11 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           onRootKeyDown={handleFiltersKey} columns={tickerColumns} items={tickerRows} getItemKey={(row) => row.ticker}
           sortColumnId={tickerSort.columnId} sortDirection={tickerSort.direction}
           onHeaderClick={(columnId) => setTickerSort((current) => nextHeaderSort(current, columnId as TickerColumnId, { firstDirection: columnId === "ticker" ? "asc" : "desc" }))}
-          renderCell={(row, column, index, selected) => {
-            const cell = renderCongressTickerCell(row, column, index, selected);
+          renderCell={(row, column, _index, selected) => {
+            const cell = renderCongressTickerCell(row, column);
             return !selected.selected && mineTickers.has(row.ticker) && column.id === "ticker" ? { ...cell, color: colors.borderFocused } : cell;
           }}
+          selectedTextOverridesCellColor
           emptyStateTitle="No matching tickers." scrollRef={tradeScrollRef} onBodyScrollActivity={onTradeScroll}
         />
       ) : (
@@ -520,6 +506,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           onHeaderClick={(columnId) => setMemberSort((current) => nextHeaderSort(current, columnId as MemberColumnId, { firstDirection: columnId === "member" || columnId === "district" ? "asc" : "desc" }))}
           getItemKey={(member) => member.id}
           renderCell={renderCongressMemberCell}
+          selectedTextOverridesCellColor
           emptyStateTitle="No matching members."
           scrollRef={tradeScrollRef}
           onBodyScrollActivity={onTradeScroll}

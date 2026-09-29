@@ -3,6 +3,7 @@ import {
   cloneLayout,
   findPaneInstance,
   isFixedTickerPane,
+  materializeDetachedPanesAsFloating,
   normalizePaneLayout,
   removePaneInstances,
   TICKER_RESEARCH_PANE_ID,
@@ -483,6 +484,18 @@ export function bringFloatingToFront(layout: LayoutConfig, paneId: string): Layo
     floating: layout.floating.map((e) =>
       e.instanceId === paneId ? { ...e, zIndex: maxZ + 1 } : e,
     ),
+  };
+}
+
+/** Without desktop windows to hold them, detached panes float in the active and every saved layout. */
+export function materializeDetachedLayouts(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    layout: materializeDetachedPanesAsFloating(config.layout),
+    layouts: config.layouts.map((entry) => ({
+      ...entry,
+      layout: materializeDetachedPanesAsFloating(entry.layout),
+    })),
   };
 }
 

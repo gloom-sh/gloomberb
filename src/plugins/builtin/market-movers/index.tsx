@@ -1,7 +1,7 @@
 import { Box } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, Tabs, usePaneFooter, usePaneHeaderTabs, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, usePaneFooter, usePaneTabs, type DataTableKeyEvent } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -221,22 +221,11 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
     setActiveTab(value as TabId);
     setSelectedSymbol(null);
   };
-  const tabsInHeader = usePaneHeaderTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused });
+  const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {!tabsInHeader && (
-        <Box height={1} paddingX={1}>
-          <Tabs
-            tabs={tabItems}
-            activeValue={activeTab}
-            onSelect={selectTab}
-            compact
-            variant="bare"
-            focused={focused}
-          />
-        </Box>
-      )}
+      {tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
 
       <DataTableView<MarketMoverRow, MarketMoverColumn>
         focused={focused}
@@ -257,6 +246,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
         getItemKey={moverKey}
         onActivate={openSymbol}
         renderCell={renderMarketMoverCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={loading ? "Loading movers..." : loadError ?? "No movers returned."}
         emptyContent={loadError ? (
           <Box paddingX={1} paddingY={1}>

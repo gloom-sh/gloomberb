@@ -40,8 +40,9 @@ export function describeNodeOs(): string {
 }
 
 /**
- * The random id that identifies this install in crash reports, created on
- * first use and kept in `<dataDir>/install-id`. It is used for nothing else.
+ * The random id that identifies this install in crash reports and usage
+ * counts, created on first use and kept in `<dataDir>/install-id`. It is used
+ * for nothing else.
  */
 export function readOrCreateInstallId(dataDir: string): string | null {
   const cached = installIds.get(dataDir);
@@ -122,6 +123,16 @@ export function createNodeCrashReporterHost(options: NodeCrashReporterHostOption
 }
 
 
+/**
+ * A read from a terminal that has gone away (its window closed, its tmux pane
+ * killed) fails with EIO just before the hangup signal ends the process. That
+ * is the user leaving, not a crash.
+ */
+export function isTerminalHangup(error: unknown): boolean {
+  const { code, syscall } = (error ?? {}) as { code?: unknown; syscall?: unknown };
+  return code === "EIO" && syscall === "read";
+}
+
 function exitAfterFlush(error: unknown): void {
   // The default for a process with no listener: print the error and exit 1.
   console.error(error);
@@ -140,8 +151,10 @@ function exitAfterFlush(error: unknown): void {
  */
 export function installProcessCrashListeners(): () => void {
   const onUncaughtException = (error: unknown) => {
-    reportCrash(error, { kind: "uncaught" });
-    spoolPendingCrashReports();
+    if (!isTerminalHangup(error)) {
+      reportCrash(error, { kind: "uncaught" });
+      spoolPendingCrashReports();
+    }
     if (process.listenerCount("uncaughtException") <= 1) exitAfterFlush(error);
   };
   const onUnhandledRejection = (reason: unknown) => {

@@ -6,7 +6,7 @@ import {
   type HttpProxyResponseEnvelope,
 } from "../../../utils/http-proxy-response";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
-import { backendRequest, onHttpStreamChunk } from "./backend-rpc";
+import { backendRequest, onBackendMessage } from "./backend-rpc";
 
 const CLOUD_MARKET_HTTP_TIMEOUT_MS = 10_000;
 /**
@@ -138,7 +138,7 @@ async function electrobunCloudApiStreamFetch(url: string, init?: RequestInit): P
 
   // Subscribed before opening: the Bun process forwards as soon as the head
   // is back, and a listener attached later would miss the first tokens.
-  stopListening = onHttpStreamChunk(streamId, (message) => {
+  stopListening = onBackendMessage("http.stream.chunk", streamId, (message) => {
     if (settled) return;
     if (typeof message.chunk === "string" && message.chunk) {
       controller.enqueue(encoder.encode(message.chunk));

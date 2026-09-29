@@ -1,4 +1,6 @@
 import { resolveChartPalette } from "../../../components/chart/core/palette";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
+import { spanDigits } from "../../../components/chart-table";
 import { colors, priceColor } from "../../../theme/colors";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
@@ -16,10 +18,7 @@ import {
 import type { ColumnContext, PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
 import { buildPerformanceChartPoints, resolvePerformanceMetric } from "./broker-performance";
-import {
-  formatReturn,
-  formatSignedCompact,
-} from "./display";
+import { formatReturn } from "./display";
 import {
   resolveDatedReturns,
   alignedAssetReturns,
@@ -276,7 +275,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "day-pnl",
       label: "Day",
-      value: formatSignedCompact(accountMetrics.dailyPnl),
+      value: formatCompactAmount(accountMetrics.dailyPnl, { signed: true }),
       detail: `(${formatPercentRaw(dailyPnlPct)})`,
       color: priceColor(accountMetrics.dailyPnl),
     });
@@ -285,7 +284,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "pnl",
       label: "P&L",
-      value: formatSignedCompact(accountMetrics.unrealizedPnl),
+      value: formatCompactAmount(accountMetrics.unrealizedPnl, { signed: true }),
       detail: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`,
       color: priceColor(accountMetrics.unrealizedPnl),
     });
@@ -294,7 +293,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "realized-pnl",
       label: "Realized",
-      value: formatSignedCompact(accountMetrics.realizedPnl),
+      value: formatCompactAmount(accountMetrics.realizedPnl, { signed: true }),
       color: priceColor(accountMetrics.realizedPnl),
     });
   }
@@ -451,6 +450,18 @@ export function buildHistoryAxisLabel({
   return resolvePerformanceMetric(performance) === "value"
     ? `Value (${performance?.currency?.trim() || "unknown currency"})`
     : "Return";
+}
+
+/**
+ * Compact account values whose decimals follow the plotted range, so the
+ * ticks stay apart: 55k / 60k across a wide range, 10.2k / 10.4k across a
+ * narrow one.
+ */
+export function formatHistoryValueAxis(value: number, domain: Pick<CompositeAxisDomain, "min" | "max">): string {
+  const magnitude = Math.max(Math.abs(domain.min), Math.abs(domain.max));
+  const [divisor, suffix] = magnitude >= 1e9 ? [1e9, "B"] : magnitude >= 1e6 ? [1e6, "M"] : magnitude >= 1e3 ? [1e3, "k"] : [1, ""];
+  const digits = spanDigits({ min: domain.min / divisor, max: domain.max / divisor });
+  return `${(value / divisor).toFixed(digits)}${suffix}`;
 }
 
 export function formatHistoryAxisValue(

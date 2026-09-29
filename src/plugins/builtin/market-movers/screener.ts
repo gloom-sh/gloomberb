@@ -1,3 +1,4 @@
+import { YAHOO_FINANCE_HEADERS } from "../../../sources/yahoo-finance/http";
 import { yahooSecurityName } from "../../../sources/yahoo-finance/names";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { createThrottledFetch, type ThrottledFetchTransport } from "../../../utils/throttled-fetch";
@@ -23,13 +24,6 @@ const CACHE_POLICY = {
   expireMs: 60 * 60 * 1000,
 } as const;
 const YAHOO_METADATA_WAIT_MS = 1_500;
-
-const YAHOO_FINANCE_HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-  Accept: "application/json,text/plain,*/*",
-  "Accept-Language": "en-US,en;q=0.9",
-  Referer: "https://finance.yahoo.com/",
-};
 
 export interface YahooScreenerApi {
   fetchJson<T = unknown>(path: string, params: Record<string, string | number>): Promise<T>;

@@ -5,7 +5,7 @@
  * argument and the description get their own columns. The prefix keeps its
  * badge, which is how the command bar draws it too.
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   buildSectionedRows,
   DataTableView,
@@ -18,10 +18,7 @@ import {
   type SectionedRow,
 } from "../../../components";
 import { t } from "../../../i18n";
-import { useShortcut } from "../../../react/input";
 import { useThemeColors } from "../../../theme/theme-context";
-import type { InputRenderable } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { groupShortcutEntries, type HelpShortcutEntry } from "./shortcut-model";
 import { badgeCell, badgeColumnWidth } from "./table-cells";
 
@@ -87,8 +84,6 @@ export function FunctionsTable({
 }) {
   const colors = useThemeColors();
   const [query, setQuery] = useState("");
-  const [searchFocus, setSearchFocus] = useState(0);
-  const searchInput = useRef<InputRenderable | null>(null);
   const needle = query.trim().toLowerCase();
   const rows = useMemo<FunctionsRow[]>(() => {
     // Commands and pane templates can share a category; one section per name
@@ -108,14 +103,6 @@ export function FunctionsTable({
       (entry) => entry.id,
     );
   }, [commandShortcuts, needle, windowTemplates]);
-
-  useShortcut((event) => {
-    // Plain `/` only: Shift+/ is `?`, which opens Help.
-    if (!focused || searching || event.targetEditable || !isPlainKey(event, "/")) return;
-    event.preventDefault?.();
-    onSearchingChange(true);
-    setSearchFocus((value) => value + 1);
-  });
 
   const entries = useMemo(() => rows.filter(isSectionedItemRow).map((row) => row.item), [rows]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -171,9 +158,6 @@ export function FunctionsTable({
             focused,
             active: searching,
             onActiveChange: onSearchingChange,
-            focusToken: searchFocus,
-            inputRef: searchInput,
-            onNavigateDown: () => onSearchingChange(false),
           }}
         />
       )}

@@ -92,3 +92,25 @@ test("a narrower pane stacks the metrics under the chart", async () => {
   expect(row).toBeGreaterThan(8);
   expect(line.indexOf("METRIC")).toBeLessThan(4);
 });
+
+test("a short stacked pane sizes the chart with the kit: the legend names the lines over the metrics' first rows", async () => {
+  const frame = await renderPane(60, 16);
+  const lines = frame.split("\n");
+  const { row } = metricsHeaderRow(frame);
+  expect(lines.slice(0, row).join("\n")).toContain("● Buy & hold");
+  expect(lines.slice(0, row).join("\n")).toContain("● Strategy");
+  // The table keeps its header and four metrics under the chart.
+  for (const label of ["Total return", "CAGR", "Volatility (ann.)", "Sharpe (0% cash)"]) {
+    expect(lines.slice(row).join("\n")).toContain(label);
+  }
+});
+
+test("a pane too short for the chart keeps the metrics and shows the strategy as a strip", async () => {
+  const frame = await renderPane(60, 10);
+  const lines = frame.split("\n");
+  const { row } = metricsHeaderRow(frame);
+  const strip = lines[row - 1]!;
+  expect(strip).toContain("● Strategy");
+  expect(strip).toMatch(/×\d/);
+  expect(lines.slice(row).join("\n")).toContain("Max drawdown");
+});

@@ -4,7 +4,7 @@ import type { PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { TickerRecord } from "../../../types/ticker";
 import type { PricePoint } from "../../../types/financials";
 import { buildChartKey } from "../../../market-data/selectors";
-import { buildAnalyticsRiskRows, buildAnalyticsSummaryRows, buildBenchmarkReturnSeries, buildPortfolioChartTargets, buildPortfolioReturnSeries } from "./pane-model";
+import { buildAnalyticsRiskRows, buildAnalyticsSummaryRows, buildBenchmarkReturnSeries, buildPortfolioChartTargets, buildPortfolioReturnSeries, formatHistoryValueAxis } from "./pane-model";
 import { createTestTicker } from "../../../test-support/ticker";
 
 function riskTicker(symbol: string): TickerRecord {
@@ -191,4 +191,12 @@ test("risk row detail reflects partial or unavailable inputs while retaining val
   expect(partial[1]).toMatchObject({ value: "—", detail: "Incomplete holding history" });
   const unavailable = buildAnalyticsRiskRows({ sharpe: 0, beta: 0, coverage: .7, missingCount: 2, unvaluedCount: 1 });
   expect(unavailable.every((row) => row.value === "—" && row.detail?.includes("check prices and FX"))).toBe(true);
+});
+
+test("account value ticks take their decimals from the plotted range", () => {
+  const wide = { min: 45_000, max: 85_000 };
+  expect([50_000, 60_000, 70_000].map((value) => formatHistoryValueAxis(value, wide))).toEqual(["50k", "60k", "70k"]);
+  const narrow = { min: 10_000, max: 11_000 };
+  expect([10_200, 10_400, 10_600].map((value) => formatHistoryValueAxis(value, narrow))).toEqual(["10.2k", "10.4k", "10.6k"]);
+  expect(formatHistoryValueAxis(1_250_000, { min: 1_000_000, max: 1_500_000 })).toBe("1.25M");
 });

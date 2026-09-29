@@ -20,7 +20,6 @@ import {
   toggleOrderedMultiSelectValue,
 } from "./multi-select";
 import { MultiSelectDialogButton, type MultiSelectDialogButtonHandle } from "./multi-select/dialog";
-import { Tabs } from "./tabs";
 import { SelectButton, type SelectControl } from "./select-button";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -30,8 +29,6 @@ let activatedTableRow: string | null = null;
 let tableScrollBoxForTest: ScrollBoxRenderable | null = null;
 let tableVisibleRanges: DataTableVisibleRange[] = [];
 let setTableVisibleRangeKey: ((key: string) => void) | null = null;
-let closedTab: string | null = null;
-let addedTab = false;
 let resolvedChoice: string | null = null;
 let multiSelectOpenStates: boolean[] = [];
 const multiSelectDialogHandle = createRef<MultiSelectDialogButtonHandle>();
@@ -226,205 +223,12 @@ afterEach(async () => {
   tableScrollBoxForTest = null;
   tableVisibleRanges = [];
   setTableVisibleRangeKey = null;
-  closedTab = null;
-  addedTab = false;
   resolvedChoice = null;
   multiSelectOpenStates = [];
   setLanguage("en");
 });
 
 describe("shared UI kit", () => {
-  test("retranslates stable tab items when the app language changes", async () => {
-    const tabs = [{ label: "Open", value: "open" }];
-    testSetup = await testRender(
-      <Tabs tabs={tabs} activeValue="open" onSelect={() => {}} />,
-      { width: 20, height: 2 },
-    );
-
-    await act(async () => testSetup?.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Open");
-
-    await act(async () => {
-      setLanguage("zh-CN");
-      await testSetup?.renderOnce();
-      await testSetup?.renderOnce();
-    });
-
-    expect(testSetup.captureCharFrame()).toContain("打开");
-  });
-
-  test("scrolls overflowing tabs horizontally with the mouse wheel", async () => {
-    testSetup = await testRender(
-      <Tabs
-        tabs={[
-          { label: "Overview", value: "overview" },
-          { label: "Financials", value: "financials" },
-          { label: "Chart", value: "chart" },
-          { label: "Options", value: "options" },
-          { label: "Insider", value: "insider" },
-        ]}
-        activeValue="overview"
-        onSelect={() => {}}
-      />,
-      { width: 24, height: 4 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-    });
-
-    let frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Overview");
-    expect(frame).not.toContain("Insider");
-
-    await act(async () => {
-      for (let i = 0; i < 40; i++) {
-        await testSetup!.mockMouse.scroll(1, 0, "down");
-      }
-      await testSetup!.renderOnce();
-    });
-
-    frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Options");
-    expect(frame).toContain("Insider");
-  });
-
-  test("moves focused tabs with arrow keys and leaves Tab for pane focus", async () => {
-    let lastSelected = "overview";
-    const selectedValues: string[] = [];
-
-    function KeyboardTabsHarness() {
-      const [activeValue, setActiveValue] = useState("overview");
-      return (
-        <Tabs
-          tabs={[
-            { label: "Overview", value: "overview" },
-            { label: "News", value: "news" },
-            { label: "Chart", value: "chart" },
-          ]}
-          activeValue={activeValue}
-          onSelect={(value) => {
-            lastSelected = value;
-            selectedValues.push(value);
-            setActiveValue(value);
-          }}
-          focused
-        />
-      );
-    }
-
-    testSetup = await testRender(<KeyboardTabsHarness />, { width: 40, height: 4 });
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-      testSetup!.mockInput.pressArrow("right");
-      testSetup!.mockInput.pressArrow("right");
-      await testSetup!.renderOnce();
-    });
-
-    expect(selectedValues).toEqual(["news", "chart"]);
-    expect(lastSelected).toBe("chart");
-
-    await act(async () => {
-      testSetup!.mockInput.pressTab();
-      await testSetup!.renderOnce();
-    });
-
-    expect(lastSelected).toBe("chart");
-  });
-
-  test("selects tabs by clicking their text labels", async () => {
-    let lastSelected = "overview";
-    const selectedValues: string[] = [];
-
-    function PointerTabsHarness() {
-      const [activeValue, setActiveValue] = useState("overview");
-      return (
-        <Tabs
-          tabs={[
-            { label: "Overview", value: "overview" },
-            { label: "News", value: "news" },
-            { label: "Chart", value: "chart" },
-          ]}
-          activeValue={activeValue}
-          onSelect={(value) => {
-            lastSelected = value;
-            selectedValues.push(value);
-            setActiveValue(value);
-          }}
-          scrollable={false}
-        />
-      );
-    }
-
-    testSetup = await testRender(<PointerTabsHarness />, { width: 40, height: 4 });
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-    });
-
-    let frame = testSetup.captureCharFrame();
-    const newsCol = frame.split("\n")[0]!.indexOf("News");
-    expect(newsCol).toBeGreaterThanOrEqual(0);
-
-    await act(async () => {
-      await testSetup!.mockMouse.click(newsCol + 1, 0);
-      await testSetup!.renderOnce();
-    });
-
-    expect(lastSelected).toBe("news");
-
-    frame = testSetup.captureCharFrame();
-    const chartCol = frame.split("\n")[0]!.indexOf("Chart");
-    expect(chartCol).toBeGreaterThanOrEqual(0);
-
-    await act(async () => {
-      await testSetup!.mockMouse.click(chartCol + 1, 0);
-      await testSetup!.renderOnce();
-    });
-
-    expect(selectedValues).toEqual(["news", "chart"]);
-    expect(lastSelected).toBe("chart");
-  });
-
-  test("renders tab actions for editable tab sets", async () => {
-    testSetup = await testRender(
-      <Tabs
-        tabs={[
-          { label: "One", value: "one", onClose: (value) => { closedTab = value; } },
-          { label: "Two", value: "two" },
-        ]}
-        activeValue="one"
-        onSelect={() => {}}
-        compact
-        variant="pill"
-        closeMode="active"
-        onAdd={() => { addedTab = true; }}
-      />,
-      { width: 24, height: 3 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-    });
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("One x");
-    expect(frame).toContain("+");
-
-    await act(async () => {
-      await testSetup!.mockMouse.click(5, 0);
-      await testSetup!.renderOnce();
-    });
-    expect(closedTab).toBe("one");
-
-    await act(async () => {
-      await testSetup!.mockMouse.click(14, 0);
-      await testSetup!.renderOnce();
-    });
-    expect(addedTab).toBe(true);
-  });
-
   test("opens compact multi-select dialogs from a button", async () => {
     testSetup = await testRender(<MultiSelectDialogButtonHarness />, { width: 60, height: 18 });
 

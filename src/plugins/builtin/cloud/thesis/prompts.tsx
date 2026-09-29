@@ -1,9 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Button, ChoiceDialog, ConfirmDialog, DialogFrame, TextField, type ChoiceDialogChoice } from "../../../../components";
-import { t } from "../../../../i18n";
-import { colors } from "../../../../theme/colors";
-import { Box, Text, Textarea, type InputRenderable, type TextareaRenderable } from "../../../../ui";
-import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../../../ui/dialog";
+import { ChoiceDialog, TextPromptDialog, type ChoiceDialogChoice, type TextPromptDialogProps } from "../../../../components";
+import type { DialogApi, PromptContext } from "../../../../ui/dialog";
 
 /**
  * The questions a thesis flow asks, on the same dialog pattern as the rest
@@ -11,107 +7,16 @@ import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../../
  * footer. Every prompt resolves `undefined` when the person backs out.
  */
 
-interface TextDialogProps extends PromptContext<string> {
-  title: string;
-  body?: string[];
-  defaultValue?: string;
-  placeholder?: string;
-  /** Sentences rather than a name: a taller field where Shift+Enter breaks a line. */
-  multiline?: boolean;
-  /** Empty is a valid answer (clearing a field) rather than a cancel. */
-  allowEmpty?: boolean;
-  width?: number;
-}
-
-const CANCEL = "\u0000cancel";
-
-function TextDialog({ resolve, dialogId, title, body, defaultValue = "", placeholder, multiline = false, allowEmpty = false, width = 72 }: TextDialogProps) {
-  const inputRef = useRef<InputRenderable | null>(null);
-  const textareaRef = useRef<TextareaRenderable | null>(null);
-  const [value, setValue] = useState(defaultValue);
-
-  useEffect(() => {
-    (multiline ? textareaRef.current : inputRef.current)?.focus?.();
-  }, [multiline]);
-
-  const current = () => {
-    if (!multiline) return value;
-    try {
-      return textareaRef.current?.editBuffer.getText() ?? value;
-    } catch {
-      return value;
-    }
-  };
-  const save = () => {
-    const text = current().trim();
-    if (text || allowEmpty) resolve(text);
-  };
-  const cancel = () => resolve(CANCEL);
-
-  useDialogKeyboard((event) => {
-    if (event.name === "escape") {
-      event.stopPropagation();
-      cancel();
-    }
-  }, { scope: dialogId, allowEditable: true });
-
-  return (
-    <DialogFrame
-      title={title}
-      footer={multiline ? "Enter save · Shift+Enter newline · Esc cancel" : "Enter save · Esc cancel"}
-    >
-      <Box flexDirection="column" width={width}>
-        {body?.map((line, index) => (
-          <Text key={index} fg={colors.textDim} wrapText width={width}>{line ? t(line) : " "}</Text>
-        ))}
-        {body && body.length > 0 && <Box height={1} />}
-        {multiline ? (
-          <Box height={5} border borderColor={colors.border} backgroundColor={colors.panel}>
-            <Textarea
-              ref={textareaRef}
-              initialValue={defaultValue}
-              placeholder={placeholder ? t(placeholder) : ""}
-              focused
-              textColor={colors.text}
-              placeholderColor={colors.textDim}
-              backgroundColor={colors.panel}
-              flexGrow={1}
-              wrapText
-              keyBindings={[
-                { name: "return", action: "submit" },
-                { name: "linefeed", action: "submit" },
-                { name: "return", shift: true, action: "newline" },
-                { name: "linefeed", shift: true, action: "newline" },
-              ]}
-              onSubmit={save}
-              onInput={setValue}
-            />
-          </Box>
-        ) : (
-          <TextField
-            inputRef={inputRef}
-            value={value}
-            placeholder={placeholder ? t(placeholder) : ""}
-            focused
-            onChange={setValue}
-            onSubmit={save}
-          />
-        )}
-        <Box height={1} />
-        <Box flexDirection="row" gap={1}>
-          <Button label="Save" variant="primary" onPress={save} />
-          <Button label="Cancel" variant="secondary" onPress={cancel} />
-        </Box>
-      </Box>
-    </DialogFrame>
-  );
-}
-
-async function ask(dialog: DialogApi, props: Omit<TextDialogProps, keyof PromptContext<string>>): Promise<string | undefined> {
-  const value = await dialog.prompt<string>({
-    content: (context: PromptContext<string>) => <TextDialog {...context} {...props} />,
+async function ask(dialog: DialogApi, props: Omit<TextPromptDialogProps, keyof PromptContext<string>>): Promise<string | undefined> {
+  return dialog.prompt<string>({
+    content: (context) => (
+      <TextPromptDialog
+        {...context}
+        {...props}
+        footer={props.multiline ? "Enter save · Shift+Enter newline · Esc cancel" : "Enter save · Esc cancel"}
+      />
+    ),
   }).catch(() => undefined);
-  return value === undefined || value === CANCEL ? undefined : value;
 }
 
 export function promptText(
@@ -121,7 +26,7 @@ export function promptText(
   return ask(dialog, {
     title: step.label,
     body: step.body,
-    defaultValue: step.defaultValue,
+    initialValue: step.defaultValue,
     placeholder: step.placeholder,
     allowEmpty: step.required === false,
   });
@@ -134,7 +39,7 @@ export function promptTextarea(
   return ask(dialog, {
     title: step.label,
     body: step.body,
-    defaultValue: step.defaultValue,
+    initialValue: step.defaultValue,
     placeholder: step.placeholder,
     multiline: true,
   });
@@ -195,20 +100,3 @@ export async function promptNumber(
   }
 }
 
-export async function confirm(
-  dialog: DialogApi,
-  options: { title: string; body: string | string[]; confirmLabel: string; danger?: boolean },
-): Promise<boolean> {
-  const value = await dialog.prompt<boolean>({
-    content: (context: PromptContext<boolean>) => (
-      <ConfirmDialog
-        {...context}
-        title={options.title}
-        body={options.body}
-        confirmLabel={options.confirmLabel}
-        confirmVariant={options.danger ? "danger" : "primary"}
-      />
-    ),
-  }).catch(() => undefined);
-  return value === true;
-}

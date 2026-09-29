@@ -215,7 +215,7 @@ export function buildGeneratedTemplateField(
         id: "tickers",
         label: "Tickers",
         type: "text",
-        required: true,
+        required: !template.shortcut?.openWithoutArg,
         placeholder: "AAPL, MSFT, NVDA",
       },
       initialValue: "",

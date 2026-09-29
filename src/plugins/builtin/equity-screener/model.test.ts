@@ -1,9 +1,10 @@
 import { screenFixture as payload } from "./test-fixture";
 import { expect, test } from "bun:test";
-import type { ScreenSnapshot } from "../../../api-client/equity-screener";
+import { RESEARCH_FIELDS, SOCIAL_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen } from "./client";
 import {
   appendScreenPage,
+  columnWidth,
   criterionText,
   DEFAULT_SCREEN,
   formatScreenValue,
@@ -95,6 +96,10 @@ test("values keep sign, scale and missing distinct from zero", () => {
   expect(formatScreenValue("revenueGrowthPercent", 0)).toBe("0.0");
   expect(formatScreenValue("insiderSales90d", 20)).toBe("20");
   expect(formatScreenValue("trailingPE", null)).toBe("--");
+  // Thousands separators; a six-figure price still fits its column.
+  expect(formatScreenValue("price", 757_398)).toBe("757,398.00");
+  expect(formatScreenValue("price", 757_398).length).toBeLessThanOrEqual(columnWidth("price"));
+  expect(formatScreenValue("trailingPE", -1_234.56)).toBe("-1,234.6");
 });
 
 test("undated provider values show their collection date, never an invented source date", () => {
@@ -113,4 +118,21 @@ test("result columns lead with the focus metric and the screen's criteria; money
   });
   expect(resultFields(definition, "trailingPE").slice(0, 3)).toEqual(["trailingPE", "operatingMarginPercent", "marketCap"]);
   expect(resultFields({ ...definition, currency: null }, "trailingPE")).not.toContain("price");
+});
+
+test("social and research fields format by kind, and an older server's rows still load", () => {
+  expect([formatScreenValue("xPostsPerDay", 77), formatScreenValue("wikiViewsPerDay", 5_916), formatScreenValue("xPostsVsMedian", 2.46)])
+    .toEqual(["77", formatScreenValue("volume", 5_916), "2.5x"]);
+  expect([formatScreenValue("return1YPercent", 32.51), formatScreenValue("fromHigh52WPercent", -1.98), formatScreenValue("priceToBook", 45.93),
+    formatScreenValue("beta", 1.052), formatScreenValue("ivRank", 46.89)])
+    .toEqual(["+32.5", "-2.0", "45.9x", "1.05", "47"]);
+  const older = payload();
+  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS])
+    delete (row.metrics as Partial<typeof row.metrics>)[field];
+  const loaded = validateScreenPayload(older);
+  expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
+  expect(loaded.rows[0]!.metrics.roePercent).toMatchObject({ value: null, state: "unavailable" });
+  const broken = payload();
+  delete (broken.rows[0]!.metrics as Partial<typeof broken.rows[0]["metrics"]>).price;
+  expect(() => validateScreenPayload(broken)).toThrow("price");
 });

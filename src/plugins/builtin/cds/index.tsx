@@ -19,14 +19,15 @@ export const cdsModule: PluginModule = {
     component: CdsPane,
     defaultPosition: "right",
     defaultMode: "floating",
-    defaultFloatingSize: { width: 92, height: 22 },
+    // Tall enough for the 5Y line above the trades, like Daily Short Volume.
+    defaultFloatingSize: { width: 92, height: 28 },
   }],
   paneTemplates: [{
     id: "cds-pane",
     paneId: CDS_PANE_ID,
     label: "Single-Name CDS",
-    description: "Single-name corporate CDS trade activity from DTCC public dissemination.",
-    keywords: ["cds", "credit", "default", "swap", "single name", "issuer", "dtcc", "protection"],
+    description: "Single-name corporate CDS trades and 5Y spread history from DTCC public dissemination.",
+    keywords: ["cds", "credit", "default", "swap", "spread", "single name", "issuer", "dtcc", "protection"],
     shortcut: { prefix: "CDS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
     headless: cdsHeadless,
     createInstance: (_context, options) => {

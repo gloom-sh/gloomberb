@@ -52,7 +52,11 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
   /** Colour the change by sign. Off by default: a rate moving up is not good news. */
   signedChange?: boolean;
   extraColumns?: Array<{ column: DataTableColumn; sortValue: (row: T) => string | number | null; renderCell: (row: T) => DataTableCell }>;
-  rootBefore?: ReactNode;
+  /**
+   * Content above the board. A function gets the columns the board fitted to
+   * the width, so a header zone can count the scrollbar row they need.
+   */
+  rootBefore?: ReactNode | ((board: { columns: readonly DataTableColumn[] }) => ReactNode);
   emptyTitle?: string;
 }
 
@@ -140,7 +144,9 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? "--", color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };
     const asOf = row.asOfText ?? row.asOf ?? "--";
-    return { text: shortAsOf ? shortIsoDate(asOf) : asOf, color: row.status === "stale" ? colors.warning : colors.textDim };
+    // A narrow board drops the year; the export keeps the full date.
+    return { text: shortAsOf ? shortIsoDate(asOf) : asOf, ...(row.asOf ? { value: row.asOf } : {}),
+      color: row.status === "stale" ? colors.warning : colors.textDim };
   };
   return <DataTableStackView columns={columns} items={items} getItemKey={(row) => row.id} renderCell={renderCell}
     focused={focused} selection={{ kind: "id", selectedId, getId: (row) => row.id, onChange: onSelectedIdChange }}
@@ -149,7 +155,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     sortable isColumnSortable={(column) => column.id !== "history"}
     sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => {
       if (id !== "history") setSort((current) => nextHeaderSort(current, id));
-    }} rootWidth={width} rootHeight={Math.max(3, height)} rootBefore={rootBefore}
+    }} rootWidth={width} rootHeight={Math.max(3, height)} rootBefore={typeof rootBefore === "function" ? rootBefore({ columns }) : rootBefore}
     freezeFirstColumn emptyStateTitle={emptyTitle} />;
 }
 

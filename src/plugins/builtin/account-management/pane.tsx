@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableView,
+  FieldLabel,
   StatGrid,
-  Tabs,
-  usePaneHeaderTabs,
+  TextField,
+  usePaneTabs,
   type DataTableCell,
   type DataTableColumn,
   type StatItem,
@@ -19,24 +20,19 @@ import type { PaneProps } from "../../../types/plugin";
 import {
   Box,
   ScrollBox,
-  Text,
   Textarea,
   TextAttributes,
   useRendererHost,
-  useUiCapabilities,
-  type BoxRenderable,
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "../../../ui";
-import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
+import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { SelectControl } from "../../../components/ui/select-button";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
 import { TeamsAccountTab } from "../cloud/team/acm-tab";
-import { afterLayout, revealInScrollBox } from "../cloud/reveal-in-scroll-box";
 import {
-  AccountTextField,
   CheckboxRow,
   FieldRow,
   PublicAnalyticsGroup,
@@ -54,7 +50,6 @@ import {
   formatPlan,
   formatTrialEnd,
   formatTrialOffer,
-  getPortfolioPositionTickers,
   portfolioOptionIds,
   profileToDraft,
   type AccountDraft,
@@ -63,13 +58,13 @@ import {
 import { PasswordChangeDialog } from "./password-dialog";
 import { useAccountManagementFooter } from "./footer";
 import { useAccountManagementKeyboard } from "./keyboard";
-import { buildTrackedCurrencies } from "../analytics/sector-model";
 import {
   buildBenchmarkReturnSeries,
   buildPortfolioChartTargets,
   buildPortfolioReturnSeries,
 } from "../analytics/pane-model";
-import { computeDatedBeta } from "../analytics/metrics";
+import { computeDatedBeta, hasPortfolioPosition } from "../analytics/metrics";
+import { buildTrackedCurrencies } from "../portfolio-list/pane/data";
 import { accountDailyReturns } from "../analytics/account-returns";
 import { useBrokerPortfolioPerformance } from "../analytics/broker-performance";
 import { useCloudSyncStatus } from "../../../sync/react";
@@ -77,11 +72,7 @@ import { cloudSyncController } from "../../../sync/controller";
 import { setSyncedProfileAnalytics } from "../../../sync/profile-analytics";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
-import {
-  consumeRequestedAccountManagementTab,
-  subscribeRequestedAccountManagementTab,
-  type AccountManagementTab,
-} from "./navigation";
+import { subscribeRequestedAccountManagementTab, type AccountManagementTab } from "./navigation";
 import { openCloudUpgrade } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState } from "../../runtime";
@@ -201,7 +192,6 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const language = useAppLanguage();
   const dialog = useDialog();
   const renderer = useRendererHost();
-  const { nativePaneChrome } = useUiCapabilities();
   const config = usePaneAppConfig();
   const portfolios = config.portfolios;
   const baseCurrency = config.baseCurrency;
@@ -219,13 +209,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const [message, setMessage] = useState<{ tone: "info" | "success" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState<AccountBusy>(null);
 
-  // A tab requested before the pane mounted wins over the restored one, but only once.
-  useEffect(() => {
-    const requested = consumeRequestedAccountManagementTab();
-    if (!requested) return;
-    setActiveTab(requested);
-    setActiveField(ACCOUNT_TAB_FIELD_ORDER[requested][0] ?? "username");
-  }, []);
+  // A requested tab switches the open pane; one requested before it mounted wins over the restored tab once.
   useEffect(() => subscribeRequestedAccountManagementTab((tab) => {
     setActiveTab(tab);
     setActiveField(ACCOUNT_TAB_FIELD_ORDER[tab][0] ?? "username");
@@ -242,6 +226,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const twoColumns = formWidth >= 60;
   const fieldWidth = twoColumns ? Math.max(22, Math.floor((formWidth - 3) / 2)) : Math.max(18, Math.min(46, formWidth - 2));
   const formLabelWidth = accountFieldLabelWidth(formWidth);
+  const fieldLabelWidth = accountFieldLabelWidth(fieldWidth);
   const bodyHeight = Math.max(5, height);
   const fieldOrder = ACCOUNT_TAB_FIELD_ORDER[activeTab];
   const accountTabs = ACCOUNT_TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.label) }));
@@ -281,7 +266,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   // FX, and chart requests below stay off on every other tab.
   const portfolioTickers = useMemo(
     () => activeTab === "profile" && draft.sharedPortfolioId
-      ? getPortfolioPositionTickers(tickers, draft.sharedPortfolioId)
+      ? [...tickers.values()].filter((ticker) => hasPortfolioPosition(ticker, draft.sharedPortfolioId))
       : [],
     [activeTab, draft.sharedPortfolioId, tickers],
   );
@@ -308,7 +293,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     `${draft.sharedPortfolioId ?? ""}\u001f${[...liveFinancials.keys()].join(",")}`,
   );
   const trackedCurrencies = useMemo(
-    () => buildTrackedCurrencies(portfolioTickers, financials, baseCurrency),
+    () => buildTrackedCurrencies(portfolioTickers, financials, null, baseCurrency),
     [baseCurrency, financials, portfolioTickers],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
@@ -526,14 +511,16 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   // Signed out, every tab is the same sign-in wall, so the strip stays away.
   // h/l and the arrows switch tabs; the portfolio picker keeps them while it is
   // the active field, and text fields keep them for the cursor.
-  const tabsInHeader = usePaneHeaderTabs(hasSession || apiClient.isSignedIn() ? {
+  const { strip: tabStrip, rows: stripRows } = usePaneTabs(hasSession || apiClient.isSignedIn() ? {
     tabs: accountTabs,
     activeValue: activeTab,
     onSelect: selectTab,
     focused,
+    variant: "pill",
+    compact: true,
   } : null);
   // The strip and the gap the column puts under it.
-  const tabRows = tabsInHeader ? 0 : 2;
+  const tabRows = stripRows * 2;
 
   const openPasswordDialog = useCallback(() => {
     if (busy) return;
@@ -570,38 +557,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   }, []);
 
   // A field the keyboard moves to can sit below the fold in a short pane.
-  // Pointer moves (a hover over the stats row, a click) leave the scroll alone.
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const revealActiveFieldRef = useRef(false);
-  const cycleField = useCallback((delta: number) => {
-    setActiveField((current) => {
-      const index = fieldOrder.indexOf(current);
-      const nextIndex = Math.max(0, Math.min(fieldOrder.length - 1, index + delta));
-      const next = fieldOrder[nextIndex] ?? "username";
-      if (next !== current) revealActiveFieldRef.current = true;
-      return next;
-    });
-  }, [fieldOrder]);
-  const fieldNodes = useRef(new Map<AccountFieldKey, BoxRenderable>());
-  const fieldNodeRef = useMemo(() => {
-    const refs = new Map<AccountFieldKey, (node: BoxRenderable | null) => void>();
-    return (key: AccountFieldKey) => {
-      let ref = refs.get(key);
-      if (!ref) {
-        ref = (node: BoxRenderable | null) => {
-          if (node) fieldNodes.current.set(key, node);
-          else fieldNodes.current.delete(key);
-        };
-        refs.set(key, ref);
-      }
-      return ref;
-    };
-  }, []);
-  useEffect(() => {
-    if (!revealActiveFieldRef.current) return;
-    revealActiveFieldRef.current = false;
-    return afterLayout(() => revealInScrollBox(scrollRef.current, fieldNodes.current.get(activeField) ?? null));
-  }, [activeField]);
 
   const cyclePortfolio = useCallback((delta: number) => {
     const optionIds = portfolioOptionIds(portfolios);
@@ -698,21 +654,16 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const deleteAccount = useCallback(async () => {
     setActiveField("deleteAccountAction");
     if (busy) return;
-    const confirmed = await dialog.prompt<boolean>({
+    const confirmed = await confirmDialog(dialog, {
       closeOnClickOutside: false,
-      content: (context: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...context}
-          title={t("Delete Account")}
-          body={[
-            t("Delete your Gloom Cloud account?"),
-            t("This removes cloud profile, chat, sync, and billing-linked account data."),
-          ]}
-          confirmLabel={t("Delete Account")}
-          confirmVariant="danger"
-        />
-      ),
-    }).catch(() => false);
+      title: t("Delete Account"),
+      body: [
+        t("Delete your Gloom Cloud account?"),
+        t("This removes cloud profile, chat, sync, and billing-linked account data."),
+      ],
+      confirmLabel: t("Delete Account"),
+      confirmVariant: "danger",
+    });
     if (!confirmed) return;
 
     setBusy("delete");
@@ -741,9 +692,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     saveProfile,
   });
 
-  useAccountManagementKeyboard({
+  const { nodeRef: fieldNodeRef } = useAccountManagementKeyboard({
     activeField,
-    cycleField,
     cyclePortfolio,
     deleteAccount,
     draftRef,
@@ -754,9 +704,28 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     openPortfolioDialog: openPortfolioPicker,
     openUpgrade,
     saveProfile,
+    scrollRef,
+    setActiveField,
     setDraftValue,
     turnOffEmailAlerts,
   });
+
+  const textField = (key: "username" | "name" | "company" | "title" | "publicEmail" | "xAccount", label: string, placeholder: string) => (
+    <Box ref={fieldNodeRef(key)}>
+      <TextField
+        label={label}
+        labelWidth={fieldLabelWidth}
+        active={activeField === key}
+        value={draft[key]}
+        placeholder={placeholder}
+        focused={focused && activeField === key}
+        width={fieldWidth}
+        onMouseDown={() => setActiveField(key)}
+        onChange={(value) => setDraftValue(key, value)}
+        onSubmit={() => { void saveProfile(); }}
+      />
+    </Box>
+  );
 
   if (!hasSession && !apiClient.isSignedIn()) {
     return <SignInWall action="manage your Gloom Cloud account" />;
@@ -764,16 +733,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height} paddingX={1} gap={1}>
-      {!tabsInHeader && (
-        <Tabs
-          tabs={accountTabs}
-          activeValue={activeTab}
-          onSelect={selectTab}
-          focused={focused}
-          variant="pill"
-          compact
-        />
-      )}
+      {tabStrip}
       <ScrollBox ref={scrollRef} height={Math.max(3, bodyHeight - tabRows)} scrollY focusable={false}>
         <Box flexDirection="column" width={contentWidth} gap={1}>
           {activeTab === "profile" ? (
@@ -800,90 +760,18 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
               </FieldRow>
 
               <FieldRow twoColumns={twoColumns}>
-                <AccountTextField
-                  fieldKey="username"
-                  nodeRef={fieldNodeRef("username")}
-                  label={t("Username")}
-                  value={draft.username}
-                  placeholder={t("username")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("username", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
-                <AccountTextField
-                  fieldKey="name"
-                  nodeRef={fieldNodeRef("name")}
-                  label={t("Full Name")}
-                  value={draft.name}
-                  placeholder={t("Full name")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("name", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
+                {textField("username", t("Username"), t("username"))}
+                {textField("name", t("Full Name"), t("Full name"))}
               </FieldRow>
 
               <FieldRow twoColumns={twoColumns}>
-                <AccountTextField
-                  fieldKey="company"
-                  nodeRef={fieldNodeRef("company")}
-                  label={t("Company")}
-                  value={draft.company}
-                  placeholder={t("Company")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("company", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
-                <AccountTextField
-                  fieldKey="title"
-                  nodeRef={fieldNodeRef("title")}
-                  label={t("Title")}
-                  value={draft.title}
-                  placeholder={t("Title")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("title", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
+                {textField("company", t("Company"), t("Company"))}
+                {textField("title", t("Title"), t("Title"))}
               </FieldRow>
 
               <FieldRow twoColumns={twoColumns}>
-                <AccountTextField
-                  fieldKey="publicEmail"
-                  nodeRef={fieldNodeRef("publicEmail")}
-                  label={t("Public Email")}
-                  value={draft.publicEmail}
-                  placeholder="public@example.com"
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("publicEmail", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
-                <AccountTextField
-                  fieldKey="xAccount"
-                  nodeRef={fieldNodeRef("xAccount")}
-                  label={t("X Account")}
-                  value={draft.xAccount}
-                  placeholder={t("handle")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("xAccount", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
+                {textField("publicEmail", t("Public Email"), "public@example.com")}
+                {textField("xAccount", t("X Account"), t("handle"))}
               </FieldRow>
 
               <Box
@@ -893,13 +781,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 gap={1}
                 onMouseDown={() => setActiveField("bio")}
               >
-                <Text
-                  width={formLabelWidth}
-                  fg={activeField === "bio" ? colors.textBright : colors.textDim}
-                  attributes={activeField === "bio" ? TextAttributes.BOLD : 0}
-                >
-                  {nativePaneChrome ? t("Bio") : `${activeField === "bio" ? "> " : "  "}${t("Bio")}`}
-                </Text>
+                <FieldLabel label={t("Bio")} active={activeField === "bio"} width={formLabelWidth} />
                 <Box
                   height={3}
                   width={Math.max(18, formWidth - formLabelWidth - 1)}

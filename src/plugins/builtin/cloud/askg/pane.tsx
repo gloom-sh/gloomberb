@@ -53,7 +53,7 @@ import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
 import { usePlanAccess } from "../../../../api-client/plan-access";
 import { SignInWall } from "../auth-actions";
-import { afterLayout, revealInScrollBox } from "../reveal-in-scroll-box";
+import { afterLayout, revealInScrollBox } from "../../../../components/ui/reveal-in-scroll-box";
 import { ASKGSessionController, type ASKGControllerManifest } from "./controller";
 import {
   createASKGRendererToolExecutor,
@@ -64,7 +64,7 @@ import {
   askgConversationLabel,
   askgConversationListStore,
 } from "./conversation-store";
-import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
+import { confirmDialog } from "../../../../components/ui/confirm-dialog";
 import { useDialog, type PromptContext } from "../../../../ui/dialog";
 import { subscribeASKGQuestions } from "./pending-question";
 import { ASKGConversationSidebar } from "./sidebar";
@@ -628,19 +628,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       (conversation) => conversation.id === conversationId,
     );
     const label = row ? askgConversationLabel(row) : "this conversation";
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (context: unknown) => (
-        <ConfirmDialog
-          {...(context as PromptContext<boolean>)}
-          title="Delete conversation"
-          body={[`Delete "${label}"? This cannot be undone.`]}
-          confirmLabel="Delete conversation"
-          width={48}
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return false;
+    const confirmed = await confirmDialog(dialog, {
+      title: "Delete conversation",
+      body: [`Delete "${label}"? This cannot be undone.`],
+      confirmLabel: "Delete conversation",
+      width: 48,
+    });
+    if (!confirmed) return false;
     if (conversationId === state.conversationId) controller.startConversation();
     void askgConversationListStore.delete(conversationId);
     return true;

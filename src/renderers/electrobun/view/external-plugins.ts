@@ -26,6 +26,7 @@ export async function loadDesktopExternalPlugin(bundle: DesktopExternalPluginBun
     path: bundle.path,
     directory: bundle.directory,
     ...(bundle.commit ? { commit: bundle.commit } : {}),
+    ...(bundle.repo ? { repo: bundle.repo } : {}),
     ...(bundle.linked ? { linked: true } : {}),
   };
   const fallback = {

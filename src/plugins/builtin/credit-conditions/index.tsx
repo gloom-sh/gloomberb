@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import {
+  ChartTableHeader,
   CompositeChart,
+  formatBpAxis,
   MarketBoardStack,
   PaneStatusBody,
   usePaneFooter,
@@ -15,6 +17,7 @@ import { StatChartDetail } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../../../react/auto-refresh";
@@ -44,19 +47,32 @@ function boardRow(row: CreditConditionRow): CreditBoardRow {
   };
 }
 
-function SpreadChart({ row, width, height, focused }: { row: CreditConditionRow; width: number; height: number; focused: boolean }) {
-  const series = useMemo(() => [staticSeries(row.history.map((point) => ({
+function spreadHistorySeries(row: CreditConditionRow) {
+  return [staticSeries(row.history.map((point) => ({
     date: new Date(point.date), observedAt: new Date(point.date), value: point.valueBp,
-  })), { id: row.seriesId, label: row.label, color: colors.positive, calendarSpaced: true })], [row]);
+  })), { id: row.seriesId, label: `${row.label} OAS`, color: colors.positive, calendarSpaced: true })];
+}
+
+function spreadChart(row: CreditConditionRow) {
+  return {
+    series: spreadHistorySeries(row), formatValue: (value: number) => formatBp(value),
+    formatAxisValue: formatBpAxis, remoteKind: "credit-spread-history",
+    // An index without a history keeps the band, so the board does not jump under the cursor.
+    empty: `No history for ${row.label}`,
+  };
+}
+
+function SpreadChart({ row, width, height, focused }: { row: CreditConditionRow; width: number; height: number; focused: boolean }) {
+  const series = useMemo(() => spreadHistorySeries(row), [row]);
   return <CompositeChart series={series} panels={PANELS} width={width} height={height} focused={focused} showLegend={false}
-    navigable={false} showTimeAxis formatAxisValue={(value) => formatBp(value)} remoteKind="credit-spread-history" />;
+    navigable={false} showTimeAxis formatAxisValue={formatBpAxis} remoteKind="credit-spread-history" />;
 }
 
 function SpreadDetail({ row, width, height, focused }: { row: CreditConditionRow; width: number; height: number; focused: boolean }) {
   // The chart shows the year the rank and range come from.
   const items: StatItem[] = [
     { id: "oas", label: "OAS", value: formatBp(row.oasBp),
-      detail: `${row.percentile1Y == null ? "--" : row.percentile1Y.toFixed(0)} pctl 1Y · ${row.date}` },
+      detail: `${formatPercentileRank(row.percentile1Y, "1Y")} · ${row.date}` },
     { id: "change", label: "1D", value: formatBp(row.dailyChangeBp, true) },
     { id: "range", label: "1Y range", value: `${formatBp(row.rangeLowBp)} to ${formatBp(row.rangeHighBp)}` },
     { id: "series", label: "FRED", value: row.seriesId, detail: row.frequency },
@@ -107,15 +123,13 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     );
   }
 
-  // Like the funding boards, the selected index's year fills the space above the board.
+  // Like the funding boards, the selected index's year sits above the board;
+  // the legend names the index, so the chart reads without the highlighted row.
   const selected = boardRows.find((row) => row.id === selectedId) ?? boardRows[0];
-  const boardHeight = Math.max(3, Math.min(boardRows.length + 2, Math.floor(height * 0.45)));
-  const chartHeight = height - boardHeight;
-  const detailOpen = boardRows.some((row) => row.id === openId);
   return (
     <MarketBoardStack rows={boardRows} width={width} height={height} focused={focused}
-      rootBefore={selected && selected.spread.history.length >= 2 && chartHeight >= 8
-        ? <SpreadChart row={selected.spread} width={width} height={chartHeight} focused={focused && !detailOpen} /> : undefined}
+      rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={boardRows.length}
+        tableColumns={columns} chart={selected ? spreadChart(selected.spread) : null} />}
       selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
       labelHeader="INDEX" labelWidth={10} valueLabel="OAS" valueWidth={10}
       renderDetail={(row) => <SpreadDetail row={row.spread} width={width} height={Math.max(5, height - 2)} focused={focused} />} />

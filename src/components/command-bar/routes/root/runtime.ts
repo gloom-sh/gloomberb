@@ -62,6 +62,7 @@ interface UseCommandBarRootRuntimeOptions {
   }): ResultItem[];
   pluginCommandItems(): ResultItem[];
   pluginCommandResultItems(command: CommandDef, shortcutArg: string): ResultItem[];
+  pluginInstallItem?: ResultItem | null;
   providerResultItems?: ResultItem[];
   providerCategoryPriorities?: CommandBarCategoryPriorities;
   providerSearching?: boolean;
@@ -116,6 +117,7 @@ export function useCommandBarRootRuntime({
   paneShortcutItems,
   pluginCommandItems,
   pluginCommandResultItems,
+  pluginInstallItem = null,
   providerResultItems = [],
   providerCategoryPriorities,
   providerSearching = false,
@@ -190,6 +192,7 @@ export function useCommandBarRootRuntime({
     paneShortcutItems,
     pluginCommandItems,
     pluginCommandResultItems,
+    pluginInstallItem,
     rootQuery,
     rootShortcutIntent,
     providerResultItems,
@@ -219,6 +222,7 @@ export function useCommandBarRootRuntime({
     paneShortcutItems,
     pluginCommandItems,
     pluginCommandResultItems,
+    pluginInstallItem,
     rootQuery,
     rootShortcutIntent,
     providerResultItems,
@@ -239,13 +243,16 @@ export function useCommandBarRootRuntime({
     const trimmed = rootQuery.trim();
     if (trimmed.length < 2) return null;
     const normalizedQuery = normalizeCommandTickerSearchText(trimmed);
+    // The install row for "TV" is labelled TV, but it leads on purpose and
+    // must not keep Grupo Televisa out of the list.
     const hasExactLocalRow = rootResultModel.items.some((item) => (
-      item.kind !== "ticker"
+      item !== pluginInstallItem
+      && item.kind !== "ticker"
       && item.kind !== "search"
       && normalizeCommandTickerSearchText(item.label) === normalizedQuery
     ));
     return hasExactLocalRow ? null : trimmed;
-  }, [activeMatch, currentRoute, rootQuery, rootResultModel.items, rootShortcutIntent.kind]);
+  }, [activeMatch, currentRoute, pluginInstallItem, rootQuery, rootResultModel.items, rootShortcutIntent.kind]);
   const rootTickerSearchArg = rootSecurityDescriptionArg ?? rootPlainTickerSearchArg;
 
   const {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient, type CloudWorldVenueMapPayload, type CloudWorldVenuePayload } from "../../../api-client";
 import {
   DataTableView,
@@ -11,16 +11,16 @@ import {
   readStoredPaneSidebarWidth,
   shouldShowPaneSidebar,
   usePaneFooter,
+  useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
-import { usePluginPaneState } from "../../../public/react";
+import { useAsyncResource, usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { WorldVenueMap } from "./map";
 import {
   filterWorldVenues,
@@ -28,7 +28,6 @@ import {
   formatVenueLocalTime,
   venueRemainingSeconds,
 } from "./model";
-import { errorMessage } from "../../../utils/errors";
 
 export const WORLD_VENUE_MAP_PANE_ID = "world-venue-map";
 
@@ -74,45 +73,19 @@ function SelectedVenueHeader({
   );
 }
 
+async function loadWorldVenues(): Promise<CloudWorldVenueMapPayload> {
+  const response = await apiClient.getCloudWorldVenues();
+  if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
+  return response.stale ? { ...response.data, stale: true } : response.data;
+}
+
 export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
-  const [data, setData] = useState<CloudWorldVenueMapPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // A background refresh keeps the venues on screen, so loading only shows before the first answer.
+  const { data, loading, error, load } = useAsyncResource(loadWorldVenues);
   const [query, setQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
+  const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const [selectedMic, setSelectedMic] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const inputRef = useRef<InputRenderable | null>(null);
-  const generationRef = useRef(0);
-  const dataRef = useRef<CloudWorldVenueMapPayload | null>(null);
-  dataRef.current = data;
-
-  const load = useCallback(async () => {
-    const generation = ++generationRef.current;
-    if (!dataRef.current) setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.getCloudWorldVenues();
-      if (generation !== generationRef.current) return;
-      if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
-      const next = response.stale ? { ...response.data, stale: true } : response.data;
-      dataRef.current = next;
-      setData(next);
-      setLoading(false);
-    } catch (caught) {
-      if (generation !== generationRef.current) return;
-      setError(errorMessage(caught));
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-    return () => {
-      generationRef.current += 1;
-    };
-  }, [load]);
 
   useEffect(() => {
     if (!data) return;
@@ -136,11 +109,6 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
     () => venues.find((venue) => venue.mic === selectedMic) ?? null,
     [selectedMic, venues],
   );
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((value) => value + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
   const refresh = useCallback(() => void load(), [load]);
   // The search field only exists once venues have loaded; before that `/` has
   // nothing to focus and must not leave the pane waiting on a missing field.
@@ -149,13 +117,7 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
 
   useShortcut((event) => {
     if (searchOpen || event.targetEditable) return;
-    if (searchable && isPlainKey(event, "/")) {
-      event.preventDefault();
-      event.stopPropagation();
-      focusSearch();
-    } else {
-      handleRefreshKey(event, refresh, { stopPropagation: true });
-    }
+    handleRefreshKey(event, refresh, { stopPropagation: true });
   }, { allowEditable: true, enabled: focused });
 
   usePaneFooter(WORLD_VENUE_MAP_PANE_ID, () => ({
@@ -198,22 +160,19 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     venue: CloudWorldVenuePayload,
     column: VenueColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "status":
         return {
           text: venue.isOpen ? "●" : "○",
-          color: selectedColor ?? (venue.isOpen ? colors.positive : colors.textDim),
+          color: venue.isOpen ? colors.positive : colors.textDim,
         };
       case "mic":
-        return { text: venue.mic, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: venue.mic, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "name":
-        return { text: venue.title, color: selectedColor ?? colors.textMuted };
+        return { text: venue.title, color: colors.textMuted };
       case "time":
-        return { text: formatVenueLocalTime(venue.timezone, now), color: selectedColor ?? colors.textDim };
+        return { text: formatVenueLocalTime(venue.timezone, now), color: colors.textDim };
     }
   }, [now]);
 
@@ -225,12 +184,8 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
         onChange: setQuery,
         placeholder: "Filter venues...",
         focused,
-        active: searchFocused,
-        onActiveChange: (active) => active ? focusSearch() : blurSearch(),
-        focusToken: searchFocusToken,
-        inputRef,
+        ...searchProps,
         debounceMs: 80,
-        onNavigateDown: blurSearch,
         normalizeValue: (value: string) => value.trim(),
       }}
     />
@@ -254,6 +209,7 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
       sortDirection="asc"
       getItemKey={(venue) => venue.mic}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={query.trim() ? "No matching venues." : "No venue data."}
       emptyStateHint={query.trim() ? "Clear search." : undefined}
     />

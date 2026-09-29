@@ -42,20 +42,25 @@ describe("first-run workspace", () => {
   });
 
   test("lays out heatmap, watchlist, chart and top news, floating a market read", () => {
-    const home = buildFirstRunLayout({
+    const panes = ["portfolio-list", "chart-composer", "news-top", "ticker-news", "world-indices", "fear-greed"];
+    const build = (hasPane: (id: string) => boolean) => buildFirstRunLayout({
       symbol: "MSFT",
       portfolioId: "main",
       watchlistId: "watchlist",
-      hasPane: (id) => ["portfolio-list", "chart-composer", "news-top", "ticker-news", "world-indices"].includes(id),
+      hasPane,
     });
+    const home = build((id) => panes.includes(id));
     const byId = new Map(home.layout.instances.map((instance) => [instance.instanceId, instance]));
     expect(byId.get(FIRST_RUN_PANE_IDS.heatmap)).toMatchObject({ paneId: "portfolio-list", settings: { viewMode: "grid", collectionScope: "portfolios" } });
     expect(byId.get(FIRST_RUN_PANE_IDS.watchlist)).toMatchObject({ params: { collectionId: "watchlist" }, settings: { viewMode: "table", collectionScope: "watchlists" } });
     expect(byId.get(FIRST_RUN_PANE_IDS.chart)).toMatchObject({ paneId: "chart-composer", binding: { kind: "fixed", symbol: "MSFT" } });
     expect(byId.get(FIRST_RUN_PANE_IDS.news)).toMatchObject({ paneId: "news-top", binding: { kind: "none" } });
     expect(home.layout.instances.some((instance) => instance.paneId === "ticker-news")).toBe(false);
-    expect(home.layout.floating.map((entry) => entry.instanceId)).toEqual([FIRST_RUN_PANE_IDS.indices]);
+    expect(home.layout.floating.map((entry) => entry.instanceId)).toEqual([FIRST_RUN_PANE_IDS.sentiment]);
     expect(home.focusedPaneId).toBe(FIRST_RUN_PANE_IDS.chart);
+    // Without the gauge, the indices float instead.
+    const withoutGauge = build((id) => id !== "fear-greed" && panes.includes(id));
+    expect(withoutGauge.layout.floating.map((entry) => entry.instanceId)).toEqual([FIRST_RUN_PANE_IDS.indices]);
   });
 
   test("skips panes the host cannot render instead of leaving placeholders", () => {

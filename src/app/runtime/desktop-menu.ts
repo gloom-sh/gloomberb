@@ -6,6 +6,7 @@ import type { DesktopApplicationMenuBridge } from "../../types/desktop-menu";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { isDialogOpen } from "../../ui/dialog-stack";
 import type { RendererHost } from "../../ui/host";
+import { recordFunctionOpen } from "../../telemetry/usage-counts";
 
 const OPENS_OVER_DIALOGS = new Set<string>(["open-command-bar", "open-plugin-workflow", "open-builtin-workflow"]);
 
@@ -57,7 +58,12 @@ export function useDesktopApplicationMenuRuntime({
           dispatch({ type: "TOGGLE_STATUS_BAR" });
           break;
         case "open-layout-gallery":
+          recordFunctionOpen({ shortcut: "LAY", externalPluginId: null });
           pluginRegistry.showPane("layout-marketplace");
+          break;
+        case "quit":
+          // Through the view, so what was counted is sent before the app goes.
+          rendererHost.requestExit();
           break;
         case "layout-undo":
           dispatch({ type: "UNDO_LAYOUT" });

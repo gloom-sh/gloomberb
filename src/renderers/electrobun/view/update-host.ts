@@ -4,7 +4,7 @@ import {
   type UpdateCheckResult,
   type UpdateProgress,
 } from "../../../updater";
-import { backendRequest, onUpdateProgress } from "./backend-rpc";
+import { backendRequest, onBackendMessage } from "./backend-rpc";
 
 export function installElectrobunUpdateHost(): void {
   setUpdateHost({
@@ -14,7 +14,7 @@ export function installElectrobunUpdateHost(): void {
     performUpdate(release: ReleaseInfo, onProgress: (progress: UpdateProgress) => void): Promise<void> {
       return new Promise((resolve) => {
         let settled = false;
-        const unsubscribe = onUpdateProgress(({ progress }) => {
+        const unsubscribe = onBackendMessage("update.progress", ({ progress }) => {
           onProgress(progress);
           if (progress.phase === "done" || progress.phase === "error") {
             settled = true;

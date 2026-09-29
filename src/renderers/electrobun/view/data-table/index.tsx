@@ -10,15 +10,15 @@ import {
   type CSSProperties,
 } from "react";
 import { EmptyState } from "../../../../components/ui/status";
-import { useAppDispatch, usePaneInstance } from "../../../../state/app/context";
+import { usePaneInstance } from "../../../../state/app/context";
 import { useRafCallback } from "../../../../react/use-raf-callback";
 import { measurePerf } from "../../../../utils/perf-marks";
 import type {
   DataTableColumn,
   DataTableProps,
-  DataTableVisibleRange,
 } from "../../../../components/ui/data-table";
-import { resolveDataTableVisibleRange } from "../../../../components/ui/data-table/visible-range";
+import { resolveDataTableScrollTop } from "../../../../components/ui/data-table/visible-range";
+import { useFocusOwningPane, useVisibleRangeEmitter } from "../../../../components/ui/data-table/hooks";
 import {
   buildTableGridTemplateColumns,
   getTableWidth,
@@ -89,10 +89,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   onTableMouseDown,
   visibleRangeKey,
   onVisibleRangeChange,
+  visibleRangeBuffer,
   onRowMouseDown,
   onRowContextMenu,
   rowContextMenuSurface = false,
   renderCell,
+  selectedTextOverridesCellColor = false,
   getRowVersion,
   renderSectionHeader,
   getRowBackgroundColor,
@@ -111,13 +113,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
-  const dispatch = useAppDispatch();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
+  const focusPane = useFocusOwningPane();
   const bodyElementRef = useRef<HTMLDivElement | null>(null);
-  const lastVisibleRangeRef = useRef<{
-    key: string | number | undefined;
-    range: DataTableVisibleRange;
-  } | null>(null);
   const headerHorizontal = useScrollbarState(false);
   const headerVertical = useScrollbarState(false);
   const bodyHorizontal = useScrollbarState(showHorizontalScrollbar);
@@ -140,31 +138,21 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     onActivate?.(item, index);
   }, [onActivate]);
 
-  const focusPane = useCallback(() => {
-    if (!paneInstanceId) return;
-    dispatch({ type: "FOCUS_PANE", paneId: paneInstanceId });
-  }, [dispatch, paneInstanceId]);
-
+  const reportVisibleRange = useVisibleRangeEmitter({
+    itemCount: items.length,
+    visibleRangeKey,
+    visibleRangeBuffer,
+    onVisibleRangeChange,
+  });
   const emitVisibleRange = useCallback(() => {
-    if (!onVisibleRangeChange) return;
     const element = bodyElementRef.current;
     if (!element) return;
-    const range = resolveDataTableVisibleRange({
-      itemCount: items.length,
+    reportVisibleRange({
       rowSize: WEB_CELL_HEIGHT,
       scrollOffset: element.scrollTop,
       viewportSize: Math.max(0, element.clientHeight - tableHeaderPx()),
     });
-    const previous = lastVisibleRangeRef.current;
-    if (
-      previous !== null
-      && previous.key === visibleRangeKey
-      && previous.range.start === range.start
-      && previous.range.end === range.end
-    ) return;
-    lastVisibleRangeRef.current = { key: visibleRangeKey, range };
-    onVisibleRangeChange(range);
-  }, [items.length, onVisibleRangeChange, visibleRangeKey]);
+  }, [reportVisibleRange]);
   const handleBodyScrollActivity = useCallback(() => {
     onBodyScrollActivity();
     emitVisibleRange();
@@ -261,14 +249,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     if (!element) return;
     const viewportRows = Math.max(1, Math.floor((element.clientHeight - tableHeaderPx()) / WEB_CELL_HEIGHT));
     const currentTop = toCellY(element.scrollTop);
-    let nextTop = currentTop;
-    if (scrollToIndexAlign === "center") {
-      nextTop = Math.max(0, targetIndex - Math.floor(viewportRows / 2));
-    } else if (targetIndex < currentTop) {
-      nextTop = targetIndex;
-    } else if (targetIndex >= currentTop + viewportRows) {
-      nextTop = targetIndex - viewportRows + 1;
-    }
+    const nextTop = resolveDataTableScrollTop(targetIndex, currentTop, viewportRows, items.length, scrollToIndexAlign);
     if (nextTop !== currentTop) {
       element.scrollTop = nextTop * WEB_CELL_HEIGHT;
       // A controlled scroll is navigation requested by the app. Reporting it
@@ -463,6 +444,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                     rowContextMenuSurface={rowContextMenuSurface}
                     rowVersion={getRowVersion?.(item, row.index)}
                     selected={selected}
+                    selectedTextOverridesCellColor={selectedTextOverridesCellColor}
                   />
                 );
               }),

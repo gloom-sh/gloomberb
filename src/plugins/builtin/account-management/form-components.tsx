@@ -1,83 +1,11 @@
 import { type ReactNode, type Ref } from "react";
-import { Checkbox, SelectButton, TextField, type ChoiceDialogChoice } from "../../../components";
-import { Box, Text, TextAttributes, useUiCapabilities, type BoxRenderable } from "../../../ui";
+import { Checkbox, FieldLabel, SelectButton, type ChoiceDialogChoice } from "../../../components";
+import { Box, Text, TextAttributes, type BoxRenderable } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import type { SelectControl } from "../../../components/ui/select-button";
-import type { AccountFieldKey, ProfileAnalyticsPreview } from "./model";
+import type { ProfileAnalyticsPreview } from "./model";
 import { t } from "../../../i18n";
-
-export function AccountTextField({
-  fieldKey,
-  label,
-  value,
-  placeholder,
-  activeField,
-  focused,
-  width,
-  type,
-  nodeRef,
-  onFocus,
-  onChange,
-  onSubmit,
-}: {
-  fieldKey: AccountFieldKey;
-  label: string;
-  value: string;
-  placeholder?: string;
-  activeField: AccountFieldKey;
-  focused: boolean;
-  width: number;
-  type?: "text" | "password";
-  /** The row, so the pane can scroll it into view. */
-  nodeRef?: Ref<BoxRenderable>;
-  onFocus: (field: AccountFieldKey) => void;
-  onChange: (value: string) => void;
-  onSubmit?: () => void;
-}) {
-  const active = activeField === fieldKey;
-  const labelWidth = accountFieldLabelWidth(width);
-  const inputWidth = Math.max(8, width - labelWidth - 1);
-  const labelText = useFieldLabel()(label, active);
-  return (
-    <Box
-      ref={nodeRef}
-      height={1}
-      width={width}
-      flexDirection="row"
-      alignItems="center"
-      gap={1}
-      onMouseDown={() => onFocus(fieldKey)}
-    >
-      <Text
-        width={labelWidth}
-        fg={active ? colors.textBright : colors.textDim}
-        attributes={active ? TextAttributes.BOLD : 0}
-      >
-        {truncateWithEllipsis(labelText, labelWidth)}
-      </Text>
-      <TextField
-        value={value}
-        placeholder={placeholder}
-        focused={focused && active}
-        width={inputWidth}
-        type={type}
-        onChange={onChange}
-        onSubmit={onSubmit}
-        onMouseDown={() => onFocus(fieldKey)}
-      />
-    </Box>
-  );
-}
-
-/**
- * The desktop field draws its own focus ring, so its label is plain. The
- * terminal input only shows a cursor, so the active label keeps a marker.
- */
-export function useFieldLabel(): (label: string, active: boolean) => string {
-  const { nativePaneChrome } = useUiCapabilities();
-  return (label, active) => nativePaneChrome ? label : `${active ? "> " : "  "}${label}`;
-}
 
 export function accountFieldLabelWidth(width: number) {
   const preferred = width >= 28 ? 16 : Math.max(10, Math.floor(width * 0.42));
@@ -157,7 +85,6 @@ export function PublicAnalyticsGroup({
   onSelect: (value: string) => void;
 }) {
   const contentWidth = Math.max(1, width - 2);
-  const labelText = useFieldLabel()(t("Public Stats:"), active);
   const labelWidth = Math.min(accountFieldLabelWidth(width), Math.max(1, contentWidth));
   const buttonWidth = Math.max(8, Math.min(24, contentWidth - labelWidth - 1));
   const normalizedDetail = (detail ?? "").replace(/\.+$/, "");
@@ -178,9 +105,7 @@ export function PublicAnalyticsGroup({
       onMouseOver={onFocus}
     >
       <Box height={1} flexDirection="row" gap={1} alignItems="center">
-        <Text fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
-          {truncateWithEllipsis(labelText, labelWidth)}
-        </Text>
+        <FieldLabel label={t("Public Stats:")} active={active} maxWidth={labelWidth} />
         <SelectButton
           label={t("Public Stats")}
           value={value}

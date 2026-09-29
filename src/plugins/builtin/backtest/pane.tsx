@@ -1,16 +1,17 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import {
   Button,
+  ChartTableHeader,
   CompositeChart,
   DataTableView,
   EmptyState,
   PaneStatusBody,
   QueryBar,
-  Tabs,
   usePaneFooter,
-  usePaneHeaderTabs,
   usePaneNoticeFooter,
+  usePaneTabs,
   usePaneTicker,
+  type ChartStripSpec,
   type DataTableColumn,
   type SelectControl,
 } from "../../../components";
@@ -21,7 +22,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneInstanceId, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, useUiCapabilities } from "../../../ui";
+import { Box } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import { runBacktest, type BacktestResult, type BacktestTrade } from "./engine";
@@ -59,10 +60,8 @@ const LOOKBACK_FILTER_OPTIONS = [
  * on the desktop, so both renderers pick the same layout at a pane's default size.
  */
 const MIN_WIDE_CHART_COLS = 60;
-/** Stacked: the equity chart keeps at least this many rows and the metrics scroll under it. */
-const MIN_STACKED_CHART_ROWS = 8;
-/** The metrics table needs its header and a few rows to be worth showing beside a squeezed chart. */
-const MIN_STACKED_TABLE_ROWS = 4;
+/** Legend, axis and two panels: below this the drawdown panel has no rows to speak of. */
+const EQUITY_CHART_MIN_ROWS = 8;
 
 function readRules(preset: string, entryText: string, exitText: string) {
   const rules = resolveRules(preset, entryText, exitText);
@@ -75,7 +74,6 @@ function readRules(preset: string, entryText: string, exitText: string) {
 
 export function BacktestPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
-  const { nativePaneChrome } = useUiCapabilities();
   const paneId = usePaneInstanceId();
   const { openPaneSettings } = usePluginAppActions();
   const { symbol, ticker, error: identityError } = usePaneTicker();
@@ -118,6 +116,13 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     ];
   }, [result, colors]);
 
+  const strip = useMemo((): ChartStripSpec | null => {
+    const values = result?.equity.map((row) => row.strategy) ?? [];
+    const last = values.at(-1);
+    return last == null || values.length < 2 ? null
+      : { label: "Strategy", values, value: multiple(last), color: colors.positive };
+  }, [result, colors]);
+
   const edit = () => openPaneSettings(paneId);
   const cycleView = () => setView(view === "summary" ? "trades" : "summary");
   const chooseStrategy = () => strategyControl.current?.open();
@@ -140,20 +145,16 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     ],
   }), [history.loading, result, view, paneId, symbol]);
 
-  const tabsInHeader = usePaneHeaderTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused } : null);
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true } : null);
   if (!symbol) return <EmptyState title="Choose a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
-  const bodyHeight = Math.max(4, height - 1 - (tabsInHeader ? 0 : 1));
+  const bodyHeight = Math.max(4, height - 1 - tabRows);
   const wide = width - SUMMARY_WIDTH - 1 >= MIN_WIDE_CHART_COLS;
-  // The equity chart is the pane's main output, so a short pane keeps a
-  // minimum chart and lets the metrics scroll rather than dropping it.
-  const stackedChartRows = bodyHeight >= MIN_STACKED_CHART_ROWS + MIN_STACKED_TABLE_ROWS
-    ? Math.max(MIN_STACKED_CHART_ROWS, bodyHeight - SUMMARY_ROWS.length - 1)
-    : 0;
-  const summaryTable = (tableWidth: number, tableHeight: number) => (
+  const summaryTable = (tableWidth: number, tableHeight: number, before?: ReactNode) => (
     <DataTableView<SummaryRow, DataTableColumn>
       focused={false}
       rootWidth={tableWidth}
       rootHeight={tableHeight}
+      rootBefore={before}
       columns={SUMMARY_COLUMNS}
       items={SUMMARY_ROWS}
       getItemKey={(row) => row.id}
@@ -186,7 +187,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   );
   return (
     <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && <Tabs tabs={TABS} activeValue={view} onSelect={setView} focused={focused} dense />}
+      {tabStrip}
       <QueryBar
         width={width}
         filters={[{
@@ -246,19 +247,12 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
             {summaryTable(SUMMARY_WIDTH, bodyHeight)}
           </Box>
         ) : (
-          // The desktop bar and table header are taller than a cell, so there
-          // the stack fills what is left and the metrics scroll inside it.
-          <Box
-            flexDirection="column"
-            width={width}
-            height={nativePaneChrome ? undefined : bodyHeight}
-            flexGrow={nativePaneChrome ? 1 : undefined}
-            flexBasis={nativePaneChrome ? 0 : undefined}
-            minHeight={nativePaneChrome ? 0 : undefined}
-          >
-            {stackedChartRows > 0 ? chart(width, stackedChartRows) : null}
-            {summaryTable(width, bodyHeight - stackedChartRows)}
-          </Box>
+          // Stacked, the kit sizes the chart over the metrics: a short pane
+          // keeps the metrics' first rows and shows the strategy as a strip.
+          summaryTable(width, bodyHeight, (
+            <ChartTableHeader width={width} height={bodyHeight} tableRows={SUMMARY_ROWS.length}
+              chart={{ render: (size) => chart(size.width, size.height), minRows: EQUITY_CHART_MIN_ROWS, strip }} />
+          ))
         )}
       </PaneStatusBody>
     </Box>

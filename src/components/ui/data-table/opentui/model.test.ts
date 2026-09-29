@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  resolveDataTableScrollTop,
-  resolveDataTableVisibleWindow,
-} from "./model";
+import { resolveDataTableVisibleWindow } from "./model";
 
 describe("OpenTUI data table model", () => {
   test("resolves the virtualized window with overscan around the scroll top", () => {
@@ -37,11 +34,5 @@ describe("OpenTUI data table model", () => {
       viewportHeight: 3,
       visibleItems: ["AAPL", "MSFT", "NVDA"],
     });
-  });
-
-  test("scrolls the target index into view without exceeding bounds", () => {
-    expect(resolveDataTableScrollTop(12, 0, 5, 20, "nearest")).toBe(8);
-    expect(resolveDataTableScrollTop(1, 8, 5, 20, "nearest")).toBe(1);
-    expect(resolveDataTableScrollTop(18, 0, 5, 20, "center")).toBe(15);
   });
 });

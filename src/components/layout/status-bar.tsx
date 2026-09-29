@@ -7,7 +7,7 @@ import {
   useUiCapabilities,
   useUiHost,
 } from "../../ui";
-import { useDialog, type PromptContext } from "../../ui/dialog";
+import { useDialog } from "../../ui/dialog";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { blendHex, hoverBg } from "../../theme/colors";
 import { t, tf } from "../../i18n";
@@ -39,7 +39,7 @@ import type { LayoutConfig } from "../../types/config";
 import { VERSION } from "../../version";
 import { displayWidth } from "../../utils/format";
 import { Button } from "../ui/button";
-import { ConfirmDialog } from "../ui/confirm-dialog";
+import { confirmDialog } from "../ui/confirm-dialog";
 import { Tabs } from "../ui/tabs";
 import { useTransientLayout } from "./transient-layout";
 import { linkedLayoutMarker, linkedLayoutStatus, linkedLayoutUpdates } from "../../layout-marketplace/linked";
@@ -48,6 +48,7 @@ import { teamStore } from "../../plugins/builtin/cloud/team/store";
 import { buildStatusBarTabGroups, groupIdFromMarkerValue, groupMarkerValue } from "./status-bar-groups";
 import { requestFeedbackDialog } from "../feedback-dialog";
 import { openFormModal } from "../form-modal";
+import { recordFunctionOpen } from "../../telemetry/usage-counts";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
 type HoveredControl = string | null;
@@ -270,20 +271,14 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
   const requestDeleteLayout = useCallback(async (index: number) => {
     const layout = layouts[index];
     if (!layout || layouts.length <= 1) return;
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (context: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...context}
-          title={t("Delete Layout")}
-          body={[`Delete layout "${layout.name}"? This cannot be undone.`]}
-          confirmLabel={t("Delete Layout")}
-          cancelLabel={t("Cancel")}
-          width={48}
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
+    const confirmed = await confirmDialog(dialog, {
+      title: t("Delete Layout"),
+      body: [`Delete layout "${layout.name}"? This cannot be undone.`],
+      confirmLabel: t("Delete Layout"),
+      cancelLabel: t("Cancel"),
+      width: 48,
+    });
+    if (!confirmed) return;
     dispatch({ type: "DELETE_LAYOUT", index });
     registry?.notify({ body: `Layout "${layout.name}" deleted`, type: "success" });
   }, [dialog, dispatch, layouts, registry]);
@@ -340,7 +335,10 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
       {
         id: "layout:gallery",
         label: "Browse Layouts...",
-        onSelect: () => registry?.showPane("layout-marketplace"),
+        onSelect: () => {
+          recordFunctionOpen({ shortcut: "LAY", externalPluginId: null });
+          registry?.showPane("layout-marketplace");
+        },
       },
       {
         id: "layout:actions",

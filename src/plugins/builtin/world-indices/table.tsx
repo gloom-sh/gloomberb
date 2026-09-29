@@ -69,28 +69,23 @@ const formatIndexChange = (quote: Quote) =>
 export function renderWorldIndexCell(
   row: WorldIndexTableRow,
   column: WorldIndexColumn,
-  rowState: { selected: boolean },
   quotes: BoardQuoteMap,
   options?: { sessionText?: boolean },
 ): DataTableCell {
   if (row.type === "header") return { text: "" };
 
   const { entry } = row;
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "symbol":
       return {
         text: entry.shortName,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return {
-        text: entry.name,
-        color: selectedColor,
-      };
+      return { text: entry.name };
     default:
-      return renderQuoteBoardCell(column.id, quotes.get(entry.symbol), rowState.selected, {
+      return renderQuoteBoardCell(column.id, quotes.get(entry.symbol), {
         sessionText: options?.sessionText,
         formatPrice: formatIndexPrice,
         formatChange: formatIndexChange,

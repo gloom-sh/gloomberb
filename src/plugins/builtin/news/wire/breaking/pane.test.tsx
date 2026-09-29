@@ -11,14 +11,14 @@ import { createDefaultConfig } from "../../../../../types/config";
 import { Box } from "../../../../../ui";
 import { BreakingPane } from "../index";
 import { TestPaneProvider } from "../../../../../test-support/pane";
+import { createTestArticle } from "../../../../../test-support/news";
 
 const PANE_ID = "news-breaking:test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
 function makeArticle(): NewsArticle {
-  return {
-    id: "story-1",
+  return createTestArticle("story-1", {
     title: "Chip stocks rally on new AI demand",
     url: "https://example.com/story",
     source: "example",
@@ -30,17 +30,10 @@ function makeArticle(): NewsArticle {
     categories: ["earnings", "information_technology"],
     tickers: ["AMD", "NVDA"],
     sentiment: "positive",
-    scores: {
-      importance: 85,
-      urgency: 80,
-      marketImpact: 75,
-      novelty: 60,
-      confidence: 90,
-    },
+    scores: { importance: 85, urgency: 80, marketImpact: 75, novelty: 60, confidence: 90 },
     isBreaking: true,
-    isDeveloping: false,
     importance: 85,
-  };
+  });
 }
 
 function createReadyNewsService(articles: NewsArticle[]): { service: NewsService; getQueryStateCalls: () => number } {

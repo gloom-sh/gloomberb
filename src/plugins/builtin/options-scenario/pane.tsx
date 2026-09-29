@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
-  Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
+import { Button, ChoiceDialog, confirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
+  usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
 import { Box } from "../../../ui";
@@ -19,7 +19,6 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
-import { daysToExpiryFrom } from "../options-calculator/model";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
 import { loadScenarioMarket, scenarioPositionFromSettings, scenarioControlsFromSettings, type ScenarioMarketSnapshot } from "./client";
@@ -154,8 +153,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const selected = position?.legs.find((leg) => leg.id === selectedId) ?? position?.legs[0];
   const remove = async () => {
     if (!selected || !position) return;
-    const yes = await dialog.prompt<boolean>({ content: (ctx: PromptContext<boolean>) => <ConfirmDialog {...ctx} title="Remove leg?"
-      body={`${selected.quantity > 0 ? "Buy" : "Sell"} ${Math.abs(selected.quantity)} ${selected.side} ${selected.strike}`} confirmLabel="Remove" /> }).catch(() => false);
+    const yes = await confirmDialog(dialog, { closeOnClickOutside: false, title: "Remove leg?",
+      body: `${selected.quantity > 0 ? "Buy" : "Sell"} ${Math.abs(selected.quantity)} ${selected.side} ${selected.strike}`, confirmLabel: "Remove" });
     if (yes) setPosition({ ...position, legs: position.legs.filter((leg) => leg.id !== selected.id) });
   };
   const loadSaved = async () => {
@@ -228,8 +227,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
   // A detail covers the tabs, so they stop answering h/l until it closes.
   const tabsFocused = focused && !volActive && !detail;
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true });
   const risk = scenario?.expiryRisk;
   const stats: StatItem[] = scenario ? [
     { id: "pnl", label: "P&L", value: money(scenario.valuation.pnl), detail: scenario.position.currency,
@@ -284,7 +282,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         : column.id === "price" || column.id === "strike" ? money(leg[column.id])
         : String(leg[column.id as keyof ScenarioLeg]), color: column.id === "quantity" ? leg.quantity > 0 ? colors.positive : colors.negative : colors.text })} />;
   const root = <>
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={tabsFocused} />}
+    {tabStrip}
     {scenario && <>
       <QueryBar
         width={width}

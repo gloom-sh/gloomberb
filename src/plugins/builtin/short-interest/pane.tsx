@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  chartTableChromeRows,
+  ChartTableHeader,
   DataTableView,
   EmptyState,
-  Spinner,
-  StaticChartSurface,
+  PaneStatusBody,
+  scalarPoint,
+  staticSeries,
   unavailableText,
+  useChartTableSelection,
   usePaneFooter,
   type DataTableCell,
 } from "../../../components";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
-import { blendHex, colors } from "../../../theme/colors";
-import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
-import { formatCompact } from "../../../utils/format";
+import { colors } from "../../../theme/colors";
+import { Box, TextAttributes } from "../../../ui";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
@@ -23,6 +24,9 @@ import {
   DEFAULT_SORT,
   buildColumns,
   buildRows,
+  formatMaybeCompact,
+  formatSharesAxis,
+  shortInterestFigures,
   sortRows,
   type ShortInterestColumn,
   type ShortInterestColumnId,
@@ -33,20 +37,10 @@ import type { ShortInterestRecord } from "./types";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const EMPTY_RECORDS: ShortInterestRecord[] = [];
-
-function recordsToChartPoints(records: ShortInterestRecord[]): ProjectedChartPoint[] {
-  return records.map((record) => ({
-    date: record.settlementDate,
-    open: record.sharesShort,
-    high: record.sharesShort,
-    low: record.sharesShort,
-    close: record.sharesShort,
-    volume: 0,
-  }));
-}
+const rowKey = (row: ShortInterestRow) => row.key;
+const rowDate = (row: ShortInterestRow) => row.record.settlementDate;
 
 function ShortInterestView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
-  const { nativePaneChrome } = useUiCapabilities();
   const { ticker } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker ?? null;
 
@@ -62,17 +56,27 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     "short-interest:sort",
     DEFAULT_SORT,
   );
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
+  // Null follows the newest settlement, including after a reload.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  useEffect(() => { if (updatedAt !== null) setSelectedKey(null); }, [updatedAt]);
 
   const rows = useMemo(() => buildRows(records), [records]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
   const columns = useMemo(() => buildColumns(records), [records]);
-  const chartPoints = useMemo(() => recordsToChartPoints(records), [records]);
-
-  const boundedSelectedIdx = sortedRows.length > 0
-    ? Math.min(selectedIdx, sortedRows.length - 1)
-    : -1;
+  // The header row, plus the scrollbar row once the columns overflow the pane.
+  const tableChromeRows = chartTableChromeRows(columns, width);
+  const effectiveKey = sortedRows.some((row) => row.key === selectedKey) ? selectedKey : sortedRows[0]?.key ?? null;
+  const figures = useMemo(() => shortInterestFigures(records), [records]);
+  // The legend reads the same as the SHARES SHORT column.
+  const series = useMemo(() => [staticSeries(
+    [...records]
+      .sort((left, right) => left.settlementDate.getTime() - right.settlementDate.getTime())
+      .map((record) => scalarPoint(record.settlementDate, record.sharesShort)),
+    { id: "shares-short", label: "Shares short", color: colors.warning, calendarSpaced: true },
+  )], [records]);
+  const link = useChartTableSelection({
+    rows: sortedRows, getId: rowKey, getDate: rowDate, selectedId: effectiveKey, onSelect: setSelectedKey, focused,
+  });
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextHeaderSort(current, columnId as ShortInterestColumnId, { firstDirection: "desc" }));
@@ -83,21 +87,18 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const renderCell = useCallback((
     row: ShortInterestRow,
     column: ShortInterestColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "settlementDate":
-        return { text: row.settlementDate, color: selectedColor ?? colors.textDim };
+        return { text: row.settlementDate, color: colors.textDim };
       case "sharesShort":
-        return { text: row.sharesShort, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: row.sharesShort, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "shortRatio":
-        return { text: row.shortRatio, color: selectedColor ?? colors.text };
+        return { text: row.shortRatio, color: colors.text };
       case "averageDailyVolume":
-        return { text: row.averageDailyVolume, color: selectedColor ?? colors.textDim };
+        return { text: row.averageDailyVolume, color: colors.textDim };
       case "shortPercentFloat":
-        return { text: row.shortPercentFloat, color: selectedColor ?? colors.text };
+        return { text: row.shortPercentFloat, color: colors.text };
     }
   }, []);
 
@@ -118,81 +119,42 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     return <EmptyState title="No ticker selected." message="Select a ticker to view short interest." />;
   }
 
-  if ((status === "idle" || status === "loading") && records.length === 0) {
-    return <Spinner label="Loading short interest..." />;
-  }
-
-  if (status === "error" && records.length === 0) {
-    return <EmptyState title={unavailableText("Short interest")} message={error ?? undefined} />;
-  }
-
-  if (status === "loaded" && records.length === 0) {
-    const usEquitiesOnly = isKnownNonUsEquityTicker(ticker);
-    return (
-      <EmptyState
-        title={usEquitiesOnly ? "US equities only" : "No short interest data"}
-        message={usEquitiesOnly
-          ? "Short interest data is available for US equities."
-          : `No short interest found for ${symbol}.`}
-      />
-    );
-  }
-
-  // The desktop runs the chart straight under the title bar and lets the table
-  // fill to the footer; the terminal keeps a blank row above and below the
-  // chart. Under 16 rows the table keeps the whole body, as in Daily volume.
-  const spacerRows = nativePaneChrome ? 0 : 2;
-  const showChart = chartPoints.length >= 2 && height >= 16;
-  const chartHeight = showChart ? Math.max(1, Math.floor((height - spacerRows) * 0.35)) : 0;
-  const tableHeight = Math.max(1, height - (showChart ? chartHeight + spacerRows : 0));
-  const chartWidth = Math.max(24, width - 2);
-  const palette = {
-    ...resolveChartPalette(colors, "neutral"),
-    lineColor: colors.warning,
-    fillColor: blendHex(colors.bg, colors.warning, 0.18),
-    gridColor: blendHex(colors.bg, colors.border, 0.55),
-  };
-
+  const noRecords = records.length === 0;
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      {showChart ? (
-        <Box flexDirection="column" marginTop={nativePaneChrome ? 0 : 1} paddingX={1} flexShrink={0}>
-          <StaticChartSurface
-            points={chartPoints}
-            width={chartWidth}
-            height={chartHeight}
-            mode="line"
-            colors={palette}
-            showTimeAxis
-            timeAxisColor={colors.textDim}
-            yAxisColor={colors.textDim}
-            formatYAxisValue={(value: number) => formatCompact(value)}
-            focused={focused}
-          />
-        </Box>
-      ) : null}
-      <Box flexGrow={1} flexBasis={0} minHeight={0} marginTop={showChart && !nativePaneChrome ? 1 : 0}>
+    <PaneStatusBody
+      loading={noRecords && (status === "idle" || status === "loading")}
+      error={noRecords && status === "error" ? error : null}
+      empty={noRecords && status === "loaded"}
+      subject="short interest"
+      errorTitle={unavailableText("Short interest")}
+      emptyTitle={skipNonUs ? "US equities only" : "No short interest data"}
+      emptyMessage={skipNonUs ? "Short interest data is available for US equities." : `No short interest found for ${symbol}.`}
+    >
+      <Box flexDirection="column" width={width} height={height}>
         <DataTableView<ShortInterestRow, ShortInterestColumn>
           focused={focused}
-          selection={{
-            kind: "index",
-            selectedIndex: boundedSelectedIdx,
-            onChange: (index) => setSelectedIdx(index),
-          }}
+          selection={{ kind: "id", selectedId: effectiveKey, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
           rootWidth={width}
-          rootHeight={tableHeight}
+          rootHeight={height}
+          rootBefore={<ChartTableHeader width={width} height={height} tableRows={sortedRows.length} tableChromeRows={tableChromeRows}
+            // Two settlements (the signed-out fallback) are a line between numbers the
+            // figures and rows already give, so the chart waits for a real history.
+            figures={figures} chart={records.length >= 3 ? {
+            series, formatValue: formatMaybeCompact, formatAxisValue: formatSharesAxis, remoteKind: "short-interest-history", ...link,
+          } : null} />}
           columns={columns}
           freezeFirstColumn
           items={sortedRows}
           sortColumnId={sortPreference.columnId}
           sortDirection={sortPreference.direction}
           onHeaderClick={handleHeaderClick}
-          getItemKey={(row) => row.key}
+          getItemKey={rowKey}
           renderCell={renderCell}
-          emptyStateTitle={status === "loading" ? "Loading..." : "No data"}
+          selectedTextOverridesCellColor
+          emptyStateTitle="No data"
         />
       </Box>
-    </Box>
+    </PaneStatusBody>
   );
 }
 

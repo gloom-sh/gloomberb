@@ -4,7 +4,8 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import { buildOptionsKey } from "../../../market-data/selectors";
 import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain } from "../../../types/financials";
-import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../options-calculator/model";
+import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
+import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { selectSurfaceExpiries } from "../vol-surface/client";
 import { loadOptionsEnrichment } from "./enrichment-client";
 import { optionsEnrichmentNeighbour, optionsEnrichmentTermSlope, projectOptionsEnrichment, type OptionsEnrichmentSelection,

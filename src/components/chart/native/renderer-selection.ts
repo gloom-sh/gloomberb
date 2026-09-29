@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { type PixelResolution } from "../../../ui";
 import { type NativeRendererHost as CliRenderer } from "../../../ui";
 import type { ChartRendererPreference, ResolvedChartRenderer } from "../core/types";
-import { ensureKittySupport, getCachedKittySupport } from "./kitty/support";
 
 export interface ResolvedChartRendererState {
   renderer: ResolvedChartRenderer;
@@ -32,7 +31,8 @@ interface NativeChartRendererSnapshot {
 
 function readNativeChartRendererSnapshot(renderer: CliRenderer): NativeChartRendererSnapshot {
   return {
-    kittySupport: getCachedKittySupport(renderer),
+    // Only a terminal host can probe for kitty graphics; any other host has none.
+    kittySupport: renderer.getKittySupport ? renderer.getKittySupport() : false,
     resolution: renderer.resolution,
   };
 }
@@ -135,9 +135,9 @@ export function useResolvedChartRendererState(
 
   useEffect(() => {
     const current = getRendererReadinessSnapshot(renderer);
-    if (!shouldQueryKittySupport(preference, renderer, current)) return;
+    if (!renderer.ensureKittySupport || !shouldQueryKittySupport(preference, renderer, current)) return;
     let cancelled = false;
-    ensureKittySupport(renderer).then(() => {
+    renderer.ensureKittySupport().then(() => {
       if (!cancelled) getReadinessHub(renderer).refresh();
     }).catch(() => {
       if (!cancelled) getReadinessHub(renderer).refresh();

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
-import { valueOption } from "../options-calculator/model";
+import { valueOption } from "../shared/volatility";
 import {
   calculateOptionGreeks,
   calculateOptionsSummary,
@@ -82,8 +82,8 @@ test("solves one calendar-time IV per strike from midpoints and ignores vendor I
   const now = Date.UTC(2026, 8, 23, 16, 0); // 12:00 ET, four hours to the close
   const days = 4 / 24;
   const spot = 769;
-  const price = (side: "call" | "put", strike: number) => valueOption({ symbol: "SPY", side, spot, strike,
-    daysToExpiry: days, rate: 0.04, volatility: 0.14, dividendYield: 0.04, marketPrice: 0 }).price;
+  const price = (side: "call" | "put", strike: number) => valueOption({ side, spot, strike,
+    daysToExpiry: days, rate: 0.04, volatility: 0.14, dividendYield: 0.04 }).price;
   const quoted = (side: "call" | "put", strike: number, vendorIv: number): OptionContract => {
     const mid = price(side, strike);
     return { ...contract(strike, vendorIv, 10, 10), expiration, bid: mid - 0.005, ask: mid + 0.005 };
@@ -124,8 +124,8 @@ test("a strike without an out-of-the-money bid keeps delta monotonic across the 
   const expiration = Date.UTC(2026, 8, 25) / 1000;
   const now = Date.UTC(2026, 8, 23, 16, 0);
   const spot = 767;
-  const price = (side: "call" | "put", strike: number) => valueOption({ symbol: "SPY", side, spot, strike,
-    daysToExpiry: 2.2, rate: 0.04, volatility: 0.22, dividendYield: 0.04, marketPrice: 0 }).price;
+  const price = (side: "call" | "put", strike: number) => valueOption({ side, spot, strike,
+    daysToExpiry: 2.2, rate: 0.04, volatility: 0.22, dividendYield: 0.04 }).price;
   const quoted = (side: "call" | "put", strike: number): OptionContract => {
     const mid = price(side, strike);
     const bid = Math.max(0, Math.round((mid - 0.07) * 100) / 100);

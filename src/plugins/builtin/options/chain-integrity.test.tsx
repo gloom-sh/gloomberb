@@ -3,20 +3,19 @@ import { act } from "react";
 import { marketDataCliCommands } from "../../../cli/commands/market";
 import { DEFAULT_CLI_OPTIONS } from "../../../cli/options";
 import { serializeCliResult } from "../../../cli/result";
-import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider, type PaneFooterSegment } from "../../../components/layout/pane/footer";
+import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-utils";
+import { testRender } from "../../../renderers/opentui/test-utils";
 import { loadYahooOptionsChain } from "../../../sources/yahoo-finance/options";
 import { createInitialState } from "../../../state/app/context";
-import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createTestCliContext } from "../../../test-support/cli-context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { OptionsChain } from "../../../types/financials";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
-import { Box } from "../../../ui";
 import { draftFromParams, type OptionCalcDraft } from "../options-calculator/model";
+import { createOptionsControls } from "./test-fixture";
 import { OptionsView } from "./view";
 
 const EXPIRY = Date.UTC(2028, 0, 21) / 1000;
@@ -39,14 +38,8 @@ function strikeRowY(strike: number): number {
   return setup!.captureCharFrame().split("\n").findIndex((line) => new RegExp(`\\s${strike}\\s`).test(line));
 }
 
-async function settle() {
-  for (let i = 0; i < 4; i++) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      await setup!.renderOnce();
-    });
-  }
-}
+// Selection follows a throttled cursor, so each key waits it out before settling.
+const { settle, key, capture: captureLaunch } = createOptionsControls(() => setup!, { keyHoldMs: 180 });
 
 async function fixture(strikes: number[], activity: "full" | "missing" | "zero" = "full", width = 120) {
   Date.now = () => NOW;
@@ -111,45 +104,20 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
   });
   await act(async () => {
     setup = await testRender(
-      <TestPaneProvider state={state} paneId={PANE} pluginId="ticker-research" runtime={runtime}>
-        <PaneFooterProvider>
-          {(footer) => {
-            footerParts = footer.info.flatMap((segment) => segment.parts);
-            return (
-              <Box width={width} height={22} flexDirection="column">
-                <Box height={21}><OptionsView width={width} height={21} focused /></Box>
-                <PaneFooterBar footer={footer} focused width={width} />
-                <PaneFooterKeys paneId={PANE} footer={footer} focused />
-              </Box>
-            );
-          }}
-        </PaneFooterProvider>
-      </TestPaneProvider>,
+      <TestPaneFrame state={state} paneId={PANE} pluginId="ticker-research" runtime={runtime} width={width} height={22} footerKeys>
+        {(body, footer) => {
+          footerParts = footer.info.flatMap((segment) => segment.parts);
+          return <OptionsView {...body} focused />;
+        }}
+      </TestPaneFrame>,
       { width, height: 22 },
     );
   });
   await settle();
 
-  async function key(name: string) {
-    await act(async () => {
-      if (name === "enter") setup!.mockInput.pressEnter();
-      else if (name === "down" || name === "up") setup!.mockInput.pressArrow(name);
-      else setup!.mockInput.pressKey(name);
-    });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 180));
-    });
-    await settle();
-  }
-
-  /** Presses c to launch the calculator, then reads what it launched, the CSV export and the frame. */
   async function capture() {
-    const count = launches.length;
-    await key("c");
-    await exportPaneTable(PANE, "options.csv");
-    const csv = takeSavedTextFile()?.text ?? "";
-    const frame = setup!.captureCharFrame();
-    return { launch: launches.length > count ? launches.at(-1)! : null, csv, frame, footerParts };
+    const { launch, csv, frame } = await captureLaunch(PANE, "options.csv", launches);
+    return { launch: launch ?? null, csv, frame, footerParts };
   }
 
   async function refresh(next: number[]) {
@@ -298,7 +266,7 @@ test("preserves missing activity through source, summaries, CSV and CLI", async 
   expect(result.frame).toMatch(/Volume\s+\S+/);
   expect(result.frame).toMatch(/P\/C vol\s+--/);
   expect(result.frame).toMatch(/P\/C OI\s+--/);
-  expect(result.csv).toContain(",\u2014,");
+  expect(result.csv).toContain(",10,,");
   expect(cli.rows[0]!.volume).toBe(10);
   expect(cli.rows[1]!.openInterest).toBe(20);
   expect(cli.text).not.toContain("NaN");

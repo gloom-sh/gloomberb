@@ -110,8 +110,10 @@ export function QuoteMonitorCard({
   const priceColumnWidth = Math.max(priceText.length, changePercentText.length + changeValueText.length + 1);
   const nameMaxWidth = Math.max(10, width - priceColumnWidth - (nativePaneChrome ? 5 : 3));
   const sparklineRange = resolvePriceSparklineRange(priceHistory, chartPeriod);
+  // A price in 32nds already has a hyphen (104-16½), so its range reads "to".
+  const rangeSeparator = priceOptions.priceBasis === "thirty-seconds" ? " to " : "-";
   const rangeLabel = sparklineRange
-    ? `${chartPeriod} ${formatMarketPriceWithCurrency(sparklineRange.min, currency, priceOptions)}-${formatMarketPriceWithCurrency(sparklineRange.max, currency, priceOptions)}`
+    ? `${chartPeriod} ${formatMarketPriceWithCurrency(sparklineRange.min, currency, priceOptions)}${rangeSeparator}${formatMarketPriceWithCurrency(sparklineRange.max, currency, priceOptions)}`
     : "";
   const sparklineWidth = Math.max(8, width - (nativePaneChrome ? rangeLabel.length + 5 : 2));
   const trend = quoteTrend(display?.change);

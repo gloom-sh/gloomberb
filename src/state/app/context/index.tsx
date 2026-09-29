@@ -25,6 +25,7 @@ import type { DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindo
 import { setPaneSetting, setPaneSettings, updatePaneInstance } from "../../../pane-settings";
 import { useTickerFinancials } from "../../../market-data/hooks";
 import { hasAmbiguousTickerContracts, resolveInstrumentForPane, resolveListingForPane, tickerForInstrument } from "../../../core/state/app/instrument";
+import { materializeDetachedLayouts } from "../../../core/state/app/layout";
 import {
   APP_SESSION_ID,
   APP_SESSION_SCHEMA_VERSION,
@@ -98,17 +99,6 @@ function useRequiredAppContext(): AppContextValue {
 function sameStringList(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
-}
-
-function materializeDetachedConfig(config: AppConfig): AppConfig {
-  return {
-    ...config,
-    layout: materializeDetachedPanesAsFloating(config.layout),
-    layouts: config.layouts.map((entry) => ({
-      ...entry,
-      layout: materializeDetachedPanesAsFloating(entry.layout),
-    })),
-  };
 }
 
 export function useAppStateRef() {
@@ -482,7 +472,7 @@ export function AppProvider({
       : action.type === "SET_CONFIG"
         ? {
           ...action,
-          config: materializeDetachedConfig(action.config),
+          config: materializeDetachedLayouts(action.config),
         } as AppAction
         : action.type === "UPDATE_LAYOUT"
           ? {

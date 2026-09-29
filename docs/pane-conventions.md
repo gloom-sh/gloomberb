@@ -133,7 +133,11 @@ columns), `ListView` (short single-column choice), `ActionRow` (summary row
 with one action or a disclosure), `buildSectionedRows` (grouped rows). Every
 table has `columns`, `items`, `getItemKey`, `renderCell`, a `selection`, and
 `onActivate`; header clicks sort; `tableExport: true` on the pane def adds
-CSV.
+CSV. A table that colors its cells passes `selectedTextOverridesCellColor`
+so the selected row reads in the selection color without each cell checking
+`rowState.selected`; a cell whose tone must survive the selection sets
+`keepColorWhenSelected`. Custom `content` still takes its colors from
+`rowState`.
 
 **Table + detail.** `DataTableStackView` is the "list, then open one" shape:
 Enter or click calls `onActivate`, the pane sets the open item, the stack
@@ -146,34 +150,121 @@ back button or clicking Back pops it. Rules:
 - Footer hints change when the detail is open; notice footers describing the
   list get `enabled: !detailOpen`.
 - `prefetchDetail` warms the cache once the cursor rests; it never mutates.
+- A detail read as text sits in a `DetailScrollBody` whose ref is the
+  stack's `detailScrollRef`, so j/k step it a line at a time and the next
+  item starts at the top.
 - A detail the user reads and comes back from is the stack, not a dialog or
   a floating pane. A new pane (`pinTicker`, `createPaneFromTemplate`) is for
   something kept beside the list.
 
 **Long lists.** A paged or cursored source appends on scroll and never shows
-page numbers or a Load more button. `useTableLoadMore(scrollRef, canLoadMore,
-loadMore)` goes into `onBodyScrollActivity` and fires within 8 rows of the
-end. `loadMore` is guarded by `hasMore && !loadingMore && status === "loaded"
-&& !detailOpen`, keeps an `AbortController` per request and ignores answers
-from a superseded one, appends by id, and updates `hasMore`/`nextOffset`. A
-new query, sort or filter aborts, resets the list and `resetScrollKey`. The
-footer shows `loading more` while a page is in flight. Restoring a persisted
-open item past the first page expands to that page first. Client-side "reveal
-more of what is loaded" uses the same helper.
+page numbers or a Load more button. An offset-paged source loads through
+`usePagedRows(loadPage, { getId })`, whose loader takes `{ offset, signal,
+force }` and returns `{ rows, hasMore, nextOffset }`. It aborts and ignores
+superseded requests, appends by id, keeps what is loaded when a page fails,
+and starts over when the loader changes (a new query, sort or filter); the
+pane changes `resetScrollKey` with it. Its `loadMore` goes to
+`useTableLoadMore(scrollRef, hasMore && !detailOpen, loadMore)` in
+`onBodyScrollActivity`, which fires within 8 rows of the end. The footer
+shows `loading more` while a page is in flight. Restoring a persisted open
+item past the first page expands to that page first. Client-side "reveal
+more of what is loaded" uses the same scroll helper.
+
+## 5b. A chart over a table
+
+The pane that shows figures, a chart and the rows behind it (daily short
+volume, credit spreads, a futures curve, a CDS spread) has one layout, built
+with `ChartTableHeader` in the table's `rootBefore`. Never split rows between
+a chart and a table by hand.
+
+**Order.** Query bar, figures (`StatGrid`), chart, table. Range and window
+controls go in the query bar and govern the chart and the table together.
+
+**The chart says what it plots.** The legend row is the caption: each series
+is named in the table's words (`Short %`, `US HY OAS`, `5Y spread`) and shows
+its value, the latest one until the cursor moves. Units live in the axis
+labels. No loose title line above a chart, no `yAxisLabel` row, no unnamed
+single line. A chart that follows the selected row names that row. When the
+legend runs short of width, a curve's caption gives way before any series
+name does.
+
+**The chart earns its rows.** It shows what the table cannot: a trend, a
+curve's shape, how a level moved (look-back curves, trails). The table adds
+what the chart cannot: dates, events, per-row detail. When every table row is
+just a point of the chart, give the table a change column or fold the chart
+into an inline bar column instead of drawing the same numbers twice. Two
+points are not a trend: below three, leave the band to the table.
+
+**One selection.** The table's selected row is the chart's cursor (a time
+series), the chart's series (a board of instruments) or the curve's point.
+`useChartTableSelection` wires it: Left and Right step through time from the
+table in the direction the chart reads, whatever the sort; hovering the chart
+previews without moving the selection; clicking it selects the nearest row.
+From a row with no point on the chart, Left and Right step to the nearest row
+that has one. Inside this layout the chart takes no keys of its own and is
+never `navigable`. In a tabbed pane a focused tab strip keeps Left and Right;
+Up and Down still move the table's selection and the chart follows it.
+
+**Every size.** `chartTableLayout` decides, so every pane shrinks and grows
+the same way:
+
+| Pane body | Figures | Band | Table |
+|---|---|---|---|
+| Room for the chart (six rows: legend, four plot rows, axis) and the table's header plus four rows | up to a quarter of the body, trimmed from the end | the chart, 40% of what the figures leave, or all the rows a short table does not need | the rest; all its rows when they fit |
+| Less room, but the whole table fits with four rows to spare | up to a quarter of the body | a compact chart in the spare rows | all its rows |
+| Too short for either | one row | one row: `● label` sparkline value | the rest |
+| Shorter still, or narrower than 24 columns | one row | none | the rest |
+
+- The table keeps its header and four rows (all of them when it has fewer)
+  at every size; the chart gives way first, then the second row of figures.
+- Figures are listed most important first; the ones at the end go when rows
+  run short, and the strip leaves out what the remaining figures already say.
+- A short table never leaves a blank band: the chart grows into its spare rows.
+- Custom charts (curves, scatters) pass their own `minRows` and a `strip`;
+  content with a natural height (a few bars) passes `maxRows` and the table
+  takes the rest.
+- Pass the table's columns (`tableColumns`) so a horizontal scrollbar row is
+  counted and never hides the last row. A `MarketBoardStack` fits its columns
+  to the width, so its `rootBefore` can be a function that receives them.
+- The desktop uses the same rows for the band and lets the table fill below.
+
+**Axis.** Tick labels never repeat and take their decimals from the plotted
+range (`formatBpAxis`, `formatPercentAxis`, `spanAxisFormatter`). A daily
+series shorter than two weeks still spans two weeks, so the axis reads days.
+
+**Loading and failure.** While a separate history request loads, the band
+holds its rows (`loading`) so the table does not jump, and figures that come
+with the history hold their place with `--`. A chart that follows the
+selected row keeps its band on a row without history and says so (`empty`),
+so moving through the table never makes it jump. A failed history is a footer
+notice and the band collapses; the table stays.
+
+**Export.** The table exports what it shows. A column left out only to save
+room (a quote time every row shares) goes into `getExportMetadata`; a column
+drawn only as graphics (an inline bar) is left out of the CSV by itself.
+Numbers export as numbers: a right-aligned column whose cells all read as one
+unit (`+1.25%`, `1.20B`, `$12.50`, `21.4x`, `12bp`) writes bare numbers and
+names the unit in its header, and dashes become empty cells. Give a cell
+`value` when the text rounds or shortens what it shows (compact volumes, a
+date without its year, a time of day): the full number in the unit the cell
+shows (3.45 for `+3.45%`), or an ISO date.
+
+**Details.** A stack detail that shows a chart and a table uses the same
+header, with the detail's height.
 
 ## 6. Tabs
 
 - `Tabs` is the only tab strip: controlled, mouse, `h`/`l` and arrows while
   focused, `underline` for pane sections, `pill` for layout tabs, `bare`.
-  A pane's primary strip is registered with `usePaneHeaderTabs` (above any
-  early return): the desktop draws it in the pane title bar and the hook
-  returns true; the terminal draws the pane's own `Tabs` as the first row of
-  the body. Subtract the tab row only when it is in the body. Never in the
+  A pane's primary strip is `usePaneTabs` (above any early return): the
+  desktop draws it in the pane title bar and `strip` is null; the terminal
+  draws `strip` as the first row of the body. Subtract `rows`. Never in the
   footer. Register `null` while a sign-in wall or any state makes every tab
   show the same thing.
 - A strip inside content that already has a title-bar strip (a Ticker
-  Research tab, a stack detail) becomes a `QueryBar` view or inline filter on
-  the desktop; the terminal keeps its `Tabs` row.
+  Research tab, a stack detail) becomes a `QueryBar` view (`usePaneTabs`
+  with `queryBarWidth`) or inline filter on the desktop; the terminal keeps
+  its `Tabs` row.
 - The active tab is `usePluginPaneState`. A user-configurable tab set is a
   pane setting, with `hideTabs` for panes locked to one view.
 - Content, one of two ways: one body reloaded per tab when tabs are views
@@ -198,6 +289,9 @@ more of what is loaded" uses the same helper.
   four or fewer short exclusive options, `multi`, `toggle`, `text` for a second
   field. One terminal row; on the desktop it scrolls sideways when narrow.
   Status never goes in the bar; units and as-of context may use `meta`.
+- `useQueryBarSearch()` holds whether the search owns the keyboard; spread its
+  `searchProps` into `search`. The bar already binds `/`, so a pane binds it
+  again only to add a condition.
 - A stack detail whose content starts with a `QueryBar` gets Back and the item
   title as the bar's first segments automatically; do not add a second row.
 - Every menu, dropdown and pop-up list is `MenuPopover`/`Menu` in the kit
@@ -217,8 +311,12 @@ more of what is loaded" uses the same helper.
   `SegmentedControl`, `MultiSelectDialogButton`, each with a `label`. A raw
   `Input` is not a field.
 - One `activeField` names the focused input; Tab and Shift+Tab (and `j`/`k`
-  outside a text input) move the ring; a click focuses. Capture input while
-  a text field is focused so global shortcuts do not eat typing.
+  outside a text input) move the ring; a click focuses. `useFieldRing` is
+  that ring, with Enter and Space actions and scroll into view. Pass the
+  field's `active` to `TextField` (and `labelWidth` for a label column beside
+  it), or use `FieldLabel`, so the terminal marks it; the desktop's focus ring
+  already does. Capture input while a text field is focused so global
+  shortcuts do not eat typing.
 - Submit lives with the form: `Save` (`variant="primary"`) and `Cancel`
   (`secondary`) on one row at the bottom of the section they save. Enter in
   any field submits, Esc cancels. Several forms in several tabs means one
@@ -230,8 +328,9 @@ more of what is loaded" uses the same helper.
 - Fixed metadata (email, plan, visibility) is body, not footer.
 - A reactive form whose result updates as the user types (Kelly sizer) has no
   Save; drafts persist with `usePluginPaneState`.
-- Destructive actions use `ConfirmDialog` from a `variant="danger"` button or
-  a footer hint, never a bare button that acts on first press.
+- Destructive actions ask with `confirmDialog` (a `ConfirmDialog`) from a
+  `variant="danger"` button or a footer hint, never a bare button that acts
+  on first press.
 - A form inside a stack detail follows the same rules; Back is the navigation
   Cancel and the footer goes empty while editing.
 
@@ -308,6 +407,7 @@ more of what is loaded" uses the same helper.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
 14. On the desktop tables and charts fill with flex, not terminal row arithmetic; nothing ends in a dead band above the footer.
+15. A chart with a table uses `ChartTableHeader`: named series, one shared selection, `chartTableLayout` at every size, no repeated numbers.
 
 ## Reference implementations
 
@@ -332,6 +432,9 @@ All under `src/plugins/builtin/` unless noted.
 | Sidebar + content | `chat/sidebar.tsx`, `cloud/askg/sidebar.tsx` |
 | Footer model and rendering | `src/components/layout/pane/footer/` |
 | Status, notice, empty state | `src/components/ui/status.tsx` |
-| Load-more helper | `src/components/table-view-shared.tsx` |
+| Load-more helpers | `src/components/table-view-shared.tsx`, `src/components/paged-rows.ts` |
 | Stack | `src/components/data-table/stack-view.tsx`, `ui/page-stack-view.tsx` |
+| Figures, chart and table, selection drives the cursor | `short-volume/pane.tsx` |
+| Board whose chart follows the selected row | `credit-conditions/index.tsx` |
+| Chart over table layout, strip, selection | `src/components/chart-table/` |
 | Rationale in prose | `docs/research-data.md` intro, `PLUGINS.md` UI guidelines |

@@ -3,10 +3,9 @@ import { colors } from "../../../../theme/colors";
 import { describeFundamentalMarketCap } from "../../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Tabs,
   usePaneFooter,
-  usePaneHeaderTabs,
   usePaneNoticeFooter,
+  usePaneTabs,
   type DataTableKeyEvent,
   type TickerListVisibleRange,
 } from "../../../../components";
@@ -297,15 +296,15 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => visibleCollections.map((collection) => ({ label: collection.name, value: collection.id })),
     [visibleCollections],
   );
-  const tabsInHeader = usePaneHeaderTabs(showCollectionTabs
+  const { strip: tabStrip, rows: headerHeight } = usePaneTabs(showCollectionTabs
     ? {
       tabs: collectionTabs,
       activeValue: activeCollectionId,
       onSelect: handleCollectionSelect,
       focused: focused && !quickAddFocused,
+      compact: true,
     }
     : null);
-  const headerHeight = showCollectionTabs && !tabsInHeader ? 1 : 0;
   const summaryHeight = summaryLayout.row.length > 0 && height > headerHeight + 2 ? 1 : 0;
   // The table keeps the paging keys, so the drawer shows its balances rather than
   // scrolling them: it grows to fit, up to half the body once past six rows.
@@ -511,18 +510,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {showCollectionTabs && !tabsInHeader && (
+      {tabStrip && (
         <Box flexDirection="column" height={headerHeight}>
           <Box flexDirection="row" height={1}>
-            <Box flexShrink={1} overflow="hidden">
-              <Tabs
-                tabs={collectionTabs}
-                activeValue={activeCollectionId}
-                onSelect={handleCollectionSelect}
-                compact
-                focused={focused && !quickAddFocused}
-              />
-            </Box>
+            <Box flexShrink={1} overflow="hidden">{tabStrip}</Box>
           </Box>
         </Box>
       )}

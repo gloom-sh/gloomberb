@@ -9,7 +9,6 @@ import {
   type ZoneHit,
 } from "./defs";
 import { fitTrend, sigmaVsTrend, trendAt, type TrendFit } from "../shared/trend";
-import { formatNumber } from "../../../utils/format";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -35,11 +34,6 @@ export interface ValuationBundle {
   errors: string[];
   fetchedAt: number | null;
   sources?: Record<string, import("./series").ValuationSourceMetadata>;
-}
-
-export function formatSigma(sigma: number | null): string {
-  if (sigma == null || !Number.isFinite(sigma)) return "--";
-  return `${sigma > 0 ? "+" : ""}${formatNumber(sigma, 1)}σ`;
 }
 
 export interface IndicatorViewModel {

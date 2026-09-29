@@ -9,7 +9,6 @@ import {
 } from "../../../ui";
 import { InlineQuickAddRow, ListView, MenuPopover, type ListViewItem } from "../../../components/ui";
 import { usePaneMenuItems } from "../../../components";
-import { getNativeSurfaceManager } from "../../../components/chart/native/surface/manager";
 import { getRenderableCellRect } from "../../../components/chart/native/surface/visibility";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -144,13 +143,12 @@ export function ChartSeriesQuickAdd({
   const drawerHeight = active
     ? Math.min(maximumDrawerHeight, drawerStatus ? 1 : suggestions.length)
     : 0;
-  const nativeSurfaceManager = useMemo(
-    () => getNativeSurfaceManager(nativeRenderer),
-    [nativeRenderer],
-  );
+  const nativeSurfaceManager = nativeRenderer.nativeSurfaceManager;
   useAppInputCapture(inputFocused && focused);
 
   useEffect(() => {
+    // Only terminal hosts draw kitty images the drawer has to cut out.
+    if (!nativeSurfaceManager) return;
     const occluderId = `${quickAddId}:drawer`;
     if (domRenderer || drawerHeight <= 0 || !paneId || !drawerRef.current) {
       nativeSurfaceManager.removeLocalOccluder(occluderId);

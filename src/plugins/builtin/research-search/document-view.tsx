@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type {
   CloudSearchDocType,
   CloudSearchDocument,
@@ -18,6 +18,7 @@ import {
   useUiCapabilities,
   type ScrollBoxRenderable,
 } from "../../../ui";
+import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { chunkAttribution, documentBodyWidth } from "./model";
@@ -205,20 +206,13 @@ export function SearchDocumentView({
     scrollBox.scrollTo(Math.max(0, target - 2));
   }, [layout, nativePaneChrome]);
 
-  const scrollBy = useCallback((delta: number) => {
-    const scrollBox = scrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
-  }, []);
-
   useShortcut((event) => {
     if (event.defaultPrevented || event.targetEditable) return;
     const delta = isPlainKey(event, "j") ? 1 : isPlainKey(event, "k") ? -1 : 0;
     if (!delta) return;
     event.preventDefault();
     event.stopPropagation();
-    scrollBy(delta);
+    if (scrollRef.current) scrollByLines(scrollRef.current, delta);
   }, { enabled: focused && !!layout });
 
   if (loading && !document) {

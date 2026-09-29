@@ -10,11 +10,15 @@ let changeLoader: (next: Loader) => void;
 
 afterEach(() => setup?.renderer.destroy());
 
-async function mount(loader: Loader, clearOnError: boolean | ((error: unknown) => boolean) = false) {
+async function mount(
+  loader: Loader,
+  clearOnError: boolean | ((error: unknown) => boolean) = false,
+  keepPreviousData = false,
+) {
   function Probe() {
     const [request, setRequest] = useState(() => loader);
     changeLoader = (next) => setRequest(() => next);
-    resource = useAsyncResource(request, { clearOnError });
+    resource = useAsyncResource(request, { clearOnError, keepPreviousData });
     return null;
   }
   setup = await testRender(<Probe />, { width: 20, height: 5 });
@@ -80,6 +84,18 @@ test("a new security cannot display the previous security's loaded data while pe
   expect(resource).toMatchObject({ data: null, updatedAt: null, loading: true, error: null });
   await act(async () => { next.reject(new Error("MSFT unavailable")); });
   expect(resource).toMatchObject({ data: null, updatedAt: null, loading: false, error: "MSFT unavailable" });
+});
+
+test("keepPreviousData leaves the last answer up while a new loader loads and fails, and null still clears", async () => {
+  await mount(async () => "AAPL peers", false, true);
+  const loadedAt = resource.updatedAt;
+  const next = Promise.withResolvers<string>();
+  await act(async () => { changeLoader(() => next.promise); });
+  expect(resource).toMatchObject({ data: "AAPL peers", updatedAt: loadedAt, loading: true, error: null });
+  await act(async () => { next.reject(new Error("MSFT unavailable")); });
+  expect(resource).toMatchObject({ data: "AAPL peers", loading: false, error: "MSFT unavailable" });
+  await act(async () => { changeLoader(null); });
+  expect(resource).toMatchObject({ data: null, loading: false, error: null, status: "idle" });
 });
 
 test("error policy retains the original retrieval time through an outage and clears it with denied data", async () => {

@@ -173,8 +173,16 @@ export function getRowPresentation(item: CommandBarItemView, selected: boolean, 
 }
 
 /**
+ * The section holding the offer to install an official plugin whose code was
+ * typed. It leads even an exact symbol, so plain Enter installs what the user
+ * named; the code is often a ticker too (PM is Philip Morris), and that stock
+ * sits right below it rather than being hidden.
+ */
+export const PLUGIN_INSTALL_CATEGORY = "Plugins";
+const PLUGIN_INSTALL_SECTION_PRIORITY = -200;
+/**
  * An exactly matching symbol is the most certain answer the terminal has, so
- * nothing outranks it. Typing "sive" put the AI's "DES SIVE" above the SIVE row
+ * only a plugin install offer outranks it. Typing "sive" put the AI's "DES SIVE" above the SIVE row
  * it was derived from, which is a guess sitting above the fact behind it.
  */
 const EXACT_MATCH_SECTION_PRIORITY = -150;
@@ -201,6 +209,7 @@ function getCategoryPriority(category: string, options?: CommandBarSectionOption
   if (sectionOrder === "ranked") return 0;
   if (normalized === "ask ai") return ASSIST_SECTION_PRIORITY;
   if (normalized === "exact match") return EXACT_MATCH_SECTION_PRIORITY;
+  if (category === PLUGIN_INSTALL_CATEGORY) return PLUGIN_INSTALL_SECTION_PRIORITY;
   if (normalized === "instruments") return INSTRUMENTS_SECTION_PRIORITY;
   if (sectionOrder === "app-first") {
     if (normalized === "saved") return 100;

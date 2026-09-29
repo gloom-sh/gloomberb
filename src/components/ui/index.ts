@@ -28,21 +28,27 @@ export { NumberPromptDialog } from "./number-prompt-dialog";
 export { SelectButton } from "./select-button";
 export type { SelectButtonOption, SelectButtonProps, SelectControl } from "./select-button";
 
-export { TextField, NumberField } from "./fields";
-export { QueryBar } from "./query-bar";
+export { FieldLabel, TextField, NumberField } from "./fields";
+export { useFieldRing } from "./field-ring";
+export type { FieldRing, FieldRingOptions } from "./field-ring";
+export { QueryBar, useQueryBarSearch } from "./query-bar";
 export { FieldGrid, GridFieldView, fieldGridColumns, fieldGridRows } from "./field-grid";
 export type { FieldGridProps, GridField } from "./field-grid";
 export { StatGrid, statGridColumns, statGridRows } from "./stat-grid";
 export type { StatGridProps, StatItem } from "./stat-grid";
-export type { QueryBarProps, QueryBarFilter, QueryBarMultiFilter, QueryBarSearch, QueryBarSelectFilter, QueryBarTextFilter, QueryBarToggleFilter, QueryBarView } from "./query-bar";
-export type { TextFieldProps, NumberFieldProps } from "./fields";
+export type { SplitBarPart } from "./split-bar";
+export type { QueryBarProps, QueryBarFilter, QueryBarMultiFilter, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter, QueryBarToggleFilter, QueryBarView } from "./query-bar";
+export type { FieldLabelProps, TextFieldProps, NumberFieldProps } from "./fields";
 
 export { getMessageComposerBlockHeight, MessageComposer } from "./message-composer";
 
 export { DialogFrame } from "./frame";
 export type { DialogFrameProps } from "./frame";
-export { ConfirmDialog } from "./confirm-dialog";
+export { ConfirmDialog, confirmDialog } from "./confirm-dialog";
+export type { ConfirmDialogOptions } from "./confirm-dialog";
 export { ChoiceDialog } from "./choice-dialog";
+export { TextPromptDialog } from "./text-prompt-dialog";
+export type { TextPromptDialogProps } from "./text-prompt-dialog";
 export type { ChoiceDialogChoice } from "./choice-dialog";
 export { Tabs } from "./tabs";
 export type { TabsProps } from "./tabs";
@@ -62,5 +68,7 @@ export { ExternalLink, ExternalLinkText, openUrl, PaneLinkMenu, usePaneLinkMenuE
 export { ButtonActionScope } from "./action-scope";
 export { RemoteImage } from "./remote-image";
 export { PageStackView } from "./page-stack-view";
+export { DetailScrollBody } from "./detail-scroll-body";
+export type { DetailScrollBodyProps } from "./detail-scroll-body";
 
 export { Spinner } from "./loading";

@@ -2,13 +2,24 @@ export { MarketBoardStack, type MarketBoardRow, type MarketBoardStackProps } fro
 
 export { PriceSelectorDialog } from "./price-selector-dialog";
 export { StaticChartSurface } from "./chart/static";
-export { CurveSurface, curveGhostColors, curveSlope, historyStatistics } from "./chart/curve";
-export type { CurveSurfaceProps, CurveSlopeReadout, CurvePoint, CurveSeries, HistoryObservation, HistoryStatistics } from "./chart/curve";
+export { CurveSurface, curveGhostColors, curveSlope, curveStrip, curveSurfaceMinRows, historyStatistics } from "./chart/curve";
+export type { CurveSurfaceProps, CurveSlopeReadout, CurvePoint, CurveSeries, CurveSeriesRole, CurveXScale, HistoryObservation, HistoryStatistics } from "./chart/curve";
 export type { StaticChartOverlay } from "./chart/static/chart-surface";
 // The time-series chart: one or more panels of resolved series with axes,
 // a cursor, and range selection. Ticker overview, polls, econ statistics,
 // and prediction markets all draw with it.
 export { CompositeChart, pricePointsToResolvedSeries } from "./chart/composite";
+// Figures, then a chart, then a table: the header zone, its size rule at every
+// pane size, and the selection the chart and the table share.
+export {
+  ChartStrip, ChartTableHeader, chartTableChromeRows, chartTableLayout, formatBpAxis, formatPercentAxis,
+  spanAxisFormatter, spanDigits, useChartTableLayout, useChartTableSelection,
+} from "./chart-table";
+export type {
+  ChartBandMode, ChartStripSpec, ChartTableChart, ChartTableHeaderProps, ChartTableLayout,
+  ChartTableSelection,
+} from "./chart-table";
+export { scalarPoint, staticSeries } from "./chart/static/series";
 export type {
   CompositeAxisDomain,
   CompositeAxisSide,
@@ -50,6 +61,10 @@ export { InlineTickerBadge } from "./ticker/badge";
 export type { InlineTickerBadgeProps } from "./ticker/badge";
 export { InputSearchBar } from "./input-search-bar";
 export { isTableScrollNearEnd, useTableLoadMore } from "./table-view-shared";
+// An offset-paged list behind that scroll trigger: first page, appended pages,
+// dedupe, aborts and a failed page that keeps what is loaded.
+export { usePagedRows } from "./paged-rows";
+export type { PageLoader, PageRequest, PagedRows, PagedRowsOptions, RowPage } from "./paged-rows";
 export { DataTableView } from "./data-table/view";
 export type {
   DataTableKeyEvent,
@@ -78,6 +93,8 @@ export type { StackSortPreference } from "./feed-stack-controller";
 export { PaneFooterScope, usePaneFooter, usePaneMenuItems } from "./layout/pane/footer";
 export { NestedPaneTabs, usePaneHeaderTabs } from "./layout/pane/header-tabs";
 export type { PaneHeaderTabsRegistration } from "./layout/pane/header-tabs";
+export { usePaneTabs } from "./layout/pane/pane-tabs";
+export type { PaneTabs, PaneTabsOptions } from "./layout/pane/pane-tabs";
 // The common footer shapes on top of `usePaneFooter`: a status segment that
 // changes with loading/error state, and one that also carries a link.
 export { usePaneStatusFooter, usePaneStatusLinkFooter } from "./layout/pane/status-footer";
@@ -107,27 +124,28 @@ export { MarkdownText } from "./markdown-text";
 // this file is the public `gloomberb/components` surface: a kit component
 // reaches plugins only once it is added here.
 export {
-  ActionRow, Badge, BulletList, Button, ButtonActionScope, Checkbox, ChoiceDialog, ConfirmDialog, DataTable,
-  DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid,
+  ActionRow, Badge, BulletList, Button, ButtonActionScope, Checkbox, ChoiceDialog, ConfirmDialog, confirmDialog, DataTable,
+  DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid, FieldLabel,
   fieldGridColumns, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
   MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField,
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
-  Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, unavailableText,
-  usePaneLinkMenuEntry,
+  Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, TextPromptDialog, unavailableText,
+  useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch,
 } from "./ui";
 export type {
-  ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice,
-  DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DialogFrameProps,
-  DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FigureListItem, FigureListProps, GridField,
+  ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice, ConfirmDialogOptions,
+  DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DetailScrollBodyProps, DialogFrameProps,
+  DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FieldLabelProps, FieldRing, FieldRingOptions,
+  FigureListItem, FigureListProps, GridField,
   IconButtonPressEvent, IconButtonProps, IconName, IconProps, InlineQuickAddRowProps,
   KeyValueRowProps, ListRowState, ListViewItem, ListViewProps, MenuItem, MenuPopoverProps,
   MenuProps, MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint, MultiSelectRowAction,
   NoticeProps, NumberFieldProps, PaneStatusBodyProps, PopoverProps, ProseProps, QueryBarFilter,
-  QueryBarMultiFilter, QueryBarProps, QueryBarSearch, QueryBarSelectFilter, QueryBarTextFilter,
+  QueryBarMultiFilter, QueryBarProps, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter,
   QueryBarToggleFilter, QueryBarView, SectionHeadingProps, SectionProps, SegmentedControlProps,
   SelectButtonOption, SelectButtonProps, SelectControl, StatGridProps, StatItem, TabsProps,
-  TextFieldProps,
+  TextFieldProps, TextPromptDialogProps,
 } from "./ui";
 export { usePaneTicker } from "../state/app/context";

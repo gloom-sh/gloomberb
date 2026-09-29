@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudCdsResponse } from "../../../api-client";
 import type { InstrumentSearchResult } from "../../../types/instrument";
-import { loadCdsActivity } from "./client";
+import { loadCdsActivity, loadCdsSpreadHistory } from "./client";
 
 function result(symbol: string, name: string): InstrumentSearchResult {
   return { providerId: "gloomberb-cloud", symbol, name, exchange: "NYSE", type: "STK" };
@@ -99,5 +99,30 @@ describe("loadCdsActivity", () => {
     expect(calls.searched).toEqual([]);
     expect(calls.requested).toEqual([undefined]);
     expect(activity.issuer).toBeNull();
+  });
+});
+
+describe("loadCdsSpreadHistory", () => {
+  test("asks for two years and returns valid levels oldest first", async () => {
+    const requested: unknown[] = [];
+    const history = await loadCdsSpreadHistory("Oracle Corporation", async (params) => {
+      requested.push(params);
+      return {
+        source: "DTCC PPD",
+        issuer: "Oracle Corporation",
+        tenor: "5Y",
+        currency: "USD",
+        asOf: null,
+        points: [
+          { date: "2026-09-25", spreadBp: 235, prints: 10, reported: 6, maturity: "2031-12-20" },
+          { date: "2026-09-24", spreadBp: 228, prints: 21, reported: 3, maturity: "2031-12-20" },
+          { date: "bad", spreadBp: 1, prints: 1, reported: 0, maturity: "2031-12-20" },
+          { date: "2026-09-23", spreadBp: Number.NaN, prints: 1, reported: 0, maturity: "2031-12-20" },
+        ],
+      };
+    });
+    expect(requested).toEqual([{ issuer: "Oracle Corporation", days: 730 }]);
+    expect(history.issuer).toBe("Oracle Corporation");
+    expect(history.points.map((point) => point.date)).toEqual(["2026-09-24", "2026-09-25"]);
   });
 });

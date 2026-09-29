@@ -17,7 +17,7 @@ import {
 } from "./table";
 
 function contractFor(sector: FuturesSector): FuturesContract {
-  return { symbol: "X=F", code: "X", name: "Test", sector };
+  return { symbol: "X=F", code: "X", name: "Test", sector, venue: "CME" };
 }
 
 function cellText(
@@ -32,7 +32,7 @@ function cellText(
   const quotes: BoardQuoteMap = new Map([
     ["X=F", { quote: quote as Quote, loading: false, error: null, stale: false }],
   ]);
-  return renderFuturesCell(row, column, { selected: false }, quotes).text;
+  return renderFuturesCell(row, column, quotes).text;
 }
 
 describe("futures price formatting", () => {
@@ -61,7 +61,14 @@ describe("futures price formatting", () => {
 
   test("marks cent-quoted grains so they are not read as dollars", () => {
     expect(cellText("price", { price: 483.25, currency: "USX" }, "agriculture")).toBe("483.25c");
+    expect(cellText("change", { price: 483.25, change: -2.5, currency: "USX" }, "agriculture")).toBe("-2.50c");
     expect(cellText("price", { price: 483.25, currency: "USD" }, "agriculture")).toBe("483.25");
+  });
+
+  test("marks a euro-quoted contract on its price and its change", () => {
+    // Dutch TTF gas quotes in EUR per MWh beside dollar-quoted Henry Hub.
+    expect(cellText("price", { price: 72.071, currency: "EUR" }, "energy", 0.001)).toBe("€72.071");
+    expect(cellText("change", { price: 72.071, change: -3.035, currency: "EUR" }, "energy", 0.001)).toBe("-€3.035");
   });
 
   test("scales the session change to the price, not to its own magnitude", () => {
@@ -104,7 +111,12 @@ describe("futures columns", () => {
     expect(narrow).not.toContain("volume");
     expect(narrow).not.toContain("time");
 
-    const wide = createFuturesColumns(130).map((column) => column.id);
+    // Returns outrank volume, previous close and time as the board narrows.
+    const medium = createFuturesColumns(110).map((column) => column.id);
+    expect(medium).toContain("returnYtd");
+    expect(medium).not.toContain("volume");
+
+    const wide = createFuturesColumns(150).map((column) => column.id);
     expect(wide).toContain("volume");
     expect(wide).toContain("prevClose");
     expect(wide).toContain("time");

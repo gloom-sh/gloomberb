@@ -1,5 +1,6 @@
 import { listThirteenFForms, searchThirteenFFunds } from "../thirteenf/api";
-import { buildPeriodReports, dateYearsAgo, todayIso } from "../thirteenf/model";
+import { isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
+import { buildPeriodReports } from "../thirteenf/model";
 import type { HolderRow } from "./types";
 
 export interface Holder13FMatch {
@@ -46,8 +47,8 @@ export async function loadHolder13FMatches(
   signal: AbortSignal,
 ): Promise<Map<string, Holder13FMatch>> {
   const now = new Date();
-  const from = dateYearsAgo(2, now);
-  const to = todayIso(now);
+  const from = isoDateYearsAgo(2, now);
+  const to = isoDateToday(now);
   const matches = new Map<string, Holder13FMatch>();
   const sourceRows = rows.filter((row) => row.name).slice(0, HOLDER_MATCH_LIMIT);
 

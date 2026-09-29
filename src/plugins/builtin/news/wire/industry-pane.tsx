@@ -4,11 +4,10 @@ import type { PaneProps } from "../../../../types/plugin";
 import type { MarketNewsItem } from "../../../../types/news-source";
 import { useNewsArticles, useNewsTableLoadMore } from "../../../../news/hooks";
 import { usePluginPaneState } from "../../../runtime";
-import { Tabs, usePaneHeaderTabs } from "../../../../components";
+import { PaneStatusBody, usePaneTabs } from "../../../../components";
 import { useNewsArticleStack } from "./news/preset-pane";
 import {
   NewsArticleStackView,
-  newsTableStatusContent,
   type NewsColumnId,
   type NewsSortPreference,
 } from "./news/table";
@@ -82,32 +81,26 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
   const selectCategory = (value: string) => setCategory(value as SectorNewsSelection);
   // An open story owns h/l and the arrows; the sector strip must not switch under it.
   const tabsFocused = focused && !detailOpen;
-  const tabsInHeader = usePaneHeaderTabs({ tabs, activeValue: category, onSelect: selectCategory, focused: tabsFocused });
-  const rootBefore = tabsInHeader ? undefined : (
-    <Box height={1} flexShrink={0} overflow="hidden">
-      <Tabs
-        tabs={tabs}
-        activeValue={category}
-        onSelect={selectCategory}
-        compact
-        variant="bare"
-        focused={tabsFocused}
-      />
-    </Box>
-  );
+  const { strip: tabStrip } = usePaneTabs({
+    tabs, activeValue: category, onSelect: selectCategory, focused: tabsFocused, compact: true, variant: "bare",
+  });
+  const rootBefore = tabStrip ? <Box height={1} flexShrink={0} overflow="hidden">{tabStrip}</Box> : undefined;
 
   return (
     <NewsArticleStackView
       {...stack}
       rootHeight={height}
       rootBefore={rootBefore}
-      emptyContent={newsTableStatusContent({
-        loading,
-        error,
-        subject: "Sector news",
-        emptyTitle: "No news in this category",
-        emptyMessage: "Try another category or wait for the next feed refresh.",
-      })}
+      emptyContent={(
+        <PaneStatusBody
+          loading={loading}
+          error={error}
+          empty
+          subject="Sector news"
+          emptyTitle="No news in this category"
+          emptyMessage="Try another category or wait for the next feed refresh."
+        />
+      )}
       emptyStateTitle="No news in this category"
       emptyStateHint="Try another category or wait for the next feed refresh."
       scrollRef={scrollRef}

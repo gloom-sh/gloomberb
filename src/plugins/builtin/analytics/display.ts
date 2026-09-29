@@ -1,10 +1,3 @@
-import { formatCompactAmount } from "../../../utils/format";
-
-// P&L moves with every streamed price; fixed decimals keep the percent detail after it still.
-export function formatSignedCompact(value: number | null): string {
-  return formatCompactAmount(value ?? undefined, { signed: true });
-}
-
 export function formatWeight(weight: number | null): string {
   if (weight == null || !Number.isFinite(weight)) return "—";
   return `${(weight * 100).toFixed(1)}%`;

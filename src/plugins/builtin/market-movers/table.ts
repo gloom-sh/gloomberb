@@ -51,45 +51,45 @@ export function buildMarketMoverColumns(width: number): MarketMoverColumn[] {
 export function renderMarketMoverCell(
   row: MarketMoverRow,
   column: MarketMoverColumn,
-  _index: number,
-  rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
-
   switch (column.id) {
     case "rank":
-      return { text: String(row.rank), color: selectedColor ?? colors.textDim };
+      return { text: String(row.rank), color: colors.textDim };
     case "symbol":
       return {
         text: row.symbol,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: row.name, color: selectedColor };
+      return { text: row.name };
     case "price":
-      return { text: formatMoverPrice(row.price, row.currency, moverReferencePrice(row)), color: selectedColor };
+      return { text: formatMoverPrice(row.price, row.currency, moverReferencePrice(row)) };
     case "changePercent":
       return {
         text: formatPercentRaw(row.changePercent ?? undefined),
-        color: selectedColor ?? priceColor(row.changePercent ?? 0),
+        value: row.changePercent,
+        color: priceColor(row.changePercent ?? 0),
       };
     case "volume":
-      return { text: formatCompact(row.volume ?? undefined, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
+      return { text: formatCompact(row.volume ?? undefined, { fixedDecimals: true }), value: row.volume, color: colors.textDim };
     case "volumeRatio":
       return {
         text: formatVolRatio(row.volumeRatio),
-        color: selectedColor ?? volRatioColor(row.volumeRatio),
+        value: row.volumeRatio != null && row.volumeRatio >= 0 ? row.volumeRatio : null,
+        color: volRatioColor(row.volumeRatio),
       };
     case "range":
       return {
         text: fiftyTwoWeekPosition(row.price, row.fiftyTwoWeekLow, row.fiftyTwoWeekHigh),
-        color: selectedColor ?? colors.textDim,
+        value: fiftyTwoWeekPositionPercent(row.price, row.fiftyTwoWeekLow, row.fiftyTwoWeekHigh),
+        color: colors.textDim,
       };
     case "marketCap":
       return {
         text: row.marketCap != null ? formatCompact(row.marketCap, { fixedDecimals: true }) : "—",
-        color: selectedColor ?? colors.textDim,
+        value: row.marketCap,
+        color: colors.textDim,
       };
   }
 }

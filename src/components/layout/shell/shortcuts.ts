@@ -93,8 +93,11 @@ export function modalSurfaceOwnsKey(
 
 export function inputCaptureAllowsPaneManagementShortcut(
   shortcut: PaneManagementShortcut,
-  event: Pick<KeyEventLike, "meta" | "super" | "targetEditable">,
+  event: Pick<KeyEventLike, "ctrl" | "meta" | "super" | "targetEditable">,
 ): boolean {
+  // A screenshot does not edit the field that captured input. Keep it available
+  // from composers (ASKG, chat, etc.) on both desktop modifier layouts.
+  if (shortcut === "copy-screenshot") return event.ctrl || event.meta || event.super === true;
   if (shortcut === "toggle-fullscreen") return event.meta || event.super === true;
   if (shortcut !== "close" && shortcut !== "close-all-floating") return false;
   return event.meta || event.super || event.targetEditable !== true;

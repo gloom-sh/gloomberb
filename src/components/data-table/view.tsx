@@ -10,22 +10,35 @@ import {
 } from "react";
 import type { ScrollBoxRenderable } from "../../ui";
 import { useShortcut } from "../../react/input";
-import { isPlainKeyboardEvent } from "../../utils/keyboard";
+import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, type DataTableColumn, type DataTableProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
 import {
-  isNextTableRowKey,
-  isPreviousTableRowKey,
-  isTableActivationKey,
-  stopTableKey,
   TableViewFrame,
-  type TableViewKeyEvent,
   useResetTableScroll,
   useTableBodyScrollActivity,
   useTableViewState,
 } from "../table-view-shared";
 
-export type DataTableKeyEvent = TableViewKeyEvent;
+export interface DataTableKeyEvent {
+  name?: string;
+  sequence?: string;
+  ctrl?: boolean;
+  meta?: boolean;
+  super?: boolean;
+  alt?: boolean;
+  option?: boolean;
+  shift?: boolean;
+  readonly defaultPrevented?: boolean;
+  readonly propagationStopped?: boolean;
+  preventDefault?: () => void;
+  stopPropagation?: () => void;
+}
+
+function stopTableKey(event: DataTableKeyEvent) {
+  event.stopPropagation?.();
+  event.preventDefault?.();
+}
 
 const DATA_TABLE_SELECTION_COMMIT_DELAY_MS = 150;
 
@@ -642,19 +655,20 @@ export function DataTableView<
     }
     if (tableProps.items.length === 0) return;
 
-    if (isNextTableRowKey(event)) {
+    if (isPlainKey(event, "j", "down")) {
       stopTableKey(event);
       selectByOffset(1);
       return;
     }
 
-    if (isPreviousTableRowKey(event)) {
+    if (isPlainKey(event, "k", "up")) {
       stopTableKey(event);
       selectByOffset(-1);
       return;
     }
 
-    if (isTableActivationKey(event.name)) {
+    // Enter activates with or without modifiers.
+    if (event.name === "enter" || event.name === "return") {
       stopTableKey(event);
       activateSelection();
       return;

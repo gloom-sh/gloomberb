@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { OptionContract, OptionsChain, Quote } from "../../../types/financials";
 import type { QueryEntry } from "../../../market-data/result-types";
-import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../options-calculator/model";
+import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
+import { daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../shared/volatility";
 import { calculateOptionGreeks, solveChainVolatilities } from "./analytics";
 import type { OptionTableRow } from "./types";
 import {
@@ -407,7 +408,7 @@ test("a streamed midpoint re-solves its strike's IV and Greeks at the live spot;
 
   const volatilities = solveChainVolatilities(live.chain, 100, 0, now);
   const expected = solveImpliedVolatility({ ...DEFAULT_OPTION_CALC_DRAFT, side: "call", spot: 100, strike: 105,
-    daysToExpiry: days, volatility: 0.25, dividendYield: 0 }, liveMid).volatility!;
+    daysToExpiry: days, dividendYield: 0 }, liveMid).volatility!;
   expect(volatilities.byStrike.get(105)!).toBeGreaterThan(snapshot.byStrike.get(105)! + 0.03);
   expect(volatilities.byStrike.get(105)!).toBeCloseTo(expected, 2);
   expect(volatilities.byStrike.get(95)!).toBeCloseTo(snapshot.byStrike.get(95)!, 6);

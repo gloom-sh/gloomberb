@@ -87,6 +87,21 @@ export function recommendationTotal(data: AnalystResearchData | null): number | 
     ? values.reduce((sum, value) => sum + value, 0) : null;
 }
 
+/**
+ * The latest recommendation mix as Buy, Hold and Sell, strong ratings folded
+ * in, with the period named only when it is not the current month. Null when
+ * any count is missing, so a partial mix never reads as a whole one.
+ */
+export function ratingSplit(data: AnalystResearchData | null) {
+  const rec = recommendationMix(data);
+  if (!rec) return null;
+  const { strongBuy, buy, hold, sell, strongSell } = rec;
+  if (strongBuy == null || buy == null || hold == null || sell == null || strongSell == null) return null;
+  const split = { buy: strongBuy + buy, hold, sell: sell + strongSell };
+  if (split.buy + split.hold + split.sell === 0) return null;
+  return { ...split, period: rec.period && !isCurrentMonthPeriod(rec.period) ? compactPeriod(rec.period) : null };
+}
+
 export function formatRecommendationMix(data: AnalystResearchData | null): string {
   const rec = recommendationMix(data);
   if (!rec) return "-";
@@ -326,8 +341,6 @@ export function buildAnalystStatusSegments(
   const target = data.priceTarget;
   const currency = analystTargetCurrency(data);
   const price = (value: number | undefined) => formatAnalystPrice(value, currency);
-  const rec = latestRecommendation(data);
-  const total = recommendationTotal(data);
   const segments: PaneFooterSegment[] = [];
 
   if (data.stale) segments.push({ id: "analyst-stale", parts: [{ text: "stale", tone: "warning" }] });
@@ -347,20 +360,6 @@ export function buildAnalystStatusSegments(
     segments.push({
       id: "analyst-rating",
       parts: [{ text: "rating", tone: "label" }, { text: formatRatingLabel(data.recommendationRating) }],
-    });
-  }
-
-  // Only an older mix needs its period named; the current one is the default.
-  const period = rec && rec.period && !isCurrentMonthPeriod(rec.period) ? compactPeriod(rec.period) : null;
-  if (rec || total != null) {
-    segments.push({
-      id: "analyst-mix",
-      parts: [
-        ...(rec ? [{ text: formatRecommendationMix(data) }] : []),
-        ...(total != null
-          ? [{ text: `${total} analysts${period ? ` (${period})` : ""}`, tone: "muted" as const }]
-          : period ? [{ text: period, tone: "muted" as const }] : []),
-      ],
     });
   }
 
@@ -465,4 +464,21 @@ export function buildAnalystTargetHistory(
   });
 
   return history;
+}
+
+/** Firms the mean needs before the line starts, or every covered firm when fewer. */
+const MEAN_TARGET_START_FIRMS = 5;
+
+/**
+ * The line the pane draws: the mean of each covered firm's latest target, from
+ * the first day at least five firms (or all of them, when fewer cover the
+ * stock) are in it, so the line does not open on one or two firms' targets.
+ */
+export function buildMeanTargetHistory(
+  ratings: readonly AnalystRatingRecord[],
+  options: { windowDays?: number; spanDays?: number } = {},
+): AnalystTargetHistoryPoint[] {
+  const finalFirms = buildAnalystTargetHistory(ratings, { ...options, minFirms: 1 }).at(-1)?.firms ?? 0;
+  if (finalFirms === 0) return [];
+  return buildAnalystTargetHistory(ratings, { ...options, minFirms: Math.min(MEAN_TARGET_START_FIRMS, finalFirms) });
 }

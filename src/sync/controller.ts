@@ -2,6 +2,7 @@ import type { Dispatch } from "react";
 import type { AppAction, AppState } from "../core/state/app/state";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import { stableStringify } from "../utils/hash";
+import { VERSION } from "../version";
 import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
   type RegisteredSyncContributor,
@@ -313,6 +314,7 @@ export class CloudSyncController {
       appId: "gloomberb",
       clientId: this.clientId ??= resolveClientId(),
       createdAt,
+      appVersion: VERSION,
       contributors: payloads,
     };
   }

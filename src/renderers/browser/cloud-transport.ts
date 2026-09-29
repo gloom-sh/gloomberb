@@ -2,8 +2,7 @@ import { apiClient, setCloudApiFetchTransport } from "../../api-client";
 import { settleWithin } from "../../utils/async-deadline";
 import { setHttpFetchTransport } from "../../utils/http-transport";
 import { createBrowserHttpProxyTransport } from "./http-proxy-transport";
-
-const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"] as const;
+import { SESSION_COOKIE_NAMES } from "../../api-client/session-cookie";
 
 function plantBrowserSessionCookies(cookieHeader: string): void {
   if (typeof document === "undefined") return;

@@ -1,6 +1,8 @@
 import {
   CATEGORY_FIELDS,
   NUMERIC_FIELDS,
+  RESEARCH_FIELDS,
+  SOCIAL_FIELDS,
   type NumericField,
   type ScreenMetric,
   type ScreenCriterion,
@@ -11,7 +13,7 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { canonicalExchange } from "../../../utils/exchanges";
-import { formatCompact } from "../../../utils/format";
+import { formatCompact, formatNumber } from "../../../utils/format";
 
 /**
  * Column headers. Currency sits in the footer; percentage fields carry %.
@@ -41,10 +43,37 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   institutionalHolders: "13F HOLDERS",
   institutionalNewHolders: "13F NEW",
   institutionalExits: "13F EXITS",
+  xPostsPerDay: "X POSTS/D",
+  xPostsVsMedian: "X VS MED",
+  wikiViewsPerDay: "WIKI/D",
+  wikiViewsVsMedian: "WIKI VS MED",
+  return1WPercent: "1W%",
+  return1MPercent: "1M%",
+  return3MPercent: "3M%",
+  returnYtdPercent: "YTD%",
+  return1YPercent: "1Y%",
+  fromHigh52WPercent: "VS 52W HI%",
+  beta: "BETA",
+  priceToBook: "P/B",
+  evToEbitda: "EV/EBITDA",
+  roePercent: "FY ROE%",
+  epsRevision30dPercent: "EPS REV 30D%",
+  analystUpsidePercent: "UPSIDE%",
+  ivRank: "IV RANK",
+  ivToHv: "IV/HV",
 };
 const COMPACT = new Set<NumericField>(["marketCap", "volume", "averageVolume20d", "shortInterestShares"]);
-const SIGNED = new Set<NumericField>(["changePercent", "revenueGrowthPercent", "earningsGrowthPercent", "shortInterestChangePercent"]);
-const COUNTS = new Set<NumericField>(["insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits"]);
+/** Daily counts: whole numbers below a thousand, compact above. */
+const DAILY_COUNTS = new Set<NumericField>(["xPostsPerDay", "wikiViewsPerDay"]);
+const RATIOS = new Set<NumericField>(["xPostsVsMedian", "wikiViewsVsMedian", "priceToBook", "evToEbitda", "ivToHv"]);
+const RETURNS: NumericField[] = ["return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent", "return1YPercent"];
+const SIGNED = new Set<NumericField>([
+  "changePercent", "revenueGrowthPercent", "earningsGrowthPercent", "shortInterestChangePercent",
+  ...RETURNS, "fromHigh52WPercent", "epsRevision30dPercent", "analystUpsidePercent",
+]);
+/** Moves whose sign is the news: they take the sign colour. */
+export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent"]);
+const COUNTS = new Set<NumericField>(["insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank"]);
 const MONETARY = new Set<NumericField>(["price", "marketCap"]);
 /** Shown after the screen's own criteria when the pane has room. */
 const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "trailingPE", "revenueGrowthPercent", "operatingMarginPercent", "dividendYieldPercent"];
@@ -52,10 +81,12 @@ const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "
 export function formatScreenValue(field: NumericField, value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "--";
   if (COMPACT.has(field)) return formatCompact(value, { fixedDecimals: true });
-  if (COUNTS.has(field)) return value.toFixed(0);
-  if (field === "price") return value.toFixed(2);
+  if (DAILY_COUNTS.has(field)) return value < 1_000 ? value.toFixed(0) : formatCompact(value, { fixedDecimals: true });
+  if (RATIOS.has(field)) return `${value.toFixed(1)}x`;
+  if (COUNTS.has(field)) return formatNumber(value, 0);
+  if (field === "price" || field === "beta") return formatNumber(value, 2);
   // A value that rounds to zero prints 0.0, never -0.0.
-  const fixed = Math.abs(value) < 0.05 ? "0.0" : value.toFixed(1);
+  const fixed = Math.abs(value) < 0.05 ? "0.0" : formatNumber(value, 1);
   return SIGNED.has(field) && value > 0 && fixed !== "0.0" ? `+${fixed}` : fixed;
 }
 
@@ -73,7 +104,8 @@ export function resultFields(definition: ScreenDefinition, metric: NumericField)
   return [...new Set(fields)].filter((field) => definition.currency || !MONETARY.has(field) || field === metric);
 }
 
-export const columnWidth = (field: NumericField) => Math.max(8, SHORT_LABELS[field].length);
+/** Prices get room for a separated six-figure quote (757,398.00). */
+export const columnWidth = (field: NumericField) => Math.max(field === "price" ? 10 : 8, SHORT_LABELS[field].length);
 
 export const DEFAULT_SCREEN: ScreenDefinition = {
   version: 1,
@@ -106,6 +138,24 @@ export const screenLabel = (field: string) =>
     changePercent: "Change %",
     daysToCover: "Days to cover",
     dividendYieldPercent: "Dividend yield %",
+    xPostsPerDay: "X posts per day",
+    xPostsVsMedian: "X posts vs median",
+    wikiViewsPerDay: "Wikipedia views per day",
+    wikiViewsVsMedian: "Wikipedia views vs median",
+    return1WPercent: "1W return %",
+    return1MPercent: "1M return %",
+    return3MPercent: "3M return %",
+    returnYtdPercent: "YTD return %",
+    return1YPercent: "1Y return %",
+    fromHigh52WPercent: "From 52-week high %",
+    beta: "Beta",
+    priceToBook: "P/B",
+    evToEbitda: "EV / EBITDA",
+    roePercent: "Annual ROE %",
+    epsRevision30dPercent: "EPS revision 30D %",
+    analystUpsidePercent: "Analyst upside %",
+    ivRank: "IV rank",
+    ivToHv: "IV / HV",
   })[field] ??
   field
     .replace(/([A-Z])/g, " $1")
@@ -266,6 +316,11 @@ const requiredDate = (value: unknown) =>
 const validDate = (value: unknown) => value === null || requiredDate(value);
 export const screenDefinitionKey = (value: ScreenDefinition) =>
   JSON.stringify(parseScreenDefinition(value));
+const unavailableMetric = (): ScreenMetric => ({
+  value: null, unit: "", asOf: null, availableAt: null, observedAt: null, source: "Gloom Cloud",
+  state: "unavailable", scope: "reported", reason: "Not provided by this server", sourceUrl: null,
+  percentile: { value: null, sampleCount: 0, scope: "covered-universe" },
+});
 export function validateScreenPayload(value: unknown): ScreenPayload {
   const data = value as ScreenPayload;
   if (
@@ -307,6 +362,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
+      // A server from before social or research fields omits them; they read as unavailable.
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS] as readonly string[]).includes(field))
+        row.metrics[field] = unavailableMetric();
       const metric = row.metrics[field];
       if (
         !metric ||

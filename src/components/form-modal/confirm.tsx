@@ -87,12 +87,12 @@ export function ConfirmModalContent({
       return;
     }
     pendingRef.current = false;
-    if (!mountedRef.current) return;
-    if (confirm.successBehavior === "stay") {
-      setPending(false);
-      return;
+    if (mountedRef.current) {
+      if (confirm.successBehavior === "stay") setPending(false);
+      else dismiss();
     }
-    dismiss();
+    // After the confirm closed, so what it opens (the bar again) is not over it.
+    confirm.onSuccess?.();
   }, [confirm, dismiss, runtime]);
 
   // Every key, even with a field focused underneath: a confirm has nothing to

@@ -40,7 +40,7 @@ test("reported percentages fit at normal width and dated rows remain usable thro
   expect(setup!.captureCharFrame()).toContain("% FLOAT");
   expect(setup!.captureCharFrame()).toContain("25.00%");
   await exportPaneTable("si", "full.csv"); const full = takeSavedTextFile()!.text;
-  expect(full).toContain("2026-08-31,20M,2.30,'-,25.00%");
+  expect(full).toContain("2026-08-31,20000000,2.30,,25.00");
   await act(async () => { resize(48); setup!.resize(48, 23); });
   await settleFrame(setup!, 6);
   for (let i = 0; i < 4; i++) await emitKeypress(setup!, { name: "right", ctrl: true });
@@ -57,7 +57,7 @@ test("reported percentages fit at normal width and dated rows remain usable thro
   expect(yahoo).toHaveBeenCalledTimes(2);
 });
 
-test("the table owns every row below the chart, and short panes drop the chart for the table", async () => {
+test("the settlements table drives the shares-short chart and keeps its rows in a short pane", async () => {
   const points = Array.from({ length: 18 }, (_, index) => ({ settlementDate: `2026-${String(1 + Math.floor(index / 2)).padStart(2, "0")}-${index % 2 ? "28" : "14"}`,
     sharesShort: 10_000_000 + index * 1_000_000, previousSharesShort: null, averageDailyVolume: 5_000_000,
     daysToCover: 2 + index / 10, changePercent: null, revised: false }));
@@ -75,15 +75,32 @@ test("the table owns every row below the chart, and short panes drop the chart f
   }
   await act(async () => { setup = await testRender(<Harness />, { width: 88, height: 23 }); });
   await settleFrame(setup!, 10);
-  expect(setup!.captureCharFrame()).toContain("Jan 14 2026");
-  // Blank row, chart, blank row, then a table that ends on the pane's last row:
-  // the cursor on the 14th settlement scrolls it into view.
-  for (let i = 0; i < 13; i++) await emitKeypress(setup!, { name: "down" });
+  let frame = setup!.captureCharFrame();
+  // Figures lead with the latest settlement, then the legend names the plotted series.
+  expect(frame.split("\n")[0]).toMatch(/Shares short\s+27M\s+2026-09-28/);
+  expect(frame).toMatch(/Change\s+\+3\.8%\s+\+1M/);
+  expect(frame).toContain("● Shares short 27M");
+  expect(frame).toMatch(/\d+M\s*\n/);
+  // The selected settlement is the chart's cursor.
+  await emitKeypress(setup!, { name: "down" });
   await settleFrame(setup!, 6);
-  expect(setup!.captureCharFrame()).toContain("2026-03-14");
-  await act(async () => { resize(15); setup!.resize(88, 15); });
+  expect(setup!.captureCharFrame()).toContain("● Shares short 26M");
+  await emitKeypress(setup!, { name: "left" });
   await settleFrame(setup!, 6);
-  const lines = setup!.captureCharFrame().split("\n");
-  expect(lines[0]).toContain("DATE");
-  expect(lines.join("\n")).not.toContain("Jan 14 2026");
+  expect(setup!.captureCharFrame()).toContain("● Shares short 25M");
+  for (let i = 0; i < 12; i++) await emitKeypress(setup!, { name: "down" });
+  await settleFrame(setup!, 200);
+  frame = setup!.captureCharFrame();
+  expect(frame).toContain("2026-02-28");
+  expect(frame).toContain("● Shares short 13M");
+  // Ten rows: one row of figures, the strip, and the table keeps its rows.
+  await act(async () => { resize(10); setup!.resize(88, 10); });
+  await settleFrame(setup!, 6);
+  frame = setup!.captureCharFrame();
+  const lines = frame.split("\n");
+  const header = lines.findIndex((line) => line.includes("DATE"));
+  expect(header).toBe(2);
+  expect(lines[1]).toMatch(/^ ● [⠀-⣿]/);
+  expect(lines.slice(header + 1).filter((line) => /\d{4}-\d{2}-\d{2}/.test(line)).length).toBeGreaterThanOrEqual(4);
+  expect(frame).not.toContain("● Shares short");
 });

@@ -156,7 +156,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     if (addRequest == null) return;
     setAddRequest(null);
     if (adding) return;
-    if (editing) setMessage(t("Save or cancel the edit first."));
+    if (editing) setMessage({ tone: "info", text: t("Save or cancel the edit first.") });
     else startAdd();
   }, [addRequest, adding, editing, setAddRequest, setMessage, startAdd]);
 
@@ -213,11 +213,9 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   useBrokerManagerKeyboard({
     activeEditKey,
     editing: !!editDraft,
-    editKeys,
     focused,
     scope: editScope,
     selectKeys: editSelectKeys,
-    onActiveEditKeyChange: setActiveEditKey,
     onCancelEdit: cancelEdit,
     onCycleSelect: cycleEditSelect,
     saveEdit,
@@ -277,6 +275,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       editDraft={editDraft}
       editFields={editFields}
       activeEditKey={activeEditKey}
+      editKeys={editKeys}
       busy={busy}
       message={message}
       width={detailContentWidth}

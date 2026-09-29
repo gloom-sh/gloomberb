@@ -1,243 +1,55 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableStackView, usePaneFooter, type DataTableKeyEvent } from "../../../components";
-import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import { useCallback, useMemo } from "react";
+import { usePaneFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
-import type { EarningsEvent } from "../../../types/data-provider";
-import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
+import { usePaneInstance } from "../../../state/app/context";
 import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
-import { useAssetData, usePluginAppActions, usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { usePluginAppActions, usePluginTickerActions } from "../../runtime";
 import { useUiCapabilities } from "../../../ui";
-import { EarningsDetailView } from "./detail-view";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import type {
   PaneSettingsContext,
   PaneSettingsDef,
   PaneTemplateCreateOptions,
 } from "../../../types/plugin";
-import {
-  attachEarningsCalendarPersistence,
-  loadEarningsCalendar,
-  resetEarningsCalendarPersistence,
-} from "./data/cache";
-import {
-  groupEarningsByRelativeDate,
-  resolveEarningsCollectionId,
-  resolveEarningsMonitorSymbols,
-  scopedSymbolsFromSettings,
-  trackedEarningsSymbols,
-  type EarningsDisplayRow,
-  type EarningsEventDisplayRow,
-} from "./model";
-import { earningsCalendarHeadless } from "./headless";
-import {
-  buildEarningsColumns,
-  renderEarningsCell,
-  sharedEarningsCurrency,
-  renderEarningsSectionHeader,
-  type EarningsColumn,
-} from "./table";
+import { attachEarningsCalendarPersistence, resetEarningsCalendarPersistence } from "./data/cache";
+import { attachEarningsCloudCaches, resetEarningsCloudCaches } from "./client";
+import { EarningsBoard } from "./board";
+import { EarningsHistoryView } from "./history";
+import { earningsBoardHeadless, earningsCalendarHeadless } from "./headless";
+import { scopedSymbolsFromSettings } from "./model";
 
-function EarningsCalendarPane({ focused, width, height }: PaneProps) {
-  const dataProvider = useAssetData();
+/** `ERN <ticker>`: that company's reports, with the footer's ways into its other panes. */
+function TickerEarnings({ symbol, focused, width, height }: { symbol: string; focused: boolean; width: number; height: number }) {
   const { navigateTicker } = usePluginTickerActions();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const { nativePaneChrome } = useUiCapabilities();
-  // The open detail is remembered by symbol and date so a reload keeps it.
-  const [openKey, setOpenKey] = usePluginPaneState<string | null>("openEvent", null);
-  // A layout or `gloomberb shot ERN NVDA,AMD --open NVDA` lands on that
-  // company's next report instead of the list.
-  const [openSymbol] = usePaneSettingValue<string>("open", "");
-  const openedSymbol = useRef<string | null>(null);
-  const pane = usePaneInstance();
-  const [events, setEvents] = useState<EarningsEvent[]>([]);
-  // Starts loading so the first frame never claims there are no earnings.
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  // Keyed like the open event, so a reload or a shared layout keeps the row.
-  const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
-  const requestIdRef = useRef(0);
-
-  const tickers = useAppSelector((state) => state.tickers);
-  const legacyCollectionId = useAppSelector((state) => (
-    state.config.portfolios[0]?.id ?? state.config.watchlists[0]?.id ?? null
-  ));
-  const scopedSymbols = useMemo(() => scopedSymbolsFromSettings(pane?.settings), [pane?.settings]);
-  const scopedCollectionId = useMemo(
-    () => resolveEarningsCollectionId(pane?.settings, legacyCollectionId),
-    [legacyCollectionId, pane?.settings],
-  );
-  const fallbackTickerSymbols = useMemo(
-    () => trackedEarningsSymbols(tickers.values(), scopedCollectionId),
-    [scopedCollectionId, tickers],
-  );
-  const tickerSymbols = useMemo(
-    () => resolveEarningsMonitorSymbols(scopedSymbols, fallbackTickerSymbols),
-    [fallbackTickerSymbols, scopedSymbols],
-  );
-
-  const rows = useMemo(() => groupEarningsByRelativeDate(events), [events]);
-  const eventRows = useMemo(
-    () => rows.filter((row): row is EarningsEventDisplayRow => row.kind === "event"),
-    [rows],
-  );
-  const eventCount = eventRows.length;
-  const activeEventIdx = eventCount > 0
-    ? Math.max(0, eventRows.findIndex((row) => eventKey(row.event) === selectedKey))
-    : -1;
-  const selectedRowIndex = rows.findIndex((row) => row.kind === "event" && row.eventIdx === activeEventIdx);
-  const sharedCurrency = useMemo(() => sharedEarningsCurrency(events), [events]);
-  const columns = useMemo(() => buildEarningsColumns(width, sharedCurrency), [sharedCurrency, width]);
-
-  const reload = useCallback((force = false) => {
-    const requestId = ++requestIdRef.current;
-    if (tickerSymbols.length === 0) {
-      setEvents([]);
-      setError(null);
-      setStale(false);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    loadEarningsCalendar(dataProvider, tickerSymbols, { force })
-      .then((result) => {
-        if (requestId !== requestIdRef.current) return;
-        setEvents(result.events);
-        setStale(result.stale);
-        setError(result.refreshError ?? null);
-        setLastUpdated(result.fetchedAt);
-      })
-      .catch((err) => {
-        if (requestId !== requestIdRef.current) return;
-        setError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (requestId !== requestIdRef.current) return;
-        setLoading(false);
-      });
-  }, [dataProvider, tickerSymbols]);
-
-  useEffect(() => {
-    reload(false);
-  }, [reload]);
-
-  // The 30-minute cache decides whether a tick reaches the provider.
-  const refresh = useCallback(() => reload(false), [reload]);
-  useAutoRefresh(stale ? null : lastUpdated, refresh);
-
-  useEffect(() => () => {
-    requestIdRef.current += 1;
-  }, []);
-
-  const selectedEvent = eventRows[activeEventIdx]?.event ?? null;
-
-  useEffect(() => {
-    const symbol = openSymbol.trim().toUpperCase();
-    if (!symbol || openedSymbol.current === symbol || events.length === 0) return;
-    const match = eventRows.find((row) => row.event.symbol === symbol)?.event;
-    if (!match) return;
-    openedSymbol.current = symbol;
-    setOpenKey(eventKey(match));
-  }, [eventRows, events.length, openSymbol, setOpenKey]);
-  const openEvent = useMemo(
-    () => (openKey ? events.find((event) => eventKey(event) === openKey) ?? null : null),
-    [events, openKey],
-  );
-
-  const openTicker = useCallback((symbol: string) => navigateTicker(symbol), [navigateTicker]);
-  const openEstimates = useCallback((symbol: string) => createPaneFromTemplate("earnings-estimates-pane", { symbol }), [createPaneFromTemplate]);
-  const openCalls = useCallback((symbol: string) => createPaneFromTemplate("earnings-calls-pane", { symbol }), [createPaneFromTemplate]);
-  const openAnalysts = useCallback((symbol: string) => createPaneFromTemplate("analyst-research-pane", { symbol }), [createPaneFromTemplate]);
-
+  const open = useCallback((templateId: string) => createPaneFromTemplate(templateId, { symbol }), [createPaneFromTemplate, symbol]);
   // t, e, c and a are footer hints, which bind their own keys.
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, () => reload(true)), [reload]);
-
-  const renderCell = useCallback((
-    row: EarningsDisplayRow,
-    column: EarningsColumn,
-    _index: number,
-    rowState: { selected: boolean },
-  ) => {
-    return renderEarningsCell(row, column, rowState.selected, sharedCurrency);
-  }, [sharedCurrency]);
-
-  usePaneFooter("earnings-calendar", () => {
-    const symbol = openEvent?.symbol ?? selectedEvent?.symbol ?? null;
-    return {
-      info: [
-        ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-        ...loadingErrorFooterInfo(loading, error),
-      ],
-      hints: symbol
-        ? [
-            { id: "ticker", key: "t", label: "icker", onPress: () => openTicker(symbol) },
-            { id: "estimates", key: "e", label: "stimates", onPress: () => openEstimates(symbol) },
-            { id: "calls", key: "c", label: "alls", onPress: () => openCalls(symbol) },
-            { id: "analysts", key: "a", label: "nalysts", onPress: () => openAnalysts(symbol) },
-          ]
-        : [],
-    };
-  }, [error, loading, stale, openEvent, selectedEvent, openTicker, openEstimates, openCalls, openAnalysts]);
-
-  const detailContent = openEvent ? (
-    <EarningsDetailView
-      event={openEvent}
-      width={width}
-      height={Math.max(4, height - 1)}
-    />
-  ) : null;
-
-  return (
-    <DataTableStackView<EarningsDisplayRow, EarningsColumn>
-      focused={focused}
-      detailOpen={!!openEvent}
-      onBack={() => setOpenKey(null)}
-      detailTitle={openEvent ? `${openEvent.symbol} · ${openEvent.name}` : undefined}
-      detailContent={detailContent}
-      onDetailKeyDown={handleKeyDown}
-      selection={{
-        kind: "index",
-        selectedIndex: selectedRowIndex,
-        onChange: (_index, row) => {
-          if (row.kind === "event") setSelectedKey(eventKey(row.event));
-        },
-      }}
-      isNavigable={(row) => row.kind === "event"}
-      onActivate={(row) => {
-        if (row.kind === "event") setOpenKey(eventKey(row.event));
-      }}
-      onRootKeyDown={handleKeyDown}
-      rootWidth={width}
-      rootHeight={Math.max(3, height - (nativePaneChrome ? 1 : 0))}
-      columns={columns}
-      items={rows}
-      sortColumnId={null}
-      sortDirection="asc"
-      getItemKey={(row) => row.key}
-      renderSectionHeader={renderEarningsSectionHeader}
-      renderCell={renderCell}
-      emptyStateTitle={
-        loading
-          ? "Loading earnings..."
-          : error && events.length === 0
-            ? error
-            : tickerSymbols.length === 0
-              ? "No tickers in scope."
-              : "No upcoming earnings found"
-      }
-    />
-  );
+  usePaneFooter("earnings-actions", () => ({
+    order: 10,
+    hints: [
+      { id: "ticker", key: "t", label: "icker", onPress: () => navigateTicker(symbol) },
+      { id: "estimates", key: "e", label: "stimates", onPress: () => open("earnings-estimates-pane") },
+      { id: "calls", key: "c", label: "alls", onPress: () => open("earnings-calls-pane") },
+      { id: "analysts", key: "a", label: "nalysts", onPress: () => open("analyst-research-pane") },
+    ],
+  }), [navigateTicker, open, symbol]);
+  return <EarningsHistoryView symbol={symbol} width={width} height={height} focused={focused} registrationId="earnings-history" />;
 }
 
-function eventKey(event: EarningsEvent): string {
-  return `${event.symbol}:${event.earningsDate.toISOString().slice(0, 10)}`;
+function EarningsPane({ focused, width, height }: PaneProps) {
+  const pane = usePaneInstance();
+  const { nativePaneChrome } = useUiCapabilities();
+  const symbols = useMemo(() => scopedSymbolsFromSettings(pane?.settings), [pane?.settings]);
+  // EVTS is always the market board; its ticker only picks the row.
+  const board = pane?.settings?.board === true;
+  const highlight = typeof pane?.settings?.highlight === "string" ? pane.settings.highlight : null;
+  const bodyHeight = Math.max(3, height - (nativePaneChrome ? 1 : 0));
+  return !board && symbols.length === 1
+    ? <TickerEarnings symbol={symbols[0]!} focused={focused} width={width} height={bodyHeight} />
+    : <EarningsBoard scopedSymbols={board ? [] : symbols} highlight={highlight} focused={focused} width={width} height={bodyHeight} />;
 }
 
-/** Tickers named on the command bar or the CLI win over the active collection. */
+/** Tickers named on the command bar or the CLI. */
 function earningsScopeSymbols(options: PaneTemplateCreateOptions | undefined): string[] {
   if (options?.symbols && options.symbols.length > 0) return options.symbols;
   const raw = options?.arg?.trim() ?? "";
@@ -249,12 +61,8 @@ function earningsScopeSymbols(options: PaneTemplateCreateOptions | undefined): s
   }
 }
 
-/** The monitor's scope lives in pane settings, so it has to be editable there too. */
+/** The pane's tickers live in its settings, so they are editable there too. */
 function earningsSettings(context: PaneSettingsContext): PaneSettingsDef {
-  const collections = [
-    ...context.config.portfolios.map((portfolio) => ({ value: portfolio.id, label: portfolio.name })),
-    ...context.config.watchlists.map((watchlist) => ({ value: watchlist.id, label: watchlist.name })),
-  ];
   const symbols = scopedSymbolsFromSettings(context.settings);
   return {
     title: "Earnings Scope",
@@ -263,18 +71,11 @@ function earningsSettings(context: PaneSettingsContext): PaneSettingsDef {
       {
         key: "symbolsText",
         label: "Tickers",
-        description: "Leave empty to follow a collection instead.",
+        description: "Leave empty for the market's report days.",
         type: "text",
         placeholder: "AAPL, MSFT",
         clearOnChange: ["symbols"],
       },
-      ...(collections.length > 0 ? [{
-        key: "collectionId",
-        label: "Collection",
-        description: "Used when no tickers are listed above.",
-        type: "select" as const,
-        options: [{ value: "", label: "All tracked tickers" }, ...collections],
-      }] : []),
     ],
   };
 }
@@ -282,10 +83,12 @@ function earningsSettings(context: PaneSettingsContext): PaneSettingsDef {
 export const earningsModule: PluginModule = {
   setup(ctx) {
     attachEarningsCalendarPersistence(ctx.persistence);
+    attachEarningsCloudCaches(ctx.persistence);
   },
 
   dispose() {
     resetEarningsCalendarPersistence();
+    resetEarningsCloudCaches();
   },
 
   panes: [
@@ -293,10 +96,10 @@ export const earningsModule: PluginModule = {
       id: "earnings-calendar",
       name: "Earnings Calendar",
       icon: "$",
-      component: EarningsCalendarPane,
+      component: EarningsPane,
       defaultPosition: "right",
       defaultMode: "floating",
-      defaultFloatingSize: { width: 85, height: 25 },
+      defaultFloatingSize: { width: 110, height: 28 },
       tableExport: true,
       settings: earningsSettings,
     },
@@ -307,26 +110,39 @@ export const earningsModule: PluginModule = {
       id: "earnings-calendar-pane",
       paneId: "earnings-calendar",
       label: "Earnings Calendar",
-      description: "Upcoming earnings dates and estimates: alone, for your portfolio and watchlists; with tickers, for those.",
-      keywords: ["earn", "earnings", "calendar", "monitor", "em", "eps", "revenue", "quarterly"],
-      // Tickers are optional on purpose: ERN alone follows the active
-      // collection and must not silently narrow to the active ticker.
-      shortcut: { prefix: "ERN", argPlaceholder: "tickers", argKind: "ticker-list", argOptional: true },
+      description: "The market's report days with implied and past moves; with a ticker, its report history.",
+      keywords: ["earn", "earnings", "calendar", "implied move", "surprise", "eps", "revenue", "quarterly"],
+      // ERN works on the loaded security: typed alone it takes the active
+      // ticker, and with none active it opens the market's report days.
+      shortcut: { prefix: "ERN", argPlaceholder: "tickers", argKind: "ticker-list", argOptional: true, openWithoutArg: true },
       headless: earningsCalendarHeadless,
       canCreate: () => true,
-      // Tickers named on the command bar win over the collection. Ignoring
-      // them left `ERN NKE` scoped to the active collection, which rendered
-      // "No tickers in scope" while the report listed NKE's earnings.
-      createInstance: (context, options) => {
+      // Tickers named on the command bar scope the pane; without them it is the market board.
+      createInstance: (_context, options) => {
         const symbols = earningsScopeSymbols(options);
         return {
           title: symbols.length > 0 ? `ERN ${formatTickerListInput(symbols)}` : "Earnings Calendar",
           placement: "floating",
-          settings: symbols.length > 0
-            ? { symbols, symbolsText: formatTickerListInput(symbols) }
-            : context.activeCollectionId
-              ? { collectionId: context.activeCollectionId }
-              : undefined,
+          settings: symbols.length > 0 ? { symbols, symbolsText: formatTickerListInput(symbols) } : undefined,
+        };
+      },
+    },
+    {
+      id: "earnings-board-pane",
+      paneId: "earnings-calendar",
+      label: "Earnings Days",
+      description: "The market's report days with implied and past moves; a ticker picks its row.",
+      keywords: ["evts", "events", "earnings calendar", "earnings season", "reporting today"],
+      // Bloomberg's calendar: the market board always, never one company's history.
+      shortcut: { prefix: "EVTS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+      headless: earningsBoardHeadless,
+      canCreate: () => true,
+      createInstance: (_context, options) => {
+        const symbol = (options?.symbol ?? options?.ticker?.metadata.ticker ?? options?.arg ?? "").trim().toUpperCase();
+        return {
+          title: "Earnings Calendar",
+          placement: "floating",
+          settings: { board: true, ...(symbol ? { highlight: symbol } : {}) },
         };
       },
     },

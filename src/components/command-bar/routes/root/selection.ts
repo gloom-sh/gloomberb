@@ -14,6 +14,7 @@ import {
 import type { ResultItem } from "../../list/model";
 import { getPaneTemplateArgKind } from "../../pane-templates/items";
 import { parseRootShortcutIntent } from "./shortcuts";
+import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 
 interface PaneTemplateItemOptions {
   category?: string;
@@ -167,7 +168,10 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
       detail: "Preview and apply themes",
       category: "Themes",
       kind: "command",
-      action: () => options.startThemePicker(match.arg),
+      action: () => {
+        recordFunctionOpen({ shortcut: match.command.prefix, externalPluginId: null });
+        options.startThemePicker(match.arg);
+      },
     };
   }
 
@@ -191,7 +195,10 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
       detail: "Organize panes and saved layouts",
       category: "Layout",
       kind: "command",
-      action: () => options.openModeRoute("layout", match.arg),
+      action: () => {
+        recordFunctionOpen({ shortcut: match.command.prefix, externalPluginId: null });
+        options.openModeRoute("layout", match.arg);
+      },
     };
   }
 
@@ -208,7 +215,10 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
       kind: "command",
       right: match.command.prefix,
       shortcutQuery: match.command.prefix,
-      action: () => { void options.executeCollectionCommand(commandId, match.arg || undefined); },
+      action: () => {
+        recordFunctionOpen({ shortcut: match.command.prefix, externalPluginId: null });
+        void options.executeCollectionCommand(commandId, match.arg || undefined);
+      },
     };
   }
 

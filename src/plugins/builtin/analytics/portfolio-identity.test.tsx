@@ -1,6 +1,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useReducer, useState, type ReactElement } from "react";
-import { settleFrame, testRender } from "../../../renderers/opentui/test-utils";
+import { emitKeypress, settleFrame, testRender } from "../../../renderers/opentui/test-utils";
+import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -87,7 +88,7 @@ function Harness({ f, portfolio = "a", cached = new Map(), profile = false, view
     {view === "portfolio-list" ? <PortfolioListPane paneId={paneId} paneType={view} focused width={80} height={32} />
       : view === "kelly-sizer" ? <KellySizerPane paneId={paneId} paneType={view} focused width={80} height={32} />
       : profile ? <AccountManagementPane paneId={paneId} paneType="account-management" focused width={80} height={40} />
-      : <AnalyticsPane paneId={paneId} paneType="analytics" focused width={80} height={32} />}
+      : <PaneFooterProvider>{() => <AnalyticsPane paneId={paneId} paneType="analytics" focused width={80} height={32} />}</PaneFooterProvider>}
   </TestPaneProvider>;
 }
 
@@ -152,8 +153,8 @@ test("actual analytics account switching changes quote, sector denominator and h
   await act(async () => { setup!.mockInput.pressArrow("right"); await setup!.renderOnce(); }); await settleFrame(setup!, 20);
   expect(latestState.paneState[paneId]?.portfolioId).toBe("b");
   const frame = setup!.captureCharFrame();
-  expect(frame).toContain("Val           4.0k");
-  expect(frame).toContain("P&L           +800.00");
+  expect(frame).toMatch(/Val +4\.0k/);
+  expect(frame).toMatch(/P&L +\+800\.00/);
   expect(frame).toContain("Technology                50.0%       2.0k");
   expect(frame).not.toContain("Weights unavailable");
   const requested = readChart.mock.calls.filter(([request]) => request.instrument.symbol === "ACME").map(([request]) => request.instrument.instrument?.conId);
@@ -168,7 +169,7 @@ for (const portfolioId of ["a", "b"]) test(`actual analytics ${portfolioId} reje
   await act(async () => f.coordinator.primeCachedFinancials([{ instrument: instrumentFromTicker(ticker, "ACME", { portfolioId })!, financials: financials("ACME", 300) }]));
   await settleFrame(setup!, 20);
   expect(setup!.captureCharFrame()).toContain("60.0%");
-  expect(setup!.captureCharFrame()).toContain("Val           5.0k");
+  expect(setup!.captureCharFrame()).toMatch(/Val +5\.0k/);
 });
 
 test("actual shared-portfolio preview uses its selected quote and history contracts", async () => {
@@ -201,7 +202,13 @@ test("unresolved selected contract skips market requests, keeps its own mark and
   await render(f, "b", new Map([["ACME", financials("ACME", 999)]]));
   const frame = setup!.captureCharFrame();
   expect(frame).toContain("Technology                50.0%       2.0k");
-  expect(frame).toContain("Broker contract unavailable for ACME");
+  // The basket estimates read "—" and the footer warning names the holding they wait on.
+  expect(frame).toMatch(/Est\. Sharpe +—/);
+  await emitKeypress(setup!, { name: "!", sequence: "!", shift: true }, { trackPropagation: true });
+  await settleFrame(setup!, 4);
+  expect(setup!.captureCharFrame()).toContain("Broker contract unavailable for ACME");
+  await emitKeypress(setup!, { name: "escape" }, { trackPropagation: true });
+  await settleFrame(setup!, 4);
   expect(quotes.mock.calls.filter(([request]) => request.symbol === "ACME")).toEqual([]);
   expect(charts.mock.calls.filter(([request]) => request.instrument.symbol === "ACME")).toEqual([]);
   const targets = buildPortfolioChartTargets([...f.tickers.values()], { portfolioId: "b" });

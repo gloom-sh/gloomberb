@@ -19,11 +19,6 @@ export function stateColor(state: BrokerDisplayState): string {
   }
 }
 
-export function isBrokerErrorMessage(message: string | null | undefined): boolean {
-  const normalized = message?.toLowerCase() ?? "";
-  return normalized.includes("failed") || normalized.includes("required");
-}
-
 /** Below this the mode column folds away rather than pushing SYNCED off the edge. */
 const MODE_COLUMN_MIN_WIDTH = 84;
 

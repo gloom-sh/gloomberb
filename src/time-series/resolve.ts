@@ -76,6 +76,8 @@ import {
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
 import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../utils/price-history";
+import { futuresGenericCaption, futuresGenericListing, futuresGenericPriceBasis } from "../utils/futures-generic";
+import { isOhlcSeriesStyle } from "./spec";
 import type {
   ChartResolutionResult,
   ChartSeriesSpec,
@@ -957,9 +959,15 @@ function baseSecuritySeries(
   const unitTemplate = field.unitGroup === "price" && isMarketFieldId(field.id)
     ? unknownBondBasis ? "unknown" : `currency${assetKind === "equity" ? "/share" : assetKind === "crypto" ? "/unit" : ""}`
     : field.unit;
+  const generic = field.unitGroup === "price"
+    ? futuresGenericListing(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
+  // A generic future on an index, VIX or Treasuries reads in points or 32nds, not dollars.
+  const genericBasis = generic && isMarketFieldId(field.id) ? futuresGenericPriceBasis(generic) : null;
+  const genericUnit = genericBasis === "points" ? "points" : genericBasis === "thirty-seconds" ? "32nds" : null;
   const unit = field.id === "market.volume" ? volumeUnit ?? ""
-    : unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate;
-  const currencyUnitGroup = unknownBondBasis && field.unitGroup === "price" ? "price:unknown"
+    : genericUnit ?? (unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate);
+  const currencyUnitGroup = genericUnit ? `${field.unitGroup}:${genericUnit}`
+    : unknownBondBasis && field.unitGroup === "price" ? "price:unknown"
     : field.unit.startsWith("currency") && currency
     ? `${field.unitGroup}:${currency}`
     : field.unitGroup;
@@ -977,9 +985,13 @@ function baseSecuritySeries(
     ? financials.quote.changePercent
     : undefined;
   const priceIssues = valuationPriceIssues(financials, spec.source);
+  // A source with closes only, such as a generic future, has flat bars (open,
+  // high and low filled from the close): nothing to draw as candles.
+  const closesOnly = marketField && points.length > 1
+    && points.every((point) => [point.open, point.high, point.low].every((value) => value == null || value === point.close));
   return {
     id: spec.id,
-    label: spec.label?.trim() || `${symbol} ${field.shortLabel}`,
+    label: spec.label?.trim() || (generic ? futuresGenericCaption(generic) : `${symbol} ${field.shortLabel}`),
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,
@@ -994,7 +1006,7 @@ function baseSecuritySeries(
     ...(marketField ? { historyResolution: marketResolution } : {}),
     timestampMode: spec.source.timestampMode,
     dataShape: field.dataShape,
-    style: spec.style,
+    style: closesOnly && isOhlcSeriesStyle(spec.style ?? field.defaultStyle) ? "line" : spec.style,
     transform: spec.transform,
     axis: spec.axis === "right" ? "right" : "left",
     panelId: spec.panelId,

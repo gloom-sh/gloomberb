@@ -1,11 +1,12 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import { colors } from "../../../theme/colors";
+import { colors, priceColor } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import { tickDecimals, type FuturesContract } from "./contracts";
-import { futuresContractName, type FuturesColumnId, type FuturesTableRow } from "./model";
+import { FUTURES_RETURN_COLUMNS, futuresContractName, type FuturesColumnId, type FuturesTableRow } from "./model";
+import type { FrontReturnsMap } from "./use-front-returns";
 
 export type FuturesColumn = DataTableColumn & { id: FuturesColumnId };
 
@@ -22,6 +23,9 @@ export const FUTURES_COLUMN_DEFS: readonly FuturesColumnDef[] = [
   { id: "price", label: "Last", description: "Last traded price." },
   { id: "change", label: "Change", description: "Change on the session." },
   { id: "changePercent", label: "Change %", description: "Percent change on the session." },
+  { id: "return1w", label: "1W", description: "Front contract's return over one week." },
+  { id: "return1m", label: "1M", description: "Front contract's return over one month." },
+  { id: "returnYtd", label: "YTD", description: "Front contract's return since the end of last year." },
   { id: "volume", label: "Volume", description: "Contracts traded on the session." },
   { id: "prevClose", label: "Prev close", description: "Previous session close." },
   { id: "time", label: "Time", description: "UTC time of the last quote." },
@@ -34,9 +38,12 @@ const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id
  * readable contract name; a narrow pane drops them instead of clipping.
  */
 const COLUMN_MIN_PANE_WIDTH: Partial<Record<FuturesColumnId, number>> = {
-  volume: 92,
-  prevClose: 104,
-  time: 114,
+  return1w: 84,
+  return1m: 92,
+  returnYtd: 106,
+  volume: 116,
+  prevClose: 128,
+  time: 140,
 };
 const SESSION_TEXT_MIN_WIDTH = 100;
 
@@ -46,6 +53,9 @@ const COLUMN_WIDTHS: Record<Exclude<FuturesColumnId, "name">, number> = {
   price: 12,
   change: 10,
   changePercent: 9,
+  return1w: 8,
+  return1m: 8,
+  returnYtd: 8,
   volume: 9,
   prevClose: 12,
   // An 8-char TIME UTC header over a 5-char time: the shared table's floating-pane
@@ -97,6 +107,9 @@ const FUTURES_HEADER_LABELS: Record<FuturesColumnId, string> = {
   price: "LAST",
   change: "CHG",
   changePercent: "CHG%",
+  return1w: "1W",
+  return1m: "1M",
+  returnYtd: "YTD",
   volume: "VOL",
   prevClose: "PREV",
   time: "TIME UTC",
@@ -132,6 +145,31 @@ function priceDecimals(price: number, contract: FuturesContract): number {
   return 6;
 }
 
+const currencySymbols = new Map<string, string>();
+
+/**
+ * The board prints dollar prices bare. Anything else carries its unit on the
+ * price and on the change, so Dutch TTF gas at 72.071 euros is not read as
+ * dollars beside Henry Hub: US cents (`USX`) as a `c` suffix, other
+ * currencies as their symbol.
+ */
+function currencyMarks(currency: string | undefined): { prefix: string; suffix: string } {
+  const code = currency?.trim().toUpperCase() ?? "";
+  if (!code || code === "USD") return { prefix: "", suffix: "" };
+  if (code === "USX") return { prefix: "", suffix: "c" };
+  let symbol = currencySymbols.get(code);
+  if (symbol === undefined) {
+    try {
+      symbol = new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay: "narrowSymbol" })
+        .formatToParts(0).find((part) => part.type === "currency")?.value ?? code;
+    } catch {
+      symbol = code;
+    }
+    currencySymbols.set(code, symbol);
+  }
+  return symbol.length === 1 ? { prefix: symbol, suffix: "" } : { prefix: "", suffix: ` ${symbol}` };
+}
+
 /**
  * Trailing zeros are kept: a EUR contract at 1.1600 has to line up with the
  * 1.3544 pound contract beside it, and with its own "+0.0002" change.
@@ -139,7 +177,8 @@ function priceDecimals(price: number, contract: FuturesContract): number {
 function formatContractPrice(quote: Quote, contract: FuturesContract): string {
   if (!Number.isFinite(quote.price)) return "—";
   const text = formatNumber(quote.price, priceDecimals(quote.previousClose ?? quote.price, contract));
-  return quote.currency === "USX" ? `${text}c` : text;
+  const { prefix, suffix } = currencyMarks(quote.currency);
+  return `${prefix}${text}${suffix}`;
 }
 
 /**
@@ -153,50 +192,57 @@ function formatContractChange(quote: Quote, contract: FuturesContract): string {
     ? priceDecimals(quote.previousClose ?? quote.price, contract)
     : 2;
   const text = formatNumber(Math.abs(quote.change), decimals);
-  return `${quote.change >= 0 ? "+" : "-"}${text}`;
+  const { prefix, suffix } = currencyMarks(quote.currency);
+  return `${quote.change >= 0 ? "+" : "-"}${prefix}${text}${suffix}`;
 }
 
 export function renderFuturesCell(
   row: FuturesTableRow,
   column: FuturesColumn,
-  rowState: { selected: boolean },
   quotes: BoardQuoteMap,
-  options?: { sessionText?: boolean },
+  options?: { sessionText?: boolean; returns?: FrontReturnsMap },
 ): DataTableCell {
   if (row.type === "header") return { text: "" };
 
   const { contract } = row;
   const state = quotes.get(contract.symbol);
   const quote = state?.quote;
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
-  const dimmed = rowState.selected ? colors.selectedText : colors.textDim;
 
   switch (column.id) {
     case "code":
       return {
         text: contract.code,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: futuresContractName(contract, quote), color: selectedColor };
+      return { text: futuresContractName(contract, quote) };
     case "volume":
-      if (isBoardRowLoading(state)) return { text: "…", color: dimmed };
+      if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
       if (!quote || quote.volume == null || !Number.isFinite(quote.volume)) {
-        return { text: "—", color: dimmed };
+        return { text: "—", color: colors.textDim };
       }
-      return { text: formatCompact(quote.volume, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
+      return { text: formatCompact(quote.volume, { fixedDecimals: true }), color: colors.textDim };
+    case "return1w":
+    case "return1m":
+    case "returnYtd": {
+      const returns = options?.returns?.get(contract.symbol);
+      if (isBoardRowLoading(state) || returns?.loading) return { text: "…", color: colors.textDim };
+      const value = returns?.values[FUTURES_RETURN_COLUMNS[column.id]!];
+      if (value == null || !Number.isFinite(value)) return { text: "—", color: colors.textDim };
+      return { text: formatPercentRaw(value), color: priceColor(value) };
+    }
     case "prevClose":
-      if (isBoardRowLoading(state)) return { text: "…", color: dimmed };
+      if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
       if (!quote || quote.previousClose == null || !Number.isFinite(quote.previousClose)) {
-        return { text: "—", color: dimmed };
+        return { text: "—", color: colors.textDim };
       }
       return {
         text: formatContractPrice({ ...quote, price: quote.previousClose }, contract),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
     default:
-      return renderQuoteBoardCell(column.id, state, rowState.selected, {
+      return renderQuoteBoardCell(column.id, state, {
         sessionText: options?.sessionText,
         formatPrice: (quoted) => formatContractPrice(quoted, contract),
         formatChange: (quoted) => formatContractChange(quoted, contract),

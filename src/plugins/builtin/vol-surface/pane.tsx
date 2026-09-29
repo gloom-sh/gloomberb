@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneMenuItems,
-  usePaneNoticeFooter, usePaneTicker, type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneMenuItems,
+  usePaneNoticeFooter, usePaneTabs, usePaneTicker, type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
 import { useTableLoadMore } from "../../../components/table-view-shared";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -59,9 +59,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // leave the strip its keys.
   const [tableOnScreen, setTableOnScreen] = useState(false);
   const tabKeys = activeTab !== "table" || !tableOnScreen;
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: activeTab, onSelect: setActiveTab,
-    focused: focused && activeTab !== "surface", keyboardNavigation: tabKeys });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: activeTab, onSelect: setActiveTab,
+    focused: focused && activeTab !== "surface", keyboardNavigation: tabKeys, dense: true });
   const [axis] = usePaneSettingValue<Axis>("axis", "spot");
   const [tenors] = usePaneSettingValue<"listed" | "fixed">("tenors", "listed");
   const [ivSource] = usePaneSettingValue<SurfaceSettings["ivSource"]>("ivSource", "recomputed");
@@ -425,8 +424,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const tableShown = activeTab === "table" && !!symbol && !!snapshot && !(!shownDate && liveEmpty);
   useEffect(() => setTableOnScreen(tableShown), [tableShown]);
   return <Box flexDirection="column" width={width} height={height} overflow="hidden">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={activeTab} onSelect={setActiveTab} variant="underline" dense
-      focused={focused && activeTab !== "surface"} keyboardNavigation={tabKeys} />}
+    {tabStrip}
     {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={active.loading && !snapshot}
       error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
       <QueryBar width={width}

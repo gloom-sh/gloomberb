@@ -129,21 +129,17 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: MajorCurrency,
     column: DataTableColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     if (column.id === "base") {
       return {
         text: row,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     }
 
     const quoteCurrency = column.id as MajorCurrency;
-    const dimmed = selectedColor ?? colors.textDim;
-    if (row === quoteCurrency) return { text: formatRate(1, quoteCurrency), color: dimmed };
+    if (row === quoteCurrency) return { text: formatRate(1, quoteCurrency), color: colors.textDim };
 
     const base = rates.get(row);
     const quote = rates.get(quoteCurrency);
@@ -151,10 +147,10 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       // A missing leg must never fall back to parity: 1.0000 on EUR/JPY reads
       // as a real rate.
       const pending = status.loading > 0;
-      return { text: pending ? "…" : "—", color: dimmed };
+      return { text: pending ? "…" : "—", color: colors.textDim };
     }
     const reference = (referenceRates.get(row) ?? base) / (referenceRates.get(quoteCurrency) ?? quote);
-    return { text: formatRate(base / quote, quoteCurrency, reference), color: selectedColor ?? colors.text };
+    return { text: formatRate(base / quote, quoteCurrency, reference), color: colors.text };
   }, [rates, referenceRates, status.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
@@ -189,6 +185,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       sortDirection="asc"
       getItemKey={(row) => row}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       onRootKeyDown={handleKeyDown}
       emptyStateTitle="No market data provider connected."
     />

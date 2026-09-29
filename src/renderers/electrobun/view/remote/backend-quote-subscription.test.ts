@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
 import { QUOTE_EVENT_BATCH_KIND } from "../../shared/quote-event-batch";
+import { subscribeCapability, type CapabilitySubscriptionTransport } from "../capability-subscription";
 import { createBackendQuoteSubscription } from "./backend-quote-subscription";
 
 function createBackend() {
@@ -10,16 +11,28 @@ function createBackend() {
   const listeners = new Map<string, (event: unknown) => void>();
   const dispatched: Array<[string, number]> = [];
   const offsets: number[] = [];
-  const backend = createBackendQuoteSubscription({
-    subscribe: (id, targets) => {
+  // The real subscription helper over a fake transport, so the log shows what
+  // would reach the backend, including unsubscribes deferred past a subscribe.
+  const transport: CapabilitySubscriptionTransport = {
+    subscribe: ({ subscriptionId: id, payload }) => {
+      const { targets } = payload as { targets: QuoteSubscriptionTarget[] };
       log.push(`subscribe ${id} ${targets.map((target) => `${target.symbol}${target.selected ? "*" : ""}`).join(",")}`);
       return new Promise<void>((resolve, reject) => pending.set(id, { resolve, reject }));
     },
-    unsubscribe: (id) => { log.push(`unsubscribe ${id}`); },
+    unsubscribe: async (id) => { log.push(`unsubscribe ${id}`); },
     onEvent: (id, listener) => {
       listeners.set(id, listener);
       return () => listeners.delete(id);
     },
+  };
+  const backend = createBackendQuoteSubscription({
+    subscribe: (subscriptionId, targets, handlers) => subscribeCapability(transport, {
+      subscriptionId,
+      capabilityId: "asset-data",
+      operationId: "subscribeQuotes",
+      payload: { targets },
+      ...handlers,
+    }),
     dispatch: (target, quote) => dispatched.push([target.symbol, quote.price]),
     onClockOffset: (offset) => offsets.push(offset),
   });

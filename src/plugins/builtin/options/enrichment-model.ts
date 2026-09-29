@@ -3,8 +3,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import { buildOptionsKey, resolveEntryData } from "../../../market-data/selectors";
 import type { OptionsChain } from "../../../types/financials";
 import { normalizeSymbol, parsePublicTickerKey } from "../../../utils/exchanges";
-import { daysToExpiryFrom } from "../options-calculator/model";
-import { volatilityTermSlope, type ExpectedMove } from "../shared/volatility";
+import { daysToExpiryFrom, volatilityTermSlope, type ExpectedMove } from "../shared/volatility";
 import { buildSurfaceExpiry, evaluateSurfaceSmile, type SurfaceExpiry } from "../vol-surface/model";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 

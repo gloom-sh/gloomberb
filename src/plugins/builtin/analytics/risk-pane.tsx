@@ -6,23 +6,24 @@ import { loadPortfolioOptionBook } from "./risk-options";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, ScrollBox, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import {
+  chartTableChromeRows,
   Button,
-  CompositeChart,
+  ChartTableHeader,
   DataTableStackView,
   EmptyState,
+  formatPercentAxis,
   PaneStatusBody,
+  spanAxisFormatter,
   StatGrid,
   StaticChartSurface,
   QueryBar,
-  Tabs,
   statGridRows,
-  usePaneHeaderTabs,
   usePaneFooter,
   usePaneNoticeFooter,
+  usePaneTabs,
+  type ChartTableChart,
   type DataTableColumn,
-  type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
 import {
@@ -73,7 +74,10 @@ const titles = {
 };
 const tabs = RISK_VIEWS.map((value) => ({ value, label: titles[value] }));
 const getKey = (row: RiskDisplayRow) => row.id;
-const PANELS = [{ id: "main" }];
+/** The two return rows chart the basket against SPY over the window they measure. */
+const RETURN_ROW_IDS: ReadonlySet<string> = new Set(["return", "benchmark"]);
+const formatPercentValue = (value: number) => `${value.toFixed(2)}%`;
+const formatPlainAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
 /** What the first column lists in each view. */
 const LABEL_HEADERS: Record<RiskView, string> = {
   risk: "Metric",
@@ -108,6 +112,39 @@ function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
     // "Absolute gross current exposure" is the same method note on both weights.
     detail: row.unit === "% gross" ? "gross" : row.detail,
   }));
+}
+/**
+ * Cumulative return of the current-weight basket and of SPY across the last
+ * window of paired sessions: the path behind the two return rows, whose
+ * values the legend ends on. The series take the rows' names.
+ */
+function basketReturnSeries(model: PortfolioRiskModel): ChartTableChart["series"] {
+  const sample = model.sample.slice(-60);
+  if (!sample.length) return [];
+  const label = (id: string, fallback: string) => model.rows.risk.find((row) => row.id === id)?.label ?? fallback;
+  let wealth = 1,
+    benchmark = 1;
+  const start = scalarPoint(new Date(sample[0]!.startDateKey), 0);
+  return [
+    staticSeries(
+      [start, ...sample.map((row) => scalarPoint(new Date(row.dateKey), ((wealth *= 1 + row.value) - 1) * 100))],
+      { id: "basket", label: label("return", "Basket return"), color: colors.positive },
+    ),
+    staticSeries(
+      [start, ...sample.map((row) => scalarPoint(new Date(row.dateKey), ((benchmark *= 1 + row.benchmark) - 1) * 100))],
+      { id: "benchmark", label: label("benchmark", "SPY return"), color: colors.textMuted },
+    ),
+  ];
+}
+/** A row's own dated history, from its first computed value; null when fewer than two points plot. */
+function rowHistorySeries(row: RiskDisplayRow): ChartTableChart["series"] | null {
+  const history = row.history ?? [];
+  const first = history.findIndex((point) => point.value != null && Number.isFinite(point.value));
+  if (first < 0 || history.slice(first).filter((point) => point.value != null).length < 2) return null;
+  return [staticSeries(
+    history.slice(first).map((point) => scalarPoint(new Date(point.date), point.value)),
+    { id: row.id, label: row.label, color: colors.positive },
+  )];
 }
 // No column: rows keep the model order (return, risk, tail), which reads better than A-Z.
 const DEFAULT_SORT = { column: "", direction: "asc" as const };
@@ -329,72 +366,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       }),
     [model, view, sort],
   );
-  const series = useMemo(() => {
-    if (view === "risk" && model?.sample.length) {
-      const sample = model.sample.slice(-60);
-      let wealth = 1,
-        benchmark = 1;
-      const start = scalarPoint(new Date(sample[0]!.startDateKey), 0);
-      return [
-        staticSeries(
-          [
-            start,
-            ...sample.map((row) =>
-              scalarPoint(
-                new Date(row.dateKey),
-                ((wealth *= 1 + row.value) - 1) * 100,
-              ),
-            ),
-          ],
-          {
-            id: "basket",
-            label: "Current-weight basket",
-            color: colors.positive,
-          },
-        ),
-        staticSeries(
-          [
-            start,
-            ...sample.map((row) =>
-              scalarPoint(
-                new Date(row.dateKey),
-                ((benchmark *= 1 + row.benchmark) - 1) * 100,
-              ),
-            ),
-          ],
-          { id: "benchmark", label: "SPY", color: colors.textMuted },
-        ),
-      ];
-    }
-    if (view === "performance" && model?.performance)
-      return [
-        staticSeries(
-          model.performance.points.map((row) =>
-            scalarPoint(new Date(row.date), (row.wealth - 1) * 100),
-          ),
-          {
-            id: "twr",
-            label: "Account TWR",
-            color: colors.positive,
-            calendarSpaced: true,
-          },
-        ),
-      ];
-    return [];
-  }, [model, view]);
   const openRow = rows.find((row) => row.id === open);
-  // j/k scroll an open metric the way they move the table, as in other details.
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
-    const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
-    const scrollBox = detailScrollRef.current;
-    if (!delta || !scrollBox?.viewport) return false;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
-    return true;
-  }, []);
   // Columns that say the same thing on every row belong in the footer, not repeated per row.
   const showPercentile = rows.some((row) => row.percentile != null);
   const sharedDate =
@@ -533,6 +506,40 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   );
   // A unit every row shares goes in the value header, so the cells are bare numbers.
   const sharedUnit = sharedWordUnit(rows);
+  // The chart follows the selected row: its own history, or for the return
+  // rows the basket against SPY. Performance charts the account's TWR.
+  const chartRow = rows.find((row) => row.id === selected) ?? rows[0];
+  const marketLoading = resource.loading && !resource.data;
+  const chart = useMemo<ChartTableChart | null>(() => {
+    if (!model) return null;
+    if (view === "performance") {
+      if (!model.performance) return null;
+      return {
+        series: [staticSeries(
+          model.performance.points.map((row) => scalarPoint(new Date(row.date), (row.wealth - 1) * 100)),
+          { id: "twr", label: "TWR", color: colors.positive, calendarSpaced: true },
+        )],
+        formatValue: formatPercentValue,
+        formatAxisValue: formatPercentAxis,
+        remoteKind: "portfolio-risk-history",
+      };
+    }
+    if (!chartRow) return null;
+    const series = view === "risk" && RETURN_ROW_IDS.has(chartRow.id) && model.sample.length
+      ? basketReturnSeries(model)
+      : rowHistorySeries(chartRow);
+    // Holdings, pairs and scenarios carry no history; the metrics wait for theirs.
+    if (!series?.length) return marketLoading && chartRow.history ? { loading: true } : null;
+    const percent = chartRow.unit === "%";
+    return {
+      series,
+      formatValue: percent
+        ? formatPercentValue
+        : (value: number) => sharedUnit ? value.toFixed(2) : riskValue({ ...chartRow, value }),
+      formatAxisValue: percent ? formatPercentAxis : formatPlainAxis,
+      remoteKind: "portfolio-risk-history",
+    };
+  }, [chartRow, marketLoading, model, sharedUnit, view]);
   const attributionParts = view === "attribution" && rows.some((row) => row.allocation != null);
   const valueHeader = attributionParts
     ? "Total pp"
@@ -582,23 +589,16 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     setOpen(null);
     setSelected(null);
   };
-  const tabsInHeader = usePaneHeaderTabs(portfolio && model ? {
+  // The view strip takes a row when it is not in the title bar; the portfolio
+  // bar, the holdings summary and the chart sit on the root view only.
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(portfolio && model ? {
     tabs,
     activeValue: view,
     onSelect: selectView,
     focused: focused && !openRow,
+    compact: true,
   } : null);
-  // The view strip takes a row when it is not in the title bar; the portfolio
-  // bar and the holdings summary sit on the root view only.
-  const tabRows = tabsInHeader ? 0 : 1;
-  const summaryRows = statGridRows(holdingsSummary, width);
-  // The chart takes every row the table does not: bar, summary, header and rows.
-  const tableRows = 1 + rows.length;
-  const chartSpace = height - tabRows - 1 - summaryRows - tableRows;
-  const chartHeight =
-    series.length && height >= 18
-      ? Math.max(Math.min(8, Math.floor(height * 0.4)), chartSpace)
-      : 0;
+  const rootHeight = Math.max(3, height - tabRows);
   const evidenceMissing = EVIDENCE_VIEWS.has(view) && rows.length === 0;
   if (!portfolio)
     return (
@@ -618,57 +618,41 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     );
   return (
     <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && (
-        <Tabs
-          tabs={tabs}
-          activeValue={view}
-          onSelect={selectView}
-          focused={focused && !openRow}
-          compact
-        />
-      )}
+      {tabStrip}
       <DataTableStackView<RiskDisplayRow, DataTableColumn>
         focused={focused}
         columns={columns}
         items={rows}
         getItemKey={getKey}
         rootBefore={
-          <>
-            {/* In the root only: a detail changes nothing the portfolio filter picks. */}
-            <QueryBar
-              width={width}
-              filters={[{
-                id: "portfolio",
-                label: "Portfolio",
-                value: portfolio.id,
-                options: portfolios.length
-                  ? portfolios.map((row) => ({ value: row.id, label: row.name }))
-                  : [{ value: portfolio.id, label: portfolio.name }],
-                onChange: (id: string) => {
-                  setPortfolio(id);
-                  setOpen(null);
-                },
-              }]}
-            />
-            <StatGrid items={holdingsSummary} width={width} />
-            {chartHeight ? (
-              <CompositeChart
-                series={series}
-                panels={PANELS}
+          <ChartTableHeader
+            width={width}
+            height={rootHeight}
+            tableRows={rows.length}
+            tableChromeRows={chartTableChromeRows(columns, width)}
+            // In the root only: a detail changes nothing the portfolio filter picks.
+            query={
+              <QueryBar
                 width={width}
-                height={chartHeight}
-                focused={focused && !openRow}
-                showLegend
-                showTimeAxis
-                navigable={false}
-                formatAxisValue={(value) => `${value.toFixed(1)}%`}
-                formatValue={(value) => `${value.toFixed(2)}%`}
-                remoteKind="portfolio-risk-history"
+                filters={[{
+                  id: "portfolio",
+                  label: "Portfolio",
+                  value: portfolio.id,
+                  options: portfolios.length
+                    ? portfolios.map((row) => ({ value: row.id, label: row.name }))
+                    : [{ value: portfolio.id, label: portfolio.name }],
+                  onChange: (id: string) => {
+                    setPortfolio(id);
+                    setOpen(null);
+                  },
+                }]}
               />
-            ) : null}
-          </>
+            }
+            figures={holdingsSummary}
+            chart={chart}
+          />
         }
-        rootHeight={Math.max(3, height - tabRows)}
+        rootHeight={rootHeight}
         resetScrollKey={`${portfolio.id}:${view}`}
         selection={{
           kind: "id",
@@ -713,16 +697,15 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
             />
           ) : null
         }
-        onDetailKeyDown={handleDetailKeyDown}
+        detailScrollRef={detailScrollRef}
         emptyContent={
           evidenceMissing ? (
-            <Box paddingX={1} paddingY={1}>
-              <EmptyState
-                title="This view needs dated local evidence."
-                message={frozen ? undefined : "Copy version 1 evidence JSON, then import it from the clipboard."}
-                actions={frozen ? undefined : <Button label="Import evidence" compact onPress={() => void importEvidence()} />}
-              />
-            </Box>
+            <PaneStatusBody
+              empty
+              emptyTitle="This view needs dated local evidence."
+              emptyMessage={frozen ? undefined : "Copy version 1 evidence JSON, then import it from the clipboard."}
+              actions={frozen ? undefined : <Button label="Import evidence" compact onPress={() => void importEvidence()} />}
+            />
           ) : undefined
         }
         emptyStateTitle="No comparable observations."

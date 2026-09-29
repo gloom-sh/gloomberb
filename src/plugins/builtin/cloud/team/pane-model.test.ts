@@ -1,31 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import type { TeamMember, TeamSummary } from "../../../../api-client";
+import type { TeamMember } from "../../../../api-client";
 import {
   cycleAccent,
   draftChanges,
   draftFromTeam,
   draftProblem,
   emptyTeamDraft,
-  nextFieldId,
   nextNonTextFieldId,
   restingFieldId,
   sectionFieldIds,
   setDraftName,
   setDraftShortName,
 } from "./pane-model";
+import { createTestTeam } from "./test-fixture";
 
-const team: TeamSummary = {
-  id: "org-1",
-  name: "Macro Desk",
-  slug: "macro-desk",
-  accentColor: "magenta",
-  shortName: "MD",
-  allowMemberInvites: false,
-  channelId: "team:org-1",
-  createdAt: "2026-09-14T12:00:00.000Z",
-  role: "owner",
-  memberCount: 3,
-};
+const team = createTestTeam({ role: "owner" });
 
 const members: TeamMember[] = [
   { id: "m-1", role: "owner", joinedAt: "", user: { id: "u0", username: "ada", displayName: "Ada" } },
@@ -101,14 +90,5 @@ describe("keyboard ring", () => {
     const settings = sectionFieldIds({ ...base, section: "settings" });
     expect(nextNonTextFieldId(settings, "name")).toBe("accent");
     expect(nextNonTextFieldId(settings, "shortName")).toBe("accent");
-  });
-
-  test("walks the ring in both directions and wraps", () => {
-    const ids = ["a", "b", "c"];
-    expect(nextFieldId(ids, null, 1)).toBe("a");
-    expect(nextFieldId(ids, null, -1)).toBe("c");
-    expect(nextFieldId(ids, "c", 1)).toBe("a");
-    expect(nextFieldId(ids, "a", -1)).toBe("c");
-    expect(nextFieldId([], "a", 1)).toBeNull();
   });
 });

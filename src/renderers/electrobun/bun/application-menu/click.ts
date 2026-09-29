@@ -3,18 +3,7 @@ import {
   type ElectrobunApplicationMenuCommand,
 } from "./index";
 import { recordOrNull } from "../../../../utils/guards";
-
-function applicationMenuClickPayload(event: unknown): Record<string, unknown> | null {
-  const eventRecord = recordOrNull(event);
-  if (!eventRecord) return null;
-
-  const wrappedPayload = recordOrNull(eventRecord.data);
-  if (typeof wrappedPayload?.action === "string") {
-    return wrappedPayload;
-  }
-
-  return typeof eventRecord.action === "string" ? eventRecord : null;
-}
+import { menuClickPayload } from "../menu-event";
 
 function normalizeApplicationMenuCommand(value: unknown): ElectrobunApplicationMenuCommand | null {
   const command = recordOrNull(value);
@@ -53,7 +42,7 @@ function normalizeApplicationMenuCommand(value: unknown): ElectrobunApplicationM
 }
 
 export function applicationMenuCommand(event: unknown): ElectrobunApplicationMenuCommand | null {
-  const payload = applicationMenuClickPayload(event);
+  const payload = menuClickPayload(event);
   if (payload?.action !== ELECTROBUN_APPLICATION_MENU_ACTION) return null;
   return normalizeApplicationMenuCommand(payload.data);
 }

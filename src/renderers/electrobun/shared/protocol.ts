@@ -22,7 +22,7 @@ export interface ElectrobunBackendInit {
   desktopPlatform: string;
   windowKind: "main" | "detached";
   paneId?: string;
-  /** What the view needs to send crash reports the same way the Bun process does. */
+  /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
   telemetry: ElectrobunTelemetryInit;
 }
 
@@ -32,8 +32,11 @@ export interface ElectrobunTelemetryInit {
   os: string;
   /** Replaced by `~` in reports; paths from the Bun process reach the view in plugin errors. */
   homeDir: string;
-  /** The config switch and environment, read where both exist. */
-  crashReports: boolean;
+  /**
+   * `GLOOMBERB_NO_TELEMETRY` or `DO_NOT_TRACK` in the Bun process's
+   * environment. The view reads the config switches itself, live.
+   */
+  optedOut: boolean;
 }
 
 export interface DesktopRestartMessage {
@@ -117,6 +120,8 @@ export interface DesktopExternalPluginBundle {
   /** Folder name under the plugins directory. */
   directory: string;
   commit?: string;
+  /** `owner/repo` of the checkout's GitHub origin. */
+  repo?: string;
   linked?: boolean;
   /** ES module source, absent when `error` or `unsupportedTarget` is set. */
   code?: string;
@@ -287,6 +292,11 @@ export interface DesktopDeepLinkMessage {
   url: string;
 }
 
+/** Plugin folders the Bun process updated in the background, for the main window to bring into its session. */
+export interface PluginsUpdatedMessage {
+  directories: string[];
+}
+
 export interface RemoteControlRequestMessage {
   request: RemoteControlRequest;
 }
@@ -317,6 +327,7 @@ export interface ElectrobunDesktopRpcSchema {
       "desktop.dockPreview": DesktopDockPreviewMessage;
       "desktop.themePreview": DesktopThemePreviewMessage;
       "desktop.deepLink": DesktopDeepLinkMessage;
+      "plugins.updated": PluginsUpdatedMessage;
       "update.progress": UpdateProgressMessage;
       "capability.event": CapabilityEventMessage;
       "http.stream.chunk": HttpStreamChunkMessage;

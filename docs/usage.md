@@ -3,6 +3,7 @@
 [Back to README](../README.md) · [Installation](installation.md) · [Browser app](browser.md)
 
 - [Research data conventions](research-data.md)
+- [Financial ratios](financial-ratios.md)
 - [Keyboard shortcuts](#keyboard)
 - [Command reference and chart composer](#command-reference)
 - [Live prices and refresh cadence](#live-prices-and-refresh-cadence)
@@ -97,7 +98,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | Shortcut | Function |
 |----------|----------|
 | `DES <ticker>` / `T <ticker>` | Security details for a ticker |
-| `FA <ticker>` | Financial statement view |
+| `FA <ticker>` | Financial statements and [ratio tabs](financial-ratios.md) |
 | `SEG <ticker>` | Quarterly revenue by product, segment or region from 10-Q and 10-K filings |
 | `G <series>` | Custom chart composer |
 | `CAT [query]` | Browse and search chartable series |
@@ -108,7 +109,8 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `GE <tickers>` | Valuation multiple graph |
 | `GR <tickers>` | Security relationship graph |
 | `EE <ticker>` | Events view with earnings and revenue estimates |
-| `ERN [tickers]` | Earnings calendar; alone, your portfolio and watchlists |
+| `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days |
+| `EVTS [ticker]` | The market's report days with implied and average moves; a ticker selects its row |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
 | `CALLS [ticker]` | Earnings call transcripts; alone, every transcribed call |
 | `JOBS [ticker]` | Hiring from the company's careers system; alone, every covered company |
@@ -130,6 +132,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `DVD <ticker>` | Dividend yield and history |
 | `SI <ticker>` | Short interest |
 | `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
+| `BUZZ <ticker>` | Daily posts on X naming the cashtag, the 30-day median, top posts and their stance |
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
 | `INS <ticker>` | Insider activity |
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |
@@ -168,7 +171,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | Shortcut | Function |
 |----------|----------|
 | `TOP` | Ranked market stories |
-| `HM` | Market heatmap for large US stocks and ETFs ([Market Heatmap plugin](https://github.com/gloom-sh/gloom-market-heatmap)) |
+| `HM` | Market heatmap for large US stocks and ETFs |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
 | `FLOW` | Unusual options activity: sweeps, blocks, and large premium; Vol/OI divides the contract's day volume by its latest reported open interest. Cloud records every print, for options flow alerts and the assistant |
@@ -187,7 +190,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `QR <ticker>` | Quote recap: NBBO history with sizes, venues and spread (the same pane on its NBBO tab) |
 | `EM <ticker>` / `EEO <ticker>` | EPS estimate revisions, current analyst breadth and surprises; `--period YYYY-MM-DD --frequency quarterly` pins a fiscal period |
 | `GUID <ticker>` | Company EPS guidance cited from filings and transcripts, against consensus (the same pane on its Guidance tab) |
-| `FUT` | Futures quote aliases across index, rates, energy, metals, grains, and FX |
+| `FUT` | Futures quote aliases across index, rates, energy, metals, grains and softs, livestock, and FX |
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
 | `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
@@ -206,14 +209,14 @@ Correlation uses matching observation times when inputs have different frequenci
 | `VOLS` | Cross-asset volatility indices, daily changes and one-year percentiles |
 | `CRD` | Credit spreads |
 | `VAL [indicator]` | Whole-market valuation: Buffett, CAPE, excess CAPE yield, Tobin Q, investor equity allocation, dividend yield, margin debt, cap/profits, cap/M2 |
-| `CDS [ticker]` | Single-name corporate CDS activity: most-active issuers, or one issuer's trades |
-| `ERN` | Earnings calendar |
+| `CDS [ticker]` | Single-name corporate CDS activity: most-active issuers, or one issuer's 5Y spread history and trades |
+| `EVTS` | The market's earnings days, implied against past moves |
 | `IPO` | Upcoming and recent IPOs ([IPO Calendar plugin](https://github.com/gloom-sh/gloom-ipo-calendar)) |
-| `HALT` | US trading halts with reason and resumption times ([Market Halts plugin](https://github.com/gloom-sh/gloom-market-halts)) |
+| `HALT` | US trading halts with reason and resumption times |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |
 | `BI` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
-| `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
+| `FNG` | Fear and greed market gauge |
 
 Ticker Research includes a **Congress** tab for House and Senate transactions in
 the selected ticker. The **Chamber** filter narrows `CG` and the tab to one chamber. Scroll to append filing windows; `n` or its footer action continues a
@@ -242,6 +245,8 @@ Congress Trades includes returns since the transaction and filing close; Members
 `gloomberb fn YAS --settlement 2026-09-22 --maturity 2031-09-15 --coupon 5 --yield 4.25 --json` returns valuation, cash flows and yield shocks. Use `--price 103.333937` instead of `--yield` to solve yield, `--frequency 1|2|4`, `--day-count act-act-icma|30-360-us`, and `--end-of-month` as needed. `gloomberb shot YAS --tab valuation|cashflows|sensitivity` accepts the same inputs. Treasury data is optional; all local calculations still work when it is unavailable.
 
 `FUT` keeps each rolling quote alias as its symbol and displays the provider's contract name when available. Search also matches that name. A month in this label describes the captured quote; the app does not derive an expiry date or establish the roll-adjustment basis of the alias's historical series.
+
+FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 for "Live Cattle Dec 26"): the live price against that contract's own close a week, a calendar month, or at the end of last year before. The alias's continuous series jumps at every roll (LE=F fell 6.3% on a July roll day), so it is never the baseline. A contract listed after the baseline date shows no return for it; Treasury futures list three quarters ahead, so their YTD is blank in the second half of the year. Dutch TTF gas names no month, so its front contract is the month, among the next three, whose last close is nearest the quoted price. Narrow boards drop volume, previous close and time before the returns.
 
 `BTMM` opens Rates, Bills and Liquidity views. Select a row and press Enter or click it for its dated history, one-year range and source; Back returns to the board. The Bills curve compares common-date discount yields with one week, one month and one year earlier. Liquidity plots the net-liquidity proxy above the component board. `h` and `l` switch views; `o` opens the selected FRED series and `r` refreshes. Reports support `gloomberb fn BTMM --tab rates|bills|liquidity` and `--json`.
 
@@ -351,7 +356,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb ticker <symbol>` | Show quote, ownership, and financials |
 | `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
 | `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`13f` is the holders list without insiders; `fn 13F` has 13F filings) |
-| `gloomberb movers\|indices\|sectors\|fx\|earnings` | Fetch market overview data |
+| `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market overview data |
 | `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
 | `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
 | `gloomberb portfolio [action]` | Manage manual portfolios |
@@ -377,7 +382,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 
 `gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
 
-`gloomberb config set telemetry.crashReports false` turns off automatic crash reports; see [Crash reports](../README.md#crash-reports) for what a report contains.
+`gloomberb config set telemetry.crashReports false` turns off automatic crash reports, and `gloomberb config set telemetry.usage false` turns off anonymous usage counts and the command bar search log; see [Crash reports and usage counts](../README.md#crash-reports-and-usage-counts) for what each contains.
 
 ## Plugins pane
 
@@ -397,6 +402,10 @@ Open it with `PL` in the command bar. It lists what you have installed, what the
 | `/` | Search |
 
 A plugin installed or updated from the pane is loaded into the running session: its panes and commands are available immediately. If your app starts with a plugin that failed to load, a notification says so and opens this pane.
+
+You do not need the pane to get an official plugin. Type its code, such as `TV`, `IPO`, `POLL`, `PM`, `HN` or `SUB`, and the command bar offers to install it after the same confirmation, then opens it with whatever you typed after the code.
+
+Official plugins, the ones published under [github.com/gloom-sh](https://github.com/gloom-sh), update on their own in the background: once after Gloomberb itself updates, then at most once a day. A plugin you linked or edited locally is left alone, and when an update needs a restart to finish, one notification says so. Third-party plugins update only when you press `g` or run `gloomberb update`. **Update official plugins automatically** in this pane's settings turns it off.
 
 ## Broker position sync
 
@@ -444,13 +453,15 @@ Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Ja
 
 ## Market and macro plugins
 
-Fear & Greed, Market Halts, Market Heatmap, the IPO Calendar, and Polls each live in their own repository rather than inside the app. Each reads one third-party site directly, so a plugin can ship a fix the day that site changes instead of waiting for an app release.
+The IPO Calendar and Polls each live in their own repository rather than inside the app. Each reads one third-party site directly, so a plugin can ship a fix the day that site changes instead of waiting for an app release.
 
-Existing installations restore all five once after upgrading, keeping their saved panes: the pane and template ids are unchanged. A plugin whose Market Overview or Macro owner was switched off stays off, and a deliberate removal is respected. To install one by hand:
+Existing installations restore both once after upgrading, keeping their saved panes: the pane and template ids are unchanged. The IPO Calendar stays off where Macro was switched off, and a deliberate removal is respected. To install one by hand:
 
 ```bash
-gloomberb install gloom-sh/gloom-fear-greed
+gloomberb install gloom-sh/gloom-polls
 ```
+
+Fear & Greed, Market Heatmap and Market Halts are built in again, with the same panes, shortcuts and settings. Where Market Overview was switched off, each starts switched off too unless its plugin was installed; `PL` turns them on. A copy installed while they were plugins is no longer loaded; `gloomberb plugins` lists it, and `gloomberb remove gloom-fear-greed` (or `gloom-market-heatmap`, `gloom-market-halts`) deletes it.
 
 ## Live TV
 
@@ -523,12 +534,34 @@ category lists and available/unavailable data conditions. All criteria are ANDed
 Thresholds accept `k`, `M`, `B` and `T` suffixes, so `10B` is ten billion. The
 currency selector is required for price and market-cap comparisons.
 
-**Results** leads with the chosen metric, its covered-universe percentile and its
-date, then one column per numeric criterion and context columns (market cap, price,
-change, P/E, revenue growth, operating margin, dividend yield) as width allows. Click
-a metric header to sort by it and make it the focus; click again to reverse. Dates in
-the muted colour are collection dates for provider values that carry no observation
-date. The footer shows matches, covered listings, currency and the snapshot time.
+Besides valuation, growth, margins, short interest, insider and 13F activity and
+social attention, fields cover:
+
+- **Returns** 1W, 1M, 3M, YTD and 1Y: price change, without dividends, from the close
+  at the window start (the prior year's last close for YTD): a stored daily close on
+  or up to a week before the start, else, for 1M and longer, the weekly close
+  nearest the start, within four days. 1W needs daily closes.
+- **VS 52W HI%**: price against the highest high of the last 52 weeks, 0 at a new high.
+- **Beta**: raw beta of two years of weekly returns against SPY, US listings.
+- **P/B**, **EV/EBITDA** and **FY ROE%**: market cap over latest balance-sheet equity;
+  market cap plus debt minus cash over the last four quarters' EBITDA; annual net
+  income over average equity. The same definitions as the FA ratio tabs. Statements
+  in another currency than the market cap (most ADRs) leave them unavailable.
+- **EPS REV 30D%**: change in the current fiscal year's consensus EPS over 30 days,
+  unavailable when the fiscal year rolled in between.
+- **UPSIDE%**: mean analyst price target over the price.
+- **IV RANK** and **IV/HV**, for optionable US names: 30-day implied volatility
+  between its 52-week low (0) and high (100), and over the realized volatility of
+  the last 21 daily closes.
+
+Returns, EPS revisions and upside take the sign colour.
+
+**Results** leads with the chosen metric and its covered-universe percentile, then
+one column per numeric criterion and context columns (market cap, price, change, P/E,
+revenue growth, operating margin, dividend yield) as width allows. Stale values are
+amber, and an AS OF column dates the chosen metric on the rows where it is stale.
+Click a metric header to sort by it and make it the focus; click again to reverse.
+The footer shows matches, covered listings, currency and the snapshot time.
 Enter opens a company's dated observations; `o` opens it in Ticker Research.
 
 `s` saves a named screen to your Cloud account; **Saved** restores one. Saving an

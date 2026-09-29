@@ -11,6 +11,7 @@ import {
 import { createStaticAppStore } from "../../../../../test-support/app-store";
 import { createDefaultConfig } from "../../../../../types/config";
 import type { MarketNewsItem } from "../../../../../types/news-source";
+import { createTestArticle } from "../../../../../test-support/news";
 import { NewsArticleStackView, buildColumns, type NewsSortPreference } from "./table";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -20,32 +21,16 @@ const sortPreference: NewsSortPreference = {
   direction: "desc",
 };
 
-function makeArticle(overrides: Partial<MarketNewsItem> & { id: string; title: string }): MarketNewsItem {
-  const { id, title, ...rest } = overrides;
-  return {
-    id,
-    title,
-    url: `https://example.com/${id}`,
+function makeArticle({ id, ...overrides }: Partial<MarketNewsItem> & { id: string; title: string }): MarketNewsItem {
+  return createTestArticle(id, {
     source: "Reuters",
     publishedAt: new Date("2026-04-18T12:00:00Z"),
     summary: "",
-    topic: "general",
     topics: [],
-    sectors: [],
-    categories: [],
-    tickers: [],
-    scores: {
-      importance: 0,
-      urgency: 0,
-      marketImpact: 0,
-      novelty: 0,
-      confidence: 0,
-    },
-    isBreaking: false,
-    isDeveloping: false,
+    scores: { importance: 0, urgency: 0, marketImpact: 0, novelty: 0, confidence: 0 },
     importance: 0,
-    ...rest,
-  };
+    ...overrides,
+  });
 }
 
 function Harness() {

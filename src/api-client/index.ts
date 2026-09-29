@@ -28,6 +28,7 @@ import { CloudTeamsApi } from "./teams";
 import { CloudTelemetryApi } from "./telemetry";
 import { CloudThesesApi } from "./theses";
 import { CloudViewsApi } from "./views";
+import type { CommandSearchReport } from "./telemetry";
 import type {
   AssistCommandDescriptor,
   AssistCommandResponse,
@@ -45,12 +46,42 @@ export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
 export { TEAM_ACCENT_COLORS } from "./types";
 export type * from "./types";
-export type { CrashReportError, CrashReportKind, CrashReportSurface, CrashReportsPayload } from "./telemetry";
+export type {
+  CommandSearchChoice,
+  CommandSearchOutcome,
+  CommandSearchReport,
+  CrashReportError,
+  CrashReportKind,
+  CrashReportSurface,
+  CrashReportsPayload,
+  FunctionUsageCount,
+  UsageCountsPayload,
+  UsageCountsSurface,
+} from "./telemetry";
 
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
 const ASSIST_COMMAND_LIMIT = 150;
+const ASSIST_ARG_OPTION_LIMIT = 40;
+const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
+const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
 const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
+
+/**
+ * Fits a command's argument values inside the server caps. The value is what
+ * the bar runs, so one that is too long is dropped rather than cut; the label
+ * only describes it and is truncated. A list still over the cap is left out
+ * whole: the assistant would read a partial list as every value there is.
+ */
+function capAssistArgOptions(command: AssistCommandDescriptor): AssistCommandDescriptor {
+  if (!command.arg?.options) return command;
+  const { options, ...arg } = command.arg;
+  const capped = options
+    .filter(({ value }) => value.length > 0 && value.length <= ASSIST_ARG_OPTION_VALUE_MAX_LENGTH)
+    .map(({ value, label }) => ({ value, label: label.slice(0, ASSIST_ARG_OPTION_LABEL_MAX_LENGTH) }));
+  const fits = capped.length > 0 && capped.length <= ASSIST_ARG_OPTION_LIMIT;
+  return { ...command, arg: fits ? { ...arg, options: capped } : arg };
+}
 
 interface PendingSessionRequest {
   promise: Promise<AuthUser | null>;
@@ -333,6 +364,7 @@ class GloomApiClient {
     event: import("./research-activity").ResearchActivity; eventId: string;
     surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
+    tab?: string;
   }): Promise<void> {
     await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
   }
@@ -373,6 +405,7 @@ class GloomApiClient {
 
   getAccountProfile = this.auth.getAccountProfile.bind(this.auth);
   getCloudPricing = this.auth.getCloudPricing.bind(this.auth);
+  getCloudAccountPlan = this.auth.getCloudAccountPlan.bind(this.auth);
   getBuildoutAccount = this.auth.getBuildoutAccount.bind(this.auth);
   getBuildoutToken = this.auth.getBuildoutToken.bind(this.auth);
   updateAccountProfile = this.auth.updateAccountProfile.bind(this.auth);
@@ -509,12 +542,13 @@ class GloomApiClient {
    * Resolves a natural-language command-bar query into runnable command-bar
    * inputs. Requires a verified session; free accounts are included. The
    * request is bounded client-side so a stalled upstream cannot hold the
-   * command bar in its loading state.
+   * command bar in its loading state. The server keeps the query, and
+   * answers with a `searchId`, only when asked with `log: true`.
    */
   async assistCommand(
     query: string,
     commands: AssistCommandDescriptor[],
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; log?: boolean },
   ): Promise<AssistCommandResponse> {
     const controller = new AbortController();
     const callerSignal = options?.signal;
@@ -530,7 +564,8 @@ class GloomApiClient {
         method: "POST",
         body: JSON.stringify({
           query: query.trim().slice(0, ASSIST_QUERY_MAX_LENGTH),
-          commands: commands.slice(0, ASSIST_COMMAND_LIMIT),
+          commands: commands.slice(0, ASSIST_COMMAND_LIMIT).map(capAssistArgOptions),
+          ...(options?.log === true ? { log: true } : {}),
         }),
         signal: controller.signal,
       });
@@ -542,6 +577,20 @@ class GloomApiClient {
       );
     } finally {
       callerSignal?.removeEventListener("abort", abortFromCaller);
+    }
+  }
+
+  /**
+   * Stores how a command-bar search ended, to improve search. Fire and
+   * forget: sent only with a signed-in session, it never throws and never
+   * waits, and a report that fails is dropped.
+   */
+  reportCommandSearch(report: CommandSearchReport): void {
+    try {
+      if (!this.isSignedIn()) return;
+      void this.telemetry.reportCommandSearch(report).catch(() => {});
+    } catch {
+      /* A report must never get in the way of the command bar. */
     }
   }
 
@@ -589,6 +638,7 @@ class GloomApiClient {
   submitFeedback = this.feedback.submitFeedback.bind(this.feedback);
   listFeedback = this.feedback.listFeedback.bind(this.feedback);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
+  reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
   listTheses = this.theses.listTheses.bind(this.theses);
   getThesis = this.theses.getThesis.bind(this.theses);
@@ -639,6 +689,8 @@ class GloomApiClient {
   getCloudExchangeRate = this.data.getCloudExchangeRate.bind(this.data);
   getCloudEconomicCalendar = this.data.getCloudEconomicCalendar.bind(this.data);
   getCloudEquityDiagnostic = this.data.getCloudEquityDiagnostic.bind(this.data);
+  getCloudEarningsCalendar = this.data.getCloudEarningsCalendar.bind(this.data);
+  getCloudEarningsHistory = this.data.getCloudEarningsHistory.bind(this.data);
   getCloudFredSeries = this.data.getCloudFredSeries.bind(this.data);
   getCloudCryptoMarkets = this.data.getCloudCryptoMarkets.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
@@ -650,8 +702,13 @@ class GloomApiClient {
   impliedVolatility = this.data.impliedVolatility.bind(this.data);
   getCloudDebtMaturities = this.data.getCloudDebtMaturities.bind(this.data);
   getCloudRevenueBreakdown = this.data.getCloudRevenueBreakdown.bind(this.data);
+  getCloudMnaDeals = this.data.getCloudMnaDeals.bind(this.data);
+  getCloudMnaDeal = this.data.getCloudMnaDeal.bind(this.data);
   getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
+  getCloudSocialMentions = this.data.getCloudSocialMentions.bind(this.data);
+  getCloudSocialMentionPosts = this.data.getCloudSocialMentionPosts.bind(this.data);
   getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
+  getCloudFuturesCurveAsOf = this.data.getCloudFuturesCurveAsOf.bind(this.data);
   getCloudRatePath = this.data.getCloudRatePath.bind(this.data);
   getCloudShiller = this.data.getCloudShiller.bind(this.data);
   getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);
@@ -659,6 +716,7 @@ class GloomApiClient {
   getCloudTape = this.data.getCloudTape.bind(this.data);
   getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
   getCloudCds = this.data.getCloudCds.bind(this.data);
+  getCloudCdsHistory = this.data.getCloudCdsHistory.bind(this.data);
   getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);
   getCloudJobs = this.data.getCloudJobs.bind(this.data);
   getCloudJobsPostings = this.data.getCloudJobsPostings.bind(this.data);
@@ -688,4 +746,4 @@ class GloomApiClient {
 
 export const apiClient = new GloomApiClient();
 
-export type { FuturesCurvePayload, FuturesContract } from "./futures-curve";
+export type { FuturesCurveAsOfPayload, FuturesCurvePayload, FuturesContract } from "./futures-curve";

@@ -13,7 +13,6 @@ await mkdir(outdir, { recursive: true });
 await writeElectrobunViewPage({
   entrypoint: electrobunViewPath("main.tsx"),
   outdir,
-  pluginName: "electrobun-renderer-native-bridges",
   failureMessage: "Failed to build Electrobun view assets",
   missingEntryMessage: "Electrobun view build did not produce a JavaScript entrypoint",
   title: "Gloomberb",

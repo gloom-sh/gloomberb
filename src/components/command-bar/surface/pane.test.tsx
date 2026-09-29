@@ -428,95 +428,58 @@ describe("CommandBar pane and layout routes", () => {
     expect(frame).toContain("Second Duplicate");
   });
 
-  test("QQ MSFT executes directly without opening a secondary workflow", async () => {
-    const created: CreatedPaneCall[] = [];
+  const directCreates: Array<{
+    name: string;
+    query: string;
+    selectedTicker?: string;
+    register?: (pluginRegistry: MutablePaneRegistry) => void;
+    expected: CreatedPaneCall;
+  }> = [
+    {
+      name: "QQ MSFT executes directly without opening a secondary workflow",
+      query: "QQ MSFT",
+      selectedTicker: "AAPL",
+      expected: { templateId: "quote-monitor-pane", options: { arg: "MSFT", symbols: ["MSFT"] } },
+    },
+    {
+      name: "QQ AAPL,MSFT creates a multi-symbol quote monitor directly",
+      query: "QQ AAPL,MSFT",
+      selectedTicker: "AAPL",
+      expected: { templateId: "quote-monitor-pane", options: { arg: "AAPL,MSFT", symbols: ["AAPL", "MSFT"] } },
+    },
+    {
+      name: "CMP AAPL,MSFT creates the comparison chart directly",
+      query: "CMP AAPL,MSFT",
+      register: registerComparisonChartPane,
+      expected: { templateId: "comparison-chart-pane", options: { arg: "AAPL,MSFT", symbols: ["AAPL", "MSFT"] } },
+    },
+  ];
+  for (const scenario of directCreates) {
+    test(scenario.name, async () => {
+      const created: CreatedPaneCall[] = [];
 
-    testSetup = await testRender(<CommandBarHarness
-      query="QQ MSFT"
-      selectedTicker="AAPL"
-      configurePluginRegistry={(pluginRegistry) => {
-        recordPaneCreations(pluginRegistry, created);
-      }}
-    />, {
-      width: 100,
-      height: 20,
+      testSetup = await testRender(<CommandBarHarness
+        query={scenario.query}
+        selectedTicker={scenario.selectedTicker}
+        configurePluginRegistry={(pluginRegistry) => {
+          scenario.register?.(pluginRegistry);
+          recordPaneCreations(pluginRegistry, created);
+        }}
+      />, {
+        width: 100,
+        height: 20,
+      });
+
+      await testSetup.renderOnce();
+      await act(async () => {
+        testSetup!.mockInput.pressEnter();
+        await Bun.sleep(0);
+        await testSetup!.renderOnce();
+      });
+
+      expect(created).toEqual([scenario.expected]);
     });
-
-    await testSetup.renderOnce();
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await Bun.sleep(0);
-      await testSetup!.renderOnce();
-    });
-
-    expect(created).toEqual([{
-      templateId: "quote-monitor-pane",
-      options: {
-        arg: "MSFT",
-        symbols: ["MSFT"],
-      },
-    }]);
-  });
-
-  test("QQ AAPL,MSFT creates a multi-symbol quote monitor directly", async () => {
-    const created: CreatedPaneCall[] = [];
-
-    testSetup = await testRender(<CommandBarHarness
-      query="QQ AAPL,MSFT"
-      selectedTicker="AAPL"
-      configurePluginRegistry={(pluginRegistry) => {
-        recordPaneCreations(pluginRegistry, created);
-      }}
-    />, {
-      width: 100,
-      height: 20,
-    });
-
-    await testSetup.renderOnce();
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await Bun.sleep(0);
-      await testSetup!.renderOnce();
-    });
-
-    expect(created).toEqual([{
-      templateId: "quote-monitor-pane",
-      options: {
-        arg: "AAPL,MSFT",
-        symbols: ["AAPL", "MSFT"],
-      },
-    }]);
-  });
-
-  test("CMP AAPL,MSFT creates the comparison chart directly", async () => {
-    const created: CreatedPaneCall[] = [];
-
-    testSetup = await testRender(<CommandBarHarness
-      query="CMP AAPL,MSFT"
-      configurePluginRegistry={(pluginRegistry) => {
-        registerComparisonChartPane(pluginRegistry);
-        recordPaneCreations(pluginRegistry, created);
-      }}
-    />, {
-      width: 100,
-      height: 20,
-    });
-
-    await testSetup.renderOnce();
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await Bun.sleep(0);
-      await testSetup!.renderOnce();
-    });
-
-    expect(created).toEqual([{
-      templateId: "comparison-chart-pane",
-      options: {
-        arg: "AAPL,MSFT",
-        symbols: ["AAPL", "MSFT"],
-      },
-    }]);
-  });
+  }
 
   test("CMP AAPL, opens the form when the ticker list is incomplete", async () => {
     testSetup = await testRender(<CommandBarHarness

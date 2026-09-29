@@ -3,10 +3,9 @@ import { Box, TextAttributes } from "../../../ui";
 import {
   DataTableView,
   PaneStatusBody,
-  Tabs,
   usePaneFooter,
-  usePaneHeaderTabs,
   usePaneNoticeFooter,
+  usePaneTabs,
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
@@ -28,6 +27,7 @@ import { formatCompact } from "../../../utils/format";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
+import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
 import { cachedCryptoMarkets, loadCryptoMarkets } from "./client";
 import {
   buildCryptoColumns,
@@ -50,10 +50,6 @@ import {
 export const CRYPTO_BOARD_REFRESH_MS = 15_000;
 /** Once every streamed row is live, the board only carries the rest of the tab. */
 const CRYPTO_BOARD_STREAMING_REFRESH_MS = 60_000;
-/** Rows streamed beyond the visible window so a short scroll lands on live prices. */
-const STREAM_OVERSCAN = 8;
-/** Before the table reports its window, stream what a full-height pane shows. */
-const INITIAL_STREAM_ROWS = 40;
 
 const NO_QUOTES = new Map<string, QueryEntry<Quote>>();
 
@@ -73,21 +69,20 @@ function quoteTargets(
   }));
 }
 
-function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolean): DataTableCell {
-  const selectedColor = selected ? colors.selectedText : undefined;
+function renderCryptoCell(row: CryptoRow, column: CryptoColumn): DataTableCell {
   const signed = (value: number | null) => ({
     text: formatCryptoPercent(value),
-    color: selectedColor ?? (value == null ? colors.textDim : priceColor(value)),
+    color: value == null ? colors.textDim : priceColor(value),
   });
   switch (column.id) {
     case "rank":
-      return { text: String(row.rank), color: selectedColor ?? colors.textDim };
+      return { text: String(row.rank), color: colors.textDim };
     case "code":
-      return { text: row.code, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+      return { text: row.code, color: colors.textBright, attributes: TextAttributes.BOLD };
     case "name":
-      return { text: row.name, color: selectedColor };
+      return { text: row.name };
     case "price":
-      return { text: row.priceText, color: selectedColor };
+      return { text: row.priceText };
     case "changePercent":
       return signed(row.changePercent);
     case "return7d":
@@ -102,9 +97,9 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolea
         content: <PriceSparkline priceHistory={row.history} width={column.width} period="1M" />,
       };
     case "volume24h":
-      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
+      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h, { fixedDecimals: true }), color: colors.textDim };
     case "marketCap":
-      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
+      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap, { fixedDecimals: true }), color: colors.textDim };
   }
 }
 
@@ -118,7 +113,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const [activeTab, setActiveTab] = usePluginPaneState<CryptoAssetKind>("activeTab", "coin");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
-  const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_STREAM_ROWS });
+  const [visibleRange, setVisibleRange] = useState(INITIAL_STREAM_RANGE);
   const paneVisible = usePaneVisible();
   const reloadBoard = resource.load;
 
@@ -130,12 +125,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   // live ticks from reshuffling the subscription; the overscan covers the drift.
   const streamedAssets = useMemo(() => {
     const ordered = sortCryptoRows(buildCryptoRows(tabAssets, activeTab, NO_QUOTES), sort).map((row) => row.asset);
-    const window = ordered.slice(
-      Math.max(0, visibleRange.start - STREAM_OVERSCAN),
-      visibleRange.end + STREAM_OVERSCAN,
-    );
-    const selected = ordered.find((asset) => asset.symbol === selectedId);
-    return selected && !window.includes(selected) ? [...window, selected] : window;
+    return streamWindowRows(ordered, visibleRange, ordered.find((asset) => asset.symbol === selectedId));
   }, [activeTab, selectedId, sort, tabAssets, visibleRange]);
   const targets = useMemo(() => quoteTargets(streamedAssets, selectedId), [selectedId, streamedAssets]);
   const { entries, freshnessNow } = useLiveQuoteEntries(targets, {
@@ -156,12 +146,6 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     const timer = setInterval(() => void reloadBoard(false), boardRefreshMs);
     return () => clearInterval(timer);
   }, [boardRefreshMs, paneVisible, reloadBoard]);
-  const renderCell = useCallback(
-    (row: CryptoRow, column: CryptoColumn, _index: number, rowState: { selected: boolean }) => (
-      renderCryptoCell(row, column, rowState.selected)
-    ),
-    [],
-  );
   useEffect(() => {
     if (!rows.length) return;
     if (!selectedId || !rows.some((row) => row.id === selectedId)) setSelectedId(rows[0]!.id);
@@ -180,9 +164,9 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const selectTab = (value: string) => {
     setActiveTab(value as CryptoAssetKind);
     setSelectedId(null);
-    setVisibleRange({ start: 0, end: INITIAL_STREAM_ROWS });
+    setVisibleRange(INITIAL_STREAM_RANGE);
   };
-  const tabsInHeader = usePaneHeaderTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused });
+  const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
 
   usePaneNoticeFooter({
     registrationId: "crypto-board:notices",
@@ -211,11 +195,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
 
   return (
     <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && (
-        <Box height={1} paddingX={1}>
-          <Tabs tabs={tabItems} activeValue={activeTab} onSelect={selectTab} compact variant="bare" focused={focused} />
-        </Box>
-      )}
+      {tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
       <PaneStatusBody
         loading={resource.loading && !data}
         error={!data ? resource.error : null}
@@ -249,7 +229,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
           })}
           visibleRangeKey={`${activeTab}:${sort.columnId}:${sort.direction}`}
           onVisibleRangeChange={setVisibleRange}
-          renderCell={renderCell}
+          renderCell={renderCryptoCell}
+          selectedTextOverridesCellColor
           emptyStateTitle="No crypto assets returned."
         />
       </PaneStatusBody>

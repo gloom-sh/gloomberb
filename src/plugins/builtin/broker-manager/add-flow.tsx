@@ -20,7 +20,7 @@ import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect
 import { SIGNED_IN_BROKER_TYPE } from "../../../brokers/signed-in/profile";
 import { runBrokerSignIn, type BrokerSignInOutcome } from "../../../brokers/signed-in/sign-in";
 import { promptGloomSignIn, useBrokerSignInAttempt } from "../../../brokers/signed-in/sign-in-dialog";
-import { Button, ListView } from "../../../components";
+import { Button, ListView, useFieldRing } from "../../../components";
 import { showCollectionInPortfolioPane } from "../../../components/command-bar/pane-actions";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { BrokerConnectView } from "../../../components/form-modal/broker-step";
@@ -31,12 +31,13 @@ import { useAppDispatch, useAppGetState } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
-import { Box, ScrollBox, Text } from "../../../ui";
+import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
-import { BrokerProfileForm, profileFieldWidth, useProfileFormScroll, type BrokerEditKey } from "./detail";
+import { BrokerProfileForm, profileFieldWidth, type BrokerEditKey } from "./detail";
 import { useBrokerManagerKeyboard } from "./keyboard";
+import type { BrokerManagerMessage } from "./pane-actions";
 
 /**
  * Adding a profile, one step at a time in the pane's detail: the broker, how
@@ -84,7 +85,7 @@ export function useBrokerAddFlow({
   onProfileAdded,
 }: {
   setBusy: (busy: string | null) => void;
-  setMessage: (message: string | null) => void;
+  setMessage: (message: BrokerManagerMessage | null) => void;
   /** Lands the pane on the profile the flow made, with the flow closed. */
   onProfileAdded: (instanceId: string) => void;
 }) {
@@ -164,7 +165,7 @@ export function useBrokerAddFlow({
     } catch (error) {
       // The profile stays: its detail and the footer say why it did not sync.
       land();
-      setMessage(errorText(error, tf("Failed to sync {label}.", { label })));
+      setMessage({ tone: "error", text: errorText(error, tf("Failed to sync {label}.", { label })) });
     } finally {
       setBusy(null);
     }
@@ -176,12 +177,12 @@ export function useBrokerAddFlow({
     const { adapter, draft } = current.step;
     const label = draft.label.trim();
     if (!label) {
-      setMessage(t("Profile label is required."));
+      setMessage({ tone: "error", text: t("Profile label is required.") });
       return;
     }
     const validationError = validateBrokerProfileValues(adapter, draft.values);
     if (validationError) {
-      setMessage(validationError);
+      setMessage({ tone: "error", text: validationError });
       return;
     }
     committingRef.current = true;
@@ -194,7 +195,7 @@ export function useBrokerAddFlow({
         instanceId = instance.id;
       } catch (error) {
         setBusy(null);
-        setMessage(errorText(error, t("Failed to save broker profile.")));
+        setMessage({ tone: "error", text: errorText(error, t("Failed to save broker profile.")) });
         return;
       }
       await syncNewProfile(current.id, instanceId, label);
@@ -249,7 +250,7 @@ export function useBrokerAddFlow({
           },
         });
       } catch (error) {
-        setMessage(errorText(error, tf("{broker} was not connected.", { broker: broker.name })));
+        setMessage({ tone: "error", text: errorText(error, tf("{broker} was not connected.", { broker: broker.name })) });
         if (onStep()) setStep(flowId, { kind: "broker" });
         return;
       }
@@ -512,8 +513,19 @@ function DeviceProfileForm({
     () => new Set(fields.filter((field) => field.type === "select").map((field) => field.key)),
     [fields],
   );
-  const { scrollRef, topRef, rowRef } = useProfileFormScroll(activeKey, true);
   const { updateDraft, connectDevice, leave } = addFlow;
+  const setActiveKey = useCallback((key: BrokerEditKey) => updateDraft(() => ({ activeKey: key })), [updateDraft]);
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  // Tab and j/k walk the fields and go round, as in the edit form.
+  const { nodeRef: rowRef } = useFieldRing({
+    ids: keys,
+    activeId: activeKey,
+    onActivate: setActiveKey,
+    enabled: focused,
+    scope,
+    wrap: true,
+    scrollRef,
+  });
 
   // A field a changed select hid gives the focus back to the label.
   useEffect(() => {
@@ -533,11 +545,9 @@ function DeviceProfileForm({
   useBrokerManagerKeyboard({
     activeEditKey: activeKey,
     editing: true,
-    editKeys: keys,
     focused,
     scope,
     selectKeys,
-    onActiveEditKeyChange: (key) => updateDraft(() => ({ activeKey: key })),
     onCancelEdit: leave,
     onCycleSelect: cycleSelect,
     saveEdit: connectDevice,
@@ -545,7 +555,7 @@ function DeviceProfileForm({
 
   return (
     <ScrollBox ref={scrollRef} flexGrow={1} scrollY>
-      <Box ref={topRef} flexDirection="column" paddingX={1} gap={1}>
+      <Box flexDirection="column" paddingX={1} gap={1}>
         <BrokerProfileForm
           adapter={adapter}
           draft={draft}
@@ -558,7 +568,7 @@ function DeviceProfileForm({
           paneFocused={focused}
           submitLabel={t("Connect")}
           rowRef={rowRef}
-          onActiveKeyChange={(key) => updateDraft(() => ({ activeKey: key }))}
+          onActiveKeyChange={setActiveKey}
           onLabelChange={(label) => updateDraft((current) => ({ draft: { ...current.draft, label } }))}
           onValueChange={(key, value) => updateDraft((current) => ({
             draft: { ...current.draft, values: { ...current.draft.values, [key]: value } },

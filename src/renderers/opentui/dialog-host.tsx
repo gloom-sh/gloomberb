@@ -7,6 +7,8 @@ import {
   DialogHostProvider,
   type AlertContext,
   type DialogApi,
+  type DialogOptions,
+  type DialogStyle,
   type PromptContext,
 } from "../../ui/dialog";
 import {
@@ -17,20 +19,11 @@ import {
 } from "../../ui/dialog-bridge";
 import { useDialogStack, type DialogKind } from "../../ui/dialog-stack";
 
-type DialogSize = "small" | "medium" | "large" | "full";
-
-interface DialogStyle {
-  width?: number;
-  maxWidth?: number;
-  maxHeight?: number;
-  [key: string]: unknown;
-}
-
 interface DialogRecord {
   id: string;
   content: unknown;
   kind: DialogKind;
-  size?: DialogSize;
+  size?: DialogOptions["size"];
   style?: DialogStyle;
   closeOnEscape?: boolean;
   closeOnClickOutside?: boolean;
@@ -42,7 +35,7 @@ function renderDialogContent(content: unknown, context: AlertContext | PromptCon
     : content as ReactNode;
 }
 
-function dialogWidth(size: DialogSize, terminalWidth: number): number {
+function dialogWidth(size: DialogOptions["size"], terminalWidth: number): number {
   const requestedWidth = size === "small"
     ? 40
     : size === "large"
@@ -182,10 +175,10 @@ export function OpenTuiDialogHostProvider({ children }: { children: ReactNode })
         id,
         kind,
         content: options.content,
-        size: options.size as DialogSize | undefined,
-        style: options.style as DialogStyle | undefined,
-        closeOnEscape: options.closeOnEscape as boolean | undefined,
-        closeOnClickOutside: options.closeOnClickOutside as boolean | undefined,
+        size: options.size,
+        style: options.style,
+        closeOnEscape: options.closeOnEscape,
+        closeOnClickOutside: options.closeOnClickOutside,
       };
     },
     onClosed: (_dialog, remaining) => {

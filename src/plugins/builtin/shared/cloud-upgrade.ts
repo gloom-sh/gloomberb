@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { apiClient } from "../../../api-client";
 import { recordResearchActivity, researchUpgradeUrl } from "../../../api-client/research-activity";
 import { getCurrentPluginTarget } from "../../current-target";
@@ -10,6 +10,9 @@ import type { RendererHost } from "../../../ui";
 import { getSharedRegistry } from "../../registry";
 import { requestAccountManagementTab } from "../account-management/navigation";
 import { resolvePlanAccess, usePlanAccess, type PlanAccess } from "../../../api-client/plan-access";
+import { useViewport } from "../../../react/input";
+import { useOptionalDialog } from "../../../ui/dialog";
+import { promptCloudUpgrade } from "../cloud/upgrade-dialog";
 
 export const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
 
@@ -30,10 +33,14 @@ let cloudUpgradeOpener: (() => void) | null = null;
 export interface CloudUpgradeOptions {
   /** Billing interval for a fresh checkout; ignored when the account already has Pro. */
   interval?: "month" | "year";
+  /** False when the upgrade sheet already recorded the intent on open. */
+  recordIntent?: boolean;
+  /** False when the caller already made the pitch, like onboarding's Pro step. */
+  sheet?: boolean;
 }
 
 export async function resolveCloudUpgradeUrl(options: CloudUpgradeOptions = {}): Promise<string> {
-  recordResearchActivity("upgrade_intent");
+  if (options.recordIntent !== false) recordResearchActivity("upgrade_intent");
   const returnTo = getCurrentPluginTarget() === "web" ? window.location.href : undefined;
   if (!apiClient.isSignedIn()) return researchUpgradeUrl(returnTo);
   const { url } = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess
@@ -65,20 +72,48 @@ function isCloudUpgradeOptions(value: unknown): value is CloudUpgradeOptions {
  * Opens the Pro checkout page in the user's browser. The action doubles as a
  * press handler for buttons and footer segments, which hand it their event,
  * so only an explicit options object changes the checkout.
+ *
+ * A signed-in account without Pro sees the upgrade sheet first (what Pro adds,
+ * what today costs), and checkout opens only once they choose to go on.
+ * Signed-out users get the public Cloud page and Pro accounts the billing
+ * portal, as before.
  */
 export function useCloudUpgradeAction(): (options?: unknown) => void {
   const rendererHost = useRendererHost();
+  // Null in isolated renders (tests, previews): checkout then opens directly.
+  const dialog = useOptionalDialog();
+  const viewport = useViewport();
+  const viewportWidthRef = useRef(viewport.width);
+  viewportWidthRef.current = viewport.width;
   const openUpgrade = useCallback((options?: unknown) => {
     const checkout = isCloudUpgradeOptions(options) ? options : {};
-    void openCloudUpgrade(rendererHost, checkout).catch(async () => {
-      // Keep the Cloud page reachable when checkout cannot be created; a native
-      // session still rides along on the server's one-time handoff URL.
-      const url = await apiClient.createBrowserHandoff()
-        .then((handoff) => handoff.url)
-        .catch(() => CLOUD_UPGRADE_URL);
-      void rendererHost.openExternal(url);
+    const openCheckout = (resolved: CloudUpgradeOptions) => {
+      void openCloudUpgrade(rendererHost, resolved).catch(async () => {
+        // Keep the Cloud page reachable when checkout cannot be created; a native
+        // session still rides along on the server's one-time handoff URL.
+        const url = await apiClient.createBrowserHandoff()
+          .then((handoff) => handoff.url)
+          .catch(() => CLOUD_UPGRADE_URL);
+        void rendererHost.openExternal(url);
+      });
+    };
+    if (
+      checkout.sheet === false ||
+      !dialog ||
+      !apiClient.isSignedIn() ||
+      resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess
+    ) {
+      openCheckout(checkout);
+      return;
+    }
+    recordResearchActivity("upgrade_intent");
+    void promptCloudUpgrade(dialog, {
+      interval: checkout.interval,
+      viewportWidth: viewportWidthRef.current,
+    }).then((interval) => {
+      if (interval) openCheckout({ interval, recordIntent: false });
     });
-  }, [rendererHost]);
+  }, [dialog, rendererHost]);
   useEffect(() => {
     cloudUpgradeOpener = openUpgrade;
     return () => {

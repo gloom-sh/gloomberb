@@ -41,6 +41,20 @@ answers the same question from the terminal. The check needs whatever
 credentials the clone needs: a private repository without them is reported as
 nothing new rather than as an error, and it never blocks on a prompt.
 
+Official plugins, the registry entries published under
+[github.com/gloom-sh](https://github.com/gloom-sh), update themselves: once
+shortly after Gloomberb starts on a new version, then at most once a day, and
+at startup for one that failed to load because it uses something this
+Gloomberb does not have. They take the same steps as `update`, forward only
+and never to code this Gloomberb is too old for, peers first. A linked
+checkout, one with local edits, and one whose dependencies need `bun` when it
+is not on `PATH` are left alone, and the debug log says why. A plugin split
+across several files finishes updating at the next launch, and a single toast
+says "Plugins updated. Restart to finish." Third-party plugins, and anything
+installed from a repository the registry does not list, update only when you
+ask. Turn this off with **Update official plugins automatically** in the
+Plugins pane's settings.
+
 ## Developing a plugin
 
 Work on a plugin from its own checkout rather than editing under
@@ -66,8 +80,10 @@ sit in CI.
 
 ## Plugin compatibility
 
-Gloomberb updates itself; a plugin moves only when its user updates it, so a
-checkout can be older or newer than the Gloomberb loading it. Declare the
+Gloomberb updates itself and its official plugins; any other plugin moves only
+when its user updates it, and an automatic update can be turned off or held
+back by local edits, so a checkout can be older or newer than the Gloomberb
+loading it. Declare the
 oldest Gloomberb the plugin runs on in its `gloom.json`, and raise it whenever
 the plugin starts using something a release added:
 
@@ -494,6 +510,21 @@ Available context kinds are `pane`, `ticker`, `link`, `editable-text`, `selected
 
 Commands registered with `ctx.registerCommand({ shortcut, shortcutArg })` and pane templates registered with `shortcut` are picked up by the in-app Help pane automatically. Use those fields for user-facing command-bar prefixes instead of adding separate Help text. When a built-in command or pane shortcut is added or renamed, also update the README command tables so the public docs match the live registry.
 
+List the same codes in `gloom.json`, so someone who does not have the plugin can find it by typing one:
+
+```json
+{
+  "contributes": {
+    "panes": ["polls"],
+    "shortcuts": [
+      { "code": "POLL", "name": "Polls", "description": "Political polls by race, with trend charts and pollster breakdowns." }
+    ]
+  }
+}
+```
+
+The registry carries them, and when a typed code (alone, or followed by a ticker or query) belongs to an official plugin that is not installed, the command bar offers to install it with the Plugins pane's confirmation, then opens it with the rest of the text. A code the app already answers to always wins, and plugins from outside github.com/gloom-sh are never offered this way.
+
 ### Command-bar search providers
 
 `registerCommand` covers actions the user can name. A search provider covers everything else the user might type: it is asked for rows whenever free text stays in the command bar, and answers over the network.
@@ -850,7 +881,7 @@ await ctx.removeBrokerInstance(instance.id);
 
 Panes can expose per-instance settings that persist with the layout. These settings are part of the pane definition, can be edited from the pane header or command bar, and are available to both first-party and external plugins.
 
-Table panes built with the shared `DataTable` can opt into an Excel-compatible CSV action with `tableExport: true`. The action exports the current sorted, filtered rows and visible columns. It is available when the pane has one active table.
+Table panes built with the shared `DataTable` can opt into an Excel-compatible CSV action with `tableExport: true`. The action exports the current sorted, filtered rows and visible columns. It is available when the pane has one active table. Right-aligned number columns export as plain numbers with the unit in the header; a cell's optional `value` (the full-precision number, or an ISO date) replaces its text in the export.
 
 ```typescript
 ctx.registerPane({
@@ -1134,18 +1165,20 @@ Choose the existing control that owns the interaction you need:
 | Need | Components |
 |------|------------|
 | Sortable/selectable rows | `DataTableView`, `TickerListTableView` |
-| Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView` |
+| Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView`, `DetailScrollBody` (the detail's scrolling body) |
 | Charts | `CompositeChart` (time series), `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
-| Pane tab strip | `usePaneHeaderTabs` (title-bar tabs on the desktop), `Tabs` |
+| Figures, a chart and a table in one pane | `ChartTableHeader` in the table's `rootBefore`, `useChartTableSelection`, `chartTableLayout`, `CurveSurface` with `curveStrip` for curves (see `docs/pane-conventions.md` 5b) |
+| Pane tab strip | `usePaneTabs` (title-bar tabs on the desktop, the body row in the terminal), `Tabs` |
 | Search, filters, sort above a list | `QueryBar` |
 | Menus and pop-ups | `MenuPopover`, `Menu`, `Popover` |
 | Calculator and sizer inputs | `FieldGrid` (`GridField`: number, text, wide, action) |
 | Summary figures under the query bar | `StatGrid` (`StatItem`: label, value, detail, tone), `statGridRows` |
 | Choices inside forms | `SegmentedControl`, `SelectButton`, `SelectField`, `Checkbox` |
 | Actions and inputs | `Button`, `IconButton`, `Icon`, `TextField`, `NumberField` |
+| A form's field labels and keyboard ring | `FieldLabel`, `TextField` (`active`, `labelWidth`), `useFieldRing` |
 | Clickable/expandable summaries | `ActionRow` |
 | Selectable lists | `ListView` |
-| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog`, `PriceSelectorDialog` |
+| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
@@ -1159,15 +1192,15 @@ Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book 
 
 `Button` supports a compact layout and a separate `displayLabel` for short/icon actions; `label` remains the full accessible and automation name. Use `stopPropagation` for actions nested inside a row. `ActionRow` owns an expandable row's interaction and disclosure affordance. `SelectButton` opens the kit menu on the desktop and a choice dialog in the terminal; a `SelectControl` ref can open it without knowing the renderer.
 
-A pane's primary tab strip goes through `usePaneHeaderTabs({ tabs, activeValue, onSelect, focused })`, called above any early return. On the desktop the strip moves into the pane title bar and the hook returns true; the terminal returns false and the pane keeps drawing its own `Tabs`. Subtract the tab row from heights only when it is in the body.
+A pane's primary tab strip goes through `usePaneTabs({ tabs, activeValue, onSelect, focused })`, called above any early return. It takes every `Tabs` prop and returns `{ strip, rows }`: on the desktop the strip moves into the pane title bar and `strip` is null; the terminal gets the `Tabs` row to draw first. Subtract `rows` from heights. `queryBarWidth` turns the strip into a `QueryBar` view on the desktop when the pane sits under another title-bar strip (a Ticker Research tab). `usePaneHeaderTabs` is the lower-level hook underneath, for a pane that lays the body strip out itself.
 
-Everything that narrows or reorders a list sits in one `QueryBar` above it: `search`, `filters` (`select` with an optional `defaultValue` that marks the unfiltered state, `inline` for four or fewer short options, `multi`, `toggle`, `text`) and one `view` for sort, range or interval. It is one row in the terminal, scrolls sideways when the pane is narrow, and gives a changed filter a reset. Do not lay out `SelectButton`s or search fields in a row yourself.
+Everything that narrows or reorders a list sits in one `QueryBar` above it: `search`, `filters` (`select` with an optional `defaultValue` that marks the unfiltered state, `inline` for four or fewer short options, `multi`, `toggle`, `text`) and one `view` for sort, range or interval. It is one row in the terminal, scrolls sideways when the pane is narrow, and gives a changed filter a reset. Do not lay out `SelectButton`s or search fields in a row yourself. `useQueryBarSearch()` holds whether the search owns the keyboard: spread its `searchProps` into `search`, and call `focus` from a footer hint or an up-arrow handoff. The bar already binds `/`, so a pane binds it again only to add a condition.
 
 A pane's summary figures (a VWAP, a spread, a percentile, a range) go in a `StatGrid` directly under the `QueryBar`: one band of label, value and muted detail cells that the desktop draws like the query bar, so the title-bar tab, the bar and the figures read as one surface. Use it at the top of a stack detail too. Do not stack `KeyValueRow`s or text lines above a table for this. `statGridRows(items, width)` gives the rows it takes for terminal height budgeting.
 
 Table header labels and `SectionHeading` titles are uppercased by the kit. Pass `onHeaderClick` only when the table sorts; without it the headers are not interactive.
 
-A pane that computes an answer from inputs (a calculator, a sizer) puts its mode switches in a `QueryBar` (inline filters) and its inputs in a `FieldGrid`: one aligned sheet of label, value and unit cells, with the pane owning which field is active and the Tab order. Icon-only actions use `IconButton` with a name from the shared icon set; never draw an SVG or glyph button yourself.
+A pane that computes an answer from inputs (a calculator, a sizer) puts its mode switches in a `QueryBar` (inline filters) and its inputs in a `FieldGrid`: one aligned sheet of label, value and unit cells. The pane owns which field is active; while one is being edited the grid walks its cells with Tab and leaves on Esc. Icon-only actions use `IconButton` with a name from the shared icon set; never draw an SVG or glyph button yourself.
 
 Every menu, dropdown and pop-up list uses `MenuPopover` (or `Menu` inside a `Popover`): filter menus, select fields, multi-selects, suggestions and the pane menu share one look and keyboard model. There is no other floating surface; extend these rather than positioning an absolute box.
 
@@ -1202,9 +1235,19 @@ const updatedAgo = useUpdatedAgo(updatedAt);
 usePaneStatusFooter({ registrationId: "my-pane", loading, error });
 ```
 
-The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves. Pass `stale` to `usePaneStatusFooter` while the pane shows cached data a refresh could not replace, and the footer carries the shared `stale` warning.
+The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves. A new loader (another ticker, a new window) starts from no data; `keepPreviousData: true` leaves the last answer up until the new one arrives. Pass `stale` to `usePaneStatusFooter` while the pane shows cached data a refresh could not replace, and the footer carries the shared `stale` warning.
 
 `useAutoRefresh` refreshes one configured interval after the data landed, rests while the pane cannot be seen, and refreshes at once when stale data comes back into view. Data that moves faster than research data passes its own cadence: `useAutoRefresh(updatedAt, load, { intervalMs: 60_000 })`.
+
+A list the source serves a page at a time loads through `usePagedRows` and appends on scroll with `useTableLoadMore`. The loader answers `{ rows, hasMore, nextOffset }` for an offset; anything else a page carries stays on `pages`. The hook aborts superseded requests, drops rows a later page repeats, keeps what is loaded when a page fails, and starts over when the loader changes:
+
+```tsx
+import { usePagedRows, useTableLoadMore, type PageRequest } from "gloomberb/components";
+
+const loadPage = useCallback(({ offset, signal }: PageRequest) => searchThings(query, offset, signal), [query]);
+const { rows, loading, loadingMore, error, hasMore, loadMore, reload } = usePagedRows(query ? loadPage : null, { getId: (row) => row.id });
+const onBodyScrollActivity = useTableLoadMore(scrollRef, hasMore, loadMore);
+```
 
 Gate any other timer, poll or stream on `usePaneVisible()`, not on pane focus: it is true while the app can be seen and the pane is not covered by floating windows. `useAppVisible()` is the app half alone, for work that should continue while the pane is covered.
 
@@ -1279,7 +1322,7 @@ It reads the endpoint file from the data directory, so it is native only: a rend
 
 ### Network access
 
-List every third-party host a plugin fetches from in its `hosts` field, as bare domains. The terminal and desktop reach anything, so there it is documentation and what the plugin directory shows. On the web, the browser cannot call a host without CORS headers, and the hosted app proxies exactly the hosts that bundled plugins declare. A host left out works on the desktop and fails on the web.
+List every third-party host a plugin fetches from in its `hosts` field, as bare domains. The terminal and desktop reach anything, so there it is documentation and what the plugin directory shows. On the web, the browser cannot call a host without CORS headers, and the hosted app proxies exactly the hosts that the plugins in its build, built-in or bundled, declare. A host left out works on the desktop and fails on the web.
 
 Pane footers show changing status such as loading, errors, stale data, or live/delayed feeds. Preserve existing pane-specific action shortcuts instead of duplicating them in body toolbars. Do not repeat the pane title, fixed labels, row counts, or generic keyboard hints:
 
@@ -1447,6 +1490,7 @@ Every pane has to work with no mouse, in the terminal and on the desktop. Most o
 - **Kit controls register themselves.** A focused `DataTableView` whose headers sort (it has `onHeaderClick`) offers "Sort by…" and "Reverse Sort" (`isColumnSortable` leaves out a column its header click ignores; `onSortChange` makes Reverse Sort flip a header that also cycles through unsorted), and moves its cursor on `Home`/`End`/`PageUp`/`PageDown`. A `QueryBar` binds `/` to its search and lists every filter, the view and "Clear Filters". A focused `Tabs` strip lists New/Close/Move Tab for the handlers it has. The first kit `Button` in an `EmptyState` or `PaneStatusBody` `actions` answers `Enter` and shows it; every action there is in the pane menu.
 - An inline action that has to stay a body button (a Retry beside a failure) goes in `ButtonActionScope`, which gives its first kit `Button` Enter and lists every one in the pane menu. Links and ticker badges in a detail go in `PaneLinkMenu`, which lists each as "Open …" in the pane menu.
 - `onRootKeyDown` and `onDetailKeyDown` return `true` for a key they handled; the table marks it handled.
+- A stack detail that reads like a document goes in a `DetailScrollBody` (`resetScrollKey` is the open item's id, so the next item starts at the top). Pass its ref to `DataTableStackView` as `detailScrollRef` and j/k and the arrows step it a line at a time instead of a quarter page.
 - **Dialogs**: `useDialogKeyboard` for keys, Enter submits, Esc closes. Dialogs stack on both hosts, so a field editor opened from a dialog returns to it. On the desktop, Tab and Shift+Tab walk a dialog's controls unless the dialog handles Tab itself (a settings list or form ring moves its own cursor), and a focused control shows a ring.
 - `useActionShortcut("pane-menu")` from `gloomberb/ui` returns the key the host advertises for an action (or `plugin:<id>`), for a tooltip or a `Button`/`IconButton` `shortcut`. Desktop `IconButton` tooltips show the shortcut.
 - Pane keys are single unmodified letters that the app has not reserved. The reserved keys are listed in [pane conventions](docs/pane-conventions.md#8-sidebars-loading-input).

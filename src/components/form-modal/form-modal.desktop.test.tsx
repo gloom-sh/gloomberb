@@ -20,6 +20,9 @@ function registryWith(execute: (values?: Record<string, string>) => void): Plugi
   return {
     brokers: new Map(),
     commands: new Map([["save-note", { id: "save-note", label: "Save Note", execute: async (values?: Record<string, string>) => execute(values) }]]),
+    // A plugin command's submit counts the open by the command's plugin.
+    getCommandPluginId: () => undefined,
+    allPlugins: new Map(),
     notify: () => {},
   } as unknown as PluginRegistry;
 }

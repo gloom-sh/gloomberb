@@ -6,6 +6,7 @@ import { releaseSharedRegistry } from "../plugins/registry/shared";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import type { GloomPlugin } from "../types/plugin";
 import { reportCrash } from "../telemetry/crash-reports";
+import { rememberBuiltinPlugins } from "../telemetry/usage-counts";
 import { debugLog } from "../utils/debug-log";
 import { measurePerfAsync } from "../utils/perf-marks";
 import type { AppRuntimeServices, AppServicesFactoryOptions } from "./app-service-ports";
@@ -54,6 +55,8 @@ export function createAppRuntime({
   registryOptions, newsOptions, configure, onReady, onPluginError,
 }: AppRuntimeOptions): Runtime {
   const pluginRegistry = new PluginRegistry(dataProvider, tickerRepository, persistence, registryOptions);
+  // Usage counts keep a mnemonic for these; a plugin installed later is not one of them.
+  rememberBuiltinPlugins(plugins.filter((plugin) => !externalPlugins?.some((entry) => entry.plugin === plugin)));
   const marketData = new MarketDataCoordinator(dataProvider);
   const newsService = new NewsService({
     connectionHealth: pluginRegistry.connectionHealth,

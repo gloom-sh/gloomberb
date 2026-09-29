@@ -1,11 +1,11 @@
 import { Box } from "../../../ui";
-import { Button, EmptyState, Tabs, PaneFooterScope, usePaneHeaderTabs } from "../../../components";
+import { Button, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ConfirmDialog,
+  confirmDialog,
   DataTableView,
   usePaneFooter,
   type DataTableCell,
@@ -16,7 +16,7 @@ import { TextFieldDialog } from "../../../components/pane-settings-dialog/field-
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { TextAttributes } from "../../../ui";
-import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
+import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
@@ -79,24 +79,16 @@ const ALERT_TABS = [
 
 export function AlertsPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("tab", "prices");
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs: ALERT_TABS,
     activeValue: tab,
     onSelect: setTab,
     focused: props.focused,
+    dense: true,
   });
-  const tabRows = tabsInHeader ? 0 : 1;
   return (
     <Box flexDirection="column" width={props.width} height={props.height}>
-      {!tabsInHeader && (
-        <Tabs
-          tabs={ALERT_TABS}
-          activeValue={tab}
-          onSelect={setTab}
-          focused={props.focused}
-          dense
-        />
-      )}
+      {tabStrip}
       <PaneFooterScope active>
         {tab === "events" ? (
           <EventAlertsPane {...props} height={Math.max(1, props.height - tabRows)} />
@@ -164,18 +156,12 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const deleteAlert = useCallback(async (id: string) => {
     const alert = alerts.find((a) => a.id === id);
     if (!alert) return;
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...ctx}
-          title="Delete alert?"
-          body={[`${formatAlertDescription(alert)} will no longer be watched.`]}
-          confirmLabel="Delete"
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
+    const confirmed = await confirmDialog(dialog, {
+      title: "Delete alert?",
+      body: [`${formatAlertDescription(alert)} will no longer be watched.`],
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return;
     savePaneAlerts(alerts.filter((a) => a.id !== id));
     setSelectedIdx((prev) => Math.max(0, Math.min(prev, rows.length - 2)));
   }, [alerts, dialog, rows.length, savePaneAlerts]);
@@ -285,49 +271,43 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     alert: AlertRule,
     column: AlertColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "status":
         return {
           text: alert.status === "triggered" ? "Triggered" : "Active",
-          color: selectedColor ?? (alert.status === "triggered" ? colors.positive : colors.textDim),
+          color: alert.status === "triggered" ? colors.positive : colors.textDim,
           attributes: alert.status === "triggered" ? TextAttributes.BOLD : TextAttributes.NONE,
         };
       case "symbol":
         return {
           text: alert.symbol,
-          color: selectedColor ?? colors.textBright,
+          color: colors.textBright,
           attributes: TextAttributes.BOLD,
         };
       case "current":
         return {
           text: formatCurrentPrice(alert, column.width),
-          color: selectedColor ?? (alert.lastCheckError ? colors.negative : colors.text),
+          color: alert.lastCheckError ? colors.negative : colors.text,
         };
       case "target":
-        return { text: formatAlertTargetPrice(alert, column.width), color: selectedColor };
+        return { text: formatAlertTargetPrice(alert, column.width) };
       case "away":
         return {
           text: formatAlertDistance(alert),
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "condition":
-        return {
-          text: conditionLabel(alert.condition),
-          color: selectedColor,
-        };
+        return { text: conditionLabel(alert.condition) };
       case "quote":
         return {
           text: formatQuoteChecked(alert),
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "triggered":
         return {
           text: alert.triggeredAt ? relativeTime(alert.triggeredAt) : "-",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
     }
   }, []);
@@ -353,12 +333,11 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
         if (alert.status === "triggered") rearmAlert(alert.id);
       }}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle="Saved alerts could not be read."
       emptyStateHint={storeError ?? undefined}
       emptyContent={storeError ? undefined : (
-        <Box paddingX={1} paddingY={1}>
-          <EmptyState title="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />
-        </Box>
+        <PaneStatusBody empty emptyTitle="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />
       )}
       showHorizontalScrollbar={showHorizontalScrollbar}
     />

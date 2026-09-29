@@ -1,6 +1,9 @@
+import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import type { ResolvedSeries } from "../../../time-series/types";
-import { isFiniteNumber, isRecord } from "../../../utils/guards";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { isDateString, isFiniteNumber, isRecord, isStringArray } from "../../../utils/guards";
+import { selectedWindows } from "./settings";
 
 export interface RealizedVolEvidenceStatus {
   symbol: string;
@@ -25,8 +28,6 @@ export interface RealizedVolEvidence extends RealizedVolEvidenceStatus {
   series: Array<{ id: string; unit: string; points: Array<{ date: string; value: number | null }> }>;
 }
 
-const dated = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
-
 /** The same resolved series passed to CompositeChart supplies the capture evidence. */
 export function realizedVolSemanticEvidence(series: readonly ResolvedSeries[], status: RealizedVolEvidenceStatus): RealizedVolEvidence {
   const plotted = series.map((entry) => ({ id: entry.id, unit: entry.unit,
@@ -42,7 +43,7 @@ export function realizedVolSemanticEvidence(series: readonly ResolvedSeries[], s
 
 export function useRealizedVolEvidence(series: readonly ResolvedSeries[], status: RealizedVolEvidenceStatus): void {
   useRemoteUiNode({ role: "chart-data", label: "Rendered realized volatility observations",
-    getMetadata: () => ({ ...realizedVolSemanticEvidence(series, status) }) });
+    getMetadata: () => ({ ...realizedVolSemanticEvidence(series, status), ready: !status.loading }) });
 }
 
 /** Recount actual observations; a canvas or asserted count alone cannot certify a capture. */
@@ -51,11 +52,11 @@ export function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | n
     || typeof value.symbol !== "string" || !value.symbol || !["graph", "cone"].includes(String(value.view))
     || typeof value.estimator !== "string" || !Array.isArray(value.windows) || !value.windows.every(isFiniteNumber)
     || !isFiniteNumber(value.lookbackYears) || typeof value.showIv !== "boolean" || typeof value.complete !== "boolean"
-    || typeof value.loading !== "boolean" || typeof value.stale !== "boolean" || !dated(value.asOf)
-    || !Array.isArray(value.errors) || !value.errors.every((error) => typeof error === "string")
+    || typeof value.loading !== "boolean" || typeof value.stale !== "boolean" || !isDateString(value.asOf)
+    || !isStringArray(value.errors)
     || !Array.isArray(value.series) || !value.series.every((entry) => isRecord(entry) && typeof entry.id === "string"
       && typeof entry.unit === "string" && Array.isArray(entry.points) && entry.points.every((point) => isRecord(point)
-        && dated(point.date) && (point.value === null || isFiniteNumber(point.value))))) return null;
+        && isDateString(point.date) && (point.value === null || isFiniteNumber(point.value))))) return null;
   const evidence = value as unknown as RealizedVolEvidence;
   const required = evidence.view === "graph" ? [...evidence.windows.map((window) => `hv-${window}`), "price",
     ...(evidence.showIv ? ["current-iv"] : [])] : ["min", "max", "mean", "current"];
@@ -65,7 +66,7 @@ export function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | n
   const count = evidence.series.reduce((sum, entry) => sum + entry.points.filter((point) => isFiniteNumber(point.value)).length, 0);
   if (count <= 0 || count !== evidence.plottedValueCount) return null;
   if (evidence.currentIv != null && (!isRecord(evidence.currentIv) || !isFiniteNumber(evidence.currentIv.value)
-    || !dated(evidence.currentIv.date) || !isFiniteNumber(evidence.currentIv.expiration))) return null;
+    || !isDateString(evidence.currentIv.date) || !isFiniteNumber(evidence.currentIv.expiration))) return null;
   if (evidence.view === "graph" && evidence.showIv && evidence.currentIv) {
     const points = evidence.series.find((entry) => entry.id === "current-iv")!.points;
     if (points.length !== 1 || points[0]!.date !== evidence.currentIv.date || points[0]!.value !== evidence.currentIv.value) return null;
@@ -75,3 +76,26 @@ export function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | n
     || evidence.series.some((entry) => !entry.points.some((point) => isFiniteNumber(point.value))))) return null;
   return evidence;
 }
+
+export const realizedVolScreenshotEvidence: PaneScreenshotEvidenceHook<RealizedVolEvidence> = {
+  paneId: "realized-vol",
+  kind: "realized-volatility",
+  label: "realized-volatility",
+  read: readRealizedVolEvidence,
+  mismatches(evidence, { resolved, payload }) {
+    const mismatches: string[] = [];
+    const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
+    const settings = { ...resolved.instance?.settings, ...resolved.options };
+    if (symbol && evidence.symbol !== parsePublicTickerKey(symbol).symbol) mismatches.push("rendered realized volatility symbol does not match");
+    if (evidence.view !== (settings.tab ?? settings.initialView ?? "graph")) mismatches.push("rendered realized volatility view does not match");
+    if (evidence.estimator !== (settings.estimator ?? "close-to-close")) mismatches.push("rendered realized volatility estimator does not match");
+    if (evidence.lookbackYears !== Number(settings.lookbackYears ?? 1)) mismatches.push("rendered realized volatility lookback does not match");
+    if (evidence.showIv !== (settings.showIv !== false)) mismatches.push("rendered realized volatility IV selection does not match");
+    if (evidence.windows.join(",") !== selectedWindows(settings.windows).join(",")) mismatches.push("rendered realized volatility windows do not match");
+    return mismatches;
+  },
+  unavailable(evidence, { resolved, payload }) {
+    const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
+    return evidence?.complete && !evidence.loading ? [] : [symbol ?? "realized volatility"];
+  },
+};

@@ -56,8 +56,16 @@ import {
   toggleChartSeries,
 } from "./chart-spec";
 import {
+  futuresGenericNotice,
+  futuresGenericRollFromValue,
+  futuresGenericRollLabel,
+  futuresGenericRollValue,
+  type FuturesGenericAdjust,
+} from "../../../utils/futures-generic";
+import {
   buildEmptyChartPreset,
   buildPriceChartPreset,
+  chartFuturesGeneric,
   chartSeriesLabel,
   defaultFinancialTimestampMode,
   builtinStudyPeriod,
@@ -66,6 +74,7 @@ import {
   isPeriodStudy,
   setBuiltinStudies,
   setBuiltinStudyPeriod,
+  setChartFuturesGeneric,
   setPairStudies,
   rebindResearchChartSpec,
   STUDY_PERIOD_MAX,
@@ -142,6 +151,18 @@ interface ChartComposerSurfaceProps {
 }
 
 const QUICK_ADD_CAPTURE = "quick-add";
+
+const GENERIC_ROLL_OPTIONS = [
+  { value: "oi", label: "OI switch" },
+  { value: "f5", label: "5d before notice" },
+  { value: "d15", label: "Day 15" },
+];
+
+const GENERIC_ADJUST_OPTIONS = [
+  { value: "none", label: "None" },
+  { value: "ratio", label: "Ratio" },
+  { value: "difference", label: "Difference" },
+];
 
 function footerAnchorPoint(event?: PaneFooterPressEvent): { x: number; y: number } | undefined {
   const x = event?.pixelX;
@@ -655,6 +676,31 @@ function ChartComposerSurface({
     return formatChartDateWindow(window, timeZone);
   }, [spec.series, spec.viewport.dateWindow]);
 
+  // A generic future (CL1) is a rolling series: its roll rule and adjustment are chart controls.
+  const generic = useMemo(() => chartFuturesGeneric(spec), [spec]);
+  const genericFilters = useMemo(() => {
+    if (!generic) return [];
+    const roll = futuresGenericRollValue(generic.roll);
+    const rollOptions = GENERIC_ROLL_OPTIONS.map((option) => option.value === "f5"
+      ? { ...option, label: futuresGenericNotice(generic.root) === "first notice" ? "5d before notice" : "5d before last trade" }
+      : option);
+    if (!rollOptions.some((option) => option.value === roll)) rollOptions.push({ value: roll, label: futuresGenericRollLabel(generic) });
+    const update = (change: Parameters<typeof setChartFuturesGeneric>[1]) => {
+      const next = setChartFuturesGeneric(specRef.current, change);
+      specRef.current = next;
+      setSpec(next);
+    };
+    return [
+      { id: "roll", label: "Roll", value: roll, options: rollOptions, title: "Roll rule",
+        onChange: (value: string) => {
+          const next = futuresGenericRollFromValue(value);
+          if (next) update({ roll: next });
+        } },
+      { id: "adjust", label: "Adjust", value: generic.adjust, options: GENERIC_ADJUST_OPTIONS, title: "Adjustment",
+        onChange: (value: string) => update({ adjust: value as FuturesGenericAdjust }) },
+    ];
+  }, [generic, setSpec]);
+
   const emptyMessage = spec.series.length === 0
     ? "Add a series to start the chart"
     : resolution.loading
@@ -670,6 +716,7 @@ function ChartComposerSurface({
             value: spec.viewport.dateWindow ? "" : spec.viewport.range,
             options: RANGE_OPTIONS,
             onChange: (value: string) => setRange(value as TimeRange) },
+          ...genericFilters,
         ]}
         view={resolutionOptions.length > 1 ? {
           value: spec.viewport.resolution,

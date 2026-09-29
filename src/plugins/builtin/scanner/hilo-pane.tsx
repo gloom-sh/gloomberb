@@ -72,34 +72,29 @@ type RenderRow = (
 // One adapter per side, created once, so the memoized table rows keep their
 // identity while the feed ticks.
 const RENDER_ROW: Record<Side, RenderRow> = {
-  highs: (row, column, _index, rowState) => renderCell("highs", row, column, rowState),
-  lows: (row, column, _index, rowState) => renderCell("lows", row, column, rowState),
+  highs: (row, column) => renderCell("highs", row, column),
+  lows: (row, column) => renderCell("lows", row, column),
 };
 
 function renderCell(
   side: Side,
   row: ScannerHiloExtreme,
   column: DataTableColumn,
-  rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   const sideColor = side === "lows" ? colors.negative : colors.positive;
   switch (column.id) {
     case "symbol":
       return {
         text: row.symbol,
-        color: selectedColor ?? sideColor,
+        color: sideColor,
         attributes: TextAttributes.BOLD,
       };
     case "price":
-      return {
-        text: formatHiloPrice(row.price),
-        color: selectedColor,
-      };
+      return { text: formatHiloPrice(row.price) };
     default:
       return {
         text: formatCompact(row.count),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
   }
 }
@@ -174,6 +169,7 @@ function HiloPane({ focused, width, height }: PaneProps) {
       getItemKey={rowKey}
       onActivate={(row) => pinTicker(row.symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
       renderCell={RENDER_ROW[side]}
+      selectedTextOverridesCellColor
       emptyContent={feed.payload ? undefined : <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />}
       emptyStateTitle="Nothing above the price filter yet."
     />

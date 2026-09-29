@@ -5,7 +5,8 @@ import type { OptionsChain, OptionContract, Quote } from "../../../types/financi
 import type { DataProvider } from "../../../types/data-provider";
 import { buildSurfaceGrid } from "../vol-surface/model";
 import { loadVolatilitySurface } from "../vol-surface/client";
-import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "./model";
+import { DEFAULT_OPTION_CALC_DRAFT } from "./model";
+import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { loadCalculatorSurfaceVol, projectCalculatorSurfaceVol, type CalculatorSurfaceDependencies } from "./surface";
 
 const now = Date.UTC(2026, 8, 22, 14);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { daysToExpiryFrom, valueOption } from "../options-calculator/model";
+import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import {
   buildScenario, expiryRisk, optionExpirationClose, parseLegs, scenarioValue, validatePosition,
   type ScenarioLeg, type ScenarioPosition,
@@ -23,9 +23,9 @@ describe("scenario aggregation", () => {
 
   test("signed quantities and per-leg multipliers apply to every value and entry cash flow", () => {
     const result = scenarioValue(p, 103, date, shift);
-    const singles = legs.map((item) => valueOption({ symbol: p.symbol, side: item.side, spot: 103,
+    const singles = legs.map((item) => valueOption({ side: item.side, spot: 103,
       strike: item.strike, daysToExpiry: daysToExpiryFrom(item.expiration, date), rate: p.rate,
-      dividendYield: p.dividendYield, volatility: item.volatility + shift, marketPrice: 0 }));
+      dividendYield: p.dividendYield, volatility: item.volatility + shift }));
     for (const key of ["price", "delta", "gamma", "thetaPerDay", "vegaPerPoint", "rhoPerPoint"] as const) {
       expect(result[key]).toBeCloseTo(singles[0]![key] * 200 - singles[1]![key] * 30, 8);
     }
@@ -123,8 +123,8 @@ describe("exact terminal risk", () => {
     const result = buildScenario(p);
     expect(result.warnings.some((warning) => warning.includes("Mixed expirations"))).toBe(true);
     const atMoney = result.payoff.find((point) => point.spot === 100)!;
-    const remainingLeg = valueOption({ symbol: "TEST", side: "call", spot: 100, strike: 100,
-      rate: p.rate, dividendYield: p.dividendYield, volatility: 0.25, marketPrice: 0,
+    const remainingLeg = valueOption({ side: "call", spot: 100, strike: 100,
+      rate: p.rate, dividendYield: p.dividendYield, volatility: 0.25,
       daysToExpiry: daysToExpiryFrom(p.legs[1]!.expiration, result.expiryDate) });
     expect(atMoney.expiry).toBeCloseTo(-100 * remainingLeg.price, 8);
     expect(result.dates.at(-1)).toBe(optionExpirationClose(EXPIRATION));

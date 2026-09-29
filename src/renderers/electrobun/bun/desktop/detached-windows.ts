@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electrobun/bun";
+import type { BrowserWindow } from "electrobun/bun";
 import { findPaneInstance, type AppConfig } from "../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
 import { isPaneDetached } from "../../../../plugins/pane-manager";
@@ -14,22 +14,9 @@ import {
   focusWindowForRpcKey,
   paneIdFromDetachedRpcKey,
 } from "../window/focus";
-import {
-  applyWindowMoveEvent,
-  applyWindowResizeEvent,
-  getWindowFrame,
-  updateWindowFrameCache,
-  type WindowMoveEvent,
-  type WindowResizeEvent,
-} from "./window-events";
+import { getWindowFrame } from "../window/events";
+import { createAppWindow } from "../window/create";
 import type { DesktopStateBroadcaster, DesktopStateRpc } from "./state-broadcaster";
-import { applyWindowsCustomChrome } from "./windows-custom-chrome";
-import { applyWindowsWindowIcon } from "./windows-icons";
-import {
-  desktopTitleBarStyle,
-  desktopWindowRenderer,
-  desktopWindowStyleMask,
-} from "./window-style";
 
 const INITIAL_DOCK_SUPPRESSION_MS = 800;
 const WINDOW_CONTROL_DOCK_SUPPRESSION_MS = 5_000;
@@ -189,20 +176,13 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
     const rpc = this.options.createRpc(detachedRpcKey(instanceId));
     const initialFrame = normalizeWindowFrameWithMinimum(frame, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE);
     const title = this.resolveTitle(instanceId);
-    const window = new BrowserWindow({
+    const window = createAppWindow({
       title,
       frame: initialFrame,
-      url: "views://mainview/index.html",
-      renderer: desktopWindowRenderer(),
       rpc: rpc as never,
-      styleMask: desktopWindowStyleMask(),
-      titleBarStyle: desktopTitleBarStyle(),
-      navigationRules: JSON.stringify(["views://*"]),
-      sandbox: false,
+      minSize: DETACHED_WINDOW_MIN_SIZE,
+      onFrameChange: () => this.scheduleMove(instanceId),
     });
-    applyWindowsWindowIcon(title);
-    applyWindowsCustomChrome(title);
-    updateWindowFrameCache(window, initialFrame, DETACHED_WINDOW_MIN_SIZE);
     this.windows.set(instanceId, window);
     this.suppressDockUntil.set(instanceId, Date.now() + INITIAL_DOCK_SUPPRESSION_MS);
 
@@ -215,15 +195,6 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
         return;
       }
       void this.options.commitDesktopSnapshot(this.options.getDesktopWorkspace().closeDetachedPane(instanceId));
-    });
-
-    (window as any).on?.("move", (event: WindowMoveEvent) => {
-      applyWindowMoveEvent(window, event);
-      this.scheduleMove(instanceId);
-    });
-    (window as any).on?.("resize", (event: WindowResizeEvent) => {
-      applyWindowResizeEvent(window, event, DETACHED_WINDOW_MIN_SIZE);
-      this.scheduleMove(instanceId);
     });
 
     return window;

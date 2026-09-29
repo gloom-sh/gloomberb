@@ -10,7 +10,9 @@ import {
   readPluginManifest,
   type HostExportTable,
 } from "../../plugins/compat";
+import type { AbsorbedPlugin } from "../../plugins/absorbed";
 import {
+  findAbsorbedCheckout,
   getPluginsDir,
   readPluginCommit,
   resolvePluginBrowserEntry,
@@ -47,6 +49,15 @@ import { VERSION } from "../../version";
 
 const PLUGINS_DIR = getPluginsDir();
 
+/**
+ * For a leftover checkout of a plugin that is built in now. The folder is
+ * not removed for the user: an older Gloomberb sharing it may still load it.
+ */
+function absorbedNotice(absorbed: AbsorbedPlugin, directory: string | null): string {
+  const built = `${absorbed.name} is built into Gloomberb now`;
+  return directory ? `${built}; remove this copy with "gloomberb remove ${directory}".` : `${built}.`;
+}
+
 export async function updatePlugins(name?: string) {
   const dirs = name ? [validatePluginDirectoryName(name)] : installedPluginDirectories();
 
@@ -58,6 +69,11 @@ export async function updatePlugins(name?: string) {
   const listings = await loadRegistryListings();
   for (const dir of dirs) {
     const targetDir = join(PLUGINS_DIR, dir);
+    const absorbed = findAbsorbedCheckout(targetDir);
+    if (absorbed) {
+      console.log(cliStyles.muted(`Skipping ${dir} (${absorbed.name} is built into Gloomberb now)`));
+      continue;
+    }
     if (lstatSync(targetDir, { throwIfNoEntry: false })?.isSymbolicLink()) {
       console.log(cliStyles.muted(`Skipping ${dir} (linked to a local checkout)`));
       continue;
@@ -155,6 +171,14 @@ export async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorRepo
     checks.push({ id, status, message });
     if (status === "fail" || (status === "warn" && report.status === "ok")) report.status = status;
   };
+
+  // Not broken, and not worth importing: the loader skips it for the built-in.
+  const absorbed = findAbsorbedCheckout(candidate);
+  if (absorbed) {
+    const installed = candidate === join(PLUGINS_DIR, directory);
+    add("built-in", "warn", `Not loaded: ${absorbedNotice(absorbed, installed ? directory : null)}`);
+    return report;
+  }
 
   const entryFile = await resolvePluginEntry(candidate);
   if (!entryFile) {
@@ -268,7 +292,10 @@ export interface InstalledPluginRow {
   update?: string;
   description: string;
   linked: boolean;
-  /** Why the loader skips it without importing it: it needs a newer Gloomberb, or the checkout is known to break. */
+  /**
+   * Why the loader skips it without importing it: it needs a newer Gloomberb,
+   * the checkout is known to break, or the plugin is built in now.
+   */
   blocked?: string;
 }
 
@@ -276,13 +303,16 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
   const entries = installedPluginDirectories();
   if (entries.length === 0) return [];
 
+  const absorbed = new Map(entries.map((name) => [name, findAbsorbedCheckout(join(PLUGINS_DIR, name))]));
+  const updatable = entries.filter((name) => !absorbed.get(name));
   // Off by default: this is a local listing, and asking every remote turns it
   // into a network call that can hang behind a credential prompt.
   const listings = options.check ? await loadRegistryListings() : new Map<string, RegistryListing>();
-  const heads = options.check ? await readPluginRemoteHeads(entries) : {};
+  const heads = options.check && updatable.length > 0 ? await readPluginRemoteHeads(updatable) : {};
 
   return entries.map((name) => {
     const dir = join(PLUGINS_DIR, name);
+    const builtIn = absorbed.get(name);
     let version = "";
     let description = "";
     const pkgPath = join(dir, "package.json");
@@ -297,7 +327,7 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
     }
     const linked = lstatSync(dir).isSymbolicLink();
     const commit = readPluginCommit(dir);
-    const blocked = linked ? null : checkPluginCompatibility(dir)?.error;
+    const blocked = builtIn ? absorbedNotice(builtIn, name) : linked ? null : checkPluginCompatibility(dir)?.error;
     const row: InstalledPluginRow = {
       name,
       version,
@@ -307,6 +337,8 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
       ...(blocked ? { blocked } : {}),
     };
     if (!options.check) return row;
+    // `update` skips it, so nothing is waiting.
+    if (builtIn) return { ...row, update: "" };
     const remote = readPluginRemote(dir);
     // A registry-listed plugin moves between reviewed commits, so what its
     // branch holds today says nothing about whether an update is waiting.

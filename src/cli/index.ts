@@ -201,7 +201,7 @@ function createCoreCliCommands(
       help: {
         group: CLI_COMMAND_GROUPS.plugins,
         usage: ["install <user/repo>"],
-        examples: ["install gloom-sh/gloom-fear-greed", "install https://github.com/gloom-sh/gloom-tv"],
+        examples: ["install gloom-sh/gloom-polls", "install https://github.com/gloom-sh/gloom-tv"],
       },
       execute: async (args) => {
         const ref = args[0];

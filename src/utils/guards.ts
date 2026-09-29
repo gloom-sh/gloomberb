@@ -25,3 +25,13 @@ export function isFiniteNumber(value: unknown): value is number {
 export function finiteOrNull(value: unknown): number | null {
   return isFiniteNumber(value) ? value : null;
 }
+
+/** An array holding only strings. */
+export function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+/** A string that parses as a date. */
+export function isDateString(value: unknown): value is string {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}

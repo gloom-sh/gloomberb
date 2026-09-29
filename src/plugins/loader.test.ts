@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
 import { VERSION } from "../version";
-import { loadExternalPlugin, readPluginCommit } from "./loader";
+import { listPluginDirectories, loadExternalPlugin, readPluginCommit } from "./loader";
 
 const scratch: string[] = [];
 
@@ -98,5 +98,46 @@ describe("loadExternalPlugin", () => {
     writeFileSync(join(dir, "label.ts"), `export const label = "Split 2";\n`);
     writeFileSync(join(dir, ".git", "HEAD"), `${"1".repeat(40)}\n`);
     expect((await loadExternalPlugin(dir, "cli", { fresh: true }))?.needsRestart).toBe(true);
+  });
+});
+
+/**
+ * Market Heatmap, Market Halts and Fear & Greed are built in again, and
+ * upgraded installs still have their external checkouts. Loaded beside the
+ * built-in, one fails on the duplicate id and reports a crash on every launch,
+ * so the loader skips it before linking or importing anything, and leaves the
+ * folder as it is for an older Gloomberb that may share it.
+ */
+describe("leftover checkouts of plugins that are built in now", () => {
+  const imported = `throw new Error("imported");\n`;
+
+  test("are skipped under either product name, by gloom.json id, and when linked", async () => {
+    const pluginsDir = mkdtempSync(join(tmpdir(), "gloom-plugins-"));
+    const devDir = mkdtempSync(join(tmpdir(), "gloom-dev-"));
+    scratch.push(pluginsDir, devDir);
+    const folder = (parent: string, name: string, files: Record<string, string>) => {
+      mkdirSync(join(parent, name));
+      for (const [file, content] of Object.entries(files)) writeFileSync(join(parent, name, file), content);
+      return join(parent, name);
+    };
+    folder(pluginsDir, "gloom-market-heatmap", { "index.ts": imported });
+    folder(pluginsDir, "gloom-fear-greed", { "index.ts": imported });
+    folder(pluginsDir, "gloomberb-market-halts", { "index.ts": imported });
+    folder(pluginsDir, "heatmap-fork", { "gloom.json": JSON.stringify({ id: "market-heatmap" }), "index.ts": imported });
+    symlinkSync(folder(devDir, "gloom-market-halts", { "index.ts": imported }), join(pluginsDir, "gloom-market-halts"), "dir");
+    folder(pluginsDir, "weather", { "index.ts": `export default { id: "weather", name: "Weather" };\n` });
+
+    expect(await listPluginDirectories(pluginsDir)).toEqual([join(pluginsDir, "weather")]);
+    const leftovers = ["gloom-market-heatmap", "gloom-fear-greed", "gloomberb-market-halts", "heatmap-fork", "gloom-market-halts"];
+    for (const name of leftovers) {
+      const dir = join(pluginsDir, name);
+      expect(await loadExternalPlugin(dir)).toBeNull();
+      expect(existsSync(join(dir, "node_modules"))).toBe(false);
+    }
+  });
+
+  test("are skipped by the id they export when there is no gloom.json", async () => {
+    const dir = pluginAt(SHA, { "index.ts": `export default { id: "market-halts", name: "Market Halts" };\n` });
+    expect(await loadExternalPlugin(dir)).toBeNull();
   });
 });

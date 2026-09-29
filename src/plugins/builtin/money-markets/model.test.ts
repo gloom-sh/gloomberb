@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../../api-client/money-markets";
 import { ApiRequestError } from "../../../api-client/errors";
 import { fetchMoneyMarkets, validateMoneyMarkets } from "./client";
-import { moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketRows } from "./model";
+import { moneyMarketAxis, moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRows } from "./model";
 
 function row(id = "sofr", overrides: Partial<MoneyMarketRow> = {}): MoneyMarketRow {
   return { id, label: id, seriesId: "SOFR", sourceSeriesIds: ["SOFR"], sourceUrl: null,
@@ -46,12 +46,22 @@ describe("money-market boundary", () => {
     expect(curves[1]?.points[0]?.value).toBe(-0.1);
     expect(curves[1]?.points[0]?.asOf).toBe("2026-09-11");
   });
-  test("history charts use the percentile window and retain explicit gaps", () => {
+  test("history charts use the percentile window and run across holidays without a fixing", () => {
     const observation = row("sofr", { history: [
       { date: "2025-08-22", value: 9 }, { date: "2025-09-21", value: 4 },
       { date: "2026-09-18", value: null }, { date: "2026-09-21", value: 0 },
     ] });
     expect(moneyMarketHistory(observation)).toEqual(observation.history.slice(1));
+    // A null is a holiday, not a break in the series; a zero rate is a fixing.
+    expect(moneyMarketObservations(observation)).toEqual([{ date: "2025-09-21", value: 4 }, { date: "2026-09-21", value: 0 }]);
+  });
+  test("chart labels read in the board's units at the range's precision", () => {
+    const domain = (min: number, max: number) => ({ side: "right" as const, min, max, scale: "linear" as const, unit: "", unitGroup: "" });
+    expect(moneyMarketAxis("percent")(3.84, domain(3.45, 4.36))).toBe("3.84%");
+    expect(moneyMarketAxis("usd-billions")(5800, domain(5559, 6021))).toBe("$5,800B");
+    expect(moneyMarketAxis("usd-billions")(0.5, domain(0.2, 0.9))).toBe("$0.50B");
+    expect(moneyMarketRateChange(0.11)).toBe("+11.0bp");
+    expect(moneyMarketRateChange(-0.16)).toBe("-16.0bp");
   });
   test("missing endpoint gives an actionable unavailable state without hiding auth errors", async () => {
     await expect(fetchMoneyMarkets({ getCloudMoneyMarkets: async () => { throw new ApiRequestError("not found", 404); } })).rejects.toThrow("not available yet");

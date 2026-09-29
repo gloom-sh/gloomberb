@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { valueOption } from "../../options-calculator/model";
+import { valueOption } from "./pricing";
 import {
   detectButterflyArbitrage, detectCalendarArbitrage, evaluateSmile,
   fitVolatilitySmile, interpolateTotalVariance, sviTotalVariance,
@@ -165,8 +165,7 @@ describe("arbitrage warnings", () => {
   test("uses convex strike slopes on irregular spacing without false flags on Black-Scholes calls", () => {
     const strikes = [50, 80, 90, 95, 100, 102, 110, 130, 170];
     const valid = strikes.map((strike) => ({ strike, callPrice: valueOption({
-      symbol: "", side: "call", spot: 100, strike, daysToExpiry: 180,
-      rate: 0.04, volatility: 0.25, dividendYield: 0.01, marketPrice: 0,
+      side: "call", spot: 100, strike, daysToExpiry: 180, rate: 0.04, volatility: 0.25, dividendYield: 0.01,
     }).price }));
     expect(detectButterflyArbitrage(valid.toReversed())).toEqual([]);
     const irregular = [{ strike: 90, callPrice: 12 }, { strike: 100, callPrice: 7 }, { strike: 120, callPrice: 2 }];

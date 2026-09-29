@@ -2,28 +2,36 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppendedPages } from "./pages";
 import type { CloudJobsMoverPayload, CloudJobsPosting, CloudJobsSummaryPayload } from "../../../api-client/types";
 import {
+  chartTableChromeRows,
   Badge,
   Button,
+  ChartTableHeader,
+  CompositeChart,
   DataTableStackView,
   DataTableView,
   EmptyState,
   PaneStatusBody,
   SectionHeading,
-  StaticChartSurface,
+  scalarPoint,
+  staticSeries,
   Tabs,
+  useChartTableLayout,
   usePaneFooter,
   usePaneNoticeFooter,
   useTableLoadMore,
+  type ChartTableHeaderProps,
   type DataTableCell,
   type PaneFooterSegment,
+  type StatItem,
 } from "../../../components";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
+import { statToneColor } from "../../../components/ui/stat-grid";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
+import type { ResolvedSeries } from "../../../time-series/types";
 import { handleRefreshKey, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
-import { blendHex, colors } from "../../../theme/colors";
+import { colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -58,6 +66,7 @@ import {
   type PostingColumnId,
   type PostingRow,
   type PostingSort,
+  type ShareBarRow,
 } from "./model";
 import { ShareBars } from "./share-bars";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -70,25 +79,6 @@ const MOVERS_PAGE = 200;
 
 type DetailTab = "roles" | "locations" | "seniority" | "salary";
 
-function toneColor(tone: "positive" | "negative" | "neutral"): string {
-  return tone === "positive" ? colors.positive : tone === "negative" ? colors.negative : colors.textDim;
-}
-
-/** One headline figure: a big number with a small label under it. */
-function Stat({ label, value, detail, color, width }: { label: string; value: string; detail?: string; color?: string; width: number }) {
-  return (
-    <Box flexDirection="column" width={width} flexShrink={0} overflow="hidden">
-      <Box height={1} flexDirection="row">
-        <Text fg={color ?? colors.textBright} attributes={TextAttributes.BOLD}>{value}</Text>
-        {detail ? <Text fg={colors.textDim}>{`  ${detail}`}</Text> : null}
-      </Box>
-      <Box height={1}>
-        <Text fg={colors.textDim}>{label}</Text>
-      </Box>
-    </Box>
-  );
-}
-
 function HiringProWall({ symbol }: { symbol: string | null }) {
   return (
     <ProWall
@@ -100,47 +90,46 @@ function HiringProWall({ symbol }: { symbol: string | null }) {
 
 // Company view ----------------------------------------------------------------
 
-function CompanyHeader({ summary, width }: { summary: CloudJobsSummaryPayload; width: number }) {
+/**
+ * The company's figures, most important first: a short pane keeps the first
+ * ones. Details only fit beside the figures in a wide pane; elsewhere they
+ * would cost the grid a column.
+ */
+function companyFigures(summary: CloudJobsSummaryPayload, width: number): StatItem[] {
   const trend = summary.change30d;
-  const columns = Math.max(2, Math.min(7, Math.floor(width / 18)));
-  const statWidth = Math.floor((width - 2) / columns);
-  // Details only fit beside the figure on a roomy column.
-  const roomy = statWidth >= 26;
-  const stats: Array<{ label: string; value: string; detail?: string; color?: string }> = [
+  const roomy = width >= 134;
+  return [
     {
-      label: "open roles",
+      id: "open",
+      label: "Open roles",
       value: formatNumber(summary.openCount, 0),
       detail: roomy && summary.openPerThousandEmployees != null ? `${formatNumber(summary.openPerThousandEmployees, 1)}/1k staff` : undefined,
     },
     trend
-      ? { label: "30 days", value: formatChange(trend), color: toneColor(changeTone(trend.count)) }
+      ? { id: "change", label: "30 days", value: formatChange(trend), tone: changeTone(trend.count) }
       : summary.posted30d != null
-        ? { label: "posted last 30d", value: formatNumber(summary.posted30d, 0) }
-        : { label: "closed 30d", value: formatNumber(summary.closed30d, 0) },
-    { label: "new this week", value: formatNumber(summary.new7d, 0), detail: roomy && summary.coverage.daysObserved <= 1 ? "first read" : undefined },
-    { label: "remote", value: summary.remoteShare != null ? formatShare(summary.remoteShare) : "-" },
-    { label: "median age", value: summary.medianAgeDays != null ? `${summary.medianAgeDays}d` : "-" },
+        ? { id: "posted", label: "Posted 30d", value: formatNumber(summary.posted30d, 0) }
+        : { id: "closed", label: "Closed 30d", value: formatNumber(summary.closed30d, 0) },
+    { id: "new", label: "New 7d", value: formatNumber(summary.new7d, 0), detail: roomy && summary.coverage.daysObserved <= 1 ? "first read" : undefined },
+    { id: "remote", label: "Remote", value: summary.remoteShare != null ? formatShare(summary.remoteShare) : "-" },
+    { id: "age", label: "Median age", value: summary.medianAgeDays != null ? `${summary.medianAgeDays}d` : "-" },
     // Standing roles the company hires for continuously; the rest are the
     // openings that say something about its plans.
     {
-      label: "evergreen",
+      id: "evergreen",
+      label: "Evergreen",
       value: summary.evergreenShare != null ? formatShare(summary.evergreenShare) : "-",
       detail: roomy && summary.evergreenCount != null && summary.evergreenShare != null
         ? `${formatNumber(Math.max(0, summary.openCount - summary.evergreenCount), 0)} specific`
         : undefined,
     },
-    { label: "contract", value: summary.contractShare != null ? formatShare(summary.contractShare) : "-" },
+    { id: "contract", label: "Contract", value: summary.contractShare != null ? formatShare(summary.contractShare) : "-" },
   ];
-  return (
-    <Box flexDirection="row" paddingX={1} height={2} flexShrink={0}>
-      {stats.slice(0, columns).map((stat) => (
-        <Stat key={stat.label} {...stat} width={statWidth} />
-      ))}
-    </Box>
-  );
 }
 
 const COMPACT_AXIS_UNITS = [[1e9, "B"], [1e6, "M"], [1e3, "k"]] as const;
+const OPEN_ROLES_PANELS = [{ id: "main" }];
+const formatOpenRoles = (value: number) => formatNumber(value, 0);
 
 /**
  * Open-role counts on the chart axis. Below 10k they read as whole counts
@@ -157,62 +146,75 @@ export function formatOpenRolesAxisValue(value: number, domain: CompositeAxisDom
   return `${formatNumber(value / divisor, decimals)}${suffix}`;
 }
 
+function openRolesColor(summary: CloudJobsSummaryPayload): string {
+  const tone = changeTone(summary.change30d?.count ?? summary.change90d?.count);
+  return tone === "positive" ? colors.positive : tone === "negative" ? colors.negative : colors.borderFocused;
+}
+
 /**
- * The open-roles history once a week of daily reads exists; before that,
- * the backlog by posting age, which is the one thing a first read can say
- * honestly about time.
+ * The open-roles line once a week of daily reads exists, on an axis cut to
+ * the range it moves in; before that, the backlog by posting age, which is the
+ * one thing a first read can say honestly about time. The by-function bars sit
+ * beside it in a wide pane.
  */
-function Chart({ summary, width, height, focused = false }: { summary: CloudJobsSummaryPayload; width: number; height: number; focused?: boolean }) {
-  const points = useMemo(() => historyChartPoints(summary), [summary]);
+function OpenRolesBand({ summary, series, functionRows, width, height, wide }: {
+  summary: CloudJobsSummaryPayload;
+  series: ResolvedSeries[] | null;
+  functionRows: ShareBarRow[];
+  width: number;
+  height: number;
+  wide: boolean;
+}) {
   const ageRows = useMemo(() => buildAgeBars(summary), [summary]);
-  if (points) {
-    const tone = changeTone(summary.change30d?.count ?? summary.change90d?.count);
-    const accent = tone === "positive" ? colors.positive : tone === "negative" ? colors.negative : colors.borderFocused;
-    const palette = {
-      ...resolveChartPalette(colors, tone),
-      lineColor: accent,
-      fillColor: blendHex(colors.bg, accent, 0.22),
-      gridColor: blendHex(colors.bg, colors.border, 0.55),
-    };
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        <Box height={1} paddingX={1}>
-          <SectionHeading title="Open roles" />
-        </Box>
-        <StaticChartSurface
-          points={points}
-          width={Math.max(20, width - 2)}
-          height={Math.max(3, height - 1)}
-          mode="area"
-          calendarSpaced
-          colors={palette}
-          showTimeAxis
-          timeAxisColor={colors.textDim}
-          yAxisColor={colors.textDim}
-          formatYAxisValue={formatOpenRolesAxisValue}
-          focused={focused}
-        />
-      </Box>
-    );
-  }
+  const chartWidth = wide ? Math.floor(width * 0.58) : width;
+  const barsWidth = wide ? width - chartWidth - 1 : 0;
   return (
-    <Box flexDirection="column" width={width} height={height} paddingX={1}>
-      <Box height={1}>
-        <SectionHeading title="Open roles by posting age" />
-      </Box>
-      {ageRows.length === 0 ? (
-        <Text fg={colors.textDim}>
-          {summary.datesReliable === false ? "No reliable posting dates." : "This careers system publishes no posting dates."}
-        </Text>
+    <Box flexDirection="row" width={width} height={height} gap={wide ? 1 : 0}>
+      {series ? (
+        <CompositeChart
+          series={series}
+          panels={OPEN_ROLES_PANELS}
+          width={chartWidth}
+          height={height}
+          focused={false}
+          navigable={false}
+          showLegend
+          showTimeAxis
+          formatValue={formatOpenRoles}
+          formatAxisValue={formatOpenRolesAxisValue}
+          remoteKind="jobs-open-roles"
+        />
       ) : (
-        <ShareBars rows={ageRows} width={Math.max(24, width - 2)} color={colors.borderFocused} />
+        <Box flexDirection="column" width={chartWidth} height={height} paddingX={1}>
+          <Box height={1}>
+            <SectionHeading title="Open roles by posting age" />
+          </Box>
+          {ageRows.length === 0 ? (
+            <Text fg={colors.textDim}>
+              {summary.datesReliable === false ? "No reliable posting dates." : "This careers system publishes no posting dates."}
+            </Text>
+          ) : (
+            <ShareBars rows={ageRows} width={Math.max(24, chartWidth - 2)} color={colors.borderFocused} />
+          )}
+        </Box>
       )}
+      {wide ? (
+        <Box flexDirection="column" width={barsWidth} height={height} paddingX={1} overflow="hidden">
+          <SectionHeading title="By function" />
+          <ShareBars rows={functionRows} width={barsWidth - 2} showDelta />
+        </Box>
+      ) : null}
     </Box>
   );
 }
 
+/** The tags worth a badge: at least two roles and 2% of the open ones. */
+function signalTags(summary: CloudJobsSummaryPayload) {
+  return summary.tags.filter((tag) => tag.count >= Math.max(2, summary.openCount * 0.02)).slice(0, 6);
+}
+
 function Signals({ summary }: { summary: CloudJobsSummaryPayload }) {
-  const tags = summary.tags.filter((tag) => tag.count >= Math.max(2, summary.openCount * 0.02)).slice(0, 6);
+  const tags = signalTags(summary);
   if (tags.length === 0) return null;
   return (
     <Box flexDirection="row" paddingX={1} height={1} gap={1} overflow="hidden">
@@ -291,7 +293,6 @@ function CompanyView({
   /** Inside Ticker Research, whose own tab strip owns h/l and the arrows. */
   embedded: boolean;
 }) {
-  const { nativePaneChrome } = useUiCapabilities();
   const rendererHost = useRendererHost();
   const [tab, setTab] = usePluginPaneState<DetailTab>("jobs:tab", "roles");
   const [sort, setSort] = usePluginPaneState<PostingSort>("jobs:sort", DEFAULT_POSTING_SORT);
@@ -384,44 +385,68 @@ function CompanyView({
     focused,
   });
 
-  const renderCell = useCallback((row: PostingRow, column: PostingColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const renderCell = useCallback((row: PostingRow, column: PostingColumn): DataTableCell => {
     switch (column.id) {
       case "title":
-        return { text: row.title, color: selectedColor ?? colors.textBright };
+        return { text: row.title, color: colors.textBright };
       case "function":
-        return { text: row.seniority && width >= 96 ? `${row.function} · ${row.seniority}` : row.function, color: selectedColor ?? colors.text };
+        return { text: row.seniority && width >= 96 ? `${row.function} · ${row.seniority}` : row.function, color: colors.text };
       case "location":
-        return { text: row.location, color: selectedColor ?? colors.textDim };
+        return { text: row.location, color: colors.textDim };
       case "posted":
-        return { text: row.posted, color: selectedColor ?? (row.posting.postedAt && !row.posted.includes("mo") ? colors.text : colors.textDim) };
+        return { text: row.posted, color: row.posting.postedAt && !row.posted.includes("mo") ? colors.text : colors.textDim };
       case "salary":
-        return { text: row.salary, color: selectedColor ?? colors.positive };
+        return { text: row.salary, color: colors.positive };
     }
   }, [width]);
 
   const wide = width >= 96;
-  const headerHeight = 2;
-  const signalsHeight = summary.tags.length > 0 ? 1 : 0;
-  const upperHeight = Math.max(8, Math.min(12, Math.floor((height - headerHeight - signalsHeight) * 0.42)));
-  const lowerHeight = Math.max(4, height - headerHeight - signalsHeight - upperHeight - 2 - (nativePaneChrome ? 1 : 0));
-  const chartWidth = wide ? Math.floor(width * 0.58) : width;
-  const barsWidth = wide ? width - chartWidth - 1 : width;
+  const series = useMemo(() => {
+    const points = historyChartPoints(summary);
+    return points ? [staticSeries(points.map((point) => scalarPoint(point.date, point.close)), {
+      id: "open-roles", label: "Open roles", color: openRolesColor(summary), calendarSpaced: true,
+    })] : null;
+  }, [summary]);
+  // Before a week of reads the band is a few posting-age bars, not a chart:
+  // it takes the rows they need and the roles list gets the rest.
+  const ageRowCount = useMemo(() => buildAgeBars(summary).length, [summary]);
+  const barsRows = series ? undefined : 1 + Math.max(1, ageRowCount, wide ? functionRows.length : 0);
+  // The kit sizes the band over the roles list, so a short pane keeps the
+  // roles and the band gives way to the strip, then to nothing. The other
+  // tabs share the same band so it does not jump between them.
+  const header: Omit<ChartTableHeaderProps, "height"> = {
+    width,
+    tableRows: rows.length,
+    tableChromeRows: chartTableChromeRows(columns, width),
+    figures: companyFigures(summary, width),
+    chart: {
+      render: (size) => (
+        <OpenRolesBand summary={summary} series={series} functionRows={functionRows} width={size.width} height={size.height} wide={wide} />
+      ),
+      maxRows: barsRows,
+      minRows: barsRows ? Math.min(barsRows, 3) : undefined,
+      strip: series ? {
+        label: "Open roles",
+        values: series[0]!.points.map((point) => point.value ?? 0),
+        value: formatOpenRoles(summary.openCount),
+        color: series[0]!.color,
+      } : null,
+    },
+  };
+  // The tag badges are a row of their own, kept while the band has its full chart.
+  const tabRows = 1;
+  const withSignals = useChartTableLayout({ ...header, height: height - tabRows - 1 });
+  const signalsHeight = signalTags(summary).length > 0 && withSignals.mode === "full" ? 1 : 0;
+  const bodyHeight = Math.max(1, height - tabRows - signalsHeight);
+  const layout = useChartTableLayout({ ...header, height: bodyHeight });
+  const bandRows = layout.mode === "full" ? layout.chartRows : layout.mode === "strip" ? 1 : 0;
+  const lowerHeight = Math.max(1, bodyHeight - layout.figureRows - bandRows);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <CompanyHeader summary={summary} width={width} />
-      <Box flexDirection="row" height={upperHeight} flexShrink={0} marginTop={1}>
-        <Chart summary={summary} width={chartWidth} height={upperHeight} focused={focused} />
-        {wide ? (
-          <Box flexDirection="column" width={barsWidth} paddingX={1}>
-            <SectionHeading title="By function" />
-            <ShareBars rows={functionRows} width={barsWidth - 2} showDelta />
-          </Box>
-        ) : null}
-      </Box>
+      <ChartTableHeader {...header} height={bodyHeight} />
       {signalsHeight ? <Signals summary={summary} /> : null}
-      <Box height={1} paddingX={1} marginTop={1}>
+      <Box height={1} paddingX={1} flexShrink={0}>
         <Tabs
           tabs={DETAIL_TABS}
           activeValue={tab}
@@ -432,7 +457,7 @@ function CompanyView({
           keyboardNavigation={!embedded}
         />
       </Box>
-      <Box flexGrow={1} height={lowerHeight}>
+      <Box flexGrow={1} flexBasis={0} minHeight={0} height={lowerHeight}>
         {tab === "roles" ? (
           <DataTableView<PostingRow, PostingColumn>
             focused={focused}
@@ -452,6 +477,7 @@ function CompanyView({
             }))}
             getItemKey={(row) => row.key}
             renderCell={renderCell}
+            selectedTextOverridesCellColor
             emptyStateTitle="No open roles"
           />
         ) : tab === "locations" ? (
@@ -631,25 +657,24 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
       : [],
   }), [status, more.loadingMore, error, data, detailOpen, open, selected, navigateTicker]);
 
-  const renderCell = useCallback((row: MoverRow, column: MoverColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const renderCell = useCallback((row: MoverRow, column: MoverColumn): DataTableCell => {
     switch (column.id) {
       case "ticker":
-        return { text: row.ticker, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: row.ticker, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "company":
-        return { text: row.company, color: selectedColor ?? colors.text };
+        return { text: row.company, color: colors.text };
       case "open":
-        return { text: row.open, color: selectedColor ?? colors.textBright };
+        return { text: row.open, color: colors.textBright };
       case "change":
-        return { text: row.change, color: selectedColor ?? toneColor(changeTone(row.changeValue)) };
+        return { text: row.change, color: statToneColor(changeTone(row.changeValue), colors) };
       case "posted30d":
-        return { text: row.posted30d, color: selectedColor ?? colors.text };
+        return { text: row.posted30d, color: colors.text };
       case "new7d":
-        return { text: row.new7d, color: selectedColor ?? colors.text };
+        return { text: row.new7d, color: colors.text };
       case "function":
-        return { text: row.function, color: selectedColor ?? colors.textDim };
+        return { text: row.function, color: colors.textDim };
       case "country":
-        return { text: row.country, color: selectedColor ?? colors.textDim };
+        return { text: row.country, color: colors.textDim };
     }
   }, []);
 
@@ -690,6 +715,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
         }))}
         getItemKey={(row) => row.key}
         renderCell={renderCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={status === "loading" ? "Loading..." : "No companies covered yet"}
       />
     </Box>

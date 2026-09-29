@@ -7,18 +7,21 @@ const RETRYABLE_ERROR = /403|401|Forbidden|Unauthorized|ECONNRESET|ETIMEDOUT|ENO
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The browser-like headers Yahoo Finance expects on every request. */
+export const YAHOO_FINANCE_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+  Accept: "application/json,text/plain,*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+  Referer: "https://finance.yahoo.com/",
+};
+
 export class YahooHttpClient {
   private crumb: string | null = null;
   private cookie: string | null = null;
   private crumbPromise: Promise<void> | null = null;
 
   defaultHeaders() {
-    return {
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      Accept: "application/json,text/plain,*/*",
-      "Accept-Language": "en-US,en;q=0.9",
-      Referer: "https://finance.yahoo.com/",
-    };
+    return { ...YAHOO_FINANCE_HEADERS };
   }
 
   async fetchJson<T>(url: string): Promise<T> {

@@ -311,10 +311,33 @@ export function formatMarketQuantity(value: number | undefined, options: MarketF
   return formatVariableNumber(value, maxFractionDigits, options.maxWidth);
 }
 
+const EIGHTHS = ["", "⅛", "¼", "⅜", "½", "⅝", "¾", "⅞"];
+
+/**
+ * A Treasury future's price the way traders read it: whole points, then 32nds
+ * with the eighth-of-a-32nd tick as a fraction (104.484375 is 104-15½, ZT's
+ * 103.0078125 is 103-00¼). An adjusted generic off that grid keeps its 32nds
+ * to two decimals (104-15.37).
+ */
+export function formatThirtySeconds(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  const eighths = Math.abs(value) * 256;
+  const whole = Math.round(eighths);
+  if (Math.abs(eighths - whole) > 1e-6) {
+    const points = Math.floor(Math.abs(value));
+    return `${sign}${points}-${((Math.abs(value) - points) * 32).toFixed(2).padStart(5, "0")}`;
+  }
+  const points = Math.floor(whole / 256);
+  const rest = whole - points * 256;
+  return `${sign}${points}-${String(Math.floor(rest / 8)).padStart(2, "0")}${EIGHTHS[rest % 8]}`;
+}
+
 export function formatMarketPrice(value: number | undefined, options: MarketFormatOptions = {}): string {
   if (value === undefined || value === null || Number.isNaN(value)) return "—";
   const basis = resolvePriceBasis(options.priceBasis, options.assetCategory);
   if (basis === null) return "—";
+  if (basis === "thirty-seconds") return formatThirtySeconds(value);
+  if (basis === "points") return formatMarketPrice(value, { ...options, priceBasis: "per-unit" });
   if (basis === "percent-of-par") {
     const maxWidth = options.maxWidth == null ? undefined : Math.max(1, options.maxWidth - 5);
     return `${formatMarketPrice(value, { ...options, priceBasis: "per-unit", maxWidth })}% par`;
@@ -354,6 +377,8 @@ export function formatMarketCost(value: number | undefined, options: MarketForma
   if (value === undefined || value === null || Number.isNaN(value)) return "—";
   const basis = resolvePriceBasis(options.priceBasis, options.assetCategory);
   if (basis === null) return "—";
+  if (basis === "thirty-seconds") return formatThirtySeconds(value);
+  if (basis === "points") return formatMarketCost(value, { ...options, priceBasis: "per-unit" });
   if (basis === "percent-of-par") {
     const maxWidth = options.maxWidth == null ? undefined : Math.max(1, options.maxWidth - 5);
     return `${formatMarketCost(value, { ...options, priceBasis: "per-unit", maxWidth })}% par`;

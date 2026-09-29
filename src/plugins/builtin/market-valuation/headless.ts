@@ -11,8 +11,8 @@ import {
 import type { ValuationRangeId } from "./defs";
 import { DEFAULT_INDICATOR_ID, INDICATORS, resolveIndicatorArg } from "./indicators";
 import { createCloudSourceDeps } from "./sources";
+import { formatSigma } from "../shared/trend";
 import {
-  formatSigma,
   selectValuationViews,
   type IndicatorViewModel,
   type ValuationBundle,

@@ -46,14 +46,9 @@ import {
   desktopPluginManager,
 } from "./external-plugins";
 import { handleDesktopPluginStateRequest } from "./desktop/plugin-state";
+import { pluginAutoUpdateEnabled } from "../../../plugins/auto-update";
+import { startNodePluginAutoUpdates } from "../../../plugins/auto-update-node";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
-import {
-  applyWindowMoveEvent,
-  applyWindowResizeEvent,
-  updateWindowFrameCache,
-  type WindowMoveEvent,
-  type WindowResizeEvent,
-} from "./desktop/window-events";
 import { createDesktopRpcRegistry } from "./desktop/rpc-registry";
 import { DesktopStateBroadcaster } from "./desktop/state-broadcaster";
 import { DesktopDetachedWindowManager } from "./desktop/detached-windows";
@@ -61,15 +56,9 @@ import { handleDesktopHostRequest } from "./desktop/host-requests";
 import { handleDesktopWorkspaceRequest } from "./desktop/workspace/requests";
 import { handleDesktopBackendRequest } from "./desktop/backend-requests";
 import { initializeDesktopBackend } from "./desktop/initialization";
-import { applyWindowsCustomChrome } from "./desktop/windows-custom-chrome";
-import { applyWindowsWindowIcon } from "./desktop/windows-icons";
 import { applyMacosDockIcon } from "./desktop/macos-dock-icon";
-import {
-  desktopTitleBarStyle,
-  desktopWindowRenderer,
-  desktopWindowStyleMask,
-} from "./desktop/window-style";
-import { applyDesktopWindowControl, type DesktopWindowControlAction } from "./desktop/window-controls";
+import { createAppWindow } from "./window/create";
+import { applyDesktopWindowControl, type DesktopWindowControlAction } from "./window/controls";
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
 import { startRemoteControlServer, type RemoteControlServer } from "../../../remote/server";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
@@ -406,6 +395,9 @@ function closeAllDetachedWindows(): void {
   detachedWindowManager.closeAll();
 }
 
+/** How long a quit waits for the view to flush and exit on its own. */
+const QUIT_FALLBACK_MS = 2_500;
+
 function quitDesktopApp(): void {
   closeAllDetachedWindows();
   teardownServices();
@@ -475,8 +467,29 @@ async function initialize(
     void ensureDesktopRemoteControlServer().catch((error) => {
       console.error("[remote] desktop control endpoint failed", summarizeError(error));
     });
+    ensurePluginAutoUpdates();
   }
   return init;
+}
+
+let pluginAutoUpdatesStarted = false;
+
+/**
+ * Official plugins update here, in the process that owns the plugins folder
+ * for every window. The main window then brings what moved into its session
+ * the way its Plugins pane does after an update.
+ */
+function ensurePluginAutoUpdates(): void {
+  if (pluginAutoUpdatesStarted) return;
+  pluginAutoUpdatesStarted = true;
+  startNodePluginAutoUpdates({
+    manager: desktopPluginManager,
+    isEnabled: () => pluginAutoUpdateEnabled(currentConfig),
+    onUpdated: (directories) => {
+      const rpc = getWindowRpc(MAIN_WINDOW_RPC_KEY);
+      if (rpc && isWindowRpcReady(MAIN_WINDOW_RPC_KEY)) rpc.send["plugins.updated"]({ directories });
+    },
+  });
 }
 
 async function handleBackendRequest(
@@ -666,7 +679,14 @@ ApplicationMenu.on("application-menu-clicked", (event: unknown) => {
     return;
   }
   if (command.type === "quit") {
-    quitDesktopApp();
+    if (!isWindowRpcReady(MAIN_WINDOW_RPC_KEY)) {
+      quitDesktopApp();
+      return;
+    }
+    // The view sends its usage counts and then asks to exit; quit anyway if
+    // it does not.
+    getWindowRpc(MAIN_WINDOW_RPC_KEY)?.send["application-menu.select"]({ command });
+    setTimeout(quitDesktopApp, QUIT_FALLBACK_MS);
     return;
   }
   if (!isWindowRpcReady(MAIN_WINDOW_RPC_KEY)) return;
@@ -693,24 +713,10 @@ const initialMainWindowFrame = normalizeWindowFrameWithMinimum(
   MAIN_WINDOW_MIN_SIZE,
 );
 
-mainWindow = new BrowserWindow({
+mainWindow = createAppWindow({
   title: "Gloomberb",
   frame: initialMainWindowFrame,
-  url: "views://mainview/index.html",
-  renderer: desktopWindowRenderer(),
   rpc: mainRpc,
-  styleMask: desktopWindowStyleMask(),
-  titleBarStyle: desktopTitleBarStyle(),
-  navigationRules: JSON.stringify(["views://*"]),
-  sandbox: false,
+  minSize: MAIN_WINDOW_MIN_SIZE,
 });
-applyWindowsWindowIcon("Gloomberb");
-applyWindowsCustomChrome("Gloomberb");
-updateWindowFrameCache(mainWindow, initialMainWindowFrame, MAIN_WINDOW_MIN_SIZE);
 detachedWindowManager.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);
-(mainWindow as any).on?.("move", (event: WindowMoveEvent) => {
-  applyWindowMoveEvent(mainWindow, event);
-});
-(mainWindow as any).on?.("resize", (event: WindowResizeEvent) => {
-  applyWindowResizeEvent(mainWindow, event, MAIN_WINDOW_MIN_SIZE);
-});

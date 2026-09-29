@@ -17,7 +17,8 @@ export type TickerInstrumentKind =
 
 /** Source price convention. Percent-of-par quantities are nominal face amounts;
  * prices are percentage points per 100 face, independently of contract multiplier. */
-export type PriceBasis = "per-unit" | "percent-of-par";
+/** "points": an index or volatility level, not money; "thirty-seconds": a Treasury future's percent of par, read in 32nds. */
+export type PriceBasis = "per-unit" | "percent-of-par" | "points" | "thirty-seconds";
 
 export interface BrokerContractRef {
   brokerId: string;

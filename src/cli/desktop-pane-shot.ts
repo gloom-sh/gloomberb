@@ -16,6 +16,8 @@ import type { DatedObservation } from "../plugins/builtin/market-valuation/serie
 import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared/protocol";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../utils/http-proxy-response";
 import { readVisibleKeyValues } from "./visible-key-values";
+import { SHOT_API_PROXY_PREFIX, SHOT_HTTP_BRIDGE_PATH, SHOT_MARKET_BRIDGE_PATH } from "./desktop-pane-shot-routes";
+import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import {
   electrobunViewPath,
   writeElectrobunViewPage,
@@ -146,10 +148,6 @@ const CHROME_POLL_ATTEMPTS = 80;
 const SHOT_READY_TIMEOUT_MS = 45_000;
 const CDP_CALL_TIMEOUT_MS = 10_000;
 const DEFAULT_DEVICE_SCALE_FACTOR = 2;
-const SHOT_API_PROXY_PREFIX = "/__gloom_cli_api__";
-export const SHOT_MARKET_BRIDGE_PATH = "/__gloom_cli_market__";
-export const SHOT_HTTP_BRIDGE_PATH = "/__gloom_cli_http__";
-const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"] as const;
 
 export async function renderDesktopPaneScreenshot(
   payload: DesktopPaneShotPayload,
@@ -186,8 +184,7 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
   return writeElectrobunViewPage({
     entrypoint: electrobunViewPath("cli-pane-shot-entry.tsx"),
     outdir,
-    pluginName: "desktop-pane-shot-native-bridges",
-    extraAliasRules: [
+    aliasRules: [
       ["backend-rpc", "native-stubs/backend-rpc.ts"],
     ],
     failureMessage: "Failed to build desktop pane screenshot renderer.",

@@ -6,6 +6,7 @@ import { ToastHostProvider } from "../../ui/toast";
 import { AppDialogBridge } from "../../app/dialog-bridge";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
 import { OpenTuiInputHostProvider } from "./input-host";
+import { provideKittyServices } from "./kitty-services";
 import { openTuiToastHost } from "./toast-host";
 import { openTuiUiHost } from "./ui-host";
 
@@ -83,7 +84,7 @@ function createTestNativeRendererHost(renderer: any): NativeRendererHost {
       return true;
     };
   }
-  return renderer as NativeRendererHost;
+  return provideKittyServices(renderer as NativeRendererHost);
 }
 
 function OpenTuiTestProviders({ children }: { children: ReactNode }) {

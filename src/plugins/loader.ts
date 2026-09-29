@@ -5,7 +5,8 @@ import { getGloomberbHome } from "../data/config/home";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 import { reportCrash } from "../telemetry/crash-reports";
-import { checkPluginCompatibility, explainPluginLoadError, pluginSourceFiles } from "./compat";
+import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
+import { checkPluginCompatibility, explainPluginLoadError, findMissingHostExport, pluginSourceFiles, readPluginManifest } from "./compat";
 import { linkHostPackages } from "./host-link";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
@@ -25,6 +26,8 @@ export interface LoadedExternalPlugin {
   directory?: string;
   /** The checked-out git commit, when the install is a git checkout. */
   commit?: string;
+  /** `owner/repo` of the checkout's GitHub origin; usage counts trust only gloom-sh's. */
+  repo?: string;
   /** A symlink to a local checkout (`gloomberb plugin link`) rather than a clone. */
   linked?: boolean;
   error?: string;
@@ -107,6 +110,19 @@ export async function resolvePluginBrowserEntry(pluginDir: string): Promise<stri
     ?? await resolvePluginEntry(pluginDir);
 }
 
+/** `owner/repo` of a checkout's GitHub origin, read from `.git/config` directly; null for anything else. */
+export function readPluginOriginRepo(pluginDir: string): string | null {
+  try {
+    const config = readFileSync(join(pluginDir, ".git", "config"), "utf-8");
+    const origin = /\[remote "origin"\]([^[]*)/.exec(config)?.[1] ?? "";
+    const url = /^\s*url\s*=\s*(\S+)/m.exec(origin)?.[1] ?? "";
+    const match = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/i.exec(url);
+    return match ? `${match[1]}/${match[2]}` : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The commit a plugin checkout is at, read from `.git` directly so startup does
  * not spawn one git process per plugin. Returns null for anything that is not
@@ -133,6 +149,21 @@ export function readPluginCommit(pluginDir: string): string | null {
   }
 }
 
+/**
+ * The built-in a plugin folder is a leftover copy of, by its folder name or
+ * the id its gloom.json declares, or null. Reads gloom.json only, so it is
+ * safe to ask before anything in the folder is linked or imported.
+ */
+export function findAbsorbedCheckout(pluginDir: string): AbsorbedPlugin | null {
+  return findAbsorbedPlugin({ directory: basename(pluginDir), id: readPluginManifest(pluginDir).id });
+}
+
+function skipsAbsorbedCheckout(pluginDir: string, absorbed: AbsorbedPlugin | null = findAbsorbedCheckout(pluginDir)): boolean {
+  if (!absorbed) return false;
+  loaderLog.debug(`Skipped ${basename(pluginDir)}: ${absorbed.name} is built into Gloomberb now`);
+  return true;
+}
+
 export interface LoadExternalPluginOptions {
   /**
    * Import the entry as a fresh module. Bun caches `import()` by URL, so a
@@ -152,6 +183,18 @@ export interface LoadExternalPluginOptions {
  */
 const importedCommits = new Map<string, string | null>();
 
+/**
+ * Folders whose last import in this process failed on a host export the
+ * running Gloomberb does not have: a checkout older (or newer) than the host.
+ * The automatic updater looks for a newer compatible version of these first.
+ */
+const missingHostExportFailures = new Set<string>();
+
+/** Plugin folders, by name, whose last load failed on a missing host export. */
+export function pluginsMissingHostExports(): string[] {
+  return [...missingHostExportFailures].sort();
+}
+
 /** Imported at another commit earlier in this process, with files besides the entry that Bun keeps. */
 function hasStaleModules(pluginDir: string, commit: string | null): boolean {
   if (!importedCommits.has(pluginDir) || importedCommits.get(pluginDir) === commit) return false;
@@ -162,13 +205,20 @@ function hasStaleModules(pluginDir: string, commit: string | null): boolean {
   }
 }
 
-/** Loads one plugin directory. Never throws: a broken plugin comes back with `error` set. */
+/**
+ * Loads one plugin directory. Never throws: a broken plugin comes back with
+ * `error` set. Null for a folder that is not a plugin, and for a leftover
+ * checkout of a plugin that is built in now, which would only fail on the
+ * built-in's id.
+ */
 export async function loadExternalPlugin(
   pluginDir: string,
   target: PluginTarget = "cli",
   options: LoadExternalPluginOptions = {},
 ): Promise<LoadedExternalPlugin | null> {
   const directory = basename(pluginDir);
+  missingHostExportFailures.delete(directory);
+  if (skipsAbsorbedCheckout(pluginDir)) return null;
   const entryFile = await resolvePluginEntry(pluginDir);
   if (!entryFile) return null;
 
@@ -177,12 +227,14 @@ export async function loadExternalPlugin(
   linkHostPackages(pluginDir);
 
   const commit = readPluginCommit(pluginDir);
+  const repo = readPluginOriginRepo(pluginDir);
   const linked = isSymlink(pluginDir);
   const placeholder = { id: directory, name: directory, version: "" } as GloomPlugin;
   const base = {
     path: pluginDir,
     directory,
     ...(commit ? { commit } : {}),
+    ...(repo ? { repo } : {}),
     ...(linked ? { linked: true } : {}),
   };
 
@@ -216,6 +268,8 @@ export async function loadExternalPlugin(
         error,
       };
     }
+    // A copy without a gloom.json, in a folder of another name.
+    if (skipsAbsorbedCheckout(pluginDir, findAbsorbedPlugin({ id: plugin.id }))) return null;
     if (!pluginSupportsTarget(plugin, target)) {
       loaderLog.info(`Skipped ${plugin.id}: does not support "${target}"`);
       return { ...base, ...restart, plugin, unsupportedTarget: target };
@@ -225,17 +279,21 @@ export async function loadExternalPlugin(
   } catch (err) {
     loaderLog.error(`Failed to load plugin from ${pluginDir}: ${err}`);
     reportCrash(err, { kind: "plugin", plugin: directory });
+    const message = err instanceof Error ? err.message : String(err);
+    if (findMissingHostExport(message)) missingHostExportFailures.add(directory);
     return {
       ...base,
       ...restart,
       plugin: placeholder,
-      error: explainPluginLoadError(err instanceof Error ? err.message : String(err)),
+      error: explainPluginLoadError(message),
     };
   }
 }
 
 /**
- * Every plugin folder under the plugins directory, linked to the host.
+ * Every plugin folder under the plugins directory, linked to the host. A
+ * leftover checkout of a plugin that is built in now is left out, and left
+ * as it is.
  *
  * Linking has to finish for all of them before any is imported. A plugin
  * that imports a sibling (Gateway imports Flex) pulls the sibling's files in
@@ -251,7 +309,7 @@ export async function listPluginDirectories(pluginsDir: string = PLUGINS_DIR): P
   for (const entry of entries) {
     if (!isPluginDirectory(entry.name)) continue;
     const pluginDir = join(pluginsDir, entry.name);
-    if (isDirectoryOrLink(entry, pluginDir)) dirs.push(pluginDir);
+    if (isDirectoryOrLink(entry, pluginDir) && !skipsAbsorbedCheckout(pluginDir)) dirs.push(pluginDir);
   }
   dirs.sort();
   for (const pluginDir of dirs) linkHostPackages(pluginDir);

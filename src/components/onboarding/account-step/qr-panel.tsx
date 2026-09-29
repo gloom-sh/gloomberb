@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
+import type { AuthUser } from "../../../api-client";
 import { Box } from "../../../ui";
 import { useAppLanguage } from "../../../i18n/react";
 import { useShortcut } from "../../../react/input";
-import { isPlainKey } from "../../../utils/keyboard";
 import {
-  DeviceSignInController,
-  type DeviceSignInSnapshot,
-} from "../../../plugins/builtin/cloud/device-signin";
-import { DeviceSignInPanel } from "../../../plugins/builtin/cloud/device-signin-dialog";
+  DeviceSignInPanel,
+  isDeviceSignInRetryKey,
+  useDeviceSignIn,
+} from "../../../plugins/builtin/cloud/device-signin-dialog";
 
 /**
  * QR device sign-in inside the onboarding account step. The controller starts
@@ -21,37 +21,20 @@ export function AccountQrPanel({
   height: number;
 }) {
   useAppLanguage();
-  const controllerRef = useRef<DeviceSignInController | null>(null);
-  if (!controllerRef.current) controllerRef.current = new DeviceSignInController();
-  const controller = controllerRef.current;
-  const [snapshot, setSnapshot] = useState<DeviceSignInSnapshot>(controller.getSnapshot());
-
-  useEffect(() => {
-    const unsubscribe = controller.subscribe(setSnapshot);
-    controller.start();
-    return () => {
-      unsubscribe();
-      controller.cancel();
-    };
-  }, [controller]);
+  const advance = useCallback(
+    (user: AuthUser) => onApproved(user.email?.trim() || user.username?.trim() || ""),
+    [onApproved],
+  );
+  const { snapshot, retry } = useDeviceSignIn({ onApproved: advance });
 
   // The wizard's card holds every key it does not use, so the retry runs in a
   // scope of its own that registers after the card's and answers first.
   useShortcut((event) => {
-    const retry = (isPlainKey(event, "enter", "return") && snapshot.phase === "denied")
-      || (isPlainKey(event, "r") && snapshot.phase !== "approved");
-    if (!retry) return;
+    if (!isDeviceSignInRetryKey(event, snapshot)) return;
     event.preventDefault();
     event.stopPropagation();
-    controller.start();
+    retry();
   }, { scope: "onboarding:qr", phase: "before" });
-
-  useEffect(() => {
-    if (snapshot.phase !== "approved" || !snapshot.user) return;
-    const email = snapshot.user.email?.trim() || snapshot.user.username?.trim() || "";
-    const advanceTimer = setTimeout(() => onApproved(email), 1_200);
-    return () => clearTimeout(advanceTimer);
-  }, [onApproved, snapshot.phase, snapshot.user]);
 
   return (
     <Box flexDirection="column" paddingX={2}>

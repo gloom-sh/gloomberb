@@ -1,10 +1,14 @@
+import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
+import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { DEFAULT_BINOMIAL_STEPS, MAX_BINOMIAL_STEPS, effectiveBinomialSteps, solveBinomialImpliedVolatility,
   validateBinomialInputs, valueBinomialOption } from "./binomial";
-import { solveImpliedVolatility, valueOption, type ImpliedVolatilityResult, type OptionCalcDraft,
-  type OptionValuation } from "./model";
-import type { CalculatorSurfaceVol } from "./surface";
-import { isFiniteNumber, isRecord } from "../../../utils/guards";
+import { draftFromCalculatorInputs } from "./inputs";
+import { OPTIONS_CALCULATOR_PANE_ID, type OptionCalcDraft } from "./model";
+import { solveImpliedVolatility, valueOption, type ImpliedVolatilityResult, type OptionValuation } from "../shared/volatility";
+import { createCalculatorSurfaceDependencies, loadCalculatorSurfaceVol, type CalculatorSurfaceVol } from "./surface";
+import { isDateString, isFiniteNumber, isRecord, isStringArray } from "../../../utils/guards";
 
 export const CALCULATOR_IGNORED_DIVIDENDS_NOTICE = "Cash dividend schedule is ignored by the European model; continuous yield applies.";
 
@@ -44,7 +48,6 @@ export interface CalculatorEvidence {
   plottedValueCount: number;
 }
 
-const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((entry) => typeof entry === "string");
 const nullableText = (value: unknown): value is string | null => value === null || typeof value === "string";
 const nullableNumber = (value: unknown): value is number | null => value === null || isFiniteNumber(value);
 const metrics = ["price", "delta", "gamma", "thetaPerDay", "vegaPerPoint", "rhoPerPoint"] as const;
@@ -88,9 +91,9 @@ function validImplied(value: unknown): value is ImpliedVolatilityResult {
 function validSurface(value: unknown): value is CalculatorSurfaceVol {
   return isRecord(value) && nullableNumber(value.volatility) && nullableNumber(value.rate) && nullableNumber(value.dividendYield)
     && nullableNumber(value.sourceSpot) && nullableNumber(value.spotAsOf) && nullableText(value.asOf)
-    && (value.asOf === null || Number.isFinite(Date.parse(value.asOf)))
-    && strings(value.rateAsOf) && typeof value.source === "string" && value.source.length > 0
-    && strings(value.warnings) && nullableText(value.error);
+    && (value.asOf === null || isDateString(value.asOf))
+    && isStringArray(value.rateAsOf) && typeof value.source === "string" && value.source.length > 0
+    && isStringArray(value.warnings) && nullableText(value.error);
 }
 
 function sourceReady(draft: CalculatorEvidenceDraft, surface: CalculatorSurfaceVol | null): boolean {
@@ -132,7 +135,7 @@ export function useCalculatorEvidence(input: CalculatorEvidenceInput): void {
 export function readCalculatorEvidence(value: unknown): CalculatorEvidence | null {
   if (!isRecord(value) || value.kind !== "options-calculator" || value.version !== 1 || typeof value.symbol !== "string"
     || !validDraft(value.draft) || value.symbol !== value.draft.symbol || !validValuation(value.valuation)
-    || !validImplied(value.implied) || !nullableText(value.error) || !strings(value.notices)
+    || !validImplied(value.implied) || !nullableText(value.error) || !isStringArray(value.notices)
     || typeof value.loading !== "boolean" || typeof value.complete !== "boolean"
     || (value.surface !== null && !validSurface(value.surface))) return null;
   const evidence = value as unknown as CalculatorEvidence;
@@ -159,3 +162,67 @@ export function readCalculatorEvidence(value: unknown): CalculatorEvidence | nul
   if (evidence.plottedValueCount !== count || evidence.complete !== (!evidence.loading && evidence.error === null)) return null;
   return evidence;
 }
+
+function capturedCalculatorSnapshot(payload: DesktopPaneShotPayload): CalculatorScreenshotSnapshot | undefined {
+  return payload.config?.layout?.instances.find((entry) => entry.instanceId === payload.paneId)
+    ?.settings?.calculatorSnapshot as CalculatorScreenshotSnapshot | undefined;
+}
+
+export const calculatorScreenshotEvidence: PaneScreenshotEvidenceHook<CalculatorEvidence> = {
+  paneId: OPTIONS_CALCULATOR_PANE_ID,
+  kind: "options-calculator",
+  label: "option calculator",
+  read: readCalculatorEvidence,
+  visibleLabels: ["Model", "Implied IV", "Delta", "Gamma", "Theta", "Vega", "Rho"],
+  async prepare({ resolved, context, settings }) {
+    // The screenshot and verifier consume the same inputs and market fit.
+    // Explicit input-IV pricing does not need unrelated quote/history requests.
+    const draft = draftFromCalculatorInputs({ ...settings, ...resolved.options });
+    let surface: CalculatorScreenshotSnapshot["surface"] = null;
+    if (draft.volSource === "surface") {
+      if (!draft.symbol) throw new Error("Surface volatility requires --symbol.");
+      const parsed = parsePublicTickerKey(draft.symbol);
+      const ticker = await context.store.loadTicker(draft.symbol)
+        ?? (draft.symbol !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
+      surface = await loadCalculatorSurfaceVol({ symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange,
+        spot: draft.spot, strike: draft.strike, daysToExpiry: draft.daysToExpiry,
+      }, createCalculatorSurfaceDependencies(context.dataProvider));
+    }
+    return { settings: { calculatorSnapshot: { draft, surface } satisfies CalculatorScreenshotSnapshot } };
+  },
+  symbols({ payload }) {
+    const symbol = capturedCalculatorSnapshot(payload)?.draft.symbol;
+    return symbol ? [symbol] : null;
+  },
+  expectedText({ resolved }) {
+    const symbol = resolved.options.symbol;
+    return typeof symbol === "string" && symbol ? [symbol] : [];
+  },
+  /** A self-consistent calculator must also represent the requested assumptions. */
+  mismatches(evidence, { resolved, payload }) {
+    const snapshot = capturedCalculatorSnapshot(payload);
+    if (!snapshot?.draft) return ["option calculator screenshot inputs are missing"];
+    const mismatches: string[] = [];
+    try {
+      const requested = normalizeCalculatorEvidenceDraft(draftFromCalculatorInputs({ ...resolved.instance?.settings, ...resolved.options }));
+      if (JSON.stringify(normalizeCalculatorEvidenceDraft(snapshot.draft)) !== JSON.stringify(requested)) {
+        mismatches.push("option calculator snapshot does not match requested inputs");
+      }
+    } catch {
+      mismatches.push("requested option calculator inputs are invalid");
+    }
+    const expectedDraft = normalizeCalculatorEvidenceDraft({ ...snapshot.draft,
+      ...(snapshot.draft.volSource === "surface" && snapshot.surface?.volatility != null
+        ? { volatility: snapshot.surface.volatility } : {}) });
+    if (JSON.stringify(evidence.draft) !== JSON.stringify(expectedDraft)) {
+      mismatches.push("rendered option calculator inputs do not match");
+    }
+    if (JSON.stringify(evidence.surface) !== JSON.stringify(snapshot.surface)) {
+      mismatches.push("rendered option calculator surface does not match");
+    }
+    return mismatches;
+  },
+  unavailable(evidence, { resolved }) {
+    return evidence?.complete && !evidence.loading ? [] : [evidence?.symbol || String(resolved.options.symbol ?? "option calculator")];
+  },
+};

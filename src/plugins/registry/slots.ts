@@ -1,18 +1,20 @@
 import { Fragment, createElement, type ReactNode } from "react";
 import type { GloomPlugin, GloomSlots } from "../../types/plugin";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../runtime";
+
+type SlotRenderer = (props: unknown) => ReactNode;
 
 type SlotEntry = {
   pluginId: string;
   order: number;
-  render: (props: unknown) => ReactNode;
+  render: SlotRenderer;
 };
 
 export class RegistrySlots {
   private entries = new Map<string, SlotEntry[]>();
   private unregisterFns = new Map<string, () => void>();
 
-  register(plugin: GloomPlugin, runtime: PluginRuntimeAccess): void {
+  /** `wrap` puts each renderer inside the plugin's render context. */
+  register(plugin: GloomPlugin, wrap: (renderer: SlotRenderer) => SlotRenderer): void {
     if (!plugin.slots) return;
     const registeredSlotNames: string[] = [];
     for (const [slotName, renderer] of Object.entries(plugin.slots)) {
@@ -21,14 +23,7 @@ export class RegistrySlots {
       entries.push({
         pluginId: plugin.id,
         order: plugin.order ?? 0,
-        render: (props: unknown) => createElement(
-          PluginRenderProvider,
-          {
-            pluginId: plugin.id,
-            runtime,
-            children: createElement(renderer as (props: any) => ReactNode, props),
-          },
-        ),
+        render: wrap(renderer as SlotRenderer),
       });
       entries.sort((left, right) => left.order - right.order || left.pluginId.localeCompare(right.pluginId));
       this.entries.set(slotName, entries);
@@ -54,8 +49,10 @@ export class RegistrySlots {
     this.unregisterFns.delete(pluginId);
   }
 
-  render<K extends keyof GloomSlots>(name: K, props: GloomSlots[K]): ReactNode {
-    const entries = this.entries.get(name as string) ?? [];
+  /** A disabled plugin stays registered but renders nothing until it is enabled again. */
+  render<K extends keyof GloomSlots>(name: K, props: GloomSlots[K], disabledPlugins: readonly string[]): ReactNode {
+    const entries = (this.entries.get(name as string) ?? [])
+      .filter((entry) => !disabledPlugins.includes(entry.pluginId));
     if (entries.length === 0) return null;
     return createElement(
       Fragment,

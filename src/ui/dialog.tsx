@@ -11,9 +11,40 @@ export interface PromptContext<T> extends AlertContext {
   resolve(value: T): void;
 }
 
+export type DialogSize = "small" | "medium" | "large" | "full";
+
+/** Box overrides for the terminal dialog: a fixed width, caps, border or padding. */
+export interface DialogStyle {
+  width?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * What `alert` and `prompt` open. `content` is the dialog body, or a function
+ * of the dialog's context for a body that closes or answers it. `size` and
+ * `style` size the terminal box; the desktop sizes a dialog to its content.
+ */
+export interface DialogOptions<C = AlertContext> {
+  content?: ReactNode | ((context: C) => ReactNode);
+  /**
+   * Any string still compiles, so an options object built ahead (where "large"
+   * widens to string) keeps working; the terminal treats an unknown size as medium.
+   */
+  size?: DialogSize | (string & {});
+  style?: DialogStyle;
+  /** Terminal: Esc closes the dialog unless this is false. The desktop always closes on Esc. */
+  closeOnEscape?: boolean;
+  /** A click on the backdrop closes the dialog. Off by default. */
+  closeOnClickOutside?: boolean;
+  /** Hosts ignore options they do not know. */
+  [key: string]: unknown;
+}
+
 export interface DialogApi {
-  alert(options: Record<string, unknown>): Promise<void>;
-  prompt<T = string>(options: Record<string, unknown>): Promise<T | undefined>;
+  alert(options: DialogOptions<AlertContext>): Promise<void>;
+  prompt<T = string>(options: DialogOptions<PromptContext<T>>): Promise<T | undefined>;
 }
 
 export function DialogHostProvider({

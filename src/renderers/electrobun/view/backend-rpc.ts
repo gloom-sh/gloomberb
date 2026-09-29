@@ -1,8 +1,5 @@
 import { Electroview } from "electrobun/view";
 import {
-  type ApplicationMenuSelectMessage,
-  type CapabilityEventMessage,
-  type ContextMenuSelectMessage,
   type DesktopDeepLinkMessage,
   type DesktopBackendRequestArgs,
   type DesktopBackendRequestMethod,
@@ -10,79 +7,38 @@ import {
   type DesktopBackendRequestResponse,
   type DesktopDockPreviewMessage,
   type DesktopRestartMessage,
-  type DesktopStateMessage,
   type DesktopThemePreviewMessage,
   type ElectrobunBackendInit,
-  type HttpStreamChunkMessage,
   type RemoteControlRequestMessage,
   type ElectrobunDesktopRpcSchema,
-  type UpdateProgressMessage,
 } from "../shared/protocol";
 import { decodeRpcResponse, decodeRpcValue, encodeRpcValue } from "./rpc-codec";
+import { subscribeCapability, type CapabilitySubscriptionOptions } from "./capability-subscription";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 
-type ContextMenuSelectListener = (message: ContextMenuSelectMessage) => void;
-type ApplicationMenuSelectListener = (message: ApplicationMenuSelectMessage) => void;
-type DesktopDeepLinkListener = (message: DesktopDeepLinkMessage) => void;
-type DesktopStateListener = (message: DesktopStateMessage) => void;
-type DesktopDockPreviewListener = (message: DesktopDockPreviewMessage) => void;
-type DesktopThemePreviewListener = (message: DesktopThemePreviewMessage) => void;
-type UpdateProgressListener = (message: UpdateProgressMessage) => void;
-type CapabilityEventListener = (message: CapabilityEventMessage) => void;
-type HttpStreamChunkListener = (message: HttpStreamChunkMessage) => void;
+type BackendMessages = ElectrobunDesktopRpcSchema["webview"]["messages"];
+type BackendMessageName = keyof BackendMessages;
+/** Messages addressed to one context menu, capability subscription or HTTP stream. */
+type KeyedBackendMessageName = "context-menu.select" | "capability.event" | "http.stream.chunk";
+type BackendMessageListener<K extends BackendMessageName> = (message: BackendMessages[K]) => void;
 type RemoteControlRequestHandler = (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
 
 let initSnapshot: ElectrobunBackendInit | null = null;
 let remoteControlRequestHandler: RemoteControlRequestHandler | null = null;
-const contextMenuSelectListeners = new Map<string, Set<ContextMenuSelectListener>>();
-const applicationMenuSelectListeners = new Set<ApplicationMenuSelectListener>();
-const desktopDeepLinkListeners = new Set<DesktopDeepLinkListener>();
+const messageListeners = new Map<string, Set<(message: unknown) => void>>();
 const pendingDesktopDeepLinks: DesktopDeepLinkMessage[] = [];
-const desktopStateListeners = new Set<DesktopStateListener>();
-const desktopDockPreviewListeners = new Set<DesktopDockPreviewListener>();
-const desktopThemePreviewListeners = new Set<DesktopThemePreviewListener>();
-const updateProgressListeners = new Set<UpdateProgressListener>();
-const capabilityEventListeners = new Map<string, Set<CapabilityEventListener>>();
-const httpStreamChunkListeners = new Map<string, Set<HttpStreamChunkListener>>();
 
-function dispatch<T>(
-  listeners: Map<string, Set<(value: T) => void>>,
-  key: string,
-  value: T,
-): void {
-  for (const listener of listeners.get(key) ?? []) {
-    listener(value);
-  }
+function listenerKey(name: BackendMessageName, key: string | undefined): string {
+  return key === undefined ? name : `${name}\u0000${key}`;
 }
 
-function subscribe<T>(
-  listeners: Map<string, Set<(value: T) => void>>,
-  key: string,
-  listener: (value: T) => void,
-): () => void {
-  if (!listeners.has(key)) {
-    listeners.set(key, new Set());
-  }
-  listeners.get(key)!.add(listener);
-  return () => {
-    const bucket = listeners.get(key);
-    if (!bucket) return;
-    bucket.delete(listener);
-    if (bucket.size === 0) {
-      listeners.delete(key);
-    }
-  };
-}
-
-function dispatchDesktopDeepLink(message: DesktopDeepLinkMessage): void {
-  if (desktopDeepLinkListeners.size === 0) {
-    pendingDesktopDeepLinks.push(message);
-    if (pendingDesktopDeepLinks.length > 20) pendingDesktopDeepLinks.shift();
-    return;
-  }
-  for (const listener of desktopDeepLinkListeners) {
+/** Hands a decoded message to its listeners and returns how many there were. */
+function emit<K extends BackendMessageName>(name: K, message: BackendMessages[K], key?: string): number {
+  const listeners = messageListeners.get(listenerKey(name, key));
+  for (const listener of listeners ?? []) {
     listener(message);
   }
+  return listeners?.size ?? 0;
 }
 
 const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
@@ -105,48 +61,44 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
     },
     messages: {
       "context-menu.select": (message) => {
-        dispatch(contextMenuSelectListeners, message.requestId, message);
+        emit("context-menu.select", message, message.requestId);
       },
       "application-menu.select": (message) => {
-        const decoded = { command: decodeRpcValue<ApplicationMenuSelectMessage["command"]>(message.command) };
-        for (const listener of applicationMenuSelectListeners) {
-          listener(decoded);
-        }
+        emit("application-menu.select", { command: decodeRpcValue(message.command) });
       },
       "desktop.deepLink": (message) => {
         if (typeof message.url !== "string" || !message.url) return;
-        dispatchDesktopDeepLink({ url: message.url });
+        const deepLink = { url: message.url };
+        if (emit("desktop.deepLink", deepLink) > 0) return;
+        pendingDesktopDeepLinks.push(deepLink);
+        if (pendingDesktopDeepLinks.length > 20) pendingDesktopDeepLinks.shift();
       },
       "desktop.state": (message) => {
-        for (const listener of desktopStateListeners) {
-          listener({ snapshot: decodeRpcValue(message.snapshot) });
-        }
+        emit("desktop.state", { snapshot: decodeRpcValue(message.snapshot) });
       },
       "desktop.dockPreview": (message) => {
-        for (const listener of desktopDockPreviewListeners) {
-          listener({ preview: decodeRpcValue(message.preview) });
-        }
+        emit("desktop.dockPreview", { preview: decodeRpcValue<DesktopDockPreviewMessage["preview"]>(message.preview) });
       },
       "desktop.themePreview": (message) => {
-        for (const listener of desktopThemePreviewListeners) {
-          listener({ preview: decodeRpcValue(message.preview) });
-        }
+        emit("desktop.themePreview", { preview: decodeRpcValue<DesktopThemePreviewMessage["preview"]>(message.preview) });
       },
       "update.progress": (message) => {
-        const decoded = { progress: decodeRpcValue<UpdateProgressMessage["progress"]>(message.progress) };
-        for (const listener of updateProgressListeners) {
-          listener(decoded);
-        }
+        emit("update.progress", { progress: decodeRpcValue(message.progress) });
+      },
+      "plugins.updated": (message) => {
+        if (!Array.isArray(message?.directories)) return;
+        const directories = message.directories.filter((directory): directory is string => typeof directory === "string");
+        emit("plugins.updated", { directories });
       },
       "capability.event": (message) => {
-        dispatch(capabilityEventListeners, message.subscriptionId, {
+        emit("capability.event", {
           subscriptionId: message.subscriptionId,
           event: decodeRpcValue(message.event),
-        });
+        }, message.subscriptionId);
       },
       "http.stream.chunk": (message) => {
         if (typeof message?.streamId !== "string") return;
-        dispatch(httpStreamChunkListeners, message.streamId, message);
+        emit("http.stream.chunk", message, message.streamId);
       },
     },
   },
@@ -217,73 +169,54 @@ export function setElectrobunRemoteRequestHandler(handler: RemoteControlRequestH
   };
 }
 
-export function onCapabilityEvent(
-  subscriptionId: string,
-  listener: (message: CapabilityEventMessage) => void,
-): () => void {
-  return subscribe(capabilityEventListeners, subscriptionId, listener);
-}
-
 /**
- * Body slices of one proxied streaming response. Subscribe before opening the
- * stream: the Bun process starts forwarding as soon as `http.stream.open`
- * returns its head, and a late listener would miss the first tokens.
+ * Listens for a message the Bun process sends this window. Keyed messages
+ * belong to one context menu request, capability subscription or HTTP stream,
+ * and only reach the listeners registered under that id. A deep link that
+ * arrived before anyone listened is replayed to the first listener.
  */
-export function onHttpStreamChunk(
-  streamId: string,
-  listener: HttpStreamChunkListener,
+export function onBackendMessage<K extends Exclude<BackendMessageName, KeyedBackendMessageName>>(
+  name: K,
+  listener: BackendMessageListener<K>,
+): () => void;
+export function onBackendMessage<K extends KeyedBackendMessageName>(
+  name: K,
+  key: string,
+  listener: BackendMessageListener<K>,
+): () => void;
+export function onBackendMessage(
+  name: BackendMessageName,
+  keyOrListener: string | ((message: never) => void),
+  keyedListener?: (message: never) => void,
 ): () => void {
-  return subscribe(httpStreamChunkListeners, streamId, listener);
-}
-
-export function onContextMenuSelect(
-  requestId: string,
-  listener: (message: ContextMenuSelectMessage) => void,
-): () => void {
-  return subscribe(contextMenuSelectListeners, requestId, listener);
-}
-
-export function onApplicationMenuSelect(listener: ApplicationMenuSelectListener): () => void {
-  applicationMenuSelectListeners.add(listener);
-  return () => {
-    applicationMenuSelectListeners.delete(listener);
-  };
-}
-
-export function onDesktopDeepLink(listener: DesktopDeepLinkListener): () => void {
-  desktopDeepLinkListeners.add(listener);
-  for (const message of pendingDesktopDeepLinks.splice(0)) {
-    listener(message);
+  const key = typeof keyOrListener === "string" ? keyOrListener : undefined;
+  const listener = (keyedListener ?? keyOrListener) as (message: unknown) => void;
+  const bucketKey = listenerKey(name, key);
+  let listeners = messageListeners.get(bucketKey);
+  if (!listeners) {
+    listeners = new Set();
+    messageListeners.set(bucketKey, listeners);
+  }
+  listeners.add(listener);
+  if (name === "desktop.deepLink") {
+    for (const message of pendingDesktopDeepLinks.splice(0)) {
+      listener(message);
+    }
   }
   return () => {
-    desktopDeepLinkListeners.delete(listener);
+    listeners.delete(listener);
+    if (listeners.size === 0 && messageListeners.get(bucketKey) === listeners) {
+      messageListeners.delete(bucketKey);
+    }
   };
 }
 
-export function onDesktopState(listener: DesktopStateListener): () => void {
-  desktopStateListeners.add(listener);
-  return () => {
-    desktopStateListeners.delete(listener);
-  };
-}
-
-export function onDesktopDockPreview(listener: DesktopDockPreviewListener): () => void {
-  desktopDockPreviewListeners.add(listener);
-  return () => {
-    desktopDockPreviewListeners.delete(listener);
-  };
-}
-
-export function onDesktopThemePreview(listener: DesktopThemePreviewListener): () => void {
-  desktopThemePreviewListeners.add(listener);
-  return () => {
-    desktopThemePreviewListeners.delete(listener);
-  };
-}
-
-export function onUpdateProgress(listener: UpdateProgressListener): () => void {
-  updateProgressListeners.add(listener);
-  return () => {
-    updateProgressListeners.delete(listener);
-  };
+export function subscribeBackendCapability(options: CapabilitySubscriptionOptions): () => void {
+  return subscribeCapability({
+    subscribe: (request) => backendRequest("capability.subscribe", request),
+    unsubscribe: (subscriptionId) => backendRequest("capability.unsubscribe", { subscriptionId }),
+    onEvent: (subscriptionId, listener) => onBackendMessage("capability.event", subscriptionId, (message) => {
+      listener(message.event);
+    }),
+  }, options);
 }

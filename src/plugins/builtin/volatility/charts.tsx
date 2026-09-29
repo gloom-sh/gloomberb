@@ -1,29 +1,12 @@
 import { useMemo } from "react";
-import { CompositeChart, EmptyState, StaticChartSurface, type StaticChartOverlay } from "../../../components";
+import { CompositeChart, EmptyState, StaticChartSurface } from "../../../components";
 import { formatCompositeSeriesValue } from "../../../components/chart/composite/format";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
-import {
-  volatilityCurveChartModel, volatilityHistorySeries, volatilityIndexHistoryPoints,
-} from "./chart-model";
-import type { FredVolatilityHistory, VolatilityBoardRow, VolatilityCurve } from "./model";
+import { volatilityHistorySeries, volatilityIndexHistoryPoints } from "./chart-model";
+import type { FredVolatilityHistory, VolatilityBoardRow } from "./model";
 
 interface ChartSize { width: number; height: number }
-
-export function VolatilityCurveChart({ curve, width, height, focused = false }: ChartSize & { curve: VolatilityCurve; focused?: boolean }) {
-  const colors = useThemeColors();
-  const model = useMemo(() => volatilityCurveChartModel(curve.points), [curve.points]);
-  const palette = resolveChartPalette(colors);
-  const lineColor = curve.termState === "inverted" ? colors.warning : palette.lineColor;
-  const observations: StaticChartOverlay[] = [{ id: "Observed close", color: lineColor, style: "points",
-    points: model.points.flatMap((point, index) => Number.isFinite(point.close) ? [{ index, value: point.close }] : []),
-  }];
-  if (!observations[0]!.points.length) return <EmptyState title="VIX curve unavailable." />;
-  return <StaticChartSurface points={model.points} overlays={observations} calendarSpaced
-    width={width} height={height} colors={{ ...palette, lineColor }}
-    yAxisLabel="IV %" yAxisColor={colors.textDim} formatYAxisValue={(value) => value.toFixed(1)}
-    xAxisTicks={model.ticks} formatXAxisCursorValue={model.formatCursor} focused={focused} />;
-}
 
 const HISTORY_PANELS = [{ id: "vol", height: 2 }, { id: "ratio", height: 1 }];
 

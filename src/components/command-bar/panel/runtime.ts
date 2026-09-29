@@ -36,6 +36,8 @@ interface CommandBarPanelRuntimeOptions {
   currentRoute: CommandBarRoute | null;
   currentRouteRef: MutableRefObject<CommandBarRoute | null>;
   dismissCommandBar: () => void;
+  /** A click outside the bar: a dismissal, unlike `closeAll` after a commit. */
+  dismissOverlay: () => void;
   markRootSelectionNavigated: () => void;
   nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
   nativePaneChrome: boolean;
@@ -76,6 +78,7 @@ export function useCommandBarPanelRuntime({
   currentRoute,
   currentRouteRef,
   dismissCommandBar,
+  dismissOverlay,
   markRootSelectionNavigated,
   nativeListScrollRef,
   nativePaneChrome,
@@ -204,7 +207,7 @@ export function useCommandBarPanelRuntime({
     onListRowMouseDown: handleListRowMouseDown,
     onListScroll: handleListScroll,
     onNativeOccluderChange,
-    onOverlayClose: closeAll,
+    onOverlayClose: dismissOverlay,
     onQueryChange: setActiveListQuery,
     onThemeCommit: handleThemeCommit,
     onThemePreview: applyThemePreview,

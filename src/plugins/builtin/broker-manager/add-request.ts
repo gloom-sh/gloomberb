@@ -7,7 +7,9 @@ export const BROKERS_PANE_ID = "brokers";
 /**
  * Pane state that asks a Brokers pane to start adding a profile. The pane
  * clears it as it starts, so the add flow itself is never saved with the
- * layout. Pane state reaches the pane in a detached window too.
+ * layout. Unlike the in-memory pane request channel (shared/pane-request.ts),
+ * pane state reaches the pane in a detached window too, and only the pane
+ * that was shown.
  */
 export const BROKER_ADD_REQUEST_KEY = "brokerAddRequest";
 

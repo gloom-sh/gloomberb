@@ -24,21 +24,38 @@ import {
   collectDefaultCollapsedGroupIds,
   collectGroupIds,
   computeGrowth,
+  financialColumnLabel,
+  fiscalYearEndMonth,
   formatFinancialCell,
-  formatFinancialHeader,
   financialStatementCurrency,
   financialStatementLimitations,
   formatFinancialValue,
+  latestFinancialPeriodEnd,
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
-  resolveFinancialSubTabKey,
   semanticGrowthValue,
   selectFinancialStatements,
+  shareFinancialUnit,
   statementMetricValue,
   type FinancialPeriod,
   type FinancialTableRow,
 } from "./model";
 import type { FinancialTableStatement } from "./aggregation";
+import {
+  FINANCIAL_SECTIONS,
+  RATIO_TABS,
+  buildRatioTableModel,
+  periodEndClose,
+  ratioOpenings,
+  ratioPeriodEnd,
+  ratioPeriods,
+  resolveFinancialSectionKey,
+  type RatioAmount,
+} from "./ratios";
+import { PeriodEndHistoryLoader, RatioTable, ratioMetricColumn, type PeriodEndHistoryState, type RatioTableColumn } from "./ratio-table";
+import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
+
+const RATIOS_SEGMENT = "ratios";
 
 type FinancialTableColumn = DataTableColumn & (
   | { id: "metric"; kind: "metric" }
@@ -50,9 +67,14 @@ const financialRowBackground = (row: FinancialTableRow) => (
   row.kind === "group" && row.depth === 0 ? colors.panel : undefined
 );
 
-/** The compact header, plus the column's currency when the table has no single one. */
-function financialColumnHeader(statement: FinancialTableStatement, sharedCurrency: string | undefined): string {
-  const header = formatFinancialHeader(statement.date, undefined, statement.dateSource, true, statement.aggregation?.periodEnd);
+/** The fiscal period, plus the column's currency when the table has no single one. */
+function financialColumnHeader(
+  statement: FinancialTableStatement,
+  kind: FinancialPeriod,
+  yearEndMonth: number | null,
+  sharedCurrency: string | undefined,
+): string {
+  const header = financialColumnLabel(statement, kind, yearEndMonth);
   return !sharedCurrency && statement.currency ? `${header} ${statement.currency}` : header;
 }
 
@@ -89,17 +111,25 @@ export function ResolvedFinancialsTab({
   const [storedPeriod, setStoredPeriod] = usePaneStateValue<FinancialPeriod>("financialPeriod", fallbackPeriod);
   const period = resolveFinancialPeriodOption(storedPeriod) ?? fallbackPeriod;
   const [storedSubTab, setStoredSubTab] = usePaneStateValue<string>("financialSubTab", FINANCIAL_SUB_TABS[0]!.key);
-  const resolvedSubTabKey = resolveFinancialSubTabKey(storedSubTab);
-  const subTabIdx = Math.max(0, FINANCIAL_SUB_TABS.findIndex((tab) => tab.key === resolvedSubTabKey));
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    () => new Set(collectDefaultCollapsedGroupIds(FINANCIAL_SUB_TABS.flatMap((tab) => tab.rows))),
-  );
+  const resolvedSubTabKey = resolveFinancialSectionKey(storedSubTab);
+  const subTabIdx = Math.max(0, FINANCIAL_SECTIONS.findIndex((tab) => tab.key === resolvedSubTabKey));
+  // Ratios open collapsed: the inputs behind each one show on demand.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set([
+    ...collectDefaultCollapsedGroupIds(FINANCIAL_SUB_TABS.flatMap((tab) => tab.rows)),
+    ...RATIO_TABS.flatMap((tab) => tab.ratios.map((ratio) => ratio.id)),
+  ]));
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const bodyScrollRef = useRef<ScrollBoxRenderable>(null);
   const headerScrollRef = useRef<ScrollBoxRenderable>(null);
   const { nativePaneChrome } = useUiCapabilities();
-  const subTab = FINANCIAL_SUB_TABS[subTabIdx]!;
-  const currentGroupIds = useMemo(() => collectGroupIds(subTab.rows), [subTab]);
+  const section = FINANCIAL_SECTIONS[subTabIdx]!;
+  const ratioTab = section.kind === "ratio" ? section.tab : null;
+  // A ratio tab builds its own rows; the statement rows below idle on Income.
+  const subTab = section.kind === "statement" ? section.tab : FINANCIAL_SUB_TABS[0]!;
+  const currentGroupIds = useMemo(
+    () => ratioTab ? ratioTab.ratios.map((ratio) => ratio.id) : collectGroupIds(subTab.rows),
+    [ratioTab, subTab],
+  );
   const hasCollapsedCurrentGroup = currentGroupIds.some((id) => collapsedGroups.has(id));
   const hasExpandedCurrentGroup = currentGroupIds.some((id) => !collapsedGroups.has(id));
   const setPeriod = useCallback((next: SetStateAction<FinancialPeriod>) => {
@@ -107,13 +137,21 @@ export function ResolvedFinancialsTab({
   }, [setStoredPeriod]);
   const setSubTabIdx = useCallback((next: SetStateAction<number>) => {
     setStoredSubTab((currentKey) => {
-      const currentSubTabKey = resolveFinancialSubTabKey(currentKey);
-      const currentIndex = Math.max(0, FINANCIAL_SUB_TABS.findIndex((tab) => tab.key === currentSubTabKey));
+      const currentSubTabKey = resolveFinancialSectionKey(currentKey);
+      const currentIndex = Math.max(0, FINANCIAL_SECTIONS.findIndex((tab) => tab.key === currentSubTabKey));
       const rawIndex = typeof next === "function" ? next(currentIndex) : next;
-      const boundedIndex = ((rawIndex % FINANCIAL_SUB_TABS.length) + FINANCIAL_SUB_TABS.length) % FINANCIAL_SUB_TABS.length;
-      return FINANCIAL_SUB_TABS[boundedIndex]?.key ?? FINANCIAL_SUB_TABS[0]!.key;
+      const boundedIndex = ((rawIndex % FINANCIAL_SECTIONS.length) + FINANCIAL_SECTIONS.length) % FINANCIAL_SECTIONS.length;
+      return FINANCIAL_SECTIONS[boundedIndex]?.key ?? FINANCIAL_SECTIONS[0]!.key;
     });
   }, [setStoredSubTab]);
+  const selectSection = useCallback((key: string) => {
+    setSubTabIdx(Math.max(0, FINANCIAL_SECTIONS.findIndex((tab) => tab.key === key)));
+  }, [setSubTabIdx]);
+  // The Ratios segment reopens the ratio tab last read.
+  const [lastRatioKey, setLastRatioKey] = usePaneStateValue<string>("financialRatioTab", RATIO_TABS[0]!.key);
+  useEffect(() => {
+    if (ratioTab && ratioTab.key !== lastRatioKey) setLastRatioKey(ratioTab.key);
+  }, [lastRatioKey, ratioTab, setLastRatioKey]);
   const selectAdjacentSubTab = useCallback((direction: -1 | 1) => {
     setSubTabIdx((current) => current + direction);
   }, [setSubTabIdx]);
@@ -149,12 +187,6 @@ export function ResolvedFinancialsTab({
     });
   }, [currentGroupIds]);
 
-  usePaneNoticeFooter({
-    registrationId: "financials-notices",
-    notices: financialStatementLimitations(financials),
-    focused,
-  });
-
   // The active section and period are already the visible tab selections, so the
   // footer only carries what the controls cannot show.
   usePaneFooter("financials", () => ({
@@ -162,10 +194,10 @@ export function ResolvedFinancialsTab({
     hints: [
       {
         id: "section",
-        key: "1-3",
+        key: `1-${FINANCIAL_SECTIONS.length}`,
         label: "section",
         disabled: !financials,
-        onPress: () => setSubTabIdx((current) => (current + 1) % FINANCIAL_SUB_TABS.length),
+        onPress: () => setSubTabIdx((current) => (current + 1) % FINANCIAL_SECTIONS.length),
       },
       {
         id: "period",
@@ -225,7 +257,7 @@ export function ResolvedFinancialsTab({
       event.preventDefault();
       event.stopPropagation();
       collapseCurrentGroups();
-    } else if (keyName === "1" || keyName === "2" || keyName === "3") {
+    } else if (/^[1-9]$/.test(keyName ?? "") && Number(keyName) <= FINANCIAL_SECTIONS.length) {
       event.preventDefault();
       event.stopPropagation();
       setSubTabIdx(Number(keyName) - 1);
@@ -257,6 +289,8 @@ export function ResolvedFinancialsTab({
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.
   const growthBasis = isAnnual ? "YoY" : "QoQ";
+  const yearEndMonth = useMemo(() => fiscalYearEndMonth(annualStatements), [annualStatements]);
+  const annualDates = useMemo(() => new Set(annualStatements.map(({ date }) => date)), [annualStatements]);
   const columns = useMemo<FinancialTableColumn[]>(() => [
     {
       id: "metric",
@@ -269,16 +303,24 @@ export function ResolvedFinancialsTab({
       id: `statement:${statement.date}:${index}`,
       kind: "statement",
       statement,
-      label: padTo(financialColumnHeader(statement, comparisonCurrency), FINANCIAL_COL_W, "center"),
+      // The annual balance sheet leads with a newer quarter-end position.
+      label: padTo(financialColumnHeader(
+        statement,
+        isAnnual && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly",
+        yearEndMonth,
+        comparisonCurrency,
+      ), FINANCIAL_COL_W, "center"),
       width: FINANCIAL_COL_W,
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
     })),
-  ], [comparisonCurrency, displayStatements, isAnnual]);
-  const rows = useMemo(
-    () => buildFinancialRows(subTab.rows, displayStatements, collapsedGroups),
+  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, yearEndMonth]);
+  const { rows, unit } = useMemo(
+    () => shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, collapsedGroups)),
     [collapsedGroups, displayStatements, subTab.rows],
   );
+  const moneyUnit = [comparisonCurrency, unit].filter(Boolean).join(" ");
+  const periodEnd = latestFinancialPeriodEnd(displayStatements);
   const renderCell = useCallback((
     row: FinancialTableRow,
     column: FinancialTableColumn,
@@ -367,6 +409,42 @@ export function ResolvedFinancialsTab({
     setSelectedRowId(rows[0]!.id);
   }, [rows, selectedRowId]);
 
+  // Ratio tabs share the statement columns: Income's periods, with TTM.
+  const isValuation = ratioTab?.key === "valuation";
+  const oldestPeriodEnd = displayStatements.length ? ratioPeriodEnd(displayStatements.at(-1)!) : undefined;
+  const [loadedHistory, setHistory] = useState<PeriodEndHistoryState | null>(null);
+  const history: PeriodEndHistoryState = isValuation && loadedHistory ? loadedHistory : { data: undefined, loading: isValuation, error: null };
+  const currencies = useMemo(() => financials ? createValuationCurrencyContext(financials) : null, [financials]);
+  const ratioModel = useMemo(() => {
+    if (!ratioTab) return null;
+    const openings = ratioOpenings(resolvedPeriod, annualStatements, quarterlyStatements);
+    const price = (statement: FinancialTableStatement): RatioAmount => {
+      if (!isValuation) return "no-price";
+      if (!history.data) return history.error && !history.loading ? "no-price" : "loading";
+      const close = periodEndClose(history.data, ratioPeriodEnd(statement));
+      return (close === undefined ? null : currencies?.priceInStatementUnits(statement, close)) ?? "no-price";
+    };
+    const expanded = new Set(ratioTab.ratios.map((ratio) => ratio.id).filter((id) => !collapsedGroups.has(id)));
+    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price), expanded);
+  }, [
+    annualStatements, collapsedGroups, currencies, displayStatements, history.data, history.error, history.loading,
+    isValuation, quarterlyStatements, ratioTab, resolvedPeriod,
+  ]);
+  const ratioColumns = useMemo<RatioTableColumn[]>(() => [
+    ratioMetricColumn(),
+    ...columns.flatMap((column, index) => column.kind === "statement" ? [{ ...column, index: index - 1 }] : []),
+  ], [columns]);
+
+  usePaneNoticeFooter({
+    registrationId: "financials-notices",
+    notices: [
+      ...financialStatementLimitations(financials),
+      ...(isValuation && history.error && !history.data ? ["Period-end prices are unavailable, so valuation ratios are too."] : []),
+      ...(isValuation ? [currencies?.warning(displayStatements) ?? ""] : []),
+    ],
+    focused,
+  });
+
   // A null snapshot is still in flight; only a loaded one can say "no coverage".
   if (!financials || (!hasAnnualStatements && !hasQuarterlyStatements)) {
     return (
@@ -380,6 +458,37 @@ export function ResolvedFinancialsTab({
     );
   }
 
+  const queryBar = (meta: string) => (
+    <QueryBar
+      width={Math.max(1, width - 2)}
+      filters={[
+        // The ratio tabs sit behind one Ratios segment, so the statement strip
+        // keeps its width; the open ratio tab is picked beside it.
+        { id: "statement", label: "Statement", inline: true,
+          value: ratioTab ? RATIOS_SEGMENT : section.key,
+          options: [
+            ...FINANCIAL_SUB_TABS.map((tab) => ({ label: tab.name, value: tab.key })),
+            { label: "Ratios", value: RATIOS_SEGMENT },
+          ],
+          onChange: (value: string) => selectSection(value === RATIOS_SEGMENT ? lastRatioKey : value) },
+        ...(ratioTab ? [{ id: "ratio", label: "Ratio",
+          value: ratioTab.key,
+          options: RATIO_TABS.map((tab) => ({ label: tab.name, value: tab.key })),
+          onChange: selectSection }] : []),
+      ]}
+      view={{
+        value: isAnnual ? "annual" : "quarterly",
+        options: [
+          { label: "Annual", value: "annual", disabled: !hasAnnualStatements },
+          { label: "Quarterly", value: "quarterly", disabled: !hasQuarterlyStatements },
+        ],
+        onChange: (value: string) => setPeriod(value as FinancialPeriod),
+      }}
+      meta={meta}
+    />
+  );
+  const asOf = periodEnd ? `as of ${periodEnd}` : "";
+
   return (
     <Box
       flexDirection="column"
@@ -391,62 +500,66 @@ export function ResolvedFinancialsTab({
       paddingBottom={nativePaneChrome ? 0 : 1}
       overflow="hidden"
     >
-      <DataTableView<FinancialTableRow, FinancialTableColumn>
-        focused={focused}
-        headerScrollRef={headerScrollRef}
-        scrollRef={bodyScrollRef}
-        syncHeaderScroll={syncHeaderScroll}
-        headerScrollId={headerScrollId}
-        bodyScrollId={bodyScrollId}
-        columns={columns}
-        items={rows}
-        selection={{
-          kind: "id",
-          selectedId: selectedRowId,
-          getId: (row) => row.id,
-          onChange: (_id, row, _index, reason) => {
-            setSelectedRowId(row.id);
-            if (reason === "pointer" && row.kind === "group" && row.toggleable) {
-              toggleGroup(row.id);
-            }
-          },
-        }}
-        sortColumnId={null}
-        sortDirection="desc"
-        getItemKey={financialRowKey}
-        onActivate={(row) => {
-          if (row.kind === "group" && row.toggleable) toggleGroup(row.id);
-        }}
-        getRowBackgroundColor={financialRowBackground}
-        renderCell={renderCell}
-        emptyStateTitle="No financial data"
-        getExportMetadata={() => [
-          ["Currency", comparisonCurrency ?? "per column"],
-          ["Growth", growthBasis],
-        ]}
-        showHorizontalScrollbar
-        resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
-        rootBefore={(
-          <QueryBar
-            width={Math.max(1, width - 2)}
-            filters={[
-              { id: "statement", label: "Statement", inline: true,
-                value: String(subTabIdx),
-                options: FINANCIAL_SUB_TABS.map((tab, index) => ({ label: tab.name, value: String(index) })),
-                onChange: (value: string) => setSubTabIdx(Number(value)) },
-            ]}
-            view={{
-              value: isAnnual ? "annual" : "quarterly",
-              options: [
-                { label: "Annual", value: "annual", disabled: !hasAnnualStatements },
-                { label: "Quarterly", value: "quarterly", disabled: !hasQuarterlyStatements },
-              ],
-              onChange: (value: string) => setPeriod(value as FinancialPeriod),
-            }}
-            meta={[comparisonCurrency, growthBasis].filter(Boolean).join(" · ")}
-          />
-        )}
-      />
+      {isValuation && oldestPeriodEnd ? <PeriodEndHistoryLoader oldestPeriodEnd={oldestPeriodEnd} onChange={setHistory} /> : null}
+      {ratioModel ? (
+        <RatioTable
+          focused={focused}
+          model={ratioModel}
+          columns={ratioColumns}
+          headerScrollRef={headerScrollRef}
+          bodyScrollRef={bodyScrollRef}
+          syncHeaderScroll={syncHeaderScroll}
+          headerScrollId={headerScrollId}
+          bodyScrollId={bodyScrollId}
+          onToggle={toggleGroup}
+          exportMetadata={() => [
+            ["Currency", comparisonCurrency ?? "per column"],
+            ...(periodEnd ? [["As of", periodEnd]] : []),
+          ]}
+          resetScrollKey={`${resolvedPeriod}:${section.key}:${displayStatements.length}`}
+          rootBefore={queryBar([comparisonCurrency, asOf].filter(Boolean).join(" · "))}
+        />
+      ) : (
+        <DataTableView<FinancialTableRow, FinancialTableColumn>
+          focused={focused}
+          headerScrollRef={headerScrollRef}
+          scrollRef={bodyScrollRef}
+          syncHeaderScroll={syncHeaderScroll}
+          headerScrollId={headerScrollId}
+          bodyScrollId={bodyScrollId}
+          columns={columns}
+          items={rows}
+          selection={{
+            kind: "id",
+            selectedId: selectedRowId,
+            getId: (row) => row.id,
+            onChange: (_id, row, _index, reason) => {
+              setSelectedRowId(row.id);
+              if (reason === "pointer" && row.kind === "group" && row.toggleable) {
+                toggleGroup(row.id);
+              }
+            },
+          }}
+          sortColumnId={null}
+          sortDirection="desc"
+          getItemKey={financialRowKey}
+          onActivate={(row) => {
+            if (row.kind === "group" && row.toggleable) toggleGroup(row.id);
+          }}
+          getRowBackgroundColor={financialRowBackground}
+          renderCell={renderCell}
+          emptyStateTitle="No financial data"
+          getExportMetadata={() => [
+            ["Currency", comparisonCurrency ?? "per column"],
+            ...(unit ? [["Unit", unit]] : []),
+            ["Growth", growthBasis],
+            ...(periodEnd ? [["As of", periodEnd]] : []),
+          ]}
+          showHorizontalScrollbar
+          resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
+          rootBefore={queryBar([moneyUnit, growthBasis, asOf].filter(Boolean).join(" · "))}
+        />
+      )}
     </Box>
   );
 }

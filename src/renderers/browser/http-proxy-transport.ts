@@ -4,7 +4,17 @@ import {
   type HttpProxyResponseEnvelope,
 } from "../../utils/http-proxy-response";
 import type { HttpFetchTransport } from "../../utils/http-transport";
-import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
+import { HTTP_PROXY_PATH, isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
+
+function needsProxy(url: string, hosts: readonly string[]): boolean {
+  try {
+    const target = new URL(url, typeof location === "undefined" ? undefined : location.href);
+    if (typeof location !== "undefined" && target.origin === location.origin) return false;
+    return isProxiedHost(target.hostname, hosts);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Client half of the plugin HTTP transport for the hosted web app.
@@ -21,18 +31,6 @@ import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hos
  * those through the proxy would cost a round trip, lose streaming, and be
  * refused by the worker anyway.
  */
-export const HTTP_PROXY_PATH = "/http-proxy";
-
-function needsProxy(url: string, hosts: readonly string[]): boolean {
-  try {
-    const target = new URL(url, typeof location === "undefined" ? undefined : location.href);
-    if (typeof location !== "undefined" && target.origin === location.origin) return false;
-    return isProxiedHost(target.hostname, hosts);
-  } catch {
-    return false;
-  }
-}
-
 export function createBrowserHttpProxyTransport(
   send: typeof fetch = fetch,
   hosts: readonly string[] = PROXY_ALLOWED_HOSTS,

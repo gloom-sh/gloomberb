@@ -10,14 +10,12 @@ import {
   normalizeCik,
   searchThirteenFFunds,
 } from "./api";
+import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
 import {
   buildBrowserRows,
-  dateYearsAgo,
   latestLikely13FQuarter,
-  recentIso,
   buildPeriodReports,
   dedupeLatestForms,
-  todayIso,
 } from "./model";
 import type {
   FundBrowserRow,
@@ -86,8 +84,8 @@ async function loadBrowserPage(
   options: Forms13FReadOptions & { offset?: number; limit?: number } = {},
 ): Promise<BrowserLoadResult> {
   const now = new Date();
-  const from = dateYearsAgo(2, now);
-  const to = todayIso(now);
+  const from = isoDateYearsAgo(2, now);
+  const to = isoDateToday(now);
   const quarter = latestLikely13FQuarter(now);
   const offset = Math.max(0, options.offset ?? 0);
   const browserLimit = Math.max(1, options.limit ?? BROWSER_PAGE_LIMIT);
@@ -122,7 +120,7 @@ async function loadBrowserPage(
   }
 
   if (tab === "latest") {
-    const filings = await listThirteenFFilings(recentIso(21, now), to, latestLimit, signal, pageApiOptions);
+    const filings = await listThirteenFFilings(isoDateDaysAgo(21, now), to, latestLimit, signal, pageApiOptions);
     const selected = dedupeLatestForms(filings);
     const { reports, warning } = await loadReportsForFunds(selected.map((form) => ({ cik: form.cik, name: form.companyName })), {
       from, to, signal, ...apiOptions,
@@ -229,8 +227,8 @@ export async function loadFundDetail(
 
   const forms = await listThirteenFForms(
     cik,
-    dateYearsAgo(4, now),
-    todayIso(now),
+    isoDateYearsAgo(4, now),
+    isoDateToday(now),
     100,
     signal,
     apiOptions,

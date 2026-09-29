@@ -7,17 +7,17 @@
  * The gate closes by itself, because both sign-in paths install a session that
  * `usePlanAccess` observes.
  */
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { t } from "../i18n";
 import { useAppLanguage } from "../i18n/react";
 import { matchesKeyChord, parseKeyChord } from "../app/keybindings";
 import { AuthForm, authFormTitle } from "../plugins/builtin/cloud/auth-form";
 import type { AccountMode } from "../plugins/builtin/cloud/auth-model";
 import {
-  DeviceSignInController,
-  type DeviceSignInSnapshot,
-} from "../plugins/builtin/cloud/device-signin";
-import { DeviceSignInPanel } from "../plugins/builtin/cloud/device-signin-dialog";
+  DeviceSignInPanel,
+  isDeviceSignInRetryKey,
+  useDeviceSignIn,
+} from "../plugins/builtin/cloud/device-signin-dialog";
 import { useShortcut, useViewport } from "../react/input";
 import { useThemeColors } from "../theme/theme-context";
 import { Box, Text } from "../ui";
@@ -57,19 +57,7 @@ function HoldAppInput() {
  * is what dismisses the gate, so there is no completion callback here.
  */
 function GateQrPanel({ height, onUseEmail }: { height: number; onUseEmail: () => void }) {
-  const controllerRef = useRef<DeviceSignInController | null>(null);
-  if (!controllerRef.current) controllerRef.current = new DeviceSignInController();
-  const controller = controllerRef.current;
-  const [snapshot, setSnapshot] = useState<DeviceSignInSnapshot>(controller.getSnapshot());
-
-  useEffect(() => {
-    const unsubscribe = controller.subscribe(setSnapshot);
-    controller.start();
-    return () => {
-      unsubscribe();
-      controller.cancel();
-    };
-  }, [controller]);
+  const { snapshot, retry } = useDeviceSignIn();
 
   useShortcut((event) => {
     if (isPlainKey(event, "escape")) {
@@ -78,12 +66,10 @@ function GateQrPanel({ height, onUseEmail }: { height: number; onUseEmail: () =>
       onUseEmail();
       return;
     }
-    if (snapshot.phase === "approved") return;
-    const retry = isPlainKey(event, "r") || event.name === "enter" || event.name === "return";
-    if (!retry) return;
+    if (!isDeviceSignInRetryKey(event, snapshot)) return;
     event.preventDefault();
     event.stopPropagation();
-    controller.start();
+    retry();
   }, { scope: GATE_SCOPE, phase: "before", allowEditable: true });
 
   return <DeviceSignInPanel snapshot={snapshot} height={height} shortcutScope={GATE_SCOPE} />;

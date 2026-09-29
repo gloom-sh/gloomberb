@@ -1,6 +1,6 @@
 import type { DividendPayment } from "./types";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { calendarYearsBefore } from "./calendar";
+import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { LATE_GRACE_DAYS, trailingCashAt } from "./trailing-cash";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -38,7 +38,7 @@ export function buildTrailingCashChartPoints(payments: DividendPayment[], now = 
   for (const timestamp of [...dates].sort((a, b) => a - b)) {
     const date = new Date(timestamp);
     // Avoid drawing the first partial year of a fund's history as a full-year cash rate.
-    if (calendarYearsBefore(date, 1) < firstDate) continue;
+    if (calendarMonthsBefore(date, 12) < firstDate) continue;
     const cash = trailingCashAt(sorted, date);
     // A step series only needs its changes and the current value.
     if (points.at(-1)?.close === cash && timestamp !== now.getTime()) continue;

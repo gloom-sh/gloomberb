@@ -5,6 +5,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
 import { headerCase } from "./header-case";
+import { statToneColor, type StatTone } from "./stat-grid";
 
 export { BulletList, FigureList, Prose, READING_WIDTH } from "./prose";
 export type { BulletListProps, FigureListItem, FigureListProps, ProseProps } from "./prose";
@@ -44,6 +45,9 @@ export interface KeyValueRowProps {
   label: string;
   value: string;
   detail?: string;
+  /** The value's tone, as on a StatGrid figure. */
+  tone?: StatTone;
+  /** A domain colour for the value. Wins over `tone`. */
   color?: string;
   width?: number;
   labelWidth?: number;
@@ -51,7 +55,7 @@ export interface KeyValueRowProps {
 }
 
 /** Aligned labels and values; a bounded row reserves room for an optional detail. */
-export function KeyValueRow({ label, value, detail, color, width, labelWidth, emphasis = true }: KeyValueRowProps) {
+export function KeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true }: KeyValueRowProps) {
   const colors = useThemeColors();
   const rowWidth = width === undefined ? undefined : Math.max(0, Math.floor(width));
   const preferredLabelWidth = Math.max(0, labelWidth ?? (rowWidth === undefined ? 14 : Math.min(12, Math.max(8, Math.floor(rowWidth * 0.32)))));
@@ -67,7 +71,7 @@ export function KeyValueRow({ label, value, detail, color, width, labelWidth, em
         <Text fg={colors.textDim}>{t(label)}</Text>
       </Box>
       <Box width={valueWidth} flexShrink={0} overflow="hidden">
-        <Text fg={color ?? colors.text} attributes={emphasis ? TextAttributes.BOLD : undefined}>
+        <Text fg={color ?? statToneColor(tone, colors) ?? colors.text} attributes={emphasis ? TextAttributes.BOLD : undefined}>
           {valueWidth === undefined ? value : truncateToDisplayWidth(value, valueWidth)}
         </Text>
       </Box>

@@ -664,7 +664,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       stage: "upgrade",
       accountStatus: progress.accountStatus,
       checkoutOpenedAt: new Date().toISOString(),
-    }).then(() => openUpgrade({ interval: billingInterval })).catch(() => {});
+    }).then(() => openUpgrade({ interval: billingInterval, sheet: false })).catch(() => {});
   }, [billingInterval, openUpgrade, persistProgress, progress.accountStatus]);
 
   const primaryUpgradeAction = useCallback(() => {

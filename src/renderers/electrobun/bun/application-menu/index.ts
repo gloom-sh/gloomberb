@@ -9,8 +9,7 @@ const GITHUB_ISSUE_URL = "https://github.com/gloom-sh/gloomberb/issues/new/choos
 
 export type ElectrobunApplicationMenuCommand =
   | DesktopApplicationMenuCommand
-  | { type: "open-devtools" }
-  | { type: "quit" };
+  | { type: "open-devtools" };
 
 function commandItem(
   label: string,

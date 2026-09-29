@@ -16,6 +16,11 @@ export interface ConfirmModalOptions {
   onConfirm: () => void | Promise<void>;
   /** "stay" keeps the confirm open after it ran; "back" closes it, as "close" does. */
   successBehavior?: "close" | "back" | "stay";
+  /**
+   * Runs once `onConfirm` succeeded and the confirm has closed (or stayed),
+   * for work that belongs after it, such as opening the bar again.
+   */
+  onSuccess?: () => void;
 }
 
 /**

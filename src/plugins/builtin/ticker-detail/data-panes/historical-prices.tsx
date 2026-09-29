@@ -27,7 +27,7 @@ import {
 } from "../../../runtime";
 import { usePaneTicker } from "../../../../state/app/context";
 import { useClampSelectedIndex } from "../../../../components/data-table/table-pane";
-import { formatDateTime, useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
+import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 
 type HistoryColumnId = "date" | "open" | "high" | "low" | "close" | "change" | "changePercent" | "volume";
 type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
@@ -44,6 +44,12 @@ function pricePointDate(point: PricePoint): Date | null {
   const value = point.date as Date | string | number;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function formatDateTime(date: Date): string {
+  const iso = date.toISOString();
+  const hasTime = date.getUTCHours() !== 0 || date.getUTCMinutes() !== 0 || date.getUTCSeconds() !== 0;
+  return hasTime ? iso.slice(0, 16).replace("T", " ") : iso.slice(0, 10);
 }
 
 /** Every price in the table at one decimal count, so the columns line up. */
@@ -68,6 +74,11 @@ function historicalPriceDecimals(rows: readonly HistoricalPriceRow[], assetCateg
     close: clean(point.close)!,
     volume: point.volume,
   }]), assetCategory);
+}
+
+/** The exported price: the digits the table shows, without the width limit. */
+function exportPrice(value: number | null | undefined, decimals: number): number | null {
+  return value == null || !Number.isFinite(value) ? null : Number(value.toFixed(Math.min(20, decimals)));
 }
 
 function formatMaybePercent(value: number | null): string {
@@ -204,27 +215,25 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: HistoricalPriceRow,
     column: HistoryColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "date":
-        return { text: row.date, color: selectedColor ?? colors.textDim };
+        return { text: row.date, color: colors.textDim };
       case "open":
-        return { text: formatMaybePrice(row.point.open, priceDecimals, column.width), color: selectedColor ?? colors.text };
       case "high":
-        return { text: formatMaybePrice(row.point.high, priceDecimals, column.width), color: selectedColor ?? colors.text };
       case "low":
-        return { text: formatMaybePrice(row.point.low, priceDecimals, column.width), color: selectedColor ?? colors.text };
       case "close":
-        return { text: formatMaybePrice(row.point.close, priceDecimals, column.width), color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return {
+          text: formatMaybePrice(row.point[column.id], priceDecimals, column.width),
+          value: exportPrice(row.point[column.id], priceDecimals),
+          ...(column.id === "close" ? { color: colors.textBright, attributes: TextAttributes.BOLD } : { color: colors.text }),
+        };
       case "change":
-        return { text: formatMaybePrice(row.change, priceDecimals, column.width), color: selectedColor ?? priceColor(row.change ?? 0) };
+        return { text: formatMaybePrice(row.change, priceDecimals, column.width), value: exportPrice(row.change, priceDecimals), color: priceColor(row.change ?? 0) };
       case "changePercent":
-        return { text: formatMaybePercent(row.changePercent), color: selectedColor ?? priceColor(row.changePercent ?? 0) };
+        return { text: formatMaybePercent(row.changePercent), value: row.changePercent == null ? null : row.changePercent * 100, color: priceColor(row.changePercent ?? 0) };
       case "volume":
-        return { text: formatMaybeCompact(row.point.volume), color: selectedColor ?? colors.textDim };
+        return { text: formatMaybeCompact(row.point.volume), value: row.point.volume ?? null, color: colors.textDim };
     }
   }, [priceDecimals]);
 
@@ -268,6 +277,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
         />
       )}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       getExportMetadata={() => [
         ["Ticker", symbol ? publicTickerKey(symbol, exchange) : ""],
         ["Requested range", range],

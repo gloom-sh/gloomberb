@@ -29,6 +29,12 @@ export type CloudCdsParams = {
   limit?: number;
 };
 
+export type CloudCdsHistoryParams = {
+  /** Company name; the backend matches it to one reference entity. */
+  issuer: string;
+  days?: number;
+};
+
 export type CloudCongressChamber = "all" | "house" | "senate";
 
 export type CloudCongressHouseParams = {
@@ -202,6 +208,12 @@ export function cloudCdsPath(params: CloudCdsParams = {}): string {
   if (params.days != null) search.set("days", String(params.days));
   if (params.limit != null) search.set("limit", String(params.limit));
   return appendQuery("/cloud/credit/cds", search);
+}
+
+export function cloudCdsHistoryPath(params: CloudCdsHistoryParams): string {
+  const search = new URLSearchParams({ issuer: params.issuer.trim() });
+  if (params.days != null) search.set("days", String(params.days));
+  return appendQuery("/cloud/credit/cds/history", search);
 }
 
 export type CloudSecFilingsParams = {

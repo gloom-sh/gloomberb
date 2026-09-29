@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, type InputRenderable } from "../../../ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Box } from "../../../ui";
 import {
   DataTableView,
   QueryBar,
-  Tabs,
-  usePaneHeaderTabs,
+  usePaneTabs,
+  useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -79,9 +79,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
   const [filter, setFilter] = usePluginPaneState<CatalogFilterId>("activeTab", "all");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [sortPreference, setSortPreference] = useState<CatalogSortPreference>(DEFAULT_SORT);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
+  const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
 
   const tickerQuery = looksLikeCatalogTickerQuery(searchQuery);
   const { instruments, loading: universeLoading } = useCatalogUniverse(
@@ -122,14 +120,6 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
   const selectedUrl = selectedRow?.url ?? null;
 
   const columns = useMemo(() => buildColumns(width), [width]);
-
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((token) => token + 1);
-  }, []);
-  const blurSearch = useCallback(() => {
-    setSearchFocused(false);
-  }, []);
 
   const chartSelected = useCallback(async (row: CatalogSeriesRow | null) => {
     if (!row) return;
@@ -177,19 +167,16 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: CatalogSeriesRow,
     column: CatalogColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "series":
-        return { text: row.label, color: selectedColor ?? colors.textBright };
+        return { text: row.label, color: colors.textBright };
       case "publisher":
-        return { text: row.publisher, color: selectedColor ?? colors.textMuted };
+        return { text: row.publisher, color: colors.textMuted };
       case "kind":
-        return { text: row.kind, color: selectedColor ?? colors.textDim };
+        return { text: row.kind, color: colors.textDim };
       case "expression":
-        return { text: row.expression, color: selectedColor ?? colors.text };
+        return { text: row.expression, color: colors.text };
     }
   }, []);
 
@@ -212,11 +199,12 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     [],
   );
   const selectFilter = useCallback((value: string) => setFilter(value as CatalogFilterId), [setFilter]);
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabStrip } = usePaneTabs({
     tabs,
     activeValue: filter,
     onSelect: selectFilter,
     focused: focused && !searchFocused,
+    compact: true,
   });
 
   return (
@@ -233,23 +221,11 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
               onChange: setSearchQuery,
               placeholder: "series or expression",
               focused,
-              active: searchFocused,
-              onActiveChange: (active) => (active ? focusSearch() : blurSearch()),
-              focusToken: searchFocusToken,
-              inputRef: searchInputRef,
+              ...searchProps,
               debounceMs: 80,
-              onNavigateDown: blurSearch,
             }}
           />
-          {!tabsInHeader && (
-            <Tabs
-              tabs={tabs}
-              activeValue={filter}
-              onSelect={selectFilter}
-              focused={focused && !searchFocused}
-              compact
-            />
-          )}
+          {tabStrip}
         </Box>
       )}
       selection={{
@@ -269,6 +245,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       getItemKey={(row) => row.id}
       onActivate={chartSelected}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={emptyCopy.title}
       emptyStateHint={emptyCopy.hint}
     />

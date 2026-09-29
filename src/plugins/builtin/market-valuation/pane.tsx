@@ -17,8 +17,8 @@ import { indicatorSeries, indicatorUnavailableReason, shortZoneLabel, type Indic
 import { IndicatorDetail } from "./detail";
 import { INDICATORS } from "./indicators";
 import { RANGE_OPTIONS, VALUATION_DEFAULTS } from "./settings";
+import { formatSigma } from "../shared/trend";
 import {
-  formatSigma,
   selectValuationViews,
   type IndicatorViewModel
 } from "./view";

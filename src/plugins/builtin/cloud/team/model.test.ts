@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { TeamNotification, TeamSummary } from "../../../../api-client";
+import type { TeamNotification } from "../../../../api-client";
 import {
   canInviteToTeam,
   canManageTeam,
@@ -14,39 +14,25 @@ import {
   teamChannelId,
   teamIdFromChannelId,
 } from "./model";
+import { createTestTeam, createTestTeamCard } from "./test-fixture";
 
-function team(overrides: Partial<TeamSummary>): TeamSummary {
-  return {
-    id: "org-1",
-    name: "Macro Desk",
-    slug: "macro-desk-abc123",
-    accentColor: "magenta",
-    shortName: "MD",
-    allowMemberInvites: false,
-    channelId: "team:org-1",
-    createdAt: "2026-09-14T12:00:00.000Z",
-    role: "member",
-    memberCount: 3,
-    ...overrides,
-  };
-}
 
 describe("roles", () => {
   test("owners and admins manage; members invite only when allowed", () => {
     expect(canManageTeam("owner")).toBe(true);
     expect(canManageTeam("admin")).toBe(true);
     expect(canManageTeam("member")).toBe(false);
-    expect(canInviteToTeam(team({ role: "member" }))).toBe(false);
-    expect(canInviteToTeam(team({ role: "member", allowMemberInvites: true }))).toBe(true);
-    expect(canInviteToTeam(team({ role: "admin" }))).toBe(true);
+    expect(canInviteToTeam(createTestTeam({ role: "member" }))).toBe(false);
+    expect(canInviteToTeam(createTestTeam({ role: "member", allowMemberInvites: true }))).toBe(true);
+    expect(canInviteToTeam(createTestTeam({ role: "admin" }))).toBe(true);
   });
 });
 
 describe("findTeam", () => {
   const teams = [
-    team({ id: "a", name: "Macro Desk", shortName: "MD", slug: "macro-desk-1" }),
-    team({ id: "b", name: "Rates", shortName: "RT", slug: "rates-2" }),
-    team({ id: "c", name: "Rates Desk", shortName: "RD", slug: "rates-desk-3" }),
+    createTestTeam({ id: "a", name: "Macro Desk", shortName: "MD", slug: "macro-desk-1" }),
+    createTestTeam({ id: "b", name: "Rates", shortName: "RT", slug: "rates-2" }),
+    createTestTeam({ id: "c", name: "Rates Desk", shortName: "RD", slug: "rates-desk-3" }),
   ];
 
   test("matches id, short name, slug, and name exactly, ignoring case and markers", () => {
@@ -68,7 +54,7 @@ describe("findTeam", () => {
 
 describe("notifications", () => {
   const base = { id: "n1", channelId: "team:org-1", createdAt: "2026-09-14T12:00:00.000Z" };
-  const teamCard = { id: "org-1", name: "Macro Desk", accentColor: "magenta" as const, shortName: "MD" };
+  const teamCard = createTestTeamCard();
 
   test("describes each kind for a toast", () => {
     const invite: TeamNotification = {

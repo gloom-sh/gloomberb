@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DialogApi } from "./dialog";
+import type { DialogApi, DialogOptions, PromptContext } from "./dialog";
 
 /**
  * The dialog stack both hosts share: open, close, settle, and settle anything
@@ -12,7 +12,7 @@ export type DialogKind = "alert" | "prompt";
 interface DialogStackOptions<E extends { id: string }> {
   idPrefix: string;
   /** Builds the host's record. `stackWasEmpty` is true for the first dialog of a stack. */
-  createEntry(id: string, kind: DialogKind, options: Record<string, unknown>, stackWasEmpty: boolean): E;
+  createEntry(id: string, kind: DialogKind, options: DialogOptions<never>, stackWasEmpty: boolean): E;
   /** Runs once a closed dialog's promise has settled. */
   onClosed?(entry: E, remaining: readonly E[]): void;
   /** Wraps the state update, e.g. to flush it synchronously. */
@@ -89,7 +89,7 @@ export function useDialogStack<E extends { id: string }>(options: DialogStackOpt
     optionsRef.current.onClosed?.(target, next);
   }, [publish]);
 
-  const open = useCallback(<T,>(kind: DialogKind, dialogOptions: Record<string, unknown>) => (
+  const open = useCallback(<T,>(kind: DialogKind, dialogOptions: DialogOptions<never>) => (
     new Promise<T | undefined>((resolve) => {
       const { createEntry, idPrefix } = optionsRef.current;
       const order = nextDialogId++;
@@ -119,7 +119,7 @@ export function useDialogStack<E extends { id: string }>(options: DialogStackOpt
     alert: async (dialogOptions) => {
       await open<void>("alert", dialogOptions);
     },
-    prompt: <T,>(dialogOptions: Record<string, unknown>) => open<T>("prompt", dialogOptions),
+    prompt: <T,>(dialogOptions: DialogOptions<PromptContext<T>>) => open<T>("prompt", dialogOptions),
   }), [open]);
 
   return { dialogs, close, api };

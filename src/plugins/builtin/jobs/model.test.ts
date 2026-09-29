@@ -102,7 +102,7 @@ describe("table layout", () => {
   test("the role column takes what the fixed columns leave", () => {
     const wide = buildPostingColumns(120, true);
     expect(wide.map((column) => column.id)).toEqual(["title", "function", "location", "posted", "salary"]);
-    expect(wide[0]!.width).toBe(120 - (24 + 24 + 8 + 14) - 6);
+    expect(wide[0]!.width).toBe(120 - (24 + 24 + 8 + 14) - 8);
     const narrow = buildPostingColumns(80, true);
     expect(narrow.map((column) => column.id)).toEqual(["title", "function", "location", "posted"]);
   });

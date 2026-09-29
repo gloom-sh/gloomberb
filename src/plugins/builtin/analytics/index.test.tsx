@@ -18,6 +18,12 @@ import { createTestTicker } from "../../../test-support/ticker";
 import { createTestBrokerAdapter } from "../../../test-support/broker";
 
 const TEST_PANE_ID = "analytics:test";
+
+/** A figure in the overview's grid: its label, then its value (and any detail) on the same row. */
+function figure(label: string, value: string): RegExp {
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`${escape(label)} +${value.split(/ +/).map(escape).join(" +")}(?: |$)`, "m");
+}
 const BROKER_PORTFOLIO_ID = "broker:ibkr-flex:DU12345";
 const GATEWAY_PORTFOLIO_ID = "broker:ibkr-live:DU12345";
 
@@ -207,11 +213,11 @@ describe("PortfolioAnalyticsPane", () => {
       });
       for (let index = 0; index < 6; index++) await flushFrame();
       const frame = testSetup!.captureCharFrame();
-      expect(frame).toContain(currency ? "Net Liq       15.0k" : "Net Liq       —");
-      expect(frame).toContain(currency ? "Cash          13.5k" : "Cash          —");
-      expect(frame).not.toContain("Net Liq       20.0k");
+      expect(frame).toMatch(figure("Net Liq", currency ? "15.0k" : "—"));
+      expect(frame).toMatch(figure("Cash", currency ? "13.5k" : "—"));
+      expect(frame).not.toMatch(figure("Net Liq", "20.0k"));
       if (currency) expect(requested).toContain("CAD");
-      else expect(frame).toContain("FX            Unavailable");
+      else expect(frame).toMatch(figure("FX", "Unavailable"));
     });
   }
 
@@ -236,21 +242,24 @@ describe("PortfolioAnalyticsPane", () => {
     for (let index = 0; index < 6; index++) await flushFrame();
     const frame = testSetup!.captureCharFrame();
     if (withAccount) {
-      expect(frame).toContain("Net Liq       6.0k");
-      expect(frame).toContain("Cash          6.0k");
+      expect(frame).toMatch(figure("Net Liq", "6.0k"));
+      expect(frame).toMatch(figure("Cash", "6.0k"));
     } else {
       expect(frame).not.toContain("Net Liq");
       expect(frame).not.toContain("Cash");
-      expect(frame).not.toContain("Val           0");
-      expect(frame).not.toContain("P&L           0");
+      expect(frame).not.toMatch(figure("Val", "0"));
+      expect(frame).not.toMatch(figure("P&L", "0"));
     }
-    expect(frame).toContain("Broker return +10.00%");
-    expect(frame).not.toContain("Day           0");
-    expect(frame).not.toContain("P&L           0");
-    expect(frame).toContain("PORTFOLIO HISTORY");
-    expect(frame).toContain("Value (USD)");
-    expect(frame).not.toContain("CURRENT-WEIGHT BASKET ESTIMATES");
-    expect(frame).not.toContain("Holdings by sector");
+    expect(frame).toMatch(figure("Broker return", "+10.00%"));
+    expect(frame).not.toMatch(figure("Day", "0"));
+    expect(frame).not.toMatch(figure("P&L", "0"));
+    // The history takes the body a sector table would share, and its legend names it.
+    const lines = frame.split("\n");
+    const legend = lines.findIndex((line) => line.includes("● Value (USD)"));
+    expect(legend).toBeGreaterThan(0);
+    expect(lines.slice(legend).some((line) => line.includes("Sep 1 2026"))).toBe(true);
+    expect(frame).not.toContain("Est. Sharpe");
+    expect(frame).not.toContain("SECTOR");
   });
 
   test("an identity-only account cannot establish zero holdings values or P&L", async () => {
@@ -265,10 +274,10 @@ describe("PortfolioAnalyticsPane", () => {
     });
     await flushFrame();
     const frame = testSetup!.captureCharFrame();
-    expect(frame).toContain("Source        Cached");
-    expect(frame).not.toContain("Val           0");
-    expect(frame).not.toContain("Day           0");
-    expect(frame).not.toContain("P&L           0");
+    expect(frame).toMatch(figure("Source", "Cached"));
+    expect(frame).not.toMatch(figure("Val", "0"));
+    expect(frame).not.toMatch(figure("Day", "0"));
+    expect(frame).not.toMatch(figure("P&L", "0"));
     expect(frame).not.toContain("Net Liq");
     expect(frame).not.toContain("Cash");
   });
@@ -291,7 +300,7 @@ describe("PortfolioAnalyticsPane", () => {
     let frame = testSetup!.captureCharFrame();
     expect(frame).toContain("Loading account history");
     expect(frame).not.toContain("No positions");
-    expect(frame).not.toContain("Val           0");
+    expect(frame).not.toMatch(figure("Val", "0"));
 
     await act(async () => { rejectHistory(new Error("Statement service unavailable")); });
     await flushFrame();
@@ -299,7 +308,7 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Account history unavailable.");
     expect(frame).toContain("Statement service unavailable");
     expect(frame).not.toContain("No positions");
-    expect(frame).not.toContain("P&L           0");
+    expect(frame).not.toMatch(figure("P&L", "0"));
 
     await act(async () => { testSetup!.mockInput.pressArrow("left"); });
     await flushFrame();
@@ -340,7 +349,8 @@ describe("PortfolioAnalyticsPane", () => {
     await flushFrame();
     expect(harnessState?.paneState[TEST_PANE_ID]?.portfolioId).toBe(secondId);
     expect(testSetup!.captureCharFrame()).not.toContain("+10.00%");
-    expect(testSetup!.captureCharFrame()).not.toContain("PORTFOLIO HISTORY");
+    // The band holds its rows for the pending history instead of drawing the first account's.
+    expect(testSetup!.captureCharFrame()).toContain("Loading history...");
     await act(async () => {
       completeSecond({ accountId: "DU54321", source: "flex", period: "Second account", fetchedAt: 1,
         points: [{ date: "2026-01-01", cumulativeReturn: 0 }, { date: "2026-02-01", cumulativeReturn: .2 }] });
@@ -362,10 +372,12 @@ describe("PortfolioAnalyticsPane", () => {
       ),
     };
 
+    // Tall enough for every figure; a shorter pane drops them from the end.
     await act(async () => {
       testSetup = await testRender(
         <AnalyticsHarness
           config={config}
+          height={40}
           brokerAccounts={{
             "ibkr-flex": [{
               accountId: "DU12345",
@@ -390,7 +402,7 @@ describe("PortfolioAnalyticsPane", () => {
             }],
           }}
         />,
-        { width: 100, height: 24 },
+        { width: 100, height: 40 },
       );
       await Promise.resolve();
       await testSetup.renderOnce();
@@ -399,19 +411,19 @@ describe("PortfolioAnalyticsPane", () => {
     await flushFrame();
 
     const frame = testSetup!.captureCharFrame();
-    expect(frame).toContain("Net Liq       125.0k");
-    expect(frame).toContain("Val           113.6k");
-    expect(frame).toContain("Margin Lev    0.9x");
-    expect(frame).toContain("Cash          -50.0k");
-    expect(frame).toContain("Day           +900.00");
-    expect(frame).toContain("P&L           +777.00");
-    expect(frame).toContain("Realized      -25.00");
-    expect(frame).toContain("Settled       -45.0k");
-    expect(frame).toContain("Avail         15.0k");
-    expect(frame).toContain("Excess        12.0k");
-    expect(frame).toContain("BP            30.0k");
-    expect(frame).toContain("As Of         Mar 26");
-    expect(frame).toContain("Source        Flex Mar 26");
+    expect(frame).toMatch(figure("Net Liq", "125.0k"));
+    expect(frame).toMatch(figure("Val", "113.6k"));
+    expect(frame).toMatch(figure("Margin Lev", "0.9x"));
+    expect(frame).toMatch(figure("Cash", "-50.0k"));
+    expect(frame).toMatch(figure("Day", "+900.00"));
+    expect(frame).toMatch(figure("P&L", "+777.00"));
+    expect(frame).toMatch(figure("Realized", "-25.00"));
+    expect(frame).toMatch(figure("Settled", "-45.0k"));
+    expect(frame).toMatch(figure("Avail", "15.0k"));
+    expect(frame).toMatch(figure("Excess", "12.0k"));
+    expect(frame).toMatch(figure("BP", "30.0k"));
+    expect(frame).toMatch(figure("As Of", "Mar 26"));
+    expect(frame).toMatch(figure("Source", "Flex Mar 26"));
   });
 
   test("falls back from a Gateway portfolio to a configured Flex profile for IBKR history", async () => {
@@ -496,12 +508,10 @@ describe("PortfolioAnalyticsPane", () => {
       { instanceId: "ibkr-live", accountId: "DU12345" },
       { instanceId: "ibkr-flex", accountId: "DU12345" },
     ]);
-    expect(frame).toContain("Broker return");
-    expect(frame).toContain("+10.00%");
-    expect(frame).toContain("PORTFOLIO HISTORY");
+    expect(frame).toMatch(figure("Broker return", "+10.00% FLEX"));
+    expect(frame).toContain("● Value (USD)");
     expect(frame).toContain("Technology");
     expect(frame).toContain("100.0%");
-    expect(frame).toContain("Flex FLEX");
   });
 
   test("filters broker-managed positions to the active portfolio and uses the portfolio pane quote math", async () => {
@@ -522,8 +532,8 @@ describe("PortfolioAnalyticsPane", () => {
     const frame = testSetup!.captureCharFrame();
     expect(frame).toContain("Main Portfolio");
     expect(frame).toContain("Flex DU12345");
-    expect(frame).toContain("Val           1.4k");
-    expect(frame).toContain("P&L           +400.00  (+40.00%)");
+    expect(frame).toMatch(figure("Val", "1.4k"));
+    expect(frame).toMatch(figure("P&L", "+400.00 +40.00%"));
     expect(frame).toContain("Technology               100.0%       1.4k    +400.00  +40.00%");
     expect(frame).not.toContain("1.3k");
     // Both portfolios' AAPL together would be 2.8k at this quote.
@@ -563,14 +573,23 @@ for (const scenario of ["unknown currency", "dated correction", "empty observati
     const frame = testSetup!.captureCharFrame();
     expect(frame).toContain("Technology");
     if (scenario === "empty observations") {
-      expect(frame).toContain("at least two observations");
-      expect(frame).not.toContain("Enlarge this pane");
+      // No band: the footer warning says which observations are missing.
+      expect(frame).not.toContain("●");
       expect(frame).not.toContain("Broker return");
+      await emitKeypress(testSetup!, { name: "!", sequence: "!", shift: true }, { trackPropagation: true });
+      await flushFrame();
+      expect(testSetup!.captureCharFrame()).toContain("3 missing return observations.");
     } else {
-      expect(frame).toContain("Broker return +10.00%");
-      expect(frame).toContain("Jan 1 2026");
-      expect(frame).toContain("Sep 10 2026");
-      expect(frame).toContain(scenario === "unknown currency" ? "Value (unknown currency)" : "Value (USD)");
+      expect(frame).toMatch(figure("Broker return", "+10.00%"));
+      if (scenario === "dated correction") {
+        // The correction leaves Sep 10 without a value, so the line ends on Jan 2 and the footer says why.
+        expect(frame).toContain("● Value (USD) 11.0k");
+        expect(frame).not.toContain("Sep 10 2026");
+      } else {
+        expect(frame).toContain("● Value (unknown currency) 21.0k");
+        expect(frame).toContain("Jan 1 2026");
+        expect(frame).toContain("Sep 10 2026");
+      }
       expect(frame).not.toContain("Value (JPY)");
       if (scenario === "dated correction") {
         expect(frame).not.toContain("1 missing value observation.");
@@ -584,3 +603,45 @@ for (const scenario of ["unknown currency", "dated correction", "empty observati
     }
   });
 }
+
+test("the overview draws the account history between its figures and the sector rows, and compacts it in a short pane", async () => {
+  const performance: BrokerPortfolioPerformance = {
+    accountId: "DU12345", source: "flex", period: "YTD", currency: "USD", fetchedAt: 1,
+    points: Array.from({ length: 30 }, (_, index) => ({
+      date: new Date(Date.UTC(2026, 2, 2) + index * 7 * 86_400_000).toISOString().slice(0, 10),
+      value: 10_000 + index * 150 + (index % 4) * 90,
+    })),
+  };
+  const adapter = createTestBrokerAdapter({ id: "ibkr", getPortfolioPerformance: async () => performance });
+  const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
+  config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", enabled: true, config: {} }];
+  const ticker = createSharedTicker();
+  for (const [width, height] of [[78, 28], [60, 9]] as const) {
+    controlledCoordinator = new MarketDataCoordinator(createTestDataProvider({
+      getQuote: async () => null, getPriceHistory: async () => [], getPriceHistoryForResolution: async () => [],
+    }));
+    setSharedMarketDataCoordinator(controlledCoordinator);
+    await act(async () => {
+      testSetup = await testRender(<AnalyticsHarness config={config} ticker={ticker}
+        runtime={createTestPluginRuntime({ getBrokerAdapter: () => adapter })}
+        financials={createFinancials(125)} width={width} height={height} />, { width, height });
+    });
+    for (let index = 0; index < 6; index++) await flushFrame();
+    const lines = testSetup!.captureCharFrame().split("\n");
+    const legend = lines.findIndex((line) => line.includes("● Value (USD)"));
+    const header = lines.findIndex((line) => line.includes("SECTOR"));
+    expect(legend).toBeGreaterThan(0);
+    expect(lines[legend]).toContain(width === 78 ? "● Value (USD) 14.4k" : "● Value (USD) ");
+    // The chart takes rows at the default size; in a short pane whose sector
+    // rows fit whole it keeps a compact four rows instead of a strip over blank rows.
+    expect(header - legend).toBeGreaterThan(width === 78 ? 6 : 0);
+    if (width === 60) expect(header - legend).toBe(4);
+    expect(lines.slice(header + 1).some((line) => line.includes("Technology"))).toBe(true);
+    await act(async () => {
+      testSetup!.renderer.destroy();
+    });
+    testSetup = undefined;
+    controlledCoordinator.destroy();
+    controlledCoordinator = undefined;
+  }
+});

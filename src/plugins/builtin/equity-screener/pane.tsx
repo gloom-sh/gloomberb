@@ -7,7 +7,7 @@ import {
 } from "../../../ui";
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableStackView,
   DataTableView,
   KeyValueRow,
@@ -15,11 +15,10 @@ import {
   PageStackView,
   PaneStatusBody,
   QueryBar,
-  Tabs,
-  usePaneHeaderTabs,
   TextField,
   usePaneFooter,
   usePaneNoticeFooter,
+  usePaneTabs,
   useTableLoadMore,
   type DataTableColumn,
   type DataTableVisibleRange,
@@ -33,8 +32,9 @@ import {
   usePluginPaneState,
   useShortcut,
 } from "../../../public/react";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { useThemeColors } from "../../../theme/theme-context";
+import { priceColor } from "../../../theme/colors";
 import { apiClient } from "../../../api-client";
 import {
   NUMERIC_FIELDS,
@@ -44,7 +44,9 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
+import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
@@ -63,6 +65,7 @@ import {
   parseScreenDefinition,
   resultFields,
   SHORT_LABELS,
+  SIGN_COLORED,
   screenLabel,
   screenRowId,
 } from "./model";
@@ -72,11 +75,6 @@ import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildScreenerQuoteTargets } from "../../../market-data/quotes/screener-live-quotes";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { getTableWidth } from "../../../components/ui/table-layout";
-
-/** Rows streamed beyond the visible window so a short scroll lands on live prices. */
-const STREAM_OVERSCAN = 8;
-/** Before the table reports its window, stream what a full-height pane shows. */
-const INITIAL_STREAM_ROWS = 40;
 
 const TABS = [
   { value: "results", label: "Results" },
@@ -97,6 +95,7 @@ function resultColumns(
   width: number,
   definition: ScreenDefinition,
   metric: NumericField,
+  asOf: boolean,
 ): DataTableColumn[] {
   const [focus, ...others] = resultFields(definition, metric);
   const metricColumn = (field: NumericField): DataTableColumn => ({
@@ -116,7 +115,7 @@ function resultColumns(
     ...(sector ? [{ id: "sector", label: "SECTOR", width: 22, align: "left" as const }] : []),
     metricColumn(focus!),
     { id: "percentile", label: "PCTL", width: 4, align: "right" },
-    { id: "date", label: "AS OF", width: 10, align: "left" },
+    ...(asOf ? [{ id: "date", label: "AS OF", width: 10, align: "left" as const }] : []),
     ...extra,
   ];
   // Measured the way the table draws them (header floor, gaps, lead gaps), so a
@@ -163,7 +162,7 @@ function ScreenDetail({
                 metric.value === null
                   ? (metric.reason ?? "unavailable")
                   : [
-                      metric.percentile.value == null ? null : `${rank(metric.percentile.value)} pctl`,
+                      metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
                       stamp.collected ? `collected ${stamp.text}` : stamp.text,
                       metric.state === "available" ? null : metric.state,
                     ].filter(Boolean).join(" \u00b7 ")
@@ -252,13 +251,10 @@ function EquityScreenView({
   // Price, change, volume and market cap stream for the rows on screen; the
   // screen itself (membership, order, percentiles) stays the snapshot's.
   const liveStreaming = useLiveStreamingSetting();
-  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange>({ start: 0, end: INITIAL_STREAM_ROWS });
+  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange>(INITIAL_STREAM_RANGE);
   const streamTargets = useMemo(() => {
-    const onScreen = snapshotRows.slice(Math.max(0, visibleRange.start - STREAM_OVERSCAN), visibleRange.end + STREAM_OVERSCAN);
     const selectedRow = snapshotRows.find((row) => screenRowId(row) === selectedId);
-    const streamed = selectedRow && !onScreen.includes(selectedRow) ? [...onScreen, selectedRow] : onScreen;
-    const selectedTarget = selectedRow ? selectedRow.symbol : null;
-    return buildScreenerQuoteTargets(streamed, selectedTarget);
+    return buildScreenerQuoteTargets(streamWindowRows(snapshotRows, visibleRange, selectedRow), selectedRow?.symbol ?? null);
   }, [selectedId, snapshotRows, visibleRange]);
   const { entries: liveEntries } = useLiveQuoteEntries(streamTargets, {
     freshnessScopeKey: `equity-screener:${JSON.stringify(definition)}`,
@@ -298,7 +294,10 @@ function EquityScreenView({
   );
   const metricFields =
     fields.data?.fields.filter((field) => field.kind === "number") ?? [];
-  const columns = resultColumns(width, definition, metric);
+  // AS OF earns its column only when some row's focus metric is stale; the
+  // snapshot decides, so a live quote freshening a row does not reflow the table.
+  const staleFocus = snapshotRows.some((row) => row.metrics[metric]?.state === "stale");
+  const columns = resultColumns(width, definition, metric, staleFocus);
   const apply = (next: ScreenDefinition) => {
     try {
       setDefinition(parseScreenDefinition(next));
@@ -375,18 +374,12 @@ function EquityScreenView({
   const removeSaved = async () => {
     const entry = selectedSaved;
     if (!entry || saving) return;
-    const confirmed = await dialog
-      .prompt<boolean>({
-        content: (context: PromptContext<boolean>) => (
-          <ConfirmDialog
-            {...context}
-            title="Delete saved screen?"
-            body={[entry.name]}
-            confirmLabel="Delete"
-          />
-        ),
-      })
-      .catch(() => false);
+    const confirmed = await confirmDialog(dialog, {
+      closeOnClickOutside: false,
+      title: "Delete saved screen?",
+      body: [entry.name],
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
     setSaving(true);
     try {
@@ -631,13 +624,14 @@ function EquityScreenView({
       hint.onPress();
     }
   });
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs: TABS,
     activeValue: mode,
     onSelect: switchMode,
     focused: focused && !saveForm && editing === null,
+    dense: true,
   });
-  const bodyHeight = Math.max(5, height - 1 - (tabsInHeader ? 0 : 1));
+  const bodyHeight = Math.max(5, height - 1 - tabRows);
   const saveContent = !access.emailVerified ? (
     <SignInWall
       action="save and open your screens"
@@ -911,28 +905,23 @@ function EquityScreenView({
               : null;
             if (field) {
               const observation = row.metrics[field];
+              const change = SIGN_COLORED.has(field) && observation.value != null
+                // A move that prints 0.0 stays neutral.
+                ? priceColor(Math.abs(observation.value) < 0.05 ? 0 : observation.value, colors)
+                : undefined;
               return {
                 text: formatScreenValue(field, observation.value),
-                color: observation.state === "stale" ? colors.warning : undefined,
+                color: observation.state === "stale" ? colors.warning : change,
               };
             }
             const focus = row.metrics[metric];
             if (column.id === "percentile")
               return { text: rank(focus.percentile.value) };
-            if (column.id === "date") {
-              const stamp = metricDate(focus);
-              return {
-                text: stamp.text,
-                color:
-                  focus.state === "stale"
-                    ? colors.warning
-                    : stamp.collected
-                      ? colors.textMuted
-                      : undefined,
-              };
-            }
-            if (column.id === "name")
-              return { text: row.name?.toUpperCase() ?? "--" };
+            if (column.id === "date")
+              return focus.state === "stale"
+                ? { text: metricDate(focus).text, color: colors.warning }
+                : { text: "" };
+            if (column.id === "name") return { text: row.name ?? "--" };
             return { text: String(row[column.id as "symbol"] ?? "--") };
           }}
           sortColumnId={
@@ -970,15 +959,7 @@ function EquityScreenView({
     );
   return (
     <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && (
-        <Tabs
-          tabs={TABS}
-          activeValue={mode}
-          onSelect={switchMode}
-          focused={focused && !saveForm && editing === null}
-          dense
-        />
-      )}
+      {tabStrip}
       <PageStackView
         focused={focused}
         detailOpen={saveForm}

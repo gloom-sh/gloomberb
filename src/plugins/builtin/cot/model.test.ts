@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { fetchCotBoard, loadCotDetail, validateCotContract } from "./client";
-import { COT_MAJOR_CODES, cotContractCode, cotLegendValue, cotNetPoints, cotScope } from "./model";
+import { COT_MAJOR_CODES, cotChartSeries, cotContractCode, cotLegendValue, cotNetPoints, cotScope } from "./model";
 
 function position(): CotClassSummary {
   const percentile = { value: null, rank: null, sampleCount: 2, windowStart: "2025-09-15", windowEnd: "2026-09-15",
@@ -86,4 +86,15 @@ test("legend values stay exact without the float32 tail of price bars", () => {
   expect(cotLegendValue(7765.25, { id: "price" })).toBe("7,765.25");
   expect(cotLegendValue(112.640625, { id: "price" })).toBe("112.640625");
   expect(cotLegendValue(-100461, { id: "net" })).toBe("-100,461");
+});
+
+test("the class's net leads the chart series, ahead of the front price", () => {
+  const history = ["2026-09-08", "2026-09-15"].map((reportDate, index) => ({ reportDate, openInterest: 200,
+    positions: [{ id: "commercial" as const, long: 10 + index, short: 30, spreading: 0, net: index - 20, netPercentOfOpenInterest: -10 }] }));
+  const data = { reportFamily: "legacy", history } as unknown as CotContractPayload;
+  const price = [{ date: new Date("2026-09-15"), close: 65 }];
+  const series = cotChartSeries(data, "commercial", price, { positive: "#0f0", warning: "#fa0" });
+  expect(series.map((entry) => [entry.id, entry.label, entry.panelId])).toEqual([
+    ["net", "Commercial net", "net"], ["price", "Front price", "price"],
+  ]);
 });

@@ -3,8 +3,11 @@ import type {
   DebtMaturitiesPayload,
   DebtMetric,
 } from "../../../api-client/debt-maturities";
-import type { DataTableColumn } from "../../../components";
-import { formatCompact } from "../../../utils/format";
+import type { CompositeAxisDomain, DataTableColumn } from "../../../components";
+import { spanDigits } from "../../../components/chart-table";
+import { scalarPoint } from "../../../components/chart/static/series";
+import type { TimeSeriesPoint } from "../../../time-series/types";
+import { formatCompact, formatPercentileRank } from "../../../utils/format";
 
 export type DebtLatest = NonNullable<DebtMaturitiesPayload["latest"]>;
 export type DebtBucket = DebtLatest["buckets"][number];
@@ -17,7 +20,7 @@ export const debtMetricValue = (metric: DebtMetric) =>
     ? debtPercent(metric.value)
     : `${debtAmount(metric.value)} ${metric.unit}`;
 export const debtMetricCaption = (metric: DebtMetric) =>
-  `${metric.percentile.value === null ? "--" : metric.percentile.value.toFixed(0)} pctl 10Y · ${metric.asOf}`;
+  `${formatPercentileRank(metric.percentile.value, "10Y")} · ${metric.asOf}`;
 export function bucketShare(
   bucket: DebtBucket,
   latest: DebtLatest,
@@ -27,43 +30,104 @@ export function bucketShare(
     ? (100 * bucket.value) / total
     : null;
 }
-export const bucketPoints = (latest: DebtLatest) =>
-  [null, ...latest.buckets.map((row) => row.value), null].map(
-    (value, index) => ({
-      // Ordinal anchors only. Null padding keeps the first and last columns inside the plot.
-      // The axis names relative fiscal buckets and never exposes these synthetic dates.
-      date: new Date(Date.UTC(2000, 0, index + 1)),
-      observedAt: new Date(latest.asOf),
-      value,
-    }),
+/**
+ * The wall's scale: the largest dated bucket. Thereafter is open ended and
+ * usually dwarfs every dated year, so scaling to it would flatten them.
+ */
+export function datedBucketScale(latest: DebtLatest): number {
+  return Math.max(
+    0,
+    ...latest.buckets.flatMap((row) =>
+      row.year !== null && row.value !== null ? [row.value] : [],
+    ),
   );
-export const BUCKET_AXIS_LABELS = [
-  "Next 12m",
-  "Year 2",
-  "Year 3",
-  "Year 4",
-  "Year 5",
-  "Thereafter",
-];
-export const bucketCursor = (ratio: number) =>
-  BUCKET_AXIS_LABELS[Math.max(0, Math.min(5, Math.round(ratio * 7) - 1))] ?? "";
-export const BUCKET_AXIS_TICKS = BUCKET_AXIS_LABELS.map((label, index) => ({
-  label,
-  ratio: (index + 1) / 7,
-}));
+}
+export interface BucketBar {
+  /** Share of the bar column, 0 to 1. */
+  ratio: number;
+  /** Past the dated scale: drawn to the end and labelled with its value. */
+  capped: boolean;
+}
+export function bucketBar(bucket: DebtBucket, scale: number): BucketBar | null {
+  if (bucket.value === null) return null;
+  if (scale <= 0) return { ratio: bucket.value > 0 ? 1 : 0, capped: bucket.value > 0 };
+  const ratio = bucket.value / scale;
+  return ratio > 1 ? { ratio: 1, capped: true } : { ratio, capped: false };
+}
 export function recentDebtHistory(
   data: DebtMaturitiesPayload,
 ): DebtHistoryPoint[] {
   const start = data.latest?.totalPrincipal.percentile.windowStart;
   return start ? data.history.filter((point) => point.asOf >= start) : [];
 }
-export type BucketColumnId = "label" | "value" | "share";
+/** The comparable window's filings, oldest first: the order the bars read. */
+export function historyBars(data: DebtMaturitiesPayload): DebtHistoryPoint[] {
+  return recentDebtHistory(data).toSorted((a, b) => a.asOf.localeCompare(b.asOf));
+}
+const DAY_MS = 86_400_000;
+/**
+ * One slot per filing, with an empty slot at each end so the outer bars sit
+ * inside the plot. The filings are a year apart, so slots read as calendar.
+ */
+export function historyChartPoints(bars: readonly DebtHistoryPoint[]): TimeSeriesPoint[] {
+  if (!bars.length) return [];
+  const first = Date.parse(bars[0]!.asOf), last = Date.parse(bars.at(-1)!.asOf);
+  return [
+    scalarPoint(new Date(first - DAY_MS), null),
+    ...bars.map((row) => scalarPoint(new Date(row.asOf), row.totalPrincipal)),
+    scalarPoint(new Date(last + DAY_MS), null),
+  ];
+}
+/** Each filing's year under its own bar; fiscal years end in any month, so calendar ticks would fall between bars. */
+export function historyAxis(bars: readonly DebtHistoryPoint[]) {
+  const slots = bars.length + 1;
+  return {
+    ticks: bars.map((row, index) => ({ label: row.asOf.slice(0, 4), ratio: (index + 1) / slots })),
+    formatCursor: (ratio: number) =>
+      bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * slots) - 1))]?.asOf ?? "",
+  };
+}
+const AXIS_UNITS = [
+  { divisor: 1e12, suffix: "T" },
+  { divisor: 1e9, suffix: "B" },
+  { divisor: 1e6, suffix: "M" },
+  { divisor: 1e3, suffix: "k" },
+  { divisor: 1, suffix: "" },
+] as const;
+/** Compact amounts whose decimals follow the plotted range, so ticks never repeat. */
+export function debtAxisAmount(value: number, domain: CompositeAxisDomain): string {
+  if (value === 0) return "0";
+  const top = Math.max(Math.abs(domain.min), Math.abs(domain.max));
+  const unit = AXIS_UNITS.find((entry) => top >= entry.divisor) ?? AXIS_UNITS.at(-1)!;
+  const digits = spanDigits({ min: domain.min / unit.divisor, max: domain.max / unit.divisor });
+  return `${(value / unit.divisor).toFixed(digits)}${unit.suffix}`;
+}
+export type BucketColumnId = "label" | "value" | "share" | "wall";
 export type BucketColumn = Omit<DataTableColumn, "id"> & { id: BucketColumnId };
-export const BUCKET_COLUMNS: BucketColumn[] = [
-  { id: "label", label: "MATURITY", width: 20, flexGrow: 1, align: "left" },
-  { id: "value", label: "PRINCIPAL", width: 17, align: "right" },
-  { id: "share", label: "% TOTAL", width: 12, align: "right" },
+const BUCKET_TEXT_COLUMNS: BucketColumn[] = [
+  { id: "label", label: "MATURITY", width: 15, align: "left" },
+  { id: "value", label: "PRINCIPAL", width: 10, align: "right" },
+  { id: "share", label: "% TOTAL", width: 8, align: "right" },
 ];
+/** Below this the wall bars are too short to compare. */
+const MIN_WALL_WIDTH = 10;
+/** Past this a longer bar adds ink, not resolution. */
+const MAX_WALL_WIDTH = 48;
+/**
+ * The maturity table with the wall drawn inline: the bar column takes what
+ * the text columns leave, and a pane too narrow for it keeps the numbers.
+ */
+export function bucketColumns(width: number): BucketColumn[] {
+  // Each column is followed by a one-cell gap and the table pads both edges;
+  // the body's scrollbar gutter takes the rest, so the wall never scrolls.
+  const textWidth = BUCKET_TEXT_COLUMNS.reduce((sum, column) => sum + column.width + 1, 2);
+  const wall = Math.min(MAX_WALL_WIDTH, width - textWidth - 3);
+  if (wall < MIN_WALL_WIDTH) return BUCKET_TEXT_COLUMNS;
+  return [
+    ...BUCKET_TEXT_COLUMNS,
+    { id: "wall", label: "WALL", width: wall, align: "left" },
+  ];
+}
 export type HistoryColumnId =
   | "asOf"
   | "totalPrincipal"
@@ -101,6 +165,7 @@ export function sortedBuckets(
   latest: DebtLatest,
   sort: DebtSort<BucketColumnId>,
 ): DebtBucket[] {
+  // The wall bar draws the principal, so it sorts with it.
   const value = (row: DebtBucket) =>
     sort.column === "label"
       ? latest.buckets.indexOf(row)

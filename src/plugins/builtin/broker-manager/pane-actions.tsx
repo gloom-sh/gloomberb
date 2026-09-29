@@ -9,15 +9,29 @@ import { brokerProfileRemovalConfirm, removeBrokerProfile } from "../../../broke
 import { signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
 import { requestBrokerSignIn } from "../../../brokers/signed-in/sign-in-dialog";
-import { ConfirmDialog } from "../../../components";
+import { confirmDialog } from "../../../components";
 import { openConfirmModal } from "../../../components/form-modal";
 import { useAppGetState } from "../../../state/app/context";
 import type { BrokerProfileAction } from "../../../types/broker";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { t, tf } from "../../../i18n";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import type { BrokerEditKey } from "./detail";
 import { neighbourBrokerProfileId, type BrokerProfileRow } from "./model";
+
+/** The last action's result. Errors also replace the profile status in the detail. */
+export interface BrokerManagerMessage {
+  tone: "info" | "error";
+  text: string;
+}
+
+function infoMessage(text: string): BrokerManagerMessage {
+  return { tone: "info", text };
+}
+
+function errorMessage(error: unknown, fallback: string): BrokerManagerMessage {
+  return { tone: "error", text: error instanceof Error ? error.message : fallback };
+}
 
 export function useBrokerManagerActions({
   selectedRow,
@@ -46,11 +60,11 @@ export function useBrokerManagerActions({
     removeBrokerInstance,
   } = usePluginBrokerActions();
   const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<BrokerManagerMessage | null>(null);
 
   const startEdit = useCallback(() => {
     if (!selectedRow?.adapter) {
-      setMessage(t("Broker plugin is not available."));
+      setMessage({ tone: "error", text: t("Broker plugin is not available.") });
       return;
     }
     const draft = createBrokerProfileDraft(selectedRow.adapter, selectedRow.instance);
@@ -67,12 +81,12 @@ export function useBrokerManagerActions({
     if (!selectedRow?.adapter || !editDraft) return;
     const label = editDraft.label.trim();
     if (!label) {
-      setMessage(t("Profile label is required."));
+      setMessage({ tone: "error", text: t("Profile label is required.") });
       return;
     }
     const validationError = validateBrokerProfileValues(selectedRow.adapter, editDraft.values, selectedRow.instance);
     if (validationError) {
-      setMessage(validationError);
+      setMessage({ tone: "error", text: validationError });
       return;
     }
 
@@ -85,9 +99,9 @@ export function useBrokerManagerActions({
         replaceConfig: true,
       });
       setEditDraft(null);
-      setMessage(tf("Saved {label}.", { label }));
+      setMessage(infoMessage(tf("Saved {label}.", { label })));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("Failed to save broker profile."));
+      setMessage(errorMessage(error, t("Failed to save broker profile.")));
     } finally {
       setBusy(null);
     }
@@ -101,14 +115,14 @@ export function useBrokerManagerActions({
       try {
         setBusy(t("Connecting…"));
         if (!await requestBrokerSignIn(broker)) {
-          setMessage(tf("{broker} was not connected.", { broker: broker.name }));
+          setMessage(infoMessage(tf("{broker} was not connected.", { broker: broker.name })));
           return;
         }
         await syncBrokerInstance(selectedRow.id);
         refreshStatuses();
-        setMessage(tf("Connected {broker}.", { broker: broker.name }));
+        setMessage(infoMessage(tf("Connected {broker}.", { broker: broker.name })));
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : tf("Failed to sync {label}.", { label: selectedRow.label }));
+        setMessage(errorMessage(error, tf("Failed to sync {label}.", { label: selectedRow.label })));
       } finally {
         setBusy(null);
       }
@@ -118,9 +132,9 @@ export function useBrokerManagerActions({
       setBusy(t("Testing…"));
       await connectBrokerInstance(selectedRow.id);
       refreshStatuses();
-      setMessage(tf("Tested {label}.", { label: selectedRow.label }));
+      setMessage(infoMessage(tf("Tested {label}.", { label: selectedRow.label })));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : tf("Failed to test {label}.", { label: selectedRow.label }));
+      setMessage(errorMessage(error, tf("Failed to test {label}.", { label: selectedRow.label })));
     } finally {
       setBusy(null);
     }
@@ -132,9 +146,9 @@ export function useBrokerManagerActions({
       setBusy(t("Syncing…"));
       await syncBrokerInstance(selectedRow.id);
       refreshStatuses();
-      setMessage(tf("Synced {label}.", { label: selectedRow.label }));
+      setMessage(infoMessage(tf("Synced {label}.", { label: selectedRow.label })));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : tf("Failed to sync {label}.", { label: selectedRow.label }));
+      setMessage(errorMessage(error, tf("Failed to sync {label}.", { label: selectedRow.label })));
     } finally {
       setBusy(null);
     }
@@ -149,7 +163,7 @@ export function useBrokerManagerActions({
   const openProfileAction = useCallback((action: BrokerProfileAction | null = primaryProfileAction) => {
     if (!action) return;
     if (action.disabled) {
-      setMessage(action.disabledReason ?? tf("{action} is unavailable for this profile.", { action: t(action.label) }));
+      setMessage(infoMessage(action.disabledReason ?? tf("{action} is unavailable for this profile.", { action: t(action.label) })));
       return;
     }
     if (action.paneId) showPane(action.paneId);
@@ -179,23 +193,17 @@ export function useBrokerManagerActions({
     if (openConfirmModal(confirm)) return;
     // A detached window has no confirm modal; its own dialog asks instead.
     void (async () => {
-      const confirmed = await dialog.prompt<boolean>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<boolean>) => (
-          <ConfirmDialog
-            {...context}
-            title={t(confirm.title)}
-            body={confirm.body}
-            confirmLabel={t(confirm.confirmLabel)}
-            width={58}
-          />
-        ),
-      }).catch(() => false);
-      if (confirmed !== true) return;
+      const confirmed = await confirmDialog(dialog, {
+        title: t(confirm.title),
+        body: confirm.body,
+        confirmLabel: t(confirm.confirmLabel),
+        width: 58,
+      });
+      if (!confirmed) return;
       try {
         await confirm.onConfirm();
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : tf("Failed to remove {label}.", { label }));
+        setMessage(errorMessage(error, tf("Failed to remove {label}.", { label })));
       }
     })();
   }, [dialog, getState, notify, removeBrokerInstance, selectedRow, setDetailOpen, setEditDraft, setSelectedId]);

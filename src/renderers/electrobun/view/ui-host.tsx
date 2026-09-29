@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import type { RendererHost, UiHost } from "../../../ui/host";
+import { flushUsageCounts } from "../../../telemetry/usage-counts";
 import { backendRequest } from "./backend-rpc";
 import {
   NATIVE_CONTEXT_MENU_SUPPORTED,
@@ -20,12 +21,18 @@ export const webUiHost: UiHost = createWebUiHost();
 export const webRendererHost: RendererHost = {
   supportsNativeDesktopNotifications: true,
   requestExit() {
-    void backendRequest("host.exit").catch(() => window.close());
+    // The Bun process ends the app on `host.exit`, before `pagehide` could
+    // send what was counted, so that goes first.
+    void flushUsageCounts({ timeoutMs: 1_000 }).finally(() => {
+      void backendRequest("host.exit").catch(() => window.close());
+    });
   },
   startWindowDrag() {
     startElectrobunWindowDrag();
   },
   async controlWindow(action) {
+    // Closing the main window quits the app; send what was counted first.
+    if (action === "close") await flushUsageCounts({ timeoutMs: 1_000 });
     await backendRequest("host.windowControl", { action });
   },
   async openExternal(url) {

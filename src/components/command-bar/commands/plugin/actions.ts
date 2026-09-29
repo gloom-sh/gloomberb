@@ -82,9 +82,10 @@ export function useCommandBarPluginCommandActions({
       closeAll,
       command,
       notify,
+      pluginRegistry,
       values,
     });
-  }, [closeAll, notify]);
+  }, [closeAll, notify, pluginRegistry]);
 
   const createPluginCommandItem = useCallback((
     command: CommandDef,

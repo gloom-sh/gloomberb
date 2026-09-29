@@ -102,7 +102,31 @@ describe("EconCalendarPane", () => {
 
     expect(frame).toContain("TODAY");
     expect(frame).toContain("YESTERDAY");
-    expect(frame).toContain("NOW");
+    // Oldest first: yesterday's release, the present, then what is still to come.
+    const order = ["YESTERDAY", "Retail Sales", "NOW", "CPI m/m"].map((text) => frame.indexOf(text));
+    expect(order.every((index, i) => index >= 0 && (i === 0 || index > order[i - 1]!))).toBe(true);
+  });
+
+  // Oldest first, a finished week would otherwise open on Monday's first release.
+  test("opens on the latest release once the week's releases are all out", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const now = Date.now();
+    persistence.seedResource("calendar", "global", Array.from({ length: 40 }, (_, i) => ({
+      id: `e${i}`,
+      date: new Date(now - (40 - i) * 3 * 3_600_000).toISOString(),
+      time: "12:00",
+      country: "US",
+      event: `Release ${i} m/m`,
+      impact: "low",
+      actual: "0.1%",
+      forecast: "0.1%",
+      prior: "0.1%",
+    })), { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(110);
+
+    expect(frame).toContain("Release 39 m/m");
+    expect(frame).not.toContain("Release 0 m/m");
   });
 
   // The payload's `time` is the UTC clock; rows group by local day. The test

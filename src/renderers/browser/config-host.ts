@@ -129,6 +129,15 @@ export function createBrowserConfigStore(storage: StorageLike, search = ""): Con
   };
 }
 
+/** False on a first visit, which opens the starter workspace rather than a saved one. */
+export function hasSavedBrowserConfig(storage: StorageLike = localStorage): boolean {
+  try {
+    return storage.getItem(BROWSER_STORAGE_KEYS.config) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function installBrowserConfigStore(storage: StorageLike = localStorage): void {
   setConfigStoreHost(createBrowserConfigStore(storage, typeof location !== "undefined" ? location.search : ""));
 }

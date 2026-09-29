@@ -4,6 +4,13 @@ import { runsExternalPlugins } from "../../current-target";
 
 export type PluginTier = "official" | "verified" | "community";
 
+/** A command-bar code a registry plugin answers to, such as `POLL`. */
+export interface RegistryPluginShortcut {
+  code: string;
+  name: string;
+  description: string;
+}
+
 /** One record from https://plugins.gloom.sh/registry.json. */
 export interface RegistryPlugin {
   id: string;
@@ -17,7 +24,13 @@ export interface RegistryPlugin {
   categories: string[];
   targets: PluginTarget[];
   hosts: string[];
-  contributes: { panes: string[]; capabilities: string[]; broker: boolean };
+  contributes: {
+    panes: string[];
+    capabilities: string[];
+    broker: boolean;
+    /** Declared in the plugin's gloom.json; absent from older feeds and from built-ins. */
+    shortcuts?: RegistryPluginShortcut[];
+  };
   minGloomberb?: string;
   tier: PluginTier;
   bundled: boolean;
@@ -182,7 +195,10 @@ export function mergeCatalog(options: {
       // A bundled plugin is present whether or not the local catalog reports it,
       // which matters when the feed is newer than the running build.
       installed: plugin.bundled || !!local,
-      bundled: plugin.bundled,
+      // And a plugin this build ships is bundled whatever the feed says: one
+      // that is built in again can still be listed under its old repository,
+      // and Update or Remove would then act on a leftover checkout.
+      bundled: plugin.bundled || local?.source === "builtin",
     };
     entries.push({
       id: plugin.id,
@@ -268,8 +284,14 @@ export function mergeCatalog(options: {
   return entries;
 }
 
+/** What deciding "is there an update" reads from a row. */
+export type UpdateFacts = Pick<
+  MarketplaceEntry,
+  "installed" | "bundled" | "linked" | "installedVersion" | "installedCommit" | "availableVersion" | "availableCommit" | "remoteCommit"
+>;
+
 /** The commit an update would land on: the reviewed one, or the remote's head. */
-function targetCommit(entry: MarketplaceEntry): string | undefined {
+function targetCommit(entry: UpdateFacts): string | undefined {
   // A registry-listed plugin moves between reviewed commits, never to whatever
   // its default branch holds today, so its own remote does not get a say.
   if (entry.availableVersion || entry.availableCommit) return entry.availableCommit;
@@ -286,7 +308,7 @@ function targetCommit(entry: MarketplaceEntry): string | undefined {
  * dev checkout is never "behind": the developer's working copy is the source
  * of truth there.
  */
-export function hasUpdate(entry: MarketplaceEntry): boolean {
+export function hasUpdate(entry: UpdateFacts): boolean {
   if (!entry.installed || entry.bundled || entry.linked) return false;
   const byVersion = compareSemver(entry.installedVersion, entry.availableVersion);
   if (byVersion !== null) return byVersion < 0;
@@ -448,10 +470,32 @@ export function unsupportedLabel(entry: MarketplaceEntry): string | null {
 }
 
 /** The pin the registry asks for, or undefined when it does not pin this plugin. */
-export function registryPin(entry: MarketplaceEntry): { ref?: string; commit?: string } | undefined {
+export function registryPin(
+  entry: Pick<MarketplaceEntry, "availableVersion" | "availableCommit">,
+): { ref?: string; commit?: string } | undefined {
   if (!entry.availableVersion && !entry.availableCommit) return undefined;
   return {
     ...(entry.availableVersion ? { ref: entry.availableVersion } : {}),
     ...(entry.availableCommit ? { commit: entry.availableCommit } : {}),
+  };
+}
+
+/**
+ * What someone agrees to before a plugin lands on their machine. The Plugins
+ * pane and the command bar both ask with this, so an install reads the same
+ * wherever it starts.
+ */
+export function installConsent(
+  plugin: Pick<MarketplaceEntry, "name" | "tier" | "hosts"> & { repo: string },
+  pin: { ref?: string; commit?: string } | undefined,
+): { title: string; body: string[] } {
+  return {
+    title: `Install ${plugin.name}?`,
+    body: [
+      `${plugin.name} runs with your full permissions. It is not sandboxed.`,
+      `Source: github.com/${plugin.repo}${pin?.ref ? ` at ${pin.ref}` : ""}${pin?.commit ? ` (${pin.commit.slice(0, 7)})` : ""}`,
+      plugin.tier === "official" ? "Published by Gloom." : plugin.tier === "verified" ? "Reviewed by Gloom." : "Community plugin, not reviewed.",
+      ...(plugin.hosts.length > 0 ? [`Declares access to ${plugin.hosts.join(", ")}.`] : []),
+    ],
   };
 }

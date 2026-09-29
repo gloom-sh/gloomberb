@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import type { AnalystResearchData } from "../../../types/financials";
 import { buildEventRows, eventSourceNotice, formatEventMetric } from "./event-model";
 
 test("ADR reported EPS and company revenue keep their distinct currencies", () => {
@@ -162,4 +163,230 @@ test("spinoff adjustment factors are not presented as verified share splits", ()
     detail: "Split/adjustment", providerDescription: "1253:1000 split" });
   expect(row?.qEps).toBeUndefined();
 
+});
+
+describe("event rows", () => {
+  test("combines EPS and revenue estimates into one estimate row", () => {
+    const rows = buildEventRows(null, {
+      symbol: "AAPL",
+      recommendations: [],
+      ratings: [],
+      earningsEstimates: [
+        { date: "2026-06-30", period: "next_quarter", average: 1.5, analysts: 22 },
+      ],
+      revenueEstimates: [
+        { date: "2026-06-30", period: "next_quarter", average: 100_000_000, analysts: 18, growth: 0.12 },
+      ],
+    } satisfies AnalystResearchData, null, "USD");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      date: "2026-06-30",
+      status: "Q Est",
+      period: "next qtr",
+      detail: "22 EPS / 18 rev analysts",
+      qEps: 1.5,
+      qRevenue: 100_000_000,
+      annualEps: undefined,
+      annualRevenue: undefined,
+      value: "+12.00%",
+      tone: "positive",
+    });
+  });
+
+  test("puts fiscal estimates in annual columns", () => {
+    const rows = buildEventRows(null, {
+      symbol: "AAPL",
+      recommendations: [],
+      ratings: [],
+      earningsEstimates: [
+        { date: "2026-12-31", period: "current_year", average: 7.5, analysts: 24 },
+      ],
+      revenueEstimates: [
+        { date: "2026-12-31", period: "current_year", average: 410_000_000_000, analysts: 21 },
+      ],
+    } satisfies AnalystResearchData, null, "USD");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: "FY Est",
+      period: "cur yr",
+      qEps: undefined,
+      qRevenue: undefined,
+      annualEps: 7.5,
+      annualRevenue: 410_000_000_000,
+    });
+  });
+
+  test("keeps revenue-only estimates as estimate rows", () => {
+    const rows = buildEventRows(null, {
+      symbol: "AAPL",
+      recommendations: [],
+      ratings: [],
+      earningsEstimates: [],
+      revenueEstimates: [
+        { date: "2026-03-31", period: "current_quarter", average: 95_000_000, analysts: 12 },
+      ],
+    } satisfies AnalystResearchData, null, "USD");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: "Q Est",
+      period: "cur qtr",
+      detail: "12 rev analysts",
+      qEps: undefined,
+      qRevenue: 95_000_000,
+    });
+  });
+
+  test("adds reported quarterly revenue and TTM without mixing metric columns", () => {
+    const actions = {
+      symbol: "AAPL",
+      dividends: [],
+      splits: [],
+      earnings: [
+        { date: "2026-03-31", dateType: "fiscal-period-end" as const, epsActual: 1.24, surprisePercent: 4.2 },
+      ],
+    };
+    const financials = {
+      quarterlyStatements: [
+        { date: "2025-06-30", totalRevenue: 80, eps: 1 },
+        { date: "2025-09-30", totalRevenue: 90, eps: 1.1 },
+        { date: "2025-12-31", totalRevenue: 100, eps: 1.2 },
+        { date: "2026-03-31", totalRevenue: 110, eps: 1.3 },
+      ],
+    };
+    const rows = buildEventRows(actions, null, financials, "USD");
+
+    const earnings = rows.find((row) => row.status === "Earnings" && row.date === "2026-03-31");
+    const ttm = rows.find((row) => row.status === "TTM");
+
+    expect(earnings).toMatchObject({
+      status: "Earnings",
+      period: "Mar 2026",
+      qEps: 1.24,
+      qRevenue: 110,
+    });
+    expect(earnings?.annualEps).toBeUndefined();
+    expect(earnings?.annualRevenue).toBeUndefined();
+    expect(ttm).toMatchObject({
+      date: "2026-03-31",
+      status: "TTM",
+      period: "4 qtrs",
+      annualEps: 4.6,
+      annualRevenue: 380,
+    });
+    expect(ttm?.qEps).toBeUndefined();
+    expect(ttm?.qRevenue).toBeUndefined();
+  });
+
+  test("sums the reported quarter EPS shown above the TTM row instead of statement GAAP EPS", () => {
+    // UNH: reported (adjusted) 2.92, 2.11, 7.23, 6.38 against GAAP 2.59, 0.02, 6.90, 6.04.
+    const reported = [["2025-09-30", 2.92], ["2025-12-31", 2.11], ["2026-03-31", 7.23], ["2026-06-30", 6.38]] as const;
+    const actions = {
+      symbol: "UNH",
+      dividends: [],
+      splits: [],
+      earnings: [
+        { date: "2026-10-13", dateType: "announcement" as const, epsEstimate: 4.15 },
+        ...reported.map(([date, epsActual]) => ({ date, dateType: "fiscal-period-end" as const, currency: "USD", epsActual })),
+      ],
+    };
+    const financials = {
+      financialCurrency: "USD",
+      quarterlyStatements: [["2025-06-30", 4.08], ["2025-09-30", 2.59], ["2025-12-31", 0.02], ["2026-03-31", 6.9], ["2026-06-30", 6.04]]
+        .map(([date, eps]) => ({ date: date as string, eps: eps as number, totalRevenue: 100 })),
+    };
+    const ttm = () => buildEventRows(actions, null, financials, "USD").find((row) => row.status === "TTM");
+    expect(ttm()?.annualEps).toBeCloseTo(18.64, 10);
+    expect(ttm()).toMatchObject({ date: "2026-06-30", epsCurrency: "USD", annualRevenue: 400, detail: "sum" });
+
+    // A quarter without its reported row cannot be summed from the rows, so the statement TTM
+    // stays and is not labelled as their sum (ADBE: Yahoo omitted two of the last four quarters).
+    actions.earnings.splice(1, 1);
+    expect(ttm()?.annualEps).toBeCloseTo(15.55, 10);
+    expect(ttm()?.detail).toBe("statement EPS");
+  });
+
+  test("omits a TTM row when a flow metric is missing from one of the last four quarters", () => {
+    const rows = buildEventRows(null, null, {
+      quarterlyStatements: [
+        { date: "2025-06-30", totalRevenue: 80, eps: 1 },
+        { date: "2025-09-30", totalRevenue: 90 },
+        { date: "2025-12-31", totalRevenue: 100, eps: 1.2 },
+        { date: "2026-03-31", totalRevenue: 110, eps: 1.3 },
+      ],
+    }, "USD");
+
+    expect(rows.find((row) => row.status === "TTM")?.annualEps).toBeUndefined();
+    expect(rows.find((row) => row.status === "TTM")?.annualRevenue).toBe(380);
+  });
+
+  test("keeps dividends and splits in the event table without metric values", () => {
+    const data = {
+      symbol: "AAPL",
+      dividends: [{ exDate: "2026-02-10", amount: 0.26 }],
+      splits: [{ date: "2025-12-01", description: "4-for-1 split", fromFactor: 1, toFactor: 4 }],
+      earnings: [{ date: "2026-01-30", epsActual: 2.4 }],
+    };
+
+    const rows = buildEventRows(data, null, null, "USD");
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "div:2026-02-10",
+      "earn:2026-01-30",
+      "split:2025-12-01:4-for-1 split",
+    ]);
+    expect(rows).toMatchObject([
+      { id: "div:2026-02-10", status: "Dividend", value: "$0.26" },
+      { id: "earn:2026-01-30", status: "Earnings" },
+      { id: "split:2025-12-01:4-for-1 split", status: "Factor", value: "4:1" },
+    ]);
+    expect(rows[0]?.qEps).toBeUndefined();
+    expect(rows[0]?.annualEps).toBeUndefined();
+    expect(rows[2]?.qEps).toBeUndefined();
+    expect(rows[2]?.annualEps).toBeUndefined();
+  });
+});
+
+describe("event source notice", () => {
+  const loaded = {
+    variant: "corporate-actions" as const,
+    symbol: "DBK",
+    actions: { symbol: "DBK", dividends: [{ exDate: "2026-05-29", amount: 1 }], splits: [], earnings: [] },
+    actionsError: null,
+    estimates: {
+      symbol: "DBK",
+      recommendations: [],
+      ratings: [],
+      earningsEstimates: [{ date: "2026-12-31", period: "current_year", average: 3.3, analysts: 10 }],
+      revenueEstimates: [],
+    } satisfies AnalystResearchData,
+    estimatesError: null,
+  };
+
+  test("stays quiet when both sources delivered", () => {
+    expect(eventSourceNotice(loaded)).toBeNull();
+  });
+
+  /**
+   * A failed corporate-actions request left the table showing only estimate and
+   * TTM rows, which reads as a working pane for a company with no events.
+   */
+  test("names a failed source and marks it as a failure", () => {
+    expect(eventSourceNotice({ ...loaded, actions: null, actionsError: "Cloud request failed" })).toEqual({
+      text: "Corporate actions unavailable: Cloud request failed",
+      failed: true,
+    });
+  });
+
+  test("reports genuinely empty data without calling it a failure", () => {
+    expect(eventSourceNotice({
+      ...loaded,
+      actions: { symbol: "DBK", dividends: [], splits: [], earnings: [] },
+    })).toEqual({
+      text: "No dividends, splits, or reported earnings for DBK",
+      failed: false,
+    });
+  });
 });

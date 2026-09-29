@@ -821,6 +821,26 @@ describe("confirm modal", () => {
     expect(openConfirmModal(confirmRequest({}).confirm)).toBe(true);
   });
 
+  // The plugin install offer runs the typed code again once the plugin is in,
+  // which opens the bar: that has to wait for the confirm to be gone.
+  test("onSuccess runs once the confirm has closed, so it can open the bar", async () => {
+    const storeRef: { current: AppContextStoreValue | null } = { current: null };
+    const dialogOpenOnSuccess: boolean[] = [];
+    await renderForm(() => {}, confirmRequest({
+      tone: "default",
+      onSuccess: () => {
+        dialogOpenOnSuccess.push(isDialogOpen());
+        storeRef.current!.dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
+      },
+    }), { storeRef });
+    await waitForForm("Reset Layout");
+
+    await press({ name: "y", sequence: "y" });
+    await waitForFrameToContain("bar:open");
+    expect(dialogOpenOnSuccess).toEqual([false]);
+    expect(frame()).not.toContain("Reset Current Layout");
+  });
+
   // The host mounts once, and the marketplace installs brokers into the map it read.
   test("New Portfolio lists a broker installed after the app started", async () => {
     let registry: PluginRegistry | null = null;

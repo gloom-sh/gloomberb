@@ -413,6 +413,7 @@ export const secModule: PluginModule = {
         description: "Recent SEC filings for the selected ticker.",
         keywords: ["sec", "filings", "10-k", "10-q", "8-k"],
         shortcut: "SEC",
+        shortcutAliases: ["CF"],
         canCreate: (_context, options) => !options?.ticker || isUsEquityTicker(options.ticker),
       }),
       headless: secHeadless,

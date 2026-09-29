@@ -2,18 +2,19 @@ import { recordResearchActivity } from "../../../api-client/research-activity";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableStackView,
   PaneStatusBody,
   QueryBar,
   Spinner,
-  Tabs,
   useExternalLinkFooter,
-  usePaneHeaderTabs,
+  usePagedRows,
+  usePaneTabs,
   useTableLoadMore,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
+  type PageRequest,
   type PaneFooterSegment,
   type PaneHint,
 } from "../../../components";
@@ -22,8 +23,7 @@ import { useShortcut } from "../../../react/input";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
-import { isPlainKey } from "../../../utils/keyboard";
+import { useDialog } from "../../../ui/dialog";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../runtime";
@@ -52,7 +52,6 @@ import { useDocumentFocusRequest } from "./focus-handoff";
 import { SearchDocumentView } from "./document-view";
 import { SavedSearchesView } from "./saved-view";
 import {
-  appendUniqueHits,
   buildResultColumns,
   buildSearchParams,
   DEFAULT_FILTERS,
@@ -60,6 +59,7 @@ import {
   filtersFromSaved,
   filtersToSaved,
   formatHitDate,
+  hitDocumentKey,
   hitMatchCountLabel,
   hitTypeLabel,
   parseTickerFilter,
@@ -102,13 +102,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const [query, setQuery] = usePluginPaneState<string>("query", String(seedQuery ?? "").trim());
   const [filters, setFilters] = usePluginPaneState<SearchFilters>("filters", DEFAULT_FILTERS);
 
-  const [hits, setHits] = useState<CloudSearchHit[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("idle");
-  const [failure, setFailure] = useState<RequestFailure | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [nextOffset, setNextOffset] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
-
   // The selected row and the open document are kept by hit id, so a reload or
   // a shared layout comes back to the same document.
   const [selectedHitId, setSelectedHitId] = usePluginPaneState<string | null>("selectedHitId", null);
@@ -129,10 +122,24 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const queryInputRef = useRef<InputRenderable | null>(null);
   const tickerInputRef = useRef<InputRenderable | null>(null);
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const searchAbortRef = useRef<AbortController | null>(null);
-  const moreAbortRef = useRef<AbortController | null>(null);
 
   const trimmedQuery = query.trim();
+  const searchPage = useCallback(async ({ offset, signal }: PageRequest) => {
+    const response = await runDocumentSearch(buildSearchParams(trimmedQuery, filters, { offset }), signal);
+    return { ...response, rows: response.hits ?? [] };
+  }, [filters, trimmedQuery]);
+  // The last results stay up while a refined query loads.
+  const search = usePagedRows(trimmedQuery && access.emailVerified ? searchPage : null, {
+    getId: hitDocumentKey,
+    keepPreviousRows: true,
+  });
+  const { loadingMore, status } = search;
+  const hits = search.rows;
+  // A failed later page keeps the rows, but a 401/402/403 on it still gates the pane.
+  const failedWith = search.error ?? search.moreError;
+  const failure = useMemo<RequestFailure | null>(() => (
+    failedWith ? { message: errorMessage(failedWith), status: statusOf(failedWith) } : null
+  ), [failedWith]);
   const openHit = useMemo(
     () => (openHitId ? hits.find((hit) => hit.id === openHitId) ?? null : null),
     [hits, openHitId],
@@ -144,80 +151,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   }, []);
   const blurField = useCallback(() => setActiveField(null), []);
 
-  const runSearch = useCallback(() => {
-    searchAbortRef.current?.abort();
-    moreAbortRef.current?.abort();
-    if (!trimmedQuery || !access.emailVerified) {
-      searchAbortRef.current = null;
-      setHits([]);
-      setStatus("idle");
-      setFailure(null);
-      setHasMore(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    searchAbortRef.current = controller;
-    setStatus("loading");
-    setFailure(null);
-    void runDocumentSearch(buildSearchParams(trimmedQuery, filters), controller.signal)
-      .then((response) => {
-        // A newer query already took over; this answer is for text nobody is reading.
-        if (searchAbortRef.current !== controller) return;
-        setHits(response.hits ?? []);
-        setHasMore(response.hasMore === true);
-        setNextOffset(response.nextOffset ?? (response.hits?.length ?? 0));
-        setStatus("loaded");
-      })
-      .catch((error: unknown) => {
-        if (searchAbortRef.current !== controller || isAbortError(error)) return;
-        setHits([]);
-        setHasMore(false);
-        setFailure({ message: errorMessage(error), status: statusOf(error) });
-        setStatus("error");
-      });
-  }, [access.emailVerified, filters, trimmedQuery]);
-
-  useEffect(() => {
-    runSearch();
-    return () => {
-      searchAbortRef.current?.abort();
-      searchAbortRef.current = null;
-      moreAbortRef.current?.abort();
-      moreAbortRef.current = null;
-    };
-  }, [runSearch]);
-
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore || status !== "loaded" || !trimmedQuery) return;
-    moreAbortRef.current?.abort();
-    const controller = new AbortController();
-    moreAbortRef.current = controller;
-    setLoadingMore(true);
-    void runDocumentSearch(
-      buildSearchParams(trimmedQuery, filters, { offset: nextOffset }),
-      controller.signal,
-    )
-      .then((response) => {
-        if (moreAbortRef.current !== controller) return;
-        setHits((current) => appendUniqueHits(current, response.hits ?? []));
-        setHasMore(response.hasMore === true);
-        setNextOffset(response.nextOffset ?? nextOffset + (response.hits?.length ?? 0));
-      })
-      .catch((error: unknown) => {
-        if (moreAbortRef.current !== controller || isAbortError(error)) return;
-        setFailure({ message: errorMessage(error), status: statusOf(error) });
-      })
-      .finally(() => {
-        if (moreAbortRef.current === controller) setLoadingMore(false);
-      });
-  }, [filters, hasMore, loadingMore, nextOffset, status, trimmedQuery]);
-
-  const loadMoreFromScroll = useTableLoadMore(
-    tableScrollRef,
-    hasMore && !loadingMore && status === "loaded",
-    loadMore,
-  );
+  const loadMoreFromScroll = useTableLoadMore(tableScrollRef, search.hasMore, search.loadMore);
 
   useEffect(() => {
     if (!openHit) {
@@ -311,22 +245,16 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   }, []);
 
   const removeSaved = useCallback(async (search: CloudSavedSearch) => {
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (context: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...context}
-          title="Delete saved search?"
-          body={[
-            `Delete "${search.name || search.query}"?`,
-            search.alertEnabled ? "Its keyword alert stops with it." : "",
-          ].filter((line) => line.length > 0)}
-          confirmLabel="Delete"
-          width={44}
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
+    const confirmed = await confirmDialog(dialog, {
+      title: "Delete saved search?",
+      body: [
+        `Delete "${search.name || search.query}"?`,
+        search.alertEnabled ? "Its keyword alert stops with it." : "",
+      ].filter((line) => line.length > 0),
+      confirmLabel: "Delete",
+      width: 44,
+    });
+    if (!confirmed) return;
 
     const previous = saved;
     setSaved((current) => current.filter((entry) => entry.id !== search.id));
@@ -354,26 +282,25 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "ticker":
         return {
           text: hit.ticker,
-          color: selectedColor ?? colors.textBright,
+          color: colors.textBright,
           content: (
             <TickerBadgeList
               symbols={[hit.ticker]}
               width={column.width}
-              fallbackColor={selectedColor ?? colors.textBright}
+              fallbackColor={rowState.selected ? colors.selectedText : colors.textBright}
             />
           ),
         };
       case "type":
-        return { text: hitTypeLabel(hit), color: selectedColor ?? colors.textMuted };
+        return { text: hitTypeLabel(hit), color: colors.textMuted };
       case "date":
-        return { text: formatHitDate(hit.publishedAt), color: selectedColor ?? colors.textDim };
+        return { text: formatHitDate(hit.publishedAt), color: colors.textDim };
       case "title":
-        return { text: hit.title, color: selectedColor ?? colors.text };
+        return { text: hit.title, color: colors.text };
       case "match": {
         // The count leads so collapsing chunks into one row stays visible even
         // where the snippet behind it is cut off.
@@ -387,8 +314,8 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
           content: (
             <SnippetText
               segments={segments}
-              color={selectedColor ?? colors.text}
-              dimColor={selectedColor ?? colors.textDim}
+              color={rowState.selected ? colors.selectedText : colors.text}
+              dimColor={rowState.selected ? colors.selectedText : colors.textDim}
             />
           ),
         };
@@ -410,11 +337,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     context: DataTableRootKeyContext,
   ) => {
     if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusField("query");
-      return true;
-    }
-    if (isPlainKey(event, "/")) {
       stopSearchFocusNavigation(event);
       focusField("query");
       return true;
@@ -543,13 +465,12 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
 
   const modeTabs = MODE_TABS;
   // Every tab leads to the same wall, so the strip waits until it is gone.
-  const tabsInHeader = usePaneHeaderTabs(signInRequired || verificationRequired ? null : {
+  const { strip: tabs, rows: tabRows } = usePaneTabs(signInRequired || verificationRequired ? null : {
     tabs: modeTabs,
     activeValue: mode,
     onSelect: (value) => setMode(value as PaneMode),
     focused: focused && !openHit && activeField === null && !typePickerOpen,
   });
-  const tabRows = tabsInHeader ? 0 : 1;
 
   if (signInRequired || verificationRequired) {
     return (
@@ -559,15 +480,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
       />
     );
   }
-
-  const tabs = tabsInHeader ? null : (
-    <Tabs
-      tabs={modeTabs}
-      activeValue={mode}
-      onSelect={(value) => setMode(value as PaneMode)}
-      focused={focused && !openHit && activeField === null && !typePickerOpen}
-    />
-  );
 
   if (mode === "saved") {
     return (
@@ -729,6 +641,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         }}
         getItemKey={(hit) => hit.id}
         renderCell={renderCell}
+        selectedTextOverridesCellColor
         showHorizontalScrollbar={false}
         emptyContent={status === "loading" && hits.length === 0
           ? <Spinner label="Searching..." />

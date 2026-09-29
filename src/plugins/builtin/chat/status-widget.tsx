@@ -48,7 +48,6 @@ function CloudStatusIcon() {
 export function ChatStatusWidget({ controller = chatController }: ChatStatusWidgetProps) {
   const { createPaneFromTemplate } = usePluginAppActions();
   const config = usePaneAppConfig();
-  const cloudPluginDisabled = config.disabledPlugins.includes("gloomberb-cloud");
   const initialSnapshot = controller.getSnapshot();
   const [username, setUsername] = useState<string | null>(initialSnapshot.user?.username ?? null);
   const [hasSavedSession, setHasSavedSession] = useState(initialSnapshot.hasSavedSession);
@@ -71,8 +70,6 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
     void controller.refreshSession().catch(() => {});
     return unsubscribe;
   }, [controller]);
-
-  if (cloudPluginDisabled) return null;
 
   return (
     <Box flexDirection="row" paddingRight={1}>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudFredSeriesPayload } from "../../../api-client";
-import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
+import { completeYieldCurve, loadHistoricalYieldCurve, loadYieldCurveLookbacks, yieldCurveDate, yieldCurveLookbackDate } from "./history";
 import { curveAsOf, spreadBasisPoints, TREASURY_MATURITIES } from "./treasury-data";
 
 function payload(id: string, observations: CloudFredSeriesPayload["observations"]): CloudFredSeriesPayload {
@@ -121,4 +121,44 @@ test("missing metadata compatibility preserves values while a failed tenor carri
   expect(points.find(p => p.maturity === "2Y")).toMatchObject({yield: null, error: "controlled 503"});
   expect(points.find(p => p.maturity === "10Y")).toMatchObject({yield: 0, error: undefined});
   expect(curveAsOf(points)).toBe("2024-03-01");
+});
+
+test("look-backs are a day, a week and a calendar month before the curve's session", () => {
+  expect(yieldCurveLookbackDate("2026-09-24", "1D")).toBe("2026-09-23");
+  expect(yieldCurveLookbackDate("2026-09-24", "1W")).toBe("2026-09-17");
+  expect(yieldCurveLookbackDate("2026-09-24", "1M")).toBe("2026-08-24");
+  expect(yieldCurveLookbackDate("2026-03-31", "1M")).toBe("2026-02-28");
+  expect(yieldCurveLookbackDate("2026-01-15", "1M")).toBe("2025-12-15");
+});
+
+test("every look-back curve comes from one request per tenor and keeps the session rule", async () => {
+  const requests: Array<{ id: string; startDate: string; endDate: string; limit: number }> = [];
+  const lookbacks = await loadYieldCurveLookbacks("2026-09-24", async (id, options) => {
+    requests.push({ id, ...options });
+    if (id === "DGS30") throw new Error("controlled 503");
+    return payload(id, [
+      // Sep 17 is a session for every tenor but 2Y, which lags to the day before.
+      ...(id === "DGS2" ? [] : [{ date: "2026-09-17", value: 5 }]),
+      { date: "2026-09-16", value: 4.9 },
+      // Aug 24 was a Monday; the month-back curve is that session.
+      { date: "2026-08-24", value: 4.5 },
+      { date: "2026-08-21", value: 4.4 },
+    ]);
+  });
+  expect(requests).toHaveLength(TREASURY_MATURITIES.length);
+  expect(requests[0]).toMatchObject({ startDate: "2026-08-14", endDate: "2026-09-23", limit: 45 });
+  const [day, week, month] = lookbacks;
+  // Nothing was published between Sep 18 and Sep 23, so the session before is Sep 17.
+  expect(day).toMatchObject({ id: "1D", requestedDate: "2026-09-23", error: null });
+  expect(curveAsOf(day!.points!)).toBe("2026-09-17");
+  expect(week).toMatchObject({ id: "1W", requestedDate: "2026-09-17", error: null });
+  expect(curveAsOf(week!.points!)).toBe("2026-09-17");
+  expect(week!.points!.find((point) => point.maturity === "10Y")).toMatchObject({ yield: 5, asOf: "2026-09-17" });
+  expect(week!.points!.find((point) => point.maturity === "2Y")?.yield).toBeNull();
+  expect(week!.points!.find((point) => point.maturity === "30Y")).toMatchObject({ yield: null, error: "controlled 503" });
+  expect(month).toMatchObject({ id: "1M", requestedDate: "2026-08-24" });
+  expect(month!.points!.find((point) => point.maturity === "2Y")).toMatchObject({ yield: 4.5, asOf: "2026-08-24" });
+  const failed = await loadYieldCurveLookbacks("2026-09-24", async () => { throw new Error("offline"); });
+  expect(failed.map((lookback) => lookback.points)).toEqual([null, null, null]);
+  expect(failed[0]!.error).toContain("offline");
 });

@@ -147,6 +147,18 @@ export function createCongressHeadless(
     async load(args, ctx) {
       const payload = await dependencies.loadHouse(args, ctx);
       const limit = Number(args.options.limit);
+      const metadata = {
+        asOf: payload.asOf,
+        chamber: payload.chamber,
+        source: payload.source,
+        year: payload.year,
+        nextFilingOffset: payload.nextFilingOffset,
+        hasMoreFilings: payload.hasMoreFilings,
+        filingsPending: payload.filingsPending,
+        filingsFailed: payload.filingsFailed,
+        filingsPaper: payload.filingsPaper ?? 0,
+        senateUnavailable: payload.senateUnavailable ?? false,
+      };
       if (args.options.tab === "tickers") {
         return {
           columns: [
@@ -156,57 +168,21 @@ export function createCongressHeadless(
             { key: "lastFilingDate", header: "Last filed" },
           ],
           rows: sortedTickers(payload.tickers ?? [], { columnId: "buyCount", direction: "desc" }).slice(0, limit).map((row) => ({ ...row })),
-          metadata: { asOf: payload.asOf, chamber: payload.chamber, source: payload.source, year: payload.year,
-            aggregateScope: "filtered filing window", filingOffset: payload.filingOffset, filingsScanned: payload.filingsScanned,
-            nextFilingOffset: payload.nextFilingOffset, hasMoreFilings: payload.hasMoreFilings,
-            filingsPending: payload.filingsPending, filingsFailed: payload.filingsFailed,
-            filingsPaper: payload.filingsPaper ?? 0, senateUnavailable: payload.senateUnavailable ?? false },
+          // Tickers aggregate the filings scanned so far rather than paging rows.
+          metadata: { ...metadata, aggregateScope: "filtered filing window", filingOffset: payload.filingOffset, filingsScanned: payload.filingsScanned },
         };
       }
+      const pagedMetadata = { ...metadata, nextOffset: payload.nextOffset, hasMore: payload.hasMore };
       if (args.options.tab === "members") {
         const rows = sortedMembers(payload.members, { columnId: "trades", direction: "desc" })
           .slice(0, limit)
           .map((member) => ({ ...member }));
-        return {
-          columns: MEMBER_COLUMNS,
-          rows,
-          metadata: {
-            asOf: payload.asOf,
-            chamber: payload.chamber,
-            source: payload.source,
-            year: payload.year,
-            nextOffset: payload.nextOffset,
-            nextFilingOffset: payload.nextFilingOffset,
-            hasMore: payload.hasMore,
-            hasMoreFilings: payload.hasMoreFilings,
-            filingsPending: payload.filingsPending,
-            filingsFailed: payload.filingsFailed,
-            filingsPaper: payload.filingsPaper ?? 0,
-            senateUnavailable: payload.senateUnavailable ?? false,
-          },
-        };
+        return { columns: MEMBER_COLUMNS, rows, metadata: pagedMetadata };
       }
       const rows = sortedTrades(payload.trades, { columnId: "filed", direction: "desc" })
         .slice(0, limit)
         .map((trade) => ({ ...trade }));
-      return {
-        columns: TRADE_COLUMNS,
-        rows,
-        metadata: {
-          asOf: payload.asOf,
-          chamber: payload.chamber,
-          source: payload.source,
-          year: payload.year,
-          nextOffset: payload.nextOffset,
-          nextFilingOffset: payload.nextFilingOffset,
-          hasMore: payload.hasMore,
-          hasMoreFilings: payload.hasMoreFilings,
-          filingsPending: payload.filingsPending,
-          filingsFailed: payload.filingsFailed,
-          filingsPaper: payload.filingsPaper ?? 0,
-          senateUnavailable: payload.senateUnavailable ?? false,
-        },
-      };
+      return { columns: TRADE_COLUMNS, rows, metadata: pagedMetadata };
     },
   };
 }

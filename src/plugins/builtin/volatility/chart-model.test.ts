@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { buildCompositeChartScene } from "../../../components/chart/composite/scene";
 import { buildStaticChartSeries } from "../../../components/chart/static/chart-surface";
-import { volatilityCurveChartModel, volatilityHistoryChartModel, volatilityHistorySeries, volatilityIndexHistoryPoints, volatilityRatioChartModel } from "./chart-model";
+import { volatilityCurveChartModel, volatilityCurveRows, volatilityCurveSeries, volatilityHistoryChartModel, volatilityHistorySeries, volatilityIndexHistoryPoints, volatilityRatioChartModel } from "./chart-model";
+import type { VolatilityCurve } from "./model";
 
 test("VIX curve uses elapsed tenor days and leaves absent interior and endpoint observations as gaps", () => {
   const curve = [9, 30, 91, 182, 365].map((days, index) => ({ days, tenor: `${days}d`, value: [17, 18, null, 22, null][index]! }));
@@ -58,4 +59,20 @@ test("withdrawn dates missing from both histories still break the curves and boa
   expect(model.overlays.map((overlay) => overlay.points.map((point) => point.index))).toEqual([[0], [2]]);
   expect(Number.isNaN(volatilityRatioChartModel(fred, "gray").points[1]!.close)).toBe(true);
   expect(Number.isNaN(volatilityIndexHistoryPoints(history, missingDates)[1]!.close)).toBe(true);
+});
+
+test("the curve rows read each tenor's move since the look-backs, and the chart draws only look-backs with a close", () => {
+  const curve = { date: "2026-09-25", points: [
+    { id: "vix", label: "VIX", tenor: "30D", days: 30, value: 14.9, source: "market", sourceId: "^VIX" },
+    { id: "vix1y", label: "VIX 1Y", tenor: "1Y", days: 366, value: 21.6, source: "market", sourceId: "^VIX1Y" },
+  ] } as VolatilityCurve;
+  const lookbacks = [{ id: "1W" as const, date: "2026-09-18", values: { vix: 15.6 } }, { id: "1M" as const, date: null, values: {} }];
+  const rows = volatilityCurveRows(curve, lookbacks);
+  expect(rows[0]!.change1w).toBeCloseTo(-0.7, 10);
+  expect(rows[0]!.change1m).toBeNull();
+  expect(rows[1]!.change1w).toBeNull();
+  const series = volatilityCurveSeries(curve, lookbacks, { current: "green", ghosts: { "1W": "gray", "1M": "orange" } });
+  expect(series.map((entry) => [entry.id, entry.label, entry.role])).toEqual([["iv", "IV", "primary"], ["1W", "1W", "ghost"]]);
+  expect(series[0]!.points.map((point) => [point.label, point.x, point.value])).toEqual([["30D", 30, 14.9], ["1Y", 366, 21.6]]);
+  expect(series[1]!.points.map((point) => point.value)).toEqual([15.6, null]);
 });

@@ -18,12 +18,45 @@ import {
   type InitializeAppStateArgs,
 } from "../../state/app/bootstrap";
 import type { DataProvider } from "../../types/data-provider";
+import {
+  findPaneInstance,
+  getPlacedPaneInstanceIds,
+  type LayoutConfig,
+} from "../../types/config";
 import type { BrokerAccount } from "../../types/trading";
+import {
+  recordRestoredFunctions,
+  usageFunctionForPane,
+  type UsageFunction,
+} from "../../telemetry/usage-counts";
 import { debugLog } from "../../utils/debug-log";
 import { startMainThreadStallMonitor } from "../../utils/main-thread-stall";
 import { measurePerfAsync } from "../../utils/perf-marks";
 
 const appLog = debugLog.createLogger("app");
+
+/** How long the restored panes wait for plugins that register theirs during setup. */
+const RESTORED_FUNCTIONS_WAIT_MS = 15_000;
+
+/**
+ * One function per pane placed in the layout: docked, floating and popped
+ * out. Panes of disabled plugins are hidden and left out.
+ */
+function restoredUsageFunctions(
+  layout: LayoutConfig,
+  pluginRegistry: PluginRegistry,
+  disabledPlugins: readonly string[],
+): UsageFunction[] {
+  const functions: UsageFunction[] = [];
+  for (const instanceId of getPlacedPaneInstanceIds(layout)) {
+    const paneId = findPaneInstance(layout, instanceId)?.paneId;
+    if (!paneId) continue;
+    const pluginId = pluginRegistry.getPanePluginId(paneId);
+    if (pluginId && disabledPlugins.includes(pluginId)) continue;
+    functions.push(usageFunctionForPane(pluginRegistry, paneId));
+  }
+  return functions;
+}
 
 interface UseAppStartupRuntimeOptions {
   appActive: boolean;
@@ -36,6 +69,8 @@ interface UseAppStartupRuntimeOptions {
   isDetachedWindow?: boolean;
   marketData: MarketDataCoordinator;
   pluginRegistry: PluginRegistry;
+  /** Settles once every plugin has registered, setup included. */
+  pluginsReady?: Promise<unknown>;
   primeCachedFinancials: InitializeAppStateArgs["primeCachedFinancials"];
   refreshQuote: InitializeAppStateArgs["refreshQuote"];
   refreshQuotesBatch: InitializeAppStateArgs["refreshQuotesBatch"];
@@ -57,6 +92,7 @@ export function useAppStartupRuntime({
   isDetachedWindow = false,
   marketData,
   pluginRegistry,
+  pluginsReady,
   primeCachedFinancials,
   refreshQuote,
   refreshQuotesBatch,
@@ -161,6 +197,24 @@ export function useAppStartupRuntime({
     // Once per process: `externalPlugins` is the startup list and never changes
     // identity, so this runs when initialization flips and not again.
   }, [externalPlugins, isDetachedWindow, pluginRegistry, state.initialized]);
+
+  // What people keep on screen: the functions open in the workspace restored
+  // at launch, counted once per session. The layout is taken as restored,
+  // before cloud sync can replace it; the first launch shows the default
+  // layout, not one anybody chose.
+  useEffect(() => {
+    if (!state.initialized || isDetachedWindow) return;
+    const { config } = getState();
+    if (!config.onboardingComplete) return;
+    const waitForPlugins = new Promise<void>((resolve) => {
+      setTimeout(resolve, RESTORED_FUNCTIONS_WAIT_MS);
+    });
+    void Promise.race([pluginsReady, waitForPlugins]).then(() => {
+      recordRestoredFunctions(restoredUsageFunctions(config.layout, pluginRegistry, config.disabledPlugins));
+    }).catch(() => {
+      /* Counting is best effort and must not surface as a crash. */
+    });
+  }, [getState, isDetachedWindow, pluginRegistry, pluginsReady, state.initialized]);
 
   useEffect(() => {
     if (!focusedTickerSymbol) return;

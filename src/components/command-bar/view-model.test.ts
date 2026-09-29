@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildSections,
+  PLUGIN_INSTALL_CATEGORY,
   rankTickerSearchItems,
   resolveCommandBarMode,
 } from "./view-model";
@@ -89,6 +90,25 @@ describe("command bar view model helpers", () => {
         "Documents",
       ]);
     }
+  });
+
+  test("puts an uninstalled plugin's install row above the stock sharing its code", () => {
+    // PM is Philip Morris and Prediction Markets' code: Enter installs what the
+    // user named, and the stock stays one row down instead of disappearing.
+    const items = [
+      { id: "pm-nyse", category: "Exact Match" },
+      { id: "assist:candidate:0", category: "Ask AI" },
+      { id: "holders", category: "Panes" },
+      { id: "plugin-install:prediction-markets:PM", category: PLUGIN_INSTALL_CATEGORY },
+    ];
+
+    for (const sectionOrder of ["default", "app-first"] as const) {
+      expect(buildSections(items, { sectionOrder }).map((section) => section.category))
+        .toEqual([PLUGIN_INSTALL_CATEGORY, "Exact Match", "Ask AI", "Panes"]);
+    }
+    // One that cannot be installed on this Gloomberb is an offer, not an answer.
+    const disabled = items.map((item) => item.category === PLUGIN_INSTALL_CATEGORY ? { ...item, disabled: true } : item);
+    expect(buildSections(disabled).map((section) => section.category).at(-1)).toBe(PLUGIN_INSTALL_CATEGORY);
   });
 
   test("drops the AI's sign-up offer under the async sections", () => {

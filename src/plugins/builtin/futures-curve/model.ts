@@ -1,11 +1,16 @@
-import type { FuturesCurvePayload, FuturesContract } from "../../../api-client/futures-curve";
+import type { FuturesCurveAsOfPayload, FuturesCurvePayload, FuturesContract } from "../../../api-client/futures-curve";
 import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/model";
+import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
+import { formatPercentileRank } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
-export const CURVE_ROOTS = [...FUTURES_CONTRACTS.map((row) => ({ value: row.code, label: `${row.code} ${row.name}` })), { value: "VX", label: "VX VIX Futures" }];
+export const CURVE_ROOTS = [
+  ...FUTURES_CONTRACTS.filter((row) => row.curve !== false).map((row) => ({ value: row.code, label: `${row.code} ${row.name}` })),
+  { value: "VX", label: "VX VIX Futures" },
+];
 
 export function normalizeCurveRoot(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -38,15 +43,28 @@ export function curvePrice(value: number | null, root: string): string {
   return /[1-9]/.test(text) ? text : text.replace("-", "");
 }
 
+/** A move in price, signed; one that rounds to zero stays unsigned. */
+export function curveChangeText(value: number | null, root: string): string {
+  const text = curvePrice(value, root);
+  return value != null && value > 0 && /[1-9]/.test(text) ? `+${text}` : text;
+}
+
 /**
  * Axis gridlines sit on round values, so they need no tick precision: one
- * decimal count across the gutter, only as many as those values use.
+ * decimal count across the gutter, as many as the plotted range asks for and
+ * enough to keep every tick within a percent of that range. A span of hundreds
+ * of index points reads 7800, a VIX strip 18.5, a Treasury 1/64 grid 112.25.
  */
 export function curveAxisPrice(value: number, domain: CompositeAxisDomain, root: string): string {
-  if (RATE_TICKS[root] == null) return curvePrice(value, root);
-  const decimals = Math.max(0, ...compositeAxisTicks(domain, String)
-    .map((tick) => tick.value.toFixed(4).replace(/\.?0+$/, "").split(".")[1]?.length ?? 0));
-  return value.toFixed(decimals);
+  const cap = curvePriceDecimals(root);
+  const tolerance = Math.abs(domain.max - domain.min) / 100;
+  const needed = (tick: number) => {
+    let decimals = 0;
+    while (decimals < cap && Math.abs(Number(tick.toFixed(decimals)) - tick) > tolerance) decimals += 1;
+    return decimals;
+  };
+  const ticks = compositeAxisTicks(domain, String).map((tick) => needed(tick.value));
+  return value.toFixed(Math.min(cap, Math.max(spanDigits(domain), ...ticks)));
 }
 
 const MONTH_CODES = "FGHJKMNQUVXZ";
@@ -70,7 +88,7 @@ export function curveTimestamp(value: string | null): string {
 /** The rank against the contract's own history; one observation ranks nothing. */
 export function curveRank(value: number | null, samples: number): string {
   if (value == null || samples < 2) return "pctl unavailable";
-  return `${value.toFixed(0)} pctl`;
+  return formatPercentileRank(value);
 }
 
 export const CURVE_HORIZONS = [
@@ -97,10 +115,11 @@ export function charted<T extends { expiration: string }>(rows: readonly T[], ho
   return rows.filter((row) => Date.parse(row.expiration) <= end.getTime());
 }
 
-export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette, horizon = DEFAULT_CURVE_HORIZON, now = Date.now()): CurveSeries[] {
+export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette, horizon = DEFAULT_CURVE_HORIZON, now = Date.now(),
+  currentLabel = data.source === "cboe" ? "Settlement" : "Latest"): CurveSeries[] {
   const contracts = charted(data.contracts, horizon, now);
   return [{
-    id: "current", label: data.source === "cboe" ? "Settlement" : "Latest", asOf: newestQuote(contracts), color: palette?.current,
+    id: "current", label: currentLabel, asOf: newestQuote(contracts), color: palette?.current,
     points: contracts.map((row) => ({ id: row.symbol, label: curveContractMonth(row.symbol, row.expiration), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
   }, ...data.ghosts.map((ghost) => {
     // The payload dates a ghost by its oldest point, which can be a contract beyond the charted horizon.
@@ -113,10 +132,109 @@ export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePal
   })];
 }
 
-type CurveSortKey = "symbol" | "expiration" | "price" | "openInterest" | "volume" | "percentile" | "asOf";
+export type CurveLookback = "1W" | "1M";
+export type CurveContractChanges = ReadonlyMap<string, Readonly<Record<CurveLookback, number | null>>>;
 
-export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: SortDirection): FuturesContract[] {
-  const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
+/**
+ * How far each contract moved since the week- and month-back curves, by
+ * symbol: the latest price less the price then. A leg missing either side
+ * stays null rather than reading as no move.
+ */
+export function curveContractChanges(data: FuturesCurvePayload): CurveContractChanges {
+  const past = new Map(data.ghosts.map((ghost) => [ghost.label, new Map(ghost.points.map((point) => [point.symbol, point.price]))]));
+  return new Map(data.contracts.map((row) => {
+    const change = (label: CurveLookback) => {
+      const then = past.get(label)?.get(row.symbol);
+      return row.price == null || then == null ? null : row.price - then;
+    };
+    return [row.symbol, { "1W": change("1W"), "1M": change("1M") }];
+  }));
+}
+
+const CHANGE_COLUMNS: Readonly<Record<string, CurveLookback>> = { change1w: "1W", change1m: "1M" };
+
+type CurveSortKey = "symbol" | "expiration" | "price" | "change" | "openInterest" | "volume" | "percentile" | "asOf";
+
+export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: SortDirection,
+  changes?: CurveContractChanges): FuturesContract[] {
+  const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", change: "change", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
   const key = keys[id] ?? "expiration";
-  return [...rows].sort((a, b) => compareSortValues(a[key], b[key], direction));
+  const lookback = CHANGE_COLUMNS[id];
+  const value = (row: FuturesContract) => lookback ? changes?.get(row.symbol)?.[lookback] ?? null : row[key] ?? null;
+  return [...rows].sort((a, b) => compareSortValues(value(a), value(b), direction));
+}
+
+const DAY_MS = 86_400_000;
+
+/** A past date for the as-of view: empty (or "latest") for the live curve, else YYYY-MM-DD no later than today. */
+export function curveAsOfDate(value: unknown, now = new Date()): string {
+  const date = typeof value === "string" ? value.trim() : "";
+  if (!date || date.toLowerCase() === "latest") return "";
+  const time = Date.parse(`${date}T00:00:00Z`);
+  // A month or day out of range parses to NaN or rolls over; both are refused.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
+    throw new Error("Use an as-of date in YYYY-MM-DD format, or latest.");
+  }
+  if (date > now.toISOString().slice(0, 10)) throw new Error("A futures curve cannot use a future date.");
+  return date;
+}
+
+export function curveLookbackDate(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) - days * DAY_MS).toISOString().slice(0, 10);
+}
+
+type ArchivedRow = FuturesCurveAsOfPayload["contracts"][number];
+
+/**
+ * Whether a row's price is older than its curve's session. The archive marks
+ * a row stale when it has no price made on the requested date, which on a
+ * weekend, a holiday or today before the settlement is every row. The curve's
+ * session is its newest row, so a row is stale when it is older than that or
+ * carries an earlier price, which the archive dates before the row.
+ */
+function archivedRowStale(row: ArchivedRow, curve: FuturesCurveAsOfPayload): boolean {
+  const session = curve.asOf;
+  if (!session || session >= curve.date) return row.stale;
+  return row.tradeDate < session || row.asOf.slice(0, 10) < row.tradeDate;
+}
+
+/**
+ * The archived curve on a past date in the live curve's shape, so the pane
+ * draws it the same way. Its week- and month-back ghosts are the curves as
+ * they stood then, contracts that have since expired included. A row is dated
+ * by its session, or by the earlier session its carried price comes from.
+ * Percentiles and session changes are not archived, so they stay unavailable.
+ */
+export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayload,
+  lookbacks: { "1W": FuturesCurveAsOfPayload | null; "1M": FuturesCurveAsOfPayload | null }, fetchedAt: string): FuturesCurvePayload {
+  const rowDate = (row: ArchivedRow, stale: boolean) => stale ? row.asOf.slice(0, 10) : row.tradeDate;
+  const contracts: FuturesContract[] = curve.contracts.flatMap((row) => {
+    if (!row.expiration) return [];
+    const stale = archivedRowStale(row, curve);
+    return [{
+      symbol: row.symbol, label: row.label, expiration: row.expiration, price: row.price, change: null, asOf: rowDate(row, stale),
+      currency: curve.currency ?? "USD", quoteUnit: curve.quoteUnit ?? curve.currency ?? "USD", volume: row.volume,
+      openInterest: row.openInterest, delayMinutes: null, stale, percentile: null, samples: 0, historyStart: null, historyEnd: null,
+    }];
+  }).sort((a, b) => a.expiration.localeCompare(b.expiration));
+  const ghosts = (["1W", "1M"] as const).map((label) => {
+    const past = lookbacks[label];
+    return { label, requestedDate: curveLookbackDate(curve.date, label === "1W" ? 7 : 30), asOf: past?.asOf ?? null,
+      points: past ? past.contracts.flatMap((row) => row.expiration
+        ? [{ symbol: row.symbol, expiration: row.expiration, price: row.price, asOf: rowDate(row, archivedRowStale(row, past)) }] : []) : [] };
+  });
+  // The front pair on the curve's own session; carried prices do not make a spread.
+  const [front, next] = contracts.filter((row) => !row.stale);
+  const value = front && next ? next.price! - front.price! : null;
+  const days = front && next ? (Date.parse(next.expiration) - Date.parse(front.expiration)) / DAY_MS : 0;
+  const roll = front && next && front.price! > 0 && next.price! > 0 && days > 0 ? (front.price! / next.price! - 1) * 365 / days * 100 : null;
+  return {
+    root, name: curve.name, source: root === "VX" ? "cboe" : "yahoo", currency: curve.currency, quoteUnit: curve.quoteUnit,
+    asOf: curve.asOf, fetchedAt, status: !contracts.length ? "unavailable" : curve.gaps.length ? "partial" : "available", stale: false,
+    catalogue: { method: "provider", complete: true, horizonEnd: null }, contracts, ghosts,
+    slope: { frontSymbol: front?.symbol ?? null, nextSymbol: next?.symbol ?? null, value, annualizedRollYield: roll, percentile: null,
+      rollPercentile: null, samples: 0, historyStart: null, historyEnd: null, asOf: front && next ? curve.asOf : null,
+      state: value == null ? "unavailable" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
+    gaps: curve.gaps,
+  };
 }

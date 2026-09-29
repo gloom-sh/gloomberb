@@ -22,11 +22,11 @@ export interface NodePluginManagerHooks {
 const installer = () => import("./installer");
 
 export function createNodePluginManager(target: PluginTarget, hooks: NodePluginManagerHooks = {}): NodePluginManager {
-  async function attempt(run: () => Promise<{ directory: string; kept?: string }>): Promise<PluginOperationResult> {
+  async function attempt(run: () => Promise<{ directory: string; kept?: string; changed?: boolean }>): Promise<PluginOperationResult> {
     try {
-      const { directory, kept } = await run();
+      const { directory, kept, changed } = await run();
       hooks.onChanged?.(join(getPluginsDir(), directory));
-      return { ok: true, directory, ...(kept ? { kept } : {}) };
+      return { ok: true, directory, ...(kept ? { kept } : {}), ...(changed !== undefined ? { changed } : {}) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
