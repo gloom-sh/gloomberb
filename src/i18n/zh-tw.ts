@@ -1353,7 +1353,6 @@ export const zhTW: Record<string, string> = {
   "Method": "方式",
   "Choose a source for the new portfolio.": "為新投資組合選擇來源。",
   "Create Portfolio": "建立投資組合",
-  "Connect Broker": "連線券商",
   "Connect": "連線",
   "Connected! Positions will sync automatically.": "已連線！持倉將自動同步。",
   "No connectable brokers are installed.": "未安裝可連線的券商。",

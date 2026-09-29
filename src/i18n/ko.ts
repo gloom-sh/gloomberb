@@ -1351,7 +1351,6 @@ export const ko: Record<string, string> = {
   "Method": "방식",
   "Choose a source for the new portfolio.": "새 포트폴리오의 소스를 선택하세요.",
   "Create Portfolio": "포트폴리오 만들기",
-  "Connect Broker": "브로커 연결",
   "Connect": "연결",
   "Connected! Positions will sync automatically.": "연결되었습니다. 포지션이 자동으로 동기화됩니다.",
   "No connectable brokers are installed.": "연결할 수 있는 브로커가 설치되어 있지 않습니다.",

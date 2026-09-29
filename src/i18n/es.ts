@@ -1357,7 +1357,6 @@ export const es: Record<string, string> = {
   "Method": "Método",
   "Choose a source for the new portfolio.": "Elige un origen para la nueva cartera.",
   "Create Portfolio": "Crear cartera",
-  "Connect Broker": "Conectar bróker",
   "Connect": "Conectar",
   "Connected! Positions will sync automatically.": "¡Conectado! Las posiciones se sincronizarán solas.",
   "No connectable brokers are installed.": "No hay brókers conectables instalados.",

@@ -762,7 +762,7 @@ describe("confirm modal", () => {
   });
 
   // The host mounts once, and the marketplace installs brokers into the map it read.
-  test("Add Broker lists a broker installed after the app started", async () => {
+  test("New Portfolio lists a broker installed after the app started", async () => {
     let registry: PluginRegistry | null = null;
     testSetup = await testRender(
       <CommandBarHarness
@@ -781,10 +781,11 @@ describe("confirm modal", () => {
     } as unknown as BrokerAdapter);
 
     await act(async () => {
-      expect(openFormModal({ kind: "builtin", actionId: "add-broker-account" })).toBe(true);
+      expect(openFormModal({ kind: "builtin", actionId: "new-portfolio" })).toBe(true);
     });
-    await waitForForm("Add Broker Account");
-    expect(frame()).toContain("Demo Broker");
+    await waitForForm("Portfolio Source");
+    await press(ENTER);
+    await waitForFrameToContain("Demo Broker");
   });
 });
 
@@ -804,24 +805,15 @@ describe("broker connect step", () => {
     config: { broker: "robinhood" },
   };
 
-  function brokerRoute(kind: "add-broker" | "new-portfolio") {
-    return kind === "add-broker"
-      ? buildBrokerWorkflowRoute({
-        directory: DIRECTORY,
-        includeManualOption: false,
-        selectorKey: "brokerType",
-        submitLabel: "Connect Broker",
-        subtitle: undefined,
-        title: "Add Broker Account",
-      })!
-      : buildBrokerWorkflowRoute({
-        directory: DIRECTORY,
-        includeManualOption: true,
-        selectorKey: "source",
-        submitLabel: "Create Portfolio",
-        subtitle: undefined,
-        title: "New Portfolio",
-      })!;
+  /** New Portfolio, on Robinhood unless the test picks the source itself. */
+  function brokerRoute(source: "robinhood" | "manual" = "robinhood") {
+    const route = buildBrokerWorkflowRoute({
+      directory: DIRECTORY,
+      submitLabel: "Create Portfolio",
+      subtitle: undefined,
+      title: "New Portfolio",
+    });
+    return { ...route, values: { ...route.values, source } };
   }
 
   /**
@@ -890,7 +882,7 @@ describe("broker connect step", () => {
     spies.push(spyOn(chatController, "adoptSession").mockImplementation(() => {}));
     spies.push(spyOn(chatController, "refreshSession").mockResolvedValue());
 
-    await renderForm(brokerRegistry(storeRef, record), { kind: "route", route: brokerRoute("add-broker") }, { notes, storeRef });
+    await renderForm(brokerRegistry(storeRef, record), { kind: "route", route: brokerRoute() }, { notes, storeRef });
     await waitForForm("Robinhood");
     await press(CTRL_S);
 
@@ -921,7 +913,7 @@ describe("broker connect step", () => {
     fakeCloud({ signedIn: () => signedIn, connect: () => codeFor("K7QM") });
     spies.push(spyOn(apiClient, "startDeviceSignIn").mockImplementation(() => new Promise(() => {})));
 
-    await renderForm(brokerRegistry(storeRef, record), { kind: "route", route: brokerRoute("new-portfolio") }, { notes, storeRef });
+    await renderForm(brokerRegistry(storeRef, record), { kind: "route", route: brokerRoute("manual") }, { notes, storeRef });
     await waitForForm("Portfolio Source");
     await press(ENTER);
     await waitForFrameToContain("▸ Manual");
@@ -957,14 +949,14 @@ describe("broker connect step", () => {
 
     await renderForm(brokerRegistry(storeRef, record, async () => {
       throw new Error("Robinhood did not answer.");
-    }), { kind: "route", route: brokerRoute("add-broker") }, { storeRef });
+    }), { kind: "route", route: brokerRoute() }, { storeRef });
     await waitForForm("Robinhood");
     await press(CTRL_S);
     await waitForFrameToContain("Connected", 80);
     await press(ENTER);
 
     await waitForFrameToContain("Robinhood did not answer.");
-    expect(frame()).toContain("Add Broker Account");
+    expect(frame()).toContain("New Portfolio");
     expect(record.synced).toEqual(["rh-1"]);
   }, 10_000);
 });

@@ -23,9 +23,9 @@ import {
 } from "./routes";
 
 /**
- * Pane settings width, in cells. The broker connect step that Add Broker and
- * New Portfolio advance to fits in it too (its QR code, the link, the note
- * wrapped), since a dialog keeps the width it opened with.
+ * Pane settings width, in cells. The broker connect step that New Portfolio
+ * advances to fits in it too (its QR code, the link, the note wrapped), since
+ * a dialog keeps the width it opened with.
  */
 const FORM_MODAL_WIDTH = 68;
 /** A prompt or a JSON body needs room to read. */
@@ -145,7 +145,7 @@ function resolveFormRequest(
   const state = deps.getState();
   switch (request.kind) {
     case "builtin": {
-      const listsBrokers = request.actionId === "add-broker-account" || request.actionId === "new-portfolio";
+      const listsBrokers = request.actionId === "new-portfolio";
       if (listsBrokers && deps.pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
       // The host outlives plugins: the brokers installed, updated or removed
       // since it mounted are the ones to list, so the list is built now.

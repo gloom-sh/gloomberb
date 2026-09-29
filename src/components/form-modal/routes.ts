@@ -35,10 +35,8 @@ export function buildBuiltInFormRoute(
     actionId,
     activeCollectionId: getFocusedCollectionId(state),
     activeTicker: focusedTicker(state),
-    buildBrokerWorkflow: (selectorKey, title, subtitle, submitLabel, includeManualOption) => buildBrokerWorkflowRoute({
+    buildBrokerWorkflow: (title, subtitle, submitLabel) => buildBrokerWorkflowRoute({
       directory: brokerDirectory,
-      includeManualOption,
-      selectorKey,
       submitLabel,
       subtitle,
       title,

@@ -1353,7 +1353,6 @@ export const zhCN: Record<string, string> = {
   "Method": "方式",
   "Choose a source for the new portfolio.": "为新投资组合选择来源。",
   "Create Portfolio": "创建投资组合",
-  "Connect Broker": "连接券商",
   "Connect": "连接",
   "Connected! Positions will sync automatically.": "已连接！持仓将自动同步。",
   "No connectable brokers are installed.": "未安装可连接的券商。",

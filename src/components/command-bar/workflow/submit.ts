@@ -85,7 +85,6 @@ export async function submitCommandBarWorkflow(options: {
   >;
   extractBrokerWorkflowValues: (
     values: Record<string, CommandBarFieldValue>,
-    selectorKey: "brokerType" | "source",
     selectedBrokerId: string,
   ) => WorkflowStringValues;
   getFieldStringValue: (
@@ -107,14 +106,14 @@ export async function submitCommandBarWorkflow(options: {
   } = options;
 
   /** False when the user backed out of signing the broker in. */
-  const connectBrokerFromWorkflow = async (selectorKey: "brokerType" | "source"): Promise<boolean> => {
-    const selection = resolveBrokerWorkflowSelection(route, selectorKey);
+  const connectBrokerFromWorkflow = async (): Promise<boolean> => {
+    const selection = resolveBrokerWorkflowSelection(route);
     if (!selection) throw new Error("Broker is required.");
     if (selection.method.kind === "signed-in") {
       return await collectionWorkflowActions.connectSignedInBroker(selection.method.broker);
     }
     const brokerId = selection.method.adapter.id;
-    const values = extractBrokerWorkflowValues(route.values, selectorKey, brokerId);
+    const values = extractBrokerWorkflowValues(route.values, brokerId);
     await collectionWorkflowActions.connectBrokerProfile(brokerId, values);
     return true;
   };
@@ -149,14 +148,11 @@ export async function submitCommandBarWorkflow(options: {
               coerceFieldString(route.values.name),
               parseOwnerValue(route.values.owner),
             );
-          } else if (!await connectBrokerFromWorkflow("source")) {
+          } else if (!await connectBrokerFromWorkflow()) {
             return "stay";
           }
           break;
         }
-        case "add-broker-account":
-          if (!await connectBrokerFromWorkflow("brokerType")) return "stay";
-          break;
         case "add-portfolio": {
           const shares = coerceFieldString(route.values.shares).trim();
           if (!shares) {

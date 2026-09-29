@@ -1353,7 +1353,6 @@ export const ja: Record<string, string> = {
   "Method": "方法",
   "Choose a source for the new portfolio.": "新しいポートフォリオの取得元を選択します。",
   "Create Portfolio": "ポートフォリオを作成",
-  "Connect Broker": "証券会社を接続",
   "Connect": "接続",
   "Connected! Positions will sync automatically.": "接続しました。ポジションは自動で同期されます。",
   "No connectable brokers are installed.": "接続できる証券会社がインストールされていません。",

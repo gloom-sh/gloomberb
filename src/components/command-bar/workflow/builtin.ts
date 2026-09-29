@@ -37,12 +37,10 @@ export function parseOwnerValue(value: unknown): { kind: "user" } | { kind: "tea
 }
 
 type BrokerWorkflowBuilder = (
-  selectorKey: "brokerType" | "source",
   title: string,
   subtitle: string | undefined,
   submitLabel: string,
-  includeManualPortfolio: boolean,
-) => CommandBarWorkflowRoute | null;
+) => CommandBarWorkflowRoute;
 
 export type BuiltInWorkflowRouteResult =
   | { kind: "route"; route: CommandBarWorkflowRoute }
@@ -115,13 +113,10 @@ export function buildBuiltInWorkflowRoute(options: {
 
     case "new-portfolio": {
       const route = buildBrokerWorkflow(
-        "source",
         "New Portfolio",
         "Choose a source for the new portfolio.",
         "Create Portfolio",
-        true,
       );
-      if (!route) return { kind: "notice", message: "No connectable brokers are installed." };
       // A paper portfolio can belong to a team; broker portfolios never do.
       const owner = ownerField();
       if (owner && route.kind === "workflow") {
@@ -153,19 +148,6 @@ export function buildBuiltInWorkflowRoute(options: {
           payload: { kind: "builtin", actionId },
         }),
       };
-    }
-
-    case "add-broker-account": {
-      const route = buildBrokerWorkflow(
-        "brokerType",
-        "Add Broker Account",
-        undefined,
-        "Connect Broker",
-        false,
-      );
-      return route
-        ? { kind: "route", route }
-        : { kind: "notice", message: "No connectable brokers are installed." };
     }
 
     default:
