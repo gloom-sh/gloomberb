@@ -138,7 +138,10 @@ export async function submitCommandBarWorkflow(options: {
         case "rename-layout": {
           const name = coerceFieldString(route.values.name).trim();
           if (!name) throw new Error("Layout name is required.");
-          dispatch({ type: "RENAME_LAYOUT", index: activeLayoutIndex, name });
+          // The layout whose name the form opened with.
+          const layoutIndex = route.payloadMeta?.layoutIndex;
+          if (name === route.payloadMeta?.layoutName) break;
+          dispatch({ type: "RENAME_LAYOUT", index: typeof layoutIndex === "number" ? layoutIndex : activeLayoutIndex, name });
           notify(`Renamed layout to "${name}".`, { type: "success" });
           break;
         }

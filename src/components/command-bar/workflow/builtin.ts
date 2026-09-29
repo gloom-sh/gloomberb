@@ -42,6 +42,36 @@ type BrokerWorkflowBuilder = (
   submitLabel: string,
 ) => CommandBarWorkflowRoute;
 
+/**
+ * New Layout, or Rename Layout for the saved layout at `layoutIndex` with its
+ * name filled in to edit. The menus and the bar rename the active layout; the
+ * layout gallery renames the one picked in it.
+ */
+export function buildLayoutNameWorkflowRoute(
+  actionId: "new-layout" | "rename-layout",
+  layouts: AppState["config"]["layouts"],
+  layoutIndex: number,
+): CommandBarWorkflowRoute {
+  const renaming = actionId === "rename-layout";
+  const currentName = renaming ? layouts[layoutIndex]?.name ?? "" : "";
+  return buildCommandBarWorkflowRoute({
+    workflowId: `builtin:${actionId}`,
+    title: renaming ? "Rename Layout" : "New Layout",
+    fields: [{
+      id: "name",
+      label: "Layout Name",
+      type: "text",
+      placeholder: "Trading, Research, Overview",
+      required: true,
+    }],
+    values: { name: currentName },
+    submitLabel: renaming ? "Rename Layout" : "Create Layout",
+    pendingLabel: renaming ? "Renaming layout…" : "Creating layout…",
+    payload: { kind: "builtin", actionId },
+    ...(renaming ? { payloadMeta: { layoutIndex, layoutName: currentName } } : {}),
+  });
+}
+
 export type BuiltInWorkflowRouteResult =
   | { kind: "route"; route: CommandBarWorkflowRoute }
   | { kind: "notice"; message: string }
@@ -92,23 +122,7 @@ export function buildBuiltInWorkflowRoute(options: {
     case "rename-layout":
       return {
         kind: "route",
-        route: buildCommandBarWorkflowRoute({
-          workflowId: `builtin:${actionId}`,
-          title: actionId === "new-layout" ? "New Layout" : "Rename Layout",
-          fields: [{
-            id: "name",
-            label: "Layout Name",
-            type: "text",
-            placeholder: actionId === "new-layout"
-              ? "Trading, Research, Overview"
-              : config.layouts[config.activeLayoutIndex]?.name || "Layout name",
-            required: true,
-          }],
-          values: { name: "" },
-          submitLabel: actionId === "new-layout" ? "Create Layout" : "Rename Layout",
-          pendingLabel: actionId === "new-layout" ? "Creating layout…" : "Renaming layout…",
-          payload: { kind: "builtin", actionId },
-        }),
+        route: buildLayoutNameWorkflowRoute(actionId, config.layouts, config.activeLayoutIndex),
       };
 
     case "new-portfolio": {
