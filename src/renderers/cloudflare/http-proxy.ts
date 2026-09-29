@@ -16,9 +16,9 @@
  */
 import { readRequestInit, toResponseEnvelope } from "../../utils/http-proxy-response";
 import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
+import { SESSION_COOKIE_NAMES } from "../../api-client/session-cookie";
 
 const PROXY_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
-const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"];
 /** Set by the caller's browser or meaningful only to the hop it came from. */
 const STRIPPED_REQUEST_HEADERS = new Set([
   "connection",

@@ -13,15 +13,12 @@ import {
   GLOOM_CLOUD_HTTP_CONNECTION_ID,
   type ConnectionHealthRegistry,
 } from "../core/connection-health";
+import { SESSION_COOKIE_NAMES } from "./session-cookie";
 
 const DEFAULT_API_URL = "https://api.gloom.sh";
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
 /** Local status for "this runtime cannot stream", never returned by the server. */
 export const STREAMING_UNSUPPORTED_STATUS = 0;
-const SESSION_COOKIE_NAMES = [
-  "__Secure-gloomberb.session_token",
-  "gloomberb.session_token",
-] as const;
 
 type CloudApiResponse = Pick<Response, "ok" | "status" | "headers" | "text">;
 type CloudApiFetchTransport = (
