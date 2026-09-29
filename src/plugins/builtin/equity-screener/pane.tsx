@@ -65,6 +65,7 @@ import {
   parseScreenDefinition,
   resultFields,
   SHORT_LABELS,
+  SIGN_COLORED,
   screenLabel,
   screenRowId,
 } from "./model";
@@ -904,7 +905,7 @@ function EquityScreenView({
               : null;
             if (field) {
               const observation = row.metrics[field];
-              const change = field === "changePercent" && observation.value != null
+              const change = SIGN_COLORED.has(field) && observation.value != null
                 // A move that prints 0.0 stays neutral.
                 ? priceColor(Math.abs(observation.value) < 0.05 ? 0 : observation.value, colors)
                 : undefined;

@@ -531,6 +531,28 @@ category lists and available/unavailable data conditions. All criteria are ANDed
 Thresholds accept `k`, `M`, `B` and `T` suffixes, so `10B` is ten billion. The
 currency selector is required for price and market-cap comparisons.
 
+Besides valuation, growth, margins, short interest, insider and 13F activity and
+social attention, fields cover:
+
+- **Returns** 1W, 1M, 3M, YTD and 1Y: price change, without dividends, from the close
+  at the window start (the prior year's last close for YTD): a stored daily close on
+  or up to a week before the start, else, for 1M and longer, the weekly close
+  nearest the start, within four days. 1W needs daily closes.
+- **VS 52W HI%**: price against the highest high of the last 52 weeks, 0 at a new high.
+- **Beta**: raw beta of two years of weekly returns against SPY, US listings.
+- **P/B**, **EV/EBITDA** and **FY ROE%**: market cap over latest balance-sheet equity;
+  market cap plus debt minus cash over the last four quarters' EBITDA; annual net
+  income over average equity. The same definitions as the FA ratio tabs. Statements
+  in another currency than the market cap (most ADRs) leave them unavailable.
+- **EPS REV 30D%**: change in the current fiscal year's consensus EPS over 30 days,
+  unavailable when the fiscal year rolled in between.
+- **UPSIDE%**: mean analyst price target over the price.
+- **IV RANK** and **IV/HV**, for optionable US names: 30-day implied volatility
+  between its 52-week low (0) and high (100), and over the realized volatility of
+  the last 21 daily closes.
+
+Returns, EPS revisions and upside take the sign colour.
+
 **Results** leads with the chosen metric and its covered-universe percentile, then
 one column per numeric criterion and context columns (market cap, price, change, P/E,
 revenue growth, operating margin, dividend yield) as width allows. Stale values are
