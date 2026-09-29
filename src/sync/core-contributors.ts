@@ -653,23 +653,82 @@ function mergeConfigPayload(
     next.activeLayoutIndex = payload.activeLayoutIndex as number;
   }
 
-  if (Array.isArray(payload.brokerInstances) && canApply("brokerInstances")) {
-    const incoming = payload.brokerInstances as Array<Partial<BrokerInstanceConfig>>;
-    const existingById = new Map(config.brokerInstances.map((instance) => [instance.id, instance]));
-    next.brokerInstances = incoming.map((instance) => {
-      const current = instance.id ? existingById.get(instance.id) : undefined;
-      return {
-        id: instance.id ?? current?.id ?? crypto.randomUUID(),
-        brokerType: instance.brokerType ?? current?.brokerType ?? "",
-        label: instance.label ?? current?.label ?? "",
-        connectionMode: instance.connectionMode ?? current?.connectionMode,
-        enabled: instance.enabled ?? current?.enabled,
-        lastSyncedAt: instance.lastSyncedAt ?? current?.lastSyncedAt,
-        config: current?.config ?? {},
-      };
-    });
+  if (Array.isArray(payload.brokerInstances)) {
+    const syncedIds = Array.isArray(lastSynced?.brokerInstances) ? idsOf(lastSynced.brokerInstances) : null;
+    next.brokerInstances = mergeBrokerInstances(
+      config.brokerInstances,
+      payload.brokerInstances as Array<Partial<BrokerInstanceConfig>>,
+      canApply("brokerInstances"),
+      syncedIds,
+    );
+    if (syncedIds) next.portfolios = withoutRemovedBrokerPortfolios(config, next, syncedIds, payload.portfolios);
   }
   return next;
+}
+
+function idsOf(entries: unknown[]): Set<string> {
+  return new Set(entries.flatMap((entry) => (isRecord(entry) && typeof entry.id === "string" ? [entry.id] : [])));
+}
+
+/**
+ * Takes the pulled profiles when this device has not changed its own since it
+ * last synced. When it has (a broker sync alone moves `lastSyncedAt`), it keeps
+ * its own, but profile by profile against the ids it last synced: one removed
+ * on another device goes, one removed here stays gone, and one added elsewhere
+ * arrives. Keeping the whole list instead pushed a profile removed elsewhere
+ * back to every device.
+ */
+function mergeBrokerInstances(
+  local: BrokerInstanceConfig[],
+  incoming: Array<Partial<BrokerInstanceConfig>>,
+  localUnchanged: boolean,
+  syncedIds: ReadonlySet<string> | null,
+): BrokerInstanceConfig[] {
+  const localById = new Map(local.map((instance) => [instance.id, instance]));
+  const fromIncoming = (instance: Partial<BrokerInstanceConfig>): BrokerInstanceConfig => {
+    const current = instance.id ? localById.get(instance.id) : undefined;
+    return {
+      id: instance.id ?? current?.id ?? crypto.randomUUID(),
+      brokerType: instance.brokerType ?? current?.brokerType ?? "",
+      label: instance.label ?? current?.label ?? "",
+      connectionMode: instance.connectionMode ?? current?.connectionMode,
+      enabled: instance.enabled ?? current?.enabled,
+      lastSyncedAt: instance.lastSyncedAt ?? current?.lastSyncedAt,
+      config: current?.config ?? {},
+    };
+  };
+  if (localUnchanged) return incoming.map(fromIncoming);
+  if (!syncedIds) return local;
+
+  const incomingIds = idsOf(incoming);
+  const kept = local.filter((instance) => incomingIds.has(instance.id) || !syncedIds.has(instance.id));
+  const added = incoming.filter((instance) => (
+    typeof instance.id === "string" && !localById.has(instance.id) && !syncedIds.has(instance.id)
+  ));
+  return kept.length === local.length && added.length === 0 ? local : [...kept, ...added.map(fromIncoming)];
+}
+
+/**
+ * A broker portfolio goes with a profile the pull removed, unless the pulled
+ * portfolios still list it: another device handed it to a profile it kept.
+ * Only a profile this device had synced counts as removed elsewhere.
+ */
+function withoutRemovedBrokerPortfolios(
+  config: AppConfig,
+  next: AppConfig,
+  syncedIds: ReadonlySet<string>,
+  pulledPortfolios: unknown,
+): Portfolio[] {
+  const remaining = new Set(next.brokerInstances.map((instance) => instance.id));
+  const removed = new Set(config.brokerInstances.flatMap((instance) => (
+    syncedIds.has(instance.id) && !remaining.has(instance.id) ? [instance.id] : []
+  )));
+  if (removed.size === 0) return next.portfolios;
+  const pulledIds = Array.isArray(pulledPortfolios) ? idsOf(pulledPortfolios) : new Set<string>();
+  const portfolios = next.portfolios.filter((portfolio) => (
+    !portfolio.brokerInstanceId || !removed.has(portfolio.brokerInstanceId) || pulledIds.has(portfolio.id)
+  ));
+  return portfolios.length === next.portfolios.length ? next.portfolios : portfolios;
 }
 
 function lastSyncedTickersById(baselinePayload: unknown): Map<string, Record<string, unknown>> | null {

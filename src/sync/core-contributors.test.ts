@@ -256,6 +256,44 @@ describe("core sync contributors", () => {
     ]);
   });
 
+  test("merges broker profiles one by one once this device changed its own, so a removal on either side wins", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-broker-merge-test");
+    const flex = { id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", config: { token: "secret" }, lastSyncedAt: 100 };
+    const signedIn = { id: "signed-in-ibkr", brokerType: "signed-in", label: "IBKR", connectionMode: "ibkr", config: {}, lastSyncedAt: 100 };
+    const robinhood = { id: "robinhood", brokerType: "robinhood", label: "Robinhood", config: {}, lastSyncedAt: 100 };
+    const signedInPortfolio = {
+      id: "broker:signed-in-ibkr:U1",
+      name: "U1",
+      currency: "USD",
+      brokerId: "signed-in",
+      brokerInstanceId: "signed-in-ibkr",
+      brokerAccountId: "U1",
+      lastSyncedAt: 100,
+    };
+    config.brokerInstances = [flex, signedIn, robinhood];
+    config.portfolios = [...config.portfolios, signedInPortfolio];
+    const lastSynced = __syncContributorInternalsForTests.collectCoreConfigPayload(config);
+
+    // Here: Robinhood removed, IBKR synced again. Elsewhere: IBKR removed with
+    // its portfolio, Robinhood renamed, Schwab added.
+    const local = {
+      ...config,
+      brokerInstances: [flex, { ...signedIn, lastSyncedAt: 200 }],
+      portfolios: config.portfolios.map((portfolio) => portfolio.brokerInstanceId ? { ...portfolio, lastSyncedAt: 200 } : portfolio),
+    };
+    const pulled = __syncContributorInternalsForTests.collectCoreConfigPayload({
+      ...config,
+      brokerInstances: [flex, { ...robinhood, label: "Robinhood IRA" }, { id: "schwab", brokerType: "schwab", label: "Schwab", config: {} }],
+      portfolios: config.portfolios.filter((portfolio) => !portfolio.brokerInstanceId),
+    });
+
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(local, pulled, local, lastSynced);
+
+    expect(merged?.brokerInstances.map((instance) => instance.id)).toEqual(["ibkr-flex", "schwab"]);
+    expect(merged?.brokerInstances[0]?.config).toEqual({ token: "secret" });
+    expect(merged?.portfolios.map((portfolio) => portfolio.id)).toEqual(["main"]);
+  });
+
   test("keeps resumable onboarding local until the guide is complete", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     config.onboardingComplete = false;
