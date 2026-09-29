@@ -1,4 +1,6 @@
+import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import type { SurfaceExpiry, SurfaceGrid, SurfaceSnapshot } from "./model";
 import { isFiniteNumber, isRecord } from "../../../utils/guards";
 
@@ -165,3 +167,30 @@ export function readVolSurfaceEvidence(value: unknown): VolSurfaceEvidence | nul
   if (count === 0 || value.plottedValueCount !== count || value.validQuadCount !== quads) return null;
   return value as unknown as VolSurfaceEvidence;
 }
+
+export const volSurfaceScreenshotEvidence: PaneScreenshotEvidenceHook<VolSurfaceEvidence> = {
+  paneId: "vol-surface",
+  kind: "volatility-surface",
+  label: "volatility-surface",
+  read: readVolSurfaceEvidence,
+  /** A chart must prove its requested view, quote convention and numeric observations. */
+  mismatches(evidence, { resolved, payload }) {
+    const mismatches: string[] = [];
+    const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
+    if (symbol && evidence.symbol !== parsePublicTickerKey(symbol).symbol) mismatches.push("rendered volatility symbol does not match");
+    if (evidence.view !== (resolved.options.tab ?? "surface")) mismatches.push("rendered volatility view does not match");
+    const expectedAxis = evidence.renderer === "bitmap" ? "forward" : resolved.options.axis ?? "spot";
+    const expectedTenors = evidence.renderer === "bitmap" ? "listed" : resolved.options.tenors ?? "listed";
+    if (evidence.axis !== expectedAxis) mismatches.push("rendered volatility axis does not match");
+    if (evidence.tenors !== expectedTenors) mismatches.push("rendered volatility tenors do not match");
+    if (evidence.ivSource !== (resolved.options.ivSource ?? "recomputed")) mismatches.push("rendered volatility source does not match");
+    if (evidence.priceSide !== (resolved.options.priceSide ?? "mid")) mismatches.push("rendered option quote side does not match");
+    const expiration = resolved.instance?.settings?.expiration;
+    if (expiration != null && Number(expiration) !== evidence.selectedExpiration) mismatches.push("rendered volatility expiry does not match");
+    return mismatches;
+  },
+  unavailable(evidence, { resolved, payload }) {
+    const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
+    return evidence?.complete && !evidence.loading ? [] : symbol ? [symbol] : ["volatility surface"];
+  },
+};

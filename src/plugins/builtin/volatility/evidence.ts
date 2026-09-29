@@ -1,9 +1,10 @@
+import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import type { VolatilityLoadResult } from "./client";
 import type { VolatilityBoardRow } from "./model";
 import { volatilityCurveChartModel, volatilityHistoryChartModel, volatilityIndexHistoryPoints, volatilityRatioChartModel } from "./chart-model";
-import { isFiniteNumber, isRecord } from "../../../utils/guards";
+import { isDateString, isFiniteNumber, isRecord, isStringArray } from "../../../utils/guards";
 
 interface EvidenceSeries {
   id: string;
@@ -25,7 +26,6 @@ export interface VolatilityEvidence {
   curve: Array<{ id: string; days: number; value: number | null; source: string | null }>;
   rows: Array<Pick<VolatilityBoardRow, "id" | "symbol" | "value" | "date" | "source" | "sampleSize" | "change1d" | "percentile1y">>;
 }
-const dated = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
 const seriesFrom = (id: string, points: readonly ProjectedChartPoint[], unit: EvidenceSeries["unit"] = "index points"): EvidenceSeries => ({
   id, unit, points: points.map((point) => ({ date: point.date.toISOString(), value: isFiniteNumber(point.close) ? point.close : null })),
 });
@@ -92,14 +92,14 @@ export function readVolatilityEvidence(value: unknown): VolatilityEvidence | nul
   if (!isRecord(value) || value.kind !== "volatility-indices" || value.version !== 1
     || !["curve", "history", "board"].includes(String(value.view)) || typeof value.loading !== "boolean"
     || typeof value.stale !== "boolean" || typeof value.complete !== "boolean"
-    || (value.asOf !== null && !dated(value.asOf)) || !Array.isArray(value.unavailableSources)
-    || !value.unavailableSources.every((entry) => typeof entry === "string") || !Array.isArray(value.series)
+    || (value.asOf !== null && !isDateString(value.asOf)) || !isStringArray(value.unavailableSources)
+    || !Array.isArray(value.series)
     || !value.series.every((entry) => isRecord(entry) && typeof entry.id === "string" && ["index points", "ratio"].includes(String(entry.unit))
-      && Array.isArray(entry.points) && entry.points.every((point) => isRecord(point) && dated(point.date)
+      && Array.isArray(entry.points) && entry.points.every((point) => isRecord(point) && isDateString(point.date)
         && (point.value === null || isFiniteNumber(point.value)))) || !Array.isArray(value.curve) || !Array.isArray(value.rows)) return null;
   const evidence = value as unknown as VolatilityEvidence;
   if (!evidence.rows.every((row) => isRecord(row) && typeof row.id === "string" && typeof row.symbol === "string"
-    && (row.value === null || isFiniteNumber(row.value)) && (row.date === null || dated(row.date))
+    && (row.value === null || isFiniteNumber(row.value)) && (row.date === null || isDateString(row.date))
     && isFiniteNumber(row.sampleSize) && row.sampleSize >= 0)) return null;
   if (evidence.view === "history") {
     if (evidence.series.length !== 3 || ["VIXCLS", "VXVCLS", "3M/30D"].some((id, index) => evidence.series[index]?.id !== id)) return null;
@@ -126,3 +126,17 @@ export function readVolatilityEvidence(value: unknown): VolatilityEvidence | nul
     || (evidence.view === "history" && evidence.series.some((entry) => !entry.points.some((point) => isFiniteNumber(point.value)))))) return null;
   return evidence;
 }
+
+export const volatilityScreenshotEvidence: PaneScreenshotEvidenceHook<VolatilityEvidence> = {
+  paneId: "volatility-term-structure",
+  kind: "volatility-indices",
+  label: "volatility index",
+  read: readVolatilityEvidence,
+  mismatches(evidence, { payload }) {
+    const tab = payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId)?.settings?.initialTab ?? "curve";
+    return evidence.view === tab ? [] : ["rendered volatility index view does not match"];
+  },
+  unavailable(evidence) {
+    return evidence?.complete ? [] : evidence?.unavailableSources.length ? evidence.unavailableSources : ["volatility indices"];
+  },
+};
