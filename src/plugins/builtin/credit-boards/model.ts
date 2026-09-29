@@ -176,12 +176,22 @@ function monthBefore(date: string): string {
 
 /**
  * How much the currency gained against the dollar over the month to its
- * latest close, in percent: positive is a stronger local currency.
+ * latest completed daily close, in percent: positive is a stronger local
+ * currency. Today's bar is still trading and can be a stray print (the pegged
+ * riyal's showed 3.754 against weeks at 3.64), so it is left out.
  */
-export function currencyMoveFromHistory(history: readonly PricePoint[], dollarsPerUnit: boolean): number | null {
-  const closes = history
-    .filter((point) => Number.isFinite(point.close) && point.close > 0 && !Number.isNaN(point.date.getTime()))
-    .toSorted((a, b) => a.date.getTime() - b.date.getTime());
+export function currencyMoveFromHistory(
+  history: readonly PricePoint[],
+  dollarsPerUnit: boolean,
+  today = new Date().toISOString().slice(0, 10),
+): number | null {
+  const byDate = new Map<string, PricePoint>();
+  for (const point of history) {
+    if (!Number.isFinite(point.close) || point.close <= 0 || Number.isNaN(point.date.getTime())) continue;
+    const date = point.date.toISOString().slice(0, 10);
+    if (date < today) byDate.set(date, point);
+  }
+  const closes = [...byDate.values()].toSorted((a, b) => a.date.getTime() - b.date.getTime());
   const latest = closes.at(-1);
   if (!latest) return null;
   const base = monthBefore(latest.date.toISOString().slice(0, 10));
