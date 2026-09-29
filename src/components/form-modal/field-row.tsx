@@ -6,7 +6,6 @@ import { useThemeColors } from "../../theme/theme-context";
 import {
   Box,
   Text,
-  TextAttributes,
   Textarea,
   type InputRenderable,
   type TextareaRenderable,
@@ -20,7 +19,7 @@ import {
 import type { CommandBarFieldValue, CommandBarWorkflowField } from "../command-bar/workflow/types";
 import { TERMINAL_MESSAGE_KEYS } from "../textarea-keys";
 import { Checkbox } from "../ui/checkbox";
-import { NumberField, TextField } from "../ui/fields";
+import { FieldLabel, NumberField, TextField } from "../ui/fields";
 import { SelectField, type SelectFieldHandle } from "../ui/select-field";
 import { FORM_TEXTAREA_ROWS } from "./model";
 
@@ -308,9 +307,7 @@ export function FormFieldRow({
       }}
     >
       <Box height={1}>
-        <Text fg={active ? colors.text : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
-          {label}
-        </Text>
+        <FieldLabel label={label} active={active} />
       </Box>
       {control}
       {description && (

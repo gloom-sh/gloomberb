@@ -106,19 +106,6 @@ export function isLastVisibleField(route: FormRoute, fieldId: string): boolean {
 
 export const FORM_TEXTAREA_ROWS = 6;
 
-/**
- * Rows to scroll so a laid-out row shows: none when it does, else the least
- * that brings it in. A row as tall as the body or taller is pinned by its top,
- * where its label is.
- */
-export function rowScrollDelta(
-  row: { top: number; height: number },
-  body: { top: number; height: number },
-): number {
-  if (row.height >= body.height || row.top < body.top) return row.top - body.top;
-  return Math.max(0, row.top + row.height - (body.top + body.height));
-}
-
 function wrappedRows(text: string, width: number): number {
   return Math.max(1, wrapTextLines(text, Math.max(1, width)).length);
 }

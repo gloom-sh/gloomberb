@@ -40,6 +40,7 @@ import {
   Text,
   useNativeRenderer,
   useUiCapabilities,
+  type BoxRenderable,
   type ScrollBoxRenderable,
 } from "../../ui";
 import { useDialog, useDialogKeyboard, type AlertContext, type PromptContext } from "../../ui/dialog";
@@ -50,6 +51,7 @@ import { Button } from "../ui/button";
 import { ChoiceDialog } from "../ui/choice-dialog";
 import { DialogFrame } from "../ui/frame";
 import { Spinner } from "../ui/loading";
+import { revealInScrollBox } from "../ui/reveal-in-scroll-box";
 import { openSelectField, type SelectFieldHandle } from "../ui/select-field";
 import { brokerConnectStep } from "./broker-step";
 import { createFormCollectionActions, type FormModalDeps } from "./deps";
@@ -61,7 +63,6 @@ import {
   initialFormFocus,
   isLastVisibleField,
   moveFormFocus,
-  rowScrollDelta,
   type FormFocus,
   type FormRoute,
   type FormStep,
@@ -444,20 +445,13 @@ export function FormModalContent({
 
   const scrollIntoView = useCallback((fieldId: string) => {
     const rowId = `${rowIdPrefix}${fieldId}`;
-    if (desktop) {
-      const element = (globalThis as { document?: { getElementById(id: string): { scrollIntoView?(options: { block: "nearest" }): void } | null } })
-        .document?.getElementById(rowId);
-      element?.scrollIntoView?.({ block: "nearest" });
-      return;
-    }
-    // Measured, not estimated: the scrollbar narrows the body by a column, so
-    // text wraps differently from how it would fill the whole width.
-    const scrollBox = scrollRef.current;
-    const row = scrollBox?.content?.findDescendantById?.(rowId);
-    const body = scrollBox?.viewport;
-    if (!scrollBox || !row || body?.y === undefined) return;
-    const delta = rowScrollDelta({ top: row.y, height: row.height }, { top: body.y, height: body.height });
-    if (delta !== 0) scrollBox.scrollTo(Math.max(0, scrollBox.scrollTop + delta));
+    // The row as laid out, measured rather than estimated: in the terminal the
+    // scrollbar narrows the body by a column, so text wraps differently from
+    // how it would fill the whole width.
+    const row = desktop
+      ? (globalThis as { document?: { getElementById(id: string): BoxRenderable | null } }).document?.getElementById(rowId)
+      : scrollRef.current?.content?.findDescendantById?.(rowId);
+    revealInScrollBox(scrollRef.current, row ?? null);
   }, [desktop, rowIdPrefix]);
 
   // A click focuses the nearest focusable renderable, a scrollbar included, and
