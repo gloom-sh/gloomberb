@@ -570,7 +570,7 @@ export function FormModalContent({
     if (desktop) {
       return (
         <Box width={width} maxWidth="calc(100vw - 72px)" maxHeight={DESKTOP_MODAL_MAX_HEIGHT} flexDirection="column">
-          <DialogFrame title={step.title} subtitle={step.subtitle} onClose={dismiss}>
+          <DialogFrame title={step.title} subtitle={step.subtitle} onClose={dismiss} shrinkable>
             <ScrollBox scrollY style={{ overflowX: "hidden" }}>{stepBody}</ScrollBox>
             <Box style={{ marginTop: 14 }}>{cancel}</Box>
           </DialogFrame>
@@ -663,7 +663,7 @@ export function FormModalContent({
         flexDirection="column"
         onMouseDown={requestInputFocus}
       >
-        <DialogFrame title={route.title} subtitle={route.subtitle ? t(route.subtitle) : undefined} onClose={dismiss}>
+        <DialogFrame title={route.title} subtitle={route.subtitle ? t(route.subtitle) : undefined} onClose={dismiss} shrinkable>
           <ScrollBox ref={scrollRef} scrollY style={{ overflowX: "hidden", paddingRight: 4 }}>
             <Box flexDirection="column">
               {descriptionLines}
