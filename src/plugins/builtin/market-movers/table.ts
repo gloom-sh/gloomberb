@@ -5,13 +5,13 @@ import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import type { MarketMoverColumn, MarketMoverRow } from "./model";
 import { fiftyTwoWeekPositionPercent, formatMoverPrice, moverReferencePrice } from "./model";
 
-function formatVolRatio(ratio: number | null): string {
+export function formatVolRatio(ratio: number | null): string {
   if (ratio == null || !Number.isFinite(ratio) || ratio < 0) return "—";
   if (ratio >= 10) return `${Math.round(ratio)}x`;
   return `${ratio.toFixed(1)}x`;
 }
 
-function volRatioColor(ratio: number | null): string {
+export function volRatioColor(ratio: number | null): string {
   if (ratio != null && ratio >= 3) return colors.textBright;
   if (ratio != null && ratio >= 1.5) return colors.text;
   return colors.textDim;

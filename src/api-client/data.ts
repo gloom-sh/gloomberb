@@ -15,6 +15,12 @@ import type { RatePathPayload } from "./rates";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsHistoryPayload } from "./earnings";
 import type { InstrumentSearchResult } from "../types/instrument";
 import {
+  isSessionMoversCategory,
+  type CloudSessionMoversCategory,
+  type CloudSessionMoversPayload,
+  type CloudSessionMoversSide,
+} from "./market-movers";
+import {
   normalizeSavedSearchResponse,
   normalizeSearchResponse,
   normalizeTweetSearchResponse,
@@ -198,20 +204,21 @@ export class CloudDataApi {
     );
   }
 
-  async getCloudMarketScreener(
-    category: CloudMarketScreenerCategory,
+  /** Gainers, losers and most active, or the pre-market, after-hours and gap lists with a `side`. */
+  async getCloudMarketScreener<Category extends CloudMarketScreenerCategory | CloudSessionMoversCategory>(
+    category: Category,
     count = 25,
     mode: "cache-first" | "refresh" = "cache-first",
-  ): Promise<CloudMarketResponse<CloudMarketScreenerPayload>> {
+    side?: CloudSessionMoversSide,
+  ): Promise<CloudMarketResponse<Category extends CloudSessionMoversCategory ? CloudSessionMoversPayload : CloudMarketScreenerPayload>> {
     const requestedCount = Number.isFinite(count) ? Math.round(count) : 25;
     const params = new URLSearchParams({
       category,
       count: String(Math.max(1, Math.min(50, requestedCount))),
       mode,
     });
-    return this.request<CloudMarketResponse<CloudMarketScreenerPayload>>(
-      `/market/screener?${params.toString()}`,
-    );
+    if (side && isSessionMoversCategory(category)) params.set("side", side);
+    return this.request(`/market/screener?${params.toString()}`);
   }
 
   async getCloudOptionsChain(
