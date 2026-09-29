@@ -239,12 +239,15 @@ export function useCommandBarRootRuntime({
   // finds NVDA without the backtick. Skipped when a local row already carries
   // that exact name, since an "Exact Match" symbol would otherwise outrank it.
   const rootPlainTickerSearchArg = useMemo(() => {
-    if (currentRoute || activeMatch || rootShortcutIntent.kind !== "none" || pluginInstallItem) return null;
+    if (currentRoute || activeMatch || rootShortcutIntent.kind !== "none") return null;
     const trimmed = rootQuery.trim();
     if (trimmed.length < 2) return null;
     const normalizedQuery = normalizeCommandTickerSearchText(trimmed);
+    // The install row for "TV" is labelled TV, but it leads on purpose and
+    // must not keep Grupo Televisa out of the list.
     const hasExactLocalRow = rootResultModel.items.some((item) => (
-      item.kind !== "ticker"
+      item !== pluginInstallItem
+      && item.kind !== "ticker"
       && item.kind !== "search"
       && normalizeCommandTickerSearchText(item.label) === normalizedQuery
     ));

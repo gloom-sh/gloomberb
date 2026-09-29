@@ -207,7 +207,6 @@ export function CommandBar({
     rerunQuery,
     closeBar,
   });
-  const rootQueryClaimed = rootShortcutIntent.kind !== "none" || !!pluginInstallItem;
 
   const planAccess = usePlanAccess();
   const buildAssistInventory = useCallback(() => buildAssistCommandInventory({
@@ -219,7 +218,7 @@ export function CommandBar({
   // could not claim — otherwise the user is mid-command, not mid-question.
   const assistAutoAsk = !currentRoute
     && planAccess.emailVerified
-    && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootQueryClaimed });
+    && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootShortcutIntent.kind !== "none" });
   const { assistActive, assistState, askAssist, resetAssist } = useCommandBarAssist({
     autoAsk: assistAutoAsk,
     getInventory: buildAssistInventory,
@@ -317,7 +316,7 @@ export function CommandBar({
     query: rootQuery,
     // A resolved prefix means the user is running a command, so free-text
     // providers neither ask the network nor add rows.
-    enabled: !currentRoute && !rootQueryClaimed,
+    enabled: !currentRoute && rootShortcutIntent.kind === "none",
     context: searchProviderContext,
     onExecuted: closeAfterProviderResult,
   });

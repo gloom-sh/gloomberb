@@ -22,6 +22,7 @@ import { getCommandPrefixes, type Command } from "../../commands/registry";
 import { paneTemplateShortcutPrefixes } from "../../pane-templates/items";
 import type { ResultItem } from "../../list/model";
 import type { OpenInlineConfirm } from "../../routing/confirm";
+import { PLUGIN_INSTALL_CATEGORY } from "../../view-model";
 import { openUrl } from "../../../ui/external-link";
 
 /** A typed code that belongs to an official plugin this app does not have. */
@@ -230,7 +231,7 @@ function buildPluginInstallItem(
     id: `plugin-install:${plugin.id}:${shortcut.code}`,
     label: shortcut.name,
     detail: shortcut.description,
-    category: "Plugins",
+    category: PLUGIN_INSTALL_CATEGORY,
     kind: "action",
     right: shortcut.code,
     searchText: [shortcut.code, shortcut.name, plugin.name].join(" "),

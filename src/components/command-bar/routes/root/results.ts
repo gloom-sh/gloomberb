@@ -67,7 +67,10 @@ export interface RootResultModelOptions {
   paneShortcutItems: (options?: PaneShortcutItemsOptions) => ResultItem[];
   pluginCommandItems: () => ResultItem[];
   pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
-  /** The install row for a code only an official plugin the user lacks answers to. */
+  /**
+   * The install row for a code only an official plugin the user lacks answers
+   * to. It leads the list but claims nothing: the same text may be a ticker.
+   */
   pluginInstallItem?: ResultItem | null;
   rootQuery: string;
   rootShortcutIntent: RootShortcutIntent;
@@ -160,11 +163,6 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
 
   if (currentRoute) {
     return { items: [], initialIdx: 0 };
-  }
-  // The code claims the query the way it would with the plugin installed, so
-  // the install row is the whole answer.
-  if (pluginInstallItem) {
-    return { items: [pluginInstallItem], initialIdx: 0 };
   }
 
   const commandToItem = createRootCommandItemBuilder({
@@ -304,5 +302,8 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     ? buildAssistResultItems({ ...assist, query: rootQuery })
     : [];
 
-  return { items: dedupeById([...assistItems, ...items]), initialIdx };
+  // Added last, so everything above is built exactly as it would be without
+  // it; its section sorts ahead of the rest.
+  const installItems = pluginInstallItem ? [pluginInstallItem] : [];
+  return { items: dedupeById([...installItems, ...assistItems, ...items]), initialIdx };
 }
