@@ -19,6 +19,7 @@ import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
 import { useCommandSearchReport } from "../routes/root/search-report";
+import { useAppStateRef } from "../../../state/app/context";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useRootPluginInstallItem } from "../routes/root/plugin-install";
 import { useCommandBarThemePreview } from "../theme-preview";
@@ -94,6 +95,7 @@ export function CommandBar({
     dismissCommandBar,
     isAutomationQuery,
     lastMainBrowseRef,
+    openingQuery,
     markRootSelectionNavigated,
     popRoute,
     pushRoute,
@@ -116,8 +118,11 @@ export function CommandBar({
     restoreThemePreview,
   });
 
-  // Searches follow the Usage setting, both what the AI may keep and the report.
-  const searchLoggingAllowed = useCallback(() => usageTelemetryAllowed(stateRef.current.config), [stateRef]);
+  // Searches follow the Usage setting, both what the AI may keep and the
+  // report. Read from the live store: turning Usage off from the bar must
+  // count at once, not at the bar's next render (it may never render again).
+  const liveStateRef = useAppStateRef();
+  const searchLoggingAllowed = useCallback(() => usageTelemetryAllowed(liveStateRef.current.config), [liveStateRef]);
   // Filled in below, once the assist runtime has run.
   const searchIdForRef = useRef<(query: string) => string | undefined>(() => undefined);
   const searchIdFor = useCallback((query: string) => searchIdForRef.current(query), []);
@@ -131,6 +136,7 @@ export function CommandBar({
     currentRouteRef,
     isAutomationQuery,
     isEnabled: searchLoggingAllowed,
+    openingQuery,
     rootQueryRef,
     routeOpen: currentRoute !== null,
     searchIdFor,

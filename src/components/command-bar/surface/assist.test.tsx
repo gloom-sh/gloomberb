@@ -790,6 +790,59 @@ describe("CommandBar search report", () => {
     expect(reports).toEqual([]);
   });
 
+  test("turning Usage Counts off drops a choice still held from earlier in the visit", async () => {
+    signInVerified(false);
+    const reports: unknown[] = [];
+    const actions: AppAction[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+    // Pane creation never finishes, so ERN's choice stays held and the bar stays open.
+    const holdPaneCreation = (pluginRegistry: PluginRegistry) => {
+      configureEarningsRegistry([])(pluginRegistry);
+      (pluginRegistry as unknown as { createPaneFromTemplateAsyncFn: () => Promise<void> })
+        .createPaneFromTemplateAsyncFn = () => new Promise<void>(() => {});
+    };
+
+    testSetup = await testRender(
+      <CommandBarHarness query="ERN" live onAction={(action) => actions.push(action)} configurePluginRegistry={holdPaneCreation} />,
+      { width: 100, height: 20 },
+    );
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await typeKeys(["BACKSPACE", "BACKSPACE", "BACKSPACE", ..."Usage Counts".split("")]);
+    await waitForFrameToContain("Usage Counts");
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await closeAndSettle();
+
+    expect(actions).toContainEqual(expect.objectContaining({
+      type: "SET_CONFIG",
+      config: expect.objectContaining({ telemetry: expect.objectContaining({ usage: false }) }),
+    }));
+    expect(reports).toEqual([]);
+  });
+
+  test("a menu refilling the open bar starts a new visit", async () => {
+    signInVerified(false);
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+    let dispatch: ((action: AppAction) => void) | undefined;
+
+    testSetup = await testRender(
+      <CommandBarHarness query="" live onDispatch={(next) => { dispatch = next; }} />,
+      { width: 100, height: 20 },
+    );
+    await testSetup.renderOnce();
+    await typeKeys(["n", "v"]);
+    await act(async () => {
+      dispatch?.({ type: "SET_COMMAND_BAR", open: true, query: "Reset All Data" });
+      await testSetup!.renderOnce();
+    });
+    await settleFrame(testSetup);
+    await emitKeypress(testSetup, { name: "escape" });
+    await closeAndSettle();
+
+    expect(reports).toEqual([]);
+  });
+
   test("with usage telemetry off, asks without log and reports nothing", async () => {
     signInVerified();
     const reports: unknown[] = [];

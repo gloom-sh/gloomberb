@@ -29,6 +29,8 @@ interface UseCommandBarNavigationStateResult {
    * user has not changed it since: text a script typed is not a search.
    */
   isAutomationQuery: (query: string) => boolean;
+  /** The text the bar was last opened on from outside it (a menu, a key), not typed. */
+  openingQuery: string;
   lastMainBrowseRef: RefObject<CommandBarMainSnapshot>;
   /** Records that the user moved the root selection themselves. */
   markRootSelectionNavigated: () => void;
@@ -57,6 +59,12 @@ export function useCommandBarNavigationState({
   restoreThemePreview,
 }: UseCommandBarNavigationStateOptions): UseCommandBarNavigationStateResult {
   const [rootQuery, setRootQueryValue] = useState(initialQuery);
+  /**
+   * The text the bar was last opened on from outside (a menu, a key), not by
+   * typing: typing mirrors the query into the store, and this only follows
+   * the store when something else wrote it.
+   */
+  const [openingQuery, setOpeningQuery] = useState(initialQuery);
   const rootQueryRef = useRef(rootQuery);
   rootQueryRef.current = rootQuery;
   /** The root query as automation last set it, until anything else changes it. */
@@ -93,6 +101,7 @@ export function useCommandBarNavigationState({
     automationQueryRef.current = automationActive() ? initialQuery : null;
     rootQueryRef.current = initialQuery;
     setRootQueryValue(initialQuery);
+    setOpeningQuery(initialQuery);
     setRootSelectedIdx(0);
     setRootHoveredIdx(null);
     rootSelectionNavigatedRef.current = false;
@@ -166,6 +175,7 @@ export function useCommandBarNavigationState({
     currentRouteRef,
     dismissCommandBar,
     isAutomationQuery,
+    openingQuery,
     lastMainBrowseRef,
     markRootSelectionNavigated,
     popRoute,

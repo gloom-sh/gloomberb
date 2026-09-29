@@ -11,6 +11,7 @@ import {
   rememberBuiltinPlugins,
   resetUsageCountsForTests,
   usageCountsEnabled,
+  usageTelemetryAllowed,
   usageFunctionForPane,
   type UsageCounterHost,
 } from "./usage-counts";
@@ -54,6 +55,17 @@ describe("usageCountsEnabled", () => {
     expect(usageCountsEnabled({}, { GLOOMBERB_NO_TELEMETRY: "1" })).toBe(false);
     expect(usageCountsEnabled({}, { DO_NOT_TRACK: "true" })).toBe(false);
     expect(usageCountsEnabled({}, { DO_NOT_TRACK: "0" })).toBe(true);
+  });
+});
+
+describe("usageTelemetryAllowed", () => {
+  // Command-bar searches ride on this: an installed surface's own opt-out
+  // (Do Not Track, GPC, the desktop launch environment) must stop them too.
+  test("honours the config switch and the installed surface's opt-out", () => {
+    expect(usageTelemetryAllowed({})).toBe(true);
+    expect(usageTelemetryAllowed({ telemetry: { usage: false } })).toBe(false);
+    installUsageCounter(fakeHost({ isEnabled: () => false }).host);
+    expect(usageTelemetryAllowed({})).toBe(false);
   });
 });
 

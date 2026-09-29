@@ -237,6 +237,7 @@ export function CommandBarHarness({
   onCheckForUpdates,
   onAction,
   onUnhandledEnter,
+  onDispatch,
 }: {
   query: string;
   disabledPlugins?: string[];
@@ -253,6 +254,8 @@ export function CommandBarHarness({
   onCheckForUpdates?: () => void | Promise<void>;
   onAction?: (action: AppAction) => void;
   onUnhandledEnter?: () => void;
+  /** Hands the live dispatch to the test, to act as a menu or another window would. */
+  onDispatch?: (dispatch: (action: AppAction) => void) => void;
 }) {
   let config = {
     ...createDefaultConfig("/tmp/gloomberb-test"),
@@ -301,6 +304,7 @@ export function CommandBarHarness({
       dispatch(action);
     }
     : (_action: AppAction) => {};
+  onDispatch?.(currentDispatch);
 
   return (
     <ThemeProvider themeId={getEffectiveThemeId(currentState)}>

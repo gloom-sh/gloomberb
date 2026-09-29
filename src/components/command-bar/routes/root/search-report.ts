@@ -70,6 +70,12 @@ interface CommandSearchReportOptions {
   isAutomationQuery: (query: string) => boolean;
   /** The Usage setting, read when a report would go out and again as it is sent. */
   isEnabled: () => boolean;
+  /**
+   * The text the bar was opened with (a menu opens it on "HELP" or "TH ").
+   * When it changes while the bar is open, a menu or a key reopened it: a new
+   * visit.
+   */
+  openingQuery: string;
   rootQueryRef: RefObject<string>;
   /** Whether a route is on screen, to notice the user backing out of one. */
   routeOpen: boolean;
@@ -104,6 +110,7 @@ export function useCommandSearchReport({
   currentRouteRef,
   isAutomationQuery,
   isEnabled,
+  openingQuery,
   rootQueryRef,
   routeOpen,
   searchIdFor,
@@ -117,7 +124,7 @@ export function useCommandSearchReport({
   const settledRef = useRef(false);
   const pendingRef = useRef<PendingChoice | null>(null);
   /** The text the bar opened with: menus open it on "HELP" or "TH ", which nobody typed. */
-  const initialQueryRef = useRef(rootQueryRef.current);
+  const initialQueryRef = useRef(openingQuery);
   const isEnabledRef = useRef(isEnabled);
   isEnabledRef.current = isEnabled;
   const isAutomationQueryRef = useRef(isAutomationQuery);
@@ -153,13 +160,16 @@ export function useCommandSearchReport({
   }, []);
 
   const runRootRow = useCallback<RunRootRow>((run, action) => {
-    // The first choice of the visit stands; later runs are not reported.
-    if (settledRef.current || pendingRef.current) {
+    // Checked first: a choice still held from earlier in the visit must not go
+    // out as the user switches reports off.
+    if (USAGE_SETTING_ROW_IDS.has(run.item.id)) {
+      settledRef.current = true;
+      pendingRef.current = null;
       action();
       return;
     }
-    if (USAGE_SETTING_ROW_IDS.has(run.item.id)) {
-      settledRef.current = true;
+    // The first choice of the visit stands; later runs are not reported.
+    if (settledRef.current || pendingRef.current) {
       action();
       return;
     }
@@ -208,6 +218,17 @@ export function useCommandSearchReport({
     settledRef.current = true;
     pendingRef.current = null;
   }, []);
+
+  // A menu or a key reopening the open bar on new text starts a new visit.
+  const openingQueryRef = useRef(openingQuery);
+  useEffect(() => {
+    if (openingQueryRef.current === openingQuery) return;
+    openingQueryRef.current = openingQuery;
+    if (currentRouteRef.current) return;
+    initialQueryRef.current = openingQuery;
+    settledRef.current = false;
+    pendingRef.current = null;
+  }, [currentRouteRef, openingQuery]);
 
   // Backing out of the route a root row opened takes that choice back.
   const routeOpenRef = useRef(routeOpen);
