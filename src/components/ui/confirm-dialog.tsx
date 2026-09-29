@@ -14,11 +14,19 @@ export interface ConfirmDialogProps extends PromptContext<boolean> {
   cancelLabel?: string;
   confirmVariant?: ButtonVariant;
   width?: number;
+  /** The key-hint line under the buttons; an empty string leaves it out. */
   footer?: string;
   /** A line under the body: the work the confirm started, or why it failed. */
   status?: ReactNode;
   /** While the confirmed work runs: the buttons are off and only Esc answers. */
   busy?: boolean;
+  /** Adds the desktop close button beside the title. */
+  onClose?: () => void;
+  /**
+   * Lays the buttons out as a form's Cancel and Submit: Cancel, then the
+   * action, at the right. By default the action comes first, at the left.
+   */
+  formButtons?: boolean;
 }
 
 export function ConfirmDialog({
@@ -32,6 +40,8 @@ export function ConfirmDialog({
   footer,
   status,
   busy = false,
+  onClose,
+  formButtons = false,
 }: ConfirmDialogProps) {
   const confirm = useCallback(() => resolve(true), [resolve]);
   const cancel = useCallback(() => resolve(false), [resolve]);
@@ -63,8 +73,14 @@ export function ConfirmDialog({
     if (event.name === "tab") event.preventDefault();
   }, { allowEditable: true });
 
+  const confirmButton = <Button label={confirmLabel} variant={confirmVariant} disabled={busy} onPress={confirm} />;
+  const cancelButton = <Button label={cancelLabel} variant="secondary" disabled={busy} onPress={cancel} />;
   return (
-    <DialogFrame title={title} footer={footer ?? tf("Enter {action} · Esc cancel", { action: t(confirmLabel).toLowerCase() })}>
+    <DialogFrame
+      title={title}
+      footer={footer ?? tf("Enter {action} · Esc cancel", { action: t(confirmLabel).toLowerCase() })}
+      onClose={onClose}
+    >
       <Box flexDirection="column" width={width}>
         {renderBody(body)}
         {status && (
@@ -74,10 +90,17 @@ export function ConfirmDialog({
           </>
         )}
         <Box height={1} />
-        <Box flexDirection="row" gap={1}>
-          <Button label={confirmLabel} variant={confirmVariant} disabled={busy} onPress={confirm} />
-          <Button label={cancelLabel} variant="secondary" disabled={busy} onPress={cancel} />
-        </Box>
+        {formButtons ? (
+          <Box flexDirection="row" gap={1} justifyContent="flex-end">
+            {cancelButton}
+            {confirmButton}
+          </Box>
+        ) : (
+          <Box flexDirection="row" gap={1}>
+            {confirmButton}
+            {cancelButton}
+          </Box>
+        )}
       </Box>
     </DialogFrame>
   );

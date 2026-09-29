@@ -82,10 +82,11 @@ export function ConfirmModalContent({
       return;
     }
     pendingRef.current = false;
-    if (mountedRef.current) {
-      if (confirm.successBehavior === "stay") setPending(false);
-      else dismiss();
-    }
+    // Closed while it ran: the user has moved on, and what onSuccess opens
+    // (the bar again) would land over whatever they are doing now.
+    if (!mountedRef.current) return;
+    if (confirm.successBehavior === "stay") setPending(false);
+    else dismiss();
     // After the confirm closed, so what it opens (the bar again) is not over it.
     confirm.onSuccess?.();
   }, [confirm, dismiss, runtime]);
@@ -117,11 +118,16 @@ export function ConfirmModalContent({
     ? <Text fg={colors.negative} wrapText>{t(error)}</Text>
     : pending ? <Spinner label={t("Working…")} /> : null;
 
-  // The kit's confirm, with the work it starts shown in it.
+  // The kit's confirm, with the work it starts shown in it, framed as the
+  // modal's forms are: no key-hint line, the desktop close button, and Cancel
+  // before the action at the right.
   return (
     <ConfirmDialog
       dialogId={dialogId}
       dismiss={dismiss}
+      onClose={dismiss}
+      footer=""
+      formButtons
       resolve={(confirmed) => {
         if (confirmed) void run();
         else dismiss();
