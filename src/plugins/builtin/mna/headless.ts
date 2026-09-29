@@ -35,7 +35,7 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
   },
   options: [
     { key: "status", description: "Deal status.", type: "enum", defaultValue: "pending", values: ["pending", "talks", "completed", "terminated", "all"].map((value) => ({ value })) },
-    { key: "target", description: "Public or private targets.", type: "enum", defaultValue: "all", values: ["all", "public", "private"].map((value) => ({ value })) },
+    { key: "target", description: "Public or private targets.", type: "enum", defaultValue: "public", values: ["all", "public", "private"].map((value) => ({ value })) },
     { key: "region", description: "US or international targets.", type: "enum", defaultValue: "all", values: ["all", "us", "intl"].map((value) => ({ value })) },
     { key: "query", description: "Company name or ticker.", type: "string" },
     { key: "limit", aliases: ["count", "rows"], description: "Maximum rows.", type: "integer", defaultValue: 50, minimum: 1, maximum: 100 },

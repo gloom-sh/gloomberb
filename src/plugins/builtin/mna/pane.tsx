@@ -148,7 +148,8 @@ export function MnaDealsView({ focused, width, height, symbol }: {
   const { pinTicker } = usePluginTickerActions();
   const prefix = symbol ? "ticker." : "";
   const [status, setStatus] = usePluginPaneState<MnaStatusFilter>(`${prefix}status`, symbol ? "all" : "pending");
-  const [target, setTarget] = usePluginPaneState<MnaTargetFilter>(`${prefix}target`, "all");
+  // Listed targets first: the spread is what makes the pending list worth opening.
+  const [target, setTarget] = usePluginPaneState<MnaTargetFilter>(`${prefix}target`, "public");
   const [region, setRegion] = usePluginPaneState<MnaRegionFilter>(`${prefix}region`, "all");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(`${prefix}selected`, null);
   // A closed detail is stored as "": pane state reads null as unset.
@@ -341,7 +342,7 @@ export function MnaDealsView({ focused, width, height, symbol }: {
         const tone = state.selected ? colors.selectedText
           : deal.status === "completed" ? colors.positive
             : deal.status === "terminated" ? colors.negative
-              : deal.status === "talks" ? colors.textMuted
+              : deal.status === "talks" || deal.stale ? colors.textMuted
                 : deal.hostile ? colors.warning
                   : colors.text;
         return { text: stageLabel(deal), color: tone };
@@ -368,7 +369,7 @@ export function MnaDealsView({ focused, width, height, symbol }: {
       filters={[
         { id: "status", label: "Status", value: status, defaultValue: symbol ? "all" : "pending", options: STATUS_OPTIONS, onChange: setStatus, controlRef: statusControl },
         ...(symbol ? [] : [
-          { id: "target", label: "Target", value: target, defaultValue: "all", options: TARGET_OPTIONS, onChange: setTarget },
+          { id: "target", label: "Target", value: target, defaultValue: "public", options: TARGET_OPTIONS, onChange: setTarget },
           { id: "region", label: "Region", value: region, defaultValue: "all", options: REGION_OPTIONS, onChange: setRegion },
         ]),
       ]}

@@ -55,6 +55,10 @@ export interface MnaDeal {
   /** One line on the latest development. */
   headline: string;
   updatedAt: string;
+  /** The last day a story or filing reported on the deal. */
+  lastReported: string;
+  /** A pending private deal with no news for six months; nothing will report it closing. */
+  stale: boolean;
 }
 
 export type MnaStatusFilter = MnaStatus | "all";

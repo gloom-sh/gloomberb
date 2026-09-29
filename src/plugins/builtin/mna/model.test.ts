@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { MnaDeal } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
-import { dealSpread, expectedCloseDate, formatPercentShort, termsLabel } from "./model";
+import { dealSpread, expectedCloseDate, formatPercentShort, stageLabel, termsLabel } from "./model";
 
 const NOW = Date.parse("2026-09-27T12:00:00Z");
 
@@ -22,6 +22,8 @@ function deal(overrides: Partial<MnaDeal> = {}, terms: Partial<MnaDeal["terms"]>
     closed: null,
     headline: "",
     updatedAt: "2026-09-17T00:00:00Z",
+    lastReported: "2026-09-17",
+    stale: false,
     ...overrides,
   };
 }
@@ -64,6 +66,11 @@ test("an expected close reads as the last day of its period", () => {
   expect(expectedCloseDate("H1 2027")?.toISOString().slice(0, 10)).toBe("2027-06-30");
   expect(expectedCloseDate("2027")?.toISOString().slice(0, 10)).toBe("2027-12-31");
   expect(expectedCloseDate("2026-02-30")).toBeNull();
+});
+
+test("a private deal nobody has reported on for months says so", () => {
+  const quiet = deal({ target: { name: "Quiet Co", symbol: null, country: "US" }, stale: true, lastReported: "2025-11-04" });
+  expect(stageLabel(quiet)).toBe("No news since Nov 2025");
 });
 
 test("terms read as what one share gets", () => {

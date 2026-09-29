@@ -19,14 +19,14 @@ import { loadCloudResource, unavailableOnServer, type CloudResource } from "../s
 export const mnaDealsCache = createPluginCache<MnaDealsPayload>({
   kind: "mna-deals",
   source: "gloom-cloud",
-  schemaVersion: 1,
+  schemaVersion: 2,
   policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 },
 });
 
 export const mnaDealCache = createPluginCache<MnaDealPayload>({
   kind: "mna-deal",
   source: "gloom-cloud",
-  schemaVersion: 1,
+  schemaVersion: 2,
   policy: { staleMs: 5 * 60_000, expireMs: 30 * 86_400_000 },
 });
 
@@ -64,7 +64,9 @@ function validDeal(deal: MnaDeal): boolean {
     && textOrNull(deal.expectedClose)
     && (deal.closed === null || day(deal.closed))
     && text(deal.headline)
-    && text(deal.updatedAt);
+    && text(deal.updatedAt)
+    && day(deal.lastReported)
+    && typeof deal.stale === "boolean";
 }
 
 function validEvent(event: MnaDealEvent): boolean {

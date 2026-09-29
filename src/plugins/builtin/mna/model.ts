@@ -62,6 +62,7 @@ export const STATUS_LABELS: Record<MnaStatus, string> = {
 
 /** The stage says more than "Pending" once a deal has one. */
 export function stageLabel(deal: MnaDeal): string {
+  if (deal.stale) return `No news since ${formatListDate(deal.lastReported)}`;
   if (deal.status === "pending") return deal.hostile ? `Hostile${deal.stage ? `, ${deal.stage.toLowerCase()}` : ""}` : deal.stage ?? "Pending";
   if (deal.status === "talks") return deal.acquirer ? "Talks" : "Exploring sale";
   return STATUS_LABELS[deal.status];

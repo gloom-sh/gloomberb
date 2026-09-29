@@ -30,6 +30,8 @@ const deal = (overrides: Partial<MnaDeal>): MnaDeal => ({
   closed: null,
   headline: "Copart to buy ACV Auctions for $10.50 a share in cash",
   updatedAt: "2026-09-17T00:00:00Z",
+  lastReported: "2026-09-17",
+  stale: false,
   ...overrides,
 });
 
@@ -104,7 +106,8 @@ test("a delayed list shows locked rows for the newest deals, terms, private targ
     return Response.json(delayed);
   });
   const frame = await mount();
-  expect(requests[0]).toContain("/cloud/mna/deals?status=pending");
+  // Listed targets first.
+  expect(requests[0]).toContain("/cloud/mna/deals?status=pending&target=public");
   expect(frame).toContain("Unlock 12 newer deals");
   expect(frame).toContain("ACVA");
   expect(frame).toContain("$10.50 cash");
