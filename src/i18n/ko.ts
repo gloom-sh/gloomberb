@@ -825,7 +825,6 @@ export const ko: Record<string, string> = {
   "{profiles} profiles · {connected} connected · {issues} issues": "프로필 {profiles}개 · 연결 {connected}개 · 문제 {issues}개",
   "Manage broker profiles, connection tests, and position syncs.": "브로커 프로필, 연결 테스트 및 포지션 동기화를 관리합니다.",
   "No broker profiles.": "브로커 프로필이 없습니다.",
-  "Add a broker profile to test connections and sync positions.": "브로커 프로필을 추가해 연결을 테스트하고 포지션을 동기화하세요.",
   "Broker plugin is not available.": "브로커 플러그인을 사용할 수 없습니다.",
   "Profile label is required.": "프로필 이름은 필수입니다.",
   "Saved {label}.": "{label}을(를) 저장했습니다.",
@@ -1354,4 +1353,7 @@ export const ko: Record<string, string> = {
   "Create Portfolio": "포트폴리오 만들기",
   "Connect Broker": "브로커 연결",
   "Connect": "연결",
+  "Connected! Positions will sync automatically.": "연결되었습니다. 포지션이 자동으로 동기화됩니다.",
+  "No connectable brokers are installed.": "연결할 수 있는 브로커가 설치되어 있지 않습니다.",
+  "{broker} was not connected.": "{broker}이(가) 연결되지 않았습니다.",
 };

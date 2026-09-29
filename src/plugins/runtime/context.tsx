@@ -5,6 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import type { BrokerAdapter } from "../../types/broker";
+import type { BrokerInstanceConfig } from "../../types/config";
 import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { CapabilityInvoker, PluginCapability } from "../../capabilities";
 import type { DataProvider } from "../../types/data-provider";
@@ -22,6 +23,9 @@ export interface PluginRuntimeAccess extends CapabilityInvoker {
   getConnectionHealth(): ConnectionHealthRegistry;
   getCapability(capabilityId: string): PluginCapability | null;
   getBrokerAdapter(brokerType: string): BrokerAdapter | null;
+  /** Every broker adapter installed now, read when called: plugins come and go. */
+  listBrokerAdapters(): BrokerAdapter[];
+  createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>): Promise<BrokerInstanceConfig>;
   connectBrokerInstance(instanceId: string): Promise<void>;
   updateBrokerInstance(instanceId: string, values: Record<string, unknown>, options?: BrokerInstanceUpdateOptions): Promise<void>;
   syncBrokerInstance(instanceId: string): Promise<void>;

@@ -91,7 +91,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
     dispatch({ type: "SET_CONFIG", config: freshConfig });
     const brokerTab = freshConfig.portfolios.find((portfolio) => portfolio.brokerInstanceId === instanceId);
     if (brokerTab) setActiveCollection(brokerTab.id);
-    notify("Connected! Positions will sync automatically.", { type: "success" });
+    notify(t("Connected! Positions will sync automatically."), { type: "success" });
   };
 
   return {

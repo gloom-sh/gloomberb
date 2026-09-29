@@ -2,8 +2,9 @@
  * The dialog that connects a signed-in broker, plus the request bridge that
  * lets the Brokers pane and onboarding open it. Those run outside the React
  * tree or in the desktop view, which is also where the browser hand-off has to
- * happen, so the broker adapter never opens it. Add Broker and New Portfolio
- * show the same step inside their form, built from the pieces exported here.
+ * happen, so the broker adapter never opens it. The Brokers pane's add flow and
+ * New Portfolio's form show the same step in place, built from the pieces
+ * exported here.
  */
 import { useEffect, useRef, useState } from "react";
 import { apiClient, type AuthUser } from "../../api-client";

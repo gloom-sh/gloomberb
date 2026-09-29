@@ -12,6 +12,7 @@ import {
   makeDataProvider,
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
+import type { AppContextStoreValue } from "../../../state/app/context";
 import { openFormModal } from "../../form-modal";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -470,6 +471,48 @@ describe("CommandBar", () => {
     const frame = await waitForFrameToContain("Layout Name");
     expect(frame).toContain("Create Layout");
     expect(frame).toContain("bar:closed");
+  });
+
+  test("Add Broker Account closes the bar and starts the Brokers pane's add flow", async () => {
+    const shown: string[] = [];
+    const storeRef: { current: AppContextStoreValue | null } = { current: null };
+    testSetup = await testRender(<CommandBarHarness
+      query="Add Broker Account"
+      live
+      storeRef={storeRef}
+      configureConfig={(config) => ({
+        ...config,
+        layout: {
+          ...config.layout,
+          instances: [...config.layout.instances, { instanceId: "brokers:main", paneId: "brokers", binding: { kind: "none" } }],
+        },
+      })}
+      configurePluginRegistry={(pluginRegistry) => {
+        mutablePaneRegistryMap((pluginRegistry as MutablePaneRegistry).panes).set("brokers", {
+          id: "brokers",
+          name: "Brokers",
+          component: () => null,
+          defaultPosition: "right",
+          defaultMode: "floating",
+        });
+        pluginRegistry.showPane = (paneId: string) => { shown.push(paneId); };
+        pluginRegistry.getLayoutFn = () => storeRef.current!.getState().config.layout;
+        pluginRegistry.updatePaneRuntimeStateFn = (paneId, patch) => {
+          storeRef.current!.dispatch({ type: "UPDATE_PANE_STATE", paneId, patch });
+        };
+      }}
+    />, {
+      width: 80,
+      height: 24,
+    });
+
+    await testSetup.renderOnce();
+    await waitForFrameToContain("Add Broker Account");
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2, afterCommit: true });
+    await waitForFrameToContain("bar:closed");
+
+    expect(shown).toEqual(["brokers"]);
+    expect(storeRef.current!.getState().paneState["brokers:main"]?.brokerAddRequest).toEqual(expect.any(Number));
   });
 
   test("opens ticker search from a launch request with saved ticker metadata", async () => {

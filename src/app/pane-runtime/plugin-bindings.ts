@@ -6,6 +6,7 @@ import {
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { openFormModal } from "../../components/form-modal";
 import { t } from "../../i18n";
+import { openBrokerAddFlow } from "../../plugins/builtin/broker-manager/add-request";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
 import { setMarketplaceHost } from "../../plugins/builtin/plugin-marketplace/store";
 import type { InstalledPlugin } from "../../plugins/builtin/plugin-marketplace/model";
@@ -151,6 +152,11 @@ export function bindAppPanePluginRegistry({
   pluginRegistry.openBuiltInWorkflowFn = (actionId) => {
     if (isDetachedWindow) {
       pluginRegistry.notify({ body: t("Open this from the main window."), type: "info" });
+      return;
+    }
+    // Profiles are added in the Brokers pane, not in a form.
+    if (actionId === "add-broker-account") {
+      openBrokerAddFlow(pluginRegistry);
       return;
     }
     openFormModal({ kind: "builtin", actionId });

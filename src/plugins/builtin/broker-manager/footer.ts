@@ -4,7 +4,7 @@ import { isBrokerErrorMessage } from "./table";
 
 interface BrokerManagerFooterActions {
   connectSelected: () => Promise<void>;
-  openAddBroker: () => void;
+  startAdd: () => void;
   openProfileAction: () => void;
   removeSelected: () => void;
   saveEdit: () => Promise<void>;
@@ -27,6 +27,7 @@ export function useBrokerManagerFooter({
   canOpenSelectedAction: boolean;
   canRemoveSelected: boolean;
   canUseSelectedBroker: boolean;
+  /** Editing a profile or adding one. */
   editing: boolean;
   /** The last result of an action, or null. */
   message: string | null;
@@ -36,11 +37,11 @@ export function useBrokerManagerFooter({
 
   const footerHints = useMemo<PaneHint[]>(() => {
     // Enter to save and Esc to cancel are app-wide form conventions, and the edit
-    // form already renders its own Save and Cancel buttons, so the footer stays empty.
+    // and add forms render their own buttons, so the footer stays empty.
     if (editing) return [];
 
     const hints: PaneHint[] = [
-      { id: "add", key: "a", label: "dd", onPress: () => actionsRef.current.openAddBroker() },
+      { id: "add", key: "a", label: "dd", onPress: () => actionsRef.current.startAdd() },
     ];
     if (canUseSelectedBroker) {
       hints.push(

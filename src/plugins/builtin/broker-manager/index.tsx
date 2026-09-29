@@ -11,7 +11,7 @@ import {
   resetSignedInBrokerCatalog,
   subscribeSignedInBrokers,
 } from "../../../brokers/signed-in/catalog";
-import { Button, DataTableStackView, EmptyState } from "../../../components";
+import { DataTableStackView, EmptyState } from "../../../components";
 import { t } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import {
@@ -19,6 +19,7 @@ import {
   useAppSelector,
   usePaneAppConfig,
   usePaneInstanceId,
+  usePaneStateValue,
 } from "../../../state/app/context";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
@@ -26,6 +27,8 @@ import { Box } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
 import { usePluginBrokerActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
+import { BrokerAddFlowContent, useBrokerAddFlow } from "./add-flow";
+import { BROKER_ADD_REQUEST_KEY } from "./add-request";
 import { BrokerDetailContent, type BrokerEditKey } from "./detail";
 import { useBrokerManagerFooter } from "./footer";
 import { useBrokerManagerKeyboard } from "./keyboard";
@@ -104,14 +107,6 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     if (!editKeys.includes(activeEditKey)) setActiveEditKey(editKeys[0] ?? "label");
   }, [activeEditKey, editDraft, editKeys]);
 
-  useEffect(() => {
-    if (!focused || !editDraft) return;
-    dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
-    return () => {
-      dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
-    };
-  }, [dispatch, editDraft, focused]);
-
   const refreshStatuses = useCallback(() => {
     setStatusVersion((version) => version + 1);
   }, []);
@@ -119,7 +114,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const {
     busy,
     message,
-    openAddBroker,
+    setBusy,
+    setMessage,
     startEdit,
     saveEdit,
     connectSelected,
@@ -137,6 +133,38 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     refreshStatuses,
   });
 
+  const selectAddedProfile = useCallback((instanceId: string) => {
+    setSelectedId(instanceId);
+    setEditDraft(null);
+    setDetailOpen(false);
+  }, [setDetailOpen, setSelectedId]);
+  const addFlow = useBrokerAddFlow({ setBusy, setMessage, onProfileAdded: selectAddedProfile });
+  const adding = addFlow.flow !== null;
+  const { start: startAddFlow } = addFlow;
+  const startAdd = useCallback(() => {
+    setEditDraft(null);
+    setDetailOpen(false);
+    startAddFlow();
+  }, [setDetailOpen, startAddFlow]);
+
+  // Add Broker Account from the command bar or a menu asks through pane state.
+  const [addRequest, setAddRequest] = usePaneStateValue<number | null>(BROKER_ADD_REQUEST_KEY, null);
+  useEffect(() => {
+    if (addRequest == null) return;
+    setAddRequest(null);
+    startAdd();
+  }, [addRequest, setAddRequest, startAdd]);
+
+  // A text field has the keyboard, so global shortcuts wait.
+  const capturesInput = !!editDraft || addFlow.capturesInput;
+  useEffect(() => {
+    if (!focused || !capturesInput) return;
+    dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
+    return () => {
+      dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
+    };
+  }, [capturesInput, dispatch, focused]);
+
   const hasSelectedRow = selectedRow !== null;
   const selectedHasAdapter = !!selectedRow?.adapter;
   const canUseSelectedBroker = selectedHasAdapter && !busy;
@@ -149,17 +177,17 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     message,
     actions: {
       connectSelected,
-      openAddBroker,
       openProfileAction,
       removeSelected,
       saveEdit,
+      startAdd,
       startEdit,
       syncSelected,
     },
     canOpenSelectedAction,
     canRemoveSelected,
     canUseSelectedBroker,
-    editing: !!editDraft,
+    editing: !!editDraft || adding,
   });
 
   const cycleEditSelect = useCallback((key: BrokerEditKey, direction: -1 | 1) => {
@@ -227,7 +255,17 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 
   // The detail insets one cell each side like the table cells.
   const detailContentWidth = Math.max(24, tableWidth - 2);
-  const detailContent = (
+  const detailContent = adding ? (
+    <BrokerAddFlowContent
+      addFlow={addFlow}
+      busy={busy}
+      focused={focused}
+      width={detailContentWidth}
+      // The stack's Back and title take a row.
+      height={Math.max(1, bodyHeight - 1)}
+      scope={`broker-add:${paneId}`}
+    />
+  ) : (
     <BrokerDetailContent
       row={selectedRow}
       accounts={selectedAccounts}
@@ -253,13 +291,13 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       <Box height={bodyHeight} overflow="hidden">
         <DataTableStackView<BrokerProfileRow, BrokerColumn>
           focused={focused}
-          detailOpen={detailOpen && !!selectedRow}
-          onBack={() => {
+          detailOpen={adding || (detailOpen && !!selectedRow)}
+          onBack={adding ? addFlow.leave : () => {
             setEditDraft(null);
             setDetailOpen(false);
           }}
           detailContent={detailContent}
-          detailTitle={selectedRow?.label}
+          detailTitle={adding ? addFlow.title : selectedRow?.label}
           rootWidth={tableWidth}
           rootHeight={bodyHeight}
           selection={{
@@ -274,13 +312,10 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
           sortDirection="asc"
           getItemKey={(row) => row.id}
           renderCell={renderBrokerCell}
+          // The footer's a adds one.
           emptyContent={(
             <Box width="100%" paddingX={1} paddingY={1}>
-              <EmptyState
-                title={t("No broker profiles.")}
-                hint={t("Add a broker profile to test connections and sync positions.")}
-                actions={<Button label={t("Add broker")} variant="primary" compact onPress={openAddBroker} />}
-              />
+              <EmptyState title={t("No broker profiles.")} />
             </Box>
           )}
           emptyStateTitle={t("No broker profiles.")}

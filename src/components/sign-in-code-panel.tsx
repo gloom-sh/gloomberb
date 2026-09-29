@@ -25,6 +25,7 @@ export function SignInCodePanel({
   status,
   height,
   shortcutScope,
+  browserKey = true,
 }: {
   url: string | null;
   code: string | null;
@@ -36,6 +37,8 @@ export function SignInCodePanel({
    * (the sign-in gate) passes its own, so the key runs ahead of the hold.
    */
   shortcutScope: string;
+  /** Whether `b` opens the link: a pane's panel takes it only while the pane has the keyboard. */
+  browserKey?: boolean;
 }) {
   useAppLanguage();
   const renderer = useRendererHost();
@@ -48,7 +51,7 @@ export function SignInCodePanel({
     if (!isPlainKey(event, "b") || !url) return;
     event.preventDefault(); event.stopPropagation();
     void renderer.openExternal(url).catch(() => {});
-  }, { scope: shortcutScope, phase: "before" });
+  }, { scope: shortcutScope, phase: "before", enabled: browserKey });
 
   // Reserve the browser button before fitting the QR, code, and status.
   const contentHeight = height - (url ? 2 : 0);

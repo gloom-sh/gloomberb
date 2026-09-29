@@ -129,7 +129,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
   switchTabFn: ((tabId: string, paneId?: string) => void) = () => {};
   openCommandBarFn: ((query?: string) => void) = () => {};
   openPluginCommandWorkflowFn: ((commandId: string) => void) = () => {};
-  /** Opens one of the app's own forms, such as `add-broker-account`. Not on the plugin API. */
+  /** Opens one of the app's own forms, such as `new-portfolio`, or Add Broker in the Brokers pane. Not on the plugin API. */
   openBuiltInWorkflowFn: ((actionId: string) => void) = () => {};
   /** `fieldKey` starts the cursor on that setting, as a setting picked in the command bar does. Not on the plugin API. */
   openPaneSettingsFn: ((paneId?: string, options?: { fieldKey?: string }) => void) = () => {};
@@ -161,6 +161,10 @@ export class PluginRegistry implements PluginRuntimeAccess {
       : this.capabilities.invoke<T>(capabilityId, operationId, payload, { renderer: true, signal: options.signal })
   );
   getBrokerAdapter = (brokerType: string) => this.contributions.brokersMap.get(brokerType) ?? null;
+  listBrokerAdapters = () => [...this.contributions.brokersMap.values()];
+  createBrokerInstance = (brokerType: string, label: string, values: Record<string, unknown>) => (
+    this.createBrokerInstanceFn(brokerType, label, values)
+  );
   connectBrokerInstance = (instanceId: string) => this.connectBrokerInstanceFn(instanceId);
   updateBrokerInstance = (instanceId: string, values: Record<string, unknown>, options?: BrokerInstanceUpdateOptions) => (
     this.updateBrokerInstanceFn(instanceId, values, options)

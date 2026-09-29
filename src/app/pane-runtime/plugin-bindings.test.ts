@@ -22,8 +22,10 @@ function bindPortablePaneRuntime(disabledPlugins: string[] = [], options: { isDe
   const built: PaneInstanceConfig[] = [];
   const placed: Array<{ instance: PaneInstanceConfig; options: unknown }> = [];
   const notes: string[] = [];
+  const shown: string[] = [];
   const pluginRegistry = {
-    panes: new Map([[paneDef.id, paneDef]]),
+    panes: new Map<string, PaneDef>([[paneDef.id, paneDef], ["brokers", { ...paneDef, id: "brokers", name: "Brokers" }]]),
+    showPane: (paneId: string) => shown.push(paneId),
     getPanePluginId: () => "prediction-markets",
     getTermSizeFn: () => ({ width: 120, height: 40 }),
     commands: new Map([["set-alert", { id: "set-alert", label: "Add Alert", wizard: [{ key: "symbol", label: "Symbol" }] }]]),
@@ -60,7 +62,7 @@ function bindPortablePaneRuntime(disabledPlugins: string[] = [], options: { isDe
     tickerRepository: {} as any,
   });
 
-  return { actions, built, notes, placed, pluginRegistry };
+  return { actions, built, notes, placed, pluginRegistry, shown };
 }
 
 const portablePane = {
@@ -122,8 +124,8 @@ describe("portable pane runtime", () => {
 
 describe("form launches", () => {
   // Menus, panes and the status bar open forms straight in the modal; the
-  // bar never mounts to relay them.
-  test("open the form modal without the command bar", () => {
+  // bar never mounts to relay them. Add Broker is the Brokers pane's.
+  test("open the form modal without the command bar, and Add Broker in the Brokers pane", () => {
     const requests: FormModalRequest[] = [];
     const unsubscribe = subscribeFormModalRequests((request) => {
       requests.push(request);
@@ -131,12 +133,14 @@ describe("form launches", () => {
     });
     try {
       const runtime = bindPortablePaneRuntime();
-      runtime.pluginRegistry.openBuiltInWorkflowFn("add-broker-account");
+      runtime.pluginRegistry.openBuiltInWorkflowFn("new-portfolio");
       runtime.pluginRegistry.openPluginCommandWorkflowFn("set-alert");
+      runtime.pluginRegistry.openBuiltInWorkflowFn("add-broker-account");
       expect(requests).toEqual([
-        { kind: "builtin", actionId: "add-broker-account" },
+        { kind: "builtin", actionId: "new-portfolio" },
         { kind: "plugin-command", commandId: "set-alert" },
       ]);
+      expect(runtime.shown).toEqual(["brokers"]);
       expect(runtime.actions.some((action) => action.type === "SET_COMMAND_BAR")).toBe(false);
     } finally {
       unsubscribe();

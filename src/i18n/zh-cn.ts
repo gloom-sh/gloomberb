@@ -827,7 +827,6 @@ export const zhCN: Record<string, string> = {
   "{profiles} profiles · {connected} connected · {issues} issues": "{profiles} 个资料 · {connected} 个已连接 · {issues} 个问题",
   "Manage broker profiles, connection tests, and position syncs.": "管理券商资料、连接测试和持仓同步。",
   "No broker profiles.": "暂无券商资料。",
-  "Add a broker profile to test connections and sync positions.": "添加券商资料以测试连接并同步持仓。",
   "Broker plugin is not available.": "券商插件不可用。",
   "Profile label is required.": "资料名称不能为空。",
   "Saved {label}.": "已保存 {label}。",
@@ -1356,4 +1355,7 @@ export const zhCN: Record<string, string> = {
   "Create Portfolio": "创建投资组合",
   "Connect Broker": "连接券商",
   "Connect": "连接",
+  "Connected! Positions will sync automatically.": "已连接！持仓将自动同步。",
+  "No connectable brokers are installed.": "未安装可连接的券商。",
+  "{broker} was not connected.": "{broker} 未连接。",
 };

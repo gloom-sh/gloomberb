@@ -12,7 +12,6 @@ import { requestBrokerSignIn } from "../../../brokers/signed-in/sign-in-dialog";
 import { openConfirmModal } from "../../../components/form-modal";
 import { useAppGetState } from "../../../state/app/context";
 import type { BrokerProfileAction } from "../../../types/broker";
-import { getSharedRegistry } from "../../registry";
 import { t, tf } from "../../../i18n";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import type { BrokerEditKey } from "./detail";
@@ -45,10 +44,6 @@ export function useBrokerManagerActions({
   } = usePluginBrokerActions();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  const openAddBroker = useCallback(() => {
-    getSharedRegistry()?.openBuiltInWorkflow("add-broker-account");
-  }, []);
 
   const startEdit = useCallback(() => {
     if (!selectedRow?.adapter) {
@@ -185,8 +180,8 @@ export function useBrokerManagerActions({
   return {
     busy,
     message,
+    setBusy,
     setMessage,
-    openAddBroker,
     startEdit,
     saveEdit,
     connectSelected,

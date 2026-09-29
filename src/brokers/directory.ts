@@ -49,6 +49,14 @@ export function buildBrokerDirectory({
   return [...entries.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
+/** How a broker connects, beside its name in a list of brokers. */
+export function brokerMethodSummary(entry: BrokerDirectoryEntry): string {
+  const signsIn = entry.methods.some((method) => method.kind === "signed-in");
+  const onDevice = entry.methods.some((method) => method.kind === "device");
+  if (signsIn && onDevice) return t("Sign in, or on this device");
+  return signsIn ? t("Sign in") : t("On this device");
+}
+
 export function brokerMethodLabel(entry: BrokerDirectoryEntry, method: BrokerMethod): string {
   if (method.kind === "signed-in") {
     return entry.methods.some((candidate) => candidate.kind === "device") ? t("Sign in (recommended)") : t("Sign in");

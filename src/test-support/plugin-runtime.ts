@@ -20,6 +20,10 @@ export function createTestPluginRuntime(
       throw new Error("This test plugin runtime registers no capabilities.");
     },
     getBrokerAdapter: () => null,
+    listBrokerAdapters: () => [],
+    createBrokerInstance: async () => {
+      throw new Error("This test plugin runtime creates no broker profiles.");
+    },
     connectBrokerInstance: async () => {},
     updateBrokerInstance: async () => {},
     syncBrokerInstance: async () => {},

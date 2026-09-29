@@ -813,7 +813,6 @@ export const es: Record<string, string> = {
   "{profiles} profiles · {connected} connected · {issues} issues": "{profiles} perfiles · {connected} conectados · {issues} problemas",
   "Manage broker profiles, connection tests, and position syncs.": "Gestiona perfiles de bróker, pruebas de conexión y sincronización de posiciones.",
   "No broker profiles.": "Sin perfiles de bróker.",
-  "Add a broker profile to test connections and sync positions.": "Agrega un perfil de bróker para probar conexiones y sincronizar posiciones.",
   "Broker plugin is not available.": "El plugin del bróker no está disponible.",
   "Profile label is required.": "El nombre del perfil es obligatorio.",
   "Saved {label}.": "{label} guardado.",
@@ -1360,4 +1359,7 @@ export const es: Record<string, string> = {
   "Create Portfolio": "Crear cartera",
   "Connect Broker": "Conectar bróker",
   "Connect": "Conectar",
+  "Connected! Positions will sync automatically.": "¡Conectado! Las posiciones se sincronizarán solas.",
+  "No connectable brokers are installed.": "No hay brókers conectables instalados.",
+  "{broker} was not connected.": "{broker} no se conectó.",
 };

@@ -827,7 +827,6 @@ export const ja: Record<string, string> = {
   "{profiles} profiles · {connected} connected · {issues} issues": "プロフィール {profiles} · 接続 {connected} · 問題 {issues}",
   "Manage broker profiles, connection tests, and position syncs.": "証券会社プロフィール、接続テスト、ポジション同期を管理します。",
   "No broker profiles.": "証券会社プロフィールがありません。",
-  "Add a broker profile to test connections and sync positions.": "証券会社プロフィールを追加して接続テストとポジション同期を行います。",
   "Broker plugin is not available.": "証券会社プラグインを利用できません。",
   "Profile label is required.": "プロフィール名を入力してください。",
   "Saved {label}.": "{label} を保存しました。",
@@ -1356,4 +1355,7 @@ export const ja: Record<string, string> = {
   "Create Portfolio": "ポートフォリオを作成",
   "Connect Broker": "証券会社を接続",
   "Connect": "接続",
+  "Connected! Positions will sync automatically.": "接続しました。ポジションは自動で同期されます。",
+  "No connectable brokers are installed.": "接続できる証券会社がインストールされていません。",
+  "{broker} was not connected.": "{broker} は接続されませんでした。",
 };

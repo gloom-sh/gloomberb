@@ -827,7 +827,6 @@ export const zhTW: Record<string, string> = {
   "{profiles} profiles · {connected} connected · {issues} issues": "{profiles} 個設定檔 · {connected} 個已連線 · {issues} 個問題",
   "Manage broker profiles, connection tests, and position syncs.": "管理券商設定檔、連線測試與持倉同步。",
   "No broker profiles.": "暫無券商設定檔。",
-  "Add a broker profile to test connections and sync positions.": "新增券商設定檔以測試連線並同步持倉。",
   "Broker plugin is not available.": "券商外掛不可用。",
   "Profile label is required.": "設定檔名稱不可留空。",
   "Saved {label}.": "已儲存 {label}。",
@@ -1356,4 +1355,7 @@ export const zhTW: Record<string, string> = {
   "Create Portfolio": "建立投資組合",
   "Connect Broker": "連線券商",
   "Connect": "連線",
+  "Connected! Positions will sync automatically.": "已連線！持倉將自動同步。",
+  "No connectable brokers are installed.": "未安裝可連線的券商。",
+  "{broker} was not connected.": "{broker} 未連線。",
 };

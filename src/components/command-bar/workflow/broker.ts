@@ -1,5 +1,6 @@
 import {
   brokerMethodLabel,
+  brokerMethodSummary,
   type BrokerDirectoryEntry,
   type BrokerMethod,
 } from "../../../brokers/directory";
@@ -22,14 +23,6 @@ type BrokerSelectorKey = "brokerType" | "source";
 /** Asked only for a broker offered more than one way. */
 function brokerMethodFieldId(entryKey: string): string {
   return `method:${entryKey}`;
-}
-
-/** How a broker connects, under its name in the broker list. */
-function brokerConnectionSummary(entry: BrokerDirectoryEntry): string {
-  const signsIn = entry.methods.some((method) => method.kind === "signed-in");
-  const onDevice = entry.methods.some((method) => method.kind === "device");
-  if (signsIn && onDevice) return "Sign in, or on this device";
-  return signsIn ? "Sign in" : "On this device";
 }
 
 export function buildBrokerWorkflowRoute({
@@ -58,7 +51,7 @@ export function buildBrokerWorkflowRoute({
   options.push(...directory.map((entry) => ({
     label: entry.name,
     value: entry.key,
-    description: brokerConnectionSummary(entry),
+    description: brokerMethodSummary(entry),
   })));
 
   if (options.length === 0) return null;
