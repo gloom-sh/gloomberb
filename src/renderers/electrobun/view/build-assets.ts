@@ -2,12 +2,12 @@ import { readFile, writeFile } from "fs/promises";
 import { join, relative } from "path";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../../../components/layout/titlebar-overlay";
 
-export type AliasRule = readonly [string, string] | readonly [string, string, string];
+/** Imports whose path ends with the first entry resolve to the second, relative to the view directory. */
+export type AliasRule = readonly [string, string];
 type PageOptions = {
   entrypoint: string;
   outdir: string;
-  pluginName: string;
-  extraAliasRules?: AliasRule[];
+  aliasRules?: AliasRule[];
   failureMessage: string;
   missingEntryMessage: string;
   title: string;
@@ -15,47 +15,50 @@ type PageOptions = {
   bootstrapScript: string;
 };
 
+interface ViewBundleOptions {
+  entrypoint: string;
+  outdir: string;
+  sourcemap: "external" | "none";
+  /** Added to the production `process.env.NODE_ENV`. */
+  define?: Record<string, string>;
+  aliasRules?: AliasRule[];
+  failureMessage: string;
+  missingEntryMessage: string;
+}
+
 const ELECTROBUN_VIEW_DIR = join(process.cwd(), "src", "renderers", "electrobun", "view");
-const COMMON_ALIAS_RULES: AliasRule[] = [
-  ["native/kitty/support", "native-stubs/chart/kitty-support.ts"],
-  ["./kitty/support", "components/chart/native/renderer-selection.ts", "native-stubs/chart/kitty-support.ts"],
-  ["native/surface/manager", "native-stubs/chart/surface-manager.ts"],
-];
 
 export function electrobunViewPath(...parts: string[]): string {
   return join(ELECTROBUN_VIEW_DIR, ...parts);
 }
 
-export async function writeElectrobunViewPage(options: PageOptions): Promise<string> {
-  const { entrySrc, stylesheet } = await buildElectrobunViewBundle(options);
-  const htmlPath = join(options.outdir, "index.html");
-  await writeFile(htmlPath, renderElectrobunViewHtml({ ...options, stylesheet, entrySrc }));
-  return htmlPath;
+function withTitlebarOverlayHeight(css: string): string {
+  return css.replaceAll("__TITLEBAR_OVERLAY_HEIGHT_PX__", String(TITLEBAR_OVERLAY_HEIGHT_PX));
 }
 
-async function buildElectrobunViewBundle({
+/**
+ * Bundles a DOM renderer entry for the browser. Returns the emitted script and,
+ * when the entry imports styles, the stylesheet, already sized for the titlebar.
+ */
+export async function buildViewBundle({
   entrypoint,
   outdir,
-  pluginName,
-  extraAliasRules = [],
+  sourcemap,
+  define = {},
+  aliasRules = [],
   failureMessage,
   missingEntryMessage,
-}: PageOptions): Promise<{ entrySrc: string; stylesheet: string }> {
+}: ViewBundleOptions): Promise<{ script: string; stylesheet: string | null }> {
   const result = await Bun.build({
     entrypoints: [entrypoint],
     outdir,
     target: "browser",
     format: "esm",
     splitting: false,
-    sourcemap: "external",
+    sourcemap,
     minify: true,
-    define: {
-      "process.env.NODE_ENV": "\"production\"",
-      // The webview has no `process`, so the cloud endpoint override the terminal
-      // already reads from the environment is baked in at build time.
-      __GLOOMBERB_API_URL__: JSON.stringify(process.env.GLOOMBERB_API_URL ?? ""),
-    },
-    plugins: [electrobunViewAliasPlugin(pluginName, extraAliasRules)],
+    define: { "process.env.NODE_ENV": "\"production\"", ...define },
+    plugins: aliasRules.length > 0 ? [electrobunViewAliasPlugin(aliasRules)] : [],
   });
 
   if (!result.success) {
@@ -63,14 +66,33 @@ async function buildElectrobunViewBundle({
     throw new Error(details ? `${failureMessage}\n${details}` : failureMessage);
   }
 
-  const entry = result.outputs.find((output) => output.kind === "entry-point" && output.path.endsWith(".js"));
-  if (!entry) throw new Error(missingEntryMessage);
+  const script = result.outputs.find((output) => output.kind === "entry-point" && output.path.endsWith(".js"));
+  if (!script) throw new Error(missingEntryMessage);
 
-  return {
-    entrySrc: `./${relative(outdir, entry.path).replaceAll("\\", "/")}`,
-    stylesheet: (await readFile(electrobunViewPath("styles.css"), "utf8"))
-      .replaceAll("__TITLEBAR_OVERLAY_HEIGHT_PX__", String(TITLEBAR_OVERLAY_HEIGHT_PX)),
-  };
+  const stylesheet = result.outputs.find((output) => output.path.endsWith(".css"))?.path ?? null;
+  if (stylesheet) await writeFile(stylesheet, withTitlebarOverlayHeight(await readFile(stylesheet, "utf8")));
+  return { script: script.path, stylesheet };
+}
+
+export async function writeElectrobunViewPage(options: PageOptions): Promise<string> {
+  const { script } = await buildViewBundle({
+    entrypoint: options.entrypoint,
+    outdir: options.outdir,
+    aliasRules: options.aliasRules,
+    failureMessage: options.failureMessage,
+    missingEntryMessage: options.missingEntryMessage,
+    sourcemap: "external",
+    define: {
+      // The webview has no `process`, so the cloud endpoint override the terminal
+      // already reads from the environment is baked in at build time.
+      __GLOOMBERB_API_URL__: JSON.stringify(process.env.GLOOMBERB_API_URL ?? ""),
+    },
+  });
+  const stylesheet = withTitlebarOverlayHeight(await readFile(electrobunViewPath("styles.css"), "utf8"));
+  const entrySrc = `./${relative(options.outdir, script).replaceAll("\\", "/")}`;
+  const htmlPath = join(options.outdir, "index.html");
+  await writeFile(htmlPath, renderElectrobunViewHtml({ ...options, stylesheet, entrySrc }));
+  return htmlPath;
 }
 
 function renderElectrobunViewHtml({
@@ -99,22 +121,14 @@ ${bootstrapScript}
 `;
 }
 
-export function electrobunViewAliasPlugin(name: string, extraAliasRules: AliasRule[] = []) {
+function electrobunViewAliasPlugin(aliasRules: AliasRule[]) {
   return {
-    name,
-    setup(build: { onResolve(options: { filter: RegExp }, callback: (args: { path: string; importer?: string }) => unknown): void }) {
-      const aliasRules = [...extraAliasRules, ...COMMON_ALIAS_RULES];
-      build.onResolve({ filter: /.*/ }, (args) => resolveAlias(args, aliasRules));
+    name: "electrobun-view-aliases",
+    setup(build: { onResolve(options: { filter: RegExp }, callback: (args: { path: string }) => unknown): void }) {
+      build.onResolve({ filter: /.*/ }, (args) => {
+        const rule = aliasRules.find(([suffix]) => args.path.endsWith(suffix));
+        return rule ? { path: electrobunViewPath(rule[1]) } : undefined;
+      });
     },
   };
-}
-
-function resolveAlias(args: { path: string; importer?: string }, aliasRules: AliasRule[]) {
-  const importer = args.importer?.replaceAll("\\", "/");
-  for (const rule of aliasRules) {
-    const target = rule.length === 2
-      ? args.path.endsWith(rule[0]) && rule[1]
-      : args.path === rule[0] && importer?.endsWith(rule[1]) && rule[2];
-    if (target) return { path: electrobunViewPath(target) };
-  }
 }

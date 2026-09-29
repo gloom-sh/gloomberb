@@ -222,6 +222,18 @@ export interface NativeRendererHost {
   copyToClipboardOSC52?(text: string): boolean;
   write?(data: string | Uint8Array): boolean;
   captureMouseRenderable?(renderable: unknown): void;
+  /**
+   * Terminal renderers only: whether kitty graphics can be drawn, `null` until
+   * the terminal answers. A host without it never draws kitty graphics.
+   */
+  getKittySupport?(): boolean | null;
+  /** Terminal renderers only: asks the terminal about kitty graphics once and keeps the answer. */
+  ensureKittySupport?(): Promise<boolean>;
+  /** Terminal renderers only: keeps kitty images clear of the panes, menus and dialogs drawn over them. */
+  nativeSurfaceManager?: Pick<
+    import("../components/chart/native/surface/manager").NativeSurfaceManager,
+    "setWindowState" | "upsertLocalOccluder" | "removeLocalOccluder"
+  >;
 }
 
 interface BoxProps {

@@ -6,7 +6,6 @@ import type {
   ResolvedPane,
 } from "../../../../plugins/pane-manager";
 import { useNativeRenderer } from "../../../../ui";
-import { getNativeSurfaceManager } from "../../../chart/native/surface/manager";
 import type { DragPreview } from "../drag";
 import {
   buildNativeTransientOccluders,
@@ -62,8 +61,8 @@ export function useShellNativeSurfaceWindowState({
   width,
   windowModeDockMovePreview,
 }: UseShellNativeSurfaceWindowStateOptions) {
-  const renderer = useNativeRenderer();
-  const nativeSurfaceManager = useMemo(() => getNativeSurfaceManager(renderer), [renderer]);
+  // Only terminal hosts draw kitty images that need to stay clear of the layout.
+  const nativeSurfaceManager = useNativeRenderer().nativeSurfaceManager;
   const nativeTransientOccluders = useMemo(() => buildNativeTransientOccluders({
     activeHoverOverlay,
     activePaneDrag,
@@ -123,6 +122,6 @@ export function useShellNativeSurfaceWindowState({
   );
 
   useEffect(() => {
-    nativeSurfaceManager.setWindowState(nativeWindowState);
+    nativeSurfaceManager?.setWindowState(nativeWindowState);
   }, [nativeSurfaceManager, nativeWindowState]);
 }

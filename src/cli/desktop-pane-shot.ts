@@ -184,8 +184,7 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
   return writeElectrobunViewPage({
     entrypoint: electrobunViewPath("cli-pane-shot-entry.tsx"),
     outdir,
-    pluginName: "desktop-pane-shot-native-bridges",
-    extraAliasRules: [
+    aliasRules: [
       ["backend-rpc", "native-stubs/backend-rpc.ts"],
     ],
     failureMessage: "Failed to build desktop pane screenshot renderer.",

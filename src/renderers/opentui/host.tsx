@@ -9,6 +9,7 @@ import { safeExternalUrl } from "../../utils/external-url";
 import { buildTerminalMediaArgs, createTerminalMediaReaper, terminalMediaStateFile } from "./terminal-media";
 import { saveTextFileToDownloads } from "../../utils/save-text-file";
 import { installInteractionPerformanceRecorder } from "./interaction-performance";
+import { provideKittyServices } from "./kitty-services";
 import {
   createTimerFrameDriver,
   installMarketDataFrameDriver,
@@ -194,7 +195,7 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     },
   };
 
-  const nativeRenderer: NativeRendererHost = {
+  const nativeRenderer = provideKittyServices({
     get terminalWidth() {
       return renderer.terminalWidth;
     },
@@ -257,7 +258,7 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
       writer.call(renderer, data);
       return true;
     },
-  };
+  });
 
   return {
     renderer,
