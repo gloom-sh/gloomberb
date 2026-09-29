@@ -1120,7 +1120,7 @@ export const es: Record<string, string> = {
   "Can't reach Gloomberb Cloud. Retrying...": "No se puede conectar con Gloomberb Cloud. Reintentando...",
   "Connection problem, retrying...": "Problema de conexión, reintentando...",
   "No app? {url}": "¿Sin app? {url}",
-  "Terminal is too short to draw the QR code.": "La terminal es demasiado baja para dibujar el código QR.",
+  "Not enough room to draw the QR code.": "No hay espacio suficiente para dibujar el código QR.",
   "r to refresh the code · esc to cancel": "r para renovar el código · esc para cancelar",
   "Create an account anytime: Ctrl+P → Sign Up.":
     "Crea una cuenta cuando quieras: Ctrl+P → Sign Up.",

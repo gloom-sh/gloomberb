@@ -1105,7 +1105,7 @@ export const ko: Record<string, string> = {
   "Can't reach Gloomberb Cloud. Retrying...": "Gloomberb Cloud에 연결할 수 없습니다. 재시도 중...",
   "Connection problem, retrying...": "연결 문제, 재시도 중...",
   "No app? {url}": "앱이 없나요? {url}",
-  "Terminal is too short to draw the QR code.": "터미널 높이가 낮아 QR 코드를 표시할 수 없습니다.",
+  "Not enough room to draw the QR code.": "QR 코드를 표시할 공간이 부족합니다.",
   "r to refresh the code · esc to cancel": "r: 코드 새로고침 · esc: 취소",
   "Sync portfolios, watchlists & layouts": "포트폴리오, 관심목록, 레이아웃 동기화",
   "That email address doesn't look right.": "이메일 주소 형식이 올바르지 않습니다.",

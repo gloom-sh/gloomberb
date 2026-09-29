@@ -9,6 +9,9 @@ import { renderAsciiText } from "../ui/ascii-font";
 import { renderQrLines, renderQrSvgDataUri } from "../ui/qr";
 import { isPlainKey } from "../utils/keyboard";
 
+/** Below this a phone camera struggles to read the code. */
+const MIN_DESKTOP_QR_ROWS = 8;
+
 // Phone cameras need dark-on-light no matter what the terminal theme is.
 const QR_FG = "#000000";
 const QR_BG = "#ffffff";
@@ -55,9 +58,15 @@ export function SignInCodePanel({
 
   // Reserve the browser button before fitting the QR, code, and status.
   const contentHeight = height - (url ? 2 : 0);
-  const showQr = qrLines.length > 0 && contentHeight >= qrLines.length + 2;
-  const spacious = showQr && contentHeight >= qrLines.length + 8;
-  const showUrl = !!url && (!showQr || contentHeight >= qrLines.length + 4);
+  // The desktop draws the code as an image, so it can shrink to the rows it has;
+  // terminal half-blocks need the full grid.
+  const desktopQrRows = qrImage ? Math.min(qrLines.length, contentHeight - 2) : 0;
+  const showQr = qrLines.length > 0 && (qrImage
+    ? desktopQrRows >= MIN_DESKTOP_QR_ROWS
+    : contentHeight >= qrLines.length + 2);
+  const qrRows = qrImage ? desktopQrRows : qrLines.length;
+  const spacious = showQr && contentHeight >= qrRows + 8;
+  const showUrl = !!url && (!showQr || contentHeight >= qrRows + 4);
 
   return (
     <Box flexDirection="column" alignItems="center">
@@ -69,8 +78,8 @@ export function SignInCodePanel({
       {showQr && (qrImage
         ? (
           <Box
-            width={qrLines[0]?.length ?? 0}
-            height={qrLines.length}
+            width={Math.round((qrLines[0]?.length ?? 0) * desktopQrRows / qrLines.length)}
+            height={desktopQrRows}
             style={{
               backgroundImage: qrImage,
               backgroundColor: QR_BG,
@@ -91,7 +100,7 @@ export function SignInCodePanel({
         ))}
       {!showQr && url && (
         <Box height={1}>
-          <Text fg={colors.textDim}>{t("Terminal is too short to draw the QR code.")}</Text>
+          <Text fg={colors.textDim}>{t("Not enough room to draw the QR code.")}</Text>
         </Box>
       )}
       {code && (

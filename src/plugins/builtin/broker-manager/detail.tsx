@@ -111,7 +111,8 @@ function BrokerConfigFieldEditor({
         width={width}
         type={field.type === "password" ? "password" : "text"}
         placeholder={field.type === "password" && previousPassword ? t(PRESERVED_PASSWORD_HINT) : field.placeholder ? t(field.placeholder) : undefined}
-        hint={field.placeholder ? t(field.placeholder) : undefined}
+        // The placeholder already says it; a stored password's placeholder says "unchanged" instead.
+        hint={field.type === "password" && previousPassword && field.placeholder ? t(field.placeholder) : undefined}
         onChange={(nextValue) => onChange(field.key, nextValue)}
         onSubmit={onSubmit}
       />

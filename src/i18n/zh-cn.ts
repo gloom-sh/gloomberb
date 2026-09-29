@@ -1107,7 +1107,7 @@ export const zhCN: Record<string, string> = {
   "Can't reach Gloomberb Cloud. Retrying...": "无法连接 Gloomberb 云，正在重试...",
   "Connection problem, retrying...": "连接异常，正在重试...",
   "No app? {url}": "没有应用？{url}",
-  "Terminal is too short to draw the QR code.": "终端高度不足，无法绘制二维码。",
+  "Not enough room to draw the QR code.": "空间不足，无法绘制二维码。",
   "r to refresh the code · esc to cancel": "r 刷新代码 · esc 取消",
   "Sync portfolios, watchlists & layouts": "同步投资组合、自选列表和布局",
   "That email address doesn't look right.": "邮箱地址格式不正确。",

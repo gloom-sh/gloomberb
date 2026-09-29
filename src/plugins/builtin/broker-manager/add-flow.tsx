@@ -605,8 +605,9 @@ function ConnectAttempt({
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>
-      {/* The spacer and Cancel take the last two rows. */}
-      <BrokerConnectView broker={broker} snapshot={snapshot} height={Math.max(4, height - 2)} width={width} browserKey={focused} />
+      {/* A row under the header, then the spacer and Cancel take the last two rows. */}
+      <Box height={1} />
+      <BrokerConnectView broker={broker} snapshot={snapshot} height={Math.max(4, height - 3)} width={width} browserKey={focused} />
       <Box height={1} />
       {cancel}
     </Box>

@@ -1107,7 +1107,7 @@ export const zhTW: Record<string, string> = {
   "Can't reach Gloomberb Cloud. Retrying...": "無法連線 Gloomberb 雲端，正在重試...",
   "Connection problem, retrying...": "連線異常，正在重試...",
   "No app? {url}": "沒有應用程式？{url}",
-  "Terminal is too short to draw the QR code.": "終端機高度不足，無法繪製 QR 碼。",
+  "Not enough room to draw the QR code.": "空間不足，無法繪製 QR 碼。",
   "r to refresh the code · esc to cancel": "r 重新產生代碼 · esc 取消",
   "Sync portfolios, watchlists & layouts": "同步投資組合、自選清單和版面",
   "That email address doesn't look right.": "電子郵件地址格式不正確。",

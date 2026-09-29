@@ -107,7 +107,7 @@ export function BrokerConnectView({
         />
       </Box>
       {note && (desktop
-        ? <Text fg={colors.textMuted} wrapText style={{ marginTop: 12 }}>{note}</Text>
+        ? <Text fg={colors.textMuted} wrapText style={{ marginTop: 12, textAlign: "center" }}>{note}</Text>
         : (
           <>
             <Box height={1} />

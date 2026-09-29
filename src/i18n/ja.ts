@@ -1107,7 +1107,7 @@ export const ja: Record<string, string> = {
   "Can't reach Gloomberb Cloud. Retrying...": "Gloomberb Cloud に接続できません。再試行中...",
   "Connection problem, retrying...": "接続に問題があります。再試行中...",
   "No app? {url}": "アプリがない場合: {url}",
-  "Terminal is too short to draw the QR code.": "ターミナルの高さが足りず QR コードを表示できません。",
+  "Not enough room to draw the QR code.": "QR コードを表示する余白が足りません。",
   "r to refresh the code · esc to cancel": "r でコードを更新 · esc でキャンセル",
   "Sync portfolios, watchlists & layouts": "ポートフォリオ・ウォッチリスト・レイアウトを同期",
   "That email address doesn't look right.": "メールアドレスの形式が正しくないようです。",
