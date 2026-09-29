@@ -88,7 +88,8 @@ interface CommandSearchReportOptions {
  * query the user finished and the row they ran from the root list, or, when
  * the bar closes on a root query with nothing run, that they dismissed it.
  * Keystrokes are never reported, nor an empty query, nor anything typed in a
- * route (a ticker search, a pane form).
+ * route (a ticker search, a picker). Forms and confirms open in the form modal
+ * after the bar closes, so the row that opened one counts as run.
  *
  * The first root row that runs is held as the visit's choice until the bar
  * closes. A row that only rewrites the query ("Change Theme" writes "TH ")

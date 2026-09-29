@@ -158,8 +158,9 @@ export function useCommandBarSelectionRuntime({
   ]);
 
   /**
-   * Tab on a typed shortcut: it completes the prefix, or opens the shortcut's
-   * route (a ticker search, a pane form), which is the typed text running.
+   * Tab on a typed shortcut: it completes the prefix, or opens what the
+   * shortcut starts (a ticker search in the bar, a pane form in the form
+   * modal), which is the typed text running.
    */
   const acceptRootShortcutTab = useCallback((): boolean => {
     const query = rootQueryRef.current;
