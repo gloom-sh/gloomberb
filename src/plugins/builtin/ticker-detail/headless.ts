@@ -8,6 +8,18 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservatio
 import { pricePointValues, priceHistoryIntegrityNotice } from "../../../utils/price-history-integrity";
 import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
+import { loadPeriodEndHistory } from "./financials/period-end-history";
+import {
+  RATIO_GAP_TEXT,
+  findRatioTab,
+  formatRatioInput,
+  formatRatioValue,
+  ratioPeriodEnd,
+  ratioTableForFinancials,
+  resolveFinancialSectionKey,
+  type RatioAmount,
+  type RatioTabDef,
+} from "./financials/ratios";
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
@@ -22,6 +34,8 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     const requestedPeriod = options.period === "quarterly" ? "quarterly" : "annual";
     const hasRequestedStatements = (requestedPeriod === "quarterly"
       ? financials.quarterlyStatements : financials.annualStatements).length > 0;
+    const ratioTab = findRatioTab(resolveFinancialSectionKey(String(options.statement ?? "income")));
+    if (ratioTab) return loadRatioReport(ctx, symbol, financials, ratioTab, requestedPeriod, hasRequestedStatements);
     // The interactive tabs visibly select their fallback. A headless request
     // has no such selection change, so it must keep the requested period.
     const table = hasRequestedStatements ? buildFinancialTableModel(financials, {
@@ -79,6 +93,72 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     };
   },
 };
+
+const reportAmount = (amount: RatioAmount) => (typeof amount === "number" ? amount : null);
+
+/** A ratio tab as a report: each ratio, then its inputs, per period. */
+async function loadRatioReport(
+  ctx: Parameters<typeof financialStatementsHeadless.load>[1],
+  symbol: string,
+  financials: Awaited<ReturnType<typeof loadHeadlessFinancials>>,
+  tab: RatioTabDef,
+  period: "annual" | "quarterly",
+  hasRequestedStatements: boolean,
+) {
+  const oldest = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period).periods.at(-1) : undefined;
+  const history = oldest && tab.key === "valuation"
+    ? await resolveHeadlessInstrument(ctx, symbol)
+      .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", ratioPeriodEnd(oldest.statement)))
+      .catch(() => null)
+    : null;
+  const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history) : null;
+  const statementCurrency = financialStatementCurrency(financials, [
+    ...financials.annualStatements, ...financials.quarterlyStatements,
+  ]);
+  const dates = table?.periods.map(({ statement }) => ({
+    date: statement.date,
+    periodEnd: ratioPeriodEnd(statement),
+    currency: statement.currency ?? statementCurrency ?? null,
+    label: formatFinancialHeader(statement.date, statement.currency ?? statementCurrency, statement.dateSource, false, statement.aggregation?.periodEnd).trim(),
+  })) ?? [];
+  const rows = table?.rows.map((row) => {
+    const cells = table.cells.get(row.def.id)!.map((cell, index) => {
+      const amount = row.kind === "ratio" ? cell.value : cell.inputs[row.index]!;
+      return {
+        date: dates[index]!.date,
+        value: reportAmount(amount),
+        gap: typeof amount === "number" ? null : RATIO_GAP_TEXT[amount],
+        formatted: row.kind === "ratio"
+          ? formatRatioValue(row.def.format, amount)
+          : formatRatioInput(row.def.inputs[row.index]!.format, amount, row.divisor),
+      };
+    });
+    return {
+      id: row.id, kind: row.kind, metric: row.kind === "ratio" ? row.label : row.unitLabel,
+      cells,
+      ...Object.fromEntries(cells.map((cell) => [cell.date, cell.value])),
+    };
+  }) ?? [];
+  const columns: HeadlessPaneColumn[] = [
+    { key: "metric", header: "Ratio" },
+    ...dates.map(({ date, label }, index) => ({
+      key: date, header: label, align: "right" as const,
+      format: (_value: unknown, row: Record<string, unknown>) => (row.cells as Array<{ formatted: string }>)[index]!.formatted,
+    })),
+  ];
+  return {
+    rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
+    ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${period} financial statement coverage.`] } : {}),
+    ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
+    metadata: {
+      symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null,
+      quoteCurrency: financials.quote?.currency ?? null,
+      statement: tab.key, statementLabel: tab.name, period, columns: dates,
+      notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE] : [],
+      limitations: financialStatementLimitations(financials),
+    },
+  };
+}
 
 function quoteAmount(value: unknown, row: Record<string, unknown>, signed = false): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";

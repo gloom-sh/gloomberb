@@ -3,6 +3,7 @@
 [Back to README](../README.md) · [Installation](installation.md) · [Browser app](browser.md)
 
 - [Research data conventions](research-data.md)
+- [Financial ratios](financial-ratios.md)
 - [Keyboard shortcuts](#keyboard)
 - [Command reference and chart composer](#command-reference)
 - [Live prices and refresh cadence](#live-prices-and-refresh-cadence)
@@ -97,7 +98,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | Shortcut | Function |
 |----------|----------|
 | `DES <ticker>` / `T <ticker>` | Security details for a ticker |
-| `FA <ticker>` | Financial statement view |
+| `FA <ticker>` | Financial statements and [ratio tabs](financial-ratios.md) |
 | `SEG <ticker>` | Quarterly revenue by product, segment or region from 10-Q and 10-K filings |
 | `G <series>` | Custom chart composer |
 | `CAT [query]` | Browse and search chartable series |

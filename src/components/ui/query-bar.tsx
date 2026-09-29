@@ -476,9 +476,14 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
         <Box onMouseDown={resetAll} cursor="pointer"><Text fg={colors.textDim}>clear</Text></Box>
       )}
       {(view || meta) && <Box flexGrow={1} />}
-      {meta && <Text fg={colors.textMuted}>{meta}</Text>}
+      {/* Context gives way before the controls when the row runs short. */}
+      {meta && (
+        <Box flexShrink={1} minWidth={0} height={1} overflow="hidden">
+          <Text fg={colors.textMuted} wrapMode="none" truncate flexShrink={1} minWidth={0}>{meta}</Text>
+        </Box>
+      )}
       {view && (
-        <>
+        <Box flexShrink={view.options.length > TERMINAL_SEGMENT_LIMIT ? 1 : 0} minWidth={0}>
           <TerminalChoiceStrip
             options={view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled }))}
             value={view.value}
@@ -486,7 +491,7 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
             focused={view.focused}
             shortcutScope={view.shortcutScope}
           />
-        </>
+        </Box>
       )}
     </Box>
   );

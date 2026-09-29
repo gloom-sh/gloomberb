@@ -1,10 +1,12 @@
 import type { PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
 import { parseTickerListInput } from "../../tickers/list";
 import { normalizeTickerInput } from "../../tickers/search";
+import { resolveFinancialPeriodOption } from "../../plugins/builtin/ticker-detail/financials/model";
 import {
-  FINANCIAL_SUB_TABS,
-  resolveFinancialPeriodOption,
-} from "../../plugins/builtin/ticker-detail/financials/model";
+  FINANCIAL_SECTIONS,
+  RATIO_TAB_KEYS,
+  resolveFinancialSectionKey,
+} from "../../plugins/builtin/ticker-detail/financials/ratios";
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import type { NormalizedPaneFunctionOptions } from "./capabilities";
 
@@ -248,10 +250,11 @@ function normalizeFinancialSubTabOption(value: string | undefined): string | und
   if (!normalized) return undefined;
   if (normalized === "cf" || normalized === "cashflows") return "cashflow";
   if (normalized === "bs" || normalized === "balancesheet") return "balance";
-  return FINANCIAL_SUB_TABS.find((tab) => (
+  const section = resolveFinancialSectionKey(value);
+  return FINANCIAL_SECTIONS.find((tab) => (
     tab.key.toLowerCase() === normalized
     || tab.name.toLowerCase().replace(/[\s_-]+/g, "") === normalized
-  ))?.key;
+  ))?.key ?? (RATIO_TAB_KEYS.has(section) ? section : undefined);
 }
 
 export function optionPaneState(options: PaneOptionValues | NormalizedPaneFunctionOptions): PaneRuntimeState {
