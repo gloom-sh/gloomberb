@@ -9,9 +9,11 @@ import { brokerProfileRemovalConfirm, removeBrokerProfile } from "../../../broke
 import { signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
 import { requestBrokerSignIn } from "../../../brokers/signed-in/sign-in-dialog";
+import { ConfirmDialog } from "../../../components";
 import { openConfirmModal } from "../../../components/form-modal";
 import { useAppGetState } from "../../../state/app/context";
 import type { BrokerProfileAction } from "../../../types/broker";
+import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { t, tf } from "../../../i18n";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import type { BrokerEditKey } from "./detail";
@@ -35,6 +37,7 @@ export function useBrokerManagerActions({
   refreshStatuses: () => void;
 }) {
   const getState = useAppGetState();
+  const dialog = useDialog();
   const { notify, showPane } = usePluginAppActions();
   const {
     connectBrokerInstance,
@@ -154,8 +157,8 @@ export function useBrokerManagerActions({
 
   const removeSelected = useCallback(() => {
     if (!selectedRow) return;
-    const { id, brokerName } = selectedRow;
-    const opened = openConfirmModal(brokerProfileRemovalConfirm(selectedRow.instance, brokerName, async () => {
+    const { id, brokerName, label } = selectedRow;
+    const confirm = brokerProfileRemovalConfirm(selectedRow.instance, brokerName, async () => {
       // Read when confirmed: the profile can change, or go, while the confirm is open.
       const instances = getState().config.brokerInstances;
       const instance = instances.find((entry) => entry.id === id);
@@ -172,10 +175,30 @@ export function useBrokerManagerActions({
       } finally {
         setBusy(null);
       }
-    }));
-    // Confirms open from the main window only.
-    if (!opened) notify({ body: t("Open this from the main window."), type: "info" });
-  }, [getState, notify, removeBrokerInstance, selectedRow, setDetailOpen, setEditDraft, setSelectedId]);
+    });
+    if (openConfirmModal(confirm)) return;
+    // A detached window has no confirm modal; its own dialog asks instead.
+    void (async () => {
+      const confirmed = await dialog.prompt<boolean>({
+        closeOnClickOutside: true,
+        content: (context: PromptContext<boolean>) => (
+          <ConfirmDialog
+            {...context}
+            title={t(confirm.title)}
+            body={confirm.body}
+            confirmLabel={t(confirm.confirmLabel)}
+            width={58}
+          />
+        ),
+      }).catch(() => false);
+      if (confirmed !== true) return;
+      try {
+        await confirm.onConfirm();
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : tf("Failed to remove {label}.", { label }));
+      }
+    })();
+  }, [dialog, getState, notify, removeBrokerInstance, selectedRow, setDetailOpen, setEditDraft, setSelectedId]);
 
   return {
     busy,

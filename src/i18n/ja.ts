@@ -841,6 +841,7 @@ export const ja: Record<string, string> = {
   "Broker-managed portfolios, positions, and contracts will be removed.": "証券会社が管理するポートフォリオ、ポジション、契約が削除されます。",
   "Disconnecting…": "切断中…",
   "Removed {label}.": "{label} を削除しました。",
+  "Failed to remove {label}.": "{label} の削除に失敗しました。",
   "Removed {label}. {broker} is still connected to your Gloom account.": "{label} を削除しました。{broker} は Gloom アカウントに接続されたままです。",
   "Removed {label}. {broker} is still connected to your Gloom account. Sign in to Gloom to disconnect {broker} from your account.": "{label} を削除しました。{broker} は Gloom アカウントに接続されたままです。アカウントから {broker} の接続を解除するには Gloom にサインインしてください。",
   "This also disconnects {broker} from your other devices and agents.": "他のデバイスとエージェントからも {broker} の接続が解除されます。",

@@ -59,6 +59,7 @@ function Harness({
   height = 25,
   adapters = [testBroker, signedInBroker],
   app,
+  detached = false,
 }: {
   instance?: BrokerInstanceConfig;
   instances?: BrokerInstanceConfig[];
@@ -68,6 +69,8 @@ function Harness({
   adapters?: BrokerAdapter[];
   /** The app state and dispatch as of the last render, for a test to act as the app would. */
   app?: { state?: AppState; dispatch?: Dispatch<AppAction> };
+  /** A detached window, which has no form modal. */
+  detached?: boolean;
 }) {
   // Pane state (the open profile) lives in the app state, so it needs a real reducer.
   const [state, dispatch] = useReducer(appReducer, instances, (instances) => {
@@ -121,7 +124,7 @@ function Harness({
         <>
           <BrokersPane focused {...body} />
           {/* The app shell's: confirms open in it. */}
-          <FormModalHost dataProvider={{} as never} pluginRegistry={{ notify } as unknown as PluginRegistry} tickerRepository={{} as never} />
+          {!detached && <FormModalHost dataProvider={{} as never} pluginRegistry={{ notify } as unknown as PluginRegistry} tickerRepository={{} as never} />}
         </>
       )}
     </TestPaneFrame>
@@ -294,6 +297,23 @@ describe("BrokersPane", () => {
       apiClient.brokerRequest = brokerRequest;
     }
   });
+  test("in a detached window, d confirms in the window's own dialog", async () => {
+    const calls: string[] = [];
+    testSetup = await testRender(
+      <Harness calls={calls} instances={[createGatewayInstance()]} detached />,
+      { width: 92, height: 25 },
+    );
+    await settle();
+
+    await pressKey("d");
+    await settle();
+    expect(frame()).toContain("Disconnect broker?");
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true, afterCommit: true });
+    await settle();
+    expect(calls).toEqual(["remove:ibkr-paper", "notify:Removed IBKR Paper."]);
+    expect(frame()).not.toContain("Disconnect broker?");
+  });
+
   test("a lists every broker, a broker with one method skips the method step, and Esc or Cancel at any step adds nothing", async () => {
     const calls: string[] = [];
     await fakeCloud({ connects: false });
