@@ -60,7 +60,8 @@ export function SignInCodePanel({
   const contentHeight = height - (url ? 2 : 0);
   // The desktop draws the code as an image, so it can shrink to the rows it has;
   // terminal half-blocks need the full grid.
-  const desktopQrRows = qrImage ? Math.min(qrLines.length, contentHeight - 2) : 0;
+  // It keeps a row under it so the code below does not touch it.
+  const desktopQrRows = qrImage ? Math.min(qrLines.length, contentHeight - 3) : 0;
   const showQr = qrLines.length > 0 && (qrImage
     ? desktopQrRows >= MIN_DESKTOP_QR_ROWS
     : contentHeight >= qrLines.length + 2);
@@ -81,8 +82,8 @@ export function SignInCodePanel({
             width={Math.round((qrLines[0]?.length ?? 0) * desktopQrRows / qrLines.length)}
             height={desktopQrRows}
             style={{
+              // The image paints its own white square; a box fill would show as a taller tile.
               backgroundImage: qrImage,
-              backgroundColor: QR_BG,
               backgroundSize: "contain",
               backgroundPosition: "center",
               backgroundRepeat: "no-repeat",
@@ -105,7 +106,7 @@ export function SignInCodePanel({
       )}
       {code && (
         <>
-          {spacious && <Box height={1} />}
+          {(spacious || (showQr && !!qrImage)) && <Box height={1} />}
           {spacious
             ? (
               <Box flexDirection="column" height={2}>
