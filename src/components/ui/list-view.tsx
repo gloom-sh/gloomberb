@@ -288,14 +288,15 @@ export function ListView({
   useEffect(() => observeScrollBoxViewportSize(scrollRef.current, revealActiveRow), [revealActiveRow, scrollable]);
   useEffect(() => observeScrollBoxContentSize(scrollRef.current, revealActiveRow), [revealActiveRow, scrollable]);
 
-  useEffect(() => {
-    if (!scrollable) return;
+  const syncScrollBar = useCallback(() => {
     const sb = scrollRef.current;
-    if (!sb) return;
-    if (sb.verticalScrollBar) {
-      sb.verticalScrollBar.visible = items.length * rowStride - terminalRowGap > (sb.viewport?.height ?? 0);
-    }
-  }, [items.length, height, flexGrow, rowStride, scrollable, terminalRowGap]);
+    if (!scrollable || !sb?.verticalScrollBar) return;
+    sb.verticalScrollBar.visible = items.length * rowStride - terminalRowGap > (sb.viewport?.height ?? 0);
+  }, [items.length, rowStride, scrollable, terminalRowGap]);
+  useEffect(syncScrollBar, [syncScrollBar, height, flexGrow]);
+  // A list that mounts before its first layout has no viewport height to
+  // compare yet, which would leave a scroll bar on rows that all fit.
+  useEffect(() => observeScrollBoxViewportSize(scrollRef.current, syncScrollBar), [syncScrollBar]);
 
   if (items.length === 0) {
     return (
