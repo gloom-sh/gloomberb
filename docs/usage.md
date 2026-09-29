@@ -170,7 +170,7 @@ Correlation uses matching observation times when inputs have different frequenci
 
 | Shortcut | Function |
 |----------|----------|
-| `TOP` | Ranked market stories |
+| `TOP` | The 20 top-ranked market stories |
 | `HM` | Market heatmap for large US stocks and ETFs |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
@@ -178,7 +178,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `PM <query>` | Polymarket and Kalshi prediction data ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |
-| `NI` | Sector news |
+| `NI [code]` | News by topic: `MNA`, `CB` (central banks), `ENERGY`, `REG` (regulation), `CRYPTO`, `EARN`, `IPO`, or a sector: `TECH`, `FIN`, `HEALTH`, `INDU`, `CONSD`, `CONSS`, `COMMS`, `MATS`, `UTIL` |
 | `SUB` | Authenticated Substack reader feed ([Substack plugin](https://github.com/gloom-sh/gloom-substack)) |
 | `FIRST` | Breaking news |
 | `TWIT <query>` | Ticker-related market posts |

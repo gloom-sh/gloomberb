@@ -274,7 +274,7 @@ export const ja: Record<string, string> = {
   "Ticker News": "銘柄ニュース",
   "Top News": "トップニュース",
   "Breaking News": "ニュース速報",
-  "Sector News": "セクターニュース",
+  "Topic News": "トピックニュース",
   "News Feed": "ニュースフィード",
   "Ticker Research": "銘柄リサーチ",
   "Portfolio List": "ポートフォリオ一覧",

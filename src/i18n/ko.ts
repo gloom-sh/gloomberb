@@ -272,7 +272,7 @@ export const ko: Record<string, string> = {
   "Ticker News": "종목 뉴스",
   "Top News": "주요 뉴스",
   "Breaking News": "속보",
-  "Sector News": "섹터 뉴스",
+  "Topic News": "토픽 뉴스",
   "News Feed": "뉴스피드",
   "Ticker Research": "종목 리서치",
   "Portfolio List": "포트폴리오 목록",

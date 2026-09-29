@@ -273,7 +273,7 @@ export const es: Record<string, string> = {
   "Ticker News": "Noticias del ticker",
   "Top News": "Noticias destacadas",
   "Breaking News": "Última hora",
-  "Sector News": "Noticias sectoriales",
+  "Topic News": "Noticias por tema",
   "News Feed": "Fuente de noticias",
   "Ticker Research": "Análisis de ticker",
   "Portfolio List": "Lista de carteras",

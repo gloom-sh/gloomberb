@@ -274,7 +274,7 @@ export const zhCN: Record<string, string> = {
   "Ticker News": "个股新闻",
   "Top News": "头条新闻",
   "Breaking News": "突发新闻",
-  "Sector News": "板块新闻",
+  "Topic News": "主题新闻",
   "News Feed": "新闻源",
   "Ticker Research": "股票研究",
   "Portfolio List": "组合列表",

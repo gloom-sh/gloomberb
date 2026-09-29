@@ -274,7 +274,7 @@ export const zhTW: Record<string, string> = {
   "Ticker News": "個股新聞",
   "Top News": "頭條新聞",
   "Breaking News": "突發新聞",
-  "Sector News": "類股新聞",
+  "Topic News": "主題新聞",
   "News Feed": "新聞源",
   "Ticker Research": "個股研究",
   "Portfolio List": "投資組合清單",
