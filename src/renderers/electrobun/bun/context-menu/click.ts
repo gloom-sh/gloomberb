@@ -1,23 +1,8 @@
 import { recordOrNull } from "../../../../utils/guards";
+import type { ContextMenuSelectMessage } from "../../shared/protocol";
+import { menuClickPayload } from "../menu-event";
 
-export interface ContextMenuSelectionMessage {
-  requestId: string;
-  itemId: string;
-}
-
-function contextMenuClickPayload(event: unknown): Record<string, unknown> | null {
-  const eventRecord = recordOrNull(event);
-  if (!eventRecord) return null;
-
-  const wrappedPayload = recordOrNull(eventRecord.data);
-  if (typeof wrappedPayload?.action === "string") {
-    return wrappedPayload;
-  }
-
-  return typeof eventRecord.action === "string" ? eventRecord : null;
-}
-
-function decodeActionSelection(action: string, expectedAction: string): ContextMenuSelectionMessage | null {
+function decodeActionSelection(action: string, expectedAction: string): ContextMenuSelectMessage | null {
   const prefix = `${expectedAction}:`;
   if (!action.startsWith(prefix)) return null;
 
@@ -36,8 +21,8 @@ function decodeActionSelection(action: string, expectedAction: string): ContextM
 export function contextMenuSelectionMessage(
   event: unknown,
   expectedAction: string,
-): ContextMenuSelectionMessage | null {
-  const payload = contextMenuClickPayload(event);
+): ContextMenuSelectMessage | null {
+  const payload = menuClickPayload(event);
   if (typeof payload?.action !== "string") return null;
 
   const actionMessage = decodeActionSelection(payload.action, expectedAction);

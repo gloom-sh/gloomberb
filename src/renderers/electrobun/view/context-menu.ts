@@ -1,19 +1,18 @@
 import type { ContextMenuActionItem, ContextMenuItem, ContextMenuRoleItem } from "../../../types/context-menu";
-import { ELECTROBUN_CONTEXT_MENU_ACTION, type DesktopContextMenuItem } from "../shared/protocol";
+import {
+  ELECTROBUN_CONTEXT_MENU_ACTION,
+  type ContextMenuSelectMessage,
+  type DesktopContextMenuItem,
+} from "../shared/protocol";
 
 export interface PreparedDesktopContextMenu {
   menu: DesktopContextMenuItem[];
   actions: Map<string, () => void | Promise<void>>;
 }
 
-export interface DesktopContextMenuSelectMessage {
-  requestId: string;
-  itemId: string;
-}
-
 type ContextMenuSelectSubscribe = (
   requestId: string,
-  listener: (message: DesktopContextMenuSelectMessage) => void,
+  listener: (message: ContextMenuSelectMessage) => void,
 ) => () => void;
 
 type ContextMenuTimeout = ReturnType<typeof globalThis.setTimeout>;
