@@ -3,7 +3,7 @@ import { act } from "react";
 import { takeKeybindingCaptureRequest } from "../../../app/keybindings";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import type { CommandDef, CommandShortcutArgContext, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
+import type { CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
 import {
   CommandBarHarness,
   createCommandBarTestControls,
@@ -13,7 +13,6 @@ import {
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 import type { AppContextStoreValue } from "../../../state/app/context";
-import { openFormModal } from "../../form-modal";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -435,63 +434,6 @@ describe("CommandBar", () => {
 
     frame = await waitForFrameToContain("Target Price");
     expect(frame).toContain("Below");
-  });
-
-  // The alerts pane, event alerts and the marketplace open forms this way,
-  // with the bar closed; the command's own parser fills the focused ticker.
-  test("opens a plugin command's form without the bar, prefilled from the focused ticker", async () => {
-    testSetup = await testRender(<CommandBarHarness
-      query=""
-      live
-      selectedTicker="AMD"
-      extraTickers={[createTestTicker("AMD", "Advanced Micro Devices")]}
-      configureState={(state) => ({ ...state, commandBarOpen: false })}
-      configurePluginRegistry={(pluginRegistry) => {
-        registerAlertCommand(pluginRegistry, {
-          label: "Set Alert",
-          keywords: ["alert", "price", "trigger"],
-          shortcutArg: {
-            placeholder: "symbol condition price",
-            kind: "ticker",
-            parse: (_arg: string, context: CommandShortcutArgContext): Record<string, string> => (
-              context?.activeTicker ? { symbol: context.activeTicker } : {}
-            ),
-          },
-        });
-      }}
-    />, {
-      width: 80,
-      height: 24,
-    });
-
-    await act(async () => {
-      expect(openFormModal({ kind: "plugin-command", commandId: "set-alert" })).toBe(true);
-    });
-    const frame = await waitForFrameToContain("Target Price");
-    expect(frame).toContain("Set Alert");
-    expect(frame).toContain("Condition");
-    expect(frame).toContain("AMD");
-    expect(frame).toContain("bar:closed");
-  });
-
-  // The status bar tab menu and the desktop Layout menu open New and Rename
-  // Layout this way.
-  test("opens a built-in form without the bar", async () => {
-    testSetup = await testRender(<CommandBarHarness
-      query=""
-      live
-      configureState={(state) => ({ ...state, commandBarOpen: false })}
-    />, {
-      width: 80,
-      height: 24,
-    });
-
-    await act(async () => {
-      openFormModal({ kind: "builtin", actionId: "new-layout" });
-    });
-    const frame = await waitForFrameToContain("Layout Name");
-    expect(frame).toContain("Create Layout");
-    expect(frame).toContain("bar:closed");
   });
 
   test("Add Broker Account closes the bar and starts the Brokers pane's add flow", async () => {

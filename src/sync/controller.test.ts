@@ -462,14 +462,12 @@ test("a broker profile removed on one device stays removed after another device 
       brokerInstances: [flex, signedIn],
     });
     const stored: Record<string, unknown> = {};
-    const controller = new CloudSyncController();
-    controller.setRuntime({
+    const controller = startController({
+      transport,
+      contributors: [coreConfigSyncContributor],
       getState: () => state,
-      dispatch: (action: AppAction) => { state = appReducer(state, action); },
-      tickerRepository: {} as TickerRepository,
+      dispatch: (action) => { state = appReducer(state, action); },
       baselineStore: { load: () => stored, save: (payloads) => Object.assign(stored, payloads) },
-      getContributors: () => [{ pluginId: "core", contributor: coreConfigSyncContributor }],
-      getTransport: () => ({ pluginId: "test", transport }),
     });
     const setBrokerInstances = (brokerInstances: AppState["config"]["brokerInstances"]) => {
       state = appReducer(state, { type: "SET_CONFIG", config: { ...state.config, brokerInstances } });

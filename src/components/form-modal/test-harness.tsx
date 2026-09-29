@@ -1,17 +1,25 @@
 import { expect } from "bun:test";
 import type { Window } from "happy-dom";
 import { act, type ReactNode } from "react";
+import { AppDialogBridge } from "../../app/dialog-bridge";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { createRemoteUiRegistry } from "../../remote/semantic-tree";
+import { WebDialogHostProvider } from "../../renderers/electrobun/view/dialog-host";
+import { WebInputHostProvider } from "../../renderers/electrobun/view/input-host";
 import { testRender } from "../../renderers/opentui/test-utils";
-import type { AppContextStoreValue } from "../../state/app/context";
+import { AppContext, createInitialState, type AppContextStoreValue } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
+import { createTestDataProvider } from "../../test-support/data-provider";
+import { createDefaultConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { CommandDef, WizardStep } from "../../types/plugin";
+import type { TickerRecord } from "../../types/ticker";
 import {
   CommandBarHarness,
   createCommandBarTestControls,
   emitKeypress,
 } from "../command-bar/surface/test-harness";
+import { FormModalHost } from "./host";
 import { openFormModal } from "./request";
 
 type TestSetup = Awaited<ReturnType<typeof testRender>>;
@@ -44,6 +52,31 @@ export function createSaveNoteRegistry(execute: (values?: Record<string, string>
     allPlugins: new Map(),
     notify: () => {},
   } as unknown as PluginRegistry;
+}
+
+/**
+ * The host as the desktop app mounts it: outside the dialog layer, bridged
+ * into it. `render` is the suite's `createDomTestHarness` render.
+ */
+export async function renderDesktopFormHost(
+  render: (node: ReactNode) => Promise<unknown>,
+  pluginRegistry: PluginRegistry,
+): Promise<void> {
+  const store = createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-form-desktop")));
+  await render(
+    <WebInputHostProvider>
+      <WebDialogHostProvider>
+        <AppContext value={store}>
+          <AppDialogBridge />
+          <FormModalHost
+            dataProvider={createTestDataProvider({ id: "test" })}
+            pluginRegistry={pluginRegistry}
+            tickerRepository={{} as never}
+          />
+        </AppContext>
+      </WebDialogHostProvider>
+    </WebInputHostProvider>,
+  );
 }
 
 /**
@@ -132,6 +165,9 @@ export function createFormModalTestSession() {
       remoteRegistry?: ReturnType<typeof createRemoteUiRegistry>;
       dataProvider?: DataProvider;
       size?: { width: number; height: number };
+      /** The focused pane's ticker, which a form can start from. */
+      selectedTicker?: string;
+      extraTickers?: TickerRecord[];
     } = {},
   ) {
     await render(
@@ -139,6 +175,8 @@ export function createFormModalTestSession() {
         query=""
         live
         dataProvider={options.dataProvider}
+        selectedTicker={options.selectedTicker}
+        extraTickers={options.extraTickers}
         storeRef={options.storeRef}
         remoteRegistry={options.remoteRegistry}
         configureState={(state) => ({ ...state, commandBarOpen: false })}

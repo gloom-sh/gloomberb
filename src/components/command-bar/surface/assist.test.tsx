@@ -4,7 +4,7 @@ import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
-import type { AppAction } from "../../../state/app/context";
+import type { AppAction, AppContextStoreValue } from "../../../state/app/context";
 import { runAutomated } from "../../../telemetry/usage-counts";
 import { VERSION } from "../../../version";
 import {
@@ -696,6 +696,29 @@ describe("CommandBar search report", () => {
     expect(JSON.stringify(reports)).not.toContain("MSFT");
   });
 
+  // Closed with no Enter (a click outside, the bar's key, an unmount), the bar
+  // still sends the choice it held for the route a row opened.
+  test("sends the held choice as it stands when the bar closes on an open route", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="DES" live />, { width: 100, height: 20 });
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "tab" });
+    await typeKeys(["M", "S", "F", "T"]);
+    await waitForFrameToContain("NASDAQ MSFT");
+    await closeAndSettle();
+    expect(reports).toEqual([{
+      query: "DES",
+      outcome: "chosen",
+      choice: expect.objectContaining({ kind: "shortcut", input: "DES", rank: 0 }),
+      appVersion: VERSION,
+    }]);
+    expect(JSON.stringify(reports)).not.toContain("MSFT");
+  });
+
   // A form opens in the form modal and the bar closes behind it, so the row
   // that opened it ran; what is typed in the form is never part of the search.
   test("reports a row that opened a form as chosen, and nothing typed in the form", async () => {
@@ -828,16 +851,16 @@ describe("CommandBar search report", () => {
     signInVerified(false);
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
-    let dispatch: ((action: AppAction) => void) | undefined;
+    const storeRef: { current: AppContextStoreValue | null } = { current: null };
 
     testSetup = await testRender(
-      <CommandBarHarness query="" live onDispatch={(next) => { dispatch = next; }} />,
+      <CommandBarHarness query="" live storeRef={storeRef} />,
       { width: 100, height: 20 },
     );
     await testSetup.renderOnce();
     await typeKeys(["n", "v"]);
     await act(async () => {
-      dispatch?.({ type: "SET_COMMAND_BAR", open: true, query: "Reset All Data" });
+      storeRef.current!.dispatch({ type: "SET_COMMAND_BAR", open: true, query: "Reset All Data" });
       await testSetup!.renderOnce();
     });
     await settleFrame(testSetup);

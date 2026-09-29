@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppContextStoreValue } from "../../state/app/context";
+import { createTestTicker } from "../../test-support/ticker";
 import type { BrokerAdapter } from "../../types/broker";
+import type { CommandShortcutArgContext } from "../../types/plugin";
 import { CommandBarHarness } from "../command-bar/surface/test-harness";
 import { openFormModal } from "./request";
 import { ENTER, createFormModalTestSession, registerCommand } from "./test-harness";
@@ -79,6 +81,35 @@ describe("form modal host", () => {
     await waitForForm("Layout Name");
     expect(queued).toEqual([true]);
     expect(frame()).not.toContain("Draft");
+  });
+
+  // The alerts pane, event alerts and the marketplace open forms this way,
+  // with the bar closed; the command's own parser fills the focused ticker.
+  test("a plugin command's form starts from the focused ticker", async () => {
+    await renderForm((registry) => registerCommand(registry, {
+      id: "set-alert",
+      label: "Set Alert",
+      wizardLayout: "form",
+      wizard: [
+        { key: "symbol", label: "Symbol", type: "text" },
+        { key: "condition", label: "Condition", type: "select", options: [{ label: "Above", value: "above" }, { label: "Below", value: "below" }] },
+        { key: "price", label: "Target Price", type: "number" },
+      ],
+      shortcutArg: {
+        placeholder: "symbol condition price",
+        kind: "ticker",
+        parse: (_arg: string, context: CommandShortcutArgContext): Record<string, string> => (
+          context?.activeTicker ? { symbol: context.activeTicker } : {}
+        ),
+      },
+    }), { kind: "plugin-command", commandId: "set-alert" }, {
+      selectedTicker: "AMD",
+      extraTickers: [createTestTicker("AMD", "Advanced Micro Devices")],
+    });
+    await waitForForm("Target Price");
+    expect(frame()).toContain("Set Alert");
+    expect(frame()).toContain("AMD");
+    expect(frame()).toContain("bar:closed");
   });
 
   // The host mounts once, and the marketplace installs brokers into the map it read.

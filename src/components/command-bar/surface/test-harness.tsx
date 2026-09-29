@@ -272,7 +272,6 @@ export function CommandBarHarness({
   onCheckForUpdates,
   onAction,
   onUnhandledEnter,
-  onDispatch,
   remoteRegistry,
   storeRef,
 }: {
@@ -291,8 +290,6 @@ export function CommandBarHarness({
   onCheckForUpdates?: () => void | Promise<void>;
   onAction?: (action: AppAction) => void;
   onUnhandledEnter?: () => void;
-  /** Hands the live dispatch to the test, to act as a menu or another window would. */
-  onDispatch?: (dispatch: (action: AppAction) => void) => void;
   /** The registry the app would own, to see what remote control sees. */
   remoteRegistry?: RemoteUiRegistry;
   /** Receives the live store, to dispatch as the rest of the app would. */
@@ -341,7 +338,6 @@ export function CommandBarHarness({
   const currentState = live ? liveStore.state : state;
   const store = live ? liveStore.store : createStaticAppStore(state);
   if (storeRef) storeRef.current = store;
-  onDispatch?.(store.dispatch);
 
   // The dialog host is testRender's, outside this tree, as it is outside the
   // app in production: dialogs reach the store only through the bridge.
