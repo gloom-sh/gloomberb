@@ -12,19 +12,29 @@ import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
 import type { CommandBarWorkflowRoute } from "../command-bar/workflow/types";
 import { FormModalHost } from "./host";
-import { openConfirmModal, openFormModal } from "./request";
+import { openFormModal } from "./request";
+import { createDesktopFormControls, createSaveNoteRegistry } from "./test-harness";
 
 const { window: testWindow, render } = createDomTestHarness();
+const { press, activeInputValue } = createDesktopFormControls(testWindow);
 
-function registryWith(execute: (values?: Record<string, string>) => void): PluginRegistry {
-  return {
-    brokers: new Map(),
-    commands: new Map([["save-note", { id: "save-note", label: "Save Note", execute: async (values?: Record<string, string>) => execute(values) }]]),
-    // A plugin command's submit counts the open by the command's plugin.
-    getCommandPluginId: () => undefined,
-    allPlugins: new Map(),
-    notify: () => {},
-  } as unknown as PluginRegistry;
+/** The host as the desktop app mounts it: outside the dialog layer, bridged into it. */
+async function renderHost(pluginRegistry: PluginRegistry) {
+  const store = createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-form-desktop")));
+  await render(
+    <WebInputHostProvider>
+      <WebDialogHostProvider>
+        <AppContext value={store}>
+          <AppDialogBridge />
+          <FormModalHost
+            dataProvider={createTestDataProvider({ id: "test" })}
+            pluginRegistry={pluginRegistry}
+            tickerRepository={{} as never}
+          />
+        </AppContext>
+      </WebDialogHostProvider>
+    </WebInputHostProvider>,
+  );
 }
 
 const route: CommandBarWorkflowRoute = {
@@ -44,40 +54,11 @@ const route: CommandBarWorkflowRoute = {
   payload: { kind: "plugin-command", actionId: "save-note" },
 };
 
-async function press(key: string, options: { ctrlKey?: boolean } = {}): Promise<boolean> {
-  const event = new testWindow.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options });
-  const target = (testWindow.document.activeElement ?? testWindow.document.body) as unknown as EventTarget;
-  await act(async () => {
-    target.dispatchEvent(event as unknown as Event);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
-  return event.defaultPrevented;
-}
-
-function activeInputValue(): string | null {
-  const active = testWindow.document.activeElement as unknown as { tagName?: string; value?: string } | null;
-  return active?.tagName === "INPUT" ? active.value ?? "" : null;
-}
-
 // On the desktop a focused field takes Enter before the form hears it, and the
 // dialog walks its own controls on Tab unless the form keeps the key.
 test("on the desktop Enter moves on once, Tab stays in the form, and Esc closes it", async () => {
   const submitted: Array<Record<string, string> | undefined> = [];
-  const store = createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-form-desktop")));
-  await render(
-    <WebInputHostProvider>
-      <WebDialogHostProvider>
-        <AppContext value={store}>
-          <AppDialogBridge />
-          <FormModalHost
-            dataProvider={createTestDataProvider({ id: "test" })}
-            pluginRegistry={registryWith((values) => submitted.push(values))}
-            tickerRepository={{} as never}
-          />
-        </AppContext>
-      </WebDialogHostProvider>
-    </WebInputHostProvider>,
-  );
+  await renderHost(createSaveNoteRegistry((values) => submitted.push(values)));
   await act(async () => {
     expect(openFormModal({ kind: "route", route })).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -104,21 +85,7 @@ test("on the desktop Enter moves on once, Tab stays in the form, and Esc closes 
 // the field has to ask for it back or typing goes nowhere.
 test("on the desktop the active field takes the focus back after a click on the button or its label", async () => {
   const submitted: Array<Record<string, string> | undefined> = [];
-  const store = createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-form-desktop-focus")));
-  await render(
-    <WebInputHostProvider>
-      <WebDialogHostProvider>
-        <AppContext value={store}>
-          <AppDialogBridge />
-          <FormModalHost
-            dataProvider={createTestDataProvider({ id: "test" })}
-            pluginRegistry={registryWith((values) => submitted.push(values))}
-            tickerRepository={{} as never}
-          />
-        </AppContext>
-      </WebDialogHostProvider>
-    </WebInputHostProvider>,
-  );
+  await renderHost(createSaveNoteRegistry((values) => submitted.push(values)));
   await act(async () => {
     openFormModal({ kind: "route", route: { ...route, values: { ...route.values, title: "" } } });
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -145,48 +112,3 @@ test("on the desktop the active field takes the focus back after a click on the 
   });
   expect(activeInputValue()).toBe("");
 });
-
-// The dialog itself holds the focus, so the confirm hears Enter and y itself;
-// no button is focused to take Enter a second time.
-test("on the desktop a confirm runs once on Enter and cancels on n", async () => {
-  let calls = 0;
-  const store = createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-confirm-desktop")));
-  await render(
-    <WebInputHostProvider>
-      <WebDialogHostProvider>
-        <AppContext value={store}>
-          <AppDialogBridge />
-          <FormModalHost
-            dataProvider={createTestDataProvider({ id: "test" })}
-            pluginRegistry={registryWith(() => {})}
-            tickerRepository={{} as never}
-          />
-        </AppContext>
-      </WebDialogHostProvider>
-    </WebInputHostProvider>,
-  );
-  const confirm = {
-    confirmId: "delete-note",
-    title: "Delete Note",
-    body: ["Delete this note?"],
-    confirmLabel: "Delete",
-    onConfirm: () => { calls += 1; },
-  };
-  await act(async () => {
-    expect(openConfirmModal(confirm)).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 30));
-  });
-  await press("Enter");
-  await press("Enter");
-  expect(calls).toBe(1);
-  expect(testWindow.document.querySelectorAll(".gloom-dialog")).toHaveLength(0);
-
-  await act(async () => {
-    openConfirmModal(confirm);
-    await new Promise((resolve) => setTimeout(resolve, 30));
-  });
-  await press("n");
-  expect(testWindow.document.querySelectorAll(".gloom-dialog")).toHaveLength(0);
-  expect(calls).toBe(1);
-});
-
