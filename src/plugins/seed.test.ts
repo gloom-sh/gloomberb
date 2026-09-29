@@ -90,12 +90,12 @@ describe("seedExtractedPlugins", () => {
   });
 
   /**
-   * The IPO calendar and TV were modules inside Macro, so turning that plugin
-   * off was the only way to turn them off. Restoring them as their own plugins
-   * would put panes back that the user had removed.
+   * TV was a module inside Macro, so turning that plugin off was the only way
+   * to turn it off. Restoring it as its own plugin would put panes back that
+   * the user had removed.
    */
   test.each([
-    ["macro", ["ipo-calendar", "tv"]],
+    ["macro", ["tv"]],
     ["macro-tv", ["tv"]],
     ["tv", ["tv"]],
   ] as const)("keeps extracted modules disabled when %s was disabled", async (owner, extracted) => {

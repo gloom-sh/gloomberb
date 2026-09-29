@@ -25,7 +25,6 @@
     // electrobun ships TypeScript source that imports three, which has no types of its own.
     "@types/three",
     // Loaded by package name through WEB_BUNDLED_PLUGIN_PACKAGES in src/plugins/web-bundled.ts.
-    "gloom-ipo-calendar",
     "gloom-polls",
     "gloom-prediction-markets"
   ]

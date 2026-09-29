@@ -21,7 +21,6 @@
         "@types/react-dom": "^19.2.3",
         "@types/three": "0.165.0",
         "electrobun": "^1.18.1",
-        "gloom-ipo-calendar": "github:gloom-sh/gloom-ipo-calendar",
         "gloom-polls": "github:gloom-sh/gloom-polls",
         "gloom-prediction-markets": "github:gloom-sh/gloom-prediction-markets",
         "happy-dom": "^20.11.1",
@@ -369,8 +368,6 @@
     "get-uri": ["get-uri@6.0.5", "", { "dependencies": { "basic-ftp": "^5.0.2", "data-uri-to-buffer": "^6.0.2", "debug": "^4.3.4" } }, "sha512-b1O07XYq8eRuVzBNgJLstU6FYc1tS6wnMtF1I1D9lE8LxZSOGZ7LhxN54yPP6mGw5f2CkXY2BQUL9Fx41qvcIg=="],
 
     "gifwrap": ["gifwrap@0.10.1", "", { "dependencies": { "image-q": "^4.0.0", "omggif": "^1.0.10" } }, "sha512-2760b1vpJHNmLzZ/ubTtNnEx5WApN/PYWJvXvgS+tL1egTTthayFYIQQNi136FLEDcN/IyEY2EcGpIITD6eYUw=="],
-
-    "gloom-ipo-calendar": ["gloom-ipo-calendar@github:gloom-sh/gloom-ipo-calendar#c3917c2", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-ipo-calendar-c3917c2", "sha512-FJFr3j8yw/scLlHD5Buuw4E6EB2ooouWxYDZQuOTM8iqKCOdcVL/2v85MFvpsC8FXDR+C7TvbTNg0Oz47H53Fw=="],
 
     "gloom-polls": ["gloom-polls@github:gloom-sh/gloom-polls#90a780e", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-polls-90a780e", "sha512-X5zm3AZ2fL7LUXvY80FV8YCNEprsGISSa/15hYMEYzDmWR1pYdmpdqTqE8WJBl8QM50RNT7unZAQWhAWO2h86w=="],
 

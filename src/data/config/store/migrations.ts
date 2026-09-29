@@ -25,6 +25,7 @@ const BUILTIN_OWNERSHIP_AND_CHART_CONFIG_VERSION = 20;
 const ONBOARDING_BACKFILL_CONFIG_VERSION = 21;
 const UNREACHABLE_PANE_CLEANUP_CONFIG_VERSION = 22;
 const MARKET_OVERVIEW_ABSORBED_CONFIG_VERSION = 23;
+const IPO_CALENDAR_ABSORBED_CONFIG_VERSION = 24;
 
 /** What a migration may ask of the machine the config is loaded on. */
 export interface ConfigMigrationHost {
@@ -71,7 +72,13 @@ const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
   {
     name: "keep-market-overview-modules-off",
     toVersion: MARKET_OVERVIEW_ABSORBED_CONFIG_VERSION,
-    migrate: migrateAbsorbedMarketOverviewModules,
+    migrate: keepAbsorbedPluginsOff("market-overview", ["market-heatmap", "market-halts", "fear-greed"]),
+  },
+  {
+    // Main builds already wrote version 23, so the IPO Calendar needs its own.
+    name: "keep-ipo-calendar-off",
+    toVersion: IPO_CALENDAR_ABSORBED_CONFIG_VERSION,
+    migrate: keepAbsorbedPluginsOff("macro", ["ipo-calendar"]),
   },
 ];
 
@@ -162,38 +169,38 @@ function migrateUnreachablePaneInstances(
 }
 
 // Market Heatmap, Market Halts and Fear & Greed were Market Overview modules,
-// so switching Market Overview off switched them off, and the seeder kept them
-// off when they moved out by not installing them. Built in again under their
-// own ids, they would come back on. A copy installed since means the user
-// wants it. Removing a restored copy is not taken as switching it off: that
-// config looks the same as a fresh install that never had one, which should
-// get the built-in. The web bundled them whatever Market Overview said and has
-// no plugins folder, so it decides nothing itself, but disabledPlugins syncs,
-// so a signed-in web session follows what was kept off here.
+// and the IPO Calendar a Macro one, so switching the owner off switched them
+// off, and the seeder kept them off when they moved out by not installing
+// them. Built in again under their own ids, they would come back on. A copy
+// installed since means the user wants it. Removing a restored copy is not
+// taken as switching it off: that config looks the same as a fresh install
+// that never had one, which should get the built-in. The web bundled them
+// whatever their owner said and has no plugins folder, so it decides nothing
+// itself, but disabledPlugins syncs, so a signed-in web session follows what
+// was kept off here.
 //
 // An older build saving this config writes its own configVersion back, which
 // would run this again after the user switched one on. So each plugin is
 // decided once, recorded as `absorbed:<id>` in seededPlugins: older builds
-// keep that list as they found it, and it stays on this machine.
-function migrateAbsorbedMarketOverviewModules(
-  saved: Record<string, unknown>,
-  _dataDir: string,
-  host: ConfigMigrationHost,
-): Record<string, unknown> {
-  const hasCheckout = host.hasPluginCheckout;
-  if (!hasCheckout) return saved;
-  const seededPlugins = stringList(saved.seededPlugins);
-  const undecided = ["market-heatmap", "market-halts", "fear-greed"]
-    .filter((pluginId) => !seededPlugins.includes(`absorbed:${pluginId}`));
-  if (undecided.length === 0) return saved;
-  const disabledPlugins = stringList(saved.disabledPlugins);
-  const keptOff = disabledPlugins.includes("market-overview")
-    ? undecided.filter((pluginId) => !hasCheckout(pluginId))
-    : [];
-  return {
-    ...saved,
-    ...(keptOff.length > 0 ? { disabledPlugins: [...new Set([...disabledPlugins, ...keptOff])] } : {}),
-    seededPlugins: [...seededPlugins, ...undecided.map((pluginId) => `absorbed:${pluginId}`)],
+// keep that list as they found it, and it stays on this machine. A plugin
+// absorbed later needs a migration of its own, since a config already past
+// this one's version never runs it again.
+function keepAbsorbedPluginsOff(ownerId: string, pluginIds: readonly string[]): ConfigMigration["migrate"] {
+  return (saved, _dataDir, host) => {
+    const hasCheckout = host.hasPluginCheckout;
+    if (!hasCheckout) return saved;
+    const seededPlugins = stringList(saved.seededPlugins);
+    const undecided = pluginIds.filter((pluginId) => !seededPlugins.includes(`absorbed:${pluginId}`));
+    if (undecided.length === 0) return saved;
+    const disabledPlugins = stringList(saved.disabledPlugins);
+    const keptOff = disabledPlugins.includes(ownerId)
+      ? undecided.filter((pluginId) => !hasCheckout(pluginId))
+      : [];
+    return {
+      ...saved,
+      ...(keptOff.length > 0 ? { disabledPlugins: [...new Set([...disabledPlugins, ...keptOff])] } : {}),
+      seededPlugins: [...seededPlugins, ...undecided.map((pluginId) => `absorbed:${pluginId}`)],
+    };
   };
 }
 

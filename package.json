@@ -96,7 +96,6 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "0.165.0",
     "electrobun": "^1.18.1",
-    "gloom-ipo-calendar": "github:gloom-sh/gloom-ipo-calendar",
     "gloom-polls": "github:gloom-sh/gloom-polls",
     "gloom-prediction-markets": "github:gloom-sh/gloom-prediction-markets",
     "happy-dom": "^20.11.1",

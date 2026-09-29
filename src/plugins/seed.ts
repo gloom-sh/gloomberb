@@ -17,6 +17,9 @@ const log = debugLog.createLogger("plugin-seed");
  * so it is never reinstalled — including when the user removes it deliberately.
  */
 export const EXTRACTED_PLUGINS = [
+  // TV was a module inside Macro, so a user who turned Macro off was turning
+  // it off with it. `previousOwnerIds` keeps that choice: the seeder does not
+  // restore what someone disabled.
   { id: "tv", repo: "gloom-sh/gloom-tv", directory: "gloom-tv", previousOwnerIds: ["macro", "macro-tv"] },
   { id: "substack", repo: "gloom-sh/gloom-substack", directory: "gloom-substack" },
   { id: "ibkr", repo: "gloom-sh/gloom-ibkr", directory: "gloom-ibkr" },
@@ -25,10 +28,6 @@ export const EXTRACTED_PLUGINS = [
   { id: "robinhood", repo: "gloom-sh/gloom-robinhood", directory: "gloom-robinhood" },
   { id: "simplefin", repo: "gloom-sh/gloom-simplefin", directory: "gloom-simplefin" },
   { id: "polls", repo: "gloom-sh/gloom-polls", directory: "gloom-polls" },
-  // The IPO calendar was a module inside Macro, so a user who turned Macro off
-  // was turning it off with it. `previousOwnerIds` keeps that choice: the
-  // seeder does not restore what someone disabled.
-  { id: "ipo-calendar", repo: "gloom-sh/gloom-ipo-calendar", directory: "gloom-ipo-calendar", previousOwnerIds: ["macro"] },
   { id: "prediction-markets", repo: "gloom-sh/gloom-prediction-markets", directory: "gloom-prediction-markets" },
   // Bring-your-own-key AI left under a new id, so the choice to switch the old
   // one off is recorded against `ai` rather than against this entry.

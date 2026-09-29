@@ -19,6 +19,7 @@ import { alertsPlugin } from "./builtin/alerts";
 import { marketHeatmapPlugin } from "./builtin/market-heatmap";
 import { marketHaltsPlugin } from "./builtin/market-halts";
 import { fearGreedPlugin } from "./builtin/fear-greed";
+import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
 import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
 import { changelogModule } from "./builtin/changelog";
 import { chartComposerModule } from "./builtin/chart-composer";
@@ -179,6 +180,7 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   marketHeatmapPlugin,
   marketHaltsPlugin,
   fearGreedPlugin,
+  ipoCalendarPlugin,
   browserMacroPlugin,
   alertsPlugin,
   researchSearchPlugin,

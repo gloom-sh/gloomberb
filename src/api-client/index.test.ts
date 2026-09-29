@@ -1252,6 +1252,23 @@ describe("apiClient cloud news", () => {
   });
 });
 
+describe("apiClient IPO calendar", () => {
+  test("asks for the default window with no params and sends only the filters given", async () => {
+    const seen: URL[] = [];
+    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
+      seen.push(new URL(String(input)));
+      return Response.json({ asOf: "2026-09-29T00:00:00Z", deals: [], sources: [] });
+    });
+
+    expect(await apiClient.getCloudIpoCalendar()).toEqual({ asOf: "2026-09-29T00:00:00Z", deals: [], sources: [] });
+    expect(seen[0]!.pathname).toBe("/cloud/ipo/calendar");
+    expect(seen[0]!.search).toBe("");
+
+    await apiClient.getCloudIpoCalendar({ region: "apac", status: undefined, from: "2026-10-01" });
+    expect(seen[1]!.search).toBe("?region=apac&from=2026-10-01");
+  });
+});
+
 describe("apiClient document search", () => {
   test("builds the search query from filters and omits empty ones", async () => {
     let seenUrl = "";
