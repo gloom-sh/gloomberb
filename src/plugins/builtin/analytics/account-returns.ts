@@ -1,13 +1,7 @@
-import { colors } from "../../../theme/colors";
 import type { BrokerPortfolioPerformance } from "../../../types/trading";
-import { formatNumber } from "../../../utils/format";
-import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
-import { formatReturn } from "./display";
-import { alignedAssetReturns, computeDatedBeta, computeSharpeRatio, type DatedReturn } from "./metrics";
-import type { AnalyticsMetricRow } from "./view";
+import type { DatedReturn } from "./metrics";
 
 const MIN_ACCOUNT_RETURNS = 10;
-const TRADING_DAYS = 252;
 /** Weekends and holidays stretch a daily series to three or four calendar days at most. */
 const MAX_DAILY_GAP_DAYS = 4;
 
@@ -34,76 +28,10 @@ export function accountDailyReturns(performance: BrokerPortfolioPerformance | nu
         : Number.NaN;
     if (Number.isFinite(value)) returns.push({ startDateKey: previous.date, dateKey: point.date, value });
   }
-  // The statistics below annualize daily returns; a weekly or monthly history would be misread.
+  // The statistics annualize daily returns; a weekly or monthly history would be misread.
   const gaps = returns
     .map((point) => (Date.parse(point.dateKey) - Date.parse(point.startDateKey)) / 86_400_000)
     .sort((left, right) => left - right);
   const medianGap = gaps[Math.floor(gaps.length / 2)] ?? Number.POSITIVE_INFINITY;
   return returns.length >= MIN_ACCOUNT_RETURNS && medianGap <= MAX_DAILY_GAP_DAYS ? returns : null;
-}
-
-export function annualizedVolatility(returns: DatedReturn[]): number | null {
-  if (returns.length < MIN_ACCOUNT_RETURNS) return null;
-  const values = returns.map((point) => point.value);
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
-  return Math.sqrt(variance * TRADING_DAYS);
-}
-
-/** Largest peak-to-trough fall of the compounded series, as a negative fraction. */
-export function maxDrawdown(returns: DatedReturn[]): number | null {
-  if (returns.length < MIN_ACCOUNT_RETURNS) return null;
-  let level = 1;
-  let peak = 1;
-  let worst = 0;
-  for (const point of returns) {
-    level *= 1 + point.value;
-    peak = Math.max(peak, level);
-    worst = Math.min(worst, level / peak - 1);
-  }
-  return worst;
-}
-
-function compactDate(value: string): string {
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "2-digit", month: "short", year: "2-digit", timeZone: "UTC",
-  }).replaceAll(" ", "");
-}
-
-function sampleWindow(sample: DatedReturn[]): string | undefined {
-  return sample.length
-    ? `${compactDate(sample[0]!.startDateKey)}–${compactDate(sample.at(-1)!.dateKey)} ·${sample.length}`
-    : undefined;
-}
-
-/** Risk rows measured on the account's own returns rather than estimated from holdings. */
-export function buildAccountRiskRows({
-  returns,
-  benchmarkReturns,
-  benchmarkIntegrity = null,
-}: {
-  returns: DatedReturn[];
-  benchmarkReturns: DatedReturn[];
-  benchmarkIntegrity?: PriceHistoryIntegrity | null;
-}): AnalyticsMetricRow[] {
-  const window = sampleWindow(returns);
-  const betaSample = alignedAssetReturns(returns, benchmarkReturns);
-  const sharpe = computeSharpeRatio(returns.map((point) => point.value));
-  const beta = benchmarkIntegrity ? null : computeDatedBeta(returns, benchmarkReturns);
-  const volatility = annualizedVolatility(returns);
-  const drawdown = maxDrawdown(returns);
-  const detail = window ? `Account · ${window}` : "Account";
-  return [
-    { id: "sharpe", label: "Sharpe", value: formatNumber(sharpe ?? undefined, 2), detail },
-    {
-      id: "beta",
-      label: "Beta (SPY)",
-      value: beta == null ? "—" : formatNumber(beta, 2),
-      detail: benchmarkIntegrity
-        ? "SPY benchmark: inconsistent OHLC history"
-        : beta == null ? "Insufficient overlap with SPY" : `Account · ${sampleWindow(betaSample)}`,
-    },
-    { id: "volatility", label: "Volatility", value: volatility == null ? "—" : formatReturn(volatility).replace("+", ""), detail },
-    { id: "max-drawdown", label: "Max drawdown", value: drawdown == null ? "—" : drawdown === 0 ? "0.00%" : formatReturn(drawdown), detail },
-  ].map((row) => ({ ...row, color: colors.textMuted }));
 }

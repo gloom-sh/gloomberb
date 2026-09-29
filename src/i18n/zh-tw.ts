@@ -991,6 +991,7 @@ export const zhTW: Record<string, string> = {
   "Unreal": "未實現",
   "Init": "初始保證金",
   "Maint": "維持保證金",
+  "Margin Lev": "保證金槓桿",
   "NAME": "名稱",
   "TYPE": "類型",
   "EXCH": "交易所",

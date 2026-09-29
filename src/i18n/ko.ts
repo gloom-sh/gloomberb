@@ -989,6 +989,7 @@ export const ko: Record<string, string> = {
   "Unreal": "미실현",
   "Init": "개시증거금",
   "Maint": "유지증거금",
+  "Margin Lev": "증거금 레버리지",
   "NAME": "이름",
   "TYPE": "유형",
   "EXCH": "거래소",

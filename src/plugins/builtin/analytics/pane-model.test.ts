@@ -1,10 +1,8 @@
 import { expect, test } from "bun:test";
-import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
-import type { PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { TickerRecord } from "../../../types/ticker";
 import type { PricePoint } from "../../../types/financials";
 import { buildChartKey } from "../../../market-data/selectors";
-import { buildAnalyticsRiskRows, buildAnalyticsSummaryRows, buildBenchmarkReturnSeries, buildPortfolioChartTargets, buildPortfolioReturnSeries, formatHistoryValueAxis } from "./pane-model";
+import { buildBenchmarkReturnSeries, buildPortfolioChartTargets, buildPortfolioReturnSeries } from "./pane-model";
 import { createTestTicker } from "../../../test-support/ticker";
 
 function riskTicker(symbol: string): TickerRecord {
@@ -22,16 +20,13 @@ function riskHistory(): PricePoint[] {
 // A reported SPY bar whose open lies above its high.
 const rejectedSpy = { date: new Date("2026-09-10"), open: 764.08, high: 758.555, low: 757.57, close: 758.15, volume: 3461376 };
 
-test("a rejected benchmark suppresses beta while the independent basket Sharpe remains available", () => {
-  const request = buildPortfolioChartTargets([riskTicker("SPY")])[0]!.request;
+test("a rejected benchmark bar quarantines its returns until corrected history arrives", () => {
+  const request = buildPortfolioChartTargets([riskTicker("SPY")])[0]!.request!;
   const history = [...riskHistory().slice(0, -1), rejectedSpy];
   const entries = new Map([[buildChartKey(request), { data: history }]]);
   const result = buildBenchmarkReturnSeries(request, entries);
   expect(result.returns).toEqual([]);
   expect(result.integrity?.sourcePoints[0]).toMatchObject({ open: 764.08, high: 758.555, close: 758.15 });
-  const rows = buildAnalyticsRiskRows({ sharpe: 1.75, beta: 1.2, benchmarkIntegrity: result.integrity });
-  expect(rows[0]?.value).toBe("1.75");
-  expect(rows[1]).toMatchObject({ value: "—", detail: "SPY benchmark: inconsistent OHLC history" });
   entries.set(buildChartKey(request), { data: riskHistory() });
   expect(buildBenchmarkReturnSeries(request, entries)).toMatchObject({ integrity: null });
   expect(buildBenchmarkReturnSeries(request, entries).returns).toHaveLength(20);
@@ -40,7 +35,7 @@ test("a rejected benchmark suppresses beta while the independent basket Sharpe r
 
 test("a corrupt holding cannot be silently dropped from estimated portfolio risk", () => {
   const targets = buildPortfolioChartTargets([riskTicker("SPY"), riskTicker("MSFT")]);
-  const chartEntries = new Map(targets.map(({ request }, index) => [buildChartKey(request), {
+  const chartEntries = new Map(targets.map(({ request }, index) => [buildChartKey(request!), {
     data: index === 0 ? [...riskHistory().slice(0, -1), rejectedSpy] : riskHistory(),
   }]));
   const input = { chartTargets: targets, chartEntries, financials: new Map(),
@@ -48,70 +43,9 @@ test("a corrupt holding cannot be silently dropped from estimated portfolio risk
   const result = buildPortfolioReturnSeries(input);
   expect(result).toMatchObject({ returns: null, coverage: 0.5, missingCount: 1 });
   expect(result.historyIntegrity[0]).toMatchObject({ symbol: "SPY", integrity: { sourcePoints: [{ ...rejectedSpy, date: "2026-09-10T00:00:00.000Z" }] } });
-  const rows = buildAnalyticsRiskRows({ ...result, sharpe: 2, beta: 1 });
-  expect(rows.every((row) => row.value === "—" && row.detail === "Inconsistent OHLC history: SPY")).toBe(true);
-  chartEntries.set(buildChartKey(targets[0]!.request), { data: riskHistory() });
+  chartEntries.set(buildChartKey(targets[0]!.request!), { data: riskHistory() });
   expect(buildPortfolioReturnSeries(input).returns).toHaveLength(20);
   expect(buildPortfolioReturnSeries(input).historyIntegrity).toEqual([]);
-});
-
-test("converts every account balance while keeping leverage independent of display currency", () => {
-  const accountState = {
-    account: {
-      accountId: "test", currency: "EUR", netLiquidation: 100_000, grossPositionValue: 150_000,
-      totalCashValue: -50_000, settledCash: -40_000, availableFunds: 30_000,
-      excessLiquidity: 20_000, buyingPower: 60_000,
-    },
-    sourceLabel: "Test broker",
-  } as ResolvedPortfolioAccountState;
-  const portfolioStats: PortfolioSummaryTotals = {
-    totalMktValue: 0, totalCostBasis: 0, dailyPnl: 0, dailyPnlPct: 0,
-    unrealizedPnl: 0, unrealizedPnlPct: 0, hasPositions: true, avgWatchlistChange: 0, watchlistCount: 0,
-  };
-  const rows = (rate: number) => new Map(buildAnalyticsSummaryRows({
-    accountState, portfolioStats, activePortfolio: null, brokerPerformance: null,
-    convertAccountValue: (value) => value * rate,
-  }).map((row) => [row.id, row.value]));
-
-  expect(rows(1).get("margin-leverage")).toBe("1.5x");
-  const converted = rows(1.2);
-  expect(converted.get("margin-leverage")).toBe("1.5x");
-  expect(converted.get("net-liquidation")).toBe("120.0k");
-  expect(converted.get("total-value")).toBe("180.0k");
-  expect(converted.get("cash")).toBe("-60.0k");
-  expect(converted.get("settled-cash")).toBe("-48.0k");
-  expect(converted.get("available-funds")).toBe("36.0k");
-  expect(converted.get("excess-liquidity")).toBe("24.0k");
-  expect(converted.get("buying-power")).toBe("72.0k");
-
-  accountState.account.netLiquidation = 0;
-  expect(rows(1).has("margin-leverage")).toBe(false);
-});
-
-test("cash-only summary uses reported account metrics and preserves explicit zero", () => {
-  const accountState: ResolvedPortfolioAccountState = {
-    account: { accountId: "test", name: "Test", currency: "USD", netLiquidation: 6000, totalCashValue: 6000 },
-    sourceLabel: "Cached", sourceKind: "cached", visibleCashBalances: [],
-  };
-  const portfolioStats: PortfolioSummaryTotals = {
-    totalMktValue: 0, totalCostBasis: 0, dailyPnl: 0, dailyPnlPct: 0,
-    unrealizedPnl: 0, unrealizedPnlPct: 0, hasPositions: false, avgWatchlistChange: 0, watchlistCount: 0,
-  };
-  const rows = () => new Map(buildAnalyticsSummaryRows({
-    accountState, portfolioStats, activePortfolio: null, brokerPerformance: null,
-  }).map((row) => [row.id, row]));
-  expect([...rows().keys()]).toEqual(["net-liquidation", "cash", "account-source"]);
-
-  accountState.account.grossPositionValue = 0;
-  accountState.account.dailyPnl = 0;
-  accountState.account.unrealizedPnl = 0;
-  expect(rows().get("total-value")?.value).toBe("0.00");
-  expect(rows().get("margin-leverage")?.value).toBe("0.0x");
-  expect(rows().get("day-pnl")).toMatchObject({ value: "0.00", detail: "(0.00%)" });
-  expect(rows().get("pnl")).toMatchObject({ value: "0.00", detail: "(—)" });
-  delete accountState.account.netLiquidation;
-  expect(rows().get("day-pnl")?.detail).toBe("(—)");
-  expect(rows().has("margin-leverage")).toBe(false);
 });
 
 test("does not publish portfolio risk from just the valued portion when FX is missing", () => {
@@ -123,7 +57,7 @@ test("does not publish portfolio risk from just the valued portion when FX is mi
   })));
   const targets = buildPortfolioChartTargets(tickers);
   const sessionDates = ["01", "02", "03", "04", "05", "08", "09", "10", "11", "12", "15", "16", "17", "18", "22", "23", "24", "25", "26", "29"];
-  const chartEntries = new Map(targets.map(({ request }) => [buildChartKey(request), {
+  const chartEntries = new Map(targets.map(({ request }) => [buildChartKey(request!), {
     data: sessionDates.map((day, index) => ({ date: new Date(`2026-06-${day}`), close: 100 + index + index % 2 })),
   }]));
   const input = {
@@ -133,8 +67,6 @@ test("does not publish portfolio risk from just the valued portion when FX is mi
   const missing = buildPortfolioReturnSeries(input);
   expect(missing.returns).toBeNull();
   expect(missing.unvaluedCount).toBe(1);
-  const riskRows = buildAnalyticsRiskRows({ sharpe: null, beta: null, ...missing });
-  expect(riskRows.every((row) => row.value === "—" && row.detail?.includes("check prices and FX"))).toBe(true);
 
   input.columnContext.exchangeRates.set("EUR", 1.2);
   const restored = buildPortfolioReturnSeries(input);
@@ -152,7 +84,6 @@ test("does not publish portfolio risk from just the valued portion when FX is mi
   const short = buildPortfolioReturnSeries(input);
   expect(short.returns).toBeNull();
   expect(short.unsupportedReason).toContain("Short positions");
-  expect(buildAnalyticsRiskRows({ ...short, sharpe: 2, beta: 1 }).every((row) => row.value === "—")).toBe(true);
   position.side = undefined;
   position.shares = -10;
   expect(buildPortfolioReturnSeries(input).unsupportedReason).toContain("Short positions");
@@ -166,37 +97,4 @@ test("does not publish portfolio risk from just the valued portion when FX is mi
   });
   expect(leveraged.returns).toBeNull();
   expect(leveraged.unsupportedReason).toContain("Leveraged account");
-
-  const unknownCalendar = buildAnalyticsRiskRows({ ...buildPortfolioReturnSeries(input), sharpe: 2, beta: 1 });
-  expect(unknownCalendar.map((row) => row.value)).toEqual(["—", "1.00"]);
-  expect(unknownCalendar[0]!.detail).toBe("Daily calendar unavailable");
-  // A USD amount alone cannot establish a US listing calendar.
-  tickers[1]!.metadata.exchange = "NYSE";
-  const supportedTargets = buildPortfolioChartTargets(tickers);
-  const supported = buildAnalyticsRiskRows({ ...buildPortfolioReturnSeries({
-    ...input, chartTargets: supportedTargets,
-    chartEntries: new Map(supportedTargets.map((target, index) => [buildChartKey(target.request!), chartEntries.get(buildChartKey(targets[index]!.request!))])),
-  }), sharpe: 2, beta: 1 });
-  expect(supported.map((row) => row.value)).toEqual(["2.00", "1.00"]);
-});
-
-
-test("risk row detail reflects partial or unavailable inputs while retaining valid zero estimates", () => {
-  const healthy = buildAnalyticsRiskRows({ sharpe: 0, beta: 0 });
-  expect(healthy.map((row) => [row.label, row.value, row.detail])).toEqual([
-    ["Est. Sharpe", "0.00", undefined], ["Est. Beta (SPY)", "0.00", undefined],
-  ]);
-  const partial = buildAnalyticsRiskRows({ sharpe: 0, beta: null, coverage: .7, missingCount: 2 });
-  expect(partial[0]).toMatchObject({ value: "—", detail: "Incomplete holding history" });
-  expect(partial[1]).toMatchObject({ value: "—", detail: "Incomplete holding history" });
-  const unavailable = buildAnalyticsRiskRows({ sharpe: 0, beta: 0, coverage: .7, missingCount: 2, unvaluedCount: 1 });
-  expect(unavailable.every((row) => row.value === "—" && row.detail?.includes("check prices and FX"))).toBe(true);
-});
-
-test("account value ticks take their decimals from the plotted range", () => {
-  const wide = { min: 45_000, max: 85_000 };
-  expect([50_000, 60_000, 70_000].map((value) => formatHistoryValueAxis(value, wide))).toEqual(["50k", "60k", "70k"]);
-  const narrow = { min: 10_000, max: 11_000 };
-  expect([10_200, 10_400, 10_600].map((value) => formatHistoryValueAxis(value, narrow))).toEqual(["10.2k", "10.4k", "10.6k"]);
-  expect(formatHistoryValueAxis(1_250_000, { min: 1_000_000, max: 1_500_000 })).toBe("1.25M");
 });

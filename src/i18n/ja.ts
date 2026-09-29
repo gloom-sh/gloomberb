@@ -991,6 +991,7 @@ export const ja: Record<string, string> = {
   "Unreal": "含み損益",
   "Init": "当初証拠金",
   "Maint": "維持証拠金",
+  "Margin Lev": "証拠金レバレッジ",
   "NAME": "名称",
   "TYPE": "種類",
   "EXCH": "EXCH",

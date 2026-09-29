@@ -139,6 +139,12 @@ export function resolvePortfolioNetLiquidation(
   return convertAccountValue(account.netLiquidation) + brokerSnapshotDelta(totals, account, basis, convertAccountValue).net;
 }
 
+/** Market value per unit of net liquidation ("1.5x"); both sides share one currency, so FX cancels. */
+export function formatMarginLeverage(netLiquidation: number | null, totalMarketValue: number): string | null {
+  if (!isFiniteNumber(netLiquidation) || netLiquidation <= 0 || !isFiniteNumber(totalMarketValue) || totalMarketValue < 0) return null;
+  return `${(totalMarketValue / netLiquidation).toFixed(1)}x`;
+}
+
 export function resolvePortfolioAccountMetrics(
   totals: PortfolioSummaryTotals,
   account?: BrokerAccount | null,

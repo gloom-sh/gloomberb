@@ -1,6 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useReducer, useState, type ReactElement } from "react";
-import { emitKeypress, settleFrame, testRender } from "../../../renderers/opentui/test-utils";
+import { settleFrame, testRender } from "../../../renderers/opentui/test-utils";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
@@ -25,6 +25,7 @@ import { PortfolioListPane } from "../portfolio-list/pane";
 import { KellySizerPane } from "../kelly-sizer/pane";
 import { buildSectorRowsFromPortfolioColumns } from "./sector-model";
 import { portfolioAnalyticsModule } from "./index";
+import { getPluginPaneStateValue } from "../../pane-state";
 import { createTestTicker } from "../../../test-support/ticker";
 
 const paneId = "analytics:identity";
@@ -74,7 +75,8 @@ function Harness({ f, portfolio = "a", cached = new Map(), profile = false, view
 }) {
   const config = createTestPaneConfig("/tmp/portfolio-identity-unused", {
     instanceId: paneId, paneId: view ?? (profile ? "account-management" : "analytics"), binding: { kind: "none" },
-    params: { portfolioId: portfolio, collectionId: portfolio, symbol: "ACME" }, settings: { columnIds: ["ticker", "mkt_value", "pnl", "weight"] },
+    params: { portfolioId: portfolio, collectionId: portfolio, symbol: "ACME" },
+    settings: { columnIds: ["ticker", "mkt_value", "pnl", "weight"], riskView: "sectors" },
   });
   config.portfolios = [{ id: "a", name: "First account", currency: "USD" }, { id: "b", name: "Second account", currency: "USD" }];
   const initial = createInitialState(config);
@@ -92,7 +94,15 @@ function Harness({ f, portfolio = "a", cached = new Map(), profile = false, view
   </TestPaneProvider>;
 }
 
+const stub = <T extends object, K extends keyof T>(object: T, method: K, implementation: any) => {
+  const mock = spyOn(object, method as any).mockImplementation(implementation); restore.push(() => mock.mockRestore());
+};
+
 async function render(f: ReturnType<typeof fixture>, portfolio = "a", cached = new Map<string, TickerFinancials>(), profile = false, view?: "portfolio-list" | "kelly-sizer") {
+  // The risk views' market history is Cloud's; the sector view needs none of it.
+  for (const method of ["getCloudQuotesBatch", "getCloudHistory", "getCloudFredSeries"] as const) {
+    stub(apiClient, method, async () => { throw new Error("offline"); });
+  }
   setSharedMarketDataCoordinator(f.coordinator);
   await act(async () => { setup = await testRender(<Harness f={f} portfolio={portfolio} cached={cached} profile={profile} view={view} />, { width: 80, height: profile ? 40 : 32 }); });
   await settleFrame(setup!, 20);
@@ -144,38 +154,32 @@ test("unscoped cached prices cannot cross into either broker account, while gene
   expect(cachedQuote.priceHistory).toHaveLength(1);
 });
 
-test("actual analytics account switching changes quote, sector denominator and history request together", async () => {
+test("actual analytics account switching changes quote and sector denominator together", async () => {
   const f = fixture();
-  const readChart = spyOn(f.coordinator, "getChartEntry"); restore.push(() => readChart.mockRestore());
+  const quotes = spyOn(f.coordinator, "getTickerFinancialsSync"); restore.push(() => quotes.mockRestore());
   await render(f);
-  expect(latestState.paneState[paneId]?.portfolioId).toBe("a");
-  expect(setup!.captureCharFrame()).toContain("33.3%");
-  await act(async () => { setup!.mockInput.pressArrow("right"); await setup!.renderOnce(); }); await settleFrame(setup!, 20);
-  expect(latestState.paneState[paneId]?.portfolioId).toBe("b");
+  const selectedPortfolio = () => getPluginPaneStateValue(latestState.paneState[paneId], "portfolio", "risk:portfolio", "a");
+  expect(setup!.captureCharFrame()).toMatch(/Technology\s+33\.33\s+1\.0k\s+\+200\.00\s+\+25\.00%/);
+  await act(async () => { setup!.mockInput.pressKey("p"); await setup!.renderOnce(); }); await settleFrame(setup!, 20);
+  expect(selectedPortfolio()).toBe("b");
   const frame = setup!.captureCharFrame();
-  expect(frame).toMatch(/Val +4\.0k/);
-  expect(frame).toMatch(/P&L +\+800\.00/);
-  expect(frame).toContain("Technology                50.0%       2.0k");
+  expect(frame).toMatch(/Technology\s+50\.00\s+2\.0k\s+\+400\.00\s+\+25\.00%/);
   expect(frame).not.toContain("Weights unavailable");
-  const requested = readChart.mock.calls.filter(([request]) => request.instrument.symbol === "ACME").map(([request]) => request.instrument.instrument?.conId);
+  const requested = quotes.mock.calls.filter(([request]) => request.symbol === "ACME").map(([request]) => request.instrument?.conId);
   expect(requested).toContain(101); expect(requested).toContain(202);
 });
 
 for (const portfolioId of ["a", "b"]) test(`actual analytics ${portfolioId} rejects the other account's symbol cache and recovers scoped quote`, async () => {
   const f = fixture(false, portfolioId), otherPrice = portfolioId === "a" ? 200 : 100;
   await render(f, portfolioId, new Map([["ACME", financials("ACME", otherPrice)]]));
-  expect(setup!.captureCharFrame()).toContain(portfolioId === "a" ? "33.3%" : "50.0%");
+  expect(setup!.captureCharFrame()).toMatch(portfolioId === "a" ? /Technology\s+33\.33/ : /Technology\s+50\.00/);
   const ticker = f.tickers.get("ACME")!;
   await act(async () => f.coordinator.primeCachedFinancials([{ instrument: instrumentFromTicker(ticker, "ACME", { portfolioId })!, financials: financials("ACME", 300) }]));
   await settleFrame(setup!, 20);
-  expect(setup!.captureCharFrame()).toContain("60.0%");
-  expect(setup!.captureCharFrame()).toMatch(/Val +5\.0k/);
+  expect(setup!.captureCharFrame()).toMatch(/Technology\s+60\.00\s+3\.0k/);
 });
 
 test("actual shared-portfolio preview uses its selected quote and history contracts", async () => {
-  const stub = <T extends object, K extends keyof T>(object: T, method: K, implementation: any) => {
-    const mock = spyOn(object, method as any).mockImplementation(implementation); restore.push(() => mock.mockRestore());
-  };
   stub(apiClient, "isSignedIn", () => true);
   stub(apiClient, "getSessionToken", () => "controlled-test-session");
   stub(apiClient, "getCurrentUser", () => null);
@@ -200,15 +204,7 @@ test("unresolved selected contract skips market requests, keeps its own mark and
   const quotes = spyOn(f.coordinator, "getTickerFinancialsSync"), charts = spyOn(f.coordinator, "getChartEntry");
   restore.push(() => quotes.mockRestore(), () => charts.mockRestore());
   await render(f, "b", new Map([["ACME", financials("ACME", 999)]]));
-  const frame = setup!.captureCharFrame();
-  expect(frame).toContain("Technology                50.0%       2.0k");
-  // The basket estimates read "—" and the footer warning names the holding they wait on.
-  expect(frame).toMatch(/Est\. Sharpe +—/);
-  await emitKeypress(setup!, { name: "!", sequence: "!", shift: true }, { trackPropagation: true });
-  await settleFrame(setup!, 4);
-  expect(setup!.captureCharFrame()).toContain("Broker contract unavailable for ACME");
-  await emitKeypress(setup!, { name: "escape" }, { trackPropagation: true });
-  await settleFrame(setup!, 4);
+  expect(setup!.captureCharFrame()).toMatch(/Technology\s+50\.00\s+2\.0k/);
   expect(quotes.mock.calls.filter(([request]) => request.symbol === "ACME")).toEqual([]);
   expect(charts.mock.calls.filter(([request]) => request.instrument.symbol === "ACME")).toEqual([]);
   const targets = buildPortfolioChartTargets([...f.tickers.values()], { portfolioId: "b" });

@@ -991,6 +991,7 @@ export const zhCN: Record<string, string> = {
   "Unreal": "未实现",
   "Init": "初始保证金",
   "Maint": "维持保证金",
+  "Margin Lev": "保证金杠杆",
   "NAME": "名称",
   "TYPE": "类型",
   "EXCH": "交易所",
