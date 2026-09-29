@@ -1178,7 +1178,7 @@ Choose the existing control that owns the interaction you need:
 | A form's field labels and keyboard ring | `FieldLabel`, `TextField` (`active`, `labelWidth`), `useFieldRing` |
 | Clickable/expandable summaries | `ActionRow` |
 | Selectable lists | `ListView` |
-| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean), `TextPromptDialog`, `PriceSelectorDialog` |
+| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean; `status` and `busy` show work the confirm started), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
