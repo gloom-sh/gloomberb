@@ -3,7 +3,7 @@ import { join, relative } from "path";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../../../components/layout/titlebar-overlay";
 
 /** Imports whose path ends with the first entry resolve to the second, relative to the view directory. */
-export type AliasRule = readonly [string, string];
+type AliasRule = readonly [string, string];
 type PageOptions = {
   entrypoint: string;
   outdir: string;
@@ -19,7 +19,7 @@ interface ViewBundleOptions {
   entrypoint: string;
   outdir: string;
   sourcemap: "external" | "none";
-  /** Added to the production `process.env.NODE_ENV`. */
+  /** Build-time constants; `process.env.NODE_ENV` is always production. */
   define?: Record<string, string>;
   aliasRules?: AliasRule[];
   failureMessage: string;
