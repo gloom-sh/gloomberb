@@ -21,15 +21,15 @@ import {
   updateWindowFrameCache,
   type WindowMoveEvent,
   type WindowResizeEvent,
-} from "./window-events";
+} from "../window/events";
 import type { DesktopStateBroadcaster, DesktopStateRpc } from "./state-broadcaster";
-import { applyWindowsCustomChrome } from "./windows-custom-chrome";
-import { applyWindowsWindowIcon } from "./windows-icons";
+import { applyWindowsCustomChrome } from "../window/windows-custom-chrome";
+import { applyWindowsWindowIcon } from "../window/windows-icons";
 import {
   desktopTitleBarStyle,
   desktopWindowRenderer,
   desktopWindowStyleMask,
-} from "./window-style";
+} from "../window/style";
 
 const INITIAL_DOCK_SUPPRESSION_MS = 800;
 const WINDOW_CONTROL_DOCK_SUPPRESSION_MS = 5_000;

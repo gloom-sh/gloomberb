@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyDesktopWindowControl } from "./window-controls";
+import { applyDesktopWindowControl } from "./controls";
 
 type WindowCall =
   | { type: "close" }

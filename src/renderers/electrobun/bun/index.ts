@@ -55,7 +55,7 @@ import {
   updateWindowFrameCache,
   type WindowMoveEvent,
   type WindowResizeEvent,
-} from "./desktop/window-events";
+} from "./window/events";
 import { createDesktopRpcRegistry } from "./desktop/rpc-registry";
 import { DesktopStateBroadcaster } from "./desktop/state-broadcaster";
 import { DesktopDetachedWindowManager } from "./desktop/detached-windows";
@@ -63,15 +63,15 @@ import { handleDesktopHostRequest } from "./desktop/host-requests";
 import { handleDesktopWorkspaceRequest } from "./desktop/workspace/requests";
 import { handleDesktopBackendRequest } from "./desktop/backend-requests";
 import { initializeDesktopBackend } from "./desktop/initialization";
-import { applyWindowsCustomChrome } from "./desktop/windows-custom-chrome";
-import { applyWindowsWindowIcon } from "./desktop/windows-icons";
+import { applyWindowsCustomChrome } from "./window/windows-custom-chrome";
+import { applyWindowsWindowIcon } from "./window/windows-icons";
 import { applyMacosDockIcon } from "./desktop/macos-dock-icon";
 import {
   desktopTitleBarStyle,
   desktopWindowRenderer,
   desktopWindowStyleMask,
-} from "./desktop/window-style";
-import { applyDesktopWindowControl, type DesktopWindowControlAction } from "./desktop/window-controls";
+} from "./window/style";
+import { applyDesktopWindowControl, type DesktopWindowControlAction } from "./window/controls";
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
 import { startRemoteControlServer, type RemoteControlServer } from "../../../remote/server";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";

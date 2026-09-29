@@ -5,7 +5,7 @@ import {
   normalizeWindowFrameWithMinimum,
   type WindowFrame,
   type WindowMinimumSize,
-} from "../window/frame";
+} from "./frame";
 
 export type WindowMoveEvent = { data?: { x?: number; y?: number } };
 export type WindowResizeEvent = { data?: Partial<WindowFrame> };
