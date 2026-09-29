@@ -154,11 +154,44 @@ export function calendarDate(deal: IpoDeal): string | null {
 }
 
 /** Upcoming deals soonest first; everything after them most recent first. */
-function compareCalendarOrder(a: IpoDeal, b: IpoDeal): number {
-  const group = calendarGroup(a.status) - calendarGroup(b.status);
-  if (group !== 0) return group;
-  const date = compareSortValues(calendarDate(a), calendarDate(b), a.status === "upcoming" ? "asc" : "desc");
-  return date || a.company.localeCompare(b.company) || a.id.localeCompare(b.id);
+/** Days past its date before an upcoming deal counts as late rather than next. */
+const LATE_AFTER_DAYS = 7;
+
+/** Today's date where the board is read, YYYY-MM-DD. */
+function localToday(now = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function daysBefore(date: string, days: number): string {
+  const day = new Date(`${date}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - days);
+  return day.toISOString().slice(0, 10);
+}
+
+/**
+ * Upcoming deals: the ones still ahead soonest first, then undated ones, then
+ * the ones a week or more past their date and still not listed (a pending
+ * HKEX listing, a book listing elsewhere), most recent first, so the board
+ * opens on what is next. Everything after them most recent first.
+ */
+function calendarOrder(today: string): (a: IpoDeal, b: IpoDeal) => number {
+  const lateBefore = daysBefore(today, LATE_AFTER_DAYS);
+  const upcomingRank = (deal: IpoDeal) => {
+    const date = calendarDate(deal);
+    return date === null ? 1 : date < lateBefore ? 2 : 0;
+  };
+  return (a, b) => {
+    const group = calendarGroup(a.status) - calendarGroup(b.status);
+    if (group !== 0) return group;
+    const upcoming = a.status === "upcoming";
+    const rank = upcoming ? upcomingRank(a) - upcomingRank(b) : 0;
+    if (rank !== 0) return rank;
+    const ascending = upcoming && upcomingRank(a) === 0;
+    const date = compareSortValues(calendarDate(a), calendarDate(b), ascending ? "asc" : "desc");
+    return date || a.company.localeCompare(b.company) || a.id.localeCompare(b.id);
+  };
 }
 
 /**
@@ -184,11 +217,12 @@ function sortValue(columnId: IpoColumnId, deal: IpoDeal): string | number | null
   }
 }
 
-export function sortIpoDeals(deals: readonly IpoDeal[], sort: IpoSortPreference): IpoDeal[] {
+export function sortIpoDeals(deals: readonly IpoDeal[], sort: IpoSortPreference, today = localToday()): IpoDeal[] {
   const { columnId } = sort;
-  if (!columnId) return [...deals].sort(compareCalendarOrder);
+  const order = calendarOrder(today);
+  if (!columnId) return [...deals].sort(order);
   return [...deals].sort((a, b) => (
-    compareSortValues(sortValue(columnId, a), sortValue(columnId, b), sort.direction) || compareCalendarOrder(a, b)
+    compareSortValues(sortValue(columnId, a), sortValue(columnId, b), sort.direction) || order(a, b)
   ));
 }
 

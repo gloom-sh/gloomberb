@@ -56,14 +56,18 @@ describe("IPO calendar order", () => {
     // Still book building: the subscription window stands in for the listing date.
     ipoDeal({ id: "upcoming-bookbuild", subscriptionOpen: "2026-10-01", subscriptionClose: "2026-10-03" }),
     ipoDeal({ id: "upcoming-undated" }),
+    // Two weeks past its date and still not listed: after what is next.
+    ipoDeal({ id: "upcoming-late", subscriptionOpen: "2026-09-14" }),
+    // A few days past its date: still next.
+    ipoDeal({ id: "upcoming-due", listingDate: "2026-09-24", dateKind: "expected" }),
     ipoDeal({ id: "listed-new", status: "listed", listingDate: "2026-09-25" }),
     // Priced with no listing date yet: its book dates it, not the foot of the board.
     ipoDeal({ id: "priced-undated", status: "priced", subscriptionOpen: "2026-09-26", subscriptionClose: "2026-09-26" }),
   ];
 
-  test("upcoming deals come soonest first, then priced and listed most recent first, then filings, then stopped deals", () => {
-    expect(ids(sortIpoDeals(deals, DEFAULT_IPO_SORT))).toEqual([
-      "upcoming-bookbuild", "upcoming-later", "upcoming-undated",
+  test("upcoming deals come soonest first, late ones last, then priced and listed most recent first, then filings, then stopped deals", () => {
+    expect(ids(sortIpoDeals(deals, DEFAULT_IPO_SORT, "2026-09-29"))).toEqual([
+      "upcoming-due", "upcoming-bookbuild", "upcoming-later", "upcoming-undated", "upcoming-late",
       "priced", "priced-undated", "listed-new", "listed-old",
       "filed",
       "withdrawn",
