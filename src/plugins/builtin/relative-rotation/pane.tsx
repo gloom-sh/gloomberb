@@ -328,6 +328,7 @@ function RotationView({
                         width={size.width}
                         height={size.height}
                         selectedId={selectedRowId}
+                        fadeOthers={rows.some((row) => row.id === selectedId)}
                       />
                     ),
                     minRows: SCATTER_MIN_ROWS,

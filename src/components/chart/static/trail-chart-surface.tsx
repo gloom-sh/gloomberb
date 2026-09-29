@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
+import { blendHex } from "../../../theme/color-utils";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { displayWidth } from "../../../utils/format";
 import { CompositeChart } from "../composite/composite-chart";
@@ -9,6 +10,9 @@ import { compositeAxisTickLabels, renderCompositeAxisText, renderCompositePanelT
 import type { CompositePanelScene } from "../composite/types";
 import { scalarPoint, staticSeries } from "./series";
 import { buildTrailChart, trailAxisTicks, type ScatterTrail } from "./trail-chart-model";
+
+/** How far a trail behind the selected one fades toward the background. */
+const TRAIL_FADE = 0.55;
 
 const PANELS = [{ id: "main" }];
 /** The model's 100/100 lines, and the single-point anchors that stand in for them in cells. */
@@ -211,6 +215,7 @@ export function ScatterTrailSurface({
   height,
   center = 100,
   selectedId,
+  fadeOthers = true,
   xLabel = "Strength",
   yLabel = "Momentum",
 }: {
@@ -219,6 +224,12 @@ export function ScatterTrailSurface({
   height: number;
   center?: number;
   selectedId?: string | null;
+  /**
+   * Fade the other trails behind the selected one. Off while the selection is
+   * only the table's default cursor, so the chart opens with every trail in
+   * its colour.
+   */
+  fadeOthers?: boolean;
   /** The table's words for the axes. */
   xLabel?: string;
   yLabel?: string;
@@ -230,7 +241,9 @@ export function ScatterTrailSurface({
     const built = buildTrailChart(
       trails.map((trail) => ({
         ...trail,
-        color: selectedId && trail.id !== selectedId ? colors.textDim : trail.color,
+        // Behind the selected trail, the others fade but keep their hue, so
+        // every tail can still be told from its neighbours.
+        color: fadeOthers && selectedId && trail.id !== selectedId ? blendHex(trail.color, colors.bg, TRAIL_FADE) : trail.color,
       })),
       center,
       colors.textDim,
@@ -254,7 +267,7 @@ export function ScatterTrailSurface({
       .sort((left, right) => rank(left.entry) - rank(right.entry) || left.index - right.index)
       .map(({ entry }) => entry);
     return { ...built, series: [...origins, ...marks] };
-  }, [trails, center, colors.textDim, selectedId, isDesktop]);
+  }, [trails, center, colors.textDim, colors.bg, selectedId, fadeOthers, isDesktop]);
   const selectedHead = trails.find((trail) => trail.id === selectedId)?.points.at(-1);
   const plotHeight = Math.max(1, height - 1);
 
