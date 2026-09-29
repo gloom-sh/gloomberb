@@ -148,12 +148,17 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   }, [setDetailOpen, startAddFlow]);
 
   // Add Broker Account from the command bar or a menu asks through pane state.
+  // Work under way stays: an add already open is the one asked for, and an
+  // edit is saved or cancelled first.
   const [addRequest, setAddRequest] = usePaneStateValue<number | null>(BROKER_ADD_REQUEST_KEY, null);
+  const editing = editDraft !== null;
   useEffect(() => {
     if (addRequest == null) return;
     setAddRequest(null);
-    startAdd();
-  }, [addRequest, setAddRequest, startAdd]);
+    if (adding) return;
+    if (editing) setMessage(t("Save or cancel the edit first."));
+    else startAdd();
+  }, [addRequest, adding, editing, setAddRequest, setMessage, startAdd]);
 
   // A text field has the keyboard, so global shortcuts wait.
   const capturesInput = !!editDraft || addFlow.capturesInput;

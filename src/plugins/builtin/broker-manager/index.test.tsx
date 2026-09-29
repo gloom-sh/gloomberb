@@ -60,6 +60,7 @@ function Harness({
   adapters = [testBroker, signedInBroker],
   app,
   detached = false,
+  beforeCreate,
 }: {
   instance?: BrokerInstanceConfig;
   instances?: BrokerInstanceConfig[];
@@ -71,6 +72,8 @@ function Harness({
   app?: { state?: AppState; dispatch?: Dispatch<AppAction> };
   /** A detached window, which has no form modal. */
   detached?: boolean;
+  /** Holds a new profile's creation until it resolves. */
+  beforeCreate?: () => Promise<void>;
 }) {
   // Pane state (the open profile) lives in the app state, so it needs a real reducer.
   const [state, dispatch] = useReducer(appReducer, instances, (instances) => {
@@ -99,6 +102,7 @@ function Harness({
     getBrokerAdapter: (brokerType) => brokerType === "ibkr" ? testBroker : adapters.find((adapter) => adapter.id === brokerType) ?? null,
     listBrokerAdapters: () => adapters,
     createBrokerInstance: async (brokerType, label, values) => {
+      await beforeCreate?.();
       calls.push(`create:${brokerType}:${label}:${JSON.stringify(values)}`);
       const created: BrokerInstanceConfig = { id: `${brokerType}-new`, brokerType, label, config: values, enabled: true };
       const { config } = stateRef.current;
@@ -397,6 +401,42 @@ describe("BrokersPane", () => {
     expect(frame()).toContain("simplefin-new");
   });
 
+  test("Esc or Back after Connect waits for the new profile instead of leaving it made unseen", async () => {
+    const calls: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    testSetup = await testRender(
+      <Harness calls={calls} adapters={[simpleFin]} height={30} beforeCreate={() => gate} />,
+      { width: 92, height: 30 },
+    );
+    await settle();
+
+    await pressKey("a");
+    await pressKey("RETURN");
+    await pressKey("TAB");
+    await act(async () => {
+      await testSetup!.mockInput.typeText("tok-1");
+      await testSetup!.renderOnce();
+    });
+    await pressKey("RETURN");
+    await settle();
+    await pressEscape();
+    await clickFrameText("Back");
+    await settle();
+    expect(frame()).toContain("Connect SimpleFIN");
+
+    await act(async () => { release(); });
+    await settle();
+    expect(calls).toEqual([
+      'create:simplefin:SimpleFIN:{"token":"tok-1"}',
+      "sync:simplefin-new",
+      "notify:Connected! Positions will sync automatically.",
+    ]);
+    expect(frame()).not.toContain("Connect SimpleFIN");
+    await pressKey("RETURN");
+    expect(frame()).toContain("simplefin-new");
+  });
+
   test("the signed-in path connects in the pane, then syncs and selects the new profile", async () => {
     const calls: string[] = [];
     await fakeCloud({ connects: true });
@@ -459,5 +499,39 @@ describe("BrokersPane", () => {
     expect(frameLine("SimpleFIN")).toContain("On this device");
     // Taken, so a reload does not start it again.
     expect(app.state!.paneState["brokers:test"]?.[BROKER_ADD_REQUEST_KEY]).toBeNull();
+  });
+
+  test("Add Broker Account keeps an add or an edit under way", async () => {
+    const calls: string[] = [];
+    const app: { state?: AppState; dispatch?: Dispatch<AppAction> } = {};
+    testSetup = await testRender(
+      <Harness calls={calls} app={app} instances={[createGatewayInstance()]} adapters={[simpleFin]} height={30} />,
+      { width: 92, height: 30 },
+    );
+    await settle();
+    const request = async () => {
+      await act(async () => {
+        app.dispatch!({ type: "UPDATE_PANE_STATE", paneId: "brokers:test", patch: { [BROKER_ADD_REQUEST_KEY]: Date.now() } });
+      });
+      await settle();
+    };
+
+    await pressKey("a");
+    await pressKey("RETURN");
+    await pressKey("TAB");
+    await act(async () => {
+      await testSetup!.mockInput.typeText("tok-1");
+      await testSetup!.renderOnce();
+    });
+    await request();
+    expect(frame()).toContain("> Setup Token");
+    expect(frameLine("*****").trim()).toBe("*****");
+
+    await pressEscape();
+    await pressKey("e");
+    expect(frame()).toContain("> Profile Label");
+    await request();
+    expect(frame()).toContain("> Profile Label");
+    expect(frame()).toContain("Save or cancel the edit first.");
   });
 });

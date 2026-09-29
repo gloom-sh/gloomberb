@@ -98,7 +98,9 @@ export function useBrokerAddFlow({
   const flowRef = useRef<BrokerAddFlowState | null>(null);
   // Ends the connect attempt on show: its outcome, or "cancelled" when the flow goes.
   const endAttemptRef = useRef<((outcome: BrokerSignInOutcome) => void) | null>(null);
-  const connectingRef = useRef(false);
+  // From Connect, or a connected sign-in, until the pane lands on the new
+  // profile: the profile is being made, and leaving would not undo that.
+  const committingRef = useRef(false);
 
   const setFlow = useCallback((update: (current: BrokerAddFlowState | null) => BrokerAddFlowState | null) => {
     const next = update(flowRef.current);
@@ -136,6 +138,8 @@ export function useBrokerAddFlow({
   }, [buildDirectory, setFlow, setMessage]);
 
   const leave = useCallback(() => {
+    // Esc, Back and the mouse's back button wait, as the disabled Cancel does.
+    if (committingRef.current) return;
     endAttemptRef.current?.("cancelled");
     setFlow(() => null);
     // A field the form asked for is no longer asked for.
@@ -168,7 +172,7 @@ export function useBrokerAddFlow({
 
   const connectDevice = useCallback(async () => {
     const current = flowRef.current;
-    if (!current || current.step.kind !== "device" || connectingRef.current) return;
+    if (!current || current.step.kind !== "device" || committingRef.current) return;
     const { adapter, draft } = current.step;
     const label = draft.label.trim();
     if (!label) {
@@ -180,7 +184,7 @@ export function useBrokerAddFlow({
       setMessage(validationError);
       return;
     }
-    connectingRef.current = true;
+    committingRef.current = true;
     setMessage(null);
     try {
       setBusy(t("Connecting broker…"));
@@ -195,7 +199,7 @@ export function useBrokerAddFlow({
       }
       await syncNewProfile(current.id, instanceId, label);
     } finally {
-      connectingRef.current = false;
+      committingRef.current = false;
     }
   }, [createBrokerInstance, setBusy, setMessage, syncNewProfile]);
 
@@ -220,38 +224,51 @@ export function useBrokerAddFlow({
 
   const signIn = useCallback(async (flowId: number, entry: BrokerDirectoryEntry, broker: SignedInBroker) => {
     const onStep = () => flowRef.current?.id === flowId && flowRef.current.step.kind === "sign-in";
-    let connected: { instance: BrokerInstanceConfig } | null;
+    let committing = false;
     try {
-      connected = await connectSignedInBrokerProfile(broker, {
-        getConfig: () => getState().config,
-        createBrokerInstance,
-        // The first sync runs below, with its progress in the pane.
-        syncBrokerInstance: async () => {},
-        // Gloom's sign-in over the pane when needed, again after a session Gloom refused.
-        requestSignIn: (target) => runBrokerSignIn(target, undefined, {
-          isSignedIn: () => apiClient.isSignedIn(),
-          signInToGloom: async () => onStep() && await promptGloomSignIn(dialog),
-          connectBroker: (_broker, write) => showAttempt(flowId, write),
-        }),
-      });
-    } catch (error) {
-      setMessage(errorText(error, tf("{broker} was not connected.", { broker: broker.name })));
-      if (onStep()) setStep(flowId, { kind: "broker" });
-      return;
+      let connected: { instance: BrokerInstanceConfig } | null;
+      try {
+        connected = await connectSignedInBrokerProfile(broker, {
+          getConfig: () => getState().config,
+          createBrokerInstance,
+          // The first sync runs below, with its progress in the pane.
+          syncBrokerInstance: async () => {},
+          // Gloom's sign-in over the pane when needed, again after a session Gloom refused.
+          requestSignIn: async (target) => {
+            const signedIn = await runBrokerSignIn(target, undefined, {
+              isSignedIn: () => apiClient.isSignedIn(),
+              signInToGloom: async () => onStep() && await promptGloomSignIn(dialog),
+              connectBroker: (_broker, write) => showAttempt(flowId, write),
+            });
+            // Connected in this flow: its profile is made next.
+            if (signedIn && onStep()) {
+              committing = true;
+              committingRef.current = true;
+            }
+            return signedIn;
+          },
+        });
+      } catch (error) {
+        setMessage(errorText(error, tf("{broker} was not connected.", { broker: broker.name })));
+        if (onStep()) setStep(flowId, { kind: "broker" });
+        return;
+      }
+      if (!connected) {
+        // Backed out of Gloom's sign-in: back to the choice made. A cancelled
+        // connect step closed the flow already.
+        const current = flowRef.current;
+        if (!onStep() || !current) return;
+        const choosesMethod = entry.methods.length > 1;
+        const cursor = choosesMethod
+          ? entry.methods.findIndex((method) => method.kind === "signed-in")
+          : current.directory.findIndex((candidate) => candidate.key === entry.key);
+        setStep(flowId, choosesMethod ? { kind: "method", entry } : { kind: "broker" }, Math.max(0, cursor));
+        return;
+      }
+      await syncNewProfile(flowId, connected.instance.id, connected.instance.label);
+    } finally {
+      if (committing) committingRef.current = false;
     }
-    if (!connected) {
-      // Backed out of Gloom's sign-in: back to the choice made. A cancelled
-      // connect step closed the flow already.
-      const current = flowRef.current;
-      if (!onStep() || !current) return;
-      const choosesMethod = entry.methods.length > 1;
-      const cursor = choosesMethod
-        ? entry.methods.findIndex((method) => method.kind === "signed-in")
-        : current.directory.findIndex((candidate) => candidate.key === entry.key);
-      setStep(flowId, choosesMethod ? { kind: "method", entry } : { kind: "broker" }, Math.max(0, cursor));
-      return;
-    }
-    await syncNewProfile(flowId, connected.instance.id, connected.instance.label);
   }, [createBrokerInstance, dialog, getState, setMessage, setStep, showAttempt, syncNewProfile]);
 
   const chooseMethod = useCallback((entry: BrokerDirectoryEntry, method: BrokerMethod) => {
@@ -393,7 +410,7 @@ export function BrokerAddFlowContent({
 
   const cancel = (
     <Box flexDirection="row" justifyContent="center">
-      <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={addFlow.leave} />
+      <Button label={t("Cancel")} shortcut="Esc" variant="secondary" disabled={busy !== null} onPress={addFlow.leave} />
     </Box>
   );
   if (!step.attempt) {

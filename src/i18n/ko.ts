@@ -840,6 +840,7 @@ export const ko: Record<string, string> = {
   "Disconnecting…": "연결 해제 중…",
   "Removed {label}.": "{label}을(를) 제거했습니다.",
   "Failed to remove {label}.": "{label}을(를) 제거하지 못했습니다.",
+  "Save or cancel the edit first.": "먼저 편집을 저장하거나 취소하세요.",
   "Removed {label}. {broker} is still connected to your Gloom account.": "{label}을(를) 제거했습니다. {broker}은(는) 여전히 Gloom 계정에 연결되어 있습니다.",
   "Removed {label}. {broker} is still connected to your Gloom account. Sign in to Gloom to disconnect {broker} from your account.": "{label}을(를) 제거했습니다. {broker}은(는) 여전히 Gloom 계정에 연결되어 있습니다. 계정에서 {broker} 연결을 해제하려면 Gloom에 로그인하세요.",
   "This also disconnects {broker} from your other devices and agents.": "다른 기기와 에이전트에서도 {broker} 연결이 해제됩니다.",

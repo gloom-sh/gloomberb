@@ -842,6 +842,7 @@ export const zhTW: Record<string, string> = {
   "Disconnecting…": "正在中斷連線…",
   "Removed {label}.": "已刪除 {label}。",
   "Failed to remove {label}.": "刪除 {label} 失敗。",
+  "Save or cancel the edit first.": "請先儲存或取消編輯。",
   "Removed {label}. {broker} is still connected to your Gloom account.": "已刪除 {label}。{broker} 仍連結在你的 Gloom 帳戶上。",
   "Removed {label}. {broker} is still connected to your Gloom account. Sign in to Gloom to disconnect {broker} from your account.": "已刪除 {label}。{broker} 仍連結在你的 Gloom 帳戶上。登入 Gloom 後即可從帳戶中斷開 {broker}。",
   "This also disconnects {broker} from your other devices and agents.": "這也會在你的其他裝置和代理上中斷 {broker}。",

@@ -828,6 +828,7 @@ export const es: Record<string, string> = {
   "Disconnecting…": "Desconectando…",
   "Removed {label}.": "{label} eliminado.",
   "Failed to remove {label}.": "No se pudo eliminar {label}.",
+  "Save or cancel the edit first.": "Guarda o cancela la edición primero.",
   "Removed {label}. {broker} is still connected to your Gloom account.": "{label} eliminado. {broker} sigue conectado a tu cuenta de Gloom.",
   "Removed {label}. {broker} is still connected to your Gloom account. Sign in to Gloom to disconnect {broker} from your account.": "{label} eliminado. {broker} sigue conectado a tu cuenta de Gloom. Inicia sesión en Gloom para desconectar {broker} de tu cuenta.",
   "This also disconnects {broker} from your other devices and agents.": "También desconecta {broker} de tus otros dispositivos y agentes.",
