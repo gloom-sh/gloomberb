@@ -832,6 +832,8 @@ export const ja: Record<string, string> = {
   "Saved {label}.": "{label} を保存しました。",
   "Failed to save broker profile.": "証券会社プロフィールの保存に失敗しました。",
   "Tested {label}.": "{label} をテストしました。",
+  "Connecting…": "接続中…",
+  "Connected {broker}.": "{broker} に接続しました。",
   "Failed to test {label}.": "{label} のテストに失敗しました。",
   "Synced {label}.": "{label} を同期しました。",
   "Failed to sync {label}.": "{label} の同期に失敗しました。",

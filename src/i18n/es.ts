@@ -818,6 +818,8 @@ export const es: Record<string, string> = {
   "Saved {label}.": "{label} guardado.",
   "Failed to save broker profile.": "No se pudo guardar el perfil del bróker.",
   "Tested {label}.": "{label} probado.",
+  "Connecting…": "Conectando…",
+  "Connected {broker}.": "{broker} conectado.",
   "Failed to test {label}.": "No se pudo probar {label}.",
   "Synced {label}.": "{label} sincronizado.",
   "Failed to sync {label}.": "No se pudo sincronizar {label}.",

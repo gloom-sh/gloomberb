@@ -830,6 +830,8 @@ export const ko: Record<string, string> = {
   "Saved {label}.": "{label}을(를) 저장했습니다.",
   "Failed to save broker profile.": "브로커 프로필을 저장하지 못했습니다.",
   "Tested {label}.": "{label}을 테스트했습니다.",
+  "Connecting…": "연결 중…",
+  "Connected {broker}.": "{broker}에 연결했습니다.",
   "Failed to test {label}.": "{label}을(를) 테스트하지 못했습니다.",
   "Synced {label}.": "{label} 동기화 완료.",
   "Failed to sync {label}.": "{label}을(를) 동기화하지 못했습니다.",

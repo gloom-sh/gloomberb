@@ -832,6 +832,8 @@ export const zhCN: Record<string, string> = {
   "Saved {label}.": "已保存 {label}。",
   "Failed to save broker profile.": "保存券商资料失败。",
   "Tested {label}.": "已测试 {label}。",
+  "Connecting…": "正在连接…",
+  "Connected {broker}.": "已连接 {broker}。",
   "Failed to test {label}.": "测试 {label} 失败。",
   "Synced {label}.": "已同步 {label}。",
   "Failed to sync {label}.": "同步 {label} 失败。",

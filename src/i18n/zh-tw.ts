@@ -832,6 +832,8 @@ export const zhTW: Record<string, string> = {
   "Saved {label}.": "已儲存 {label}。",
   "Failed to save broker profile.": "儲存券商設定檔失敗。",
   "Tested {label}.": "已測試 {label}。",
+  "Connecting…": "正在連線…",
+  "Connected {broker}.": "已連線 {broker}。",
   "Failed to test {label}.": "測試 {label} 失敗。",
   "Synced {label}.": "已同步 {label}。",
   "Failed to sync {label}.": "同步 {label} 失敗。",
