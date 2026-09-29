@@ -167,7 +167,7 @@ export const zhTW: Record<string, string> = {
   "Turn quote update flashing on or off": "開啟或關閉行情閃爍",
   "Check GitHub releases for a newer version": "從 GitHub Releases 檢查新版本",
   "Turn automatic crash reports on or off": "開啟或關閉自動當機報告",
-  "Turn anonymous function usage counts on or off": "開啟或關閉匿名功能使用統計",
+  "Turn usage counts and the command bar search log on or off": "開啟或關閉使用統計和命令列搜尋紀錄",
   "Switch color theme": "切換配色主題",
   "Cycle chart rendering between Auto, Kitty, and Braille": "在 Auto、Kitty 與 Braille 點陣間切換圖表渲染",
   "Toggle plugins on/off": "啟用/停用外掛",

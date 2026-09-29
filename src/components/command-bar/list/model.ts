@@ -37,6 +37,11 @@ export interface ResultItem {
   /** Tints the trailing marker and the section heading with the AI accent. */
   accent?: boolean;
   /**
+   * How the command-search report names running this row, for rows its kind
+   * does not describe: an AI candidate with the text it runs, or Ask Gloom.
+   */
+  searchChoice?: { kind: "assist"; input: string } | { kind: "ask-gloom" };
+  /**
    * Set false for rows that answer nothing on their own — a placeholder, or an
    * offer the user never asked for. The list skips them when it picks the
    * selection for an untouched query, so plain Enter always runs a real match.

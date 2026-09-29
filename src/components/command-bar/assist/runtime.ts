@@ -21,6 +21,22 @@ function normalizeAssistQuery(query: string): string {
   return query.trim().replace(/\s+/g, " ");
 }
 
+/** An answer as the bar keeps it: the candidates and the server's record of the ask. */
+interface AssistAnswer {
+  candidates: AssistCommandCandidate[];
+  searchId?: string;
+}
+
+function answeredState(query: string, source: AssistRequestSource, answer: AssistAnswer): AssistRequestState {
+  return {
+    status: "answered",
+    query,
+    source,
+    candidates: answer.candidates,
+    ...(answer.searchId ? { searchId: answer.searchId } : {}),
+  };
+}
+
 /** Maps a failed `/assist/command` call onto the row the user should see. */
 function classifyAssistError(error: unknown): AssistErrorKind {
   const status = error instanceof ApiRequestError ? error.status : undefined;
@@ -38,16 +54,20 @@ function classifyAssistError(error: unknown): AssistErrorKind {
  * Requests, answers, dismissals and explicit asks are keyed on the normalized
  * question, while the state carries the text in the bar, which is what the
  * rows compare against. Editing only the spacing therefore keeps the state and
- * relabels it with the new text.
+ * relabels it with the new text. An answer keeps the `searchId` it came with,
+ * so a later search report for the same question points at the same record.
  */
 export function useCommandBarAssist({
   autoAsk,
   getInventory,
+  logSearches,
   rootQuery,
 }: {
   /** Whether this query qualifies for a background ask right now. */
   autoAsk: boolean;
   getInventory: () => AssistCommandDescriptor[];
+  /** Whether the server may keep the question (the Usage setting), read as each ask goes out. */
+  logSearches: () => boolean;
   rootQuery: string;
 }): {
   /** False once Esc has dismissed the section for the query still in the bar. */
@@ -70,7 +90,7 @@ export function useCommandBarAssist({
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Answers by normalized question. */
-  const answersRef = useRef(new Map<string, AssistCommandCandidate[]>());
+  const answersRef = useRef(new Map<string, AssistAnswer>());
   /** Normalized question the runtime has already acted on, updated when a request starts. */
   const handledQueryRef = useRef<string | null>(null);
   /** Normalized question the user dismissed with Esc; the section stays gone until it changes. */
@@ -82,6 +102,8 @@ export function useCommandBarAssist({
   rootQueryRef.current = rootQuery;
   const getInventoryRef = useRef(getInventory);
   getInventoryRef.current = getInventory;
+  const logSearchesRef = useRef(logSearches);
+  logSearchesRef.current = logSearches;
 
   const cancelPending = useCallback(() => {
     const debounce = debounceRef.current;
@@ -122,7 +144,7 @@ export function useCommandBarAssist({
 
     const cached = answersRef.current.get(key);
     if (cached) {
-      updateAssistState({ status: "answered", query: trimmed, source: resolveSource(), candidates: cached });
+      updateAssistState(answeredState(trimmed, resolveSource(), cached));
       return;
     }
 
@@ -134,11 +156,15 @@ export function useCommandBarAssist({
       try {
         const response = await apiClient.assistCommand(trimmed, getInventoryRef.current(), {
           signal: controller.signal,
+          log: logSearchesRef.current(),
         });
         if (controller.signal.aborted || abortRef.current !== controller) return;
-        const candidates = response?.candidates ?? [];
-        answersRef.current.set(key, candidates);
-        updateAssistState({ status: "answered", query: resolveQuery(), source: resolveSource(), candidates });
+        const answer: AssistAnswer = {
+          candidates: response?.candidates ?? [],
+          ...(typeof response?.searchId === "string" && response.searchId ? { searchId: response.searchId } : {}),
+        };
+        answersRef.current.set(key, answer);
+        updateAssistState(answeredState(resolveQuery(), resolveSource(), answer));
       } catch (error) {
         if (controller.signal.aborted || abortRef.current !== controller) return;
         const kind = classifyAssistError(error);
@@ -188,7 +214,7 @@ export function useCommandBarAssist({
     const cached = answersRef.current.get(key);
     if (cached) {
       handledQueryRef.current = key;
-      updateAssistState({ status: "answered", query: trimmed, source: "auto", candidates: cached });
+      updateAssistState(answeredState(trimmed, "auto", cached));
       return;
     }
     if (Date.now() < rateLimitedUntilRef.current) return;

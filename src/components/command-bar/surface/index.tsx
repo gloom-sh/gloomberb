@@ -6,7 +6,8 @@ import type { LayoutBounds } from "../../../plugins/pane-manager";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";
-import { shouldAutoAskAssist, type AssistRowHandlers } from "../assist/model";
+import { shouldAutoAskAssist, type AssistRequestState, type AssistRowHandlers } from "../assist/model";
+import { usageTelemetryAllowed } from "../../../telemetry/usage-counts";
 
 /** Command-bar prefix of the assistant pane. */
 const ASKG_SHORTCUT_PREFIX = "ASKG";
@@ -17,6 +18,7 @@ import {
 import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
+import { useCommandSearchReport } from "../routes/root/search-report";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useRootPluginInstallItem } from "../routes/root/plugin-install";
 import { useCommandBarThemePreview } from "../theme-preview";
@@ -112,6 +114,26 @@ export function CommandBar({
     restoreThemePreview,
   });
 
+  // Searches follow the Usage setting, both what the AI may keep and the report.
+  const searchLoggingAllowed = useCallback(() => usageTelemetryAllowed(stateRef.current.config), [stateRef]);
+  // Filled in below, once the assist runtime and the shortcut parser have run.
+  const assistStateRef = useRef<AssistRequestState>({ status: "idle" });
+  const rootQueryIsShortcutRef = useRef(false);
+  const { reportRun: reportRootRowRun, settle: settleSearchReport } = useCommandSearchReport({
+    assistStateRef,
+    currentRouteRef,
+    isEnabled: searchLoggingAllowed,
+    isShortcutQuery: () => rootQueryIsShortcutRef.current,
+    rootQueryRef,
+  });
+  // Every close that follows something running goes through here, so the
+  // search report never reads it as a dismissal. Esc, a click outside the bar
+  // and the bar's own key close without it.
+  const closeAfterRun = useCallback((options?: { revertThemePreview?: boolean }) => {
+    settleSearchReport();
+    closeAll(options);
+  }, [closeAll, settleSearchReport]);
+
   const {
     adaptTickerSearchRouteResult,
     buildLayoutItems,
@@ -158,7 +180,7 @@ export function CommandBar({
     activeFinancials,
     activeTickerData,
     activeTickerSymbol,
-    closeAll,
+    closeAll: closeAfterRun,
     config: state.config,
     currentRoute,
     dataProvider,
@@ -191,13 +213,14 @@ export function CommandBar({
     paneTemplates: getAvailablePaneShortcutTemplates(rootQuery),
     activeTicker: activeTickerSymbol,
   }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
+  rootQueryIsShortcutRef.current = rootShortcutIntent.kind !== "none";
 
   // Runs the typed text again once a plugin installed from the bar is in, the
   // way a key bound to it would.
   const rerunQuery = useCallback((query: string) => {
     dispatch({ type: "SET_COMMAND_BAR", open: true, query, launch: { kind: "run-query", query } });
   }, [dispatch]);
-  const closeBar = useCallback(() => closeAll({ revertThemePreview: false }), [closeAll]);
+  const closeBar = useCallback(() => closeAfterRun({ revertThemePreview: false }), [closeAfterRun]);
   const pluginInstallItem = useRootPluginInstallItem({
     enabled: !currentRoute && rootShortcutIntent.kind === "none",
     query: rootQuery,
@@ -222,8 +245,10 @@ export function CommandBar({
   const { assistActive, assistState, askAssist, resetAssist } = useCommandBarAssist({
     autoAsk: assistAutoAsk,
     getInventory: buildAssistInventory,
+    logSearches: searchLoggingAllowed,
     rootQuery,
   });
+  assistStateRef.current = assistState;
   // Filled in below once the selection runtime exists, so an AI candidate runs
   // through the very same submit path as text the user typed.
   const runRootQueryRef = useRef<
@@ -251,11 +276,18 @@ export function CommandBar({
     if (rootQueryRef.current.trim() !== pendingQuery) return;
     const candidate = assistState.candidates[0];
     if (!candidate) return;
+    // The claimed answer is the first AI row, which is what the user picked.
+    const listState = visibleListStateRef.current;
+    const rank = listState?.kind === "root"
+      ? listState.results.findIndex((item) => item.searchChoice?.kind === "assist")
+      : -1;
+    const row = rank >= 0 ? listState?.results[rank] : undefined;
+    if (row) reportRootRowRun({ item: row, query: pendingQuery, rank, typed: false });
     runRootQueryRef.current?.(
       candidate.input,
       candidate.prefix ? { fallbackPrefix: candidate.prefix } : undefined,
     );
-  }, [assistState, rootQueryRef]);
+  }, [assistState, reportRootRowRun, rootQueryRef, visibleListStateRef]);
   const startAssistSignUp = useCallback(() => {
     const signUpCommand = getAvailablePluginCommands().find((command) => command.id === "auth-signup");
     if (signUpCommand?.wizard?.length) {
@@ -296,9 +328,9 @@ export function CommandBar({
   // goes to Help > Shortcuts, which captures once the bar is gone.
   const bindKey = useCallback((query: string) => {
     requestKeybindingCapture({ kind: "command", query });
-    closeAll({ revertThemePreview: false });
+    closeAfterRun({ revertThemePreview: false });
     pluginRegistry.showPane("help");
-  }, [closeAll, pluginRegistry]);
+  }, [closeAfterRun, pluginRegistry]);
 
   const searchProviders = useMemo(
     () => getAvailableCommandBarSearchProviders(pluginRegistry, state.config.disabledPlugins),
@@ -309,8 +341,8 @@ export function CommandBar({
     activeCollectionId,
   }), [activeCollectionId, activeTickerSymbol]);
   const closeAfterProviderResult = useCallback(() => {
-    closeAll({ revertThemePreview: false });
-  }, [closeAll]);
+    closeAfterRun({ revertThemePreview: false });
+  }, [closeAfterRun]);
   const { providerResultItems, providerSearching } = useCommandBarSearchProviders({
     providers: searchProviders,
     query: rootQuery,
@@ -392,7 +424,7 @@ export function CommandBar({
     activeTickerSymbol,
     availableCommands,
     clearThemePreview,
-    closeAll,
+    closeAll: closeAfterRun,
     collectionWorkflowActions,
     createPaneTemplateItem,
     createPluginCommandItem,
@@ -401,6 +433,7 @@ export function CommandBar({
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
     getAvailablePluginCommands,
+    onRootRowRun: reportRootRowRun,
     openInlineConfirm,
     openModeRoute,
     openPaneTemplateWorkflow,
@@ -474,13 +507,14 @@ export function CommandBar({
     applyThemePreview,
     cellHeightPx,
     cellWidthPx,
-    closeAll,
+    closeAll: closeAfterRun,
     commitTheme,
     committedThemeId: state.config.theme,
     confirmCurrentRoute,
     currentRoute,
     currentRouteRef,
     dismissCommandBar,
+    dismissOverlay: closeAll,
     focusWorkflowField,
     getWorkflowInputRef,
     getWorkflowFieldStringValue,

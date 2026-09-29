@@ -167,7 +167,7 @@ export const ja: Record<string, string> = {
   "Turn quote update flashing on or off": "株価更新時の点滅をオン／オフ",
   "Check GitHub releases for a newer version": "GitHub Releases で新しいバージョンを確認",
   "Turn automatic crash reports on or off": "自動クラッシュレポートのオン/オフを切り替え",
-  "Turn anonymous function usage counts on or off": "匿名の機能利用回数のオン/オフを切り替え",
+  "Turn usage counts and the command bar search log on or off": "利用回数とコマンドバーの検索記録のオン/オフを切り替え",
   "Switch color theme": "配色テーマを切り替え",
   "Cycle chart rendering between Auto, Kitty, and Braille": "チャート描画を Auto、Kitty、Braille から切り替え",
   "Toggle plugins on/off": "プラグインをオン／オフ",

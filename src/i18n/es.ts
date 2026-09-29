@@ -166,7 +166,7 @@ export const es: Record<string, string> = {
   "Turn quote update flashing on or off": "Activar o desactivar el parpadeo de cotizaciones",
   "Check GitHub releases for a newer version": "Buscar una versión más reciente en GitHub Releases",
   "Turn automatic crash reports on or off": "Activar o desactivar los informes automáticos de fallos",
-  "Turn anonymous function usage counts on or off": "Activar o desactivar el recuento anónimo de funciones usadas",
+  "Turn usage counts and the command bar search log on or off": "Activar o desactivar el recuento de uso y el registro de búsquedas de la barra de comandos",
   "Switch color theme": "Cambiar tema de color",
   "Cycle chart rendering between Auto, Kitty, and Braille": "Alternar renderizado entre Auto, Kitty y Braille",
   "Toggle plugins on/off": "Activar/desactivar plugins",

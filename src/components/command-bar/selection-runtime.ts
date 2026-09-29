@@ -26,6 +26,7 @@ import {
 } from "./routes/root/selection";
 import type { OpenInlineConfirm } from "./routing/confirm";
 import { activatePickerSelectionAction } from "./picker-activation";
+import type { RootRowRun } from "./routes/root/search-report";
 
 type OpenModeRouteFn = (
   screen: "ticker-search" | "layout",
@@ -57,6 +58,12 @@ interface UseCommandBarSelectionRuntimeOptions {
   executeCollectionCommand: ExecuteCollectionCommandFn;
   getAvailablePaneShortcutTemplates: (query: string) => PaneTemplateDef[];
   getAvailablePluginCommands: () => CommandDef[];
+  /**
+   * The command-search report, called as a root row runs. It comes first so
+   * a row that closes the bar finds the visit reported; the report itself is
+   * sent later and never holds the row up.
+   */
+  onRootRowRun?: (run: RootRowRun) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: OpenModeRouteFn;
   openPaneTemplateWorkflow: (template: PaneTemplateDef, options?: { arg?: string }) => void;
@@ -91,6 +98,7 @@ export function useCommandBarSelectionRuntime({
   executeCollectionCommand,
   getAvailablePaneShortcutTemplates,
   getAvailablePluginCommands,
+  onRootRowRun,
   openInlineConfirm,
   openModeRoute,
   openPaneTemplateWorkflow,
@@ -253,12 +261,22 @@ export function useCommandBarSelectionRuntime({
   const activateListSelection = useCallback((options?: { secondary?: boolean; item?: ResultItem }) => {
     const listState = visibleListStateRef.current;
     if (!listState) return;
-    const selected = options?.item
-      ?? (!currentRoute && rootQueryRef.current !== rootQuery
+    const typed = options?.item
+      ? null
+      : (!currentRoute && rootQueryRef.current !== rootQuery
         ? resolveImmediateRootSelection(rootQueryRef.current)
-        : null)
-      ?? listState.results[listState.selectedIdx];
+        : null);
+    const selected = options?.item ?? typed ?? listState.results[listState.selectedIdx];
     if (!selected || selected.disabled) return;
+    // Read before the row runs, which can rewrite the query.
+    if (!currentRoute) {
+      onRootRowRun?.({
+        item: selected,
+        query: rootQueryRef.current,
+        rank: selected === typed ? 0 : Math.max(0, listState.results.indexOf(selected)),
+        typed: selected === typed,
+      });
+    }
 
     if (options?.secondary && selected.secondaryAction) {
       void selected.secondaryAction();
@@ -294,6 +312,7 @@ export function useCommandBarSelectionRuntime({
     collectionWorkflowActions,
     currentRoute,
     executeCollectionCommand,
+    onRootRowRun,
     openInlineConfirm,
     persistLayoutChange,
     pluginRegistry,

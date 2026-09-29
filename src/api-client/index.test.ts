@@ -1143,6 +1143,74 @@ describe("apiClient command assist", () => {
     // A cut list would read as the whole set, so an oversized one is not sent.
     expect(curve?.arg).toEqual({ kind: "text", optional: true });
   });
+
+  test("asks the server not to keep the query only when told so", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    apiClient.setSessionToken("session-token");
+    apiClient.restoreCachedUser(verifiedUser);
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ candidates: [], searchId: "search-1" });
+    });
+
+    const logged = await apiClient.assistCommand("gamestop options", []);
+    await apiClient.assistCommand("gamestop options", [], { log: true });
+    await apiClient.assistCommand("gamestop options", [], { log: false });
+
+    expect(logged.searchId).toBe("search-1");
+    expect(bodies.map((body) => body.log)).toEqual([undefined, undefined, false]);
+  });
+});
+
+describe("apiClient command search report", () => {
+  test("sends only with a session, fits the server caps, and never throws", async () => {
+    const sent: Array<{ path: string; body: Record<string, unknown> }> = [];
+    let fail = false;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      if (fail) throw new Error("offline");
+      sent.push({ path: new URL(String(input)).pathname, body: JSON.parse(String(init?.body)) });
+      return new Response(null, { status: 204 });
+    });
+    const report = {
+      query: `  new\nchat   ${"pane ".repeat(60)}`,
+      outcome: "chosen" as const,
+      choice: {
+        kind: "a-kind-much-longer-than-the-server-takes",
+        label: "L".repeat(130),
+        input: "CHAT #general",
+        rank: 512,
+        category: "Ask AI",
+        fromAssist: true,
+      },
+      appVersion: "1.2.3",
+    };
+
+    apiClient.reportCommandSearch(report);
+    await Bun.sleep(0);
+    expect(sent).toEqual([]);
+
+    apiClient.setSessionToken("session-token");
+    apiClient.reportCommandSearch(report);
+    apiClient.reportCommandSearch({ ...report, query: "nvda", searchId: "search-1", outcome: "dismissed" });
+    await Bun.sleep(0);
+    expect(sent.map((request) => request.path)).toEqual(["/assist/searches", "/assist/searches"]);
+    const [chosen, dismissed] = sent.map((request) => request.body);
+    expect(chosen?.query).toBe(`new chat ${"pane ".repeat(60)}`.slice(0, 200));
+    expect(chosen?.choice).toEqual({
+      kind: "a-kind-much-longer-than-the-server-takes".slice(0, 24),
+      label: "L".repeat(120),
+      input: "CHAT #general",
+      rank: 200,
+      category: "Ask AI",
+      fromAssist: true,
+    });
+    // A dismissal names no row.
+    expect(dismissed).toEqual({ query: "nvda", searchId: "search-1", outcome: "dismissed", appVersion: "1.2.3" });
+
+    fail = true;
+    expect(() => apiClient.reportCommandSearch(report)).not.toThrow();
+    await Bun.sleep(0);
+  });
 });
 
 describe("apiClient cloud news", () => {

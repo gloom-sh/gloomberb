@@ -243,7 +243,7 @@ export const commands: Command[] = [
     id: "toggle-usage-counts",
     prefix: "",
     label: "Usage Counts",
-    description: "Turn anonymous function usage counts on or off",
+    description: "Turn usage counts and the command bar search log on or off",
     category: "Config",
   },
 

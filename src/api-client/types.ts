@@ -219,6 +219,11 @@ export interface AssistCommandCandidate {
 
 export interface AssistCommandResponse {
   candidates: AssistCommandCandidate[];
+  /**
+   * The server's record of this ask, for the command-search report to point
+   * at. Absent when the ask was sent with `log: false`.
+   */
+  searchId?: string;
 }
 
 export type AccountProfileUpdate = Partial<{

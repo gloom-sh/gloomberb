@@ -50,6 +50,8 @@ interface CommandBarPanelRuntimeOptions {
   currentRoute: CommandBarRoute | null;
   currentRouteRef: MutableRefObject<CommandBarRoute | null>;
   dismissCommandBar: () => void;
+  /** A click outside the bar: a dismissal, unlike `closeAll` after a commit. */
+  dismissOverlay: () => void;
   focusWorkflowField: (fieldId: string) => void;
   getWorkflowFieldStringValue: (
     field: CommandBarWorkflowField,
@@ -106,6 +108,7 @@ export function useCommandBarPanelRuntime({
   currentRoute,
   currentRouteRef,
   dismissCommandBar,
+  dismissOverlay,
   focusWorkflowField,
   getWorkflowFieldStringValue,
   getWorkflowInputRef,
@@ -287,7 +290,7 @@ export function useCommandBarPanelRuntime({
     onMultiSelectToggle: handleMultiSelectToggle,
     onNativeOccluderChange,
     onSelectFieldRef: setWorkflowSelectFieldRef,
-    onOverlayClose: closeAll,
+    onOverlayClose: dismissOverlay,
     onQueryChange: setActiveListQuery,
     onThemeCommit: handleThemeCommit,
     onThemePreview: applyThemePreview,

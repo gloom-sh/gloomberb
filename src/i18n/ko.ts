@@ -165,7 +165,7 @@ export const ko: Record<string, string> = {
   "Turn quote update flashing on or off": "시세 업데이트 깜박임 켜기/끄기",
   "Check GitHub releases for a newer version": "GitHub 릴리스에서 새 버전 확인",
   "Turn automatic crash reports on or off": "자동 충돌 보고 켜기 또는 끄기",
-  "Turn anonymous function usage counts on or off": "익명 기능 사용 횟수 켜기 또는 끄기",
+  "Turn usage counts and the command bar search log on or off": "사용 횟수 및 명령 팔레트 검색 기록 켜기 또는 끄기",
   "Switch color theme": "색상 테마 전환",
   "Cycle chart rendering between Auto, Kitty, and Braille": "Auto, Kitty, Braille 차트 렌더링 전환",
   "Toggle plugins on/off": "플러그인 켜기/끄기 전환",

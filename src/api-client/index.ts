@@ -28,6 +28,7 @@ import { CloudTeamsApi } from "./teams";
 import { CloudTelemetryApi } from "./telemetry";
 import { CloudThesesApi } from "./theses";
 import { CloudViewsApi } from "./views";
+import type { CommandSearchReport } from "./telemetry";
 import type {
   AssistCommandDescriptor,
   AssistCommandResponse,
@@ -46,6 +47,9 @@ export { TeamRevisionConflictError } from "./views";
 export { TEAM_ACCENT_COLORS } from "./types";
 export type * from "./types";
 export type {
+  CommandSearchChoice,
+  CommandSearchOutcome,
+  CommandSearchReport,
   CrashReportError,
   CrashReportKind,
   CrashReportSurface,
@@ -538,12 +542,13 @@ class GloomApiClient {
    * Resolves a natural-language command-bar query into runnable command-bar
    * inputs. Requires a verified session; free accounts are included. The
    * request is bounded client-side so a stalled upstream cannot hold the
-   * command bar in its loading state.
+   * command bar in its loading state. `log: false` asks the server not to
+   * keep the query; it then answers without a `searchId`.
    */
   async assistCommand(
     query: string,
     commands: AssistCommandDescriptor[],
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; log?: boolean },
   ): Promise<AssistCommandResponse> {
     const controller = new AbortController();
     const callerSignal = options?.signal;
@@ -560,6 +565,7 @@ class GloomApiClient {
         body: JSON.stringify({
           query: query.trim().slice(0, ASSIST_QUERY_MAX_LENGTH),
           commands: commands.slice(0, ASSIST_COMMAND_LIMIT).map(capAssistArgOptions),
+          ...(options?.log === false ? { log: false } : {}),
         }),
         signal: controller.signal,
       });
@@ -571,6 +577,20 @@ class GloomApiClient {
       );
     } finally {
       callerSignal?.removeEventListener("abort", abortFromCaller);
+    }
+  }
+
+  /**
+   * Stores how a command-bar search ended, to improve search. Fire and
+   * forget: sent only with a signed-in session, it never throws and never
+   * waits, and a report that fails is dropped.
+   */
+  reportCommandSearch(report: CommandSearchReport): void {
+    try {
+      if (!this.isSignedIn()) return;
+      void this.telemetry.reportCommandSearch(report).catch(() => {});
+    } catch {
+      /* A report must never get in the way of the command bar. */
     }
   }
 

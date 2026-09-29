@@ -25,9 +25,10 @@ export function reportCloudRequest(
   success: boolean,
   error?: unknown,
 ): void {
-  // Crash reports and usage counts are background traffic, kept out of the
-  // connections pane the same way the API client keeps them out in-process.
-  if (!isGloomCloudUrl(url) || url.pathname.startsWith("/telemetry/")) return;
+  // Crash reports, usage counts and command-search reports are background
+  // traffic, kept out of the connections pane the same way the API client
+  // keeps them out in-process.
+  if (!isGloomCloudUrl(url) || url.pathname.startsWith("/telemetry/") || url.pathname === "/assist/searches") return;
   const report = {
     operation: `${method} ${url.pathname}`,
     success,

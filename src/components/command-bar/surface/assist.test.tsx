@@ -4,6 +4,7 @@ import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
+import { VERSION } from "../../../version";
 import {
   CommandBarHarness,
   createCommandBarTestControls,
@@ -13,8 +14,12 @@ import {
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 const originalWebSocket = globalThis.WebSocket;
+/** The environment switches that turn every report off; a developer's shell may set one. */
+const OPT_OUT_ENV = ["GLOOMBERB_NO_TELEMETRY", "DO_NOT_TRACK"] as const;
+const originalOptOutEnv = OPT_OUT_ENV.map((name) => process.env[name]);
 
 beforeEach(() => {
+  for (const name of OPT_OUT_ENV) delete process.env[name];
   apiClient.dispose();
   // The header subscribes to SPY. A real socket rejects this test's fake token
   // and can mark the account unverified before the assist debounce completes.
@@ -34,6 +39,11 @@ afterEach(() => {
   }
   apiClient.dispose();
   globalThis.WebSocket = originalWebSocket;
+  OPT_OUT_ENV.forEach((name, index) => {
+    const value = originalOptOutEnv[index];
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  });
 });
 
 const { waitForFrameToContain } = createCommandBarTestControls(() => testSetup!);
@@ -51,18 +61,27 @@ function signInVerified(): void {
 }
 
 /**
- * Answers `/assist/command` locally and returns the asks that were made. Other
- * cloud calls are refused: ambient client traffic (a session refresh) must
- * never be mistaken for the bar asking a question.
+ * Answers `/assist/command` locally and returns the asks that were made, and
+ * collects search reports into `reports`. Other cloud calls are refused:
+ * ambient client traffic (a session refresh) must never be mistaken for the
+ * bar asking a question.
  */
-function mockAssistTransport(respond: (body: unknown) => Response | Promise<Response>): string[] {
+function mockAssistTransport(
+  respond: (body: unknown) => Response | Promise<Response>,
+  reports: unknown[] = [],
+): string[] {
   const requests: string[] = [];
   setCloudApiFetchTransport(async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    if (url.endsWith("/assist/searches")) {
+      reports.push(body);
+      return new Response(null, { status: 204 });
+    }
     if (!url.endsWith("/assist/command")) {
       throw new Error(`unexpected cloud request: ${url}`);
     }
     requests.push(url);
-    return await respond(JSON.parse(String(init?.body ?? "{}")));
+    return await respond(body);
   });
   return requests;
 }
@@ -103,6 +122,14 @@ async function waitForRequest(requests: string[], count = 1): Promise<void> {
     await settleFrame(testSetup!);
   }
   throw new Error("Timed out waiting for the assist request.");
+}
+
+async function waitForReports(reports: unknown[], count = 1): Promise<void> {
+  for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
+    if (reports.length >= count) return;
+    await settleFrame(testSetup!);
+  }
+  throw new Error("Timed out waiting for the search report.");
 }
 
 async function waitForFrameWithout(text: string): Promise<string> {
@@ -224,12 +251,14 @@ describe("CommandBar AI assist", () => {
     signInVerified();
     let releaseResponse = () => {};
     const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const reports: unknown[] = [];
     const requests = mockAssistTransport(async () => {
       await held;
       return jsonResponse({
         candidates: [{ input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 }],
+        searchId: "search-claimed",
       });
-    });
+    }, reports);
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
     testSetup = await testRender(
@@ -254,6 +283,14 @@ describe("CommandBar AI assist", () => {
     }
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
     expect(requests).toHaveLength(1);
+    // Enter on "Thinking…" picked nothing yet; the answer that ran is the pick.
+    await waitForReports(reports);
+    expect(reports).toEqual([expect.objectContaining({
+      query: "new chat pane",
+      searchId: "search-claimed",
+      outcome: "chosen",
+      choice: expect.objectContaining({ kind: "assist", input: "CHAT #general", rank: 0, fromAssist: true }),
+    })]);
   });
 
   test("does not restart an ask when Enter repeats before loading renders", async () => {
@@ -383,5 +420,205 @@ describe("CommandBar AI assist", () => {
     // the local match the user was already looking at.
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
+  });
+});
+
+describe("CommandBar search report", () => {
+  const generalAnswer = {
+    candidates: [{ input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 }],
+  };
+
+  test("reports the AI candidate the user ran with the answer's search id, once per visit", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    const asks: unknown[] = [];
+    mockAssistTransport((body) => {
+      asks.push(body);
+      return jsonResponse({ ...generalAnswer, searchId: "search-1" });
+    }, reports);
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+
+    testSetup = await testRender(
+      <CommandBarHarness
+        query="new chat pane"
+        configurePluginRegistry={configureEarningsRegistry(created)}
+      />,
+      { width: 120, height: 20 },
+    );
+
+    await testSetup.renderOnce();
+    await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
+    // With the Usage setting on, the ask leaves `log` to the server's default.
+    expect(asks).toEqual([expect.not.objectContaining({ log: expect.anything() })]);
+
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
+    await waitForReports(reports);
+    expect(reports).toEqual([{
+      query: "new chat pane",
+      searchId: "search-1",
+      outcome: "chosen",
+      choice: {
+        kind: "assist",
+        label: "#general · Open the general channel",
+        input: "CHAT #general",
+        rank: 0,
+        category: "Ask AI",
+        fromAssist: true,
+      },
+      appVersion: VERSION,
+    }]);
+
+    // The bar stays open in this harness: running again, pressing Esc and
+    // finally closing it add nothing to the one report.
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await emitKeypress(testSetup, { name: "escape" });
+    testSetup.renderer.destroy();
+    testSetup = undefined;
+    await Bun.sleep(20);
+    expect(reports).toHaveLength(1);
+  });
+
+  test("reports a local row without a search id while the answer is still out", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    // Never answers: nothing on screen describes this query yet.
+    const requests = mockAssistTransport(() => new Promise<Response>(() => {}), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="MSFT" />, { width: 120, height: 20 });
+
+    await testSetup.renderOnce();
+    await waitForRequest(requests);
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForReports(reports);
+    expect(reports).toEqual([{
+      query: "MSFT",
+      outcome: "chosen",
+      choice: expect.objectContaining({ kind: "ticker", rank: 0, fromAssist: false }),
+      appVersion: VERSION,
+    }]);
+  });
+
+  test("reports a typed shortcut with the text it ran", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    const requests = mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="DES MSFT" />, { width: 100, height: 20 });
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForReports(reports);
+    expect(reports).toEqual([{
+      query: "DES MSFT",
+      outcome: "chosen",
+      choice: expect.objectContaining({ kind: "shortcut", input: "DES MSFT", rank: 0, fromAssist: false }),
+      appVersion: VERSION,
+    }]);
+    // A prefix the parser claims is never sent to the AI.
+    expect(requests).toEqual([]);
+  });
+
+  test("reports a dismissal once when Esc closes the bar on a query", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse({ ...generalAnswer, searchId: "search-2" }), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="new chat pane" live />, { width: 120, height: 20 });
+
+    await testSetup.renderOnce();
+    await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
+    await emitKeypress(testSetup, { name: "escape" });
+    await waitForFrameToContain("Search or run a command");
+    await waitForReports(reports);
+    await settleFrame(testSetup);
+    expect(reports).toEqual([{
+      query: "new chat pane",
+      searchId: "search-2",
+      outcome: "dismissed",
+      appVersion: VERSION,
+    }]);
+  });
+
+  test("does not read a key-bound run that closes the bar as a dismissal", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    // A key bound to "DES MSFT" opens the bar, runs the text and closes it.
+    testSetup = await testRender(
+      <CommandBarHarness
+        query="DES MSFT"
+        live
+        configureState={(state) => ({
+          ...state,
+          commandBarLaunchRequest: { kind: "run-query", query: "DES MSFT", sequence: 1 },
+        })}
+      />,
+      { width: 100, height: 20 },
+    );
+
+    await testSetup.renderOnce();
+    await waitForFrameToContain("Search or run a command");
+    await settleFrame(testSetup, 50);
+    expect(reports).toEqual([]);
+  });
+
+  test("reports nothing for an empty query", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="" live />, { width: 100, height: 20 });
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "escape" });
+    await waitForFrameToContain("Search or run a command");
+    await settleFrame(testSetup, 50);
+    expect(reports).toEqual([]);
+  });
+
+  test("with usage telemetry off, asks with log: false and reports nothing", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    const asks: unknown[] = [];
+    mockAssistTransport((body) => {
+      asks.push(body);
+      return jsonResponse(generalAnswer);
+    }, reports);
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+
+    testSetup = await testRender(
+      <CommandBarHarness
+        query="new chat pane"
+        configureConfig={(config) => ({ ...config, telemetry: { usage: false } })}
+        configurePluginRegistry={configureEarningsRegistry(created)}
+      />,
+      { width: 120, height: 20 },
+    );
+
+    await testSetup.renderOnce();
+    await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
+    expect(asks).toEqual([expect.objectContaining({ query: "new chat pane", log: false })]);
+
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
+    testSetup.renderer.destroy();
+    testSetup = undefined;
+    await Bun.sleep(20);
+    expect(reports).toEqual([]);
+  });
+
+  test("sends nothing signed out", async () => {
+    const reports: unknown[] = [];
+    const requests = mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="DES MSFT" live />, { width: 100, height: 20 });
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await settleFrame(testSetup, 50);
+    expect(requests).toEqual([]);
+    expect(reports).toEqual([]);
   });
 });

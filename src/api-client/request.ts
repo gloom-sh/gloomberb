@@ -335,10 +335,10 @@ export class CloudApiRequestTransport {
       }
       return parsed as T;
     };
-    // Crash reports and usage counts are background traffic: a rate-limited,
-    // timed-out or missing one must not show up as a Cloud outage in the
-    // connections pane.
-    if (path.startsWith("/telemetry/")) return request();
+    // Crash reports, usage counts and command-search reports are background
+    // traffic: a rate-limited, timed-out or missing one must not show up as a
+    // Cloud outage in the connections pane.
+    if (path.startsWith("/telemetry/") || path === "/assist/searches") return request();
     return this.connectionHealth.track(
       GLOOM_CLOUD_HTTP_CONNECTION_ID,
       operation,

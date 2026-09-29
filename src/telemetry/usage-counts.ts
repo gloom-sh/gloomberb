@@ -25,6 +25,11 @@ import { telemetryOptedOut } from "./crash-reports";
  * leaves the machine. Nothing from the workspace goes along: no tickers,
  * arguments, layouts, portfolios or queries.
  *
+ * The same setting covers command-bar searches, which are not anonymous:
+ * when signed in, a search the user finishes in the bar (the text, the AI's
+ * suggestions and the row they ran) is stored with their account to improve
+ * search. See `usageTelemetryAllowed` and the command bar's search report.
+ *
  * Counting never throws and never blocks. Counts add up in memory and are
  * sent a minute after the first one, then at most every 15 minutes, and
  * when the app quits.
@@ -99,6 +104,21 @@ export function usageCountsEnabled(
 ): boolean {
   if (config?.telemetry?.usage === false) return false;
   return !telemetryOptedOut(env);
+}
+
+/**
+ * Whether the Usage setting allows sending something right now, for what it
+ * covers besides the counts (command-bar searches): the config switch and the
+ * environment, plus the installed surface's own opt-outs, such as Do Not
+ * Track in the browser and the launch environment on the desktop. Never throws.
+ */
+export function usageTelemetryAllowed(config: { telemetry?: TelemetryConfig } | null | undefined): boolean {
+  try {
+    if (!usageCountsEnabled(config, typeof process !== "undefined" ? process.env : undefined)) return false;
+    return !host || host.isEnabled();
+  } catch {
+    return false;
+  }
 }
 
 /**
