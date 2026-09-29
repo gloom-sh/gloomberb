@@ -6,7 +6,7 @@ interface BrokerManagerFooterActions {
   connectSelected: () => Promise<void>;
   openAddBroker: () => void;
   openProfileAction: () => void;
-  removeSelected: () => Promise<void>;
+  removeSelected: () => void;
   saveEdit: () => Promise<void>;
   startEdit: () => void;
   syncSelected: () => Promise<void>;
@@ -53,7 +53,7 @@ export function useBrokerManagerFooter({
       hints.push({ id: "open", key: "o", label: "pen", onPress: () => actionsRef.current.openProfileAction() });
     }
     if (canRemoveSelected) {
-      hints.push({ id: "disconnect", key: "d", label: "isconnect", onPress: () => actionsRef.current.removeSelected().catch(() => {}) });
+      hints.push({ id: "disconnect", key: "d", label: "isconnect", onPress: () => actionsRef.current.removeSelected() });
     }
     return hints;
   }, [canOpenSelectedAction, canRemoveSelected, canUseSelectedBroker, editing]);

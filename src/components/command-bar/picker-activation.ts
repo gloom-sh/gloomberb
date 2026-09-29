@@ -1,5 +1,4 @@
-import { signedInBrokerForProfile } from "../../brokers/signed-in/connect";
-import { isSignedInBrokerProfile } from "../../brokers/signed-in/profile";
+import { brokerProfileRemovalConfirm } from "../../brokers/remove-profile";
 import type { PluginRegistry } from "../../plugins/registry";
 import { swapPanes } from "../../plugins/pane-manager";
 import type { LayoutConfig } from "../../types/config";
@@ -67,25 +66,12 @@ export function activatePickerSelectionAction({
       });
       return;
     case "disconnect-broker": {
-      // The connection belongs to the Gloom account, so removing it reaches every device.
+      // The same confirm as the Brokers pane's, which says when the Gloom account's connection goes too.
       const instance = pluginRegistry.getConfigFn().brokerInstances.find((entry) => entry.id === option.id);
-      const signedIn = instance && isSignedInBrokerProfile(instance)
-        ? signedInBrokerForProfile(instance, instance.label)
-        : null;
-      openInlineConfirm({
-        confirmId: "disconnect-broker",
-        title: "Disconnect Broker Account",
-        body: [
-          `Remove "${option.label}" and all imported broker portfolios, positions, and contracts?`,
-          ...(signedIn ? [`This also disconnects ${signedIn.name} from your other devices and agents.`] : []),
-        ],
-        confirmLabel: "Disconnect Broker",
-        cancelLabel: "Back",
-        tone: "danger",
-        onConfirm: async () => {
-          await collectionWorkflowActions.disconnectBrokerInstance(option.id);
-        },
-      });
+      if (!instance) return;
+      openInlineConfirm(brokerProfileRemovalConfirm(instance, instance.label, async () => {
+        await collectionWorkflowActions.disconnectBrokerInstance(option.id);
+      }));
       return;
     }
     case "collection-target": {

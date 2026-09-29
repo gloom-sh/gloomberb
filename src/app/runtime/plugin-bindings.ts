@@ -9,6 +9,7 @@ import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import type { PluginRegistry } from "../../plugins/registry";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
+import { settleWithin } from "../../utils/async-deadline";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { AppConfig, BrokerInstanceConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
@@ -17,6 +18,9 @@ import {
   createBrokerInstanceId,
   getBrokerInstance,
 } from "../../utils/broker-instances";
+
+/** How long removing a profile waits for its adapter to disconnect before going on without it. */
+const ADAPTER_DISCONNECT_WAIT_MS = 5_000;
 
 export function bindPluginRegistryRuntimeAccess({
   dataProvider,
@@ -188,8 +192,10 @@ export function bindPluginRegistryRuntimeAccess({
 
     clearPersistedBrokerAccounts(pluginRegistry.persistence.resources, instance);
 
+    // Best effort: an adapter that throws, rejects or never answers (a desktop
+    // call to a busy Bun process) must not keep the profile.
     const broker = pluginRegistry.brokers.get(instance.brokerType);
-    await broker?.disconnect?.(instance).catch(() => {});
+    await settleWithin(Promise.resolve().then(() => broker?.disconnect?.(instance)), ADAPTER_DISCONNECT_WAIT_MS);
 
     // A portfolio another profile of the account can keep (the account switched
     // to or from sign-in) goes to that profile; only this profile's positions go.

@@ -1,21 +1,22 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { ConfirmDialog } from "../../../components";
 import {
   buildBrokerProfileConfig,
   createBrokerProfileDraft,
   validateBrokerProfileValues,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
-import { disconnectSignedInProfile, signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
+import { brokerProfileRemovalConfirm, removeBrokerProfile } from "../../../brokers/remove-profile";
+import { signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
 import { requestBrokerSignIn } from "../../../brokers/signed-in/sign-in-dialog";
+import { openConfirmModal } from "../../../components/form-modal";
+import { useAppGetState } from "../../../state/app/context";
 import type { BrokerProfileAction } from "../../../types/broker";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { getSharedRegistry } from "../../registry";
 import { t, tf } from "../../../i18n";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import type { BrokerEditKey } from "./detail";
-import type { BrokerProfileRow } from "./model";
+import { neighbourBrokerProfileId, type BrokerProfileRow } from "./model";
 
 export function useBrokerManagerActions({
   selectedRow,
@@ -23,6 +24,7 @@ export function useBrokerManagerActions({
   setEditDraft,
   setActiveEditKey,
   setDetailOpen,
+  setSelectedId,
   refreshStatuses,
 }: {
   selectedRow: BrokerProfileRow | null;
@@ -30,10 +32,11 @@ export function useBrokerManagerActions({
   setEditDraft: Dispatch<SetStateAction<BrokerProfileDraft | null>>;
   setActiveEditKey: Dispatch<SetStateAction<BrokerEditKey>>;
   setDetailOpen: Dispatch<SetStateAction<boolean>>;
+  setSelectedId: (id: string | null) => void;
   refreshStatuses: () => void;
 }) {
-  const dialog = useDialog();
-  const { showPane } = usePluginAppActions();
+  const getState = useAppGetState();
+  const { notify, showPane } = usePluginAppActions();
   const {
     connectBrokerInstance,
     updateBrokerInstance,
@@ -154,49 +157,30 @@ export function useBrokerManagerActions({
     if (action.paneId) showPane(action.paneId);
   }, [primaryProfileAction, showPane]);
 
-  const removeSelected = useCallback(async () => {
+  const removeSelected = useCallback(() => {
     if (!selectedRow) return;
-    // The connection belongs to the Gloom account, so removing it reaches every device.
-    const signedIn = isSignedInBrokerProfile(selectedRow.instance)
-      ? signedInBrokerForProfile(selectedRow.instance, selectedRow.brokerName)
-      : null;
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...ctx}
-          title={t("Disconnect broker?")}
-          body={[
-            tf('Remove "{label}" and imported broker data?', { label: selectedRow.label }),
-            t("Broker-managed portfolios, positions, and contracts will be removed."),
-            ...(signedIn
-              ? [tf("This also disconnects {broker} from your other devices and agents.", { broker: signedIn.name })]
-              : []),
-          ]}
-          confirmLabel={t("Disconnect")}
-          cancelLabel={t("Back")}
-          width={58}
-          footer={t("Enter disconnect · Esc cancel")}
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
-
-    try {
-      setBusy(t("Disconnecting…"));
-      const { stillConnected } = await disconnectSignedInProfile(selectedRow.instance);
-      await removeBrokerInstance(selectedRow.id);
-      setEditDraft(null);
-      setDetailOpen(false);
-      setMessage(stillConnected && signedIn
-        ? tf("Removed {label}. Sign in to Gloom to disconnect {broker} from your account.", { label: selectedRow.label, broker: signedIn.name })
-        : tf("Removed {label}.", { label: selectedRow.label }));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : tf("Failed to remove {label}.", { label: selectedRow.label }));
-    } finally {
-      setBusy(null);
-    }
-  }, [dialog, removeBrokerInstance, selectedRow, setDetailOpen, setEditDraft]);
+    const { id, brokerName } = selectedRow;
+    const opened = openConfirmModal(brokerProfileRemovalConfirm(selectedRow.instance, brokerName, async () => {
+      // Read when confirmed: the profile can change, or go, while the confirm is open.
+      const instances = getState().config.brokerInstances;
+      const instance = instances.find((entry) => entry.id === id);
+      if (!instance) return;
+      const nextSelectedId = neighbourBrokerProfileId(instances, id);
+      try {
+        setBusy(t("Disconnecting…"));
+        const removal = await removeBrokerProfile(instance, brokerName, removeBrokerInstance);
+        setEditDraft(null);
+        setDetailOpen(false);
+        setSelectedId(nextSelectedId);
+        setMessage(null);
+        notify({ body: removal.message, type: removal.accountKept ? "info" : "success" });
+      } finally {
+        setBusy(null);
+      }
+    }));
+    // Confirms open from the main window only.
+    if (!opened) notify({ body: t("Open this from the main window."), type: "info" });
+  }, [getState, notify, removeBrokerInstance, selectedRow, setDetailOpen, setEditDraft, setSelectedId]);
 
   return {
     busy,

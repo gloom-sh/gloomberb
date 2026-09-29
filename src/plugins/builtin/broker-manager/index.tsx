@@ -133,6 +133,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     setEditDraft,
     setActiveEditKey,
     setDetailOpen,
+    setSelectedId,
     refreshStatuses,
   });
 

@@ -144,3 +144,10 @@ export function buildBrokerProfileRows(
     };
   });
 }
+
+/** The row to select once `removedId` goes: the one after it, else the one before. */
+export function neighbourBrokerProfileId(instances: readonly BrokerInstanceConfig[], removedId: string): string | null {
+  const index = instances.findIndex((instance) => instance.id === removedId);
+  if (index < 0) return null;
+  return instances[index + 1]?.id ?? instances[index - 1]?.id ?? null;
+}
