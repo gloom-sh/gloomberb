@@ -59,3 +59,55 @@ export function quoteSpread(row: TapeQuote) {
   return { spread, bps: midpoint > 0 ? spread / midpoint * 10_000 : null,
     state: spread < 0 ? "crossed" as const : spread === 0 ? "locked" as const : "normal" as const };
 }
+
+const NEW_YORK_CLOCK = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+const NEW_YORK_DAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
+const toMs = (value: string) => new Date(value.replace(/(\.\d{3})\d+/, "$1"));
+/** Tape rows on New York time, the market's own clock, to the millisecond. */
+export function tapeClockNewYork(value: string): string {
+  const date = toMs(value);
+  if (Number.isNaN(date.getTime())) return tapeClockMs(value);
+  return `${NEW_YORK_CLOCK.format(date)}.${/\.(\d{3})/.exec(value)?.[1] ?? "000"}`;
+}
+/** A footer stamp on New York time: "Sep 28 19:59:54 ET". */
+export function tapeStampNewYork(value: string | null): string {
+  if (!value) return "--";
+  const date = toMs(value);
+  return Number.isNaN(date.getTime()) ? tapeTimeSeconds(value) : `${NEW_YORK_DAY.format(date)} ${NEW_YORK_CLOCK.format(date)} ET`;
+}
+
+// SIP participant codes. D is FINRA's facility, where off-exchange trades
+// (wholesalers, dark pools) print.
+const VENUES: Record<string, string> = {
+  A: "NYSE Amer", B: "Nasdaq BX", C: "NSX", D: "Off-exch", E: "Mkt ind", H: "MIAX", I: "ISE", J: "EDGA", K: "EDGX",
+  L: "LTSE", M: "NYSE Chi", N: "NYSE", P: "Arca", Q: "Nasdaq", S: "Nasdaq", T: "Nasdaq", U: "MEMX", V: "IEX",
+  W: "Cboe", X: "PSX", Y: "BYX", Z: "BZX",
+};
+export const tapeVenue = (code: string) => VENUES[code.trim().toUpperCase()] ?? code;
+
+// SIP sale conditions worth a word. "@" is a regular sale and says nothing.
+const CONDITIONS: Record<string, string> = {
+  F: "ISO", I: "odd lot", T: "ext hours", U: "ext hours late", Z: "late", L: "sold last", O: "open", Q: "official open",
+  "5": "reopen", "6": "close", M: "official close", "9": "corrected close", "4": "derived", W: "avg price", X: "cross",
+  "7": "QCT", V: "contingent", P: "prior ref", B: "bunched", C: "cash", N: "next day", R: "seller", H: "price var",
+  K: "rule 155", "1": "stopped",
+};
+/** A trade's conditions in words, regular sales left out. Unknown codes stay as codes. */
+export const tapeConditionWords = (codes: readonly string[]) =>
+  codes.filter((code) => code.trim() && code !== "@").map((code) => CONDITIONS[code] ?? code).join(" · ");
+
+/** Tick direction of each trade against the one before it; an unchanged price keeps the last direction. */
+export function tapeTicks(trades: readonly TapeTrade[]): Map<TapeTrade, "up" | "down" | null> {
+  const ticks = new Map<TapeTrade, "up" | "down" | null>();
+  let last: number | null = null;
+  let tick: "up" | "down" | null = null;
+  for (const trade of [...trades].sort((a, b) => tapeTimeKey(a.timestamp).localeCompare(tapeTimeKey(b.timestamp)))) {
+    if (last != null && trade.price > last) tick = "up";
+    else if (last != null && trade.price < last) tick = "down";
+    ticks.set(trade, tick);
+    last = trade.price;
+  }
+  return ticks;
+}

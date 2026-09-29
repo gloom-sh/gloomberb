@@ -9,26 +9,26 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { listingIdentity } from "../shared/ticker-request";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockMs, tapePrice, tapeQuantity, tapeStatistics, tapeTime, tapeTimeSeconds, tradeKey, type TapeDigits } from "./model";
+import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockNewYork, tapeConditionWords, tapePrice, tapeQuantity, tapeStampNewYork, tapeStatistics, tapeTicks, tapeTime, tapeVenue, tradeKey, type TapeDigits } from "./model";
 import { useTape } from "./use-tape";
 
 const TABS = [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }];
 const TRADES: DataTableColumn[] = [
-  { id: "time", label: "TIME UTC", width: 13, align: "left" },
+  { id: "time", label: "TIME ET", width: 13, align: "left" },
   { id: "price", label: "PRICE", width: 12, align: "right" },
   { id: "size", label: "SHARES", width: 12, align: "right" },
-  { id: "venue", label: "VENUE", width: 6, align: "left" },
+  { id: "venue", label: "VENUE", width: 9, align: "left" },
   { id: "conditions", label: "CONDITIONS", width: 12, align: "left", flexGrow: 1 },
   { id: "tape", label: "TAPE", width: 4, align: "left" },
 ];
 const QUOTES: DataTableColumn[] = [
-  { id: "time", label: "TIME UTC", width: 13, align: "left" },
+  { id: "time", label: "TIME ET", width: 13, align: "left" },
   { id: "bid", label: "BID", width: 11, align: "right" },
   { id: "bidSize", label: "LOTS", width: 8, align: "right" },
-  { id: "bidExchange", label: "VENUE", width: 6, align: "left" },
+  { id: "bidExchange", label: "VENUE", width: 9, align: "left" },
   { id: "ask", label: "ASK", width: 11, align: "right" },
   { id: "askSize", label: "LOTS", width: 8, align: "right" },
-  { id: "askExchange", label: "VENUE", width: 6, align: "left" },
+  { id: "askExchange", label: "VENUE", width: 9, align: "left" },
   { id: "spread", label: "SPREAD BP", width: 10, align: "right" },
 ];
 const rank = (value: number | null) => value == null ? "pctl --" : `${value.toFixed(0)} pctl`;
@@ -56,6 +56,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   // A session change clears live and frozen copies before a different tier arrives.
   const data = resource.data ? frozen?.access === resource.data.access ? frozen : resource.data : null;
   const stats = useMemo(() => data ? tapeStatistics(data) : null, [data]);
+  const ticks = useMemo(() => tapeTicks(data?.trades ?? []), [data]);
   const rows: TapeRow[] = useMemo(() => !data ? [] : tab === "quotes"
     ? newestFirst(data.quotes).map((quote) => ({ id: quoteKey(quote), quote }))
     : newestFirst(data.trades).map((trade) => ({ id: tradeKey(trade), trade })), [data, tab]);
@@ -84,7 +85,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   usePaneFooter("time-sales:actions", () => ({ hints: [{ id: "pause", key: "space", label: frozen ? "resume" : "pause", onPress: freeze }] }), [frozen, resource.data, resource.epoch]);
   usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : [])] });
   usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: resource.error,
-    info: data ? [{ id: "feed", parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeTimeSeconds(data.asOf)} UTC`, tone: "muted" }] },
+    info: data ? [{ id: "feed", parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeStampNewYork(data.asOf)}`, tone: "muted" }] },
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
   const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };
@@ -106,7 +107,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
             { id: "widest", label: "Widest", value: spreads.widest == null ? "--" : `${spreads.widest.toFixed(2)} bp` },
             ...(spreads.abnormal ? [{ id: "abnormal", label: "Locked", value: String(spreads.abnormal), tone: "warning" as const, detail: "or crossed" }] : []),
           ] : [
-            { id: "vwap", label: "VWAP", value: tapePrice(stats.vwap, tradeDigits), detail: `${tapeQuantity(stats.volume)} shares since ${stats.from ? tapeClockMs(stats.from) : "--"}` },
+            { id: "vwap", label: "VWAP", value: tapePrice(stats.vwap, tradeDigits), detail: `${tapeQuantity(stats.volume)} shares since ${stats.from ? tapeClockNewYork(stats.from) : "--"}` },
             { id: "range", label: "Range", value: `${tapePrice(stats.low, tradeDigits)} to ${tapePrice(stats.high, tradeDigits)}`, detail: `last ${rank(stats.pricePercentile)}` },
           ]),
           ...(data.session.high != null && data.session.low != null ? [{ id: "session", label: "Session", value: `${tapePrice(data.session.low, tradeDigits)} to ${tapePrice(data.session.high, tradeDigits)}` }] : []),
@@ -114,15 +115,18 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         renderCell={(row, column) => {
           if (row.trade) {
             const trade = row.trade;
-            return { text: column.id === "time" ? tapeClockMs(trade.timestamp) : column.id === "price" ? tapePrice(trade.price, tradeDigits)
-              : column.id === "size" ? tapeQuantity(trade.size) : column.id === "venue" ? trade.exchange
-              : column.id === "conditions" ? trade.conditions.join(" ") : trade.tape,
-              color: trade.size >= 10_000 ? colors.warning : column.id === "price" ? colors.text : colors.textMuted };
+            const tick = ticks.get(trade);
+            return { text: column.id === "time" ? tapeClockNewYork(trade.timestamp) : column.id === "price" ? tapePrice(trade.price, tradeDigits)
+              : column.id === "size" ? tapeQuantity(trade.size) : column.id === "venue" ? tapeVenue(trade.exchange)
+              : column.id === "conditions" ? tapeConditionWords(trade.conditions) : trade.tape,
+              // Price by tick, as on a tape; a block print lights the rest of its row.
+              color: column.id === "price" ? tick === "up" ? colors.positive : tick === "down" ? colors.negative : colors.text
+                : trade.size >= 10_000 ? colors.warning : colors.textMuted };
           }
           const quote = row.quote!, spread = quoteSpread(quote);
-          return { text: column.id === "time" ? tapeClockMs(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid, quoteDigits) : column.id === "ask" ? tapePrice(quote.ask, quoteDigits)
+          return { text: column.id === "time" ? tapeClockNewYork(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid, quoteDigits) : column.id === "ask" ? tapePrice(quote.ask, quoteDigits)
             : column.id === "bidSize" ? tapeQuantity(quote.bidSize) : column.id === "askSize" ? tapeQuantity(quote.askSize)
-            : column.id === "bidExchange" ? quote.bidExchange : column.id === "askExchange" ? quote.askExchange
+            : column.id === "bidExchange" ? tapeVenue(quote.bidExchange) : column.id === "askExchange" ? tapeVenue(quote.askExchange)
             : spread.bps == null ? "--" : spread.bps.toFixed(2), color: spread.state === "normal" ? colors.text : colors.warning };
         }} emptyStateTitle="No observations in this window." /> : null}
     </PaneStatusBody>
@@ -141,7 +145,9 @@ function TapeDetail({ row, data, width }: { row: TapeRow; data: TapeSnapshot; wi
       <KeyValueRow label="Ask" value={tapePrice(quote.ask)} detail={`${tapeQuantity(quote.askSize)} round lots · ${quote.askExchange}`} />
       <KeyValueRow label="Spread" value={tapePrice(quoteSpread(quote).spread)} detail={quoteSpread(quote).state} />
     </> : null}
-    <KeyValueRow label="Conditions" value={(trade ?? quote)!.conditions.join(" ") || "--"} />
+    <KeyValueRow label="Conditions" value={trade
+      ? `${tapeConditionWords(trade.conditions) || "regular sale"}${trade.conditions.length ? ` (${trade.conditions.join(" ")})` : ""}`
+      : quote!.conditions.join(" ") || "--"} />
     <KeyValueRow label="Window UTC" value={tapeTime(data.observedFrom)} detail={`${data.corrections} corrections · ${data.cancels} cancels`} />
   </Box>;
 }

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { tapeFixture } from "./test-fixture";
 import { fetchTape, validateTape } from "./client";
-import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClock, tapeClockMs, tapePrice, tapeStatistics, tradeKey } from "./model";
+import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClock, tapeClockMs, tapeClockNewYork, tapeConditionWords, tapePrice, tapeStatistics, tapeTicks, tradeKey } from "./model";
 
 
 test("lossless IDs and nanosecond order determine latest print and weighted observed statistics", () => {
@@ -80,4 +80,21 @@ test("tape decimals only widen while a symbol is shown and start over for the ne
   // its $0.0001 tick above $1, and one first seen above $1 does not widen on a whole-penny dip.
   expect(stickyTapePriceDigits(stickyTapePriceDigits(null, "SNDL", [0.98]), "SNDL", [1.02])?.digits).toBe(4);
   expect(stickyTapePriceDigits(stickyTapePriceDigits(null, "SNDL", [1.02]), "SNDL", [0.98])?.digits).toBe(2);
+});
+
+test("ticks follow price in time order and an unchanged price keeps the last direction", () => {
+  const trade = (timestamp: string, price: number) => ({ ...tapeFixture().trades[0]!, timestamp, price });
+  // Given newest first, as the tape stores them.
+  const trades = [trade("2026-09-28T14:00:04.000000000Z", 10.0), trade("2026-09-28T14:00:03.000000000Z", 10.2),
+    trade("2026-09-28T14:00:02.000000000Z", 10.2), trade("2026-09-28T14:00:01.000000000Z", 10.1), trade("2026-09-28T14:00:00.000000000Z", 10.1)];
+  const ticks = tapeTicks(trades);
+  expect(trades.map((row) => ticks.get(row))).toEqual(["down", "up", "up", null, null]);
+});
+
+test("tape rows read in New York time and conditions in words, regular sales unsaid", () => {
+  expect(tapeClockNewYork("2026-09-28T23:59:48.731123456Z")).toBe("19:59:48.731");
+  expect(tapeClockNewYork("2026-01-05T14:30:00.000000000Z")).toBe("09:30:00.000");
+  expect(tapeConditionWords(["@", "F", "T", "I"])).toBe("ISO · ext hours · odd lot");
+  expect(tapeConditionWords(["@"])).toBe("");
+  expect(tapeConditionWords(["@", "?"])).toBe("?");
 });
