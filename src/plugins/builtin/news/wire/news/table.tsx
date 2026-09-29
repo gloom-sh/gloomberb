@@ -14,7 +14,7 @@ import type { MarketNewsItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useLoadNewsStory } from "../../../../../news/hooks";
-import { formatRelativeTime } from "../../../../../utils/datetime-format";
+import { formatFeedTime } from "../../../../../utils/datetime-format";
 import { nextHeaderSort } from "../../../../../utils/sort-values";
 import { formatNewsCategory } from "../categories";
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
@@ -112,9 +112,10 @@ function sortNewsArticles(
 
 const FIXED_COLUMN_WIDTHS: Record<Exclude<NewsColumnId, "title">, number> = {
   rank: 4,
-  // The label and its sort mark.
-  time: 6,
-  source: 12,
+  // "Mon 09:10", or "Sep 18, 25" for a story from another year.
+  time: 10,
+  // Publishers and X handles: "GlobeNewswire", "@unusual_whales".
+  source: 15,
   tickers: 18,
   categories: 10,
   sentiment: 4,
@@ -282,7 +283,7 @@ export function NewsArticleStackView({
       case "rank":
         return { text: String(index + 1), color: colors.textDim };
       case "time":
-        return { text: formatRelativeTime(item.publishedAt), color: colors.textDim };
+        return { text: formatFeedTime(item.publishedAt), value: item.publishedAt, color: colors.textDim };
       case "source":
         return { text: item.source, color: colors.textMuted };
       case "title":

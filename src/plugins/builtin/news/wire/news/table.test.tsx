@@ -113,7 +113,7 @@ describe("NewsArticleStackView", () => {
               }),
             ]}
             focused
-            width={90}
+            width={94}
             rootHeight={10}
             selectedArticleId="macro"
             setSelectedArticleId={() => {}}
@@ -128,7 +128,7 @@ describe("NewsArticleStackView", () => {
           />
         </PaneInstanceProvider>
       </AppContext>,
-      { width: 90, height: 10 },
+      { width: 94, height: 10 },
     );
 
     await act(async () => {
@@ -140,7 +140,7 @@ describe("NewsArticleStackView", () => {
     // The sorted column and its indicator must survive the layout arithmetic.
     expect(lines[0]).toContain("SCORE");
     expect(lines[0]).toContain("\u25bc");
-    expect(lines[0]!.length).toBeLessThanOrEqual(90);
+    expect(lines[0]!.length).toBeLessThanOrEqual(94);
     expect(lines[1]).toContain("87");
     // Snake_case ids and mid-word clipping never reach the user.
     expect(lines[1]).toContain("Politics");
@@ -152,12 +152,12 @@ describe("NewsArticleStackView", () => {
   test("narrowing gives up category, then ticker room, before the headline", () => {
     const ids = (width: number) => buildColumns(width, ["time", "source", "title", "tickers", "categories", "importance"])
       .map((column) => column.id === "tickers" ? `tickers:${column.width}` : column.id);
-    expect(ids(120)).toEqual(["time", "source", "title", "tickers:18", "categories", "importance"]);
-    expect(ids(95)).toEqual(["time", "source", "title", "tickers:18", "importance"]);
-    expect(ids(85)).toEqual(["time", "source", "title", "tickers:10", "importance"]);
-    expect(ids(75)).toEqual(["time", "title", "tickers:10", "importance"]);
-    expect(ids(60)).toEqual(["time", "title", "importance"]);
-    expect(ids(45)).toEqual(["time", "title"]);
+    expect(ids(127)).toEqual(["time", "source", "title", "tickers:18", "categories", "importance"]);
+    expect(ids(102)).toEqual(["time", "source", "title", "tickers:18", "importance"]);
+    expect(ids(92)).toEqual(["time", "source", "title", "tickers:10", "importance"]);
+    expect(ids(79)).toEqual(["time", "title", "tickers:10", "importance"]);
+    expect(ids(64)).toEqual(["time", "title", "importance"]);
+    expect(ids(49)).toEqual(["time", "title"]);
   });
 
   test("dedupes exchange-qualified ticker aliases in table cells", async () => {

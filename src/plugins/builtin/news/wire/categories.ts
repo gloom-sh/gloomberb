@@ -69,20 +69,43 @@ function classifyArticle(item: MarketNewsItem): string[] {
   return matched;
 }
 
+/** Known tickers that are also words a headline uses: "COST of living". */
+const WORD_TICKERS = new Set(["COST", "NOW", "ALL", "ONE", "OPEN", "LOW", "KEY"]);
+
+/** A headline in capitals, where every word looks like a ticker. */
+function isShoutingLine(line: string): boolean {
+  const letters = line.replace(/[^A-Za-z]/g, "");
+  return letters.length >= 12 && letters.replace(/[^A-Z]/g, "").length / letters.length > 0.8;
+}
+
+/**
+ * Known tickers the text names. A cashtag, an exchange pair or a ticker in
+ * brackets ("$V", "(NYSE: MA)", "Visa (V)") names one whatever it spells; a
+ * bare word only with three letters or more, outside a shouting headline,
+ * so "MA" in an address or "C" in a sentence is not a company.
+ */
 function extractTickers(text: string, knownTickers?: Set<string>): string[] {
-  const combined = new Set([...KNOWN_TICKERS, ...(knownTickers ?? [])]);
-  const matches = text.match(/\b[A-Z]{1,5}\b/g) ?? [];
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const m of matches) {
-    if (combined.has(m) && !seen.has(m)) {
-      seen.add(m);
-      result.push(m);
-    }
+  const known = new Set([...KNOWN_TICKERS, ...(knownTickers ?? [])]);
+  const found: Array<{ index: number; symbol: string }> = [];
+  const deliberate = /(?:\$([A-Z]{1,5})|\((?:NYSE|NASDAQ|Nasdaq|AMEX|NYSE American)\s*:\s*([A-Z]{1,5})\)|\(([A-Z]{1,5})\))(?![A-Za-z0-9])/g;
+  for (const match of text.matchAll(deliberate)) {
+    found.push({ index: match.index ?? 0, symbol: match[1] ?? match[2] ?? match[3] ?? "" });
   }
-
-  return result;
+  let offset = 0;
+  for (const line of text.split("\n")) {
+    if (!isShoutingLine(line)) {
+      for (const match of line.matchAll(/(?<![A-Za-z0-9$(])[A-Z]{3,5}(?![A-Za-z0-9)])/g)) {
+        if (!WORD_TICKERS.has(match[0])) found.push({ index: offset + (match.index ?? 0), symbol: match[0] });
+      }
+    }
+    offset += line.length + 1;
+  }
+  return [...new Set(
+    found
+      .filter((entry) => known.has(entry.symbol))
+      .sort((left, right) => left.index - right.index)
+      .map((entry) => entry.symbol),
+  )];
 }
 
 const BREAKING_PATTERNS = [
@@ -121,7 +144,7 @@ export function enrichNewsItem(item: MarketNewsItem, authority = 50, knownTicker
     ? [...new Set([...item.categories, ...classifyArticle(item)])]
     : classifyArticle(item);
 
-  const text = `${item.title} ${item.summary ?? ""}`;
+  const text = `${item.title}\n${item.summary ?? ""}`;
   const tickers = extractTickers(text, knownTickers);
   const isBreaking = detectBreaking(item.title, item.publishedAt, authority);
   const importance = scoreImportance(authority, item.publishedAt, isBreaking);

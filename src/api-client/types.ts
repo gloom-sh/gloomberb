@@ -1158,7 +1158,11 @@ export interface CloudNewsPayload {
   firstSeenAt: string;
   lastSeenAt: string;
   primaryUrl: string;
+  /** Routing key of the representative item, for source filters. */
   primarySource: string;
+  /** Who published the representative item (FT, SEC, @unusual_whales). */
+  primaryPublisher?: string;
+  publishers?: string[];
   scores?: {
     importance?: number;
     urgency?: number;

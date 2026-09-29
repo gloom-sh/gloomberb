@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
-import { formatRelativeAge, formatRelativeTime, formatShortDate, formatTimeAgo } from "./datetime-format";
+import { formatFeedTime, formatRelativeAge, formatRelativeTime, formatShortDate, formatTimeAgo } from "./datetime-format";
 
 afterEach(() => setSystemTime());
 
@@ -57,4 +57,22 @@ test("short dates keep each style's formatter apart", () => {
   expect(formatShortDate(lateOnNewYearsEve, { utc: true })).toBe("Dec 31, 2025");
   expect(formatShortDate(null, { fallback: "--" })).toBe("--");
   expect(formatShortDate("not a date")).toBe("-");
+});
+
+test("feed times read as a clock today, a weekday this week and a date before", () => {
+  // Local wall-clock times, so the case holds in every time zone.
+  const now = new Date(2026, 8, 29, 20, 45).getTime();
+  const cases: Array<[Date, string]> = [
+    [new Date(2026, 8, 29, 14, 32), "14:32"],
+    [new Date(2026, 8, 29, 0, 5), "00:05"],
+    [new Date(2026, 8, 28, 23, 59), "Mon 23:59"],
+    // Six days back is the last day a weekday names; a week back is a date.
+    [new Date(2026, 8, 23, 9, 10), "Wed 09:10"],
+    [new Date(2026, 8, 22, 9, 10), "Sep 22"],
+    [new Date(2025, 8, 18, 8, 0), "Sep 18, 25"],
+    // A clock ahead of ours never reads as a weekday or a time.
+    [new Date(2026, 8, 30, 1, 0), "Sep 30"],
+  ];
+  for (const [date, label] of cases) expect(formatFeedTime(date, now)).toBe(label);
+  expect(formatFeedTime("not a date", now)).toBe("-");
 });

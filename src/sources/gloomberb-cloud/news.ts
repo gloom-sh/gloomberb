@@ -1,4 +1,5 @@
 import { normalizeNewsFeed } from "../../news/news-model";
+import { readableNewsSource } from "../../news/source-label";
 import { collectNewsDisplayTickers } from "../../news/ticker-symbols";
 import type { NewsArticle, NewsQuery, NewsStoryItem } from "../../types/news-source";
 import type {
@@ -41,7 +42,7 @@ function mapCloudNewsStoryItem(
   return {
     id: item.id,
     sourceKey: item.sourceKey,
-    sourceName: item.sourceName || item.sourceKey,
+    sourceName: item.sourceName || readableNewsSource(item.sourceKey),
     title: item.title,
     summary: item.summary,
     url: item.url,
@@ -71,13 +72,15 @@ export function mapCloudNewsArticle(
   };
   const tickers = mapCloudNewsTickers(item, fallbackTicker);
   // primarySource is the cloud's routing key ("prnewswire-americas"); readers
-  // see the publisher's name from the story item it points at.
+  // see the publisher the service names, or the story item it points at.
   const primaryItem = item.items?.find((entry) => entry.sourceKey === item.primarySource);
   return {
     id: item.id,
     title: item.headline,
     url: item.primaryUrl,
-    source: primaryItem?.sourceName || item.primarySource,
+    source: item.primaryPublisher
+      || primaryItem?.sourceName
+      || readableNewsSource(item.primarySource),
     publishedAt: Number.isNaN(publishedAt.getTime()) ? new Date(0) : publishedAt,
     summary: item.summary,
     topic,
