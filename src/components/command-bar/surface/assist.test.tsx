@@ -4,6 +4,8 @@ import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
+import type { AppAction } from "../../../state/app/context";
+import { runAutomated } from "../../../telemetry/usage-counts";
 import { VERSION } from "../../../version";
 import {
   CommandBarHarness,
@@ -30,13 +32,15 @@ beforeEach(() => {
   } as unknown as typeof WebSocket;
 });
 
-afterEach(() => {
-  setCloudApiFetchTransport(null);
-  apiClient.setSessionToken(null);
+afterEach(async () => {
   if (testSetup) {
     testSetup.renderer.destroy();
     testSetup = undefined;
   }
+  // A report the bar sends as it closes lands in the test that closed it.
+  await Bun.sleep(5);
+  setCloudApiFetchTransport(null);
+  apiClient.setSessionToken(null);
   apiClient.dispose();
   globalThis.WebSocket = originalWebSocket;
   OPT_OUT_ENV.forEach((name, index) => {
@@ -48,16 +52,24 @@ afterEach(() => {
 
 const { waitForFrameToContain } = createCommandBarTestControls(() => testSetup!);
 
-function signInVerified(): void {
+function signInVerified(emailVerified = true): void {
   apiClient.setSessionToken("assist-test-token");
   apiClient.restoreCachedUser({
     id: "user-1",
     name: "Tester",
     email: "tester@example.com",
     username: "tester",
-    emailVerified: true,
+    emailVerified,
     plan: "free",
   } as never);
+}
+
+/** Types into whichever input has focus, one key at a time, then renders. */
+async function typeKeys(keys: string[]): Promise<void> {
+  await act(async () => {
+    for (const key of keys) testSetup!.mockInput.pressKey(key);
+    await testSetup!.renderOnce();
+  });
 }
 
 /**
@@ -116,7 +128,7 @@ function configureEarningsRegistry(
 /** Wide enough to cover the ask debounce plus the round trip. */
 const ASSIST_WAIT_ATTEMPTS = 40;
 
-async function waitForRequest(requests: string[], count = 1): Promise<void> {
+async function waitForRequest(requests: unknown[], count = 1): Promise<void> {
   for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
     if (requests.length >= count) return;
     await settleFrame(testSetup!);
@@ -428,6 +440,13 @@ describe("CommandBar search report", () => {
     candidates: [{ input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 }],
   };
 
+  /** Lets a deferred report, or one the bar should not have sent, reach the transport. */
+  async function closeAndSettle(): Promise<void> {
+    testSetup!.renderer.destroy();
+    testSetup = undefined;
+    await Bun.sleep(20);
+  }
+
   test("reports the AI candidate the user ran with the answer's search id, once per visit", async () => {
     signInVerified();
     const reports: unknown[] = [];
@@ -448,8 +467,8 @@ describe("CommandBar search report", () => {
 
     await testSetup.renderOnce();
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
-    // With the Usage setting on, the ask leaves `log` to the server's default.
-    expect(asks).toEqual([expect.not.objectContaining({ log: expect.anything() })]);
+    // With the Usage setting on, the ask opts in to being kept.
+    expect(asks).toEqual([expect.objectContaining({ query: "new chat pane", log: true })]);
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
@@ -473,9 +492,7 @@ describe("CommandBar search report", () => {
     // finally closing it add nothing to the one report.
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     await emitKeypress(testSetup, { name: "escape" });
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-    await Bun.sleep(20);
+    await closeAndSettle();
     expect(reports).toHaveLength(1);
   });
 
@@ -499,34 +516,48 @@ describe("CommandBar search report", () => {
     }]);
   });
 
-  test("reports a typed shortcut with the text it ran", async () => {
+  test("tags only the typed shortcut's own row as a shortcut", async () => {
     signInVerified();
-    const reports: unknown[] = [];
+    const reports: Array<{ choice?: Record<string, unknown> }> = [];
     const requests = mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(<CommandBarHarness query="DES MSFT" />, { width: 100, height: 20 });
-
+    testSetup = await testRender(
+      <CommandBarHarness query="ERN" configurePluginRegistry={configureEarningsRegistry(created)} />,
+      { width: 100, height: 20 },
+    );
     await testSetup.renderOnce();
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     await waitForReports(reports);
     expect(reports).toEqual([{
-      query: "DES MSFT",
+      query: "ERN",
       outcome: "chosen",
-      choice: expect.objectContaining({ kind: "shortcut", input: "DES MSFT", rank: 0, fromAssist: false }),
+      choice: expect.objectContaining({ kind: "shortcut", label: "Earnings Calendar", input: "ERN", rank: 0 }),
       appVersion: VERSION,
     }]);
+    await closeAndSettle();
+
+    // "DES MSFT" lists tickers; the one picked is a ticker row, not the text.
+    reports.length = 0;
+    testSetup = await testRender(<CommandBarHarness query="DES MSFT" />, { width: 100, height: 20 });
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForReports(reports);
+    expect(reports[0]?.choice).toMatchObject({ kind: "ticker", label: "MSFT", rank: 0 });
+    expect(reports[0]?.choice).not.toHaveProperty("input");
     // A prefix the parser claims is never sent to the AI.
     expect(requests).toEqual([]);
   });
 
-  test("reports a dismissal once when Esc closes the bar on a query", async () => {
+  test("reports a dismissal once when Esc closes the bar on an edited query", async () => {
     signInVerified();
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse({ ...generalAnswer, searchId: "search-2" }), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="new chat pane" live />, { width: 120, height: 20 });
+    testSetup = await testRender(<CommandBarHarness query="new chat pan" live />, { width: 120, height: 20 });
 
     await testSetup.renderOnce();
+    await typeKeys(["e"]);
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
     await emitKeypress(testSetup, { name: "escape" });
     await waitForFrameToContain("Search or run a command");
@@ -540,27 +571,87 @@ describe("CommandBar search report", () => {
     }]);
   });
 
-  test("does not read a key-bound run that closes the bar as a dismissal", async () => {
+  test("points a dismissal at the answer the bar kept, even one with no command", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse({ candidates: [], searchId: "search-empty" }), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="new chat pan" live />, { width: 120, height: 20 });
+
+    await testSetup.renderOnce();
+    await typeKeys(["e"]);
+    // Enter on "Thinking…" asks now; the answer has nothing to run.
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForFrameToContain("No command found", ASSIST_WAIT_ATTEMPTS);
+    // The first Esc takes the answer off screen, the second closes the bar.
+    await emitKeypress(testSetup, { name: "escape" });
+    await waitForFrameWithout("No command found");
+    await emitKeypress(testSetup, { name: "escape" });
+    await waitForReports(reports);
+    expect(reports).toEqual([{
+      query: "new chat pane",
+      searchId: "search-empty",
+      outcome: "dismissed",
+      appVersion: VERSION,
+    }]);
+  });
+
+  test("skips the dismissal while the query is still the text the bar opened with", async () => {
     signInVerified();
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    // A key bound to "DES MSFT" opens the bar, runs the text and closes it.
+    // A menu opens the bar on "HELP"; closing it again is not a search.
+    testSetup = await testRender(<CommandBarHarness query="HELP" live />, { width: 100, height: 20 });
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "escape" });
+    await waitForFrameToContain("Search or run a command");
+    await settleFrame(testSetup, 50);
+    expect(reports).toEqual([]);
+  });
+
+  test("never reads Esc after a row ran as a dismissal, even from an empty query or a bound key", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+    // Pane creation that never finishes keeps the bar open after the row ran.
+    const hangPaneCreation = (pluginRegistry: PluginRegistry) => {
+      configureEarningsRegistry([])(pluginRegistry);
+      (pluginRegistry as unknown as { createPaneFromTemplateAsyncFn: () => Promise<void> })
+        .createPaneFromTemplateAsyncFn = () => new Promise<void>(() => {});
+    };
+
+    testSetup = await testRender(
+      <CommandBarHarness query="" live configurePluginRegistry={hangPaneCreation} />,
+      { width: 100, height: 20 },
+    );
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await typeKeys(["a", "b", "c"]);
+    await emitKeypress(testSetup, { name: "escape" });
+    await waitForFrameToContain("Search or run a command");
+    await closeAndSettle();
+    expect(reports).toEqual([]);
+
+    // A key bound to "ERN" opens the bar and runs it.
     testSetup = await testRender(
       <CommandBarHarness
-        query="DES MSFT"
+        query="ERN"
         live
+        configurePluginRegistry={hangPaneCreation}
         configureState={(state) => ({
           ...state,
-          commandBarLaunchRequest: { kind: "run-query", query: "DES MSFT", sequence: 1 },
+          commandBarLaunchRequest: { kind: "run-query", query: "ERN", sequence: 1 },
         })}
       />,
       { width: 100, height: 20 },
     );
-
     await testSetup.renderOnce();
+    await typeKeys(["x"]);
+    await emitKeypress(testSetup, { name: "escape" });
     await waitForFrameToContain("Search or run a command");
-    await settleFrame(testSetup, 50);
+    await closeAndSettle();
     expect(reports).toEqual([]);
   });
 
@@ -578,7 +669,128 @@ describe("CommandBar search report", () => {
     expect(reports).toEqual([]);
   });
 
-  test("with usage telemetry off, asks with log: false and reports nothing", async () => {
+  test("holds a row that opens a route until it finishes, and sends nothing typed inside it", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="DES" live />, { width: 100, height: 20 });
+
+    await testSetup.renderOnce();
+    // Tab opens ticker search; the ticker is typed there, not in the root query.
+    await emitKeypress(testSetup, { name: "tab" });
+    await typeKeys(["M", "S", "F", "T"]);
+    await waitForFrameToContain("NASDAQ MSFT");
+    await settleFrame(testSetup, 50);
+    expect(reports).toEqual([]);
+
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForReports(reports);
+    await settleFrame(testSetup, 50);
+    expect(reports).toEqual([{
+      query: "DES",
+      outcome: "chosen",
+      choice: expect.objectContaining({ kind: "shortcut", input: "DES", rank: 0 }),
+      appVersion: VERSION,
+    }]);
+    expect(JSON.stringify(reports)).not.toContain("MSFT");
+  });
+
+  test("sends the held choice as it stands when the bar closes on an open form", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="QQ" live />, { width: 100, height: 24 });
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "tab" });
+    await waitForFrameToContain("Quote Tickers");
+    await typeKeys(["N", "V", "D", "A"]);
+    await waitForFrameToContain("NVDA");
+    await closeAndSettle();
+    expect(reports).toEqual([{
+      query: "QQ",
+      outcome: "chosen",
+      choice: expect.objectContaining({ kind: "shortcut", label: "Quote Monitor", input: "QQ", rank: 0 }),
+      appVersion: VERSION,
+    }]);
+    expect(JSON.stringify(reports)).not.toContain("NVDA");
+  });
+
+  test("backing out of the form a row opened takes that choice back", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="QQ" live />, { width: 100, height: 24 });
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForFrameToContain("Quote Tickers");
+    await emitKeypress(testSetup, { name: "escape" });
+    await waitForFrameWithout("Quote Tickers");
+    await typeKeys(["BACKSPACE"]);
+    await emitKeypress(testSetup, { name: "escape" });
+    await waitForReports(reports);
+    await settleFrame(testSetup, 50);
+    expect(reports).toEqual([{ query: "Q", outcome: "dismissed", appVersion: VERSION }]);
+  });
+
+  test("reports a theme picked at the root, not the row that only opened the picker", async () => {
+    signInVerified(false);
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(<CommandBarHarness query="Change Theme" live />, { width: 100, height: 24 });
+
+    await testSetup.renderOnce();
+    // The row writes "TH " into the bar; the search goes on from there.
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await typeKeys(["d", "r", "a", "c"]);
+    await waitForFrameToContain("Dracula");
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForReports(reports);
+    await settleFrame(testSetup, 50);
+    expect(reports).toEqual([{
+      query: "TH drac",
+      outcome: "chosen",
+      choice: {
+        kind: "shortcut",
+        label: "Dracula",
+        input: "TH drac",
+        rank: 0,
+        category: "Themes",
+        fromAssist: false,
+      },
+      appVersion: VERSION,
+    }]);
+  });
+
+  test("sends no report when the bar turns Usage Counts off", async () => {
+    // Unverified, so no AI row leads and Enter runs the switch itself.
+    signInVerified(false);
+    const reports: unknown[] = [];
+    const actions: AppAction[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    testSetup = await testRender(
+      <CommandBarHarness query="Usage Counts" live onAction={(action) => actions.push(action)} />,
+      { width: 100, height: 20 },
+    );
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForFrameToContain("Search or run a command");
+    await closeAndSettle();
+    expect(actions).toContainEqual(expect.objectContaining({
+      type: "SET_CONFIG",
+      config: expect.objectContaining({ telemetry: expect.objectContaining({ usage: false }) }),
+    }));
+    expect(reports).toEqual([]);
+  });
+
+  test("with usage telemetry off, asks without log and reports nothing", async () => {
     signInVerified();
     const reports: unknown[] = [];
     const asks: unknown[] = [];
@@ -599,14 +811,46 @@ describe("CommandBar search report", () => {
 
     await testSetup.renderOnce();
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
-    expect(asks).toEqual([expect.objectContaining({ query: "new chat pane", log: false })]);
+    expect(asks).toEqual([expect.objectContaining({ query: "new chat pane" })]);
+    expect(asks[0]).not.toHaveProperty("log");
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-    await Bun.sleep(20);
+    await closeAndSettle();
     expect(reports).toEqual([]);
+  });
+
+  test("keeps nothing of a query remote control typed until the user edits it", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    const asks: Array<Record<string, unknown>> = [];
+    mockAssistTransport((body) => {
+      asks.push(body as Record<string, unknown>);
+      return jsonResponse({ ...generalAnswer, searchId: "search-3" });
+    }, reports);
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+
+    // Remote control opens the bar on this text.
+    await runAutomated(async () => {
+      testSetup = await testRender(
+        <CommandBarHarness query="new chat pane" configurePluginRegistry={configureEarningsRegistry(created)} />,
+        { width: 120, height: 20 },
+      );
+      await testSetup.renderOnce();
+    });
+    await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
+    expect(asks[0]).not.toHaveProperty("log");
+
+    // Running its answer is still not the user's search.
+    await emitKeypress(testSetup!, { name: "return", sequence: "\r" });
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
+    await settleFrame(testSetup!, 50);
+    expect(reports).toEqual([]);
+
+    // Once the user edits it, the question is theirs.
+    await typeKeys(["s"]);
+    await waitForRequest(asks, 2);
+    expect(asks[1]).toMatchObject({ query: "new chat panes", log: true });
   });
 
   test("sends nothing signed out", async () => {

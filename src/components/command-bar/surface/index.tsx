@@ -6,8 +6,8 @@ import type { LayoutBounds } from "../../../plugins/pane-manager";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";
-import { shouldAutoAskAssist, type AssistRequestState, type AssistRowHandlers } from "../assist/model";
-import { usageTelemetryAllowed } from "../../../telemetry/usage-counts";
+import { shouldAutoAskAssist, type AssistRowHandlers } from "../assist/model";
+import { automationActive, usageTelemetryAllowed } from "../../../telemetry/usage-counts";
 
 /** Command-bar prefix of the assistant pane. */
 const ASKG_SHORTCUT_PREFIX = "ASKG";
@@ -22,6 +22,7 @@ import { useCommandSearchReport } from "../routes/root/search-report";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useRootPluginInstallItem } from "../routes/root/plugin-install";
 import { useCommandBarThemePreview } from "../theme-preview";
+import { matchThemeOptions } from "../theme-picker";
 import { CommandBarPanel } from "../panel";
 import { useCommandBarNavigationState } from "../routing/navigation-state";
 import { useCommandBarSelectionRuntime } from "../selection-runtime";
@@ -91,6 +92,7 @@ export function CommandBar({
     currentRoute,
     currentRouteRef,
     dismissCommandBar,
+    isAutomationQuery,
     lastMainBrowseRef,
     markRootSelectionNavigated,
     popRoute,
@@ -116,23 +118,35 @@ export function CommandBar({
 
   // Searches follow the Usage setting, both what the AI may keep and the report.
   const searchLoggingAllowed = useCallback(() => usageTelemetryAllowed(stateRef.current.config), [stateRef]);
-  // Filled in below, once the assist runtime and the shortcut parser have run.
-  const assistStateRef = useRef<AssistRequestState>({ status: "idle" });
-  const rootQueryIsShortcutRef = useRef(false);
-  const { reportRun: reportRootRowRun, settle: settleSearchReport } = useCommandSearchReport({
-    assistStateRef,
+  // Filled in below, once the assist runtime has run.
+  const searchIdForRef = useRef<(query: string) => string | undefined>(() => undefined);
+  const searchIdFor = useCallback((query: string) => searchIdForRef.current(query), []);
+  const {
+    choose: chooseSearchResult,
+    dismiss: dismissSearchReport,
+    finish: finishSearchReport,
+    runRootRow,
+    settle: settleSearchReport,
+  } = useCommandSearchReport({
     currentRouteRef,
+    isAutomationQuery,
     isEnabled: searchLoggingAllowed,
-    isShortcutQuery: () => rootQueryIsShortcutRef.current,
     rootQueryRef,
+    routeOpen: currentRoute !== null,
+    searchIdFor,
   });
   // Every close that follows something running goes through here, so the
-  // search report never reads it as a dismissal. Esc, a click outside the bar
-  // and the bar's own key close without it.
+  // search report sends what ran rather than a dismissal. Esc, a click outside
+  // the bar and the bar's own key close without it.
   const closeAfterRun = useCallback((options?: { revertThemePreview?: boolean }) => {
-    settleSearchReport();
+    finishSearchReport();
     closeAll(options);
-  }, [closeAll, settleSearchReport]);
+  }, [closeAll, finishSearchReport]);
+  // A click outside the bar, read before closing clears the route it was on.
+  const dismissOverlay = useCallback(() => {
+    dismissSearchReport();
+    closeAll();
+  }, [closeAll, dismissSearchReport]);
 
   const {
     adaptTickerSearchRouteResult,
@@ -213,7 +227,6 @@ export function CommandBar({
     paneTemplates: getAvailablePaneShortcutTemplates(rootQuery),
     activeTicker: activeTickerSymbol,
   }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
-  rootQueryIsShortcutRef.current = rootShortcutIntent.kind !== "none";
 
   // Runs the typed text again once a plugin installed from the bar is in, the
   // way a key bound to it would.
@@ -242,17 +255,22 @@ export function CommandBar({
   const assistAutoAsk = !currentRoute
     && planAccess.emailVerified
     && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootShortcutIntent.kind !== "none" });
-  const { assistActive, assistState, askAssist, resetAssist } = useCommandBarAssist({
+  // The server keeps a question only when asked to: with the Usage setting
+  // on, and never for text remote control typed.
+  const logSearches = useCallback((query: string) => (
+    searchLoggingAllowed() && !automationActive() && !isAutomationQuery(query)
+  ), [isAutomationQuery, searchLoggingAllowed]);
+  const { assistActive, assistState, askAssist, resetAssist, searchIdFor: assistSearchIdFor } = useCommandBarAssist({
     autoAsk: assistAutoAsk,
     getInventory: buildAssistInventory,
-    logSearches: searchLoggingAllowed,
+    logSearches,
     rootQuery,
   });
-  assistStateRef.current = assistState;
+  searchIdForRef.current = assistSearchIdFor;
   // Filled in below once the selection runtime exists, so an AI candidate runs
   // through the very same submit path as text the user typed.
   const runRootQueryRef = useRef<
-    ((query: string, options?: { fallbackPrefix?: string }) => void) | null
+    ((query: string, options?: { fallbackPrefix?: string }) => boolean) | null
   >(null);
   /**
    * Query whose answer the user is already waiting on, set by activating the
@@ -276,18 +294,21 @@ export function CommandBar({
     if (rootQueryRef.current.trim() !== pendingQuery) return;
     const candidate = assistState.candidates[0];
     if (!candidate) return;
+    const run = () => {
+      runRootQueryRef.current?.(
+        candidate.input,
+        candidate.prefix ? { fallbackPrefix: candidate.prefix } : undefined,
+      );
+    };
     // The claimed answer is the first AI row, which is what the user picked.
     const listState = visibleListStateRef.current;
     const rank = listState?.kind === "root"
       ? listState.results.findIndex((item) => item.searchChoice?.kind === "assist")
       : -1;
     const row = rank >= 0 ? listState?.results[rank] : undefined;
-    if (row) reportRootRowRun({ item: row, query: pendingQuery, rank, typed: false });
-    runRootQueryRef.current?.(
-      candidate.input,
-      candidate.prefix ? { fallbackPrefix: candidate.prefix } : undefined,
-    );
-  }, [assistState, reportRootRowRun, rootQueryRef, visibleListStateRef]);
+    if (row) runRootRow({ item: row, query: rootQueryRef.current, rank, isShortcut: () => false }, run);
+    else run();
+  }, [assistState, rootQueryRef, runRootRow, visibleListStateRef]);
   const startAssistSignUp = useCallback(() => {
     const signUpCommand = getAvailablePluginCommands().find((command) => command.id === "auth-signup");
     if (signUpCommand?.wizard?.length) {
@@ -413,6 +434,23 @@ export function CommandBar({
   });
   const themePickerActive = !currentRoute && activeMatch?.command.id === "theme";
   const themePickerFilter = themePickerActive ? activeMatch.arg : "";
+  // A theme picked from the root ("TH dracula", Enter) is the typed shortcut
+  // running, so the visit reports it as it closes.
+  const commitRootTheme = useCallback((themeId: string) => {
+    if (!currentRouteRef.current) {
+      const themes = matchThemeOptions(themePickerFilter);
+      const rank = themes.findIndex((theme) => theme.id === themeId);
+      chooseSearchResult(rootQueryRef.current, {
+        kind: "shortcut",
+        label: themes[rank]?.name ?? themeId,
+        input: rootQueryRef.current.trim(),
+        rank: Math.max(0, rank),
+        category: "Themes",
+        fromAssist: false,
+      });
+    }
+    commitTheme(themeId);
+  }, [chooseSearchResult, commitTheme, currentRouteRef, rootQueryRef, themePickerFilter]);
 
   const {
     acceptRootShortcutTab,
@@ -433,7 +471,6 @@ export function CommandBar({
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
     getAvailablePluginCommands,
-    onRootRowRun: reportRootRowRun,
     openInlineConfirm,
     openModeRoute,
     openPaneTemplateWorkflow,
@@ -445,6 +482,7 @@ export function CommandBar({
     rootQueryRef,
     rootThemeBaseIdRef,
     runDirectCommand,
+    runRootRow,
     runSecurityDescriptionShortcut,
     setRootQuery,
     setRouteStack,
@@ -458,15 +496,16 @@ export function CommandBar({
 
   // A key bound to command bar text opens the bar with a run-query launch:
   // the text is submitted exactly as if typed and entered, once per request,
-  // and text the parser cannot run stays in the input.
+  // and text the parser cannot run stays in the input. What a key runs is not
+  // a search, so the visit ends with no report.
   const processedRunQuerySequenceRef = useRef<number | null>(null);
   useEffect(() => {
     const launch = state.commandBarLaunchRequest;
     if (!launch || launch.kind !== "run-query" || !state.commandBarOpen) return;
     if (processedRunQuerySequenceRef.current === launch.sequence) return;
     processedRunQuerySequenceRef.current = launch.sequence;
-    runRootQuery(launch.query);
-  }, [runRootQuery, state.commandBarLaunchRequest, state.commandBarOpen]);
+    if (runRootQuery(launch.query)) settleSearchReport();
+  }, [runRootQuery, settleSearchReport, state.commandBarLaunchRequest, state.commandBarOpen]);
 
   const routeListState = useRouteListState({
     activeMatch,
@@ -508,13 +547,13 @@ export function CommandBar({
     cellHeightPx,
     cellWidthPx,
     closeAll: closeAfterRun,
-    commitTheme,
+    commitTheme: commitRootTheme,
     committedThemeId: state.config.theme,
     confirmCurrentRoute,
     currentRoute,
     currentRouteRef,
     dismissCommandBar,
-    dismissOverlay: closeAll,
+    dismissOverlay,
     focusWorkflowField,
     getWorkflowInputRef,
     getWorkflowFieldStringValue,

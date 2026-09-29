@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { AppAction } from "../../../state/app/context";
+import { automationActive } from "../../../telemetry/usage-counts";
 import type { Command } from "../commands/registry";
 import { resolveCommandBarMode } from "../view-model";
 import type {
@@ -23,6 +24,11 @@ interface UseCommandBarNavigationStateResult {
   currentRoute: CommandBarRoute | null;
   currentRouteRef: RefObject<CommandBarRoute | null>;
   dismissCommandBar: () => void;
+  /**
+   * Whether automation such as remote control set this root query and the
+   * user has not changed it since: text a script typed is not a search.
+   */
+  isAutomationQuery: (query: string) => boolean;
   lastMainBrowseRef: RefObject<CommandBarMainSnapshot>;
   /** Records that the user moved the root selection themselves. */
   markRootSelectionNavigated: () => void;
@@ -53,6 +59,11 @@ export function useCommandBarNavigationState({
   const [rootQuery, setRootQueryValue] = useState(initialQuery);
   const rootQueryRef = useRef(rootQuery);
   rootQueryRef.current = rootQuery;
+  /** The root query as automation last set it, until anything else changes it. */
+  const automationQueryRef = useRef<string | null>(automationActive() ? initialQuery : null);
+  const isAutomationQuery = useCallback((query: string) => (
+    automationQueryRef.current !== null && automationQueryRef.current.trim() === query.trim()
+  ), []);
 
   const rootModeInfo = resolveCommandBarMode(rootQuery, availableCommands);
   const rootModeKindRef = useRef(rootModeInfo.kind);
@@ -79,6 +90,7 @@ export function useCommandBarNavigationState({
   useEffect(() => {
     if (currentRouteRef.current) return;
     if (initialQuery === rootQueryRef.current) return;
+    automationQueryRef.current = automationActive() ? initialQuery : null;
     rootQueryRef.current = initialQuery;
     setRootQueryValue(initialQuery);
     setRootSelectedIdx(0);
@@ -98,6 +110,7 @@ export function useCommandBarNavigationState({
   }, [dispatch, restoreThemePreview]);
 
   const setRootQuery = useCallback((query: string) => {
+    if (query !== rootQueryRef.current) automationQueryRef.current = automationActive() ? query : null;
     rootQueryRef.current = query;
     setRootQueryValue(query);
     dispatch({ type: "SET_COMMAND_BAR_QUERY", query });
@@ -152,6 +165,7 @@ export function useCommandBarNavigationState({
     currentRoute,
     currentRouteRef,
     dismissCommandBar,
+    isAutomationQuery,
     lastMainBrowseRef,
     markRootSelectionNavigated,
     popRoute,

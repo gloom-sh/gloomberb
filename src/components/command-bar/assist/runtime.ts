@@ -28,13 +28,7 @@ interface AssistAnswer {
 }
 
 function answeredState(query: string, source: AssistRequestSource, answer: AssistAnswer): AssistRequestState {
-  return {
-    status: "answered",
-    query,
-    source,
-    candidates: answer.candidates,
-    ...(answer.searchId ? { searchId: answer.searchId } : {}),
-  };
+  return { status: "answered", query, source, candidates: answer.candidates };
 }
 
 /** Maps a failed `/assist/command` call onto the row the user should see. */
@@ -55,7 +49,8 @@ function classifyAssistError(error: unknown): AssistErrorKind {
  * question, while the state carries the text in the bar, which is what the
  * rows compare against. Editing only the spacing therefore keeps the state and
  * relabels it with the new text. An answer keeps the `searchId` it came with,
- * so a later search report for the same question points at the same record.
+ * even an answer with no command, so a later search report for the same
+ * question points at the same record (`searchIdFor`).
  */
 export function useCommandBarAssist({
   autoAsk,
@@ -66,8 +61,8 @@ export function useCommandBarAssist({
   /** Whether this query qualifies for a background ask right now. */
   autoAsk: boolean;
   getInventory: () => AssistCommandDescriptor[];
-  /** Whether the server may keep the question (the Usage setting), read as each ask goes out. */
-  logSearches: () => boolean;
+  /** Whether the server may keep this question, read as each ask goes out. */
+  logSearches: (query: string) => boolean;
   rootQuery: string;
 }): {
   /** False once Esc has dismissed the section for the query still in the bar. */
@@ -75,6 +70,8 @@ export function useCommandBarAssist({
   assistState: AssistRequestState;
   askAssist: () => void;
   resetAssist: () => boolean;
+  /** The server's record of the answer kept for this question, whatever is on screen now. */
+  searchIdFor: (query: string) => string | undefined;
 } {
   const [assistState, setRenderedAssistState] = useState<AssistRequestState>({ status: "idle" });
   const assistStateRef = useRef(assistState);
@@ -156,7 +153,7 @@ export function useCommandBarAssist({
       try {
         const response = await apiClient.assistCommand(trimmed, getInventoryRef.current(), {
           signal: controller.signal,
-          log: logSearchesRef.current(),
+          log: logSearchesRef.current(trimmed),
         });
         if (controller.signal.aborted || abortRef.current !== controller) return;
         const answer: AssistAnswer = {
@@ -235,10 +232,15 @@ export function useCommandBarAssist({
 
   useEffect(() => cancelPending, [cancelPending]);
 
+  const searchIdFor = useCallback((query: string) => (
+    answersRef.current.get(normalizeAssistQuery(query))?.searchId
+  ), []);
+
   return {
     assistActive: dismissedQueryRef.current !== normalizeAssistQuery(rootQuery),
     assistState,
     askAssist,
     resetAssist,
+    searchIdFor,
   };
 }

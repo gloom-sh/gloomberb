@@ -19,14 +19,7 @@ export type AssistRequestSource = "auto" | "explicit";
 export type AssistRequestState =
   | { status: "idle" }
   | { status: "loading"; query: string; source: AssistRequestSource }
-  | {
-    status: "answered";
-    query: string;
-    source: AssistRequestSource;
-    candidates: AssistCommandCandidate[];
-    /** The server's record of the ask, which the search report points at. */
-    searchId?: string;
-  }
+  | { status: "answered"; query: string; source: AssistRequestSource; candidates: AssistCommandCandidate[] }
   | { status: "error"; query: string; source: AssistRequestSource; kind: AssistErrorKind };
 
 export interface AssistRowHandlers {

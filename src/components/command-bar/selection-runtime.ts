@@ -26,7 +26,7 @@ import {
 } from "./routes/root/selection";
 import type { OpenInlineConfirm } from "./routing/confirm";
 import { activatePickerSelectionAction } from "./picker-activation";
-import type { RootRowRun } from "./routes/root/search-report";
+import type { RunRootRow } from "./routes/root/search-report";
 
 type OpenModeRouteFn = (
   screen: "ticker-search" | "layout",
@@ -58,12 +58,6 @@ interface UseCommandBarSelectionRuntimeOptions {
   executeCollectionCommand: ExecuteCollectionCommandFn;
   getAvailablePaneShortcutTemplates: (query: string) => PaneTemplateDef[];
   getAvailablePluginCommands: () => CommandDef[];
-  /**
-   * The command-search report, called as a root row runs. It comes first so
-   * a row that closes the bar finds the visit reported; the report itself is
-   * sent later and never holds the row up.
-   */
-  onRootRowRun?: (run: RootRowRun) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: OpenModeRouteFn;
   openPaneTemplateWorkflow: (template: PaneTemplateDef, options?: { arg?: string }) => void;
@@ -75,6 +69,12 @@ interface UseCommandBarSelectionRuntimeOptions {
   rootQueryRef: MutableRefObject<string>;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
   runDirectCommand: (command: Command, arg: string) => void;
+  /**
+   * The command-search report, which runs each root row (and Tab on a typed
+   * shortcut) so it can tell a row that ran from one that only opened a route
+   * or rewrote the query. It never holds the row up.
+   */
+  runRootRow?: RunRootRow;
   runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
   setRootQuery: (query: string) => void;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
@@ -98,7 +98,6 @@ export function useCommandBarSelectionRuntime({
   executeCollectionCommand,
   getAvailablePaneShortcutTemplates,
   getAvailablePluginCommands,
-  onRootRowRun,
   openInlineConfirm,
   openModeRoute,
   openPaneTemplateWorkflow,
@@ -110,6 +109,7 @@ export function useCommandBarSelectionRuntime({
   rootQueryRef,
   rootThemeBaseIdRef,
   runDirectCommand,
+  runRootRow,
   runSecurityDescriptionShortcut,
   setRootQuery,
   setRouteStack,
@@ -123,40 +123,6 @@ export function useCommandBarSelectionRuntime({
     rootThemeBaseIdRef.current = stateRef.current.config.theme;
     setRootQuery(arg ? `TH ${arg}` : "TH ");
   }, [rootThemeBaseIdRef, setRootQuery, stateRef]);
-
-  const acceptRootShortcutTab = useCallback((): boolean => acceptRootShortcutTabAction({
-    activeTickerSymbol,
-    availableCommands,
-    createPaneTemplateItem,
-    createPluginCommandItem,
-    executeCollectionCommand,
-    getAvailablePaneShortcutTemplates,
-    getAvailablePluginCommands,
-    openModeRoute,
-    openPaneTemplateWorkflow,
-    pluginCommandResultItems,
-    query: rootQueryRef.current,
-    runDirectCommand,
-    runSecurityDescriptionShortcut,
-    setRootQuery,
-    startThemePicker,
-  }), [
-    activeTickerSymbol,
-    availableCommands,
-    createPaneTemplateItem,
-    createPluginCommandItem,
-    executeCollectionCommand,
-    getAvailablePaneShortcutTemplates,
-    getAvailablePluginCommands,
-    openModeRoute,
-    openPaneTemplateWorkflow,
-    pluginCommandResultItems,
-    rootQueryRef,
-    runDirectCommand,
-    runSecurityDescriptionShortcut,
-    setRootQuery,
-    startThemePicker,
-  ]);
 
   const acceptSelectedShortcutTab = useCallback((): boolean => {
     const listState = visibleListStateRef.current;
@@ -204,17 +170,69 @@ export function useCommandBarSelectionRuntime({
   ]);
 
   /**
+   * Tab on a typed shortcut: it completes the prefix, or opens the shortcut's
+   * route (a ticker search, a pane form), which is the typed text running.
+   */
+  const acceptRootShortcutTab = useCallback((): boolean => {
+    const query = rootQueryRef.current;
+    const accept = () => acceptRootShortcutTabAction({
+      activeTickerSymbol,
+      availableCommands,
+      createPaneTemplateItem,
+      createPluginCommandItem,
+      executeCollectionCommand,
+      getAvailablePaneShortcutTemplates,
+      getAvailablePluginCommands,
+      openModeRoute,
+      openPaneTemplateWorkflow,
+      pluginCommandResultItems,
+      query,
+      runDirectCommand,
+      runSecurityDescriptionShortcut,
+      setRootQuery,
+      startThemePicker,
+    });
+    const shortcutRow = runRootRow ? resolveImmediateRootSelection(query) : null;
+    if (!runRootRow || !shortcutRow) return accept();
+    let accepted = false;
+    runRootRow({ item: shortcutRow, query, rank: 0, isShortcut: () => true }, () => {
+      accepted = accept();
+      return accepted;
+    });
+    return accepted;
+  }, [
+    activeTickerSymbol,
+    availableCommands,
+    createPaneTemplateItem,
+    createPluginCommandItem,
+    executeCollectionCommand,
+    getAvailablePaneShortcutTemplates,
+    getAvailablePluginCommands,
+    openModeRoute,
+    openPaneTemplateWorkflow,
+    pluginCommandResultItems,
+    resolveImmediateRootSelection,
+    rootQueryRef,
+    runDirectCommand,
+    runRootRow,
+    runSecurityDescriptionShortcut,
+    setRootQuery,
+    startThemePicker,
+  ]);
+
+  /**
    * Runs `query` exactly as if it had been typed into the root bar and
    * submitted, so AI-suggested inputs take the same prefix/arg path as anything
    * the user types. Argless prefixes reject a trailing argument outright
    * ("ERN NVDA" resolves to nothing), so the bare prefix gets a second try
-   * before the text is merely dropped into the input.
+   * before the text is merely dropped into the input. Returns whether a row
+   * ran.
    */
-  const runRootQuery = useCallback((query: string, options?: { fallbackPrefix?: string }) => {
+  const runRootQuery = useCallback((query: string, options?: { fallbackPrefix?: string }): boolean => {
     const item = resolveImmediateRootSelection(query);
     if (item && !item.disabled) {
       void item.action();
-      return;
+      return true;
     }
     const trimmed = query.trim();
     const fallbackPrefix = (options?.fallbackPrefix ?? trimmed.split(/\s+/)[0] ?? "").trim();
@@ -222,10 +240,11 @@ export function useCommandBarSelectionRuntime({
       const fallbackItem = resolveImmediateRootSelection(fallbackPrefix);
       if (fallbackItem && !fallbackItem.disabled) {
         void fallbackItem.action();
-        return;
+        return true;
       }
     }
     setRootQuery(query);
+    return false;
   }, [resolveImmediateRootSelection, setRootQuery]);
 
   const setActiveListQuery = useCallback((nextQuery: string) => {
@@ -268,57 +287,64 @@ export function useCommandBarSelectionRuntime({
         : null);
     const selected = options?.item ?? typed ?? listState.results[listState.selectedIdx];
     if (!selected || selected.disabled) return;
-    // Read before the row runs, which can rewrite the query.
-    if (!currentRoute) {
-      onRootRowRun?.({
-        item: selected,
-        query: rootQueryRef.current,
-        rank: selected === typed ? 0 : Math.max(0, listState.results.indexOf(selected)),
-        typed: selected === typed,
-      });
-    }
 
-    if (options?.secondary && selected.secondaryAction) {
-      void selected.secondaryAction();
-      return;
-    }
+    const run = () => {
+      if (options?.secondary && selected.secondaryAction) {
+        void selected.secondaryAction();
+        return;
+      }
 
-    if (currentRoute?.kind === "picker") {
-      activatePickerSelectionAction({
-        closeAll,
-        collectionWorkflowActions,
-        executeCollectionCommand,
-        layout: stateConfigLayout,
-        openInlineConfirm,
-        persistLayoutChange,
-        pluginRegistry,
-        route: currentRoute,
-        selectedId: selected.id,
-        setRouteStack,
-        updateTopRoute,
-        updateWorkflowValue,
-      });
-      return;
-    }
+      if (currentRoute?.kind === "picker") {
+        activatePickerSelectionAction({
+          closeAll,
+          collectionWorkflowActions,
+          executeCollectionCommand,
+          layout: stateConfigLayout,
+          openInlineConfirm,
+          persistLayoutChange,
+          pluginRegistry,
+          route: currentRoute,
+          selectedId: selected.id,
+          setRouteStack,
+          updateTopRoute,
+          updateWorkflowValue,
+        });
+        return;
+      }
 
-    if (currentRoute?.kind === "pane-settings") {
+      if (currentRoute?.kind === "pane-settings") {
+        void selected.action();
+        return;
+      }
+
       void selected.action();
+    };
+    if (currentRoute || !runRootRow) {
+      run();
       return;
     }
-
-    void selected.action();
+    // Read before the row runs, which can rewrite the query.
+    const query = rootQueryRef.current;
+    runRootRow({
+      item: selected,
+      query,
+      rank: selected === typed ? 0 : Math.max(0, listState.results.indexOf(selected)),
+      // Text that ran before its list rendered is the shortcut itself;
+      // otherwise only the row the shortcut resolves to is.
+      isShortcut: () => selected === typed || resolveImmediateRootSelection(query)?.id === selected.id,
+    }, run);
   }, [
     closeAll,
     collectionWorkflowActions,
     currentRoute,
     executeCollectionCommand,
-    onRootRowRun,
     openInlineConfirm,
     persistLayoutChange,
     pluginRegistry,
     resolveImmediateRootSelection,
     rootQuery,
     rootQueryRef,
+    runRootRow,
     setRouteStack,
     stateConfigLayout,
     updateTopRoute,
