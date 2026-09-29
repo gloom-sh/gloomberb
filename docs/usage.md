@@ -215,7 +215,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |
 | `BI` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
-| `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
+| `FNG` | Fear and greed market gauge |
 
 Ticker Research includes a **Congress** tab for House and Senate transactions in
 the selected ticker. The **Chamber** filter narrows `CG` and the tab to one chamber. Scroll to append filing windows; `n` or its footer action continues a
@@ -355,7 +355,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb ticker <symbol>` | Show quote, ownership, and financials |
 | `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
 | `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`13f` is the holders list without insiders; `fn 13F` has 13F filings) |
-| `gloomberb movers\|indices\|sectors\|fx\|earnings` | Fetch market overview data |
+| `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market overview data |
 | `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
 | `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
 | `gloomberb portfolio [action]` | Manage manual portfolios |
@@ -402,7 +402,7 @@ Open it with `PL` in the command bar. It lists what you have installed, what the
 
 A plugin installed or updated from the pane is loaded into the running session: its panes and commands are available immediately. If your app starts with a plugin that failed to load, a notification says so and opens this pane.
 
-You do not need the pane to get an official plugin. Type its code, such as `FNG`, `TV`, `IPO`, `POLL`, `PM`, `HN` or `SUB`, and the command bar offers to install it after the same confirmation, then opens it with whatever you typed after the code.
+You do not need the pane to get an official plugin. Type its code, such as `TV`, `IPO`, `POLL`, `PM`, `HN` or `SUB`, and the command bar offers to install it after the same confirmation, then opens it with whatever you typed after the code.
 
 Official plugins, the ones published under [github.com/gloom-sh](https://github.com/gloom-sh), update on their own in the background: once after Gloomberb itself updates, then at most once a day. A plugin you linked or edited locally is left alone, and when an update needs a restart to finish, one notification says so. Third-party plugins update only when you press `g` or run `gloomberb update`. **Update official plugins automatically** in this pane's settings turns it off.
 
@@ -452,15 +452,15 @@ Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Ja
 
 ## Market and macro plugins
 
-Fear & Greed, the IPO Calendar, and Polls each live in their own repository rather than inside the app. Each reads one third-party site directly, so a plugin can ship a fix the day that site changes instead of waiting for an app release.
+The IPO Calendar and Polls each live in their own repository rather than inside the app. Each reads one third-party site directly, so a plugin can ship a fix the day that site changes instead of waiting for an app release.
 
-Existing installations restore all three once after upgrading, keeping their saved panes: the pane and template ids are unchanged. A plugin whose Market Overview or Macro owner was switched off stays off, and a deliberate removal is respected. To install one by hand:
+Existing installations restore both once after upgrading, keeping their saved panes: the pane and template ids are unchanged. The IPO Calendar stays off where Macro was switched off, and a deliberate removal is respected. To install one by hand:
 
 ```bash
-gloomberb install gloom-sh/gloom-fear-greed
+gloomberb install gloom-sh/gloom-polls
 ```
 
-Market Heatmap and Market Halts are built in again, with the same panes, shortcuts and settings. Where Market Overview was switched off, each starts switched off too unless its plugin was installed; `PL` turns them on. A copy installed while they were plugins is no longer loaded; `gloomberb plugins` lists it, and `gloomberb remove gloom-market-heatmap` (or `gloom-market-halts`) deletes it.
+Fear & Greed, Market Heatmap and Market Halts are built in again, with the same panes, shortcuts and settings. Where Market Overview was switched off, each starts switched off too unless its plugin was installed; `PL` turns them on. A copy installed while they were plugins is no longer loaded; `gloomberb plugins` lists it, and `gloomberb remove gloom-fear-greed` (or `gloom-market-heatmap`, `gloom-market-halts`) deletes it.
 
 ## Live TV
 

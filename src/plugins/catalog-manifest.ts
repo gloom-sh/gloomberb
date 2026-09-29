@@ -47,6 +47,7 @@ const EDITORIAL: Record<
   broker: { categories: ["broker"] },
   "custom-view": { categories: ["data", "productivity"] },
   debug: { categories: ["developer"] },
+  "fear-greed": { categories: ["markets", "sentiment"], icon: "plugin-icons/fear-greed.webp" },
   macro: { categories: ["macro"] },
   "market-halts": { categories: ["markets"], icon: "plugin-icons/market-halts.webp" },
   "market-heatmap": { categories: ["markets"], icon: "plugin-icons/market-heatmap.webp" },

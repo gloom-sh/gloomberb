@@ -775,9 +775,8 @@ describe("loadConfig", () => {
     expect(config.disabledPlugins).toEqual([
       "ticker-research",
       "market-overview",
-      // Their own plugins now (Market Heatmap built in, Fear & Greed
-      // external), so a legacy id means the plugin of that name rather than
-      // the built-in that used to contain it.
+      // Their own built-ins now, so a legacy id means the plugin of that name
+      // rather than the built-in that used to contain it.
       "market-heatmap",
       "fear-greed",
       "macro",
@@ -790,9 +789,9 @@ describe("loadConfig", () => {
   });
 
   /**
-   * Market Heatmap and Market Halts were Market Overview modules, then
-   * plugins the seeder did not install while Market Overview was off. Built
-   * in again, they would come back on under their own ids.
+   * Market Heatmap, Market Halts and Fear & Greed were Market Overview
+   * modules, then plugins the seeder did not install while Market Overview
+   * was off. Built in again, they would come back on under their own ids.
    */
   test("keeps the absorbed Market Overview modules off where Market Overview was off", async () => {
     // Installed by hand since, so wanted, and loaded as the built-in now.
@@ -801,9 +800,17 @@ describe("loadConfig", () => {
     const saved = createSavedConfig({ configVersion: 22, disabledPlugins: ["market-overview"] });
     await writeConfigJson(dataDir, saved);
 
-    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["market-overview", "market-halts"]);
-    // The web bundled both whatever Market Overview said.
+    const migrated = await loadConfig(dataDir);
+    expect(migrated.disabledPlugins).toEqual(["market-overview", "market-halts", "fear-greed"]);
+    // The web bundled all three whatever Market Overview said.
     expect(normalizeLoadedConfig(saved, dataDir).config.disabledPlugins).toEqual(["market-overview"]);
+
+    // Switched on since, then saved by an older build, which writes its own
+    // configVersion back: the migration runs again but leaves them on.
+    await saveConfig({ ...migrated, disabledPlugins: ["market-overview"] });
+    const persisted = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as Record<string, unknown>;
+    await writeConfigJson(dataDir, { ...persisted, configVersion: 22 });
+    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["market-overview"]);
   });
 
   test("migrates grouped built-in plugin config keys", async () => {

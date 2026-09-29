@@ -24,15 +24,15 @@ function registryPlugin(overrides: Partial<RegistryPlugin> & Pick<RegistryPlugin
   };
 }
 
-const fearGreed = registryPlugin({
-  id: "fear-greed",
-  name: "Fear & Greed",
-  repo: "gloom-sh/gloom-fear-greed",
+const polls = registryPlugin({
+  id: "polls",
+  name: "Polls",
+  repo: "gloom-sh/gloom-polls",
   contributes: {
-    panes: ["fear-greed"],
+    panes: ["polls"],
     capabilities: [],
     broker: false,
-    shortcuts: [{ code: "FNG", name: "Fear & Greed", description: "Sentiment gauge." }],
+    shortcuts: [{ code: "POLL", name: "Polls", description: "Political polls by race." }],
   },
 });
 
@@ -57,7 +57,7 @@ function match(query: string, options: {
   const installed = new Set(options.installed ?? []);
   return matchPluginInstallOffer({
     query,
-    registry: options.registry ?? [fearGreed, predictionMarkets],
+    registry: options.registry ?? [polls, predictionMarkets],
     isClaimed: (code) => claimed.has(code),
     isInstalled: (plugin) => installed.has(plugin.id),
   });
@@ -65,45 +65,61 @@ function match(query: string, options: {
 
 describe("matchPluginInstallOffer", () => {
   test("matches the whole code in any case, and as the first word with an argument after it", () => {
-    expect(match("fng")?.shortcut.code).toBe("FNG");
-    expect(match("  Fng  ")?.argText).toBe("");
-    expect(match("FNG AAPL")).toMatchObject({ plugin: { id: "fear-greed" }, argText: "AAPL" });
+    expect(match("poll")?.shortcut.code).toBe("POLL");
+    expect(match("  Poll  ")?.argText).toBe("");
+    expect(match("POLL senate")).toMatchObject({ plugin: { id: "polls" }, argText: "senate" });
     expect(match("pm  fed rate cut")).toMatchObject({ plugin: { id: "prediction-markets" }, argText: "fed rate cut" });
   });
 
   test("never matches part of a code or a code inside a longer word", () => {
-    expect(match("FN")).toBeNull();
-    expect(match("FNGX")).toBeNull();
-    expect(match("AAPL FNG")).toBeNull();
+    expect(match("POL")).toBeNull();
+    expect(match("POLLS")).toBeNull();
+    expect(match("AAPL POLL")).toBeNull();
     expect(match("")).toBeNull();
   });
 
   test("a code the app already answers to wins over the registry", () => {
-    expect(match("FNG", { claimed: ["FNG"] })).toBeNull();
+    expect(match("POLL", { claimed: ["POLL"] })).toBeNull();
     expect(match("PM fed", { claimed: ["PM"] })).toBeNull();
-    expect(match("FNG", { claimed: ["PM"] })?.plugin.id).toBe("fear-greed");
+    expect(match("POLL", { claimed: ["PM"] })?.plugin.id).toBe("polls");
   });
 
   test("an installed plugin is not offered again", () => {
-    expect(match("FNG", { installed: ["fear-greed"] })).toBeNull();
+    expect(match("POLL", { installed: ["polls"] })).toBeNull();
+  });
+
+  /**
+   * Fear & Greed, Market Heatmap and Market Halts are built in again, and a
+   * feed can still list their repositories as plugins to install. The
+   * installer refuses them, so not even a code nothing claims offers one.
+   */
+  test("never offers a plugin that is built in now, whatever the feed says", () => {
+    const absorbed = ([["fear-greed", "FNG"], ["market-heatmap", "HM"], ["market-halts", "HALT"]] as const)
+      .map(([id, code]) => registryPlugin({
+        id,
+        repo: `gloom-sh/gloom-${id}`,
+        contributes: { panes: [id], capabilities: [], broker: false, shortcuts: [{ code, name: id, description: "" }] },
+      }));
+
+    for (const code of ["FNG", "HM", "HALT"]) expect(match(code, { registry: absorbed })).toBeNull();
   });
 
   test("offers only plugins Gloom publishes from gloom-sh", () => {
-    const shortcuts = [{ code: "FNG", name: "Fear & Greed", description: "" }];
+    const shortcuts = [{ code: "POLL", name: "Polls", description: "" }];
     const contributes = { panes: [], capabilities: [], broker: false, shortcuts };
-    const community = registryPlugin({ id: "other-fng", repo: "someone/fng", tier: "community", contributes });
-    const officialElsewhere = registryPlugin({ id: "fork-fng", repo: "someone/gloom-fear-greed", contributes });
-    const bundled = registryPlugin({ id: "bundled-fng", bundled: true, contributes });
+    const community = registryPlugin({ id: "other-polls", repo: "someone/polls", tier: "community", contributes });
+    const officialElsewhere = registryPlugin({ id: "fork-polls", repo: "someone/gloom-polls", contributes });
+    const bundled = registryPlugin({ id: "bundled-polls", bundled: true, contributes });
 
-    expect(match("FNG", { registry: [community] })).toBeNull();
-    expect(match("FNG", { registry: [officialElsewhere] })).toBeNull();
-    expect(match("FNG", { registry: [bundled] })).toBeNull();
+    expect(match("POLL", { registry: [community] })).toBeNull();
+    expect(match("POLL", { registry: [officialElsewhere] })).toBeNull();
+    expect(match("POLL", { registry: [bundled] })).toBeNull();
     // A community entry claiming the code first does not hide the official one.
-    expect(match("FNG", { registry: [community, fearGreed] })?.plugin.id).toBe("fear-greed");
+    expect(match("POLL", { registry: [community, polls] })?.plugin.id).toBe("polls");
   });
 
   test("reads feeds without the field, or with malformed entries, as offering nothing", () => {
-    const olderFeed = registryPlugin({ id: "fear-greed", repo: "gloom-sh/gloom-fear-greed" });
+    const olderFeed = registryPlugin({ id: "polls", repo: "gloom-sh/gloom-polls" });
     const malformed = registryPlugin({
       id: "polls",
       repo: "gloom-sh/gloom-polls",
@@ -111,7 +127,7 @@ describe("matchPluginInstallOffer", () => {
     });
     const noContributes = { ...registryPlugin({ id: "tv", repo: "gloom-sh/gloom-tv" }), contributes: undefined } as never;
 
-    expect(match("FNG", { registry: [olderFeed] })).toBeNull();
+    expect(match("POLL", { registry: [olderFeed] })).toBeNull();
     expect(match("POLL", { registry: [malformed, noContributes] })).toBeNull();
   });
 });
@@ -139,8 +155,8 @@ describe("collectClaimedShortcutCodes", () => {
 
 describe("isRegistryPluginInstalled", () => {
   test("counts a checkout that never reported its id, by its repository's folder", () => {
-    expect(isRegistryPluginInstalled(fearGreed, [{ id: "fear-greed" }])).toBe(true);
-    expect(isRegistryPluginInstalled(fearGreed, [{ id: "gloom-fear-greed", directory: "Gloom-Fear-Greed" }])).toBe(true);
-    expect(isRegistryPluginInstalled(fearGreed, [{ id: "polls", directory: "gloom-polls" }])).toBe(false);
+    expect(isRegistryPluginInstalled(polls, [{ id: "polls" }])).toBe(true);
+    expect(isRegistryPluginInstalled(polls, [{ id: "gloom-polls", directory: "Gloom-Polls" }])).toBe(true);
+    expect(isRegistryPluginInstalled(polls, [{ id: "tv", directory: "gloom-tv" }])).toBe(false);
   });
 });

@@ -102,11 +102,11 @@ describe("loadExternalPlugin", () => {
 });
 
 /**
- * Market Heatmap and Market Halts are built in again, and upgraded installs
- * still have their external checkouts. Loaded beside the built-in, one fails
- * on the duplicate id and reports a crash on every launch, so the loader
- * skips it before linking or importing anything, and leaves the folder as it
- * is for an older Gloomberb that may share it.
+ * Market Heatmap, Market Halts and Fear & Greed are built in again, and
+ * upgraded installs still have their external checkouts. Loaded beside the
+ * built-in, one fails on the duplicate id and reports a crash on every launch,
+ * so the loader skips it before linking or importing anything, and leaves the
+ * folder as it is for an older Gloomberb that may share it.
  */
 describe("leftover checkouts of plugins that are built in now", () => {
   const imported = `throw new Error("imported");\n`;
@@ -121,13 +121,15 @@ describe("leftover checkouts of plugins that are built in now", () => {
       return join(parent, name);
     };
     folder(pluginsDir, "gloom-market-heatmap", { "index.ts": imported });
+    folder(pluginsDir, "gloom-fear-greed", { "index.ts": imported });
     folder(pluginsDir, "gloomberb-market-halts", { "index.ts": imported });
     folder(pluginsDir, "heatmap-fork", { "gloom.json": JSON.stringify({ id: "market-heatmap" }), "index.ts": imported });
     symlinkSync(folder(devDir, "gloom-market-halts", { "index.ts": imported }), join(pluginsDir, "gloom-market-halts"), "dir");
     folder(pluginsDir, "weather", { "index.ts": `export default { id: "weather", name: "Weather" };\n` });
 
     expect(await listPluginDirectories(pluginsDir)).toEqual([join(pluginsDir, "weather")]);
-    for (const name of ["gloom-market-heatmap", "gloomberb-market-halts", "heatmap-fork", "gloom-market-halts"]) {
+    const leftovers = ["gloom-market-heatmap", "gloom-fear-greed", "gloomberb-market-halts", "heatmap-fork", "gloom-market-halts"];
+    for (const name of leftovers) {
       const dir = join(pluginsDir, name);
       expect(await loadExternalPlugin(dir)).toBeNull();
       expect(existsSync(join(dir, "node_modules"))).toBe(false);

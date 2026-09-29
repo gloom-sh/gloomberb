@@ -4,7 +4,7 @@ import { runsExternalPlugins } from "../../current-target";
 
 export type PluginTier = "official" | "verified" | "community";
 
-/** A command-bar code a registry plugin answers to, such as `FNG`. */
+/** A command-bar code a registry plugin answers to, such as `POLL`. */
 export interface RegistryPluginShortcut {
   code: string;
   name: string;

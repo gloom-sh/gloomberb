@@ -161,26 +161,39 @@ function migrateUnreachablePaneInstances(
   };
 }
 
-// Market Heatmap and Market Halts were Market Overview modules, so switching
-// Market Overview off switched them off, and the seeder kept them off when
-// they moved out by not installing them. Built in again under their own ids,
-// they would come back on. A copy installed since means the user wants it.
-// Removing a restored copy is not taken as switching it off: that config looks
-// the same as a fresh install that never had one, which should get the
-// built-in. The web bundled them whatever Market Overview said, so without a
-// plugins folder there is nothing to keep.
+// Market Heatmap, Market Halts and Fear & Greed were Market Overview modules,
+// so switching Market Overview off switched them off, and the seeder kept them
+// off when they moved out by not installing them. Built in again under their
+// own ids, they would come back on. A copy installed since means the user
+// wants it. Removing a restored copy is not taken as switching it off: that
+// config looks the same as a fresh install that never had one, which should
+// get the built-in. The web bundled them whatever Market Overview said and has
+// no plugins folder, so it decides nothing itself, but disabledPlugins syncs,
+// so a signed-in web session follows what was kept off here.
+//
+// An older build saving this config writes its own configVersion back, which
+// would run this again after the user switched one on. So each plugin is
+// decided once, recorded as `absorbed:<id>` in seededPlugins: older builds
+// keep that list as they found it, and it stays on this machine.
 function migrateAbsorbedMarketOverviewModules(
   saved: Record<string, unknown>,
   _dataDir: string,
   host: ConfigMigrationHost,
 ): Record<string, unknown> {
-  const disabledPlugins = stringList(saved.disabledPlugins);
   const hasCheckout = host.hasPluginCheckout;
-  if (!hasCheckout || !disabledPlugins.includes("market-overview")) return saved;
-  const keptOff = ["market-heatmap", "market-halts"].filter((pluginId) => !hasCheckout(pluginId));
+  if (!hasCheckout) return saved;
+  const seededPlugins = stringList(saved.seededPlugins);
+  const undecided = ["market-heatmap", "market-halts", "fear-greed"]
+    .filter((pluginId) => !seededPlugins.includes(`absorbed:${pluginId}`));
+  if (undecided.length === 0) return saved;
+  const disabledPlugins = stringList(saved.disabledPlugins);
+  const keptOff = disabledPlugins.includes("market-overview")
+    ? undecided.filter((pluginId) => !hasCheckout(pluginId))
+    : [];
   return {
     ...saved,
-    disabledPlugins: [...new Set([...disabledPlugins, ...keptOff])],
+    ...(keptOff.length > 0 ? { disabledPlugins: [...new Set([...disabledPlugins, ...keptOff])] } : {}),
+    seededPlugins: [...seededPlugins, ...undecided.map((pluginId) => `absorbed:${pluginId}`)],
   };
 }
 

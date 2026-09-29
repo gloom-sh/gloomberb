@@ -13,6 +13,7 @@ import { pluginDirectoryNames } from "./plugin-names";
 export const ABSORBED_PLUGINS = [
   { id: "market-heatmap", name: "Market Heatmap", repo: "gloom-sh/gloom-market-heatmap", directory: "gloom-market-heatmap" },
   { id: "market-halts", name: "Market Halts", repo: "gloom-sh/gloom-market-halts", directory: "gloom-market-halts" },
+  { id: "fear-greed", name: "Fear & Greed", repo: "gloom-sh/gloom-fear-greed", directory: "gloom-fear-greed" },
 ] as const;
 
 export type AbsorbedPlugin = (typeof ABSORBED_PLUGINS)[number];

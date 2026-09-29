@@ -113,14 +113,16 @@ describe("hasLocalChanges", () => {
 });
 
 /**
- * Market Heatmap and Market Halts are built in again. A copy of either only
- * fetches code the loader skips, so it is refused before anything is cloned
- * or linked: under either product name, from a fork, or from a checkout whose
- * gloom.json says what it is under a folder name of its own.
+ * Market Heatmap, Market Halts and Fear & Greed are built in again. A copy of
+ * any of them only fetches code the loader skips, so it is refused before
+ * anything is cloned or linked: under either product name, from a fork, or
+ * from a checkout whose gloom.json says what it is under a folder name of its
+ * own.
  */
 describe("plugins that are built in now", () => {
   test.each([
     "gloom-sh/gloom-market-heatmap",
+    "gloom-sh/gloom-fear-greed",
     "https://github.com/someone/gloomberb-market-halts",
   ])("refuses to install %s", async (ref) => {
     await expect(installPlugin(ref, { quiet: true })).rejects.toThrow(/is built into Gloomberb now\./);

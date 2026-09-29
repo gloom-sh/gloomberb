@@ -515,9 +515,9 @@ List the same codes in `gloom.json`, so someone who does not have the plugin can
 ```json
 {
   "contributes": {
-    "panes": ["fear-greed"],
+    "panes": ["polls"],
     "shortcuts": [
-      { "code": "FNG", "name": "Fear & Greed", "description": "CNN Fear & Greed index with its history and the seven indicators behind it." }
+      { "code": "POLL", "name": "Polls", "description": "Political polls by race, with trend charts and pollster breakdowns." }
     ]
   }
 }

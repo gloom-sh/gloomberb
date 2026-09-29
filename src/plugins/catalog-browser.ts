@@ -18,6 +18,7 @@ import { researchSearchPlugin } from "./builtin/research-search";
 import { alertsPlugin } from "./builtin/alerts";
 import { marketHeatmapPlugin } from "./builtin/market-heatmap";
 import { marketHaltsPlugin } from "./builtin/market-halts";
+import { fearGreedPlugin } from "./builtin/fear-greed";
 import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
 import { changelogModule } from "./builtin/changelog";
 import { chartComposerModule } from "./builtin/chart-composer";
@@ -175,6 +176,7 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   browserMarketOverviewPlugin,
   marketHeatmapPlugin,
   marketHaltsPlugin,
+  fearGreedPlugin,
   browserMacroPlugin,
   alertsPlugin,
   researchSearchPlugin,
