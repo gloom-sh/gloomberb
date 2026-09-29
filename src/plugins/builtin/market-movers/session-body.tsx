@@ -58,6 +58,8 @@ export function SessionMoversBody(props: {
   const access = usePlanAccess();
   const [denied, setDenied] = useState(false);
   const deny = useCallback(() => setDenied(true), []);
+  // A refusal is about the plan the account had then; a new plan asks again.
+  useEffect(() => setDenied(false), [access.signedIn, access.emailVerified, access.hasProAccess]);
   const entitled = access.emailVerified && access.hasProAccess && !denied;
   // Behind a wall the footer still carries the index summary; the list registers its own.
   usePaneFooter("market-movers-wall", () => (
@@ -102,6 +104,10 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const payload = loaded?.key === listKey ? loaded.payload : null;
   const listRows = payload?.items ?? NO_ROWS;
   const live = !!payload && sessionListIsLive(view, payload.session, session);
+  // While the list's session trades it is rebuilt every minute, and a failed or
+  // stale answer is asked for again as often; a finished list does not change,
+  // so it follows the refresh interval the user set.
+  const refreshEachMinute = sessionListIsLive(view, session.date, session) || !payload || payload.stale === true;
 
   const load = useCallback(async (options?: { forceRefresh?: boolean; background?: boolean }) => {
     const gen = ++fetchGenRef.current;
@@ -134,7 +140,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const backgroundRefresh = useCallback(() => {
     void load({ background: true });
   }, [load]);
-  useAutoRefresh(lastLoadedAt, backgroundRefresh, { intervalMs: LIST_REFRESH_MS });
+  useAutoRefresh(lastLoadedAt, backgroundRefresh, { intervalMs: refreshEachMinute ? LIST_REFRESH_MS : null });
 
   // A finished list keeps the prices it closed at, so it holds no quote subscriptions.
   const quoteTargets = useMemo(
@@ -145,15 +151,17 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
     freshnessScopeKey: `market-movers:${listKey}`,
     liveStreaming,
   });
+  const columns = useMemo(() => buildSessionMoverColumns(view, width), [view, width]);
+  // The sort survives a change of list, but not onto a column this list or width does not show.
+  const sort = columns.some((column) => column.id === sortPreference.columnId) ? sortPreference : DEFAULT_SORT;
   const rows = useMemo(
-    () => sortSessionRows(live ? overlaySessionMovers(listRows, entries) : listRows, sortPreference),
-    [entries, listRows, live, sortPreference],
+    () => sortSessionRows(live ? overlaySessionMovers(listRows, entries) : listRows, sort),
+    [entries, listRows, live, sort],
   );
   const feedStatus = useMemo(
     () => resolveScreenerQuoteFeedStatus(quoteTargets, entries, { now: freshnessNow, subscriptionStartedAt }),
     [entries, freshnessNow, quoteTargets, subscriptionStartedAt],
   );
-  const columns = useMemo(() => buildSessionMoverColumns(view, width), [view, width]);
 
   useEffect(() => {
     if (selectedId && rows.some((row) => rowKey(row) === selectedId)) return;
@@ -179,13 +187,16 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
     pinTicker(rowKey(row), { floating: true, paneType: TICKER_RESEARCH_PANE_ID, instrument: null });
   }, [pinTicker]);
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextHeaderSort(current, columnId as SessionMoverColumn["id"], { resetTo: DEFAULT_SORT }));
-  }, []);
+    setSortPreference(nextHeaderSort(sort, columnId as SessionMoverColumn["id"], { resetTo: DEFAULT_SORT }));
+  }, [sort]);
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
     handleRefreshKey(event, () => load({ forceRefresh: true }), { stopPropagation: true })
   ), [load]);
 
   const sides = sessionSides(view);
+  // Until this list's first answer the table is loading, including the frame
+  // between a change of list and its request going out.
+  const emptyTitle = payload ? "No movers yet." : loadError ?? "Loading movers...";
   return (
     <DataTableView<SessionMoverRow, SessionMoverColumn>
       focused={focused}
@@ -208,14 +219,14 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
       sortable
       columns={columns}
       items={rows}
-      sortColumnId={sortPreference.columnId}
-      sortDirection={sortPreference.direction}
+      sortColumnId={sort.columnId}
+      sortDirection={sort.direction}
       onHeaderClick={handleHeaderClick}
       getItemKey={rowKey}
       onActivate={openRow}
       renderCell={renderSessionMoverCell}
       selectedTextOverridesCellColor
-      emptyStateTitle={loading && !payload ? "Loading movers..." : loadError ?? "No movers yet."}
+      emptyStateTitle={emptyTitle}
       emptyContent={loadError && !payload ? (
         <Box paddingX={1} paddingY={1}>
           <EmptyState title={loadError} message="Try again in a moment." />

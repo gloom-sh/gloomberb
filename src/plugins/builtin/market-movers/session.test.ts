@@ -25,8 +25,13 @@ describe("the session that is trading", () => {
 });
 
 describe("the list MOST opens on", () => {
-  const pick = (saved: string, pickedIn: string | null, now: UsSession, tabs: readonly string[] = TABS) =>
-    resolveActiveTab({ tabs, saved, pickedIn, session: now });
+  const pick = (
+    saved: string,
+    pickedIn: string | null,
+    now: UsSession,
+    tabs: readonly string[] = TABS,
+    extra: { requested?: string | null; sessionListsOpen?: boolean } = {},
+  ) => resolveActiveTab({ tabs, saved, pickedIn, session: now, sessionListsOpen: extra.sessionListsOpen ?? true, requested: extra.requested });
 
   test("defaults to the session that is trading", () => {
     expect(pick("gainers", null, session("pre"))).toBe("premarket");
@@ -47,9 +52,22 @@ describe("the list MOST opens on", () => {
     expect(pick("losers", null, session("closed"))).toBe("losers");
   });
 
-  test("a session list asked for from the CLI is kept whatever is trading", () => {
-    expect(pick("afterhours", null, session("regular"))).toBe("afterhours");
-    expect(pick("premarket", null, session("post"))).toBe("premarket");
+  test("a list asked for from the CLI is kept whatever is trading", () => {
+    expect(pick("gainers", null, session("regular"), TABS, { requested: "afterhours" })).toBe("afterhours");
+    expect(pick("gainers", null, session("post"), TABS, { requested: "premarket" })).toBe("premarket");
+    expect(pick("gainers", null, session("pre"), TABS, { requested: "gainers" })).toBe("gainers");
+    expect(pick("gainers", null, session("post"), TABS, { requested: "actives" })).toBe("actives");
+    // A request for a list the pane does not show falls back to the usual rule.
+    expect(pick("gainers", null, session("pre"), ["gainers", "premarket"], { requested: "gaps" })).toBe("premarket");
+  });
+
+  test("an account without the session lists stays on the day's lists", () => {
+    const closedToSessions = { sessionListsOpen: false };
+    expect(pick("actives", null, session("pre"), TABS, closedToSessions)).toBe("actives");
+    expect(pick("losers", "2026-09-29:regular", session("post"), TABS, closedToSessions)).toBe("losers");
+    expect(pick("premarket", "2026-09-28:pre", session("pre"), TABS, closedToSessions)).toBe("gainers");
+    // A wall the user opened by hand this session stays open.
+    expect(pick("afterhours", "2026-09-29:post", session("post"), TABS, closedToSessions)).toBe("afterhours");
   });
 
   test("only offers lists the pane is set to show", () => {

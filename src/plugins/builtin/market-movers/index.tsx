@@ -8,6 +8,7 @@ import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { usePaneSettingValue } from "../../../state/app/context";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh } from "../../../react/auto-refresh";
@@ -77,13 +78,23 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   const [savedSummarySymbols] = usePaneSettingValue<string[]>("summarySymbols", NO_SAVED_SELECTION);
   const tabs = useMemo(() => resolveTabs(savedTabs), [savedTabs]);
   const summarySymbols = useMemo(() => resolveSummarySymbols(savedSummarySymbols), [savedSummarySymbols]);
-  // Pane state rather than local state, so `--list` on the CLI and a restored
-  // layout open on the same tab the user (or the screenshot) asked for.
+  // Pane state rather than local state, so a restored layout opens on the tab
+  // the user picked. `--list` on the CLI and screenshots land in `requestedTab`,
+  // which holds until the user picks a tab, whatever session is trading.
   const [savedTab, setSavedTab] = usePluginPaneState<TabId>("activeTab", tabs[0]!.id);
   const [pickedIn, setPickedIn] = usePluginPaneState<string | null>("activeTabSession", null);
+  const [requestedTab, setRequestedTab] = usePluginPaneState<TabId | null>("requestedTab", null);
+  const access = usePlanAccess();
   const session = useUsSession();
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
-  const activeTab = resolveActiveTab({ tabs: tabIds, saved: savedTab, pickedIn, session });
+  const activeTab = resolveActiveTab({
+    tabs: tabIds,
+    saved: savedTab,
+    pickedIn,
+    session,
+    requested: requestedTab,
+    sessionListsOpen: access.signedIn && access.emailVerified && access.hasProAccess,
+  });
 
   // The index summary is a quote board like any other, so it runs on the shared
   // one instead of a third parallel pipeline against the same upstream.
@@ -101,6 +112,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   const selectTab = (value: string) => {
     setSavedTab(value as TabId);
     setPickedIn(session.key);
+    if (requestedTab) setRequestedTab(null);
   };
   const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
 

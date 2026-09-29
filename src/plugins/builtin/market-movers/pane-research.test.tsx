@@ -134,3 +134,10 @@ test("routed major-unit and unknown-unit quotes keep range context honest", asyn
   expect(unknown).not.toContain(",25,");
   expect(unknown).not.toContain("$");
 });
+
+test("signed out during the pre-market, the pane stays on the day's lists instead of a sign-in wall", async () => {
+  Date.now = () => Date.parse("2026-09-29T12:00:00Z"); // 08:00 New York, a Tuesday
+  await mount(() => payload([raw("GAINER")]));
+  expect(setup!.captureCharFrame()).not.toContain("Sign in");
+  expect(await csv()).toContain("GAINER");
+});

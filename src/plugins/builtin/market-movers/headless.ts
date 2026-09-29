@@ -89,7 +89,8 @@ export function createMarketMoversHeadless(
         { value: "gaps", aliases: ["gap"] },
       ],
       defaultValue: "actives",
-      pluginState: { pluginId: "market-overview", key: "activeTab" },
+      // Not `activeTab`: a requested list is kept whatever session is trading.
+      pluginState: { pluginId: "market-overview", key: "requestedTab" },
     }, {
       key: "side",
       description: "Pre-market, after-hours and gap lists: up, down or active (gaps have no active list).",

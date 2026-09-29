@@ -71,11 +71,13 @@ These three lists cover every listed US common stock, ADR and ETF (warrants,
 rights, units, preferreds and listed notes are left out) and need Gloom Cloud
 Pro. They are built from consolidated-tape half-hour bars, 04:00 to 20:00 New
 York, and rebuilt once a minute; while a list's session is trading its rows
-update with live quotes. MOST opens on the session that is trading: Pre-market
-before 09:30, the day's lists during the regular session, After hours from the
-close. A list picked by hand stays until that session ends. Before 04:00, on
-weekends and holidays, and for After hours during the day, a list shows the
-previous session and the footer names its date.
+update with live quotes. With Pro, MOST opens on the session that is trading:
+Pre-market before 09:30, the day's lists during the regular session, After
+hours from the close; without it MOST stays on the day's lists. A list picked
+by hand stays until that session ends, and one asked for with `--list` stays
+until another is picked. Before 04:00, on weekends and holidays, and for After
+hours during the day, a list shows the previous session and the footer names
+its date.
 
 - Floors. Pre-market and After hours need a last price and reference close of
   at least $1 and 20,000 shares traded in the session. Gaps need a prior close

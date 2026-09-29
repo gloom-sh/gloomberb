@@ -62,24 +62,29 @@ export function usSessionAt(now: number): UsSession {
 }
 
 /**
- * The list MOST opens on. A list the user picked stays while the session it
- * was picked in lasts; otherwise the pane follows the session that is trading:
- * Pre-market before 09:30, the day's lists during the regular session, After
- * hours after the close. Overnight and on closed days the last pick stands. A
- * session list saved with no session of its own (a CLI or screenshot request)
- * is kept too.
+ * The list MOST opens on. A list asked for with `--list` (the CLI or a
+ * screenshot) is kept until the user picks another. A list the user picked
+ * stays while the session it was picked in lasts; otherwise the pane follows
+ * the session that is trading: Pre-market before 09:30, the day's lists during
+ * the regular session, After hours after the close. Overnight and on closed
+ * days the last pick stands. An account that cannot open the session lists
+ * (signed out, unverified, free) keeps the day's lists instead of being moved
+ * onto a wall.
  */
 export function resolveActiveTab<T extends string>(args: {
   tabs: readonly T[];
   saved: string;
   pickedIn: string | null | undefined;
   session: UsSession;
+  requested?: string | null;
+  sessionListsOpen: boolean;
 }): T {
   const { tabs, session } = args;
+  const requested = tabs.find((tab) => tab === args.requested);
+  if (requested) return requested;
   const saved = tabs.find((tab) => tab === args.saved) ?? tabs[0]!;
   if (session.phase === "closed" || args.pickedIn === session.key) return saved;
-  if (!args.pickedIn && isSessionTab(saved)) return saved;
-  if (session.phase === "regular") {
+  if (session.phase === "regular" || !args.sessionListsOpen) {
     return REGULAR_TABS.has(saved) ? saved : tabs.find((tab) => REGULAR_TABS.has(tab)) ?? saved;
   }
   const sessionTab = session.phase === "pre" ? "premarket" : "afterhours";
