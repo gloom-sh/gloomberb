@@ -753,8 +753,8 @@ describe("OnboardingWizard", () => {
         ...createDefaultConfig(tempDataDir),
         onboardingProgress: { version: 1 as const, stage: "account" as const, path: "manual" as const, portfolioId: "main" },
       };
-      testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
-      await testSetup.renderOnce();
+      await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+      await tui.setup().renderOnce();
 
       await waitForFrame("Email");
       await typeText("returning@example.com");
