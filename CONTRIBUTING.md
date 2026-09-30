@@ -62,6 +62,7 @@ CI runs these on every pull request. Run them before you push:
 
 ```bash
 bun run typecheck   # terminal, desktop Bun process, desktop view, browser, Worker, scripts, built-in plugin tests
+bun run knip        # unused files, exports and dependencies
 bun test
 ```
 
