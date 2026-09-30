@@ -12,6 +12,25 @@ await mkdir(outdir, { recursive: true });
 // Tabs get the plain mark, like gloom.sh; the app icon tile is too small to read at 16px.
 await writeFile(join(outdir, "favicon.svg"), await readFile(join(root, "src/assets/gloomberb-mark.svg")));
 await writeFile(join(outdir, "favicon.ico"), await readFile(join(root, "src/assets/gloomberb-mark.ico")));
+// A web app manifest makes the browser offer "Install Gloomberb": the terminal
+// then gets its own window and a Dock or taskbar icon. People who start in the
+// browser come back far less often than people with the app installed.
+await writeFile(join(outdir, "app-icon-256.png"), await readFile(join(root, "icon.iconset/icon_256x256.png")));
+await writeFile(join(outdir, "app-icon-512.png"), await readFile(join(root, "icon.iconset/icon_512x512.png")));
+await writeFile(join(outdir, "manifest.webmanifest"), `${JSON.stringify({
+  name: "Gloomberb",
+  short_name: "Gloomberb",
+  description: "An open-source financial terminal.",
+  start_url: "/",
+  scope: "/",
+  display: "standalone",
+  // The loading screen's colour; the window colours follow the chosen theme.
+  background_color: "#272a34",
+  icons: [
+    { src: "/app-icon-256.png", sizes: "256x256", type: "image/png" },
+    { src: "/app-icon-512.png", sizes: "512x512", type: "image/png" },
+  ],
+}, null, 2)}\n`);
 
 async function buildPage(
   name: string,
@@ -39,6 +58,8 @@ async function buildPage(
   <title>${title}</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/app-icon-256.png">
   <link rel="stylesheet" href="${href(stylesheet)}">
 </head>
 <body>
