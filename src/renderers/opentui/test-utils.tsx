@@ -216,7 +216,7 @@ export function createTestControls(
 }
 
 export type OpenTuiTestSetup = Awaited<ReturnType<typeof testRender>>;
-export type OpenTuiTestRoot = ReturnType<typeof createOpenTuiTestRoot>;
+type OpenTuiTestRoot = ReturnType<typeof createOpenTuiTestRoot>;
 export type OpenTuiTestRenderOptions = NonNullable<Parameters<typeof openTuiTestRender>[1]>;
 
 /**
