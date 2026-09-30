@@ -57,11 +57,13 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
       dividendYieldBasis: statistics.dividendYieldBasis,
       dividendYieldSource: statistics.dividendYieldSource,
       dividendRate: statistics.dividendRate,
+      exDividendDate: statistics.exDividendDate,
       source: statistics.source,
       fetchedAt: statistics.fetchedAt,
       stale: statistics.stale,
     } : undefined,
     profile: fund && financials.profile?.description ? { description: financials.profile.description } : undefined,
+    nextEarnings: undefined,
     annualStatements: [],
     quarterlyStatements: [],
   };

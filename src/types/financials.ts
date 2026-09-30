@@ -147,6 +147,20 @@ export interface Fundamentals {
   return3Y?: number;
   lastQuarterGrowth?: number;
   sharesOutstanding?: number;
+  /** Free float: shares outstanding less insider and strategic holdings. */
+  floatShares?: number;
+  beta?: number;
+  /** Shares sold short at the source's latest settlement. */
+  sharesShort?: number;
+  /** Shares short over float from the same observation, as a fraction (0.0127 for 1.27%). */
+  shortPercentOfFloat?: number;
+  /** Days to cover: shares short over average daily volume. */
+  shortRatio?: number;
+  /** Fractions of shares outstanding. */
+  insiderPercentHeld?: number;
+  institutionPercentHeld?: number;
+  /** The latest ex-dividend date (YYYY-MM-DD) while the dividend is being paid. */
+  exDividendDate?: string;
 }
 
 type HolderOwnerType = "institution" | "fund" | "direct" | "insider";
@@ -287,6 +301,22 @@ export interface CompanyProfile {
   description?: string;
   sector?: string;
   industry?: string;
+  employees?: number;
+  website?: string;
+  /** SEC Standard Industrial Classification, four digits (US filers). */
+  sic?: string;
+  sicDescription?: string;
+  /** Fiscal year end as MM-DD (US filers). */
+  fiscalYearEnd?: string;
+}
+
+/** A company's next report from the earnings calendar. */
+export interface NextEarnings {
+  date: string;
+  /** Before the open, during market hours, after the close. */
+  timing: "bmo" | "dmh" | "amc" | null;
+  /** "history" when the timing is predicted from the last two reports. */
+  timingSource: "filing" | "calendar" | "history" | null;
 }
 
 export type IncomeStatementField = "netIncome" | "netIncomeIncludingNoncontrollingInterests" | "netIncomeCommonStockholders";
@@ -664,6 +694,7 @@ export interface TickerFinancials {
   quoteContributions?: QuoteContributionMap;
   fundamentals?: Fundamentals;
   profile?: CompanyProfile;
+  nextEarnings?: NextEarnings;
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
   priceHistory: PricePoint[];

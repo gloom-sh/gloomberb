@@ -1,4 +1,4 @@
-import { EmptyState, SectionHeading, usePaneNoticeFooter } from "../../../components";
+import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo } from "../../../components/company-logo";
 import { PriceReturnStrip } from "../../../components/price-performance";
@@ -16,8 +16,10 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
-import { CompactRangeBar, FundamentalsGrid, PositionTable, QuoteBook } from "./overview/components";
-import { buildOverviewStats, buildPositionRows } from "./overview/model";
+import { zonedDateKey } from "../../../utils/zoned-date-time";
+import { CompactRangeBar, FundamentalsGrid, PositionTable, QuoteBook, textGridColumns } from "./overview/components";
+import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./overview/model";
+import type { OverviewFunctionLink } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-list/live-valuation";
 
@@ -28,6 +30,8 @@ interface OverviewTabProps {
   financials: TickerFinancials | null;
   /** A click on the price chart opens the full chart. */
   onOpenChart?: () => void;
+  /** A click on a figure opens its research function (beta to GR, holders to HDS). */
+  onOpenFunction?: (link: OverviewFunctionLink) => void;
 }
 
 export function OverviewTab(props: OverviewTabProps) {
@@ -35,7 +39,7 @@ export function OverviewTab(props: OverviewTabProps) {
   return <ResolvedOverviewTab {...props} ticker={props.ticker} />;
 }
 
-function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
   const { fractionalViewport = false, nativePaneChrome } = useUiCapabilities();
@@ -134,6 +138,16 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
     baseCurrency,
     toBase,
     marketCapExchangeRates: exchangeRates,
+    nextEarnings: financials?.nextEarnings,
+    // Report and ex-dividend dates are the listing's calendar days.
+    today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
+  });
+  const profileFields = buildProfileFields({
+    instrumentType,
+    sector,
+    industry,
+    profile,
+    isin: ticker.metadata.isin,
   });
   const performanceFields = buildPriceReturnFields(
     appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], historyQuote),
@@ -280,7 +294,9 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
         {stats.length > 0 && (
           <Box flexDirection="column">
             <SectionHeading title={t("Fundamentals")} />
-            <FundamentalsGrid fields={stats} width={contentWidth} />
+            <PaneLinkMenu>
+              <FundamentalsGrid fields={stats} width={contentWidth} onOpenLink={onOpenFunction} />
+            </PaneLinkMenu>
           </Box>
         )}
 
@@ -291,35 +307,12 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
           </Box>
         )}
 
-        {/* Sector / Industry / Type */}
-        {(sector || industry || instrumentType) && (
-          <Box flexDirection="row" height={1} gap={3}>
-            {instrumentType && (
-              <Box flexDirection="row">
-                <Text fg={colors.textDim}>{t("Type")}: </Text>
-                <Text fg={colors.text}>{instrumentType}</Text>
-              </Box>
-            )}
-            {sector && (
-              <Box flexDirection="row">
-                <Text fg={colors.textDim}>{t("Sector")}: </Text>
-                <Text fg={colors.text}>{sector}</Text>
-              </Box>
-            )}
-            {industry && (
-              <Box flexDirection="row">
-                <Text fg={colors.textDim}>{t("Industry")}: </Text>
-                <Text fg={colors.text}>{industry}</Text>
-              </Box>
-            )}
-          </Box>
-        )}
-
-        {/* ISIN */}
-        {ticker.metadata.isin && (
-          <Box flexDirection="row" height={1}>
-            <Text fg={colors.textDim}>{t("ISIN")}: </Text>
-            <Text fg={colors.text}>{ticker.metadata.isin}</Text>
+        {profileFields.length > 0 && (
+          <Box flexDirection="column">
+            <SectionHeading title={t("Profile")} />
+            <PaneLinkMenu>
+              <FundamentalsGrid fields={profileFields} width={contentWidth} columns={textGridColumns(profileFields, contentWidth)} />
+            </PaneLinkMenu>
           </Box>
         )}
 

@@ -41,7 +41,7 @@ for (const quoted of [true, false]) test(`fund classification and profile surviv
   });
   await settleFrame(setup!, 10);
   const frame = setup!.captureCharFrame();
-  expect(frame).toMatch(/Type:\s*ETF/);
+  expect(frame).toMatch(/Type\s+ETF/);
   expect(frame).toContain(profile.description);
   expect(frame).toMatch(/Div Yield\s+0.00%/);
   const text = await buildTickerReport({ symbol: "CLASSA", tickerFile: ticker, financials, config, toBase: async v => v });
