@@ -48,7 +48,7 @@ function matchesKind(row: EventRow, kind: string): boolean {
   return row.status === "Earnings" && row.earningsState === "reported";
 }
 
-export function projectEarningsEstimatesHeadless(
+function projectEarningsEstimatesHeadless(
   sources: EarningsEstimateSources,
   args: HeadlessPaneLoadArgs,
 ): HeadlessRowsResult {

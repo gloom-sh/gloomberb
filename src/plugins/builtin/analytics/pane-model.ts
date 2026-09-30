@@ -367,7 +367,7 @@ export function buildAnalyticsSummaryRows({
  * Names the slice of the portfolio the risk numbers actually describe, so a
  * Sharpe built on half the book is never presented as the whole book.
  */
-export function formatRiskCoverage(coverage: number, missingCount: number): string | null {
+function formatRiskCoverage(coverage: number, missingCount: number): string | null {
   if (missingCount <= 0 || coverage >= 0.999) return null;
   return `${formatPercentRaw(coverage * 100)} of value, ${missingCount} holding${missingCount === 1 ? "" : "s"} pending`;
 }

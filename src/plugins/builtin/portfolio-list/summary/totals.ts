@@ -13,7 +13,7 @@ import {
 } from "../position-metrics";
 
 /** A position lot valued from a current quote, in the base currency. */
-export interface PricedPortfolioLot {
+interface PricedPortfolioLot {
   /** Stable for the lot while the positions stay as imported. */
   key: string;
   direction: 1 | -1;

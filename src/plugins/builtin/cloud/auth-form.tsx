@@ -17,7 +17,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { validateAccountEmail, type AccountMode } from "./auth-model";
 import { useEmailAuthAttempt, type EmailAuthField } from "./email-auth-attempt";
 
-export const AUTH_FIELD_WIDTH = 42;
+const AUTH_FIELD_WIDTH = 42;
 
 type ResetState = "idle" | "sending" | "sent";
 

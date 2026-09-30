@@ -12,7 +12,7 @@ export interface StatusBarTabGroup {
   collapsed: boolean;
 }
 
-export const GROUP_MARKER_PREFIX = "group:";
+const GROUP_MARKER_PREFIX = "group:";
 
 export function groupIdFor(layout: Pick<SavedLayout, "origin">): TabGroupId {
   return layout.origin ? `team:${layout.origin.teamId}` : "personal";

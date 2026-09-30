@@ -1,5 +1,5 @@
 /** Gloom Cloud rate-path contract. Rates are percentage points; probabilities are fractions. */
-export interface RateMetric {
+interface RateMetric {
   value: number | null;
   asOf: string | null;
   percentile: number | null;

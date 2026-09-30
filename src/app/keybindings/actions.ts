@@ -32,7 +32,7 @@ export type CoreKeybindingActionId =
   | "window-move-mode"
   | "window-resize-mode";
 
-export type KeybindingActionCategory = "Global Keys" | "Pane Management";
+type KeybindingActionCategory = "Global Keys" | "Pane Management";
 
 export interface KeybindingActionDef {
   id: CoreKeybindingActionId;

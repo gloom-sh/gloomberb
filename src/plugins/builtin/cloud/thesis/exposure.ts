@@ -6,7 +6,7 @@ import { useLiveTickerFinancialsMap } from "../../../../state/hooks/live-ticker-
 import type { TickerRecord } from "../../../../types/ticker";
 import { getPortfolioPositionValue } from "../../kelly-sizer/portfolio";
 import { calculatePortfolioSummaryTotals } from "../../portfolio-list/metrics";
-import { buildTrackedCurrencies, getCollectionTickersFromConfig, getCollectionTypeFromConfig } from "../../portfolio-list/pane/data";
+import { buildTrackedCurrencies, getCollectionTickersFromConfig } from "../../portfolio-list/pane/data";
 import type { SymbolExposure } from "./model";
 
 const NO_INSTRUMENT_OPTIONS = {};
@@ -17,7 +17,7 @@ function holdsOptions(ticker: TickerRecord): boolean {
   return ticker.metadata.positions.some((position) => (position.multiplier ?? 1) !== 1);
 }
 
-export interface BookScope {
+interface BookScope {
   /** `null` is the whole book across every portfolio. */
   collectionId: string | null;
   kind: "all" | "portfolio" | "watchlist";

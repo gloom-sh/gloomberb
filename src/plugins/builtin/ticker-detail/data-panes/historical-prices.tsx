@@ -89,7 +89,7 @@ function formatMaybeCompact(value: number | null | undefined): string {
   return value == null ? "-" : formatCompact(value);
 }
 
-export function buildHistoricalPriceRows(points: PricePoint[]): HistoricalPriceRow[] {
+function buildHistoricalPriceRows(points: PricePoint[]): HistoricalPriceRow[] {
   const sorted = points
     .flatMap((point, sourceIndex) => {
       const date = pricePointDate(point);

@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type Ref } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import type { Surface3DHostProps } from "../../../ui/host";
 import {
   clampSurface3DCamera, DEFAULT_SURFACE3D_CAMERA, FLOOR, FLOOR_PROJECTION_ALPHA, hitTestSurface3D, projectSurface3D, surface3DBox, surface3DLayout, surface3DLighting,

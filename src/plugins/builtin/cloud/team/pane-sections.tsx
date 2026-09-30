@@ -306,7 +306,7 @@ export function ChannelsSection({
   );
 }
 
-export function TeamDraftFields({
+function TeamDraftFields({
   draft,
   width,
   onChange,

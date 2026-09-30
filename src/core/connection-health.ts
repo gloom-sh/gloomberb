@@ -1,6 +1,6 @@
 import { errorMessage } from "../utils/errors";
 
-export type ConnectionHealthKind = "asset-data" | "news" | "api" | "websocket" | "capability";
+type ConnectionHealthKind = "asset-data" | "news" | "api" | "websocket" | "capability";
 export type ConnectionHealthStatus = "idle" | "connecting" | "connected" | "disconnected" | "error";
 export type ConnectionSocketState = "idle" | "connecting" | "open" | "closed" | "error";
 
@@ -13,7 +13,7 @@ export interface ConnectionHealthSource {
   priority?: number;
 }
 
-export interface ConnectionRequestOutcome {
+interface ConnectionRequestOutcome {
   at: number;
   operation: string;
   success: boolean;

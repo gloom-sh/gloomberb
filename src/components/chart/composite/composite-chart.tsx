@@ -46,8 +46,6 @@ import {
 import { PriceAxisLabels } from "./price-axis-labels";
 import {
   compositeAxisTicks,
-  formatCompositeAxisValue,
-  formatCompositeCursorDate,
   formatCompositeCursorValue,
   formatCompositePointDetails,
   formatCompositeSeriesValue,
@@ -533,7 +531,7 @@ const WATERMARK_BASE_HEIGHT_PX = 48;
  * stays a mark rather than a poster. Plots too small for a legible mark get
  * none: a clipped wordmark reads as a glitch.
  */
-export function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number | null {
+function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number | null {
   const scale = Math.min(
     (plotWidthPx * 0.5) / WATERMARK_BASE_WIDTH_PX,
     (plotHeightPx * 0.4) / WATERMARK_BASE_HEIGHT_PX,

@@ -11,7 +11,7 @@ import { getPluginCatalog } from "./catalog";
  * checked against a committed snapshot in CI.
  */
 
-export interface BuiltinPluginManifestEntry {
+interface BuiltinPluginManifestEntry {
   id: string;
   name: string;
   description: string;

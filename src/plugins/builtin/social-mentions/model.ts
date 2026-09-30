@@ -42,7 +42,7 @@ export function socialDayRows(data: SocialMentionsPayload): SocialDayRow[] {
   }));
 }
 
-export type SocialColumnId = "day" | "mentions" | "ratio" | "wikiViews" | "redditMentions" | "stance" | "topPost";
+type SocialColumnId = "day" | "mentions" | "ratio" | "wikiViews" | "redditMentions" | "stance" | "topPost";
 export type SocialColumn = Omit<DataTableColumn, "id"> & { id: SocialColumnId };
 export const SOCIAL_COLUMNS: SocialColumn[] = [
   { id: "day", label: "DATE", width: 12, align: "left" },

@@ -64,7 +64,7 @@ type RelationshipGraphShortcut =
  * window, [c]orr and [f]it toggle their panels. The query bar shows all four,
  * so none needs a footer hint. `r` refreshes this pair's history.
  */
-export function resolveRelationshipGraphShortcut(
+function resolveRelationshipGraphShortcut(
   event: Pick<KeyEventLike, "name" | "key" | "ctrl" | "shift" | "alt" | "meta" | "super">,
 ): RelationshipGraphShortcut | null {
   if (event.ctrl || event.shift || event.alt || event.meta || event.super) return null;

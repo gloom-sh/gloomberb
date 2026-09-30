@@ -70,7 +70,7 @@ function chartStudyOptions(periodOf: (selection: BuiltinStudySelection) => numbe
   }));
 }
 
-export const CHART_STUDY_OPTIONS: Array<PaneSettingOption & { value: BuiltinStudySelection }> = chartStudyOptions(defaultStudyPeriod);
+const CHART_STUDY_OPTIONS: Array<PaneSettingOption & { value: BuiltinStudySelection }> = chartStudyOptions(defaultStudyPeriod);
 
 /** The indicator options with the periods this chart actually uses. */
 export function chartStudyOptionsFor(spec: ChartSpec): Array<PaneSettingOption & { value: BuiltinStudySelection }> {
@@ -112,7 +112,7 @@ export function getChartInlineStyleTarget(spec: ChartSpec): ChartSeriesSpec | nu
   return spec.series.length === 1 ? spec.series[0] ?? null : null;
 }
 
-export function getChartInlineStyles(spec: ChartSpec): SeriesStyle[] {
+function getChartInlineStyles(spec: ChartSpec): SeriesStyle[] {
   const target = getChartInlineStyleTarget(spec);
   if (!target) return [];
   const fieldId = target.source.kind === "security" ? target.source.fieldId : "";

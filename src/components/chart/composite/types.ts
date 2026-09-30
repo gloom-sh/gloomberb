@@ -50,7 +50,7 @@ export interface CompositeProjectedPoint {
   breakBefore: boolean;
 }
 
-export interface CompositeCalendarTimeScale {
+interface CompositeCalendarTimeScale {
   kind: "calendar";
   startTime: number;
   endTime: number;
@@ -62,7 +62,7 @@ export interface CompositeCalendarTimeScale {
   rightOffsetRatio?: number;
 }
 
-export interface CompositeMarketTimeScale {
+interface CompositeMarketTimeScale {
   kind: "market";
   startTime: number;
   endTime: number;
@@ -87,7 +87,7 @@ export interface CompositeProjectedSeries {
 }
 
 /** Level line at the newest close of the chart's primary price series. */
-export interface CompositeLastPriceMarker {
+interface CompositeLastPriceMarker {
   seriesId: string;
   color: string;
   axis: CompositeAxisSide;

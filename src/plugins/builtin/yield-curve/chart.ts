@@ -2,10 +2,6 @@ import type { CurveSeries } from "../../../components/chart/curve";
 import type { YieldCurveLookbackId } from "./history";
 import { curveAsOf, curveSpread, isYieldObservationDate, type YieldPoint } from "./treasury-data";
 
-export function formatMaturityYears(years: number): string {
-  return years < 1 ? `${(years * 12).toFixed(1)}M` : `${years.toFixed(1)}Y`;
-}
-
 export function formatYield(value: number): string {
   return `${value.toFixed(2)}%`;
 }

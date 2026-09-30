@@ -27,7 +27,7 @@ export type JobsCompanyState =
 const SUMMARY_TTL_MS = 5 * 60_000;
 const summaryCache = new Map<string, { at: number; state: JobsCompanyState }>();
 
-export function cachedJobs(ticker: string): JobsCompanyState | null {
+function cachedJobs(ticker: string): JobsCompanyState | null {
   const entry = summaryCache.get(ticker.toUpperCase());
   if (!entry || Date.now() - entry.at > SUMMARY_TTL_MS) return null;
   return entry.state;

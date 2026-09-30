@@ -12,7 +12,7 @@ export interface SplitBarPart {
  * zero so a small one still shows, trimmed from the largest when the floors
  * overshoot the width.
  */
-export function splitBarCells(values: readonly number[], width: number): number[] {
+function splitBarCells(values: readonly number[], width: number): number[] {
   const sum = values.reduce((total, value) => total + (value > 0 ? value : 0), 0);
   if (sum <= 0 || width <= 0) return values.map(() => 0);
   const cells = values.map((value) => (value > 0 ? Math.max(1, Math.round((value / sum) * width)) : 0));

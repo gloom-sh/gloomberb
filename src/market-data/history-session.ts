@@ -10,7 +10,7 @@ const DAY = 86_400_000;
 const FEED_DELAY = 15 * 60_000;
 // Sources stamp observedAt with their own clock; a desktop clock a little
 // behind the server must not turn fresh history into invalid metadata.
-export const HISTORY_CLOCK_SKEW_MS = 5 * 60_000;
+const HISTORY_CLOCK_SKEW_MS = 5 * 60_000;
 
 /** Untrusted wire/cache metadata must match the actual requested listing and interval. */
 export function parseHistorySession(

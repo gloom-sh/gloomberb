@@ -131,7 +131,7 @@ function throwIfAborted(signal: AbortSignal): void {
     : new Error("Headless pane load was aborted.");
 }
 
-export async function loadHeadlessPaneModel(
+async function loadHeadlessPaneModel(
   definition: HeadlessPaneDefinition,
   args: HeadlessPaneLoadArgs,
   context: HeadlessPaneContext,

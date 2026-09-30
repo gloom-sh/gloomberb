@@ -16,7 +16,7 @@ import type { CommandBarRoute } from "../../workflow/types";
 const USAGE_SETTING_ROW_IDS = new Set(["toggle-usage-counts", "command:toggle-usage-counts"]);
 
 /** A root row the user runs, read before it runs: running a row can rewrite the query. */
-export interface RootRowRun {
+interface RootRowRun {
   item: ResultItem;
   /** The root query at that moment, as typed. */
   query: string;

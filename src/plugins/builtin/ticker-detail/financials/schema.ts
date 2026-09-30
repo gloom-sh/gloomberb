@@ -1,4 +1,3 @@
-import type { FinancialStatement } from "../../../../types/financials";
 import type { FinancialSubTab } from "./model";
 
 function financialRatio(

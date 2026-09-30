@@ -35,7 +35,7 @@ export type CloudCdsHistoryParams = {
   days?: number;
 };
 
-export type CloudCongressChamber = "all" | "house" | "senate";
+type CloudCongressChamber = "all" | "house" | "senate";
 
 export type CloudCongressHouseParams = {
   /** Which feed to read; House when omitted. */
@@ -104,7 +104,7 @@ const CRYPTO_QUOTE = /[-/](USD|USDT|USDC|EUR|GBP|BTC)$/;
 
 export type CloudLogoKind = "ticker" | "crypto";
 
-export function normalizeCloudLogoSymbol(
+function normalizeCloudLogoSymbol(
   kind: CloudLogoKind,
   symbol: string,
 ): string | null {

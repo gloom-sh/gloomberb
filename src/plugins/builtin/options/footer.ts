@@ -9,13 +9,13 @@ import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import type { OptionQuoteCoverage, OptionQuoteCoverageStatus } from "./live-quotes";
 import { formatOptionPrice, optionSpread, type OptionMarketReference } from "./market-reference";
 
-export interface OptionsCoverageState {
+interface OptionsCoverageState {
   text: string;
   tone: "muted" | "positive" | "warning";
 }
 
 /** Stream coverage the pane reports once the account is entitled to real-time options. */
-export function resolveOptionsCoverageState(status: OptionQuoteCoverageStatus): OptionsCoverageState | null {
+function resolveOptionsCoverageState(status: OptionQuoteCoverageStatus): OptionsCoverageState | null {
   if (status === "live") return { text: t("real-time options"), tone: "positive" };
   if (status === "mixed") return { text: t("mixed real-time and delayed options"), tone: "warning" };
   // The stream connects in the background; nothing to report until it answers.

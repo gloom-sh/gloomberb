@@ -112,7 +112,7 @@ export async function resolvePluginBrowserEntry(pluginDir: string): Promise<stri
 }
 
 /** `owner/repo` of a checkout's GitHub origin, read from `.git/config` directly; null for anything else. */
-export function readPluginOriginRepo(pluginDir: string): string | null {
+function readPluginOriginRepo(pluginDir: string): string | null {
   try {
     const config = readFileSync(join(pluginDir, ".git", "config"), "utf-8");
     const origin = /\[remote "origin"\]([^[]*)/.exec(config)?.[1] ?? "";

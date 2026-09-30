@@ -142,7 +142,7 @@ export function describeFilters(filters: CloudSavedSearchFilters | undefined): s
   return parts.join(" · ");
 }
 
-export function docTypeLabel(docType: CloudSearchDocType | string): string {
+function docTypeLabel(docType: CloudSearchDocType | string): string {
   switch (docType) {
     case "transcript":
       return "Call";

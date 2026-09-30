@@ -23,7 +23,7 @@ import { Header } from "../../layout/header";
 import { CommandBar } from "./index";
 import { createTestTicker } from "../../../test-support/ticker";
 
-export { createTestControls as createCommandBarTestControls, emitKeypress, settleFrame } from "../../../renderers/opentui/test-utils";
+export { createTestControls as createCommandBarTestControls, settleFrame } from "../../../renderers/opentui/test-utils";
 
 export function expectSingleBackControl(frame: string): void {
   expect(frame.match(/\bBack\b/g)?.length ?? 0).toBe(1);

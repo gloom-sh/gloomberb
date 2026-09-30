@@ -9,7 +9,7 @@ import type {
 } from "../../../core/connection-health";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
+import { Box, ScrollBox, Text } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { nextHeaderSort } from "../../../utils/sort-values";

@@ -19,7 +19,7 @@ export interface HistoryRetention {
   readonly availableStart: number;
 }
 
-export interface HistoryRecoveryRequest {
+interface HistoryRecoveryRequest {
   readonly symbol: string;
   readonly exchange: string;
   readonly entityKey: string;
@@ -36,7 +36,7 @@ export interface HistoryRecoveryCandidate {
   readonly retention: HistoryRetention;
 }
 
-export type HistorySourceOutcomeKind = "success" | "retention" | "auth" | "rate-limit" | "transient" | "failure"
+type HistorySourceOutcomeKind = "success" | "retention" | "auth" | "rate-limit" | "transient" | "failure"
   | "empty" | "missing-method" | "stale" | "malformed" | "reported-gaps" | "timeout" | "coverage";
 export interface HistorySourceOutcome {
   readonly sourceKey: string;

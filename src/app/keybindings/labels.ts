@@ -34,7 +34,7 @@ export function formatChordForHost(
  * Chords worth showing on this host. A terminal cannot deliver an explicit
  * Command chord, so those rows stay out of the terminal's help.
  */
-export function chordsForHost(chords: readonly KeyChord[], mode: ShortcutDisplayMode): KeyChord[] {
+function chordsForHost(chords: readonly KeyChord[], mode: ShortcutDisplayMode): KeyChord[] {
   return chords.filter((chord) => mode !== "terminal" || !chord.cmd);
 }
 

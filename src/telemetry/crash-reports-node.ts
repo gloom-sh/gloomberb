@@ -128,7 +128,7 @@ export function createNodeCrashReporterHost(options: NodeCrashReporterHostOption
  * killed) fails with EIO just before the hangup signal ends the process. That
  * is the user leaving, not a crash.
  */
-export function isTerminalHangup(error: unknown): boolean {
+function isTerminalHangup(error: unknown): boolean {
   const { code, syscall } = (error ?? {}) as { code?: unknown; syscall?: unknown };
   return code === "EIO" && syscall === "read";
 }

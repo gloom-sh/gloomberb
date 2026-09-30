@@ -13,7 +13,7 @@ export const RANGE_OPTIONS = [
   { value: "ALL" as const, label: "All" },
 ];
 
-export function indicatorOptions(): Array<{ label: string; value: string }> {
+function indicatorOptions(): Array<{ label: string; value: string }> {
   return INDICATORS.map((indicator) => ({ label: indicator.label, value: indicator.id }));
 }
 

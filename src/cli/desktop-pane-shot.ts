@@ -89,7 +89,7 @@ export interface DesktopPaneShotBridge {
   httpFetch(request: HttpProxyRequestEnvelope): Promise<HttpProxyResponseEnvelope>;
 }
 
-export interface DesktopPaneShotRenderedCell {
+interface DesktopPaneShotRenderedCell {
   columnId?: string;
   columnLabel: string;
   text: string;

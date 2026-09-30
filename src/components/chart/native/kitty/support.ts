@@ -20,7 +20,7 @@ const QUERY_TIMEOUT_MS = 250;
  * through as literal text, which shreds the screen. Whatever it advertises,
  * kitty graphics are not usable behind one.
  */
-export function isMultiplexedTerminal(
+function isMultiplexedTerminal(
   capabilities: RendererCapabilities | null | undefined,
   env: Record<string, string | undefined> = process.env,
 ): boolean {

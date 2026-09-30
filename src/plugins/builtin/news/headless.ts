@@ -63,7 +63,7 @@ function selectedSentiment(args: HeadlessPaneLoadArgs): string {
   return String(args.options.sentiment ?? "any");
 }
 
-export function projectNewsHeadless(
+function projectNewsHeadless(
   response: CloudNewsListResponse,
   args: HeadlessPaneLoadArgs,
   now: Date,

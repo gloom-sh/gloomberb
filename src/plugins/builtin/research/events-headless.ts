@@ -11,7 +11,7 @@ import type {
 import { buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./event-model";
 import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
 
-export interface EventHeadlessData {
+interface EventHeadlessData {
   actions: CorporateActionsData | null;
   estimates: AnalystResearchData | null;
   financials: TickerFinancials | null;

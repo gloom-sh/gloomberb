@@ -310,7 +310,7 @@ export function curveLegendLayout(series: readonly CurveSeries[], width: number)
 }
 
 /** Legend rows a curve surface spends at this width: one with a caption, else its wrapped series labels. */
-export function curveLegendRows(series: readonly CurveSeries[], width: number, caption?: string): number {
+function curveLegendRows(series: readonly CurveSeries[], width: number, caption?: string): number {
   return caption ? 1 : curveLegendLayout(series, width).length;
 }
 

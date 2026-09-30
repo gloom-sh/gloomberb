@@ -57,8 +57,6 @@ function trade(
   };
 }
 
-const loadActivity = async () => ACTIVITY;
-
 // Oracle's on-the-run 5Y from the DTCC tape, rolling to the Dec 2031 contract on Sep 21.
 const HISTORY: CdsSpreadHistory = {
   issuer: "Oracle Corporation",

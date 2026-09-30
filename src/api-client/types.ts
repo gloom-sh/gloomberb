@@ -171,7 +171,7 @@ export interface BuildoutTokenResponse {
   expiresAt: string;
 }
 
-export interface CloudPricingTier {
+interface CloudPricingTier {
   /** Charged amount, in integer cents. */
   amount: number;
 }
@@ -370,7 +370,7 @@ export interface CloudFredSeriesPayload {
  * One month of Robert Shiller's dataset. FRED carries no long-run S&P earnings,
  * so this is what every earnings-based valuation ratio is built from.
  */
-export interface CloudShillerObservationPayload {
+interface CloudShillerObservationPayload {
   date: string;
   price: number | null;
   dividend: number | null;
@@ -444,7 +444,7 @@ export interface CloudCdsHistoryResponse {
   points: CloudCdsHistoryPointPayload[];
 }
 
-export interface CloudShortInterestPointPayload {
+interface CloudShortInterestPointPayload {
   settlementDate: string;
   sharesShort: number;
   previousSharesShort: number | null;
@@ -585,7 +585,7 @@ export interface CloudEarningsCallPayload {
   webcastUrl?: string | null;
 }
 
-export interface CloudJobsSeriesPoint {
+interface CloudJobsSeriesPoint {
   day: string;
   open: number;
   /** Null on the first observed day, when the whole board is seen for the first time. */
@@ -687,7 +687,7 @@ export interface CloudJobsSummaryPayload {
   recent: CloudJobsPosting[];
 }
 
-export interface CloudJobsPendingPayload {
+interface CloudJobsPendingPayload {
   status: "pending";
   ticker: string;
   queued: boolean;
@@ -744,7 +744,7 @@ export interface CloudExecutiveRowPayload {
   total: number | null;
 }
 
-export interface CloudProxyStatementSummaryPayload {
+interface CloudProxyStatementSummaryPayload {
   id: string;
   ticker: string;
   company: {
@@ -778,7 +778,7 @@ export interface CloudProxyStatementPayload extends CloudProxyStatementSummaryPa
   otherYears: CloudProxyStatementSummaryPayload[];
 }
 
-export interface CloudRiskFactorPayload {
+interface CloudRiskFactorPayload {
   heading: string;
   group: string | null;
   excerpt: string;
@@ -791,7 +791,7 @@ export interface CloudRiskNotePayload {
   text: string;
 }
 
-export interface CloudRiskReportSummaryPayload {
+interface CloudRiskReportSummaryPayload {
   id: string;
   ticker: string;
   company: {
@@ -848,7 +848,7 @@ export interface CloudRiskReportListPayload {
   reports: CloudRiskReportSummaryPayload[];
 }
 
-export interface CloudFilingPersonPayload {
+interface CloudFilingPersonPayload {
   name: string;
   role: string;
   action: string;
@@ -904,7 +904,7 @@ export interface CloudTranscriptTurnPayload {
   startSeconds: number | null;
 }
 
-export interface CloudTranscriptKeyFigurePayload {
+interface CloudTranscriptKeyFigurePayload {
   /** What the number is, e.g. "Q3 revenue guidance". */
   label: string;
   /** As management said it, e.g. "$108B ± 2%". */
@@ -913,7 +913,7 @@ export interface CloudTranscriptKeyFigurePayload {
   note?: string;
 }
 
-export interface CloudTranscriptParticipantPayload {
+interface CloudTranscriptParticipantPayload {
   name: string;
   role?: string;
   company?: string;
@@ -1056,7 +1056,7 @@ export interface CloudSavedSearchInput {
   alertChannels?: string[];
 }
 
-export interface CloudSecFilingPayload {
+interface CloudSecFilingPayload {
   accessionNumber: string;
   form: string;
   filingDate: string;
@@ -1072,7 +1072,7 @@ export interface CloudSecFilingPayload {
   primaryDocumentUrl?: string;
 }
 
-export interface CloudSecDocumentPayload {
+interface CloudSecDocumentPayload {
   sequence?: string;
   type: string;
   description?: string;
@@ -1092,7 +1092,7 @@ export interface CloudSecDocumentsResponse {
   documents: CloudSecDocumentPayload[];
 }
 
-export interface CloudSecForm4Payload {
+interface CloudSecForm4Payload {
   filingDate: string;
   reportedName: string;
   title: string;
@@ -1359,7 +1359,7 @@ export type CloudEquityDiagnosticFindingKind =
   "red_flag" | "green_flag" | "anomaly";
 
 /** 3 is the most severe. */
-export type CloudEquityDiagnosticSeverity = 1 | 2 | 3;
+type CloudEquityDiagnosticSeverity = 1 | 2 | 3;
 
 export interface CloudEquityDiagnosticFinding {
   id: string;
@@ -1393,7 +1393,7 @@ export interface CloudEquityDiagnosticEvidence {
   url?: string;
 }
 
-export interface CloudEquityDiagnosticPending {
+interface CloudEquityDiagnosticPending {
   status: "generating";
   retryAfterMs: number;
 }
@@ -1459,7 +1459,7 @@ export type ScannerKind = "hilo" | "flow";
 
 export type ScannerStatus = "live" | "starting" | "closed" | "degraded";
 
-export interface ScannerWindowCounts {
+interface ScannerWindowCounts {
   highs: number;
   lows: number;
 }
@@ -1474,7 +1474,7 @@ export interface ScannerHiloExtreme {
 }
 
 /** Which entitlement tier produced the payload: free accounts get a delayed instance. */
-export interface ScannerAccessInfo {
+interface ScannerAccessInfo {
   access: "realtime" | "delayed";
   /** 0 on the realtime instance, 15 on the delayed one. */
   delayMinutes: number;
@@ -1559,7 +1559,7 @@ export interface QuoteStreamTarget {
   weight?: number;
 }
 
-export const TEAM_ACCENT_COLORS = [
+const TEAM_ACCENT_COLORS = [
   "amber",
   "blue",
   "cyan",
@@ -1667,7 +1667,7 @@ interface TeamNotificationTeam {
   shortName: string;
 }
 
-export type TeamNotificationData =
+type TeamNotificationData =
   | {
       kind: "team-invite";
       team: TeamNotificationTeam;
@@ -1685,7 +1685,7 @@ export type TeamNotificationData =
       author: TeamActor;
     };
 
-export type TeamNotificationType = TeamNotificationData["kind"];
+type TeamNotificationType = TeamNotificationData["kind"];
 
 export interface TeamNotification {
   id: string;
@@ -1697,10 +1697,10 @@ export interface TeamNotification {
 
 // Cloud notes
 
-export type NoteOwnerKind = "user" | "team";
+type NoteOwnerKind = "user" | "team";
 export type NoteKind = "ticker" | "quick";
 
-export interface CloudNoteOwner {
+interface CloudNoteOwner {
   kind: NoteOwnerKind;
   id: string;
 }
@@ -1733,14 +1733,14 @@ export type ThesisStatus = "watching" | "active" | "closed";
 export type ThesisHealth = "unverified" | "intact" | "weakening" | "broken";
 export type ThesisPillarStatus = ThesisHealth;
 
-export interface ThesisInstrument {
+interface ThesisInstrument {
   symbol: string;
   exchange?: string;
   side: "long" | "short";
   role: "core" | "hedge";
 }
 
-export interface ThesisMetricBound {
+interface ThesisMetricBound {
   key: string;
   op: ">=" | "<=";
   value: number;
@@ -1783,13 +1783,13 @@ export interface ThesisDocument {
   entry?: { date?: string; price?: number };
 }
 
-export interface ThesisOutcome {
+interface ThesisOutcome {
   verdict: "right" | "wrong" | "lucky" | "unlucky";
   returnPct?: number;
   lesson?: string;
 }
 
-export interface ThesisEditor {
+interface ThesisEditor {
   id: string;
   username: string | null;
   displayName: string;
@@ -1817,11 +1817,11 @@ export interface CloudThesis {
   closedAt: string | null;
 }
 
-export type ThesisSignalTargetKind = "pillar" | "kill" | "catalyst" | "thesis";
-export type ThesisSignalVerdict = "supports" | "challenges" | "breaks" | "neutral";
-export type ThesisSignalStatus = "open" | "accepted" | "dismissed" | "snoozed" | "noted";
+type ThesisSignalTargetKind = "pillar" | "kill" | "catalyst" | "thesis";
+type ThesisSignalVerdict = "supports" | "challenges" | "breaks" | "neutral";
+type ThesisSignalStatus = "open" | "accepted" | "dismissed" | "snoozed" | "noted";
 
-export interface ThesisSignalSource {
+interface ThesisSignalSource {
   kind: "news" | "filing" | "transcript" | "metric" | "review" | "user";
   id?: string;
   title?: string;
@@ -1893,7 +1893,7 @@ export interface TeamCollectionItem {
   updatedAt: string;
 }
 
-export type TeamCollectionChange =
+type TeamCollectionChange =
   | { change: "created"; collection: TeamCollection }
   | { change: "updated"; collection: TeamCollection }
   | { change: "deleted"; collectionId: string }

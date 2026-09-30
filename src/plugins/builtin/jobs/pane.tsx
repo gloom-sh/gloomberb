@@ -724,7 +724,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
 
 // Pane ----------------------------------------------------------------------
 
-export interface JobsViewProps {
+interface JobsViewProps {
   width: number;
   height: number;
   focused: boolean;
@@ -732,7 +732,7 @@ export interface JobsViewProps {
   companyOnly?: boolean;
 }
 
-export function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps) {
+function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps) {
   const { ticker } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker ?? null;
   const companyName = ticker?.metadata.name ?? null;

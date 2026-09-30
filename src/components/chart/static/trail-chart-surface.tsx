@@ -24,7 +24,7 @@ const STRENGTH_AXIS = { ticks: [] };
 type Tone = "text" | "dim" | "muted" | "positive" | "negative" | "warning";
 
 /** One label the overlay draws over the plot, in plot cells. */
-export interface TrailOverlayLabel {
+interface TrailOverlayLabel {
   id: string;
   text: string;
   x: number;

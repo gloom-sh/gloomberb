@@ -106,7 +106,7 @@ function countryName(code: string): string {
 }
 
 /** Company in either script, symbol, venue, country code or name, and status. */
-export function matchesIpoQuery(deal: IpoDeal, query: string): boolean {
+function matchesIpoQuery(deal: IpoDeal, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   return [

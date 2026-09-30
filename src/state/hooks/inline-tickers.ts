@@ -29,7 +29,7 @@ import { TICKER_RESEARCH_PANE_ID } from "../../types/config";
  * listings, so the badge stays a badge and opening it asks which listing was
  * meant. Only `missing` degrades to plain text.
  */
-export type InlineTickerStatus = "loading" | "ready" | "ambiguous" | "missing";
+type InlineTickerStatus = "loading" | "ready" | "ambiguous" | "missing";
 
 export interface InlineTickerCatalogEntry {
   status: InlineTickerStatus;

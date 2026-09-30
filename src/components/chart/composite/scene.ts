@@ -21,7 +21,7 @@ import {
   unprojectCompositeTimestamp,
 } from "./time-scale";
 import { compositeAxisMaxTicks, seriesPriceReference } from "./format";
-import type { CompositeLastPriceMarker, CompositeTimeScale } from "./types";
+import type { CompositeTimeScale } from "./types";
 import { isFiniteNumber } from "../../../utils/guards";
 
 const DAY_MS = 24 * 60 * 60 * 1000;

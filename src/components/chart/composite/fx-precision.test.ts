@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { loadChartPaneModel } from "../../../plugins/builtin/chart-composer/headless";
 import { buildPriceChartPreset } from "../../../plugins/builtin/chart-composer/presets";
-import { formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import { applyResolvedSeriesTransform } from "../../../time-series/transforms";
 import { formatCompositeCursorValue, formatCompositeSeriesValue, seriesPriceReference } from "./format";
 import { applyCompositeChartCursor, buildCompositeChartScene, resolveCompositeCursorDate } from "./scene";

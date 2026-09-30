@@ -82,7 +82,7 @@ export function projectRealizedVolatility(
     history: visible, series: visibleSeries, cone, asOf, warnings: [...new Set(warnings)] };
 }
 
-export interface CurrentAtmIvReference {
+interface CurrentAtmIvReference {
   value: number;
   date: Date;
   label: string;
@@ -104,7 +104,7 @@ export interface CurrentAtmIvSnapshot {
 }
 
 /** A LEAPS ATM IV is not comparable with a 10 to 260 session realized cone. */
-export const MAX_CURRENT_ATM_IV_DAYS = 90;
+const MAX_CURRENT_ATM_IV_DAYS = 90;
 
 /**
  * Use a listed expiry nearest 30 days, preserving its own observation date and tenor. Warnings and

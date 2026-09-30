@@ -15,15 +15,15 @@ import type {
 } from "./protocol";
 
 /** Lifecycle of one row in the tool timeline. */
-export type ASKGToolRowStatus =
+type ASKGToolRowStatus =
   | ToolResultStatus
   | "pending"
   | "awaiting-confirmation"
   | "running";
 
-export type ASKGUndoStatus = "available" | "running" | "done" | "failed";
+type ASKGUndoStatus = "available" | "running" | "done" | "failed";
 
-export interface ASKGUndoState {
+interface ASKGUndoState {
   status: ASKGUndoStatus;
   note?: string;
 }
@@ -52,7 +52,7 @@ export interface ASKGToolRow {
   expanded: boolean;
 }
 
-export type ASKGTurnStatus =
+type ASKGTurnStatus =
   | "streaming"
   | "complete"
   | "cancelled"
@@ -516,7 +516,7 @@ export function isTurnRunning(state: ASKGConversationState): boolean {
   return activeTurn(state)?.status === "streaming";
 }
 
-export interface ASKGResultColumn {
+interface ASKGResultColumn {
   key: string;
   header: string;
   align?: "left" | "right" | "center";

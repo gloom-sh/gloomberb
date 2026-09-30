@@ -62,7 +62,7 @@ export function activeLayoutRev(state: AppState): string {
   });
 }
 
-export function panePlacement(layout: LayoutConfig, instanceId: string): "docked" | "floating" | "detached" | "hidden" {
+function panePlacement(layout: LayoutConfig, instanceId: string): "docked" | "floating" | "detached" | "hidden" {
   if (getDockedPaneIds(layout).includes(instanceId)) return "docked";
   if (layout.floating.some((entry) => entry.instanceId === instanceId)) return "floating";
   if ((layout.detached ?? []).some((entry) => entry.instanceId === instanceId)) return "detached";

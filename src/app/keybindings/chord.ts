@@ -113,7 +113,7 @@ const MODIFIER_ONLY_EVENT_NAMES = new Set([
   "", "shift", "ctrl", "control", "alt", "option", "meta", "super", "cmd", "command", "capslock", "fn",
 ]);
 
-export function isNamedKey(key: string): boolean {
+function isNamedKey(key: string): boolean {
   return NAMED_KEY_BY_ALIAS.get(key)?.key === key;
 }
 

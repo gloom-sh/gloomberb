@@ -1,5 +1,5 @@
-export type BondDayCount = "act-act-icma" | "30-360-us";
-export type BondFrequency = 1 | 2 | 4;
+type BondDayCount = "act-act-icma" | "30-360-us";
+type BondFrequency = 1 | 2 | 4;
 
 export interface BondTerms {
   settlement: string;
@@ -20,7 +20,7 @@ export interface BondPeriod {
   firstPeriodFraction: number;
 }
 
-export interface BondCashFlow {
+interface BondCashFlow {
   date: string;
   amount: number;
   years: number;

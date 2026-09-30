@@ -92,7 +92,7 @@ function foldIntoBar(bar: PricePoint, observation: PricePoint): PricePoint {
  * the bar containing it. Kept as a point of its own, it would move the grid
  * every later bar is placed on.
  */
-export function foldFinalObservation(
+function foldFinalObservation(
   history: PricePoint[],
   stepMs: number,
   session?: Pick<HistorySession, "timestampConvention">,

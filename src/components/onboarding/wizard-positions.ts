@@ -39,7 +39,7 @@ export type PositionPreview =
 
 const EMPTY_DRAFT: PositionDraft = { ticker: "", shares: "", avgCost: "" };
 
-export function normalizePositionQuery(value: string): string {
+function normalizePositionQuery(value: string): string {
   return value.replace(/^\s*\$/, "").trim().toUpperCase().replace(/\s+/g, " ");
 }
 

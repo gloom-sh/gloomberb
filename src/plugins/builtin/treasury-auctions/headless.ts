@@ -27,7 +27,7 @@ const COLUMNS = [
   { key: "cusip", header: "CUSIP" },
 ];
 
-export interface TreasuryAuctionsHeadlessDependencies {
+interface TreasuryAuctionsHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, historyDays: number): Promise<TreasuryAuctionsResult>;
 }
 
@@ -35,7 +35,7 @@ const defaultDependencies: TreasuryAuctionsHeadlessDependencies = {
   load: (_args, historyDays) => loadTreasuryAuctions(false, fetchTreasuryAuctions, historyDays),
 };
 
-export function createTreasuryAuctionsHeadless(
+function createTreasuryAuctionsHeadless(
   dependencies: TreasuryAuctionsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

@@ -15,7 +15,7 @@ function rowsContainEllipsis(rows: DesktopPaneShotRenderedRow[]): boolean {
   return rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
 }
 
-export function isDomReportTruncated(
+function isDomReportTruncated(
   render: Pick<PaneScreenshotResult["render"], "rows" | "truncated">,
 ): boolean {
   return render.truncated || rowsContainEllipsis(render.rows);

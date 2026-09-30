@@ -44,7 +44,7 @@ type InternalStatement = FinancialStatement & {
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-export const QUARTERLY_FLOW_FIELDS: readonly NumericStatementField[] = [
+const QUARTERLY_FLOW_FIELDS: readonly NumericStatementField[] = [
   "totalRevenue",
   "grossProfit",
   "operatingIncome",
@@ -56,7 +56,7 @@ export const QUARTERLY_FLOW_FIELDS: readonly NumericStatementField[] = [
   "freeCashFlow",
 ];
 
-export const QUARTERLY_SNAPSHOT_FIELDS: readonly NumericStatementField[] = [
+const QUARTERLY_SNAPSHOT_FIELDS: readonly NumericStatementField[] = [
   "totalAssets",
   "cashAndCashEquivalents",
   "cashCashEquivalentsAndShortTermInvestments",

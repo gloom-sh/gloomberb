@@ -18,7 +18,7 @@ export interface RiskStatistic {
   rank: HistoryStatistics;
   history: Array<{ date: string; value: number | null }>;
 }
-export const RISK_WINDOW = 60;
+const RISK_WINDOW = 60;
 const interval = (point: DatedReturn) =>
   `${point.startDateKey}/${point.dateKey}`;
 const valid = (point: DatedReturn) =>
@@ -27,7 +27,7 @@ const valid = (point: DatedReturn) =>
   point.value > -1;
 export const compoundReturns = (values: readonly number[]) =>
   values.reduce((wealth, value) => wealth * (1 + value), 1) - 1;
-export function drawdownPath(values: readonly number[]) {
+function drawdownPath(values: readonly number[]) {
   let wealth = 1,
     peak = 1;
   return values.map((value) => {
@@ -36,7 +36,7 @@ export function drawdownPath(values: readonly number[]) {
     return wealth / peak - 1;
   });
 }
-export function sampleVolatility(values: readonly number[]): number | null {
+function sampleVolatility(values: readonly number[]): number | null {
   if (values.length < 2) return null;
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   return (

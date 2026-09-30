@@ -49,7 +49,7 @@ export interface DataTableSectionHeader {
 
 export type DataTableScrollAlign = "nearest" | "center";
 
-export interface DataTableRowState {
+interface DataTableRowState {
   selected: boolean;
 }
 

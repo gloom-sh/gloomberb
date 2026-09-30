@@ -33,7 +33,7 @@ function summary(row: CotClassSummary, family: CotFamily) {
     }
   }
 }
-export function validateCotBoard(data: CotBoardPayload, family: CotFamily, traderClass: CotClass) {
+function validateCotBoard(data: CotBoardPayload, family: CotFamily, traderClass: CotClass) {
   base(data, family);
   if (!Array.isArray(data.rows) || data.traderClass !== traderClass) throw new Error("The server returned an invalid COT board");
   const seen = new Set<string>();

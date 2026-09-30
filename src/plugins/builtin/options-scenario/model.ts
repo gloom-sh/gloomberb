@@ -3,7 +3,7 @@ import { isFiniteNumber } from "../../../utils/guards";
 
 const DAY_MS = 86_400_000;
 const MAX_DATE_MS = Date.UTC(9999, 11, 31);
-export const MAX_SCENARIO_LEGS = 32;
+const MAX_SCENARIO_LEGS = 32;
 
 export interface ScenarioLeg {
   id: string;
@@ -53,14 +53,14 @@ export interface ScenarioExpiryRisk {
   reason: string | null;
 }
 
-export interface ScenarioGridRow {
+interface ScenarioGridRow {
   spot: number;
   move: number | null;
   values: number[];
   /** A strike or terminal breakeven inserted between the even steps. */
   landmark?: "strike" | "breakeven";
 }
-export const SCENARIO_GRID_STEPS = 20;
+const SCENARIO_GRID_STEPS = 20;
 
 export interface ScenarioModel {
   position: ScenarioPosition;

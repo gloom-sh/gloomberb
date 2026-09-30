@@ -22,9 +22,9 @@ import {
   type ToolManifestOption,
 } from "./protocol";
 
-export const HEADLESS_TOOL_TIMEOUT_MS = 30_000;
-export const REMOTE_TOOL_TIMEOUT_MS = 10_000;
-export const REMOTE_RESOURCE_TOOL_NAME = "app.get_resource";
+const HEADLESS_TOOL_TIMEOUT_MS = 30_000;
+const REMOTE_TOOL_TIMEOUT_MS = 10_000;
+const REMOTE_RESOURCE_TOOL_NAME = "app.get_resource";
 
 const TOOL_NAME_REGEX = new RegExp(TOOL_NAME_PATTERN);
 

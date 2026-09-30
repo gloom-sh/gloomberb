@@ -15,7 +15,7 @@ import type { TickerMetadata, TickerRecord } from "../../types/ticker";
  * seeds a longer default list; this trims it to the cap and drops anything
  * the user holds, since holdings live in the heatmap next to it.
  */
-export const FIRST_RUN_WATCHLIST: ReadonlyArray<Pick<TickerMetadata, "ticker" | "name" | "exchange" | "assetCategory">> = [
+const FIRST_RUN_WATCHLIST: ReadonlyArray<Pick<TickerMetadata, "ticker" | "name" | "exchange" | "assetCategory">> = [
   { ticker: "SPY", name: "SPDR S&P 500 ETF", exchange: "NYSEARCA", assetCategory: "ETF" },
   { ticker: "QQQ", name: "Invesco QQQ Trust", exchange: "NASDAQ", assetCategory: "ETF" },
   { ticker: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", assetCategory: "STK" },
@@ -24,7 +24,7 @@ export const FIRST_RUN_WATCHLIST: ReadonlyArray<Pick<TickerMetadata, "ticker" | 
   { ticker: "AMZN", name: "Amazon.com Inc.", exchange: "NASDAQ", assetCategory: "STK" },
   { ticker: "TSLA", name: "Tesla Inc.", exchange: "NASDAQ", assetCategory: "STK" },
 ];
-export const FIRST_RUN_WATCHLIST_SIZE = 7;
+const FIRST_RUN_WATCHLIST_SIZE = 7;
 
 export const FIRST_RUN_PANE_IDS = {
   heatmap: "portfolio-list:home-heatmap",

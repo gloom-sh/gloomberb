@@ -24,7 +24,7 @@ import { SIGNED_IN_BROKER_TYPE, signedInBrokerId } from "./profile";
 const METHOD = "Sign in";
 
 /** What to tell the user when Gloom answers a broker call with an error. */
-export function describeSignedInBrokerError(error: unknown, brokerName: string): string {
+function describeSignedInBrokerError(error: unknown, brokerName: string): string {
   const status = error instanceof ApiRequestError ? error.status : undefined;
   if (status === 401) return `Sign in to Gloom first, then connect ${brokerName}.`;
   if (status === 404 || status === 409) return `${brokerName} needs you to sign in again. Press Connect in Brokers.`;

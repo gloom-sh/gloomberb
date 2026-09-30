@@ -23,7 +23,7 @@ export function hasPublicChatProfileInfo(user: ChatUserSummary): boolean {
   return Boolean(user.bio?.trim() || user.title?.trim() || user.company?.trim() || hasPortfolioAnalytics(user.portfolioAnalytics));
 }
 
-export function hasChatProfileDetails(user: ChatUserSummary): boolean {
+function hasChatProfileDetails(user: ChatUserSummary): boolean {
   return Boolean(user.bio?.trim() || user.title?.trim() || user.company?.trim());
 }
 

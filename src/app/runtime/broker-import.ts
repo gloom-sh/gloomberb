@@ -23,7 +23,7 @@ export interface AppBrokerImportRuntime {
   autoImportBrokerPositions: (tickerMap: Map<string, TickerRecord>) => Promise<void>;
 }
 
-export interface BrokerImportOptions {
+interface BrokerImportOptions {
   refreshImportedTickers?: boolean;
   config?: AppConfig;
   persistResolvedBrokerConfig?: boolean;

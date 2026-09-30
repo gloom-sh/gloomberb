@@ -23,7 +23,7 @@ export const VIEW_NOUNS: Record<RevenueBreakdownView, { label: string; plural: s
   region: { label: "Region", plural: "region" },
 };
 
-export type RevenueSortColumn = "label" | "trend" | "revenue" | "ttm" | "share" | "yoy" | `q${number}`;
+type RevenueSortColumn = "label" | "trend" | "revenue" | "ttm" | "share" | "yoy" | `q${number}`;
 export interface RevenueSort {
   column: RevenueSortColumn;
   direction: "asc" | "desc";

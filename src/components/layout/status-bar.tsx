@@ -35,7 +35,6 @@ import {
 } from "../../layout/pane-manager";
 import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
-import type { LayoutConfig } from "../../types/config";
 import { VERSION } from "../../version";
 import { displayWidth } from "../../utils/format";
 import { Button } from "../ui/button";
@@ -92,7 +91,7 @@ type StatusBarViewProps = {
  * `⌘2` or `⇧⌘F`, in the order its menus write them. A digit chord names the
  * one digit given.
  */
-export function compactChordLabel(
+function compactChordLabel(
   chord: KeyChord,
   mode: ShortcutDisplayMode,
   platform: ShortcutPlatform = detectShortcutPlatform(),

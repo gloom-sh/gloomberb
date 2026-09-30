@@ -43,7 +43,7 @@ export const REMOVED_HOST_EXPORTS: HostExportTable<RemovedHostExport> = {};
 /** Still exported and working; `plugin doctor` warns so authors migrate before removal. */
 export const DEPRECATED_HOST_EXPORTS: HostExportTable<DeprecatedHostExport> = {};
 
-export interface KnownBrokenPlugin {
+interface KnownBrokenPlugin {
   /**
    * Checkouts that declare a minimum Gloomberb below this (or none at all) are
    * refused. Official plugins bump `minGloom` with every release that needs
@@ -60,7 +60,7 @@ export interface KnownBrokenPlugin {
  * id in their gloom.json. For behavior a host change broke without an import
  * error, such as a field the plugin reads that is no longer set.
  */
-export const KNOWN_BROKEN_PLUGINS: Readonly<Record<string, KnownBrokenPlugin>> = {};
+const KNOWN_BROKEN_PLUGINS: Readonly<Record<string, KnownBrokenPlugin>> = {};
 
 export interface PluginManifest {
   /** From gloom.json; the registry's id. */

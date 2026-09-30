@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { rmSync, writeFileSync } from "fs";
 import { join } from "path";
 
-import { bundleExternalPlugin, hostExportNames } from "./bundle";
+import { hostExportNames } from "./bundle";
 import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./host-modules";
 
 describe("plugin host modules", () => {

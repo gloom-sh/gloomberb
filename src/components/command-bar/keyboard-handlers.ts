@@ -45,7 +45,7 @@ export function isPlainTab(event: KeyEventLike): boolean {
  * before this handler sees the key, so the form would be sent twice. Shift
  * stays out of it: Cmd/Ctrl+Shift+S shares the focused pane.
  */
-export function isWorkflowSubmitShortcut(event: KeyEventLike): boolean {
+function isWorkflowSubmitShortcut(event: KeyEventLike): boolean {
   return (event.ctrl || event.meta) && !event.alt && !event.shift && event.name === "s";
 }
 

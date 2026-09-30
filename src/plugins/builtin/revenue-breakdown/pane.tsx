@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { Text, useUiCapabilities } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,

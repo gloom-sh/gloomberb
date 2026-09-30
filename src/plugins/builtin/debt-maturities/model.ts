@@ -54,7 +54,7 @@ export function bucketBar(bucket: DebtBucket, scale: number): BucketBar | null {
   const ratio = bucket.value / scale;
   return ratio > 1 ? { ratio: 1, capped: true } : { ratio, capped: false };
 }
-export function recentDebtHistory(
+function recentDebtHistory(
   data: DebtMaturitiesPayload,
 ): DebtHistoryPoint[] {
   const start = data.latest?.totalPrincipal.percentile.windowStart;

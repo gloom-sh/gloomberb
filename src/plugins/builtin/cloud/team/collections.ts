@@ -24,7 +24,7 @@ export function parseCollectionRef(localId: string): ScopedCollectionRef {
 }
 
 /** The config entries a team's server collections map onto. */
-export function collectionsToConfigEntries(
+function collectionsToConfigEntries(
   collections: readonly TeamCollection[],
 ): { watchlists: Watchlist[]; portfolios: Portfolio[] } {
   const watchlists: Watchlist[] = [];

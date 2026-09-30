@@ -194,7 +194,7 @@ const CLOUD_PER_SHARE_BASES = ["forwardEps", "dividendRate"] as const;
  * and the dividend yield from; JSON encodes a withdrawn one as null, and only
  * a finite number is kept.
  */
-export function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fundamentals | undefined {
+function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fundamentals | undefined {
   const value = redactUnavailableFundamentals(fundamentals);
   if (!value) return value;
   let result = value;

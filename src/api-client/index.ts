@@ -38,18 +38,14 @@ import type {
   PersistedAuthUser
 } from "./types";
 
-export { ASKGTransportError } from "./askg";
-export type { ASKGToolResultOutcome, ASKGTransport } from "./askg";
 export { setCloudApiFetchTransport } from "./request";
 export { NoteConflictError } from "./notes";
 export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
-export { TEAM_ACCENT_COLORS } from "./types";
 export type * from "./types";
 export type {
   CommandSearchChoice,
   CommandSearchOutcome,
-  CommandSearchReport,
   CrashReportError,
   CrashReportKind,
   CrashReportSurface,
@@ -749,5 +745,3 @@ class GloomApiClient {
 }
 
 export const apiClient = new GloomApiClient();
-
-export type { FuturesCurveAsOfPayload, FuturesCurvePayload, FuturesContract } from "./futures-curve";

@@ -5,7 +5,7 @@ import {
 } from "../options-scenario/model";
 import { isFiniteNumber, isRecord } from "../../../utils/guards";
 /** Explicit local account evidence. Current positions cannot establish this history. */
-export interface PerformanceObservation {
+interface PerformanceObservation {
   date: string;
   value: number;
   /** Positive deposits, negative withdrawals, valued after the closing flow. */
@@ -16,7 +16,7 @@ export interface PerformanceEvidence {
   externalFlowsComplete: true;
   observations: PerformanceObservation[];
 }
-export interface AttributionSector {
+interface AttributionSector {
   sector: string;
   portfolioWeight: number;
   benchmarkWeight: number;
@@ -293,7 +293,7 @@ export function parsePortfolioRiskEvidence(
   return result;
 }
 
-export interface AccountReturnPoint {
+interface AccountReturnPoint {
   date: string;
   return: number | null;
   wealth: number;
@@ -311,7 +311,7 @@ export interface AccountPerformance {
 }
 
 /** Actual/365 XIRR, restricted to conventional flows so the root is unique. */
-export function moneyWeightedReturn(
+function moneyWeightedReturn(
   observations: readonly PerformanceObservation[],
 ): { value: number | null; reason: string | null } {
   if (observations.length < 2)

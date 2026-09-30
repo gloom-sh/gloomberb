@@ -10,7 +10,7 @@ export interface CliErrorContext {
   command?: string;
 }
 
-export class CliFailure extends Error {
+class CliFailure extends Error {
   readonly code: string;
   readonly details?: unknown;
   readonly retryable?: boolean;
@@ -33,11 +33,11 @@ export function closeAndFail(persistence: AppPersistence, message: string, detai
   fail(message, details);
 }
 
-export function isCliFailure(error: unknown): error is CliFailure {
+function isCliFailure(error: unknown): error is CliFailure {
   return error instanceof CliFailure;
 }
 
-export function cliErrorObject(error: unknown): CliErrorObject {
+function cliErrorObject(error: unknown): CliErrorObject {
   if (isCliFailure(error)) {
     return {
       code: error.code,

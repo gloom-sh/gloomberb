@@ -10,9 +10,9 @@
  * The terminal renderer owns no font (the emulator does), so this no-ops there.
  */
 
-export const BASE_FONT_SIZE_PX = 12;
+const BASE_FONT_SIZE_PX = 12;
 export const MIN_FONT_SIZE_PX = 10;
-export const MAX_FONT_SIZE_PX = 20;
+const MAX_FONT_SIZE_PX = 20;
 
 const BASE_CELL_WIDTH_PX = 8;
 const BASE_CELL_HEIGHT_PX = 18;

@@ -19,7 +19,6 @@ import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { ToggleList } from "../../toggle-list";
 import { Button } from "../button";
 import { listCursorMove } from "../list-view";
-import { Checkbox } from "../checkbox";
 import { DialogFrame } from "../frame";
 import { Popover } from "../popover";
 import { Menu } from "../menu";

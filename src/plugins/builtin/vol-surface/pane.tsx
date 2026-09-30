@@ -454,7 +454,7 @@ function formatCaptureTime(iso: string): string {
   return Number.isFinite(time) ? CAPTURE_TIME.format(time) : "--";
 }
 /** Whether a settled live chain produced any clean quote, with the filter counts that explain why not. */
-export function liveQuoteCoverage(snapshot: SurfaceSnapshot | null | undefined) {
+function liveQuoteCoverage(snapshot: SurfaceSnapshot | null | undefined) {
   const expiries = snapshot?.expiries.filter((entry) => entry.state !== "loading") ?? [];
   const points = expiries.reduce((sum, entry) => sum + entry.points.length, 0);
   const contracts = expiries.reduce((sum, entry) => sum + Object.values(entry.filterCounts).reduce((a, b) => a + b, 0) + entry.points.length, 0);

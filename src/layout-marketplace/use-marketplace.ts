@@ -7,7 +7,7 @@ import type {
   LayoutMarketplacePayload,
 } from "../shares/portable-layout";
 
-export type LayoutMarketplaceState =
+type LayoutMarketplaceState =
   | { status: "signed-out"; items: [] }
   | { status: "idle"; items: LayoutMarketplaceEntry[] }
   | { status: "loading"; items: LayoutMarketplaceEntry[] }
@@ -64,7 +64,7 @@ export function useLayoutMarketplace(active: boolean, signedIn: boolean): Layout
   return { state, refresh, publish };
 }
 
-export type TeamLayoutsState =
+type TeamLayoutsState =
   | { status: "idle"; items: CloudLayoutEntry[] }
   | { status: "loading"; items: CloudLayoutEntry[] }
   | { status: "ready"; items: CloudLayoutEntry[] }

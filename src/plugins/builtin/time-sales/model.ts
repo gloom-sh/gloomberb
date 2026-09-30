@@ -8,7 +8,7 @@ export function tapeTimeKey(value: string): string {
 }
 export const tapeTime = (value: string | null) => value ? value.replace("T", " ").replace(/Z$/, "") : "--";
 /** Footer and session stamps read to the second; row detail keeps the exact SIP nanoseconds. */
-export const tapeTimeSeconds = (value: string | null) => tapeTime(value).replace(/\.\d+$/, "");
+const tapeTimeSeconds = (value: string | null) => tapeTime(value).replace(/\.\d+$/, "");
 export const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
 /** Tape rows read at millisecond precision; the row detail keeps the exact SIP nanoseconds. */
 export const tapeClockMs = (value: string) => tapeClock(value).replace(/(\.\d{3})\d+$/, "$1");

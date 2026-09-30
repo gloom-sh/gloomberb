@@ -94,7 +94,7 @@ const PRIVATE_FIELD_NAMES = new Set([
   "watchlists",
 ]);
 
-export type LayoutMarketplaceSchemaVersion = 1 | 2;
+type LayoutMarketplaceSchemaVersion = 1 | 2;
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
@@ -144,7 +144,7 @@ function normalizedKey(key: string): string {
   return key.replace(/[^a-z0-9]/gi, "").toLowerCase();
 }
 
-export function isPrivateMarketplaceField(key: string): boolean {
+function isPrivateMarketplaceField(key: string): boolean {
   const normalized = normalizedKey(key);
   return PRIVATE_FIELD_NAMES.has(normalized)
     || normalized.endsWith("password")
@@ -162,7 +162,7 @@ const SCOPED_COLLECTION_FIELDS = new Set(["collectionid", "visiblecollectionids"
  * (`team:<teamId>:<id>`) is the exception: it means the same thing on every
  * member's machine, so it survives team publishing.
  */
-export function isTeamScopedCollectionField(key: string, value: unknown): boolean {
+function isTeamScopedCollectionField(key: string, value: unknown): boolean {
   if (!SCOPED_COLLECTION_FIELDS.has(normalizedKey(key))) return false;
   const values = Array.isArray(value) ? value : [value];
   return values.length > 0 && values.every((entry) => typeof entry === "string" && /^team:[^:]+:[^:]+$/.test(entry));

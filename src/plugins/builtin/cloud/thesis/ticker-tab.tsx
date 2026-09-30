@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { apiClient } from "../../../../api-client";
 import { Button, EmptyState, QueryBar, usePaneFooter } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
-import { colors } from "../../../../theme/colors";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
 import { Box } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";

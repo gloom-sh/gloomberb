@@ -5,7 +5,7 @@ import { econStatisticsModule } from "../../../plugins/builtin/econ-statistics";
 import { futuresCurveModule } from "../../../plugins/builtin/futures-curve";
 import { marketValuationModule } from "../../../plugins/builtin/market-valuation";
 import { verifiedUser } from "../../../test-support/cloud-api";
-import type { CommandDef, PaneTemplateDef } from "../../../types/plugin";
+import type { PaneTemplateDef } from "../../../types/plugin";
 import { commands as builtInCommands, type Command } from "../commands/registry";
 import { buildAssistCommandInventory } from "./inventory";
 

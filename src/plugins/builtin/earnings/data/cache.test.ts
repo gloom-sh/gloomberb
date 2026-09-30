@@ -4,7 +4,6 @@ import type { DataProvider, EarningsEvent } from "../../../../types/data-provide
 import {
   attachEarningsCalendarPersistence,
   buildEarningsCacheKey,
-  EARNINGS_CALENDAR_CACHE_POLICY,
   loadEarningsCalendar,
   resetEarningsCalendarPersistence,
 } from "./cache";

@@ -1,5 +1,4 @@
 import { Box } from "../../../../ui";
-import { colors } from "../../../../theme/colors";
 import { describeFundamentalMarketCap } from "../../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

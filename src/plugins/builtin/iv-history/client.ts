@@ -8,7 +8,7 @@ import type { PricePoint } from "../../../types/financials";
 import { realizedVolatility, realizedVolatilityCadenceIssue } from "../shared/volatility";
 
 export type IvMethod = "quote-mid" | "trade-close";
-export type IvCoverageStatus = "ready" | "backfilling" | "queued" | "unavailable";
+type IvCoverageStatus = "ready" | "backfilling" | "queued" | "unavailable";
 export interface IvPoint {
   sessionDate: string;
   method: IvMethod;
@@ -34,7 +34,7 @@ export interface IvStats {
   samples: number;
   windowStart: string | null;
 }
-export interface IvReading {
+interface IvReading {
   date: string;
   method: IvMethod;
   capturedAt: string;

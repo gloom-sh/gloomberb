@@ -12,8 +12,8 @@ import { buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES, VOLA
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 
-export const VOLATILITY_LOAD_CONCURRENCY = 4;
-export const VOLATILITY_HISTORY_LIMIT = 400;
+const VOLATILITY_LOAD_CONCURRENCY = 4;
+const VOLATILITY_HISTORY_LIMIT = 400;
 export interface VolatilityLoadResult {
   data: VolatilityData;
   /** The daily inputs the data was built from, so live index levels can be laid over them. */
@@ -32,7 +32,7 @@ export interface VolatilityLoaderDependencies {
   loadImpliedCorrelation?(): Promise<ImpliedCorrelationSeries[]>;
   now?: () => number;
 }
-export interface ImpliedCorrelationSeries { id: string; source: string; observations: { date: string; value: number }[] }
+interface ImpliedCorrelationSeries { id: string; source: string; observations: { date: string; value: number }[] }
 export interface VolatilityLoadOptions {
   signal?: AbortSignal;
   onSnapshot?: (snapshot: VolatilityLoadResult) => void;

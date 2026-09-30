@@ -1,6 +1,6 @@
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import {
   ChoiceDialog,
   EmptyState,

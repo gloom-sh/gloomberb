@@ -15,7 +15,6 @@ import {
   getAvailableCommandBarSearchProviders,
   useCommandBarSearchProviders,
 } from "../routes/root/search-providers";
-import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
 import { useCommandSearchReport } from "../routes/root/search-report";

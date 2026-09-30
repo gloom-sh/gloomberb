@@ -13,7 +13,7 @@
  * provider is named here, as in panes.
  */
 
-export const FUNCTION_DOCS_URL = "https://gloom.sh/docs/functions";
+const FUNCTION_DOCS_URL = "https://gloom.sh/docs/functions";
 
 /** A pane key as its footer hint draws it: `{ key: "e", label: "xpiry" }` reads `[e]xpiry`. */
 export interface FunctionHelpKey {

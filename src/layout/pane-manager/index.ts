@@ -60,7 +60,6 @@ export {
   gridlockAllPanes,
   shouldShowTidyWindows,
   tidyWindows,
-  type FloatingPaneVisibility,
 } from "./gridlock";
 export type {
   DropTarget,

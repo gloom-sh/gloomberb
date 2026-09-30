@@ -1,7 +1,7 @@
 import type { SecFilingItem } from "../../../types/data-provider";
 import { secFilingItemCodes } from "../../../utils/sec";
 
-export function getDisplayFormLabel(form: string): string {
+function getDisplayFormLabel(form: string): string {
   const trimmed = form.trim();
   return /^\d+(?:\/[A-Z])?$/i.test(trimmed)
     ? `FORM ${trimmed}`

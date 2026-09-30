@@ -41,7 +41,7 @@ const LEGACY_GRAPH_STATE_KEYS = new Set([
   "hiddenSeriesIds",
 ]);
 
-export type LegacyChartIndicatorId =
+type LegacyChartIndicatorId =
   | "volume"
   | "sma20"
   | "sma50"

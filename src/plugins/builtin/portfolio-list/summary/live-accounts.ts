@@ -18,7 +18,7 @@ export interface LiveBrokerAccounts {
 }
 
 /** Brokers rewrite the status timestamp on every warning; only these fields change what a pane shows. */
-export function isSameBrokerStatus(left: BrokerConnectionStatus | null, right: BrokerConnectionStatus | null): boolean {
+function isSameBrokerStatus(left: BrokerConnectionStatus | null, right: BrokerConnectionStatus | null): boolean {
   if (left === right) return true;
   if (!left || !right) return false;
   return left.state === right.state

@@ -1,5 +1,5 @@
 /** Keep this pure SEC projection rule synchronized with the cloud backend. */
-export interface SecEpsSplitEvidence {
+interface SecEpsSplitEvidence {
   date: string;
   ratio: number;
   accessionNumber: string;

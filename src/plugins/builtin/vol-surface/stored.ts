@@ -35,7 +35,7 @@ interface StoredSurface {
   failures: string[];
 }
 
-export interface StoredSurfaceInfo { sessionDate: string; capturedAt: string }
+interface StoredSurfaceInfo { sessionDate: string; capturedAt: string }
 export type DatedSurfaceSnapshot = SurfaceSnapshot & { stored?: StoredSurfaceInfo };
 
 function storedExpiry(entry: StoredExpiry, spot: number, capturedAt: number, source: string | null): SurfaceExpiry {

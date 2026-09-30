@@ -7,7 +7,7 @@
 /** Reported talks, a signed or launched deal, or its end. */
 export type MnaStatus = "talks" | "pending" | "completed" | "terminated";
 
-export type MnaConsideration = "cash" | "stock" | "mixed" | "undisclosed";
+type MnaConsideration = "cash" | "stock" | "mixed" | "undisclosed";
 
 export interface MnaParty {
   name: string;
@@ -88,7 +88,7 @@ export interface MnaDealsPayload {
   asOf: string;
 }
 
-export type MnaEventKind =
+type MnaEventKind =
   | "talks"
   | "announced"
   | "amended"

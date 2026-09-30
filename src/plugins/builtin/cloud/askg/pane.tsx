@@ -228,7 +228,7 @@ function ToolTimelineRow({
 /** Rows the confirmation block reserves for the dry run preview. */
 const MAX_PREVIEW_LINES = 4;
 
-export function confirmationBlockHeight(row: ASKGToolRow): number {
+function confirmationBlockHeight(row: ASKGToolRow): number {
   return 3 + Math.min(MAX_PREVIEW_LINES, previewLines(row.preview).length);
 }
 

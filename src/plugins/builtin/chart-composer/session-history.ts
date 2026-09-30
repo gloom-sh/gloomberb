@@ -29,7 +29,7 @@ export interface IntradayWindow {
   end: Date | null;
 }
 
-export interface IntradayPriceDomainFailure {
+interface IntradayPriceDomainFailure {
   readonly reason: "nonpositive-price";
   readonly instrumentType: string | null;
   /** Rejected observations from the selected window or its calculation buffer. */
@@ -49,7 +49,7 @@ const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const HISTORICAL_RETRY_DELAY_MS = 61 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 
-export function parseSessionDate(value: string): {
+function parseSessionDate(value: string): {
   year: number;
   month: number;
   day: number;
@@ -70,7 +70,7 @@ export function parseSessionDate(value: string): {
   return { year, month, day };
 }
 
-export function sessionUtcBounds(value: string, timeZone: string): {
+function sessionUtcBounds(value: string, timeZone: string): {
   start: Date;
   end: Date;
 } {
@@ -156,7 +156,7 @@ export function resolveIntradaySessionWindow(
   };
 }
 
-export function hasIntradayBars(window: IntradayWindow, timeZone = "UTC"): boolean {
+function hasIntradayBars(window: IntradayWindow, timeZone = "UTC"): boolean {
   if (window.points.length < 2) return false;
   const pointsBySession = new Map<string, number[]>();
   for (const point of window.points) {

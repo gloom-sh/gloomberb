@@ -7,7 +7,7 @@ import type {
 } from "../../../../api-client";
 import { blendHex, colors } from "../../../../theme/colors";
 
-export const TEAM_CHANNEL_PREFIX = "team:";
+const TEAM_CHANNEL_PREFIX = "team:";
 
 /** The text marker for team content on terminals without color: `MD·`. */
 export function teamPrefix(team: Pick<TeamSummary, "shortName">): string {

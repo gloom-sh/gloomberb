@@ -16,7 +16,7 @@ export function volumePointStatus(point: ShortVolumeObservation): string {
     : point.unavailableReason === "not_reported" ? "Not reported"
       : point.unavailableReason === "zero_volume" ? "Zero volume" : point.refreshFailed ? "Refresh failed" : "Reported";
 }
-export type VolumeColumnId = "date" | "ratioPercent" | "shortVolume" | "totalVolume" | "shortExemptVolume" | "status";
+type VolumeColumnId = "date" | "ratioPercent" | "shortVolume" | "totalVolume" | "shortExemptVolume" | "status";
 export type VolumeColumn = Omit<DataTableColumn, "id"> & { id: VolumeColumnId };
 export const VOLUME_COLUMNS: VolumeColumn[] = [
   { id: "date", label: "DATE", width: 12, align: "left" },

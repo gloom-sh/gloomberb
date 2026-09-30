@@ -28,7 +28,7 @@ export type SeriesEditorFieldId =
 
 export type SeriesEditorFocus = "add" | "series" | "source" | SeriesEditorFieldId;
 
-export interface SeriesEditorOption {
+interface SeriesEditorOption {
   value: string;
   label: string;
   disabled?: boolean;

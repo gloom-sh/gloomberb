@@ -41,7 +41,7 @@ interface ClosestElementLike {
  * only reaches the element it still owns. A no-op unless this widget truly holds
  * the document focus, so a click inside a dialog leaves that dialog alone.
  */
-export function releaseQuickAddFocus(quickAddId: string): void {
+function releaseQuickAddFocus(quickAddId: string): void {
   const active = (globalThis as {
     document?: { activeElement?: { blur?: () => void } | null };
   }).document?.activeElement;

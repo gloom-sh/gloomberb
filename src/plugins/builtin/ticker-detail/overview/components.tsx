@@ -187,7 +187,7 @@ export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; asset
  * capped at FUNDAMENTALS_MAX_COLUMN_WIDTH so a wide pane gets more of them
  * instead of pushing each value half a pane away from its label.
  */
-export function fundamentalsGridColumns(width: number): number {
+function fundamentalsGridColumns(width: number): number {
   if (width < 58) return 1;
   return Math.max(2, Math.min(4, Math.ceil((width + STAT_COLUMN_GAP) / (FUNDAMENTALS_MAX_COLUMN_WIDTH + STAT_COLUMN_GAP))));
 }

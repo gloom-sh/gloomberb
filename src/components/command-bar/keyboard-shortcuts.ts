@@ -67,7 +67,7 @@ interface CommandBarKeyboardShortcutArgs {
  * closed the bar and is not a character anyone searches for. A plain letter
  * bound to ticker search stays typeable here.
  */
-export function isTickerSearchToggle(event: KeyEventLike, keybindings: ResolvedKeybindings): boolean {
+function isTickerSearchToggle(event: KeyEventLike, keybindings: ResolvedKeybindings): boolean {
   const chords = keybindings.actionsById.get("ticker-search")?.chords ?? [];
   return chords.some((chord) => (
     (chord.key === "`" || chord.ctrl || chord.cmd || chord.primary || chord.alt || /^f\d+$/.test(chord.key))

@@ -5,8 +5,6 @@ import { extractFredSeries } from "./economic";
 import { deriveQuarterlyStatements, extractFundamentalSeries, fundamentalSeriesUsesAvailabilityFallback } from "./fundamentals";
 import type { ResolvedSeries, SecuritySeriesSource } from "./types";
 
-const DAY = 24 * 60 * 60 * 1_000;
-
 function financials(
   quarterlyStatements: FinancialStatement[],
   annualStatements: FinancialStatement[],

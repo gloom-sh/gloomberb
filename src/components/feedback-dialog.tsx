@@ -66,7 +66,7 @@ const TERMINAL_MESSAGE_KEYS = [
   { name: "linefeed", meta: true, action: "submit" },
 ];
 
-export function FeedbackDialog({
+function FeedbackDialog({
   dialogId,
   resolve,
   dismiss,

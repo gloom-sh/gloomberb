@@ -4,13 +4,13 @@ import type { Theme } from "../../../../theme/themes";
 // The Gloom mark: a lit dot with two soft halos of the same color on a tile.
 // The official icon is mint on graphite; the desktop Dock icon repaints it in
 // the active theme's accent.
-export const APP_ICON_ACCENT = "#6de7b6";
-export const APP_ICON_BACKGROUND = "#252628";
+const APP_ICON_ACCENT = "#6de7b6";
+const APP_ICON_BACKGROUND = "#252628";
 
 const CANVAS = 1024;
 const CENTER = CANVAS / 2;
 // Apple's icon grid: an 824px tile centered on the 1024px canvas.
-export const MACOS_ICON_TILE = 824;
+const MACOS_ICON_TILE = 824;
 
 // Dot radius as a share of the tile; the halos are multiples of it.
 const DOT_RADIUS = 0.2924;

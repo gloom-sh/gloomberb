@@ -17,7 +17,7 @@ export interface BinaryKellyAssumptions extends KellyCommonAssumptions {
   downsideReturn: number;
 }
 
-export interface ScenarioKellyOutcome {
+interface ScenarioKellyOutcome {
   id: string;
   label: string;
   probability: number;

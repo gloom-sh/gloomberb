@@ -36,7 +36,6 @@ import {
   appReducer,
   createInitialState,
   getEffectiveThemeId,
-  getFocusedTickerSymbol,
   type PaneRuntimeState,
   resolveCollectionForPane,
   resolveTickerForPane,

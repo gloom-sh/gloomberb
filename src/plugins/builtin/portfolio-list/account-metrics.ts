@@ -104,7 +104,7 @@ function liveTotal(totals: PortfolioSummaryTotals, value: number): number | null
   return totals.livePriced === true && Number.isFinite(value) ? value : null;
 }
 
-export function resolveBrokerPortfolioMarketValue(
+function resolveBrokerPortfolioMarketValue(
   account?: BrokerAccount | null,
   convertAccountValue: (value: number) => number = (value) => value,
 ): number | null {

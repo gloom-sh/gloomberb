@@ -56,7 +56,7 @@ interface CommandBarRunQueryLaunchRequest extends CommandBarLaunchRequestBase {
   query: string;
 }
 
-export type CommandBarLaunch =
+type CommandBarLaunch =
   | { kind: "plugin-command"; commandId: string }
   | { kind: "builtin-workflow"; actionId: string }
   | { kind: "ticker-search"; query?: string }

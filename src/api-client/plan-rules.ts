@@ -41,7 +41,7 @@ export function resolveTrialEndsAt(user: PlanAccessUser | null | undefined): Dat
   return Number.isNaN(endsAt.getTime()) ? null : endsAt;
 }
 
-export function isTrialActive(user: PlanAccessUser | null | undefined, now = Date.now()): boolean {
+function isTrialActive(user: PlanAccessUser | null | undefined, now = Date.now()): boolean {
   if (user?.emailVerified !== true) return false;
   // Card-backed trials run as plan "pro" with a trialing subscription; the server
   // only sends `trialEndsAt` while the subscription is actually in its trial.
@@ -49,7 +49,7 @@ export function isTrialActive(user: PlanAccessUser | null | undefined, now = Dat
   return !!endsAt && endsAt.getTime() > now;
 }
 
-export function trialDaysLeft(user: PlanAccessUser | null | undefined, now = Date.now()): number {
+function trialDaysLeft(user: PlanAccessUser | null | undefined, now = Date.now()): number {
   const endsAt = resolveTrialEndsAt(user);
   if (!endsAt) return 0;
   const remainingMs = endsAt.getTime() - now;

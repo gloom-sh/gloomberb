@@ -17,7 +17,7 @@ export interface LinkedLayoutStatus {
  * publishable projection, so private fields and geometry never count as
  * edits. Throws only when the layout cannot be projected at all.
  */
-export function fingerprintSavedLayout(
+function fingerprintSavedLayout(
   layout: LayoutConfig,
   paneState: Record<string, PaneRuntimeState>,
   panes: ReadonlyMap<string, PaneDef>,

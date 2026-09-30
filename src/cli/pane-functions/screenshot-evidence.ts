@@ -18,12 +18,12 @@ export interface PaneScreenshotEvidence {
   plottedValueCount: number;
 }
 
-export interface PaneScreenshotEvidenceRequest {
+interface PaneScreenshotEvidenceRequest {
   resolved: ResolvedPaneFunction;
   payload: DesktopPaneShotPayload;
 }
 
-export interface PaneScreenshotPrepareInput {
+interface PaneScreenshotPrepareInput {
   resolved: ResolvedPaneFunction;
   context: MarketContext;
   /** The captured instance settings, already stripped of credentials. */
@@ -31,7 +31,7 @@ export interface PaneScreenshotPrepareInput {
   loadModel(): Promise<LoadedHeadlessPaneModel>;
 }
 
-export interface PaneScreenshotPrepared {
+interface PaneScreenshotPrepared {
   /** Merged into the captured instance settings. */
   settings: Record<string, unknown>;
   /** Market data the page treats as captured, one entry per symbol. */

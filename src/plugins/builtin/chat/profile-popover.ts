@@ -33,7 +33,7 @@ const OPTIONAL_PROFILE_FIELDS = [
 ] as const;
 
 /** `profilePublic` is a visibility switch, not a completion test: any filled optional field counts as set up. */
-export function isAccountProfileConfigured(profile: AccountProfile): boolean {
+function isAccountProfileConfigured(profile: AccountProfile): boolean {
   return OPTIONAL_PROFILE_FIELDS.some((field) => (profile[field] ?? "").trim().length > 0);
 }
 

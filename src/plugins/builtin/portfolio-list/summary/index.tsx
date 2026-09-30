@@ -16,7 +16,7 @@ import {
   resolvePortfolioNetLiquidation,
   type BrokerSnapshotBasis,
 } from "../account-metrics";
-import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "./totals";
+import type { PortfolioSummaryTotals } from "./totals";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";

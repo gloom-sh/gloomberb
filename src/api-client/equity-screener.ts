@@ -56,7 +56,7 @@ export const CATEGORY_FIELDS = [
   "industry",
 ] as const;
 export type NumericField = (typeof NUMERIC_FIELDS)[number];
-export type CategoryField = (typeof CATEGORY_FIELDS)[number];
+type CategoryField = (typeof CATEGORY_FIELDS)[number];
 export type ScreenField = NumericField | CategoryField;
 export type ScreenOperator =
   "gte" | "lte" | "gt" | "lt" | "eq" | "between" | "in" | "present" | "missing";
@@ -110,7 +110,7 @@ export interface ScreenRow {
   metrics: Record<NumericField, ScreenMetric>;
   warnings: string[];
 }
-export interface ScreenCoverage {
+interface ScreenCoverage {
   covered: number;
   skipped: number;
   knownByField: Record<NumericField, number>;

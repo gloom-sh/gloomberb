@@ -28,7 +28,7 @@ export const TeamPaneFocusContext = createContext<TeamPaneFocus>({
   registerNode: () => {},
 });
 
-export function useTeamPaneFocus(): TeamPaneFocus {
+function useTeamPaneFocus(): TeamPaneFocus {
   return useContext(TeamPaneFocusContext);
 }
 

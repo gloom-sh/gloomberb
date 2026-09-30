@@ -6,7 +6,7 @@ import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, get
 
 const DAY_MS = 86_400_000;
 const sessionClocks = new Map<string, Intl.DateTimeFormat>();
-export const SHARPE_SESSION_BASIS = {
+const SHARPE_SESSION_BASIS = {
   ...PUBLISHED_US_EQUITY_SESSION_BASIS,
   timestampConvention: "Each source uses midnight-UTC date labels, a consistent declared-venue wall-clock time on the labelled date, or verified regular/early session-close timestamps.",
 } as const;

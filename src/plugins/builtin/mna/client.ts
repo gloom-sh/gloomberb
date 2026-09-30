@@ -74,7 +74,7 @@ function validEvent(event: MnaDealEvent): boolean {
     && text(event.title) && text(event.source) && textOrNull(event.url);
 }
 
-export function validateMnaDeals(data: MnaDealsPayload): MnaDealsPayload {
+function validateMnaDeals(data: MnaDealsPayload): MnaDealsPayload {
   const valid = !!data
     && Array.isArray(data.deals) && data.deals.every(validDeal)
     && typeof data.hasMore === "boolean"
@@ -87,7 +87,7 @@ export function validateMnaDeals(data: MnaDealsPayload): MnaDealsPayload {
   return data;
 }
 
-export function validateMnaDeal(data: MnaDealPayload): MnaDealPayload {
+function validateMnaDeal(data: MnaDealPayload): MnaDealPayload {
   const valid = !!data
     && validDeal(data.deal)
     && Array.isArray(data.events) && data.events.every(validEvent)
@@ -108,7 +108,7 @@ export async function fetchMnaDeals(
   }
 }
 
-export async function fetchMnaDeal(
+async function fetchMnaDeal(
   id: string,
   client: Pick<HeadlessPaneApiClient, "getCloudMnaDeal"> = apiClient,
 ): Promise<MnaDealPayload> {

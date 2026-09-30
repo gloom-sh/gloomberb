@@ -6,10 +6,10 @@
 /** Where a deal is in its life. A deal moves forward, except to postponed or withdrawn. */
 export type IpoStatus = "filed" | "upcoming" | "priced" | "listed" | "postponed" | "withdrawn";
 
-export type IpoListingType = "ipo" | "spac" | "direct" | "reit" | "introduction" | "dual" | "other";
+type IpoListingType = "ipo" | "spac" | "direct" | "reit" | "introduction" | "dual" | "other";
 
 /** How sure the listing date is: a target, a date the venue has set, or the day it traded. */
-export type IpoDateKind = "expected" | "confirmed" | "actual";
+type IpoDateKind = "expected" | "confirmed" | "actual";
 
 export type IpoRegion = "us" | "apac" | "europe" | "other";
 
@@ -17,9 +17,9 @@ export type IpoRegion = "us" | "apac" | "europe" | "other";
  * ISO 10383 MIC of a listing venue, such as `XNAS`, `XHKG` or `XTKS`. The
  * server adds venues over time, so any code may arrive.
  */
-export type IpoMic = string;
+type IpoMic = string;
 
-export interface IpoFirstDay {
+interface IpoFirstDay {
   /** The first session's venue-local date. */
   session: string;
   open: number | null;

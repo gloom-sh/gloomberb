@@ -15,7 +15,7 @@ export function percentileText(value: number | null): string {
  * the near ghosts; its context survives in the 1Y percentiles and the slope
  * readout instead.
  */
-export const CHART_GHOST_LABELS: ReadonlySet<string> = new Set(["1W", "1M"]);
+const CHART_GHOST_LABELS: ReadonlySet<string> = new Set(["1W", "1M"]);
 
 /** Colours by role, so the target band never shares the implied path's colour. Ghosts are keyed by look-back. */
 export interface RatePathPalette { path: string; ghosts: Readonly<Record<string, string>>; band: string; projection: string }

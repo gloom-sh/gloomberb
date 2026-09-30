@@ -66,7 +66,7 @@ export function setCloudApiFetchTransport(
  * The fetch to use for a response that must be read while it arrives, or null
  * when the installed transport buffers whole responses.
  */
-export function getCloudApiStreamFetch(): CloudApiStreamFetch | null {
+function getCloudApiStreamFetch(): CloudApiStreamFetch | null {
   if (cloudApiTransportInstalled) {
     if (cloudApiStreamFetch) return cloudApiStreamFetch;
     // A transport that declares streaming returns a real Response.

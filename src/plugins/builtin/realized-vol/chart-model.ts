@@ -4,7 +4,7 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
 import type { RollingRealizedVolatilityPoint, VolatilityConeStatistics } from "../shared/volatility";
 
-export interface IvChartReference { value: number; date: Date; label: string }
+interface IvChartReference { value: number; date: Date; label: string }
 export interface RealizedChartInput {
   history: readonly PricePoint[];
   rolling: readonly RollingRealizedVolatilityPoint[];

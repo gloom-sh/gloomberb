@@ -2,7 +2,7 @@ import type { DataProvider, SecFilingItem } from "../../../types/data-provider";
 import { parseInsiderFiling, type ParsedInsiderFiling } from "./model";
 import { isInsiderForm } from "./insider-data";
 
-export async function loadInsiderFilings(
+async function loadInsiderFilings(
   provider: DataProvider,
   symbol: string,
   count: number,

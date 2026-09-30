@@ -5,13 +5,13 @@ import { getActiveQuoteDisplay } from "../market-data/market/status";
 export type QuoteFlashDirection = "up" | "down" | "flat";
 
 /** How long a changed price stays flashed. */
-export const FLASH_DURATION_MS = 300;
+const FLASH_DURATION_MS = 300;
 /**
  * Quiet time after a flash before the same symbol may flash again. Streamed
  * prices can change several times a second; without a gap a busy symbol would
  * stay dimmed and its price would be harder to read than a quiet one's.
  */
-export const FLASH_GAP_MS = 300;
+const FLASH_GAP_MS = 300;
 
 function resolveFlashPrice(financials: TickerFinancials | null | undefined): number | null {
   return getActiveQuoteDisplay(financials?.quote)?.price ?? financials?.quote?.price ?? null;

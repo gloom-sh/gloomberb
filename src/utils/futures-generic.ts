@@ -108,7 +108,7 @@ export function formatFuturesGeneric(generic: Pick<FuturesGeneric, "prefix" | "p
   return `${generic.prefix}${generic.position}${rollCode}${adjust === "ratio" ? "R" : adjust === "difference" ? "A" : ""}`;
 }
 
-export function futuresGenericOrdinal(position: number): string {
+function futuresGenericOrdinal(position: number): string {
   const tens = position % 100;
   return `${position}${tens >= 11 && tens <= 13 ? "th" : ["th", "st", "nd", "rd"][position % 10] ?? "th"}`;
 }
@@ -137,7 +137,7 @@ export function futuresGenericRollLabel(generic: Pick<FuturesGeneric, "root" | "
   return `${roll.days} ${roll.days === 1 ? "day" : "days"} before ${notice}`;
 }
 
-export function futuresGenericAdjustLabel(adjust: FuturesGenericAdjust): string {
+function futuresGenericAdjustLabel(adjust: FuturesGenericAdjust): string {
   return adjust === "ratio" ? "ratio adjusted" : adjust === "difference" ? "difference adjusted" : "unadjusted";
 }
 

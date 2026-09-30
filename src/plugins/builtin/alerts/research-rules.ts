@@ -1,5 +1,5 @@
 
-export const RESEARCH_ALERT_KINDS = [
+const RESEARCH_ALERT_KINDS = [
   "earnings_date",
   "filing_type",
   "news_keyword",
@@ -56,7 +56,7 @@ export const isResearchAlertKind = (kind: string): kind is ResearchAlertKind =>
   RESEARCH_ALERT_KINDS.includes(kind as ResearchAlertKind)
 
 
-export function optionIdentity(
+function optionIdentity(
   value: string,
 ): { symbol: string; contract: string; expiry: string } | null {
   const contract = value.trim().toUpperCase().replace(/^O:/, "")

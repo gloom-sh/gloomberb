@@ -10,7 +10,7 @@ import { disconnectSignedInBroker, type SignedInBroker } from "./client";
 import { SIGNED_IN_BROKER_TYPE, isSignedInBrokerProfile, signedInBrokerId } from "./profile";
 import { requestBrokerSignIn } from "./sign-in-dialog";
 
-export function findSignedInBrokerProfile(
+function findSignedInBrokerProfile(
   instances: readonly BrokerInstanceConfig[],
   brokerId: string,
 ): BrokerInstanceConfig | undefined {

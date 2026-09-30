@@ -1,7 +1,7 @@
 export type CotFamily = "legacy" | "disaggregated"
 export type CotClass = "noncommercial" | "commercial" | "producer" | "swap" | "managed-money" | "other-reportable" | "nonreportable"
-export interface CotPosition { long: number | null; short: number | null; spreading: number | null }
-export interface CotPercentile {
+interface CotPosition { long: number | null; short: number | null; spreading: number | null }
+interface CotPercentile {
   value: number | null
   rank: number | null
   sampleCount: number
@@ -24,7 +24,7 @@ export interface CotClassSummary extends CotPosition {
   percentile1Y: CotPercentile
   percentile3Y: CotPercentile
 }
-export interface CotMarket {
+interface CotMarket {
   contractCode: string
   marketName: string
   exchangeCode: string

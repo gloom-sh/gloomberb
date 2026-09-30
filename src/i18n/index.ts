@@ -8,8 +8,6 @@ import type { AppLanguage, LanguagePreference } from "./languages";
 export type { AppLanguage, LanguagePreference } from "./languages";
 export {
   LANGUAGE_DISPLAY_NAMES,
-  LANGUAGE_PREFERENCES,
-  parseLanguagePreference,
   resolveLanguageCommandPreference,
 } from "./languages";
 

@@ -50,7 +50,7 @@ const LEGACY_MODULE_IDS_BY_OWNER: Record<string, readonly string[]> = {
   portfolio: ["portfolio-list", "analytics", "kelly-sizer"],
 };
 
-export function normalizeBuiltinPluginOwnerId(pluginId: string): string {
+function normalizeBuiltinPluginOwnerId(pluginId: string): string {
   return BUILTIN_PLUGIN_OWNER_ALIASES[pluginId] ?? pluginId;
 }
 

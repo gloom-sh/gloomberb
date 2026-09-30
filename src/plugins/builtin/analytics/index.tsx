@@ -4,7 +4,6 @@ import { portfolioRiskHeadless } from "./risk-headless";
 import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { TextAttributes } from "../../../ui";
 import {
   chartTableChromeRows,
   ChartTableHeader,

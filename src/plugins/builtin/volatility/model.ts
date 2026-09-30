@@ -6,7 +6,7 @@ export const VOLATILITY_SERIES = [
   { seriesId: "VXVCLS", label: "VIX 3M", tenor: "3M", days: 93 },
 ] as const;
 export type VolatilitySeriesId = typeof VOLATILITY_SERIES[number]["seriesId"];
-export type TermState = "normal" | "inverted" | "flat" | "partial";
+type TermState = "normal" | "inverted" | "flat" | "partial";
 export const VOLATILITY_CURVE_INDICES = [
   { id: "vix9d", symbol: "^VIX9D", label: "VIX 9D", tenor: "9D", days: 9 },
   { id: "vix", symbol: "^VIX", label: "VIX", tenor: "30D", days: 30 },
@@ -14,7 +14,7 @@ export const VOLATILITY_CURVE_INDICES = [
   { id: "vix6m", symbol: "^VIX6M", label: "VIX 6M", tenor: "6M", days: 184 },
   { id: "vix1y", symbol: "^VIX1Y", label: "VIX 1Y", tenor: "1Y", days: 366 },
 ] as const;
-export const VOLATILITY_BOARD_INDICES = [
+const VOLATILITY_BOARD_INDICES = [
   { id: "vvix", symbol: "^VVIX", label: "VVIX" },
   { id: "skew", symbol: "^SKEW", label: "SKEW" },
   { id: "move", symbol: "^MOVE", label: "MOVE" },
@@ -38,7 +38,7 @@ export const IMPLIED_CORRELATION_ROWS = { cor1m: "COR1M", cor3m: "COR3M" } as co
 export const VOLATILITY_INDICES = [...VOLATILITY_CURVE_INDICES, ...VOLATILITY_BOARD_INDICES] as const;
 export type VolatilityIndexId = typeof VOLATILITY_INDICES[number]["id"];
 
-export interface VolatilityHistoryPoint { date: string; observedAt: string; value: number }
+interface VolatilityHistoryPoint { date: string; observedAt: string; value: number }
 export interface VolatilityHistoryInput {
   history: readonly PricePoint[];
   source: string | null;
@@ -57,7 +57,7 @@ export interface VolatilityInputs {
   history?: Partial<Record<VolatilityIndexId, VolatilityHistoryInput>>;
   fred?: Partial<Record<VolatilitySeriesId, VolatilitySeriesInput>>;
 }
-export interface VolatilityMetric {
+interface VolatilityMetric {
   seriesId: VolatilitySeriesId;
   label: string;
   tenor: string;
@@ -165,7 +165,7 @@ function normalizeHistory(observations: readonly { date: Date | string; value: n
     warnings: [...(invalidDates ? ["Malformed observation dates rejected"] : []),
       ...(rejected.size > 0 ? ["Nonpositive or invalid closes rejected"] : [])] };
 }
-export function classifyTermState(spot: number | null, threeMonth: number | null): TermState {
+function classifyTermState(spot: number | null, threeMonth: number | null): TermState {
   if (spot == null || threeMonth == null || !(spot > 0)) return "partial";
   return threeMonth > spot ? "normal" : threeMonth < spot ? "inverted" : "flat";
 }

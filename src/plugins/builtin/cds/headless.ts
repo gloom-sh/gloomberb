@@ -54,7 +54,7 @@ const TRADE_COLUMNS = [
   },
 ];
 
-export function projectCdsHeadless(activity: CdsActivity, issuer: string | null): HeadlessRowsResult {
+function projectCdsHeadless(activity: CdsActivity, issuer: string | null): HeadlessRowsResult {
   if (issuer) {
     return {
       columns: TRADE_COLUMNS,

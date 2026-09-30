@@ -10,7 +10,7 @@ export interface AlignmentOptions {
   end?: Date;
 }
 
-export interface AlignedSeriesValue {
+interface AlignedSeriesValue {
   point: TimeSeriesPoint;
   value: number | null;
   carried: boolean;

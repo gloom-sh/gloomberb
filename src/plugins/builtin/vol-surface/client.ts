@@ -13,10 +13,10 @@ import {
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 
-export const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
-export const SURFACE_LOAD_CONCURRENCY = 4;
+const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
+const SURFACE_LOAD_CONCURRENCY = 4;
 /** Each kept expiry must be at least this much further out than the previous one. */
-export const SURFACE_TENOR_RATIO = 1.35;
+const SURFACE_TENOR_RATIO = 1.35;
 
 /**
  * Daily and weekly listings are thinned geometrically so a bounded request spans
@@ -60,7 +60,7 @@ export function createSurfaceDependencies(
 }
 
 /** The Treasury curve is published daily; repeated live reloads read it once per window. */
-export const TREASURY_CURVE_REUSE_MS = 30 * 60_000;
+const TREASURY_CURVE_REUSE_MS = 30 * 60_000;
 
 /**
  * Dependencies whose Treasury curve is loaded once and reused for `reuseMs`,

@@ -11,7 +11,7 @@ import {
   type FuturesReturnValues,
 } from "./returns";
 
-export interface FrontReturnsState {
+interface FrontReturnsState {
   /** A candidate contract's history is still loading. */
   loading: boolean;
   values: FuturesReturnValues;

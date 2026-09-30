@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer, type ReactElement } from "react";
-import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Box } from "../../../ui";
 import {
   AppContext,
@@ -249,11 +249,6 @@ async function settleTickerTabCommit() {
     await new Promise((resolve) => setTimeout(resolve, TICKER_TAB_SETTLE_MS));
     await tui.setup().renderOnce();
   });
-}
-
-async function emitKeypress(event: TestKeyEvent) {
-  await tui.emitKeypress(event);
-  await flushFrame();
 }
 
 function spanLineText(line: { spans: Array<{ text: string }> }): string {

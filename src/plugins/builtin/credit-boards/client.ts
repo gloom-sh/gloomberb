@@ -27,7 +27,7 @@ const isDate = (value: unknown): value is string => typeof value === "string" &&
 const validPoints = (points: unknown) => Array.isArray(points) && points.every((point: CreditBoardPoint) =>
   point && isDate(point.date) && isDate(point.maturity) && Number.isFinite(point.level) && Number.isInteger(point.prints));
 
-export function validateCdxBoard(payload: CdxBoardPayload): CdxBoardPayload {
+function validateCdxBoard(payload: CdxBoardPayload): CdxBoardPayload {
   if (!payload || !Array.isArray(payload.indexes) || payload.indexes.some((index) =>
     !index || typeof index.id !== "string" || typeof index.name !== "string"
     || (index.quote !== "spread" && index.quote !== "price")
@@ -38,7 +38,7 @@ export function validateCdxBoard(payload: CdxBoardPayload): CdxBoardPayload {
   return payload;
 }
 
-export function validateSovrBoard(payload: SovrBoardPayload): SovrBoardPayload {
+function validateSovrBoard(payload: SovrBoardPayload): SovrBoardPayload {
   if (!payload || !Array.isArray(payload.sovereigns) || payload.sovereigns.some((row) =>
     !row || typeof row.id !== "string" || typeof row.name !== "string" || typeof row.currency !== "string"
     || !Number.isFinite(row.level) || !isDate(row.date) || !finiteOrNull(row.change1M) || !finiteOrNull(row.change1W)

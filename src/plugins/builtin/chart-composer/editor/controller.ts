@@ -6,7 +6,6 @@ import type {
   ChartSeriesSpec,
   ChartSpec,
   PanelScale,
-  SeriesPeriod,
   SeriesStyle,
   SeriesTimestampMode,
   SeriesTransform,

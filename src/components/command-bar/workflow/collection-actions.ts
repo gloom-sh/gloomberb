@@ -316,7 +316,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
   };
 }
 
-export type CollectionOwner = { kind: "user" } | { kind: "team"; teamId: string };
+type CollectionOwner = { kind: "user" } | { kind: "team"; teamId: string };
 
 /**
  * Creates the collection on the server. The collection.updated frame brings

@@ -1,6 +1,6 @@
 import { detectPlatform } from "../../utils/platform";
 
-export const TITLEBAR_TRAFFIC_LIGHT_WIDTH = 8;
+const TITLEBAR_TRAFFIC_LIGHT_WIDTH = 8;
 export const TITLEBAR_OVERLAY_HEIGHT_PX = 28;
 
 /**

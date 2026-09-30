@@ -403,7 +403,7 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
  * the glyph instead, which reads poorly in a one-cell column. A closed market
  * is muted, not red: on a weekend every row is closed and nothing is wrong.
  */
-export function marketStatusDot(state: MarketState | undefined): { char: string; color: string } {
+function marketStatusDot(state: MarketState | undefined): { char: string; color: string } {
   switch (state) {
     case "REGULAR":
       return { char: "●", color: colors.positive };
