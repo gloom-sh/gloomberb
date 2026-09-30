@@ -7,6 +7,7 @@ import { debugLog } from "../utils/debug-log";
 import { reportCrash } from "../telemetry/crash-reports";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import { checkPluginCompatibility, explainPluginLoadError, findMissingHostExport, pluginSourceFiles, readPluginManifest } from "./compat";
+import { missingPluginDependencies } from "./dependencies";
 import { linkHostPackages } from "./host-link";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
@@ -250,6 +251,16 @@ export async function loadExternalPlugin(
       error: incompatible.error,
       ...(incompatible.needsGloomberb ? { needsGloomberb: incompatible.needsGloomberb } : {}),
     };
+  }
+
+  // A plugin installed where `bun` was not on PATH never got its packages.
+  // Not for a linked checkout: that is the author's to install.
+  if (!linked) {
+    const missing = missingPluginDependencies(pluginDir);
+    if (missing.length > 0) {
+      loaderLog.info(`Installing ${directory}'s missing dependencies: ${missing.join(", ")}`);
+      await (await import("./installer")).installPluginDependencies(pluginDir);
+    }
   }
 
   const restart = hasStaleModules(pluginDir, commit) ? { needsRestart: true } : {};

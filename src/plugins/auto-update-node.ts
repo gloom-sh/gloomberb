@@ -13,6 +13,7 @@ import type { PluginManager } from "./builtin/plugin-marketplace/store";
 import { checkPluginCompatibility, readPluginManifest } from "./compat";
 import { installedPeerPlugins } from "./host-link";
 import { getPluginCacheDir, getPluginsDir, pluginsMissingHostExports, readPluginCommit } from "./loader";
+import { bunCommand } from "./dependencies";
 
 /**
  * Automatic plugin updates for a process that can run git and bun: the
@@ -65,7 +66,7 @@ function createNodeAutoUpdateDeps(manager: PluginManager): PluginAutoUpdateDeps 
     },
     remoteHead: async (directory) => (await installer()).readPluginRemoteHead(directory),
     hasLocalChanges: async (directory) => (await installer()).hasLocalChanges(join(getPluginsDir(), directory)),
-    hasBun: () => Bun.which("bun") !== null,
+    hasBun: () => bunCommand() !== null,
     update: (directory, pin) => manager.update(directory, pin),
     log: (message) => log.info(message),
   };

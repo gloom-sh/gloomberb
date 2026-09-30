@@ -4,6 +4,7 @@ import { execFile as execFileCallback, execFileSync, spawn } from "child_process
 import { promisify } from "util";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./builtin/plugin-marketplace/store";
+import { bunCommand } from "./dependencies";
 import { linkHostPackages } from "./host-link";
 import {
   findAbsorbedCheckout,
@@ -241,7 +242,10 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
   // symlinked in instead, and pulling a second full copy here would both
   // waste a lot of disk and risk a duplicate React.
   const output = quiet ? "pipe" : "inherit";
-  const result = await run("bun", ["install", "--production"], targetDir, { stdout: output, stderr: output }).catch(() => null);
+  const bun = bunCommand();
+  const result = bun
+    ? await run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env).catch(() => null)
+    : null;
   if (result?.code !== 0 && !quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
 
   // After `bun install`, which prunes links it does not know about.
@@ -250,6 +254,11 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
     console.error(cliStyles.warning(`Warning: could not link the Gloomberb runtime (${link.error}).`));
     console.error(cliStyles.muted("The plugin's \"gloomberb/*\" imports will not resolve."));
   }
+}
+
+/** Installs the dependencies of a plugin that was installed without them. */
+export function installPluginDependencies(pluginDir: string): Promise<void> {
+  return installDependencies(pluginDir, true);
 }
 
 async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "id" | "name" | "version"> | null> {
