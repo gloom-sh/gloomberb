@@ -32,6 +32,7 @@ export interface PluginHostActions {
   removeBrokerInstance(instanceId: string): Promise<void>;
 
   selectTicker(symbol: string, paneId?: string): void;
+  /** Focus the leftmost or rightmost docked pane. */
   switchPanel(panel: "left" | "right"): void;
   switchTab(tabId: string, paneId?: string): void;
   openCommandBar(query?: string): void;
@@ -120,7 +121,7 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
 export const HOST_ACTION_NAMES = Object.keys(createDefaultHostActions()) as ReadonlyArray<keyof PluginHostActions>;
 
 /** The host actions a plugin's panes reach through their render context. */
-export const PLUGIN_RUNTIME_HOST_ACTIONS = [
+const PLUGIN_RUNTIME_HOST_ACTIONS = [
   "connectBrokerInstance",
   "updateBrokerInstance",
   "syncBrokerInstance",
