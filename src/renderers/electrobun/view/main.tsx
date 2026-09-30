@@ -13,7 +13,7 @@ import {
   setElectrobunRemoteRequestHandler,
 } from "./backend-rpc";
 import { installElectrobunCapabilityStreamClient } from "./capability-stream-client";
-import { installFocusScopeRelease } from "./host/focus-scope";
+import { installFocusScopeRelease } from "../../dom/host/focus-scope";
 import { installElectrobunBrokerRemoteClient } from "./broker-remote-client";
 import { installElectrobunConfigStoreHost } from "./config-host";
 import {
@@ -23,8 +23,8 @@ import {
 import { installElectrobunUpdateHost } from "./update-host";
 import { installScreenshotWatermark } from "./screenshot-watermark";
 import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
-import { installDomMarketDataFrames } from "./data-frames";
-import { DomErrorBoundary, DomHostProviders } from "./dom-host-providers";
+import { installDomMarketDataFrames } from "../../dom/data-frames";
+import { DomErrorBoundary, DomHostProviders } from "../../dom/dom-host-providers";
 import { DesktopFatalScreen } from "./fatal-screen";
 import { createWebUiHost, webRendererHost } from "./ui-host";
 import {

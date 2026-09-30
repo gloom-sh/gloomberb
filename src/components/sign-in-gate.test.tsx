@@ -1,10 +1,10 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
 import { act } from "react";
-import { WebInputHostProvider } from "../renderers/electrobun/view/input-host";
+import { WebInputHostProvider } from "../renderers/dom/input-host";
 import { useShortcut } from "../react/input";
 import { SignInGate } from "./sign-in-gate";
-import { createDomTestHarness } from "../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../renderers/dom/test-utils";
 
 const { window: testWindow, render: renderDom } = createDomTestHarness();
 

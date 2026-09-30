@@ -6,8 +6,8 @@ import { LayoutGalleryDesktop } from "./gallery-desktop";
 import { buildOwnedEntries, type GalleryEntry } from "./model";
 import { testPanes as panes } from "./test-fixture";
 import type { LayoutGalleryController } from "./gallery";
-import { createDomTestHarness } from "../renderers/electrobun/view/test-utils";
-import { WebInputHostProvider } from "../renderers/electrobun/view/input-host";
+import { createDomTestHarness } from "../renderers/dom/test-utils";
+import { WebInputHostProvider } from "../renderers/dom/input-host";
 import { AppContext, createInitialState } from "../state/app/context";
 import { createStaticAppStore } from "../test-support/app-store";
 

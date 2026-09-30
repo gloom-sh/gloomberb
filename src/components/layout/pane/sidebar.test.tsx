@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { createDomTestHarness } from "../../../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { Text } from "../../../ui";
 import {

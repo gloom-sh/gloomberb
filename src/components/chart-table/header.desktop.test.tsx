@@ -1,8 +1,8 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
-import { createDomUiHost } from "../../renderers/electrobun/view/dom-ui-host";
-import { WebInputHostProvider } from "../../renderers/electrobun/view/input-host";
-import { createDomTestHarness } from "../../renderers/electrobun/view/test-utils";
+import { createDomUiHost } from "../../renderers/dom/dom-ui-host";
+import { WebInputHostProvider } from "../../renderers/dom/input-host";
+import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../ui";
 import type { ReactNode } from "react";
 import { createInitialState } from "../../state/app/context";

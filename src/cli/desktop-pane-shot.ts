@@ -2,7 +2,7 @@ import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client"
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve, sep } from "path";
-import { encodeRpcValue } from "../renderers/electrobun/view/rpc-codec";
+import { encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
 import type { AppConfig } from "../types/config";
 import type { ChartResolutionResult } from "../time-series/types";
 import type { PricePoint, TickerFinancials } from "../types/financials";
@@ -21,7 +21,7 @@ import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import {
   electrobunViewPath,
   writeElectrobunViewPage,
-} from "../renderers/electrobun/view/build-assets";
+} from "../renderers/dom/build-assets";
 import { errorMessage } from "../utils/errors";
 
 export interface DesktopPaneShotIntradayHistory {

@@ -40,7 +40,8 @@ This fetches the latest upstream version.
 | `src/plugins/` | The plugin host: catalog, loader, registry, pane manager, and the bundler for external plugins |
 | `src/components/`, `src/ui/` | The shared UI kit every pane is built from |
 | `src/renderers/opentui/` | The terminal renderer |
-| `src/renderers/electrobun/` | The desktop app: `bun/` is the native process, `view/` the web view |
+| `src/renderers/dom/` | The DOM renderer the desktop view and the web app share: host primitives, controls, data table, dialogs, toasts and the page build |
+| `src/renderers/electrobun/` | The desktop app: `bun/` is the native process, `view/` the desktop-only parts of the web view, `shared/` the protocol and RPC codec both use |
 | `src/renderers/browser/`, `src/renderers/cloudflare/` | The web app and the Cloudflare Worker that serves it |
 | `src/renderers/share/` | Public share pages |
 | `src/cli/` | `gloomberb <command>`, including the `fn` and `shot` pane reports |
@@ -91,7 +92,7 @@ Tests run on `bun test` and sit next to the code they cover as `*.test.ts` or `*
 - `src/test-support/` is the home for shared fixtures and fakes: a data provider with quote and financials factories, ticker records, news articles, resolved chart series and points, a stand-in broker, a doubled plugin runtime, plugin persistence, market sessions, a static app store (`createStaticAppStore`), pane providers and the `TestPaneFrame` footer shell, headless and CLI contexts, a Cloud API WebSocket fake and temporary databases. Put a new shared fixture there instead of declaring it inline in another test. A fixture only one feature's tests share can sit next to them in a `test-fixture.ts` (or `test-harness.tsx` for render helpers), which the published package leaves out.
 - For a pending result, use `Promise.withResolvers()` rather than a local `deferred()` helper.
 - `src/renderers/opentui/test-utils.tsx` renders into a test terminal. `createOpenTuiTestHarness` mounts one renderer per test and destroys it after every test, with `frame`, `emitKeypress`, `renderFrames`, `waitForFrameToContain` and `clickFrameText` on the current renderer; `testRender`, `emitKeypress` and `settleFrame` remain for lower-level use.
-- `src/renderers/electrobun/view/test-utils.tsx` renders the desktop view into happy-dom: `createDomTestHarness`.
+- `src/renderers/dom/test-utils.tsx` renders the desktop and web view into happy-dom: `createDomTestHarness`.
 - A few features keep a harness beside their code, such as the command bar (`src/components/command-bar/surface/test-harness.tsx`) and chat.
 - Plugins in their own repositories get the same fakes and render harness from `gloomberb/test-support`.
 

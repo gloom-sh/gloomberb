@@ -9,7 +9,7 @@ import type {
   DesktopBackendRequestResponse,
   DesktopCoreRequest,
 } from "../../shared/protocol";
-import { encodeRpcValue } from "../../view/rpc-codec";
+import { encodeRpcValue } from "../../shared/rpc-codec";
 import { paneIdFromDetachedRpcKey } from "../window/focus";
 import type { DesktopBackend, DesktopRpc } from "./backend";
 import {

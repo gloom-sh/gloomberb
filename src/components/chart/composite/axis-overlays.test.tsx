@@ -6,8 +6,8 @@ import {
   UiHostProvider,
 } from "../../../ui";
 import type { UiHost } from "../../../ui/host";
-import { WebBox } from "../../../renderers/electrobun/view/host/box";
-import { WebText } from "../../../renderers/electrobun/view/host/text";
+import { WebBox } from "../../../renderers/dom/host/box";
+import { WebText } from "../../../renderers/dom/host/text";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { StaticXAxisLabels } from "./axis-overlays";
 import { buildCompositeViewportTimeAxisLayout } from "./time-axis";

@@ -25,7 +25,7 @@ import type {
   ElectrobunBackendInit,
   ElectrobunDesktopRpcSchema,
 } from "../../shared/protocol";
-import { decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "../../view/rpc-codec";
+import { decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "../../shared/rpc-codec";
 import { buildDesktopApplicationMenu, type ElectrobunApplicationMenuCommand } from "../application-menu";
 import { registerElectrobunCoreCapabilities } from "../core-capabilities";
 import {
