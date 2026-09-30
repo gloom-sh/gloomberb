@@ -4,14 +4,13 @@ import { DataTableView } from "../../../components/data-table/view";
 import { ChoiceDialog } from "../../../components/ui/choice-dialog";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { getSharedRegistry } from "../../registry";
-import { runPaneTemplateDialogWizard } from "../../../app/pane-template-dialog-wizard";
 import { teamPrefix } from "../cloud/team/model";
 import { teamStore } from "../cloud/team/store";
 import { teamViewsStore } from "../cloud/team/views";
 import { setPaneSettings } from "../../../pane-settings";
 import { customViewInstanceSettings } from "./index";
 import type { DataTableColumn } from "../../../components/ui/data-table/types";
-import { Button, PaneStatusBody, usePaneFooter } from "../../../components";
+import { Button, PaneStatusBody, TextPromptDialog, usePaneFooter } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -228,14 +227,22 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
         const current = teamViewsStore.get(spec.source.viewId) ?? (await apiClient.getTeamView(spec.source.viewId));
         if (!current) throw new Error("This team view no longer exists.");
         const currentParsed = parseViewSpecOr(current.spec);
-        const values = await runPaneTemplateDialogWizard(dialog, [{
-          key: "spec",
-          label: `Publish a revision of ${current.name}`,
-          type: "textarea",
-          defaultValue: JSON.stringify("spec" in currentParsed ? currentParsed.spec : current.spec, null, 2),
-          body: [`Edit the spec, or ask Gloom to. Enter publishes r${current.revision + 1}.`],
-        }]);
-        const edited = values?.spec ? parseViewSpecOr(values.spec) : null;
+        const specText = await dialog.prompt<string>({
+          size: "large",
+          content: (context: PromptContext<string>) => (
+            <TextPromptDialog
+              {...context}
+              title={`Publish a revision of ${current.name}`}
+              body={[`Edit the spec, or ask Gloom to. Enter publishes r${current.revision + 1}.`]}
+              initialValue={JSON.stringify("spec" in currentParsed ? currentParsed.spec : current.spec, null, 2)}
+              multiline
+              rows={10}
+              confirmLabel="Publish"
+              footer="Shift+Enter newline · Esc cancel"
+            />
+          ),
+        }).catch(() => undefined);
+        const edited = specText ? parseViewSpecOr(specText) : null;
         if (!edited) return;
         if ("error" in edited) throw new Error(edited.error);
         try {
@@ -290,17 +297,22 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
           ),
         }).catch(() => undefined);
       if (!teamId) return;
-      const values = await runPaneTemplateDialogWizard(dialog, [{
-        key: "name",
-        label: "View name",
-        type: "text",
-        defaultValue: instance.title ?? spec.presentation.title ?? "",
-        placeholder: "Top movers",
-      }]);
-      if (!values?.name) return;
+      const name = await dialog.prompt<string>({
+        content: (context: PromptContext<string>) => (
+          <TextPromptDialog
+            {...context}
+            title="View name"
+            initialValue={instance.title ?? spec.presentation.title ?? ""}
+            placeholder="Top movers"
+            confirmLabel="Publish"
+            width={40}
+          />
+        ),
+      }).catch(() => undefined);
+      if (!name) return;
       const created = await apiClient.createTeamView(teamId, {
-        name: values.name,
-        spec: { ...spec, presentation: { ...spec.presentation, title: values.name } } as unknown as Record<string, unknown>,
+        name,
+        spec: { ...spec, presentation: { ...spec.presentation, title: name } } as unknown as Record<string, unknown>,
       });
       teamViewsStore.upsert(created);
       // This pane now follows the team view, so a teammate's revision reaches it.
@@ -310,7 +322,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
           version: 1,
           source: { kind: "ref", viewId: created.id, teamId },
           projection: { columns: [], filters: [] },
-          presentation: { title: values.name },
+          presentation: { title: name },
         };
         registry.updateLayout(setPaneSettings(registry.getLayout(), instance.instanceId, {
           ...instance.settings,
@@ -318,7 +330,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
         }));
       }
       const team = teams.find((entry) => entry.id === teamId);
-      notify({ body: `Published "${values.name}" to ${team?.name ?? "the team"}. Members find it as ${team ? teamPrefix(team) : ""} ${values.name}.`, type: "success" });
+      notify({ body: `Published "${name}" to ${team?.name ?? "the team"}. Members find it as ${team ? teamPrefix(team) : ""} ${name}.`, type: "success" });
     } catch (error) {
       notify({ body: error instanceof Error ? error.message : "Could not publish the view.", type: "error" });
     }
