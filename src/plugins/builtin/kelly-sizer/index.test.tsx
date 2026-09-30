@@ -124,16 +124,7 @@ describe("KellySizerPane", () => {
     await renderPane();
     await flushFrame();
 
-    await act(async () => {
-      (tui.setup().renderer.keyInput as any).emit("keypress", {
-        name: "s",
-        sequence: "s",
-        ctrl: false,
-        meta: false,
-        shift: false,
-      });
-      await tui.setup().renderOnce();
-    });
+    await tui.emitKeypress({ name: "s", sequence: "s" });
     await flushFrame();
 
     const frame = tui.frame();
@@ -177,16 +168,7 @@ describe("KellySizerPane", () => {
     await renderPane();
     await flushFrame();
 
-    await act(async () => {
-      (tui.setup().renderer.keyInput as any).emit("keypress", {
-        name: "/",
-        sequence: "/",
-        ctrl: false,
-        meta: false,
-        shift: false,
-      });
-      await tui.setup().renderOnce();
-    });
+    await tui.emitKeypress({ name: "/", sequence: "/" });
     await flushFrame();
 
     const frame = tui.frame();

@@ -10,7 +10,6 @@ import type { DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindo
 
 const TEST_PANE_ID = "ticker-detail:test";
 
-const tui = createOpenTuiTestHarness();
 let capturedDispatch: Dispatch<AppAction> | null = null;
 let capturedPaneSetting: ((value: string) => void) | null = null;
 
@@ -101,6 +100,8 @@ function createDesktopBridge(
 }
 
 describe("pane selectors", () => {
+  const tui = createOpenTuiTestHarness();
+
   afterEach(() => {
     capturedDispatch = null;
     capturedPaneSetting = null;
