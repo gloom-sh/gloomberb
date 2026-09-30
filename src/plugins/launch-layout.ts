@@ -132,7 +132,6 @@ export function seedPaneLaunchSession(
       },
     },
     focusedPaneId: paneInstanceId,
-    activePanel: snapshot?.activePanel === "right" ? "right" : "left",
     statusBarVisible: snapshot?.statusBarVisible !== false,
     openPaneIds: [
       ...new Set([

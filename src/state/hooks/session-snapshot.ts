@@ -65,7 +65,6 @@ export function usePersistSessionSnapshot(
         config: currentState.config,
         paneState: currentState.paneState,
         focusedPaneId: currentState.focusedPaneId,
-        activePanel: currentState.activePanel,
         statusBarVisible: currentState.statusBarVisible,
         recentTickers: currentState.recentTickers,
         tickers: currentState.tickers,
@@ -89,7 +88,6 @@ export function usePersistSessionSnapshot(
     state.config,
     state.paneState,
     state.focusedPaneId,
-    state.activePanel,
     state.statusBarVisible,
     state.recentTickers,
   ]);

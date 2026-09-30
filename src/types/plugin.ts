@@ -748,6 +748,7 @@ export interface GloomPluginContext {
   removeBrokerInstance(instanceId: string): Promise<void>;
 
   selectTicker(symbol: string, paneId?: string): void;
+  /** Focus the leftmost or rightmost docked pane. */
   switchPanel(panel: "left" | "right"): void;
   switchTab(tabId: string, paneId?: string): void;
   openCommandBar(query?: string): void;

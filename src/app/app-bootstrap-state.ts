@@ -73,7 +73,6 @@ function createDetachedSessionSnapshotFallback(): AppSessionSnapshot {
   return {
     paneState: {},
     focusedPaneId: null,
-    activePanel: "left",
     statusBarVisible: true,
     openPaneIds: [],
     hydrationTargets: [],
@@ -97,7 +96,6 @@ function resolveDetachedAppSessionSnapshot(
       ...baseSessionSnapshot,
       paneState: desktopSnapshot.paneState,
       focusedPaneId: desktopSnapshot.focusedPaneId,
-      activePanel: desktopSnapshot.activePanel,
       statusBarVisible: desktopSnapshot.statusBarVisible,
     }
     : null;

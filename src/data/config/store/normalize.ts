@@ -390,9 +390,6 @@ function sanitizeSavedLayouts(
         focusedPaneId: typeof entry.focusedPaneId === "string"
           ? placedPaneIds.has(entry.focusedPaneId) ? entry.focusedPaneId : null
           : entry.focusedPaneId === null ? null : undefined,
-        activePanel: entry.activePanel === "right" || entry.activePanel === "left"
-          ? entry.activePanel
-          : undefined,
         ...(sanitizeLayoutOrigin(entry.origin) ? { origin: sanitizeLayoutOrigin(entry.origin) } : {}),
       };
     });

@@ -5,7 +5,8 @@ export interface DesktopSharedStateSnapshot {
   config: AppConfig;
   paneState: Record<string, PaneRuntimeState>;
   focusedPaneId: string | null;
-  activePanel: "left" | "right";
+  /** @deprecated Ignored and no longer sent. */
+  activePanel?: "left" | "right";
   statusBarVisible: boolean;
   mainStateRevision?: number;
   layoutChanged?: boolean;

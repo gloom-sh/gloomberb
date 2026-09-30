@@ -485,7 +485,6 @@ export async function buildDesktopShotPayload(
       layout,
       paneState,
       focusedPaneId: resolved.instance.instanceId,
-      activePanel: "right" as const,
     }],
     activeLayoutIndex: 0,
     onboardingComplete: true,

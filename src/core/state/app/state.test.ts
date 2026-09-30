@@ -93,7 +93,6 @@ describe("resolveTickerForPane", () => {
         },
       },
       focusedPaneId: "ticker-detail:main",
-      activePanel: "right",
       statusBarVisible: true,
       openPaneIds: ["portfolio-list:main", "ticker-detail:main"],
       hydrationTargets: [],
@@ -132,7 +131,6 @@ describe("resolveTickerForPane", () => {
     const sessionSnapshot: AppSessionSnapshot = {
       paneState: {},
       focusedPaneId: "ticker-detail:main",
-      activePanel: "right",
       statusBarVisible: true,
       openPaneIds: ["ticker-detail:main", "chat:main"],
       hydrationTargets: [],
@@ -162,7 +160,6 @@ describe("resolveTickerForPane", () => {
         },
       },
       focusedPaneId: "portfolio-list:main",
-      activePanel: "left",
       statusBarVisible: true,
       openPaneIds: ["portfolio-list:main", "ticker-detail:main"],
       hydrationTargets: [],
@@ -212,7 +209,6 @@ describe("resolveTickerForPane", () => {
         },
       },
       focusedPaneId: "portfolio-list:main",
-      activePanel: "left",
       statusBarVisible: true,
       openPaneIds: ["portfolio-list:main", "ticker-detail:main"],
       hydrationTargets: [],
@@ -343,14 +339,12 @@ describe("pane state updates", () => {
         "ticker-detail:main": { activeTabId: "chart" },
       },
       focusedPaneId: "ticker-detail:main",
-      activePanel: "right",
     };
     const sessionSnapshot: AppSessionSnapshot = {
       paneState: {
         "ticker-detail:main": { activeTabId: "overview" },
       },
       focusedPaneId: "portfolio-list:main",
-      activePanel: "left",
       statusBarVisible: true,
       openPaneIds: ["portfolio-list:main", "ticker-detail:main"],
       hydrationTargets: [],
@@ -362,7 +356,6 @@ describe("pane state updates", () => {
 
     expect(state.paneState["ticker-detail:main"]?.activeTabId).toBe("chart");
     expect(state.focusedPaneId).toBe("ticker-detail:main");
-    expect(state.activePanel).toBe("right");
   });
 });
 
@@ -878,31 +871,20 @@ describe("focus restore", () => {
     expect(next.config.layouts[next.config.activeLayoutIndex]?.focusedPaneId).toBe("portfolio-list:main");
   });
 
-  test("preserves the restore source while activating a pane in another panel", () => {
+  test("the deprecated SET_ACTIVE_PANEL focuses the pane at that edge", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test-focus-activation");
-    let state: AppState = {
+    const state: AppState = {
       ...createInitialState(config),
       focusedPaneId: "portfolio-list:main",
       previousFocusedPaneId: null,
-      activePanel: "left" as const,
     };
 
-    state = appReducer(state, { type: "SET_ACTIVE_PANEL", panel: "right", preserveFocus: true });
-    expect(state.activePanel).toBe("right");
-    expect(state.focusedPaneId).toBe("portfolio-list:main");
-    expect(state.previousFocusedPaneId).toBeNull();
+    expect(appReducer(state, { type: "SET_ACTIVE_PANEL", panel: "right", preserveFocus: true })).toBe(state);
 
-    state = appReducer(state, { type: "FOCUS_PANE", paneId: "ticker-detail:main" });
-    expect(state.focusedPaneId).toBe("ticker-detail:main");
-    expect(state.previousFocusedPaneId).toBe("portfolio-list:main");
-
-    const restored = appReducer(state, {
-      type: "UPDATE_LAYOUT",
-      layout: removePane(state.config.layout, "ticker-detail:main"),
-      focusedPaneId: state.previousFocusedPaneId,
-    });
-
-    expect(restored.focusedPaneId).toBe("portfolio-list:main");
+    const right = appReducer(state, { type: "SET_ACTIVE_PANEL", panel: "right" });
+    expect(right.focusedPaneId).toBe("ticker-detail:main");
+    expect(right.previousFocusedPaneId).toBe("portfolio-list:main");
+    expect(appReducer(right, { type: "SET_ACTIVE_PANEL", panel: "left" }).focusedPaneId).toBe("portfolio-list:main");
   });
 });
 

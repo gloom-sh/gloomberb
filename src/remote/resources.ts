@@ -17,6 +17,12 @@ import {
 } from "./controller-utils";
 import { finiteOrNull } from "../utils/guards";
 
+/**
+ * Deprecated: the app no longer tracks a left or right panel. The key stays
+ * with a fixed value so older clients that read it keep working.
+ */
+const DEPRECATED_ACTIVE_PANEL = "left";
+
 interface RemoteResourceContext {
   dispatch: Dispatch<AppAction>;
   getState: () => AppState;
@@ -69,7 +75,7 @@ export function createRemoteResources({
       return {
         rev: activeLayoutRev(state),
         app: {
-          activePanel: state.activePanel,
+          activePanel: DEPRECATED_ACTIVE_PANEL,
           focusedPaneId: state.focusedPaneId,
           previousFocusedPaneId: state.previousFocusedPaneId,
           statusBarVisible: state.statusBarVisible,
@@ -151,7 +157,7 @@ export function createRemoteResources({
     };
     if (included.includes("app")) {
       result.app = {
-        activePanel: state.activePanel,
+        activePanel: DEPRECATED_ACTIVE_PANEL,
         focusedPaneId: state.focusedPaneId,
         previousFocusedPaneId: state.previousFocusedPaneId,
         statusBarVisible: state.statusBarVisible,

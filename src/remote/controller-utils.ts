@@ -59,7 +59,6 @@ export function activeLayoutRev(state: AppState): string {
     layout: state.config.layout,
     paneState: state.paneState,
     focusedPaneId: state.focusedPaneId,
-    activePanel: state.activePanel,
   });
 }
 

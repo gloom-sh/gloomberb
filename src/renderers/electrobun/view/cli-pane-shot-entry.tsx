@@ -488,7 +488,6 @@ async function render() {
             config: payload.config,
             paneState: payload.paneState,
             focusedPaneId: payload.paneId,
-            activePanel: "right",
             statusBarVisible: false,
           }}>
             <HydratePayload payload={payload}>

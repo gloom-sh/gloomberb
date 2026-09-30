@@ -71,7 +71,6 @@ export function ChatPane({ focused, width, height }: PaneProps) {
       nextConfig,
       currentState.paneState,
       currentState.focusedPaneId,
-      currentState.activePanel,
     );
     dispatch({ type: "SET_CONFIG", config: syncedConfig });
     scheduleConfigSave(syncedConfig);
@@ -118,7 +117,6 @@ export function ChatPane({ focused, width, height }: PaneProps) {
       nextConfig,
       currentState.paneState,
       currentState.focusedPaneId,
-      currentState.activePanel,
     );
     dispatch({ type: "SET_CONFIG", config: syncedConfig });
     scheduleConfigSave(syncedConfig);

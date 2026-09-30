@@ -1,7 +1,5 @@
-import type { PluginRegistry } from "../../plugins/registry";
 import {
   getDockLeafLayouts,
-  getLeafRect,
 } from "../../plugins/pane-manager";
 import {
   findPaneInstance,
@@ -39,33 +37,6 @@ export function resolvePaneShowTarget(
     paneType: normalizePaneId(instance?.paneId ?? paneId),
     instance,
   };
-}
-
-export function resolvePanelForPane({
-  layout,
-  paneId,
-  pluginRegistry,
-}: {
-  layout: LayoutConfig;
-  paneId: string;
-  pluginRegistry: PluginRegistry;
-}): "left" | "right" {
-  const instanceId = resolvePaneTarget(layout, paneId);
-  if (!instanceId) return "right";
-  const instance = findPaneInstance(layout, instanceId);
-  const paneDef = instance ? pluginRegistry.panes.get(instance.paneId) : pluginRegistry.panes.get(paneId);
-  const floating = layout.floating.find((entry) => entry.instanceId === instanceId);
-  if (floating) {
-    return paneDef?.defaultPosition ?? "right";
-  }
-
-  const rect = getLeafRect(layout, instanceId, PANEL_RESOLUTION_BOUNDS);
-  if (!rect) {
-    return paneDef?.defaultPosition ?? "right";
-  }
-
-  const midpoint = PANEL_RESOLUTION_BOUNDS.width / 2;
-  return rect.x + (rect.width / 2) <= midpoint ? "left" : "right";
 }
 
 export function selectEdgeAnchor(layout: LayoutConfig, edge: "left" | "right"): string | null {

@@ -1212,7 +1212,6 @@ function Seed-DesktopConfig {
         layout = $Layout
         paneState = @{}
         focusedPaneId = "portfolio-list:main"
-        activePanel = "left"
       }
     )
     activeLayoutIndex = 0

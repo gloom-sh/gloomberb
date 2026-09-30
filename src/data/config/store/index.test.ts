@@ -954,11 +954,11 @@ describe("loadConfig", () => {
       },
     });
     expect(config.layouts[0]?.focusedPaneId).toBe("ticker-detail:main");
-    expect(config.layouts[0]?.activePanel).toBe("right");
+    expect(config.layouts[0]).not.toHaveProperty("activePanel");
 
     await saveConfig(config);
     const persisted = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as {
-      layouts: Array<{ paneState?: Record<string, unknown>; focusedPaneId?: string | null; activePanel?: string }>;
+      layouts: Array<{ paneState?: Record<string, unknown>; focusedPaneId?: string | null }>;
     };
     expect(persisted.layouts[0]?.paneState).toEqual({
       "ticker-detail:main": {
@@ -969,7 +969,7 @@ describe("loadConfig", () => {
       },
     });
     expect(persisted.layouts[0]?.focusedPaneId).toBe("ticker-detail:main");
-    expect(persisted.layouts[0]?.activePanel).toBe("right");
+    expect(persisted.layouts[0]).not.toHaveProperty("activePanel");
   });
 
   test("does not replay historical migrations for current configs or saves", async () => {

@@ -70,7 +70,6 @@ describe("AppLanguageConfigObserver", () => {
           config: { ...config, language: "ko" },
           paneState: {},
           focusedPaneId: null,
-          activePanel: "left",
           statusBarVisible: true,
         },
       });

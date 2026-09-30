@@ -32,7 +32,7 @@ import {
 } from "./layout-placement";
 
 interface UseAppTickerInspectorRuntimeOptions {
-  activatePane: (paneId: string, layout?: LayoutConfig) => void;
+  activatePane: (paneId: string) => void;
   dispatch: Dispatch<AppAction>;
   notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
   persistLayout: (layout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
@@ -159,7 +159,7 @@ export function useAppTickerInspectorRuntime({
     if (ensured.layout !== state.config.layout) {
       persistLayout(ensured.layout);
     }
-    activatePane(ensured.instance.instanceId, ensured.layout);
+    activatePane(ensured.instance.instanceId);
   }, [
     activatePane,
     ensureInspectorPane,

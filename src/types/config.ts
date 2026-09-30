@@ -132,6 +132,10 @@ export interface SavedLayout {
   layout: LayoutConfig;
   paneState?: Record<string, Record<string, unknown>>;
   focusedPaneId?: string | null;
+  /**
+   * @deprecated Ignored on read and no longer written. The app has no left or
+   * right panel state; `focusedPaneId` is the saved focus.
+   */
   activePanel?: "left" | "right";
   origin?: LayoutOrigin;
 }

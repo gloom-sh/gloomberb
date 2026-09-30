@@ -315,7 +315,7 @@ export function createAppRemoteController({
       case "app.search":
         return openCommandBar(input);
       case "app.switchPanel":
-        dispatch({ type: "SET_ACTIVE_PANEL", panel: input.panel === "right" ? "right" : "left" });
+        pluginRegistry.switchPanel(input.panel === "right" ? "right" : "left");
         return getAfterMutationSummary();
       case "app.notify":
         pluginRegistry.notify({ body: stringInput(input, "body"), type: input.type as never });

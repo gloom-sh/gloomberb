@@ -4,6 +4,7 @@ import {
   createPaneTemplateOrThrow,
 } from "../../components/command-bar/workflow/ops";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
+import { getPanelFocusTarget } from "../../core/state/app/layout";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
 import { setMarketplaceHost } from "../../plugins/builtin/plugin-marketplace/store";
 import type { InstalledPlugin } from "../../plugins/builtin/plugin-marketplace/model";
@@ -54,7 +55,7 @@ import { stableStringify } from "../../utils/hash";
 const tickerNavigationRequests = new WeakMap<PluginRegistry, Map<string | null, symbol>>();
 
 interface BindAppPanePluginRegistryOptions {
-  activatePane: (paneId: string, layout?: LayoutConfig) => void;
+  activatePane: (paneId: string) => void;
   buildPaneInstance: (paneType: string, options?: {
     title?: string;
     binding?: PaneInstanceConfig["binding"];
@@ -125,7 +126,8 @@ export function bindAppPanePluginRegistry({
   pluginRegistry.selectTickerFn = (symbol, paneId) => selectTickerInPane(symbol, paneId);
   pluginRegistry.switchPanelFn = (panel) => {
     if (isDetachedWindow) return;
-    dispatch({ type: "SET_ACTIVE_PANEL", panel });
+    const paneId = getPanelFocusTarget(stateRef.current.config.layout, panel);
+    if (paneId) dispatch({ type: "FOCUS_PANE", paneId });
   };
   pluginRegistry.switchTabFn = (tabId, paneId) => switchTickerResearchTab(tabId, paneId);
   pluginRegistry.openCommandBarFn = (query) => {
@@ -257,7 +259,7 @@ export function bindAppPanePluginRegistry({
         const currentState = stateRef.current;
         const currentLayout = currentState.config.layout;
         const detailPane = resolveTickerNavigationReplacementPane(currentLayout, sourcePaneId);
-        const focusIfStillOwned = (paneId: string, layout: LayoutConfig) => {
+        const focusIfStillOwned = (paneId: string) => {
           if (!shouldFocusTickerNavigationTarget({
             sourcePaneId,
             currentFocusedPaneId: stateRef.current.focusedPaneId,
@@ -265,7 +267,7 @@ export function bindAppPanePluginRegistry({
           })) {
             return;
           }
-          activatePane(paneId, layout);
+          activatePane(paneId);
         };
 
         if (detailPane) {
@@ -285,7 +287,7 @@ export function bindAppPanePluginRegistry({
             )),
           };
           persistLayout(nextLayout);
-          focusIfStillOwned(detailPane.instanceId, nextLayout);
+          focusIfStillOwned(detailPane.instanceId);
         } else if (shouldFocusTickerNavigationTarget({
           sourcePaneId,
           currentFocusedPaneId: stateRef.current.focusedPaneId,

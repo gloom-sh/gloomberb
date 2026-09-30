@@ -571,7 +571,6 @@ function withLocalSessionLayoutState(
       ...stripped,
       paneState: source.paneState,
       focusedPaneId: source.focusedPaneId,
-      activePanel: source.activePanel,
     };
   });
 }

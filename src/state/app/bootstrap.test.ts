@@ -27,7 +27,7 @@ describe("initializeAppState", () => {
     const actions: AppAction[] = [];
     try {
       await initializeAppState({ config, tickerRepository: repository,
-        sessionSnapshot: { paneState: {}, focusedPaneId: null, activePanel: "left", statusBarVisible: true, openPaneIds: [],
+        sessionSnapshot: { paneState: {}, focusedPaneId: null, statusBarVisible: true, openPaneIds: [],
           hydrationTargets: targets, exchangeCurrencies: [], savedAt: Date.now() },
         dataProvider: { getCachedFinancialsForTargets: async ([target]: InstrumentRef[]) => {
           if (target!.instrument?.conId === 101) throw new Error("Controlled A cache read failure");
@@ -58,7 +58,7 @@ describe("initializeAppState", () => {
       for (const hydrationTargets of [[], [target]]) {
         const warmups: InstrumentRef[] = [];
         await initializeAppState({ config, tickerRepository: repository, dataProvider: {} as any,
-          sessionSnapshot: { paneState: {}, focusedPaneId: null, activePanel: "left", statusBarVisible: true, openPaneIds: [],
+          sessionSnapshot: { paneState: {}, focusedPaneId: null, statusBarVisible: true, openPaneIds: [],
             hydrationTargets, exchangeCurrencies: [], savedAt: Date.now() },
           dispatch: () => {}, refreshTicker: (_symbol, _exchange, _ticker, _priority, instrument) => { warmups.push(instrument!); },
           refreshQuote: (_symbol, _exchange, _ticker, _priority, instrument) => { warmups.push(instrument!); }, autoImportBrokerPositions: async () => {} });
@@ -79,7 +79,7 @@ describe("initializeAppState", () => {
     await repository.createTicker(createTestTicker("DUAL", "Dual", { broker_contracts: contracts }).metadata);
     const targets: InstrumentRef[] = contracts.map((instrument) => ({ symbol: "DUAL", exchange: "NASDAQ", brokerId: "ibkr", brokerInstanceId: "same", instrument }));
     targets.push({ symbol: "DUAL", exchange: "NASDAQ", instrument: null });
-    persistence.sessions.set("app", { paneState: {}, focusedPaneId: null, activePanel: "left", statusBarVisible: true, openPaneIds: [],
+    persistence.sessions.set("app", { paneState: {}, focusedPaneId: null, statusBarVisible: true, openPaneIds: [],
       hydrationTargets: [...targets, targets[0]], exchangeCurrencies: [], savedAt: Date.now() });
     persistence.close();
     persistence = new AppPersistence(dbPath);
@@ -121,7 +121,7 @@ describe("initializeAppState", () => {
       positions: contracts.map((c, i) => ({ portfolio: i ? "b" : "a", broker: "ibkr", brokerInstanceId: "same", brokerContractId: c.conId, shares: 1 })),
       broker_contracts: contracts,
     }).metadata);
-    const sessionSnapshot: AppSessionSnapshot = { paneState: { pf: { collectionId: "a" } }, focusedPaneId: "pf", activePanel: "left",
+    const sessionSnapshot: AppSessionSnapshot = { paneState: { pf: { collectionId: "a" } }, focusedPaneId: "pf",
       statusBarVisible: true, openPaneIds: ["pf"], hydrationTargets: [], exchangeCurrencies: [], savedAt: Date.now() };
     for (const [paneState, expected] of [[undefined, 202], [{ pf: { collectionId: "a" } }, 101]] as const) {
       const targets: InstrumentRef[] = [];
@@ -427,7 +427,6 @@ describe("initializeAppState", () => {
           },
         },
         focusedPaneId: "portfolio-list:main",
-        activePanel: "left",
         statusBarVisible: true,
         openPaneIds: ["portfolio-list:main"],
         hydrationTargets: [{
@@ -537,7 +536,6 @@ describe("initializeAppState", () => {
           },
         },
         focusedPaneId: "portfolio-list:main",
-        activePanel: "left",
         statusBarVisible: true,
         openPaneIds: ["portfolio-list:main"],
         hydrationTargets: hydrationSymbols.map((symbol) => ({

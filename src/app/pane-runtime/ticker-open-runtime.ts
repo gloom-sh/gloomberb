@@ -29,7 +29,7 @@ import { instrumentFromTicker } from "../../market-data/request-types";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
 
 interface UseAppTickerOpenRuntimeOptions {
-  activatePane: (paneId: string, layout?: LayoutConfig) => void;
+  activatePane: (paneId: string) => void;
   buildPaneInstance: (paneType: string, options?: {
     title?: string;
     binding?: PaneBinding;
@@ -170,7 +170,7 @@ export function useAppTickerOpenRuntime({
     if (paneType === TICKER_RESEARCH_PANE_ID && options?.tabId) {
       dispatch({ type: "UPDATE_PANE_STATE", paneId: instance.instanceId, patch: { activeTabId: options.tabId } });
     }
-    activatePane(instance.instanceId, nextLayout);
+    activatePane(instance.instanceId);
   }, [
     activatePane,
     buildPaneInstance,

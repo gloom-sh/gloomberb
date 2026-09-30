@@ -843,9 +843,9 @@ there.
 ### Navigation
 
 ```typescript
-ctx.selectTicker("AAPL");              // Select ticker + focus right panel
+ctx.selectTicker("AAPL");              // Move the list cursor to a ticker
 ctx.selectTicker("AAPL", "my-pane:1"); // Select in a specific pane
-ctx.switchPanel("left");               // Switch active panel
+ctx.switchPanel("left");               // Focus the leftmost pane
 ctx.switchTab("chart");                // Switch Ticker Research tab by id
 ctx.switchTab("chart", "ticker-research:1"); // Switch tab in a specific pane
 ctx.openCommandBar();                  // Open the command bar

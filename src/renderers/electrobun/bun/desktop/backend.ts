@@ -77,9 +77,8 @@ function syncActiveLayout(
   config: AppConfig,
   paneState: Record<string, PaneRuntimeState> = config.layouts[config.activeLayoutIndex]?.paneState ?? {},
   focusedPaneId: string | null = config.layouts[config.activeLayoutIndex]?.focusedPaneId ?? null,
-  activePanel: "left" | "right" = config.layouts[config.activeLayoutIndex]?.activePanel ?? "left",
 ): AppConfig {
-  return syncConfigActiveLayoutState(config, paneState, focusedPaneId, activePanel);
+  return syncConfigActiveLayoutState(config, paneState, focusedPaneId);
 }
 
 /**
@@ -191,7 +190,7 @@ export class DesktopBackend {
     snapshot: DesktopSharedStateSnapshot,
     options: { persistConfig?: boolean; reconcileWindows?: boolean } = {},
   ): Promise<DesktopSharedStateSnapshot> {
-    const nextConfig = syncActiveLayout(snapshot.config, snapshot.paneState, snapshot.focusedPaneId, snapshot.activePanel);
+    const nextConfig = syncActiveLayout(snapshot.config, snapshot.paneState, snapshot.focusedPaneId);
     this.setConfig(nextConfig);
     this.requireWorkspace().replaceConfig(nextConfig, { layoutChanged: snapshot.layoutChanged });
     if (options.persistConfig !== false) {

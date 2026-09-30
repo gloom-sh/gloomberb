@@ -13,7 +13,6 @@ function createSnapshot(): DesktopSharedStateSnapshot {
       "ticker-detail:main": { activeTabId: "overview" },
     },
     focusedPaneId: "portfolio-list:main",
-    activePanel: "left",
     statusBarVisible: true,
   };
 }
@@ -25,7 +24,6 @@ describe("detached desktop snapshots", () => {
 
     expect(detachedSnapshotKey({
       ...snapshot,
-      activePanel: "right",
       focusedPaneId: "chat:main",
       paneState: {
         ...snapshot.paneState,

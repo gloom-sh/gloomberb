@@ -35,7 +35,6 @@ import type {
 } from "../../types/plugin";
 import type { DialogApi } from "../../ui/dialog";
 import {
-  resolvePanelForPane,
   resolvePaneShowTarget,
   resolvePaneTarget as resolvePaneTargetInLayout,
   selectEdgeAnchor,
@@ -95,18 +94,12 @@ export function useAppPaneRuntime({
       { ...currentState.config, layout: normalizedLayout },
       currentState.paneState,
       hasFocusTarget ? (options.focusedPaneId ?? null) : currentState.focusedPaneId,
-      currentState.activePanel,
     ));
   }, [dispatch, stateRef]);
 
-  const activatePane = useCallback((paneId: string, layout: LayoutConfig = state.config.layout) => {
-    dispatch({
-      type: "SET_ACTIVE_PANEL",
-      panel: resolvePanelForPane({ layout, paneId, pluginRegistry }),
-      preserveFocus: true,
-    });
+  const activatePane = useCallback((paneId: string) => {
     dispatch({ type: "FOCUS_PANE", paneId });
-  }, [dispatch, pluginRegistry, state.config.layout]);
+  }, [dispatch]);
 
   const {
     buildPaneBinding,
@@ -163,7 +156,7 @@ export function useAppPaneRuntime({
     if (nextLayout !== state.config.layout) {
       persistLayout(nextLayout, { pushHistory: false });
     }
-    activatePane(paneId, nextLayout);
+    activatePane(paneId);
   }, [activatePane, persistLayout, state.config.layout]);
 
   const placePaneInstance = useCallback((
@@ -201,7 +194,7 @@ export function useAppPaneRuntime({
     }
 
     persistLayout(nextLayout);
-    activatePane(instance.instanceId, nextLayout);
+    activatePane(instance.instanceId);
   }, [
     activatePane,
     persistLayout,

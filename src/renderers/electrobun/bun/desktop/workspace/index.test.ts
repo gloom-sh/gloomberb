@@ -129,7 +129,6 @@ describe("desktop workspace", () => {
       },
       paneState: monitorLayout.paneState ?? {},
       focusedPaneId: monitorLayout.focusedPaneId ?? null,
-      activePanel: monitorLayout.activePanel ?? "left" as const,
       mainStateRevision: 2,
     };
     const staleSnapshot = {

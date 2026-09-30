@@ -92,7 +92,6 @@ describe("seedPaneLaunchSession", () => {
         },
       },
       focusedPaneId: "portfolio-list:main",
-      activePanel: "right",
       statusBarVisible: false,
       openPaneIds: ["portfolio-list:main"],
       hydrationTargets: [],
@@ -109,7 +108,6 @@ describe("seedPaneLaunchSession", () => {
     expect(seeded.focusedPaneId).toBe(opened.paneInstanceId);
     expect(seeded.openPaneIds).toContain(opened.paneInstanceId);
     expect(seeded.openPaneIds).toContain("portfolio-list:main");
-    expect(seeded.activePanel).toBe("right");
     expect(seeded.statusBarVisible).toBe(false);
     expect((seeded.paneState[opened.paneInstanceId]?.pluginState as Record<string, Record<string, unknown>>)["launch-test"])
       .toEqual({ query: "iran", scrollTop: 40, selectedRowKey: null });
@@ -125,7 +123,6 @@ describe("seedPaneLaunchSession", () => {
     });
 
     expect(seeded.openPaneIds).toContain(opened.paneInstanceId);
-    expect(seeded.activePanel).toBe("left");
     expect(seeded.statusBarVisible).toBe(true);
   });
 });

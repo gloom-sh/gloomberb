@@ -104,7 +104,6 @@ export function Shell({
   const paneState = useAppSelector((state) => state.paneState);
   const focusedPaneId = useAppSelector((state) => state.focusedPaneId);
   const previousFocusedPaneId = useAppSelector((state) => state.previousFocusedPaneId);
-  const activePanel = useAppSelector((state) => state.activePanel);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const stateRef = useAppStateRef();
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
@@ -201,7 +200,6 @@ export function Shell({
       { ...currentState.config, layout: nextLayout },
       currentState.paneState,
       hasFocusTarget ? (options.focusedPaneId ?? null) : currentState.focusedPaneId,
-      currentState.activePanel,
     ));
   }, [dispatch, stateRef]);
 
