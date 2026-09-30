@@ -1,19 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useRef } from "react";
 import type { ChatMessage } from "../../../../api-client";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { useChatComposerRuntime } from "./composer-runtime";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup?.renderer.destroy();
-    });
-  }
-  testSetup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 describe("useChatComposerRuntime", () => {
   test("sends to the pending channel ref instead of the stale rendered channel", async () => {
@@ -64,12 +55,12 @@ describe("useChatComposerRuntime", () => {
     }
 
     await act(async () => {
-      testSetup = await testRender(<Harness />, { width: 1, height: 1 });
+      await tui.render(<Harness />, { width: 1, height: 1 });
     });
 
     await act(async () => {
       sendMessage();
-      await testSetup?.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(sent).toEqual([{ channelId: "dm:test", content: "PM reply test #2", replyToId: undefined }]);
@@ -131,12 +122,12 @@ describe("useChatComposerRuntime", () => {
     }
 
     await act(async () => {
-      testSetup = await testRender(<Harness />, { width: 1, height: 1 });
+      await tui.render(<Harness />, { width: 1, height: 1 });
     });
 
     await act(async () => {
       sendMessage();
-      await testSetup?.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(sent).toEqual([{ channelId: "dm:test", content: "replying in DM", replyToId: undefined }]);

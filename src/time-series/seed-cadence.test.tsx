@@ -1,6 +1,6 @@
 import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
@@ -13,10 +13,8 @@ import type { ChartRequest } from "../market-data/request-types";
 import type { HistorySession, PriceHistoryResult } from "../types/price-history";
 import type { ChartResolveOptions } from "./resolve";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
   setSystemTime();
 });
@@ -49,13 +47,13 @@ async function mount(spec: ChartSpec, now = new Date("2026-09-22T12:00:00Z"), op
     return <text>{JSON.stringify({ loading: latest.loading, resolution: latest.resolution,
       series: latest.series.map(s => [s.id, s.points.map(p => p.value)]) })}</text>;
   }
-  setup = await testRender(<Harness />, { width: 160, height: 2 });
+  await tui.render(<Harness />, { width: 160, height: 2 });
   const settle = async (predicate: () => boolean) => {
     for (let i = 0; i < 100; i++) {
-      await act(async () => { await Bun.sleep(1); await setup!.renderOnce(); });
+      await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
       if (predicate()) return;
     }
-    throw new Error(`Chart did not settle: ${setup!.captureCharFrame()}`);
+    throw new Error(`Chart did not settle: ${tui.frame()}`);
   };
   await settle(() => requested);
   return { current: () => latest, async finish(points: PricePoint[]) {

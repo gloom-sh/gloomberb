@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
@@ -8,16 +8,7 @@ import { testBroker } from "../../../test-support/broker";
 import { BrokersPane } from "./index";
 import { TestPaneFrame } from "../../../test-support/pane";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
-});
+const tui = createOpenTuiTestHarness();
 
 function createGatewayInstance(): BrokerInstanceConfig {
   return {
@@ -79,28 +70,28 @@ function Harness({
   );
 }
 
-async function pressKey(key: Parameters<NonNullable<typeof testSetup>["mockInput"]["pressKey"]>[0]) {
+async function pressKey(key: Parameters<ReturnType<typeof tui.setup>["mockInput"]["pressKey"]>[0]) {
   await act(async () => {
-    testSetup!.mockInput.pressKey(key);
+    tui.setup().mockInput.pressKey(key);
     await Promise.resolve();
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
   // The key's update can commit as act exits, after the frames above.
-  await testSetup!.renderOnce();
+  await tui.setup().renderOnce();
 }
 
 describe("BrokersPane", () => {
   test("renders IBKR row and invokes broker actions", async () => {
 
     const calls: string[] = [];
-    testSetup = await testRender(<Harness calls={calls} instance={createGatewayInstance()} height={35} />, { width: 92, height: 35 });
+    await tui.render(<Harness calls={calls} instance={createGatewayInstance()} height={35} />, { width: 92, height: 35 });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("IBKR Paper");
     expect(frame).not.toContain("DU12345");
 
@@ -114,22 +105,22 @@ describe("BrokersPane", () => {
   test("the edit form walks every field by keyboard, Esc cancels only the edit and Enter saves", async () => {
     const calls: string[] = [];
     const instance = { ...createGatewayInstance(), connectionMode: undefined, config: { connectionMode: "token", credentials: { token: "secret", accountId: "A1" } } };
-    testSetup = await testRender(<Harness calls={calls} instance={instance} height={35} />, { width: 92, height: 35 });
+    await tui.render(<Harness calls={calls} instance={instance} height={35} />, { width: 92, height: 35 });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await pressKey("e");
-    expect(testSetup.captureCharFrame()).toContain("> Profile Label");
+    expect(tui.frame()).toContain("> Profile Label");
 
     await pressKey("TAB");
     await pressKey("TAB");
-    expect(testSetup.captureCharFrame()).toContain("> Connection");
+    expect(tui.frame()).toContain("> Connection");
 
     // Esc on a row without a text field would otherwise close the profile.
-    await emitKeypress(testSetup, { name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
-    const frame = testSetup.captureCharFrame();
+    await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
+    const frame = tui.frame();
     expect(frame).not.toContain("EDIT PROFILE");
     expect(frame).toContain("ACCOUNTS");
 
@@ -137,9 +128,9 @@ describe("BrokersPane", () => {
     await pressKey("TAB");
     await pressKey("TAB");
     await act(async () => {
-      testSetup!.mockInput.pressArrow("right");
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("right");
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     await pressKey("RETURN");
     expect(calls).toEqual(["update:ibkr-paper:local"]);

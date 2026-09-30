@@ -1,33 +1,20 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createTestRenderer } from "@opentui/core/testing";
 import { act } from "react";
-import { createOpenTuiTestRoot as createRoot } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { getThemeColors, syncTheme } from "../../../../theme/colors";
 import { ThemeProvider } from "../../../../theme/theme-context";
 import { DEFAULT_THEME } from "../../../../theme/themes";
 import type { ChatMessage } from "../../../../api-client";
 import { DesktopChatMessage } from "./desktop";
 
-let testSetup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;
-let root: ReturnType<typeof createRoot> | undefined;
-const actEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
-actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+const tui = createOpenTuiTestHarness({ width: 60, height: 4 });
 
 function rgba(hex: string): string {
   const value = hex.slice(1);
   return [0, 2, 4].map((offset) => parseInt(value.slice(offset, offset + 2), 16)).concat(255).join(",");
 }
 
-afterEach(async () => {
-  if (root) {
-    await act(async () => {
-      root?.unmount();
-      await Promise.resolve();
-    });
-  }
-  testSetup?.renderer.destroy();
-  root = undefined;
-  testSetup = undefined;
+afterEach(() => {
   syncTheme(DEFAULT_THEME);
 });
 
@@ -63,22 +50,21 @@ describe("DesktopChatMessage", () => {
       />
     );
 
-    testSetup = await createTestRenderer({ width: 60, height: 4 });
-    root = createRoot(testSetup.renderer);
-    act(() => root?.render(<ThemeProvider themeId={DEFAULT_THEME}>{messageElement}</ThemeProvider>));
+    const { setup, root } = await tui.createRoot();
+    act(() => root.render(<ThemeProvider themeId={DEFAULT_THEME}>{messageElement}</ThemeProvider>));
     await act(async () => {
-      await testSetup?.renderOnce();
-      await testSetup?.renderOnce();
+      await setup.renderOnce();
+      await setup.renderOnce();
     });
 
     const nextThemeId = "github-light";
-    act(() => root?.render(<ThemeProvider themeId={nextThemeId}>{messageElement}</ThemeProvider>));
+    act(() => root.render(<ThemeProvider themeId={nextThemeId}>{messageElement}</ThemeProvider>));
     await act(async () => {
-      await testSetup?.renderOnce();
-      await testSetup?.renderOnce();
+      await setup.renderOnce();
+      await setup.renderOnce();
     });
 
-    const bodySpan = testSetup.captureSpans().lines
+    const bodySpan = setup.captureSpans().lines
       .flatMap((line) => line.spans)
       .find((span) => span.text.includes(message.content));
     const palette = getThemeColors(nextThemeId);

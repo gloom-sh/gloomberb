@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import {
   Box,
   Text,
@@ -38,7 +38,7 @@ import { getThemeColors, syncTheme } from "../../../theme/colors";
 import { ThemeProvider } from "../../../theme/theme-context";
 import { DEFAULT_THEME } from "../../../theme/themes";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let chartShortcut: ((event: KeyEventLike) => void) | null = null;
 let capturedSurfaceProps: Record<string, any> | null = null;
 let capturedSurfaceNode: BoxRenderable | null = null;
@@ -148,9 +148,7 @@ function keyEvent(name: string, shift = false): KeyEventLike {
   };
 }
 
-afterEach(async () => {
-  if (testSetup) await act(async () => testSetup!.renderer.destroy());
-  testSetup = undefined;
+afterEach(() => {
   chartShortcut = null;
   capturedSurfaceProps = null;
   capturedSurfaceNode = null;
@@ -231,17 +229,17 @@ describe("CompositeChart", () => {
       );
     }
 
-    testSetup = await testRender(<ThemedChart />, { width: 62, height: 14 });
+    await tui.render(<ThemedChart />, { width: 62, height: 14 });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     const nextThemeId = "github-light";
     await act(async () => {
       setThemeId?.(nextThemeId);
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     const bitmap = capturedSurfaceProps!.bitmaps[0] as { pixels: Uint8Array };
@@ -254,7 +252,7 @@ describe("CompositeChart", () => {
     const config = createDefaultConfig("/tmp/gloomberb-composite-braille");
     config.chartPreferences.renderer = "braille";
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(createInitialState(config))}>
         <CaptureChartSurfaceProvider>
           <CompositeChart
@@ -268,15 +266,15 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(capturedSurfaceProps!.bitmaps).toBeNull();
   });
 
   test("shows the regular-session move beside the latest intraday value", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={60}
         height={12}
@@ -290,9 +288,9 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
-    expect(testSetup.captureCharFrame()).toContain("ACME Price $110 +10.65%");
+    expect(tui.frame()).toContain("ACME Price $110 +10.65%");
   });
 
   test("holds a lower panel's rows while its series has no observations in view", async () => {
@@ -318,7 +316,7 @@ describe("CompositeChart", () => {
       volumeSeries: ResolvedSeries,
       viewport?: { start: Date; end: Date },
     ) => {
-      testSetup = await testRender(
+      await tui.render(
         <CompositeChart
           width={78}
           height={18}
@@ -329,12 +327,11 @@ describe("CompositeChart", () => {
         { width: 80, height: 20 },
       );
       await act(async () => {
-        await testSetup!.renderOnce();
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
       });
-      const frame = testSetup!.captureCharFrame();
-      await act(async () => testSetup!.renderer.destroy());
-      testSetup = undefined;
+      const frame = tui.frame();
+      await tui.destroy();
       return frame;
     };
     // Price labels and the price line stay above the lower panel's first row,
@@ -364,7 +361,7 @@ describe("CompositeChart", () => {
   });
 
   test("lays out mixed panels with one shared legend and time axis", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={78}
         height={18}
@@ -379,11 +376,11 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("2025-01-02");
     expect(frame).toContain("ACME Price");
     expect(frame).toContain("OTHER Revenue");
@@ -393,7 +390,7 @@ describe("CompositeChart", () => {
   });
 
   test("keeps legend items compact and anchors an accessory to the right edge", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={78}
         height={12}
@@ -413,11 +410,11 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const legend = testSetup.captureCharFrame()
+    const legend = tui.frame()
       .split("\n")
       .find((line) => line.includes("+ add series"));
     expect(legend).toBeDefined();
@@ -430,7 +427,7 @@ describe("CompositeChart", () => {
   });
 
   test("shortens long comparison names before clipping yield precision or units at 80 columns", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart width={78} height={12}
         series={[
           { ...series("ig", "main", "left", "%", [5.68]), label: "ICE BofA US Corporate Index Effective Yield" },
@@ -441,8 +438,8 @@ describe("CompositeChart", () => {
         legendAccessoryWidth={14}
       />, { width: 80, height: 14 },
     );
-    await act(async () => { await testSetup!.renderOnce(); await testSetup!.renderOnce(); });
-    const legend = testSetup.captureCharFrame().split("\n").find((line) => line.includes("+ add series"))!;
+    await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+    const legend = tui.frame().split("\n").find((line) => line.includes("+ add series"))!;
     expect(legend).toContain("5.68%");
     expect(legend).toContain("7.42%");
     expect(legend.indexOf("7.42%") + 5).toBeLessThan(legend.indexOf("+ add series"));
@@ -461,22 +458,22 @@ describe("CompositeChart", () => {
       return <CompositeChart width={100} height={12} panels={[{ id: "main" }]} series={[margin]} clipToViewport
         viewport={{ start: new Date("2016-01-01"), end: new Date("2025-12-31T23:59:59.999Z") }} cursorDate={cursor} />;
     }
-    testSetup = await testRender(<HistoricalChart />, { width: 102, height: 14 });
-    await act(async () => { await testSetup!.renderOnce(); await testSetup!.renderOnce(); });
-    const legend = () => testSetup!.captureCharFrame().split("\n")[0]!;
+    await tui.render(<HistoricalChart />, { width: 102, height: 14 });
+    await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+    const legend = () => tui.frame().split("\n")[0]!;
     expect(legend()).toContain("45.6%");
     expect(legend()).not.toContain("46.8%");
     await act(async () => { setCursor(new Date("2024-06-30")); });
-    await act(async () => { await testSetup!.renderOnce(); });
+    await act(async () => { await tui.setup().renderOnce(); });
     expect(legend()).toContain("44.6%");
     await act(async () => { setCursor(null); });
-    await act(async () => { await testSetup!.renderOnce(); });
+    await act(async () => { await tui.setup().renderOnce(); });
     expect(legend()).toContain("45.6%");
     expect(legend()).not.toContain("46.8%");
   });
 
   test("retains financial values and negative signs when long legend names need truncation", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart width={100} height={12} panels={[{ id: "main" }]} series={[
         { ...series("revenue", "main", "left", "USD", [90_007_000_000]), label: "MSFT:XNAS Revenue", unitGroup: "currency-total:USD" },
         { ...series("margin", "main", "right", "%", [-49.612]), label: "Very long issuer Operating Margin", unitGroup: "percent" },
@@ -484,8 +481,8 @@ describe("CompositeChart", () => {
       ]} />,
       { width: 102, height: 14 },
     );
-    await act(async () => { await testSetup!.renderOnce(); await testSetup!.renderOnce(); });
-    const legend = testSetup.captureCharFrame().split("\n")[0]!;
+    await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+    const legend = tui.frame().split("\n")[0]!;
     expect(legend).toContain("MSFT:XNAS Revenue $90.01B");
     expect(legend).toContain("... -49.6%");
     expect(legend).toContain("腾讯控股腾讯控股");
@@ -494,16 +491,15 @@ describe("CompositeChart", () => {
 
   test("gives legend names the row's room and drops the listing exchange before cutting a name", async () => {
     const legendAt = async (width: number) => {
-      if (testSetup) await act(async () => testSetup!.renderer.destroy());
-      testSetup = await testRender(
+      await tui.render(
         <CompositeChart width={width} height={10} panels={[{ id: "main" }]} series={[
           { ...series("price", "main", "left", "USD", [101]), label: "AAPL:XNAS Price" },
           { ...series("volume", "main", "left", "%", [8]), label: "Volume AAPL:XNAS Price" },
         ]} />,
         { width: width + 2, height: 12 },
       );
-      await act(async () => { await testSetup!.renderOnce(); await testSetup!.renderOnce(); });
-      return testSetup.captureCharFrame().split("\n")[0]!;
+      await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+      return tui.frame().split("\n")[0]!;
     };
     expect(await legendAt(60)).toContain("Volume AAPL:XNAS Price 8.00%");
     const narrow = await legendAt(50);
@@ -515,7 +511,7 @@ describe("CompositeChart", () => {
   test("keeps non-plotted legend series available for restoring", async () => {
     const price = series("price", "main", "left", "USD", [100, 103, 101]);
     const hiddenRevenue = series("revenue", "main", "right", "%", [4, 6, 8]);
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={78}
         height={12}
@@ -528,11 +524,11 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    expect(testSetup.captureCharFrame()).toContain("OTHER Revenue");
+    expect(tui.frame()).toContain("OTHER Revenue");
   });
 
   test("uses buffered market anchors so closed sessions do not create chart holes", async () => {
@@ -541,7 +537,7 @@ describe("CompositeChart", () => {
       ...candles,
       points: candles.points.filter((point) => point.date.getUTCDate() === 3),
     };
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={72}
         height={12}
@@ -556,9 +552,9 @@ describe("CompositeChart", () => {
       />,
       { width: 74, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
-    const bodyColumns = [...new Set(testSetup.captureCharFrame()
+    const bodyColumns = [...new Set(tui.frame()
       .split("\n")
       .flatMap((line) => [...line].flatMap((cell, index) => cell === "█" ? [index] : [])))]
       .sort((left, right) => left - right);
@@ -573,7 +569,7 @@ describe("CompositeChart", () => {
 
   test("toggles a series from its legend entry", async () => {
     const toggled: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={58}
         height={10}
@@ -588,14 +584,14 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    const priceColumn = testSetup.captureCharFrame().split("\n")[0]!.indexOf("ACME Price");
+    const priceColumn = tui.frame().split("\n")[0]!.indexOf("ACME Price");
     expect(priceColumn).toBeGreaterThan(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(priceColumn, 0);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(priceColumn, 0);
+      await tui.setup().renderOnce();
     });
     expect(toggled).toEqual(["price"]);
   });
@@ -606,7 +602,7 @@ describe("CompositeChart", () => {
       ...series(`series-${index}`, "main", "left", "USD", [index + 1, index + 2]),
       label,
     }));
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={38}
         height={10}
@@ -617,18 +613,18 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame().split("\n")[0]).toContain("FIRST LONG SERIES");
-    expect(testSetup.captureCharFrame().split("\n")[0]).not.toContain("LAST LONG SERIES");
+    expect(tui.frame().split("\n")[0]).toContain("FIRST LONG SERIES");
+    expect(tui.frame().split("\n")[0]).not.toContain("LAST LONG SERIES");
 
     await act(async () => {
       for (let index = 0; index < 120; index += 1) {
-        await testSetup!.mockMouse.scroll(20, 0, "down");
+        await tui.setup().mockMouse.scroll(20, 0, "down");
       }
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame().split("\n")[0]).toContain("LAST LONG SERIES");
+    expect(tui.frame().split("\n")[0]).toContain("LAST LONG SERIES");
   });
 
   test("reaches and toggles overflowing legend series from the keyboard", async () => {
@@ -638,7 +634,7 @@ describe("CompositeChart", () => {
       ...series(`series-${index}`, "main", "left", "USD", [index + 1, index + 2]),
       label,
     }));
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CompositeChart
           width={38}
@@ -653,24 +649,24 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
       for (let index = 0; index < overflowingSeries.length; index += 1) {
         chartShortcut?.(keyEvent("]"));
       }
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame().split("\n")[0]).toContain("LAST LONG SERIES");
+    expect(tui.frame().split("\n")[0]).toContain("LAST LONG SERIES");
 
     await act(async () => {
       chartShortcut?.(keyEvent("space"));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(toggled).toEqual(["series-3"]);
   });
 
   test("keeps the legend accessory visible when the pane is narrower than its legend", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={20}
         height={10}
@@ -687,11 +683,11 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const legend = testSetup.captureCharFrame()
+    const legend = tui.frame()
       .split("\n")
       .find((line) => line.includes("+ add series"));
     expect(legend).toBeDefined();
@@ -700,7 +696,7 @@ describe("CompositeChart", () => {
 
   test("moves and clears the shared cursor from the keyboard while focused", async () => {
     const cursorChanges: Array<string | null> = [];
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CompositeChart
           width={60}
@@ -714,11 +710,11 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     await act(async () => chartShortcut?.(keyEvent("left")));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     expect(cursorChanges).toEqual(["2025-01-03T00:00:00.000Z"]);
-    const firstCursorFrame = testSetup.captureCharFrame();
+    const firstCursorFrame = tui.frame();
     expect(firstCursorFrame).toContain("2025-01-03");
     // A keyboard cursor knows its column, not a level: the axis reads the
     // series value and no horizontal line crosses the plot.
@@ -727,22 +723,22 @@ describe("CompositeChart", () => {
     expect(firstCursorFrame).not.toContain("────────");
 
     await act(async () => chartShortcut?.(keyEvent("left")));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     expect(cursorChanges).toEqual([
       "2025-01-03T00:00:00.000Z",
       "2025-01-02T00:00:00.000Z",
     ]);
-    expect(testSetup.captureCharFrame()).toContain("2025-01-02");
+    expect(tui.frame()).toContain("2025-01-02");
 
     await act(async () => chartShortcut?.(keyEvent("escape")));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     // Escape drops the cursor, so its date leaves the time axis with it.
-    expect(testSetup.captureCharFrame()).not.toContain("2025-01-02");
+    expect(tui.frame()).not.toContain("2025-01-02");
   });
 
   test("does not emit the same snapped cursor timestamp twice", async () => {
     const cursorChanges: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CompositeChart
           width={60}
@@ -758,7 +754,7 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     await act(async () => chartShortcut?.(keyEvent("right")));
     await act(async () => chartShortcut?.(keyEvent("left")));
 
@@ -768,7 +764,7 @@ describe("CompositeChart", () => {
   test("zooms with plus and resets the interaction viewport with zero", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
     const viewportInteractions: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CompositeChart
           width={60}
@@ -791,31 +787,31 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Jan 1");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("Jan 1");
     expect(viewportChanges).toEqual([]);
 
     const zoomIn = keyEvent("=");
     zoomIn.sequence = "+";
     zoomIn.shift = true;
     await act(async () => chartShortcut?.(zoomIn));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     expect(zoomIn.defaultPrevented).toBe(true);
-    expect(testSetup.captureCharFrame()).not.toContain("Jan 1");
+    expect(tui.frame()).not.toContain("Jan 1");
     expect(viewportChanges.at(-1)?.start).not.toBe("2025-01-01T00:00:00.000Z");
     expect(viewportInteractions.at(-1)).toBe("zoom");
 
     await act(async () => chartShortcut?.(keyEvent("0")));
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Jan 1");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("Jan 1");
     expect(viewportChanges.at(-1)).toBeNull();
     expect(viewportInteractions.at(-1)).toBe("reset");
   });
 
   test("keeps ownership of the window when zoom returns to the authored range", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CompositeChart
           width={60}
@@ -835,16 +831,16 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     const zoomIn = keyEvent("=");
     zoomIn.sequence = "+";
     zoomIn.shift = true;
     await act(async () => chartShortcut?.(zoomIn));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     expect(viewportChanges.at(-1)).not.toBeNull();
 
     await act(async () => chartShortcut?.(keyEvent("-")));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     // Reporting null here would make an owner that echoes navigated ranges
     // back as the authored viewport reload its original range instead.
@@ -890,18 +886,18 @@ describe("CompositeChart", () => {
       );
     }
 
-    testSetup = await testRender(
+    await tui.render(
       <Harness />,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     for (let index = 0; index < 2; index += 1) {
       const zoomIn = keyEvent("=");
       zoomIn.sequence = "+";
       zoomIn.shift = true;
       await act(async () => chartShortcut?.(zoomIn));
-      await act(async () => testSetup!.renderOnce());
+      await act(async () => tui.setup().renderOnce());
     }
     const zoomedViewport = viewportChanges.at(-1);
     expect(zoomedViewport?.start).not.toBe("2025-01-01T00:00:00.000Z");
@@ -909,8 +905,8 @@ describe("CompositeChart", () => {
 
     await act(async () => replacePoints?.(initialPoints.slice(2)));
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(viewportChanges).toHaveLength(changeCount);
@@ -963,13 +959,13 @@ describe("CompositeChart", () => {
       );
     }
 
-    testSetup = await testRender(<Harness />, { width: 62, height: 14 });
-    await act(async () => testSetup!.renderOnce());
+    await tui.render(<Harness />, { width: 62, height: 14 });
+    await act(async () => tui.setup().renderOnce());
     for (let index = 0; index < 120; index += 1) {
       const panOlder = keyEvent("left");
       panOlder.shift = true;
       await act(async () => chartShortcut?.(panOlder));
-      await act(async () => testSetup!.renderOnce());
+      await act(async () => tui.setup().renderOnce());
     }
     const pannedViewport = viewportChanges.at(-1);
     expect(pannedViewport).toEqual({
@@ -980,8 +976,8 @@ describe("CompositeChart", () => {
     const changeCount = viewportChanges.length;
     await act(async () => replacePoints?.(olderPoints));
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     // The refreshed buffer ends a minute before the window does. The window
@@ -989,8 +985,8 @@ describe("CompositeChart", () => {
     expect(viewportChanges).toHaveLength(changeCount);
     expect(viewportChanges.at(-1)).toEqual(pannedViewport);
     expect(viewportInteractions).not.toContain("sync");
-    expect(testSetup.captureCharFrame()).not.toContain("No chart data");
-    expect(testSetup.captureCharFrame()).not.toContain("Jan 9");
+    expect(tui.frame()).not.toContain("No chart data");
+    expect(tui.frame()).not.toContain("Jan 9");
   });
 
   test("keeps the latest pan through delayed adaptive viewport and series echoes", async () => {
@@ -1042,13 +1038,13 @@ describe("CompositeChart", () => {
       );
     }
 
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <Harness />
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     for (let index = 0; index < 10; index += 1) {
       await act(async () => {
@@ -1057,8 +1053,8 @@ describe("CompositeChart", () => {
         }));
       });
       await act(async () => {
-        await testSetup!.renderOnce();
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
       });
     }
     const firstPan = viewportChanges[0]!;
@@ -1069,18 +1065,18 @@ describe("CompositeChart", () => {
 
     await act(async () => publishViewport!(firstPan, true));
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(viewportChanges).not.toContain(null);
     expect(viewportChanges.at(-1)).toEqual(latestPan);
 
     await act(async () => publishViewport!(latestPan));
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(viewportChanges).not.toContain(null);
     expect(viewportChanges.at(-1)).toEqual(latestPan);
@@ -1092,8 +1088,8 @@ describe("CompositeChart", () => {
         }));
       });
       await act(async () => {
-        await testSetup!.renderOnce();
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
       });
     }
     const boundaryViewport = viewportChanges.at(-1)!;
@@ -1101,8 +1097,8 @@ describe("CompositeChart", () => {
 
     await act(async () => publishViewport!(boundaryViewport));
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     const boundaryChangeCount = viewportChanges.length;
 
@@ -1112,16 +1108,16 @@ describe("CompositeChart", () => {
       }));
     });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(viewportChanges).toHaveLength(boundaryChangeCount);
     expect(viewportChanges).not.toContain(null);
 
     await act(async () => publishExternalViewport!());
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(viewportChanges.at(-1)).toBeNull();
   });
@@ -1129,7 +1125,7 @@ describe("CompositeChart", () => {
   test("activates and navigates a buffered viewport from the first mouse gesture", async () => {
     let activations = 0;
     const cursorChanges: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1151,24 +1147,24 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Jan 5");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("Jan 5");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(10, 3));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 3));
       capturedSurfaceProps!.onMouseUp(pointerEvent(30, 3));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     expect(activations).toBe(1);
     expect(cursorChanges.length).toBeGreaterThan(0);
-    expect(testSetup.captureCharFrame()).toContain("Jan 3");
+    expect(tui.frame()).toContain("Jan 3");
   });
 
   test("zooms to a shift-drag selection instead of panning", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1185,22 +1181,22 @@ describe("CompositeChart", () => {
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(10, 3, { shift: true }));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 3, { shift: true }));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     // The selection must not pan the way an unmodified drag would, and the
     // range has to read as text for renderers that cannot draw the band.
     expect(viewportChanges).toHaveLength(0);
-    expect(testSetup.captureCharFrame()).toContain("→");
+    expect(tui.frame()).toContain("→");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(30, 3, { shift: true }));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     const zoomed = viewportChanges.at(-1);
     expect(zoomed).toBeTruthy();
@@ -1210,7 +1206,7 @@ describe("CompositeChart", () => {
 
   test("reports an alt-drag measurement without moving the viewport", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1227,15 +1223,15 @@ describe("CompositeChart", () => {
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6, { alt: true }));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(34, 1, { alt: true }));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
-    const measuringFrame = testSetup.captureCharFrame();
+    const measuringFrame = tui.frame();
     // The readout sits in the middle of the box it measures, not in the legend.
     expect(measuringFrame).toContain("Δ");
     expect(measuringFrame).toContain("bars");
@@ -1245,13 +1241,13 @@ describe("CompositeChart", () => {
     await act(async () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(34, 1, { alt: true }));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).not.toContain("Δ");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).not.toContain("Δ");
     expect(viewportChanges).toHaveLength(0);
   });
 
   test("arms a measurement from the keyboard when a modifier drag cannot reach the app", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CaptureChartSurfaceProvider>
           <CompositeChart
@@ -1266,36 +1262,36 @@ describe("CompositeChart", () => {
       </InputHostProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     await act(async () => chartShortcut?.(keyEvent("m", true)));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     // No modifier on the drag: the armed tool is what makes it a measurement.
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(34, 1));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Δ");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("Δ");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(34, 1));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).not.toContain("Δ");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).not.toContain("Δ");
 
     // Sticky: the tool still owns the next drag until it is dismissed.
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Δ");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("Δ");
   });
 
   test("arms and disarms a chart tool from the toolbar", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1307,38 +1303,38 @@ describe("CompositeChart", () => {
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     // Pressing the ruler icon has to arm the tool for an unmodified drag.
-    const toolbarRow = testSetup.captureCharFrame().split("\n").findIndex((line) => line.includes("↔"));
-    const rulerX = testSetup.captureCharFrame().split("\n")[toolbarRow]!.indexOf("↔");
+    const toolbarRow = tui.frame().split("\n").findIndex((line) => line.includes("↔"));
+    const rulerX = tui.frame().split("\n")[toolbarRow]!.indexOf("↔");
     await act(async () => {
-      await testSetup!.mockMouse.moveTo(rulerX, toolbarRow);
-      await testSetup!.mockMouse.click(rulerX, toolbarRow);
+      await tui.setup().mockMouse.moveTo(rulerX, toolbarRow);
+      await tui.setup().mockMouse.click(rulerX, toolbarRow);
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Δ");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("Δ");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(30, 2));
-      await testSetup!.mockMouse.click(rulerX, toolbarRow);
+      await tui.setup().mockMouse.click(rulerX, toolbarRow);
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).not.toContain("Δ");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).not.toContain("Δ");
   });
 
   test("draws a line, then grabs its end to reshape it", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CaptureChartSurfaceProvider>
           <CompositeChart
@@ -1353,9 +1349,9 @@ describe("CompositeChart", () => {
       </InputHostProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     await act(async () => chartShortcut?.(keyEvent("d", true)));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     const base = capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array } | undefined;
 
     await act(async () => {
@@ -1363,7 +1359,7 @@ describe("CompositeChart", () => {
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
       capturedSurfaceProps!.onMouseUp(pointerEvent(30, 2));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     const drawn = capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array } | undefined;
     expect(Buffer.from(drawn!.pixels).equals(Buffer.from(base!.pixels))).toBe(false);
 
@@ -1373,14 +1369,14 @@ describe("CompositeChart", () => {
       capturedSurfaceProps!.onMouseDrag(pointerEvent(14, 8));
       capturedSurfaceProps!.onMouseUp(pointerEvent(14, 8));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     const reshaped = capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array } | undefined;
     expect(reshaped).toBeTruthy();
     expect(Buffer.from(reshaped!.pixels).equals(Buffer.from(drawn!.pixels))).toBe(false);
   });
 
   test("places a trend line from the keyboard and leaves Backspace to the pane when nothing is picked", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CaptureChartSurfaceProvider>
           <CompositeChart
@@ -1395,12 +1391,12 @@ describe("CompositeChart", () => {
       </InputHostProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     const bitmap = () => Buffer.from((capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array }).pixels);
     const press = async (name: string, shift = false) => {
       const event = keyEvent(name, shift);
       await act(async () => chartShortcut?.(event));
-      await act(async () => testSetup!.renderOnce());
+      await act(async () => tui.setup().renderOnce());
       return event;
     };
     const base = bitmap();
@@ -1411,9 +1407,9 @@ describe("CompositeChart", () => {
     await press("left");
     await press("left");
     await press("left");
-    expect(testSetup.captureCharFrame()).toContain("Δ -$3.00");
+    expect(tui.frame()).toContain("Δ -$3.00");
     await press("return");
-    expect(testSetup.captureCharFrame()).not.toContain("Δ");
+    expect(tui.frame()).not.toContain("Δ");
     const drawn = bitmap();
     expect(drawn.equals(base)).toBe(false);
 
@@ -1431,7 +1427,7 @@ describe("CompositeChart", () => {
 
   test("steps the cursor of a focused chart that does not navigate", async () => {
     const cursorChanges: Array<string | null> = [];
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CompositeChart
           width={60}
@@ -1445,7 +1441,7 @@ describe("CompositeChart", () => {
       </InputHostProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     await act(async () => chartShortcut?.(keyEvent("left")));
     expect(cursorChanges).toEqual(["2025-01-03T00:00:00.000Z"]);
@@ -1456,7 +1452,7 @@ describe("CompositeChart", () => {
   });
 
   test("disarms a chart tool with escape", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <InputHostProvider host={chartInputHost}>
         <CaptureChartSurfaceProvider>
           <CompositeChart
@@ -1471,23 +1467,23 @@ describe("CompositeChart", () => {
       </InputHostProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     await act(async () => chartShortcut?.(keyEvent("z", true)));
     await act(async () => chartShortcut?.(keyEvent("escape")));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     // Disarmed: an unmodified drag pans instead of selecting a range.
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).not.toContain("→");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).not.toContain("→");
   });
 
   test("keeps a measurement readable in a narrow pane", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={28}
@@ -1499,20 +1495,20 @@ describe("CompositeChart", () => {
       </CaptureChartSurfaceProvider>,
       { width: 30, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(2, 6, { alt: true }));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(14, 1, { alt: true }));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     // Too narrow for the whole summary, but the change still has to be visible.
-    expect(testSetup.captureCharFrame()).toContain("Δ");
+    expect(tui.frame()).toContain("Δ");
   });
 
   test("ends a tool drag whose release landed on another pane", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1524,26 +1520,26 @@ describe("CompositeChart", () => {
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6, { alt: true }));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(34, 1, { alt: true }));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Δ");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("Δ");
 
     // No mouse-up arrives: the pointer was released over a floating pane. The
     // next plain move only happens with the button already up.
     await act(async () => {
       capturedSurfaceProps!.onMouseMove(pointerEvent(20, 4));
     });
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).not.toContain("Δ");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).not.toContain("Δ");
   });
 
   test("maps the pointer crosshair level through both axes and labels its date", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1560,7 +1556,7 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     const plotWidth = capturedSurfaceNode!.width as number;
     const plotHeight = capturedSurfaceNode!.height as number;
     await act(async () => {
@@ -1569,9 +1565,9 @@ describe("CompositeChart", () => {
         (plotHeight - 1) / 2,
       ));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("$150");
     expect(frame).toContain("106%");
     expect(frame).toContain("2025-01-03");
@@ -1586,7 +1582,7 @@ describe("CompositeChart", () => {
     ["USD", "price:USD", 0.0123, "$0.0123"],
     ["USD", "price:USD", 1e30, "…"],
   ] as const)("renders a complete cursor marker for %s %s %s", async (unit, unitGroup, value, label) => {
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1602,13 +1598,13 @@ describe("CompositeChart", () => {
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain(label);
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain(label);
     expect(capturedSurfaceNode!.width).toBeGreaterThanOrEqual(30);
   });
 
   test("static overview charts reserve the complete tiny-price marker without losing the plot", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart width={60} height={12} showLegend={false} interactive={false}
           series={[{ ...series("price", "main", "right", "USD", [0.000005, 0.0000051, 0.00000526]), unitGroup: "price:USD", timeBasis: { kind: "market", timeZone: "UTC" } }]}
@@ -1616,8 +1612,8 @@ describe("CompositeChart", () => {
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("$0.00000526");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("$0.00000526");
     expect(capturedSurfaceNode!.width).toBeGreaterThanOrEqual(30);
   });
 
@@ -1633,24 +1629,24 @@ describe("CompositeChart", () => {
         />
       </CaptureChartSurfaceProvider>;
     }
-    testSetup = await testRender(<Harness />, { width: 62, height: 14 });
-    await act(async () => testSetup!.renderOnce());
+    await tui.render(<Harness />, { width: 62, height: 14 });
+    await act(async () => tui.setup().renderOnce());
     const plotWidth = capturedSurfaceNode!.width as number;
     const plotHeight = capturedSurfaceNode!.height as number;
     await act(async () => capturedSurfaceProps!.onMouseMove(pointerEvent(
       (plotWidth - 1) / 2, (plotHeight - 1) * 0.4975,
     )));
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("$150.28");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("$150.28");
     expect(capturedSurfaceNode!.width).toBe(plotWidth);
     await act(async () => setAxisWidth?.(0));
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     expect(capturedSurfaceNode!.width).toBe(60);
-    expect(testSetup.captureCharFrame()).not.toContain("$");
+    expect(tui.frame()).not.toContain("$");
   });
 
   test("keeps the requested window while older cached observations partially overlap it", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CompositeChart
         width={90}
         height={14}
@@ -1663,15 +1659,15 @@ describe("CompositeChart", () => {
       />,
       { width: 92, height: 16 },
     );
-    await act(async () => testSetup!.renderOnce());
-    const frame = testSetup.captureCharFrame();
+    await act(async () => tui.setup().renderOnce());
+    const frame = tui.frame();
     expect(frame).toContain("Aug 10");
     expect(frame).toContain("Sep 10");
     expect(frame).not.toContain("Jul 31");
   });
 
   test("zooms around the mouse pointer with control-wheel", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1688,8 +1684,8 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Jan 9");
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("Jan 9");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
@@ -1697,9 +1693,9 @@ describe("CompositeChart", () => {
         scroll: { direction: "up", delta: 4 },
       }));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
-    expect(testSetup.captureCharFrame()).not.toContain("Jan 9");
+    expect(tui.frame()).not.toContain("Jan 9");
   });
 
   test("uses a supplied market timeline to keep control-wheel zoom under the pointer", async () => {
@@ -1715,7 +1711,7 @@ describe("CompositeChart", () => {
       end: new Date(anchor.points.at(-1)!.date.getTime()),
     };
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1733,7 +1729,7 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     const pointerX = 35;
     const plotWidth = capturedSurfaceNode!.width as number;
     const frame = buildCompositeNavigationFrame([display], [anchor])!;
@@ -1753,8 +1749,8 @@ describe("CompositeChart", () => {
       }));
     });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(viewportChanges.at(-1)).toEqual({
@@ -1766,7 +1762,7 @@ describe("CompositeChart", () => {
   test("returns a drag to its origin without handing the window back", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
     const interactions: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1789,12 +1785,12 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(20, 3));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 3));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     expect(viewportChanges.at(-1)).not.toBeNull();
 
     await act(async () => {
@@ -1802,8 +1798,8 @@ describe("CompositeChart", () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(20, 3));
     });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(viewportChanges.at(-1)).toEqual({
@@ -1815,7 +1811,7 @@ describe("CompositeChart", () => {
 
   test("always treats horizontal control-wheel movement as a pan", async () => {
     const interactions: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <CompositeChart
           width={60}
@@ -1833,7 +1829,7 @@ describe("CompositeChart", () => {
       { width: 62, height: 14 },
     );
 
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     await act(async () => {
       capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
         ctrl: true,
@@ -1841,8 +1837,8 @@ describe("CompositeChart", () => {
       }));
     });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(interactions.at(-1)).toBe("pan");
@@ -1875,13 +1871,13 @@ describe("CompositeChart", () => {
       );
     }
 
-    testSetup = await testRender(
+    await tui.render(
       <CaptureChartSurfaceProvider>
         <Harness />
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     for (let index = 0; index < 8; index += 1) {
       await act(async () => {
@@ -1890,7 +1886,7 @@ describe("CompositeChart", () => {
           scroll: { direction: "up", delta: 8 },
         }));
       });
-      await act(async () => testSetup!.renderOnce());
+      await act(async () => tui.setup().renderOnce());
     }
 
     await act(async () => {
@@ -1899,11 +1895,11 @@ describe("CompositeChart", () => {
         point("2025-01-09", 108),
       ]);
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     // An observation-free window keeps the chart frame and its axes; only the
     // plotted points go away.
-    const emptyFrame = testSetup.captureCharFrame();
+    const emptyFrame = tui.frame();
     expect(emptyFrame).not.toContain("No chart data");
     expect(emptyFrame).not.toContain("•");
     expect(emptyFrame).toContain("$108");
@@ -1916,9 +1912,9 @@ describe("CompositeChart", () => {
         scroll: { direction: "down", delta: 4 },
       }));
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
-    const recoveredFrame = testSetup.captureCharFrame();
+    const recoveredFrame = tui.frame();
     expect(recoveredFrame).toContain("•");
     expect(lastWindow!.start.getTime()).toBeLessThanOrEqual(Date.parse("2025-01-01"));
     expect(lastWindow!.end.getTime()).toBeGreaterThanOrEqual(Date.parse("2025-01-09"));
@@ -1934,7 +1930,7 @@ describe("CompositeChart", () => {
         binding: { kind: "fixed", symbol: "ACME" },
         settings,
       });
-      testSetup = await testRender(
+      await tui.render(
         <AppContext value={createStaticAppStore(createInitialState(config))}>
           <PaneInstanceProvider paneId="chart:test">
             <CaptureChartSurfaceProvider canvasCharts>
@@ -1950,13 +1946,12 @@ describe("CompositeChart", () => {
         { width: 62, height: 14 },
       );
       await act(async () => {
-        await testSetup!.renderOnce();
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
       });
       const bitmap = capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array };
       const pixels = Buffer.from(bitmap.pixels);
-      await act(async () => testSetup!.renderer.destroy());
-      testSetup = undefined;
+      await tui.destroy();
       return pixels;
     };
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "./coordinator";
@@ -9,7 +9,7 @@ import type { ChartRequest } from "./request-types";
 import { createIdleEntry } from "./result-types";
 import { createTestTicker } from "../test-support/ticker";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let bumpHarness: (() => void) | null = null;
 let replaceChartRequests: ((requests: readonly ChartRequest[]) => void) | null = null;
 let latestFxRates: Map<string, number> | null = null;
@@ -89,13 +89,7 @@ function makeChartRequest(bufferRange: ChartRequest["bufferRange"]): ChartReques
   };
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   bumpHarness = null;
   replaceChartRequests = null;
   latestFxRates = null;
@@ -114,13 +108,13 @@ describe("market-data hooks", () => {
     };
     setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
 
-    testSetup = await testRender(<HooksHarness />, {
+    await tui.render(<HooksHarness />, {
       width: 20,
       height: 1,
     });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     const initialFxRates = latestFxRates;
@@ -131,7 +125,7 @@ describe("market-data hooks", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(latestFxRates).toBe(initialFxRates);
@@ -152,7 +146,7 @@ describe("market-data hooks", () => {
     };
     setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
 
-    testSetup = await testRender(
+    await tui.render(
       <ChartQueriesHarness initialRequests={[makeChartRequest("1D")]} debounceMs={40} />,
       {
         width: 20,
@@ -161,20 +155,20 @@ describe("market-data hooks", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
       replaceChartRequests?.([makeChartRequest("1W")]);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 15));
       replaceChartRequests?.([makeChartRequest("1M")]);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 60));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(loadedRanges).toEqual(["1M"]);
@@ -197,7 +191,7 @@ describe("market-data hooks", () => {
     };
     setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
 
-    testSetup = await testRender(
+    await tui.render(
       <ChartQueriesHarness
         initialRequests={[makeChartRequest("1D")]}
         debounceMs={0}
@@ -210,9 +204,9 @@ describe("market-data hooks", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
       await new Promise((resolve) => setTimeout(resolve, 45));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(calls[0]).toEqual({ range: "1D", forceRefresh: false });

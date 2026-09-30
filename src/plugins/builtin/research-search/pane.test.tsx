@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -47,7 +47,7 @@ const DOCUMENT = {
   ],
 };
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 function jsonResponse(body: unknown): Response {
   return {
@@ -145,38 +145,19 @@ function Harness({ mode = "results" }: { mode?: "results" | "saved" }) {
 }
 
 async function pressKey(name: string, shift = false) {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      name,
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift,
-      eventType: "press",
-      repeated: false,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-    } as never);
-    await testSetup!.renderOnce();
-  });
+  await tui.emitKeypress({ name, shift });
 }
 
 async function renderFrames(count = 6) {
   for (let index = 0; index < count; index += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
 });
@@ -188,13 +169,13 @@ describe("ResearchSearchPane", () => {
     installTransport();
     signIn();
 
-    testSetup = await testRender(<Harness />, { width: 110, height: 20 });
+    await tui.render(<Harness />, { width: 110, height: 20 });
     await renderFrames();
 
     await pressKey("return");
     await renderFrames();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Tim Cook");
     expect(frame).toContain("to expand next quarter");
   });
@@ -205,7 +186,7 @@ describe("ResearchSearchPane", () => {
     installTransport();
     signIn();
 
-    testSetup = await testRender(<Harness />, { width: 110, height: 20 });
+    await tui.render(<Harness />, { width: 110, height: 20 });
     await renderFrames();
 
     // Esc clears whichever field is active, which shows where Tab landed.
@@ -213,23 +194,23 @@ describe("ResearchSearchPane", () => {
     await pressKey("tab");
     await pressKey("escape");
     await renderFrames();
-    expect(testSetup.captureCharFrame()).toContain("Apple FQ2 2026 Earnings Call");
+    expect(tui.frame()).toContain("Apple FQ2 2026 Earnings Call");
 
     await pressKey("/");
     await pressKey("tab");
     await pressKey("tab", true);
     await pressKey("escape");
     await renderFrames();
-    expect(testSetup.captureCharFrame()).toContain("Type a query to search");
+    expect(tui.frame()).toContain("Type a query to search");
   });
 
   test("flips a saved-search alert and persists it", async () => {
     const { requests } = installTransport();
     signIn("pro");
 
-    testSetup = await testRender(<Harness mode="saved" />, { width: 110, height: 20 });
+    await tui.render(<Harness mode="saved" />, { width: 110, height: 20 });
     await renderFrames();
-    expect(testSetup.captureCharFrame()).toContain("[ ]");
+    expect(tui.frame()).toContain("[ ]");
 
     await pressKey("a");
     await renderFrames();
@@ -237,6 +218,6 @@ describe("ResearchSearchPane", () => {
     const write = requests.find((request) => request.method === "PATCH");
     expect(write?.path).toBe("/cloud/search/saved/saved-1");
     expect(write?.body).toEqual({ alertEnabled: true });
-    expect(testSetup.captureCharFrame()).toContain("[\u2713]");
+    expect(tui.frame()).toContain("[\u2713]");
   });
 });

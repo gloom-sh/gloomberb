@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -72,15 +72,10 @@ function seedCache(): void {
   } as unknown as PluginPersistence);
 }
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
+afterEach(() => {
   resetTreasuryAuctionsPersistence();
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 const PANE_INSTANCE_ID = "treasury-auctions:test";
@@ -118,20 +113,20 @@ function Harness() {
 
 async function renderSettled() {
   await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
-const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
+const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event);
 
 describe("TreasuryAuctionsPane", () => {
   test("renders auction metrics and keeps one placeholder for unpublished results", async () => {
     seedCache();
-    testSetup = await testRender(<Harness />, { width: 92, height: 20 });
+    await tui.render(<Harness />, { width: 92, height: 20 });
     await renderSettled();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("13-Week");
     expect(frame).toContain("3.802%");
     expect(frame).toContain("2.86");
@@ -145,14 +140,14 @@ describe("TreasuryAuctionsPane", () => {
 
   test("opens a detail view for the selected auction", async () => {
     seedCache();
-    testSetup = await testRender(<Harness />, { width: 92, height: 20 });
+    await tui.render(<Harness />, { width: 92, height: 20 });
     await renderSettled();
 
     await emitKeypress({ name: "down", sequence: "\u001B[B" });
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
 
-    const detail = testSetup.captureCharFrame();
+    const detail = tui.frame();
     expect(detail).toContain("Bill 13-Week");
     expect(detail).toContain("Bid-to-cover");
     expect(detail).toContain("Total accepted");

@@ -1,8 +1,8 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useEffect, useReducer } from "react";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../remote/semantic-tree";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
@@ -25,7 +25,7 @@ const SETTINGS = { symbol: "AAPL", spot: "100", rate: "4", dividendYield: "0", c
 const POSITION: ScenarioPosition = { symbol: "AAPL", spot: 100, rate: 0.04, dividendYield: 0, currency: "USD",
   asOf: Date.UTC(2026, 8, 22), legs: parseLegs(SETTINGS.legs) };
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let registry: RemoteUiRegistry;
 let latestState: ReturnType<typeof createInitialState>;
 let runtime: PluginRuntimeAccess;
@@ -57,22 +57,15 @@ function Harness({ config }: { config: AppConfig }) {
 
 async function frame() {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  await act(async () => { await setup!.renderOnce(); });
+  await act(async () => { await tui.setup().renderOnce(); });
 }
 
 async function mount(config = configFor(), restoredRuntime?: PluginRuntimeAccess) {
   registry = createRemoteUiRegistry();
   runtime = restoredRuntime ?? createStatefulTestPluginRuntime();
-  await act(async () => { setup = await testRender(<Harness config={config} />, { width: WIDTH, height: HEIGHT }); });
+  await act(async () => { await tui.render(<Harness config={config} />, { width: WIDTH, height: HEIGHT }); });
   await frame(); await frame();
 }
-
-async function unmount() {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
-}
-
-afterEach(unmount);
 
 function paneState() { return latestState.paneState[ID]!.pluginState![PLUGIN]!; }
 function evidence(): ScenarioEvidence {
@@ -81,20 +74,20 @@ function evidence(): ScenarioEvidence {
 
 async function field(label: string, value: string) {
   const node = registry.snapshot().find((node) => node.role === "text-field" && node.label === label);
-  if (!node) throw new Error(`Missing field ${label}.\n${setup!.captureCharFrame()}`);
+  if (!node) throw new Error(`Missing field ${label}.\n${tui.frame()}`);
   await act(async () => { await registry.invoke(node.id, "setValue", value); });
   await frame();
 }
 
 async function press(label: string) {
   const node = registry.snapshot().find((node) => node.role === "button" && node.label === label);
-  if (!node) throw new Error(`Missing button ${label}.\n${setup!.captureCharFrame()}`);
+  if (!node) throw new Error(`Missing button ${label}.\n${tui.frame()}`);
   await act(async () => { await registry.invoke(node.id, "press"); });
   await frame();
 }
 
 async function shortcut(name: string) {
-  await emitKeypress(setup!, { name, sequence: name }, { trackPropagation: true });
+  await tui.emitKeypress({ name, sequence: name }, { trackPropagation: true });
   await frame();
 }
 
@@ -112,7 +105,7 @@ test("edited legs update the scenario and survive a layout JSON restart", async 
   expect(evidence().scenario!.valuation).toEqual(buildScenario(edited, evidence().scenario!.controls).valuation);
   expect(evidence().scenario!.valuation.pnl).not.toBe(original.valuation.pnl);
   const diskConfig = JSON.parse(JSON.stringify(latestState.config));
-  await unmount();
+  await tui.destroy();
   await mount(diskConfig);
   expect(evidence().scenario!.position).toEqual(edited);
   expect(paneState().position).toEqual(edited);
@@ -130,7 +123,7 @@ test("an OMON handoff appends once to existing legs and remains consumed after r
   expect(legs[0]).toEqual(POSITION.legs[0]!);
   expect(legs[1]).toMatchObject({ id: seed.id, side: "put", quantity: -3, strike: 95 });
   const diskConfig = JSON.parse(JSON.stringify(latestState.config));
-  await unmount();
+  await tui.destroy();
   await mount(diskConfig);
   expect((paneState().position as ScenarioPosition).legs).toEqual(legs);
   expect(paneState().consumedSeed).toBe(raw);
@@ -139,16 +132,16 @@ test("an OMON handoff appends once to existing legs and remains consumed after r
 
 test("Tab leaves the pane and the vol shift field opens from its own key", async () => {
   await mount();
-  const tab = await emitKeypress(setup!, { name: "tab", sequence: "\t" }, { trackPropagation: true });
+  const tab = await tui.emitKeypress({ name: "tab", sequence: "\t" }, { trackPropagation: true });
   expect(tab.defaultPrevented).toBe(false);
   expect(tab.propagationStopped).toBe(false);
   await shortcut("v");
   await shortcut("5");
-  const commit = await emitKeypress(setup!, { name: "tab", sequence: "\t" }, { trackPropagation: true });
+  const commit = await tui.emitKeypress({ name: "tab", sequence: "\t" }, { trackPropagation: true });
   await frame();
   expect(commit.defaultPrevented).toBe(true);
   expect(evidence().scenario!.controls.volShift).toBeCloseTo(0.05);
-  const next = await emitKeypress(setup!, { name: "tab", sequence: "\t" }, { trackPropagation: true });
+  const next = await tui.emitKeypress({ name: "tab", sequence: "\t" }, { trackPropagation: true });
   expect(next.defaultPrevented).toBe(false);
 });
 
@@ -186,10 +179,10 @@ test("saved strategy snapshots stay independent from later edits and reload from
   const nextRuntime = createStatefulTestPluginRuntime();
   nextRuntime.setResumeState(PLUGIN, "osa-strategies", JSON.parse(JSON.stringify(saved)), 1);
   const diskConfig = JSON.parse(JSON.stringify(latestState.config));
-  await unmount();
+  await tui.destroy();
   await mount(diskConfig, nextRuntime);
   await shortcut("b");
-  await emitKeypress(setup!, { name: "enter", sequence: "\r" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
   await frame();
   expect(evidence().scenario!.position).toEqual(POSITION);
   expect((paneState().position as ScenarioPosition).legs[0]!.quantity).toBe(1);

@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { buildQuoteKey } from "../../market-data/selectors";
 import { instrumentIdentityKey } from "../../utils/instrument-identity";
@@ -8,16 +8,7 @@ import type { TickerRecord } from "../../types/ticker";
 import { buildLiveQuoteTarget, useSampledValue } from "./live-ticker-financials";
 import { createTestTicker } from "../../test-support/ticker";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-  }
-  testSetup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 function brokerHeldTicker(): TickerRecord {
   return createTestTicker("AAPL", "Apple", {
@@ -88,13 +79,13 @@ describe("useSampledValue", () => {
         });
       }
       await act(async () => {
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
-      return testSetup!.captureCharFrame();
+      return tui.frame();
     };
 
     await act(async () => {
-      testSetup = await testRender(<Harness />, { width: 10, height: 1 });
+      await tui.render(<Harness />, { width: 10, height: 1 });
     });
     expect(await frame()).toContain("v0");
 

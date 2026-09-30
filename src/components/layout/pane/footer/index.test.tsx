@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
 import { Box } from "../../../../ui";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import {
   PaneFooterBar,
   PaneFooterProvider,
@@ -10,13 +10,9 @@ import {
 import { useExternalLinkFooter } from "../../../use-external-link-footer";
 import { setLanguage, t } from "../../../../i18n";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => testSetup?.renderer.destroy());
-    testSetup = undefined;
-  }
+afterEach(() => {
   setLanguage("en");
 });
 
@@ -112,62 +108,62 @@ function ExternalLinkFooterHarness() {
 
 describe("PaneFooterBar", () => {
   test("rebuilds translated registrations when the app language changes", async () => {
-    testSetup = await testRender(<TranslatedFooterHarness />, { width: 40, height: 1 });
+    await tui.render(<TranslatedFooterHarness />, { width: 40, height: 1 });
     await act(async () => {
-      await testSetup?.renderOnce();
-      await testSetup?.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("Open");
+    expect(tui.frame()).toContain("Open");
 
     await act(async () => {
       setLanguage("zh-CN");
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup?.renderOnce();
-      await testSetup?.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
       await Promise.resolve();
-      await testSetup?.renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("打开");
+    expect(tui.frame()).toContain("打开");
   });
 
   test("hides hints on inactive footers but keeps info visible", async () => {
-    testSetup = await testRender(<FooterHarness />, { width: 64, height: 1 });
+    await tui.render(<FooterHarness />, { width: 64, height: 1 });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Rows 12");
     expect(frame).not.toContain("[o]pen");
   });
 
   test("keeps raw external URLs out of footer text", async () => {
-    testSetup = await testRender(<ExternalLinkFooterHarness />, { width: 80, height: 1 });
+    await tui.render(<ExternalLinkFooterHarness />, { width: 80, height: 1 });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("source Reuters");
     expect(frame).toContain("[o]pen");
     expect(frame).not.toContain("https://example.com");
   });
 
   test("omits disabled controls instead of rendering muted hints", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <FooterHarness focused openDisabled onOpen={() => {}} />,
       { width: 64, height: 1 },
     );
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Rows 12");
     expect(frame).not.toContain("[o]pen");
   });

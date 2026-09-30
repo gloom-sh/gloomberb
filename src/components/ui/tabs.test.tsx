@@ -2,14 +2,12 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { setLanguage } from "../../i18n";
 import { Tabs } from "./tabs";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { Box, type ScrollBoxRenderable } from "../../ui";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
-  if (testSetup) await act(async () => testSetup!.renderer.destroy());
-  testSetup = undefined;
+afterEach(() => {
   setLanguage("en");
 });
 
@@ -48,7 +46,7 @@ function TabsHarness({ initialWidth }: { initialWidth?: number } = {}) {
 }
 
 function tabsScroll(): ScrollBoxRenderable {
-  return testSetup!.renderer.root.findDescendantById("test-tabs-scroll") as ScrollBoxRenderable;
+  return tui.setup().renderer.root.findDescendantById("test-tabs-scroll") as ScrollBoxRenderable;
 }
 
 // The strip used to snap back to the active tab on every render. A ticker pane
@@ -56,20 +54,20 @@ function tabsScroll(): ScrollBoxRenderable {
 // yanked the view back before it could be read.
 test("scrolling the tab strip survives renders that do not change the tabs", async () => {
   await act(async () => {
-    testSetup = await testRender(<TabsHarness />, { width: 30, height: 4 });
+    await tui.render(<TabsHarness />, { width: 30, height: 4 });
   });
-  await testSetup!.renderOnce();
+  await tui.setup().renderOnce();
 
   await act(async () => {
     tabsScroll().scrollTo({ x: 24, y: 0 });
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
   expect(tabsScroll().scrollLeft).toBe(24);
 
   for (let tick = 0; tick < 3; tick += 1) {
     await act(async () => {
       rerender?.();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 
@@ -78,64 +76,64 @@ test("scrolling the tab strip survives renders that do not change the tabs", asy
 
 test("selecting a tab outside the viewport still reveals it", async () => {
   await act(async () => {
-    testSetup = await testRender(<TabsHarness />, { width: 30, height: 4 });
+    await tui.render(<TabsHarness />, { width: 30, height: 4 });
   });
-  await testSetup!.renderOnce();
+  await tui.setup().renderOnce();
   expect(tabsScroll().scrollLeft).toBe(0);
 
   await act(async () => {
     selectTab?.("notes");
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  await testSetup!.renderOnce();
+  await tui.setup().renderOnce();
 
   expect(tabsScroll().scrollLeft).toBeGreaterThan(0);
-  expect(testSetup!.captureCharFrame()).toContain("Notes");
+  expect(tui.frame()).toContain("Notes");
 });
 
 test("resizing a floating viewport keeps the selected tab visible without snapping ordinary scrolls", async () => {
   await act(async () => {
-    testSetup = await testRender(<TabsHarness initialWidth={112} />, { width: 130, height: 4 });
+    await tui.render(<TabsHarness initialWidth={112} />, { width: 130, height: 4 });
   });
   await act(async () => { selectTab?.("notes"); });
-  await testSetup!.renderOnce();
-  expect(testSetup!.captureCharFrame()).toContain("Notes");
+  await tui.setup().renderOnce();
+  expect(tui.frame()).toContain("Notes");
   const originalScroll = tabsScroll();
   for (const width of [80, 48, 112, 30]) {
     await act(async () => { resizeTabs?.(width); });
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
     expect(tabsScroll()).toBe(originalScroll);
     expect(tabsScroll().viewport?.width).toBe(width);
-    expect(testSetup!.captureCharFrame()).toContain("Notes");
+    expect(tui.frame()).toContain("Notes");
   }
   await act(async () => { tabsScroll().scrollTo({ x: 0, y: 0 }); });
   await act(async () => { rerender?.(); });
-  await testSetup!.renderOnce();
+  await tui.setup().renderOnce();
   expect(tabsScroll().scrollLeft).toBe(0);
 });
 
 test("retranslates stable tab items when the app language changes", async () => {
   const tabs = [{ label: "Open", value: "open" }];
-  testSetup = await testRender(
+  await tui.render(
     <Tabs tabs={tabs} activeValue="open" onSelect={() => {}} />,
     { width: 20, height: 2 },
   );
 
-  await act(async () => testSetup?.renderOnce());
-  expect(testSetup.captureCharFrame()).toContain("Open");
+  await act(async () => tui.setup().renderOnce());
+  expect(tui.frame()).toContain("Open");
 
   await act(async () => {
     setLanguage("zh-CN");
-    await testSetup?.renderOnce();
-    await testSetup?.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
 
-  expect(testSetup.captureCharFrame()).toContain("打开");
+  expect(tui.frame()).toContain("打开");
 });
 
 test("scrolls overflowing tabs horizontally with the mouse wheel", async () => {
-  testSetup = await testRender(
+  await tui.render(
     <Tabs
       tabs={[
         { label: "Overview", value: "overview" },
@@ -151,21 +149,21 @@ test("scrolls overflowing tabs horizontally with the mouse wheel", async () => {
   );
 
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 
-  let frame = testSetup.captureCharFrame();
+  let frame = tui.frame();
   expect(frame).toContain("Overview");
   expect(frame).not.toContain("Insider");
 
   await act(async () => {
     for (let i = 0; i < 40; i++) {
-      await testSetup!.mockMouse.scroll(1, 0, "down");
+      await tui.setup().mockMouse.scroll(1, 0, "down");
     }
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 
-  frame = testSetup.captureCharFrame();
+  frame = tui.frame();
   expect(frame).toContain("Options");
   expect(frame).toContain("Insider");
 });
@@ -194,21 +192,21 @@ test("moves focused tabs with arrow keys and leaves Tab for pane focus", async (
     );
   }
 
-  testSetup = await testRender(<KeyboardTabsHarness />, { width: 40, height: 4 });
+  await tui.render(<KeyboardTabsHarness />, { width: 40, height: 4 });
 
   await act(async () => {
-    await testSetup!.renderOnce();
-    testSetup!.mockInput.pressArrow("right");
-    testSetup!.mockInput.pressArrow("right");
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    tui.setup().mockInput.pressArrow("right");
+    tui.setup().mockInput.pressArrow("right");
+    await tui.setup().renderOnce();
   });
 
   expect(selectedValues).toEqual(["news", "chart"]);
   expect(lastSelected).toBe("chart");
 
   await act(async () => {
-    testSetup!.mockInput.pressTab();
-    await testSetup!.renderOnce();
+    tui.setup().mockInput.pressTab();
+    await tui.setup().renderOnce();
   });
 
   expect(lastSelected).toBe("chart");
@@ -238,30 +236,30 @@ test("selects tabs by clicking their text labels", async () => {
     );
   }
 
-  testSetup = await testRender(<PointerTabsHarness />, { width: 40, height: 4 });
+  await tui.render(<PointerTabsHarness />, { width: 40, height: 4 });
 
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 
-  let frame = testSetup.captureCharFrame();
+  let frame = tui.frame();
   const newsCol = frame.split("\n")[0]!.indexOf("News");
   expect(newsCol).toBeGreaterThanOrEqual(0);
 
   await act(async () => {
-    await testSetup!.mockMouse.click(newsCol + 1, 0);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.click(newsCol + 1, 0);
+    await tui.setup().renderOnce();
   });
 
   expect(lastSelected).toBe("news");
 
-  frame = testSetup.captureCharFrame();
+  frame = tui.frame();
   const chartCol = frame.split("\n")[0]!.indexOf("Chart");
   expect(chartCol).toBeGreaterThanOrEqual(0);
 
   await act(async () => {
-    await testSetup!.mockMouse.click(chartCol + 1, 0);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.click(chartCol + 1, 0);
+    await tui.setup().renderOnce();
   });
 
   expect(selectedValues).toEqual(["news", "chart"]);
@@ -271,7 +269,7 @@ test("selects tabs by clicking their text labels", async () => {
 test("renders tab actions for editable tab sets", async () => {
   let closedTab = null as string | null;
   let addedTab = false as boolean;
-  testSetup = await testRender(
+  await tui.render(
     <Tabs
       tabs={[
         { label: "One", value: "one", onClose: (value) => { closedTab = value; } },
@@ -288,22 +286,22 @@ test("renders tab actions for editable tab sets", async () => {
   );
 
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 
-  const frame = testSetup.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("One x");
   expect(frame).toContain("+");
 
   await act(async () => {
-    await testSetup!.mockMouse.click(5, 0);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.click(5, 0);
+    await tui.setup().renderOnce();
   });
   expect(closedTab).toBe("one");
 
   await act(async () => {
-    await testSetup!.mockMouse.click(14, 0);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.click(14, 0);
+    await tui.setup().renderOnce();
   });
   expect(addedTab).toBe(true);
 });

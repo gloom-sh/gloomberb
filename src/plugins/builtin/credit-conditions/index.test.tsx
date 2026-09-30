@@ -6,7 +6,7 @@ import {
   resetFredSeriesPersistence,
   type FredSeriesCacheEntry,
 } from "../../../data/fred-series";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -14,7 +14,7 @@ import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane"
 import { CREDIT_SERIES } from "./model";
 import { CreditConditionsPane } from "./index";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let persistence: MemoryPluginPersistence;
 let requestSpy: ReturnType<typeof spyOn> | undefined;
 
@@ -44,13 +44,13 @@ async function settle() {
   await act(async () => {
     for (let index = 0; index < 8; index += 1) {
       await Promise.resolve();
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     }
   });
   for (let index = 0; index < 3; index += 1) {
     await act(async () => {
       await Promise.resolve();
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
@@ -69,11 +69,7 @@ beforeEach(() => {
   attachFredSeriesPersistence(persistence);
 });
 
-afterEach(async () => {
-  if (setup) {
-    await act(async () => setup?.renderer.destroy());
-    setup = undefined;
-  }
+afterEach(() => {
   resetFredSeriesPersistence();
   requestSpy?.mockRestore();
   requestSpy = undefined;
@@ -97,19 +93,19 @@ test.each([80, 120])("mixed cached observation dates stay attached to credit val
     if (index < 0) throw new Error("Unknown fixture series");
     return entry(seriesId, index).data;
   });
-  setup = await testRender(<Harness width={width} />, { width, height: 18 });
+  await tui.render(<Harness width={width} />, { width, height: 18 });
   await settle();
 
   const rowLine = (frame: string, label: string) => frame.split("\n").find((line) => line.includes(label));
-  const mixed = setup.captureCharFrame();
+  const mixed = tui.frame();
   expect(mixed).toContain("AS OF");
   expect(rowLine(mixed, "BBB")).toContain("08-17");
   expect(rowLine(mixed, "AAA")).toContain("08-18");
   expect(requestSpy).not.toHaveBeenCalled();
 
-  await act(async () => { setup!.mockInput.pressKey("r"); });
+  await act(async () => { tui.setup().mockInput.pressKey("r"); });
   await settle();
-  const common = setup.captureCharFrame();
+  const common = tui.frame();
   expect(requestSpy).toHaveBeenCalledTimes(CREDIT_SERIES.length);
   expect(rowLine(common, "BBB")).toContain("08-18");
 });

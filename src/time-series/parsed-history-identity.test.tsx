@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { InstrumentRef } from "../market-data/request-types";
 import { setSharedMarketDataCoordinator } from "../market-data/coordinator";
@@ -10,13 +10,11 @@ import { resolveChartSpecData, type ChartResolveSources } from "./resolve";
 import { rememberParsedPriceHistory } from "./parsed-history-cache";
 import { useChartResolution, type UseChartResolutionResult } from "./use-chart-resolution";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let latest: UseChartResolutionResult;
 let selectInstrument: (instrument: InstrumentRef) => void;
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
 });
 
@@ -43,14 +41,14 @@ async function mount(initial: InstrumentRef, sources: ChartResolveSources) {
     latest = useChartResolution(spec(instrument), sources, { liveRefreshIntervalMs: 0 });
     return <text>{`${latest.loading ? "loading" : "settled"}:${JSON.stringify(values())}`}</text>;
   }
-  setup = await testRender(<Harness />, { width: 60, height: 1 });
+  await tui.render(<Harness />, { width: 60, height: 1 });
 }
 async function settle(predicate: () => boolean) {
   for (let iteration = 0; iteration < 100; iteration++) {
-    await act(async () => { await Bun.sleep(1); await setup!.renderOnce(); });
+    await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
     if (predicate()) return;
   }
-  throw new Error(`Chart did not settle: ${setup!.captureCharFrame()}`);
+  throw new Error(`Chart did not settle: ${tui.frame()}`);
 }
 const sourcesFor = (dataProvider: ChartResolveSources["dataProvider"]): ChartResolveSources => ({
   dataProvider, now: new Date("2025-01-10T00:00:00Z"), loadFredSeries: async () => { throw new Error("Unexpected FRED request"); },
@@ -76,7 +74,7 @@ test("pending contract and public switches never display another contract's pars
   await settle(() => requested.includes(20));
   expect(latest.loading).toBe(true);
   expect(values()).toEqual([]);
-  expect(setup!.captureCharFrame()).toContain("loading:[]");
+  expect(tui.frame()).toContain("loading:[]");
   await act(async () => secondHistory.resolve(points(201)));
   await settle(() => !latest.loading && values().length === 2);
   expect(values()).toEqual([201, 202]);
@@ -85,7 +83,7 @@ test("pending contract and public switches never display another contract's pars
   await settle(() => requested.includes(null));
   expect(latest.loading).toBe(true);
   expect(values()).toEqual([]);
-  expect(setup!.captureCharFrame()).toContain("loading:[]");
+  expect(tui.frame()).toContain("loading:[]");
   await act(async () => publicHistory.resolve(points(301)));
   await settle(() => !latest.loading && values().length === 2);
   expect(values()).toEqual([301, 302]);
@@ -108,11 +106,11 @@ test("parsed seeds retain broker account scope and still seed the exact previous
   await settle(() => requested.includes("account-a"));
   expect(latest.loading).toBe(true);
   expect(values()).toEqual([401, 402]);
-  expect(setup!.captureCharFrame()).toContain("loading:[401,402]");
+  expect(tui.frame()).toContain("loading:[401,402]");
   await act(async () => selectInstrument(second));
   await settle(() => requested.includes("account-b"));
   expect(values()).toEqual([]);
-  expect(setup!.captureCharFrame()).toContain("loading:[]");
+  expect(tui.frame()).toContain("loading:[]");
   await act(async () => waiting.resolve(points(501)));
   await settle(() => !latest.loading && values().length === 2);
   expect(values()).toEqual([501, 502]);
@@ -129,7 +127,7 @@ test("public history does not reuse a legacy symbol-only seed of unknown contrac
   await settle(() => requested);
   expect(latest.loading).toBe(true);
   expect(values()).toEqual([]);
-  expect(setup!.captureCharFrame()).toContain("loading:[]");
+  expect(tui.frame()).toContain("loading:[]");
   await act(async () => waiting.resolve(points(601)));
   await settle(() => !latest.loading && values().length === 2);
   expect(values()).toEqual([601, 602]);

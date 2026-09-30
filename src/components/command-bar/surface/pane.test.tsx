@@ -1,27 +1,15 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { AppAction, AppState } from "../../../state/app/context";
 import { cloneLayout, type AppConfig } from "../../../types/config";
 import type { PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
-import {
-  CommandBarHarness,
-  createCommandBarTestControls,
-  emitKeypress,
-  makeQuoteMonitorPaneSettingsDescriptor,
-} from "./test-harness";
+import { CommandBarHarness, createCommandBarTestControls, makeQuoteMonitorPaneSettingsDescriptor } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-});
-
-const { waitForFrameToContain, clickFrameText, renderFrames } = createCommandBarTestControls(() => testSetup!);
+const { waitForFrameToContain, clickFrameText, renderFrames } = createCommandBarTestControls(() => tui.setup());
 
 type CreatedPaneCall = { templateId: string; options?: PaneTemplateCreateOptions };
 
@@ -222,7 +210,7 @@ describe("CommandBar pane and layout routes", () => {
   test("runs layout actions directly from root search", async () => {
     const actions: AppAction[] = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="undo layout change"
       live
       configureConfig={layoutModeConfig}
@@ -233,13 +221,13 @@ describe("CommandBar pane and layout routes", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    expect(testSetup.captureCharFrame()).toContain("Undo Layout Change");
+    expect(tui.frame()).toContain("Undo Layout Change");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     expect(actions.some((action) => action.type === "UNDO_LAYOUT")).toBe(true);
@@ -247,7 +235,7 @@ describe("CommandBar pane and layout routes", () => {
 
   test("opens Layouts as a normal pane from LAY", async () => {
     const opened: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="LAY"
         live
@@ -257,8 +245,8 @@ describe("CommandBar pane and layout routes", () => {
       />,
       { width: 90, height: 18 },
     );
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Layouts");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Layouts");
 
     await clickFrameText("Layouts");
 
@@ -266,7 +254,7 @@ describe("CommandBar pane and layout routes", () => {
   });
 
   test("renders filtered saved layouts with textual previews", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="LMA Research"
       configureConfig={layoutModeConfig}
       configureState={layoutModeState}
@@ -275,15 +263,15 @@ describe("CommandBar pane and layout routes", () => {
       height: 18,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Research");
     expect(frame).toContain("1c / 1d");
   });
 
   test("keeps related pane matches visible beside a bare shortcut", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="AI"
       configurePluginRegistry={(pluginRegistry) => {
         registerAiScreenerPane(pluginRegistry);
@@ -294,9 +282,9 @@ describe("CommandBar pane and layout routes", () => {
       height: 18,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("AI Screener");
     expect(frame).toContain("Local AI Workspace");
     expect(frame).toContain("AGENT");
@@ -306,7 +294,7 @@ describe("CommandBar pane and layout routes", () => {
   test("executes optional text pane shortcuts without opening the generated form", async () => {
     const created: CreatedPaneCall[] = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="OPT"
       live
       configurePluginRegistry={(pluginRegistry) => {
@@ -318,22 +306,22 @@ describe("CommandBar pane and layout routes", () => {
       height: 18,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(created).toEqual([{ templateId: "optional-search-pane", options: undefined }]);
-    expect(testSetup.captureCharFrame()).not.toContain("Create Pane");
+    expect(tui.frame()).not.toContain("Create Pane");
   });
 
   test("keeps an optional ticker shortcut market-wide when a ticker is active", async () => {
     const created: CreatedPaneCall[] = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="OT"
       selectedTicker="AAPL"
       live
@@ -346,12 +334,12 @@ describe("CommandBar pane and layout routes", () => {
       height: 18,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(created).toEqual([{ templateId: "optional-ticker-pane", options: undefined }]);
@@ -372,7 +360,7 @@ describe("CommandBar pane and layout routes", () => {
     test(`creates ${scenario.templateId} directly when it has no config fields`, async () => {
       const created: CreatedPaneCall[] = [];
 
-      testSetup = await testRender(<CommandBarHarness
+      await tui.render(<CommandBarHarness
         query={scenario.query}
         live
         configurePluginRegistry={(pluginRegistry) => {
@@ -384,21 +372,21 @@ describe("CommandBar pane and layout routes", () => {
         height: 18,
       });
 
-      await testSetup.renderOnce();
+      await tui.setup().renderOnce();
 
       await act(async () => {
-        testSetup!.mockInput.pressEnter();
+        tui.setup().mockInput.pressEnter();
         await Bun.sleep(0);
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
 
       expect(created).toEqual([{ templateId: scenario.templateId, options: undefined }]);
-      expect(testSetup.captureCharFrame()).not.toContain("Create Pane");
+      expect(tui.frame()).not.toContain("Create Pane");
     });
   }
 
   test("shows pane templates that share the same shortcut", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="DUP"
       configurePluginRegistry={(pluginRegistry) => {
         const paneTemplates = pluginRegistry.paneTemplates as Map<string, any>;
@@ -422,9 +410,9 @@ describe("CommandBar pane and layout routes", () => {
       height: 18,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("First Duplicate");
     expect(frame).toContain("Second Duplicate");
   });
@@ -459,7 +447,7 @@ describe("CommandBar pane and layout routes", () => {
     test(scenario.name, async () => {
       const created: CreatedPaneCall[] = [];
 
-      testSetup = await testRender(<CommandBarHarness
+      await tui.render(<CommandBarHarness
         query={scenario.query}
         selectedTicker={scenario.selectedTicker}
         configurePluginRegistry={(pluginRegistry) => {
@@ -471,11 +459,11 @@ describe("CommandBar pane and layout routes", () => {
         height: 20,
       });
 
-      await testSetup.renderOnce();
+      await tui.setup().renderOnce();
       await act(async () => {
-        testSetup!.mockInput.pressEnter();
+        tui.setup().mockInput.pressEnter();
         await Bun.sleep(0);
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
 
       expect(created).toEqual([scenario.expected]);
@@ -483,7 +471,7 @@ describe("CommandBar pane and layout routes", () => {
   }
 
   test("CMP AAPL, opens inline completion when the ticker list is incomplete", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="CMP AAPL,"
       configurePluginRegistry={(pluginRegistry) => {
         registerComparisonChartPane(pluginRegistry);
@@ -493,13 +481,13 @@ describe("CommandBar pane and layout routes", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Comparison Chart");
     expect(frame).toContain("Tickers");
     expect(frame).toContain("AAPL,");
@@ -508,7 +496,7 @@ describe("CommandBar pane and layout routes", () => {
   test("CMP with one resolved ticker opens inline completion instead of creating a one-symbol chart", async () => {
     const created: CreatedPaneCall[] = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="CMP AMD"
       extraTickers={[createTestTicker("AMD", "Advanced Micro Devices")]}
       configurePluginRegistry={(pluginRegistry) => {
@@ -523,11 +511,11 @@ describe("CommandBar pane and layout routes", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     const frame = await waitForFrameToContain("Tickers");
@@ -539,7 +527,7 @@ describe("CommandBar pane and layout routes", () => {
   test("AI <prompt> opens the inline workflow and prefills the textarea prompt", async () => {
     const created: CreatedPaneCall[] = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="AI quality compounders"
       configurePluginRegistry={(pluginRegistry) => {
         registerAiScreenerPane(pluginRegistry);
@@ -550,13 +538,13 @@ describe("CommandBar pane and layout routes", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("AI Screener");
     expect(frame).toContain("AI Provider");
     expect(frame).toContain("quality compounders");
@@ -566,7 +554,7 @@ describe("CommandBar pane and layout routes", () => {
   test("submits typed AI screener prompts from the textarea field", async () => {
     const created: CreatedPaneCall[] = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="AI"
       configurePluginRegistry={(pluginRegistry) => {
         registerAiScreenerPane(pluginRegistry);
@@ -577,23 +565,23 @@ describe("CommandBar pane and layout routes", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressTab();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressTab();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockInput.typeText("humanoid robot suppliers");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("humanoid robot suppliers");
+      await tui.setup().renderOnce();
     });
     await clickFrameText("Create Pane");
     await act(async () => {
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(created).toEqual([{
@@ -611,7 +599,7 @@ describe("CommandBar pane and layout routes", () => {
   test("edits pane settings inline inside the command bar", async () => {
     const appliedValues: Array<{ paneId: string; key: string; value: unknown }> = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="PS"
       configureState={(state) => ({
         ...state,
@@ -634,34 +622,34 @@ describe("CommandBar pane and layout routes", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Quote Monitor Settings");
     expect(frame).toContain("Symbol");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     await clickFrameText("Symbol");
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("Apply");
     expect(frame).toContain("Symbol");
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("MSFT");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("MSFT");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(appliedValues).toEqual([{
@@ -672,7 +660,7 @@ describe("CommandBar pane and layout routes", () => {
   });
 
   test("clears the root shortcut query when opening pane settings and nested pickers", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="PS"
       configureState={(state) => ({
         ...state,
@@ -695,23 +683,23 @@ describe("CommandBar pane and layout routes", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await renderFrames();
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Quote Monitor Settings");
     expect(frame).not.toContain("PS");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await renderFrames();
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("1M");
     expect(frame).toContain("1Y");
     expect(frame).not.toContain("No matches");
@@ -721,7 +709,7 @@ describe("CommandBar pane and layout routes", () => {
   test("opens focused pane settings directly from root search", async () => {
     const appliedValues: Array<{ paneId: string; key: string; value: unknown }> = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="ticker symbol"
       configureState={(state) => ({
         ...state,
@@ -744,29 +732,29 @@ describe("CommandBar pane and layout routes", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Quote Monitor Settings");
     expect(frame).toContain("Symbol");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("Apply");
     expect(frame).toContain("Symbol");
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("MSFT");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("MSFT");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(appliedValues).toEqual([{
@@ -777,7 +765,7 @@ describe("CommandBar pane and layout routes", () => {
   });
 
   test("uses backspace as back only when a pane-settings route query is empty", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="PS"
       configureState={(state) => ({
         ...state,
@@ -797,42 +785,42 @@ describe("CommandBar pane and layout routes", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await renderFrames();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Quote Monitor Settings");
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("s");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("s");
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("Quote Monitor Settings");
 
-    await emitKeypress(testSetup, { name: "backspace", sequence: "\b" });
+    await tui.emitKeypress({ name: "backspace", sequence: "\b" });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("Quote Monitor Settings");
 
     await act(async () => {
-      testSetup!.mockInput.pressBackspace();
-      await testSetup!.renderOnce();
-    });
-    await renderFrames();
-    await act(async () => {
-      testSetup!.mockInput.pressBackspace();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressBackspace();
+      await tui.setup().renderOnce();
     });
     await renderFrames();
+    await act(async () => {
+      tui.setup().mockInput.pressBackspace();
+      await tui.setup().renderOnce();
+    });
+    await renderFrames();
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).not.toContain("Quote Monitor Settings");
     expect(frame).not.toContain("Back  Pane Settings");
   });

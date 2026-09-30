@@ -3,7 +3,7 @@ import { act, useMemo, useState } from "react";
 import { PaneFooterBar, PaneFooterProvider, type CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { AppPersistence } from "../../../data/app-persistence";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { emitKeypress, settleFrame, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AssetDataRouter } from "../../../sources/provider-router";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -27,7 +27,7 @@ const filing: SecFilingItem = {
 };
 const primaryDocument = { document: "current.htm", type: "8-K", url: filing.primaryDocumentUrl!, isPrimary: true };
 
-let setup: Awaited<ReturnType<typeof testRender>> | null = null;
+const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | null = null;
 let footer: CombinedPaneFooter;
 let selectCompany: (symbol: string) => void;
@@ -64,21 +64,17 @@ function Harness() {
 async function mount(provider: DataProvider) {
   coordinator = new MarketDataCoordinator(provider);
   setSharedMarketDataCoordinator(coordinator);
-  await act(async () => { setup = await testRender(<Harness />, { width: 110, height: 36 }); });
-  await settleFrame(setup!, 8);
+  await act(async () => { await tui.render(<Harness />, { width: 110, height: 36 }); });
+  await settleFrame(tui.setup(), 8);
 }
 
 async function press(name: string, sequence: string) {
-  await emitKeypress(setup!, { name, sequence });
+  await tui.emitKeypress({ name, sequence });
 }
 
-function frame() {
-  return setup!.captureCharFrame();
-}
+const frame = tui.frame;
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = null;
+afterEach(() => {
   coordinator?.destroy();
   coordinator = null;
   setSharedMarketDataCoordinator(null);
@@ -105,7 +101,7 @@ test("SEC reports document failures honestly and plain refresh retries only fail
   });
   await mount(provider);
   await press("return", "\r");
-  await settleFrame(setup!, 12);
+  await settleFrame(tui.setup(), 12);
   const failed = frame();
   expect(calls).toContain("documents");
   expect(calls).toContain("content");
@@ -116,14 +112,14 @@ test("SEC reports document failures honestly and plain refresh retries only fail
   recovered = true;
   const count = calls.length;
   await press("r", "r");
-  await settleFrame(setup!, 8);
+  await settleFrame(tui.setup(), 8);
   expect(calls.length).toBe(count + 3);
   expect(frame()).toContain("Recovered acquisition");
   expect(JSON.stringify(footer)).not.toContain("outage");
 
   const reads = calls.filter((call) => call !== "filings").length;
   await press("r", "r");
-  await settleFrame(setup!, 8);
+  await settleFrame(tui.setup(), 8);
   expect(calls.filter((call) => call !== "filings").length).toBe(reads);
 });
 
@@ -149,12 +145,12 @@ test("cached router failures retry and true empty document results stay distinct
   try {
     await mount(new AssetDataRouter(provider, [], persistence.resources));
     await press("return", "\r");
-    await settleFrame(setup!, 12);
+    await settleFrame(tui.setup(), 12);
     expect(frame()).toContain("Cached index outage");
 
     failed = false;
     await press("r", "r");
-    await settleFrame(setup!, 12);
+    await settleFrame(tui.setup(), 12);
     const recovered = frame();
     expect(documents).toBe(2);
     expect(contents).toBe(2);
@@ -162,8 +158,7 @@ test("cached router failures retry and true empty document results stay distinct
     expect(recovered).toContain("Recovered cached primary document");
     expect(JSON.stringify(footer)).not.toContain("outage");
   } finally {
-    await act(async () => setup!.renderer.destroy());
-    setup = null;
+    await tui.destroy();
     coordinator!.destroy();
     coordinator = null;
     setSharedMarketDataCoordinator(null);
@@ -192,17 +187,17 @@ test("SEC refresh joins an active request and preserves filing ownership across 
   });
   await mount(provider);
   await press("r", "r");
-  await settleFrame(setup!, 6);
+  await settleFrame(tui.setup(), 6);
   expect(calls).toEqual(["ACME"]);
 
   await act(async () => selectCompany("SECOND"));
-  await settleFrame(setup!, 8);
+  await settleFrame(tui.setup(), 8);
   await press("return", "\r");
-  await settleFrame(setup!, 10);
+  await settleFrame(tui.setup(), 10);
   expect(frame()).toContain("Only SECOND issuer source terms");
 
   await act(async () => finish([filing]));
-  await settleFrame(setup!, 8);
+  await settleFrame(tui.setup(), 8);
   const after = frame();
   expect(after).toContain("Only SECOND issuer source terms");
   expect(after).not.toContain("ACME issuer");
@@ -227,13 +222,13 @@ test("as-filed originals and amendments retain independent detail and headless a
   });
   await mount(provider);
   await press("return", "\r");
-  await settleFrame(setup!, 10);
+  await settleFrame(tui.setup(), 10);
   expect(frame()).toContain("As filed 8-K/A, accession 0000000001-26-000003");
 
   await press("escape", "\x1b");
   await press("down", "j");
   await press("return", "\r");
-  await settleFrame(setup!, 8);
+  await settleFrame(tui.setup(), 8);
   expect(frame()).toContain("As filed 8-K, accession 0000000001-26-000001");
 
   const report = await secHeadless.load(
@@ -266,11 +261,11 @@ test("discovery refresh failure preserves the opened as-filed document and its s
   });
   await mount(provider);
   await press("return", "\r");
-  await settleFrame(setup!, 10);
+  await settleFrame(tui.setup(), 10);
 
   failed = true;
   await press("r", "r");
-  await settleFrame(setup!, 8);
+  await settleFrame(tui.setup(), 8);
   expect(frame()).toContain("Immutable acquisition source terms");
   expect(JSON.stringify(footer)).toContain("Discovery outage");
   expect(footer.hints.some((hint) => hint.id === "open")).toBe(true);
@@ -278,7 +273,7 @@ test("discovery refresh failure preserves the opened as-filed document and its s
 
   failed = false;
   await press("r", "r");
-  await settleFrame(setup!, 8);
+  await settleFrame(tui.setup(), 8);
   expect(JSON.stringify(footer)).not.toContain("Discovery outage");
   expect(reads).toBe(1);
 });

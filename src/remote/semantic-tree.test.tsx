@@ -1,20 +1,17 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import {
   RemoteUiRegistryProvider,
   createRemoteUiRegistry,
   useRemoteUiNode,
 } from "./semantic-tree";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let setValue: ((value: number) => void) | null = null;
 let metadataReads = 0;
 
-afterEach(async () => {
-  if (!setup) return;
-  await act(async () => setup?.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   setValue = null;
   metadataReads = 0;
 });
@@ -57,13 +54,13 @@ test("semantic registry rejects non-function actions consistently", async () => 
 
 test("semantic metadata is projected only when a remote snapshot requests it", async () => {
   const registry = createRemoteUiRegistry();
-  setup = await testRender(
+  await tui.render(
     <RemoteUiRegistryProvider registry={registry}>
       <LazyMetadataNode />
     </RemoteUiRegistryProvider>,
     { width: 20, height: 4 },
   );
-  await setup.renderOnce();
+  await tui.setup().renderOnce();
 
   expect(metadataReads).toBe(0);
   expect(registry.snapshot()[0]?.metadata).toEqual({ rowCount: 200 });
@@ -79,13 +76,13 @@ test("semantic nodes keep current behavior without re-registering on every rende
     register(id, registration);
   };
 
-  setup = await testRender(
+  await tui.render(
     <RemoteUiRegistryProvider registry={registry}>
       <DynamicNode />
     </RemoteUiRegistryProvider>,
     { width: 20, height: 4 },
   );
-  await setup.renderOnce();
+  await tui.setup().renderOnce();
 
   const nodeId = registry.snapshot()[0]!.id;
   expect(registrations).toBe(1);
@@ -93,7 +90,7 @@ test("semantic nodes keep current behavior without re-registering on every rende
 
   await act(async () => {
     setValue?.(2);
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 
   expect(registrations).toBe(1);

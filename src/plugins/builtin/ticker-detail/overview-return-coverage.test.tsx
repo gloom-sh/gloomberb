@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender, settleFrame } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
@@ -13,11 +13,7 @@ import { OverviewTab } from "./overview-tab";
 
 const config = createDefaultConfig("/tmp/gloom-fund-coverage-test-unused");
 const savedTicker = createTestTicker("NEWF", "New fund", { assetCategory: "ETF", exchange: "ARCA", currency: "USD" });
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 for (const withSummary of [true, false]) for (const covered of [false, true]) {
   test(`${covered ? "covered zero" : "incomplete"} fund returns ${withSummary ? "with cached summary" : "without company fundamentals"} agree across overview, text and JSON`, async () => {
@@ -33,15 +29,15 @@ for (const withSummary of [true, false]) for (const covered of [false, true]) {
     };
     const state = createInitialState(config);
     await act(async () => {
-      setup = await testRender(
+      await tui.render(
         <AppContext value={createStaticAppStore(state)}>
           <OverviewTab ticker={savedTicker} financials={financials} width={120} />
         </AppContext>,
         { width: 120, height: 20 },
       );
     });
-    await settleFrame(setup!, 10);
-    const frame = setup!.captureCharFrame();
+    await settleFrame(tui.setup(), 10);
+    const frame = tui.frame();
     expect(frame).toMatch(covered ? /1Y\s+0.00%/ : /1Y\s+-/);
     expect(frame).toMatch(covered ? /3Y\s+0.00%/ : /3Y\s+-/);
     if (withSummary) expect(frame).toMatch(/Div Yield\s+0.00%/);

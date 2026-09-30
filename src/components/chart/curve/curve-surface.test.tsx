@@ -1,17 +1,13 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
 import { CurveSurface } from "./curve-surface";
 import type { CurveSeries } from "./model";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 const series: CurveSeries[] = [{ id: "current", label: "Today", asOf: "2026-09-21", points: [
   { id: "oct", label: "Oct", x: 10, value: 4.25 },
@@ -39,38 +35,38 @@ const tenors: CurveSeries[] = [
 ];
 
 async function frame() {
-  await act(async () => { await setup!.renderOnce(); await setup!.renderOnce(); });
+  await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
 }
 
-const lines = () => setup!.captureCharFrame().replace(/\n+$/, "").split("\n");
+const lines = () => tui.frame().replace(/\n+$/, "").split("\n");
 
 test("short curve panes fall back to the shared table and permit selection of missing nodes", async () => {
   const selections: string[] = [];
   const state = createInitialState(createDefaultConfig("/tmp/gloom-curve-test"));
-  await act(async () => { setup = await testRender(<AppContext value={createStaticAppStore(state)}>
+  await act(async () => { await tui.render(<AppContext value={createStaticAppStore(state)}>
     <CurveSurface series={series} width={60} height={6} focused onSelectedPointChange={(id) => selections.push(id)} />
   </AppContext>, { width: 60, height: 6 }); });
   await frame();
-  expect(setup!.captureCharFrame()).toContain("Oct");
-  expect(setup!.captureCharFrame()).toContain("4.25");
-  expect(setup!.captureCharFrame()).toContain("3.75");
-  await emitKeypress(setup!, { name: "down" });
+  expect(tui.frame()).toContain("Oct");
+  expect(tui.frame()).toContain("4.25");
+  expect(tui.frame()).toContain("3.75");
+  await tui.emitKeypress({ name: "down" });
   await frame();
   expect(selections.at(-1)).toBe("nov");
-  expect(setup!.captureCharFrame()).toMatch(/Nov\s+--/);
+  expect(tui.frame()).toMatch(/Nov\s+--/);
 });
 
 test("chart keyboard cursor uses stable point ids and keeps unavailable values unavailable", async () => {
   const selections: string[] = [];
-  await act(async () => { setup = await testRender(<CurveSurface series={series} width={60} height={15} focused
+  await act(async () => { await tui.render(<CurveSurface series={series} width={60} height={15} focused
     onSelectedPointChange={(id) => selections.push(id)} />, { width: 60, height: 15 }); });
   await frame();
   // Before any cursor the readout row reads the curve's last point, not a blank band.
   expect(lines().at(-1)).toContain("Dec 3.75");
-  await emitKeypress(setup!, { name: "right" });
-  await emitKeypress(setup!, { name: "right" });
+  await tui.emitKeypress({ name: "right" });
+  await tui.emitKeypress({ name: "right" });
   // j and k move tables, never the curve.
-  await emitKeypress(setup!, { name: "j" });
+  await tui.emitKeypress({ name: "j" });
   await frame();
   expect(selections).toEqual(["oct", "nov"]);
   expect(lines().at(-1)).toContain("Nov --");
@@ -78,17 +74,17 @@ test("chart keyboard cursor uses stable point ids and keeps unavailable values u
 
 test("a chart-only surface without room draws nothing rather than a second table", async () => {
   const selections: string[] = [];
-  await act(async () => { setup = await testRender(<CurveSurface series={series} width={60} height={6} focused display="chart"
+  await act(async () => { await tui.render(<CurveSurface series={series} width={60} height={6} focused display="chart"
     onSelectedPointChange={(id) => selections.push(id)} />, { width: 60, height: 6 }); });
   await frame();
-  expect(setup!.captureCharFrame().trim()).toBe("");
-  await emitKeypress(setup!, { name: "right" });
+  expect(tui.frame().trim()).toBe("");
+  await tui.emitKeypress({ name: "right" });
   await frame();
   expect(selections).toEqual([]);
 });
 
 test("a caption leads the legend, look-backs read as changes and a reference is never read out", async () => {
-  await act(async () => { setup = await testRender(<CurveSurface series={tenors} width={70} height={14} display="chart"
+  await act(async () => { await tui.render(<CurveSurface series={tenors} width={70} height={14} display="chart"
     caption="Yield % by maturity" xScale="log" selectedPointId="2y" formatValue={(value) => `${value.toFixed(2)}%`}
     formatChange={(change) => `${change > 0 ? "+" : ""}${Math.round(change * 100)}bp`} />, { width: 70, height: 14 }); });
   await frame();
@@ -102,19 +98,18 @@ test("a caption leads the legend, look-backs read as changes and a reference is 
 });
 
 test("with one series the caption stands alone", async () => {
-  await act(async () => { setup = await testRender(<CurveSurface series={tenors.slice(0, 1)} width={70} height={10} display="chart"
+  await act(async () => { await tui.render(<CurveSurface series={tenors.slice(0, 1)} width={70} height={10} display="chart"
     caption="Yield % by maturity" xScale="log" />, { width: 70, height: 10 }); });
   await frame();
   expect(lines()[0]!.trim()).toBe("Yield % by maturity");
 });
 
 test("the readout keeps the row and its value when the look-backs do not fit", async () => {
-  await act(async () => { setup = await testRender(<CurveSurface series={tenors} width={26} height={10} display="chart"
+  await act(async () => { await tui.render(<CurveSurface series={tenors} width={26} height={10} display="chart"
     caption="Yield %" selectedPointId="10y" formatValue={(value) => `${value.toFixed(2)}%`} />, { width: 26, height: 10 }); });
   await frame();
   expect(lines().at(-1)!.trim()).toBe("10Y 4.30%  1W ago -0.10%");
-  await act(async () => { setup!.renderer.destroy(); });
-  await act(async () => { setup = await testRender(<CurveSurface series={tenors} width={24} height={10} display="chart"
+  await act(async () => { await tui.render(<CurveSurface series={tenors} width={24} height={10} display="chart"
     caption="Yield %" selectedPointId="10y" formatValue={(value) => `${value.toFixed(2)}%`} />, { width: 24, height: 10 }); });
   await frame();
   expect(lines().at(-1)!.trim()).toBe("10Y 4.30%");
@@ -122,7 +117,7 @@ test("the readout keeps the row and its value when the look-backs do not fit", a
 
 test("hovering snaps to the nearest row and a click selects it", async () => {
   const selections: string[] = [];
-  await act(async () => { setup = await testRender(<CurveSurface series={tenors} width={70} height={14} display="chart"
+  await act(async () => { await tui.render(<CurveSurface series={tenors} width={70} height={14} display="chart"
     caption="Yield % by maturity" xScale="even" selectedPointId="3m" onSelectedPointChange={(id) => selections.push(id)} />,
   { width: 70, height: 14 }); });
   await frame();
@@ -130,16 +125,16 @@ test("hovering snaps to the nearest row and a click selects it", async () => {
   // Even spacing puts 10Y two thirds of the way across; a few cells short of it still reads 10Y.
   const plotRow = 4;
   const x = Math.round((70 - 6) * 2 / 3) - 3;
-  await act(async () => { await setup!.mockMouse.moveTo(x, plotRow); });
+  await act(async () => { await tui.setup().mockMouse.moveTo(x, plotRow); });
   await frame();
   expect(lines().at(-1)).toContain("10Y 4.30");
   expect(lines().at(-2)).toContain("10Y");
   expect(selections).toEqual([]);
-  await act(async () => { await setup!.mockMouse.click(x, plotRow); });
+  await act(async () => { await tui.setup().mockMouse.click(x, plotRow); });
   await frame();
   expect(selections).toEqual(["10y"]);
   // A press with no hover before it still selects the row under the pointer.
-  await act(async () => { await setup!.mockMouse.emitMouseEvent("down", 62, plotRow); });
+  await act(async () => { await tui.setup().mockMouse.emitMouseEvent("down", 62, plotRow); });
   await frame();
   expect(selections).toEqual(["10y", "30y"]);
 });

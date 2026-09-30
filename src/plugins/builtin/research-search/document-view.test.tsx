@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { CloudSearchDocument, CloudSearchHit } from "../../../api-client";
 import { SearchDocumentView } from "./document-view";
 
@@ -38,16 +38,7 @@ const DOCUMENT = {
   })),
 } as unknown as CloudSearchDocument;
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
-});
+const tui = createOpenTuiTestHarness();
 
 /**
  * The wrap width, the scroll box's inset and its scrollbar are three separate
@@ -56,17 +47,17 @@ afterEach(async () => {
  */
 for (const width of [60, 88, 120]) {
   test(`paragraphs reach the column before the scrollbar at width ${width}`, async () => {
-    testSetup = await testRender(
+    await tui.render(
       <SearchDocumentView hit={HIT} document={DOCUMENT} loading={false} error={null} width={width} />,
       { width, height: 20 },
     );
     for (let frame = 0; frame < 3; frame += 1) {
       await act(async () => {
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
     }
 
-    const rows = testSetup.captureCharFrame().split("\n");
+    const rows = tui.frame().split("\n");
     // The scrollbar owns the last column on every row it covers, so measure the
     // text against the column before it.
     const textRight = Math.max(...rows.map((row) => row.slice(0, width - 1).trimEnd().length));

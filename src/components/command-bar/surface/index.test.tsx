@@ -1,28 +1,15 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import { takeKeybindingCaptureRequest } from "../../../app/keybindings";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { CommandDef, CommandShortcutArgContext, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
-import {
-  CommandBarHarness,
-  createCommandBarTestControls,
-  emitKeypress,
-  expectSingleBackControl,
-  makeDataProvider,
-} from "./test-harness";
+import { CommandBarHarness, createCommandBarTestControls, expectSingleBackControl, makeDataProvider } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-});
-
-const { waitForFrameToContain, clickFrameText } = createCommandBarTestControls(() => testSetup!);
+const { waitForFrameToContain, clickFrameText } = createCommandBarTestControls(() => tui.setup());
 
 type MutableCommandRegistry = {
   commands: ReadonlyMap<string, CommandDef>;
@@ -84,7 +71,7 @@ function mutablePaneRegistryMap(map: ReadonlyMap<string, unknown>): Map<string, 
 describe("CommandBar", () => {
   test("runs symbol search for plain text and folds the hits under the local matches", async () => {
     const searchQueries: string[] = [];
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="msf"
       dataProvider={makeDataProvider(async (query) => {
         searchQueries.push(query);
@@ -98,7 +85,7 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     const frame = await waitForFrameToContain("Instruments");
     expect(searchQueries.length).toBeGreaterThan(0);
     // The listing split of the DES route is collapsed into one section, with
@@ -116,7 +103,7 @@ describe("CommandBar", () => {
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
     let releaseSearch = () => {};
     const held = new Promise<void>((resolve) => { releaseSearch = resolve; });
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="list"
       configurePluginRegistry={(pluginRegistry) => {
         pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
@@ -132,23 +119,23 @@ describe("CommandBar", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
-    const before = testSetup.captureCharFrame();
+    await tui.setup().renderOnce();
+    const before = tui.frame();
     expect(before).not.toContain("Exact Match");
     // Down moves off the first pane match onto the second one.
-    await emitKeypress(testSetup, { name: "down" });
+    await tui.emitKeypress({ name: "down" });
     releaseSearch();
     await waitForFrameToContain("Exact Match");
 
     // The symbol row renumbered everything under it; Enter still runs the
     // pane the user had picked, not whatever now sits at its old index.
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-watchlist-pane", options: undefined }]);
   });
 
   test("keeps symbol search out of a query a prefix claims", async () => {
     const searchQueries: string[] = [];
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="PF"
       dataProvider={makeDataProvider(async (query) => {
         searchQueries.push(query);
@@ -159,18 +146,18 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await Bun.sleep(260);
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    expect(testSetup.captureCharFrame()).toContain("Shortcut: Portfolio");
+    expect(tui.frame()).toContain("Shortcut: Portfolio");
     expect(searchQueries).toEqual([]);
   });
 
   test("shows one account management result when searching profile", async () => {
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="profile"
       live
       configurePluginRegistry={(pluginRegistry) => {
@@ -199,32 +186,32 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     const frame = await waitForFrameToContain("Account Management");
     expect(frame).not.toMatch(/\n\s*Profile\s*(?:\n|$)/);
     expect(frame.indexOf("Account Management")).toBeLessThan(frame.indexOf("Add Broker Account"));
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
 
     expect(created).toEqual([{ templateId: "account-management-pane", options: undefined }]);
   });
 
   test("shows theme picker rows and commits a filtered light theme", async () => {
-    testSetup = await testRender(<CommandBarHarness query="TH light" live />, {
+    await tui.render(<CommandBarHarness query="TH light" live />, {
       width: 80,
       height: 24,
     });
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("GitHub Light");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("GitHub Light");
 
     await clickFrameText("GitHub Light");
     await waitForFrameToContain("theme:github-light");
-    expect(testSetup.captureCharFrame()).not.toContain("GitHub Light");
+    expect(tui.frame()).not.toContain("GitHub Light");
   });
 
   test("preselects the theme named exactly over the committed one it also matches", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="TH nord"
       live
       configureConfig={(config) => ({ ...config, theme: "nord-light" })}
@@ -233,21 +220,21 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Nord Light");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Nord Light");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await waitForFrameToContain("theme:nord");
-    expect(testSetup.captureCharFrame()).not.toContain("theme:nord-light");
+    expect(tui.frame()).not.toContain("theme:nord-light");
   });
 
   test("starts focused window resize mode from WIN argument", async () => {
     const opened: Array<{ paneId: string | undefined; mode: string | undefined }> = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="WIN resize"
       configurePluginRegistry={(pluginRegistry) => {
         pluginRegistry.openWindowMode = (paneId?: string, mode?: string) => { opened.push({ paneId, mode }); };
@@ -257,12 +244,12 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Resize Window");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Resize Window");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     expect(opened).toEqual([{ paneId: "portfolio-list:main", mode: "resize" }]);
@@ -271,7 +258,7 @@ describe("CommandBar", () => {
   test("opens plugin command shortcut arguments in the wizard for confirmation", async () => {
     const calls: Array<Record<string, string> | undefined> = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="SA AAPL above 200"
       configurePluginRegistry={(pluginRegistry) => {
         registerAlertCommand(pluginRegistry, {
@@ -285,16 +272,16 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Add Alert");
     expect(frame).toContain("AAPL above 200");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     const workflowFrame = await waitForFrameToContain("Target Price");
@@ -305,7 +292,7 @@ describe("CommandBar", () => {
   });
 
   test("opens partial plugin command shortcut arguments in the wizard", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="SA AMD"
       configurePluginRegistry={(pluginRegistry) => {
         registerAlertCommand(pluginRegistry, {
@@ -322,12 +309,12 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     const workflowFrame = await waitForFrameToContain("Target Price");
@@ -351,7 +338,7 @@ describe("CommandBar", () => {
       }),
     });
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="SA AMD"
       dataProvider={quoteProvider}
       configurePluginRegistry={(pluginRegistry) => {
@@ -369,12 +356,12 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     const workflowFrame = await waitForFrameToContain("Advanced Micro Devices");
@@ -382,7 +369,7 @@ describe("CommandBar", () => {
   });
 
   test("updates workflow select fields from the option picker", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="SA AMD"
       configurePluginRegistry={(pluginRegistry) => {
         registerAlertCommand(pluginRegistry, {
@@ -403,32 +390,32 @@ describe("CommandBar", () => {
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitForFrameToContain("Target Price");
 
     await act(async () => {
-      testSetup!.mockInput.pressTab();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressTab();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     let frame = await waitForFrameToContain("Below");
     expect(frame).toContain("Crosses");
 
     await act(async () => {
-      testSetup!.mockInput.pressArrow("down");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("down");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     frame = await waitForFrameToContain("Target Price");
@@ -436,7 +423,7 @@ describe("CommandBar", () => {
   });
 
   test("opens plugin command workflows from a launch request", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query=""
       selectedTicker="AMD"
       extraTickers={[createTestTicker("AMD", "Advanced Micro Devices")]}
@@ -476,7 +463,7 @@ describe("CommandBar", () => {
   // The status bar tab menu and the desktop Layout menu open New and Rename
   // Layout this way; a launch the bar ignores leaves them on an empty bar.
   test("opens a built-in workflow from a launch request", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query=""
       configureState={(state) => ({
         ...state,
@@ -496,7 +483,7 @@ describe("CommandBar", () => {
   });
 
   test("opens ticker search from a launch request with saved ticker metadata", async () => {
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query=""
       extraTickers={[createTestTicker("BRK.B", "Berkshire Hathaway Inc.", {
         exchange: "NYSE",
@@ -524,13 +511,13 @@ describe("CommandBar", () => {
   });
 
   test("opens ticker search when activating the Ticker Research pane item without a ticker", async () => {
-    testSetup = await testRender(<CommandBarHarness query="ticker research" />, {
+    await tui.render(<CommandBarHarness query="ticker research" />, {
       width: 100,
       height: 24,
     });
 
-    await testSetup.renderOnce();
-    const rootFrame = testSetup.captureCharFrame();
+    await tui.setup().renderOnce();
+    const rootFrame = tui.frame();
     const tickerResearchRow = rootFrame
       .split("\n")
       .find((line) => line.includes("Ticker Research"));
@@ -538,93 +525,93 @@ describe("CommandBar", () => {
     expect(tickerResearchRow).toMatch(/^\s*T\s+Ticker Research\s*$/);
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expectSingleBackControl(frame);
     expect(frame).toContain("Security Description");
     expect(frame).toContain("Search tickers");
   });
 
   test("keeps typed prefixes in the root query until a result is activated", async () => {
-    testSetup = await testRender(<CommandBarHarness query="DES " />, {
+    await tui.render(<CommandBarHarness query="DES " />, {
       width: 80,
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("DES");
     expect(frame).toContain("Type a ticker symbol");
     expect(frame).not.toContain("Back");
   });
 
   test("QQ without an active ticker opens inline ticker-list entry on enter", async () => {
-    testSetup = await testRender(<CommandBarHarness query="QQ" />, {
+    await tui.render(<CommandBarHarness query="QQ" />, {
       width: 100,
       height: 20,
     });
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Quote Monitor");
-    expect(testSetup.captureCharFrame()).not.toContain("Back");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Quote Monitor");
+    expect(tui.frame()).not.toContain("Back");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Back");
     expect(frame).toContain("Quote Tickers");
   });
 
   test("T without an active ticker opens ticker search on enter", async () => {
-    testSetup = await testRender(<CommandBarHarness query="T" />, {
+    await tui.render(<CommandBarHarness query="T" />, {
       width: 100,
       height: 20,
     });
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Description");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Description");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Back");
     expect(frame).toContain("Security Description");
   });
 
   test("QQ with an active ticker shows ghost completion and tab inserts the symbol", async () => {
-    testSetup = await testRender(<CommandBarHarness query="QQ" live selectedTicker="AAPL" showQueryState />, {
+    await tui.render(<CommandBarHarness query="QQ" live selectedTicker="AAPL" showQueryState />, {
       width: 100,
       height: 20,
     });
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("QQ AAPL");
-    expect(testSetup.captureCharFrame()).toContain("Shortcut: Quote Monitor for AAPL");
-    expect(testSetup.captureCharFrame()).toContain("query:QQ");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("QQ AAPL");
+    expect(tui.frame()).toContain("Shortcut: Quote Monitor for AAPL");
+    expect(tui.frame()).toContain("query:QQ");
 
     await act(async () => {
-      testSetup!.mockInput.pressTab();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressTab();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("query:QQ AAPL");
   });
 
   test("typing a shorthand and pressing enter executes the inferred quote monitor shortcut", async () => {
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query=""
       live
       selectedTicker="AAPL"
@@ -638,13 +625,13 @@ describe("CommandBar", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("QQ");
-      testSetup!.mockInput.pressEnter();
+      await tui.setup().mockInput.typeText("QQ");
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(created).toEqual([{
@@ -660,7 +647,7 @@ describe("CommandBar", () => {
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
     let leakedEnterCount = 0;
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query="PF"
       live
       onUnhandledEnter={() => {
@@ -676,12 +663,12 @@ describe("CommandBar", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(created).toEqual([{ templateId: "new-portfolio-pane", options: undefined }]);
@@ -691,7 +678,7 @@ describe("CommandBar", () => {
   test("typing a chat channel shortcut opens that channel directly", async () => {
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(<CommandBarHarness
+    await tui.render(<CommandBarHarness
       query=""
       live
       configurePluginRegistry={(pluginRegistry) => {
@@ -704,13 +691,13 @@ describe("CommandBar", () => {
       height: 20,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("CHAT help");
-      testSetup!.mockInput.pressEnter();
+      await tui.setup().mockInput.typeText("CHAT help");
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(created).toEqual([{
@@ -722,41 +709,41 @@ describe("CommandBar", () => {
   });
 
   test("clears the root query with cmd-backspace", async () => {
-    testSetup = await testRender(<CommandBarHarness query="DES AMD" />, {
+    await tui.render(<CommandBarHarness query="DES AMD" />, {
       width: 80,
       height: 24,
     });
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("DES AMD");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("DES AMD");
 
-    await emitKeypress(testSetup, { name: "backspace", meta: true });
+    await tui.emitKeypress({ name: "backspace", meta: true });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Type a ticker symbol");
     expect(frame).not.toContain("DES AMD");
   });
 
   test("pressing the close shortcut at the root closes the command bar", async () => {
-    testSetup = await testRender(<CommandBarHarness query="" live />, {
+    await tui.render(<CommandBarHarness query="" live />, {
       width: 80,
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressKey("`");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressKey("`");
+      await tui.setup().renderOnce();
     });
 
-    expect(testSetup.captureCharFrame()).toContain("Search or run a command");
+    expect(tui.frame()).toContain("Search or run a command");
   });
 
   test("DES MSFT opens an exact ticker directly", async () => {
     const pinned: string[] = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="DES MSFT"
         configurePluginRegistry={(pluginRegistry) => {
@@ -768,12 +755,12 @@ describe("CommandBar", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(pinned).toEqual(["MSFT"]);
@@ -782,7 +769,7 @@ describe("CommandBar", () => {
   test("a run-query launch submits the text without a keypress", async () => {
     const pinned: string[] = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="DES MSFT"
         configureState={(state) => ({
@@ -800,8 +787,8 @@ describe("CommandBar", () => {
 
     await act(async () => {
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(pinned).toEqual(["MSFT"]);
@@ -809,7 +796,7 @@ describe("CommandBar", () => {
 
   test("resolved text offers a Bind a key row that hands off to Help without being the default selection", async () => {
     const shown: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="DES MSFT"
         configurePluginRegistry={(pluginRegistry) => {
@@ -821,15 +808,15 @@ describe("CommandBar", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    const frame = testSetup.captureCharFrame();
+    await tui.setup().renderOnce();
+    const frame = tui.frame();
     expect(frame).toContain("Bind a key to DES MSFT");
     expect(frame.indexOf("▸")).toBeLessThan(frame.indexOf("Bind a key"));
 
     await act(async () => {
       await clickFrameText("Bind a key to DES MSFT");
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(shown).toEqual(["help"]);
@@ -837,7 +824,7 @@ describe("CommandBar", () => {
   });
 
   test("moves through long result lists with the mouse wheel", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="scratch"
         configurePluginRegistry={(pluginRegistry) => {
@@ -856,9 +843,9 @@ describe("CommandBar", () => {
       { width: 100, height: 18 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const initialFrame = testSetup.captureCharFrame();
+    const initialFrame = tui.frame();
     expect(initialFrame).toContain("Scratch Pane 00");
     expect(initialFrame).not.toContain("Scratch Pane 12");
 
@@ -871,37 +858,37 @@ describe("CommandBar", () => {
 
     await act(async () => {
       for (let index = 0; index < 12; index++) {
-        await testSetup!.mockMouse.scroll(scrollCol + 1, scrollRow, "down");
-        await testSetup!.renderOnce();
+        await tui.setup().mockMouse.scroll(scrollCol + 1, scrollRow, "down");
+        await tui.setup().renderOnce();
       }
     });
 
-    const scrolledFrame = testSetup.captureCharFrame();
+    const scrolledFrame = tui.frame();
     expect(scrolledFrame).not.toContain("Scratch Pane 00");
     expect(scrolledFrame).toContain("Scratch Pane 12");
   });
 
   test("closes when clicking outside the command bar", async () => {
-    testSetup = await testRender(<CommandBarHarness query="" live />, {
+    await tui.render(<CommandBarHarness query="" live />, {
       width: 80,
       height: 24,
     });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     // Below the sheet; the header row above it hosts the input and is not
     // click-away territory.
     await act(async () => {
-      await testSetup!.mockMouse.click(0, 22);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(0, 22);
+      await tui.setup().renderOnce();
     });
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    expect(testSetup.captureCharFrame()).toContain("Search or run a command");
+    expect(tui.frame()).toContain("Search or run a command");
   });
 
   test("groups ticker search sections and keeps saved matches above looser provider results", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="DES appl"
         dataProvider={makeDataProvider(async () => [
@@ -915,10 +902,10 @@ describe("CommandBar", () => {
       { width: 80, height: 24 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await waitForFrameToContain("AAOI");
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     const rows = frame.split("\n");
     const savedHeadings = frame.split("\n").filter((line) => line.trim() === "Saved");
     const otherListingsHeadings = frame.split("\n").filter((line) => line.trim() === "Other Listings");
@@ -932,7 +919,7 @@ describe("CommandBar", () => {
   });
 
   test("keeps the provider-ranked canonical listing ahead of provisional saved order", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query=""
         extraTickers={[createTestTicker("APC", "Apple Inc.", {
@@ -985,7 +972,7 @@ describe("CommandBar", () => {
       { width: 100, height: 24 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     const frame = await waitForFrameToContain("APLY");
     const rows = frame.split("\n");
     const aaplRow = rows.findIndex((line) => /^\s*\S+\s+AAPL\b/.test(line));
@@ -997,7 +984,7 @@ describe("CommandBar", () => {
   });
 
   test("renders form-layout wizard fields together on one screen", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="auth login"
         live
@@ -1020,13 +1007,13 @@ describe("CommandBar", () => {
       { width: 80, height: 24 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await clickFrameText("Auth Login");
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Back");
     expect(frame).toContain("Email");
     expect(frame).toContain("Password");
@@ -1037,7 +1024,7 @@ describe("CommandBar", () => {
   test("submits single-field form-layout wizards", async () => {
     const submitted: Array<Record<string, string> | undefined> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="workspace"
         live
@@ -1061,26 +1048,26 @@ describe("CommandBar", () => {
       { width: 80, height: 24 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("Research");
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("Research");
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(submitted).toEqual([{ name: "Research" }]);
@@ -1091,7 +1078,7 @@ describe("CommandBar", () => {
   test("sends a form whose last field is a select with Ctrl+S", async () => {
     const submitted: Array<Record<string, string> | undefined> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="event alert"
         live
@@ -1121,17 +1108,17 @@ describe("CommandBar", () => {
       { width: 80, height: 24 },
     );
 
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2 });
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2 });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2 });
+    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2 });
     await waitForFrameToContain("Insider Trade");
-    await emitKeypress(testSetup, [{ name: "down" }, { name: "return", sequence: "\r" }], { frames: 2 });
+    await tui.emitKeypress([{ name: "down" }, { name: "return", sequence: "\r" }], { frames: 2 });
     expect(submitted).toEqual([]);
 
-    await emitKeypress(testSetup, { name: "s", ctrl: true, sequence: "\x13" }, { frames: 2 });
+    await tui.emitKeypress({ name: "s", ctrl: true, sequence: "\x13" }, { frames: 2 });
     await act(async () => {
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(submitted).toEqual([{ event: "insider" }]);

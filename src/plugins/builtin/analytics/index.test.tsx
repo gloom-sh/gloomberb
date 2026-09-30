@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer, type ReactElement } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -27,7 +27,7 @@ function figure(label: string, value: string): RegExp {
 const BROKER_PORTFOLIO_ID = "broker:ibkr-flex:DU12345";
 const GATEWAY_PORTFOLIO_ID = "broker:ibkr-live:DU12345";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let controlledCoordinator: MarketDataCoordinator | undefined;
 let harnessState: ReturnType<typeof createInitialState> | null = null;
 
@@ -171,23 +171,13 @@ function AnalyticsHarness({
   );
 }
 
-async function flushFrame() {
-  await act(async () => {
-    await testSetup!.renderOnce();
-  });
-}
+const flushFrame = () => tui.renderFrames(1);
 
 beforeEach(() => {
   setSharedMarketDataCoordinator(null);
 });
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   controlledCoordinator?.destroy();
   controlledCoordinator = undefined;
   harnessState = null;
@@ -207,12 +197,11 @@ describe("PortfolioAnalyticsPane", () => {
       config.baseCurrency = "USD";
       config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", config: {} }];
       await act(async () => {
-        testSetup = await testRender(<AnalyticsHarness config={config} height={32}
+        await tui.render(<AnalyticsHarness config={config} height={32}
           brokerAccounts={{ "ibkr-flex": [{ accountId: "DU12345", name: "Fixture", currency,
             netLiquidation: 20000, totalCashValue: 18000 }] }} />, { width: 100, height: 32 });
       });
-      for (let index = 0; index < 6; index++) await flushFrame();
-      const frame = testSetup!.captureCharFrame();
+      const frame = await tui.waitForFrameToContain(currency ? "15.0k" : "Unavailable");
       expect(frame).toMatch(figure("Net Liq", currency ? "15.0k" : "—"));
       expect(frame).toMatch(figure("Cash", currency ? "13.5k" : "—"));
       expect(frame).not.toMatch(figure("Net Liq", "20.0k"));
@@ -234,13 +223,12 @@ describe("PortfolioAnalyticsPane", () => {
           { date: "2026-09-01", value: 6000, cumulativeReturn: .1 }] }),
     });
     await act(async () => {
-      testSetup = await testRender(<AnalyticsHarness config={config} ticker={ticker} height={36}
+      await tui.render(<AnalyticsHarness config={config} ticker={ticker} height={36}
         runtime={createTestPluginRuntime({ getBrokerAdapter: () => adapter })}
         brokerAccounts={withAccount ? { "ibkr-flex": [{ accountId: "DU12345", name: "Fixture", currency: "USD",
           netLiquidation: 6000, totalCashValue: 6000, grossPositionValue: 0 }] } : {}} />, { width: 100, height: 36 });
     });
-    for (let index = 0; index < 6; index++) await flushFrame();
-    const frame = testSetup!.captureCharFrame();
+    const frame = await tui.waitForFrameToContain("Sep 1 2026");
     if (withAccount) {
       expect(frame).toMatch(figure("Net Liq", "6.0k"));
       expect(frame).toMatch(figure("Cash", "6.0k"));
@@ -268,12 +256,12 @@ describe("PortfolioAnalyticsPane", () => {
     const ticker = createSharedTicker();
     ticker.metadata.positions = [];
     await act(async () => {
-      testSetup = await testRender(<AnalyticsHarness config={config} ticker={ticker}
+      await tui.render(<AnalyticsHarness config={config} ticker={ticker}
         brokerAccounts={{ "ibkr-flex": [{ accountId: "DU12345", name: "Fixture", currency: "USD" }] }} />,
       { width: 100, height: 24 });
     });
     await flushFrame();
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toMatch(figure("Source", "Cached"));
     expect(frame).not.toMatch(figure("Val", "0"));
     expect(frame).not.toMatch(figure("Day", "0"));
@@ -293,26 +281,26 @@ describe("PortfolioAnalyticsPane", () => {
       getPortfolioPerformance: async () => history,
     });
     await act(async () => {
-      testSetup = await testRender(<AnalyticsHarness config={config} ticker={ticker}
+      await tui.render(<AnalyticsHarness config={config} ticker={ticker}
         runtime={createTestPluginRuntime({ getBrokerAdapter: () => adapter })} />, { width: 100, height: 24 });
     });
     await flushFrame();
-    let frame = testSetup!.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Loading account history");
     expect(frame).not.toContain("No positions");
     expect(frame).not.toMatch(figure("Val", "0"));
 
     await act(async () => { rejectHistory(new Error("Statement service unavailable")); });
     await flushFrame();
-    frame = testSetup!.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("Account history unavailable.");
     expect(frame).toContain("Statement service unavailable");
     expect(frame).not.toContain("No positions");
     expect(frame).not.toMatch(figure("P&L", "0"));
 
-    await act(async () => { testSetup!.mockInput.pressArrow("left"); });
+    await act(async () => { tui.setup().mockInput.pressArrow("left"); });
     await flushFrame();
-    frame = testSetup!.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("No positions in this portfolio.");
     expect(frame).not.toContain("Statement service unavailable");
     expect(frame).not.toContain("Loading account history");
@@ -340,25 +328,25 @@ describe("PortfolioAnalyticsPane", () => {
     ticker.metadata.portfolios = [firstId, secondId];
     ticker.metadata.positions = [firstId, secondId].map((portfolio) => ({ ...ticker.metadata.positions[1]!, portfolio }));
     await act(async () => {
-      testSetup = await testRender(<AnalyticsHarness config={config} runtime={runtime} ticker={ticker} />, { width: 100, height: 24 });
-      await testSetup.renderOnce();
+      await tui.render(<AnalyticsHarness config={config} runtime={runtime} ticker={ticker} />, { width: 100, height: 24 });
+      await tui.setup().renderOnce();
     });
     await flushFrame();
-    expect(testSetup!.captureCharFrame()).toContain("+10.00%");
-    await act(async () => { testSetup!.mockInput.pressArrow("right"); await testSetup!.renderOnce(); });
+    expect(tui.frame()).toContain("+10.00%");
+    await act(async () => { tui.setup().mockInput.pressArrow("right"); await tui.setup().renderOnce(); });
     await flushFrame();
     expect(harnessState?.paneState[TEST_PANE_ID]?.portfolioId).toBe(secondId);
-    expect(testSetup!.captureCharFrame()).not.toContain("+10.00%");
+    expect(tui.frame()).not.toContain("+10.00%");
     // The band holds its rows for the pending history instead of drawing the first account's.
-    expect(testSetup!.captureCharFrame()).toContain("Loading history...");
+    expect(tui.frame()).toContain("Loading history...");
     await act(async () => {
       completeSecond({ accountId: "DU54321", source: "flex", period: "Second account", fetchedAt: 1,
         points: [{ date: "2026-01-01", cumulativeReturn: 0 }, { date: "2026-02-01", cumulativeReturn: .2 }] });
       await second;
     });
     await flushFrame();
-    expect(testSetup!.captureCharFrame()).toContain("+20.00%");
-    expect(testSetup!.captureCharFrame()).not.toContain("+10.00%");
+    expect(tui.frame()).toContain("+20.00%");
+    expect(tui.frame()).not.toContain("+10.00%");
   });
 
   test("shows broker cash and margin data when account data is available", async () => {
@@ -374,7 +362,7 @@ describe("PortfolioAnalyticsPane", () => {
 
     // Tall enough for every figure; a shorter pane drops them from the end.
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <AnalyticsHarness
           config={config}
           height={40}
@@ -405,12 +393,12 @@ describe("PortfolioAnalyticsPane", () => {
         { width: 100, height: 40 },
       );
       await Promise.resolve();
-      await testSetup.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await flushFrame();
 
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toMatch(figure("Net Liq", "125.0k"));
     expect(frame).toMatch(figure("Val", "113.6k"));
     expect(frame).toMatch(figure("Margin Lev", "0.9x"));
@@ -486,7 +474,7 @@ describe("PortfolioAnalyticsPane", () => {
     };
 
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <AnalyticsHarness
           width={80}
           height={30}
@@ -497,13 +485,10 @@ describe("PortfolioAnalyticsPane", () => {
         { width: 80, height: 30 },
       );
       await Promise.resolve();
-      await testSetup.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    await flushFrame();
-    await flushFrame();
-
-    const frame = testSetup!.captureCharFrame();
+    const frame = await tui.waitForFrameToContain("● Value (USD)");
     expect(calls).toEqual([
       { instanceId: "ibkr-live", accountId: "DU12345" },
       { instanceId: "ibkr-flex", accountId: "DU12345" },
@@ -516,7 +501,7 @@ describe("PortfolioAnalyticsPane", () => {
 
   test("filters broker-managed positions to the active portfolio and uses the portfolio pane quote math", async () => {
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <AnalyticsHarness
           config={createAnalyticsConfig(BROKER_PORTFOLIO_ID)}
           financials={createFinancials(140)}
@@ -524,12 +509,12 @@ describe("PortfolioAnalyticsPane", () => {
         { width: 100, height: 24 },
       );
       await Promise.resolve();
-      await testSetup.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await flushFrame();
 
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Main Portfolio");
     expect(frame).toContain("Flex DU12345");
     expect(frame).toMatch(figure("Val", "1.4k"));
@@ -565,20 +550,20 @@ for (const scenario of ["unknown currency", "dated correction", "empty observati
     }));
     setSharedMarketDataCoordinator(controlledCoordinator);
     await act(async () => {
-      testSetup = await testRender(<AnalyticsHarness config={config}
+      await tui.render(<AnalyticsHarness config={config}
         runtime={createTestPluginRuntime({ getBrokerAdapter: () => adapter })}
         financials={createFinancials(125)} width={80} height={32} />, { width: 80, height: 32 });
     });
-    for (let index = 0; index < 6; index++) await flushFrame();
-    const frame = testSetup!.captureCharFrame();
+    await tui.renderFrames(6);
+    const frame = tui.frame();
     expect(frame).toContain("Technology");
     if (scenario === "empty observations") {
       // No band: the footer warning says which observations are missing.
       expect(frame).not.toContain("●");
       expect(frame).not.toContain("Broker return");
-      await emitKeypress(testSetup!, { name: "!", sequence: "!", shift: true }, { trackPropagation: true });
+      await tui.emitKeypress({ name: "!", sequence: "!", shift: true }, { trackPropagation: true });
       await flushFrame();
-      expect(testSetup!.captureCharFrame()).toContain("3 missing return observations.");
+      expect(tui.frame()).toContain("3 missing return observations.");
     } else {
       expect(frame).toMatch(figure("Broker return", "+10.00%"));
       if (scenario === "dated correction") {
@@ -593,12 +578,12 @@ for (const scenario of ["unknown currency", "dated correction", "empty observati
       expect(frame).not.toContain("Value (JPY)");
       if (scenario === "dated correction") {
         expect(frame).not.toContain("1 missing value observation.");
-        await emitKeypress(testSetup!, { name: "!", sequence: "!", shift: true }, { trackPropagation: true });
+        await tui.emitKeypress({ name: "!", sequence: "!", shift: true }, { trackPropagation: true });
         await flushFrame();
-        expect(testSetup!.captureCharFrame()).toContain("1 missing value observation.");
-        await emitKeypress(testSetup!, { name: "escape" }, { trackPropagation: true });
+        expect(tui.frame()).toContain("1 missing value observation.");
+        await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
         await flushFrame();
-        expect(testSetup!.captureCharFrame()).toContain("Technology");
+        expect(tui.frame()).toContain("Technology");
       }
     }
   });
@@ -622,12 +607,12 @@ test("the overview draws the account history between its figures and the sector 
     }));
     setSharedMarketDataCoordinator(controlledCoordinator);
     await act(async () => {
-      testSetup = await testRender(<AnalyticsHarness config={config} ticker={ticker}
+      await tui.render(<AnalyticsHarness config={config} ticker={ticker}
         runtime={createTestPluginRuntime({ getBrokerAdapter: () => adapter })}
         financials={createFinancials(125)} width={width} height={height} />, { width, height });
     });
-    for (let index = 0; index < 6; index++) await flushFrame();
-    const lines = testSetup!.captureCharFrame().split("\n");
+    await tui.renderFrames(6);
+    const lines = tui.frame().split("\n");
     const legend = lines.findIndex((line) => line.includes("● Value (USD)"));
     const header = lines.findIndex((line) => line.includes("SECTOR"));
     expect(legend).toBeGreaterThan(0);
@@ -637,10 +622,7 @@ test("the overview draws the account history between its figures and the sector 
     expect(header - legend).toBeGreaterThan(width === 78 ? 6 : 0);
     if (width === 60) expect(header - legend).toBe(4);
     expect(lines.slice(header + 1).some((line) => line.includes("Technology"))).toBe(true);
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
+    await tui.destroy();
     controlledCoordinator.destroy();
     controlledCoordinator = undefined;
   }

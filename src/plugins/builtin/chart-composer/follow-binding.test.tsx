@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useReducer, type Dispatch } from "react";
 import { Text } from "../../../ui";
-import { testRender, emitKeypress } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState, appReducer, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneProvider, createTestTicker } from "../../../test-support/pane";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -17,12 +17,10 @@ import { ChartComposerPane } from "./pane";
 import { buildComparisonChartPreset, buildCustomChartPreset, buildPriceChartPreset } from "./presets";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let latest: AppState;
 let dispatch: Dispatch<AppAction>;
 afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
   await flushPendingPersistence();
   setConfigStoreHost(null);
 });
@@ -52,15 +50,15 @@ async function mount(config: AppConfig, requests: string[], contracts: number[] 
       <ChartComposerPane paneId={chartId} focused width={110} height={25} />
     </TestPaneProvider>;
   }
-  setup = await testRender(<Harness />, { width: 110, height: 28 });
+  await tui.render(<Harness />, { width: 110, height: 28 });
 }
 
 async function settle(predicate: () => boolean) {
   for (let i = 0; i < 100; i++) {
-    await act(async () => { await Bun.sleep(1); await setup!.renderOnce(); });
+    await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
     if (predicate()) return;
   }
-  throw new Error(`Chart did not settle: ${setup!.captureCharFrame()}`);
+  throw new Error(`Chart did not settle: ${tui.frame()}`);
 }
 
 test("follow chart retains range while switching BTC to SHOP, including saved reload and stale saved primary", async () => {
@@ -70,25 +68,25 @@ test("follow chart retains range while switching BTC to SHOP, including saved re
   await mount(config, requests);
   await settle(() => requests.includes("BTC-USD:CCC"));
   // The chart's own keyboard range control persists the formerly implicit spec.
-  await emitKeypress(setup!, { name: "3", sequence: "3" });
+  await tui.emitKeypress({ name: "3", sequence: "3" });
   await settle(() => (findPaneInstance(latest.config.layout, chartId)?.settings?.chartSpec as any)?.viewport.range === "1M");
   const oldSettings = structuredClone(findPaneInstance(latest.config.layout, chartId)!.settings);
   const layout = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout } }));
-  await settle(() => requests.includes("SHOP:NASDAQ") && setup!.captureCharFrame().includes("SHOP:XNAS Price"));
-  expect(setup!.captureCharFrame()).toContain("Chart: SHOP:XNAS");
-  expect(setup!.captureCharFrame()).not.toContain("BTC-USD:CCC Price");
+  await settle(() => requests.includes("SHOP:NASDAQ") && tui.frame().includes("SHOP:XNAS Price"));
+  expect(tui.frame()).toContain("Chart: SHOP:XNAS");
+  expect(tui.frame()).not.toContain("BTC-USD:CCC Price");
   const selected = findPaneInstance(latest.config.layout, chartId)!.settings!.chartSpec as any;
   expect(selected.viewport.range).toBe("1M");
   expect(selected.studies).toEqual((oldSettings!.chartSpec as any).studies);
   await flushPendingPersistence();
   const restored = await host.loadConfig("browser://local");
-  await act(async () => setup!.renderer.destroy()); setup = undefined;
+  await tui.destroy();
   requests.length = 0;
   await mount(restored, requests);
   await settle(() => requests.includes("SHOP:NASDAQ"));
   expect(requests).not.toContain("BTC-USD:CCC");
-  await act(async () => setup!.renderer.destroy()); setup = undefined;
+  await tui.destroy();
   // Repair an existing saved mismatch on mount, before any BTC request.
   const staleLayout = updatePaneInstance(restored.layout, chartId, pane => ({ ...pane, settings: oldSettings }));
   requests.length = 0;
@@ -108,7 +106,7 @@ test("fixed custom comparison does not follow the research pane", async () => {
   await settle(() => requests.includes("BTC-USD:CCC"));
   const switched = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: switched } }));
-  await setup!.renderOnce();
+  await tui.setup().renderOnce();
   expect(findPaneInstance(latest.config.layout, chartId)!.settings!.chartSpec).toEqual(spec);
   expect(requests).not.toContain("SHOP:NASDAQ");
 });
@@ -125,14 +123,14 @@ test("follow ownership survives a comparison collision, range change and reload 
   const firstSwitch = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SPY:ARCX" } }));
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: firstSwitch } }));
   await settle(() => (findPaneInstance(latest.config.layout, chartId)?.settings?.chartSpec as any)?.series[0].source.instrument.symbol === "SPY");
-  await emitKeypress(setup!, { name: "3", sequence: "3" });
+  await tui.emitKeypress({ name: "3", sequence: "3" });
   await settle(() => (findPaneInstance(latest.config.layout, chartId)?.settings?.chartSpec as any)?.viewport.range === "1M");
   await flushPendingPersistence();
   const restored = await host.loadConfig("browser://local");
   expect(findPaneInstance(restored.layout, chartId)?.settings?.[CHART_FOLLOW_SERIES_SETTING_KEY]).toEqual([comparison.series[0]!.id]);
-  await act(async () => setup!.renderer.destroy()); setup = undefined;
+  await tui.destroy();
   await mount(restored, requests);
-  await settle(() => setup!.captureCharFrame().includes("SPY:ARCX"));
+  await settle(() => tui.frame().includes("SPY:ARCX"));
   const secondSwitch = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: secondSwitch } }));
   await settle(() => requests.includes("SHOP:NASDAQ"));
@@ -158,8 +156,8 @@ test("an unresolved followed contract hides old data without overwriting the aut
     dispatch({ type: "SET_TICKERS", tickers: new Map([["ES", ticker]]) });
     dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: unresolved } });
   });
-  await settle(() => setup!.captureCharFrame().includes("Choose a contract in search."));
-  expect(setup!.captureCharFrame()).not.toContain("BTC-USD:CCC Price");
+  await settle(() => tui.frame().includes("Choose a contract in search."));
+  expect(tui.frame()).not.toContain("BTC-USD:CCC Price");
   expect(requests).toEqual([]);
   expect(findPaneInstance(latest.config.layout, chartId)!.settings).toEqual(saved);
   const resolved = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane,
@@ -187,7 +185,7 @@ test("deleting the followed primary leaves the authored comparison independent o
   const switched = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
   requests.length = 0;
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: switched } }));
-  await settle(() => setup!.captureCharFrame().includes("Chart: SHOP:XNAS"));
+  await settle(() => tui.frame().includes("Chart: SHOP:XNAS"));
   expect(findPaneInstance(latest.config.layout, chartId)!.settings!.chartSpec).toEqual(withoutPrimary);
   expect(findPaneInstance(latest.config.layout, chartId)!.settings![CHART_FOLLOW_SERIES_SETTING_KEY]).toEqual([]);
   expect(requests).not.toContain("SHOP:NASDAQ");

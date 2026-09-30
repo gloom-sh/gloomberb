@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { createInitialState } from "../../state/app/context";
 import { TestPaneProvider } from "../../test-support/pane";
 import { createTestPluginRuntime } from "../../test-support/plugin-runtime";
@@ -30,14 +30,7 @@ const FIGURES: StatItem[] = [
 ];
 const formatBp = (value: number) => `${value.toFixed(1)}bp`;
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) {
-    await act(async () => setup?.renderer.destroy());
-    setup = undefined;
-  }
-});
-
+const tui = createOpenTuiTestHarness();
 function Pane({ width, height, rows = ROWS, chart }: {
   width: number;
   height: number;
@@ -75,11 +68,11 @@ async function render(node: React.ReactNode, width: number, height: number) {
       {node}
     </TestPaneProvider>
   );
-  await act(async () => { setup = await testRender(wrapped, { width, height }); });
+  await act(async () => { await tui.render(wrapped, { width, height }); });
   for (let index = 0; index < 4; index += 1) {
-    await act(async () => { await Promise.resolve(); await setup!.renderOnce(); });
+    await act(async () => { await Promise.resolve(); await tui.setup().renderOnce(); });
   }
-  return setup!.captureCharFrame().split("\n");
+  return tui.frame().split("\n");
 }
 
 const headerRow = (lines: string[]) => lines.findIndex((line) => line.includes("DATE"));
@@ -98,8 +91,7 @@ describe("ChartTableHeader", () => {
     expect(headerRow(lines)).toBe(2);
     expect(lines[1]).toContain("●");
     expect(lines[1]).not.toContain("5Y spread");
-    await act(async () => setup?.renderer.destroy());
-    setup = undefined;
+    await tui.destroy();
     lines = await render(<Pane width={60} height={6} />, 60, 6);
     expect(headerRow(lines)).toBe(1);
   });
@@ -123,12 +115,12 @@ describe("ChartTableHeader", () => {
 
   test("Left moves the selection back in time and the cursor with it", async () => {
     await render(<Pane width={80} height={24} />, 80, 24);
-    const legend = () => setup!.captureCharFrame().split("\n").find((line) => line.includes("● 5Y spread")) ?? "";
+    const legend = () => tui.frame().split("\n").find((line) => line.includes("● 5Y spread")) ?? "";
     const before = legend();
     for (let index = 0; index < 3; index += 1) {
-      await act(async () => { setup!.mockInput.pressArrow("left"); await setup!.renderOnce(); });
+      await act(async () => { tui.setup().mockInput.pressArrow("left"); await tui.setup().renderOnce(); });
     }
-    await act(async () => { await Promise.resolve(); await setup!.renderOnce(); });
+    await act(async () => { await Promise.resolve(); await tui.setup().renderOnce(); });
     expect(legend()).not.toBe(before);
     expect(legend()).toContain(formatBp(ROWS[3]!.value));
   });

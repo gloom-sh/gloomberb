@@ -1,22 +1,16 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { TweetSearchTable } from "./table";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const runtime = createTestPluginRuntime();
-
-afterEach(async () => {
-  if (!setup) return;
-  await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
 
 function tweet(index: number): CloudTweetPayload {
   return {
@@ -50,7 +44,7 @@ function response(tweets: CloudTweetPayload[], hasMore: boolean): CloudTweetSear
 
 async function frames() {
   for (let index = 0; index < 6; index++) {
-    await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
+    await act(async () => { await Bun.sleep(5); await tui.setup().renderOnce(); });
   }
 }
 
@@ -64,7 +58,7 @@ async function mountFeed(
   const state = createInitialState(config);
   state.focusedPaneId = "tweets:test";
   await act(async () => {
-    setup = await testRender(
+    await tui.render(
       <TestPaneProvider state={state} paneId="tweets:test" pluginId="gloomberb-cloud" runtime={runtime}>
         <PaneFooterProvider>{() => (
           <Box width={80} height={20}>
@@ -86,7 +80,7 @@ async function mountFeed(
 }
 
 async function scrollToEnd(rows: number) {
-  await emitKeypress(setup!, Array.from({ length: rows }, () => ({ name: "j", sequence: "j" })));
+  await tui.emitKeypress(Array.from({ length: rows }, () => ({ name: "j", sequence: "j" })));
   await frames();
 }
 
@@ -99,12 +93,12 @@ test("reading to the end of a feed asks for the tweets below it", async () => {
       : response([tweet(50), tweet(51)], false);
   });
   expect(offsets).toEqual([0]);
-  expect(setup!.captureCharFrame()).toContain("DESK NOTE 0");
+  expect(tui.frame()).toContain("DESK NOTE 0");
 
   await scrollToEnd(50);
   expect(offsets).toEqual([0, 50]);
   await scrollToEnd(5);
-  expect(setup!.captureCharFrame()).toContain("DESK NOTE 51");
+  expect(tui.frame()).toContain("DESK NOTE 51");
   // The server reported the end of its window, so scrolling asks for nothing.
   expect(offsets).toEqual([0, 50]);
 });

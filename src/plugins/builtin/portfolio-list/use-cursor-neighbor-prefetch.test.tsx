@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { TickerRecord } from "../../../types/ticker";
 import { useCursorNeighborPrefetch } from "./use-cursor-neighbor-prefetch";
@@ -12,7 +12,7 @@ function createTicker(symbol: string): TickerRecord {
 
 const TICKERS = ["AAPL", "MSFT", "NVDA", "AMD", "TSLA", "META"].map(createTicker);
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let noteCursor: ((symbol: string | null) => void) | null = null;
 let prefetched: string[] = [];
 
@@ -33,20 +33,14 @@ const wait = (ms: number) => act(async () => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 });
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   noteCursor = null;
   prefetched = [];
 });
 
 describe("useCursorNeighborPrefetch", () => {
   test("warms the near ring once the cursor rests and the far ring after it settles", async () => {
-    testSetup = await testRender(<Harness cursorSymbol={null} />, { width: 10, height: 1 });
+    await tui.render(<Harness cursorSymbol={null} />, { width: 10, height: 1 });
     await act(async () => { noteCursor?.("NVDA"); });
 
     await wait(40);
@@ -60,7 +54,7 @@ describe("useCursorNeighborPrefetch", () => {
   });
 
   test("a cursor moving faster than the rest window never fires", async () => {
-    testSetup = await testRender(<Harness cursorSymbol={null} />, { width: 10, height: 1 });
+    await tui.render(<Harness cursorSymbol={null} />, { width: 10, height: 1 });
     for (const symbol of ["MSFT", "NVDA", "AMD", "TSLA"]) {
       await act(async () => { noteCursor?.(symbol); });
       await wait(30);
@@ -72,13 +66,13 @@ describe("useCursorNeighborPrefetch", () => {
   });
 
   test("follows the throttled cursor when the list does not report a live one", async () => {
-    testSetup = await testRender(<Harness cursorSymbol="AAPL" />, { width: 10, height: 1 });
+    await tui.render(<Harness cursorSymbol="AAPL" />, { width: 10, height: 1 });
     await wait(120);
     expect(prefetched.sort()).toEqual(["AAPL", "MSFT"]);
   });
 
   test("does nothing while the app is inactive", async () => {
-    testSetup = await testRender(<Harness cursorSymbol="AAPL" enabled={false} />, { width: 10, height: 1 });
+    await tui.render(<Harness cursorSymbol="AAPL" enabled={false} />, { width: 10, height: 1 });
     await wait(120);
     expect(prefetched).toEqual([]);
   });

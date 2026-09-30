@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import type { PluginRegistry } from "../plugins/registry";
 import type {
@@ -7,21 +7,13 @@ import type {
   PaneSettingField,
   PaneSettingsContext,
 } from "../types/plugin";
-import { TestDialogProvider, testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, TestDialogProvider } from "../renderers/opentui/test-utils";
 import { useDialog } from "../ui/dialog";
 import { PaneSettingsDialogContent } from "./pane-settings-dialog";
 import { TuiPaneSettingsDialogBody } from "./pane-settings-dialog/tui";
 import { Button } from "./ui";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 const context = {
   paneId: "test-pane:main",
@@ -108,7 +100,7 @@ describe("pane settings action rows", () => {
       },
     });
 
-    testSetup = await testRender(
+    await tui.render(
       <TestDialogProvider>
         <PaneSettingsDialogContent
           dismiss={() => { dismissed = true; }}
@@ -121,13 +113,13 @@ describe("pane settings action rows", () => {
       </TestDialogProvider>,
       { width: 72, height: 14 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Promise.resolve();
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(calls[0]).toMatchObject({
@@ -151,7 +143,7 @@ describe("pane settings action rows", () => {
       disabled: true,
     });
 
-    testSetup = await testRender(
+    await tui.render(
       <TuiPaneSettingsDialogBody
         title="AI Settings"
         fields={[enabled, disabled]}
@@ -162,17 +154,17 @@ describe("pane settings action rows", () => {
       />,
       { width: 72, height: 14 },
     );
-    await testSetup.renderOnce();
-    const lines = testSetup.captureCharFrame().split("\n");
+    await tui.setup().renderOnce();
+    const lines = tui.frame().split("\n");
     const enabledRow = lines.findIndex((line) => line.includes("AI Account"));
     const disabledRow = lines.findIndex((line) => line.includes("Unavailable Account"));
     expect(enabledRow).toBeGreaterThanOrEqual(0);
     expect(disabledRow).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(4, enabledRow);
-      await testSetup!.mockMouse.click(4, disabledRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(4, enabledRow);
+      await tui.setup().mockMouse.click(4, disabledRow);
+      await tui.setup().renderOnce();
     });
 
     expect(activated).toEqual([enabled.key]);
@@ -196,7 +188,7 @@ describe("pane settings action rows", () => {
         context,
       }),
     } as unknown as PluginRegistry;
-    testSetup = await testRender(
+    await tui.render(
       <TestDialogProvider>
         <PaneSettingsDialogContent
           dismiss={() => {}}
@@ -207,16 +199,16 @@ describe("pane settings action rows", () => {
       </TestDialogProvider>,
       { width: 72, height: 18 },
     );
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).not.toContain("Setting 14");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).not.toContain("Setting 14");
 
     await act(async () => {
-      testSetup!.mockInput.pressKey("END");
+      tui.setup().mockInput.pressKey("END");
       await Promise.resolve();
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("▸ Setting 14");
     expect(frame).toContain("About setting 14");
   });
@@ -232,7 +224,7 @@ describe("pane settings action rows", () => {
         { value: "1Y", label: "1Y" },
       ],
     };
-    testSetup = await testRender(
+    await tui.render(
       <NestedSettingsHarness
         field={field}
         applyFieldValue={async (_paneId, _field, value) => {
@@ -241,36 +233,36 @@ describe("pane settings action rows", () => {
       />,
       { width: 72, height: 16 },
     );
-    await testSetup.renderOnce();
-    const openRow = testSetup.captureCharFrame().split("\n")
+    await tui.setup().renderOnce();
+    const openRow = tui.frame().split("\n")
       .findIndex((line) => line.includes("Open settings"));
     expect(openRow).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(2, openRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, openRow);
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("Chart Settings");
+    expect(tui.frame()).toContain("Chart Settings");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Promise.resolve();
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("1Y");
+    expect(tui.frame()).toContain("1Y");
 
     await act(async () => {
-      testSetup!.mockInput.pressArrow("down");
+      tui.setup().mockInput.pressArrow("down");
       await Bun.sleep(10);
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Promise.resolve();
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(applied).toEqual(["1Y"]);

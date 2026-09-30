@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useMemo, useState } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget } from "../../../types/data-provider";
@@ -81,20 +81,15 @@ function Harness({ provider, intervalMs }: { provider: object; intervalMs: numbe
   );
 }
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
+afterEach(() => {
   quotes = new Map();
   refreshBoard = () => {};
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 async function mount(provider: object, intervalMs = 10_000) {
-  testSetup = await testRender(<Harness provider={provider} intervalMs={intervalMs} />, {
+  await tui.render(<Harness provider={provider} intervalMs={intervalMs} />, {
     width: 40,
     height: 6,
   });
@@ -104,8 +99,8 @@ async function mount(provider: object, intervalMs = 10_000) {
 async function settle(waitMs = 0) {
   await act(async () => {
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 

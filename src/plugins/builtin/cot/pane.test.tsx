@@ -3,7 +3,7 @@ import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { CotBoardPayload, CotBoardRow, CotClass, CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -64,7 +64,7 @@ function charted(code: string): CotContractPayload {
   }), history };
 }
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const spies: Array<{ mockRestore(): void }> = [];
 
 beforeEach(() => {
@@ -76,14 +76,9 @@ beforeEach(() => {
   );
 });
 
-afterEach(async () => {
+afterEach(() => {
   for (const spy of spies.splice(0)) spy.mockRestore();
   cotBoardCache.reset();
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 const paneRuntime = createTestPluginRuntime();
@@ -109,27 +104,27 @@ async function settle(times = 6) {
   for (let index = 0; index < times; index += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
 
 async function press(name: string) {
-  await emitKeypress(testSetup!, { name, sequence: name.length === 1 ? name : undefined }, { trackPropagation: true });
+  await tui.emitKeypress({ name, sequence: name.length === 1 ? name : undefined }, { trackPropagation: true });
   await settle();
 }
 
 test("Esc leaves a detail opened from params for a board that stays navigable", async () => {
-  testSetup = await testRender(<Harness />, { width: 110, height: 28 });
+  await tui.render(<Harness />, { width: 110, height: 28 });
   await settle();
 
-  let frame = testSetup.captureCharFrame();
+  let frame = tui.frame();
   expect(frame).toContain("Back");
   expect(frame).toContain("WTI-PHYSICAL");
   expect(frame).not.toContain("MARKET");
 
   await press("escape");
-  frame = testSetup.captureCharFrame();
+  frame = tui.frame();
   // The board, not the deep-linked detail again.
   expect(frame).toContain("MARKET");
   expect(frame).toContain("E-MINI S&P 500");
@@ -139,25 +134,25 @@ test("Esc leaves a detail opened from params for a board that stays navigable", 
   // The cursor starts on the deep-linked row and moves; Enter opens the row under it.
   await press("down");
   await press("return");
-  frame = testSetup.captureCharFrame();
+  frame = tui.frame();
   expect(frame).toContain("Back");
   expect(frame).toContain("GOLD");
   expect(frame).not.toContain("MARKET");
 
   await press("escape");
-  frame = testSetup.captureCharFrame();
+  frame = tui.frame();
   expect(frame).toContain("MARKET");
   expect(frame).not.toContain("Back");
 
   // The board's own keys are live again: / opens the search.
   await press("/");
-  await emitKeypress(testSetup, [..."gold"].map((char) => ({ name: char, sequence: char })));
+  await tui.emitKeypress([..."gold"].map((char) => ({ name: char, sequence: char })));
   // The search applies after its input debounce.
   await act(async () => {
     await Bun.sleep(150);
   });
   await settle();
-  frame = testSetup.captureCharFrame();
+  frame = tui.frame();
   expect(frame).toContain("GOLD");
   expect(frame).not.toContain("E-MINI S&P 500");
 });
@@ -174,10 +169,10 @@ function useChartedContract() {
 test("the detail charts the selected class's net and the front price over every class row", async () => {
   useChartedContract();
   // The default floating size's body.
-  testSetup = await testRender(<Harness width={104} height={28} />, { width: 104, height: 28 });
+  await tui.render(<Harness width={104} height={28} />, { width: 104, height: 28 });
   await settle();
 
-  let lines = testSetup.captureCharFrame().split("\n");
+  let lines = tui.frame().split("\n");
   const legend = lines.findIndex((line) => line.includes("● Noncommercial net +159,000"));
   const header = lines.findIndex((line) => line.includes("CLASS"));
   expect(legend).toBeGreaterThan(0);
@@ -188,17 +183,17 @@ test("the detail charts the selected class's net and the front price over every 
 
   // The chart follows the selected class.
   await press("down");
-  lines = testSetup.captureCharFrame().split("\n");
+  lines = tui.frame().split("\n");
   expect(lines.some((line) => line.includes("● Commercial net -151,000"))).toBe(true);
   expect(lines.some((line) => line.includes("● Noncommercial net"))).toBe(false);
 });
 
 test("a short detail keeps the class rows and folds the chart into a strip", async () => {
   useChartedContract();
-  testSetup = await testRender(<Harness width={60} height={10} />, { width: 60, height: 10 });
+  await tui.render(<Harness width={60} height={10} />, { width: 60, height: 10 });
   await settle();
 
-  const lines = testSetup.captureCharFrame().split("\n");
+  const lines = tui.frame().split("\n");
   expect(lines.some((line) => line.includes("● Noncommercial net") && line.includes("+159,000"))).toBe(true);
   expect(lines.some((line) => line.includes("Front price"))).toBe(false);
   expect(lines.filter((line) => /^ (Noncommercial|Commercial|Nonreportable) /.test(line))).toHaveLength(3);

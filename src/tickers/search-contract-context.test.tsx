@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState, usePaneTicker, type AppAction } from "../state/app/context";
 import { createStaticAppStore } from "../test-support/app-store";
 import { createDefaultConfig, createPaneInstance, TICKER_RESEARCH_PANE_ID } from "../types/config";
@@ -18,6 +18,7 @@ import type { PinTickerOptions } from "../types/plugin";
 import { resolveInstrumentForPane } from "../core/state/app/instrument";
 import { tickerInstrumentLabel } from "./instrument-label";
 
+const tui = createOpenTuiTestHarness();
 const results: InstrumentSearchResult[] = [100, 110].map((strike) => ({
   providerId: "broker", symbol: "ACME", exchange: "CBOE", currency: "USD", type: "OPT", name: `ACME 2027-01-15 ${strike} Call`,
   brokerContract: { brokerId: "test", brokerInstanceId: "desk", symbol: "ACME", secType: "OPT", currency: "USD", exchange: "CBOE", lastTradeDateOrContractMonth: "20270115", right: "C", strike, multiplier: "100" },
@@ -56,7 +57,7 @@ test.each([48, 80, 120])("search keeps broker and explicit public panes through 
     search = useCommandBarTickerSearchActions({ closeAll() {}, dispatch, focusTicker: paneActions.focusTicker, pluginRegistry: registry, tickerRepository: repo, tickers: state.tickers });
     return <AppContext.Provider value={createStaticAppStore(state, dispatch)}><box flexDirection="column">{state.config.layout.instances.map((pane) => <PaneInstanceProvider key={pane.instanceId} paneId={pane.instanceId}><Observer id={pane.instanceId} /></PaneInstanceProvider>)}</box></AppContext.Provider>;
   }
-  const rendered = await testRender(<Harness />, { width, height: 12 });
+  const rendered = await tui.render(<Harness />, { width, height: 12 });
   try {
     await act(async () => { await rendered.renderOnce(); });
     const candidates = buildTickerSearchCandidates({ query: "ACME", tickers: new Map(), providerResults: results });
@@ -108,7 +109,7 @@ test.each([48, 80, 120])("search keeps broker and explicit public panes through 
     expect(observed.get("research:3")?.ticker?.metadata).toMatchObject({ name: "ACME common stock", currency: "EUR", assetCategory: "STK" });
     expect(observed.get("public-follower")?.financials?.quote?.price).toBe(30);
   } finally {
-    await act(async () => { rendered.renderer.destroy(); });
+    await tui.destroy();
     setSharedMarketDataCoordinator(null); coordinator.destroy();
   }
 });

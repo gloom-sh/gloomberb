@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useMemo, useReducer } from "react";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -9,7 +9,7 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../
 import { insiderModule } from "./index";
 
 const InsiderView = insiderModule.panes![0]!.component;
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 function xml(amendment: boolean, owner = "A. OFFICER", cik = "111", explanationOnly = false) {
   return `<ownershipDocument><documentType>${amendment ? "4/A" : "4"}</documentType>${amendment ? "<dateOfOriginalSubmission>2026-08-20</dateOfOriginalSubmission>" : ""}<reportingOwner><reportingOwnerId><rptOwnerName>${owner}</rptOwnerName><rptOwnerCik>${cik}</rptOwnerCik></reportingOwnerId></reportingOwner>${explanationOnly ? "" : `<nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>2026-08-19</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${amendment ? 40 : 100}</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction>`}${amendment ? "<footnotes><footnote id='F1'>Corrects the original disclosure.</footnote></footnotes>" : ""}</ownershipDocument>`;
 }
@@ -28,14 +28,14 @@ function Harness({ width }: { width: number }) {
   </TestPaneFrame>;
 }
 async function settle() {
-  for (let i = 0; i < 8; i++) await act(async () => { await Bun.sleep(2); await setup!.renderOnce(); });
+  for (let i = 0; i < 8; i++) await act(async () => { await Bun.sleep(2); await tui.setup().renderOnce(); });
 }
 async function mount(width: number, explanationOnly = false) {
   const filings = ["amendment", "original", "other"].map((accessionNumber) => ({ accessionNumber, form: accessionNumber === "amendment" ? "4/A" : "4",
     filingDate: new Date(`2026-08-${accessionNumber === "amendment" ? "21" : "20"}T00:00:00Z`), cik: "999", filingUrl: `https://www.sec.gov/${accessionNumber}` }));
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => filings,
     getSecFilingContent: async (filing) => filing.accessionNumber === "other" ? xml(false, "B. OFFICER", "222") : xml(filing.accessionNumber === "amendment", "A. OFFICER", "111", explanationOnly && filing.accessionNumber === "amendment") })));
-  await act(async () => { setup = await testRender(<Harness width={width} />, { width, height: 30 }); });
+  await act(async () => { await tui.render(<Harness width={width} />, { width, height: 30 }); });
   await settle();
 }
 async function mountWindow(inWindow: number) {
@@ -45,22 +45,20 @@ async function mountWindow(inWindow: number) {
     filingDate: new Date(Date.now() - (index < inWindow ? 1 + index % 60 : 120) * day), cik: "999", filingUrl: `https://www.sec.gov/f${index}` }));
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => filings,
     getSecFilingContent: async (filing) => `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>A. OFFICER</rptOwnerName><rptOwnerCik>111</rptOwnerCik></reportingOwnerId></reportingOwner><nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>${isoDate(new Date(filing.filingDate).getTime())}</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></ownershipDocument>` })));
-  await act(async () => { setup = await testRender(<Harness width={80} />, { width: 80, height: 30 }); });
-  for (let i = 0; i < 40 && (i < 8 || setup!.captureCharFrame().includes("loading")); i++) await settle();
+  await act(async () => { await tui.render(<Harness width={80} />, { width: 80, height: 30 }); });
+  for (let i = 0; i < 40 && (i < 8 || tui.frame().includes("loading")); i++) await settle();
 }
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
 });
 
 test("narrow actual amendment detail retains corrected shares, explanation, status and the existing Open action", async () => {
   await mount(48);
-  expect(setup!.captureCharFrame()).toContain("4/A · BUY 40");
-  expect(setup!.captureCharFrame()).toContain("BUY 100");
-  await act(async () => { setup!.mockInput.pressEnter(); });
+  expect(tui.frame()).toContain("4/A · BUY 40");
+  expect(tui.frame()).toContain("BUY 100");
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Original filed 2026-08-20");
   expect(frame).toContain("Corrects the original disclosure.");
   expect(frame).toContain("Shares: 40");
@@ -70,37 +68,37 @@ test("narrow actual amendment detail retains corrected shares, explanation, stat
 
 test("owner filtering keeps explanation-only amendments and clears amendment status for independent owners", async () => {
   await mount(80, true);
-  expect(setup!.captureCharFrame()).toContain("Form 4/A disclosure");
-  await act(async () => { setup!.mockInput.pressKey("f"); });
+  expect(tui.frame()).toContain("Form 4/A disclosure");
+  await act(async () => { tui.setup().mockInput.pressKey("f"); });
   await settle();
-  expect(setup!.captureCharFrame()).toContain("Form 4/A disclosure");
-  expect(setup!.captureCharFrame()).toContain("BUY 100");
-  expect(setup!.captureCharFrame()).not.toContain("B. OFFICER");
-  await act(async () => { setup!.mockInput.pressKey("f"); });
+  expect(tui.frame()).toContain("Form 4/A disclosure");
+  expect(tui.frame()).toContain("BUY 100");
+  expect(tui.frame()).not.toContain("B. OFFICER");
+  await act(async () => { tui.setup().mockInput.pressKey("f"); });
   await settle();
-  await emitKeypress(setup!, { name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
-  await emitKeypress(setup!, { name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { await Bun.sleep(180); });
   await settle();
-  const rows = setup!.captureCharFrame().split("\n");
+  const rows = tui.frame().split("\n");
   const row = rows.findIndex((line) => line.includes("[f]ilter"));
-  await act(async () => { await setup!.mockMouse.click(rows[row]!.indexOf("[f]ilter") + 2, row); });
+  await act(async () => { await tui.setup().mockMouse.click(rows[row]!.indexOf("[f]ilter") + 2, row); });
   await settle();
-  expect(setup!.captureCharFrame()).toContain("B. OFFICER");
-  expect(setup!.captureCharFrame()).not.toContain("A. OFFICER");
-  expect(setup!.captureCharFrame()).not.toContain("⚠");
+  expect(tui.frame()).toContain("B. OFFICER");
+  expect(tui.frame()).not.toContain("A. OFFICER");
+  expect(tui.frame()).not.toContain("⚠");
 });
 
 test("the 90-day totals load every filing in the window, past the first page", async () => {
   await mountWindow(25);
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("2.5k shares");
   expect(frame).not.toContain("⚠");
 });
 
 test("a window larger than the cap still says the totals are partial", async () => {
   await mountWindow(121);
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("12k shares");
   expect(frame).toContain("⚠");
 });

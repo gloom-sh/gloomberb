@@ -3,7 +3,7 @@ import { act } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { RevenueBreakdownPayload } from "../../../api-client/revenue-breakdown";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { createTestControls, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -36,10 +36,8 @@ const preview: RevenueBreakdownPayload = {
   lockedRows: 3,
 };
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   setCloudApiFetchTransport(null);
   revenueBreakdownCache.reset();
 });
@@ -51,7 +49,7 @@ async function mount(width = 110, height = 12) {
     paneId: "revenue-breakdown", instanceId: paneId, binding: { kind: "fixed", symbol: "AAPL" },
   }));
   state.tickers.set("AAPL", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ" }));
-  setup = await testRender(
+  await tui.render(
     <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
       <PaneFooterProvider>{(footer) => (
         <Box width={width} height={height} flexDirection="column">
@@ -64,9 +62,9 @@ async function mount(width = 110, height = 12) {
   );
   for (let i = 0; i < 4; i++) await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  return setup.captureCharFrame();
+  return tui.frame();
 }
 
 test("a preview shows the two largest rows, locked rows and the upgrade key", async () => {
@@ -100,8 +98,8 @@ test("hovering a quarter reads out its value, and an unreported one says so", as
   const x = lines[y]!.indexOf("·");
   expect(x).toBeGreaterThan(0);
   const hoverAt = async (column: number, readout: string) => {
-    await act(async () => setup!.mockMouse.moveTo(column, y));
-    return createTestControls(() => setup!).waitForFrameToContain(readout);
+    await act(async () => tui.setup().mockMouse.moveTo(column, y));
+    return tui.waitForFrameToContain(readout);
   };
   expect(await hoverAt(x, "iPhone  Q4 2025  not reported")).toContain("iPhone  Q4 2025  not reported");
   expect(await hoverAt(x + 2, "iPhone  Q1 2026  85.3B")).toContain("iPhone  Q1 2026  85.3B");

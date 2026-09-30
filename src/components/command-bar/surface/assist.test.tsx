@@ -1,20 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import type { AppAction } from "../../../state/app/context";
 import { runAutomated } from "../../../telemetry/usage-counts";
 import { VERSION } from "../../../version";
-import {
-  CommandBarHarness,
-  createCommandBarTestControls,
-  emitKeypress,
-  settleFrame,
-} from "./test-harness";
+import { CommandBarHarness, createCommandBarTestControls, settleFrame } from "./test-harness";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const originalWebSocket = globalThis.WebSocket;
 /** The environment switches that turn every report off; a developer's shell may set one. */
 const OPT_OUT_ENV = ["GLOOMBERB_NO_TELEMETRY", "DO_NOT_TRACK"] as const;
@@ -33,10 +28,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
   // A report the bar sends as it closes lands in the test that closed it.
   await Bun.sleep(5);
   setCloudApiFetchTransport(null);
@@ -50,7 +41,7 @@ afterEach(async () => {
   });
 });
 
-const { waitForFrameToContain } = createCommandBarTestControls(() => testSetup!);
+const { waitForFrameToContain } = createCommandBarTestControls(() => tui.setup());
 
 function signInVerified(emailVerified = true): void {
   apiClient.setSessionToken("assist-test-token");
@@ -67,8 +58,8 @@ function signInVerified(emailVerified = true): void {
 /** Types into whichever input has focus, one key at a time, then renders. */
 async function typeKeys(keys: string[]): Promise<void> {
   await act(async () => {
-    for (const key of keys) testSetup!.mockInput.pressKey(key);
-    await testSetup!.renderOnce();
+    for (const key of keys) tui.setup().mockInput.pressKey(key);
+    await tui.setup().renderOnce();
   });
 }
 
@@ -131,7 +122,7 @@ const ASSIST_WAIT_ATTEMPTS = 40;
 async function waitForRequest(requests: unknown[], count = 1): Promise<void> {
   for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
     if (requests.length >= count) return;
-    await settleFrame(testSetup!);
+    await settleFrame(tui.setup());
   }
   throw new Error("Timed out waiting for the assist request.");
 }
@@ -139,16 +130,16 @@ async function waitForRequest(requests: unknown[], count = 1): Promise<void> {
 async function waitForReports(reports: unknown[], count = 1): Promise<void> {
   for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
     if (reports.length >= count) return;
-    await settleFrame(testSetup!);
+    await settleFrame(tui.setup());
   }
   throw new Error("Timed out waiting for the search report.");
 }
 
 async function waitForFrameWithout(text: string): Promise<string> {
   for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     if (!frame.includes(text)) return frame;
-    await settleFrame(testSetup!);
+    await settleFrame(tui.setup());
   }
   throw new Error(`Timed out waiting for "${text}" to disappear.`);
 }
@@ -168,7 +159,7 @@ describe("CommandBar AI assist", () => {
     });
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="new chat pane"
         configurePluginRegistry={configureEarningsRegistry(created)}
@@ -177,8 +168,8 @@ describe("CommandBar AI assist", () => {
       { width: 120, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Thinking…");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Thinking…");
     // Nobody pressed Enter; the debounce fires the one request by itself.
     await waitForRequest(requests);
     expect(requests).toHaveLength(1);
@@ -194,7 +185,7 @@ describe("CommandBar AI assist", () => {
     expect(answered.indexOf("Ask AI")).toBeLessThan(answered.indexOf("Panes"));
     expect(answered).toMatch(/CHAT\s+#general · Open the general channel/);
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
   });
 
@@ -213,7 +204,7 @@ describe("CommandBar AI assist", () => {
     });
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="new chat pane"
         configurePluginRegistry={configureEarningsRegistry(created)}
@@ -222,16 +213,16 @@ describe("CommandBar AI assist", () => {
       { width: 120, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await waitForRequest(requests);
     // Down lands on the local match while a single "Thinking…" row sits above.
-    await emitKeypress(testSetup, { name: "down" });
+    await tui.emitKeypress({ name: "down" });
     releaseResponse();
     await waitForFrameToContain("#random · Open the random channel", ASSIST_WAIT_ATTEMPTS);
 
     // Two answers replaced that one row, so the chosen row moved down by one;
     // Enter still runs it rather than whatever now sits at its old index.
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
   });
 
@@ -244,7 +235,7 @@ describe("CommandBar AI assist", () => {
     }));
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="nvda earnings"
         configurePluginRegistry={configureEarningsRegistry(created)}
@@ -252,10 +243,10 @@ describe("CommandBar AI assist", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await waitForFrameToContain("NVDA · Earnings Calendar", ASSIST_WAIT_ATTEMPTS);
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "earnings-calendar-pane", options: undefined }]);
   });
 
@@ -273,7 +264,7 @@ describe("CommandBar AI assist", () => {
     }, reports);
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="new chat pane"
         configurePluginRegistry={configureEarningsRegistry(created)}
@@ -281,17 +272,17 @@ describe("CommandBar AI assist", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Thinking…");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Thinking…");
 
     // Enter on "Thinking…" is a promise, not a dead key: there is nothing to
     // run yet, so the ask is claimed and its answer runs when it arrives.
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([]);
 
     releaseResponse();
     for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS && created.length === 0; attempt++) {
-      await settleFrame(testSetup);
+      await settleFrame(tui.setup());
     }
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
     expect(requests).toHaveLength(1);
@@ -316,31 +307,18 @@ describe("CommandBar AI assist", () => {
       });
     });
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="new chat pane" />,
       { width: 120, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Thinking…");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Thinking…");
 
-    await act(async () => {
-      for (let press = 0; press < 2; press += 1) {
-        testSetup!.renderer.keyInput.emit("keypress", {
-          ctrl: false,
-          meta: false,
-          option: false,
-          shift: false,
-          eventType: "press",
-          name: "return",
-          sequence: "\r",
-          repeated: press > 0,
-          stopPropagation: () => {},
-          preventDefault: () => {},
-        } as any);
-      }
-      await testSetup!.renderOnce();
-    });
+    await tui.emitKeypress([
+      { name: "return", sequence: "\r" },
+      { name: "return", sequence: "\r", repeated: true },
+    ]);
 
     expect(requests).toHaveLength(1);
     releaseResponse();
@@ -359,17 +337,17 @@ describe("CommandBar AI assist", () => {
     });
     const editQuery = async (keys: string[]) => {
       await act(async () => {
-        for (const key of keys) testSetup!.mockInput.pressKey(key);
-        await testSetup!.renderOnce();
+        for (const key of keys) tui.setup().mockInput.pressKey(key);
+        await tui.setup().renderOnce();
       });
     };
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="new chat pane" />,
       { width: 120, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await waitForRequest(requests);
 
     // A second space while the ask is out: the answer lands on the text now in
@@ -397,13 +375,13 @@ describe("CommandBar AI assist", () => {
     signInVerified();
     const requests = mockAssistTransport(() => jsonResponse({ error: "assist-unavailable" }, 503));
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="show me the newest filings" />,
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Ask AI");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Ask AI");
 
     const frame = await waitForFrameWithout("Ask AI");
     expect(requests).toHaveLength(1);
@@ -414,7 +392,7 @@ describe("CommandBar AI assist", () => {
     const requests = mockAssistTransport(() => jsonResponse({ candidates: [] }));
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="new chat pane"
         configurePluginRegistry={configureEarningsRegistry(created)}
@@ -422,15 +400,15 @@ describe("CommandBar AI assist", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Ask AI — sign up to enable");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Ask AI — sign up to enable");
 
-    await settleFrame(testSetup, 700);
+    await settleFrame(tui.setup(), 700);
     expect(requests).toEqual([]);
 
     // The offer sits under the list and never takes the Enter that belongs to
     // the local match the user was already looking at.
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
   });
 });
@@ -442,8 +420,7 @@ describe("CommandBar search report", () => {
 
   /** Lets a deferred report, or one the bar should not have sent, reach the transport. */
   async function closeAndSettle(): Promise<void> {
-    testSetup!.renderer.destroy();
-    testSetup = undefined;
+    await tui.destroy();
     await Bun.sleep(20);
   }
 
@@ -457,7 +434,7 @@ describe("CommandBar search report", () => {
     }, reports);
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="new chat pane"
         configurePluginRegistry={configureEarningsRegistry(created)}
@@ -465,12 +442,12 @@ describe("CommandBar search report", () => {
       { width: 120, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
     // With the Usage setting on, the ask opts in to being kept.
     expect(asks).toEqual([expect.objectContaining({ query: "new chat pane", log: true })]);
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
     await waitForReports(reports);
     expect(reports).toEqual([{
@@ -490,8 +467,8 @@ describe("CommandBar search report", () => {
 
     // The bar stays open in this harness: running again, pressing Esc and
     // finally closing it add nothing to the one report.
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "escape" });
     await closeAndSettle();
     expect(reports).toHaveLength(1);
   });
@@ -502,11 +479,11 @@ describe("CommandBar search report", () => {
     // Never answers: nothing on screen describes this query yet.
     const requests = mockAssistTransport(() => new Promise<Response>(() => {}), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="MSFT" />, { width: 120, height: 20 });
+    await tui.render(<CommandBarHarness query="MSFT" />, { width: 120, height: 20 });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await waitForRequest(requests);
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForReports(reports);
     expect(reports).toEqual([{
       query: "MSFT",
@@ -522,12 +499,12 @@ describe("CommandBar search report", () => {
     const requests = mockAssistTransport(() => jsonResponse(generalAnswer), reports);
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="ERN" configurePluginRegistry={configureEarningsRegistry(created)} />,
       { width: 100, height: 20 },
     );
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForReports(reports);
     expect(reports).toEqual([{
       query: "ERN",
@@ -539,9 +516,9 @@ describe("CommandBar search report", () => {
 
     // "DES MSFT" lists tickers; the one picked is a ticker row, not the text.
     reports.length = 0;
-    testSetup = await testRender(<CommandBarHarness query="DES MSFT" />, { width: 100, height: 20 });
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.render(<CommandBarHarness query="DES MSFT" />, { width: 100, height: 20 });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForReports(reports);
     expect(reports[0]?.choice).toMatchObject({ kind: "ticker", label: "MSFT", rank: 0 });
     expect(reports[0]?.choice).not.toHaveProperty("input");
@@ -554,15 +531,15 @@ describe("CommandBar search report", () => {
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse({ ...generalAnswer, searchId: "search-2" }), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="new chat pan" live />, { width: 120, height: 20 });
+    await tui.render(<CommandBarHarness query="new chat pan" live />, { width: 120, height: 20 });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await typeKeys(["e"]);
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.emitKeypress({ name: "escape" });
     await waitForFrameToContain("Search or run a command");
     await waitForReports(reports);
-    await settleFrame(testSetup);
+    await settleFrame(tui.setup());
     expect(reports).toEqual([{
       query: "new chat pane",
       searchId: "search-2",
@@ -576,17 +553,17 @@ describe("CommandBar search report", () => {
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse({ candidates: [], searchId: "search-empty" }), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="new chat pan" live />, { width: 120, height: 20 });
+    await tui.render(<CommandBarHarness query="new chat pan" live />, { width: 120, height: 20 });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await typeKeys(["e"]);
     // Enter on "Thinking…" asks now; the answer has nothing to run.
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForFrameToContain("No command found", ASSIST_WAIT_ATTEMPTS);
     // The first Esc takes the answer off screen, the second closes the bar.
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.emitKeypress({ name: "escape" });
     await waitForFrameWithout("No command found");
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.emitKeypress({ name: "escape" });
     await waitForReports(reports);
     expect(reports).toEqual([{
       query: "new chat pane",
@@ -602,12 +579,12 @@ describe("CommandBar search report", () => {
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
     // A menu opens the bar on "HELP"; closing it again is not a search.
-    testSetup = await testRender(<CommandBarHarness query="HELP" live />, { width: 100, height: 20 });
+    await tui.render(<CommandBarHarness query="HELP" live />, { width: 100, height: 20 });
 
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "escape" });
     await waitForFrameToContain("Search or run a command");
-    await settleFrame(testSetup, 50);
+    await settleFrame(tui.setup(), 50);
     expect(reports).toEqual([]);
   });
 
@@ -622,20 +599,20 @@ describe("CommandBar search report", () => {
         .createPaneFromTemplateAsync = () => new Promise<void>(() => {});
     };
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="" live configurePluginRegistry={hangPaneCreation} />,
       { width: 100, height: 20 },
     );
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await typeKeys(["a", "b", "c"]);
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.emitKeypress({ name: "escape" });
     await waitForFrameToContain("Search or run a command");
     await closeAndSettle();
     expect(reports).toEqual([]);
 
     // A key bound to "ERN" opens the bar and runs it.
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="ERN"
         live
@@ -647,9 +624,9 @@ describe("CommandBar search report", () => {
       />,
       { width: 100, height: 20 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await typeKeys(["x"]);
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.emitKeypress({ name: "escape" });
     await waitForFrameToContain("Search or run a command");
     await closeAndSettle();
     expect(reports).toEqual([]);
@@ -660,12 +637,12 @@ describe("CommandBar search report", () => {
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="" live />, { width: 100, height: 20 });
+    await tui.render(<CommandBarHarness query="" live />, { width: 100, height: 20 });
 
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "escape" });
     await waitForFrameToContain("Search or run a command");
-    await settleFrame(testSetup, 50);
+    await settleFrame(tui.setup(), 50);
     expect(reports).toEqual([]);
   });
 
@@ -674,19 +651,19 @@ describe("CommandBar search report", () => {
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="DES" live />, { width: 100, height: 20 });
+    await tui.render(<CommandBarHarness query="DES" live />, { width: 100, height: 20 });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     // Tab opens ticker search; the ticker is typed there, not in the root query.
-    await emitKeypress(testSetup, { name: "tab" });
+    await tui.emitKeypress({ name: "tab" });
     await typeKeys(["M", "S", "F", "T"]);
     await waitForFrameToContain("NASDAQ MSFT");
-    await settleFrame(testSetup, 50);
+    await settleFrame(tui.setup(), 50);
     expect(reports).toEqual([]);
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForReports(reports);
-    await settleFrame(testSetup, 50);
+    await settleFrame(tui.setup(), 50);
     expect(reports).toEqual([{
       query: "DES",
       outcome: "chosen",
@@ -701,10 +678,10 @@ describe("CommandBar search report", () => {
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="QQ" live />, { width: 100, height: 24 });
+    await tui.render(<CommandBarHarness query="QQ" live />, { width: 100, height: 24 });
 
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "tab" });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "tab" });
     await waitForFrameToContain("Quote Tickers");
     await typeKeys(["N", "V", "D", "A"]);
     await waitForFrameToContain("NVDA");
@@ -723,17 +700,17 @@ describe("CommandBar search report", () => {
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="QQ" live />, { width: 100, height: 24 });
+    await tui.render(<CommandBarHarness query="QQ" live />, { width: 100, height: 24 });
 
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForFrameToContain("Quote Tickers");
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.emitKeypress({ name: "escape" });
     await waitForFrameWithout("Quote Tickers");
     await typeKeys(["BACKSPACE"]);
-    await emitKeypress(testSetup, { name: "escape" });
+    await tui.emitKeypress({ name: "escape" });
     await waitForReports(reports);
-    await settleFrame(testSetup, 50);
+    await settleFrame(tui.setup(), 50);
     expect(reports).toEqual([{ query: "Q", outcome: "dismissed", appVersion: VERSION }]);
   });
 
@@ -742,16 +719,16 @@ describe("CommandBar search report", () => {
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="Change Theme" live />, { width: 100, height: 24 });
+    await tui.render(<CommandBarHarness query="Change Theme" live />, { width: 100, height: 24 });
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     // The row writes "TH " into the bar; the search goes on from there.
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await typeKeys(["d", "r", "a", "c"]);
     await waitForFrameToContain("Dracula");
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForReports(reports);
-    await settleFrame(testSetup, 50);
+    await settleFrame(tui.setup(), 50);
     expect(reports).toEqual([{
       query: "TH drac",
       outcome: "chosen",
@@ -774,13 +751,13 @@ describe("CommandBar search report", () => {
     const actions: AppAction[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="Usage Counts" live onAction={(action) => actions.push(action)} />,
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForFrameToContain("Search or run a command");
     await closeAndSettle();
     expect(actions).toContainEqual(expect.objectContaining({
@@ -802,15 +779,15 @@ describe("CommandBar search report", () => {
         .createPaneFromTemplateAsync = () => new Promise<void>(() => {});
     };
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="ERN" live onAction={(action) => actions.push(action)} configurePluginRegistry={holdPaneCreation} />,
       { width: 100, height: 20 },
     );
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await typeKeys(["BACKSPACE", "BACKSPACE", "BACKSPACE", ..."Usage Counts".split("")]);
     await waitForFrameToContain("Usage Counts");
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await closeAndSettle();
 
     expect(actions).toContainEqual(expect.objectContaining({
@@ -826,18 +803,18 @@ describe("CommandBar search report", () => {
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
     let dispatch: ((action: AppAction) => void) | undefined;
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="" live onDispatch={(next) => { dispatch = next; }} />,
       { width: 100, height: 20 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await typeKeys(["n", "v"]);
     await act(async () => {
       dispatch?.({ type: "SET_COMMAND_BAR", open: true, query: "Reset All Data" });
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    await settleFrame(testSetup);
-    await emitKeypress(testSetup, { name: "escape" });
+    await settleFrame(tui.setup());
+    await tui.emitKeypress({ name: "escape" });
     await closeAndSettle();
 
     expect(reports).toEqual([]);
@@ -853,7 +830,7 @@ describe("CommandBar search report", () => {
     }, reports);
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="new chat pane"
         configureConfig={(config) => ({ ...config, telemetry: { usage: false } })}
@@ -862,12 +839,12 @@ describe("CommandBar search report", () => {
       { width: 120, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
     expect(asks).toEqual([expect.objectContaining({ query: "new chat pane" })]);
     expect(asks[0]).toMatchObject({ log: false });
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
     await closeAndSettle();
     expect(reports).toEqual([]);
@@ -885,19 +862,19 @@ describe("CommandBar search report", () => {
 
     // Remote control opens the bar on this text.
     await runAutomated(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <CommandBarHarness query="new chat pane" configurePluginRegistry={configureEarningsRegistry(created)} />,
         { width: 120, height: 20 },
       );
-      await testSetup.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
     expect(asks[0]).toMatchObject({ log: false });
 
     // Running its answer is still not the user's search.
-    await emitKeypress(testSetup!, { name: "return", sequence: "\r" });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
-    await settleFrame(testSetup!, 50);
+    await settleFrame(tui.setup(), 50);
     expect(reports).toEqual([]);
 
     // Once the user edits it, the question is theirs.
@@ -910,11 +887,11 @@ describe("CommandBar search report", () => {
     const reports: unknown[] = [];
     const requests = mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    testSetup = await testRender(<CommandBarHarness query="DES MSFT" live />, { width: 100, height: 20 });
+    await tui.render(<CommandBarHarness query="DES MSFT" live />, { width: 100, height: 20 });
 
-    await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    await settleFrame(testSetup, 50);
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
+    await settleFrame(tui.setup(), 50);
     expect(requests).toEqual([]);
     expect(reports).toEqual([]);
   });

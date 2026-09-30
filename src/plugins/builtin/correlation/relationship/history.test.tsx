@@ -1,7 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import { ApiRequestError } from "../../../../api-client/errors";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../../state/app/context";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
@@ -10,8 +10,7 @@ import type { PricePoint } from "../../../../types/financials";
 import { useRelationshipHistories } from "./history";
 import type { RelationshipRange } from "./model";
 
-let setup: Awaited<ReturnType<typeof testRender>>;
-afterEach(async () => { await act(async () => { setup?.renderer.destroy(); }); });
+const tui = createOpenTuiTestHarness();
 
 test("relationship refresh retains a coherent dated pair on outages, discards denied data, and isolates new windows", async () => {
   const values = [100, 110, 105, 112, 104, 115, 120].map((close, i) => ({ date: new Date(Date.UTC(2026, 8, i + 1)), close }));
@@ -39,7 +38,7 @@ test("relationship refresh retains a coherent dated pair on outages, discards de
     return null;
   }
   await act(async () => {
-    setup = await testRender(<TestPaneProvider state={state} paneId="pair" pluginId="market-overview" runtime={runtime}><Probe /></TestPaneProvider>, { width: 20, height: 5 });
+    await tui.render(<TestPaneProvider state={state} paneId="pair" pluginId="market-overview" runtime={runtime}><Probe /></TestPaneProvider>, { width: 20, height: 5 });
   });
   const first = resource.data;
   const retrieved = resource.updatedAt;

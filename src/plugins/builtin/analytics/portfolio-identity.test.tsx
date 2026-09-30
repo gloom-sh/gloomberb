@@ -1,6 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useReducer, useState, type ReactElement } from "react";
-import { emitKeypress, settleFrame, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
@@ -29,7 +29,7 @@ import { createTestTicker } from "../../../test-support/ticker";
 
 const paneId = "analytics:identity";
 const AnalyticsPane = portfolioAnalyticsModule.panes![0]!.component as (props: PaneProps) => ReactElement;
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let latestState: ReturnType<typeof createInitialState>;
 const restore: Array<() => void> = [];
 
@@ -94,12 +94,11 @@ function Harness({ f, portfolio = "a", cached = new Map(), profile = false, view
 
 async function render(f: ReturnType<typeof fixture>, portfolio = "a", cached = new Map<string, TickerFinancials>(), profile = false, view?: "portfolio-list" | "kelly-sizer") {
   setSharedMarketDataCoordinator(f.coordinator);
-  await act(async () => { setup = await testRender(<Harness f={f} portfolio={portfolio} cached={cached} profile={profile} view={view} />, { width: 80, height: profile ? 40 : 32 }); });
-  await settleFrame(setup!, 20);
+  await act(async () => { await tui.render(<Harness f={f} portfolio={portfolio} cached={cached} profile={profile} view={view} />, { width: 80, height: profile ? 40 : 32 }); });
+  await settleFrame(tui.setup(), 20);
 }
 
-afterEach(async () => {
-  if (setup) { await act(async () => setup!.renderer.destroy()); setup = undefined; }
+afterEach(() => {
   while (restore.length) restore.pop()!();
   setSharedMarketDataCoordinator(null);
 });
@@ -149,10 +148,10 @@ test("actual analytics account switching changes quote, sector denominator and h
   const readChart = spyOn(f.coordinator, "getChartEntry"); restore.push(() => readChart.mockRestore());
   await render(f);
   expect(latestState.paneState[paneId]?.portfolioId).toBe("a");
-  expect(setup!.captureCharFrame()).toContain("33.3%");
-  await act(async () => { setup!.mockInput.pressArrow("right"); await setup!.renderOnce(); }); await settleFrame(setup!, 20);
+  expect(tui.frame()).toContain("33.3%");
+  await act(async () => { tui.setup().mockInput.pressArrow("right"); await tui.setup().renderOnce(); }); await settleFrame(tui.setup(), 20);
   expect(latestState.paneState[paneId]?.portfolioId).toBe("b");
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toMatch(/Val +4\.0k/);
   expect(frame).toMatch(/P&L +\+800\.00/);
   expect(frame).toContain("Technology                50.0%       2.0k");
@@ -164,12 +163,12 @@ test("actual analytics account switching changes quote, sector denominator and h
 for (const portfolioId of ["a", "b"]) test(`actual analytics ${portfolioId} rejects the other account's symbol cache and recovers scoped quote`, async () => {
   const f = fixture(false, portfolioId), otherPrice = portfolioId === "a" ? 200 : 100;
   await render(f, portfolioId, new Map([["ACME", financials("ACME", otherPrice)]]));
-  expect(setup!.captureCharFrame()).toContain(portfolioId === "a" ? "33.3%" : "50.0%");
+  expect(tui.frame()).toContain(portfolioId === "a" ? "33.3%" : "50.0%");
   const ticker = f.tickers.get("ACME")!;
   await act(async () => f.coordinator.primeCachedFinancials([{ instrument: instrumentFromTicker(ticker, "ACME", { portfolioId })!, financials: financials("ACME", 300) }]));
-  await settleFrame(setup!, 20);
-  expect(setup!.captureCharFrame()).toContain("60.0%");
-  expect(setup!.captureCharFrame()).toMatch(/Val +5\.0k/);
+  await settleFrame(tui.setup(), 20);
+  expect(tui.frame()).toContain("60.0%");
+  expect(tui.frame()).toMatch(/Val +5\.0k/);
 });
 
 test("actual shared-portfolio preview uses its selected quote and history contracts", async () => {
@@ -200,15 +199,15 @@ test("unresolved selected contract skips market requests, keeps its own mark and
   const quotes = spyOn(f.coordinator, "getTickerFinancialsSync"), charts = spyOn(f.coordinator, "getChartEntry");
   restore.push(() => quotes.mockRestore(), () => charts.mockRestore());
   await render(f, "b", new Map([["ACME", financials("ACME", 999)]]));
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Technology                50.0%       2.0k");
   // The basket estimates read "—" and the footer warning names the holding they wait on.
   expect(frame).toMatch(/Est\. Sharpe +—/);
-  await emitKeypress(setup!, { name: "!", sequence: "!", shift: true }, { trackPropagation: true });
-  await settleFrame(setup!, 4);
-  expect(setup!.captureCharFrame()).toContain("Broker contract unavailable for ACME");
-  await emitKeypress(setup!, { name: "escape" }, { trackPropagation: true });
-  await settleFrame(setup!, 4);
+  await tui.emitKeypress({ name: "!", sequence: "!", shift: true }, { trackPropagation: true });
+  await settleFrame(tui.setup(), 4);
+  expect(tui.frame()).toContain("Broker contract unavailable for ACME");
+  await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
+  await settleFrame(tui.setup(), 4);
   expect(quotes.mock.calls.filter(([request]) => request.symbol === "ACME")).toEqual([]);
   expect(charts.mock.calls.filter(([request]) => request.instrument.symbol === "ACME")).toEqual([]);
   const targets = buildPortfolioChartTargets([...f.tickers.values()], { portfolioId: "b" });
@@ -251,22 +250,22 @@ for (const startBlocked of [false, true]) test(`actual financial-map hook invali
     const map = useTickerFinancialsMap([ticker], { portfolioId: "b" });
     return <Text>{String(map.get("ACME")?.quote?.price ?? "unavailable")}</Text>;
   }
-  await act(async () => { setup = await testRender(<HookHarness />, { width: 30, height: 3 }); }); await settleFrame(setup!, 20);
-  expect(setup!.captureCharFrame()).toContain(startBlocked ? "unavailable" : "100");
-  await act(async () => replace(make(!startBlocked))); await settleFrame(setup!, 20);
-  expect(setup!.captureCharFrame()).toContain(startBlocked ? "100" : "unavailable");
+  await act(async () => { await tui.render(<HookHarness />, { width: 30, height: 3 }); }); await settleFrame(tui.setup(), 20);
+  expect(tui.frame()).toContain(startBlocked ? "unavailable" : "100");
+  await act(async () => replace(make(!startBlocked))); await settleFrame(tui.setup(), 20);
+  expect(tui.frame()).toContain(startBlocked ? "100" : "unavailable");
 });
 
 test("actual PF rejects another account's symbol-only quote on a scoped cache miss", async () => {
   const f = fixture(false, "b");
   await render(f, "b", new Map([["ACME", financials("ACME", 999)]]), false, "portfolio-list");
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("2.0k"); expect(frame).toContain("50.00%"); expect(frame).not.toContain("10.0k");
 });
 
 test("actual Kelly uses scoped bankroll, current holding and price without research quote overriding them", async () => {
   await render(fixture(), "b", new Map([["ACME", financials("ACME", 999)]]), false, "kelly-sizer");
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toMatch(/Bankroll\s+4000\s+USD\s+Current\s+2000\s+USD/);
   expect(frame).toContain("$200.00"); expect(frame).toMatch(/Current %\s+50\.0%/);
   expect(frame).not.toContain("$999.00");
@@ -279,6 +278,6 @@ test("Kelly price label retains the scoped quote currency instead of the other a
   const scoped = financials("ACME", 200); scoped.quote!.currency = "EUR";
   f.coordinator.primeCachedFinancials([{ instrument: instrumentFromTicker(ticker, "ACME", { portfolioId: "b" })!, financials: scoped }]);
   await render(f, "b", new Map(), false, "kelly-sizer");
-  expect(setup!.captureCharFrame()).toContain("€200.00");
-  expect(setup!.captureCharFrame()).not.toContain("$200.00");
+  expect(tui.frame()).toContain("€200.00");
+  expect(tui.frame()).not.toContain("$200.00");
 });

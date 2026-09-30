@@ -1,17 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { createTestControls, testRender } from "../../../renderers/opentui/test-utils";
+import { describe, expect, test } from "bun:test";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { TickerBadgeText } from "./text";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-const { clickFrameText } = createTestControls(() => testSetup!);
-
-afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-});
+const tui = createOpenTuiTestHarness();
+const { clickFrameText } = tui;
 
 function makeCatalogEntry(overrides?: Partial<InlineTickerCatalogEntry>): InlineTickerCatalogEntry {
   return {
@@ -31,7 +24,7 @@ function makeCatalogEntry(overrides?: Partial<InlineTickerCatalogEntry>): Inline
 
 describe("TickerBadgeText", () => {
   test("falls back to the raw token when resolution failed", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <TickerBadgeText
         text="Watching $TSLA now"
         lineWidth={40}
@@ -42,16 +35,16 @@ describe("TickerBadgeText", () => {
       { width: 40, height: 4 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("$TSLA");
     expect(frame).not.toContain("TSLA -5.0%");
   });
 
   test("opens the Ticker Research pane when a badge is clicked", async () => {
     const opened: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <TickerBadgeText
         text="Watching $TSLA now"
         lineWidth={40}
@@ -62,7 +55,7 @@ describe("TickerBadgeText", () => {
       { width: 40, height: 4 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await clickFrameText("TSLA -5.0%");
 
@@ -71,7 +64,7 @@ describe("TickerBadgeText", () => {
 
   test("renders usernames as clickable tags when a username opener is provided", async () => {
     const opened: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <TickerBadgeText
         text="Watching @markets and $TSLA"
         lineWidth={60}
@@ -83,7 +76,7 @@ describe("TickerBadgeText", () => {
       { width: 60, height: 4 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await clickFrameText("@markets");
 
@@ -91,7 +84,7 @@ describe("TickerBadgeText", () => {
   });
 
   test("wraps long text chunks at word boundaries", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <TickerBadgeText
         text="Demand/supply unit economics move with ASML orders"
         lineWidth={18}
@@ -102,16 +95,16 @@ describe("TickerBadgeText", () => {
       { width: 20, height: 5 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Demand/supply");
     expect(frame).toContain("economics");
     expect(frame.split("\n").filter((line) => line.trim()).length).toBeGreaterThan(1);
   });
 
   test("renders hard line breaks as separate rows", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <TickerBadgeText
         text={"First $TSLA line\nSecond line"}
         lineWidth={60}
@@ -122,9 +115,9 @@ describe("TickerBadgeText", () => {
       { width: 60, height: 5 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const lines = testSetup.captureCharFrame().split("\n");
+    const lines = tui.frame().split("\n");
     const firstRow = lines.findIndex((line) => line.includes("First"));
     const secondRow = lines.findIndex((line) => line.includes("Second line"));
 
@@ -135,7 +128,7 @@ describe("TickerBadgeText", () => {
 
   test("opens detected links without trailing punctuation when clicked", async () => {
     const opened: string[] = [];
-    testSetup = await testRender(
+    await tui.render(
       <TickerBadgeText
         text="Read https://example.com/story."
         lineWidth={60}
@@ -147,7 +140,7 @@ describe("TickerBadgeText", () => {
       { width: 60, height: 4 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await clickFrameText("https://example.com/story");
 

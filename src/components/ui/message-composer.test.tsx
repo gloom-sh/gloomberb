@@ -1,17 +1,10 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useRef, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { type TextareaRenderable } from "../../ui";
 import { MessageComposer } from "./message-composer";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-});
+const tui = createOpenTuiTestHarness();
 
 test("renders a terminal prefix, focuses on click, types, and submits", async () => {
   let focusRequests = 0;
@@ -43,38 +36,28 @@ test("renders a terminal prefix, focuses on click, types, and submits", async ()
   }
 
   await act(async () => {
-    testSetup = await testRender(<Harness />, { width: 32, height: 3 });
+    await tui.render(<Harness />, { width: 32, height: 3 });
   });
 
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 
-  const initialLines = testSetup.captureCharFrame().split("\n");
-  const inputRow = initialLines.findIndex((line) => line.includes("Say something..."));
-  const inputCol = initialLines[inputRow]?.indexOf("Say something...") ?? -1;
-
-  expect(inputRow).toBeGreaterThanOrEqual(0);
-  expect(inputCol).toBeGreaterThanOrEqual(0);
-  expect(initialLines[inputRow]).toContain("> Say something...");
-
-  await act(async () => {
-    await testSetup!.mockMouse.click(inputCol + 1, inputRow);
-    await testSetup!.renderOnce();
-  });
+  expect(tui.frame()).toContain("> Say something...");
+  await tui.clickFrameText("Say something...");
 
   expect(focusRequests).toBe(1);
 
   await act(async () => {
-    await testSetup!.mockInput.typeText("hello");
-    await testSetup!.renderOnce();
+    await tui.setup().mockInput.typeText("hello");
+    await tui.setup().renderOnce();
   });
 
-  expect(testSetup.captureCharFrame()).toContain("> hello");
+  expect(tui.frame()).toContain("> hello");
 
   await act(async () => {
-    testSetup!.mockInput.pressEnter();
-    await testSetup!.renderOnce();
+    tui.setup().mockInput.pressEnter();
+    await tui.setup().renderOnce();
   });
 
   expect(submitted).toBe("hello");

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useEffect, useMemo, useState } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { blockExternalNetwork } from "../../../test-support/network-guard";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -16,7 +16,7 @@ import { list, report } from "./test-fixtures";
 blockExternalNetwork();
 
 const PANE_ID = "risk-factors:test";
-let setup: Awaited<ReturnType<typeof testRender>> | null = null;
+const tui = createOpenTuiTestHarness();
 let requests: string[] = [];
 let opened: string[] = [];
 let selectTicker: (symbol: string) => void;
@@ -66,19 +66,17 @@ async function settle() {
   for (let i = 0; i < 8; i++) {
     await act(async () => {
       await Bun.sleep(5);
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
 
 async function mount() {
-  await act(async () => { setup = await testRender(<Harness />, { width: 100, height: 24 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 100, height: 24 }); });
   await settle();
 }
 
-function frame() {
-  return setup!.captureCharFrame();
-}
+const frame = tui.frame;
 
 function transport(respond: (path: string) => Promise<Response> | Response) {
   setCloudApiFetchTransport((async (input: RequestInfo | URL) => {
@@ -94,18 +92,16 @@ async function click(label: string) {
   const rows = frame().split("\n");
   const y = rows.findIndex((row) => row.includes(label));
   expect(y).toBeGreaterThanOrEqual(0);
-  await act(async () => setup!.mockMouse.click(rows[y]!.indexOf(label) + 2, y));
+  await act(async () => tui.setup().mockMouse.click(rows[y]!.indexOf(label) + 2, y));
   await settle();
 }
 
 async function key(value: string) {
-  await act(async () => setup!.mockInput.pressKey(value));
+  await act(async () => tui.setup().mockInput.pressKey(value));
   await settle();
 }
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = null;
+afterEach(() => {
   resetRiskFactorsPersistence();
   setCloudApiFetchTransport(null);
   apiClient.dispose();

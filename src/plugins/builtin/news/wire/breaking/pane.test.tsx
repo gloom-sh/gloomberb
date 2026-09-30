@@ -4,7 +4,7 @@ import { PaneFooterBar, PaneFooterProvider } from "../../../../../components/lay
 import type { NewsService } from "../../../../../news/aggregator";
 import { setSharedNewsService } from "../../../../../news/hooks";
 import type { NewsArticle, NewsQueryState } from "../../../../../news/types";
-import { testRender } from "../../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../../../types/config";
@@ -15,7 +15,7 @@ import { createTestArticle } from "../../../../../test-support/news";
 
 const PANE_ID = "news-breaking:test";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 function makeArticle(): NewsArticle {
   return createTestArticle("story-1", {
@@ -94,14 +94,8 @@ function createHarness() {
   );
 }
 
-afterEach(async () => {
+afterEach(() => {
   setSharedNewsService(null);
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
 });
 
 describe("BreakingPane", () => {
@@ -110,10 +104,10 @@ describe("BreakingPane", () => {
     setSharedNewsService(newsService.service);
 
     await act(async () => {
-      testSetup = await testRender(createHarness(), { width: 90, height: 18 });
+      await tui.render(createHarness(), { width: 90, height: 18 });
       await Bun.sleep(20);
-      await testSetup.renderOnce();
-      await testSetup.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(newsService.getQueryStateCalls()).toBeGreaterThan(0);

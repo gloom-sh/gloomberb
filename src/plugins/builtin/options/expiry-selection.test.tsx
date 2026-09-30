@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { CachedQuery } from "../../../data/cached-query";
 import type { DataProvider } from "../../../types/data-provider";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -18,17 +18,15 @@ import { draftFromParams } from "../options-calculator/model";
 const PANE_ID = "options:expiry-selection";
 const EXPIRIES = [Date.UTC(2026, 8, 18), Date.UTC(2026, 9, 16), Date.UTC(2026, 10, 20)].map((ms) => ms / 1000);
 const EXPIRY_CODES = ["260918", "261016", "261120"];
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const realNow = Date.now;
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
   Date.now = realNow;
 });
 
-const { settle, key, capture: captureLaunch } = createOptionsControls(() => setup!);
+const { settle, key, capture: captureLaunch } = createOptionsControls(() => tui.setup());
 
 async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?: number) {
   let now = Date.UTC(2026, 8, 17, 16);
@@ -122,7 +120,7 @@ async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?:
       {(body) => <OptionsView {...body} focused />}
     </TestPaneFrame>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height: 18 }); });
+  await act(async () => { await tui.render(<Harness />, { width, height: 18 }); });
   await settle();
   async function capture(label: string) {
     return { ...await captureLaunch(PANE_ID, `${label}.csv`, launches), requests: [...requests] };
@@ -151,8 +149,7 @@ async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?:
       }); await settle();
     },
     async remount() {
-      await act(async () => setup!.renderer.destroy());
-      await act(async () => { setup = await testRender(<Harness />, { width, height: 18 }); }); await settle();
+      await act(async () => { await tui.render(<Harness />, { width, height: 18 }); }); await settle();
     },
     setWrongExpiry: (expiration: number | undefined) => { wrongExpiry = expiration; },
     async switchUnderlying() {

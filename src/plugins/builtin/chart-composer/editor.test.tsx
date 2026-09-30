@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { useShortcut } from "../../../react/input";
 import { Input, type InputRenderable } from "../../../ui";
 import { SeriesEditorDialog } from "./editor";
@@ -11,40 +11,21 @@ import {
   parseSeriesExpression,
 } from "./presets";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 async function emitKey(
   name: string,
   sequence: string,
   overrides: Partial<{ shift: boolean }> = {},
 ) {
-  await emitKeypress(testSetup!, { name, sequence, shift: overrides.shift ?? false }, { trackPropagation: true });
+  await tui.emitKeypress({ name, sequence, shift: overrides.shift ?? false }, { trackPropagation: true });
 }
 
-async function waitForFrameToContain(text: string, attempts = 12): Promise<string> {
-  let frame = "";
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await act(async () => {
-      await Bun.sleep(10);
-      await testSetup!.renderOnce();
-    });
-    frame = testSetup!.captureCharFrame();
-    if (frame.includes(text)) return frame;
-  }
-  return frame;
-}
-
-afterEach(async () => {
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
-});
+const { waitForFrameToContain } = tui;
 
 describe("chart composer series editor", () => {
   test("focuses its catalog quick-add outside the app-state root", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <SeriesEditorDialog
         dialogId="series-editor-test"
         initialSpec={buildPriceChartPreset("AAPL")}
@@ -55,25 +36,25 @@ describe("chart composer series editor", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Add a series");
     expect(frame).toContain("AAPL:market.ohlcv");
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("MSFT revenue");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("MSFT revenue");
+      await tui.setup().renderOnce();
     });
 
-    expect(await waitForFrameToContain("MSFT · Revenue")).toContain("MSFT · Revenue");
+    await waitForFrameToContain("MSFT · Revenue");
 
     await emitKey("enter", "\r");
     await emitKey("a", "a");
     await act(async () => {
       await Bun.sleep(80);
-      await testSetup!.mockInput.typeText("AAPL free cash flow");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("AAPL free cash flow");
+      await tui.setup().renderOnce();
     });
 
     const secondAddFrame = await waitForFrameToContain("AAPL · Free Cash Flow");
@@ -84,7 +65,7 @@ describe("chart composer series editor", () => {
 
   test("keeps the final series when removal is requested", async () => {
     let resolved = undefined as ReturnType<typeof buildPriceChartPreset> | null | undefined;
-    testSetup = await testRender(
+    await tui.render(
       <SeriesEditorDialog
         dialogId="series-editor-last-series-test"
         initialSpec={buildPriceChartPreset("AAPL")}
@@ -97,9 +78,9 @@ describe("chart composer series editor", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     const rows = frame.split("\n");
     const actionRow = rows.findIndex((line) => line.includes("Remove") && line.includes("Save"));
     expect(actionRow).toBeGreaterThan(0);
@@ -109,9 +90,9 @@ describe("chart composer series editor", () => {
     expect(saveColumn).toBeGreaterThan(removeColumn);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(removeColumn, actionRow);
-      await testSetup!.mockMouse.click(saveColumn, actionRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(removeColumn, actionRow);
+      await tui.setup().mockMouse.click(saveColumn, actionRow);
+      await tui.setup().renderOnce();
     });
 
     expect(resolved?.series).toHaveLength(1);
@@ -123,7 +104,7 @@ describe("chart composer series editor", () => {
 
   test("edits financial timing independently from style", async () => {
     let resolved: ReturnType<typeof buildFundamentalChartPreset> | null | undefined;
-    testSetup = await testRender(
+    await tui.render(
       <SeriesEditorDialog
         dialogId="series-editor-timing-test"
         initialSpec={buildFundamentalChartPreset(["AAPL"])}
@@ -136,9 +117,9 @@ describe("chart composer series editor", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    const rows = testSetup.captureCharFrame().split("\n");
+    const rows = tui.frame().split("\n");
     const timingLabelRow = rows.findIndex((line) => line.includes("Timing"));
     const timingRow = timingLabelRow + 1;
     const availableColumn = rows[timingRow]?.indexOf("Available Date") ?? -1;
@@ -154,16 +135,16 @@ describe("chart composer series editor", () => {
     expect(saveColumn).toBeGreaterThan(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(availableColumn + 1, timingRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(availableColumn + 1, timingRow);
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockMouse.click(lineColumn + 1, styleRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(lineColumn + 1, styleRow);
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockMouse.click(saveColumn + 1, actionRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(saveColumn + 1, actionRow);
+      await tui.setup().renderOnce();
     });
 
     expect(resolved?.series[0]).toMatchObject({
@@ -174,7 +155,7 @@ describe("chart composer series editor", () => {
 
   test("dismisses the editor from the initially focused quick-add with Escape", async () => {
     let resolved: ReturnType<typeof buildPriceChartPreset> | null | undefined;
-    testSetup = await testRender(
+    await tui.render(
       <SeriesEditorDialog
         dialogId="series-editor-escape-test"
         initialSpec={buildPriceChartPreset("AAPL")}
@@ -187,7 +168,7 @@ describe("chart composer series editor", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await emitKey("escape", "\u001b");
     expect(resolved).toBeNull();
@@ -198,7 +179,7 @@ describe("chart composer series editor", () => {
       buildPriceChartPreset("AAPL"),
       parseSeriesExpression("MSFT")!,
     ).spec;
-    testSetup = await testRender(
+    await tui.render(
       <SeriesEditorDialog
         dialogId="series-editor-focus-order-test"
         initialSpec={initialSpec}
@@ -209,11 +190,11 @@ describe("chart composer series editor", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.mockInput.typeText("revenue");
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().mockInput.typeText("revenue");
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("› Add a series");
+    expect(tui.frame()).toContain("› Add a series");
 
     await emitKey("tab", "\t");
     await emitKey("down", "\u001b[B");
@@ -226,16 +207,16 @@ describe("chart composer series editor", () => {
     await emitKey("tab", "\t", { shift: true });
     await emitKey("tab", "\t", { shift: true });
     await act(async () => {
-      await testSetup!.mockInput.typeText("x");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("x");
+      await tui.setup().renderOnce();
     });
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("› Add a series");
     expect(frame).toContain("revenuex");
   });
 
   test("contains editor fields within a narrow terminal", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <SeriesEditorDialog
         dialogId="series-editor-narrow-test"
         initialSpec={buildPriceChartPreset("AAPL")}
@@ -246,11 +227,11 @@ describe("chart composer series editor", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     const contentWidth = 60 - 8;
-    const overflowRows = testSetup.captureCharFrame()
+    const overflowRows = tui.frame()
       .split("\n")
       .map((row) => row.trimEnd())
       .filter((row) => row.length > contentWidth);
@@ -271,11 +252,11 @@ describe("chart composer series editor", () => {
           dismiss={() => {}} resolve={(next) => { resolved = next; }} />
       </>;
     }
-    testSetup = await testRender(<Harness />, { width: 92, height: 48 });
+    await tui.render(<Harness />, { width: 92, height: 48 });
     for (let index = 0; index < 4; index += 1) await emitKey("tab", "\t");
     // The full terminal can still identify an underlying input as its focused
     // editor after the dialog has moved its own logical focus to a selector.
-    await act(async () => { background!.focus(); await testSetup!.renderOnce(); });
+    await act(async () => { background!.focus(); await tui.setup().renderOnce(); });
     await emitKey("right", "\u001b[C");
     await emitKey("left", "\u001b[D");
     await emitKey("right", "\u001b[C");
@@ -287,7 +268,7 @@ describe("chart composer series editor", () => {
 
   test("edits every segmented series setting with Tab and arrow keys", async () => {
     let resolved: ReturnType<typeof buildFundamentalChartPreset> | null | undefined;
-    testSetup = await testRender(
+    await tui.render(
       <SeriesEditorDialog
         dialogId="series-editor-keyboard-settings-test"
         initialSpec={buildFundamentalChartPreset(["AAPL"])}
@@ -300,7 +281,7 @@ describe("chart composer series editor", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await emitKey("tab", "\t");

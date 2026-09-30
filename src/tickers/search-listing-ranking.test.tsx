@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { JsonTickerRepository } from "../data/json-ticker-repository";
 import { appReducer, createInitialState } from "../state/app/context";
 import { createDefaultConfig, createPaneInstance, TICKER_RESEARCH_PANE_ID } from "../types/config";
@@ -13,6 +13,8 @@ import type { InstrumentSearchResult } from "../types/instrument";
 import type { PluginRegistry } from "../plugins/registry";
 import type { TickerRecord } from "../types/ticker";
 import { createTestTicker } from "../test-support/ticker";
+
+const tui = createOpenTuiTestHarness();
 
 // Exact catalogue order and fields from /market/search?q=SHOP&limit=10,
 // captured 2026-09-22. A restored SHOP:XNAS row used to hide the first listing.
@@ -59,32 +61,28 @@ test("restored qualified Shopify stays in the five root results and retargets th
       pluginRegistry: registry, tickerRepository: repo, tickers: initial.tickers });
     return null;
   }
-  const rendered = await testRender(<Harness />, { width: 80, height: 12 });
-  try {
-    await act(async () => { await rendered.renderOnce(); });
-    const candidates = buildTickerSearchCandidates({ query: "SHOP", tickers: initial.tickers, providerResults: shopResults });
-    const items = search.buildTickerSearchResultItems(candidates, "SHOP");
-    const rootAction = { id: "root-action", label: "Open research", detail: "", category: "Panes", kind: "action" as const, action() {} };
-    const visible = mergePlainRootTickerResults("SHOP", mergeTickerSearchResultItems("SHOP", items, []), [rootAction]);
-    expect(visible.filter(row => row.kind === "ticker" || row.kind === "search").map(row => row.right))
-      .toEqual(["NASDAQ", "TSX", "NEO", "IEX", "BYMA"]);
-    expect(visible[0]).toMatchObject({ id: "goto:SHOP:XNAS", label: "SHOP:XNAS", category: "Exact Match", kind: "ticker" });
-    expect(candidates.filter(row => row.exchangeLabel === "NASDAQ")).toHaveLength(1);
-    expect(candidates[0]?.ticker).toBe(saved);
-    expect(candidates[0]?.symbol).toBe("SHOP:XNAS");
-    await act(async () => { await visible[0]!.action(); });
-    expect(stateRef.current.config.layout.instances.find(pane => pane.instanceId === main.instanceId)?.binding)
-      .toMatchObject({ kind: "fixed", symbol: "SHOP:XNAS" });
-    expect(stateRef.current.config.layout.instances.find(pane => pane.instanceId === existing.instanceId)).toEqual(existing);
-    expect(stateRef.current.focusedPaneId).toBe(main.instanceId);
-    for (const [query, exchange] of [["SHOP:XTSE", "TSX"], ["SHOP.TO", "TSX"], ["SHOP:XNAS", "NASDAQ"]]) {
-      const rows = buildTickerSearchCandidates({ query: query!, tickers: initial.tickers, providerResults: shopResults });
-      expect(rows[0]?.exchangeLabel).toBe(exchange);
-      const results = search.buildTickerSearchResultItems(rows, query!);
-      expect(mergePlainRootTickerResults(query!, results, [rootAction])[0]?.right).toBe(exchange);
-    }
-  } finally {
-    await act(async () => { rendered.renderer.destroy(); });
+  const rendered = await tui.render(<Harness />, { width: 80, height: 12 });
+  await act(async () => { await rendered.renderOnce(); });
+  const candidates = buildTickerSearchCandidates({ query: "SHOP", tickers: initial.tickers, providerResults: shopResults });
+  const items = search.buildTickerSearchResultItems(candidates, "SHOP");
+  const rootAction = { id: "root-action", label: "Open research", detail: "", category: "Panes", kind: "action" as const, action() {} };
+  const visible = mergePlainRootTickerResults("SHOP", mergeTickerSearchResultItems("SHOP", items, []), [rootAction]);
+  expect(visible.filter(row => row.kind === "ticker" || row.kind === "search").map(row => row.right))
+    .toEqual(["NASDAQ", "TSX", "NEO", "IEX", "BYMA"]);
+  expect(visible[0]).toMatchObject({ id: "goto:SHOP:XNAS", label: "SHOP:XNAS", category: "Exact Match", kind: "ticker" });
+  expect(candidates.filter(row => row.exchangeLabel === "NASDAQ")).toHaveLength(1);
+  expect(candidates[0]?.ticker).toBe(saved);
+  expect(candidates[0]?.symbol).toBe("SHOP:XNAS");
+  await act(async () => { await visible[0]!.action(); });
+  expect(stateRef.current.config.layout.instances.find(pane => pane.instanceId === main.instanceId)?.binding)
+    .toMatchObject({ kind: "fixed", symbol: "SHOP:XNAS" });
+  expect(stateRef.current.config.layout.instances.find(pane => pane.instanceId === existing.instanceId)).toEqual(existing);
+  expect(stateRef.current.focusedPaneId).toBe(main.instanceId);
+  for (const [query, exchange] of [["SHOP:XTSE", "TSX"], ["SHOP.TO", "TSX"], ["SHOP:XNAS", "NASDAQ"]]) {
+    const rows = buildTickerSearchCandidates({ query: query!, tickers: initial.tickers, providerResults: shopResults });
+    expect(rows[0]?.exchangeLabel).toBe(exchange);
+    const results = search.buildTickerSearchResultItems(rows, query!);
+    expect(mergePlainRootTickerResults(query!, results, [rootAction])[0]?.right).toBe(exchange);
   }
 });
 

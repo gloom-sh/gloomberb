@@ -1,14 +1,10 @@
 import type { BoxRenderable } from "@opentui/core";
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import { Box, Text } from "../../ui";
-import { testRender } from "./test-utils";
+import { createOpenTuiTestHarness } from "./test-utils";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 test("a reused box drops layout props that are no longer passed", async () => {
   let setSized: (sized: boolean) => void = () => {};
@@ -44,15 +40,15 @@ test("a reused box drops layout props that are no longer passed", async () => {
     );
   }
 
-  setup = await testRender(<Harness />, { width: 24, height: 8 });
-  await act(async () => { await setup!.renderOnce(); });
+  await tui.render(<Harness />, { width: 24, height: 8 });
+  await act(async () => { await tui.setup().renderOnce(); });
   const sizedBox = inner as BoxRenderable | null;
   expect(sizedBox?.x).toBeGreaterThan(0);
 
   await act(async () => { setSized(false); });
   await act(async () => {
-    await setup!.renderOnce();
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
 
   const box = inner as BoxRenderable | null;
@@ -61,7 +57,7 @@ test("a reused box drops layout props that are no longer passed", async () => {
   expect(box?.y).toBe(0);
   expect(box?.width).toBe(20);
   expect(box?.height).toBe(6);
-  expect(setup.captureCharFrame().split("\n")[0]?.startsWith("Y")).toBe(true);
+  expect(tui.frame().split("\n")[0]?.startsWith("Y")).toBe(true);
 });
 
 test("a box that loses its numeric width shrinks again", async () => {
@@ -81,14 +77,14 @@ test("a box that loses its numeric width shrinks again", async () => {
     );
   }
 
-  setup = await testRender(<Harness />, { width: 12, height: 2 });
-  await act(async () => { await setup!.renderOnce(); });
+  await tui.render(<Harness />, { width: 12, height: 2 });
+  await act(async () => { await tui.setup().renderOnce(); });
   expect((inner as BoxRenderable | null)?.width).toBe(4);
 
   await act(async () => { setSized(false); });
   await act(async () => {
-    await setup!.renderOnce();
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
   // A 16-cell basis in a 10-cell row only fits when flexShrink is back to 1.
   expect((inner as BoxRenderable | null)?.width).toBe(10);
@@ -109,15 +105,15 @@ test("a dropped padding edge falls back to the broader padding still passed", as
     );
   }
 
-  setup = await testRender(<Harness />, { width: 12, height: 3 });
-  await act(async () => { await setup!.renderOnce(); });
-  expect(setup.captureCharFrame().split("\n")[0]?.indexOf("Z")).toBe(4);
+  await tui.render(<Harness />, { width: 12, height: 3 });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(tui.frame().split("\n")[0]?.indexOf("Z")).toBe(4);
 
   await act(async () => { setEdge(false); });
   await act(async () => {
-    await setup!.renderOnce();
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
-  expect(setup.captureCharFrame().split("\n")[0]?.indexOf("Z")).toBe(1);
+  expect(tui.frame().split("\n")[0]?.indexOf("Z")).toBe(1);
   expect((inner as BoxRenderable | null)?.x).toBe(0);
 });

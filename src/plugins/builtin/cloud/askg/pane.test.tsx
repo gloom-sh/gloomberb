@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../../api-client";
 import { PaneFooterProvider } from "../../../../components/layout/pane/footer";
-import { emitKeypress, TestDialogProvider, testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, TestDialogProvider } from "../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
@@ -12,8 +12,7 @@ import { askgConversationListStore } from "./conversation-store";
 import { resetASKGClientManifestCache } from "./host";
 import { ASKGPane } from "./pane";
 
-type Setup = Awaited<ReturnType<typeof testRender>>;
-let setup: Setup | undefined;
+const tui = createOpenTuiTestHarness();
 
 const PANE_ID = "askg-test-pane";
 /** Narrow enough that the failure cannot fit on one line, and no sidebar. */
@@ -152,13 +151,7 @@ beforeEach(() => {
   } as unknown as PluginRegistry);
 });
 
-afterEach(async () => {
-  if (setup) {
-    await act(async () => {
-      setup!.renderer.destroy();
-    });
-    setup = undefined;
-  }
+afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
   resetASKGClientManifestCache();
@@ -168,34 +161,34 @@ afterEach(async () => {
 
 async function renderPane(paneWidth: number): Promise<string> {
   await act(async () => {
-    setup = await testRender(<Harness paneWidth={paneWidth} />, {
+    await tui.render(<Harness paneWidth={paneWidth} />, {
       width: paneWidth,
       height: 24,
     });
   });
   await flush();
-  return setup!.captureCharFrame();
+  return tui.frame();
 }
 
 async function ask(question: string): Promise<string> {
   await act(async () => {
-    setup = await testRender(<Harness />, { width: PANE_WIDTH, height: 24 });
+    await tui.render(<Harness />, { width: PANE_WIDTH, height: 24 });
   });
   await flush();
   await act(async () => {
-    setup!.mockInput.pressEnter();
-    await setup!.renderOnce();
+    tui.setup().mockInput.pressEnter();
+    await tui.setup().renderOnce();
   });
   await act(async () => {
-    setup!.mockInput.typeText(question);
-    await setup!.renderOnce();
+    tui.setup().mockInput.typeText(question);
+    await tui.setup().renderOnce();
   });
   await act(async () => {
-    setup!.mockInput.pressEnter();
-    await setup!.renderOnce();
+    tui.setup().mockInput.pressEnter();
+    await tui.setup().renderOnce();
   });
   await flush();
-  return setup!.captureCharFrame();
+  return tui.frame();
 }
 
 describe("ASKGPane failures", () => {
@@ -220,12 +213,12 @@ describe("ASKGPane failures", () => {
 
     // Sending leaves the composer, so the answer's keys work straight away
     // instead of being typed into the next question.
-    await emitKeypress(setup!, { name: "r" });
+    await tui.emitKeypress({ name: "r" });
     await flush();
 
     expect(requests.filter((entry) => entry === "POST /askg/session")).toHaveLength(2);
     // The failed attempt is replaced, not stacked above the retry.
-    const retried = setup!.captureCharFrame();
+    const retried = tui.frame();
     expect(retried.split("what does a 5y bond return").length - 1).toBe(1);
   });
 });
@@ -273,21 +266,21 @@ describe("ASKGPane conversations", () => {
       "conv-2": transcript("conv-2", "how are Nvidia margins", "Holding above 70%."),
     };
     await renderPane(WIDE_PANE_WIDTH);
-    expect(setup!.captureCharFrame()).not.toContain("\u203a");
+    expect(tui.frame()).not.toContain("\u203a");
 
     // Left hands the keyboard to the list; arrows only move the cursor.
-    await emitKeypress(setup!, { name: "escape" });
-    await emitKeypress(setup!, { name: "left" });
-    await emitKeypress(setup!, { name: "down" });
-    await emitKeypress(setup!, { name: "down" });
+    await tui.emitKeypress({ name: "escape" });
+    await tui.emitKeypress({ name: "left" });
+    await tui.emitKeypress({ name: "down" });
+    await tui.emitKeypress({ name: "down" });
     await flush();
     expect(requests.filter((entry) => entry.startsWith("GET /askg/conversations/"))).toEqual([]);
 
-    await emitKeypress(setup!, { name: "return" });
+    await tui.emitKeypress({ name: "return" });
     await flush();
 
     expect(requests).toContain("GET /askg/conversations/conv-2");
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("how are Nvidia margins");
     expect(frame).toContain("Holding above 70%");
     // The marker sits on the row that is open, and only on that row.
@@ -309,18 +302,18 @@ describe("ASKGPane conversations", () => {
     };
     await renderPane(WIDE_PANE_WIDTH);
 
-    await emitKeypress(setup!, { name: "escape" });
-    await emitKeypress(setup!, { name: "left" });
-    await emitKeypress(setup!, { name: "down" });
-    await emitKeypress(setup!, { name: "return" });
+    await tui.emitKeypress({ name: "escape" });
+    await tui.emitKeypress({ name: "left" });
+    await tui.emitKeypress({ name: "down" });
+    await tui.emitKeypress({ name: "return" });
     await flush();
-    expect(setup!.captureCharFrame()).toContain("About 4.2%");
+    expect(tui.frame()).toContain("About 4.2%");
 
-    await emitKeypress(setup!, { name: "left" });
-    await emitKeypress(setup!, { name: "n" });
+    await tui.emitKeypress({ name: "left" });
+    await tui.emitKeypress({ name: "n" });
     await flush();
 
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).not.toContain("About 4.2%");
     expect(frame).toContain("Ask about anything on screen");
     expect(frame).toContain("Bond returns");

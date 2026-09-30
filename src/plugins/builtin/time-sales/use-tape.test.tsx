@@ -1,14 +1,13 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Text } from "../../../ui";
 import type { TapeFeedEvent, TapeSnapshot } from "../../../api-client/tape";
 import { tapeFixture } from "./test-fixture";
 import { TapeClientContext, useTape } from "./use-tape";
 import { createSnapshotTapeClient } from "./snapshot-client";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => { if (setup) await act(async () => setup!.renderer.destroy()); setup = undefined; });
+const tui = createOpenTuiTestHarness({ width: 50, height: 3 });
 
 // Keep promises under test control to reproduce a bootstrap overtaken by a socket or auth event.
 function clientHarness() {
@@ -19,7 +18,7 @@ function clientHarness() {
     subscribeTape: (_symbol: string, _exchange: string, listener: (event: TapeFeedEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   }, emit: (event: TapeFeedEvent) => { for (const listener of listeners) listener(event); } };
 }
-async function settle(action?: () => void) { await act(async () => { action?.(); await setup!.renderOnce(); }); }
+async function settle(action?: () => void) { await act(async () => { action?.(); await tui.setup().renderOnce(); }); }
 
 test("the screenshot context supplies one dated snapshot without a live bootstrap", async () => {
   const initial = tapeFixture();
@@ -33,7 +32,7 @@ test("the screenshot context supplies one dated snapshot without a live bootstra
     latest = useTape("AAPL", "NASDAQ", "screenshot", 0);
     return <Text>{latest.data?.generatedAt ?? "empty"}</Text>;
   }
-  setup = await testRender(<TapeClientContext.Provider value={client}><Probe /></TapeClientContext.Provider>, { width: 50, height: 3 });
+  await tui.render(<TapeClientContext.Provider value={client}><Probe /></TapeClientContext.Provider>);
   await settle();
   expect(latest!.data?.generatedAt).toBe(initial.generatedAt);
   expect(latest!.data?.trades).toEqual(initial.trades);
@@ -52,7 +51,7 @@ test("live tape wins an older bootstrap, auth reset rejects its pending response
     latest = useTape("AAPL", "NASDAQ", session, 0, harness.client);
     return <Text>{latest.data?.generatedAt ?? "empty"}</Text>;
   }
-  setup = await testRender(<Probe />, { width: 50, height: 3 });
+  await tui.render(<Probe />);
   await settle();
   const initial = tapeFixture();
   const newer = { ...initial, generatedAt: "2026-09-22T16:00:01.000Z" };
@@ -80,7 +79,7 @@ test("live tape wins an older bootstrap, auth reset rejects its pending response
   expect(latest!.transport).toBe("Stream disconnected");
 
   await settle(() => changeSession(2));
-  await act(async () => setup!.renderer.destroy()); setup = undefined;
+  await tui.destroy();
   expect(harness.listeners.size).toBe(0);
   expect(harness.requests[3]!.signal?.aborted).toBe(true);
   harness.requests[3]!.resolve(newer);
@@ -99,7 +98,7 @@ test("failed manual refresh keeps the dated tape while a changed account clears 
     latest = useTape("AAPL", "NASDAQ", session, revision, harness.client);
     return <Text>{latest.data?.generatedAt ?? "empty"}</Text>;
   }
-  setup = await testRender(<Probe />, { width: 50, height: 3 });
+  await tui.render(<Probe />);
   await settle();
   const initial = tapeFixture();
   await settle(() => harness.requests[0]!.resolve(initial));

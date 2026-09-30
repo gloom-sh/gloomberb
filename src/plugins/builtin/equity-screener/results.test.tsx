@@ -1,15 +1,14 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Text } from "../../../ui";
 import type { ScreenDefinition, ScreenPayload } from "../../../api-client/equity-screener";
 import { DEFAULT_SCREEN } from "./model";
 import { screenFixture } from "./test-fixture";
 import { useScreenResults } from "./results";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => { if (setup) await act(async () => setup!.renderer.destroy()); setup = undefined; });
-async function settle(action?: () => void) { await act(async () => { action?.(); await setup!.renderOnce(); }); }
+const tui = createOpenTuiTestHarness();
+async function settle(action?: () => void) { await act(async () => { action?.(); await tui.setup().renderOnce(); }); }
 test("late pagination and refreshes cannot repopulate a changed query or account", async () => {
   const requests: Array<{ signal?: AbortSignal; definition: ScreenDefinition; resolve: (data: ScreenPayload) => void }> = [];
   const fetcher = (definition: ScreenDefinition, _cursor?: string | null, signal?: AbortSignal) => new Promise<ScreenPayload>(resolve => requests.push({ definition, signal, resolve }));
@@ -20,7 +19,7 @@ test("late pagination and refreshes cannot repopulate a changed query or account
     latest = useScreenResults(definition, session, fetcher);
     return <Text>{latest.data?.rows.map(row => row.symbol).join(",") ?? "pending"}</Text>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width: 50, height: 4 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 50, height: 4 }); });
   const first = screenFixture(); first.nextCursor = "page-two";
   await settle(() => requests[0]!.resolve(first));
   expect(latest.data?.rows[0]?.symbol).toBe("AAPL");

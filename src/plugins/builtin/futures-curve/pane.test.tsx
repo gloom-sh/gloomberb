@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useCallback, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/futures-curve";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -30,22 +30,20 @@ function payload(contracts: FuturesContract[] = CONTRACTS): FuturesCurvePayload 
   };
 }
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let spy: { mockRestore(): void } | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   spy?.mockRestore(); spy = undefined;
   // Each test serves its own curve rather than the last one's cached copy.
   futuresCurveCache.reset();
 });
 
 async function settle() {
-  for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await setup!.renderOnce(); });
+  for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce(); });
 }
 
 async function render(width: number, height: number, tab = "curve"): Promise<string[]> {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
+  await tui.destroy();
   const initial = createInitialState(createTestPaneConfig("/tmp/gloom-futures-curve-test", { instanceId: "ctm", paneId: "futures-curve", binding: { kind: "none" } }));
   initial.focusedPaneId = "ctm";
   initial.paneState = { ctm: { pluginState: { "futures-curve": { tab } } } };
@@ -57,9 +55,9 @@ async function render(width: number, height: number, tab = "curve"): Promise<str
       {(body) => <FuturesCurvePane paneId="ctm" paneType="futures-curve" focused {...body} />}
     </TestPaneFrame>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height }); });
+  await act(async () => { await tui.render(<Harness />, { width, height }); });
   await settle();
-  return setup!.captureCharFrame().split("\n");
+  return tui.frame().split("\n");
 }
 
 test("a short curve tab lists the contracts once, and a tall one ends on the last contract", async () => {
@@ -103,10 +101,10 @@ test("the curve names what it plots, and its rows add the moves the chart only s
 test("the selected contract is the curve's point", async () => {
   spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => payload());
   await render(98, 30);
-  expect(setup!.captureCharFrame()).toContain("Dec 26 6600.00");
-  await act(async () => { setup!.mockInput.pressArrow("down"); await setup!.renderOnce(); });
+  expect(tui.frame()).toContain("Dec 26 6600.00");
+  await act(async () => { tui.setup().mockInput.pressArrow("down"); await tui.setup().renderOnce(); });
   await settle();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Mar 27 6640.00  1W ago +50.00");
   expect(frame).not.toContain("Dec 26 6600.00");
 });

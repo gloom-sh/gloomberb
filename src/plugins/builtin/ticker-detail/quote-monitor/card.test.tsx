@@ -1,24 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import type { Quote } from "../../../../types/financials";
 import type { QueryEntry } from "../../../../market-data/result-types";
 import { createIdleEntry } from "../../../../market-data/result-types";
 import { QuoteMonitorCard } from "./card";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 async function renderCard(quoteEntry: QueryEntry<Quote> | null): Promise<string> {
   await act(async () => {
-    testSetup = await testRender(
+    await tui.render(
       <QuoteMonitorCard
         symbol="MSFT"
         ticker={null}
@@ -37,9 +29,9 @@ async function renderCard(quoteEntry: QueryEntry<Quote> | null): Promise<string>
     );
   });
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  return testSetup!.captureCharFrame();
+  return tui.frame();
 }
 
 describe("QuoteMonitorCard without a quote", () => {
@@ -47,20 +39,12 @@ describe("QuoteMonitorCard without a quote", () => {
     expect(await renderCard({ ...createIdleEntry<Quote>(), phase: "loading" }))
       .toContain("Loading quote");
 
-    await act(async () => {
-      testSetup!.renderer.destroy();
-      testSetup = undefined;
-    });
     expect(await renderCard({
       ...createIdleEntry<Quote>(),
       phase: "error",
       error: { reasonCode: "NOT_FOUND", message: "No match" },
     })).toContain("MSFT not recognized");
 
-    await act(async () => {
-      testSetup!.renderer.destroy();
-      testSetup = undefined;
-    });
     expect(await renderCard({
       ...createIdleEntry<Quote>(),
       phase: "error",

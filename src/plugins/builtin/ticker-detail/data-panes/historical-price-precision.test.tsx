@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender, settleFrame, takeSavedTextFile } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame, takeSavedTextFile } from "../../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../../state/app/context";
 import { exportPaneTable } from "../../../../state/pane-table-export-registry";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
@@ -11,11 +11,7 @@ import { historicalPricesHeadless } from "../headless";
 import { HistoricalPricesPane } from "./historical-prices";
 import type { PricePoint } from "../../../../types/financials";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 test("history exports retain listing ownership and active caveats through failed refresh and a pending listing switch", async () => {
   const paneId = "history:export-ownership";
@@ -39,8 +35,8 @@ test("history exports retain listing ownership and active caveats through failed
       <HistoricalPricesPane paneId={paneId} paneType="historical-prices" focused width={120} height={14} />
     </TestPaneProvider>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width: 120, height: 14 }); });
-  await settleFrame(setup!, 8);
+  await act(async () => { await tui.render(<Harness />, { width: 120, height: 14 }); });
+  await settleFrame(tui.setup(), 8);
   const exportCsv = async () => {
     await exportPaneTable(paneId, "history.csv");
     return takeSavedTextFile()!.text;
@@ -49,14 +45,14 @@ test("history exports retain listing ownership and active caveats through failed
   expect(initial).toContain("Ticker,VOD:XLON");
   expect(initial).toContain("Warning,");
   expect(initial).toContain("2026-09-15");
-  await act(async () => { setup!.mockInput.pressKey("r"); });
-  await settleFrame(setup!, 8);
+  await act(async () => { tui.setup().mockInput.pressKey("r"); });
+  await settleFrame(tui.setup(), 8);
   const retained = await exportCsv();
   expect(retained).toContain("2026-09-15");
   expect(retained).toContain("Retained after refresh failure");
   expect(retained).toContain('Error,"\'=provider, unavailable"');
   await act(async () => { selectListing("VOD:XNAS"); });
-  await settleFrame(setup!, 3);
+  await settleFrame(tui.setup(), 3);
   const pending = await exportCsv();
   expect(pending).toContain("Ticker,VOD:XNAS");
   expect(pending).toContain("Status,Loading");
@@ -64,7 +60,7 @@ test("history exports retain listing ownership and active caveats through failed
   expect(pending).not.toContain("Warning,");
   expect(pending).not.toContain("Error,");
   await act(async () => { finishUs([{ date: new Date("2026-09-16"), close: 17.56 }]); });
-  await settleFrame(setup!, 3);
+  await settleFrame(tui.setup(), 3);
   const current = await exportCsv();
   expect(current).toContain("17.56");
   expect(current).toContain("Ticker,VOD:XNAS");
@@ -97,16 +93,16 @@ for (const [symbol, prior, close, change] of [
     state.tickers.set(symbol, createTestTicker(symbol));
     const runtime = createTestPluginRuntime({ getMarketData: () => provider });
     await act(async () => {
-      setup = await testRender(
+      await tui.render(
         <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
           <HistoricalPricesPane paneId={paneId} paneType="historical-prices" focused width={120} height={14} />
         </TestPaneProvider>, { width: 120, height: 14 },
       );
     });
-    await settleFrame(setup!, 8);
-    expect(setup!.captureCharFrame()).toContain(String(close));
-    expect(setup!.captureCharFrame()).toContain(String(prior));
-    if (change) expect(setup!.captureCharFrame()).toContain(change);
+    await settleFrame(tui.setup(), 8);
+    expect(tui.frame()).toContain(String(close));
+    expect(tui.frame()).toContain(String(prior));
+    if (change) expect(tui.frame()).toContain(change);
     await exportPaneTable(paneId, "history.csv");
     const csv = takeSavedTextFile()!.text;
     expect(csv).toContain(String(close));

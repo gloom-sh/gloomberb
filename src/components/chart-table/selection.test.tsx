@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { createInitialState } from "../../state/app/context";
 import { TestPaneProvider } from "../../test-support/pane";
 import { createTestPluginRuntime } from "../../test-support/plugin-runtime";
@@ -11,13 +11,7 @@ interface Row { id: string; date: string }
 const ROWS: Row[] = ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24"].map((date) => ({ id: date, date }));
 const day = (date: string) => new Date(`${date}T00:00:00Z`);
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) {
-    await act(async () => setup?.renderer.destroy());
-    setup = undefined;
-  }
-});
+const tui = createOpenTuiTestHarness();
 
 async function mount(rows: Row[] = ROWS, initial = "2026-09-24", undated: ReadonlySet<string> = new Set()) {
   const state = { link: null as ChartTableSelection | null, selected: "" as string, select: (_id: string) => {} };
@@ -33,7 +27,7 @@ async function mount(rows: Row[] = ROWS, initial = "2026-09-24", undated: Readon
   }
   const app = createInitialState(createDefaultConfig("/tmp/gloom-chart-table-selection"));
   await act(async () => {
-    setup = await testRender(
+    await tui.render(
       <TestPaneProvider state={app} dispatch={() => {}} paneId="chart-table" pluginId="chart-table" runtime={createTestPluginRuntime()}>
         <Harness />
       </TestPaneProvider>,
@@ -66,9 +60,9 @@ describe("useChartTableSelection", () => {
 
   test("Left and Right step through time whatever order the table is in", async () => {
     const state = await mount();
-    await act(async () => { setup!.mockInput.pressArrow("left"); await setup!.renderOnce(); });
+    await act(async () => { tui.setup().mockInput.pressArrow("left"); await tui.setup().renderOnce(); });
     expect(state.selected).toBe("2026-09-23");
-    await act(async () => { setup!.mockInput.pressArrow("right"); await setup!.renderOnce(); });
+    await act(async () => { tui.setup().mockInput.pressArrow("right"); await tui.setup().renderOnce(); });
     expect(state.selected).toBe("2026-09-24");
   });
 
@@ -76,9 +70,9 @@ describe("useChartTableSelection", () => {
     // Newest first, with the two oldest rows off the chart.
     const rows = [...ROWS].reverse();
     const state = await mount(rows, "2026-09-21", new Set(["2026-09-21", "2026-09-22"]));
-    await act(async () => { setup!.mockInput.pressArrow("left"); await setup!.renderOnce(); });
+    await act(async () => { tui.setup().mockInput.pressArrow("left"); await tui.setup().renderOnce(); });
     expect(state.selected).toBe("2026-09-21");
-    await act(async () => { setup!.mockInput.pressArrow("right"); await setup!.renderOnce(); });
+    await act(async () => { tui.setup().mockInput.pressArrow("right"); await tui.setup().renderOnce(); });
     expect(state.selected).toBe("2026-09-23");
   });
 });

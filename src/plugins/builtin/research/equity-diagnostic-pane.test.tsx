@@ -3,7 +3,7 @@ import { act } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import type { CloudEquityDiagnosticResponse } from "../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
@@ -15,7 +15,7 @@ const WIDTH = 96;
 /** Tall enough that a full report fits without scrolling the assertions away. */
 const HEIGHT = 44;
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 function signIn(plan: "free" | "pro"): void {
   apiClient.setSessionToken("equity-diagnostic-test-token");
@@ -139,7 +139,7 @@ function DiagnosticHarness() {
 
 async function renderHarness(): Promise<void> {
   await act(async () => {
-    testSetup = await testRender(<DiagnosticHarness />, { width: WIDTH, height: HEIGHT });
+    await tui.render(<DiagnosticHarness />, { width: WIDTH, height: HEIGHT });
   });
   await settle();
 }
@@ -148,35 +148,17 @@ async function settle(): Promise<void> {
   for (let attempt = 0; attempt < 6; attempt += 1) {
     await act(async () => {
       await Bun.sleep(1);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
 
 async function pressKey(name: string): Promise<void> {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      name,
-      sequence: name,
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      stopPropagation: () => {},
-      preventDefault: () => {},
-    } as never);
-    await testSetup!.renderOnce();
-  });
+  await tui.emitKeypress({ name, sequence: name });
   await settle();
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => testSetup!.renderer.destroy());
-    testSetup = undefined;
-  }
+afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
   apiClient.restoreCachedUser(null);
@@ -197,7 +179,7 @@ test("shows a cited preview to free accounts and gates the rest", async () => {
 
   await renderHarness();
 
-  const frame = testSetup!.captureCharFrame();
+  const frame = tui.frame();
   expect(requests).toEqual([{ symbol: "AAPL", exchange: "NASDAQ", mode: "cache-first" }]);
   expect(frame).toContain("Free preview");
   expect(frame).toContain("Gross margin fell for three quarters");
@@ -217,7 +199,7 @@ test("renders a stale partial report with severity order, split observation, and
 
   await renderHarness();
 
-  const frame = testSetup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Risk skewed");
   expect(frame).toContain("Apple Inc.");
   expect(frame).toContain("4m ago");
@@ -264,7 +246,7 @@ test("polls an uncached diagnostic until the background report is ready", async 
     { symbol: "AAPL", exchange: "NASDAQ", mode: "cache-first" },
     { symbol: "AAPL", exchange: "NASDAQ", mode: "cache-first" },
   ]);
-  expect(testSetup!.captureCharFrame()).toContain("Gross margin fell for three quarters");
+  expect(tui.frame()).toContain("Gross margin fell for three quarters");
 });
 
 test("asks for a refresh on r and keeps the last report when the retry is rate limited", async () => {
@@ -281,7 +263,7 @@ test("asks for a refresh on r and keeps the last report when the retry is rate l
   await pressKey("r");
 
   expect(requests.at(-1)?.mode).toBe("refresh");
-  const frame = testSetup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Rate limited");
   expect(frame).toContain("Gross margin fell for three quarters");
   // With a report on screen the failure is footer status; r retries.

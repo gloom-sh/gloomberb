@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useCallback, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -23,21 +23,19 @@ function payload(): RatePathPayload {
     probabilityAssumption: "Two outcomes", slope: { valueBps: -70, percentile: 20, samples: 250, asOf: "2026-09-22T14:00:00Z" }, gaps: [] };
 }
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let spy: { mockRestore(): void } | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   spy?.mockRestore(); spy = undefined;
   ratePathCache.reset();
 });
 
 async function settle() {
-  for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await setup!.renderOnce(); });
+  for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce(); });
 }
 
 async function render(width: number, height: number): Promise<string[]> {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
+  await tui.destroy();
   const initial = createInitialState(createTestPaneConfig("/tmp/gloom-rate-path-test", { instanceId: "wirp", paneId: "rate-path", binding: { kind: "none" } }));
   initial.focusedPaneId = "wirp";
   function Harness() {
@@ -48,9 +46,9 @@ async function render(width: number, height: number): Promise<string[]> {
       {(body) => <RatePathPane paneId="wirp" paneType="rate-path" focused {...body} />}
     </TestPaneFrame>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height }); });
+  await act(async () => { await tui.render(<Harness />, { width, height }); });
   await settle();
-  return setup!.captureCharFrame().split("\n");
+  return tui.frame().split("\n");
 }
 
 test("the path fits the body: short panes give the meetings the room instead of a second curve table", async () => {
@@ -94,10 +92,10 @@ test("the path names what it plots: one target range, the SEP dots, meetings by 
 test("the selected meeting is the path's point", async () => {
   spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(payload());
   await render(86, 30);
-  expect(setup!.captureCharFrame()).toContain("Oct '26 3.90%");
-  await act(async () => { setup!.mockInput.pressArrow("down"); await setup!.renderOnce(); });
+  expect(tui.frame()).toContain("Oct '26 3.90%");
+  await act(async () => { tui.setup().mockInput.pressArrow("down"); await tui.setup().renderOnce(); });
   await settle();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Dec '26 3.80%  1W ago -12.0bp");
   expect(frame).not.toContain("Oct '26 3.90%");
 });

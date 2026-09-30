@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useEffect, useReducer, type SetStateAction } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -23,14 +23,7 @@ import {
   useSetPluginConfigStates,
 } from "./index";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-});
+const tui = createOpenTuiTestHarness();
 
 describe("plugin runtime helpers", () => {
   test("reads, writes, and deletes nested pane state under the plugin namespace", () => {
@@ -83,16 +76,16 @@ describe("plugin runtime hooks", () => {
       return <text>{selection}</text>;
     }
 
-    testSetup = await testRender(<HookHarness />, { width: 40, height: 5 });
+    await tui.render(<HookHarness />, { width: 40, height: 5 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
       setSelection?.("row-b");
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(
@@ -101,7 +94,7 @@ describe("plugin runtime hooks", () => {
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(
@@ -167,15 +160,15 @@ describe("plugin runtime hooks", () => {
       return <text>{`${paneSelection}|${venueScope}|${provider}|${mode}|${layoutMode}`}</text>;
     }
 
-    testSetup = await testRender(<HookHarness />, { width: 40, height: 5 });
+    await tui.render(<HookHarness />, { width: 40, height: 5 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("3|kalshi|codex|expanded|wide");
     expect(stateRef.current?.paneState["portfolio-list:main"]?.pluginState).toEqual({
       news: {
@@ -206,7 +199,7 @@ describe("plugin runtime hooks", () => {
       return <text>ticker-actions</text>;
     }
 
-    testSetup = await testRender(
+    await tui.render(
       <PaneInstanceProvider paneId="comparison-chart:main">
         <PluginRenderProvider pluginId="market-overview" runtime={runtime}>
           <HookProbe />
@@ -216,7 +209,7 @@ describe("plugin runtime hooks", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     actions?.navigateTicker("MSFT");

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import type { AppConfig } from "../../../types/config";
 import type { PluginRuntimeAccess } from "../../runtime";
@@ -17,7 +17,7 @@ import type { Quote } from "../../../types/financials";
 
 const TEST_PANE_ID = "alerts:test";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let harnessState: AppState | null = null;
 let harnessDispatch: ((action: any) => void) | null = null;
 
@@ -91,28 +91,8 @@ function AlertsHarness({
   );
 }
 
-async function renderSettled(): Promise<void> {
-  await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
-  });
-}
-
-async function clickFrameText(text: string): Promise<void> {
-  const frame = testSetup!.captureCharFrame();
-  const rows = frame.split("\n");
-  const row = rows.findIndex((line) => line.includes(text));
-  const col = row >= 0 ? rows[row]!.indexOf(text) : -1;
-
-  expect(row).toBeGreaterThanOrEqual(0);
-  expect(col).toBeGreaterThanOrEqual(0);
-
-  await act(async () => {
-    await testSetup!.mockMouse.click(col + 1, row);
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
-  });
-}
+const renderSettled = () => tui.renderFrames(2);
+const { clickFrameText } = tui;
 
 function storedAlerts(): AlertRule[] {
   const value = (harnessState?.config.pluginConfig.alerts as any)?.alerts;
@@ -120,19 +100,14 @@ function storedAlerts(): AlertRule[] {
   return JSON.parse(value);
 }
 
-afterEach(async () => {
+afterEach(() => {
   harnessState = null;
   harnessDispatch = null;
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 describe("AlertsPane", () => {
   test("keeps alert targets visible at the default floating pane width", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <AlertsHarness
         width={82}
         height={8}
@@ -142,7 +117,7 @@ describe("AlertsPane", () => {
     );
 
     await renderSettled();
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
 
     expect(frame).toContain("STATE");
     expect(frame).toContain("CURRENT");
@@ -152,32 +127,32 @@ describe("AlertsPane", () => {
   });
 
   test("edits the selected alert through the prefilled edit dialog", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <AlertsHarness alerts={[makeAlert("alert-aapl", "AAPL", "above", 200)]} />,
       { width: 110, height: 12 },
     );
 
     await renderSettled();
     await act(async () => {
-      await testSetup!.mockInput.typeText("e");
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("e");
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const dialogFrame = testSetup.captureCharFrame();
+    const dialogFrame = tui.frame();
     expect(dialogFrame).toContain("Edit alert");
     expect(dialogFrame).toContain("AAPL above 200");
 
     await act(async () => {
-      for (const _ of "AAPL above 200") testSetup!.mockInput.pressBackspace();
-      await testSetup!.mockInput.typeText("MSFT crosses 310");
-      await testSetup!.renderOnce();
+      for (const _ of "AAPL above 200") tui.setup().mockInput.pressBackspace();
+      await tui.setup().mockInput.typeText("MSFT crosses 310");
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(storedAlerts()).toEqual([{
@@ -198,22 +173,19 @@ describe("AlertsPane", () => {
       },
     });
 
-    testSetup = await testRender(<AlertsHarness alerts={[]} runtime={runtime} />, {
+    await tui.render(<AlertsHarness alerts={[]} runtime={runtime} />, {
       width: 110,
       height: 12,
     });
 
     await renderSettled();
     await act(async () => {
-      await testSetup!.mockInput.typeText("a");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("a");
+      await tui.setup().renderOnce();
     });
     expect(workflowCalls).toEqual(["set-alert"]);
 
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = await testRender(<AlertsHarness alerts={[]} runtime={runtime} />, {
+    await tui.render(<AlertsHarness alerts={[]} runtime={runtime} />, {
       width: 110,
       height: 12,
     });
@@ -224,7 +196,7 @@ describe("AlertsPane", () => {
   });
 
   test("re-arms the selected triggered alert from its footer action and deletes after confirming", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <AlertsHarness
         alerts={[
           makeAlert("alert-aapl", "AAPL", "above", 200),
@@ -236,10 +208,10 @@ describe("AlertsPane", () => {
 
     await renderSettled();
     // Only a triggered alert offers re-arm, so the hint appears once it is selected.
-    expect(testSetup.captureCharFrame()).not.toContain("[m]");
+    expect(tui.frame()).not.toContain("[m]");
     await act(async () => {
-      testSetup!.mockInput.pressArrow("down");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("down");
+      await tui.setup().renderOnce();
     });
     await renderSettled();
     await clickFrameText("[m]");
@@ -247,15 +219,15 @@ describe("AlertsPane", () => {
     expect(storedAlerts().find((alert) => alert.id === "alert-msft")?.status).toBe("active");
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("d");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("d");
+      await tui.setup().renderOnce();
     });
     await renderSettled();
-    expect(testSetup.captureCharFrame()).toContain("Delete alert?");
+    expect(tui.frame()).toContain("Delete alert?");
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(storedAlerts().map((alert) => alert.id)).toEqual(["alert-aapl"]);

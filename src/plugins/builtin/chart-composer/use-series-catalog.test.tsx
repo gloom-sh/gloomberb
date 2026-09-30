@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Text } from "../../../ui";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
 import type { SeriesCatalogSearchResult } from "./use-series-catalog";
 import { useSeriesCatalogSuggestions } from "./use-series-catalog";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let latest: SeriesCatalogSearchResult | null = null;
 
 function Harness({ query }: { query: string }) {
@@ -47,24 +47,19 @@ function installRegistry(options: { pluginDelayMs: number; pluginItems: number }
 async function settle(ms: number) {
   await act(async () => {
     await Bun.sleep(ms);
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
-afterEach(async () => {
+afterEach(() => {
   setSharedRegistryForTests(undefined);
   latest = null;
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 describe("useSeriesCatalogSuggestions", () => {
   test("lists securities first and appends late plugin catalogs without moving them", async () => {
     installRegistry({ pluginDelayMs: 200, pluginItems: 8 });
-    testSetup = await testRender(<Harness query="apple" />, { width: 120, height: 4 });
+    await tui.render(<Harness query="apple" />, { width: 120, height: 4 });
 
     // Ticker search settles first (80ms debounce); plugin catalogs are still pending.
     await settle(150);
@@ -83,7 +78,7 @@ describe("useSeriesCatalogSuggestions", () => {
 
   test("a full plugin catalog never crowds out the securities", async () => {
     installRegistry({ pluginDelayMs: 0, pluginItems: 8 });
-    testSetup = await testRender(<Harness query="apple" />, { width: 120, height: 4 });
+    await tui.render(<Harness query="apple" />, { width: 120, height: 4 });
 
     await settle(500);
     const labels = latest!.suggestions.map((entry) => entry.label);

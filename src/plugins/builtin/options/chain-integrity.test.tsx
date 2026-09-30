@@ -5,7 +5,7 @@ import { DEFAULT_CLI_OPTIONS } from "../../../cli/options";
 import { serializeCliResult } from "../../../cli/result";
 import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { loadYahooOptionsChain } from "../../../sources/yahoo-finance/options";
 import { createInitialState } from "../../../state/app/context";
 import { createTestCliContext } from "../../../test-support/cli-context";
@@ -21,13 +21,11 @@ import { OptionsView } from "./view";
 const EXPIRY = Date.UTC(2028, 0, 21) / 1000;
 const NOW = Date.UTC(2026, 8, 17, 16);
 const PANE = "options:chain-followup";
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | undefined;
 const realNow = Date.now;
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   coordinator?.destroy();
   coordinator = undefined;
   setSharedMarketDataCoordinator(null);
@@ -35,11 +33,11 @@ afterEach(async () => {
 });
 
 function strikeRowY(strike: number): number {
-  return setup!.captureCharFrame().split("\n").findIndex((line) => new RegExp(`\\s${strike}\\s`).test(line));
+  return tui.frame().split("\n").findIndex((line) => new RegExp(`\\s${strike}\\s`).test(line));
 }
 
 // Selection follows a throttled cursor, so each key waits it out before settling.
-const { settle, key, capture: captureLaunch } = createOptionsControls(() => setup!, { keyHoldMs: 180 });
+const { settle, key, capture: captureLaunch } = createOptionsControls(() => tui.setup(), { keyHoldMs: 180 });
 
 async function fixture(strikes: number[], activity: "full" | "missing" | "zero" = "full", width = 120) {
   Date.now = () => NOW;
@@ -103,7 +101,7 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
     },
   });
   await act(async () => {
-    setup = await testRender(
+    await tui.render(
       <TestPaneFrame state={state} paneId={PANE} pluginId="ticker-research" runtime={runtime} width={width} height={22} footerKeys>
         {(body, footer) => {
           footerParts = footer.info.flatMap((segment) => segment.parts);
@@ -161,7 +159,7 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
 test.each([48, 80, 120])("keeps the selected strike through insertion, removal and recovery at %i columns", async (width) => {
   const f = await fixture([100, 101, 102], "full", width);
   await act(async () => {
-    await setup!.mockMouse.click(8, strikeRowY(101));
+    await tui.setup().mockMouse.click(8, strikeRowY(101));
   });
   await settle();
   const picked = await f.capture();
@@ -180,7 +178,7 @@ test.each([48, 80, 120])("keeps the selected strike through insertion, removal a
 test("preserves call identity across partial chains, and permits an explicit put selection", async () => {
   const f = await fixture([100]);
   await act(async () => {
-    await setup!.mockMouse.click(8, strikeRowY(100));
+    await tui.setup().mockMouse.click(8, strikeRowY(100));
   });
   await settle();
   expect((await f.capture()).launch!.side).toBe("call");
@@ -193,7 +191,7 @@ test("preserves call identity across partial chains, and permits an explicit put
   expect(removed.frame).toContain("Selected 100 call unavailable");
 
   await act(async () => {
-    await setup!.mockMouse.click(69, strikeRowY(100));
+    await tui.setup().mockMouse.click(69, strikeRowY(100));
   });
   await settle();
   expect((await f.capture()).launch!.side).toBe("put");
@@ -287,7 +285,7 @@ test("preserves known zero activity and zero put/call ratios", async () => {
 test("a different source contract at the same strike cannot replace the selected quote reference", async () => {
   const f = await fixture([100]);
   await act(async () => {
-    await setup!.mockMouse.click(8, strikeRowY(100));
+    await tui.setup().mockMouse.click(8, strikeRowY(100));
   });
   await settle();
   const selected = await f.capture();

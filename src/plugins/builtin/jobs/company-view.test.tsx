@@ -2,7 +2,7 @@ import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { CloudJobsSummaryPayload } from "../../../api-client/types";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -32,10 +32,9 @@ const spies = [
 ];
 afterAll(() => { for (const spy of spies) spy.mockRestore(); });
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   resetJobsCache();
-  if (setup) { await act(async () => setup?.renderer.destroy()); setup = undefined; }
 });
 
 async function render(width: number, height: number): Promise<string[]> {
@@ -50,9 +49,9 @@ async function render(width: number, height: number): Promise<string[]> {
       {(body) => <JobsPane width={body.width} height={body.height} focused />}
     </TestPaneFrame>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height: height + 1 }); });
-  for (let i = 0; i < 8; i += 1) await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
-  return setup!.captureCharFrame().split("\n");
+  await act(async () => { await tui.render(<Harness />, { width, height: height + 1 }); });
+  for (let i = 0; i < 8; i += 1) await act(async () => { await Bun.sleep(5); await tui.setup().renderOnce(); });
+  return tui.frame().split("\n");
 }
 
 test("the open-roles line sits beside the function bars and names what it plots", async () => {
@@ -80,8 +79,7 @@ test("a short pane keeps the roles list: the band becomes a strip, then goes", a
   expect(tabs).toBe(2);
   expect(lines[1]).toMatch(/^ ● [⠀-⣿]/);
   expect(lines.filter((line) => /Role \d\d/.test(line)).length).toBeGreaterThanOrEqual(4);
-  await act(async () => setup?.renderer.destroy());
-  setup = undefined;
+  await tui.destroy();
   resetJobsCache();
 
   lines = await render(22, 10);

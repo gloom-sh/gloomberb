@@ -1,12 +1,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient } from "../../../api-client";
-import {
-  emitKeypress,
-  settleFrame,
-  takeSavedTextFile,
-  testRender,
-} from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
@@ -18,12 +13,10 @@ import { cryptoMarketsCache } from "./client";
 import { CryptoBoardPane } from "./pane";
 import { cryptoFixture } from "./test-fixture";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let restore: (() => void) | undefined;
 let coordinator: MarketDataCoordinator | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
   coordinator?.destroy();
   coordinator = undefined;
@@ -48,9 +41,9 @@ async function mountPane(width = 130) {
     );
   }
   await act(async () => {
-    setup = await testRender(<Harness />, { width, height: 20 });
+    await tui.render(<Harness />, { width, height: 20 });
   });
-  await settleFrame(setup!, 10);
+  await settleFrame(tui.setup(), 10);
 }
 
 test("streamed quotes move the visible rows' price, change, returns and market cap", async () => {
@@ -86,8 +79,8 @@ test("streamed quotes move the visible rows' price, change, returns and market c
     });
     await new Promise((resolve) => setTimeout(resolve, 520));
   });
-  await settleFrame(setup!, 6);
-  const frame = setup!.captureCharFrame();
+  await settleFrame(tui.setup(), 6);
+  const frame = tui.frame();
   expect(frame).toContain("110");
   expect(frame).toContain("+12.24%");
   expect(frame).toContain("1.10T");
@@ -102,7 +95,7 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
   });
   restore = () => query.mockRestore();
   await mountPane();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Coins");
   expect(frame).toContain("Bitcoin");
   expect(frame).toContain("HYPE");
@@ -115,15 +108,15 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
   expect(csv).toContain(",2.04,");
   expect(csv).toContain(",1000000000000");
 
-  await emitKeypress(setup!, { name: "l" });
-  await settleFrame(setup!, 8);
-  expect(setup!.captureCharFrame()).toContain("Tether USDt");
+  await tui.emitKeypress({ name: "l" });
+  await settleFrame(tui.setup(), 8);
+  expect(tui.frame()).toContain("Tether USDt");
 
-  await emitKeypress(setup!, { name: "h" });
-  await settleFrame(setup!, 8);
+  await tui.emitKeypress({ name: "h" });
+  await settleFrame(tui.setup(), 8);
   fail = true;
-  await emitKeypress(setup!, { name: "r" });
-  await settleFrame(setup!, 10);
+  await tui.emitKeypress({ name: "r" });
+  await settleFrame(tui.setup(), 10);
   await exportPaneTable("cryp", "retained.csv");
   expect(takeSavedTextFile()!.text).toBe(csv);
   expect(query).toHaveBeenCalledTimes(2);

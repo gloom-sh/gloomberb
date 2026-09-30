@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, testRender } from "../../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import type { PricePoint, TickerFinancials } from "../../../../types/financials";
@@ -11,16 +11,10 @@ import type { PluginRuntimeAccess } from "../../../runtime";
 import type { PinTickerOptions } from "../../../../types/plugin";
 import { TestPaneProvider, createTestTicker as makeTicker } from "../../../../test-support/pane";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
 });
 
 interface PinTickerCall {
@@ -149,13 +143,13 @@ async function renderHarness(
   options: Parameters<typeof testRender>[1],
 ) {
   await act(async () => {
-    testSetup = await testRender(node, options);
+    await tui.render(node, options);
   });
 }
 
 async function renderOnce() {
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -165,7 +159,7 @@ async function flushFrames(count: number) {
   for (let index = 0; index < count; index += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
@@ -177,7 +171,7 @@ describe("QuoteMonitorPane", () => {
     financials.quote!.instrumentType = "CURRENCY";
     await renderHarness(createQuoteMonitorHarness({ width, symbols: [symbol], financials: new Map([[symbol, financials]]) }), { width, height: 7 });
     await renderOnce();
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("$1.160227");
     expect(frame).toContain("-0.001078");
   });
@@ -190,15 +184,15 @@ describe("QuoteMonitorPane", () => {
     });
 
     await renderOnce();
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     const row = frame.split("\n").findIndex((line) => line.includes("MSFT"));
     expect(row).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(3, row);
-      await testSetup!.renderOnce();
-      await testSetup!.mockMouse.click(3, row);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(3, row);
+      await tui.setup().renderOnce();
+      await tui.setup().mockMouse.click(3, row);
+      await tui.setup().renderOnce();
     });
 
     expect(pinCalls).toEqual([{
@@ -230,7 +224,7 @@ describe("QuoteMonitorPane", () => {
     await renderOnce();
     await flushFrames(3);
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(loadCalls).toContainEqual({ symbol: "MSFT", exchange: "NASDAQ", range: "1M" });
     expect(frame).toContain("MSFT");
     expect(frame).toMatch(/[⠁-⣿]/);
@@ -246,10 +240,10 @@ describe("QuoteMonitorPane", () => {
     await renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressKey("l");
-      testSetup!.mockInput.pressKey("j");
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressKey("l");
+      tui.setup().mockInput.pressKey("j");
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     // Down from the second column of a full row lands on the shorter row's last card.

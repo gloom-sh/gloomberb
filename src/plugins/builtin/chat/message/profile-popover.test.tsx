@@ -4,7 +4,7 @@ import {
   apiClient,
   type ChatUserSummary,
 } from "../../../../api-client";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { Box, Text } from "../../../../ui";
 import { makeAccountProfile } from "../test-harness";
 import { useChatProfilePopover } from "../profile-popover";
@@ -13,17 +13,12 @@ import {
   shouldOfferChatProfileSetup,
 } from "./profile-popover";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const originalGetAccountProfile = apiClient.getAccountProfile.bind(apiClient);
 
-afterEach(async () => {
+afterEach(() => {
   apiClient.getAccountProfile = originalGetAccountProfile;
   apiClient.setSessionToken(null);
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup?.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 function makeUser(overrides: Partial<ChatUserSummary>): ChatUserSummary {
@@ -89,7 +84,7 @@ describe("profile popover", () => {
     });
 
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <OwnProfileHarness user={makeUser({
           company: "Gloom",
           bio: "Made Gloomberb",
@@ -98,17 +93,14 @@ describe("profile popover", () => {
         { width: 50, height: 8 },
       );
     });
-    const setup = testSetup;
-    expect(setup).toBeDefined();
-    if (!setup) return;
     await act(async () => {
-      await setup.renderOnce();
+      await tui.setup().renderOnce();
       await Promise.resolve();
-      await setup.renderOnce();
-      await setup.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = setup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain('"oneYearReturn":0.14');
     expect(frame).toContain('"spyBeta":1.05');
   });

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useEffect, useState } from "react";
 import { getDockedPaneIds } from "../../plugins/pane-manager";
 import { setSharedRegistryForTests } from "../../plugins/registry";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
@@ -10,13 +10,9 @@ import type { AppNotificationRequest } from "../../types/plugin";
 import { StatusBar } from "./status-bar";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
   setSharedRegistryForTests(undefined);
 });
 
@@ -71,7 +67,7 @@ describe("StatusBar", () => {
     const handleDeactivate = () => { deactivateCount += 1; };
     const handleExit = () => { exitCount += 1; };
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string; index?: number }))}>
         <TransientLayoutProvider>
           <SeedTransientLayout
@@ -85,10 +81,10 @@ describe("StatusBar", () => {
       { width: 120, height: 1 },
     );
 
-    await testSetup.renderOnce();
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("^1 Default");
     expect(frame).toContain("^2 Monitor");
     expect(frame).toContain("^⇧F Focus");
@@ -96,31 +92,31 @@ describe("StatusBar", () => {
     const monitorX = frame.split("\n")[0]?.indexOf("^2 Monitor") ?? -1;
     expect(monitorX).toBeGreaterThanOrEqual(0);
 
-    await testSetup.mockMouse.click(monitorX + 1, 0);
-    await testSetup.renderOnce();
-    await testSetup.renderOnce();
+    await tui.setup().mockMouse.click(monitorX + 1, 0);
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
 
     expect(deactivateCount).toBe(1);
     expect(exitCount).toBe(0);
     expect(actions).toContainEqual({ type: "SWITCH_LAYOUT", index: 1 });
 
-    const afterSwitchFrame = testSetup.captureCharFrame();
+    const afterSwitchFrame = tui.frame();
     expect(afterSwitchFrame).toContain("^⇧F Focus");
 
     const focusX = afterSwitchFrame.split("\n")[0]?.indexOf("^⇧F Focus") ?? -1;
     expect(focusX).toBeGreaterThanOrEqual(0);
 
-    await testSetup.mockMouse.click(focusX + 1, 0);
-    await testSetup.renderOnce();
+    await tui.setup().mockMouse.click(focusX + 1, 0);
+    await tui.setup().renderOnce();
 
     expect(activateCount).toBe(1);
 
-    const activeFocusFrame = testSetup.captureCharFrame();
+    const activeFocusFrame = tui.frame();
     const activeFocusX = activeFocusFrame.split("\n")[0]?.indexOf("^⇧F Focus") ?? -1;
     expect(activeFocusX).toBeGreaterThanOrEqual(0);
 
-    await testSetup.mockMouse.click(activeFocusX + 1, 0);
-    await testSetup.renderOnce();
+    await tui.setup().mockMouse.click(activeFocusX + 1, 0);
+    await tui.setup().renderOnce();
 
     expect(exitCount).toBe(1);
   });
@@ -138,23 +134,23 @@ describe("StatusBar", () => {
     };
     const actions: Array<{ type: string; fromIndex?: number; toIndex?: number }> = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string; fromIndex?: number; toIndex?: number }))}>
         <StatusBar />
       </AppContext>,
       { width: 120, height: 3 },
     );
 
-    await testSetup.renderOnce();
-    const frame = testSetup.captureCharFrame();
+    await tui.setup().renderOnce();
+    const frame = tui.frame();
     const homeX = frame.split("\n")[0]?.indexOf("^1 Home") ?? -1;
     const newsX = frame.split("\n")[0]?.indexOf("^3 News") ?? -1;
     expect(homeX).toBeGreaterThanOrEqual(0);
     expect(newsX).toBeGreaterThan(homeX);
 
     await act(async () => {
-      await testSetup!.mockMouse.drag(homeX + 1, 0, newsX + 1, 0);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.drag(homeX + 1, 0, newsX + 1, 0);
+      await tui.setup().renderOnce();
     });
 
     expect(actions).toContainEqual({ type: "REORDER_LAYOUT", fromIndex: 0, toIndex: 2 });
@@ -197,19 +193,19 @@ describe("StatusBar", () => {
       renderSlot: () => null,
     } as any);
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state, (action) => result.actions.push(action as { type: string }))}>
         <StatusBar />
       </AppContext>,
       { width: 120, height: 1 },
     );
 
-    await testSetup.renderOnce();
-    const tidyX = testSetup.captureCharFrame().split("\n")[0]?.indexOf("Tidy Windows") ?? -1;
+    await tui.setup().renderOnce();
+    const tidyX = tui.frame().split("\n")[0]?.indexOf("Tidy Windows") ?? -1;
     expect(tidyX).toBeGreaterThanOrEqual(0);
 
-    await testSetup.mockMouse.click(tidyX + 1, 0);
-    await testSetup.renderOnce();
+    await tui.setup().mockMouse.click(tidyX + 1, 0);
+    await tui.setup().renderOnce();
     return result;
   }
 

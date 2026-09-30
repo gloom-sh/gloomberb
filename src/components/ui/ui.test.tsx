@@ -2,7 +2,7 @@ import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, createRef, useEffect, useRef, useState } from "react";
 import { setLanguage } from "../../i18n";
-import { TestDialogProvider, emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, TestDialogProvider, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import { Box } from "../../ui";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
@@ -22,7 +22,7 @@ import {
 import { MultiSelectDialogButton, type MultiSelectDialogButtonHandle } from "./multi-select/dialog";
 import { SelectButton, type SelectControl } from "./select-button";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let setListSelection: ((index: number) => void) | null = null;
 let selectedTableRow: string | null = null;
 let activatedTableRow: string | null = null;
@@ -210,13 +210,9 @@ function ChoiceDialogHarness({
   );
 }
 
-const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { frames: 2, afterCommit: true });
+const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event, { frames: 2, afterCommit: true });
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => testSetup?.renderer.destroy());
-    testSetup = undefined;
-  }
+afterEach(() => {
   setListSelection = null;
   selectedTableRow = null;
   activatedTableRow = null;
@@ -230,34 +226,34 @@ afterEach(async () => {
 
 describe("shared UI kit", () => {
   test("opens compact multi-select dialogs from a button", async () => {
-    testSetup = await testRender(<MultiSelectDialogButtonHarness />, { width: 60, height: 18 });
+    await tui.render(<MultiSelectDialogButtonHarness />, { width: 60, height: 18 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("IND: SMA");
-    const button = testSetup.renderer.root.findDescendantById("indicator-dialog:button") as BoxRenderable | undefined;
+    const button = tui.setup().renderer.root.findDescendantById("indicator-dialog:button") as BoxRenderable | undefined;
     expect(button).toBeDefined();
     expect(button!.width).toBe(" IND: SMA ".length);
 
     await act(async () => {
-      await testSetup!.mockMouse.release(button!.x + 1, button!.y);
+      await tui.setup().mockMouse.release(button!.x + 1, button!.y);
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).not.toContain("Chart Indicators");
 
     await act(async () => {
-      await testSetup!.mockMouse.click(button!.x + 1, button!.y);
+      await tui.setup().mockMouse.click(button!.x + 1, button!.y);
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("Chart Indicators");
     expect(frame).toContain("[✓] SMA");
     expect(frame).toContain("[ ] EMA");
@@ -265,90 +261,90 @@ describe("shared UI kit", () => {
     expect(frame).not.toContain("space toggle");
 
     await act(async () => {
-      await testSetup!.mockMouse.click(0, 0);
+      await tui.setup().mockMouse.click(0, 0);
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).not.toContain("Chart Indicators");
   });
 
   test("opens multi-selects imperatively and only matches plain shortcuts", async () => {
-    testSetup = await testRender(<MultiSelectDialogButtonHarness />, { width: 60, height: 18 });
+    await tui.render(<MultiSelectDialogButtonHarness />, { width: 60, height: 18 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await emitKeypress({ name: "i", sequence: "i", ctrl: true });
-    expect(testSetup.captureCharFrame()).not.toContain("Chart Indicators");
+    expect(tui.frame()).not.toContain("Chart Indicators");
 
     await emitKeypress({ name: "i", sequence: "i" });
-    expect(testSetup.captureCharFrame()).toContain("Chart Indicators");
+    expect(tui.frame()).toContain("Chart Indicators");
     expect(multiSelectOpenStates.at(-1)).toBe(true);
 
     await emitKeypress({ name: "escape", sequence: "\u001b" });
-    expect(testSetup.captureCharFrame()).not.toContain("Chart Indicators");
+    expect(tui.frame()).not.toContain("Chart Indicators");
     expect(multiSelectOpenStates.at(-1)).toBe(false);
 
     await act(async () => {
       multiSelectDialogHandle.current?.open();
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("Chart Indicators");
+    expect(tui.frame()).toContain("Chart Indicators");
     expect(multiSelectOpenStates.at(-1)).toBe(true);
   });
 
   test("supports keyboard and pointer selection in choice dialogs", async () => {
-    testSetup = await testRender(<ChoiceDialogHarness />, { width: 44, height: 10 });
+    await tui.render(<ChoiceDialogHarness />, { width: 44, height: 10 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Alpha account");
 
     await emitKeypress({ name: "down" });
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("Beta account");
 
     await emitKeypress({ name: "k", sequence: "k" });
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("Alpha account");
 
     await emitKeypress({ name: "j", sequence: "j" });
     await emitKeypress({ name: "enter", sequence: "\r" });
     expect(resolvedChoice).toBe("beta");
 
-    const gammaRow = testSetup.captureCharFrame().split("\n").findIndex((line) => line.includes("Gamma"));
+    const gammaRow = tui.frame().split("\n").findIndex((line) => line.includes("Gamma"));
     expect(gammaRow).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.moveTo(2, gammaRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.moveTo(2, gammaRow);
+      await tui.setup().renderOnce();
     });
-    await testSetup.renderOnce();
-    frame = testSetup.captureCharFrame();
+    await tui.setup().renderOnce();
+    frame = tui.frame();
     expect(frame).toContain("Gamma account");
 
     await act(async () => {
-      await testSetup!.mockMouse.click(2, gammaRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, gammaRow);
+      await tui.setup().renderOnce();
     });
     expect(resolvedChoice).toBe("gamma");
   });
 
   test("preselects the current choice in choice dialogs", async () => {
-    testSetup = await testRender(<ChoiceDialogHarness selectedChoiceId="beta" />, { width: 44, height: 10 });
+    await tui.render(<ChoiceDialogHarness selectedChoiceId="beta" />, { width: 44, height: 10 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Beta account");
     expect(frame).not.toContain("Alpha account");
   });
@@ -359,27 +355,27 @@ describe("shared UI kit", () => {
       label: `Model ${index + 1}`,
       description: `Catalog model ${index + 1}`,
     }));
-    testSetup = await testRender(<ChoiceDialogHarness choices={choices} />, { width: 44, height: 17 });
+    await tui.render(<ChoiceDialogHarness choices={choices} />, { width: 44, height: 17 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).not.toContain("Model 20");
+    expect(tui.frame()).not.toContain("Model 20");
 
     for (let index = 0; index < 19; index += 1) {
       await emitKeypress({ name: "down" });
     }
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Model 20");
     expect(frame).toContain("Catalog model 20");
   });
 
   test("cancels choice dialogs with escape", async () => {
-    testSetup = await testRender(<ChoiceDialogHarness />, { width: 44, height: 10 });
+    await tui.render(<ChoiceDialogHarness />, { width: 44, height: 10 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await emitKeypress({ name: "escape", sequence: "\u001b" });
 
@@ -415,29 +411,29 @@ describe("shared UI kit", () => {
   });
 
   test("auto-scrolls a scrollable list to keep the selected row visible", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <ScrollableListHarness />,
       { width: 20, height: 6 },
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
       setListSelection!(8);
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Row 9");
     expect(frame).not.toContain("Row 1");
   });
 
   test("shortens a long list row label instead of running into its detail", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <Box width={36} height={3}>
         <ListView
           items={[
@@ -453,16 +449,16 @@ describe("shared UI kit", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const [first, second] = testSetup.captureCharFrame().split("\n");
+    const [first, second] = tui.frame().split("\n");
     expect(first).toMatch(/^\u25b8 Will .*\.\.\..* Polymarket$/);
     expect(second).toBe("  AAPL · Revenue           Quarterly");
   });
 
   test("masks password text fields", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <TextField
         type="password"
         value="secret"
@@ -474,15 +470,15 @@ describe("shared UI kit", () => {
       { width: 16, height: 3 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("******");
     expect(frame).not.toContain("secret");
   });
 
   test("does not allow selecting masked password fields", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <TextField
         type="password"
         value="secret"
@@ -493,19 +489,19 @@ describe("shared UI kit", () => {
       { width: 16, height: 3 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await act(async () => {
-      await testSetup!.mockMouse.drag(1, 0, 6, 0);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.drag(1, 0, 6, 0);
+      await tui.setup().renderOnce();
     });
 
-    expect(testSetup.renderer.getSelection()).toBeNull();
+    expect(tui.setup().renderer.getSelection()).toBeNull();
   });
 
   test("activates data table rows on a second click", async () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="portfolio-list:main">
           <DataTableActivationHarness />
@@ -515,19 +511,19 @@ describe("shared UI kit", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockMouse.click(2, 1);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, 1);
+      await tui.setup().renderOnce();
     });
 
     expect(selectedTableRow).toBe("alpha");
     expect(activatedTableRow).toBeNull();
 
     await act(async () => {
-      await testSetup!.mockMouse.click(2, 1);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, 1);
+      await tui.setup().renderOnce();
     });
 
     expect(activatedTableRow).toBe("alpha");
@@ -535,7 +531,7 @@ describe("shared UI kit", () => {
 
   test("renders data table section headers as non-selectable rows", async () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="portfolio-list:main">
           <DataTableSectionHarness />
@@ -545,25 +541,25 @@ describe("shared UI kit", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Macro Releases");
     expect(frame).toContain("CPI");
 
     await act(async () => {
-      await testSetup!.mockMouse.click(2, 1);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, 1);
+      await tui.setup().renderOnce();
     });
     expect(selectedTableRow).toBeNull();
 
     await act(async () => {
-      await testSetup!.mockMouse.click(2, 2);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, 2);
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(selectedTableRow).toBe("cpi");
     expect(frame).toContain("CPI");
   });
@@ -571,7 +567,7 @@ describe("shared UI kit", () => {
   test("virtualizes data table rows and refreshes after wheel scrolling", async () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
     tableScrollBoxForTest = null;
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="portfolio-list:main">
           <DataTableVirtualizationHarness />
@@ -581,10 +577,10 @@ describe("shared UI kit", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Row 0");
     expect(frame).not.toContain("Row 99");
     expect(tableScrollBoxForTest?.scrollTop).toBe(0);
@@ -594,20 +590,20 @@ describe("shared UI kit", () => {
     await act(async () => {
       setTableVisibleRangeKey!("second");
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(tableVisibleRanges.length).toBeGreaterThan(initialRangeCount);
     expect(tableVisibleRanges.at(-1)).toEqual({ start: 0, end: 5 });
 
     await act(async () => {
       for (let index = 0; index < 12; index++) {
-        await testSetup!.mockMouse.scroll(2, 2, "down");
+        await tui.setup().mockMouse.scroll(2, 2, "down");
       }
       await Promise.resolve();
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     const scrollTop = tableScrollBoxForTest?.scrollTop ?? 0;
     expect(scrollTop).toBeGreaterThan(0);
@@ -616,7 +612,7 @@ describe("shared UI kit", () => {
       end: Math.min(100, scrollTop + 5),
     });
 
-    const scrolledFrame = testSetup.captureCharFrame();
+    const scrolledFrame = tui.frame();
     expect(scrolledFrame).toContain(`Row ${scrollTop}`);
   });
 });
@@ -635,15 +631,15 @@ test("a select opened through its handle skips disabled options and ignores resu
       onChange={(value) => changes.push(value)}
     /></TestDialogProvider>;
   }
-  testSetup = await testRender(<Harness />, { width: 44, height: 12 });
-  await act(async () => { await testSetup!.renderOnce(); });
-  await act(async () => { handle.current!.open(); await testSetup!.renderOnce(); });
+  await tui.render(<Harness />, { width: 44, height: 12 });
+  await act(async () => { await tui.setup().renderOnce(); });
+  await act(async () => { handle.current!.open(); await tui.setup().renderOnce(); });
   await emitKeypress({ name: "down" });
   await emitKeypress({ name: "enter", sequence: "\r" });
   expect(changes).toEqual(["gamma"]);
-  await act(async () => { handle.current?.open(); await testSetup!.renderOnce(); });
+  await act(async () => { handle.current?.open(); await tui.setup().renderOnce(); });
   await emitKeypress({ name: "down" });
-  await act(async () => { disable?.(); await testSetup!.renderOnce(); });
+  await act(async () => { disable?.(); await tui.setup().renderOnce(); });
   await emitKeypress({ name: "enter", sequence: "\r" });
   expect(changes).toEqual(["gamma"]);
 });

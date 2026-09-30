@@ -4,7 +4,7 @@ import { apiClient } from "../../../api-client";
 import { PaneWrapper } from "../../../components/layout/pane";
 import { PaneFooterProvider, type CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -16,13 +16,11 @@ import { TickerResearchPane } from "./pane";
 const paneId = "research:status";
 const asOf = Date.parse("2026-09-11T08:08:00Z");
 const now = Date.parse("2026-09-12T02:00:00Z");
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let update: (change: (state: AppState) => AppState) => void;
 let footer: CombinedPaneFooter;
 
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   mock.restore();
   setSharedMarketDataCoordinator(null);
 });
@@ -37,8 +35,8 @@ const financials = (value: Quote): TickerFinancials => ({
 });
 
 async function frame() {
-  for (let i = 0; i < 3; i++) await act(async () => { await setup!.renderOnce(); });
-  return setup!.captureCharFrame();
+  for (let i = 0; i < 3; i++) await act(async () => { await tui.setup().renderOnce(); });
+  return tui.frame();
 }
 
 async function render(plan: "free" | "pro", width: number) {
@@ -69,7 +67,7 @@ async function render(plan: "free" | "pro", width: number) {
       }}</PaneFooterProvider>
     </TestPaneProvider>;
   }
-  setup = await testRender(<Harness />, { width, height: 30 });
+  await tui.render(<Harness />, { width, height: 30 });
   return frame();
 }
 

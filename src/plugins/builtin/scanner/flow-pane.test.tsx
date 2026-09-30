@@ -6,7 +6,7 @@ import {
   type ScannerFlowEvent,
   type ScannerFlowHistoryQuery,
 } from "../../../api-client";
-import { emitKeypress as emitTuiKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -44,7 +44,7 @@ const originalSubscribe = apiClient.subscribeScanner;
 const originalHistory = apiClient.getScannerFlowHistory;
 let requests: ScannerFlowHistoryQuery[] = [];
 let pushFeed: ((events: ScannerFlowEvent[]) => void) | null = null;
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 beforeEach(() => {
   requests = [];
@@ -68,14 +68,9 @@ beforeEach(() => {
   }) as typeof apiClient.getScannerFlowHistory;
 });
 
-afterEach(async () => {
+afterEach(() => {
   apiClient.subscribeScanner = originalSubscribe;
   apiClient.getScannerFlowHistory = originalHistory;
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 const PANE_INSTANCE_ID = "scanner-flow:test";
@@ -101,19 +96,19 @@ async function settle(times = 4) {
   for (let index = 0; index < times; index += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
 
 test("recorded prints fill the pane below the live tape, older days with their date", async () => {
-  testSetup = await testRender(<Harness height={24} />, { width: 100, height: 24 });
+  await tui.render(<Harness height={24} />, { width: 100, height: 24 });
   await settle();
 
   // Six live rows cannot fill 21 body rows, so the first page loads by itself,
   // starting under the oldest live print.
   expect(requests[0]).toMatchObject({ limit: 100, minPremium: 250_000, before: { at: LIVE.at(-1)!.at, id: LIVE.at(-1)!.id } });
-  const frame = testSetup.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("TIME");
   // Yesterday's rows carry their date, so the whole column shows it.
   expect(frame).toMatch(/\d{2}\/\d{2} \d{2}:\d{2}/);
@@ -130,12 +125,12 @@ test("scrolling to the end asks for the next page from the last recorded print",
     const page = below.slice(0, 20);
     return { events: page, hasMore: below.length > page.length };
   }) as typeof apiClient.getScannerFlowHistory;
-  testSetup = await testRender(<Harness height={12} />, { width: 100, height: 12 });
+  await tui.render(<Harness height={12} />, { width: 100, height: 12 });
   await settle();
   expect(requests).toHaveLength(1);
 
   for (let index = 0; index < 30; index += 1) {
-    await emitTuiKeypress(testSetup, { name: "down", sequence: "\u001B[B" });
+    await tui.emitKeypress({ name: "down", sequence: "\u001B[B" });
   }
   await settle();
 
@@ -144,16 +139,16 @@ test("scrolling to the end asks for the next page from the last recorded print",
 });
 
 test("a print that rolls off the shared tape stays in the pane", async () => {
-  testSetup = await testRender(<Harness height={24} />, { width: 100, height: 24 });
+  await tui.render(<Harness height={24} />, { width: 100, height: 24 });
   await settle();
   const newest = print(999, NOW + MINUTE, { underlying: "AMD" });
   // The tape now holds only the newest print; the pane keeps the ones it saw.
   await act(async () => {
     pushFeed?.([newest]);
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
   await settle();
-  const frame = testSetup.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("AMD");
   expect(frame.match(/TSLA/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
 });

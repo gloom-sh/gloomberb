@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { IpoCalendarPayload } from "../../../api-client/ipo";
-import { settleFrame, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -33,10 +33,8 @@ const board: IpoCalendarPayload = {
   ],
 };
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   setCloudApiFetchTransport(null);
   ipoCalendarCache.reset();
 });
@@ -58,8 +56,8 @@ async function mount(width = 110, height = 10) {
       </TestPaneFrame>
     );
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height }); });
-  for (let i = 0; i < 6; i++) await settleFrame(setup!, 10);
+  await act(async () => { await tui.render(<Harness />, { width, height }); });
+  await tui.waitForFrameToContain("3750");
   return { pins };
 }
 
@@ -71,7 +69,7 @@ function cellOf(line: string, text: string): number {
 
 test("a company printed in Chinese keeps every column after it in line", async () => {
   await mount();
-  const lines = setup!.captureCharFrame().split("\n");
+  const lines = tui.frame().split("\n");
   const hk = lines.find((line) => line.includes("3750"))!;
   const us = lines.find((line) => line.includes("ARM"))!;
   expect(hk).toContain("宁德时代");
@@ -84,7 +82,7 @@ test("a company printed in Chinese keeps every column after it in line", async (
 
 test("Enter opens a Hong Kong code on its own exchange, never a US ticker of the same name", async () => {
   const { pins } = await mount();
-  await act(async () => setup!.mockInput.pressEnter());
-  await settleFrame(setup!, 10);
+  await act(async () => tui.setup().mockInput.pressEnter());
+  await settleFrame(tui.setup(), 10);
   expect(pins.map((pin) => pin.symbol)).toEqual(["3750:XHKG"]);
 });

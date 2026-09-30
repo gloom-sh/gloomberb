@@ -4,7 +4,7 @@ import { NewsService } from "../../../../../news/aggregator";
 import { setSharedNewsService } from "../../../../../news/hooks";
 import { newsProvider } from "../../../../../capabilities";
 import { NewsPresetPane } from "./preset-pane";
-import { testRender, settleFrame, emitKeypress } from "../../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../../../renderers/opentui/test-utils";
 import { TestPaneProvider, createTestPaneConfig } from "../../../../../test-support/pane";
 import { createStatefulTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
 import { createInitialState, appReducer } from "../../../../../state/app/context";
@@ -15,7 +15,7 @@ import { createTestArticle } from "../../../../../test-support/news";
 import { Box } from "../../../../../ui";
 
 const query = { feed: "latest", limit: 200 } as const;
-let setup: Awaited<ReturnType<typeof testRender>>;
+const tui = createOpenTuiTestHarness();
 let service: NewsService;
 function story(id = "acme", title = "Acme plans acquisition", version = 1, items = false): NewsArticle {
   const publishedAt = new Date(`2026-09-11T1${version}:00:00Z`);
@@ -79,24 +79,23 @@ async function mount(
       </TestPaneProvider>
     );
   }
-  await act(async () => { setup = await testRender(<Harness />, { width: 100, height: 26 }); });
-  await settleFrame(setup, 12);
+  await act(async () => { await tui.render(<Harness />, { width: 100, height: 26 }); });
+  await settleFrame(tui.setup(), 12);
 }
 
 async function key(name: string) {
-  await emitKeypress(setup, { name });
-  await settleFrame(setup, 10);
+  await tui.emitKeypress({ name });
+  await settleFrame(tui.setup(), 10);
 }
 
 async function refresh() {
   await act(async () => { await service.load(query); });
-  await settleFrame(setup, 12);
+  await settleFrame(tui.setup(), 12);
 }
 
-function capture() { return setup.captureCharFrame(); }
+function capture() { return tui.frame(); }
 
-afterEach(async () => {
-  if (setup) await act(async () => setup.renderer.destroy());
+afterEach(() => {
   service?.stop();
   setSharedNewsService(null);
 });
@@ -184,7 +183,7 @@ test("late earlier detail cannot overwrite a refreshed story", async () => {
   await refresh();
   expect(capture()).toContain("Timeline cash consideration 2");
   await act(async () => resolveOld(story("acme", "Acme plans acquisition", 1, true)));
-  await settleFrame(setup, 12);
+  await settleFrame(tui.setup(), 12);
   const frame = capture();
   expect(frame).toContain("Acme acquisition terminated");
   expect(frame).not.toContain("Timeline cash consideration 1");
@@ -198,7 +197,7 @@ test("source failure uses footer and reopening recovers without repeated automat
   const failed = capture();
   expect(failed).toContain("Story detail unavailable");
   expect(failed).toContain("Acme cash consideration version 1");
-  await settleFrame(setup, 20);
+  await settleFrame(tui.setup(), 20);
   expect(calls).toBe(1);
   await key("escape");
   await key("return");
@@ -246,7 +245,7 @@ test("a timeline correction supersedes an earlier pending detail", async () => {
   await refresh();
   expect(capture()).toContain("Corrected cash consideration $12");
   await act(async () => { resolveOld(story("acme", "Acme plans acquisition", 1, true)); });
-  await settleFrame(setup, 12);
+  await settleFrame(tui.setup(), 12);
   expect(capture()).toContain("Corrected cash consideration $12");
   expect(capture()).not.toContain("Timeline cash consideration 1");
 });

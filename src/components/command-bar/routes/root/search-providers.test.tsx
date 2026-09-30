@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import type { CommandBarResultDef, CommandBarSearchProvider } from "../../../../types/plugin";
 import type { ResultItem } from "../../list/model";
 import { toProviderResultItem, useCommandBarSearchProviders } from "./search-providers";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let setHarnessQuery: ((query: string) => void) | null = null;
 let latestItems: ResultItem[] = [];
 let latestSearching = false;
@@ -32,26 +32,26 @@ function ProvidersHarness({
 }
 
 async function renderHarness(providers: CommandBarSearchProvider[], initialQuery = ""): Promise<void> {
-  testSetup = await testRender(
+  await tui.render(
     <ProvidersHarness providers={providers} initialQuery={initialQuery} />,
     { width: 20, height: 1 },
   );
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
 async function typeQuery(query: string): Promise<void> {
   await act(async () => {
     setHarnessQuery?.(query);
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
 async function settle(ms = 20): Promise<void> {
   await act(async () => {
     await Bun.sleep(ms);
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
@@ -59,13 +59,7 @@ function makeResult(id: string): CommandBarResultDef {
   return { id, label: id, execute: () => {} };
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   setHarnessQuery = null;
   latestItems = [];
   latestSearching = false;

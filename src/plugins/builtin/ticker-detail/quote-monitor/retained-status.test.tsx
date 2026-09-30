@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
@@ -9,7 +9,7 @@ import { createInitialState } from "../../../../state/app/context";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import { QuoteMonitorPane } from "./index";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | undefined;
 const symbol = "EURUSD=X";
 const instrument = { symbol, exchange: "" };
@@ -17,14 +17,12 @@ const instrument = { symbol, exchange: "" };
 async function frame() {
   for (let i = 0; i < 3; i++) await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  return setup!.captureCharFrame();
+  return tui.frame();
 }
 
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   coordinator?.destroy();
   coordinator = undefined;
   setSharedMarketDataCoordinator(null);
@@ -43,7 +41,7 @@ async function render(width: number, getQuote: () => Promise<Quote>, cached?: Qu
     quote: cached, annualStatements: [], quarterlyStatements: [], priceHistory: [],
   } satisfies TickerFinancials);
   await act(async () => {
-    setup = await testRender(<TestPaneProvider state={state} paneId="qm:test" pluginId="ticker-research"
+    await tui.render(<TestPaneProvider state={state} paneId="qm:test" pluginId="ticker-research"
       runtime={createTestPluginRuntime({ getMarketData: () => provider })}>
       <QuoteMonitorPane paneId="qm:test" paneType="quote-monitor" focused width={width} height={height} />
     </TestPaneProvider>, { width, height });

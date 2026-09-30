@@ -3,7 +3,7 @@ import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { buildOptionsKey } from "../../../market-data/selectors";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain } from "../../../types/financials";
 import type { YieldPoint } from "../yield-curve/treasury-data";
@@ -14,13 +14,11 @@ const first = Date.UTC(2026, 10, 20) / 1000;
 const second = Date.UTC(2026, 11, 18) / 1000;
 const instrument = { symbol: "AAPL", exchange: "NASDAQ" };
 const curve: YieldPoint[] = [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-09-21" }];
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let restoreRates: (() => void) | undefined;
 const realNow = Date.now;
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   restoreRates?.(); restoreRates = undefined;
   setSharedMarketDataCoordinator(null);
   Date.now = realNow;
@@ -36,7 +34,7 @@ function chain(expiration: number, mid = 2): OptionsChain {
 async function settle() {
   for (let index = 0; index < 3; index += 1) await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
@@ -68,7 +66,7 @@ async function fixture(loadRates: () => Promise<YieldPoint[]>) {
         lastGoodData: entry.lastGoodData ? { ...entry.lastGoodData } : null }, spotAsOf: now });
     return null;
   }
-  await act(async () => { setup = await testRender(<Probe />, { width: 20, height: 5 }); });
+  await act(async () => { await tui.render(<Probe />, { width: 20, height: 5 }); });
   await settle();
   return { coordinator, rateSpy, requests, resource: () => resource,
     setResponse: (promise: Promise<OptionsChain>) => { nextSelectedResponse = promise; },

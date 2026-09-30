@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudProxyStatementListPayload, type CloudProxyStatementPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, createTestTicker, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -22,11 +22,9 @@ function statement(ticker: string, year: number): CloudProxyStatementPayload {
     highlights: `${ticker} compensation ${year}`, keyFigures: [], otherYears: [],
   };
 }
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const restore: Array<() => void> = [];
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   for (const undo of restore.splice(0)) undo();
   resetExecutivesPersistence();
   setCloudApiFetchTransport(null);
@@ -34,7 +32,7 @@ afterEach(async () => {
 async function settle() {
   for (let i = 0; i < 4; i++) await act(async () => {
     await new Promise(resolve => setTimeout(resolve, 0));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 async function mount(initialSymbol = "ALPHA", width = 100, height = 24) {
@@ -57,16 +55,16 @@ async function mount(initialSymbol = "ALPHA", width = 100, height = 24) {
       {(body) => <ExecutivesPane focused {...body} />}
     </TestPaneFrame>;
   }
-  setup = await testRender(<Harness />, { width, height });
+  await tui.render(<Harness />, { width, height });
   await settle();
   return async (ticker: string) => { await act(async () => selectTicker(ticker)); await settle(); };
 }
 async function selectYear(year: number) {
-  const lines = setup!.captureCharFrame().split("\n");
+  const lines = tui.frame().split("\n");
   const y = lines.findIndex(line => line.includes(`${year} proxy`));
   expect(y).toBeGreaterThanOrEqual(0);
   const x = lines[y]!.indexOf(`${year} proxy`);
-  await act(async () => setup!.mockMouse.click(x + 2, y));
+  await act(async () => tui.setup().mockMouse.click(x + 2, y));
   await settle();
 }
 
@@ -83,7 +81,7 @@ test("a qualified US pane binding reaches issuer proxy list and year endpoints",
   });
   await mount("AAPL:XNAS");
   expect(paths).toEqual(["/public/proxies/AAPL", "/public/proxies/AAPL/2026"]);
-  expect(setup!.captureCharFrame()).toContain("AAPL compensation 2026");
+  expect(tui.frame()).toContain("AAPL compensation 2026");
 });
 
 test("the CEO summary preserves reported zero compensation and its full decline", async () => {
@@ -97,7 +95,7 @@ test("the CEO summary preserves reported zero compensation and its full decline"
   const detail = spyOn(apiClient, "getProxyStatement").mockResolvedValue(report);
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
   await mount();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toMatch(/\$0\s+Zero Pay CEO total pay, -100% vs prior year/);
 });
 
@@ -107,18 +105,18 @@ test("a different proxy year clears the prior figures and filing action, and a f
   const detail = spyOn(apiClient, "getProxyStatement").mockImplementation(async (ticker, year) => year === 2025 ? earlier.promise : statement(ticker, year));
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
   await mount();
-  expect(setup!.captureCharFrame()).toContain("ALPHA compensation 2026");
-  expect(setup!.captureCharFrame()).toContain("pen filing");
+  expect(tui.frame()).toContain("ALPHA compensation 2026");
+  expect(tui.frame()).toContain("pen filing");
   await selectYear(2025);
-  expect(setup!.captureCharFrame()).not.toContain("ALPHA compensation 2026");
-  expect(setup!.captureCharFrame()).not.toContain("pen filing");
+  expect(tui.frame()).not.toContain("ALPHA compensation 2026");
+  expect(tui.frame()).not.toContain("pen filing");
   await act(async () => earlier.reject(new Error("Selected proxy unavailable")));
   await settle();
-  expect(setup!.captureCharFrame()).toContain("Selected proxy unavailable");
-  expect(setup!.captureCharFrame()).not.toContain("Loading...");
+  expect(tui.frame()).toContain("Selected proxy unavailable");
+  expect(tui.frame()).not.toContain("Loading...");
   await selectYear(2026);
-  expect(setup!.captureCharFrame()).toContain("ALPHA compensation 2026");
-  expect(setup!.captureCharFrame()).not.toContain("Selected proxy unavailable");
+  expect(tui.frame()).toContain("ALPHA compensation 2026");
+  expect(tui.frame()).not.toContain("Selected proxy unavailable");
 });
 
 test("changing ticker waits for its own proxy years and discards a late previous-company response", async () => {
@@ -133,11 +131,11 @@ test("changing ticker waits for its own proxy years and discards a late previous
   expect(detail.mock.calls.filter(([ticker]) => ticker === "BETA")).toEqual([]);
   await act(async () => oldYear.resolve(statement("ALPHA", 2025)));
   await settle();
-  expect(setup!.captureCharFrame()).not.toContain("ALPHA compensation");
+  expect(tui.frame()).not.toContain("ALPHA compensation");
   await act(async () => betaList.resolve({ company: statement("BETA", 2024).company, proxies: [statement("BETA", 2024)] }));
   await settle();
   expect(detail.mock.calls.filter(([ticker]) => ticker === "BETA")).toEqual([["BETA", 2024]]);
-  expect(setup!.captureCharFrame()).toContain("BETA compensation 2024");
+  expect(tui.frame()).toContain("BETA compensation 2024");
 });
 
 test("a failed single-year request can be retried from the footer without changing ticker", async () => {
@@ -149,13 +147,13 @@ test("a failed single-year request can be retried from the footer without changi
   });
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
   await mount();
-  expect(setup!.captureCharFrame()).toContain("Proxy temporarily unavailable");
-  expect(setup!.captureCharFrame()).not.toContain("pen filing");
+  expect(tui.frame()).toContain("Proxy temporarily unavailable");
+  expect(tui.frame()).not.toContain("pen filing");
   unavailable = false;
-  await act(async () => setup!.mockInput.pressKey("r"));
+  await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
-  expect(setup!.captureCharFrame()).toContain("ALPHA compensation 2026");
-  expect(setup!.captureCharFrame()).not.toContain("Proxy temporarily unavailable");
+  expect(tui.frame()).toContain("ALPHA compensation 2026");
+  expect(tui.frame()).not.toContain("Proxy temporarily unavailable");
   expect(detail).toHaveBeenCalledTimes(2);
 });
 
@@ -185,25 +183,25 @@ test("cached list and statement failures retain original age behind the warning 
   });
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
   await mount();
-  let frame = setup!.captureCharFrame();
+  let frame = tui.frame();
   expect(frame).toContain("ALPHA compensation 2026");
   expect(frame).toContain("filed Apr 01, 2026");
   expect(frame).toContain("⚠");
   expect(frame).not.toContain("Discovery outage");
   expect(frame).not.toContain("Statement outage");
   expect(persistence.getResource("proxy", "ALPHA:2026", cacheOptions)).toEqual(original);
-  await act(async () => setup!.mockInput.pressKey("!"));
+  await act(async () => tui.setup().mockInput.pressKey("!"));
   await settle();
-  frame = setup!.captureCharFrame();
+  frame = tui.frame();
   expect(frame).toContain("Discovery outage");
   expect(frame).toContain("Statement outage");
   expect(frame).toContain(new Date(original.fetchedAt).toISOString());
-  await emitKeypress(setup!, { name: "escape" });
+  await tui.emitKeypress({ name: "escape" });
   await settle();
   unavailable = false;
-  await act(async () => setup!.mockInput.pressKey("r"));
+  await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
-  frame = setup!.captureCharFrame();
+  frame = tui.frame();
   expect(frame).toContain("ALPHA compensation 2026");
   expect(frame).not.toContain("⚠");
   const fresh = await loadProxyStatement("ALPHA", 2026);
@@ -226,7 +224,7 @@ for (const status of [401, 402, 403, 404]) test(`authoritative ${status} respons
   expect(persistence.getResource("proxies", "ALPHA", { sourceKey: "executives", allowExpired: true })).toBeNull();
   expect(persistence.getResource("proxy", "ALPHA:2026", { sourceKey: "executives", allowExpired: true })).toBeNull();
   await mount();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).not.toContain("ALPHA compensation");
   expect(frame).not.toContain("pen filing");
   expect(frame).not.toContain("⚠");
@@ -278,14 +276,14 @@ test("in-memory data survives a transient refresh but is removed when access is 
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
   await mount();
   failure = new Error("Transient request failed");
-  await act(async () => setup!.mockInput.pressKey("r"));
+  await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
-  expect(setup!.captureCharFrame()).toContain("ALPHA compensation 2026");
-  expect(setup!.captureCharFrame()).toContain("⚠");
+  expect(tui.frame()).toContain("ALPHA compensation 2026");
+  expect(tui.frame()).toContain("⚠");
   failure = new ApiRequestError("Account not found", 403);
-  await act(async () => setup!.mockInput.pressKey("r"));
+  await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Account not found");
   expect(frame).not.toContain("ALPHA compensation");
   expect(frame).not.toContain("pen filing");
@@ -298,12 +296,12 @@ test("failed rediscovery after an explicit 404 reports the failure instead of re
     .mockRejectedValue(new Error("Discovery unavailable"));
   restore.push(() => list.mockRestore());
   await mount();
-  expect(setup!.captureCharFrame()).toContain("No proxy statement on file");
-  await act(async () => setup!.mockInput.pressKey("r"));
+  expect(tui.frame()).toContain("No proxy statement on file");
+  await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
-  expect(setup!.captureCharFrame()).toContain("Discovery unavailable");
-  expect(setup!.captureCharFrame()).not.toContain("No proxy statement on file");
-  expect(setup!.captureCharFrame()).not.toContain("⚠");
+  expect(tui.frame()).toContain("Discovery unavailable");
+  expect(tui.frame()).not.toContain("No proxy statement on file");
+  expect(tui.frame()).not.toContain("⚠");
 });
 
 
@@ -319,7 +317,7 @@ test("a narrow compensation pane keeps each executive total, full name, title an
   const detail = spyOn(apiClient, "getProxyStatement").mockResolvedValue(report);
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
   await mount("ALPHA", 32, 24);
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("$22.5M");
   const words = frame.replace(/\s+/g, " ");
   expect(words).toContain("Alexandra Longname");

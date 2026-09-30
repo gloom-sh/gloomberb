@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from "bun:t
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -12,7 +12,7 @@ import { PortfolioRiskPane } from "./risk-pane";
 import { now, riskHistory, riskQuote } from "./risk-test-data";
 
 const PANE_ID = "analytics:risk-test";
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const spies: Array<{ mockRestore(): void }> = [];
 
 /** Each symbol wobbles on its own phase, so the basket, SPY and the factor spreads differ. */
@@ -41,12 +41,8 @@ beforeEach(() => {
   );
 });
 
-afterEach(async () => {
+afterEach(() => {
   for (const spy of spies.splice(0)) spy.mockRestore();
-  if (setup) {
-    await act(async () => setup?.renderer.destroy());
-    setup = undefined;
-  }
   setSystemTime();
 });
 
@@ -54,7 +50,7 @@ async function settle() {
   for (let index = 0; index < 8; index += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
@@ -81,10 +77,10 @@ async function renderPane(width: number, height: number, settings: Record<string
     );
   }
   await act(async () => {
-    setup = await testRender(<Harness />, { width, height });
+    await tui.render(<Harness />, { width, height });
   });
   await settle();
-  return () => setup!.captureCharFrame().split("\n");
+  return () => tui.frame().split("\n");
 }
 
 /** The value a table row shows, read from its line below the table header. */
@@ -109,7 +105,7 @@ test("the risk chart names the metric it plots and follows the selected row", as
 
   // Another row plots its own history, named by the row.
   for (const _ of [1, 2]) {
-    await emitKeypress(setup!, { name: "down" });
+    await tui.emitKeypress({ name: "down" });
     await settle();
   }
   lines = frame();

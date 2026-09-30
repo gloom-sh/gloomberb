@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { Box } from "../../../../ui";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { PaneFooterBar, PaneFooterProvider, PaneFooterScope, usePaneFooter, type CombinedPaneFooter, type PaneFooterPressEvent } from "./index";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let update: (next: Partial<Options>) => void;
 let footer: CombinedPaneFooter;
 let renders = 0;
@@ -32,23 +32,22 @@ function Registration({ options }: { options: Options }) {
   return null;
 }
 async function settle() {
-  for (let i = 0; i < 3; i++) await act(async () => { await setup!.renderOnce(); });
+  for (let i = 0; i < 3; i++) await act(async () => { await tui.setup().renderOnce(); });
 }
 async function change(next: Partial<Options>) { await act(async () => update(next)); await settle(); }
 async function click(text: string) {
-  const column = setup!.captureCharFrame().split("\n")[0]!.indexOf(text);
+  const column = tui.frame().split("\n")[0]!.indexOf(text);
   expect(column).toBeGreaterThanOrEqual(0);
-  await act(async () => { await setup!.mockMouse.click(column + 1, 0); });
+  await act(async () => { await tui.setup().mockMouse.click(column + 1, 0); });
   await settle();
 }
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined; actions.length = 0; renders = 0;
+afterEach(() => {
+  actions.length = 0; renders = 0;
   receivedEvent = undefined;
 });
 
 test.each(["registration-id", "active-scope"])("obsolete handlers cannot resume after %s changes", async (kind) => {
-  await act(async () => { setup = await testRender(<Harness />, { width: 60, height: 1 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 60, height: 1 }); });
   await settle();
   const oldHint = footer.hints[0]!.onPress!;
   const oldInfo = footer.info[0]!.onPress!;
@@ -73,10 +72,10 @@ test.each(["registration-id", "active-scope"])("obsolete handlers cannot resume 
 });
 
 test("unchanged footer labels invoke the current selection for both hint and segment mouse actions", async () => {
-  await act(async () => { setup = await testRender(<Harness />, { width: 60, height: 1 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 60, height: 1 }); });
   await settle();
-  const filterColumn = setup!.captureCharFrame().split("\n")[0]!.indexOf("[f]ilter");
-  await act(async () => { await setup!.mockMouse.release(filterColumn + 1, 0); });
+  const filterColumn = tui.frame().split("\n")[0]!.indexOf("[f]ilter");
+  await act(async () => { await tui.setup().mockMouse.release(filterColumn + 1, 0); });
   await settle();
   expect(actions).toEqual([]);
   await click("[f]ilter");
@@ -88,7 +87,7 @@ test("unchanged footer labels invoke the current selection for both hint and seg
 });
 
 test("removed, disabled and unmounted footer actions cannot invoke obsolete handlers", async () => {
-  await act(async () => { setup = await testRender(<Harness />, { width: 60, height: 1 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 60, height: 1 }); });
   await settle();
   const retainedHint = footer.hints[0]!.onPress!;
   const retainedInfo = footer.info[0]!.onPress!;
