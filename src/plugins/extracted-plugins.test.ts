@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "./seed";
+import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "./extracted-plugins";
 import type { AppConfig } from "../types/config";
 
 /**

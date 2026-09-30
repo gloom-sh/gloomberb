@@ -6,7 +6,7 @@ import type { AppConfig } from "../../../types/config";
 import { createDefaultConfig } from "../../../types/config";
 import { debugLog } from "../../../utils/debug-log";
 import { findAbsorbedCheckout, isDirectoryOrLink, isPluginDirectory } from "../../../plugins/loader";
-import { EXTRACTED_PLUGINS } from "../../../plugins/seed";
+import { EXTRACTED_PLUGINS } from "../../../plugins/extracted-plugins";
 import type { ConfigMigrationHost } from "./migrations";
 import {
   normalizeConfigForSave,

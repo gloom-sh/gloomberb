@@ -11,7 +11,7 @@ import type { InstalledPlugin } from "../../plugins/builtin/plugin-marketplace/m
 import {
   listExternalPlugins,
   removeExternalPlugin,
-  seedExternalPlugins,
+  setExternalPlugins,
   upsertExternalPlugin,
 } from "../../plugins/external-runtime";
 import { getPluginHealth } from "../../plugins/health";
@@ -314,7 +314,7 @@ export function bindAppPanePluginRegistry({
     focusedPaneId: state.focusedPaneId,
   }));
 
-  seedExternalPlugins(externalPlugins);
+  setExternalPlugins(externalPlugins);
 
   setMarketplaceHost({
     listInstalled: () => {
