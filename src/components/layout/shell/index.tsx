@@ -60,6 +60,7 @@ import {
   useShellVisibleLayout,
 } from "./layout-state";
 import { AuthDialogHost } from "../../../plugins/builtin/cloud/auth-dialog";
+import { CompanyPickerHost } from "../../../plugins/builtin/cloud/company-picker";
 import { DeviceSignInDialogHost } from "../../../plugins/builtin/cloud/device-signin-dialog";
 import { BrokerSignInDialogHost } from "../../../brokers/signed-in/sign-in-dialog";
 import { FeedbackDialogHost } from "../../feedback-dialog";
@@ -784,6 +785,7 @@ export function Shell({
       <BrokerSignInDialogHost />
       <AuthDialogHost />
       <FeedbackDialogHost />
+      <CompanyPickerHost pluginRegistry={pluginRegistry} />
       <Box
         position="absolute"
         left={0}
