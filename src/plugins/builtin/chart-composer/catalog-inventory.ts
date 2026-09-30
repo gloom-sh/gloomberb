@@ -1,4 +1,4 @@
-import { fredSeriesUrl } from "../../../data/fred-series";
+import { fredSeriesUrl } from "../../../sources/gloomberb-cloud/fred-series";
 import { resolveAssetDisplayKind } from "../../../market-data/market/format";
 import {
   getTimeSeriesField,

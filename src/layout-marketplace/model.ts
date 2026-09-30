@@ -12,7 +12,7 @@ import { fuzzyFilter } from "../utils/fuzzy-search";
 import type { TeamAccentColor, TeamSummary } from "../api-client";
 import type { CloudLayoutEntry } from "./cloud";
 import { linkedLayoutStatus, type LinkedLayoutStatus } from "./linked";
-import type { LayoutMarketplaceEntry } from "./payload";
+import type { LayoutMarketplaceEntry } from "../shares/portable-layout";
 import { paneImagery, type PaneImagery } from "./pane-imagery";
 
 type PanePlacement = "docked" | "floating" | "detached";

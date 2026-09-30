@@ -1,6 +1,6 @@
 import type { NewsCapability } from "../../capabilities";
 import type { PaneRuntimeState } from "../../core/state/app/state";
-import type { LayoutMarketplacePayload } from "../../layout-marketplace/payload";
+import type { LayoutMarketplacePayload } from "../../shares/portable-layout";
 import type { AppConfig, BrokerInstanceConfig, LayoutConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
 import type { NewsQuery, NewsQueryState } from "../../types/news-source";

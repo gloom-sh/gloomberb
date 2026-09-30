@@ -4,7 +4,7 @@ import {
   type DataTableColumn,
   type PaneFooterSegment
 } from "../../../components";
-import { fredSeriesUrl } from "../../../data/fred-series";
+import { fredSeriesUrl } from "../../../sources/gloomberb-cloud/fred-series";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";

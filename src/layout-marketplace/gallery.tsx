@@ -33,7 +33,7 @@ import { publicMarketplaceLayoutUrl } from "./api";
 import {
   materializeMarketplaceLayout,
   publishableMarketplaceLayout,
-} from "./payload";
+} from "../shares/portable-layout";
 import { useLayoutMarketplace, useTeamLayouts } from "./use-marketplace";
 
 export interface LayoutGalleryController {

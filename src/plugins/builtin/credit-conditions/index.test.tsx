@@ -5,7 +5,7 @@ import {
   attachFredSeriesPersistence,
   resetFredSeriesPersistence,
   type FredSeriesCacheEntry,
-} from "../../../data/fred-series";
+} from "../../../sources/gloomberb-cloud/fred-series";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { appReducer, createInitialState } from "../../../state/app/context";

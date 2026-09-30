@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
-import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
+import { MemoryPluginPersistence } from "../../test-support/plugin-persistence";
 import {
   attachFredSeriesPersistence,
   isFredPublicationPending,

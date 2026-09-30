@@ -5,7 +5,7 @@ import { linkedLayoutUpdates } from "./linked";
 import type {
   LayoutMarketplaceEntry,
   LayoutMarketplacePayload,
-} from "./payload";
+} from "../shares/portable-layout";
 
 export type LayoutMarketplaceState =
   | { status: "signed-out"; items: [] }

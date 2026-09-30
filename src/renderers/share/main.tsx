@@ -7,7 +7,7 @@ import {
   openLiveMarketplaceLayoutUrl,
   parseMarketplaceLayoutId,
 } from "../../layout-marketplace/api";
-import type { LayoutMarketplaceEntry } from "../../layout-marketplace/payload";
+import type { LayoutMarketplaceEntry } from "../../shares/portable-layout";
 import {
   deleteShare,
   getShare,

@@ -1,5 +1,5 @@
-import { blendHex, relativeLuminance } from "./color-utils";
-import type { Theme } from "./themes";
+import { blendHex, relativeLuminance } from "../../../../theme/color-utils";
+import type { Theme } from "../../../../theme/themes";
 
 // The Gloom mark: a lit dot with two soft halos of the same color on a tile.
 // The official icon is mint on graphite; the desktop Dock icon repaints it in

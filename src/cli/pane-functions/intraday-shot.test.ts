@@ -21,7 +21,7 @@ import type { ResolvedPaneFunction } from "./resolver";
 import {
   resolveIntradaySessionWindow,
   resolveIntradayRequest,
-} from "../../time-series/session-history";
+} from "../../plugins/builtin/chart-composer/session-history";
 import { createTestTicker } from "../../test-support/ticker";
 
 function sessionBars(date: string, base: number): PricePoint[] {

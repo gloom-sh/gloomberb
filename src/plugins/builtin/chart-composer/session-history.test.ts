@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { PricePoint, Quote } from "../types/financials";
-import { createDefaultConfig } from "../types/config";
-import { createTestDataProvider } from "../test-support/data-provider";
-import { createSnapshotDataProvider } from "../market-data/snapshot-provider";
-import { chartHeadless, loadChartPaneModel, type ChartPaneModel } from "../plugins/builtin/chart-composer/headless";
-import { buildIntradayPriceChartPreset } from "../plugins/builtin/chart-composer/presets";
+import type { PricePoint, Quote } from "../../../types/financials";
+import { createDefaultConfig } from "../../../types/config";
+import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
+import { chartHeadless, loadChartPaneModel, type ChartPaneModel } from "./headless";
+import { buildIntradayPriceChartPreset } from "./presets";
 import { loadIntradayWindow, resolveIntradaySessionWindow } from "./session-history";
 
 // Synthetic domain boundary, not a replay of a published exchange tape. CME

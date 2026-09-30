@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { LayoutMarketplaceEntry } from "../../layout-marketplace/payload";
+import type { LayoutMarketplaceEntry } from "../../shares/portable-layout";
 import { LayoutShareView } from "./layout-view";
 
 const entry: LayoutMarketplaceEntry = {

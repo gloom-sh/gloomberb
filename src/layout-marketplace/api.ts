@@ -6,7 +6,7 @@ import {
   isMarketplaceLayoutId,
   parseMarketplaceLayoutEntry,
   type LayoutMarketplaceEntry,
-} from "./payload";
+} from "../shares/portable-layout";
 
 type LayoutFetch = (input: string, init?: RequestInit) => Promise<Response>;
 

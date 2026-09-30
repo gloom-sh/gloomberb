@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetFredSeriesPersistence } from "../../../data/fred-series";
+import { resetFredSeriesPersistence } from "../../../sources/gloomberb-cloud/fred-series";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { buildVolatilityData } from "./model";

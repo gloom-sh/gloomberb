@@ -1,7 +1,7 @@
 import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
 import { describe, expect, spyOn, test } from "bun:test";
 import { chartSeriesSourceKey } from "../capabilities";
-import type { FredSeriesData, FredSeriesLoadResult } from "../data/fred-series";
+import type { FredSeriesData, FredSeriesLoadResult } from "../sources/gloomberb-cloud/fred-series";
 import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/presets";
 import { createTestDataProvider, createTestFinancials } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";

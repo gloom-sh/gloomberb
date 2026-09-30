@@ -34,7 +34,7 @@ import { TIME_RANGES, type TimeRange } from "./range";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import type { Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../market-data/quotes/metadata";
-import type { FredSeriesLoadResult, FredSeriesRequest } from "../data/fred-series";
+import type { FredSeriesLoadResult, FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import { extractFredSeries, fredCreditCoverageNotice } from "./economic";
 import {
   getTimeSeriesField,

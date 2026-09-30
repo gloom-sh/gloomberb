@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { LayoutMarketplacePayload } from "../layout-marketplace/payload";
+import type { LayoutMarketplacePayload } from "./portable-layout";
 import type { PaneDef, PaneTemplateDef } from "../types/plugin";
 import { buildPaneSharePayload, openPaneShare } from "./pane";
 

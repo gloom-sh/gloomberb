@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { apiClient, setCloudApiFetchTransport } from "./index";
-import { publishableMarketplaceLayout } from "../layout-marketplace/payload";
+import { publishableMarketplaceLayout } from "../shares/portable-layout";
 import { createDefaultConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 import { GloomberbCloudProvider } from "../sources/gloomberb-cloud";

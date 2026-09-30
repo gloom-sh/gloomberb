@@ -4,7 +4,7 @@ import {
   parseMarketplaceLayoutList,
   type LayoutMarketplaceEntry,
   type LayoutMarketplacePayload,
-} from "../layout-marketplace/payload";
+} from "../shares/portable-layout";
 import {
   type CloudLayoutEntry,
   type LayoutRequirement,

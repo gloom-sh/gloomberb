@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetFredSeriesPersistence, type FredSeriesData } from "../../../data/fred-series";
+import { resetFredSeriesPersistence, type FredSeriesData } from "../../../sources/gloomberb-cloud/fred-series";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import type { ChartRequest } from "../../../market-data/request-types";
 import { createIdleEntry, type QueryEntry } from "../../../market-data/result-types";

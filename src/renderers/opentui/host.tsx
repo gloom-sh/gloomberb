@@ -1,7 +1,7 @@
 import { createCliRenderer, type CliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { Profiler, type ReactNode } from "react";
-import { resetTerminalInputState } from "../../utils/terminal-input-reset";
+import { resetTerminalInputState } from "./terminal-input-reset";
 import type { KeyEventLike } from "../../react/input";
 import type { NativeRendererHost, PixelResolution, RendererHost } from "../../ui/host";
 import { colors } from "../../theme/colors";

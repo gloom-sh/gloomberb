@@ -2,7 +2,7 @@ import type { PaneRuntimeState } from "../core/state/app/types";
 import type { LayoutConfig, LayoutOrigin, SavedLayout } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 import { layoutContentFingerprint, type CloudLayoutEntry } from "./cloud";
-import { publishableMarketplaceLayout } from "./payload";
+import { publishableMarketplaceLayout } from "../shares/portable-layout";
 
 export interface LinkedLayoutStatus {
   origin: LayoutOrigin;

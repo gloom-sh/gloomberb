@@ -7,7 +7,7 @@ import {
   parseMarketplaceLayoutList,
   publishableMarketplaceLayout,
   publishableMarketplacePane,
-} from "./payload";
+} from "./portable-layout";
 
 const component = () => null;
 const panes = new Map<string, PaneDef>([

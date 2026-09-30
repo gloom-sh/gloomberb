@@ -16,7 +16,7 @@ import {
 } from "../../plugins/external-runtime";
 import { getPluginHealth } from "../../plugins/health";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
-import { materializeMarketplaceLayout } from "../../layout-marketplace/payload";
+import { materializeMarketplaceLayout } from "../../shares/portable-layout";
 import {
   isPaneInLayout,
   removePane,

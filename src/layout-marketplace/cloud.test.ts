@@ -6,7 +6,7 @@ import {
   parseCloudLayoutEntry,
   parseCloudLayoutList,
 } from "./cloud";
-import type { LayoutMarketplacePayload } from "./payload";
+import type { LayoutMarketplacePayload } from "../shares/portable-layout";
 
 const payload: LayoutMarketplacePayload = {
   schemaVersion: 2,

@@ -4,7 +4,7 @@ import {
   type LayoutMarketplaceAuthor,
   type LayoutMarketplacePayload,
   parseMarketplaceLayoutPayload,
-} from "./payload";
+} from "../shares/portable-layout";
 import { isRecord } from "../utils/guards";
 import { fnv1aHex } from "../utils/hash";
 import { RevisionConflictError } from "../api-client/errors";

@@ -1,4 +1,4 @@
-import { decodeHtmlEntities } from "./html-entities";
+import { decodeHtmlEntities } from "../../../utils/html-entities";
 
 export function normalizeTweetText(
   value: string,

@@ -1,6 +1,6 @@
 import {
   publishableMarketplacePane,
-} from "../layout-marketplace/payload";
+} from "./portable-layout";
 import type { PluginRegistry } from "../plugins/registry";
 import type { PaneInstanceConfig } from "../types/config";
 import type { TickerRecord } from "../types/ticker";

@@ -1,7 +1,7 @@
 import {
   parseMarketplaceLayoutPayload,
   type LayoutMarketplacePayload,
-} from "../layout-marketplace/payload";
+} from "./portable-layout";
 import { safeExternalUrl } from "../utils/external-url";
 import { isRecord } from "../utils/guards";
 

@@ -3,7 +3,7 @@ import { act } from "react";
 import { apiClient } from "../../../api-client";
 import { DataTableStackView } from "../../../components";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { resetFredSeriesPersistence } from "../../../data/fred-series";
+import { resetFredSeriesPersistence } from "../../../sources/gloomberb-cloud/fred-series";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { TestPaneProvider } from "../../../test-support/pane";

@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import { getCachedFredSeries, loadCachedFredSeries, type FredSeriesData, type FredSeriesLoadResult,
-  type FredSeriesRequest } from "../../../data/fred-series";
+  type FredSeriesRequest } from "../../../sources/gloomberb-cloud/fred-series";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { ChartRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";

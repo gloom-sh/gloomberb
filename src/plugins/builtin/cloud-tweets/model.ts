@@ -5,7 +5,7 @@ import type {
   CloudTweetSearchResponse,
 } from "../../../api-client";
 import { formatCompact } from "../../../utils/format";
-import { normalizeTweetText } from "../../../utils/tweet-text";
+import { normalizeTweetText } from "./tweet-text";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { toTimestampMillis } from "../../../utils/timestamp";
 import { collectUniqueTickerSymbols } from "../../../tickers/tokenizer";

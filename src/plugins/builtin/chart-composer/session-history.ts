@@ -1,18 +1,18 @@
-import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
-import type { PricePoint, Quote } from "../types/financials";
-import type { TimeRange } from "./range";
+import type { DataProvider, MarketDataRequestContext } from "../../../types/data-provider";
+import type { PricePoint, Quote } from "../../../types/financials";
+import type { TimeRange } from "../../../time-series/range";
 import {
   getSupportedPresetResolution,
   isIntradayResolution,
   type ChartResolutionSupport,
   type ManualChartResolution,
-} from "./resolution";
-import { resolveExchangeTimeZone } from "../utils/exchanges";
-import { getPricePointTimestamp } from "../utils/price-history";
-import { pricePointIntegrity } from "../utils/price-history-integrity";
-import { zonedDateKey, zonedWallClockToUtcMs } from "../utils/zoned-date-time";
-import { fetchHistoryResult } from "../sources/history-result";
-import type { PriceHistoryResult } from "../types/price-history";
+} from "../../../time-series/resolution";
+import { resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { getPricePointTimestamp } from "../../../utils/price-history";
+import { pricePointIntegrity } from "../../../utils/price-history-integrity";
+import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
+import { fetchHistoryResult } from "../../../sources/history-result";
+import type { PriceHistoryResult } from "../../../types/price-history";
 
 export type IntradayRangePreset = "1D" | "1W";
 

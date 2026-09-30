@@ -6,7 +6,7 @@ import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult 
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
 import { intersectChartResolutionSupport, isIntradayResolution, normalizeChartResolutionSupport, type ManualChartResolution } from "../../../time-series/resolution";
-import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "../../../time-series/session-history";
+import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
