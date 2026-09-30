@@ -23,7 +23,7 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
-      - name: Typecheck production runtimes
+      - name: Typecheck production runtimes and built-in plugin tests
         run: bun run typecheck
 
       # Fails when a built-in plugin changes without regenerating the published

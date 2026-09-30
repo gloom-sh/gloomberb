@@ -61,7 +61,7 @@ This fetches the latest upstream version.
 CI runs these on every pull request. Run them before you push:
 
 ```bash
-bun run typecheck   # six projects: terminal, desktop Bun process, desktop view, browser, Worker, scripts
+bun run typecheck   # terminal, desktop Bun process, desktop view, browser, Worker, scripts, built-in plugin tests
 bun test
 ```
 
