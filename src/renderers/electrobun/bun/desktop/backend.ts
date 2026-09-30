@@ -323,36 +323,38 @@ export class DesktopBackend {
   private syncConfigAccessors(): void {
     const services = this.services;
     if (!services || !this.config) return;
-    services.pluginRegistry.getConfigFn = () => this.config!;
-    services.pluginRegistry.getLayoutFn = () => this.config!.layout;
-    services.pluginRegistry.updateBrokerInstanceFn = async (instanceId, values, options = {}) => {
-      const config = this.requireConfig();
-      let found = false;
-      const brokerInstances = config.brokerInstances.map((instance) => {
-        if (instance.id !== instanceId) return instance;
-        found = true;
-        const nextValues = options.replaceConfig ? values : { ...instance.config, ...values };
-        return {
-          ...instance,
-          label: options.label ?? instance.label,
-          enabled: options.enabled ?? instance.enabled,
-          connectionMode: typeof nextValues.connectionMode === "string" ? nextValues.connectionMode : instance.connectionMode,
-          config: nextValues,
-        };
-      });
-      if (!found) return;
+    services.pluginRegistry.bindHost({
+      getConfig: () => this.config!,
+      getLayout: () => this.config!.layout,
+      updateBrokerInstance: async (instanceId, values, options = {}) => {
+        const config = this.requireConfig();
+        let found = false;
+        const brokerInstances = config.brokerInstances.map((instance) => {
+          if (instance.id !== instanceId) return instance;
+          found = true;
+          const nextValues = options.replaceConfig ? values : { ...instance.config, ...values };
+          return {
+            ...instance,
+            label: options.label ?? instance.label,
+            enabled: options.enabled ?? instance.enabled,
+            connectionMode: typeof nextValues.connectionMode === "string" ? nextValues.connectionMode : instance.connectionMode,
+            config: nextValues,
+          };
+        });
+        if (!found) return;
 
-      const nextConfig = {
-        ...config,
-        brokerInstances,
-      };
-      if (this.workspace) {
-        await this.commitDesktopSnapshot(this.workspace.replaceConfig(nextConfig, { layoutChanged: false }));
-        return;
-      }
-      this.setConfig(nextConfig);
-      await saveConfig(this.requireConfig());
-    };
+        const nextConfig = {
+          ...config,
+          brokerInstances,
+        };
+        if (this.workspace) {
+          await this.commitDesktopSnapshot(this.workspace.replaceConfig(nextConfig, { layoutChanged: false }));
+          return;
+        }
+        this.setConfig(nextConfig);
+        await saveConfig(this.requireConfig());
+      },
+    });
     const configurableProvider = services.providerRouter as {
       setConfigAccessor?: (accessor: () => AppConfig) => void;
     };
