@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import type { ReactElement } from "react";
+import type { WizardStep } from "../types/plugin";
 import { runPaneTemplateDialogWizard } from "./pane-template-dialog-wizard";
 
-test("changing a sequential wizard selector clears a later default", async () => {
+/** Answers each prompt in turn and records the default each step offered. */
+async function runWizard(steps: WizardStep[], answers: string[]) {
   const defaults: Array<string | undefined> = [];
-  const answers = ["codex", ""];
   const dialog = {
     prompt: async ({ content }: { content: (context: unknown) => ReactElement }) => {
       const element = content({});
@@ -12,25 +13,40 @@ test("changing a sequential wizard selector clears a later default", async () =>
       return answers.shift();
     },
   };
+  const values = await runPaneTemplateDialogWizard(dialog as never, steps);
+  return { defaults, values };
+}
 
-  const values = await runPaneTemplateDialogWizard(dialog as never, [{
-    key: "providerId",
-    label: "Provider",
-    type: "select",
-    defaultValue: "claude",
-    clearOnChange: ["modelId"],
-    options: [
-      { label: "Claude", value: "claude" },
-      { label: "OpenAI", value: "codex" },
-    ],
-  }, {
-    key: "modelId",
-    label: "Model",
-    type: "text",
-    required: false,
-    defaultValue: "claude-opus-4-8",
-  }]);
+const providerStep = (defaultValue?: string): WizardStep => ({
+  key: "providerId",
+  label: "Provider",
+  type: "select",
+  defaultValue,
+  clearOnChange: ["modelId"],
+  options: [
+    { label: "Claude", value: "claude" },
+    { label: "OpenAI", value: "codex" },
+  ],
+});
+
+const modelStep: WizardStep = {
+  key: "modelId",
+  label: "Model",
+  type: "text",
+  required: false,
+  defaultValue: "claude-opus-4-8",
+};
+
+test("changing a sequential wizard selector clears a later default", async () => {
+  const { defaults, values } = await runWizard([providerStep("claude"), modelStep], ["codex", ""]);
 
   expect(defaults).toEqual(["claude", undefined]);
   expect(values).toEqual({ providerId: "codex", modelId: "" });
+});
+
+test("keeping a selector's preselected first option leaves later defaults alone", async () => {
+  const { defaults, values } = await runWizard([providerStep(), modelStep], ["claude", "claude-opus-4-8"]);
+
+  expect(defaults).toEqual([undefined, "claude-opus-4-8"]);
+  expect(values).toEqual({ providerId: "claude", modelId: "claude-opus-4-8" });
 });

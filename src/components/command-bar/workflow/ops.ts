@@ -20,6 +20,7 @@ import {
 import { buildQuoteMonitorPaneTitle } from "../../../plugins/builtin/ticker-detail/settings";
 import { getPaneTemplateDisplayLabel } from "../pane-templates/items";
 import { automationActive, describeUsageFunction, recordFunctionOpen } from "../../../telemetry/usage-counts";
+import { keysClearedByChange } from "./fields";
 import {
   resolveTickerInputOrThrow,
   resolveTickerListInput,
@@ -341,9 +342,9 @@ export async function applyPaneSettingFieldValue(
     return;
   }
 
-  const clearOnChange = !Object.is(descriptor.context.settings[field.key], value)
-    ? Object.fromEntries((field.clearOnChange ?? []).map((key) => [key, ""]))
-    : {};
+  const clearOnChange = Object.fromEntries(
+    keysClearedByChange(field.clearOnChange, descriptor.context.settings[field.key], value).map((key) => [key, ""]),
+  );
 
   if (field.storage === "plugin") {
     if (!descriptor.pluginId) {

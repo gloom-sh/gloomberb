@@ -9,6 +9,7 @@ import {
   getVisibleWorkflowFields,
   isWorkflowTextField,
 } from "../helpers";
+import { keysClearedByChange } from "./fields";
 import type {
   CommandBarFieldValue,
   CommandBarRoute,
@@ -89,9 +90,7 @@ function updateWorkflowValueInRouteStack(
   if (route.kind !== "workflow") return current;
   const nextValues = { ...route.values, [fieldId]: value };
   const changedField = route.fields.find((field) => field.id === fieldId);
-  if (!Object.is(route.values[fieldId], value)) {
-    for (const key of changedField?.clearOnChange ?? []) nextValues[key] = "";
-  }
+  for (const key of keysClearedByChange(changedField?.clearOnChange, route.values[fieldId], value)) nextValues[key] = "";
   const nextActiveFieldId = route.activeFieldId && getVisibleWorkflowFields(route.fields, nextValues).some((field) => field.id === route.activeFieldId)
     ? route.activeFieldId
     : getFirstVisibleFieldId(route.fields, nextValues);

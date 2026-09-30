@@ -4,6 +4,11 @@ import {
   PaneTemplateSelectStep,
   PaneTemplateTextareaStep,
 } from "../components/pane-template-wizard";
+import {
+  dependenciesMet,
+  keysClearedByChange,
+  wizardStepInitialValue,
+} from "../components/command-bar/workflow/fields";
 import type {
   AlertContext,
   DialogApi,
@@ -11,6 +16,11 @@ import type {
 } from "../ui/dialog";
 import type { WizardStep } from "../types/plugin";
 
+/**
+ * Asks a template's wizard steps one dialog at a time, on the same step rules
+ * as the command-bar form. A change that clears later answers drops those
+ * steps' defaults, since they have not been asked yet.
+ */
 export async function runPaneTemplateDialogWizard(
   dialog: DialogApi,
   steps: WizardStep[],
@@ -19,9 +29,7 @@ export async function runPaneTemplateDialogWizard(
   const clearedKeys = new Set<string>();
 
   for (const step of steps) {
-    if (step.dependsOn && values[step.dependsOn.key] !== step.dependsOn.value) {
-      continue;
-    }
+    if (!dependenciesMet(step.dependsOn, values)) continue;
 
     if (step.type === "info") {
       await dialog.alert({
@@ -50,8 +58,8 @@ export async function runPaneTemplateDialogWizard(
     }
 
     values[step.key] = result;
-    if (!Object.is(result, step.defaultValue ?? "")) {
-      for (const key of step.clearOnChange ?? []) clearedKeys.add(key);
+    for (const key of keysClearedByChange(step.clearOnChange, wizardStepInitialValue(activeStep) ?? "", result)) {
+      clearedKeys.add(key);
     }
   }
 
