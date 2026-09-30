@@ -1181,6 +1181,7 @@ Choose the existing control that owns the interaction you need:
 | Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
+| Inline bars | `RatioBar` (a value against a scale: a count against the largest row, a move against a full-scale move), `RangeTrack` (where a value sits between a low and a high) |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
 | Loading, empty states, inline feedback | `Spinner`, `EmptyState`, `PaneStatusBody`, `Notice` |
 | External links | `ExternalLink`, `ExternalLinkText` |

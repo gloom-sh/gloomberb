@@ -98,6 +98,8 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "Prose",
     "QueryBar",
     "READING_WIDTH",
+    "RangeTrack",
+    "RatioBar",
     "RemoteImage",
     "Section",
     "SectionHeading",
