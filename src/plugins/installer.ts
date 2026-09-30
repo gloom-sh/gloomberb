@@ -256,11 +256,6 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
   }
 }
 
-/** Installs the dependencies of a plugin that was installed without them. */
-export function installPluginDependencies(pluginDir: string): Promise<void> {
-  return installDependencies(pluginDir, true);
-}
-
 async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "id" | "name" | "version"> | null> {
   const entryFile = await resolvePluginEntry(targetDir);
   if (!entryFile) return null;

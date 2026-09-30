@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { linkHostPackages } from "./host-link";
 
 /**
  * The Bun that installs a plugin's dependencies, and the environment to run
@@ -27,4 +28,29 @@ export function missingPluginDependencies(pluginDir: string): string[] {
   }
   if (!dependencies || typeof dependencies !== "object") return [];
   return Object.keys(dependencies).filter((name) => !existsSync(join(pluginDir, "node_modules", name, "package.json")));
+}
+
+/**
+ * Installs the dependencies of a plugin that was installed without them, and
+ * relinks `gloomberb` and `react`, which `bun install` prunes. Runs through
+ * `Bun.spawn` so the loader, which the desktop view also bundles, pulls in no
+ * Node process module.
+ */
+export async function installPluginDependencies(pluginDir: string): Promise<boolean> {
+  const bun = bunCommand();
+  if (!bun) return false;
+  let code: number | null = null;
+  try {
+    const child = Bun.spawn([bun.command, "install", "--production"], {
+      cwd: pluginDir,
+      env: bun.env ?? process.env,
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    code = await child.exited;
+  } catch {
+    code = null;
+  }
+  linkHostPackages(pluginDir);
+  return code === 0;
 }

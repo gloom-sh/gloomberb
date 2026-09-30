@@ -7,7 +7,7 @@ import { debugLog } from "../utils/debug-log";
 import { reportCrash } from "../telemetry/crash-reports";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import { checkPluginCompatibility, explainPluginLoadError, findMissingHostExport, pluginSourceFiles, readPluginManifest } from "./compat";
-import { missingPluginDependencies } from "./dependencies";
+import { installPluginDependencies, missingPluginDependencies } from "./dependencies";
 import { linkHostPackages } from "./host-link";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
@@ -259,7 +259,7 @@ export async function loadExternalPlugin(
     const missing = missingPluginDependencies(pluginDir);
     if (missing.length > 0) {
       loaderLog.info(`Installing ${directory}'s missing dependencies: ${missing.join(", ")}`);
-      await (await import("./installer")).installPluginDependencies(pluginDir);
+      await installPluginDependencies(pluginDir);
     }
   }
 
