@@ -261,8 +261,8 @@ export function CommandBar({
   const assistAutoAsk = !currentRoute
     && planAccess.emailVerified
     && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootShortcutIntent.kind !== "none" });
-  // The server keeps a question only when asked to: with the Usage setting
-  // on, and never for text remote control typed.
+  // The server keeps a question unless told not to, so the answer always
+  // goes out: false with the Usage setting off or for text remote control typed.
   const logSearches = useCallback((query: string) => (
     searchLoggingAllowed() && !automationActive() && !isAutomationQuery(query)
   ), [isAutomationQuery, searchLoggingAllowed]);

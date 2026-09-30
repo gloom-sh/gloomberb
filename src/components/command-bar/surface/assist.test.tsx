@@ -865,7 +865,7 @@ describe("CommandBar search report", () => {
     await testSetup.renderOnce();
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
     expect(asks).toEqual([expect.objectContaining({ query: "new chat pane" })]);
-    expect(asks[0]).not.toHaveProperty("log");
+    expect(asks[0]).toMatchObject({ log: false });
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
@@ -892,7 +892,7 @@ describe("CommandBar search report", () => {
       await testSetup.renderOnce();
     });
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
-    expect(asks[0]).not.toHaveProperty("log");
+    expect(asks[0]).toMatchObject({ log: false });
 
     // Running its answer is still not the user's search.
     await emitKeypress(testSetup!, { name: "return", sequence: "\r" });

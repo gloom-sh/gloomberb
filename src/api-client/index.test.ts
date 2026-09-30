@@ -1144,7 +1144,7 @@ describe("apiClient command assist", () => {
     expect(curve?.arg).toEqual({ kind: "text", optional: true });
   });
 
-  test("asks the server to keep the query only when told so", async () => {
+  test("passes the caller's log choice through, false included", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     apiClient.setSessionToken("session-token");
     apiClient.restoreCachedUser(verifiedUser);
@@ -1158,8 +1158,8 @@ describe("apiClient command assist", () => {
     await apiClient.assistCommand("gamestop options", [], { log: false });
 
     expect(logged.searchId).toBe("search-1");
-    // Released builds send no flag, so the server keeps nothing unless asked.
-    expect(bodies.map((body) => "log" in body ? body.log : "absent")).toEqual(["absent", true, "absent"]);
+    // The server keeps a query unless told not to, so false must go out.
+    expect(bodies.map((body) => "log" in body ? body.log : "absent")).toEqual(["absent", true, false]);
   });
 });
 

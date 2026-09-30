@@ -117,7 +117,7 @@ The app also counts how often you open each function, from the command bar, a me
 
 Neither contains anything from your workspace: no tickers, arguments, portfolios, watchlists, layouts, settings or queries. Both carry a random install id stored in `~/.gloomberb/install-id` (in the browser, in local storage).
 
-The usage setting also covers command bar searches. When you are signed in, a search you finish in the command bar (you pause typing or run something, never each keystroke) is stored with your account to improve search: its text, the AI suggestions it got and the result you picked. Searches are kept for 12 months and deleted with your account.
+The usage setting also covers command bar searches. When you are signed in, a search you finish in the command bar (you pause typing or run something, never each keystroke) is stored with your account to improve search: its text, the AI suggestions it got and the result you picked. Searches are deleted with your account.
 
 To turn either off, run `Crash Reports` or `Usage Counts` from the command bar, or:
 

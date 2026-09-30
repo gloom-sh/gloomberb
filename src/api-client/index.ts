@@ -542,8 +542,9 @@ class GloomApiClient {
    * Resolves a natural-language command-bar query into runnable command-bar
    * inputs. Requires a verified session; free accounts are included. The
    * request is bounded client-side so a stalled upstream cannot hold the
-   * command bar in its loading state. The server keeps the query, and
-   * answers with a `searchId`, only when asked with `log: true`.
+   * command bar in its loading state. The server keeps the query and answers
+   * with a `searchId` unless told `log: false`, so an opt-out has to be sent
+   * explicitly.
    */
   async assistCommand(
     query: string,
@@ -565,7 +566,7 @@ class GloomApiClient {
         body: JSON.stringify({
           query: query.trim().slice(0, ASSIST_QUERY_MAX_LENGTH),
           commands: commands.slice(0, ASSIST_COMMAND_LIMIT).map(capAssistArgOptions),
-          ...(options?.log === true ? { log: true } : {}),
+          ...(options?.log !== undefined ? { log: options.log } : {}),
         }),
         signal: controller.signal,
       });
