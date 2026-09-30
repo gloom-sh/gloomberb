@@ -61,8 +61,9 @@ const variants: Array<[string, ColumnContext]> = [
 ];
 
 test("a cell version follows every context input its column reads, and LAST follows none", () => {
-  const options = buildPortfolioPaneSettingsDef(createDefaultConfig("/tmp/gloomberb-cell-version"), getPortfolioPaneSettings(undefined), "main")
-    .fields.find((field) => field.key === "columnIds")!.options!;
+  const field = buildPortfolioPaneSettingsDef(createDefaultConfig("/tmp/gloomberb-cell-version"), getPortfolioPaneSettings(undefined), "main")
+    .fields.find((entry) => entry.key === "columnIds")!;
+  const options = "options" in field ? field.options : [];
   const columns = resolveVisibleColumns(options.map((option) => option.value), true);
   expect(columns.length).toBeGreaterThan(40);
 

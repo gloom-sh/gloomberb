@@ -75,7 +75,7 @@ test("the maturity wall is an inline bar column scaled to the dated years", asyn
   expect(dated[1]! / dated[0]!).toBeCloseTo(2, 0);
   // Thereafter (60M) runs past the scale, capped; its PRINCIPAL cell says how much, once.
   const thereafter = row("AfterYearFive")!;
-  expect(bar(thereafter)).toBe(dated[4]);
+  expect(bar(thereafter)).toBe(dated[4]!);
   expect(thereafter).toContain("▸");
   expect(thereafter.split("60.00M")).toHaveLength(2);
   // The figures stay above the table.

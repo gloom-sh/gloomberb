@@ -6,6 +6,7 @@ import { AssetDataRouter } from "../../../sources/provider-router";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { fxMatrixModule } from "./index";
 
 const tui = createOpenTuiTestHarness();
@@ -31,7 +32,7 @@ test("the FX matrix refresh key updates cached cross rates without refetching on
   });
   config.refreshIntervalMinutes = 0;
   const state = createInitialState(config);
-  const runtime = { getMarketData: () => provider };
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
   const Pane = fxMatrixModule.panes![0]!.component;
   const settle = async () => {
     for (let frame = 0; frame < 4; frame++) await act(async () => {

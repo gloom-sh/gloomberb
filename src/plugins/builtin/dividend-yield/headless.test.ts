@@ -100,7 +100,7 @@ test("cash growth and payout text use percentages while JSON and CSV keep fracti
     const result = await definition.load(request, context);
     const text = renderHeadlessPaneText(definition, result, request, "DVD");
     const section = result.sections[0]!;
-    const entries = "entries" in section ? section.entries : [];
+    const entries = section.entries ?? [];
     expect(entries.filter((entry) => entry.label === "1Y Cash Growth" || entry.label === "3Y Cash CAGR")).toEqual([
       { label: "1Y Cash Growth", value: growth, formatted },
       { label: "3Y Cash CAGR", value: growth, formatted },

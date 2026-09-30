@@ -4,6 +4,7 @@ import { createOpenTuiTestHarness, settleFrame, takeSavedTextFile } from "../../
 import { createInitialState } from "../../../../state/app/context";
 import { exportPaneTable } from "../../../../state/pane-table-export-registry";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
+import { createTestHeadlessContext } from "../../../../test-support/headless";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { renderHeadlessPaneText } from "../../../../cli/pane-functions/headless";
@@ -109,10 +110,10 @@ for (const [symbol, prior, close, change] of [
     expect(csv).toContain(String(prior));
 
     const args = { symbols: [symbol], argument: [symbol], rawArgument: symbol, options: { range: "ALL" } };
-    const result = await historicalPricesHeadless.load(args, { marketData: provider, signal: new AbortController().signal });
+    const result = await historicalPricesHeadless.load(args, createTestHeadlessContext({ marketData: provider }));
     expect(result.rows[1]).toMatchObject({ open: prior, high, low, close, volume: 0 });
-    expect(result.rows[2].close).toBeNull();
-    expect(result.rows[3].close).toBe(0);
+    expect(result.rows[2]!.close).toBeNull();
+    expect(result.rows[3]!.close).toBe(0);
     const text = renderHeadlessPaneText(historicalPricesHeadless, result, args, "Historical Prices");
     expect(text).toContain(String(close));
     expect(text).toContain(String(prior));

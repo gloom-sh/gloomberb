@@ -648,6 +648,8 @@ describe("ChatContent channel sidebar", () => {
           <PaneInstanceProvider paneId={paneInstanceId}>
             <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
               <ResolvedChatPaneComponent
+                paneId={paneInstanceId}
+                paneType="chat"
                 width={90}
                 height={12}
                 focused

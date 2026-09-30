@@ -430,7 +430,6 @@ describe("PortfolioListPane cash and margin UI", () => {
       const portfolioId = "broker:ibkr-flex:DU12345";
       const requested: string[] = [];
       sharedCoordinator = new MarketDataCoordinator(createTestDataProvider({
-        getQuote: async () => null,
         getExchangeRate: async (currency) => { requested.push(currency); return 0.75; },
       }));
       setSharedMarketDataCoordinator(sharedCoordinator);
@@ -503,7 +502,7 @@ describe("PortfolioListPane cash and margin UI", () => {
         collectionId="watchlist"
         ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })}
         runtime={createTestPluginRuntime({
-          notify: (notification) => notifications.push(notification),
+          notify: (notification) => { notifications.push(notification); },
         })}
         paneHeight={12}
       />,
@@ -554,7 +553,7 @@ describe("PortfolioListPane cash and margin UI", () => {
         collectionId="main"
         ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })}
         runtime={createTestPluginRuntime({
-          notify: (notification) => notifications.push(notification),
+          notify: (notification) => { notifications.push(notification); },
         })}
         paneHeight={12}
       />,
@@ -600,7 +599,7 @@ describe("PortfolioListPane cash and margin UI", () => {
         collectionId="watchlist"
         ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })}
         runtime={createTestPluginRuntime({
-          notify: (notification) => notifications.push(notification),
+          notify: (notification) => { notifications.push(notification); },
         })}
         paneHeight={12}
       />,
@@ -680,7 +679,6 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("flex")],
     );
     sharedCoordinator = new MarketDataCoordinator(createTestDataProvider({
-      getQuote: async () => null,
       getExchangeRate: async (currency) => (currency === "EUR" ? 1.1 : 1),
     }));
     setSharedMarketDataCoordinator(sharedCoordinator);

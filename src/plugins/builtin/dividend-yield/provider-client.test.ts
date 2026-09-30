@@ -55,7 +55,7 @@ test("cached dividend and quote provenance survive projection without hiding usa
   expect(data).toMatchObject({ providerId: "gloomberb-cloud", fetchedAt: "2026-09-01T10:00:00Z", stale: true,
     priceStale: true, priceAsOf: "2026-09-02T10:00:00.000Z", metrics: { trailingYield: 0.05 } });
   const { projectDividendYieldHeadless } = await import("./headless");
-  const result = projectDividendYieldHeadless(data, { argument: "FUND", symbols: ["FUND"], options: {} });
+  const result = projectDividendYieldHeadless(data, { rawArgument: "FUND", argument: "FUND", symbols: ["FUND"], options: {} });
   expect(result.metadata).toMatchObject({ historyFetchedAt: "2026-09-01T10:00:00Z", historyStale: true, priceStale: true });
   expect(result.sections[0]?.entries?.filter(entry => entry.label.endsWith("status"))).toHaveLength(2);
 });

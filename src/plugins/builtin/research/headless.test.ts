@@ -78,7 +78,7 @@ describe("earnings estimates headless", () => {
     const result = await definition.load(args({ kind: "estimates", limit: 1 }), context);
 
     expect(result.rows).toHaveLength(1);
-    expect(["Q Est", "FY Est"]).toContain(result.rows[0]?.status);
+    expect(["Q Est", "FY Est"]).toContain(String(result.rows[0]?.status));
     expect(result.metadata).toMatchObject({ kind: "estimates", total: 2, truncated: true });
   });
 });

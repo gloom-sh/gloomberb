@@ -53,7 +53,7 @@ async function mount(width = 110, height = 12) {
     <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
       <PaneFooterProvider>{(footer) => (
         <Box width={width} height={height} flexDirection="column">
-          <Box height={height - 1}><RevenueBreakdownPane focused width={width} height={height - 1} /></Box>
+          <Box height={height - 1}><RevenueBreakdownPane paneId={paneId} paneType="revenue-breakdown" focused width={width} height={height - 1} /></Box>
           <PaneFooterBar footer={footer} focused width={width} />
         </Box>
       )}</PaneFooterProvider>

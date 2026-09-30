@@ -9,6 +9,7 @@ import { attachMarketMoversPersistence, fetchPreferredMarketMovers, fetchScreene
 
 const payload = (quotes: unknown[]) => ({ finance: { result: [{ quotes }], error: null } });
 const raw = (symbol: string, fields = {}) => ({ symbol, regularMarketPrice: 10, currency: "USD", ...fields });
+const noSessionMovers = async (): Promise<never> => { throw new Error("Session movers are not requested"); };
 afterEach(resetMarketMoversPersistence);
 
 test("source fields, sorted rows and headless text preserve missing versus reported zero", async () => {
@@ -22,7 +23,7 @@ test("source fields, sorted rows and headless text preserve missing versus repor
   expect(rows[2]).toMatchObject({ volume: null, changePercent: -5 });
   expect(sortRows(createRows(rows), { columnId: "changePercent", direction: "asc" }).map(row => row.symbol)).toEqual(["NEGATIVE", "ZERO", "MISSING"]);
   expect(sortRows(createRows(rows), { columnId: "changePercent", direction: "desc" }).map(row => row.symbol)).toEqual(["ZERO", "NEGATIVE", "MISSING"]);
-  const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ tab, quotes: rows, source: "yahoo", stale: false }) });
+  const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ tab, quotes: rows, source: "yahoo", stale: false }), loadSession: noSessionMovers });
   const args = { rawArgument: "", argument: null, symbols: [], options: { list: "gainers" } };
   const result = await definition.load(args, { marketData: createTestDataProvider() } as any);
   const text = renderHeadlessPaneText(definition, result, args, "MOST");
@@ -79,7 +80,7 @@ test("trending has no average-volume source, and missing quotes do not invent ze
 
 test("declared minor currencies normalize only display, without changing raw rows or assuming venue units", async () => {
   const rows = parseScreenerResponse(payload(["GBp", "GBX", "ILA", "ZAc", "GBP", ""].map((currency, index) => raw(`UNIT${index}`, { regularMarketPrice: 125, currency, fullExchangeName: "LSE" }))));
-  const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ tab, quotes: rows, source: "yahoo", stale: false }) });
+  const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ tab, quotes: rows, source: "yahoo", stale: false }), loadSession: noSessionMovers });
   const args = { rawArgument: "", argument: null, symbols: [], options: { list: "gainers" } };
   const result = await definition.load(args, { marketData: createTestDataProvider() } as any);
   expect(result.rows.map(row => [row.price, row.currency])).toEqual([[125, "GBp"], [125, "GBX"], [125, "ILA"], [125, "ZAc"], [125, "GBP"], [125, ""]]);
@@ -101,7 +102,7 @@ test("preferred Cloud prices qualify Yahoo range units before default headless p
       fetchCloud: async () => ({ status: "success", data: { items: [{ symbol: "UNIT", price: 1.25, change: 0, changePercent: 0, volume: 0, currency, exchange: "LSE", ...(ownBounds ? { low52w: 1, high52w: 2 } : {}) }] } } as any),
       fetchYahoo: async () => ({ data: metadata, stale: false }),
     });
-    const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ ...result, tab }) });
+    const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ ...result, tab }), loadSession: noSessionMovers });
     const args = { rawArgument: "", argument: null, symbols: [], options: { list: "gainers" } };
     const model = await definition.load(args, { marketData: createTestDataProvider() } as any);
     return { model, text: renderHeadlessPaneText(definition, model, args, "MOST") };

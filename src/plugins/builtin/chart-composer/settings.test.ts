@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ChartStudySpec } from "../../../time-series/types";
 import type { PaneSettingField } from "../../../types/plugin";
 import {
   getSelectedBuiltinStudies,
@@ -15,7 +16,7 @@ import {
   getChartInlineStyleTarget,
 } from "./settings";
 
-function field(key: string, type: PaneSettingField["type"] = "text"): PaneSettingField {
+function field(key: string, type: Exclude<PaneSettingField["type"], "action"> = "text"): PaneSettingField {
   if (type === "select") return { key, label: key, type, options: [] };
   if (type === "multi-select") return { key, label: key, type, options: [] };
   if (type === "ordered-multi-select") return { key, label: key, type, options: [] };
@@ -26,7 +27,7 @@ function field(key: string, type: PaneSettingField["type"] = "text"): PaneSettin
 describe("chart composer pane settings", () => {
   test("changed ordered pairs and removed/re-added formulas receive fresh defaults", () => {
     const original = setPairStudies(buildComparisonChartPreset(["TARGET", "ACQUIRER", "OTHER"]), ["spread", "correlation"]);
-    original.studies = original.studies.map((study) => ({ ...study, parameters: study.kind === "spread" ? { multiplier: 0.5 } : { period: 13, returns: 0 } }));
+    original.studies = original.studies.map((study): ChartStudySpec => ({ ...study, parameters: study.kind === "spread" ? { multiplier: 0.5 } : { period: 13, returns: 0 } }));
     const apply = (spec: typeof original, selected: string[]) => applyChartComposerPaneSetting(
       { chartSpec: spec }, field(CHART_SETTING_KEYS.formulas, "multi-select"), selected,
     ).chartSpec as typeof original;

@@ -6,6 +6,7 @@ import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentu
 import { appReducer, createInitialState, type AppAction } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PinTickerOptions } from "../../../types/plugin";
 import { displayWidth } from "../../../utils/format";
 import { ipoCalendarCache } from "./client";
@@ -50,7 +51,7 @@ async function mount(width = 110, height = 10) {
     const dispatch = (action: AppAction) => setState((current) => appReducer(current, action));
     return (
       <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="ipo-calendar"
-        runtime={{ getMarketData: () => null, pinTicker: (symbol, options) => { pins.push({ symbol, options }); } }}
+        runtime={createTestPluginRuntime({ getMarketData: () => null, pinTicker: (symbol, options) => { pins.push({ symbol, options }); } })}
         width={width} height={height}>
         {(body) => <IpoCalendarPane paneId={id} paneType={id} focused {...body} />}
       </TestPaneFrame>

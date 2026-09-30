@@ -5,7 +5,7 @@ import { useThrottledCursorSymbol } from "./use-throttled-cursor-symbol";
 
 const tui = createOpenTuiTestHarness();
 let setHarnessCursorSymbol: ((symbol: string | null, options?: { immediate?: boolean }) => void) | null = null;
-let flushHarnessCursorSymbol: ((symbol?: string | null) => void) | null = null;
+let flushHarnessCursorSymbol: ReturnType<typeof useThrottledCursorSymbol>["flushCursorSymbol"] | null = null;
 let latestCursorSymbol: string | null = null;
 let latestCommittedCursorSymbol: string | null = null;
 

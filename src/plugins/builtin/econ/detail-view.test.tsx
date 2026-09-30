@@ -58,9 +58,9 @@ async function render(width: number, height: number): Promise<string[]> {
       <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
         <PaneFooterProvider>{() => (
           <DataTableStackView<{ id: string }>
-            focused rootWidth={width} rootHeight={height - 1} columns={[{ id: "event", label: "EVENT", width: 10 }]} items={[{ id: "unrate" }]}
+            focused rootWidth={width} rootHeight={height - 1} columns={[{ id: "event", label: "EVENT", width: 10, align: "left" }]} items={[{ id: "unrate" }]}
             getItemKey={(row) => row.id} renderCell={() => ({ text: "" })} selection={{ kind: "none" }} sortColumnId={null} sortDirection="asc"
-            detailOpen onBack={() => {}} detailTitle={EVENT.event}
+            emptyStateTitle="No events" detailOpen onBack={() => {}} detailTitle={EVENT.event}
             detailContent={<EconDetailView event={EVENT} width={width} height={height - 1} focused />} />
         )}</PaneFooterProvider>
       </TestPaneProvider>,

@@ -19,7 +19,7 @@ const spies: Array<{ mockRestore(): void }> = [];
 function history(symbol: string, exchange: string) {
   const phase = [...symbol].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 7;
   const response = riskHistory();
-  response.data = response.data.map((row, index) => {
+  response.data = response.data!.map((row, index) => {
     const close = 100 + index * (0.05 + phase / 100) + Math.sin(index / 3 + phase) * 3;
     return { ...row, open: close, high: close, low: close, close };
   });

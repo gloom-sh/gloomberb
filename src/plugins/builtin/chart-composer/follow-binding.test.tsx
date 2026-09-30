@@ -47,7 +47,7 @@ async function mount(config: AppConfig, requests: string[], contracts: number[] 
     const pane = findPaneInstance(latest.config.layout, chartId)!;
     return <TestPaneProvider state={latest} dispatch={dispatch} paneId={chartId} pluginId="ticker-research" runtime={runtime}>
       <Text>{getPaneDisplayTitle(latest, pane, { id: "chart-composer", name: "Chart", component: () => null, defaultPosition: "right" })}</Text>
-      <ChartComposerPane paneId={chartId} focused width={110} height={25} />
+      <ChartComposerPane paneId={chartId} paneType="chart-composer" focused width={110} height={25} />
     </TestPaneProvider>;
   }
   await tui.render(<Harness />, { width: 110, height: 28 });
@@ -197,12 +197,12 @@ test("mounted follower reacts to a different broker contract with the same ticke
   const config = await host.loadConfig("browser://local");
   const contract = (conId: number) => ({ brokerId: "ibkr", brokerInstanceId: "fixture-account", symbol: "ES", secType: "FUT", conId, exchange: "CME" });
   const layout = updatePaneInstance(config.layout, researchId, pane => ({ ...pane,
-    binding: { kind: "fixed", symbol: "ES", instrument: contract(10), listing: { exchange: "CME", currency: "USD", type: "FUT" } } }));
+    binding: { kind: "fixed", symbol: "ES", instrument: contract(10), listing: { name: "E-mini S&P 500", exchange: "CME", currency: "USD", type: "FUT" } } }));
   const requests: string[] = [], contracts: number[] = [];
   await mount({ ...config, layout }, requests, contracts);
   await settle(() => contracts.includes(10));
   const switched = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane,
-    binding: { kind: "fixed", symbol: "ES", instrument: contract(20), listing: { exchange: "CME", currency: "USD", type: "FUT" } } }));
+    binding: { kind: "fixed", symbol: "ES", instrument: contract(20), listing: { name: "E-mini S&P 500", exchange: "CME", currency: "USD", type: "FUT" } } }));
   contracts.length = 0;
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: switched } }));
   await settle(() => contracts.includes(20));

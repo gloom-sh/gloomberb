@@ -6,6 +6,7 @@ import { appReducer, createInitialState } from "../../../state/app/context";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { AssetDataRouter } from "../../../sources/provider-router";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
@@ -35,8 +36,8 @@ async function mountPane(width = 130) {
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
     return (
-      <TestPaneProvider state={current} dispatch={dispatch} paneId="cryp" pluginId="market-overview" runtime={{}}>
-        <CryptoBoardPane width={width} height={20} focused />
+      <TestPaneProvider state={current} dispatch={dispatch} paneId="cryp" pluginId="market-overview" runtime={createTestPluginRuntime()}>
+        <CryptoBoardPane paneId="cryp" paneType="crypto-board" width={width} height={20} focused />
       </TestPaneProvider>
     );
   }

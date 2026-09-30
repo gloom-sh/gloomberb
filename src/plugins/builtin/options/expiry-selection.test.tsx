@@ -109,10 +109,11 @@ async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?:
     seedExpiration = (expiration) => {
       const pane = state.config.layout.instances[0]!;
       const symbol = pane.binding?.kind === "fixed" ? pane.binding.symbol : "AAPL";
-      const incoming = optionsModule.paneTemplates![0]!.createInstance({
+      const incoming = optionsModule.paneTemplates![0]!.createInstance!({
         config: state.config, layout: state.config.layout, focusedPaneId: PANE_ID,
         activeTicker: symbol, activeCollectionId: null,
-      }, { symbol, values: { expiration: String(expiration) } })!;
+      }, { symbol, values: { expiration: String(expiration) } });
+      if (!incoming || incoming instanceof Promise) throw new Error("The options template builds its pane synchronously");
       dispatch({ type: "UPDATE_LAYOUT", layout: { ...state.config.layout,
         instances: [{ ...pane, settings: { ...pane.settings, ...incoming.settings } }] } });
     };

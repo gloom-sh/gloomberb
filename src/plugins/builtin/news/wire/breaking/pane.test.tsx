@@ -85,7 +85,7 @@ function createHarness() {
       <PaneFooterProvider>
         {(footer) => (
           <Box flexDirection="column" width={90} height={18}>
-            <BreakingPane focused width={90} height={17} />
+            <BreakingPane paneId={PANE_ID} paneType="news-breaking" focused width={90} height={17} />
             <PaneFooterBar footer={footer} focused width={90} />
           </Box>
         )}

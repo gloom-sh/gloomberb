@@ -128,7 +128,7 @@ async function mount({ missingSelection = false, holdSecond = false, pinnedSelec
         ? { ...instance, settings: { ...instance.settings, expiration } } : instance) } });
     return <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime}>
       <Profiler id="surface" onRender={() => { commits += 1; }}>
-        <PaneFooterProvider>{() => <VolSurfacePane focused width={WIDTH} height={HEIGHT} />}</PaneFooterProvider>
+        <PaneFooterProvider>{() => <VolSurfacePane paneId={PANE_ID} paneType="vol-surface" focused width={WIDTH} height={HEIGHT} />}</PaneFooterProvider>
       </Profiler>
     </TestPaneProvider>;
   }

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { IpoCalendarParams, IpoCalendarPayload, IpoDeal } from "../../../api-client/ipo";
-import type { HeadlessPaneContext } from "../../../types/plugin";
+import type { HeadlessPaneContext, HeadlessPaneOptionValues } from "../../../types/plugin";
 import { fetchIpoCalendar, validateIpoCalendar } from "./client";
 import { ipoCalendarHeadless } from "./headless";
 import { ipoDeal } from "./test-fixture";
@@ -46,7 +46,7 @@ test("the CLI asks the server for the stage it filters on", async () => {
       },
     },
   } as unknown as HeadlessPaneContext;
-  const load = (options: Record<string, unknown>) => ipoCalendarHeadless.load({ rawArgument: "", argument: null, symbols: [], options }, ctx);
+  const load = (options: HeadlessPaneOptionValues) => ipoCalendarHeadless.load({ rawArgument: "", argument: null, symbols: [], options }, ctx);
 
   expect((await load({ status: "filed" })).rows.map((row) => row.id)).toEqual(["filed"]);
   expect((await load({})).rows.map((row) => row.id)).toEqual(["upcoming", "filed"]);

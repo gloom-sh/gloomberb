@@ -28,7 +28,7 @@ describe("formatHitDateShort", () => {
    * is too narrow to tell a mistake from a design choice.
    */
   test("switches from age to day to month at the day and year boundaries", () => {
-    const at = (iso: string) => formatHitDateShort(iso, NOW);
+    const at = (iso: string | undefined) => formatHitDateShort(iso, NOW);
     expect(at("2026-09-01T11:59:30")).toBe("1m");
     expect(at("2026-09-01T08:45:00")).toBe("3h");
     expect(at("2026-08-31T12:00:01")).toBe("23h");

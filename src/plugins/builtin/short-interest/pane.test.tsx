@@ -19,11 +19,11 @@ afterEach(() => {
 test("reported percentages fit at normal width and dated rows remain usable through narrow scroll and refresh", async () => {
   let updated = false;
   const cloud = spyOn(apiClient, "getCloudShortInterest").mockRejectedValue(new Error("Controlled history unavailable"));
-  const yahoo = spyOn(YahooHttpClient.prototype, "fetchJsonWithCrumb").mockImplementation(async () => ({ quoteSummary: { result: [{ defaultKeyStatistics: {
+  const yahoo = spyOn(YahooHttpClient.prototype, "fetchJsonWithCrumb").mockImplementation(async <T,>() => ({ quoteSummary: { result: [{ defaultKeyStatistics: {
     dateShortInterest: updated ? "2026-09-15" : "2026-08-31", sharesShort: { raw: 20_000_000 },
     sharesShortPreviousMonthDate: "2026-08-14", sharesShortPriorMonth: { raw: 10_000_000 },
     shortRatio: { raw: 2.3 }, shortPercentOfFloat: { raw: .25 }, floatShares: { raw: 100_000_000 },
-  } }] } }));
+  } }] } }) as T);
   restore = () => { cloud.mockRestore(); yahoo.mockRestore(); };
   const config = createTestPaneConfig("/tmp/short-interest-test-unused", { instanceId: "si", paneId: "short-interest" });
   const state = createInitialState(config); state.focusedPaneId = "si";
@@ -31,7 +31,7 @@ test("reported percentages fit at normal width and dated rows remain usable thro
   let resize: (value: number) => void = () => {};
   function Harness() {
     const [width, setWidth] = useState(100); resize = setWidth;
-    return <TestPaneProvider state={state} paneId="si" pluginId="ticker-research" runtime={{}}>
+    return <TestPaneProvider state={state} paneId="si" pluginId="ticker-research" runtime={createTestPluginRuntime()}>
       <ShortInterestView focused width={width} height={23} />
     </TestPaneProvider>;
   }

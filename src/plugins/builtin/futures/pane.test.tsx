@@ -3,7 +3,8 @@ import { act } from "react";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
-import type { PinTickerOptions, QuoteBatchResult } from "../../../types/plugin";
+import type { QuoteBatchResult } from "../../../types/data-provider";
+import type { PinTickerOptions } from "../../../types/plugin";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { futuresModule } from "./index";
 import { TestPaneProvider } from "../../../test-support/pane";
@@ -61,7 +62,7 @@ function makeRuntime(quoteError?: string): PluginRuntimeAccess {
     updateBrokerInstance: async () => {},
     syncBrokerInstance: async () => {},
     removeBrokerInstance: async () => {},
-    pinTicker: (symbol, options) => {
+    pinTicker: (symbol: string, options?: PinTickerOptions) => {
       pinned.push({ symbol, options });
     },
     navigateTicker: () => {},

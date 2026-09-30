@@ -42,7 +42,7 @@ test("an unavailable currency spread reaches headless errors even with normalize
     const provider = createTestDataProvider({
       getTickerFinancials: async (symbol) => ({ quote: quote(symbol), annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
       getQuote: async (symbol) => quote(symbol),
-      getQuoteMetadata: async (symbol) => ({ symbol, currency: quote(symbol).currency, instrumentType: "EQUITY" }),
+      getQuoteMetadata: async (symbol) => ({ symbol, currency: quote(symbol).currency, instrumentType: "EQUITY", source: {} }),
       getDetailedPriceHistory: async () => history,
       getPriceHistoryForResolution: async () => history,
     });
@@ -133,7 +133,7 @@ test("explicit financial periods replay available SEC history and expose actual 
   const full = await chartHeadless("fundamental-graph-pane").load(args, context);
   expect(spec.viewport.range).toBe("ALL");
   expect(full.series[0]!.points).toHaveLength(10);
-  expect(full.series[0]!.points[0]!.observedAt.toISOString()).toBe("2017-06-30T00:00:00.000Z");
+  expect(full.series[0]!.points[0]!.observedAt).toEqual(new Date("2017-06-30T00:00:00.000Z"));
   expect(full.complete).toBe(true);
   expect(full.metadata?.periodCoverage).toEqual([expect.objectContaining({ requested: 10, returned: 10, complete: true })]);
   const partial = await chartHeadless("fundamental-graph-pane").load(args, { ...context, marketData: createTestDataProvider({

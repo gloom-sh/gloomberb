@@ -67,7 +67,7 @@ async function mount(
           <Box width={100} height={26} flexDirection="column">
             <Box height={25}>
               <NewsPresetPane
-                focused width={100} height={25} paneKey="feed" title="News"
+                paneId="news-feed" paneType="news-feed" focused width={100} height={25} paneKey="feed" title="News"
                 query={query} columns={["time", "source", "title"]}
                 defaultSort={{ columnId: "time", direction: "desc" }}
                 emptyStateTitle="No news" emptyStateHint=""

@@ -109,7 +109,7 @@ test("scoped chart and financial models keep account identity independently of c
     for (const portfolioId of ["a", "b"]) {
       const options = { portfolioId };
       const targets = buildPortfolioChartTargets(tickers, options);
-      expect(targets[0]!.request.instrument.instrument?.conId).toBe(portfolioId === "a" ? 101 : 202);
+      expect(targets[0]!.request?.instrument.instrument?.conId).toBe(portfolioId === "a" ? 101 : 202);
       const market = new Map(tickers.flatMap(ticker => {
         const value = f.coordinator.getTickerFinancialsSync(instrumentFromTicker(ticker, ticker.metadata.ticker, options)!);
         return value ? [[ticker.metadata.ticker, value] as const] : [];
@@ -120,8 +120,8 @@ test("scoped chart and financial models keep account identity independently of c
       expect(result.fundSymbols).toEqual(["MIXETF"]);
       expect(result.unvaluedSymbols).toEqual([]);
     }
-    expect(buildChartKey(buildPortfolioChartTargets(tickers, { portfolioId: "a" })[0]!.request))
-      .not.toBe(buildChartKey(buildPortfolioChartTargets(tickers, { portfolioId: "b" })[0]!.request));
+    expect(buildChartKey(buildPortfolioChartTargets(tickers, { portfolioId: "a" })[0]!.request!))
+      .not.toBe(buildChartKey(buildPortfolioChartTargets(tickers, { portfolioId: "b" })[0]!.request!));
   }
 });
 

@@ -153,13 +153,15 @@ describe("earnings transcript headless", () => {
   });
   test("a ticker alone lists the company's calls; a quarter or section reads the transcript", async () => {
     const definition = createEarningsCallsHeadless(dependencies());
+    const title = definition.describe;
+    if (typeof title !== "function") throw new Error("The report title depends on the arguments");
     const listed = await definition.load(transcriptArgs({}), context);
-    expect(listed.columns.map((column) => column.key)).toContain("callAt");
+    expect(listed.columns?.map((column) => column.key)).toContain("callAt");
     expect(listed.rows.length).toBe(calls.length);
-    expect(definition.describe?.(transcriptArgs({}))).toBe("Earnings Calls | AMD");
+    expect(title(transcriptArgs({}))).toBe("Earnings Calls | AMD");
     const read = await definition.load(transcriptArgs({ section: "guidance" }), context);
     expect(read.metadata).toMatchObject({ section: "guidance", fiscalQuarter: 2, limit: 20 });
-    expect(definition.describe?.(transcriptArgs({ section: "guidance" }))).toBe("Earnings Call Transcript | AMD | latest");
+    expect(title(transcriptArgs({ section: "guidance" }))).toBe("Earnings Call Transcript | AMD | latest");
   });
 
   test("selects a quarter and filters speakers by role acronym", async () => {

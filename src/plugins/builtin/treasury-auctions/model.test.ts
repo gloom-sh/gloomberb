@@ -17,6 +17,7 @@ import type { TreasuryAuction } from "./types";
 function auction(overrides: Partial<TreasuryAuction> & { secType: string; securityTerm: string }): TreasuryAuction {
   return {
     id: `${overrides.secType}|${overrides.auctionDate ?? "2026-08-12"}|${overrides.securityTerm}`,
+    cusip: null,
     auctionDate: "2026-08-12",
     highInvestmentRate: null,
     highYield: null,

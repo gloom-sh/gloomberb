@@ -189,13 +189,13 @@ describe("PortfolioAnalyticsPane", () => {
     test(`account summaries require source currency and request its FX (${currency ?? "unknown"})`, async () => {
       const requested: string[] = [];
       controlledCoordinator = new MarketDataCoordinator(createTestDataProvider({
-        getQuote: async () => null, getPriceHistory: async () => [], getPriceHistoryForResolution: async () => [],
+        getPriceHistory: async () => [], getPriceHistoryForResolution: async () => [],
         getExchangeRate: async (source) => { requested.push(source); return 0.75; },
       }));
       setSharedMarketDataCoordinator(controlledCoordinator);
       const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
       config.baseCurrency = "USD";
-      config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", config: {} }];
+      config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", label: "IBKR", config: {} }];
       await act(async () => {
         await tui.render(<AnalyticsHarness config={config} height={32}
           brokerAccounts={{ "ibkr-flex": [{ accountId: "DU12345", name: "Fixture", currency,
@@ -212,7 +212,7 @@ describe("PortfolioAnalyticsPane", () => {
 
   for (const withAccount of [true, false]) test(`cash-only accounts retain broker history without deriving returns from cash flows (account snapshot ${withAccount})`, async () => {
     const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
-    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", config: {} }];
+    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", label: "IBKR", config: {} }];
     const ticker = createSharedTicker();
     ticker.metadata.positions = [];
     const adapter = createTestBrokerAdapter({
@@ -252,7 +252,7 @@ describe("PortfolioAnalyticsPane", () => {
 
   test("an identity-only account cannot establish zero holdings values or P&L", async () => {
     const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
-    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", config: {} }];
+    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", label: "IBKR", config: {} }];
     const ticker = createSharedTicker();
     ticker.metadata.positions = [];
     await act(async () => {
@@ -272,7 +272,7 @@ describe("PortfolioAnalyticsPane", () => {
 
   test("statement-only history shows loading and failure without inventing an empty account", async () => {
     const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
-    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", config: {} }];
+    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", label: "IBKR", config: {} }];
     const ticker = createSharedTicker();
     ticker.metadata.positions = [];
     const { promise: history, reject: rejectHistory } = Promise.withResolvers<BrokerPortfolioPerformance>();
@@ -544,9 +544,9 @@ for (const scenario of ["unknown currency", "dated correction", "empty observati
     const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
     config.baseCurrency = "EUR";
     config.portfolios[1]!.currency = "JPY";
-    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", enabled: true, config: {} }];
+    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", label: "IBKR", enabled: true, config: {} }];
     controlledCoordinator = new MarketDataCoordinator(createTestDataProvider({
-      getQuote: async () => null, getPriceHistory: async () => [], getPriceHistoryForResolution: async () => [],
+      getPriceHistory: async () => [], getPriceHistoryForResolution: async () => [],
     }));
     setSharedMarketDataCoordinator(controlledCoordinator);
     await act(async () => {
@@ -599,11 +599,11 @@ test("the overview draws the account history between its figures and the sector 
   };
   const adapter = createTestBrokerAdapter({ id: "ibkr", getPortfolioPerformance: async () => performance });
   const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
-  config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", enabled: true, config: {} }];
+  config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", label: "IBKR", enabled: true, config: {} }];
   const ticker = createSharedTicker();
   for (const [width, height] of [[78, 28], [60, 9]] as const) {
     controlledCoordinator = new MarketDataCoordinator(createTestDataProvider({
-      getQuote: async () => null, getPriceHistory: async () => [], getPriceHistoryForResolution: async () => [],
+      getPriceHistory: async () => [], getPriceHistoryForResolution: async () => [],
     }));
     setSharedMarketDataCoordinator(controlledCoordinator);
     await act(async () => {

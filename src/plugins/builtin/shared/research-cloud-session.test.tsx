@@ -91,7 +91,7 @@ async function render(pane: typeof panes[number], state: { cloudRequired: boolea
   return commands;
 }
 
-test.each(panes)("%s recovers from sign-in and verification while preserving provider failures", async (pane) => {
+test.each([...panes])("%s recovers from sign-in and verification while preserving provider failures", async (pane) => {
   const state = { cloudRequired: true, failure: undefined as string | undefined };
   const commands = await render(pane, state);
   const controls = tui;

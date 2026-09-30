@@ -253,7 +253,7 @@ describe("chart composer series editor", () => {
     for (let index = 0; index < 4; index += 1) await emitKey("tab", "\t");
     // The full terminal can still identify an underlying input as its focused
     // editor after the dialog has moved its own logical focus to a selector.
-    await act(async () => { background!.focus(); await tui.setup().renderOnce(); });
+    await act(async () => { background!.focus!(); await tui.setup().renderOnce(); });
     await emitKey("right", "\u001b[C");
     await emitKey("left", "\u001b[D");
     await emitKey("right", "\u001b[C");

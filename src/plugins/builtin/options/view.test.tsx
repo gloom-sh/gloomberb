@@ -59,8 +59,8 @@ function makeChain(
   };
 }
 
-function makeFinancials(price: number): TickerFinancials {
-  return createTestFinancials({ quote: createTestQuote({ price }) });
+function makeFinancials(price: number): TickerFinancials & { quote: Quote } {
+  return { ...createTestFinancials(), quote: createTestQuote({ price }) };
 }
 
 function OptionsHarness({

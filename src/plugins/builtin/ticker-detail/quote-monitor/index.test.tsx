@@ -10,6 +10,7 @@ import { QuoteMonitorPane } from "./index";
 import type { PluginRuntimeAccess } from "../../../runtime";
 import type { PinTickerOptions } from "../../../../types/plugin";
 import { TestPaneProvider, createTestTicker as makeTicker } from "../../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 
 const tui = createOpenTuiTestHarness();
 
@@ -26,40 +27,14 @@ function makeRuntime(options: {
   pinCalls?: PinTickerCall[];
   settingsCalls?: Array<string | undefined>;
 } = {}): PluginRuntimeAccess {
-  return {
-    getMarketData: () => null,
-    getCapability: () => null,
-    getBrokerAdapter: () => null,
-    connectBrokerInstance: async () => {},
-    updateBrokerInstance: async () => {},
-    syncBrokerInstance: async () => {},
-    removeBrokerInstance: async () => {},
+  return createTestPluginRuntime({
     pinTicker: (symbol, pinOptions) => {
       options.pinCalls?.push({ symbol, options: pinOptions });
     },
-    navigateTicker: () => {},
-    selectTicker: () => {},
-    switchTab: () => {},
-    switchPanel: () => {},
-    openCommandBar: () => {},
-    showPane: () => {},
-    createPaneFromTemplate: () => {},
-    hidePane: () => {},
     openPaneSettings: (paneId) => {
       options.settingsCalls?.push(paneId);
     },
-    openPluginCommandWorkflow: () => {},
-    notify: () => {},
-    subscribeResumeState: () => () => {},
-    getResumeState: () => null,
-    setResumeState: () => {},
-    deleteResumeState: () => {},
-    getConfigState: () => null,
-    setConfigState: async () => {},
-    setConfigStates: async () => {},
-    deleteConfigState: async () => {},
-    getConfigStateKeys: () => [],
-  };
+  });
 }
 
 function makePriceHistory(price: number): PricePoint[] {

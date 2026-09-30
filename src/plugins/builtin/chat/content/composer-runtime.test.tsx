@@ -3,12 +3,33 @@ import { act, useRef } from "react";
 import type { ChatMessage } from "../../../../api-client";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { useChatComposerRuntime } from "./composer-runtime";
+import type { ChatContentController } from "./types";
 
 const tui = createOpenTuiTestHarness();
 
+type SentMessage = { channelId: string; content: string; replyToId?: string };
+
+/** Records sends. The composer never makes the controller calls left out here. */
+function sendingController(sent: SentMessage[]): ChatContentController {
+  const controller: Partial<ChatContentController> = {
+    send: () => false,
+    sendToChannel: (channelId, content, replyToId) => {
+      sent.push({ channelId, content, replyToId });
+      return true;
+    },
+    openDirectChannel: async () => { throw new Error("not used"); },
+    openGroupChannel: async () => { throw new Error("not used"); },
+    setDraft: () => {},
+    setChannelDraft: () => {},
+    setReplyToId: () => {},
+    setChannelReplyToId: () => {},
+  };
+  return controller as ChatContentController;
+}
+
 describe("useChatComposerRuntime", () => {
   test("sends to the pending channel ref instead of the stale rendered channel", async () => {
-    const sent: Array<{ channelId: string; content: string; replyToId?: string }> = [];
+    const sent: SentMessage[] = [];
     let sendMessage = () => {};
 
     function Harness() {
@@ -23,19 +44,7 @@ describe("useChatComposerRuntime", () => {
         channelId: "everyone",
         channelIdRef,
         contentWidth: 80,
-        controller: {
-          send: () => false,
-          sendToChannel: (channelId, content, replyToId) => {
-            sent.push({ channelId, content, replyToId });
-            return true;
-          },
-          openDirectChannel: async () => { throw new Error("not used"); },
-          openGroupChannel: async () => { throw new Error("not used"); },
-          setDraft: () => {},
-          setChannelDraft: () => {},
-          setReplyToId: () => {},
-          setChannelReplyToId: () => {},
-        } as any,
+        controller: sendingController(sent),
         focusInput: () => {},
         focused: true,
         inputFocused: true,
@@ -44,7 +53,10 @@ describe("useChatComposerRuntime", () => {
         messages: [],
         onChannelChange: () => {},
         replyTo: null,
-        setDirectExpanded: () => {},
+        editingMessage: null,
+        latestEditableMessageId: null,
+        setEditingMessage: () => {},
+        expandDirectSection: () => {},
         setFollowMessages: () => {},
         setReplyTo: () => {},
         setSelectedIdx: () => {},
@@ -67,7 +79,7 @@ describe("useChatComposerRuntime", () => {
   });
 
   test("drops a reply target from a different channel before sending", async () => {
-    const sent: Array<{ channelId: string; content: string; replyToId?: string }> = [];
+    const sent: SentMessage[] = [];
     let sendMessage = () => {};
     const staleReply: ChatMessage = {
       id: "public-reply",
@@ -90,19 +102,7 @@ describe("useChatComposerRuntime", () => {
         channelId: "dm:test",
         channelIdRef,
         contentWidth: 80,
-        controller: {
-          send: () => false,
-          sendToChannel: (channelId, content, replyToId) => {
-            sent.push({ channelId, content, replyToId });
-            return true;
-          },
-          openDirectChannel: async () => { throw new Error("not used"); },
-          openGroupChannel: async () => { throw new Error("not used"); },
-          setDraft: () => {},
-          setChannelDraft: () => {},
-          setReplyToId: () => {},
-          setChannelReplyToId: () => {},
-        } as any,
+        controller: sendingController(sent),
         focusInput: () => {},
         focused: true,
         inputFocused: true,
@@ -111,7 +111,10 @@ describe("useChatComposerRuntime", () => {
         messages: [],
         onChannelChange: () => {},
         replyTo: staleReply,
-        setDirectExpanded: () => {},
+        editingMessage: null,
+        latestEditableMessageId: null,
+        setEditingMessage: () => {},
+        expandDirectSection: () => {},
         setFollowMessages: () => {},
         setReplyTo: () => {},
         setSelectedIdx: () => {},

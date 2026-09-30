@@ -67,7 +67,7 @@ for (const outcome of ["success", "disjoint", "empty", "failed"] as const) {
       latest = useChartResolution(spec, sources, { liveRefreshIntervalMs: 0 });
       return <TestPaneProvider state={state} paneId={paneId} pluginId="charts" runtime={runtime}>
         <ChartSnapshotContext value={latest}>
-          <ChartComposerPane paneId={paneId} focused width={120} height={24} />
+          <ChartComposerPane paneId={paneId} paneType="chart-composer" focused width={120} height={24} />
         </ChartSnapshotContext>
       </TestPaneProvider>;
     }

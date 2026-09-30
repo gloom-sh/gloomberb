@@ -238,6 +238,6 @@ test("the delta axis centres ATM on the delta-neutral straddle strike, between 4
   const row = buildSurfaceGrid(snapshot, { axis: "delta", coordinates: [-0.45, 0, 0.45] }).rows[0]!;
   const [put45, atm, call45] = row.cells.map((cell) => cell.strike!);
   expect(atm).toBeCloseTo(expiry.forward! * Math.exp(0.3 * 0.3 * expiry.years / 2), 1);
-  expect(put45).toBeLessThan(atm);
-  expect(call45).toBeGreaterThan(atm);
+  expect(put45).toBeLessThan(atm!);
+  expect(call45).toBeGreaterThan(atm!);
 });

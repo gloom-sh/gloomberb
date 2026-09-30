@@ -50,17 +50,13 @@ export const recordedEarnings: Record<string, YahooQuoteSummaryResult> = {
             "current": { "raw": 0.33459 },
             "7daysAgo": { "raw": 0.33459 },
             "30daysAgo": { "raw": 0.33459 },
-            "60daysAgo": { "raw": 0.33459 },
-            "90daysAgo": { "raw": 0.33788 },
             "epsTrendCurrency": "USD"
           },
           "epsRevisions": {
             "upLast7days": { "raw": 0 },
             "upLast30days": { "raw": 0 },
             "downLast30days": { "raw": 1 },
-            "downLast7Days": { "raw": 1 },
-            "downLast90days": {},
-            "epsRevisionsCurrency": "USD"
+            "downLast7Days": { "raw": 1 }
           }
         }
       ]
@@ -113,17 +109,13 @@ export const recordedEarnings: Record<string, YahooQuoteSummaryResult> = {
             "current": { "raw": 63.08788 },
             "7daysAgo": { "raw": 63.08788 },
             "30daysAgo": { "raw": 63.08788 },
-            "60daysAgo": { "raw": 58.24652 },
-            "90daysAgo": { "raw": 57.65721 },
             "epsTrendCurrency": "JPY"
           },
           "epsRevisions": {
             "upLast7days": { "raw": 4 },
             "upLast30days": { "raw": 5 },
             "downLast30days": { "raw": 0 },
-            "downLast7Days": { "raw": 0 },
-            "downLast90days": {},
-            "epsRevisionsCurrency": "JPY"
+            "downLast7Days": { "raw": 0 }
           }
         }
       ]
@@ -178,17 +170,13 @@ export const recordedEarnings: Record<string, YahooQuoteSummaryResult> = {
             "current": { "raw": 10.97892 },
             "7daysAgo": { "raw": 10.97892 },
             "30daysAgo": { "raw": 9.84987 },
-            "60daysAgo": { "raw": 9.68862 },
-            "90daysAgo": { "raw": 9.54759 },
             "epsTrendCurrency": "CNY"
           },
           "epsRevisions": {
             "upLast7days": { "raw": 2 },
             "upLast30days": { "raw": 11 },
             "downLast30days": { "raw": 3 },
-            "downLast7Days": { "raw": 0 },
-            "downLast90days": {},
-            "epsRevisionsCurrency": "CNY"
+            "downLast7Days": { "raw": 0 }
           }
         }
       ]
@@ -243,17 +231,13 @@ export const recordedEarnings: Record<string, YahooQuoteSummaryResult> = {
             "current": { "raw": 1.47221 },
             "7daysAgo": { "raw": 1.27619 },
             "30daysAgo": { "raw": 1.27619 },
-            "60daysAgo": { "raw": 1.19985 },
-            "90daysAgo": { "raw": 1.19985 },
             "epsTrendCurrency": "CNY"
           },
           "epsRevisions": {
             "upLast7days": { "raw": 1 },
             "upLast30days": { "raw": 4 },
             "downLast30days": { "raw": 1 },
-            "downLast7Days": { "raw": 0 },
-            "downLast90days": {},
-            "epsRevisionsCurrency": "CNY"
+            "downLast7Days": { "raw": 0 }
           }
         }
       ]
@@ -308,17 +292,13 @@ export const recordedEarnings: Record<string, YahooQuoteSummaryResult> = {
             "current": { "raw": 1.97754 },
             "7daysAgo": { "raw": 1.97656 },
             "30daysAgo": { "raw": 1.97656 },
-            "60daysAgo": { "raw": 2.00825 },
-            "90daysAgo": { "raw": 2.00801 },
             "epsTrendCurrency": "USD"
           },
           "epsRevisions": {
             "upLast7days": { "raw": 1 },
             "upLast30days": { "raw": 7 },
             "downLast30days": { "raw": 14 },
-            "downLast7Days": { "raw": 0 },
-            "downLast90days": {},
-            "epsRevisionsCurrency": "USD"
+            "downLast7Days": { "raw": 0 }
           }
         }
       ]

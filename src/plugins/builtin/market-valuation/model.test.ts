@@ -14,7 +14,7 @@ function series(observations: Array<{ date: string; value: number | null }>): Da
   return { seriesId: "test", observations, provenance: "fred" };
 }
 
-function ratioPoint(date: string, ratio: number): RatioPoint {
+function ratioPoint(date: string, ratio: number): RatioPoint & { ratio: number } {
   return { date, ratio };
 }
 
@@ -264,12 +264,12 @@ describe("richness normalisation", () => {
       trend: fitIndicatorTrend(SP500_DIVIDEND_YIELD, rising),
     }, "ALL");
 
-    expect(asPrice.percentile).toBeCloseTo(asYield.percentile, 8);
+    expect(asPrice.percentile).toBeCloseTo(asYield.percentile!, 8);
     // The raw percentile is identical, but a high yield is cheap.
     expect(asPrice.richPercentile).toBeCloseTo(100, 6);
     expect(asYield.richPercentile).toBeCloseTo(0, 6);
-    expect(Math.sign(asPrice.richSigma)).toBe(-Math.sign(asYield.richSigma));
-    expect(asYield.richSigma).toBeCloseTo(-asYield.sigmaVsTrend, 8);
+    expect(Math.sign(asPrice.richSigma!)).toBe(-Math.sign(asYield.richSigma!));
+    expect(asYield.richSigma).toBeCloseTo(-asYield.sigmaVsTrend!, 8);
   });
 });
 

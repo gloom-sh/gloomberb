@@ -64,7 +64,7 @@ describe("insider client", () => {
   test("scans Form 4 filings and loads their content sequentially", async () => {
     let activeContentLoads = 0;
     let maxActiveContentLoads = 0;
-    const filingRequests: Array<{ symbol: string; count: number; exchange: string | undefined }> = [];
+    const filingRequests: Array<{ symbol: string; count: number | undefined; exchange: string | undefined }> = [];
     const provider = createTestDataProvider({
       getSecFilings: async (symbol, count, exchange) => {
         filingRequests.push({ symbol, count, exchange });

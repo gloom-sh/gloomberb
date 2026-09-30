@@ -65,7 +65,7 @@ test("ticker, portfolio and overview select the same current or broker P&L acros
     const record = { metadata: { ...ticker.metadata, positions: [{ portfolio: "main", broker: "demo", shares: 10,
       avgCost, currency: "EUR", marketValue: 1150, unrealizedPnl: 75, markPrice: 115 }] } };
     for (const currentQuote of [
-      { ...quote, price: 120, currency: "USD", marketState: "POST", postMarketPrice: 130 },
+      { ...quote, price: 120, currency: "USD", marketState: "POST" as const, postMarketPrice: 130 },
       { ...quote, price: Number.NaN, currency: "USD" },
     ]) {
       const financials = { quote: currentQuote, annualStatements: [], quarterlyStatements: [], priceHistory: [] };

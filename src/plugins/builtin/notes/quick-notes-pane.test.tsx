@@ -55,7 +55,7 @@ function QuickNotesHarness({
           <PaneFooterProvider>
             {() => (
               <>
-                <QuickNotesPane focused={focused} width={78} height={20} />
+                <QuickNotesPane paneId={PANE_INSTANCE_ID} paneType="quick-notes" focused={focused} width={78} height={20} />
                 <Text onMouseDown={() => setFocused(false)}>blur-pane</Text>
               </>
             )}

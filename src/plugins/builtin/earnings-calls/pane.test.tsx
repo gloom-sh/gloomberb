@@ -87,15 +87,15 @@ function manualPollTimers() {
   const originalClear = globalThis.clearTimeout;
   let nextId = 900_000_000;
   const pending = new Map<number, () => void>();
-  const set = spyOn(globalThis, "setTimeout").mockImplementation(((callback, delay, ...args) => {
+  const set = spyOn(globalThis, "setTimeout").mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
     if (delay !== 20_000 && delay !== 15_000) return originalSet(callback, delay, ...args);
     const id = ++nextId;
     pending.set(id, () => callback(...args));
     return id;
   }) as typeof setTimeout);
-  const clear = spyOn(globalThis, "clearTimeout").mockImplementation((timer) => {
+  const clear = spyOn(globalThis, "clearTimeout").mockImplementation(((timer?: Parameters<typeof originalClear>[0]) => {
     if (!pending.delete(Number(timer))) originalClear(timer);
-  });
+  }) as typeof clearTimeout);
   restorers.push(() => { set.mockRestore(); clear.mockRestore(); });
   return {
     pending,

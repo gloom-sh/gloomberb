@@ -543,7 +543,7 @@ describe("ChatController", () => {
     expect(apiClient.getSessionToken()).toBeNull();
     expect(apiClient.getCurrentUser()).toBeNull();
     expect(controller.getSnapshot().user).toBeNull();
-    expect(persistence.getState("session", { schemaVersion: 1 })).toEqual({
+    expect(persistence.getState<{ sessionToken: string | null; user: unknown }>("session", { schemaVersion: 1 })).toEqual({
       sessionToken: null,
       user: null,
     });
@@ -609,7 +609,7 @@ describe("ChatController", () => {
   test("does not let a stale validation failure clear a replacement session", async () => {
     const persistence = new MemoryPersistence();
     const controller = createController();
-    let rejectProbe: ((error: Error) => void) | null = null;
+    const probe: { reject?: (error: Error) => void } = {};
     let markProbeStarted: (() => void) | null = null;
     const probeStarted = new Promise<void>((resolve) => {
       markProbeStarted = resolve;
@@ -626,7 +626,7 @@ describe("ChatController", () => {
       return null;
     };
     apiClient.getChatState = () => new Promise((_, reject) => {
-      rejectProbe = reject;
+      probe.reject = reject;
       markProbeStarted?.();
     });
 
@@ -637,7 +637,7 @@ describe("ChatController", () => {
       username: "mara",
       emailVerified: true,
     });
-    rejectProbe?.(new ApiRequestError("Unauthorized", 401));
+    probe.reject?.(new ApiRequestError("Unauthorized", 401));
     await refresh;
 
     expect(apiClient.getSessionToken()).toBe("new-token");
@@ -656,7 +656,7 @@ describe("ChatController", () => {
   test("does not apply stale chat state after a replacement session", async () => {
     const persistence = new MemoryPersistence();
     const controller = createController();
-    let resolveProbe: ((state: ChatStateResponse) => void) | null = null;
+    const probe: { resolve?: (state: ChatStateResponse) => void } = {};
     let markProbeStarted: (() => void) | null = null;
     const probeStarted = new Promise<void>((resolve) => {
       markProbeStarted = resolve;
@@ -679,7 +679,7 @@ describe("ChatController", () => {
       return null;
     };
     apiClient.getChatState = () => new Promise<ChatStateResponse>((resolve) => {
-      resolveProbe = resolve;
+      probe.resolve = resolve;
       markProbeStarted?.();
     });
 
@@ -690,7 +690,7 @@ describe("ChatController", () => {
       username: "mara",
       emailVerified: true,
     });
-    resolveProbe?.({
+    probe.resolve?.({
       channels: [...SERVER_CHAT_CHANNELS, oldDirectChannel],
       onlineCount: 0,
       channelStates: [],
@@ -1201,7 +1201,7 @@ describe("ChatController", () => {
       schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
       cachePolicy: { staleMs: 1_000, expireMs: 2_000 },
     });
-    controller.setNotifier((notification) => notifications.push(notification));
+    controller.setNotifier((notification) => { notifications.push(notification); });
     controller.attachPersistence(persistence);
     apiClient.editMessage = async () => {
       throw new Error("should not call server");
@@ -1238,7 +1238,7 @@ describe("ChatController", () => {
       schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
       cachePolicy: { staleMs: 1_000, expireMs: 2_000 },
     });
-    controller.setNotifier((notification) => notifications.push(notification));
+    controller.setNotifier((notification) => { notifications.push(notification); });
     controller.attachPersistence(persistence);
     apiClient.editMessage = async () => {
       throw new Error("should not call server");

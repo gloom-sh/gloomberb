@@ -46,7 +46,7 @@ async function render(width: number, height: number, open?: string, tickerKey = 
   state.tickers.set(tickerKey, createTestTicker(tickerKey, tickerKey === "SOUN" ? "SoundHound AI" : "Planoptik AG",
     { assetCategory: "STK", exchange: tickerKey === "SOUN" ? "NASDAQ" : "XETR", currency: tickerKey === "SOUN" ? "USD" : "EUR" }));
   await act(async () => { await tui.render(<TestPaneFrame state={state} paneId="buzz" pluginId="social-mentions" runtime={createTestPluginRuntime()} width={width} height={height}>
-    {(body) => <SocialMentionsPane paneId="buzz" paneType="social-mentions" focused {...body} />}
+    {(body) => <SocialMentionsPane focused {...body} />}
   </TestPaneFrame>, { width, height }); });
   await settle();
   return tui.frame();

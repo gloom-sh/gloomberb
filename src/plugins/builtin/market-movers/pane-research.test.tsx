@@ -6,6 +6,7 @@ import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createOpenTuiTestHarness, settleFrame, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { createInitialState, appReducer } from "../../../state/app/context";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
@@ -27,7 +28,7 @@ let footer: any;
 async function mount(answer: (url: URL) => unknown | Promise<unknown>, selectedProvider?: ReturnType<typeof createTestDataProvider>) {
   const provider = selectedProvider ?? createTestDataProvider();
   setHttpFetchTransport(async url => Response.json(await answer(new URL(url))));
-  const id = "market-movers", Pane = marketMoversModule.panes[0]!.component;
+  const id = "market-movers", Pane = marketMoversModule.panes![0]!.component;
   const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: {} }));
   initial.focusedPaneId = id;
   const repo = new JsonTickerRepository();
@@ -43,7 +44,7 @@ async function mount(answer: (url: URL) => unknown | Promise<unknown>, selectedP
     const runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: provider, tickerRepository: repo, dispatch, pluginRegistry: registry,
       buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: `research:${++sequence}` }),
       persistLayout: layout => dispatch({ type: "UPDATE_LAYOUT", layout }), activatePane() {}, focusVisiblePane() {} });
-    return <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="market-movers" runtime={{ getMarketData: () => null, pinTicker: (symbol, options) => { pins.push({ symbol, options }); pending.push(runtime.openPinnedTicker(symbol, options)); } }} width={120} height={18}>
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="market-movers" runtime={createTestPluginRuntime({ getMarketData: () => null, pinTicker: (symbol, options) => { pins.push({ symbol, options }); pending.push(runtime.openPinnedTicker(symbol, options)); } })} width={120} height={18}>
       {(body, value) => { footer = value; return <Pane paneId={id} paneType={id} focused {...body} />; }}
     </TestPaneFrame>;
   }
@@ -86,7 +87,7 @@ test("switching lists hides old rows while pending or failed and retains only sa
 
 test("keyboard selects both same-symbol listings and the actual open runtime preserves venue and source type", async () => {
   const provider = new AssetDataRouter(createTestDataProvider({ getQuote: async symbol => ({
-    symbol: "ACME", price: 8, currency: "GBP", instrumentType: "ETF", exchangeName: "LSE", listingExchangeName: "LSE", lastUpdated: Date.now() - 60_000, marketState: "CLOSED",
+    symbol: "ACME", price: 8, change: 0, changePercent: 0, currency: "GBP", instrumentType: "ETF", exchangeName: "LSE", listingExchangeName: "LSE", lastUpdated: Date.now() - 60_000, marketState: "CLOSED",
   }) }));
   const { stateRef, pins, pending } = await mount(() => payload([raw("ACME", { shortName: "US share" }), raw("ACME", { shortName: "London fund", fullExchangeName: "LSE", currency: "GBP" })]), provider);
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" });

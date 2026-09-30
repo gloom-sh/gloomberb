@@ -65,7 +65,7 @@ function Harness({
 
   return (
     <TestPaneFrame state={state} dispatch={dispatch} paneId="brokers:test" pluginId="broker" runtime={runtime} width={92} height={height} footerKeys>
-      {(body) => <BrokersPane focused {...body} />}
+      {(body) => <BrokersPane paneId="brokers:test" paneType="brokers" focused {...body} />}
     </TestPaneFrame>
   );
 }
