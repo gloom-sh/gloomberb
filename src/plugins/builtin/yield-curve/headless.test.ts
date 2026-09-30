@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createYieldCurveHeadless } from "./headless";
+import { completeYieldCurve } from "./history";
 import { TREASURY_MATURITIES } from "./treasury-data";
 
 const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
@@ -8,10 +9,13 @@ const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [
 describe("yield curve headless model", () => {
   test("marks a partial, mixed-date curve incomplete and does not calculate a spread", async () => {
     const headless = createYieldCurveHeadless({
-      load: async () => [
-        { maturity: "10Y", maturityYears: 10, yield: 4.1, asOf: "2026-09-03" },
-        { maturity: "2Y", maturityYears: 2, yield: 4.35, asOf: "2026-09-04" },
-      ],
+      load: async () => ({
+        curve: "us", requestedDate: "", basis: "par", couponsPerYear: 2, lookbacks: null, spreads: null,
+        points: completeYieldCurve([
+          { maturity: "10Y", maturityYears: 10, yield: 4.1, asOf: "2026-09-03" },
+          { maturity: "2Y", maturityYears: 2, yield: 4.35, asOf: "2026-09-04" },
+        ]),
+      }),
     });
     const result = await headless.load(args, {} as HeadlessPaneContext);
     expect(result.rows).toHaveLength(TREASURY_MATURITIES.length);
@@ -22,9 +26,11 @@ describe("yield curve headless model", () => {
     expect(result.errors).toHaveLength(2);
   });
 
-  test("date options call bounded series history, preserve observation dates and flag stale sources", async () => {
+  test("without the stored curve, date options call bounded FRED history, preserve observation dates and flag stale sources", async () => {
     const calls: string[] = [];
-    const context = { apiClient: { getCloudFredSeries: async (id: string, options: { endDate: string }) => {
+    const context = { apiClient: { getCloudCurve: async () => {
+      throw new Error("Not Found");
+    }, getCloudFredSeries: async (id: string, options: { endDate: string }) => {
       calls.push(`${id}:${options.endDate}`);
       return {
         info: { id, units: "Percent", frequency: "Daily" },

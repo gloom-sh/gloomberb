@@ -182,9 +182,30 @@ One-year percentiles use the dated history of the same contract or rate, with mi
 
 Yahoo supplies dated daily histories for monthly `ZQ` contracts. Yahoo's daily bars for quarterly `SR3` contracts hold only the current session, so Cloud builds SR3 one-year history from hourly bars grouped by CME trade date, keeping the last close before the 14:00 CT settlement. These are last trades, not official settlements. The FOMC calendar and SEP are maintained source snapshots with their source URLs, verification date and coverage in structured reports. Tentative future meeting dates may change; schedule coverage is never extended by guessing. Missing history or meetings appear in the pane's warning disclosure and exported metadata.
 
-GC plots constant-maturity Treasury yields against elapsed maturity, with month/year axis and cursor labels. The table retains each tenor's published observation date. The figures above the chart are the 2s10s (10Y minus 2Y), 3m10y (10Y minus 3M) and 5s30s (30Y minus 5Y) spreads in basis points; a negative value indicates inversion and is shown as a warning. A spread needs both tenors from one session, and its 1D change compares it with the last session before the curve's. The table's 1D, 1W and 1M changes compare each tenor with the last session on or before the day before, seven days before and the same day a month before; all three look-backs come from one request per tenor. Missing tenors remain unavailable, and a curve requires matching dates.
+GC plots a government bond curve against maturity on a log axis: the US Treasury par curve (UST, the default), TIPS real yields, US breakevens, the euro area AAA curve, German Bunds, UK Gilts, Japanese JGBs and Canada. `GC JGB`, `GC TIPS 2024-01-02` or `GC 2024-01-02` pick the curve and date; the Curve select in the query bar switches it. Each curve comes from its official publisher and keeps the date that publisher gives it, so two curves can show different sessions:
 
-Use the existing Date footer action (`d`) to enter an as-of date, then Enter or View to submit. Current (`c`) returns to the latest published curve. A holiday or weekend request uses the latest preceding published session within the lookup window; the requested date and observation date remain distinct. Refresh time is not the observation date. Historical series metadata, when available, must identify the requested DGS tenor in daily percent units. A metadata outage may retain observations under the fixed requested-series contract, but contradictory or unidentified returned metadata cannot establish that tenor. Invalid calendar dates never establish an observation or a spread; independently valid observations remain usable. Source failures stay distinct from a successful response with no observations in the ten-day window, using the existing error status and headless errors. Zero and negative yields remain numeric. The latest curve can retain a reported yield with an invalid source date only as undated, with a source error; it cannot establish the curve date or a dated spread.
+| Curve | Publisher and series | Tenors | Out (observed September 2026) | History |
+|---|---|---|---|---|
+| UST | US Treasury daily par yield curve | 1M, 6W, 2M, 3M, 4M, 6M, 1Y to 30Y | the same afternoon, after the 3:30 pm New York quotes | 1990 |
+| TIPS real | US Treasury daily real par yield curve | 5Y, 7Y, 10Y, 20Y, 30Y | the same afternoon | 2003 |
+| Breakeven | UST minus TIPS real, per tenor | 5Y to 30Y | with both | 2003 |
+| Euro AAA | ECB euro area yield curve, AAA-rated issuers, Svensson par yields | 3M to 30Y | around noon Frankfurt the next day | 2004 |
+| Bund | Bundesbank yields on Federal securities by residual maturity, annual coupons | 1Y to 10Y, 15Y to 30Y | around 12:30 Frankfurt the same day | 1997 |
+| Gilt | Bank of England nominal spot (zero-coupon) curve | 6M to 40Y | around 10:00 London the next day | 1979 |
+| JGB | Ministry of Finance JGB interest rates | 1Y to 10Y, 15Y to 40Y | the next business day | 1974 (10Y from 1986) |
+| Canada | Bank of Canada Treasury bill yields and benchmark bond yields | 1M to 1Y bills, 2Y to 10Y, 30Y (the long benchmark) | the next business day; bills can land before bonds | 2001 |
+
+A publisher's day counts as a curve once it has a 10-year yield, so a day with only bills (Canada) or the oldest JGB rows, which stop at nine years, are not shown as curves. The Gilt curve is a zero-coupon curve: when the curve slopes up it reads a few basis points above par yields at the same maturity, and it is labelled as such in the chart. Italy and France have no free daily source yet, so there is no BTP or OAT curve. Before Treasury's files begin, or when the stored curve cannot be read, UST falls back to FRED's constant-maturity series, which carry the same yields a business day later.
+
+A breakeven is the nominal yield minus the real yield at the same tenor on a date both curves have; a date or tenor only one curve has is left out rather than paired with another session. It is the inflation rate that equates the two, not a forecast: it includes inflation risk and TIPS liquidity premia.
+
+The figures above the chart are the 2s10s (10Y minus 2Y), 3m10y (10Y minus 3M) and 5s30s (30Y minus 5Y) spreads in basis points, for the spreads the curve's tenors allow. A negative value indicates inversion and is shown as a warning. Each shows its move since the session before and its one-year percentile: the share of the trailing 365 days' sessions with a lower spread, ties counted half. A spread needs both tenors from one session. The table's 1D, 1W and 1M changes compare each tenor with the last session on or before the day before, seven days before and the same day a month before (its last day when the month is shorter); the chart draws the week and month look-backs as ghosts. Missing tenors remain unavailable.
+
+`d` edits the as-of date; Enter applies it and `c` returns to the latest curve. A weekend or holiday uses the last session on or before the date within ten days; the requested date and the session shown remain distinct, and the refresh time is not the session date. `v` sets a compare date: a date, or a span back from the session shown (`1W`, `3M`, `1Y`, `2Y`). The chart then draws that curve instead of the look-backs, and the table gives its yield and this curve's change against it. The Diff view draws that change in basis points as one bar per tenor, rises and falls in the same colours as the table's changes.
+
+The 1Y fwd toggle overlays the curve priced for a year from now. For a par curve the par yields are interpolated linearly at each coupon date (twice a year for Treasuries, JGBs and Canada, once for Bunds and the euro curve) and bootstrapped to discount factors; a tenor shorter than one coupon period is a money-market yield discounted simply. Between those dates discount factors are interpolated log-linearly (flat forward rates). The forward yield for tenor T is then the coupon of a par bond starting in one year: coupons per year × (D(1) − D(1 + T)) / the sum of D at its coupon dates, or the simple rate between D(1) and D(1 + T) for a money-market tenor. For the Gilt zero curve it is the forward zero rate ((1 + T) · z(1 + T) − z(1)) / T, treating spot rates as continuously compounded. Only tenors whose end falls inside the curve have a forward (29 years at most on a 30-year curve), and curves that start past one year (TIPS real, breakevens) have none. Forwards include term premia; they are what the curve prices, not a forecast.
+
+The World tab lists each market's latest curve on its own session: 2Y, 10Y and 30Y with their moves since that market's session before, the 2s10s spread and its move, and the as-of date. The chart overlays every market's curve; the selected row is the primary, so the readout gives each other market's spread to it at the cursor. Enter opens the market's curve.
 
 ## Money markets
 
@@ -838,8 +859,9 @@ licensed sources behind the platform cannot support them honestly:
   CUSIPs needs a security master the platform does not hold.
 - Swap curve: DTCC SDR publishes swap trades, not a dated par curve; building one
   needs curve fitting and instrument conventions that are not in place.
-- World government bond monitor: FRED carries other sovereigns' long rates only
-  monthly (OECD), too coarse for a daily monitor. `GC` covers US Treasuries.
+- Italian and French government curves: no free daily source was found (the
+  Banque de France series need an API key), so `GC` World has no BTP-Bund or
+  OAT-Bund spread.
 - ETF holdings and flows: issuers publish holdings in per-issuer files with no
   common format; creation and redemption flows are not published freely.
 - Supply chain and M&A databases: no free structured source.

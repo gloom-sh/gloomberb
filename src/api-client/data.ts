@@ -6,6 +6,7 @@ import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
+import type { CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
@@ -358,6 +359,17 @@ export class CloudDataApi {
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {
     return this.request<CloudYieldPointPayload[]>("/cloud/econ/yield-curve");
+  }
+
+  /** A curve's session on or before `date` (latest without one), with look-backs and spreads. */
+  async getCloudCurve(curve: CloudCurveId, date?: string | null): Promise<CloudCurveView> {
+    const query = date ? `?${new URLSearchParams({ date })}` : "";
+    return this.request<CloudCurveView>(`/cloud/econ/curves/${encodeURIComponent(curve)}${query}`, { signal: AbortSignal.timeout(30_000) });
+  }
+
+  /** Each market's latest curve and the session before, each on its own date. */
+  async getCloudWorldCurves(): Promise<CloudWorldCurves> {
+    return this.request<CloudWorldCurves>("/cloud/econ/curves", { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudCryptoMarkets(): Promise<CryptoMarketsPayload> {

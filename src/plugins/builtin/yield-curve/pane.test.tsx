@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { act, useEffect, useReducer } from "react";
 import { RemoteUiRegistryProvider, useRemoteUiRegistry, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { apiClient, type CloudFredSeriesPayload } from "../../../api-client";
@@ -13,6 +13,7 @@ const id = "yield-curve:test";
 const tui = createOpenTuiTestHarness();
 let latestSpy: ReturnType<typeof spyOn> | undefined;
 let historySpy: ReturnType<typeof spyOn> | undefined;
+let storedSpy: ReturnType<typeof spyOn> | undefined;
 let registry: RemoteUiRegistry | null = null;
 
 function RegistryProbe() {
@@ -21,7 +22,7 @@ function RegistryProbe() {
   return null;
 }
 
-function Harness({ width = 70, height = 30 }: { width?: number; height?: number }) {
+function Harness({ width = 90, height = 30 }: { width?: number; height?: number }) {
   const initial = createInitialState(createTestPaneConfig("/tmp/gloom-curve-test", { instanceId: id, paneId: "yield-curve", binding: { kind: "none" } }));
   initial.focusedPaneId = id;
   const [state, dispatch] = useReducer(appReducer, initial);
@@ -67,17 +68,24 @@ async function renderLatest(width: number, height: number) {
 /** Calls for a curve on or before one date, leaving out the look-backs. */
 const callsEndingOn = (date: string) => historySpy!.mock.calls.filter((call: unknown[]) => (call[1] as { endDate?: string })?.endDate === date).length;
 
+// These cover the FRED fallback: the stored Treasury curve is unavailable (an older server).
+beforeEach(() => {
+  storedSpy = spyOn(apiClient, "getCloudCurve").mockRejectedValue(new Error("Not Found"));
+});
+
 afterEach(() => {
   registry = null;
-  latestSpy?.mockRestore(); historySpy?.mockRestore();
+  latestSpy?.mockRestore(); historySpy?.mockRestore(); storedSpy?.mockRestore();
 });
 
 test("the chart names the curve and its look-backs, and the tenors show how far each moved", async () => {
-  await renderLatest(78, 27);
+  await renderLatest(90, 28);
   const frameText = tui.frame();
   // The spreads lead, with their move since the session before: 2s10s is 40bp, 33bp the day before.
-  expect(lines()[1]).toMatch(/2s10s \+40bp +\+7bp 1D +3m10y \+70bp +\+12bp 1D +5s30s \+40bp +\+7bp 1D/);
-  expect(lines()[2]).toMatch(/Yield % by maturity {3}● Yield {3}● 1W ago {3}● 1M ago/);
+  // The tab strip, then the query bar, then the figures.
+  expect(lines()[0]).toMatch(/Curve +World/);
+  expect(lines()[2]).toMatch(/2s10s \+40bp +\+7bp 1D +3m10y \+70bp +\+12bp 1D +5s30s \+40bp +\+7bp 1D/);
+  expect(lines()[3]).toMatch(/Yield % by maturity {3}● Yield {3}● 1W ago {3}● 1M ago/);
   // A log axis gives the short end room to label its tenors.
   expect(frameText).toMatch(/\n1M +3M +6M +1Y .*10Y +30Y +\n/);
   expect(frameText).toMatch(/TENOR +YIELD +1D CHG +1W CHG +1M CHG/);
@@ -89,22 +97,18 @@ test("the chart names the curve and its look-backs, and the tenors show how far 
 });
 
 test("the selected tenor is the curve's point, from the table and from the chart", async () => {
-  await renderLatest(78, 27);
+  await renderLatest(90, 28);
   await tui.emitKeypress({ name: "down" });
   await settle();
   expect(readout().trim()).toBe("3M 4.10%  1W ago +10bp  1M ago -20bp");
-  // Right steps along the maturities too.
-  await tui.emitKeypress({ name: "right" });
-  await settle();
-  expect(readout()).toContain("6M 4.20%");
   const chart = registry!.snapshot().find((node) => node.metadata?.kind === "curve-chart")!;
   // Hovering previews a tenor by its label, never a synthetic calendar date.
-  await act(async () => { await registry!.invoke(chart.id, "moveCursor", { x: 60, y: 4 }); });
+  await act(async () => { await registry!.invoke(chart.id, "moveCursor", { x: 74, y: 4 }); });
   await frame(); await frame();
   expect(readout()).toMatch(/^ (10|20)Y /);
   expect(tui.frame()).not.toMatch(/19[789]\d/);
   const hovered = readout().trim().split(" ")[0];
-  await act(async () => { await registry!.invoke(chart.id, "press", { x: 60, y: 4 }); });
+  await act(async () => { await registry!.invoke(chart.id, "press", { x: 74, y: 4 }); });
   // Leaving the chart ends the preview; the click made that tenor the selection.
   await act(async () => { await tui.setup().mockMouse.moveTo(5, 20); });
   await settle();
@@ -115,21 +119,21 @@ test("the selected tenor is the curve's point, from the table and from the chart
 });
 
 test("a short pane keeps the tenors and turns the chart into a strip, then drops it", async () => {
-  await renderLatest(40, 11);
+  await renderLatest(40, 12);
   let rows = lines();
   // The first spread keeps its row above the strip.
-  expect(rows[1]).toMatch(/^ 2s10s \+40bp/);
-  expect(rows[2]).toMatch(/^ ● Yield % .*1M 4\.00%/);
-  expect(rows[3]).toMatch(/TENOR/);
+  expect(rows[2]).toMatch(/^ 2s10s \+40bp/);
+  expect(rows[3]).toMatch(/^ ● Yield % .*1M 4\.00%/);
+  expect(rows[4]).toMatch(/TENOR/);
   expect(rows.filter((line) => /^ \d+[MY] +\d\.\d\d%/.test(line)).length).toBeGreaterThanOrEqual(4);
   await tui.destroy();
   latestSpy?.mockRestore(); historySpy?.mockRestore();
-  await renderLatest(40, 7);
+  await renderLatest(40, 8);
   rows = lines();
   // The chart goes first; the lead spread keeps its one row.
   expect(rows.some((line) => line.includes("●"))).toBe(false);
-  expect(rows[1]).toMatch(/^ 2s10s \+40bp/);
-  expect(rows[2]).toMatch(/TENOR/);
+  expect(rows[2]).toMatch(/^ 2s10s \+40bp/);
+  expect(rows[3]).toMatch(/TENOR/);
   expect(rows.filter((line) => /^ \d+[MY] +\d\.\d\d%/.test(line))).toHaveLength(3);
 });
 
@@ -138,7 +142,7 @@ test("date submission hides the previous curve while pending and keeps controls 
   let rejectHistory!: (error: Error) => void;
   const pending = new Promise<never>((_resolve, reject) => { rejectHistory = reject; });
   historySpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(() => pending);
-  await act(async () => { await tui.render(<Harness />, { width: 70, height: 30 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 90, height: 30 }); });
   await frame(); await frame();
   expect(tui.frame()).toContain("as of 2026-09-08");
   await tui.emitKeypress({ name: "d" });
@@ -163,7 +167,7 @@ test("a typed date applies only on Enter, and leaving the field restores the sho
     observations: [{ date: "2024-03-01", value: 4.2 }],
     info: { id, title: "Treasury yield", units: "Percent", frequency: "Daily", seasonalAdjustment: "", source: "FRED", notes: "" },
   }));
-  await act(async () => { await tui.render(<Harness />, { width: 70, height: 30 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 90, height: 30 }); });
   await frame(); await frame();
   const controls = tui;
   await act(async () => { await controls.clickFrameText("[d]ate"); });
@@ -192,7 +196,7 @@ test("historical partial source failure reaches the existing footer and a valid 
     if (offline && id === "DGS2") throw new Error("controlled source 503");
     return { info: null, observations: [{ date: "2024-03-01", value: id === "DGS2" ? 0 : -.2 }] };
   });
-  await act(async () => { await tui.render(<Harness />, { width: 70, height: 30 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 90, height: 30 }); });
   await frame(); await frame();
   await tui.emitKeypress({ name: "d" });
   await act(async () => { await tui.setup().mockInput.typeText("2024-03-02"); tui.setup().mockInput.pressEnter(); });
