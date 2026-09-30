@@ -742,6 +742,41 @@ describe("OnboardingWizard", () => {
     }
   });
 
+  test("a fall-through login with the wrong password stays on the email and keeps the reason", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-login-mismatch-"));
+    const originalSignUp = apiClient.signUp;
+    const originalSignIn = apiClient.signIn;
+    apiClient.signUp = (async () => {
+      throw new Error("An account with this email already exists");
+    }) as typeof apiClient.signUp;
+    apiClient.signIn = (async () => {
+      throw new Error("Invalid email or password");
+    }) as typeof apiClient.signIn;
+    try {
+      const config = {
+        ...createDefaultConfig(tempDataDir),
+        onboardingProgress: { version: 1 as const, stage: "account" as const, path: "manual" as const, portfolioId: "main" },
+      };
+      testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+      await testSetup.renderOnce();
+
+      await waitForFrame("Email");
+      await typeText("returning@example.com");
+      await pressEnter();
+      await typeText("longenough1");
+      await pressEnter();
+
+      // Switching the form to login must not wipe the message that explains why.
+      const frame = await waitForFrame("already has an account, and that password did");
+      expect(frame).toContain("Enter the password for this account.");
+      expect(frame).toContain("returning@example.com");
+      expect(frame).not.toContain("*".repeat("longenough1".length));
+    } finally {
+      apiClient.signUp = originalSignUp;
+      apiClient.signIn = originalSignIn;
+    }
+  });
+
   test("shows the Pro price on the Pro step", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-pro-price-"));
     const getCloudPricing = apiClient.getCloudPricing;

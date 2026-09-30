@@ -1,18 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import { apiClient } from "../../api-client";
-import { t } from "../../i18n";
 import { debugLog } from "../../utils/debug-log";
 import {
-  advanceAccountField,
-  classifyAccountError,
-  performEmailAuth,
-  validateAccountEmail,
-  validateAccountPassword,
   type AccountMode,
   type AccountOutcome,
   type AccountSub,
   type AccountSubmitError,
 } from "../../plugins/builtin/cloud/auth-model";
+import { useEmailAuthAttempt } from "../../plugins/builtin/cloud/email-auth-attempt";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 
@@ -34,14 +29,13 @@ export interface OnboardingAccountState {
   returnToAccountForm: () => void;
   switchToAccountLogin: () => void;
   submitAccountField: () => void;
-  submitAccount: () => void;
   syncExistingAccountSession: () => void;
 }
 
 /**
- * Owns the account step's sub-state machine and the auth calls behind it.
- * Skipping never routes through here, so a failed or hung request can't keep
- * the user from finishing onboarding.
+ * Owns the account step's sub-state machine; the email attempt itself is the
+ * one the cloud auth form runs. Skipping never routes through here, so a
+ * failed or hung request can't keep the user from finishing onboarding.
  */
 export function useOnboardingAccount({
   nextStep,
@@ -50,7 +44,6 @@ export function useOnboardingAccount({
   nextStep: () => void;
   setEditingField: (editing: boolean) => void;
 }): OnboardingAccountState {
-  const attemptRef = useRef(0);
   // The text input re-emits its value on enter, so compare before clearing an
   // error the same keypress just produced.
   const emailRef = useRef("");
@@ -59,15 +52,32 @@ export function useOnboardingAccount({
   const [accountEmail, setAccountEmailValue] = useState("");
   const [accountPassword, setAccountPasswordValue] = useState("");
   const [accountFieldIdx, setAccountFieldIdx] = useState(0);
-  const [accountSubmitting, setAccountSubmitting] = useState(false);
-  const [accountSubmitError, setAccountSubmitError] = useState<AccountSubmitError | null>(null);
-  const [accountValidationError, setAccountValidationError] = useState<string | null>(null);
   const [accountOutcome, setAccountOutcome] = useState<AccountOutcome | null>(null);
 
-  const clearErrors = useCallback(() => {
-    setAccountSubmitError(null);
-    setAccountValidationError(null);
-  }, []);
+  const auth = useEmailAuthAttempt({
+    mode: accountSub === "login" ? "login" : "signup",
+    email: accountEmail,
+    password: accountPassword,
+    // One form serves new and returning accounts.
+    loginOnDuplicateEmail: true,
+    onFocusField: (field) => {
+      setAccountFieldIdx(field === "email" ? 0 : 1);
+      setEditingField(true);
+    },
+    onSwitchToLogin: () => switchToAccountLogin(),
+    onAttemptStart: () => setEditingField(false),
+    onSignedIn: (_user, outcome) => {
+      onboardingLog.info("Onboarding account step completed", { mode: outcome.mode });
+      resetAccountPassword();
+      setAccountOutcome(outcome);
+      setAccountSub("signed-in");
+      nextStep();
+    },
+    onFailed: (error, mode) => {
+      onboardingLog.error("Onboarding account step failed", { mode, error: error.message });
+    },
+  });
+  const { cancel, clearErrors, submitField } = auth;
 
   const setAccountEmail = useCallback((value: string) => {
     if (emailRef.current === value) return;
@@ -89,13 +99,11 @@ export function useOnboardingAccount({
   }, []);
 
   const beginAccountMode = useCallback((mode: AccountMode) => {
-    attemptRef.current += 1;
-    clearErrors();
-    setAccountSubmitting(false);
+    cancel();
     setAccountFieldIdx(0);
     setAccountSub(mode);
     setEditingField(true);
-  }, [clearErrors, setEditingField]);
+  }, [cancel, setEditingField]);
 
   const focusAccountField = useCallback((index: 0 | 1) => {
     clearErrors();
@@ -104,138 +112,42 @@ export function useOnboardingAccount({
   }, [clearErrors, setEditingField]);
 
   const beginQrSignIn = useCallback(() => {
-    attemptRef.current += 1;
-    clearErrors();
-    setAccountSubmitting(false);
+    cancel();
     setAccountSub("qr");
     setEditingField(false);
-  }, [clearErrors, setEditingField]);
+  }, [cancel, setEditingField]);
 
   // The QR panel owns the network flow; this only records the outcome and
   // advances once the mobile app has approved the session.
   const completeQrSignIn = useCallback((email: string) => {
-    attemptRef.current += 1;
+    cancel();
     resetAccountPassword();
-    setAccountSubmitting(false);
     onboardingLog.info("Onboarding account step completed", { mode: "qr" });
     setAccountOutcome({ mode: "login", email });
     setAccountSub("signed-in");
     nextStep();
-  }, [nextStep, resetAccountPassword]);
+  }, [cancel, nextStep, resetAccountPassword]);
 
   /** Back to the email form from QR or the login fall-through, ready to type. */
   const returnToAccountForm = useCallback(() => {
-    attemptRef.current += 1;
-    clearErrors();
-    setAccountSubmitting(false);
+    cancel();
     setAccountFieldIdx(0);
     setAccountSub("signup");
     setEditingField(true);
-  }, [clearErrors, setEditingField]);
+  }, [cancel, setEditingField]);
 
   const switchToAccountLogin = useCallback(() => {
-    attemptRef.current += 1;
-    clearErrors();
-    setAccountSubmitting(false);
+    cancel();
     resetAccountPassword();
     setAccountFieldIdx(1);
     setAccountSub("login");
     setEditingField(true);
-  }, [clearErrors, resetAccountPassword, setEditingField]);
-
-  const submitAccount = useCallback(() => {
-    if (accountSubmitting) return;
-    const mode: AccountMode = accountSub === "login" ? "login" : "signup";
-    const email = accountEmail.trim();
-    const password = accountPassword;
-
-    const emailError = validateAccountEmail(email);
-    if (emailError) {
-      setAccountFieldIdx(0);
-      setAccountValidationError(emailError);
-      setEditingField(true);
-      return;
-    }
-    const passwordError = validateAccountPassword(password, mode);
-    if (passwordError) {
-      setAccountFieldIdx(1);
-      setAccountValidationError(passwordError);
-      setEditingField(true);
-      return;
-    }
-
-    const attemptId = attemptRef.current + 1;
-    attemptRef.current = attemptId;
-    setEditingField(false);
-    setAccountSubmitting(true);
-    clearErrors();
-
-    void (async () => {
-      let attemptedMode = mode;
-      try {
-        try {
-          await performEmailAuth(mode, email, password);
-        } catch (error) {
-          // One form serves new and returning accounts: an email that already
-          // exists is retried as a login with the same password before the
-          // user sees anything.
-          if (mode !== "signup" || classifyAccountError(error, mode).kind !== "switch-to-login") throw error;
-          if (attemptRef.current !== attemptId) return;
-          attemptedMode = "login";
-          await performEmailAuth("login", email, password);
-        }
-
-        if (attemptRef.current !== attemptId) return;
-        onboardingLog.info("Onboarding account step completed", { mode: attemptedMode });
-        setAccountSubmitting(false);
-        resetAccountPassword();
-        setAccountOutcome({ mode: attemptedMode, email });
-        setAccountSub("signed-in");
-        nextStep();
-      } catch (error) {
-        if (attemptRef.current !== attemptId) return;
-        const submitError = attemptedMode === "login" && mode === "signup"
-          ? {
-            kind: "retry" as const,
-            message: t("This email already has an account, and that password did not match."),
-          }
-          : classifyAccountError(error, attemptedMode);
-        onboardingLog.error("Onboarding account step failed", { mode: attemptedMode, error: submitError.message });
-        setAccountSubmitting(false);
-        setAccountSubmitError(submitError);
-        if (attemptedMode !== mode) {
-          // Stay on the same email, now clearly a login, with the password to redo.
-          resetAccountPassword();
-          setAccountFieldIdx(1);
-          setAccountSub("login");
-          setEditingField(true);
-        }
-      }
-    })();
-  }, [accountEmail, accountPassword, accountSub, accountSubmitting, clearErrors, nextStep, resetAccountPassword, setEditingField]);
+  }, [cancel, resetAccountPassword, setEditingField]);
 
   const submitAccountField = useCallback(() => {
     if (accountSub !== "signup" && accountSub !== "login") return;
-    const advance = advanceAccountField({
-      mode: accountSub,
-      email: accountEmail.trim(),
-      password: accountPassword,
-      fieldIdx: accountFieldIdx,
-    });
-
-    if (advance.action === "invalid") {
-      setAccountValidationError(advance.message);
-      setEditingField(true);
-      return;
-    }
-    if (advance.action === "next-field") {
-      setAccountValidationError(null);
-      setAccountFieldIdx(advance.fieldIdx);
-      setEditingField(true);
-      return;
-    }
-    submitAccount();
-  }, [accountEmail, accountFieldIdx, accountPassword, accountSub, setEditingField, submitAccount]);
+    submitField(accountFieldIdx > 0 ? "password" : "email");
+  }, [accountFieldIdx, accountSub, submitField]);
 
   const syncExistingAccountSession = useCallback(() => {
     if (accountSub === "signed-in" || !apiClient.isSignedIn()) return;
@@ -252,9 +164,9 @@ export function useOnboardingAccount({
     accountEmail,
     accountPassword,
     accountFieldIdx,
-    accountSubmitting,
-    accountSubmitError,
-    accountValidationError,
+    accountSubmitting: auth.submitting,
+    accountSubmitError: auth.submitError,
+    accountValidationError: auth.validationError,
     accountOutcome,
     setAccountEmail,
     setAccountPassword,
@@ -265,7 +177,6 @@ export function useOnboardingAccount({
     returnToAccountForm,
     switchToAccountLogin,
     submitAccountField,
-    submitAccount,
     syncExistingAccountSession,
   };
 }
