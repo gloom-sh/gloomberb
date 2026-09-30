@@ -37,8 +37,13 @@ This fetches the latest upstream version.
 | Path | Contents |
 |---|---|
 | `src/plugins/builtin/` | The built-in plugins: Portfolio, Ticker Research, News and every other product area |
-| `src/plugins/` | The plugin host: catalog, loader, registry, pane manager, and the bundler for external plugins |
+| `src/plugins/` | The plugin host: catalog, loader, registry and the bundler for external plugins |
+| `src/layout/` | The pane layout engine: the dock tree, floating windows, where a launched pane opens and which pane a ticker opens in |
 | `src/components/`, `src/ui/` | The shared UI kit every pane is built from |
+| `src/sources/` | Data provider adapters (Gloom Cloud, Yahoo Finance, SEC EDGAR) and the router that picks a provider for each request |
+| `src/market-data/` | What panes read market data through: the request coordinator, its React hooks, quote display and exchange session calendars |
+| `src/time-series/` | Chart specs and the series they draw: the field catalog, resolving a spec into data, transforms and studies |
+| `src/data/` | Persistence: SQLite, the resource store, the config store and the plugin cache |
 | `src/renderers/opentui/` | The terminal renderer |
 | `src/renderers/dom/` | The DOM renderer the desktop view and the web app share: host primitives, controls, data table, dialogs, toasts and the page build |
 | `src/renderers/electrobun/` | The desktop app: `bun/` is the native process, `view/` the desktop-only parts of the web view, `shared/` the protocol and RPC codec both use |
