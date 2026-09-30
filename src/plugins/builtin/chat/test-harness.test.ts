@@ -4,8 +4,8 @@ import { cleanupChatTest, createController, installChatApiTestDefaults } from ".
 
 const originalWebSocket = globalThis.WebSocket;
 
-afterEach(async () => {
-  await cleanupChatTest(undefined);
+afterEach(() => {
+  cleanupChatTest();
   apiClient.dispose();
   apiClient.setSessionToken(null);
   globalThis.WebSocket = originalWebSocket;
@@ -35,7 +35,7 @@ test("cleaning up a chat fixture cannot reconnect its channel under the next tes
   const replacement = createController({ sessionToken: "chat-controlled-session" });
   replacement.ensureConnection("everyone");
   expect(sockets).toHaveLength(1);
-  await cleanupChatTest(undefined);
+  cleanupChatTest();
   expect(sockets[0]!.readyState).toBe(3);
 
   apiClient.setSessionToken("next-controlled-session");

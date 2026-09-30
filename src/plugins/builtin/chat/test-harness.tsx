@@ -1,6 +1,7 @@
+import { afterEach, beforeEach } from "bun:test";
 import { act } from "react";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -26,8 +27,6 @@ const originalUpdateChatChannelState = apiClient.updateChatChannelState.bind(api
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
 const testControllers = new Set<ChatController>();
 
-export type ChatTestSetup = Awaited<ReturnType<typeof testRender>>;
-
 const TEST_CHAT_CHANNELS: ChatChannel[] = [
   { id: "everyone", name: "everyone", created_at: "2026-03-26T12:10:05.684Z" },
   { id: "equities", name: "equities", created_at: "2026-05-09T00:00:00.000Z" },
@@ -48,12 +47,7 @@ export function installChatApiTestDefaults(): void {
   });
 }
 
-export async function cleanupChatTest(testSetup: ChatTestSetup | undefined): Promise<void> {
-  if (testSetup) {
-    await act(async () => {
-      testSetup.renderer.destroy();
-    });
-  }
+export function cleanupChatTest(): void {
   // Unmounting the view does not dispose its separately owned controller.
   // Release every fixture's channels and timers before restoring shared APIs.
   for (const controller of testControllers) controller.dispose();
@@ -210,46 +204,35 @@ export function createHarness(
   );
 }
 
-export function createChatTestControls(getSetup: () => ChatTestSetup) {
+/**
+ * The OpenTUI harness for a chat suite. Around every test it installs the
+ * chat API defaults, and afterwards it tears the renderer down and then
+ * releases the fixture controllers and shared chat state.
+ */
+export function createChatTestHarness() {
+  const tui = createOpenTuiTestHarness();
+  beforeEach(installChatApiTestDefaults);
+  afterEach(cleanupChatTest);
+
+  const flushFrame = async (): Promise<void> => {
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+  };
+
   return {
-    async flushFrame() {
+    ...tui,
+    flushFrame,
+    emitKeypress: (event: TestKeyEvent) => tui.emitKeypress(event, { trackPropagation: true }),
+    /** Renders the chat view at the renderer's size and settles its first frames. */
+    async mountChat(controller: ChatController, options: Parameters<typeof createHarness>[1] = {}): Promise<void> {
+      const width = options.width ?? 60;
+      const height = options.height ?? 12;
       await act(async () => {
-        await getSetup().renderOnce();
-        await getSetup().renderOnce();
+        await tui.render(createHarness(controller, { ...options, width, height }), { width, height });
       });
-    },
-    async emitKeypress(event: {
-      name?: string;
-      sequence?: string;
-      ctrl?: boolean;
-      meta?: boolean;
-      super?: boolean;
-      alt?: boolean;
-      shift?: boolean;
-      option?: boolean;
-    }) {
-      const keyEvent = {
-        ctrl: false,
-        meta: false,
-        option: false,
-        shift: false,
-        eventType: "press",
-        repeated: false,
-        defaultPrevented: false,
-        propagationStopped: false,
-        preventDefault() {
-          keyEvent.defaultPrevented = true;
-        },
-        stopPropagation() {
-          keyEvent.propagationStopped = true;
-        },
-        ...event,
-      };
-      await act(async () => {
-        (getSetup().renderer.keyInput as any).emit("keypress", keyEvent);
-        await getSetup().renderOnce();
-      });
-      return keyEvent;
+      await flushFrame();
     },
   };
 }
