@@ -285,7 +285,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
                   {/* Cells */}
                   {symbols.map((colSym) => {
                     const r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
-                    const cellColors = resolveCorrelationHeatmapCellColors(r);
+                    const cellColors = resolveCorrelationHeatmapCellColors(r, { diagonal: rowSym === colSym });
                     const text = formatCorrelation(r);
                     return (
                       <Box

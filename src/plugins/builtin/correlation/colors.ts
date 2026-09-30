@@ -36,11 +36,16 @@ function heatmapBaseBackground(): string {
   return blendHex(colors.panel, colors.bg, HEATMAP_BASE_BLEND);
 }
 
+// Diverging: red below zero, green above, and no tint at zero. A yellow
+// midpoint made every moderate positive the same olive, so 0.45 and 0.64
+// could not be told apart.
 function heatmapSemanticColor(correlation: number): string {
-  const clamped = Math.max(-1, Math.min(1, correlation));
-  return clamped < 0
-    ? blendHex(colors.negative, colors.warning, clamped + 1)
-    : blendHex(colors.warning, colors.positive, clamped);
+  return correlation < 0 ? colors.negative : colors.positive;
+}
+
+/** How far a cell leans toward its hue: none at zero, strongest at +/-1. */
+function heatmapTargetStrength(correlation: number): number {
+  return 0.06 + Math.abs(correlation) * 0.56;
 }
 
 function heatmapTintSteps(targetStrength: number): number[] {
@@ -52,10 +57,15 @@ function readableForeground(background: string): string {
   return highestContrast(textCandidates(), background);
 }
 
-export function resolveCorrelationHeatmapCellColors(correlation: number | null): CorrelationHeatmapCellColors {
+export function resolveCorrelationHeatmapCellColors(
+  correlation: number | null,
+  options: { diagonal?: boolean } = {},
+): CorrelationHeatmapCellColors {
   const baseBackground = heatmapBaseBackground();
 
-  if (correlation === null) {
+  // A series against itself is always 1.00 and says nothing: keep it quiet so
+  // the eye goes to the pairs.
+  if (correlation === null || options.diagonal) {
     const muted = colors.textMuted;
     return {
       background: baseBackground,
@@ -67,7 +77,7 @@ export function resolveCorrelationHeatmapCellColors(correlation: number | null):
 
   const clamped = Math.max(-1, Math.min(1, correlation));
   const semanticColor = heatmapSemanticColor(clamped);
-  const targetStrength = 0.3 + Math.abs(clamped) * 0.26;
+  const targetStrength = heatmapTargetStrength(clamped);
   let fallback: CorrelationHeatmapCellColors | null = null;
 
   for (const tintStrength of heatmapTintSteps(targetStrength)) {
