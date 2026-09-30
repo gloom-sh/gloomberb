@@ -186,12 +186,12 @@ GC plots a government bond curve against maturity on a log axis: the US Treasury
 
 | Curve | Publisher and series | Tenors | Out (observed September 2026) | History |
 |---|---|---|---|---|
-| UST | US Treasury daily par yield curve | 1M, 6W, 2M, 3M, 4M, 6M, 1Y to 30Y | the same afternoon, after the 3:30 pm New York quotes | 1990 |
+| UST | US Treasury daily par yield curve | 1M, 6W, 2M, 3M, 4M, 6M, 1Y to 30Y | the same afternoon, by about 3:50 pm New York (quotes taken near 3:30 pm) | 1990 |
 | TIPS real | US Treasury daily real par yield curve | 5Y, 7Y, 10Y, 20Y, 30Y | the same afternoon | 2003 |
 | Breakeven | UST minus TIPS real, per tenor | 5Y to 30Y | with both | 2003 |
-| Euro AAA | ECB euro area yield curve, AAA-rated issuers, Svensson par yields | 3M to 30Y | around noon Frankfurt the next day | 2004 |
-| Bund | Bundesbank yields on Federal securities by residual maturity, annual coupons | 1Y to 10Y, 15Y to 30Y | around 12:30 Frankfurt the same day | 1997 |
-| Gilt | Bank of England nominal spot (zero-coupon) curve | 6M to 40Y | around 10:00 London the next day | 1979 |
+| Euro AAA | ECB euro area yield curve, AAA-rated issuers, Svensson par yields | 3M to 30Y | the next business day | 2004 |
+| Bund | Bundesbank yields on Federal securities by residual maturity, annual coupons | 1Y to 10Y, 15Y to 30Y | the same day, by about 12:30 Frankfurt | 1997 |
+| Gilt | Bank of England nominal spot (zero-coupon) curve | 6M to 40Y | the next morning, around 10:00 London | 1979 |
 | JGB | Ministry of Finance JGB interest rates | 1Y to 10Y, 15Y to 40Y | the next business day | 1974 (10Y from 1986) |
 | Canada | Bank of Canada Treasury bill yields and benchmark bond yields | 1M to 1Y bills, 2Y to 10Y, 30Y (the long benchmark) | the next business day; bills can land before bonds | 2001 |
 
