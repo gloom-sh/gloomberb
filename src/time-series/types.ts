@@ -171,6 +171,8 @@ export interface ResolvedSeries {
   warning?: string;
   /** Listed in the legend so it can be restored, but not drawn. */
   hidden?: boolean;
+  /** Columns below zero take this colour instead, so a change reads by its sign. */
+  negativeColor?: string;
 }
 
 export interface TimeSeriesFieldDefinition {

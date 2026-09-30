@@ -208,12 +208,14 @@ function drawColumns(
   series: CompositeProjectedSeries,
   domain: CompositeAxisDomain,
   color: RgbaColor,
+  negativeColor: RgbaColor,
   layout: CompositeColumnLayout,
   widthByFamily: ReadonlyMap<string, number>,
   opacity: number,
 ): void {
   const baseline = pixelY(0, domain, height) ?? height - 1;
   for (const projected of series.points) {
+    const fill = projected.value < 0 ? negativeColor : color;
     const point = pixelPoint(projected, width, height);
     const geometry = columnPixelGeometry(projected, width, layout, widthByFamily);
     fillRect(
@@ -224,7 +226,7 @@ function drawColumns(
       Math.min(point.y, baseline),
       geometry.x + geometry.width / 2,
       Math.max(point.y, baseline),
-      color,
+      fill,
       opacity,
     );
   }
@@ -345,6 +347,7 @@ export function renderCompositePanelBitmap(
     const domain = panel.axes[series.source.axis];
     if (!domain) continue;
     const color = parseHex(series.source.color);
+    const negativeColor = series.source.negativeColor ? parseHex(series.source.negativeColor) : color;
     switch (series.source.style) {
       case "columns":
         drawColumns(
@@ -354,6 +357,7 @@ export function renderCompositePanelBitmap(
           series,
           domain,
           color,
+          negativeColor,
           columnLayout,
           columnWidthByFamily,
           mixesColumnsWithOtherMarks ? 0.48 : 0.72,

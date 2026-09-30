@@ -86,7 +86,8 @@ import type {
   TimeSeriesPoint,
 } from "./types";
 
-const SERIES_COLORS = [
+/** Colours for series told apart by name (compared tickers, markets). */
+export const SERIES_COLORS = [
   "#4dabf7",
   "#63e6be",
   "#f6c85f",
