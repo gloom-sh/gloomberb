@@ -19,6 +19,7 @@ import type { parseRootShortcutIntent } from "./shortcuts";
 import type { CommandBarRoute } from "../../workflow/types";
 import { createRootCommandItemBuilder } from "./command-items";
 import { buildRootShortcutItem } from "./shortcut-items";
+import { buildHelpArgumentItems } from "./help-items";
 
 type RootShortcutIntent = ReturnType<typeof parseRootShortcutIntent>;
 
@@ -239,6 +240,14 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     }
   } else if (match && isCollectionCommand(match.command.id)) {
     if (shortcutItem) items.push(shortcutItem);
+  } else if (match && match.command.id === "help") {
+    // HELP alone is the Help pane; HELP <fn> leads with the function's card.
+    const helpItems = buildHelpArgumentItems(match.arg);
+    items.push(...helpItems);
+    if (!match.arg || helpItems.every((item) => item.disabled)) {
+      const item = commandToItem(match.command);
+      if (item) items.push(item);
+    }
   } else if (match && !match.command.hasArg) {
     const item = commandToItem(match.command);
     if (item) items.push(item);

@@ -53,6 +53,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const tickerSearchBadges = actionBadges("ticker-search");
   const windowMoveBadges = actionBadges("window-move-mode");
   const windowResizeBadges = actionBadges("window-resize-mode");
+  const functionHelpBadges = actionBadges("function-help");
   useEffect(() => subscribeKeybindingCapture(() => setActiveTabId("shortcuts")), []);
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
@@ -117,6 +118,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         ? [entry("ticker-search", tickerSearchBadges, "Open ticker search directly.")]
         : []),
       entry("des", ["DES", "<ticker>"], "Open security details for a specific ticker."),
+      entry("help-card", ["HELP", "<function>"], "Open a function's help card: what it shows, its keys, how fresh its data is. HELP HELP reaches support."),
       entry("upgrade", ["UPGRADE"], "Go Pro for real-time data at gloom.sh/cloud, free for 7 days."),
       entry("move", ["Up/Down", "Ctrl+P/N"], "Move through command bar results."),
       entry("page", ["PageUp/PageDown", "Ctrl+Home/End"], "Jump a page, or to the first or last result."),
@@ -141,6 +143,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("tabs", ["Left/Right", "h/l"], "Switch tabs when a tab bar is focused."),
         entry("back", ["Esc", "Backspace"], "Go back from a detail view."),
         entry("pane-menu", actionBadges("pane-menu"), "Open the focused pane's menu: every action in the pane with its key, sorting, filters, tabs, toggles and the pane actions."),
+        ...(functionHelpBadges.length > 0
+          ? [entry("function-help", functionHelpBadges, "Open the focused pane's help card, with a link to its docs.")]
+          : []),
         entry("search", ["/"], "Search in the focused pane."),
         entry("warnings", ["!"], "Open the focused pane's data warnings."),
         entry("notification", [...actionBadges("notification-action"), ...actionBadges("notification-dismiss")], "Run or dismiss the newest notification."),
@@ -202,7 +207,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("commit", ["Enter", "Esc"], "Commit pending changes or exit window mode."),
       ],
     },
-  ], [copyBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
+  ], [copyBadges, functionHelpBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
 
   const renderContent = () => {
     switch (activeTabId) {

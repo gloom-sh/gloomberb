@@ -43,7 +43,10 @@ export const commands: Command[] = [
     prefix: "HELP",
     aliases: ["HL"],
     label: "Help",
-    description: "Open the help window",
+    description: "Open the help window, or a function's help card",
+    // Optional: HELP alone opens the window, HELP OMON the card, HELP HELP support.
+    hasArg: true,
+    argPlaceholder: "function",
     category: "Navigation",
   },
   {

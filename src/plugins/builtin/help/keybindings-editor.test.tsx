@@ -51,7 +51,7 @@ test("rebinding from the help pane captures the next chord, shows the way back, 
   await openShortcutsTab();
   let text = tui.frame();
   // Sections carry their count, and the actions live in the pane footer.
-  expect(text).toContain("Global Keys (12)");
+  expect(text).toContain("Global Keys (13)");
   expect(text).toContain("KEY");
   expect(text).toContain("Open ticker search directly.");
   expect(text).toContain("[Enter]rebind");
