@@ -18,16 +18,36 @@ export function bunCommand(): { command: string; env?: NodeJS.ProcessEnv } | nul
   return { command: process.execPath, env: { ...process.env, BUN_BE_BUN: "1" } };
 }
 
-/** Runtime dependencies a plugin declares that are not in its `node_modules`. */
-export function missingPluginDependencies(pluginDir: string): string[] {
-  let dependencies: unknown;
+function declaredDependencies(packageDir: string): string[] {
   try {
-    dependencies = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf8")).dependencies;
+    const dependencies = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).dependencies;
+    return dependencies && typeof dependencies === "object" ? Object.keys(dependencies) : [];
   } catch {
     return [];
   }
-  if (!dependencies || typeof dependencies !== "object") return [];
-  return Object.keys(dependencies).filter((name) => !existsSync(join(pluginDir, "node_modules", name, "package.json")));
+}
+
+/**
+ * Runtime dependencies a plugin declares that are not in its `node_modules`,
+ * and the packages those need, one level down: an install cut short left BYOK
+ * AI with `@earendil-works/pi-ai` but not the `partial-json` it imports.
+ */
+export function missingPluginDependencies(pluginDir: string): string[] {
+  const modules = join(pluginDir, "node_modules");
+  const missing: string[] = [];
+  for (const name of declaredDependencies(pluginDir)) {
+    const packageDir = join(modules, name);
+    if (!existsSync(join(packageDir, "package.json"))) {
+      missing.push(name);
+      continue;
+    }
+    for (const nested of declaredDependencies(packageDir)) {
+      const found = existsSync(join(modules, nested, "package.json"))
+        || existsSync(join(packageDir, "node_modules", nested, "package.json"));
+      if (!found) missing.push(nested);
+    }
+  }
+  return [...new Set(missing)];
 }
 
 /**

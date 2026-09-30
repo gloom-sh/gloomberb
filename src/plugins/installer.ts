@@ -5,7 +5,7 @@ import { promisify } from "util";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./builtin/plugin-marketplace/store";
 import { bunCommand } from "./dependencies";
-import { linkHostPackages } from "./host-link";
+import { linkHostPackages, missingPeerPlugins } from "./host-link";
 import {
   findAbsorbedCheckout,
   getPluginsDir,
@@ -14,6 +14,7 @@ import {
   readPluginCommit,
   resolvePluginEntry,
 } from "./loader";
+import { pluginDirectoryNames } from "./plugin-names";
 import { pluginFromModule } from "./plugin-export";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
@@ -530,7 +531,15 @@ export async function installListedPlugin(
   const listing = (listings ?? await loadRegistryListings()).get(repo);
   const required = requiredGloomberb(listing?.minGloomberb);
   if (required) fail(`${ref} needs Gloomberb ${required}, this is ${VERSION}.`, "Update Gloomberb first.");
-  return installPlugin(ref, { ...options, ...(listing?.pin ? { pin: listing.pin } : {}) });
+  const installed = await installPlugin(ref, { ...options, ...(listing?.pin ? { pin: listing.pin } : {}) });
+  // A plugin that imports a sibling plugin (IBKR Gateway imports Interactive
+  // Brokers) brings it along, from the same registry.
+  const known = listings ?? await loadRegistryListings();
+  for (const peer of missingPeerPlugins(installed.path)) {
+    const repo = [...known.keys()].find((candidate) => pluginDirectoryNames(peer).includes(candidate.split("/")[1] ?? ""));
+    if (repo) await installListedPlugin(repo, options, known);
+  }
+  return installed;
 }
 
 /** Folder names of every installed plugin, clones and links alike. */

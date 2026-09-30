@@ -3,7 +3,7 @@ import { join, resolve } from "path";
 
 import { compareSemver, parseSemver, requiredGloomberb } from "../utils/semver";
 import { VERSION } from "../version";
-import { hostPublicModules } from "./host-link";
+import { hostPublicModules, missingPeerPlugins } from "./host-link";
 
 /**
  * Whether a plugin checkout can run on this Gloomberb, decided before any of
@@ -111,6 +111,8 @@ export interface PluginIncompatibility {
   error: string;
   /** Set when the checkout declares a newer Gloomberb than this one. */
   needsGloomberb?: string;
+  /** A sibling plugin it imports that is not installed. */
+  needsPlugin?: string;
 }
 
 /**
@@ -122,6 +124,8 @@ export function checkPluginCompatibility(pluginDir: string, hostVersion: string 
   const manifest = readPluginManifest(pluginDir);
   const needs = requiredGloomberb(manifest.minGloomberb, hostVersion);
   if (needs) return { error: `Needs Gloomberb ${needs}, this is ${hostVersion}.`, needsGloomberb: needs };
+  const peer = missingPeerPlugins(pluginDir)[0];
+  if (peer) return { error: `Needs the ${peer} plugin. Install it from the Plugins pane.`, needsPlugin: peer };
   const broken = manifest.id ? KNOWN_BROKEN_PLUGINS[manifest.id] : undefined;
   if (broken && (compareSemver(manifest.minGloomberb, broken.declaredMinGloomBelow) ?? -1) < 0) {
     return { error: broken.reason };

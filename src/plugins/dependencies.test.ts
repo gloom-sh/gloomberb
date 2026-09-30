@@ -15,3 +15,15 @@ test("lists declared packages absent from node_modules, scoped ones included", (
 
   expect(missingPluginDependencies(dir)).toEqual(["typebox", "@earendil-works/pi-ai"]);
 });
+
+test("a present package whose own dependency is missing counts, as a cut-short install leaves it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gloom-plugin-deps-"));
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { "@earendil-works/pi-ai": "0.81.1" } }));
+  const piAi = join(dir, "node_modules", "@earendil-works", "pi-ai");
+  mkdirSync(piAi, { recursive: true });
+  writeFileSync(join(piAi, "package.json"), JSON.stringify({ dependencies: { "partial-json": "0.1.7", ajv: "8.17.1" } }));
+  mkdirSync(join(dir, "node_modules", "ajv"), { recursive: true });
+  writeFileSync(join(dir, "node_modules", "ajv", "package.json"), "{}");
+
+  expect(missingPluginDependencies(dir)).toEqual(["partial-json"]);
+});

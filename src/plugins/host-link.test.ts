@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
-import { linkHostPackages } from "./host-link";
+import { linkHostPackages, missingPeerPlugins } from "./host-link";
 
 /**
  * A plugin is installed into a directory named after its repository, but
@@ -150,5 +150,21 @@ describe("linkHostPackages without a package root", () => {
     const result = linkHostPackages(pluginDir, null, pluginsDir, { installResolver: () => false });
 
     expect(result.error).toBe("Could not locate the Gloomberb install.");
+  });
+});
+
+describe("missingPeerPlugins", () => {
+  test("names a declared sibling plugin installed under neither name", () => {
+    const root = mkdtempSync(join(tmpdir(), "gloom-missing-peer-"));
+    const pluginsDir = join(root, "plugins");
+    const gateway = join(pluginsDir, "gloom-ibkr-gateway");
+    mkdirSync(gateway, { recursive: true });
+    writeFileSync(join(gateway, "package.json"), JSON.stringify({
+      peerDependencies: { gloomberb: ">=0.15.0", react: ">=19", "gloom-ibkr": ">=1.1.0" },
+    }));
+
+    expect(missingPeerPlugins(gateway, pluginsDir)).toEqual(["gloom-ibkr"]);
+    mkdirSync(join(pluginsDir, "gloomberb-ibkr"));
+    expect(missingPeerPlugins(gateway, pluginsDir)).toEqual([]);
   });
 });

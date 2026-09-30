@@ -139,6 +139,22 @@ function ensureDirLink(linkPath: string, target: string): void {
  * installed, by package name, with the folder each one is installed in. The
  * automatic updater orders updates by the same answer the links are made from.
  */
+/**
+ * Sibling plugins a plugin declares as peer dependencies that are not
+ * installed under either name. IBKR Gateway, for one, imports the Interactive
+ * Brokers plugin and cannot load without it.
+ */
+export function missingPeerPlugins(pluginDir: string, pluginsDir: string = dirname(pluginDir)): string[] {
+  let peers: string[] = [];
+  try {
+    const pkg = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8"));
+    peers = Object.keys(pkg.peerDependencies ?? {}).filter(isPluginPackageName);
+  } catch {
+    return [];
+  }
+  return peers.filter((peer) => !pluginDirectoryNames(peer).some((name) => existsSync(join(pluginsDir, name))));
+}
+
 export function installedPeerPlugins(pluginDir: string, pluginsDir: string = dirname(pluginDir)): Array<{ peer: string; directory: string }> {
   let peers: string[] = [];
   try {
