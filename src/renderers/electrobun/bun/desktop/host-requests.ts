@@ -9,21 +9,9 @@ import type {
 import { safeExternalUrl } from "../../../../utils/external-url";
 import { getContextMenuRequestId, normalizeContextMenuItems } from "../context-menu/normalize";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
+import { applyDesktopWindowControl } from "../window/controls";
 import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
-
-interface DesktopHostRequestOptions<TRpc> {
-  clearMainWindow: () => void;
-  closeAllDetachedWindows: () => void;
-  controlWindowForRpcKey: (windowKey: string | undefined, action: DesktopWindowControlAction) => boolean;
-  focusWindowForRpcKey: (windowKey: string) => void;
-  getMainWindow: () => BrowserWindow | null;
-  getRpcWindowKey: (rpc: TRpc) => string | undefined;
-  isWindowFullscreenForRpcKey: (windowKey: string | undefined) => boolean;
-  request: DesktopHostRequest;
-  rpc: TRpc;
-  teardownServices: () => void;
-  trackContextMenuRequest: (requestId: string, rpc: TRpc) => void;
-}
+import type { DesktopBackend, DesktopRpc } from "./backend";
 
 function normalizeText(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -44,6 +32,52 @@ function playNotificationSound(sound: string | undefined): void {
   }
 }
 
+function windowForRpcKey(backend: DesktopBackend, windowKey: string | undefined): BrowserWindow | null {
+  return windowKey === MAIN_WINDOW_RPC_KEY
+    ? backend.mainWindow
+    : backend.detachedWindows.getWindowForRpcKey(windowKey);
+}
+
+/**
+ * Electrobun has no fullscreen event, so the view asks after every resize.
+ * A runtime whose native library cannot answer reports windowed, which is the
+ * layout the header held before it could ask at all.
+ */
+function isWindowFullscreen(backend: DesktopBackend, windowKey: string | undefined): boolean {
+  try {
+    return windowForRpcKey(backend, windowKey)?.isFullScreen?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+function controlWindow(
+  backend: DesktopBackend,
+  windowKey: string | undefined,
+  action: DesktopWindowControlAction,
+): boolean {
+  const targetWindow = windowForRpcKey(backend, windowKey);
+  if (!targetWindow) return false;
+  if (action !== "close") {
+    backend.detachedWindows.suppressAutoDockForRpcKey(windowKey);
+  }
+  applyDesktopWindowControl(targetWindow, action);
+  return true;
+}
+
+/** Exiting closes the popped-out windows, services and main window; with no main window it quits directly. */
+function exitDesktopApp(backend: DesktopBackend): void {
+  backend.detachedWindows.closeAll();
+  backend.teardownServices();
+  const mainWindow = backend.mainWindow;
+  if (mainWindow) {
+    mainWindow.close();
+    backend.mainWindow = null;
+    return;
+  }
+  Utils.quit();
+}
+
 function normalizeWindowControlAction(action: unknown): DesktopWindowControlAction {
   if (action === "minimize" || action === "toggle-maximize" || action === "close") {
     return action;
@@ -51,54 +85,29 @@ function normalizeWindowControlAction(action: unknown): DesktopWindowControlActi
   throw new Error("host.windowControl requires a valid action.");
 }
 
-export async function handleDesktopHostRequest<TRpc>({
-  clearMainWindow,
-  closeAllDetachedWindows,
-  controlWindowForRpcKey,
-  focusWindowForRpcKey,
-  getMainWindow,
-  getRpcWindowKey,
-  isWindowFullscreenForRpcKey,
-  request,
-  rpc,
-  teardownServices,
-  trackContextMenuRequest,
-}: DesktopHostRequestOptions<TRpc>): Promise<DesktopBackendRequestResponse<DesktopHostRequest["method"]>> {
+export async function handleDesktopHostRequest(
+  backend: DesktopBackend,
+  rpc: DesktopRpc,
+  request: DesktopHostRequest,
+): Promise<DesktopBackendRequestResponse<DesktopHostRequest["method"]>> {
   switch (request.method) {
-    case "host.exit": {
-      closeAllDetachedWindows();
-      teardownServices();
-      const mainWindow = getMainWindow();
-      if (mainWindow) {
-        mainWindow.close();
-        clearMainWindow();
-        return null;
-      }
-      Utils.quit();
+    case "host.exit":
+      exitDesktopApp(backend);
       return null;
-    }
     case "host.windowControl": {
       const action = normalizeWindowControlAction(request.payload.action);
-      const windowKey = getRpcWindowKey(rpc);
+      const windowKey = backend.rpcs.getRpcWindowKey(rpc);
       if (action === "close" && windowKey === MAIN_WINDOW_RPC_KEY) {
-        closeAllDetachedWindows();
-        teardownServices();
-        const mainWindow = getMainWindow();
-        if (mainWindow) {
-          mainWindow.close();
-          clearMainWindow();
-          return null;
-        }
-        Utils.quit();
+        exitDesktopApp(backend);
         return null;
       }
-      if (!controlWindowForRpcKey(windowKey, action)) {
+      if (!controlWindow(backend, windowKey, action)) {
         throw new Error("No desktop window is registered for this request.");
       }
       return null;
     }
     case "host.windowFullscreen":
-      return isWindowFullscreenForRpcKey(getRpcWindowKey(rpc));
+      return isWindowFullscreen(backend, backend.rpcs.getRpcWindowKey(rpc));
     case "host.openExternal": {
       if (typeof request.payload.url !== "string") {
         throw new Error("host.openExternal requires a URL.");
@@ -111,8 +120,8 @@ export async function handleDesktopHostRequest<TRpc>({
       Utils.clipboardWriteText(normalizeText(request.payload.text) ?? "");
       return null;
     case "host.focusWindow": {
-      const windowKey = getRpcWindowKey(rpc);
-      if (windowKey) focusWindowForRpcKey(windowKey);
+      const windowKey = backend.rpcs.getRpcWindowKey(rpc);
+      if (windowKey) backend.detachedWindows.focusWindowForRpcKey(windowKey);
       return null;
     }
     case "host.copyPngImage": {
@@ -142,7 +151,7 @@ export async function handleDesktopHostRequest<TRpc>({
       const menu = normalizeContextMenuItems(request.payload.menu);
       if (menu.length === 0) return false;
       const requestId = getContextMenuRequestId(menu);
-      if (requestId) trackContextMenuRequest(requestId, rpc);
+      if (requestId) backend.trackContextMenuRequest(requestId, rpc);
       ContextMenu.showContextMenu(menu as never);
       return true;
     }

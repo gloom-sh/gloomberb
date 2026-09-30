@@ -1,28 +1,7 @@
-import type {
-  DesktopSharedStateSnapshot,
-  DesktopThemePreviewState,
-} from "../../../../../types/desktop-window";
 import type { DesktopWorkspaceRequest } from "../../../shared/protocol";
-import type { DesktopWorkspace } from "./index";
-import type { WindowFrame } from "../../window/frame";
+import type { DesktopBackend } from "../backend";
 
 type DockEdge = "left" | "right" | "top" | "bottom";
-
-interface DesktopWorkspaceRequestOptions {
-  workspace: DesktopWorkspace;
-  request: DesktopWorkspaceRequest;
-  setCurrentConfig: (config: DesktopSharedStateSnapshot["config"]) => void;
-  sendThemePreview: (preview: DesktopThemePreviewState) => void;
-  clearDockPreview: (paneId?: string) => void;
-  sendDesktopState: (snapshot: DesktopSharedStateSnapshot) => void;
-  reconcileDetachedWindows: () => void;
-  commitDesktopSnapshot: (
-    snapshot: DesktopSharedStateSnapshot,
-    options?: { persistConfig?: boolean; reconcileWindows?: boolean },
-  ) => Promise<DesktopSharedStateSnapshot>;
-  resolveDetachedFrame: (paneId: string) => WindowFrame;
-  focusDetachedPane: (paneId: string) => void;
-}
 
 function requirePaneId(payload: { paneId: string }, method: string): string {
   if (typeof payload.paneId !== "string") {
@@ -37,56 +16,50 @@ function normalizeDockEdge(edge: unknown): DockEdge | undefined {
     : undefined;
 }
 
-export async function handleDesktopWorkspaceRequest({
-  workspace,
-  request,
-  setCurrentConfig,
-  sendThemePreview,
-  clearDockPreview,
-  sendDesktopState,
-  reconcileDetachedWindows,
-  commitDesktopSnapshot,
-  resolveDetachedFrame,
-  focusDetachedPane,
-}: DesktopWorkspaceRequestOptions): Promise<null> {
+export async function handleDesktopWorkspaceRequest(
+  backend: DesktopBackend,
+  request: DesktopWorkspaceRequest,
+): Promise<null> {
+  const workspace = backend.requireWorkspace();
+  const { detachedWindows, stateBroadcaster } = backend;
   switch (request.method) {
     case "desktop.syncMainState": {
       const snapshot = workspace.syncMainState(request.payload.snapshot);
-      setCurrentConfig(snapshot.config);
-      reconcileDetachedWindows();
-      sendDesktopState(snapshot);
+      backend.setConfig(snapshot.config);
+      detachedWindows.reconcile();
+      stateBroadcaster.sendDesktopState(snapshot);
       return null;
     }
     case "desktop.setThemePreview":
-      sendThemePreview(request.payload.preview ?? { theme: null });
+      stateBroadcaster.sendThemePreview(request.payload.preview ?? { theme: null });
       return null;
     case "desktop.replaceDetachedPaneState": {
       const paneId = requirePaneId(request.payload, request.method);
-      sendDesktopState(workspace.replaceDetachedPaneState(paneId, request.payload.paneState));
+      stateBroadcaster.sendDesktopState(workspace.replaceDetachedPaneState(paneId, request.payload.paneState));
       return null;
     }
     case "desktop.popOutPane": {
       const paneId = requirePaneId(request.payload, request.method);
-      const snapshot = workspace.popOutPane(paneId, resolveDetachedFrame(paneId));
-      await commitDesktopSnapshot(snapshot);
-      focusDetachedPane(paneId);
+      const snapshot = workspace.popOutPane(paneId, detachedWindows.resolveFrame(paneId));
+      await backend.commitDesktopSnapshot(snapshot);
+      detachedWindows.focusDetachedPane(paneId);
       return null;
     }
     case "desktop.dockDetachedPane": {
       const paneId = requirePaneId(request.payload, request.method);
-      clearDockPreview(paneId);
-      await commitDesktopSnapshot(workspace.dockDetachedPane(paneId, normalizeDockEdge(request.payload.edge)));
+      stateBroadcaster.clearDockPreview(paneId);
+      await backend.commitDesktopSnapshot(workspace.dockDetachedPane(paneId, normalizeDockEdge(request.payload.edge)));
       return null;
     }
     case "desktop.closeDetachedPane": {
       const paneId = requirePaneId(request.payload, request.method);
-      clearDockPreview(paneId);
-      await commitDesktopSnapshot(workspace.closeDetachedPane(paneId));
+      stateBroadcaster.clearDockPreview(paneId);
+      await backend.commitDesktopSnapshot(workspace.closeDetachedPane(paneId));
       return null;
     }
     case "desktop.focusDetachedPane": {
       const paneId = requirePaneId(request.payload, request.method);
-      focusDetachedPane(paneId);
+      detachedWindows.focusDetachedPane(paneId);
       return null;
     }
     default: {
