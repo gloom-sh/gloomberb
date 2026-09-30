@@ -254,6 +254,17 @@ export const ja: Record<string, string> = {
   "Pane layout management commands": "ペイン レイアウト管理コマンド",
 
   // ── Context menu ─────────────────────────────────────────────
+  "Start Here": "ここから始める",
+  "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "企業を調べる：概要から、チャート、財務、ニュース、提出書類、決算説明会のタブへ。",
+  "Add what you own. Alerts and emails then follow your portfolio.": "保有銘柄を追加します。アラートとメールがポートフォリオに沿った内容になります。",
+  "Your portfolio and watchlists.": "ポートフォリオとウォッチリスト。",
+  "Today's biggest movers, with pre-market, after-hours and gap lists.": "本日の値動き上位。プレマーケット、アフターアワー、ギャップのリスト付き。",
+  "The top market stories, ranked.": "重要度順のトップ市場ニュース。",
+  "Upcoming earnings, with the move options imply.": "今後の決算と、オプションが織り込む値動き。",
+  "The economic calendar.": "経済指標カレンダー。",
+  "Ask Gloom: answers that cite filings, calls and news.": "Ask Gloom：提出書類、決算説明会、ニュースを引用して答えます。",
+  "Not sure of a code? Press {key} and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "コードが分からない場合は {key} を押し、\"apple earnings\" のように普段の言葉で入力してください。「関数」タブに全機能があります。",
+  "Not sure of a code? Type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "コードが分からない場合は \"apple earnings\" のように普段の言葉で入力してください。「関数」タブに全機能があります。",
   "Command Bar": "コマンドバー",
   "Manage Plugins...": "プラグインを管理...",
   "Change Theme...": "テーマを変更...",

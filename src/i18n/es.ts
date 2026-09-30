@@ -253,6 +253,17 @@ export const es: Record<string, string> = {
   "Pane layout management commands": "Comandos de gestión del diseño de paneles",
 
   // ── Context menu ─────────────────────────────────────────────
+  "Start Here": "Empieza aquí",
+  "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "Investiga una empresa: el resumen y luego pestañas de gráfico, finanzas, noticias, presentaciones y llamadas de resultados.",
+  "Add what you own. Alerts and emails then follow your portfolio.": "Añade lo que tienes. Las alertas y los correos seguirán tu cartera.",
+  "Your portfolio and watchlists.": "Tu cartera y tus listas de seguimiento.",
+  "Today's biggest movers, with pre-market, after-hours and gap lists.": "Los mayores movimientos de hoy, con listas de preapertura, poscierre y gaps.",
+  "The top market stories, ranked.": "Las principales noticias del mercado, por importancia.",
+  "Upcoming earnings, with the move options imply.": "Próximos resultados, con el movimiento que implican las opciones.",
+  "The economic calendar.": "El calendario económico.",
+  "Ask Gloom: answers that cite filings, calls and news.": "Ask Gloom: respuestas que citan presentaciones, llamadas y noticias.",
+  "Not sure of a code? Press {key} and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "¿No sabes el código? Pulsa {key} y escribe lo que quieres con tus palabras, como \"apple earnings\". La pestaña Funciones las lista todas.",
+  "Not sure of a code? Type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "¿No sabes el código? Escribe lo que quieres con tus palabras, como \"apple earnings\". La pestaña Funciones las lista todas.",
   "Command Bar": "Barra de comandos",
   "Manage Plugins...": "Gestionar plugins...",
   "Change Theme...": "Cambiar tema...",

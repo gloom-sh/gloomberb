@@ -108,6 +108,22 @@ function HelpPane({ focused, width, height }: PaneProps) {
   // The footer binds each hint's key; a search field keeps its typing.
   usePaneFooter("help:tab", () => tabHints.length > 0 ? { hints: tabHints } : null, [tabHints]);
 
+  // What to do first, by task rather than by key: new people leave when they
+  // do not know any code or what the data is for.
+  const startSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [{
+    label: "Start Here",
+    items: [
+      entry("start-des", ["DES", "<ticker>"], "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls."),
+      entry("start-ap", ["AP"], "Add what you own. Alerts and emails then follow your portfolio."),
+      entry("start-pf", ["PF"], "Your portfolio and watchlists."),
+      entry("start-most", ["MOST"], "Today's biggest movers, with pre-market, after-hours and gap lists."),
+      entry("start-top", ["TOP"], "The top market stories, ranked."),
+      entry("start-ern", ["ERN"], "Upcoming earnings, with the move options imply."),
+      entry("start-eco", ["ECO"], "The economic calendar."),
+      entry("start-askg", ["ASKG", "<question>"], "Ask Gloom: answers that cite filings, calls and news."),
+    ],
+  }], []);
+
   const commandBarSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [{
     label: "Command Bar",
     items: [
@@ -229,7 +245,16 @@ function HelpPane({ focused, width, height }: PaneProps) {
               <Box flexDirection="column">
                 <Text fg={colors.textDim}>{t("Gloomberb is command-bar first.")}</Text>
                 <Text fg={colors.textDim}>{t("Use the keyboard for speed, and the mouse for windows.")}</Text>
+                <Text fg={colors.textDim} wrapText>
+                  {commandBarBadges[0]
+                    ? tf("Not sure of a code? Press {key} and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.", { key: commandBarBadges[0] })
+                    : t("Not sure of a code? Type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.")}
+                </Text>
               </Box>
+            </Box>
+
+            <Box marginTop={1}>
+              <ShortcutTable sections={startSections} width={bodyWidth} />
             </Box>
 
             <Box marginTop={1}>

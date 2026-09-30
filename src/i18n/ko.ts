@@ -252,6 +252,17 @@ export const ko: Record<string, string> = {
   "Pane layout management commands": "패널 레이아웃 관리 명령",
 
   // ── Context menu ─────────────────────────────────────────────
+  "Start Here": "여기서 시작",
+  "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "기업 조사: 개요부터 보고 차트, 재무, 뉴스, 공시, 실적 발표 탭으로 이동합니다.",
+  "Add what you own. Alerts and emails then follow your portfolio.": "보유 종목을 추가하세요. 알림과 이메일이 포트폴리오에 맞춰집니다.",
+  "Your portfolio and watchlists.": "포트폴리오와 관심 목록.",
+  "Today's biggest movers, with pre-market, after-hours and gap lists.": "오늘의 상승·하락 상위 종목. 프리마켓, 애프터마켓, 갭 목록 포함.",
+  "The top market stories, ranked.": "중요도 순으로 정렬한 주요 시장 뉴스.",
+  "Upcoming earnings, with the move options imply.": "다가오는 실적 발표와 옵션이 반영한 예상 변동폭.",
+  "The economic calendar.": "경제 캘린더.",
+  "Ask Gloom: answers that cite filings, calls and news.": "Ask Gloom: 공시, 실적 발표, 뉴스를 인용해 답합니다.",
+  "Not sure of a code? Press {key} and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "코드를 모르겠다면 {key}을 누르고 \"apple earnings\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
+  "Not sure of a code? Type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "코드를 모르겠다면 \"apple earnings\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
   "Command Bar": "명령 팔레트",
   "Manage Plugins...": "플러그인 관리...",
   "Change Theme...": "테마 변경...",

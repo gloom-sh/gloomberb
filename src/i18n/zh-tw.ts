@@ -254,6 +254,17 @@ export const zhTW: Record<string, string> = {
   "Pane layout management commands": "面板版面設定管理命令",
 
   // ── Context menu ─────────────────────────────────────────────
+  "Start Here": "從這裡開始",
+  "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "研究一家公司：先看概覽，再切換到圖表、財務、新聞、文件和法說會標籤。",
+  "Add what you own. Alerts and emails then follow your portfolio.": "新增你的持股。之後提醒和郵件都會圍繞你的投資組合。",
+  "Your portfolio and watchlists.": "你的投資組合和自選清單。",
+  "Today's biggest movers, with pre-market, after-hours and gap lists.": "今日漲跌幅最大的股票，含盤前、盤後和跳空清單。",
+  "The top market stories, ranked.": "依重要性排序的頭條市場新聞。",
+  "Upcoming earnings, with the move options imply.": "即將公布的財報，以及選擇權隱含的波動。",
+  "The economic calendar.": "經濟日曆。",
+  "Ask Gloom: answers that cite filings, calls and news.": "Ask Gloom：引用文件、法說會和新聞的回答。",
+  "Not sure of a code? Press {key} and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "不知道代碼？按 {key}，用日常用語輸入你想要的，例如 \"apple earnings\"。「功能」標籤列出了全部功能。",
+  "Not sure of a code? Type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "不知道代碼？用日常用語輸入你想要的，例如 \"apple earnings\"。「功能」標籤列出了全部功能。",
   "Command Bar": "命令列",
   "Manage Plugins...": "管理外掛...",
   "Change Theme...": "更換主題...",
