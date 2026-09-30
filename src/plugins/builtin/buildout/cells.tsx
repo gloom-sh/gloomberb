@@ -1,11 +1,10 @@
 import { TextAttributes } from "../../../ui";
-import type { DataTableCell } from "../../../components";
+import { TickerBadgeList, type DataTableCell } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { formatRelativeTime } from "../../../utils/datetime-format";
 import {
   CompanyCell,
   FavoriteCell,
-  tickerBadges,
 } from "./detail";
 import type { BuildoutColumn, BuildoutRow } from "./model/types";
 import {
@@ -136,11 +135,13 @@ export function renderBuildoutCell(
         if (ownerTicker) {
           return {
             text: ownerTicker,
-            content: tickerBadges({
-              symbols: [ownerTicker],
-              width: column.width,
-              fallbackColor: rowState.selected ? colors.selectedText : colors.textBright,
-            }),
+            content: (
+              <TickerBadgeList
+                symbols={[ownerTicker]}
+                width={column.width}
+                fallbackColor={rowState.selected ? colors.selectedText : colors.textBright}
+              />
+            ),
           };
         }
         return { text: text(site.ownerName), color: colors.textDim };
@@ -174,11 +175,13 @@ export function renderBuildoutCell(
         return symbols.length > 0
           ? {
             text: symbols.join(" "),
-            content: tickerBadges({
-              symbols,
-              width: column.width,
-              fallbackColor: rowState.selected ? colors.selectedText : colors.textBright,
-            }),
+            content: (
+              <TickerBadgeList
+                symbols={symbols}
+                width={column.width}
+                fallbackColor={rowState.selected ? colors.selectedText : colors.textBright}
+              />
+            ),
           }
           : { text: text(update.companies?.map((company) => company.name).filter(Boolean).join(", ")), color: colors.textDim };
       }
