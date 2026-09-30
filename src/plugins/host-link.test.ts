@@ -66,6 +66,23 @@ describe("linkPeerPlugins", () => {
     expect(realpathSync(join(pluginDir, "node_modules", "gloomberb"))).toBe(realpathSync(hostRoot));
   });
 
+  test("links a react that a global install hoisted beside the host", () => {
+    const root = mkdtempSync(join(tmpdir(), "gloom-host-link-hoisted-"));
+    const hostRoot = join(root, "node_modules", "gloomberb");
+    const react = join(root, "node_modules", "react");
+    const pluginDir = join(root, "plugins", "gloom-tv");
+    mkdirSync(hostRoot, { recursive: true });
+    mkdirSync(react, { recursive: true });
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(join(hostRoot, "package.json"), JSON.stringify({ name: "gloomberb" }));
+    writeFileSync(join(react, "package.json"), JSON.stringify({ name: "react", version: "19.0.0" }));
+
+    const result = linkHostPackages(pluginDir, hostRoot, join(root, "plugins"));
+
+    expect(result.linked).toContain("react");
+    expect(realpathSync(join(pluginDir, "node_modules", "react"))).toBe(realpathSync(react));
+  });
+
   // Windows gets a junction here. Replacing one must remove the link itself:
   // a recursive delete through it would empty the host install.
   test("repoints a stale link without touching what it pointed at", () => {

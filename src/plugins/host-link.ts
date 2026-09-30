@@ -88,7 +88,15 @@ export function hostPublicModules(): ReadonlyMap<string, string> {
 function linkTarget(hostRoot: string, pkg: string): string | null {
   if (pkg === "gloomberb") return hostRoot;
   const candidate = join(hostRoot, "node_modules", pkg);
-  return existsSync(candidate) ? candidate : null;
+  if (existsSync(candidate)) return candidate;
+  // A global install hoists dependencies beside the package rather than
+  // inside it (`bun add -g` keeps one flat node_modules), so `react` is found
+  // the way the host itself resolves it.
+  try {
+    return dirname(Bun.resolveSync(`${pkg}/package.json`, hostRoot));
+  } catch {
+    return null;
+  }
 }
 
 /** True when `path` is already a link pointing at `target`. Compared by real
