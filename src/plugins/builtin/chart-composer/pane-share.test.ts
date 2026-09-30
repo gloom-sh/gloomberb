@@ -11,7 +11,8 @@ import {
   CHART_DRAWINGS_SETTING_KEY,
   parseChartDrawings,
 } from "../../../components/chart/composite/tools";
-import { buildCustomChartPreset, buildPriceChartPreset, setPairStudies } from "./presets";
+import { setPairStudies } from "./studies";
+import { buildCustomChartPreset, buildPriceChartPreset } from "./presets";
 import { applyChartComposerPaneSetting, CHART_SETTING_KEYS } from "./settings";
 import { buildPaneSharePayload } from "../../../shares/pane";
 import type { PluginRegistry } from "../../registry";

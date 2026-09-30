@@ -62,26 +62,27 @@ import {
   futuresGenericRollValue,
   type FuturesGenericAdjust,
 } from "../../../utils/futures-generic";
+import { chartSeriesLabel } from "./series-expression";
 import {
-  buildEmptyChartPreset,
-  buildPriceChartPreset,
   chartFuturesGeneric,
-  chartSeriesLabel,
   defaultFinancialTimestampMode,
+  setChartFuturesGeneric,
+  rebindResearchChartSpec,
+} from "./chart-spec-edit";
+import {
   builtinStudyPeriod,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
   isPeriodStudy,
   setBuiltinStudies,
   setBuiltinStudyPeriod,
-  setChartFuturesGeneric,
   setPairStudies,
-  rebindResearchChartSpec,
   STUDY_PERIOD_MAX,
   STUDY_PERIOD_MIN,
   type BuiltinStudySelection,
   type PairStudySelection,
-} from "./presets";
+} from "./studies";
+import { buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import type { ChartInteractionViewport } from "./chart-spec";
 import {
   CHART_FORMULA_OPTIONS,

@@ -18,7 +18,7 @@ import { colors } from "../../../theme/colors";
 import type { ChartSpec } from "../../../time-series/types";
 import { getSharedRegistry } from "../../registry";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
-import { appendChartSeries } from "./presets";
+import { appendChartSeries } from "./chart-spec-edit";
 import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "./series-catalog";
 import { useSeriesCatalogSuggestions } from "./use-series-catalog";
 import { clampIndex } from "../../../utils/math";

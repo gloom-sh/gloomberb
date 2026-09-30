@@ -16,14 +16,9 @@ import type {
 } from "../../../time-series/types";
 import { isOhlcSeriesStyle } from "../../../time-series/spec";
 import { REALIZED_VOLATILITY_ESTIMATORS, isRealizedVolatilityEstimator } from "../../../market-data/realized-volatility";
+import { chartSeriesLabel, formatSeriesExpression } from "./series-expression";
+import { applySeriesStyle, getCompatibleSeriesStyles } from "./chart-spec-edit";
 import {
-  applySeriesStyle,
-  buildCustomChartPreset,
-  buildEmptyChartPreset,
-  buildPriceChartPreset,
-  chartSeriesLabel,
-  formatSeriesExpression,
-  getCompatibleSeriesStyles,
   builtinStudyPeriod,
   defaultStudyPeriod,
   getSelectedBuiltinStudies,
@@ -33,7 +28,8 @@ import {
   setPairStudies,
   type BuiltinStudySelection,
   type PairStudySelection,
-} from "./presets";
+} from "./studies";
+import { buildCustomChartPreset, buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import {
   CHART_SPEC_SETTING_KEY,
   parseChartSpecOr,

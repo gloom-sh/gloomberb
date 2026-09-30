@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneSettingField } from "../../../types/plugin";
 import {
-  buildComparisonChartPreset,
-  buildPriceChartPreset,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
   setBuiltinStudies,
   setPairStudies,
-} from "./presets";
+} from "./studies";
+import { buildComparisonChartPreset, buildPriceChartPreset } from "./presets";
 import { CHART_SPEC_SETTING_KEY } from "./chart-spec";
 import {
   applyChartComposerPaneSetting,

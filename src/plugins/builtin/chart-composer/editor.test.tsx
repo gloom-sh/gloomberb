@@ -4,12 +4,9 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { useShortcut } from "../../../react/input";
 import { Input, type InputRenderable } from "../../../ui";
 import { SeriesEditorDialog } from "./editor";
-import {
-  appendChartSeries,
-  buildFundamentalChartPreset,
-  buildPriceChartPreset,
-  parseSeriesExpression,
-} from "./presets";
+import { parseSeriesExpression } from "./series-expression";
+import { appendChartSeries } from "./chart-spec-edit";
+import { buildFundamentalChartPreset, buildPriceChartPreset } from "./presets";
 
 const tui = createOpenTuiTestHarness();
 

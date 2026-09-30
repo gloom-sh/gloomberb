@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { chartHeadless, type ChartPaneModel } from "./headless";
-import { buildCustomChartPreset, buildIntradayPriceChartPreset, setPairStudies } from "./presets";
+import { setPairStudies } from "./studies";
+import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03"]

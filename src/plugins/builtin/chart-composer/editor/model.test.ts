@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { appendChartSeries, buildFundamentalChartPreset, buildPriceChartPreset } from "../presets";
+import { appendChartSeries } from "../chart-spec-edit";
+import { buildFundamentalChartPreset, buildPriceChartPreset } from "../presets";
 import {
   buildSeriesEditorActions,
   buildSeriesEditorFields,

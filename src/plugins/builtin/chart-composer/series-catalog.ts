@@ -17,10 +17,7 @@ import {
   parsePublicTickerKey,
   publicTickerKey,
 } from "../../../utils/exchanges";
-import {
-  parseSeriesExpression,
-  type ParsedSeriesExpression,
-} from "./presets";
+import { parseSeriesExpression, type ParsedSeriesExpression } from "./series-expression";
 
 export interface SeriesCatalogInstrument {
   symbol: string;

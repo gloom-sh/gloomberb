@@ -19,22 +19,22 @@ import {
   MAX_CHART_COMPOSER_SERIES,
   parseChartSpecOr,
 } from "../chart-spec";
+import { chartSeriesLabel, formatSeriesExpression, parseSeriesExpression } from "../series-expression";
 import {
   appendChartSeries,
   applySeriesStyle,
   applySeriesTimestampMode,
-  buildEmptyChartPreset,
   buildSeriesSpec,
-  chartSeriesLabel,
-  formatSeriesExpression,
   getCompatibleSeriesStyles,
   getCompatibleSeriesTransforms,
+} from "../chart-spec-edit";
+import {
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
-  parseSeriesExpression,
   setBuiltinStudies,
   setPairStudies,
-} from "../presets";
+} from "../studies";
+import { buildEmptyChartPreset } from "../presets";
 import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "../series-catalog";
 import { useSeriesCatalogSuggestions } from "../use-series-catalog";
 import type {

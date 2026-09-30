@@ -14,7 +14,7 @@ import {
   defaultFinancialTimestampMode,
   getCompatibleSeriesStyles,
   getCompatibleSeriesTransforms,
-} from "../presets";
+} from "../chart-spec-edit";
 
 export type SeriesEditorFieldId =
   | "style"
