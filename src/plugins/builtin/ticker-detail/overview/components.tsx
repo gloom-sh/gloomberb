@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import { ExternalLinkText, usePaneLinkMenuEntry } from "../../../../components";
+import { RangeTrack } from "../../../../components/ui/range-track";
 import { t, tf } from "../../../../i18n";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
-import { Box, Text, useUiCapabilities } from "../../../../ui";
+import { Box, Text } from "../../../../ui";
 import { displayWidth, formatNumber, padTo, truncateToDisplayWidth } from "../../../../utils/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import { portfolioPnlLabel } from "../../portfolio-list/position-metrics";
@@ -24,57 +25,6 @@ interface PositionColumn {
   color?: (row: PositionTableRow) => string;
   /** Lowest pane width that still has room for this column. */
   minPaneWidth?: number;
-}
-
-function RangeTrack({
-  barWidth,
-  markerIndex,
-  position,
-  markerColor,
-}: {
-  barWidth: number;
-  markerIndex: number;
-  position: number;
-  markerColor: string;
-}) {
-  // The desktop webview must not draw rules out of box-drawing glyphs.
-  if (useUiCapabilities().nativePaneChrome === true) {
-    return (
-      <Box
-        marginLeft={1}
-        marginRight={1}
-        width={barWidth}
-        height={1}
-        style={{ position: "relative", justifyContent: "center" }}
-      >
-        <Box style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          height: "2px",
-          borderRadius: "1px",
-          backgroundColor: colors.border,
-        }} />
-        <Box style={{
-          position: "absolute",
-          left: `${position * 100}%`,
-          width: "8px",
-          height: "8px",
-          marginLeft: "-4px",
-          borderRadius: "50%",
-          backgroundColor: markerColor,
-        }} />
-      </Box>
-    );
-  }
-
-  return (
-    <Box marginLeft={1} marginRight={1} width={barWidth} flexDirection="row">
-      <Text fg={colors.border}>{"\u2500".repeat(markerIndex)}</Text>
-      <Text fg={markerColor}>{"\u25cf"}</Text>
-      <Text fg={colors.border}>{"\u2500".repeat(Math.max(0, barWidth - markerIndex - 1))}</Text>
-    </Box>
-  );
 }
 
 export function CompactRangeBar({
@@ -109,7 +59,6 @@ export function CompactRangeBar({
   const lowText = formatMarketPriceWithCurrency(low, currency, endpointOptions);
   const highText = formatMarketPriceWithCurrency(high, currency, endpointOptions);
   const barWidth = Math.max(5, width - endpointWidth * 2 - 2);
-  const markerIndex = Math.max(0, Math.min(barWidth - 1, Math.round(position * (barWidth - 1))));
   const labelWidth = Math.max(0, width - displayWidth(pctLabel));
 
   return (
@@ -120,16 +69,11 @@ export function CompactRangeBar({
         </Box>
         <Text fg={markerColor}>{pctLabel}</Text>
       </Box>
-      <Box flexDirection="row" height={1}>
+      <Box flexDirection="row" height={1} gap={1}>
         <Box width={endpointWidth} overflow="hidden">
           <Text fg={colors.textDim}>{lowText}</Text>
         </Box>
-        <RangeTrack
-          barWidth={barWidth}
-          markerIndex={markerIndex}
-          position={position}
-          markerColor={markerColor}
-        />
+        <RangeTrack position={position} width={barWidth} markerColor={markerColor} />
         <Box flexDirection="row" width={endpointWidth} justifyContent="flex-end" overflow="hidden">
           <Text fg={colors.textDim}>{highText}</Text>
         </Box>

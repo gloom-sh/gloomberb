@@ -130,7 +130,7 @@ export {
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
   MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField,
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
-  QueryBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
+  QueryBar, RangeTrack, RatioBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
   Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, TextPromptDialog, unavailableText,
   useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch,
 } from "./ui";
@@ -144,7 +144,7 @@ export type {
   MenuProps, MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint, MultiSelectRowAction,
   NoticeProps, NumberFieldProps, PaneStatusBodyProps, PopoverProps, ProseProps, QueryBarFilter,
   QueryBarMultiFilter, QueryBarProps, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter,
-  QueryBarToggleFilter, QueryBarView, SectionHeadingProps, SectionProps, SegmentedControlProps,
+  QueryBarToggleFilter, QueryBarView, RangeTrackProps, RatioBarProps, SectionHeadingProps, SectionProps, SegmentedControlProps,
   SelectButtonOption, SelectButtonProps, SelectControl, StatGridProps, StatItem, TabsProps,
   TextFieldProps, TextPromptDialogProps,
 } from "./ui";
