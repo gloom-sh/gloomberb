@@ -334,7 +334,7 @@ export function createAppRemoteController({
         return getAfterMutationSummary({ affectedPaneIds: [paneId] });
       }
       case "pane.createFromTemplate":
-        await pluginRegistry.createPaneFromTemplateAsyncFn(
+        await pluginRegistry.createPaneFromTemplateAsync(
           stringInput(input, "templateId"),
           asRecord(input.options),
         );
@@ -343,7 +343,7 @@ export function createAppRemoteController({
         // ASKG and the local agent both land here, so one validator decides.
         const parsed = parseViewSpecOr(input.spec);
         if ("error" in parsed) throw new Error(parsed.error);
-        await pluginRegistry.createPaneFromTemplateAsyncFn(
+        await pluginRegistry.createPaneFromTemplateAsync(
           CUSTOM_VIEW_TEMPLATE_ID,
           customViewCreateOptions(parsed.spec, optionalString(input, "name")),
         );
@@ -365,7 +365,7 @@ export function createAppRemoteController({
         });
         const name = optionalString(input, "name");
         if (name) layout = updatePaneInstance(layout, instanceId, (entry: PaneInstanceConfig) => ({ ...entry, title: name }));
-        pluginRegistry.updateLayoutFn(layout);
+        pluginRegistry.updateLayout(layout);
         return getAfterMutationSummary({ affectedPaneIds: [instanceId] });
       }
       case "pane.setState":
@@ -381,13 +381,13 @@ export function createAppRemoteController({
         const descriptor = pluginRegistry.resolvePaneSettings(paneId);
         const field = descriptor?.settingsDef.fields.find((entry) => entry.key === key);
         if (field) {
-          await pluginRegistry.applyPaneSettingValueFn(descriptor!.paneId, field, input.value);
+          await pluginRegistry.applyPaneSettingValue(descriptor!.paneId, field, input.value);
         } else {
           const instanceId = descriptor?.paneId ?? paneId;
           const current = pluginRegistry.resolvePaneSettings(instanceId)?.context.settings ?? {};
           // The lock is resolved into the settings view but lives on the instance.
           const { [PANE_LOCK_SETTING_KEY]: _locked, ...currentSettings } = current;
-          pluginRegistry.updateLayoutFn(setPaneSettings(getState().config.layout, instanceId, {
+          pluginRegistry.updateLayout(setPaneSettings(getState().config.layout, instanceId, {
             ...currentSettings,
             [key]: input.value,
           }));
@@ -434,20 +434,20 @@ export function createAppRemoteController({
       case "layout.gridlock":
         tidyWindows({
           layout: getState().config.layout,
-          size: pluginRegistry.getTermSizeFn(),
+          size: pluginRegistry.getTermSize(),
           paneTypes: pluginRegistry.panes,
-          apply: pluginRegistry.updateLayoutFn,
+          apply: pluginRegistry.updateLayout,
         });
         return getAfterMutationSummary();
       case "layout.closeFloating": {
         const floatingPaneIds = getState().config.layout.floating.map((entry) => entry.instanceId);
-        pluginRegistry.updateLayoutFn(removeFloatingPanes(getState().config.layout));
+        pluginRegistry.updateLayout(removeFloatingPanes(getState().config.layout));
         return getAfterMutationSummary({ affectedPaneIds: floatingPaneIds });
       }
       case "layout.placePane": {
         const pane = requirePaneInstance(getState().config.layout, stringInput(input, "paneId"));
         const region = stringInput(input, "region");
-        const { width, height } = pluginRegistry.getTermSizeFn();
+        const { width, height } = pluginRegistry.getTermSize();
         const def = pluginRegistry.panes.get(pane.paneId);
         const nextLayout = region === "floating"
           ? floatPane(getState().config.layout, pane.instanceId, width, height, def)
@@ -457,12 +457,12 @@ export function createAppRemoteController({
               position: regionToDockPosition(region),
             })
             : insertAtRootEdge(getState().config.layout, pane.instanceId, regionToRootEdge(region));
-        pluginRegistry.updateLayoutFn(nextLayout);
+        pluginRegistry.updateLayout(nextLayout);
         return getAfterMutationSummary({ affectedPaneIds: [pane.instanceId] });
       }
       case "layout.focusRegion": {
         const region = stringInput(input, "region");
-        const { width, height } = pluginRegistry.getTermSizeFn();
+        const { width, height } = pluginRegistry.getTermSize();
         const leaves = getDockLeafLayouts(getState().config.layout, { x: 0, y: 0, width, height });
         if (leaves.length === 0) throw new Error("No docked panes are visible.");
         const target = leaves
@@ -489,7 +489,7 @@ export function createAppRemoteController({
           floating: getState().config.layout.floating.filter((entry) => !paneIds.includes(entry.instanceId)),
           detached: (getState().config.layout.detached ?? []).filter((entry) => !paneIds.includes(entry.instanceId)),
         };
-        pluginRegistry.updateLayoutFn(nextLayout);
+        pluginRegistry.updateLayout(nextLayout);
         return getAfterMutationSummary({ affectedPaneIds: paneIds });
       }
       case "desktop.popOutPane":

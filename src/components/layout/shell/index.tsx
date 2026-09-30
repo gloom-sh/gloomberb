@@ -121,7 +121,7 @@ export function Shell({
 
   const appHeaderHeight = resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx });
   const contentHeight = Math.max(1, height - appHeaderHeight - (statusBarVisible ? 1 : 0));
-  pluginRegistry.getTermSizeFn = () => ({ width, height: contentHeight });
+  pluginRegistry.bindHost({ getTermSize: () => ({ width, height: contentHeight }) });
 
   const layout = useAppSelector((state) => state.config.layout);
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
@@ -369,12 +369,7 @@ export function Shell({
     () => togglePaneFullscreen(focusedPaneId),
     [focusedPaneId, togglePaneFullscreen],
   );
-  useEffect(() => {
-    pluginRegistry.togglePaneFullscreenFn = togglePaneFullscreen;
-    return () => {
-      if (pluginRegistry.togglePaneFullscreenFn === togglePaneFullscreen) pluginRegistry.togglePaneFullscreenFn = () => false;
-    };
-  }, [pluginRegistry, togglePaneFullscreen]);
+  useEffect(() => pluginRegistry.bindHost({ togglePaneFullscreen }), [pluginRegistry, togglePaneFullscreen]);
   const activateTransientFocusLayout = useCallback(() => {
     const current = transientFocusLayoutStateRef.current;
     if (!current) return;
@@ -515,16 +510,12 @@ export function Shell({
   ), [focusedPaneId, sharePaneById]);
   // Pane-level share hints (chart, news) go through the same live hand-off as
   // the shell shortcut and the pane menu.
-  useEffect(() => {
-    const share = (paneId?: string) => {
+  useEffect(() => pluginRegistry.bindHost({
+    sharePane: (paneId) => {
       const target = paneId ?? stateRef.current.focusedPaneId;
       if (target) sharePaneById(target);
-    };
-    pluginRegistry.sharePaneFn = share;
-    return () => {
-      if (pluginRegistry.sharePaneFn === share) pluginRegistry.sharePaneFn = () => {};
-    };
-  }, [pluginRegistry, sharePaneById, stateRef]);
+    },
+  }), [pluginRegistry, sharePaneById, stateRef]);
 
   const openPaneMenuRef = useRef<((paneId: string, rect: LayoutBounds, event?: undefined, options?: { keyboard?: boolean }) => void) | null>(null);
   const openFocusedPaneMenu = useCallback(() => {

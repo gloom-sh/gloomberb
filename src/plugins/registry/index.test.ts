@@ -37,10 +37,12 @@ function createRegistry(options: {
     persistence,
     { enableCapabilityHandlers: options.enableCapabilityHandlers },
   );
-  registry.getConfigFn = () => ({
-    ...createDefaultConfig("/tmp/gloomberb-context-menu-test"),
-    disabledPlugins: options.disabledPlugins ?? [],
-    disabledSources: options.disabledSources ?? [],
+  registry.bindHost({
+    getConfig: () => ({
+      ...createDefaultConfig("/tmp/gloomberb-context-menu-test"),
+      disabledPlugins: options.disabledPlugins ?? [],
+      disabledSources: options.disabledSources ?? [],
+    }),
   });
   currentRegistry = registry;
   currentPersistence = persistence;
@@ -124,16 +126,15 @@ describe("PluginRegistry lifecycle", () => {
   test("a renamed plugin keeps reading and writing the state saved under its old id", async () => {
     const registry = createRegistry();
     const pluginConfig: Record<string, Record<string, unknown>> = { legacy: { model: "saved" } };
-    registry.getConfigFn = () => ({
-      ...createDefaultConfig("/tmp/gloomberb-state-id-test"),
-      pluginConfig,
+    registry.bindHost({
+      getConfig: () => ({
+        ...createDefaultConfig("/tmp/gloomberb-state-id-test"),
+        pluginConfig,
+      }),
+      setPluginConfigValue: async (pluginId, key, value) => {
+        pluginConfig[pluginId] = { ...(pluginConfig[pluginId] ?? {}), [key]: value };
+      },
     });
-    registry.setPluginConfigValueFn = async (pluginId, key, value) => {
-      pluginConfig[pluginId] = { ...(pluginConfig[pluginId] ?? {}), [key]: value };
-    };
-    registry.getPluginConfigValueFn = <T = unknown>(pluginId: string, key: string): T | null => (
-      (pluginConfig[pluginId]?.[key] as T | undefined) ?? null
-    );
 
     let context: GloomPluginContext | null = null;
     await registry.register({
@@ -379,8 +380,7 @@ describe("PluginRegistry pane settings", () => {
       floating: [],
       detached: [],
     };
-    registry.getConfigFn = () => config;
-    registry.getLayoutFn = () => config.layout;
+    registry.bindHost({ getConfig: () => config, getLayout: () => config.layout });
 
     await registry.register(plugin("tables", (ctx) => {
       ctx.registerPane({
@@ -438,8 +438,7 @@ describe("PluginRegistry pane settings", () => {
     config.pluginConfig = {
       news: { breakingNewsNotificationsEnabled: true },
     };
-    registry.getConfigFn = () => config;
-    registry.getLayoutFn = () => config.layout;
+    registry.bindHost({ getConfig: () => config, getLayout: () => config.layout });
 
     await registry.register(plugin("news", (ctx) => {
       ctx.registerPane({
@@ -486,8 +485,7 @@ describe("PluginRegistry pane settings", () => {
       floating: [],
       detached: [],
     };
-    registry.getConfigFn = () => config;
-    registry.getLayoutFn = () => config.layout;
+    registry.bindHost({ getConfig: () => config, getLayout: () => config.layout });
 
     await registry.register(plugin("quotes", (ctx) => {
       ctx.registerPane({
@@ -508,9 +506,11 @@ describe("PluginRegistry pane settings", () => {
     }));
 
     const applied: Array<{ key: string; value: unknown }> = [];
-    registry.applyPaneSettingValueFn = async (_paneId, field, value) => {
-      applied.push({ key: field.key, value });
-    };
+    registry.bindHost({
+      applyPaneSettingValue: async (_paneId, field, value) => {
+        applied.push({ key: field.key, value });
+      },
+    });
 
     expect(registry.resolvePaneQuickSettings("test-pane:main")).toMatchObject([{
       key: "liveStreaming",
@@ -536,10 +536,27 @@ test("composed slots receive plugin context and keep extracted actions bound", a
     modules: [{ slots: { "status:widget": widget } }, { slots: { "status:widget": widget } }],
   }));
   const delivered: string[] = [];
-  registry.notifyFn = ({ body }) => { delivered.push(body); };
+  registry.bindHost({ notify: ({ body }) => { delivered.push(body); } });
   expect(renderToStaticMarkup(registry.renderSlot("status:widget", {}))).toBe("test-providertest-provider");
   notify!({ body: "Bound action" });
   expect(delivered).toEqual(["Bound action"]);
+});
+
+test("unbinding keeps a later binding, and the old slot names still bind", () => {
+  const registry = createRegistry();
+  const shared: string[] = [];
+  const unbindFirst = registry.bindHost({ sharePane: () => { shared.push("first"); } });
+  const unbindSecond = registry.bindHost({ sharePane: () => { shared.push("second"); } });
+  unbindFirst();
+  registry.sharePane();
+  unbindSecond();
+  registry.sharePane();
+  expect(shared).toEqual(["second"]);
+
+  const layout = { dockRoot: null, instances: [], floating: [], detached: [] };
+  registry.getLayoutFn = () => layout;
+  expect(registry.getLayout()).toBe(layout);
+  expect(registry.getLayoutFn()).toBe(layout);
 });
 
 test("slots skip disabled plugins and share their plugin's state namespace", async () => {

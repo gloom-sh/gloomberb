@@ -96,7 +96,7 @@ export function useAppUpdateRuntime({
     void saveConfigImmediately(nextConfig).catch(() => {});
     if (!isUpgrade) return;
     // Opened by the app, not the user: usage counts leave it out.
-    void runAutomated(() => pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
+    void runAutomated(() => pluginRegistry.createPaneFromTemplateAsync("changelog-pane", {
       values: { version: VERSION },
     })).catch(() => {});
   }, [dispatch, enabled, isDetachedWindow, pluginRegistry, stateRef]);

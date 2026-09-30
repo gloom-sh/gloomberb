@@ -252,10 +252,10 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     event?.stopPropagation?.();
     if (!registry) return;
     tidyWindows({
-      layout: registry.getLayoutFn(),
-      size: registry.getTermSizeFn(),
+      layout: registry.getLayout(),
+      size: registry.getTermSize(),
       paneTypes: registry.panes,
-      apply: registry.updateLayoutFn,
+      apply: registry.updateLayout,
       notify: registry.notify,
       onRevert: () => dispatch({ type: "UNDO_LAYOUT" }),
     });

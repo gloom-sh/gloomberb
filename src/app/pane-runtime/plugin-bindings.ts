@@ -123,192 +123,194 @@ export function bindAppPanePluginRegistry({
   switchTickerResearchTab,
   tickerRepository,
 }: BindAppPanePluginRegistryOptions): void {
-  pluginRegistry.selectTickerFn = (symbol, paneId) => selectTickerInPane(symbol, paneId);
-  pluginRegistry.switchPanelFn = (panel) => {
-    if (isDetachedWindow) return;
-    const paneId = getPanelFocusTarget(stateRef.current.config.layout, panel);
-    if (paneId) dispatch({ type: "FOCUS_PANE", paneId });
-  };
-  pluginRegistry.switchTabFn = (tabId, paneId) => switchTickerResearchTab(tabId, paneId);
-  pluginRegistry.openCommandBarFn = (query) => {
-    if (isDetachedWindow) return;
-    dispatch({ type: "SET_COMMAND_BAR", open: true, query });
-  };
-  pluginRegistry.openPluginCommandWorkflowFn = (commandId) => {
-    if (isDetachedWindow) return;
-    dispatch({
-      type: "SET_COMMAND_BAR",
-      open: true,
-      query: "",
-      launch: { kind: "plugin-command", commandId },
-    });
-  };
-  pluginRegistry.getLayoutFn = () => stateRef.current.config.layout;
-  pluginRegistry.updateLayoutFn = (layout) => {
-    if (isDetachedWindow) return;
-    persistLayout(layout);
-  };
-  pluginRegistry.openPaneSettingsFn = (paneId) => { void openPaneSettings(paneId); };
-  pluginRegistry.showPaneFn = (paneId) => {
-    if (isDetachedWindow) return;
-    showPane(paneId);
-  };
-  pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
-    if (isDetachedWindow) return;
-    await createPaneTemplateOrThrow(templateId, options, {
-      dataProvider,
-      tickerRepository,
-      pluginRegistry,
-      dispatch,
-      getState: () => stateRef.current,
-      buildPaneInstance,
-      placePaneInstance,
-    });
-  };
-  pluginRegistry.openPortablePaneShareAsyncFn = async (payload) => {
-    if (isDetachedWindow) throw new Error("Open shared panes in the main window.");
-    const materialized = materializeMarketplaceLayout(payload);
-    const sharedPane = materialized.layout.instances[0];
-    if (!sharedPane) throw new Error("This shared pane is invalid.");
-    const paneDef = pluginRegistry.panes.get(sharedPane.paneId);
-    const ownerId = pluginRegistry.getPanePluginId(sharedPane.paneId);
-    if (!paneDef || (ownerId && stateRef.current.config.disabledPlugins.includes(ownerId))) {
-      throw new Error("This shared pane is unavailable in this version of Gloomberb.");
-    }
-    const instance = buildPaneInstance(sharedPane.paneId, sharedPane);
-    if (!instance) throw new Error("This shared pane could not be created.");
-    dispatch({
-      type: "REPLACE_PANE_STATE",
-      paneId: instance.instanceId,
-      state: materialized.paneState[instance.instanceId] ?? {},
-    });
-    placePaneInstance(instance, paneDef, { placement: "floating" });
-  };
-  pluginRegistry.createPaneFromTemplateFn = (templateId, options) => {
-    if (isDetachedWindow) return;
-    void createPaneFromTemplate(templateId, options);
-  };
-  pluginRegistry.applyPaneSettingValueFn = async (paneId, field: PaneSettingField, value) => {
-    await applyPaneSettingFieldValueShared(paneId, field, value, {
-      dataProvider,
-      tickerRepository,
-      pluginRegistry,
-      dispatch,
-      getState: () => stateRef.current,
-      persistLayout,
-    });
-  };
-  pluginRegistry.hidePaneFn = (paneId) => {
-    if (isDetachedWindow) return;
-    const instanceId = resolvePaneTarget(paneId);
-    const layout = stateRef.current.config.layout;
-    if (!instanceId || !isPaneInLayout(layout, instanceId)) return;
-    persistLayout(removePane(layout, instanceId));
-  };
-  pluginRegistry.focusPaneFn = (paneId, layout) => {
-    if (isDetachedWindow) {
-      if (paneId === detachedPaneId) {
-        dispatch({ type: "FOCUS_PANE", paneId });
-      }
-      return;
-    }
-    const instanceId = resolvePaneTarget(paneId);
-    if (!instanceId || !isPaneInLayout(stateRef.current.config.layout, instanceId)) {
+  pluginRegistry.bindHost({
+    selectTicker: (symbol, paneId) => selectTickerInPane(symbol, paneId),
+    switchPanel: (panel) => {
+      if (isDetachedWindow) return;
+      const paneId = getPanelFocusTarget(stateRef.current.config.layout, panel);
+      if (paneId) dispatch({ type: "FOCUS_PANE", paneId });
+    },
+    switchTab: (tabId, paneId) => switchTickerResearchTab(tabId, paneId),
+    openCommandBar: (query) => {
+      if (isDetachedWindow) return;
+      dispatch({ type: "SET_COMMAND_BAR", open: true, query });
+    },
+    openPluginCommandWorkflow: (commandId) => {
+      if (isDetachedWindow) return;
+      dispatch({
+        type: "SET_COMMAND_BAR",
+        open: true,
+        query: "",
+        launch: { kind: "plugin-command", commandId },
+      });
+    },
+    getLayout: () => stateRef.current.config.layout,
+    updateLayout: (layout) => {
+      if (isDetachedWindow) return;
+      persistLayout(layout);
+    },
+    openPaneSettings: (paneId) => { void openPaneSettings(paneId); },
+    showPane: (paneId) => {
+      if (isDetachedWindow) return;
       showPane(paneId);
-      return;
-    }
+    },
+    createPaneFromTemplateAsync: async (templateId, options) => {
+      if (isDetachedWindow) return;
+      await createPaneTemplateOrThrow(templateId, options, {
+        dataProvider,
+        tickerRepository,
+        pluginRegistry,
+        dispatch,
+        getState: () => stateRef.current,
+        buildPaneInstance,
+        placePaneInstance,
+      });
+    },
+    openPortablePaneShareAsync: async (payload) => {
+      if (isDetachedWindow) throw new Error("Open shared panes in the main window.");
+      const materialized = materializeMarketplaceLayout(payload);
+      const sharedPane = materialized.layout.instances[0];
+      if (!sharedPane) throw new Error("This shared pane is invalid.");
+      const paneDef = pluginRegistry.panes.get(sharedPane.paneId);
+      const ownerId = pluginRegistry.getPanePluginId(sharedPane.paneId);
+      if (!paneDef || (ownerId && stateRef.current.config.disabledPlugins.includes(ownerId))) {
+        throw new Error("This shared pane is unavailable in this version of Gloomberb.");
+      }
+      const instance = buildPaneInstance(sharedPane.paneId, sharedPane);
+      if (!instance) throw new Error("This shared pane could not be created.");
+      dispatch({
+        type: "REPLACE_PANE_STATE",
+        paneId: instance.instanceId,
+        state: materialized.paneState[instance.instanceId] ?? {},
+      });
+      placePaneInstance(instance, paneDef, { placement: "floating" });
+    },
+    createPaneFromTemplate: (templateId, options) => {
+      if (isDetachedWindow) return;
+      void createPaneFromTemplate(templateId, options);
+    },
+    applyPaneSettingValue: async (paneId, field: PaneSettingField, value) => {
+      await applyPaneSettingFieldValueShared(paneId, field, value, {
+        dataProvider,
+        tickerRepository,
+        pluginRegistry,
+        dispatch,
+        getState: () => stateRef.current,
+        persistLayout,
+      });
+    },
+    hidePane: (paneId) => {
+      if (isDetachedWindow) return;
+      const instanceId = resolvePaneTarget(paneId);
+      const layout = stateRef.current.config.layout;
+      if (!instanceId || !isPaneInLayout(layout, instanceId)) return;
+      persistLayout(removePane(layout, instanceId));
+    },
+    focusPane: (paneId, layout) => {
+      if (isDetachedWindow) {
+        if (paneId === detachedPaneId) {
+          dispatch({ type: "FOCUS_PANE", paneId });
+        }
+        return;
+      }
+      const instanceId = resolvePaneTarget(paneId);
+      if (!instanceId || !isPaneInLayout(stateRef.current.config.layout, instanceId)) {
+        showPane(paneId);
+        return;
+      }
 
-    focusVisiblePane(instanceId, layout);
-  };
-  // Ticker links in panes and menus, and DES from the command bar, open the
-  // research pane (or the pane asked for) through these two.
-  pluginRegistry.pinTickerFn = (symbol, options) => {
-    if (isDetachedWindow) return;
-    recordFunctionOpen(usageFunctionForPane(pluginRegistry, options?.paneType ?? TICKER_RESEARCH_PANE_ID));
-    void openPinnedTicker(symbol, options);
-  };
-  pluginRegistry.navigateTickerFn = (rawSymbol, options) => {
-    if (isDetachedWindow) return;
-    recordFunctionOpen(usageFunctionForPane(pluginRegistry, TICKER_RESEARCH_PANE_ID));
-    const sourcePaneId = options?.sourcePaneId ?? stateRef.current.focusedPaneId;
-    const requests = tickerNavigationRequests.get(pluginRegistry) ?? new Map<string | null, symbol>();
-    tickerNavigationRequests.set(pluginRegistry, requests);
-    const request = Symbol();
-    requests.set(sourcePaneId, request);
-    const ownsRequest = () => requests.get(sourcePaneId) === request;
-    const originalPane = resolveTickerNavigationReplacementPane(stateRef.current.config.layout, sourcePaneId);
-    const originalBinding = originalPane ? stableStringify(originalPane.binding) : null;
-    const ownsDestination = () => {
-      if (!ownsRequest()) return false;
-      if (!originalPane) return true;
-      const currentPane = resolveTickerNavigationReplacementPane(stateRef.current.config.layout, sourcePaneId);
-      // Direct commands and pane closure also supersede a pending navigation.
-      return !!currentPane && stableStringify(currentPane.binding) === originalBinding;
-    };
-    const canPresentFeedback = () => ownsDestination() && shouldFocusTickerNavigationTarget({
-      sourcePaneId,
-      currentFocusedPaneId: stateRef.current.focusedPaneId,
-      targetPaneId: originalPane?.instanceId ?? null,
-    });
-    (async () => {
-      try {
-        const target = await resolveOpenTickerTarget(rawSymbol, false, canPresentFeedback);
-        if (!target || !ownsDestination()) return;
-        const symbol = target.symbol;
+      focusVisiblePane(instanceId, layout);
+    },
+    // Ticker links in panes and menus, and DES from the command bar, open the
+    // research pane (or the pane asked for) through these two.
+    pinTicker: (symbol, options) => {
+      if (isDetachedWindow) return;
+      recordFunctionOpen(usageFunctionForPane(pluginRegistry, options?.paneType ?? TICKER_RESEARCH_PANE_ID));
+      void openPinnedTicker(symbol, options);
+    },
+    navigateTicker: (rawSymbol, options) => {
+      if (isDetachedWindow) return;
+      recordFunctionOpen(usageFunctionForPane(pluginRegistry, TICKER_RESEARCH_PANE_ID));
+      const sourcePaneId = options?.sourcePaneId ?? stateRef.current.focusedPaneId;
+      const requests = tickerNavigationRequests.get(pluginRegistry) ?? new Map<string | null, symbol>();
+      tickerNavigationRequests.set(pluginRegistry, requests);
+      const request = Symbol();
+      requests.set(sourcePaneId, request);
+      const ownsRequest = () => requests.get(sourcePaneId) === request;
+      const originalPane = resolveTickerNavigationReplacementPane(stateRef.current.config.layout, sourcePaneId);
+      const originalBinding = originalPane ? stableStringify(originalPane.binding) : null;
+      const ownsDestination = () => {
+        if (!ownsRequest()) return false;
+        if (!originalPane) return true;
+        const currentPane = resolveTickerNavigationReplacementPane(stateRef.current.config.layout, sourcePaneId);
+        // Direct commands and pane closure also supersede a pending navigation.
+        return !!currentPane && stableStringify(currentPane.binding) === originalBinding;
+      };
+      const canPresentFeedback = () => ownsDestination() && shouldFocusTickerNavigationTarget({
+        sourcePaneId,
+        currentFocusedPaneId: stateRef.current.focusedPaneId,
+        targetPaneId: originalPane?.instanceId ?? null,
+      });
+      (async () => {
+        try {
+          const target = await resolveOpenTickerTarget(rawSymbol, false, canPresentFeedback);
+          if (!target || !ownsDestination()) return;
+          const symbol = target.symbol;
 
-        const currentState = stateRef.current;
-        const currentLayout = currentState.config.layout;
-        const detailPane = resolveTickerNavigationReplacementPane(currentLayout, sourcePaneId);
-        const focusIfStillOwned = (paneId: string) => {
-          if (!shouldFocusTickerNavigationTarget({
+          const currentState = stateRef.current;
+          const currentLayout = currentState.config.layout;
+          const detailPane = resolveTickerNavigationReplacementPane(currentLayout, sourcePaneId);
+          const focusIfStillOwned = (paneId: string) => {
+            if (!shouldFocusTickerNavigationTarget({
+              sourcePaneId,
+              currentFocusedPaneId: stateRef.current.focusedPaneId,
+              targetPaneId: paneId,
+            })) {
+              return;
+            }
+            activatePane(paneId);
+          };
+
+          if (detailPane) {
+            publishTickerOpenTarget(target);
+            const instrument = target.instrument !== undefined ? target.instrument
+              : instrumentFromTicker(target.ticker)?.instrument ?? undefined;
+            const binding = { kind: "fixed" as const, symbol,
+              ...(instrument !== undefined ? { instrument } : {}),
+              ...(target.listing ? { listing: target.listing } : {}),
+            };
+            const nextLayout = {
+              ...currentLayout,
+              instances: currentLayout.instances.map((instance) => (
+                instance.instanceId === detailPane.instanceId
+                  ? { ...instance, title: tickerInstrumentLabel(symbol, instrument), binding }
+                  : instance
+              )),
+            };
+            persistLayout(nextLayout);
+            focusIfStillOwned(detailPane.instanceId);
+          } else if (shouldFocusTickerNavigationTarget({
             sourcePaneId,
             currentFocusedPaneId: stateRef.current.focusedPaneId,
-            targetPaneId: paneId,
+            targetPaneId: null,
           })) {
-            return;
+            placePinnedTickerTarget(target, { floating: false });
           }
-          activatePane(paneId);
-        };
-
-        if (detailPane) {
-          publishTickerOpenTarget(target);
-          const instrument = target.instrument !== undefined ? target.instrument
-            : instrumentFromTicker(target.ticker)?.instrument ?? undefined;
-          const binding = { kind: "fixed" as const, symbol,
-            ...(instrument !== undefined ? { instrument } : {}),
-            ...(target.listing ? { listing: target.listing } : {}),
-          };
-          const nextLayout = {
-            ...currentLayout,
-            instances: currentLayout.instances.map((instance) => (
-              instance.instanceId === detailPane.instanceId
-                ? { ...instance, title: tickerInstrumentLabel(symbol, instrument), binding }
-                : instance
-            )),
-          };
-          persistLayout(nextLayout);
-          focusIfStillOwned(detailPane.instanceId);
-        } else if (shouldFocusTickerNavigationTarget({
-          sourcePaneId,
-          currentFocusedPaneId: stateRef.current.focusedPaneId,
-          targetPaneId: null,
-        })) {
-          placePinnedTickerTarget(target, { floating: false });
+        } catch (err) {
+          if (!canPresentFeedback()) return;
+          const message = err instanceof Error ? err.message : String(err);
+          pluginRegistry.notify({ body: `Failed to navigate to ${rawSymbol}: ${message}`, type: "error" });
+        } finally {
+          if (ownsRequest()) requests.delete(sourcePaneId);
         }
-      } catch (err) {
-        if (!canPresentFeedback()) return;
-        const message = err instanceof Error ? err.message : String(err);
-        pluginRegistry.notify({ body: `Failed to navigate to ${rawSymbol}: ${message}`, type: "error" });
-      } finally {
-        if (ownsRequest()) requests.delete(sourcePaneId);
-      }
-    })();
-  };
+      })();
+    },
+  });
 
   setLayoutManagerDispatch(dispatch, () => ({
     layout: state.config.layout,
-    termWidth: pluginRegistry.getTermSizeFn().width,
-    termHeight: pluginRegistry.getTermSizeFn().height,
+    termWidth: pluginRegistry.getTermSize().width,
+    termHeight: pluginRegistry.getTermSize().height,
     focusedPaneId: state.focusedPaneId,
   }));
 

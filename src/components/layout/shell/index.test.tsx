@@ -65,13 +65,13 @@ function createShellPluginRegistry(options?: {
     getPluginPaneTemplateIds: () => [],
     hasPaneSettings: (paneId: string) => paneId === "portfolio-list:main",
     notify: () => {},
-    openPaneSettingsFn: () => {},
+    openPaneSettings: () => {},
     openCommandBar: () => {},
     showPane: () => {},
     openWindowMode: () => {},
-    openWindowModeFn: () => {},
-    updateLayoutFn: () => {},
+    updateLayout: () => {},
     hidePane: () => {},
+    bindHost(actions: object) { Object.assign(this, actions); return () => {}; },
   } as unknown as PluginRegistry;
 }
 
@@ -1025,7 +1025,7 @@ describe("Shell", () => {
       );
 
       await act(async () => {
-        registry.openWindowModeFn("portfolio-list:main", "move");
+        registry.openWindowMode("portfolio-list:main", "move");
         await testSetup!.renderOnce();
         await testSetup!.renderOnce();
       });

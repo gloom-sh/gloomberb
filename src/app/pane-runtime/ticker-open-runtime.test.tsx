@@ -42,7 +42,7 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
         dispatch: (action) => { actions.push(action); },
         pluginRegistry: {
           panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]),
-          events: { emit() {} }, notify() {}, getTermSizeFn: () => ({ width: 120, height: 40 }),
+          events: { emit() {} }, notify() {}, getTermSize: () => ({ width: 120, height: 40 }),
         } as any,
         buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-detail:linked" }),
         persistLayout: (layout) => { layouts++; stateRef.current.config.layout = layout; },
@@ -144,7 +144,7 @@ test.each(["floating", "docked", "only-floating"])("ticker research opens visibl
   function Harness() {
     runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: createTestDataProvider(), tickerRepository: {} as any, dispatch() {},
       pluginRegistry: { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} },
-        getTermSizeFn: () => ({ width: 120, height: 40 }) } as any,
+        getTermSize: () => ({ width: 120, height: 40 }) } as any,
       buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-detail:opened" }),
       persistLayout: (layout) => { stateRef.current.config.layout = layout; },
       activatePane: (paneId) => { activated.push(paneId); }, focusVisiblePane() {},

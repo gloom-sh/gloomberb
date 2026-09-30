@@ -284,10 +284,10 @@ export async function createPaneTemplateOrThrow(
         existing.instanceId,
         () => retargeted,
       ) : undefined;
-    if (nextLayout) deps.pluginRegistry.updateLayoutFn(nextLayout);
+    if (nextLayout) deps.pluginRegistry.updateLayout(nextLayout);
     // React can batch the layout update and focus. Bringing a floating pane to
     // the front must use its retargeted settings, not the preceding render.
-    deps.pluginRegistry.focusPaneFn(existing.instanceId, nextLayout);
+    deps.pluginRegistry.focusPane(existing.instanceId, nextLayout);
     if (openedByUser) countTemplateOpen(template, pluginId, deps);
     return;
   }

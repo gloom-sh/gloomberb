@@ -143,7 +143,7 @@ export function commitMultiSelectPickerAction({
     const paneId = String(route.payload?.paneId ?? "");
     const field = route.payload?.field as PaneSettingField | undefined;
     if (!paneId || !field) return;
-    void pluginRegistry.applyPaneSettingValueFn(paneId, field, selectedValues)
+    void pluginRegistry.applyPaneSettingValue(paneId, field, selectedValues)
       .then(() => {
         setRouteStack((current) => current.slice(0, -1));
       })

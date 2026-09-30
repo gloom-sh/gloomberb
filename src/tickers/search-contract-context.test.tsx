@@ -48,7 +48,7 @@ test.each([48, 80, 120])("search keeps broker and explicit public panes through 
   function Harness() {
     const [state, setState] = useState(initial);
     dispatch = (action) => { stateRef.current = appReducer(stateRef.current, action); setState(stateRef.current); };
-    const registry = { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} }, notify() {}, getTermSizeFn: () => ({ width: 120, height: 40 }), pinTicker: (symbol: string, options?: PinTickerOptions) => { pending.push(runtime.openPinnedTicker(symbol, options)); }, updateLayoutFn: (layout: typeof config.layout) => dispatch({ type: "UPDATE_LAYOUT", layout }) } as any;
+    const registry = { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} }, notify() {}, getTermSize: () => ({ width: 120, height: 40 }), pinTicker: (symbol: string, options?: PinTickerOptions) => { pending.push(runtime.openPinnedTicker(symbol, options)); }, updateLayout: (layout: typeof config.layout) => dispatch({ type: "UPDATE_LAYOUT", layout }) } as any;
     const runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: provider, tickerRepository: repo, dispatch, pluginRegistry: registry,
       buildPaneInstance: (id, options) => createPaneInstance(id, { ...options, instanceId: `research:${++sequence}` }),
       persistLayout: (layout) => dispatch({ type: "UPDATE_LAYOUT", layout }), activatePane() {}, focusVisiblePane() {} });

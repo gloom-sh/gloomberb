@@ -23,7 +23,8 @@ function bindPortablePaneRuntime(disabledPlugins: string[] = []) {
   const pluginRegistry = {
     panes: new Map([[paneDef.id, paneDef]]),
     getPanePluginId: () => "prediction-markets",
-    getTermSizeFn: () => ({ width: 120, height: 40 }),
+    getTermSize: () => ({ width: 120, height: 40 }),
+    bindHost(actions: object) { Object.assign(this, actions); return () => {}; },
   } as any;
 
   bindAppPanePluginRegistry({
@@ -84,7 +85,7 @@ describe("portable pane runtime", () => {
   test("creates a fresh floating pane and restores its complete state", async () => {
     const runtime = bindPortablePaneRuntime();
 
-    await runtime.pluginRegistry.openPortablePaneShareAsyncFn(portablePane);
+    await runtime.pluginRegistry.openPortablePaneShareAsync(portablePane);
 
     expect(runtime.built).toHaveLength(1);
     expect(runtime.built[0]).toMatchObject({
@@ -109,7 +110,7 @@ describe("portable pane runtime", () => {
 
   test("rejects panes owned by a disabled plugin", async () => {
     const runtime = bindPortablePaneRuntime(["prediction-markets"]);
-    await expect(runtime.pluginRegistry.openPortablePaneShareAsyncFn(portablePane)).rejects.toThrow(
+    await expect(runtime.pluginRegistry.openPortablePaneShareAsync(portablePane)).rejects.toThrow(
       "unavailable",
     );
     expect(runtime.built).toHaveLength(0);

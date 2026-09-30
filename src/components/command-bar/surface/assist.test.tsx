@@ -118,8 +118,8 @@ function configureEarningsRegistry(
       shortcut: { prefix: "ERN" },
     } as never);
     (pluginRegistry as unknown as {
-      createPaneFromTemplateAsyncFn: (templateId: string, options?: PaneTemplateCreateOptions) => Promise<void>;
-    }).createPaneFromTemplateAsyncFn = async (templateId, options) => {
+      createPaneFromTemplateAsync: (templateId: string, options?: PaneTemplateCreateOptions) => Promise<void>;
+    }).createPaneFromTemplateAsync = async (templateId, options) => {
       created.push({ templateId, options });
     };
   };
@@ -618,8 +618,8 @@ describe("CommandBar search report", () => {
     // Pane creation that never finishes keeps the bar open after the row ran.
     const hangPaneCreation = (pluginRegistry: PluginRegistry) => {
       configureEarningsRegistry([])(pluginRegistry);
-      (pluginRegistry as unknown as { createPaneFromTemplateAsyncFn: () => Promise<void> })
-        .createPaneFromTemplateAsyncFn = () => new Promise<void>(() => {});
+      (pluginRegistry as unknown as { createPaneFromTemplateAsync: () => Promise<void> })
+        .createPaneFromTemplateAsync = () => new Promise<void>(() => {});
     };
 
     testSetup = await testRender(
@@ -798,8 +798,8 @@ describe("CommandBar search report", () => {
     // Pane creation never finishes, so ERN's choice stays held and the bar stays open.
     const holdPaneCreation = (pluginRegistry: PluginRegistry) => {
       configureEarningsRegistry([])(pluginRegistry);
-      (pluginRegistry as unknown as { createPaneFromTemplateAsyncFn: () => Promise<void> })
-        .createPaneFromTemplateAsyncFn = () => new Promise<void>(() => {});
+      (pluginRegistry as unknown as { createPaneFromTemplateAsync: () => Promise<void> })
+        .createPaneFromTemplateAsync = () => new Promise<void>(() => {});
     };
 
     testSetup = await testRender(

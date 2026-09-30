@@ -57,7 +57,7 @@ function createLayoutItemsContext(
       options.layouts.push(nextLayout);
     },
     pluginRegistry: {
-      getTermSizeFn: () => ({ width: 80, height: 24 }),
+      getTermSize: () => ({ width: 80, height: 24 }),
     } as PluginRegistry,
     pushRoute: (_route: CommandBarRoute) => {},
     state,

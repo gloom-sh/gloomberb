@@ -80,7 +80,7 @@ export function activatePickerSelectionAction({
       return;
     case "disconnect-broker": {
       // The connection belongs to the Gloom account, so removing it reaches every device.
-      const instance = pluginRegistry.getConfigFn().brokerInstances.find((entry) => entry.id === option.id);
+      const instance = pluginRegistry.getConfig().brokerInstances.find((entry) => entry.id === option.id);
       const signedIn = instance && isSignedInBrokerProfile(instance)
         ? signedInBrokerForProfile(instance, instance.label)
         : null;
@@ -118,7 +118,7 @@ export function activatePickerSelectionAction({
         const paneId = String(route.payload?.paneId ?? "");
         const field = route.payload?.field as PaneSettingField | undefined;
         if (!paneId || !field) return;
-        void pluginRegistry.applyPaneSettingValueFn(paneId, field, option.id)
+        void pluginRegistry.applyPaneSettingValue(paneId, field, option.id)
           .then(() => {
             setRouteStack((current) => current.slice(0, -1));
           })

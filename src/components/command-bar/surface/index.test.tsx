@@ -119,7 +119,7 @@ describe("CommandBar", () => {
     testSetup = await testRender(<CommandBarHarness
       query="list"
       configurePluginRegistry={(pluginRegistry) => {
-        pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
           created.push({ templateId, options });
         };
       }}
@@ -190,7 +190,7 @@ describe("CommandBar", () => {
           keywords: ["account", "profile", "cloud", "acm", "password", "settings"],
           shortcut: { prefix: "ACM" },
         });
-        pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
           created.push({ templateId, options });
         };
       }}
@@ -629,7 +629,7 @@ describe("CommandBar", () => {
       live
       selectedTicker="AAPL"
       configurePluginRegistry={(pluginRegistry) => {
-        pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
           created.push({ templateId, options });
         };
       }}
@@ -667,7 +667,7 @@ describe("CommandBar", () => {
         leakedEnterCount += 1;
       }}
       configurePluginRegistry={(pluginRegistry) => {
-        pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
           created.push({ templateId, options });
         };
       }}
@@ -695,7 +695,7 @@ describe("CommandBar", () => {
       query=""
       live
       configurePluginRegistry={(pluginRegistry) => {
-        pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
           created.push({ templateId, options });
         };
       }}

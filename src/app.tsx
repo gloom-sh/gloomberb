@@ -364,7 +364,7 @@ function AppInner({
   });
 
   // Wire up app-level notifications.
-  pluginRegistry.notifyFn = appNotifier.notify;
+  pluginRegistry.bindHost({ notify: appNotifier.notify });
 
   // Persist layout changes (switching, saving, deleting, renaming layouts).
   // The saved layouts also mirror live pane state and focus, so they change on
@@ -454,7 +454,7 @@ function AppInner({
             />
             <StatusBar
               onOpenChangelog={(version) => {
-                void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
+                void pluginRegistry.createPaneFromTemplateAsync("changelog-pane", {
                   values: { version },
                 }).catch(() => {});
               }}

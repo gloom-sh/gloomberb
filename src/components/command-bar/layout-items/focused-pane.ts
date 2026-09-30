@@ -45,7 +45,7 @@ export function buildFocusedPaneLayoutItems({
       category: "Focused Pane",
       kind: "action",
       action: () => {
-        const { width, height } = pluginRegistry.getTermSizeFn();
+        const { width, height } = pluginRegistry.getTermSize();
         const nextLayout = focusedFloating
           ? dockPane(currentLayout, focusedPane.instanceId)
           : floatPane(currentLayout, focusedPane.instanceId, width, height, focusedPaneDef);
@@ -61,7 +61,7 @@ export function buildFocusedPaneLayoutItems({
       kind: "action",
       action: () => {
         closeAll({ revertThemePreview: false });
-        pluginRegistry.togglePaneFullscreenFn(focusedPane.instanceId);
+        pluginRegistry.togglePaneFullscreen(focusedPane.instanceId);
       },
     },
     ...WINDOW_MODE_COMMAND_OPTIONS.map((option) => ({

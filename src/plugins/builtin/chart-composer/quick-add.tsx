@@ -65,8 +65,8 @@ function defaultCatalogInstrument(spec: ChartSpec): SeriesCatalogInstrument {
   const instrument = security?.source.kind === "security" ? security.source.instrument : undefined;
   const symbol = instrument?.symbol ?? "AAPL";
   const registry = getSharedRegistry();
-  const saved = typeof registry?.getTickerFn === "function"
-    ? registry.getTickerFn(symbol)
+  const saved = typeof registry?.getTicker === "function"
+    ? registry.getTicker(symbol)
     : undefined;
   return {
     symbol,

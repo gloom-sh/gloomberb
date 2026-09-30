@@ -205,7 +205,7 @@ export async function submitCommandBarWorkflow(options: {
         values,
         arg: argPlaceholder ? values[argPlaceholder] : undefined,
       };
-      await pluginRegistry.createPaneFromTemplateAsyncFn(template.id, createOptions);
+      await pluginRegistry.createPaneFromTemplateAsync(template.id, createOptions);
       if (route.successLabel) {
         notify(route.successLabel, { type: "success" });
       }
@@ -223,7 +223,7 @@ export async function submitCommandBarWorkflow(options: {
         default:
           nextValue = coerceFieldString(route.values[field.key]);
       }
-      await pluginRegistry.applyPaneSettingValueFn(paneId, field, nextValue);
+      await pluginRegistry.applyPaneSettingValue(paneId, field, nextValue);
       break;
     }
     default:

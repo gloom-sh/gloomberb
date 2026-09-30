@@ -125,7 +125,7 @@ export function buildCurrentLayoutItems({
       action: () => {
         tidyWindows({
           layout: currentLayout,
-          size: pluginRegistry.getTermSizeFn(),
+          size: pluginRegistry.getTermSize(),
           paneTypes: pluginRegistry.panes,
           apply: persistLayoutChange,
           notify: pluginRegistry.notify,

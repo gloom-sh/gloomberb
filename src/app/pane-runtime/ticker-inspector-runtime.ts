@@ -101,7 +101,7 @@ export function useAppTickerInspectorRuntime({
       instanceId: preferredInstanceId,
       binding: { kind: "follow", sourceInstanceId: sourcePaneId },
     });
-    const { width, height } = pluginRegistry.getTermSizeFn();
+    const { width, height } = pluginRegistry.getTermSize();
     const sourceDocked = findDockLeaf(state.config.layout, sourcePaneId);
     const layout = sourceDocked && paneDef.defaultMode !== "floating"
       ? addPaneToLayout(state.config.layout, instance, { relativeTo: sourcePaneId, position: "right" })

@@ -182,7 +182,7 @@ export function useSeriesEditorController({
         ? firstSecurity.source.instrument
         : undefined;
     const symbol = security?.symbol ?? "AAPL";
-    const saved = getSharedRegistry()?.getTickerFn(symbol);
+    const saved = getSharedRegistry()?.getTicker(symbol);
     return {
       symbol,
       ...(security?.exchange ? { exchange: security.exchange } : saved?.metadata.exchange ? { exchange: saved.metadata.exchange } : {}),

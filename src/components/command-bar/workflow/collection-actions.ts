@@ -83,7 +83,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
 
   /** Lands on the synced profile's portfolio once a broker is connected. */
   const showConnectedBroker = (instanceId: string) => {
-    const freshConfig = pluginRegistry.getConfigFn();
+    const freshConfig = pluginRegistry.getConfig();
     dispatch({ type: "SET_CONFIG", config: freshConfig });
     const brokerTab = freshConfig.portfolios.find((portfolio) => portfolio.brokerInstanceId === instanceId);
     if (brokerTab) setActiveCollection(brokerTab.id);
@@ -101,20 +101,20 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (validationError) throw new Error(validationError);
 
       const brokerValues = buildBrokerProfileConfig(adapter, values);
-      const instance = await pluginRegistry.createBrokerInstanceFn(
+      const instance = await pluginRegistry.createBrokerInstance(
         brokerId,
         adapter.name.trim(),
         brokerValues as Record<string, unknown>,
       );
-      await pluginRegistry.syncBrokerInstanceFn(instance.id);
+      await pluginRegistry.syncBrokerInstance(instance.id);
       showConnectedBroker(instance.id);
     },
 
     async connectSignedInBroker(broker) {
       const connected = await connectSignedInBrokerProfile(broker, {
-        getConfig: () => pluginRegistry.getConfigFn(),
-        createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstanceFn(brokerType, label, values),
-        syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstanceFn(instanceId),
+        getConfig: () => pluginRegistry.getConfig(),
+        createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstance(brokerType, label, values),
+        syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstance(instanceId),
       });
       if (!connected) throw new Error(`${broker.name} was not connected.`);
       showConnectedBroker(connected.instance.id);
@@ -302,8 +302,8 @@ export function createCommandBarCollectionWorkflowActions(options: {
         throw new Error("Broker profile not found.");
       }
       const { stillConnected } = await disconnectSignedInProfile(instance);
-      await pluginRegistry.removeBrokerInstanceFn(instanceId);
-      const freshConfig = pluginRegistry.getConfigFn();
+      await pluginRegistry.removeBrokerInstance(instanceId);
+      const freshConfig = pluginRegistry.getConfig();
       dispatch({ type: "SET_CONFIG", config: freshConfig });
       if (stillConnected) {
         // Signed out of Gloom, so the account keeps the broker for its other devices and agents.

@@ -360,7 +360,7 @@ function createShotAppServices(payload: DesktopPaneShotPayload, externalPlugins:
       connectionHealth: createCliPaneShotConnectionHealth(),
     },
     configure({ pluginRegistry, marketData, newsService }) {
-      pluginRegistry.getPaneRuntimeStateFn = (paneId) => payload.paneState[paneId] ?? null;
+      pluginRegistry.bindHost({ getPaneRuntimeState: (paneId) => payload.paneState[paneId] ?? null });
       // Capability handlers are off, so nothing registers a news source and
       // every news pane rendered its empty state. The desktop view registers
       // the cloud feed by hand for the same reason; the proxied session makes

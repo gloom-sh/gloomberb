@@ -174,17 +174,11 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       notify: (notification) => { pluginRegistry.notify(notification); },
     });
   }, [pluginRegistry, rendererHost, sharePayload]);
-  useEffect(() => {
-    const share = () => { void sharePane(); };
-    pluginRegistry.sharePaneFn = share;
-    return () => {
-      if (pluginRegistry.sharePaneFn === share) pluginRegistry.sharePaneFn = () => {};
-    };
-  }, [pluginRegistry, sharePane]);
+  useEffect(() => pluginRegistry.bindHost({ sharePane: () => { void sharePane(); } }), [pluginRegistry, sharePane]);
 
 
   const togglePaneLock = useCallback(() => {
-    void pluginRegistry.applyPaneSettingValueFn(
+    void pluginRegistry.applyPaneSettingValue(
       desktopWindowBridge.paneId,
       { key: PANE_LOCK_SETTING_KEY, label: "Lock Pane", type: "toggle" },
       !locked,
@@ -228,7 +222,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         id: "settings",
         label: "Settings",
         accelerator: accelerators.settings,
-        onSelect: () => pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId),
+        onSelect: () => pluginRegistry.openPaneSettings(desktopWindowBridge.paneId),
       });
     }
     if (sharePayload) {
@@ -326,7 +320,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     let handled = true;
     switch (shortcut) {
       case "settings":
-        if (hasPaneSettings) pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
+        if (hasPaneSettings) pluginRegistry.openPaneSettings(desktopWindowBridge.paneId);
         else handled = false;
         break;
       case "share":

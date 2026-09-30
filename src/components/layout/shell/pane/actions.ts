@@ -64,7 +64,7 @@ export function useShellPaneActions({
   width,
 }: UseShellPaneActionsOptions) {
   const openPaneSettings = useCallback((paneId: string) => {
-    pluginRegistry.openPaneSettingsFn(paneId);
+    pluginRegistry.openPaneSettings(paneId);
     closePaneMenu();
   }, [closePaneMenu, pluginRegistry]);
 
@@ -171,7 +171,7 @@ export function useShellPaneActions({
       paneTypes: pluginRegistry.panes,
       apply: persistLayout,
       notify: pluginRegistry.notify,
-      onRevert: () => pluginRegistry.updateLayoutFn(visibleLayout),
+      onRevert: () => pluginRegistry.updateLayout(visibleLayout),
     });
     return true;
   }, [contentHeight, persistLayout, pluginRegistry, visibleLayout, width]);

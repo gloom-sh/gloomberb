@@ -146,7 +146,7 @@ function installQuickAddRegistry(provider: DataProvider): PluginRegistry {
   const persistence = new AppPersistence(createTempDbPath("quick-add"));
   tempPersistences.push(persistence);
   const registry = new PluginRegistry(provider, new TickerRepository(persistence.tickers), persistence);
-  registry.getConfigFn = () => harnessState?.config ?? createDefaultConfig("/tmp/gloomberb-portfolio-list");
+  registry.bindHost({ getConfig: () => harnessState?.config ?? createDefaultConfig("/tmp/gloomberb-portfolio-list") });
   return registry;
 }
 

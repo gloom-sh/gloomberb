@@ -31,7 +31,7 @@ type MutablePaneRegistry = {
 };
 
 type PaneCreationRegistry = {
-  createPaneFromTemplateAsyncFn: (templateId: string, options?: PaneTemplateCreateOptions) => unknown;
+  createPaneFromTemplateAsync: (templateId: string, options?: PaneTemplateCreateOptions) => unknown;
 };
 
 function mutableRegistryMap(map: ReadonlyMap<string, unknown>): Map<string, unknown> {
@@ -39,7 +39,7 @@ function mutableRegistryMap(map: ReadonlyMap<string, unknown>): Map<string, unkn
 }
 
 function recordPaneCreations(pluginRegistry: PaneCreationRegistry, created: CreatedPaneCall[]): void {
-  pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+  pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
     created.push({ templateId, options });
   };
 }
@@ -625,7 +625,7 @@ describe("CommandBar pane and layout routes", () => {
           type: "text",
           description: "Ticker symbol to track",
         }]);
-        pluginRegistry.applyPaneSettingValueFn = async (paneId, field, value) => {
+        pluginRegistry.applyPaneSettingValue = async (paneId, field, value) => {
           appliedValues.push({ paneId, key: field.key, value });
         };
       }}
@@ -735,7 +735,7 @@ describe("CommandBar pane and layout routes", () => {
           type: "text",
           description: "Ticker symbol to track",
         }]);
-        pluginRegistry.applyPaneSettingValueFn = async (paneId, field, value) => {
+        pluginRegistry.applyPaneSettingValue = async (paneId, field, value) => {
           appliedValues.push({ paneId, key: field.key, value });
         };
       }}

@@ -42,7 +42,7 @@ export function resolveWindowTemplates(registry: SharedRegistry): HelpShortcutEn
 
 function resolveDisabledPlugins(registry: SharedRegistry): Set<string> {
   try {
-    return new Set(registry?.getConfigFn?.().disabledPlugins ?? []);
+    return new Set(registry?.getConfig?.().disabledPlugins ?? []);
   } catch {
     return new Set();
   }

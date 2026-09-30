@@ -312,7 +312,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
           projection: { columns: [], filters: [] },
           presentation: { title: values.name },
         };
-        registry.updateLayoutFn(setPaneSettings(registry.getLayoutFn(), instance.instanceId, {
+        registry.updateLayout(setPaneSettings(registry.getLayout(), instance.instanceId, {
           ...instance.settings,
           ...customViewInstanceSettings(following),
         }));

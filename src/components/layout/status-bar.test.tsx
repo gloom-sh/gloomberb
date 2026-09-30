@@ -190,9 +190,9 @@ describe("StatusBar", () => {
 
     setSharedRegistryForTests({
       panes: new Map([["chat", { name: "Chat" }]]),
-      getLayoutFn: () => state.config.layout,
-      getTermSizeFn: () => ({ width: 120, height: 40 }),
-      updateLayoutFn: (layout: LayoutConfig) => { result.updatedLayout = layout; },
+      getLayout: () => state.config.layout,
+      getTermSize: () => ({ width: 120, height: 40 }),
+      updateLayout: (layout: LayoutConfig) => { result.updatedLayout = layout; },
       notify: (notification: AppNotificationRequest) => { result.notifications.push(notification); },
       renderSlot: () => null,
     } as any);

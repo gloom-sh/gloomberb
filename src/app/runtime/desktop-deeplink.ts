@@ -442,7 +442,7 @@ function handleOpenChatChannel(
         ...(action.messageId ? { values: { messageId: action.messageId } } : {}),
       }
     : undefined;
-  void pluginRegistry.createPaneFromTemplateAsyncFn("new-chat-pane", options).then(() => {
+  void pluginRegistry.createPaneFromTemplateAsync("new-chat-pane", options).then(() => {
     notifySuccess(pluginRegistry, action.message);
   }).catch((error) => {
     notifyError(pluginRegistry, error instanceof Error ? error.message : "Failed to open chat.");
@@ -474,7 +474,7 @@ function handleOpenNews(
       notifyError(pluginRegistry, "Ticker news is unavailable.");
       return;
     }
-    void pluginRegistry.createPaneFromTemplateAsyncFn("ticker-news-pane", { symbol: action.symbol }).then(() => {
+    void pluginRegistry.createPaneFromTemplateAsync("ticker-news-pane", { symbol: action.symbol }).then(() => {
       notifySuccess(pluginRegistry, action.message);
     }).catch((error) => {
       notifyError(pluginRegistry, error instanceof Error ? error.message : "Failed to open ticker news.");

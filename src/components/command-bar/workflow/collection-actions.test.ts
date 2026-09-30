@@ -110,8 +110,8 @@ describe("command-bar collection workflow actions", () => {
       persistConfig: () => {},
       pluginRegistry: {
         events: new EventBus(),
-        getConfigFn: () => ({ ...config, brokerInstances: [] }),
-        removeBrokerInstanceFn: async (instanceId: string) => { removed.push(instanceId); },
+        getConfig: () => ({ ...config, brokerInstances: [] }),
+        removeBrokerInstance: async (instanceId: string) => { removed.push(instanceId); },
       } as unknown as PluginRegistry,
       setActiveCollection: () => {},
       tickerRepository: {} as never,

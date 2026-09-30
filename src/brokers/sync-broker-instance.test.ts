@@ -665,6 +665,7 @@ describe("switching an account to sign-in", () => {
       brokers,
       persistence: { resources: new MemoryResourceStore() },
       events: { emit() {} },
+      bindHost(actions: object) { Object.assign(this, actions); return () => {}; },
     } as unknown as PluginRegistry;
     bindPluginRegistryRuntimeAccess({
       dataProvider: createTestDataProvider(),
@@ -676,7 +677,7 @@ describe("switching an account to sign-in", () => {
       tickerRepository: tickerRepository as any,
     });
     try {
-      await pluginRegistry.removeBrokerInstanceFn("ibkr-flex");
+      await pluginRegistry.removeBrokerInstance("ibkr-flex");
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }
@@ -778,6 +779,7 @@ describe("removing one of an account's profiles", () => {
       brokers: new Map<string, BrokerAdapter>([["ibkr", createDemoBroker()], ["signed-in", createSignedInBrokerAdapter()]]),
       persistence: { resources: new MemoryResourceStore() },
       events: { emit() {} },
+      bindHost(actions: object) { Object.assign(this, actions); return () => {}; },
     } as unknown as PluginRegistry;
     const synced: string[] = [];
     bindPluginRegistryRuntimeAccess({
@@ -790,7 +792,7 @@ describe("removing one of an account's profiles", () => {
       tickerRepository: new JsonTickerRepository(undefined, options.tickers) as any,
     });
     try {
-      await pluginRegistry.removeBrokerInstanceFn(options.instanceId);
+      await pluginRegistry.removeBrokerInstance(options.instanceId);
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

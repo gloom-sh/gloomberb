@@ -80,18 +80,18 @@ function createRegistryHarness(options: { withFloatingPane?: boolean; withCustom
     showPane: () => {},
     focusPane: () => {},
     hidePane: () => {},
-    createPaneFromTemplateAsyncFn: async (templateId: string, options: unknown) => {
+    createPaneFromTemplateAsync: async (templateId: string, options: unknown) => {
       createdFromTemplate.push({ templateId, options });
     },
     navigateTicker: () => {},
     pinTicker: () => {},
     selectTicker: () => {},
     switchTab: () => {},
-    getTermSizeFn: () => ({ width: 120, height: 40 }),
-    updateLayoutFn: (layout: AppState["config"]["layout"]) => {
+    getTermSize: () => ({ width: 120, height: 40 }),
+    updateLayout: (layout: AppState["config"]["layout"]) => {
       dispatch({ type: "UPDATE_LAYOUT", layout });
     },
-    applyPaneSettingValueFn: async () => {},
+    applyPaneSettingValue: async () => {},
     notify: () => {},
   } as unknown as PluginRegistry;
   let uiNodes: RemoteUiNodeSnapshot[] = [{ id: "ui:test", role: "button", label: "Test", actions: ["press"] }];

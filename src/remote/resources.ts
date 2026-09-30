@@ -195,7 +195,7 @@ export function createRemoteResources({
     if (resource === "app://layout/current") {
       return {
         value: state.config.layout,
-        apply: (value) => pluginRegistry.updateLayoutFn(value as LayoutConfig),
+        apply: (value) => pluginRegistry.updateLayout(value as LayoutConfig),
       };
     }
     if (resource.startsWith("app://pane-state/")) {
@@ -213,7 +213,7 @@ export function createRemoteResources({
         value: descriptor.context.settings,
         apply: (value) => {
           const nextLayout = setPaneSettings(getState().config.layout, descriptor.paneId, value as Record<string, unknown>);
-          pluginRegistry.updateLayoutFn(nextLayout);
+          pluginRegistry.updateLayout(nextLayout);
         },
       };
     }

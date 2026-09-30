@@ -120,14 +120,7 @@ export function useShellWindowMode({
     if (windowModePaneId) focusPane(windowModePaneId);
   }, [focusPane, windowModePaneId]);
 
-  useEffect(() => {
-    pluginRegistry.openWindowModeFn = startWindowMode;
-    return () => {
-      if (pluginRegistry.openWindowModeFn === startWindowMode) {
-        pluginRegistry.openWindowModeFn = () => {};
-      }
-    };
-  }, [pluginRegistry, startWindowMode]);
+  useEffect(() => pluginRegistry.bindHost({ openWindowMode: startWindowMode }), [pluginRegistry, startWindowMode]);
 
   const cancelWindowMode = useCallback(() => {
     setWindowMode(null);

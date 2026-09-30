@@ -393,7 +393,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     selectedBrokerId,
     importBrokerPositions,
     getConfig: () => stateRef.current.config,
-    createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstanceFn(brokerType, label, values),
+    createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstance(brokerType, label, values),
     onSynced: handleBrokerSynced,
     setEditingField,
     setPortfolioSub,

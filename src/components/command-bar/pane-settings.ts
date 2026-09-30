@@ -206,7 +206,7 @@ export function activatePaneSettingFieldAction(options: {
         ? { ...route, pendingFieldKey: field.key, error: null }
         : route);
     }
-    void pluginRegistry.applyPaneSettingValueFn(paneId, field, !normalized.value)
+    void pluginRegistry.applyPaneSettingValue(paneId, field, !normalized.value)
       .then(() => {
         if (keepRouteOpen) {
           updateTopRoute((route) => route.kind === "pane-settings"

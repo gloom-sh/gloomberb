@@ -34,7 +34,7 @@ for (const savedDefault of [false, true]) {
           id: "earnings-estimates", paneId: "quote-monitor", label: "Earnings Estimates",
           description: "Research earnings estimates", shortcut: { prefix: "EE", argKind: "ticker" },
         });
-        registry.createPaneFromTemplateAsyncFn = async (templateId, options) => { created.push({ templateId, options }); };
+        registry.createPaneFromTemplateAsync = async (templateId, options) => { created.push({ templateId, options }); };
       }}
     />, { width: 100, height: 24 });
     await setup.renderOnce();

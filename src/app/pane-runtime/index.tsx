@@ -164,7 +164,7 @@ export function useAppPaneRuntime({
     paneDef: PaneDef,
     options?: PaneTemplateInstanceConfig,
   ) => {
-    const { width, height } = pluginRegistry.getTermSizeFn();
+    const { width, height } = pluginRegistry.getTermSize();
     // Templates can await ticker resolution before placing their pane, so the
     // layout from the render that started the request may be out of date.
     const { config: { layout }, focusedPaneId } = stateRef.current;
@@ -214,7 +214,7 @@ export function useAppPaneRuntime({
     }
 
     if (target.instance && isPaneInLayout(state.config.layout, target.instance.instanceId)) {
-      pluginRegistry.focusPaneFn(target.instance.instanceId);
+      pluginRegistry.focusPane(target.instance.instanceId);
       return;
     }
 

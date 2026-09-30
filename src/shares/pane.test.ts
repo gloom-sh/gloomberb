@@ -18,10 +18,10 @@ function registry(template?: PaneTemplateDef, pane: PaneDef = paneDef) {
     portable,
     panes: new Map([[pane.id, pane]]),
     paneTemplates: new Map(template ? [[template.id, template]] : []),
-    createPaneFromTemplateAsyncFn: async (templateId: string, options: unknown) => {
+    createPaneFromTemplateAsync: async (templateId: string, options: unknown) => {
       opened.push([templateId, options]);
     },
-    openPortablePaneShareAsyncFn: async (layout: LayoutMarketplacePayload) => {
+    openPortablePaneShareAsync: async (layout: LayoutMarketplacePayload) => {
       portable.push(layout);
     },
   } as any;

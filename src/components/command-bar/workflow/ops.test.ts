@@ -265,11 +265,11 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
       template: { id: "template", paneId: "chat", label: "Chat", description: "Chat", createInstance: () => spec },
       pane: { id: "chat", name: "Chat", component: () => null },
       registry: {
-        focusPaneFn: (paneId: string, nextLayout?: LayoutConfig) => {
+        focusPane: (paneId: string, nextLayout?: LayoutConfig) => {
           focused.push(paneId);
           if (batchedFloating) layouts.push(bringToFront(nextLayout ?? state.config.layout, paneId));
         },
-        updateLayoutFn: (next: LayoutConfig) => {
+        updateLayout: (next: LayoutConfig) => {
           layouts.push(next);
           if (!batchedFloating) state.config.layout = next;
         },
