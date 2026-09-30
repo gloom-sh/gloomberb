@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useEffect, useState } from "react";
-import { getDockedPaneIds } from "../../plugins/pane-manager";
+import { getDockedPaneIds } from "../../layout/pane-manager";
 import { setSharedRegistryForTests } from "../../plugins/registry";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";

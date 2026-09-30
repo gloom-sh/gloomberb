@@ -6,9 +6,9 @@ import {
   getDockedPaneIds,
   isPaneInLayout,
   isPaneDocked,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
-import { findFixedTickerPaneForSymbol } from "../../plugins/ticker-navigation";
+import { findFixedTickerPaneForSymbol } from "../../layout/ticker-navigation";
 import type { AppAction, AppState } from "../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID, normalizePaneId } from "../../types/config";
 import type {

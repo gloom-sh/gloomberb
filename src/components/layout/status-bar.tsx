@@ -32,7 +32,7 @@ import { getSharedRegistry } from "../../plugins/registry";
 import {
   shouldShowTidyWindows,
   tidyWindows,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
 import type { LayoutConfig } from "../../types/config";

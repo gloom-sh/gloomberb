@@ -2,7 +2,7 @@ import type { PaneRuntimeState } from "../../core/state/app/state";
 import { deletePaneSetting, setPaneSetting } from "../../pane-settings";
 import type { LayoutConfig } from "../../types/config";
 import type { PluginPaneSettingsState, PluginResumeState } from "../../types/plugin";
-import { deletePluginPaneStateValue, setPluginPaneStateValue } from "../pane-state";
+import { deletePluginPaneStateValue, setPluginPaneStateValue } from "../../layout/pane-state";
 
 export class RegistryResumeStateListeners {
   private listeners = new Map<string, Set<() => void>>();

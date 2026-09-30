@@ -2,7 +2,7 @@ export {
   MIN_FLOAT_HEIGHT,
   MIN_FLOAT_WIDTH,
   type FloatingRect,
-} from "./pane-manager/floating";
+} from "./floating";
 
 export {
   findDockLeaf,
@@ -15,7 +15,7 @@ export {
   type DockLeafLayout,
   type DockResizeTarget,
   type LayoutBounds,
-} from "./pane-manager/dock-tree";
+} from "./dock-tree";
 
 export {
   getLayoutPreview,
@@ -26,7 +26,7 @@ export {
   resolveDocked,
   resolveFloating,
   type ResolvedPane,
-} from "./pane-manager/queries";
+} from "./queries";
 
 export {
   addPaneFloating,
@@ -37,7 +37,7 @@ export {
   getRememberedFloatingRect,
   moveFloatingPane,
   resizeFloatingPaneFromCorner,
-} from "./pane-manager/floating-actions";
+} from "./floating-actions";
 
 export {
   addPaneToLayout,
@@ -47,22 +47,22 @@ export {
   resizeSplitAtPath,
   simulateDrop,
   swapPanes,
-} from "./pane-manager/docking";
+} from "./docking";
 
 export {
   removeFloatingPanes,
   removePane,
   removeUnavailablePaneTypes,
   type PaneTypeAvailability,
-} from "./pane-manager/layout-state";
+} from "./layout-state";
 export {
   analyzeFloatingPaneVisibility,
   gridlockAllPanes,
   shouldShowTidyWindows,
   tidyWindows,
   type FloatingPaneVisibility,
-} from "./pane-manager/gridlock";
+} from "./gridlock";
 export type {
   DropTarget,
   FloatingResizeCorner,
-} from "./pane-manager/types";
+} from "./types";

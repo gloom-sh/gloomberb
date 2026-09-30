@@ -6,7 +6,7 @@ import { PANE_LOCK_SETTING_KEY } from "../../../pane-settings";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput, resolveTickerInputOrThrow, resolveTickerListInput } from "./ops";
 import type { TickerRecord } from "../../../types/ticker";
-import { bringToFront } from "../../../plugins/pane-manager/floating-actions";
+import { bringToFront } from "../../../layout/pane-manager/floating-actions";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import { createTestTicker } from "../../../test-support/ticker";
 

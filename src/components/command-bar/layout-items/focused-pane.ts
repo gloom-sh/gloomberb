@@ -3,7 +3,7 @@ import {
   floatPane,
   getDockedPaneIds,
   removePane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import { findPaneInstance } from "../../../types/config";
 import type { ResultItem } from "../list/model";
 import type { LayoutItemsContext } from "./types";

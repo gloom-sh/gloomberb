@@ -4,7 +4,7 @@ import {
   floatPane,
   removePane,
   type ResolvedPane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
 import { isPaneLocked, setPaneLocked } from "../../../pane-settings";

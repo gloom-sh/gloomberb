@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../types/config";
+import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import {
   addPaneFloating,
   analyzeFloatingPaneVisibility,
@@ -15,7 +15,7 @@ import {
   moveFloatingPane,
   resizeFloatingPaneFromCorner,
   simulateDrop,
-} from "./pane-manager";
+} from "./index";
 
 const BOUNDS = { x: 0, y: 0, width: 120, height: 40 };
 

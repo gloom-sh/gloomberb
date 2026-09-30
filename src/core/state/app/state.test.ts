@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { appReducer, createInitialState, resolveCollectionForPane, resolveTickerForPane, type AppState } from "./state";
 import { cloneLayout, createBlankLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../types/config";
 import type { AppSessionSnapshot } from "../session-persistence";
-import { removePane } from "../../../plugins/pane-manager";
+import { removePane } from "../../../layout/pane-manager";
 import { buildBrokerPortfolioId } from "../../../utils/broker-instances";
 import { createTestFinancials } from "../../../test-support/data-provider";
 

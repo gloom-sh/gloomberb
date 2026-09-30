@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";

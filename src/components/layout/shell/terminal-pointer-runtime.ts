@@ -5,7 +5,7 @@ import type {
   FloatingRect,
   LayoutBounds,
   ResolvedPane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import {
   constrainFloatingRectToBounds,
   pointInRect,

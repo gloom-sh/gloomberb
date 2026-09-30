@@ -1,5 +1,5 @@
 import { updatePaneInstance } from "../../../pane-settings";
-import { listVisibleTickerSourcePanes } from "../../../plugins/ticker-navigation";
+import { listVisibleTickerSourcePanes } from "../../../layout/ticker-navigation";
 import { resolveTickerForPane, type AppState } from "../../../state/app/context";
 import {
   TICKER_RESEARCH_PANE_ID,

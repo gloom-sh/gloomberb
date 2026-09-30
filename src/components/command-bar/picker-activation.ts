@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { signedInBrokerForProfile } from "../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../brokers/signed-in/profile";
 import type { PluginRegistry } from "../../plugins/registry";
-import { swapPanes } from "../../plugins/pane-manager";
+import { swapPanes } from "../../layout/pane-manager";
 import type { LayoutConfig } from "../../types/config";
 import type { PaneSettingField } from "../../types/plugin";
 import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";

@@ -12,7 +12,7 @@ import {
   removePane,
   swapPanes,
   tidyWindows,
-} from "../../pane-manager";
+} from "../../../layout/pane-manager";
 
 let dispatchRef: ((action: AppAction) => void) | null = null;
 let getStateRef: (() => { layout: LayoutConfig; termWidth: number; termHeight: number; focusedPaneId: string | null }) | null = null;

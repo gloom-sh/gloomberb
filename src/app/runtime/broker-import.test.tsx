@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { setConfigStoreHost, type ConfigStoreHost } from "../../data/config/store";
-import { addPaneToLayout, getDockedPaneIds, isPaneInLayout } from "../../plugins/pane-manager";
+import { addPaneToLayout, getDockedPaneIds, isPaneInLayout } from "../../layout/pane-manager";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../state/app/context";
 import { createDefaultConfig, createPaneInstance, type AppConfig, type BrokerInstanceConfig } from "../../types/config";
 import type { BrokerAdapter } from "../../types/broker";

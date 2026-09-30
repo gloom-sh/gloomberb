@@ -1,6 +1,6 @@
 import { useEffect, type Dispatch } from "react";
 import { apiClient } from "../../api-client";
-import { getDockedPaneIds } from "../../plugins/pane-manager";
+import { getDockedPaneIds } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
 import {

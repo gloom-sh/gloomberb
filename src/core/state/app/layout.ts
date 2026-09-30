@@ -1,4 +1,4 @@
-import { getDockLeafLayouts, getDockedPaneIds } from "../../../plugins/pane-manager";
+import { getDockLeafLayouts, getDockedPaneIds } from "../../../layout/pane-manager";
 import {
   cloneLayout,
   findPaneInstance,

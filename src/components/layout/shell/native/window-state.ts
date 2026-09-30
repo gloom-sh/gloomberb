@@ -1,4 +1,4 @@
-import type { DockDividerLayout, FloatingRect, LayoutBounds } from "../../../../plugins/pane-manager";
+import type { DockDividerLayout, FloatingRect, LayoutBounds } from "../../../../layout/pane-manager";
 import type { NativeOccluder, NativePaneLayer } from "../../../chart/native/surface/manager";
 import { DEFAULT_HEADER_HEIGHT } from "../chrome";
 import type { DragPreview, HoverOverlay } from "../drag";

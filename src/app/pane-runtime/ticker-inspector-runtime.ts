@@ -3,12 +3,12 @@ import {
   addPaneFloating,
   addPaneToLayout,
   findDockLeaf,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import {
   findTickerResearchFollower,
   listVisibleTickerSourcePanes,
-} from "../../plugins/ticker-navigation";
+} from "../../layout/ticker-navigation";
 import type {
   AppAction,
   AppState,

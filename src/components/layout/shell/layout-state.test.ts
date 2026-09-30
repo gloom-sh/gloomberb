@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getDockedPaneIds } from "../../../plugins/pane-manager";
+import { getDockedPaneIds } from "../../../layout/pane-manager";
 import { createPaneInstance, type LayoutConfig } from "../../../types/config";
 import { resolveShellVisibleLayout } from "./visible-layout";
 

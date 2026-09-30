@@ -10,7 +10,7 @@ import {
 import {
   addPaneFloating,
   addPaneToLayout,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { PinTickerOptions } from "../../types/plugin";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";

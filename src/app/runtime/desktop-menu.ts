@@ -1,5 +1,5 @@
 import { useEffect, type Dispatch } from "react";
-import { tidyWindows } from "../../plugins/pane-manager";
+import { tidyWindows } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { DesktopApplicationMenuBridge } from "../../types/desktop-menu";

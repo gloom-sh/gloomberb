@@ -1,7 +1,7 @@
 import { findPaneInstance, type AppConfig } from "../../types/config";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { getDockedPaneIds } from "../../plugins/pane-manager";
+import { getDockedPaneIds } from "../../layout/pane-manager";
 import { normalizeBuiltinPaneStatePluginOwners } from "../../plugins/ownership";
 import { canonicalExchange, normalizeSymbol } from "../../utils/exchanges";
 import { instrumentFromTicker } from "../../market-data/request-types";

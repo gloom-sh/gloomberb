@@ -1,4 +1,4 @@
-import { getDockedPaneIds } from "../plugins/pane-manager";
+import { getDockedPaneIds } from "../layout/pane-manager";
 import type { AppState } from "../state/app/context";
 import type { LayoutConfig, PaneInstanceConfig } from "../types/config";
 import { revisionFor } from "./revision";

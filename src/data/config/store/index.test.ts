@@ -10,7 +10,7 @@ import {
   findPaneInstance,
   type AppConfig,
 } from "../../../types/config";
-import { getDockedPaneIds } from "../../../plugins/pane-manager";
+import { getDockedPaneIds } from "../../../layout/pane-manager";
 import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "../../../plugins/seed";
 
 const tempDirs: string[] = [];

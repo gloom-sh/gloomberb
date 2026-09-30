@@ -2,7 +2,7 @@ import type { AppSessionSnapshot } from "../../../../../core/state/session-persi
 import { clonePaneStateMap, syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../../../core/state/app/state";
 import { cloneLayout, findPaneInstance, type AppConfig, type LayoutConfig } from "../../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../../types/desktop-window";
-import { detachPaneToFrame, dockPane, insertAtRootEdge, removePane } from "../../../../../plugins/pane-manager";
+import { detachPaneToFrame, dockPane, insertAtRootEdge, removePane } from "../../../../../layout/pane-manager";
 import type { WindowFrame } from "../../window/frame";
 
 function cloneSavedLayouts(config: AppConfig): AppConfig["layouts"] {

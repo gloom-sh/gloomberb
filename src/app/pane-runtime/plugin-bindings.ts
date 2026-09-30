@@ -20,14 +20,14 @@ import { materializeMarketplaceLayout } from "../../layout-marketplace/payload";
 import {
   isPaneInLayout,
   removePane,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import { reportCrash } from "../../telemetry/crash-reports";
 import { recordFunctionOpen, usageFunctionForPane } from "../../telemetry/usage-counts";
 import {
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
-} from "../../plugins/ticker-navigation";
+} from "../../layout/ticker-navigation";
 import type {
   AppAction,
   AppState,

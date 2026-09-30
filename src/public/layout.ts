@@ -8,5 +8,5 @@
  *
  * Compatibility commitment: see the note in `./utils.ts`.
  */
-export { openPaneForLaunch, seedPaneLaunchSession } from "../plugins/launch-layout";
-export type { PaneLaunchPlacement } from "../plugins/launch-layout";
+export { openPaneForLaunch, seedPaneLaunchSession } from "../layout/launch-layout";
+export type { PaneLaunchPlacement } from "../layout/launch-layout";

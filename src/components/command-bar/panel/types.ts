@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 import type {
   InputRenderable,
   ScrollBoxRenderable,

@@ -16,8 +16,8 @@ import { usePluginRenderContext } from "./context";
 
 const DEFAULT_PLUGIN_PANE_STATE_COMMIT_DELAY_MS = 300;
 
-import { deletePluginPaneStateValue, getPluginPaneStateValue } from "../pane-state";
-export { deletePluginPaneStateValue, getPluginPaneStateValue, setPluginPaneStateValue } from "../pane-state";
+import { deletePluginPaneStateValue, getPluginPaneStateValue } from "../../layout/pane-state";
+export { deletePluginPaneStateValue, getPluginPaneStateValue, setPluginPaneStateValue } from "../../layout/pane-state";
 
 /**
  * Removes this plugin's pane-state keys that match `shouldDrop`. Pane state is

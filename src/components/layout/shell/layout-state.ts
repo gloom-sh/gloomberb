@@ -4,7 +4,7 @@ import {
   resolveFloating,
   type FloatingRect,
   type ResolvedPane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
 import { constrainFloatingRectToBounds } from "./drag";

@@ -11,7 +11,7 @@ import { instrumentFromTicker, type InstrumentRef } from "../../market-data/requ
 import { instrumentIdentityKey } from "../../utils/instrument-identity";
 import { resolveCollectionForPane } from "../../core/state/app/layout";
 import { hasAmbiguousTickerContracts, resolveInstrumentForPane } from "../../core/state/app/instrument";
-import { getDockedPaneIds } from "../../plugins/pane-manager";
+import { getDockedPaneIds } from "../../layout/pane-manager";
 import { debugLog } from "../../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../../utils/perf-marks";
 

@@ -9,7 +9,7 @@ import {
 import type { SelectFieldHandle } from "../../ui/select-field";
 import type { ScrollBoxRenderable } from "../../../ui";
 import type { AppState } from "../../../state/app/context";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { CommandBarPanelProps } from "./types";
 import { useCommandBarKeyboardShortcuts } from "../keyboard-shortcuts";

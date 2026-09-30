@@ -1,4 +1,4 @@
-import { getDockedPaneIds } from "../../plugins/pane-manager";
+import { getDockedPaneIds } from "../../layout/pane-manager";
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";

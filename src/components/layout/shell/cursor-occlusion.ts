@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { useNativeRenderer, type NativeCursorState, type NativePostProcessFn } from "../../../ui";
-import type { FloatingRect, LayoutBounds, ResolvedPane } from "../../../plugins/pane-manager";
+import type { FloatingRect, LayoutBounds, ResolvedPane } from "../../../layout/pane-manager";
 import { constrainFloatingRectToBounds } from "./drag";
 
 interface VisibleFloatingPane {

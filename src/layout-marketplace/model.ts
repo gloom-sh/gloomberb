@@ -5,7 +5,7 @@ import {
   type LayoutOrigin,
   type PaneInstanceConfig,
 } from "../types/config";
-import { getDockedPaneIds } from "../plugins/pane-manager";
+import { getDockedPaneIds } from "../layout/pane-manager";
 import type { PaneDef } from "../types/plugin";
 import type { PaneRuntimeState } from "../core/state/app/types";
 import { fuzzyFilter } from "../utils/fuzzy-search";

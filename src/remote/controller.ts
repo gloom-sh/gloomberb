@@ -6,7 +6,7 @@ import {
   insertAtRootEdge,
   removeFloatingPanes,
   tidyWindows,
-} from "../plugins/pane-manager";
+} from "../layout/pane-manager";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
 import { PANE_LOCK_SETTING_KEY, setPaneSettings, updatePaneInstance } from "../pane-settings";

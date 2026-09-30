@@ -7,7 +7,7 @@ import {
   type FloatingRect,
   type FloatingResizeCorner,
   type LayoutBounds,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import {
   normalizeWindowEditFocus,
   pathKey,

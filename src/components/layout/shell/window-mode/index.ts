@@ -8,7 +8,7 @@ import {
   isPaneInLayout,
   type DockGeometryOptions,
   type LayoutBounds,
-} from "../../../../plugins/pane-manager";
+} from "../../../../layout/pane-manager";
 import type { PluginRegistry, WindowEditMode } from "../../../../plugins/registry";
 import type { LayoutConfig } from "../../../../types/config";
 import {

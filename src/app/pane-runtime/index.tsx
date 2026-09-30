@@ -7,7 +7,7 @@ import {
   findDockLeaf,
   getDockedPaneIds,
   isPaneInLayout,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import {

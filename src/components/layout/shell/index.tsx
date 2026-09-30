@@ -12,7 +12,7 @@ import {
   type DockGeometryOptions,
   type LayoutBounds,
   type ResolvedPane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
 import { contextMenuDivider } from "../../../types/context-menu";

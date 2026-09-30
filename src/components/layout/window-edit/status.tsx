@@ -2,7 +2,7 @@ import { Box, Text } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { higherContrast } from "../../../theme/color-utils";
 import { truncateToDisplayWidth } from "../../../utils/format";
-import type { FloatingResizeCorner, FloatingRect, LayoutBounds, DockGeometryOptions } from "../../../plugins/pane-manager";
+import type { FloatingResizeCorner, FloatingRect, LayoutBounds, DockGeometryOptions } from "../../../layout/pane-manager";
 import {
   windowEditHasPendingCommit,
   type WindowEditState,

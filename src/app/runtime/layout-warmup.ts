@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { resolveInstrumentForPane } from "../../core/state/app/instrument";
 import type { InstrumentRef } from "../../market-data/request-types";
 import { instrumentIdentityKey } from "../../utils/instrument-identity";
-import { getDockedPaneIds } from "../../plugins/pane-manager/dock-tree";
+import { getDockedPaneIds } from "../../layout/pane-manager/dock-tree";
 import type { AppConfig } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
 import { recordPerfSample } from "../../utils/perf-marks";

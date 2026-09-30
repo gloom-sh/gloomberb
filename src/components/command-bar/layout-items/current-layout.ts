@@ -1,7 +1,7 @@
 import {
   removeFloatingPanes,
   tidyWindows,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import {
   DEFAULT_LAYOUT,
   cloneLayout,
