@@ -28,8 +28,38 @@ function bundledDescriptors(): readonly WebBundledPluginDescriptor[] {
   return typeof __GLOOM_WEB_PLUGINS__ === "undefined" ? [] : __GLOOM_WEB_PLUGINS__;
 }
 
+/**
+ * What each browser says when the module file itself could not be fetched,
+ * as opposed to a module that loaded and threw.
+ */
+const MODULE_FETCH_FAILURE = /dynamically imported module|importing a module script failed/i;
+const RETRY_DELAY_MS = 1_000;
+
+type ModuleImporter = (url: string) => Promise<unknown>;
+
+const importModule: ModuleImporter = (url) => import(/* @vite-ignore */ url);
+
+/**
+ * A plugin fetch can fail for a moment, during a deploy or on a flaky
+ * network, and the web terminal then ran the whole session without that
+ * plugin (about 30 visitors on one deploy day). Browsers remember a failed
+ * module URL, so the one retry asks for a fresh copy under a new query.
+ */
+async function importWithRetry(url: string, load: ModuleImporter, delayMs: number): Promise<unknown> {
+  try {
+    return await load(url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!MODULE_FETCH_FAILURE.test(message)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return load(`${url}${url.includes("?") ? "&" : "?"}retry=${Date.now()}`);
+  }
+}
+
 export async function loadWebBundledPlugins(
   descriptors: readonly WebBundledPluginDescriptor[] = bundledDescriptors(),
+  load: ModuleImporter = importModule,
+  retryDelayMs = RETRY_DELAY_MS,
 ): Promise<LoadedExternalPlugin[]> {
   if (descriptors.length === 0) return [];
 
@@ -41,7 +71,7 @@ export async function loadWebBundledPlugins(
       path: descriptor.url,
     };
     try {
-      const plugin = pluginFromModule(await import(/* @vite-ignore */ descriptor.url));
+      const plugin = pluginFromModule(await importWithRetry(descriptor.url, load, retryDelayMs));
       if (!plugin) {
         const error = "Bundle did not export a valid GloomPlugin.";
         reportCrash(error, { kind: "plugin", plugin: descriptor.id });

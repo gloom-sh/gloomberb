@@ -39,3 +39,22 @@ test("loads each plugin module and contains a failure to the plugin that caused 
   expect(loaded[1]?.error).toContain("boom");
   expect(loaded[2]?.error).toContain("did not export a valid GloomPlugin");
 });
+
+test("retries a plugin whose module could not be fetched, under a fresh URL", async () => {
+  const requested: string[] = [];
+  const loaded = await loadWebBundledPlugins(
+    [{ id: "polls", name: "Polls", version: "1.0.0", url: "/assets/plugins/gloom-polls/index.js" }],
+    async (url) => {
+      requested.push(url);
+      if (requested.length === 1) {
+        throw new TypeError("Failed to fetch dynamically imported module: /assets/plugins/gloom-polls/index.js");
+      }
+      return { default: { id: "polls", name: "Polls", version: "1.0.0" } };
+    },
+    0,
+  );
+
+  expect(loaded[0]?.error).toBeUndefined();
+  expect(requested).toHaveLength(2);
+  expect(requested[1]).toMatch(/^\/assets\/plugins\/gloom-polls\/index\.js\?retry=\d+$/);
+});
