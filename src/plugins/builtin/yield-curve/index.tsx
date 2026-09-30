@@ -184,7 +184,8 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   const nodes = useMemo(() => points.flatMap((point) => point.yield != null && Number.isFinite(point.yield)
     ? [{ id: point.maturity, years: point.maturityYears, yield: point.yield }] : []), [points]);
   const forwardNodes = useMemo(() => current ? forwardCurve(nodes, current.basis, current.couponsPerYear) : [], [current, nodes]);
-  const forward = showForward && !differenceView ? forwardNodes : [];
+  // Beside a compare curve a third line is clutter, so the forward curve is for the curve alone.
+  const forward = showForward && !comparing ? forwardNodes : [];
 
   const selectDate = (value: string) => {
     try {
@@ -322,7 +323,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
         ...(comparing ? [{ id: "view", label: "View", inline: true, value: differenceView ? "difference" : "curve",
           options: [{ value: "curve", label: "Curves" }, { value: "difference", label: "Diff" }],
           onChange: (value: "curve" | "difference") => setView(value) }] : []),
-        ...(forwardNodes.length && !differenceView ? [{ id: "forward", kind: "toggle" as const, label: "1Y fwd", value: showForward,
+        ...(forwardNodes.length && !comparing ? [{ id: "forward", kind: "toggle" as const, label: "1Y fwd", value: showForward,
           onChange: setShowForward }] : []),
       ]}
       // The session actually shown; a requested date the field already shows is not repeated.
@@ -443,7 +444,7 @@ export const yieldCurveModule: PluginModule = {
     component: YieldCurvePane,
     defaultPosition: "right",
     defaultMode: "floating",
-    defaultFloatingSize: { width: 80, height: 28 },
+    defaultFloatingSize: { width: 92, height: 28 },
   }],
   paneTemplates: [{
     id: "yield-curve-pane",
