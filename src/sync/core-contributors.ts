@@ -57,6 +57,42 @@ function sanitizeUnknown(value: unknown): unknown {
   return output;
 }
 
+/**
+ * Puts back what `sanitizeUnknown` keeps off the wire. A pulled config never
+ * carries a token, password, key or local path, so taking it as-is deleted
+ * them on this device: any plugin setting changed elsewhere (an alert, a
+ * price level) wiped every plugin's saved credentials, and the user had to
+ * paste them again. Those values belong to this device, so they always win.
+ */
+function withLocalSensitiveValues(
+  pulled: Record<string, unknown>,
+  local: Record<string, unknown>,
+): Record<string, unknown> {
+  const output: Record<string, unknown> = { ...pulled };
+  for (const [key, localChild] of Object.entries(local)) {
+    if (SENSITIVE_KEY_PATTERN.test(key)) {
+      output[key] = localChild;
+    } else if (isRecord(output[key]) && isRecord(localChild)) {
+      output[key] = withLocalSensitiveValues(output[key] as Record<string, unknown>, localChild);
+    }
+  }
+  return output;
+}
+
+function withLocalPluginSecrets(
+  pulled: AppConfig["pluginConfig"],
+  local: AppConfig["pluginConfig"],
+): AppConfig["pluginConfig"] {
+  const next = { ...pulled };
+  for (const [pluginId, localState] of Object.entries(local)) {
+    if (!isRecord(localState)) continue;
+    // A plugin the other device has no settings for still keeps its secrets here.
+    const merged = withLocalSensitiveValues(next[pluginId] ?? {}, localState);
+    if (pluginId in next || Object.keys(merged).length > 0) next[pluginId] = merged;
+  }
+  return next;
+}
+
 function sanitizePortfolio(portfolio: Portfolio): Portfolio {
   return {
     id: portfolio.id,
@@ -635,7 +671,10 @@ function mergeConfigPayload(
     next.disabledPlugins = normalizeBuiltinDisabledPluginIds(payload.disabledPlugins);
   }
   if (canApply("pluginConfig") && isPluginStateMap(payload.pluginConfig)) {
-    next.pluginConfig = normalizeBuiltinPluginStateMap(payload.pluginConfig);
+    next.pluginConfig = withLocalPluginSecrets(
+      normalizeBuiltinPluginStateMap(payload.pluginConfig),
+      config.pluginConfig,
+    );
   }
 
   const layoutStateUntouched = config.layout === baselineConfig.layout
