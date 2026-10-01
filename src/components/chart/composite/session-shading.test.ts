@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createTestResolvedSeries } from "../../../test-support/time-series";
-import { extendedHoursSpans } from "./session-shading";
+import { extendedHoursSpans, writeSessionBreaksText } from "./session-shading";
 
 const NASDAQ_30M = createTestResolvedSeries({
   id: "px",
@@ -23,6 +23,11 @@ test("shades pre-market and after-hours bars, and after an early close, on intra
   const spans = extendedHoursSpans(NASDAQ_30M, dates, ratios);
   // Each span reaches halfway to the bars beside it.
   expect(spans.map(({ start, end }) => [start, end].map((ratio) => Math.round(ratio * 12)))).toEqual([[0, 1], [5, 9], [11, 12]]);
+  // The text plot rules only where a span meets a regular bar: not after the
+  // last bar loaded, which sits left of the plot's right edge.
+  const rows = [Array<string>(16).fill(" ")];
+  writeSessionBreaksText(rows, 16, extendedHoursSpans(NASDAQ_30M, dates, ratios.map((ratio) => ratio * 0.8)));
+  expect(rows[0]!.join("")).toBe(" ┊   ┊   ┊ ┊    ");
 
   expect(extendedHoursSpans({ ...NASDAQ_30M, historyResolution: "1d", timeBasis: { ...NASDAQ_30M.timeBasis!, cadenceMs: 86_400_000 } }, dates, ratios)).toEqual([]);
   expect(extendedHoursSpans({ ...NASDAQ_30M, timeBasis: { ...NASDAQ_30M.timeBasis!, exchange: undefined } }, dates, ratios)).toEqual([]);

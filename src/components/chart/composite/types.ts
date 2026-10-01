@@ -95,6 +95,17 @@ interface CompositeLastPriceMarker {
   yRatio: number;
 }
 
+/**
+ * A run of extended-hours bars on the plot, as x ratios, and whether a
+ * regular-session bar lies on each side of it.
+ */
+export interface CompositeExtendedHoursSpan {
+  start: number;
+  end: number;
+  startsAfterBar: boolean;
+  endsBeforeBar: boolean;
+}
+
 /** Volume traded at each price over the bars in view, drawn against the right edge. */
 export interface CompositeVolumeProfile {
   seriesId: string;
@@ -119,7 +130,7 @@ export interface CompositePanelScene {
   /** Present on a panel holding a volume-profile study. */
   volumeProfile?: CompositeVolumeProfile;
   /** Plot spans (x ratios) of intraday bars outside the regular session, shared by every panel. */
-  extendedHours?: ReadonlyArray<{ start: number; end: number }>;
+  extendedHours?: readonly CompositeExtendedHoursSpan[];
 }
 
 export interface CompositeCursorValue {

@@ -3,6 +3,7 @@ import { isIntradayResolution } from "../../../time-series/resolution";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { fillRect, parseHex } from "../native/raster/primitives";
 import { clamp } from "../../../utils/math";
+import type { CompositeExtendedHoursSpan } from "./types";
 
 const DAY_MS = 86_400_000;
 const SHADE_OPACITY = 0.08;
@@ -36,7 +37,7 @@ export function extendedHoursSpans(
   anchor: ResolvedSeries | undefined,
   dates: readonly Date[],
   ratios: readonly number[],
-): Array<{ start: number; end: number }> {
+): CompositeExtendedHoursSpan[] {
   const exchange = anchor?.timeBasis?.exchange;
   if (!anchor || !exchange || !isIntraday(anchor) || dates.length === 0) return [];
   const edge = (index: number, side: -1 | 1) => {
@@ -45,7 +46,7 @@ export function extendedHoursSpans(
     const gap = Math.abs((ratios[index - side] ?? ratio) - ratio);
     return clamp((ratio + (ratios[index + side] ?? ratio + side * gap)) / 2, 0, 1);
   };
-  const spans: Array<{ start: number; end: number }> = [];
+  const spans: CompositeExtendedHoursSpan[] = [];
   let first: number | null = null;
   dates.forEach((date, index) => {
     const outside = isRegular(exchange, date.getTime()) === false;
@@ -53,7 +54,7 @@ export function extendedHoursSpans(
     const closesRun = first !== null && (!outside || index === dates.length - 1);
     if (!closesRun) return;
     const last = outside ? index : index - 1;
-    spans.push({ start: edge(first!, -1), end: edge(last, 1) });
+    spans.push({ start: edge(first!, -1), end: edge(last, 1), startsAfterBar: first! > 0, endsBeforeBar: last < dates.length - 1 });
     first = null;
   });
   return spans;
@@ -64,7 +65,7 @@ export function paintExtendedHours(
   data: Uint8Array,
   width: number,
   height: number,
-  spans: ReadonlyArray<{ start: number; end: number }>,
+  spans: readonly CompositeExtendedHoursSpan[],
   color: string,
 ): void {
   const tint = parseHex(color);
@@ -81,11 +82,13 @@ export function paintExtendedHours(
 export function writeSessionBreaksText(
   rows: string[][],
   width: number,
-  spans: ReadonlyArray<{ start: number; end: number }>,
+  spans: readonly CompositeExtendedHoursSpan[],
 ): void {
   for (const span of spans) {
-    for (const ratio of [span.start, span.end]) {
-      // The plot's own edges are not a session break.
+    // Only where extended hours meet a regular bar: the first or last bar
+    // loaded, or the plot's own edge, is not a session break.
+    const breaks = [...(span.startsAfterBar ? [span.start] : []), ...(span.endsBeforeBar ? [span.end] : [])];
+    for (const ratio of breaks) {
       if (ratio <= 0 || ratio >= 1) continue;
       const x = clamp(Math.round(ratio * Math.max(width - 1, 0)), 0, Math.max(width - 1, 0));
       for (const row of rows) {
