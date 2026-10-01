@@ -62,9 +62,18 @@ export function sessionVwap(
   return values;
 }
 
-/** VWAP from the first bar at or after `anchorTime`, never reset. */
-export function anchoredVwap(bars: readonly StudyBar[], anchorTime: number): VwapValue[] {
-  return sessionVwap(bars, (bar) => bar.time >= anchorTime ? 0 : null);
+/**
+ * VWAP from the bar that holds `anchorTime`, never reset: the first bar that
+ * ends after it, a bar lasting `barMs` or until the next one opens. An anchor
+ * picked on 5-minute bars still starts on its own day on daily bars, which
+ * are stamped at the day's start.
+ */
+export function anchoredVwap(bars: readonly StudyBar[], anchorTime: number, barMs = 0): VwapValue[] {
+  const start = bars.findIndex((bar, index) => (
+    Math.min(bar.time + barMs, bars[index + 1]?.time ?? Number.POSITIVE_INFINITY) > anchorTime
+    || bar.time >= anchorTime
+  ));
+  return sessionVwap(bars, (_bar, index) => start >= 0 && index >= start ? 0 : null);
 }
 
 /**

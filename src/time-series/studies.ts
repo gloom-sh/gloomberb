@@ -3,7 +3,7 @@ import { mergePriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { resolveCurrencyUnit } from "../utils/currency-units";
 import { isRealizedVolatilityEstimator, realizedVolatilityCadenceIssue, rollingRealizedVolatility } from "../market-data/realized-volatility";
 import { latestRegularSessionOpen } from "../market-data/market/freshness";
-import { isIntradayResolution, type ManualChartResolution } from "./resolution";
+import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, type ManualChartResolution } from "./resolution";
 import { anchoredVwap, averageTrueRange, sessionVwap, type StudyBar, type VwapValue } from "./trader-studies";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import type {
@@ -45,7 +45,12 @@ const KIND_COLORS: Partial<Record<ChartStudyKind, string>> = {
   "volume-profile": "#adb5bd",
   atr: "#63e6be",
 };
-const ANCHOR_COLORS = ["#b197fc", "#e599f7", "#ff8787", "#ffd43b", "#8ce99a", "#63e6be"];
+/**
+ * One per anchor, so eight lines never repeat a colour. None is red or pink
+ * (falling candles take the theme's negative), orange (VWAP), yellow (the
+ * first moving average) or blue (the price).
+ */
+const ANCHOR_COLORS = ["#b197fc", "#66d9e8", "#8ce99a", "#e599f7", "#9775fa", "#3bc9db", "#c0eb75", "#d0bfff"];
 
 function positiveInteger(value: unknown, fallback: number): number {
   return isFiniteNumber(value) && value > 0 ? Math.max(1, Math.floor(value)) : fallback;
@@ -435,6 +440,35 @@ function localDay(time: number, timeZone: string | undefined): number {
 }
 
 /**
+ * `step` at each of `times` (ascending) for a step function that never falls
+ * as time moves on, such as a session's open or a local day. It is asked at
+ * both ends of a run and a run whose ends agree takes that value throughout,
+ * so a few calendar lookups per session cover every bar. The live chart
+ * resolves on every quote, and a lookup per 1-minute bar took tens of
+ * milliseconds over a week.
+ */
+function risingSteps<T>(times: readonly number[], step: (time: number) => T): T[] {
+  const values = new Array<T>(times.length);
+  if (times.length === 0) return values;
+  const last = times.length - 1;
+  values[0] = step(times[0]!);
+  values[last] = step(times[last]!);
+  const fill = (from: number, to: number): void => {
+    if (to - from < 2) return;
+    if (values[from] === values[to]) {
+      values.fill(values[from]!, from + 1, to);
+      return;
+    }
+    const middle = (from + to) >> 1;
+    values[middle] = step(times[middle]!);
+    fill(from, middle);
+    fill(middle, to);
+  };
+  fill(0, last);
+  return values;
+}
+
+/**
  * Each bar's session, named by the regular open it follows, so the sums
  * restart at the open and a bar before it continues the previous session. A
  * venue without known hours starts over with each local day. The first
@@ -444,8 +478,10 @@ function localDay(time: number, timeZone: string | undefined): number {
 function regularSessionKeys(bars: readonly StudyBar[], input: ResolvedSeries): Array<number | null> {
   const exchange = input.timeBasis?.exchange;
   const step = input.timeBasis?.cadenceMs ?? 60_000;
-  const keys = bars.map((bar) => latestRegularSessionOpen(exchange, bar.time)
-    ?? -1 - localDay(bar.time, input.timeBasis?.timeZone));
+  const times = bars.map((bar) => bar.time);
+  const opens = risingSteps(times, (time) => latestRegularSessionOpen(exchange, time));
+  const days = opens.includes(null) ? risingSteps(times, (time) => localDay(time, input.timeBasis?.timeZone)) : [];
+  const keys = opens.map((open, index) => open ?? -1 - days[index]!);
   const first = keys[0];
   if (first !== undefined && first >= 0 && bars[0]!.time >= first + step) {
     return keys.map((key) => key === first ? null : key);
@@ -561,13 +597,15 @@ function resolveAnchoredVwap(
     return [];
   }
   const intraday = isIntradayInput(input, marketResolution);
+  const resolution = input.historyResolution ?? marketResolution;
+  const barMs = input.timeBasis?.cadenceMs ?? (resolution ? CHART_RESOLUTION_STEP_MS[resolution] : 0);
   return anchors.flatMap((anchor, offset) => {
     const label = `AVWAP ${formatAnchor(anchor, input, intraday)}`;
     if (!historyReaches(bars, anchor, input)) {
       warnings.push(`${label} starts before the loaded history; choose a longer range.`);
       return [];
     }
-    return vwapOutputs(spec, input, bars, anchoredVwap(bars, anchor), {
+    return vwapOutputs(spec, input, bars, anchoredVwap(bars, anchor, barMs), {
       id: `${spec.id}:${anchor}`,
       label,
       color: offset === 0 ? color : ANCHOR_COLORS[offset % ANCHOR_COLORS.length]!,

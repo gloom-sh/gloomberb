@@ -26,12 +26,15 @@ describe("session VWAP", () => {
     expect(values[2]).toEqual({ index: 3, value: 20, deviation: 0 });
   });
 
-  test("anchored VWAP starts at the first bar at or after its anchor and never resets", () => {
+  test("anchored VWAP starts at the bar holding its anchor and never resets", () => {
     const bars = [bar(0, 11, 9, 10, 100), bar(10, 12, 10, 11, 300), bar(20, 13, 11, 12, 100)];
     const values = anchoredVwap(bars, 5);
     expect(values.map((value) => value.index)).toEqual([1, 2]);
     expect(values[0]!.value).toBe(11);
     expect(values[1]!.value).toBeCloseTo(4500 / 400, 10);
+    // Ten-unit bars: the bar from 0 to 10 holds the anchor at 5.
+    expect(anchoredVwap(bars, 5, 10).map((value) => value.index)).toEqual([0, 1, 2]);
+    expect(anchoredVwap(bars, 10, 10).map((value) => value.index)).toEqual([1, 2]);
   });
 });
 
@@ -134,4 +137,15 @@ test("anchored VWAP draws one line per anchor and skips an anchor before the loa
   expect(first!.points.map((point) => point.value)).toEqual([11, 11.25, 5500 / 450]);
   expect(second!.points.map((point) => point.value)).toEqual([20]);
   expect(result.warnings).toEqual(["AVWAP Sep 28 11:00 starts before the loaded history; choose a longer range."]);
+
+  // Daily bars are stamped at midnight UTC: an anchor picked on the 09:35 bar
+  // still starts on its own day.
+  const daily = price([
+    ohlcv("2026-09-28T00:00:00Z", 11, 9, 10, 100),
+    ohlcv("2026-09-29T00:00:00Z", 12, 10, 11, 300),
+    ohlcv("2026-09-30T00:00:00Z", 13, 11, 12, 100),
+  ], { historyResolution: "1d", timeBasis: { ...NASDAQ_5M.timeBasis, cadenceMs: 86_400_000 } });
+  const [onDaily] = resolveStudies([daily], [study("anchored-vwap", withVwapAnchors({}, [anchors[0]!]))]).series;
+  expect(onDaily!.label).toBe("AVWAP Sep 29 2026");
+  expect(onDaily!.points.map((point) => point.value)).toEqual([11, 11.25]);
 });
