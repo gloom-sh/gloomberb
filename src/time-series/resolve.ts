@@ -1013,6 +1013,7 @@ function baseSecuritySeries(
     panelId: spec.panelId,
     interpolation: spec.interpolation,
     observationKind: marketField ? "market" : undefined,
+    ...(marketField ? { listing: { symbol: spec.source.instrument.symbol, exchange: marketExchange ?? "" } } : {}),
     timeBasis: marketTimeZone
       ? {
           kind: "market",

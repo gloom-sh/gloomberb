@@ -104,7 +104,9 @@ const TWO_SESSIONS = [
 describe("VWAP study", () => {
   test("resets at the regular open, not at midnight or the first pre-market bar", () => {
     const [vwap] = resolveStudies([price(TWO_SESSIONS)], [study("vwap")]).series;
-    expect(vwap!.points.map((point) => point.value)).toEqual([10, 10.75, 11, 20]);
+    // The line breaks just before the new session's first value.
+    expect(vwap!.points.map((point) => point.value)).toEqual([10, 10.75, 11, null, 20]);
+    expect(vwap!.points[3]!.date.toISOString()).toBe("2026-09-30T13:29:59.999Z");
   });
 
   test("leaves out a first session whose open is before the loaded bars", () => {
@@ -116,6 +118,27 @@ describe("VWAP study", () => {
     const outputs = resolveStudies([price(TWO_SESSIONS)], [study("vwap", { bands: 2 })]).series;
     expect(outputs.map((output) => output.label)).toEqual(["VWAP", "VWAP +2σ", "VWAP -2σ"]);
     expect(outputs[1]!.points[1]!.value).toBeCloseTo(10.75 + 2 * Math.sqrt(0.1875), 10);
+  });
+
+  test("restarts a futures session at its venue's open, across UTC midnight", () => {
+    // ES on CME Globex: no exchange time zone, so no time basis, only the listing.
+    const futures = createTestResolvedSeries({
+      id: "px",
+      unitGroup: "price:USD",
+      historyResolution: "30m",
+      observationKind: "market",
+      dataShape: "ohlcv",
+      listing: { symbol: "ES=F", exchange: "CME" },
+      points: [
+        ohlcv("2026-09-28T19:00:00Z", 11, 9, 10, 100), // 14:00 Central, Monday's session
+        ohlcv("2026-09-28T22:00:00Z", 21, 19, 20, 100), // 17:00 Central: Tuesday's session opens
+        ohlcv("2026-09-29T00:30:00Z", 23, 21, 22, 300), // 19:30 Central, past UTC midnight
+        ohlcv("2026-09-29T14:30:00Z", 25, 23, 24, 100), // 09:30 Central
+      ],
+    });
+    const [vwap] = resolveStudies([futures], [study("vwap")]).series;
+    // Monday's session began Sunday evening, before the loaded bars, so it is left out.
+    expect(vwap!.points.map((point) => point.value)).toEqual([20, (2000 + 6600) / 400, (2000 + 6600 + 2400) / 500]);
   });
 
   test("draws nothing on daily bars and says why", () => {

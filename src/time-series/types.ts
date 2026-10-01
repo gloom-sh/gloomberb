@@ -166,6 +166,11 @@ export interface ResolvedSeries {
   interpolation: SeriesInterpolation;
   /** Present only for exchange-traded market observations. */
   timeBasis?: ResolvedSeriesMarketTimeBasis;
+  /**
+   * The listing a market field reads, whose trading sessions studies such as
+   * VWAP follow. Set even where no exchange time zone is known (futures).
+   */
+  listing?: { symbol: string; exchange: string };
   /** Price/volume observations and their derived studies, including 24/7
    * markets. Independent of whether the chart compresses exchange sessions. */
   observationKind?: "market";

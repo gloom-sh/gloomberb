@@ -88,6 +88,27 @@ export function futuresGenericListing(symbol: string, exchange?: string | null):
   return !venue || venue === own || VENUE_NAMES[own]?.includes(venue) ? generic : null;
 }
 
+const FUTURES_VENUES = new Set(Object.values(ROOT_VENUES));
+
+/**
+ * The futures venue and contract root of a listing: a continuous contract
+ * (`ES=F`), a dated one (`CLZ26.NYM`), a generic (`CL1`) or the dollar index
+ * (`DX-Y.NYB`), on its venue's code or any name quotes give it. Null for a
+ * listing on a venue that is not one of the futures exchanges.
+ */
+export function futuresListingVenue(symbol: string, exchange?: string | null): { venue: string; root: string | null } | null {
+  const ticker = symbol.trim().toUpperCase();
+  const named = (exchange ?? "").trim().toUpperCase();
+  const venue = FUTURES_VENUES.has(named) ? named
+    : Object.entries(VENUE_NAMES).find(([, names]) => names.includes(named))?.[0] ?? null;
+  const coded = /^([A-Z0-9]{1,4}?)(?:=F|[FGHJKMNQUVXZ]\d{2}(?:\.[A-Z]+)?)$/.exec(ticker)?.[1]
+    ?? /^([A-Z]{2})-Y\.[A-Z]+$/.exec(ticker)?.[1];
+  const root = futuresGenericListing(ticker, venue ?? named)?.root ?? (coded ? ALIASES[coded] ?? coded : null);
+  if (venue) return { venue, root };
+  // Without a futures exchange, only a symbol that is plainly a contract names one.
+  return !named && root && ROOT_VENUES[root] && (coded || futuresGenericListing(ticker)) ? { venue: ROOT_VENUES[root]!, root } : null;
+}
+
 /**
  * Whether two listings are the same generic under any roll rule or adjustment
  * (CL1 and CL1F5R, TY1 and ZN1). The chart's Roll and Adjust controls rewrite

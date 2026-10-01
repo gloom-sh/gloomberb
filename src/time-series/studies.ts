@@ -2,7 +2,7 @@ import { alignTimeSeries, effectiveTimeSeriesPointTime, scalarPointValue } from 
 import { mergePriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { resolveCurrencyUnit } from "../utils/currency-units";
 import { isRealizedVolatilityEstimator, realizedVolatilityCadenceIssue, rollingRealizedVolatility } from "../market-data/realized-volatility";
-import { latestRegularSessionOpen } from "../market-data/market/freshness";
+import { latestTradingSessionOpen } from "../market-data/market/trading-sessions";
 import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, type ManualChartResolution } from "./resolution";
 import { anchoredVwap, averageTrueRange, sessionVwap, type StudyBar, type VwapValue } from "./trader-studies";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
@@ -468,18 +468,32 @@ function risingSteps<T>(times: readonly number[], step: (time: number) => T): T[
   return values;
 }
 
+/** When the session holding `time` opened on the input's listing, or null for a venue without known hours. */
+function sessionOpenOf(input: ResolvedSeries): (time: number) => number | null {
+  const symbol = input.listing?.symbol;
+  const exchange = input.listing?.exchange || input.timeBasis?.exchange;
+  return (time) => latestTradingSessionOpen(symbol, exchange, time);
+}
+
+/** The bar spacing: the requested cadence, else the history's resolution, else a minute. */
+function barStep(input: ResolvedSeries): number {
+  return input.timeBasis?.cadenceMs
+    ?? (input.historyResolution ? CHART_RESOLUTION_STEP_MS[input.historyResolution] : undefined)
+    ?? 60_000;
+}
+
 /**
- * Each bar's session, named by the regular open it follows, so the sums
- * restart at the open and a bar before it continues the previous session. A
- * venue without known hours starts over with each local day. The first
- * session is left out when the history begins after its open, since its sums
- * would be missing the bars before.
+ * Each bar's session, named by the open it follows, so the sums restart at
+ * the open and a bar before it continues the previous session: the regular
+ * open for stocks, the venue's published session open for futures (17:00
+ * Central on CME Globex). A venue without known hours starts over with each
+ * local day. The first session is left out when the history begins after its
+ * open, since its sums would be missing the bars before.
  */
 function regularSessionKeys(bars: readonly StudyBar[], input: ResolvedSeries): Array<number | null> {
-  const exchange = input.timeBasis?.exchange;
-  const step = input.timeBasis?.cadenceMs ?? 60_000;
+  const step = barStep(input);
   const times = bars.map((bar) => bar.time);
-  const opens = risingSteps(times, (time) => latestRegularSessionOpen(exchange, time));
+  const opens = risingSteps(times, sessionOpenOf(input));
   const days = opens.includes(null) ? risingSteps(times, (time) => localDay(time, input.timeBasis?.timeZone)) : [];
   const keys = opens.map((open, index) => open ?? -1 - days[index]!);
   const first = keys[0];
@@ -494,11 +508,18 @@ function vwapOutputs(
   input: ResolvedSeries,
   bars: ReadonlyArray<{ sample: NumericSample }>,
   values: readonly VwapValue[],
-  options: { id: string; label: string; color: string; bands: number },
+  options: { id: string; label: string; color: string; bands: number; sessionOf?: (index: number) => number | null },
 ): ResolvedSeries[] {
-  const at = (pick: (value: VwapValue) => number) => values.flatMap((value) => {
+  // A value opening a new session follows a missing one just before it, so
+  // the line restarts there instead of joining the sessions with a diagonal.
+  const at = (pick: (value: VwapValue) => number) => values.flatMap((value, position) => {
     const bar = bars[value.index];
-    return bar ? [derivedPoint(bar.sample, pick(value))] : [];
+    if (!bar) return [];
+    const point = derivedPoint(bar.sample, pick(value));
+    const previous = values[position - 1];
+    if (!previous || !options.sessionOf || options.sessionOf(previous.index) === options.sessionOf(value.index)) return [point];
+    const before = new Date(point.date.getTime() - 1);
+    return [{ ...derivedPoint(bar.sample, null), date: before, observedAt: before }, point];
   });
   const outputs = [outputSeries(spec, input, {
     id: options.id,
@@ -554,6 +575,7 @@ function resolveVwap(
     label,
     color,
     bands,
+    sessionOf: (index) => keys[index] ?? null,
   });
 }
 
@@ -578,8 +600,8 @@ function historyReaches(bars: readonly StudyBar[], anchor: number, input: Resolv
   if (first.time <= anchor) return true;
   const timeZone = input.timeBasis?.timeZone;
   if (localDay(first.time, timeZone) !== localDay(anchor, timeZone)) return false;
-  const open = latestRegularSessionOpen(input.timeBasis?.exchange, first.time);
-  return open === null || first.time < open + (input.timeBasis?.cadenceMs ?? DAY_MS);
+  const open = sessionOpenOf(input)(first.time);
+  return open === null || first.time < open + barStep(input);
 }
 
 function resolveAnchoredVwap(

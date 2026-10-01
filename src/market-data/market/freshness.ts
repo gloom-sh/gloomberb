@@ -33,6 +33,28 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   HKEX: 9 * 60 + 30,
   TWSE: 9 * 60,
   NSE: 9 * 60 + 15,
+  // Continuous trading opens, as each venue publishes them, for the venues
+  // whose closes are listed below.
+  FWB: 8 * 60,
+  SWX: 9 * 60,
+  VIE: 9 * 60,
+  OSL: 9 * 60,
+  ICEX: 9 * 60 + 30,
+  WSE: 9 * 60,
+  PSE: 9 * 60,
+  TPEX: 9 * 60,
+  BSE: 9 * 60 + 15,
+  ASX: 10 * 60,
+  SGX: 9 * 60,
+  KRX: 9 * 60,
+  KOSDAQ: 9 * 60,
+  NZX: 10 * 60,
+  SSE: 9 * 60 + 30,
+  SZSE: 9 * 60 + 30,
+  BMV: 8 * 60 + 30,
+  B3: 10 * 60,
+  BYMA: 11 * 60,
+  JSE: 9 * 60,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
 // early would let a copy fetched during the auction pass as final.
