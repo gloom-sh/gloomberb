@@ -53,8 +53,8 @@ const same = (value: string): FunctionFreshness => ({ free: value, pro: value })
 
 const DELAYED = "15 minutes delayed";
 const REAL_TIME = "Real-time";
-/** Stocks and ETFs: US listings stream on Pro; other venues are delayed on every plan. */
-const QUOTES: FunctionFreshness = { free: DELAYED, pro: "Real-time for US listings, other venues delayed" };
+/** Stocks and ETFs: US listings stream on Pro; other venues are delayed on every plan. Crypto streams on every plan. */
+const QUOTES: FunctionFreshness = { free: "15 minutes delayed, crypto real-time", pro: "Real-time for US listings and crypto, other venues delayed" };
 /** US option chains and the quotes behind them. */
 const OPTIONS: FunctionFreshness = { free: DELAYED, pro: REAL_TIME };
 const FX: FunctionFreshness = { free: DELAYED, pro: REAL_TIME };

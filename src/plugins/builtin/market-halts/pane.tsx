@@ -42,6 +42,7 @@ import {
 /** Halted rows flip to resumed on the clock alone, so the pane re-reads it. */
 const EMPTY_RECORDS: HaltRecord[] = [];
 const STATUS_TICK_MS = 15_000;
+const HALT_REFRESH_MS = 60_000;
 const HALT_FILTER_TABS = HALT_FILTERS.map((entry) => ({ label: entry.label, value: entry.value as string }));
 
 export function MarketHaltsPane({ focused, width, height }: PaneProps) {
@@ -56,7 +57,10 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => acquireMarketHaltsHealth(connectionHealth), [connectionHealth]);
   useEffect(() => { setNow(Date.now()); }, [fetchedAt]);
-  useAutoRefresh(fetchedAt, load);
+  // Halts start and lift within minutes; the app-wide interval (30 min by
+  // default) would show a halt long after it ended. Nasdaq's feed is meant
+  // to be polled.
+  useAutoRefresh(fetchedAt, load, { intervalMs: HALT_REFRESH_MS });
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), STATUS_TICK_MS);
