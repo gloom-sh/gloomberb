@@ -102,7 +102,8 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
         spotAsOf: openInterest.spotAsOf,
         delayed: openInterest.delayed,
         ...(dealer instanceof Error ? {} : {
-          gamma: { expiry: dealer.expiry ?? ALL_EXPIRIES, total: dealer.total, band: dealer.band, flip: dealer.flip,
+          gamma: { expiry: dealer.expiry ?? ALL_EXPIRIES, total: dealer.total, band: dealer.band,
+            bandWithBoxes: dealer.bandWithBoxes ?? null, boxes: dealer.boxes ?? [], flip: dealer.flip,
             unit: "dollars of dealer delta per 1% move", assumption: "dealers long calls, short puts", quotesAsOf: dealer.quotesAsOf },
         }),
         methodology: METHODOLOGY,

@@ -64,7 +64,12 @@ export interface GammaPayload {
   /** Expiries left out because their quotes gave no volatility. */
   missing: string[];
   total: { calls: number; puts: number; net: number } | null;
+  /** With box spreads left out (SPX, XSP). */
   band: { low: number; high: number; shareLow: number; shareHigh: number } | null;
+  /** Strikes read as box spread legs, taken out of both sides; absent from older servers. */
+  boxes?: Array<{ expiry: string; strike: number; contracts: number }>;
+  /** The band with the box spreads counted, when there are any. */
+  bandWithBoxes?: { low: number; high: number } | null;
   flip: number | null;
   strikes: GammaStrike[];
   quotesAsOf: string | null;

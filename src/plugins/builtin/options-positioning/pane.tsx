@@ -439,7 +439,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     { id: "flip", label: "Flip", value: formatLevel(gammaData.flip),
       detail: gammaData.flip == null ? "none within 15%" : `${formatDistance(gammaData.flip, gammaSpot)} vs spot` },
     ...(band ? [{ id: "band", label: "Dealer range", value: `${formatGamma(band.low)} to ${formatGamma(band.high)}`,
-      detail: `${shares} with dealers` }] : []),
+      detail: `${shares} with dealers${gammaData.boxes?.length ? ", boxes out" : ""}` }] : []),
     { id: "spot", label: "Spot", value: formatLevel(gammaSpot) },
   ], [band, colors.negative, colors.positive, gammaData, gammaSpot, shares]);
   // The assumption rides in the legend, where the numbers it changes are read; the
@@ -544,7 +544,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
             emptyStateTitle="No dealer gamma."
             getExportMetadata={() => [["unit", "dollars of dealer delta per 1% move"],
               ["assumption", "dealers long calls, short puts"], ["expiry", gammaData.expiry ?? "all"],
-              ["range low", band?.low ?? ""], ["range high", band?.high ?? ""], ["flip", gammaData.flip ?? ""],
+              ["range low", band?.low ?? ""], ["range high", band?.high ?? ""],
+              ...(gammaData.bandWithBoxes ? [["range with boxes low", gammaData.bandWithBoxes.low],
+                ["range with boxes high", gammaData.bandWithBoxes.high],
+                ["box legs left out", (gammaData.boxes ?? []).map((leg) => `${leg.expiry} ${leg.strike} x${leg.contracts}`).join("; ")]] : []),
+              ["flip", gammaData.flip ?? ""],
               ["open interest as of", gammaData.oiDate ?? ""], ["quotes as of", gammaData.quotesAsOf ?? ""]]}
             rootBefore={<ChartTableHeader width={width} height={bodyHeight} query={query} figures={gammaFigures}
               tableRows={gammaRows.length} tableChromeRows={chartTableChromeRows(GAMMA_COLUMNS, width)}
