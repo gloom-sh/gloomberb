@@ -30,7 +30,7 @@ const valueAt = (points: readonly CloudCurvePoint[] | undefined, tenor: string) 
 };
 const minus = (left: number | null, right: number | null) => left == null || right == null ? null : left - right;
 
-export function worldRows(payload: CloudWorldCurves): WorldRow[] {
+function worldRows(payload: CloudWorldCurves): WorldRow[] {
   return payload.curves.flatMap((entry): WorldRow[] => {
     if (!isCurveId(entry.curve.id)) return [];
     const now = (tenor: string) => valueAt(entry.points, tenor);

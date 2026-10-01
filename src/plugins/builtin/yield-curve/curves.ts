@@ -84,7 +84,7 @@ function pointsAt(points: readonly CloudCurvePoint[], asOf: string | null): Yiel
   }));
 }
 
-export function curveDataFromView(view: CloudCurveView, requestedDate: string): CurveData {
+function curveDataFromView(view: CloudCurveView, requestedDate: string): CurveData {
   return {
     curve: view.curve.id,
     requestedDate,
