@@ -788,6 +788,8 @@ interface CompositePanelSurfaceProps {
   /** A press on the plot: the pointer takes over from a keyboard placement. */
   onPointerPress: () => void;
   showTextFallback: boolean;
+  /** Set while the owner is picking a bar: a press picks instead of panning. */
+  onPickTime?: (date: Date) => void;
 }
 
 function CompositePanelSurface({
@@ -820,6 +822,7 @@ function CompositePanelSurface({
   keyboardToolDrag,
   onPointerPress,
   showTextFallback,
+  onPickTime,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const { cellHeightPx = 18, cellWidthPx = 8 } = useUiCapabilities();
@@ -1135,6 +1138,12 @@ function CompositePanelSurface({
     // a dialog over the plot must keep the focus it just took.
     if (isDesktopWeb) releaseEditableFocus(event);
     consumeChartMouseEvent(event);
+    if (onPickTime) {
+      const pointer = getLocalPlotPointer(event, plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1], renderer);
+      const date = pointer ? resolveCompositeCursorDate(scene, pointer.cellX) : null;
+      if (date) onPickTime(date);
+      return;
+    }
     // A keyboard-armed tool covers terminals that never forward modifier drags.
     const tool = resolveChartToolKind(event.modifiers) ?? armedTool;
     if (tool) {
@@ -1184,6 +1193,7 @@ function CompositePanelSurface({
     drawings,
     frame,
     onActivate,
+    onPickTime,
     onPointerPress,
     onSelectDrawing,
     panel,
@@ -1412,7 +1422,7 @@ function CompositePanelSurface({
         onMouseDragEnd={interactive && navigable ? resetDrag : undefined}
         onMouseScroll={interactive && navigable ? panFromWheel : undefined}
         onMouseOut={interactive ? clearCursor : undefined}
-        cursor={interactive ? toolDrag || !navigable ? "crosshair" : "grab" : undefined}
+        cursor={interactive ? toolDrag || !navigable || onPickTime ? "crosshair" : "grab" : undefined}
         data-gloom-interactive={interactive ? "true" : undefined}
         data-gloom-role={COMPOSITE_PANEL_ROLE}
         data-gloom-remote-kind={remoteKind}
@@ -1830,6 +1840,7 @@ export function CompositeChart({
   onActivate,
   onToggleSeries,
   isSeriesToggleable,
+  timePick,
 }: CompositeChartProps) {
   const activeThemeColors = useThemeColors();
   const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1, fractionalViewport = false } = useUiCapabilities();
@@ -2329,6 +2340,12 @@ export function CompositeChart({
       event.preventDefault();
       event.stopPropagation();
     };
+    if (timePick && scene && isPlainKey(event, "return", "enter", "escape")) {
+      consume();
+      if (event.name === "escape") timePick.onCancel();
+      else chartActionsRef.current.pick();
+      return;
+    }
     if (toolsActive && armedTool && isPlainKey(event, "return", "enter") && scene) {
       consume();
       if (keyboardPlacement) finishKeyboardPlacement();
@@ -2449,6 +2466,10 @@ export function CompositeChart({
   // Footer and menu entries outlive the render that registered them, so they
   // call through to this render's actions.
   const chartActions = {
+    pick: () => {
+      const date = keyboardCursorDateRef.current ?? scene?.dates.at(-1) ?? null;
+      if (date) timePick?.onPick(date);
+    },
     start: startKeyboardPlacement,
     finish: finishKeyboardPlacement,
     toggleLegend: toggleLegendEntry,
@@ -2468,10 +2489,13 @@ export function CompositeChart({
   const placing = !!keyboardPlacement;
   const legendEntryVisible = !!legendEntry && visibleSeriesIds.has(legendEntry.id);
   const resettable = !!activeUserViewport;
+  const timePickLabel = timePick?.label ?? null;
   usePaneFooter(keyboardId, () => {
     if (!keyboardActive || !scene) return null;
     const hints: PaneHint[] = [];
-    if (toolsActive && armedHints) {
+    if (timePickLabel) {
+      hints.push({ id: "chart-pick", key: "Enter", label: timePickLabel, onPress: () => chartActionsRef.current.pick() });
+    } else if (toolsActive && armedHints) {
       hints.push(placing
         ? { id: "chart-tool", key: "Enter", label: armedHints.finish, title: armedHints.finishTitle, onPress: () => chartActionsRef.current.finish() }
         : { id: "chart-tool", key: "Enter", label: armedHints.start, title: armedHints.startTitle, onPress: () => chartActionsRef.current.start() });
@@ -2530,6 +2554,7 @@ export function CompositeChart({
     resettable,
     !!scene,
     selectedDrawingId,
+    timePickLabel,
     toolsActive,
   ]);
 
@@ -2709,6 +2734,7 @@ export function CompositeChart({
           keyboardToolDrag={keyboardToolDrag?.panelId === panel.id ? keyboardToolDrag : null}
           onPointerPress={cancelKeyboardPlacement}
           showTextFallback={showTextFallback}
+          onPickTime={timePick?.onPick}
         />
       ))}
       {watermarkScale ? (

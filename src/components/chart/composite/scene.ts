@@ -23,6 +23,7 @@ import {
 import { compositeAxisMaxTicks, seriesPriceReference } from "./format";
 import type { CompositeTimeScale } from "./types";
 import { isFiniteNumber } from "../../../utils/guards";
+import { volumeProfile } from "../../../time-series/trader-studies";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -494,6 +495,46 @@ function attachLastPriceMarker(
   };
 }
 
+/**
+ * Profiles a volume-profile study over its bars in view and takes its points
+ * off the panel, so it draws as a histogram rather than a line or cursor dots.
+ */
+function attachVolumeProfile(panel: CompositePanelScene): void {
+  const entry = panel.series.find((series) => series.source.profile);
+  const domain = entry ? panel.axes[entry.source.axis] : undefined;
+  if (!entry || !domain) return;
+  const bars = entry.points.flatMap(({ point, value }) => {
+    const close = isFiniteNumber(point.close) ? point.close : value;
+    const volume = point.volume;
+    if (!isFiniteNumber(volume)) return [];
+    return [{
+      time: point.date.getTime(),
+      high: isFiniteNumber(point.high) ? point.high : close,
+      low: isFiniteNumber(point.low) ? point.low : close,
+      close,
+      volume,
+    }];
+  });
+  entry.points = [];
+  const profile = volumeProfile(bars, entry.source.profile!.rows);
+  const pocRatio = profile ? projectCompositeValue(profile.poc, domain) : null;
+  if (!profile || pocRatio === null) return;
+  panel.volumeProfile = {
+    seriesId: entry.source.id,
+    color: entry.source.color,
+    rows: profile.rows.flatMap((row) => {
+      const lowRatio = projectCompositeValue(row.low, domain);
+      const highRatio = projectCompositeValue(row.high, domain);
+      return lowRatio === null || highRatio === null
+        ? []
+        : [{ lowRatio, highRatio, volume: row.volume, valueArea: row.valueArea }];
+    }),
+    maxVolume: profile.maxVolume,
+    poc: profile.poc,
+    pocRatio,
+  };
+}
+
 function nearestDate(dates: Date[], requested: Date): Date | null {
   const target = requested.getTime();
   if (!Number.isFinite(target) || dates.length === 0) return null;
@@ -535,6 +576,17 @@ function buildCursorValues(
 ): CompositeCursorValue[] {
   const cursorTime = cursorDate?.getTime() ?? viewport.endTime;
   return panels.flatMap((panel) => panel.series.map((entry) => {
+    // A profile reads the same wherever the cursor is: its point of control.
+    if (entry.source.profile) {
+      return {
+        seriesId: entry.source.id,
+        label: entry.source.label,
+        color: entry.source.color,
+        unit: entry.source.unit,
+        value: panel.volumeProfile?.seriesId === entry.source.id ? panel.volumeProfile.poc : null,
+        point: null,
+      };
+    }
     let projected = cursorPointForSeries(entry, cursorTime);
     // Sparse observations can carry forward, but an explicitly unavailable
     // observation ends that value at its date, including the idle legend.
@@ -694,6 +746,7 @@ export function buildCompositeChartScene(
       }),
     };
   });
+  panelScenes.forEach(attachVolumeProfile);
   attachLastPriceMarker(panelScenes, usableSeries);
 
   return {

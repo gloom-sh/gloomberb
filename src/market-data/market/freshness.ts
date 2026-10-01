@@ -197,6 +197,36 @@ export function latestRegularSessionClose(
 }
 
 /**
+ * The open of the regular session `time` falls in, or of the latest one
+ * before it: the published calendar for US venues, otherwise the venue's
+ * local open on a weekday that is not a published closure. Null for
+ * round-the-clock venues and venues without a known open hour.
+ */
+export function latestRegularSessionOpen(exchange: string | undefined, time: number): number | null {
+  const canonical = canonicalExchange(exchange);
+  const timeZone = sessionCalendarTimeZone(canonical);
+  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
+  const minutes = REGULAR_OPEN_MINUTES[canonical];
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
+  for (let offset = 0; offset <= 10; offset++) {
+    const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
+    const published = getPublishedUsEquitySession(canonical, date);
+    let open: number | null = null;
+    if (published) {
+      if (published.kind === "session") open = published.open;
+    } else if (minutes === undefined) {
+      return null;
+    } else if (isLocalTradingDay(canonical, date)) {
+      open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
+        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
+    }
+    if (open != null && open <= time) return open;
+  }
+  return null;
+}
+
+/**
  * True when the venue's full-day closures for the year of `date` are
  * published: US venues and JPX. Elsewhere a local holiday reads as a weekday.
  */

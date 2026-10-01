@@ -56,6 +56,10 @@ export type ChartStudyKind =
   | "rsi"
   | "macd"
   | "realized-vol"
+  | "vwap"
+  | "anchored-vwap"
+  | "volume-profile"
+  | "atr"
   | "ratio"
   | "spread"
   | "correlation";
@@ -131,6 +135,8 @@ export interface ResolvedSeriesMarketTimeBasis {
   kind: "market";
   /** IANA timezone used to recognize one exchange-local trading day. */
   timeZone: string;
+  /** Canonical listing exchange, which sets the regular session's hours. */
+  exchange?: string;
   /** Requested bar cadence when known; otherwise the chart derives it. */
   cadenceMs?: number;
 }
@@ -173,6 +179,11 @@ export interface ResolvedSeries {
   hidden?: boolean;
   /** Columns below zero take this colour instead, so a change reads by its sign. */
   negativeColor?: string;
+  /**
+   * Drawn as the volume traded at each price over the bars in view, against
+   * the right edge, instead of as a line through its points.
+   */
+  profile?: { rows: number };
 }
 
 export interface TimeSeriesFieldDefinition {

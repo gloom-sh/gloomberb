@@ -14,6 +14,7 @@ import {
 } from "./column-layout";
 import { compositeGridRatios } from "./format";
 import { projectCompositeValue } from "./scene";
+import { paintVolumeProfile } from "./volume-profile-paint";
 import type {
   CompositeAxisDomain,
   CompositeChartColors,
@@ -324,6 +325,7 @@ export function renderCompositePanelBitmap(
       : (height - 1) * ratio;
     fillRect(data, width, height, 0, y, width - 1, y + 0.6, grid, 0.42);
   }
+  if (panel.volumeProfile) paintVolumeProfile(data, width, height, panel.volumeProfile);
 
   const ordered = [...panel.series].sort((left, right) => {
     const rank = (style: string) => style === "area" || style === "columns" ? 0 : 1;

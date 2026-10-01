@@ -95,6 +95,18 @@ interface CompositeLastPriceMarker {
   yRatio: number;
 }
 
+/** Volume traded at each price over the bars in view, drawn against the right edge. */
+export interface CompositeVolumeProfile {
+  seriesId: string;
+  color: string;
+  /** Lowest price first; ratios run down the plot, so `lowRatio` is the larger. */
+  rows: Array<{ lowRatio: number; highRatio: number; volume: number; valueArea: boolean }>;
+  maxVolume: number;
+  /** Point of control: the middle of the busiest row. */
+  poc: number;
+  pocRatio: number;
+}
+
 export interface CompositePanelScene {
   id: string;
   label?: string;
@@ -104,6 +116,8 @@ export interface CompositePanelScene {
   series: CompositeProjectedSeries[];
   /** Present only on the panel that holds the primary price series. */
   lastPrice?: CompositeLastPriceMarker;
+  /** Present on a panel holding a volume-profile study. */
+  volumeProfile?: CompositeVolumeProfile;
 }
 
 export interface CompositeCursorValue {
@@ -226,4 +240,10 @@ export interface CompositeChartProps {
   onActivate?: () => void;
   onToggleSeries?: (seriesId: string) => void;
   isSeriesToggleable?: (series: ResolvedSeries) => boolean;
+  /**
+   * Picks a bar instead of panning: a press on the plot, or Enter at the
+   * keyboard cursor, hands back that bar's date; Esc cancels. `label` is the
+   * Enter hint, such as "anchor here".
+   */
+  timePick?: { label: string; onPick: (date: Date) => void; onCancel: () => void } | null;
 }

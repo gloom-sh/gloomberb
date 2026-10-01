@@ -1,4 +1,7 @@
-import type { ChartSpec, ChartStudyKind, ChartStudySpec } from "../../../time-series/types";
+import type { ChartSpec, ChartStudyKind, ChartStudySpec, ResolvedSeries } from "../../../time-series/types";
+import { observationDate } from "../../../time-series/price-comparison";
+import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
+import { DEFAULT_PROFILE_ROWS, vwapAnchors, withVwapAnchors } from "../../../time-series/studies";
 import { reconcilePanels } from "./chart-spec-edit";
 import { CHART_FIELD_IDS } from "./series-expression";
 
@@ -9,8 +12,12 @@ const STUDY_DEFAULTS = {
   sma200: { kind: "sma", panelId: "main", parameters: { period: 200 } },
   ema20: { kind: "ema", panelId: "main", parameters: { period: 20 } },
   bollinger20: { kind: "bollinger", panelId: "main", parameters: { period: 20, stdDev: 2 } },
+  vwap: { kind: "vwap", panelId: "main", parameters: { bands: 0 } },
+  "anchored-vwap": { kind: "anchored-vwap", panelId: "main", parameters: {} },
+  "volume-profile": { kind: "volume-profile", panelId: "main", parameters: { rows: DEFAULT_PROFILE_ROWS } },
   rsi14: { kind: "rsi", panelId: "rsi", parameters: { period: 14 } },
   macd: { kind: "macd", panelId: "macd", parameters: { fast: 12, slow: 26, signal: 9 } },
+  atr14: { kind: "atr", panelId: "atr", parameters: { period: 14 } },
   "realized-vol": { kind: "realized-vol", panelId: "realized-vol", parameters: { window: 30, estimator: "close-to-close" } },
 } as const satisfies Record<string, {
   kind: Exclude<ChartStudyKind, "ratio" | "spread" | "correlation">;
@@ -65,7 +72,7 @@ export function setBuiltinStudies(spec: ChartSpec, selected: readonly BuiltinStu
 }
 
 /** Builtin studies whose lookback the Indicators dialog lets you change. */
-const PERIOD_STUDIES = new Set<BuiltinStudySelection>(["sma20", "sma50", "sma200", "ema20", "bollinger20", "rsi14"]);
+const PERIOD_STUDIES = new Set<BuiltinStudySelection>(["sma20", "sma50", "sma200", "ema20", "bollinger20", "rsi14", "atr14"]);
 
 export const STUDY_PERIOD_MIN = 2;
 export const STUDY_PERIOD_MAX = 500;
@@ -110,6 +117,80 @@ export function setBuiltinStudyPeriod(
       study.id === target.id ? { ...study, parameters: { ...study.parameters, period: bounded } } : study
     )),
   };
+}
+
+/** A whole-number setting a builtin study takes besides a period, with its bounds. */
+export const STUDY_NUMBER_SETTINGS = {
+  vwap: { key: "bands", min: 0, max: 3 },
+  "volume-profile": { key: "rows", min: 4, max: 100 },
+} as const satisfies Partial<Record<BuiltinStudySelection, { key: string; min: number; max: number }>>;
+
+export type NumberSettingStudy = keyof typeof STUDY_NUMBER_SETTINGS;
+
+export function isNumberSettingStudy(selection: string): selection is NumberSettingStudy {
+  return Object.prototype.hasOwnProperty.call(STUDY_NUMBER_SETTINGS, selection);
+}
+
+/** The setting's value: the study's own when selected, the default otherwise. */
+export function builtinStudySetting(spec: ChartSpec, selection: NumberSettingStudy): number {
+  const { key } = STUDY_NUMBER_SETTINGS[selection];
+  const value = builtinStudy(spec, selection)?.parameters[key];
+  const fallback = (STUDY_DEFAULTS[selection].parameters as Record<string, number>)[key]!;
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function updateBuiltinStudy(
+  spec: ChartSpec,
+  selection: BuiltinStudySelection,
+  update: (parameters: ChartStudySpec["parameters"]) => ChartStudySpec["parameters"],
+): ChartSpec {
+  const target = builtinStudy(spec, selection);
+  if (!target) return spec;
+  return {
+    ...spec,
+    studies: spec.studies.map((study) => (
+      study.id === target.id ? { ...study, parameters: update(study.parameters) } : study
+    )),
+  };
+}
+
+export function setBuiltinStudySetting(spec: ChartSpec, selection: NumberSettingStudy, value: number): ChartSpec {
+  const { key, min, max } = STUDY_NUMBER_SETTINGS[selection];
+  const bounded = Math.round(Math.min(max, Math.max(min, value)));
+  return updateBuiltinStudy(spec, selection, (parameters) => ({ ...parameters, [key]: bounded }));
+}
+
+/** Anchor times of the chart's anchored VWAP, oldest first. */
+export function builtinVwapAnchors(spec: ChartSpec): number[] {
+  const study = builtinStudy(spec, "anchored-vwap");
+  return study ? vwapAnchors(study) : [];
+}
+
+export function setBuiltinVwapAnchors(spec: ChartSpec, anchors: readonly number[]): ChartSpec {
+  return updateBuiltinStudy(spec, "anchored-vwap", (parameters) => withVwapAnchors(parameters, anchors));
+}
+
+/**
+ * An anchor from typed text. `2026-09-30 10:00` is that time at the
+ * exchange; `2026-09-30` is the first loaded bar of that session date, or the
+ * date itself when it is older than the loaded bars. Null for anything else
+ * or a date after the last bar.
+ */
+export function parseVwapAnchor(text: string, input: ResolvedSeries | undefined): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?$/.exec(text.trim());
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = `${match[1]}-${match[2]}-${match[3]}`;
+  if (new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) !== date) return null;
+  if (match[4] !== undefined) {
+    const [hour, minute] = [Number(match[4]), Number(match[5])];
+    if (hour > 23 || minute > 59) return null;
+    return zonedWallClockToUtcMs(input?.timeBasis?.timeZone ?? "UTC", year, month, day, hour, minute, 0);
+  }
+  const times = (input?.points ?? []).map((point) => point.date.getTime()).sort((left, right) => left - right);
+  if (times.length === 0) return null;
+  if (date < observationDate(times[0]!, input!)) return Date.UTC(year, month - 1, day);
+  return times.find((time) => observationDate(time, input!) >= date) ?? null;
 }
 
 export type PairStudySelection = "ratio" | "spread" | "correlation";

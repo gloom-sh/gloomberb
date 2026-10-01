@@ -1017,6 +1017,7 @@ function baseSecuritySeries(
       ? {
           kind: "market",
           timeZone: marketTimeZone,
+          exchange: canonicalExchange(marketExchange) || undefined,
           cadenceMs: marketResolution
             ? CHART_RESOLUTION_STEP_MS[marketResolution]
             : undefined,
@@ -1164,6 +1165,11 @@ function studyForOutput(
     .sort((left, right) => right.id.length - left.id.length)[0];
 }
 
+/** Price overlays read in the price's own terms, so they take its transform. */
+function followsInputTransform(kind: ChartSpec["studies"][number]["kind"]): boolean {
+  return kind === "sma" || kind === "ema" || kind === "bollinger" || kind === "vwap" || kind === "anchored-vwap";
+}
+
 function presentationBounds(
   series: ResolvedSeries,
   studies: readonly ChartSpec["studies"][number][],
@@ -1171,7 +1177,7 @@ function presentationBounds(
   fallback: DateBounds,
 ): DateBounds {
   const study = studyForOutput(series.id, studies);
-  const sourceId = study && (study.kind === "sma" || study.kind === "ema" || study.kind === "bollinger")
+  const sourceId = study && followsInputTransform(study.kind)
     ? study.inputSeriesIds[0] : series.id;
   return (sourceId && comparison?.sourceBounds?.[sourceId]) || fallback;
 }
@@ -1187,7 +1193,7 @@ function applyStudyPresentationTransforms(
   const rawById = new Map(rawSeries.map((series) => [series.id, series] as const));
   return outputs.map((output) => {
     const study = studyForOutput(output.id, studies);
-    if (!study || (study.kind !== "sma" && study.kind !== "ema" && study.kind !== "bollinger")) {
+    if (!study || !followsInputTransform(study.kind)) {
       return output;
     }
     const input = rawById.get(study.inputSeriesIds[0] ?? "");

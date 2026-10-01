@@ -3,10 +3,12 @@ import {
   builtinStudyPeriod,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
+  parseVwapAnchor,
   setBuiltinStudies,
   setBuiltinStudyPeriod,
   setPairStudies,
 } from "./studies";
+import { createTestResolvedSeries, createTestSeriesPoint } from "../../../test-support/time-series";
 import { chartStudyLabel } from "./settings";
 import { buildComparisonChartPreset, buildPriceChartPreset } from "./presets";
 
@@ -102,4 +104,19 @@ describe("chart composer studies", () => {
     expect(setBuiltinStudyPeriod(toggled, "ema20", 9)).toBe(toggled);
     expect(builtinStudyPeriod(toggled, "ema20")).toBe(20);
   });
+});
+
+test("a typed VWAP anchor date lands on the first loaded bar of that session", () => {
+  const input = createTestResolvedSeries({
+    id: "px",
+    timeBasis: { kind: "market", timeZone: "America/New_York", exchange: "NASDAQ", cadenceMs: 300_000 },
+    points: ["2026-09-29T13:30:00Z", "2026-09-29T19:55:00Z", "2026-09-30T13:30:00Z"].map((date) => createTestSeriesPoint(date)),
+  });
+  expect(parseVwapAnchor("2026-09-30", input)).toBe(Date.parse("2026-09-30T13:30:00Z"));
+  // A time is exchange time.
+  expect(parseVwapAnchor("2026-09-29 10:00", input)).toBe(Date.parse("2026-09-29T14:00:00Z"));
+  // Older than the loaded bars: the date itself, which the study reports as out of reach.
+  expect(parseVwapAnchor("2026-09-01", input)).toBe(Date.parse("2026-09-01T00:00:00Z"));
+  expect(parseVwapAnchor("2026-10-02", input)).toBeNull();
+  expect(parseVwapAnchor("2026-02-30", input)).toBeNull();
 });

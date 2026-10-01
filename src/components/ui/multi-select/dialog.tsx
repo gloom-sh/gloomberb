@@ -43,10 +43,16 @@ import {
 export interface MultiSelectRowAction {
   label: string;
   shortcut: string;
+  /** Name and key for the highlighted row when they differ by row: Period, Bands, Anchors. */
+  labelFor?(value: string): string;
+  shortcutFor?(value: string): string;
   /** Whether the highlighted option offers it; `selected` is its checkbox. */
   appliesTo(value: string, selected: boolean): boolean;
-  /** A returned label replaces the row's label while the dialog stays open. */
-  run(value: string): Promise<string | void> | string | void;
+  /**
+   * A returned label replaces the row's label while the dialog stays open;
+   * `{ close: true }` closes the dialog, for an action that continues outside it.
+   */
+  run(value: string): Promise<string | { close: true } | void> | string | { close: true } | void;
 }
 
 export interface MultiSelectDialogContentProps extends AlertContext {
@@ -237,6 +243,10 @@ export function MultiSelectDialogContent({
     && !!selectedOption
     && !selectedOption.disabled
     && rowAction.appliesTo(selectedOption.value, selectedValues.includes(selectedOption.value));
+  const rowActionLabel = rowAction && selectedOption && rowAction.labelFor
+    ? rowAction.labelFor(selectedOption.value) : rowAction?.label;
+  const rowActionShortcut = rowAction && selectedOption && rowAction.shortcutFor
+    ? rowAction.shortcutFor(selectedOption.value) : rowAction?.shortcut;
 
   useEffect(() => {
     setSelectedValues((values) => normalizeDialogSelectedValues(options, values, ordered));
@@ -302,8 +312,9 @@ export function MultiSelectDialogContent({
   const runRowAction = async () => {
     if (!rowAction || !canRunRowAction || !selectedOption) return;
     const value = selectedOption.value;
-    const label = await rowAction.run(value);
-    if (typeof label === "string") setLabelOverrides((current) => ({ ...current, [value]: label }));
+    const result = await rowAction.run(value);
+    if (typeof result === "string") setLabelOverrides((current) => ({ ...current, [value]: result }));
+    else if (result?.close) dismiss();
   };
 
   useDialogKeyboard((event) => {
@@ -318,7 +329,7 @@ export function MultiSelectDialogContent({
       void moveOption("up").catch(() => {});
     } else if (event.name === "]" && ordered) {
       void moveOption("down").catch(() => {});
-    } else if (rowAction && event.name === rowAction.shortcut && !event.ctrl && !event.meta && !event.alt) {
+    } else if (rowAction && event.name === rowActionShortcut && !event.ctrl && !event.meta && !event.alt) {
       void runRowAction().catch(() => {});
     } else if (event.name === "enter" || event.name === "return" || event.name === "escape" || isDetailBackNavigationKey(event)) {
       dismiss();
@@ -363,8 +374,8 @@ export function MultiSelectDialogContent({
           )}
           {rowAction && (
             <Button
-              label={rowAction.label}
-              shortcut={rowAction.shortcut}
+              label={rowActionLabel ?? rowAction.label}
+              shortcut={rowActionShortcut ?? rowAction.shortcut}
               variant="ghost"
               disabled={!canRunRowAction}
               onPress={() => { void runRowAction().catch(() => {}); }}

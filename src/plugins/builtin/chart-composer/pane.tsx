@@ -12,6 +12,7 @@ import {
 import {
   MultiSelectDialogButton,
   NumberPromptDialog,
+  TextPromptDialog,
   type MultiSelectDialogButtonHandle,
   type MultiSelectRowAction,
 } from "../../../components/ui";
@@ -71,12 +72,19 @@ import {
 } from "./chart-spec-edit";
 import {
   builtinStudyPeriod,
+  builtinStudySetting,
+  builtinVwapAnchors,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
+  isNumberSettingStudy,
   isPeriodStudy,
+  parseVwapAnchor,
   setBuiltinStudies,
   setBuiltinStudyPeriod,
+  setBuiltinStudySetting,
+  setBuiltinVwapAnchors,
   setPairStudies,
+  STUDY_NUMBER_SETTINGS,
   STUDY_PERIOD_MAX,
   STUDY_PERIOD_MIN,
   type BuiltinStudySelection,
@@ -88,9 +96,9 @@ import {
   CHART_FORMULA_OPTIONS,
   CHART_RANGES as RANGES,
   CHART_RESOLUTIONS as RESOLUTIONS,
-  chartStudyLabel,
   chartStudyOptionsFor,
   chartStudyPeriodTitle,
+  chartStudySettingLabel,
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
@@ -329,7 +337,7 @@ function ChartComposerSurface({
     ),
     [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
-  const { sharePane } = usePluginAppActions();
+  const { sharePane, notify } = usePluginAppActions();
   const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (shareTimerRef.current !== null) clearTimeout(shareTimerRef.current);
@@ -346,11 +354,90 @@ function ChartComposerSurface({
   const specRef = useRef(spec);
   specRef.current = spec;
   const studyOptions = useMemo(() => chartStudyOptionsFor(spec), [spec]);
-  const studyPeriodAction = useMemo<MultiSelectRowAction>(() => ({
+  const updateSpec = useCallback((nextSpec: ChartSpec) => {
+    specRef.current = nextSpec;
+    setSpec(nextSpec);
+  }, [setSpec]);
+  // Picking an anchor on the plot starts once the Indicators dialog is out of the way.
+  const [pickingAnchor, setPickingAnchor] = useState(false);
+  const pickAnchorAfterDialogRef = useRef(false);
+  const anchorInputRef = useRef<ResolvedSeries | undefined>(undefined);
+  const avwapInputId = spec.studies.find((study) => study.kind === "anchored-vwap" && study.id.startsWith("builtin:"))?.inputSeriesIds[0];
+  anchorInputRef.current = (resolution.bufferedSeries ?? resolution.series).find((entry) => entry.id === avwapInputId);
+  const editVwapAnchors = useCallback(async (): Promise<string | { close: true } | void> => {
+    const anchors = builtinVwapAnchors(specRef.current);
+    const labels = new Map((resolution.legendSeries ?? []).map((entry) => [entry.id, entry.label] as const));
+    const choice = await dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<string>) => (
+        <ChoiceDialog
+          {...ctx}
+          title="VWAP anchors"
+          choices={[
+            { id: "pick", label: "Pick a bar on the chart" },
+            { id: "date", label: "Enter a date" },
+            ...anchors.map((anchor) => {
+              const avwap = [...labels].find(([id]) => id.endsWith(`:${anchor}`))?.[1];
+              return { id: `remove:${anchor}`, label: `Remove ${avwap ?? new Date(anchor).toISOString().slice(0, 16).replace("T", " ")}` };
+            }),
+          ]}
+        />
+      ),
+    }).catch(() => undefined);
+    if (choice === "pick") {
+      pickAnchorAfterDialogRef.current = true;
+      return { close: true };
+    }
+    if (choice?.startsWith("remove:")) {
+      const anchor = Number(choice.slice("remove:".length));
+      const nextSpec = setBuiltinVwapAnchors(specRef.current, anchors.filter((entry) => entry !== anchor));
+      updateSpec(nextSpec);
+      return chartStudySettingLabel("anchored-vwap", nextSpec);
+    }
+    if (choice !== "date") return;
+    const text = await dialog.prompt<string>({
+      content: (ctx: PromptContext<string>) => (
+        <TextPromptDialog {...ctx} title="Anchor VWAP at" placeholder="2026-09-30 or 2026-09-30 10:00" confirmLabel="Anchor" width={44} />
+      ),
+    }).catch(() => undefined);
+    if (!text) return;
+    const anchor = parseVwapAnchor(text, anchorInputRef.current);
+    if (anchor === null) {
+      notify({ body: `No bar at ${text}. Use a date like 2026-09-30 or 2026-09-30 10:00.`, type: "error" });
+      return;
+    }
+    const nextSpec = setBuiltinVwapAnchors(specRef.current, [...builtinVwapAnchors(specRef.current), anchor]);
+    updateSpec(nextSpec);
+    return chartStudySettingLabel("anchored-vwap", nextSpec);
+  }, [dialog, notify, resolution.legendSeries, updateSpec]);
+  const studySettingsAction = useMemo<MultiSelectRowAction>(() => ({
     label: "Period",
     shortcut: "p",
-    appliesTo: (value, selected) => selected && isPeriodStudy(value),
+    labelFor: (value) => value === "anchored-vwap" ? "Anchors" : value === "vwap" ? "Bands" : value === "volume-profile" ? "Rows" : "Period",
+    shortcutFor: (value) => value === "anchored-vwap" ? "a" : value === "vwap" ? "b" : value === "volume-profile" ? "n" : "p",
+    appliesTo: (value, selected) => selected && (isPeriodStudy(value) || isNumberSettingStudy(value) || value === "anchored-vwap"),
     run: async (value) => {
+      if (value === "anchored-vwap") return editVwapAnchors();
+      if (isNumberSettingStudy(value)) {
+        const { min, max } = STUDY_NUMBER_SETTINGS[value];
+        const current = builtinStudySetting(specRef.current, value);
+        const next = await dialog.prompt<number>({
+          content: (ctx: PromptContext<number>) => (
+            <NumberPromptDialog
+              {...ctx}
+              title={value === "vwap" ? "VWAP bands (standard deviations, 0 for none)" : "Volume profile rows"}
+              initialValue={current}
+              min={min}
+              max={max}
+              invalidMessage={`Whole number from ${min} to ${max}`}
+            />
+          ),
+        });
+        if (next === undefined || next === current) return;
+        const nextSpec = setBuiltinStudySetting(specRef.current, value, next);
+        updateSpec(nextSpec);
+        return chartStudySettingLabel(value, nextSpec);
+      }
       if (!isPeriodStudy(value)) return;
       const current = builtinStudyPeriod(specRef.current, value) ?? STUDY_PERIOD_MIN;
       const next = await dialog.prompt<number>({
@@ -367,11 +454,18 @@ function ChartComposerSurface({
       });
       if (next === undefined || next === current) return;
       const nextSpec = setBuiltinStudyPeriod(specRef.current, value, next);
-      specRef.current = nextSpec;
-      setSpec(nextSpec);
-      return chartStudyLabel(value, next);
+      updateSpec(nextSpec);
+      return chartStudySettingLabel(value, nextSpec);
     },
-  }), [dialog, setSpec]);
+  }), [dialog, editVwapAnchors, updateSpec]);
+  const timePick = useMemo(() => pickingAnchor ? {
+    label: "anchor here",
+    onPick: (date: Date) => {
+      setPickingAnchor(false);
+      updateSpec(setBuiltinVwapAnchors(specRef.current, [...builtinVwapAnchors(specRef.current), date.getTime()]));
+    },
+    onCancel: () => setPickingAnchor(false),
+  } : null, [pickingAnchor, updateSpec]);
   const formulasDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
   const indicatorsDisabled = !isPriceStudyTarget(spec);
   const formulasDisabled = spec.series.filter((series) => series.visible !== false).length < 2;
@@ -386,10 +480,12 @@ function ChartComposerSurface({
     setInteractionCapturedState(next);
     onCapture?.(next);
   }, [onCapture]);
-  const setIndicatorsOpen = useCallback(
-    (open: boolean) => setInteractionCaptured("indicators", open),
-    [setInteractionCaptured],
-  );
+  const setIndicatorsOpen = useCallback((open: boolean) => {
+    setInteractionCaptured("indicators", open);
+    if (open || !pickAnchorAfterDialogRef.current) return;
+    pickAnchorAfterDialogRef.current = false;
+    setPickingAnchor(true);
+  }, [setInteractionCaptured]);
   const setFormulasOpen = useCallback(
     (open: boolean) => setInteractionCaptured("formulas", open),
     [setInteractionCaptured],
@@ -653,18 +749,27 @@ function ChartComposerSurface({
     formulasDialogRef.current?.open(footerAnchorPoint(event));
   }, []);
 
+  const anchoredVwapOn = selectedStudies.includes("anchored-vwap");
+  useEffect(() => {
+    if (!anchoredVwapOn) setPickingAnchor(false);
+  }, [anchoredVwapOn]);
+  const anchorable = anchoredVwapOn && !pickingAnchor;
+  const footerAnchor = useCallback(() => setPickingAnchor(true), []);
   usePaneFooter(footerId, () => ({
     info: resolution.loading
       ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
-      : [],
+      : pickingAnchor
+        ? [{ id: "anchor", parts: [{ text: "pick a bar to anchor VWAP", tone: "muted" as const }] }]
+        : [],
     hints: [
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
+      ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
       ...(publicSharing ? [{ id: "share", key: "y", label: " share", onPress: footerShare }] : []),
     ],
-  }), [resolution.loading, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, publicSharing, footerShare]);
+  }), [resolution.loading, pickingAnchor, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, publicSharing, footerShare]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {
@@ -733,11 +838,17 @@ function ChartComposerSurface({
         options={studyOptions}
         selectedValues={selectedStudies}
         onChange={(values) => {
+          const previous = getSelectedBuiltinStudies(specRef.current);
           const nextSpec = setBuiltinStudies(specRef.current, values as BuiltinStudySelection[]);
-          specRef.current = nextSpec;
-          setSpec(nextSpec);
+          // A new anchored VWAP has nothing to draw until it has an anchor.
+          if (values.includes("anchored-vwap") && !previous.includes("anchored-vwap") && builtinVwapAnchors(nextSpec).length === 0) {
+            pickAnchorAfterDialogRef.current = true;
+          } else if (!values.includes("anchored-vwap")) {
+            pickAnchorAfterDialogRef.current = false;
+          }
+          updateSpec(nextSpec);
         }}
-        rowAction={studyPeriodAction}
+        rowAction={studySettingsAction}
         disabled={indicatorsDisabled}
         idPrefix={`${footerId}:indicators`}
         shortcutKey="i"
@@ -778,6 +889,7 @@ function ChartComposerSurface({
           onActivate={activatePane}
           onToggleSeries={toggleSeries}
           isSeriesToggleable={isSeriesToggleable}
+          timePick={timePick}
           emptyMessage={emptyMessage}
           legendAccessory={(
             <ChartSeriesQuickAdd

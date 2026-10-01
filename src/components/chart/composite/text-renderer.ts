@@ -3,6 +3,7 @@ import { compositeAxisTicks, compositeGridRatios, type CompositeAxisValueFormatt
 import { resolveCompositeObservationWidth } from "./rasterizer";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { projectCompositeValue } from "./scene";
+import { writeVolumeProfileText } from "./volume-profile-paint";
 import type {
   CompositeAxisDomain,
   CompositePanelScene,
@@ -246,6 +247,8 @@ export function renderCompositePanelText(
         break;
     }
   }
+
+  if (panel.volumeProfile) writeVolumeProfileText(rows, plotWidth, panel.volumeProfile);
 
   // Blank cells only, so the dashed level reads as if it ran under the marks.
   if (panel.lastPrice) {

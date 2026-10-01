@@ -20,8 +20,11 @@ import { chartSeriesLabel, formatSeriesExpression } from "./series-expression";
 import { applySeriesStyle, getCompatibleSeriesStyles } from "./chart-spec-edit";
 import {
   builtinStudyPeriod,
+  builtinStudySetting,
+  builtinVwapAnchors,
   defaultStudyPeriod,
   getSelectedBuiltinStudies,
+  isNumberSettingStudy,
   isPeriodStudy,
   getSelectedPairStudies,
   setBuiltinStudies,
@@ -45,8 +48,12 @@ const CHART_STUDY_NAMES: Record<BuiltinStudySelection, { name: string; short?: s
   sma200: { name: "Simple moving average", short: "SMA", description: "Simple moving average on the primary price series." },
   ema20: { name: "Exponential moving average", short: "EMA", description: "Exponential moving average on the primary price series." },
   bollinger20: { name: "Bollinger Bands", short: "BB", description: "Bollinger Bands at two standard deviations." },
+  vwap: { name: "VWAP", description: "Volume-weighted average price from each regular open, on intraday bars." },
+  "anchored-vwap": { name: "Anchored VWAP", description: "Volume-weighted average price from bars you pick." },
+  "volume-profile": { name: "Volume profile", description: "Volume at each price over the bars in view, with its point of control and 70% value area." },
   rsi14: { name: "Relative strength index", short: "RSI", description: "Relative Strength Index in a lower panel." },
   macd: { name: "MACD", short: "12, 26, 9", description: "12/26/9 MACD in a lower panel." },
+  atr14: { name: "Average true range", short: "ATR", description: "Average true range in a lower panel." },
   "realized-vol": { name: "Realized volatility", description: "Annualized daily volatility in a lower panel." },
 };
 
@@ -62,19 +69,37 @@ export function chartStudyLabel(selection: BuiltinStudySelection, period: number
   return isPeriodStudy(selection) && period != null ? `${name} (${short} ${period})` : `${name} (${short})`;
 }
 
-function chartStudyOptions(periodOf: (selection: BuiltinStudySelection) => number | null) {
+/**
+ * The row label with the setting the study runs with on this chart:
+ * `Simple moving average (SMA 50)`, `VWAP (±2σ bands)`, `Anchored VWAP (2 anchors)`.
+ */
+export function chartStudySettingLabel(selection: BuiltinStudySelection, spec: ChartSpec | null): string {
+  const { name } = CHART_STUDY_NAMES[selection];
+  if (selection === "anchored-vwap") {
+    const count = spec ? builtinVwapAnchors(spec).length : 0;
+    return count > 0 ? `${name} (${count} anchor${count === 1 ? "" : "s"})` : name;
+  }
+  if (isNumberSettingStudy(selection)) {
+    const value = spec ? builtinStudySetting(spec, selection) : null;
+    if (selection === "vwap") return value ? `${name} (±${value}σ bands)` : name;
+    return value ? `${name} (${value} rows)` : name;
+  }
+  return chartStudyLabel(selection, spec ? builtinStudyPeriod(spec, selection) : defaultStudyPeriod(selection));
+}
+
+function chartStudyOptions(spec: ChartSpec | null) {
   return (Object.keys(CHART_STUDY_NAMES) as BuiltinStudySelection[]).map((value) => ({
     value,
-    label: chartStudyLabel(value, periodOf(value)),
+    label: chartStudySettingLabel(value, spec),
     description: CHART_STUDY_NAMES[value].description,
   }));
 }
 
-const CHART_STUDY_OPTIONS: Array<PaneSettingOption & { value: BuiltinStudySelection }> = chartStudyOptions(defaultStudyPeriod);
+const CHART_STUDY_OPTIONS: Array<PaneSettingOption & { value: BuiltinStudySelection }> = chartStudyOptions(null);
 
-/** The indicator options with the periods this chart actually uses. */
+/** The indicator options with the settings this chart actually uses. */
 export function chartStudyOptionsFor(spec: ChartSpec): Array<PaneSettingOption & { value: BuiltinStudySelection }> {
-  return chartStudyOptions((selection) => builtinStudyPeriod(spec, selection));
+  return chartStudyOptions(spec);
 }
 
 export const CHART_FORMULA_OPTIONS: Array<PaneSettingOption & { value: PairStudySelection }> = [
