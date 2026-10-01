@@ -126,11 +126,17 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
         : process.platform === "win32"
           ? ["cmd", "/c", "start", "", url]
           : ["xdg-open", url];
-      const proc = Bun.spawn(command, {
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-      await proc.exited;
+      try {
+        const proc = Bun.spawn(command, {
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+        if (await proc.exited === 0) return;
+      } catch {
+        // No opener installed (xdg-open is missing on minimal Linux and WSL).
+      }
+      // Leave the link on the clipboard, so it can at least be pasted.
+      renderer.copyToClipboardOSC52(url);
     },
     async copyText(text) {
       if (!text) return;
