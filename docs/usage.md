@@ -4,6 +4,7 @@
 
 - [Research data conventions](research-data.md)
 - [Financial ratios](financial-ratios.md)
+- [Options positioning (OPX)](options-positioning.md)
 - [Keyboard shortcuts](#keyboard)
 - [Command reference and chart composer](#command-reference)
 - [Live prices and refresh cadence](#live-prices-and-refresh-cadence)
@@ -122,6 +123,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `SEC <ticker>` | SEC filings and company disclosures |
 | `OMON <ticker>` | Options chain, expected moves, 25-delta skew and adjacent-expiry term slope |
 | `OVDV <ticker>` | Rotatable 3D implied-volatility surface by delta or moneyness, smiles, term structure, skew and forwards |
+| `OPX [ticker]` / `GEX [ticker]` | Open interest by strike and expiry with max pain, and dealer gamma by strike with its flip level; `GEX` opens on the gamma tab, `MAXPAIN` is `OPX`. SPY with no ticker ([method](options-positioning.md)) |
 | `HVG <ticker>` | Realized volatility by estimator and window, price, and current ATM IV |
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |

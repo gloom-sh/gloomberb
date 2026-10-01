@@ -58,6 +58,11 @@ const QUOTES: FunctionFreshness = { free: "15 minutes delayed, crypto real-time"
 /** US option chains and the quotes behind them. */
 const OPTIONS: FunctionFreshness = { free: DELAYED, pro: REAL_TIME };
 const FX: FunctionFreshness = { free: DELAYED, pro: REAL_TIME };
+/** Open interest settles once a session; spot and the quotes behind gamma follow the plan. */
+const OPX_DATA: FunctionFreshness = {
+  free: "Open interest as of the prior session; spot and gamma 15 minutes delayed",
+  pro: "Open interest as of the prior session; spot and gamma real-time",
+};
 const NEWS: FunctionFreshness = { free: "12 hours delayed", pro: REAL_TIME };
 const US_SCANNER: FunctionFreshness = { free: DELAYED, pro: REAL_TIME };
 const AS_FILED = same("As filed with the SEC");
@@ -214,14 +219,19 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["OMON"],
   },
   OPX: {
-    summary: "Open interest by strike for one expiry with max pain and spot marked, every expiry's open interest, put/call ratio and max pain, and dealer gamma (GEX) by strike with its flip level and a range for the dealer assumption. GEX and MAXPAIN open it too.",
+    summary: "Open interest by strike for one expiry with max pain and spot marked, every expiry's open interest, put/call ratio and max pain, and dealer gamma (GEX) by strike with its flip level and a range for the dealer assumption. MAXPAIN opens it too.",
     usage: ["OPX", "OPX SPY", "OPX SPX"],
-    keys: [],
-    data: {
-      free: "Open interest as of the prior session; spot and gamma 15 minutes delayed",
-      pro: "Open interest as of the prior session; spot and gamma real-time",
-    },
+    keys: [TABS, OPEN],
+    data: OPX_DATA,
     bloomberg: ["OPX"],
+  },
+  GEX: {
+    summary: "Net dealer gamma by strike across every expiry or one, with the total, the flip level and a range for the dealer assumption. The GEX tab of OPX.",
+    usage: ["GEX", "GEX SPY", "GEX SPX"],
+    keys: [TABS],
+    data: OPX_DATA,
+    bloomberg: [],
+    docs: "OPX",
   },
   OVME: {
     summary: "Price a European or American call or put from spot, strike, rate, volatility and expiry, with Greeks, or solve implied volatility from a market price.",

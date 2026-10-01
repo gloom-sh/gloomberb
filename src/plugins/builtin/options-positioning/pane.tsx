@@ -81,7 +81,8 @@ type Sort = { columnId: string; direction: SortDirection };
 
 const strikeKey = (row: { strike: number }) => String(row.strike);
 const expiryKey = (row: ExpiryOpenInterest) => row.date;
-const shortDate = (date: string) => expiryLabel(date);
+/** Sep 29: the OI session is days old, so the footer leaves out its year. */
+const shortDate = (date: string) => expiryLabel(date).replace(/ '\d\d$/, "");
 const total = (row: { callOI: number | null; putOI: number | null }) => (row.callOI ?? 0) + (row.putOI ?? 0);
 
 function strikeColumns(changes: boolean): DataTableColumn[] {
@@ -167,10 +168,10 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const colors = useThemeColors();
   const [initialTab] = usePaneSettingValue("tab", "strikes");
   const [savedTab, setTab] = usePluginPaneState<string>("opx:tab", initialTab);
-  const tab: PositioningTab = isPositioningTab(savedTab) ? savedTab : "strikes";
   const [initialExpiry] = usePaneSettingValue("expiry", "");
   const [requestedExpiry, setRequestedExpiry] = usePluginPaneState<string | null>("opx:expiry", initialExpiry || null);
-  const [gammaExpiry, setGammaExpiry] = usePluginPaneState<string>("opx:gammaExpiry", ALL_EXPIRIES);
+  // An expiry the pane was opened with (shot --expiry) applies to gamma too.
+  const [gammaExpiry, setGammaExpiry] = usePluginPaneState<string>("opx:gammaExpiry", initialExpiry || ALL_EXPIRIES);
   const [selectedStrike, setSelectedStrike] = usePluginPaneState<string | null>("opx:strike", null);
   const [selectedExpiry, setSelectedExpiry] = usePluginPaneState<string | null>("opx:expiryRow", null);
   const [selectedGammaStrike, setSelectedGammaStrike] = usePluginPaneState<string | null>("opx:gammaStrike", null);
@@ -183,12 +184,27 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     [symbol, requestedExpiry],
   );
   const openInterest = useAsyncResource<OpenInterestPayload>(openInterestLoader, { keepPreviousData: true });
-  // Gamma prices every expiry's chain, so it loads only once its tab is open.
+  const data = openInterest.data;
+  const spot = data?.spot ?? null;
+  const expiries = data?.expiries ?? [];
+  const shownExpiry = data?.expiry ?? requestedExpiry;
+  const changes = data?.previousOiDate != null;
+  const expiryDates = useMemo(() => expiries.map((row) => row.date), [expiries]);
+
+  // VIX options settle on VIX futures, so there is no dealer gamma against the index to show.
+  const tabs = useMemo(() => data?.underlying === "VIX"
+    ? POSITIONING_TABS.filter((entry) => entry.value !== "gex") : POSITIONING_TABS, [data?.underlying]);
+  const tab: PositioningTab = isPositioningTab(savedTab) && tabs.some((entry) => entry.value === savedTab) ? savedTab : "strikes";
+  // A saved expiry that has since expired, or was listed for the last underlying, falls back to all of them.
+  const gammaChoice = gammaExpiry !== ALL_EXPIRIES && expiryDates.includes(gammaExpiry) ? gammaExpiry : ALL_EXPIRIES;
+  // Gamma prices every expiry's chain, so it loads only once its tab is open; a single
+  // expiry waits for the listed expiries to say whether it is still there.
   const gammaLoader = useCallback(
-    (_force: boolean) => loadGamma(symbol, gammaExpiry === ALL_EXPIRIES ? null : gammaExpiry),
-    [symbol, gammaExpiry],
+    (_force: boolean) => loadGamma(symbol, gammaChoice === ALL_EXPIRIES ? null : gammaChoice),
+    [symbol, gammaChoice],
   );
-  const gamma = useAsyncResource<GammaPayload>(tab === "gex" ? gammaLoader : null, { keepPreviousData: true });
+  const gammaReady = tab === "gex" && (!!data || gammaExpiry === ALL_EXPIRIES);
+  const gamma = useAsyncResource<GammaPayload>(gammaReady ? gammaLoader : null, { keepPreviousData: true });
   useAutoRefresh(openInterest.updatedAt, openInterest.load, { intervalMs: OPEN_INTEREST_REFRESH_MS });
   useAutoRefresh(gamma.updatedAt, gamma.load, { intervalMs: tab === "gex" ? GAMMA_REFRESH_MS : null });
   usePaneRefreshKey(() => {
@@ -196,15 +212,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     if (tab === "gex") void gamma.reload();
   }, { focused });
 
-  const data = openInterest.data;
-  const spot = data?.spot ?? null;
-  const expiries = data?.expiries ?? [];
-  const shownExpiry = data?.expiry ?? requestedExpiry;
-  const changes = data?.previousOiDate != null;
-
   // Expiry steps: [ and ] move through the expiries on Strikes and GEX.
-  const expiryDates = useMemo(() => expiries.map((row) => row.date), [expiries]);
-  const currentExpiry = tab === "gex" ? (gammaExpiry === ALL_EXPIRIES ? null : gammaExpiry) : shownExpiry;
+  const currentExpiry = tab === "gex" ? (gammaChoice === ALL_EXPIRIES ? null : gammaChoice) : shownExpiry;
   const expiryIndex = currentExpiry ? expiryDates.indexOf(currentExpiry) : -1;
   const stepExpiry = useCallback((step: -1 | 1) => {
     if (tab === "expiries" || !expiryDates.length) return;
@@ -226,7 +235,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     event.stopPropagation?.();
     stepExpiry(step);
   });
-  usePaneMenuItems("options-positioning", () => tab === "expiries" ? [] : [
+  // Its own registration: sharing the status footer's id would let an empty menu remove that footer.
+  usePaneMenuItems("options-positioning:expiry-steps", () => tab === "expiries" ? [] : [
     { id: "expiry-previous", label: "Previous Expiry", accelerator: EXPIRY_PREVIOUS_KEY,
       enabled: tab === "gex" ? expiryIndex >= 0 : expiryIndex > 0, onSelect: () => stepExpiry(-1) },
     { id: "expiry-next", label: "Next Expiry", accelerator: EXPIRY_NEXT_KEY,
@@ -234,7 +244,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   ], [expiryDates.length, expiryIndex, stepExpiry, tab]);
 
   const { strip: tabStrip, rows: tabRows } = usePaneTabs(data?.expiries.length
-    ? { tabs: POSITIONING_TABS, activeValue: tab, onSelect: (value: string) => setTab(value), focused, dense: true }
+    ? { tabs, activeValue: tab, onSelect: (value: string) => setTab(value), focused, dense: true }
     : null);
   const bodyHeight = Math.max(3, height - tabRows);
 
@@ -429,12 +439,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     { id: "flip", label: "Flip", value: formatLevel(gammaData.flip),
       detail: gammaData.flip == null ? "none within 15%" : `${formatDistance(gammaData.flip, gammaSpot)} vs spot` },
     ...(band ? [{ id: "band", label: "Dealer range", value: `${formatGamma(band.low)} to ${formatGamma(band.high)}`,
-      detail: `${shares} of each side` }] : []),
+      detail: `${shares} with dealers` }] : []),
     { id: "spot", label: "Spot", value: formatLevel(gammaSpot) },
   ], [band, colors.negative, colors.positive, gammaData, gammaSpot, shares]);
-  // The assumption rides in the legend, where the numbers it changes are read.
-  const assumption = width >= 100 ? `dealers long calls, short puts · range: ${shares} of each side with dealers`
-    : `long calls, short puts · ${shares}`;
+  // The assumption rides in the legend, where the numbers it changes are read; the
+  // dealer range figure names its own share. It gives way before the series name does.
+  const assumption = width >= 60 ? "dealers long calls, short puts" : width >= 48 ? "long calls, short puts" : null;
   const selectedGammaRow = gammaStrikes.find((row) => strikeKey(row) === gammaSelectedId) ?? null;
   const gammaStrip = useMemo<ChartStripSpec | null>(() => gammaWindow.length < 3 ? null : {
     label: "Net GEX by strike",
@@ -517,17 +527,16 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
           strip: expiryStrip,
         } : null} />} />;
   } else {
-    const query = <QueryBar width={width} filters={[expiryFilter(gammaExpiry,
+    const query = <QueryBar width={width} filters={[expiryFilter(gammaChoice,
       [{ value: ALL_EXPIRIES, label: "All" }, ...expiryOptions], setGammaExpiry)]} />;
     // The expiry choice stays put while gamma loads or has nothing to show.
     content = !gammaData?.total ? <>
       {query}
       <PaneStatusBody loading={gamma.loading && !gammaData} error={!gammaData ? gamma.error : null}
-        subject="dealer gamma" empty={!!gammaData} emptyTitle="No dealer gamma."
-        emptyMessage={gammaData?.warnings[0] ?? (gammaData?.missing.length ? "No volatility for these expiries yet." : undefined)} />
+        subject="dealer gamma" empty={!!gammaData} emptyTitle="No dealer gamma." />
     </> : <DataTableView columns={GAMMA_COLUMNS} items={gammaRows} focused={focused}
             rootWidth={width} rootHeight={bodyHeight} getItemKey={strikeKey} renderCell={renderGamma}
-            selectedTextOverridesCellColor resetScrollKey={gammaExpiry}
+            selectedTextOverridesCellColor resetScrollKey={gammaChoice}
             selection={{ kind: "id", selectedId: gammaSelectedId, getId: strikeKey, onChange: (id) => setSelectedGammaStrike(id) }}
             onActivate={(row) => setSelectedGammaStrike(strikeKey(row))}
             sortColumnId={gammaSort.columnId} sortDirection={gammaSort.direction}
@@ -548,7 +557,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
                   ]}
                   formatCursor={(ratio) => formatStrike(nearestStrike(gammaWindow, gammaChart.at(ratio)))}
                   formatValue={formatGamma} formatAxisValue={formatCompactAxis}
-                  legendAccessory={<Text fg={colors.textMuted}>{assumption}</Text>} legendAccessoryWidth={assumption.length}
+                  legendAccessory={assumption ? <Text fg={colors.textMuted}>{assumption}</Text> : undefined}
+                  legendAccessoryWidth={assumption?.length}
                   selection={gammaSelection} remoteKind="opx-gex" />,
                 minRows: CHART_MIN_ROWS,
                 strip: gammaStrip,

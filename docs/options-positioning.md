@@ -2,7 +2,7 @@
 
 [Research data conventions](research-data.md) · [User guide](usage.md)
 
-`OPX <ticker>` shows where open interest sits on a US option underlying: by strike for one expiry with max pain and spot marked (Strikes), every expiry's open interest, put/call ratio and max pain (Expiries), and the gamma dealers carry against it (GEX). `GEX` and `MAXPAIN` open it too. With no active ticker it opens on SPY. `SPX` (or `^SPX`) is the S&P 500 index with its SPX and SPXW options; `XSP` and `VIX` work the same way. NDX and RUT index options are not covered; QQQ and IWM follow the same indexes.
+`OPX <ticker>` shows where open interest sits on a US option underlying: by strike for one expiry with max pain and spot marked (Strikes), every expiry's open interest, put/call ratio and max pain (Expiries), and the gamma dealers carry against it (GEX). `GEX` opens it on the GEX tab and `MAXPAIN` on Strikes. With no active ticker it opens on SPY. `SPX` (or `^SPX`) is the S&P 500 index with its SPX and SPXW options; `XSP` and `VIX` work the same way. NDX and RUT index options are not covered; QQQ and IWM follow the same indexes.
 
 ## Open interest timing
 
@@ -30,7 +30,7 @@ The dealer assumption: customers sell calls and buy puts, and dealers take the o
 - Dealer range: what net gamma would be if dealers held only part of the open interest, the rest sitting between customers. The share is set anywhere from 25% to 75% of the calls and, separately, of the puts. The low end is 25% of call gamma minus 75% of put gamma, the high end 75% minus 25%. The same share on both sides only scales the figure; different shares show whether its sign holds. The headline figure uses all of the open interest, as the published GEX figures do, so it can sit outside the range.
 - Flip: net gamma repriced at spot levels from 15% below to 15% above in 0.25% steps, each strike keeping its volatility, and the sign change nearest the current spot, interpolated between steps. None when the sign does not change in that range.
 
-VIX options settle on VIX futures, so OPX shows no dealer gamma for them.
+VIX options settle on VIX futures, so OPX has no GEX tab for them.
 
 Against vendors that read the chain's own greeks, gamma without carry runs a few percent higher on monthly expiries (SPY 2026-10-16 on 2026-10-01: 8% above the quoted greeks across the contracts that had them).
 

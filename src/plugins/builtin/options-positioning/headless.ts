@@ -11,6 +11,7 @@ import {
   formatRatio,
   formatStrike,
   POSITIONING_TABS,
+  type PositioningTab,
 } from "./model";
 
 const METHODOLOGY = "docs/options-positioning.md";
@@ -19,12 +20,13 @@ const count = (value: unknown) => formatCount(typeof value === "number" ? value 
 const change = (value: unknown) => formatCountChange(typeof value === "number" ? value : null);
 const gamma = (value: unknown) => formatGamma(typeof value === "number" ? value : null);
 
-export const optionsPositioningHeadless: HeadlessPaneDefinition<"bundle"> = {
+/** OPX opens on Strikes, GEX on its own tab; the report carries every section either way. */
+export const optionsPositioningHeadless = (initialTab: PositioningTab): HeadlessPaneDefinition<"bundle"> => ({
   shape: "bundle",
   argument: { kind: "ticker", optional: true, description: "US option underlying, or SPX; SPY when omitted" },
-  describe: (args) => `OPX ${args.symbols[0] ?? "SPY"}`,
+  describe: (args) => `${initialTab === "gex" ? "GEX" : "OPX"} ${args.symbols[0] ?? "SPY"}`,
   discovery: {
-    aliases: ["OPX", "GEX", "MAXPAIN"],
+    aliases: initialTab === "gex" ? ["GEX"] : ["OPX", "MAXPAIN"],
     screenshotReadiness: "live-dom",
     dataRequirements: ["Cloud listed open interest", "Option chains"],
     limitations: [
@@ -34,7 +36,7 @@ export const optionsPositioningHeadless: HeadlessPaneDefinition<"bundle"> = {
     ],
   },
   options: [
-    { key: "tab", type: "enum", values: POSITIONING_TABS.map((tab) => ({ value: tab.value })), defaultValue: "strikes",
+    { key: "tab", type: "enum", values: POSITIONING_TABS.map((tab) => ({ value: tab.value })), defaultValue: initialTab,
       settingKey: "tab", description: "View the pane opens on: strikes, expiries or gex" },
     { key: "expiry", type: "string", settingKey: "expiry",
       description: "Expiry for the strikes and gamma, YYYY-MM-DD; the busiest near expiry when omitted (all expiries for gamma)" },
@@ -107,4 +109,4 @@ export const optionsPositioningHeadless: HeadlessPaneDefinition<"bundle"> = {
       },
     };
   },
-};
+});

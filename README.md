@@ -72,7 +72,7 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `DES AAPL` | Company details |
 | `GP NVDA` | Price chart |
 | `OVDV AAPL` | Implied-volatility surface and options term structure |
-| `OPX SPY` | Open interest by strike and expiry, max pain and dealer gamma ([method](docs/options-positioning.md)) |
+| `OPX SPY` / `GEX SPY` | Open interest by strike and expiry, max pain and dealer gamma ([method](docs/options-positioning.md)) |
 | `HVG AAPL` / `HVT AAPL` | Realized volatility and volatility cones |
 | `COT [code or root]` | CFTC positioning and cross-market extremes |
 | `TOP` | Market stories |
