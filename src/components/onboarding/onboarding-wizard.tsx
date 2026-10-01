@@ -139,7 +139,7 @@ const SECTION_DIGITS: Record<string, OnboardingSectionId> = { "1": "portfolio", 
  * while typing, only the ones the app binds are held back. Everything else
  * would act on a pane hidden behind the scrim.
  */
-function keyReachesPastOnboardingModal(event: KeyEventLike, keybindings: ResolvedKeybindings): boolean {
+export function keyReachesPastOnboardingModal(event: KeyEventLike, keybindings: ResolvedKeybindings): boolean {
   if (isCopyShortcut(event) || isPasteShortcut(event)) return true;
   const match = matchKeybinding(keybindings, event);
   const action = match?.kind === "action" ? match.id : null;
