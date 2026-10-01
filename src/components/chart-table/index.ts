@@ -7,4 +7,4 @@ export {
 export type { ChartBandMode, ChartTableLayout } from "./layout";
 export { useChartTableSelection } from "./selection";
 export type { ChartTableSelection } from "./selection";
-export { formatBpAxis, formatPercentAxis, spanAxisFormatter, spanDigits } from "./axis";
+export { formatBpAxis, formatCompactAxis, formatPercentAxis, spanAxisFormatter, spanDigits } from "./axis";

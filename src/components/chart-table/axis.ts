@@ -27,3 +27,23 @@ export const formatBpAxis = spanAxisFormatter((value, digits) => `${value.toFixe
 
 /** Percent values already in percent units: `4.25%`. */
 export const formatPercentAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}%`);
+
+const COMPACT_UNITS = [
+  { divisor: 1e12, suffix: "T" },
+  { divisor: 1e9, suffix: "B" },
+  { divisor: 1e6, suffix: "M" },
+  { divisor: 1e3, suffix: "k" },
+  { divisor: 1, suffix: "" },
+] as const;
+
+/**
+ * Amounts and counts in one compact unit for the whole axis (`50B`, `91.25B`,
+ * `600k`), with the decimals the plotted range needs so ticks never repeat.
+ */
+export function formatCompactAxis(value: number, domain: CompositeAxisDomain): string {
+  if (value === 0) return "0";
+  const top = Math.max(Math.abs(domain.min), Math.abs(domain.max));
+  const unit = COMPACT_UNITS.find((entry) => top >= entry.divisor) ?? COMPACT_UNITS.at(-1)!;
+  const digits = spanDigits({ min: domain.min / unit.divisor, max: domain.max / unit.divisor });
+  return `${(value / unit.divisor).toFixed(digits)}${unit.suffix}`;
+}

@@ -3,8 +3,7 @@ import type {
   DebtMaturitiesPayload,
   DebtMetric,
 } from "../../../api-client/debt-maturities";
-import type { CompositeAxisDomain, DataTableColumn } from "../../../components";
-import { spanDigits } from "../../../components/chart-table";
+import type { DataTableColumn } from "../../../components";
 import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import { formatCompact, formatPercentileRank } from "../../../utils/format";
@@ -86,21 +85,6 @@ export function historyAxis(bars: readonly DebtHistoryPoint[]) {
     formatCursor: (ratio: number) =>
       bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * slots) - 1))]?.asOf ?? "",
   };
-}
-const AXIS_UNITS = [
-  { divisor: 1e12, suffix: "T" },
-  { divisor: 1e9, suffix: "B" },
-  { divisor: 1e6, suffix: "M" },
-  { divisor: 1e3, suffix: "k" },
-  { divisor: 1, suffix: "" },
-] as const;
-/** Compact amounts whose decimals follow the plotted range, so ticks never repeat. */
-export function debtAxisAmount(value: number, domain: CompositeAxisDomain): string {
-  if (value === 0) return "0";
-  const top = Math.max(Math.abs(domain.min), Math.abs(domain.max));
-  const unit = AXIS_UNITS.find((entry) => top >= entry.divisor) ?? AXIS_UNITS.at(-1)!;
-  const digits = spanDigits({ min: domain.min / unit.divisor, max: domain.max / unit.divisor });
-  return `${(value / unit.divisor).toFixed(digits)}${unit.suffix}`;
 }
 export type BucketColumnId = "label" | "value" | "share" | "wall";
 export type BucketColumn = Omit<DataTableColumn, "id"> & { id: BucketColumnId };

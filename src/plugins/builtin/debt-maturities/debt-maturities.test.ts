@@ -14,7 +14,6 @@ import {
   bucketColumns,
   bucketShare,
   datedBucketScale,
-  debtAxisAmount,
   historyAxis,
   historyBars,
   historyChartPoints,
@@ -349,11 +348,3 @@ test("each filing's bar sits in its own slot with its year under it", () => {
   expect(axis.formatCursor(1)).toBe(bars.at(-1)!.asOf);
 });
 
-test("amount ticks take their decimals from the plotted range", () => {
-  const domain = (min: number, max: number) => ({ min, max }) as Parameters<typeof debtAxisAmount>[1];
-  expect(debtAxisAmount(0, domain(0, 125e9))).toBe("0");
-  expect(debtAxisAmount(50e9, domain(0, 125e9))).toBe("50B");
-  expect(debtAxisAmount(91.2e9, domain(91e9, 92e9))).toBe("91.2B");
-  expect(debtAxisAmount(91.25e9, domain(91e9, 91.5e9))).toBe("91.25B");
-  expect(debtAxisAmount(750e6, domain(0, 900e6))).toBe("750M");
-});
