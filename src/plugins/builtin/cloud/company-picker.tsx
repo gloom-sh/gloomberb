@@ -461,6 +461,7 @@ export function CompanyPicker({
     return (
       <OnboardingModal desktopWidth="min(660px, 100%)">
         <OnboardingTitle
+          standalone
           title={t("Which companies do you follow?")}
           description={t("Your watchlist, alerts and Monday brief will follow them.")}
         />
