@@ -17,6 +17,7 @@ import {
   type MultiSelectRowAction,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
+import type { CompositeChartLevels, CompositeLevelEdit } from "../../../components/chart/composite/levels";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
@@ -104,7 +105,13 @@ import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
 import { ChartSeriesQuickAdd } from "./quick-add";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { usePluginAppActions } from "../../runtime";
+import { usePluginAppActions, usePluginConfigState } from "../../runtime";
+import { usePluginRenderContext } from "../../runtime/context";
+import { activePriceAlertsFor, addLevelAlert, PRICE_ALERTS_STORE, type AlertTarget } from "../alerts/levels";
+import { formatAlertDescription } from "../alerts/alert-engine";
+import { syncAlertQuoteStream } from "../alerts/live";
+import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
+import { canonicalExchange } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
@@ -179,6 +186,37 @@ function footerAnchorPoint(event?: PaneFooterPressEvent): { x: number; y: number
   return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y)
     ? { x, y }
     : undefined;
+}
+
+/** An alert's level, and a drawn level that has one, take this colour. */
+const ALERT_LEVEL_COLOR = "#ff6b6b";
+
+/**
+ * The listing price levels belong to: the chart's first price series shown
+ * in its own values, under the exchange its data resolved to.
+ */
+function levelListing(spec: ChartSpec, series: readonly ResolvedSeries[]): {
+  seriesId: string;
+  key: string;
+  target: AlertTarget;
+  lastPrice: number | null;
+} | null {
+  const entry = spec.series.find((candidate) => (
+    candidate.visible !== false
+    && candidate.transform === "raw"
+    && candidate.source.kind === "security"
+    && (candidate.source.fieldId === "market.ohlcv" || candidate.source.fieldId === "market.close")
+  ));
+  const resolved = entry ? series.find((candidate) => candidate.id === entry.id) : undefined;
+  if (!entry || entry.source.kind !== "security" || !resolved) return null;
+  const exchange = resolved.timeBasis?.exchange || canonicalExchange(entry.source.instrument.exchange) || undefined;
+  const last = resolved.points.findLast((point) => Number.isFinite(point.close ?? point.value));
+  return {
+    seriesId: entry.id,
+    key: priceLevelTickerKey(entry.source.instrument.symbol, exchange),
+    target: { symbol: entry.source.instrument.symbol, exchange },
+    lastPrice: last ? last.close ?? last.value : null,
+  };
 }
 
 function isPriceStudyTarget(spec: ChartSpec): boolean {
@@ -338,6 +376,80 @@ function ChartComposerSurface({
     [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
   const { sharePane, notify } = usePluginAppActions();
+  const { runtime } = usePluginRenderContext();
+  const [levelStore, setLevelStore] = usePluginConfigState<unknown>(PRICE_LEVELS_KEY, null);
+  const alertsJson = useAppSelector((state) => state.config.pluginConfig[PRICE_ALERTS_STORE.pluginId]?.[PRICE_ALERTS_STORE.key]);
+  const alertsOn = useAppSelector((state) => !state.config.disabledPlugins.includes(PRICE_ALERTS_STORE.pluginId));
+  // The listing only changes with the chart's ticker; the last price moves
+  // every tick, so it is read at the moment an alert is made.
+  const freshListing = levelListing(spec, resolution.series);
+  const listingRef = useRef(freshListing);
+  listingRef.current = freshListing;
+  const listing = useMemo(
+    () => listingRef.current,
+    [freshListing?.seriesId, freshListing?.key, freshListing?.target.symbol, freshListing?.target.exchange],
+  );
+  const editLevels = useCallback((edit: CompositeLevelEdit) => {
+    const key = listingRef.current?.key;
+    if (!key) return;
+    setLevelStore((current: unknown) => editPriceLevels(
+      parsePriceLevels(current),
+      key,
+      edit.kind === "remove" ? edit : { kind: edit.kind, id: edit.id, price: edit.value },
+    ));
+  }, [setLevelStore]);
+  const alertAtLevel = useCallback(async (price: number) => {
+    const current = listingRef.current;
+    if (!current) return;
+    const result = addLevelAlert(
+      runtime.getConfigState<string>(PRICE_ALERTS_STORE.pluginId, PRICE_ALERTS_STORE.key),
+      current.target,
+      price,
+      current.lastPrice,
+    );
+    if ("error" in result) {
+      notify({ body: `Saved alerts could not be read: ${result.error}`, type: "error" });
+      return;
+    }
+    if (result.created) {
+      await runtime.setConfigState(PRICE_ALERTS_STORE.pluginId, PRICE_ALERTS_STORE.key, result.json);
+      syncAlertQuoteStream();
+    }
+    notify({
+      body: `${result.created ? "Alert set" : "Alert already set"}: ${formatAlertDescription(result.alert)}`,
+      type: "success",
+    });
+  }, [notify, runtime]);
+  const chartLevels = useMemo<CompositeChartLevels | null>(() => {
+    if (!listing) return null;
+    const stored = parsePriceLevels(levelStore)[listing.key] ?? [];
+    const alerts = alertsOn ? activePriceAlertsFor(alertsJson, listing.target) : [];
+    const alerted = new Set(alerts.map((alert) => alert.targetPrice));
+    const drawn = new Set(stored.map((level) => level.price));
+    const alertOnly = [...new Map(alerts.filter((alert) => !drawn.has(alert.targetPrice))
+      .map((alert) => [alert.targetPrice, alert] as const)).values()];
+    return {
+      seriesId: listing.seriesId,
+      items: [
+        ...stored.map((level) => ({
+          id: level.id,
+          value: level.price,
+          color: alerted.has(level.price) ? ALERT_LEVEL_COLOR : level.color,
+          editable: true,
+          actionable: alertsOn && !alerted.has(level.price),
+        })),
+        ...alertOnly.map((alert) => ({
+          id: `alert:${alert.id}`,
+          value: alert.targetPrice,
+          color: ALERT_LEVEL_COLOR,
+          editable: false,
+          actionable: false,
+        })),
+      ],
+      onEdit: editLevels,
+      ...(alertsOn ? { action: { label: "alert", title: "Alert at Level", run: (level) => { void alertAtLevel(level.value); } } } : {}),
+    };
+  }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing]);
   const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (shareTimerRef.current !== null) clearTimeout(shareTimerRef.current);
@@ -890,6 +1002,7 @@ function ChartComposerSurface({
           onToggleSeries={toggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           timePick={timePick}
+          levels={chartLevels}
           emptyMessage={emptyMessage}
           legendAccessory={(
             <ChartSeriesQuickAdd

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { CompositeChartLevels } from "./levels";
 import type {
   ChartPanelSpec,
   PanelScale,
@@ -246,4 +247,9 @@ export interface CompositeChartProps {
    * Enter hint, such as "anchor here".
    */
   timePick?: { label: string; onPick: (date: Date) => void; onCancel: () => void } | null;
+  /**
+   * Horizontal price levels on one series' panel. With `onEdit` the level
+   * tool (Shift+H) adds, moves and deletes them by mouse and keyboard.
+   */
+  levels?: CompositeChartLevels | null;
 }

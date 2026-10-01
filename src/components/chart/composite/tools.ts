@@ -13,7 +13,7 @@ import type {
 import { clamp } from "../../../utils/math";
 
 /** Pointer tools that take the drag away from panning while one is picked. */
-export type ChartToolKind = "measure" | "zoom" | "line" | "pencil";
+export type ChartToolKind = "measure" | "zoom" | "line" | "pencil" | "level";
 
 export interface ChartDrawingPoint {
   time: number;

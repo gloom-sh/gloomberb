@@ -175,6 +175,10 @@ In the Indicators dialog (`i`), the highlighted study's setting sits beside Done
 - **Volume profile** spreads each bar's volume evenly over its high-low range into equal price rows across the bars in view, so it follows pan and zoom. The busiest row is the point of control, drawn as a dotted level; the value area grows from it one neighbouring row at a time, taking the busier side, until it holds 70% of the volume. It needs the price in its own values, not a percent or index display.
 - **ATR** is Wilder's average true range in its own panel: the mean true range of the first period, then each bar adds 1/period of its true range. A bar's true range is the largest of its high-low range and its distance from the previous close.
 
+#### Price levels
+
+The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price levels that belong to the ticker, not the pane: every chart of that listing shows them, and they sync with your account. With the tool in hand, a click adds a level, dragging one moves it, Enter adds one at the keyboard cursor's price, `[` and `]` pick one, Up and Down move the picked one and Backspace deletes it. `Shift+A` on a level sets an ALRT price alert there: above when the level is over the current price, below when it is under. Levels with an alert, and active alerts on the ticker set elsewhere, draw in red; an alert's own line is changed in ALRT. Levels draw on the first price series while it shows its own values, not a percent or index display.
+
 `GIP` session loading retains finite zero and negative prices when provider metadata identifies a futures instrument. If another or unknown instrument type reports a nonpositive close in the selected window or its calculation buffer, the result is unavailable; JSON metadata retains the rejected values and dates in `intradayPriceDomainFailures`. Inconsistent OHLC bars still become gaps. Logarithmic scales and transforms retain their positive-value requirement.
 
 ### Markets, News, and Macro
