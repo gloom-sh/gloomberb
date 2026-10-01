@@ -227,6 +227,18 @@ export function latestRegularSessionOpen(exchange: string | undefined, time: num
 }
 
 /**
+ * Whether `time` is inside a regular session: at or after its open and
+ * before its close. Null for venues without known hours.
+ */
+export function isRegularSessionTime(exchange: string | undefined, time: number): boolean | null {
+  const open = latestRegularSessionOpen(exchange, time);
+  if (open === null) return null;
+  // Before this session's close, the latest close is still the one before it opened.
+  const close = latestRegularSessionClose(exchange, time);
+  return !close || close.close < open;
+}
+
+/**
  * True when the venue's full-day closures for the year of `date` are
  * published: US venues and JPX. Elsewhere a local holiday reads as a weekday.
  */

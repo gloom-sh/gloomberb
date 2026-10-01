@@ -118,6 +118,8 @@ export interface CompositePanelScene {
   lastPrice?: CompositeLastPriceMarker;
   /** Present on a panel holding a volume-profile study. */
   volumeProfile?: CompositeVolumeProfile;
+  /** Plot spans (x ratios) of intraday bars outside the regular session, shared by every panel. */
+  extendedHours?: ReadonlyArray<{ start: number; end: number }>;
 }
 
 export interface CompositeCursorValue {

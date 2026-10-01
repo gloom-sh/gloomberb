@@ -15,6 +15,7 @@ import {
 import { compositeGridRatios } from "./format";
 import { projectCompositeValue } from "./scene";
 import { paintVolumeProfile } from "./volume-profile-paint";
+import { paintExtendedHours } from "./session-shading";
 import type {
   CompositeAxisDomain,
   CompositeChartColors,
@@ -317,6 +318,7 @@ export function renderCompositePanelBitmap(
   const grid = parseHex(options.colors.grid);
   const negative = parseHex(options.colors.negative);
   fillOpaque(data, background);
+  if (panel.extendedHours) paintExtendedHours(data, width, height, panel.extendedHours, options.colors.textDim);
 
   const rows = Math.max(1, panel.height);
   for (const ratio of compositeGridRatios(panel)) {

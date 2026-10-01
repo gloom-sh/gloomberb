@@ -4,6 +4,7 @@ import { resolveCompositeObservationWidth } from "./rasterizer";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { projectCompositeValue } from "./scene";
 import { writeVolumeProfileText } from "./volume-profile-paint";
+import { writeSessionBreaksText } from "./session-shading";
 import type {
   CompositeAxisDomain,
   CompositePanelScene,
@@ -249,6 +250,7 @@ export function renderCompositePanelText(
   }
 
   if (panel.volumeProfile) writeVolumeProfileText(rows, plotWidth, panel.volumeProfile);
+  if (panel.extendedHours) writeSessionBreaksText(rows, plotWidth, panel.extendedHours);
 
   // Blank cells only, so the dashed level reads as if it ran under the marks.
   if (panel.lastPrice) {

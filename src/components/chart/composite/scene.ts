@@ -24,6 +24,7 @@ import { compositeAxisMaxTicks, seriesPriceReference } from "./format";
 import type { CompositeTimeScale } from "./types";
 import { isFiniteNumber } from "../../../utils/guards";
 import { volumeProfile } from "../../../time-series/trader-studies";
+import { extendedHoursSpans } from "./session-shading";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -714,6 +715,10 @@ export function buildCompositeChartScene(
   // Panels belong to the authored series, not to whichever of them happen to
   // hold observations right now. A panel that disappears while its data loads
   // reflows every other panel, and the chart jumps again when it comes back.
+  const anchor = timeScale.kind === "market"
+    ? timelineSeries.find((entry) => entry.id === timeScale.anchorSeriesId)
+    : timelineSeries.find((entry) => entry.timeBasis?.kind === "market");
+  const extendedHours = extendedHoursSpans(anchor, dates, dateRatios);
   const orderedPanels = panelSpecsForSeries(series, panels);
   const panelHeights = allocateCompositePanelHeights(orderedPanels, options.height);
 
@@ -735,6 +740,7 @@ export function buildCompositeChartScene(
       height: panelHeights.get(panel.id) ?? 1,
       scale,
       axes,
+      ...(extendedHours.length > 0 ? { extendedHours } : {}),
       series: panelSeries.flatMap((entry) => {
         const domain = axes[entry.axis];
         return domain
