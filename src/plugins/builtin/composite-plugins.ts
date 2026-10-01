@@ -52,6 +52,7 @@ import { holdersModule } from "./holders";
 import { insiderModule } from "./insider";
 import { jobsModule } from "./jobs";
 import { optionsModule } from "./options";
+import { optionsPositioningModule } from "./options-positioning";
 import { optionsScenarioModule } from "./options-scenario";
 import { optionsCalculatorModule } from "./options-calculator";
 import { volSurfaceModule } from "./vol-surface";
@@ -90,6 +91,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     chartComposerModule,
     congressResearchModule,
     optionsModule,
+    optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,

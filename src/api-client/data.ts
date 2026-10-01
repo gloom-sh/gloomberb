@@ -160,6 +160,11 @@ export class CloudDataApi {
     return this.request<T>(`/cloud/iv/${path}`, init);
   }
 
+  /** Options positioning (OPX): open interest by strike and expiry, max pain, dealer gamma. */
+  optionsPositioning<T>(path: string, init?: RequestInit) {
+    return this.request<T>(`/cloud/options/${path}`, init);
+  }
+
   async searchInstruments(
     query: string,
     limit = 10,

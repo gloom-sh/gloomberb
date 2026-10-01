@@ -47,6 +47,7 @@ import { secModule } from "./builtin/sec";
 import { insiderModule } from "./builtin/insider";
 import { jobsModule } from "./builtin/jobs";
 import { optionsModule } from "./builtin/options";
+import { optionsPositioningModule } from "./builtin/options-positioning";
 import { optionsScenarioModule } from "./builtin/options-scenario";
 import { optionsCalculatorModule } from "./builtin/options-calculator";
 import { volSurfaceModule } from "./builtin/vol-surface";
@@ -93,6 +94,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     tickerDetailModule,
     chartComposerModule,
     optionsModule,
+    optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,

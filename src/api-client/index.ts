@@ -697,6 +697,7 @@ class GloomApiClient {
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
   equityScreener = this.data.equityScreener.bind(this.data);
   impliedVolatility = this.data.impliedVolatility.bind(this.data);
+  optionsPositioning = this.data.optionsPositioning.bind(this.data);
   getCloudDebtMaturities = this.data.getCloudDebtMaturities.bind(this.data);
   getCloudRevenueBreakdown = this.data.getCloudRevenueBreakdown.bind(this.data);
   getCloudMnaDeals = this.data.getCloudMnaDeals.bind(this.data);

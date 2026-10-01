@@ -213,6 +213,16 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: OPTIONS,
     bloomberg: ["OMON"],
   },
+  OPX: {
+    summary: "Open interest by strike for one expiry with max pain and spot marked, every expiry's open interest, put/call ratio and max pain, and dealer gamma (GEX) by strike with its flip level and a range for the dealer assumption. GEX and MAXPAIN open it too.",
+    usage: ["OPX", "OPX SPY", "OPX SPX"],
+    keys: [],
+    data: {
+      free: "Open interest as of the prior session; spot and gamma 15 minutes delayed",
+      pro: "Open interest as of the prior session; spot and gamma real-time",
+    },
+    bloomberg: ["OPX"],
+  },
   OVME: {
     summary: "Price a European or American call or put from spot, strike, rate, volatility and expiry, with Greeks, or solve implied volatility from a market price.",
     usage: ["OVME"],
