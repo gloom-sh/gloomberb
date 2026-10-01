@@ -124,13 +124,13 @@ export function createNodeCrashReporterHost(options: NodeCrashReporterHostOption
 
 
 /**
- * A read from a terminal that has gone away (its window closed, its tmux pane
- * killed) fails with EIO just before the hangup signal ends the process. That
- * is the user leaving, not a crash.
+ * Reading from or drawing to a terminal that has gone away (its window
+ * closed, its tmux pane killed) fails with EIO just before the hangup signal
+ * ends the process. That is the user leaving, not a crash.
  */
 function isTerminalHangup(error: unknown): boolean {
   const { code, syscall } = (error ?? {}) as { code?: unknown; syscall?: unknown };
-  return code === "EIO" && syscall === "read";
+  return code === "EIO" && (syscall === "read" || syscall === "write");
 }
 
 function exitAfterFlush(error: unknown): void {
