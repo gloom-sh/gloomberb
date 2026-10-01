@@ -4,7 +4,8 @@ import {
   PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type QueryBarFilter,
   type StatItem,
 } from "../../../components";
-import { curveLookbackLabel, curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
+import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
+import { curveLookbackLabel } from "../../../components/chart/curve/model";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneSettingValue } from "../../../state/app/context";

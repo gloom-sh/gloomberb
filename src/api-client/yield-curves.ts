@@ -7,7 +7,7 @@ export interface CloudCurvePoint {
   yield: number | null;
 }
 
-export interface CloudCurveHeader {
+interface CloudCurveHeader {
   id: CloudCurveId;
   label: string;
   country: string;
