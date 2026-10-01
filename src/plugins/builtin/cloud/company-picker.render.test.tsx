@@ -56,11 +56,15 @@ describe("CompanyPicker in the terminal", () => {
       await tui.setup().mockInput.typeText("asml");
       await tui.setup().renderOnce();
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    });
-    await tui.setup().renderOnce();
-    const frame = tui.frame();
+    // The search is debounced; wait for the answer rather than a fixed time.
+    let frame = "";
+    for (let attempt = 0; attempt < 40 && !frame.includes("ASML Holding"); attempt += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      await tui.setup().renderOnce();
+      frame = tui.frame();
+    }
     if (process.env.PRINT_PICKER_FRAME) console.log(frame);
     expect(queries.at(-1)).toBe("asml");
     expect(frame).toContain("ASML Holding N.V.");
