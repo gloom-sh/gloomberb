@@ -73,6 +73,7 @@ import {
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { renderCompositePanelBitmap } from "./rasterizer";
 import {
+  fitAxisLabels,
   hitTestLevel,
   levelGrabRatio,
   levelPanel,
@@ -873,7 +874,7 @@ function CompositePanelSurface({
   onSelectLevel,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
-  const { cellHeightPx = 18, cellWidthPx = 8 } = useUiCapabilities();
+  const { cellHeightPx = 18, cellWidthPx = 8, fractionalViewport = false } = useUiCapabilities();
   const renderer = useNativeRenderer();
   const plotRef = useRef<BoxRenderable | null>(null);
   const [cursorYRatio, setCursorYRatio] = useState<number | null>(null);
@@ -1157,24 +1158,37 @@ function CompositePanelSurface({
       color: marker.color,
     };
   }, [formatAxisValue, panel]);
-  const levelMarkers = useMemo(() => levelDomain ? projectedLevels.map(({ level, yRatio }) => ({
-    side: levelDomain.side,
-    yRatio,
-    label: formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain),
-    color: level.color,
-  })) : [], [formatAxisValue, levelDomain, projectedLevels]);
+  const levelMarkers = useMemo(() => levelDomain ? [...projectedLevels]
+    // The picked level's label first, then alerts', when they compete for room.
+    .sort((left, right) => Number(right.level.id === selectedLevelId) - Number(left.level.id === selectedLevelId)
+      || Number(left.level.editable) - Number(right.level.editable))
+    .map(({ level, yRatio }) => ({
+      side: levelDomain.side,
+      yRatio,
+      label: formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain),
+      color: level.color,
+    })) : [], [formatAxisValue, levelDomain, projectedLevels, selectedLevelId]);
   const buildAxisMarkers = (side: "left" | "right") => {
     if (!panel.axes[side]) return undefined;
-    const markers = [...levelMarkers, lastPriceMarker, axisMarkers].flatMap((marker) => (
-      marker && (marker.side === null || marker.side === side) ? [marker] : []
-    ));
-    if (markers.length === 0) return undefined;
-    return markers.map((marker) => ({
+    const toAxisMarker = (marker: { yRatio: number; label: string; color: string }) => ({
       row: Math.round(marker.yRatio * Math.max(panel.height - 1, 0)),
       pixelY: marker.yRatio * Math.max(panel.height * cellHeightPx - 1, 0),
       label: marker.label,
       color: marker.color,
-    }));
+    });
+    const onSide = <T extends { side: string | null }>(marker: T | null): marker is T => (
+      !!marker && (marker.side === null || marker.side === side)
+    );
+    const fixed = [lastPriceMarker, axisMarkers].filter(onSide).map(toAxisMarker);
+    const levelLabels = levelMarkers.filter(onSide).map(toAxisMarker);
+    // A label is a row tall, so close levels would stack into an unreadable
+    // pile and hide the last price: each keeps its line, and only the labels
+    // with a row to themselves show. Desktop badges sit between rows.
+    const markers = [
+      ...fitAxisLabels(levelLabels, fixed, (marker) => fractionalViewport ? marker.pixelY / cellHeightPx : marker.row),
+      ...fixed,
+    ];
+    return markers.length > 0 ? markers : undefined;
   };
   const leftAxisMarkers = buildAxisMarkers("left");
   const rightAxisMarkers = buildAxisMarkers("right");
@@ -2421,12 +2435,22 @@ export function CompositeChart({
     if (!levels?.onEdit || !levelHost || !scene) return;
     const { panel, domain } = levelHost;
     const date = keyboardCursorDateRef.current ?? scene.dates.at(-1) ?? null;
-    const value = (date ? resolveMeasureValueAt(panel, date.getTime()) : null)
-      ?? panel.lastPrice?.value ?? unprojectCompositeValue(0.5, domain);
+    // The levels' own series, not whichever one the panel lists first.
+    const pricePanel = { ...panel, series: panel.series.filter((entry) => entry.source.id === levels.seriesId) };
+    const value = (date ? resolveMeasureValueAt(pricePanel, date.getTime()) : null)
+      ?? (panel.lastPrice?.seriesId === levels.seriesId ? panel.lastPrice.value : null)
+      ?? unprojectCompositeValue(0.5, domain);
     if (value === null) return;
-    const id = nextLevelId();
+    const rounded = roundLevelValue(value, domain);
     onActivate?.();
-    levels.onEdit({ kind: "add", id, value: roundLevelValue(value, domain) });
+    // Enter again at the same cursor picks the level already there.
+    const existing = levelItems.find((level) => level.editable && level.value === rounded);
+    if (existing) {
+      setSelectedLevelId(existing.id);
+      return;
+    }
+    const id = nextLevelId();
+    levels.onEdit({ kind: "add", id, value: rounded });
     setSelectedLevelId(id);
   };
   /** Half a row per press, like a keyboard-placed tool's end. */
@@ -2532,9 +2556,11 @@ export function CompositeChart({
       removeSelectedLevel();
       return;
     }
-    if (toolsActive && selectedLevel?.actionable && levels?.action && isShiftedLetter(event, "a")) {
+    // Taken even once the level has its alert, which then says so, so a quick
+    // second press never falls through to the plain `a` pan.
+    if (toolsActive && selectedLevel && levels?.action && isShiftedLetter(event, "a")) {
       consume();
-      runLevelAction();
+      levels.action.run(selectedLevel);
       return;
     }
     if (toolsActive && armedTool && isPlainKey(event, "return", "enter") && scene) {

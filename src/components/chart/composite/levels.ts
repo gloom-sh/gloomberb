@@ -91,6 +91,26 @@ export function roundLevelValue(value: number, domain: Pick<CompositeAxisDomain,
   return Number(value.toFixed(decimals));
 }
 
+/**
+ * The level labels that fit on the axis beside the ones already there, taken
+ * in the order given. Each needs a row of its own, measured by `rowOf` in rows
+ * (fractional on the desktop), so a level close to another keeps its line and
+ * loses only its label.
+ */
+export function fitAxisLabels<T>(
+  candidates: readonly T[],
+  taken: readonly T[],
+  rowOf: (entry: T) => number,
+): T[] {
+  const placed = taken.map(rowOf);
+  return candidates.filter((candidate) => {
+    const row = rowOf(candidate);
+    if (placed.some((other) => Math.abs(other - row) < 1)) return false;
+    placed.push(row);
+    return true;
+  });
+}
+
 export function levelVectors(levels: readonly ProjectedLevel[], selectedId: string | null): ChartVectorShape[] {
   return levels.map(({ level, yRatio }) => ({
     id: `level:${level.id}`,

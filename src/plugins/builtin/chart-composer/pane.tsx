@@ -109,7 +109,10 @@ import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import { usePluginRenderContext } from "../../runtime/context";
 import { activePriceAlertsFor, addLevelAlert, PRICE_ALERTS_STORE, type AlertTarget } from "../alerts/levels";
 import { formatAlertDescription } from "../alerts/alert-engine";
-import { syncAlertQuoteStream } from "../alerts/live";
+import { alertInstrument, syncAlertQuoteStream } from "../alerts/live";
+import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { resolveEntryData } from "../../../market-data/selectors";
 import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -199,6 +202,7 @@ function levelListing(spec: ChartSpec, series: readonly ResolvedSeries[]): {
   seriesId: string;
   key: string;
   target: AlertTarget;
+  instrument: InstrumentRef;
   lastPrice: number | null;
 } | null {
   const entry = spec.series.find((candidate) => (
@@ -215,8 +219,24 @@ function levelListing(spec: ChartSpec, series: readonly ResolvedSeries[]): {
     seriesId: entry.id,
     key: priceLevelTickerKey(entry.source.instrument.symbol, exchange),
     target: { symbol: entry.source.instrument.symbol, exchange },
+    instrument: entry.source.instrument,
     lastPrice: last ? last.close ?? last.value : null,
   };
+}
+
+/**
+ * The price an alert at a level is set against: the quote the alert will be
+ * judged on, else the chart's. The chart's newest close is the fallback only,
+ * since a date window that ends in the past would make an old close current
+ * and point the alert the wrong way.
+ */
+function currentListingPrice(listing: { target: AlertTarget; instrument: InstrumentRef; lastPrice: number | null }): number | null {
+  const coordinator = getSharedMarketDataCoordinator();
+  for (const instrument of coordinator ? [alertInstrument(listing.target), listing.instrument] : []) {
+    const price = getActiveQuoteDisplay(resolveEntryData(coordinator!.getQuoteEntry(instrument)))?.price;
+    if (typeof price === "number" && Number.isFinite(price)) return price;
+  }
+  return listing.lastPrice;
 }
 
 function isPriceStudyTarget(spec: ChartSpec): boolean {
@@ -382,7 +402,7 @@ function ChartComposerSurface({
   const alertsOn = useAppSelector((state) => !state.config.disabledPlugins.includes(PRICE_ALERTS_STORE.pluginId));
   // The listing only changes with the chart's ticker; the last price moves
   // every tick, so it is read at the moment an alert is made.
-  const freshListing = levelListing(spec, resolution.series);
+  const freshListing = levelListing(spec, resolution.bufferedSeries ?? resolution.series);
   const listingRef = useRef(freshListing);
   listingRef.current = freshListing;
   const listing = useMemo(
@@ -392,11 +412,12 @@ function ChartComposerSurface({
   const editLevels = useCallback((edit: CompositeLevelEdit) => {
     const key = listingRef.current?.key;
     if (!key) return;
-    setLevelStore((current: unknown) => editPriceLevels(
-      parsePriceLevels(current),
-      key,
-      edit.kind === "remove" ? edit : { kind: edit.kind, id: edit.id, price: edit.value },
-    ));
+    setLevelStore((current: unknown) => {
+      const stored = parsePriceLevels(current);
+      const next = editPriceLevels(stored, key, edit.kind === "remove" ? edit : { kind: edit.kind, id: edit.id, price: edit.value });
+      // An edit that changed nothing writes nothing, so it never reaches sync.
+      return next === stored ? current : next;
+    });
   }, [setLevelStore]);
   const alertAtLevel = useCallback(async (price: number) => {
     const current = listingRef.current;
@@ -405,7 +426,7 @@ function ChartComposerSurface({
       runtime.getConfigState<string>(PRICE_ALERTS_STORE.pluginId, PRICE_ALERTS_STORE.key),
       current.target,
       price,
-      current.lastPrice,
+      currentListingPrice(current),
     );
     if ("error" in result) {
       notify({ body: `Saved alerts could not be read: ${result.error}`, type: "error" });

@@ -1353,6 +1353,35 @@ describe("CompositeChart", () => {
 
     await act(async () => chartShortcut?.(keyEvent("backspace")));
     expect(edits[2]).toEqual({ kind: "remove", id: added.id });
+
+    // Enter adds one at the cursor's price; Enter again picks it rather than stacking a twin.
+    await act(async () => chartShortcut?.(keyEvent("return")));
+    expect(edits[3]).toMatchObject({ kind: "add", value: 105 });
+    await act(async () => tui.setup().renderOnce());
+    await act(async () => chartShortcut?.(keyEvent("return")));
+    expect(edits).toHaveLength(4);
+  });
+
+  test("a price level on the last price's row leaves the last price on the axis", async () => {
+    const price: ResolvedSeries = {
+      ...series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108]),
+      timeBasis: { kind: "market", timeZone: "America/New_York", exchange: "NASDAQ" },
+    };
+    await tui.render(
+      <CompositeChart
+        width={60}
+        height={12}
+        series={[price]}
+        panels={[{ id: "main" }]}
+        levels={{ seriesId: "price", items: [{ id: "a", value: 108.2, color: "#f5a524", editable: true, actionable: false }] }}
+      />,
+      { width: 62, height: 14 },
+    );
+    await act(async () => tui.setup().renderOnce());
+    const row = tui.frame().split("\n").find((line) => line.includes("✥")) ?? "";
+    expect(row).toContain("───");
+    expect(row).toContain("$108 ");
+    expect(row).not.toContain("$108.2");
   });
 
   test("arms and disarms a chart tool from the toolbar", async () => {

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { hitTestLevel, roundLevelValue, writeLevelText, type ProjectedLevel } from "./levels";
+import { fitAxisLabels, hitTestLevel, roundLevelValue, writeLevelText, type ProjectedLevel } from "./levels";
 
 const level = (id: string, yRatio: number, editable = true): ProjectedLevel => ({
   level: { id, value: 100 - yRatio * 10, color: "#f5a524", editable, actionable: editable },
@@ -21,4 +21,10 @@ test("the pointer grabs the nearest level within its slack, a drawn one before a
 test("text levels fill only blank cells so the marks stay readable", () => {
   const lines = writeLevelText(["  ·  ", " •█· ", "     "], [level("drawn", 0.5), level("alert", 1, false)], null);
   expect(lines).toEqual(["  ·  ", "─•█──", "┄┄┄┄┄"]);
+});
+
+test("close levels keep their lines but only the labels with a row beside the last price and each other", () => {
+  const labels = [{ id: "picked", row: 5.5 }, { id: "near", row: 6.1 }, { id: "on-price", row: 11.3 }, { id: "clear", row: 7.8 }];
+  const shown = fitAxisLabels(labels, [{ id: "last", row: 11 }], (label) => label.row);
+  expect(shown.map((label) => label.id)).toEqual(["picked", "clear"]);
 });
