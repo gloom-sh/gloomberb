@@ -300,6 +300,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
 | `PS` | Open focused pane settings |
 | `LAY` | Open the layout browser to switch, publish, or add layouts |
+| `DESK [desk]` | Add a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading |
 | `LMA <query>` | Layout and pane arrangement actions |
 | `WIN move\|resize` | Move or resize the focused window |
 | `GL` | Tidy all windows |

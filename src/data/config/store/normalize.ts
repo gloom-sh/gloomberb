@@ -199,6 +199,7 @@ const ONBOARDING_STAGES = new Set<OnboardingProgress["stage"]>([
   "welcome",
   "portfolio",
   "add-ticker",
+  "desks",
   "research",
   "verify",
   "account",
@@ -229,6 +230,7 @@ function sanitizeOnboardingProgress(value: unknown): OnboardingProgress | undefi
       : undefined,
     accountStatus,
     checkoutOpenedAt: typeof value.checkoutOpenedAt === "string" ? value.checkoutOpenedAt : undefined,
+    desks: Array.isArray(value.desks) ? sanitizeUniqueStringList(value.desks) : undefined,
   };
 }
 

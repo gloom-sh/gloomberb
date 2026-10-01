@@ -1,8 +1,19 @@
 import { findPaneInstance, type LayoutConfig } from "../../../types/config";
-import type { AppNotificationRequest } from "../../../types/plugin";
+import type { AppNotificationRequest, CommandResultDef, GloomPluginContext } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import type { AppAction } from "../../../state/app/context";
 import { LayoutMarketplacePane } from "../../../layout-marketplace/pane";
+import { apiClient } from "../../../api-client";
+import { resolvePlanAccess } from "../../../api-client/plan-access";
+import { getSharedRegistry } from "../../registry";
+import {
+  buildDesk,
+  deskFunctions,
+  DESKS,
+  isDeskStock,
+  pickDeskCompany,
+  type Desk,
+} from "../../../layout/desks";
 import {
   dockPane,
   floatPane,
@@ -40,6 +51,51 @@ function getFocusedPane(layout: LayoutConfig, focusedPaneId: string | null) {
   return focusedPaneId ? findPaneInstance(layout, focusedPaneId) ?? null : null;
 }
 
+/** Desks whose key, name or one of whose functions matches what follows DESK. */
+function matchDesks(query: string): Desk[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [...DESKS];
+  return DESKS.filter((desk) => (
+    desk.key.startsWith(needle)
+    || desk.label.toLowerCase().includes(needle)
+    || desk.name.toLowerCase().includes(needle)
+    || deskFunctions(desk).some((fn) => fn.toLowerCase() === needle)
+  ));
+}
+
+/**
+ * Opens the desk as a new tab after the others. Its company is the focused
+ * pane's stock, else the most recent stock the user looked at.
+ */
+async function addDesk(ctx: GloomPluginContext, desk: Desk): Promise<void> {
+  const registry = getSharedRegistry();
+  if (!registry || !dispatchRef || !getStateRef) return;
+  const config = ctx.getConfig();
+  const { layout, focusedPaneId } = getStateRef();
+  const focused = getFocusedPane(layout, focusedPaneId);
+  const company = pickDeskCompany(
+    [focused?.binding?.kind === "fixed" ? focused.binding.symbol : null, ...config.recentTickers],
+    (symbol) => isDeskStock(ctx.getTicker(symbol), ctx.getData(symbol)),
+  );
+  const saved = await buildDesk(desk, {
+    catalog: registry,
+    config,
+    company,
+    pro: resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess,
+  });
+  if (!saved) return;
+  dispatchRef({ type: "INSTALL_LAYOUT_COPY", name: saved.name, layout: saved.layout, paneState: saved.paneState });
+}
+
+function deskResults(ctx: GloomPluginContext, query: string): CommandResultDef[] {
+  return matchDesks(query).map((desk) => ({
+    id: desk.key,
+    label: desk.label,
+    detail: deskFunctions(desk).join(" · "),
+    execute: () => addDesk(ctx, desk),
+  }));
+}
+
 export const layoutManagerModule: PluginModule = {
   panes: [
     {
@@ -57,6 +113,24 @@ export const layoutManagerModule: PluginModule = {
     const notify = (body: string, options?: Omit<AppNotificationRequest, "body">) => {
       ctx.notify({ body, ...options });
     };
+
+    ctx.registerCommand({
+      id: "add-desk",
+      label: "Add a Desk",
+      description: "Add a ready-made desk for one kind of trading as a new layout tab",
+      keywords: ["desk", "desks", "workspace", "starter", "equities", "stocks", "options", "volatility", "futures",
+        "commodities", "rates", "credit", "fx", "macro", "active trading", "day trading"],
+      category: "config",
+      shortcut: "DESK",
+      shortcutArg: { placeholder: "desk", kind: "text", parse: (arg) => ({ query: arg.trim() }) },
+      buildResults: (arg) => deskResults(ctx, arg),
+      execute: async (values) => {
+        const query = values?.query ?? values?.shortcut ?? "";
+        const [desk] = query.trim() ? matchDesks(query) : [];
+        if (desk) await addDesk(ctx, desk);
+        else ctx.openCommandBar("DESK ");
+      },
+    });
 
     ctx.registerCommand({
       id: "float-pane",

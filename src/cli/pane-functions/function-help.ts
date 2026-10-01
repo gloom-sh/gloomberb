@@ -922,6 +922,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: null,
     bloomberg: ["BLP"],
   },
+  DESK: {
+    summary: "Adds a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading.",
+    usage: ["DESK", "DESK options"],
+    keys: [],
+    data: null,
+    bloomberg: [],
+  },
   LMA: {
     summary: "Float, dock, swap, remove and save panes and layouts.",
     usage: ["LMA", "LMA float"],

@@ -195,5 +195,15 @@ export function buildCurrentLayoutItems({
       kind: "action",
       action: () => openBuiltInWorkflow("new-layout"),
     },
+    {
+      id: "layout-add-desk",
+      label: "Add a Desk",
+      detail: "A ready-made layout for equities, options, futures, rates, FX or trading",
+      searchText: "desk add workspace template starter",
+      category: "Current Layout",
+      kind: "action",
+      right: "DESK",
+      action: () => dispatch({ type: "SET_COMMAND_BAR", open: true, query: "DESK " }),
+    },
   ];
 }

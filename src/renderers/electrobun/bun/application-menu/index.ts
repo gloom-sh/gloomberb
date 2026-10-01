@@ -99,6 +99,7 @@ function buildApplicationMenu(keybindings: ResolvedKeybindings): ApplicationMenu
         commandItem("Tidy Windows", { type: "layout-gridlock" }, accelerator("tidy-windows")),
         { type: "divider" },
         commandItem("New Layout...", { type: "open-builtin-workflow", actionId: "new-layout" }),
+        openCommandBar("Add a Desk...", "DESK "),
         commandItem("Rename Current Layout...", { type: "open-builtin-workflow", actionId: "rename-layout" }),
         openCommandBar("Duplicate Current Layout", "Duplicate Layout"),
         openCommandBar("Delete Current Layout...", "Delete Layout"),

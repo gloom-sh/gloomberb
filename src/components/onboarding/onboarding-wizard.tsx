@@ -61,7 +61,7 @@ import {
   monthsFreeYearly,
 } from "../../plugins/builtin/account-management/model";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
-import { usePlanAccess } from "../../api-client/plan-access";
+import { resolvePlanAccess, usePlanAccess } from "../../api-client/plan-access";
 import { Button, SegmentedControl, type ListViewItem } from "../ui";
 import { AccountStep, PortfolioStep, type PortfolioSub } from "./onboarding-steps";
 import { BROKER_GUIDE_KEY, brokerSetupGuideUrl } from "./portfolio-step/broker-setup-panel";
@@ -81,6 +81,16 @@ import { useOnboardingAccount } from "./wizard-account";
 import { useOnboardingBrokerSync } from "./wizard-broker-sync";
 import { POSITION_FIELDS, useOnboardingPositions } from "./wizard-positions";
 import { applyFirstRunLayout, buildFirstRunLayout, planFirstRunWatchlist } from "./first-run-workspace";
+import { DesksStep, toggleDeskChoice } from "./desks-step";
+import {
+  buildDesk,
+  DESKS,
+  getDesk,
+  isDeskKey,
+  isDeskStock,
+  pickDeskCompany,
+  type DeskKey,
+} from "../../layout/desks";
 import { debugLog } from "../../utils/debug-log";
 import {
   getConnectableBrokerOptions,
@@ -116,6 +126,7 @@ const SKIP_SETUP_KEY = "s";
 const KEEP_FREE_KEY = "f";
 const CONNECT_BROKER_KEY = "b";
 const BROWSER_SIGN_IN_KEY = "b";
+const SKIP_DESKS_KEY = "s";
 
 /** Digits jump straight to a section the header would let you click. */
 const SECTION_DIGITS: Record<string, OnboardingSectionId> = { "1": "portfolio", "2": "cloud", "3": "pro" };
@@ -172,9 +183,13 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const [editingField, setEditingField] = useState(false);
   /** The added position the keyboard acts on once no field is being typed in. */
   const [positionCursorSymbol, setPositionCursorSymbol] = useState<string | null>(null);
+  const [chosenDesks, setChosenDesks] = useState<DeskKey[]>([]);
+  const [deskCursor, setDeskCursor] = useState(0);
+  const [buildingDesks, setBuildingDesks] = useState(false);
   const inputRef = useRef<InputRenderable>(null);
   const progressSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const finishingRef = useRef(false);
+  const buildingDesksRef = useRef(false);
 
   useEffect(() => {
     if (pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
@@ -276,13 +291,14 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
   /**
    * Seeds the watchlist and swaps Home for the first-run workspace built
-   * around `symbol`. The config comes back for the caller to persist with its
-   * own progress patch.
+   * around `symbol`, with the picked desks as tabs right after it. The config
+   * comes back for the caller to persist with its own progress patch.
    */
   const buildFirstRunWorkspace = useCallback(async (
     baseConfig: AppConfig,
     symbol: string,
     portfolioId: string,
+    desks: readonly DeskKey[],
   ): Promise<AppConfig> => {
     let config = baseConfig;
     let watchlistId = config.watchlists[0]?.id;
@@ -314,7 +330,25 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       watchlistId,
       hasPane: (paneId) => pluginRegistry.panes?.has(paneId) ?? false,
     });
-    return applyFirstRunLayout(config, home);
+    const workspace = applyFirstRunLayout(config, home);
+    if (desks.length === 0) return workspace;
+    const { tickers, financials } = stateRef.current;
+    const held = [...tickers.values()]
+      .filter((ticker) => ticker.metadata.portfolios.includes(portfolioId))
+      .map((ticker) => ticker.metadata.ticker);
+    const company = pickDeskCompany([symbol, ...held], (candidate) => (
+      isDeskStock(tickers.get(candidate), financials.get(candidate))
+    ));
+    const pro = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess;
+    // A desk that fails to build is left out; it never holds up the first run.
+    const deskTabs = await Promise.all(desks.map((key) => (
+      buildDesk(getDesk(key), { catalog: pluginRegistry, config: workspace, company, pro }).catch((error) => {
+        onboardingLog.error("Desk build failed", { desk: key, error: String(error) });
+        return null;
+      })
+    )));
+    const tabs = deskTabs.filter((tab) => tab !== null);
+    return { ...workspace, layouts: [workspace.layouts[0]!, ...tabs, ...workspace.layouts.slice(1)] };
   }, [dispatch, pluginRegistry, stateRef]);
 
   const commitWorkspaceProgress = useCallback(async (
@@ -334,24 +368,48 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       return;
     }
     setEditingField(false);
+    saveProgressInBackground({
+      stage: "desks",
+      path: "manual",
+      portfolioId: positions.portfolioId,
+      tickerSymbol: largest.symbol,
+      positionsImported: positions.positions.length,
+      brokerName: undefined,
+    });
+  }, [positions, saveProgressInBackground]);
+
+  /**
+   * Leaves "What do you trade?": builds the workspace with the picked desks as
+   * tabs (none when skipped, which is today's workspace) and moves on.
+   */
+  const finishDesks = useCallback((desks: readonly DeskKey[]) => {
+    if (buildingDesksRef.current) return;
+    const { tickerSymbol, portfolioId } = getOnboardingProgress(stateRef.current.config);
+    if (!tickerSymbol) {
+      saveProgressInBackground({ stage: "portfolio" });
+      return;
+    }
+    buildingDesksRef.current = true;
+    setBuildingDesks(true);
     setPersistenceError(null);
     void (async () => {
       try {
-        const nextConfig = await buildFirstRunWorkspace(stateRef.current.config, largest.symbol, positions.portfolioId);
+        const nextConfig = await buildFirstRunWorkspace(
+          stateRef.current.config,
+          tickerSymbol,
+          portfolioId ?? positions.portfolioId,
+          desks,
+        );
         if (finishingRef.current) return;
-        await commitWorkspaceProgress(nextConfig, {
-          stage: "research",
-          path: "manual",
-          portfolioId: positions.portfolioId,
-          tickerSymbol: largest.symbol,
-          positionsImported: positions.positions.length,
-          brokerName: undefined,
-        });
+        await commitWorkspaceProgress(nextConfig, { stage: "research", desks: [...desks] });
       } catch (error) {
         setPersistenceError(error instanceof Error ? error.message : String(error));
+      } finally {
+        buildingDesksRef.current = false;
+        setBuildingDesks(false);
       }
     })();
-  }, [buildFirstRunWorkspace, commitWorkspaceProgress, positions, stateRef]);
+  }, [buildFirstRunWorkspace, commitWorkspaceProgress, positions.portfolioId, saveProgressInBackground, stateRef]);
 
   const handleBrokerSynced = useCallback(async (
     result: SyncBrokerInstanceResult,
@@ -364,11 +422,9 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     const brokerName = brokerOptions.find((option) => option.id === selectedBrokerId)?.name;
     const portfolioId = tickerSymbol ? (result.portfolioIds[0] ?? "main") : "main";
     dispatch({ type: "SET_TICKERS", tickers: result.tickers });
-    const workspaceConfig = tickerSymbol
-      ? await buildFirstRunWorkspace(syncedConfig, tickerSymbol, portfolioId)
-      : syncedConfig;
-    await commitWorkspaceProgress(workspaceConfig, {
-      stage: tickerSymbol ? "research" : "portfolio",
+    // The workspace is built once the desks are picked.
+    await commitWorkspaceProgress(syncedConfig, {
+      stage: tickerSymbol ? "desks" : "portfolio",
       path: "broker",
       portfolioId,
       tickerSymbol,
@@ -377,7 +433,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     });
     setEditingField(false);
     setPortfolioSub("positions");
-  }, [brokerOptions, buildFirstRunWorkspace, commitWorkspaceProgress, dispatch, selectedBrokerId]);
+  }, [brokerOptions, commitWorkspaceProgress, dispatch, selectedBrokerId]);
 
   const {
     isBrokerSyncing,
@@ -407,6 +463,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     setPersistenceError(null);
     try {
       await progressSaveQueueRef.current.catch(() => {});
+      const desks = getOnboardingProgress(stateRef.current.config).desks?.filter(isDeskKey);
       const nextConfig: AppConfig = {
         ...stateRef.current.config,
         onboardingComplete: true,
@@ -418,7 +475,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         complete: true,
         progress: undefined,
       });
-      recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed");
+      recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed", undefined, undefined, desks);
       await Promise.resolve(onComplete(nextConfig));
     } catch (error) {
       setPersistenceError(error instanceof Error ? error.message : String(error));
@@ -704,7 +761,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
   const sectionAvailability: Partial<Record<OnboardingSectionId, boolean>> = {
     portfolio: !isBrokerCommitting,
-    cloud: !isBrokerCommitting && (stage === "account" || stage === "upgrade" || stage === "ready" || !!progress.tickerSymbol),
+    // The workspace is built when the desks are picked, so that step comes first.
+    cloud: !isBrokerCommitting && stage !== "desks" && (stage === "account" || stage === "upgrade" || stage === "ready" || !!progress.tickerSymbol),
     pro: !isBrokerCommitting && planAccess.signedIn && (
       stage === "upgrade"
       || stage === "ready"
@@ -712,7 +770,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     ),
   };
 
-  const activeSection: OnboardingSectionId = stage === "portfolio"
+  const activeSection: OnboardingSectionId = stage === "portfolio" || stage === "desks"
     ? "portfolio"
     : stage === "upgrade" || (stage === "ready" && progress.accountStatus === "signed-in")
       ? "pro"
@@ -737,7 +795,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
     const handled = ((): boolean => {
       if (isPlainKey(event, "f10")) {
-        if (stage === "portfolio" || isBrokerCommitting) return true;
+        if (stage === "portfolio" || stage === "desks" || isBrokerCommitting) return true;
         if (stage === "upgrade" && !planAccess.hasProAccess) continueFree();
         else void finish(true);
         return true;
@@ -814,6 +872,24 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           }
         } else if (portfolioSub === "broker-setup" && letter(BROKER_GUIDE_KEY)) {
           openBrokerGuide();
+        } else {
+          return false;
+        }
+        return true;
+      }
+
+      if (stage === "desks") {
+        if (enter) {
+          if (chosenDesks.length > 0) finishDesks(chosenDesks);
+        } else if (letter(SKIP_DESKS_KEY)) {
+          finishDesks([]);
+        } else if (!chord && (name === "up" || name === "k")) {
+          setDeskCursor((index) => Math.max(0, index - 1));
+        } else if (!chord && (name === "down" || name === "j")) {
+          setDeskCursor((index) => Math.min(DESKS.length - 1, index + 1));
+        } else if (!chord && (name === "space" || event.sequence === " ")) {
+          const desk = DESKS[deskCursor];
+          if (desk) setChosenDesks((current) => toggleDeskChoice(current, desk.key));
         } else {
           return false;
         }
@@ -924,7 +1000,9 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           onPress={() => saveProgressInBackground({ stage: "account" })}
         />
       </>}>
-      <Text fg={colors.textDim} wrapText>{tf("Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.", {
+      <Text fg={colors.textDim} wrapText>{tf(progress.desks?.length
+        ? "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more."
+        : "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.", {
         ticker,
         shortcut: commandBarShortcut,
       })}</Text>
@@ -1032,6 +1110,53 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
               ) : null}
             </>
           )}
+        </OnboardingActions>
+      </OnboardingModal>
+    );
+  }
+
+  if (stage === "desks") {
+    return (
+      <OnboardingModal width={68} height={18 + (persistenceError ? 1 : 0)}>
+        <OnboardingHeader
+          active="portfolio"
+          available={sectionAvailability}
+          onNavigate={goToSection}
+          onDismiss={skipSetup}
+          dismissing={isFinishing}
+          showDismiss={false}
+        />
+        <OnboardingTitle
+          step={desktop ? undefined : t("DESKS")}
+          title={t("What do you trade?")}
+          description={t("Each one adds a ready-made desk as a tab.")}
+        />
+        {/* Not allowed to shrink: on a short window the card scrolls instead of the list running under the buttons. */}
+        <DesksStep
+          chosen={chosenDesks}
+          cursor={deskCursor}
+          onCursor={setDeskCursor}
+          onToggle={(key) => setChosenDesks((current) => toggleDeskChoice(current, key))}
+        />
+        {persistenceError ? (
+          <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>
+            {persistenceError}
+          </Text>
+        ) : null}
+        <OnboardingActions>
+          <OnboardingButton
+            label="Skip"
+            variant="ghost"
+            shortcut={SKIP_DESKS_KEY}
+            disabled={buildingDesks}
+            onPress={() => finishDesks([])}
+          />
+          <OnboardingButton
+            label="Continue"
+            variant="primary"
+            disabled={chosenDesks.length === 0 || buildingDesks}
+            onPress={() => finishDesks(chosenDesks)}
+          />
         </OnboardingActions>
       </OnboardingModal>
     );

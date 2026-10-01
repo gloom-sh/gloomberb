@@ -324,6 +324,11 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
         onSelect: () => openLayoutWorkflow("new-layout"),
       },
       {
+        id: "layout:add-desk",
+        label: "Add a Desk...",
+        onSelect: () => registry?.openCommandBar("DESK "),
+      },
+      {
         id: "layout:delete",
         label: "Delete Layout...",
         enabled: layouts.length > 1,

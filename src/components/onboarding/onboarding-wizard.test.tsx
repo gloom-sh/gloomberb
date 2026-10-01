@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -19,7 +19,10 @@ import {
   useAppSelector,
   useAppStateRef,
 } from "../../state/app/context";
+import { createPaneDiscoveryContext } from "../../cli/pane-functions/discovery";
+import { uiBuiltinPlugins } from "../../plugins/catalog-ui";
 import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
+import type { GloomPlugin } from "../../types/plugin";
 import {
   createDefaultConfig,
   type AppConfig,
@@ -69,6 +72,29 @@ function createPluginRegistry(options: {
     openCommandBar: () => {},
     navigateTicker: () => {},
   } as unknown as PluginRegistry;
+}
+
+const startedPlugins: GloomPlugin[] = [];
+afterAll(() => {
+  for (const plugin of startedPlugins.splice(0).reverse()) plugin.dispose?.();
+});
+
+let builtInFunctions: Promise<Pick<PluginRegistry, "panes" | "paneTemplates">> | null = null;
+
+/** A registry that also has the app's own functions, so desks build from the real ones. */
+async function createDeskRegistry(tickerRepository: AppTickerRepositoryPort): Promise<PluginRegistry> {
+  builtInFunctions ??= (async () => {
+    const config = createDefaultConfig("/tmp/onboarding-desks");
+    const { panes, paneTemplates, ...context } = createPaneDiscoveryContext({ getConfig: () => config });
+    for (const plugin of uiBuiltinPlugins) {
+      for (const pane of plugin.panes ?? []) panes.set(pane.id, pane);
+      for (const template of plugin.paneTemplates ?? []) paneTemplates.set(template.id, template);
+      startedPlugins.push(plugin);
+      await plugin.setup?.({ ...context, registerCommand: () => {} });
+    }
+    return { panes, paneTemplates } as Pick<PluginRegistry, "panes" | "paneTemplates">;
+  })();
+  return { ...createPluginRegistry({ tickerRepository }), ...await builtInFunctions } as PluginRegistry;
 }
 
 function StateCapture() {
@@ -178,6 +204,7 @@ function RuntimeWizardHarness({
 const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event);
 const pressEnter = () => emitKeypress({ name: "return", sequence: "\r" });
 const pressEscape = () => emitKeypress({ name: "escape", sequence: "\u001b" });
+const pressSpace = () => emitKeypress({ name: "space", sequence: " " });
 
 async function typeText(text: string): Promise<void> {
   await act(async () => {
@@ -216,6 +243,12 @@ async function addManualPosition(symbol: string, shares = "", avgCost = ""): Pro
   // The typed symbol also sits in the ticker field, so wait for the row count.
   expectedPositionCount += 1;
   await waitForFrame(`Positions (${expectedPositionCount})`);
+}
+
+/** Leaves "What do you trade?" without a desk, which keeps today's first-run workspace. */
+async function skipDesks(): Promise<void> {
+  await waitForFrame("What do you trade?");
+  await emitKeypress({ name: "s", sequence: "s" });
 }
 
 // Milestones and pricing go to the network; neither belongs in a render test.
@@ -266,6 +299,7 @@ describe("OnboardingWizard", () => {
     await pressEscape();
     await pressEnter();
 
+    await skipDesks();
     const frame = await waitForFrame("Connect free Cloud");
     expect(frame).toContain("Built around AAPL");
     expect(capturedConfig?.onboardingProgress).toMatchObject({
@@ -274,7 +308,10 @@ describe("OnboardingWizard", () => {
       portfolioId: "main",
       tickerSymbol: "AAPL",
       positionsImported: 2,
+      desks: [],
     });
+    // Skipping the desks keeps today's tabs.
+    expect(capturedConfig?.layouts.map((layout) => layout.name)).toEqual(["Home", "Monitor", "Macro"]);
     const saved = await tickerRepository.loadTicker("AAPL");
     expect(saved?.metadata.positions).toEqual([
       { portfolio: "main", shares: 10, avgCost: 180, currency: "USD", broker: "manual" },
@@ -313,7 +350,73 @@ describe("OnboardingWizard", () => {
 
     await pressEscape();
     await pressEnter();
+    await skipDesks();
     await waitForFrame("Built around AAPL");
+  });
+
+  test("What do you trade? opens the ticked desks as tabs after Home, in the order they were ticked", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-desks-"));
+    const pluginRegistry = await createDeskRegistry(new JsonTickerRepository());
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "desks" as const, path: "manual" as const, portfolioId: "main", tickerSymbol: "AAPL" },
+    };
+    await tui.render(<WizardHarness config={config} pluginRegistry={pluginRegistry} />, { width: 100, height: 32 });
+    await tui.setup().renderOnce();
+    const frame = tui.frame();
+    expect(frame).toContain("What do you trade?");
+    for (const label of ["Equities", "Options", "Futures & commodities", "Rates & credit", "FX & macro", "Active trading"]) {
+      expect(frame).toContain(label);
+    }
+
+    // Continue waits for a desk.
+    await pressEnter();
+    await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
+    expect(capturedConfig?.onboardingProgress?.stage ?? "desks").toBe("desks");
+
+    // Rates, then Equities, then FX & macro with the mouse; then Equities off again.
+    for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "j", sequence: "j" });
+    await pressSpace();
+    for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "k", sequence: "k" });
+    await pressSpace();
+    await tui.clickFrameText("FX & macro");
+    for (let step = 0; step < 4; step += 1) await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await pressSpace();
+    await pressEnter();
+
+    expect(await waitForFrame("Built around AAPL")).toContain("Your desks are tabs at the bottom");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "research", desks: ["rates", "fx"] });
+    expect(capturedConfig?.layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "FX & Macro", "Monitor", "Macro"]);
+    expect(capturedConfig?.activeLayoutIndex).toBe(0);
+    expect(capturedConfig?.layouts[1]?.layout.instances.map((instance) => instance.paneId)).toEqual([
+      "rate-path", "yield-curve", "money-markets", "cdx-board", "sovr-board", "central-bank-rates",
+    ]);
+  });
+
+  test("the first-run milestone that ends onboarding names the desks picked", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-desks-event-"));
+    const sent: Array<{ event: string; desks?: readonly string[] }> = [];
+    apiClient.recordResearchActivity = (async (payload) => { sent.push(payload); }) as typeof apiClient.recordResearchActivity;
+    apiClient.setSessionToken("onboarding-desks-session");
+    apiClient.restoreCachedUser({ id: "user-desks", email: "desks@example.com", emailVerified: true, plan: "free" });
+    let completed = false;
+    await tui.render(
+      <WizardHarness
+        config={{
+          ...createDefaultConfig(tempDataDir),
+          onboardingProgress: { version: 1, stage: "ready", accountStatus: "signed-in", tickerSymbol: "AAPL", desks: ["options", "active"] },
+        }}
+        pluginRegistry={createPluginRegistry()}
+        onComplete={() => { completed = true; }}
+      />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+    await pressEnter();
+    for (let index = 0; index < 20 && !completed; index += 1) {
+      await act(async () => { await Bun.sleep(0); await tui.setup().renderOnce(); });
+    }
+    expect(sent.find((payload) => payload.event === "onboarding_completed")?.desks).toEqual(["options", "active"]);
   });
 
   test("cannot be skipped or continued before the first position", async () => {
@@ -399,6 +502,7 @@ describe("OnboardingWizard", () => {
     await waitForFrame("Connect Demo Broker");
     await pressEnter();
 
+    await skipDesks();
     const frame = await waitForFrame("Connect free Cloud");
     expect(frame).toContain("Built around MSFT");
     expect(capturedConfig?.onboardingProgress).toMatchObject({
@@ -564,6 +668,7 @@ describe("OnboardingWizard", () => {
       await tui.setup().renderOnce();
     });
 
+    await skipDesks();
     await waitForFrame("Connect free Cloud");
     const held = (await tickerRepository.loadAllTickers())
       .filter((ticker) => ticker.metadata.portfolios.length > 0)
@@ -645,6 +750,7 @@ describe("OnboardingWizard", () => {
       await tui.setup().renderOnce();
     });
 
+    await skipDesks();
     await waitForFrame("Connect free Cloud");
     expect(completionCount).toBe(0);
     expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
