@@ -9,7 +9,7 @@ export const rssCliCommand: CliCommandDef = {
   help: {
     group: CLI_COMMAND_GROUPS.markets,
     usage: ["rss fetch <url> [--name <label>]"],
-    options: [{ flags: "--name <label>", description: "Source name shown on each row (default RSS)" }],
+    options: [{ flags: "--name <label>", description: "Publisher label when the feed item has no source (default RSS)" }],
     examples: ["rss fetch https://feeds.a.dj.com/rss/RSSMarketsMain.xml --limit 10"],
   },
   execute: async (args, ctx) => {

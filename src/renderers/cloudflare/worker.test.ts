@@ -175,7 +175,7 @@ describe("static Cloudflare host", () => {
         Cookie: "theme=dark; __Secure-gloomberb.session_token=worker-route-test",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ url: "https://query1.finance.yahoo.com/v1/finance/screener" }),
+      body: JSON.stringify({ url: "https://api.github.com/repos/gloom-sh/gloomberb" }),
     }), env, async (request) => {
       checks.push(request);
       // What the API answers for a token it does not know.

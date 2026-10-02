@@ -1,4 +1,5 @@
 import type { RssFeedConfig } from "./rss/parser";
+import { MANAGED_NEWS_FEED } from "./rss/managed-feed";
 
 /**
  * Bundled so a terminal without a Gloom Cloud session still has a wire to read.
@@ -22,14 +23,7 @@ export const DEFAULT_FEEDS: RssFeedConfig[] = [
     authority: 70,
     enabled: true,
   },
-  {
-    id: "default-yahoo-finance",
-    url: "https://api.gloom.sh/news/rss",
-    name: "Yahoo Finance",
-    category: "general",
-    authority: 60,
-    enabled: true,
-  },
+  MANAGED_NEWS_FEED,
   {
     id: "default-bbc-business",
     url: "https://feeds.bbci.co.uk/news/business/rss.xml",

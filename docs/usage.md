@@ -239,6 +239,11 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge |
 
+News rows credit the article's publisher and open its original URL. The managed
+news feed includes only articles whose publisher and original link can be
+verified. Custom RSS and Atom feeds use each item's source when supplied,
+falling back to the name you configured for a direct publisher's feed.
+
 Ticker Research includes a **Congress** tab for House and Senate transactions in
 the selected ticker. The **Chamber** filter narrows `CG` and the tab to one chamber. Scroll to append filing windows; `n` or its footer action continues a
 window with no matching transactions. After the year's filings, `p` appends the
