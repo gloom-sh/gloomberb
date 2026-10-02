@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
@@ -212,6 +212,63 @@ describe("scenario headless inputs", () => {
     expect(Math.abs(buildScenario(position).valuation.pnl)).toBeLessThan(cost * 0.001);
   });
 
+  test("a strategy seeded from the close's 0DTE chain starts at zero P&L after the print moves", async () => {
+    // Quoted at the close (spot 100, 30%), valued at the 00:00 UTC after-hours
+    // print. On a same-day vertical a quarter-percent print move is worth about
+    // a fifth of its cost, so valued at the print the seed would not start flat.
+    const sameDay = Date.UTC(2026, 8, 23) / 1000;
+    const quotedAt = Date.UTC(2026, 8, 22, 20);
+    const printAt = Date.UTC(2026, 8, 23);
+    const contract = (side: "call" | "put", strike: number) => {
+      const { price } = valueOption({ side, spot: 100, strike, daysToExpiry: daysToExpiryFrom(sameDay, quotedAt), rate: 0.04,
+        dividendYield: 0.005, volatility: 0.3 });
+      return { contractSymbol: `AAPL${side}${strike}`, strike, bid: price - 0.01, ask: price + 0.01, currency: "USD",
+        expiration: sameDay, impliedVolatility: 0, lastPrice: 0, change: 0, percentChange: 0, inTheMoney: false,
+        lastTradeDate: quotedAt / 1000 };
+    };
+    const strikes = [97.5, 100, 102.5, 105];
+    const close = { ...chain, expirationDates: [sameDay], asOf: new Date(quotedAt).toISOString(),
+      calls: strikes.map((strike) => contract("call", strike)), puts: strikes.map((strike) => contract("put", strike)) };
+    const current = <T>(data: T): QueryEntry<T> => ({ ...ready(data), fetchedAt: printAt, staleAt: printAt + 60_000 });
+    for (const print of [99, 100.25, 101]) {
+      const market = await loadScenarioMarket({ instrument: { symbol: "AAPL" } }, dependencies({ now: () => printAt,
+        loadQuote: async () => current({ ...quote, price: print, lastUpdated: printAt }), loadOptions: async () => current(close) }));
+      expect([market.spot, market.asOf, market.warnings]).toEqual([print, printAt, []]);
+      for (const strategy of ["straddle", "vertical"]) {
+        const position = scenarioPositionFromSettings({ symbol: "AAPL", strategy }, market)!;
+        expect(position.legs.map((leg) => leg.strike)).toEqual(strategy === "straddle" ? [100, 100] : [100, 102.5]);
+        expect(position.legs.every((leg) => leg.volatilitySource === "mid")).toBe(true);
+        expect(position.legs[0]!.volatility).toBeCloseTo(position.legs[1]!.volatility, 4);
+        // The origin is the spot the quotes imply, the close plus a few hours of carry.
+        expect(position.spot).toBeCloseTo(100, 2);
+        const cost = position.legs.reduce((sum, leg) => sum + leg.price * leg.quantity * leg.multiplier, 0);
+        expect(Math.abs(buildScenario(position).valuation.pnl)).toBeLessThan(1e-6);
+        // The print is still in reach as a what-if, at the IVs the quotes imply.
+        const whatIf = scenarioPositionFromSettings({ symbol: "AAPL", strategy, spot: String(print) }, market)!;
+        expect(whatIf.spot).toBe(print);
+        expect(whatIf.legs.map((leg) => leg.volatility)).toEqual(position.legs.map((leg) => leg.volatility));
+        if (strategy === "vertical" && print === 100.25) expect(buildScenario(whatIf).valuation.pnl).toBeGreaterThan(cost * 0.15);
+      }
+    }
+    // Headless output names the last print beside the origin, and leaves it out for a typed spot.
+    setSystemTime(printAt);
+    try {
+      const provider = { id: "scenario-test", getQuote: async () => ({ ...quote, price: 100.25, lastUpdated: printAt }),
+        getTickerFinancials: async () => financials, getOptionsChain: async () => close } as unknown as DataProvider;
+      const run = (options: Record<string, unknown>) => optionsScenarioHeadless.load({ symbols: ["AAPL"], rawArgument: "AAPL",
+        argument: "AAPL", options: { strategy: "vertical", ...options } }, { marketData: provider, signal: new AbortController().signal,
+        apiClient: { getCloudYieldCurve: dependencies().loadYieldCurve } } as unknown as HeadlessPaneContext);
+      const seeded = await run({});
+      expect([seeded.complete, seeded.errors]).toEqual([true, []]);
+      expect(seeded.sections.find((section) => section.title === "Spot")?.entries?.map((entry) => [entry.label, entry.formatted]))
+        .toEqual([["Implied by option quotes", "100.00"], ["Last price", "100.25"]]);
+      const pnl = seeded.sections.find((section) => section.title === "Valuation")?.entries?.find((entry) => entry.label === "pnl");
+      expect(Math.abs(Number(pnl?.value))).toBeLessThan(1e-6);
+      expect(pnl?.formatted).toBe("0.00");
+      expect((await run({ spot: "100.25" })).sections.some((section) => section.title === "Spot")).toBe(false);
+    } finally { setSystemTime(); }
+  });
+
   test("a chain quoted before the spot moved solves its missing IVs against its own parity forward", async () => {
     // Tomorrow's expiry, quoted four hours before the spot print OSA values at.
     const near = Date.UTC(2026, 8, 23) / 1000;
@@ -236,11 +293,19 @@ describe("scenario headless inputs", () => {
     // A 2% move: the call and the put share the forward's volatility, with the
     // time left at the market timestamp, so each still returns its midpoint there.
     // Solved at the moved spot instead, the call would read low and the put high.
-    const moved = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, await after(102))!;
+    const market = await after(102);
+    const moved = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, market)!;
     expect(moved.legs.map((leg) => [leg.side, leg.volatilitySource])).toEqual([["call", "mid"], ["put", "mid"]]);
     expect(moved.legs[0]!.strike).toBe(moved.legs[1]!.strike);
     const expected = 0.3 * Math.sqrt(quotedDays / daysToExpiryFrom(near, now));
     for (const leg of moved.legs) expect(leg.volatility).toBeCloseTo(expected, 3);
+    // Both strategies start where the quotes put the spot, at zero P&L, rather
+    // than a -33% straddle and a +375% vertical valued at the moved print.
+    for (const strategy of ["straddle", "vertical"]) {
+      const position = scenarioPositionFromSettings({ symbol: "AAPL", strategy }, market)!;
+      expect(position.spot).toBeCloseTo(100, 1);
+      expect(Math.abs(buildScenario(position).valuation.pnl)).toBeLessThan(1e-6);
+    }
     // An 8% move leaves no parity forward the spot can trust: no strategy rather than invented IVs.
     const gapped = await after(108);
     expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, gapped)).toThrow("no complete quoted strategy");

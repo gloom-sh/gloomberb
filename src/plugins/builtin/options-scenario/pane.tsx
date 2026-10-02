@@ -29,7 +29,9 @@ import { useScenarioEvidence } from "./evidence";
 const EMPTY_ERRORS: string[] = [];
 const TABS = [{ value: "payoff", label: "Payoff" }, { value: "grid", label: "P&L grid" }, { value: "legs", label: "Legs" }];
 const dateLabel = (value: number) => Number.isFinite(new Date(value).getTime()) ? new Date(value).toISOString().slice(0, 10) : "--";
-const money = (value: number | null) => value == null || !Number.isFinite(value) ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Float noise at a flat origin reads as zero, not a red -0.00.
+const cents = (value: number) => Math.abs(value) < 0.005 ? 0 : value;
+const money = (value: number | null) => value == null || !Number.isFinite(value) ? "--" : cents(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
@@ -205,8 +207,11 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   usePaneNoticeFooter({ registrationId: "osa-notices", notices, focused, enabled: !detail || detail === "chain" });
   // Following the market solves every quoted leg's IV from its live midpoint anyway.
   const midLegs = live || !position ? 0 : position.legs.filter((leg) => leg.volatilitySource === "mid").length;
-  const midVolatility = !midLegs ? "" : midLegs === position!.legs.length ? " · IV from quote mid"
-    : ` · IV from quote mid on ${midLegs} of ${position!.legs.length} legs`;
+  // A seed starts at the spot its quote mids imply, so name the last print when it differs.
+  const lastPrint = midLegs && (settings.spot == null || settings.spot === "") && market?.spot != null
+    && money(market.spot) !== money(position!.spot) ? ` · last ${money(market.spot)}` : "";
+  const midVolatility = !midLegs ? "" : (midLegs === position!.legs.length ? " · IV from quote mid"
+    : ` · IV from quote mid on ${midLegs} of ${position!.legs.length} legs`) + lastPrint;
   usePaneFooter("osa", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading chain", tone: "muted" as const }] }] : []),
     ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
@@ -235,7 +240,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const risk = scenario?.expiryRisk;
   const stats: StatItem[] = scenario ? [
     { id: "pnl", label: "P&L", value: money(scenario.valuation.pnl), detail: scenario.position.currency,
-      tone: scenario.valuation.pnl >= 0 ? "positive" : "negative" },
+      tone: cents(scenario.valuation.pnl) >= 0 ? "positive" : "negative" },
     { id: "spot", label: "Spot", value: money(scenario.position.spot) },
     { id: "value", label: "Value", value: money(scenario.valuation.price) },
     { id: "max-profit", label: "Max profit", value: risk?.unlimitedProfit ? "Unlimited" : money(risk?.maxProfit ?? null) },
@@ -270,7 +275,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         if (column.id === "spot") return { text: money(row.spot), color: row.landmark ? colors.warning : atSpot ? colors.textBright : colors.text };
         if (column.id === "move") return { text: row.move == null ? "--" : `${row.move > 0 ? "+" : ""}${(row.move * 100).toFixed(1)}`, color: colors.textMuted };
         if (column.id === "mark") return { text: row.landmark ?? (atSpot ? "spot" : ""), color: row.landmark ? colors.warning : colors.textMuted };
-        const value = row.values[Number(column.id)] ?? 0;
+        const value = cents(row.values[Number(column.id)] ?? 0);
         // Shade by size so the profit zone and the wings read at a glance.
         const peak = Math.max(1, ...scenario.grid.flatMap((entry) => entry.values.map(Math.abs)));
         return { text: money(value), color: value >= 0 ? colors.positive : colors.negative,

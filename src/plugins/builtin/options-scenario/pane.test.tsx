@@ -10,6 +10,8 @@ import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-ru
 import type { AppConfig } from "../../../types/config";
 import { Box } from "../../../ui";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import { valueOption, daysToExpiryFrom } from "../shared/volatility";
+import type { ScenarioMarketSnapshot } from "./client";
 import { type ScenarioEvidence } from "./evidence";
 import { buildScenario, parseLegs, type ScenarioPosition } from "./model";
 import { OptionsScenarioPane } from "./pane";
@@ -18,7 +20,7 @@ import { createTestPaneConfig } from "../../../test-support/pane";
 
 const ID = "options-scenario:test";
 const PLUGIN = "ticker-research";
-const WIDTH = 100;
+let WIDTH = 100;
 const HEIGHT = 32;
 const SETTINGS = { symbol: "AAPL", spot: "100", rate: "4", dividendYield: "0", currency: "USD",
   asOf: "2026-09-22T00:00:00Z", legs: "call,100,2026-12-18,1,5,25" };
@@ -186,4 +188,32 @@ test("saved strategy snapshots stay independent from later edits and reload from
   await frame();
   expect(evidence().scenario!.position).toEqual(POSITION);
   expect((paneState().position as ScenarioPosition).legs[0]!.quantity).toBe(1);
+});
+
+test("a strategy seeded from older quotes names the last print beside the spot they imply", async () => {
+  // The close's same-day chain (spot 100, 30%) against a 100.25 after-hours print.
+  const expiration = Date.UTC(2026, 8, 23) / 1000;
+  const quotedAt = Date.UTC(2026, 8, 22, 20);
+  const contract = (side: "call" | "put", strike: number) => {
+    const { price } = valueOption({ side, spot: 100, strike, daysToExpiry: daysToExpiryFrom(expiration, quotedAt), rate: 0.04,
+      dividendYield: 0.005, volatility: 0.3 });
+    return { contractSymbol: `AAPL${side}${strike}`, strike, bid: price - 0.01, ask: price + 0.01, currency: "USD", expiration,
+      impliedVolatility: 0, lastPrice: 0, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: quotedAt / 1000 };
+  };
+  const strikes = [97.5, 100, 102.5, 105];
+  const market: ScenarioMarketSnapshot = { symbol: "AAPL", spot: 100.25, currency: "USD", asOf: Date.UTC(2026, 8, 23),
+    chain: { underlyingSymbol: "AAPL", expirationDates: [expiration], asOf: new Date(quotedAt).toISOString(),
+      calls: strikes.map((strike) => contract("call", strike)), puts: strikes.map((strike) => contract("put", strike)) },
+    expirationDates: [expiration], rate: 0.04, dividendYield: 0.005, source: "test", underlyingQuote: null, rateAsOf: [], warnings: [] };
+  // Wide enough for the footer status beside its key hints.
+  WIDTH = 220;
+  try {
+    await mount(configFor({ spot: "", rate: "", dividendYield: "", asOf: "", legs: "", strategy: "vertical", scenarioMarketSnapshot: market }));
+    const scenario = evidence().scenario!;
+    expect(scenario.position.spot).toBeCloseTo(100, 2);
+    expect(Math.abs(scenario.valuation.pnl)).toBeLessThan(1e-6);
+    expect(tui.frame()).toContain("2026-09-23 · market · IV from quote mid · last 100.25");
+    // Float noise at the flat origin is not a red -0.00.
+    expect(tui.frame()).toMatch(/P&L +0\.00 +USD/);
+  } finally { WIDTH = 100; }
 });

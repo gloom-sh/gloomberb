@@ -7,7 +7,9 @@ import {
 } from "./client";
 import { buildScenario, parseLegs } from "./model";
 
-const money = (value: unknown) => typeof value === "number" ? value.toFixed(2) : "--";
+// Float noise at a flat origin or a breakeven prints as 0.00, not -0.00.
+const money = (value: unknown) => typeof value === "number" ? (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) : "--";
+const supplied = (value: unknown) => value != null && value !== "";
 
 export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
@@ -52,6 +54,9 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const errors = scenario ? [...new Set([...market.warnings, ...scenario.warnings])]
       : [...market.warnings, "No position supplied; add --legs or select --strategy"];
     const midVolatility = !!position?.legs.some((leg) => leg.volatilitySource === "mid");
+    // A seeded strategy starts at the spot its quote mids imply; the last print is reported beside it.
+    const lastPrint = midVolatility && !supplied(settings.spot) && market.spot != null && money(market.spot) !== money(position!.spot)
+      ? market.spot : null;
     return {
       sections: scenario ? [
         { title: "Position", columns: [
@@ -62,6 +67,10 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "multiplier", header: "Multiplier" },
         ], rows: position!.legs.map((leg) => ({ ...leg, expiry: new Date(leg.expiration * 1000).toISOString().slice(0, 10),
           ...(midVolatility ? { volatilityFrom: leg.volatilitySource === "mid" ? "quote mid" : "provider" } : {}) })) },
+        ...(lastPrint != null ? [{ title: "Spot", entries: [
+          { key: "spot", label: "Implied by option quotes", value: position!.spot, formatted: money(position!.spot) },
+          { key: "last", label: "Last price", value: lastPrint, formatted: money(lastPrint) },
+        ] }] : []),
         { title: "Valuation", entries: Object.entries(scenario.valuation).map(([key, value]) => ({ key, label: key, value, formatted: money(value) })) },
         { title: "Expiry risk", entries: [
           { label: "Breakevens", value: scenario.expiryRisk.breakevens },

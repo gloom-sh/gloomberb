@@ -167,7 +167,8 @@ export function scenarioPositionFromSettings(
     return { ...seed, symbol, exchange: exchange ?? seeded.exchange ?? seed.exchange, legs: seed.legs.map((leg) => ({ ...leg })) };
   }
   if (market && (market.symbol !== symbol || exchangeMismatch(market.exchange))) throw new Error("Market snapshot does not match the requested ticker");
-  const spot = numericSetting(settings, "spot") ?? market?.spot;
+  const whatIfSpot = numericSetting(settings, "spot");
+  let spot = whatIfSpot ?? market?.spot;
   const rateValue = numericSetting(settings, "rate");
   const dividendValue = numericSetting(settings, "dividendYield");
   const rate = rateValue == null ? market?.rate : rateValue / 100;
@@ -180,7 +181,16 @@ export function scenarioPositionFromSettings(
     if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
     // Leg IVs are solved at the market's own spot and time, never at a what-if override.
     const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate } : null;
-    legs = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing);
+    const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing);
+    legs = seeded.legs;
+    // Mids priced off the parity forward are worth their cost only at the spot
+    // that forward implies on the scenario's own rate and dividend yield. The
+    // last print can sit away from it when the quotes are older (the close's
+    // chain against an after-hours print), so the origin starts there and the
+    // print is a what-if from it. A typed spot is a what-if and is kept.
+    if (whatIfSpot == null && seeded.parity && rate != null && dividendYield != null) {
+      spot = seeded.parity.forward * Math.exp(-(rate - dividendYield) * seeded.parity.daysToExpiry / 365);
+    }
   }
   if (!legs.length) return null;
   if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
@@ -204,24 +214,27 @@ interface StrategyPricing { spot: number; asOf: number; rate: number }
 
 const usableVolatility = (value: unknown): value is number => positive(value) && value <= 5;
 
+interface StrategyParity { forward: number; daysToExpiry: number }
+
 /**
  * An explicit strategy request uses only two-sided quotes and enters each leg
  * at its quote midpoint, so each leg takes the IV that midpoint implies against
  * the expiry's put-call parity forward, with the time left at the market
- * timestamp OSA values at. The scenario then starts at zero P&L, up to the
- * spot's move since the quotes were taken, even when the chain carries a
- * provider IV measured at another time (a same-day IV solved when the chain
- * was served, hours after the after-hours print OSA values at). The forward
- * comes from the same quotes, so a spot that moved after they were taken (an
- * after-hours or pre-market print against the close's chain) does not skew the
- * call against the put. A leg whose midpoint cannot be solved (a spot too far
- * from every parity forward to trust the quotes, or a midpoint below intrinsic
- * value) keeps a usable provider IV, and without one it is not eligible.
+ * timestamp OSA values at. This holds even when the chain carries a provider
+ * IV measured at another time (a same-day IV solved when the chain was served,
+ * hours after the after-hours print OSA values at). The forward comes from the
+ * same quotes, so a spot that moved after they were taken (an after-hours or
+ * pre-market print against the close's chain) does not skew the call against
+ * the put. A leg whose midpoint cannot be solved (a spot too far from every
+ * parity forward to trust the quotes, or a midpoint below intrinsic value)
+ * keeps a usable provider IV, and without one it is not eligible. `parity` is
+ * the forward a seeded leg was solved against, so the caller can start the
+ * scenario at the spot it implies.
  */
 function scenarioStrategyLegs(
   chain: OptionsChain, spot: number, strategy: "vertical" | "straddle", pricing: StrategyPricing | null,
-): ScenarioLeg[] {
-  const parity = new Map<number, { forward: number; daysToExpiry: number } | null>();
+): { legs: ScenarioLeg[]; parity: StrategyParity | null } {
+  const parity = new Map<number, StrategyParity | null>();
   const parityFor = (expiration: number) => {
     if (!pricing) return null;
     if (!parity.has(expiration)) {
@@ -254,12 +267,13 @@ function scenarioStrategyLegs(
       .sort((a, b) => a.contract.strike - b.contract.strike)[0]!
     : puts.find(({ contract }) => contract.expiration === first.contract.expiration && contract.strike === first.contract.strike)!;
   if (first.contract.currency !== second.contract.currency) throw new Error("Strategy quote currencies differ");
-  return [first, second].map(({ contract, mid, volatility, solved }, index) => ({
+  const legs = [first, second].map(({ contract, mid, volatility, solved }, index): ScenarioLeg => ({
     id: contract.contractSymbol, side: index === 1 && strategy === "straddle" ? "put" : "call",
     quantity: index === 1 && strategy === "vertical" ? -1 : 1, strike: contract.strike,
     expiration: contract.expiration, price: mid, volatility, multiplier: 100,
     ...(solved ? { volatilitySource: "mid" as const } : {}),
   }));
+  return { legs, parity: first.solved || second.solved ? parityFor(first.contract.expiration) : null };
 }
 
 export function scenarioControlsFromSettings(settings: Record<string, unknown>, position: ScenarioPosition): ScenarioControls {
