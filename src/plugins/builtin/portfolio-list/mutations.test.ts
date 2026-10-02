@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createDefaultConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import {
+  adoptFirstPositionCurrency,
   createManualPortfolio,
   deleteManualPortfolio,
+  hasOpenPortfolioPositions,
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
@@ -169,5 +171,32 @@ describe("portfolio-list mutations", () => {
     expect(resolveManualPositionCurrency("", makeTicker({ currency: "CAD" }), portfolio, "USD")).toBe("CAD");
     expect(resolveManualPositionCurrency("", makeTicker({ currency: "" }), portfolio, "USD")).toBe("EUR");
     expect(resolveManualPositionCurrency("", makeTicker({ currency: "" }), { ...portfolio, currency: "" }, "USD")).toBe("USD");
+  });
+
+  test("the first position in an empty manual portfolio sets its currency, with the default USD base only", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-mutations");
+    config.portfolios.push(
+      { id: "asx", name: "ASX", currency: "USD" },
+      { id: "team", name: "Team", currency: "USD", teamId: "t1" },
+      { id: "broker:ibkr", name: "IBKR", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-live" },
+    );
+    const bhp = makeTicker({ ticker: "BHP", currency: "AUD", portfolios: ["asx"], positions: [
+      { portfolio: "asx", shares: 100, avgCost: 40, currency: "AUD", broker: "manual" },
+    ] });
+    expect(hasOpenPortfolioPositions("asx", [bhp])).toBe(true);
+    expect(hasOpenPortfolioPositions("asx", [makeTicker({ portfolios: ["asx"] })])).toBe(false);
+
+    expect(adoptFirstPositionCurrency(config, "asx", "AUD")?.portfolios.find((entry) => entry.id === "asx")?.currency).toBe("AUD");
+    // Refilled with a USD holding, an emptied AUD portfolio goes back to USD.
+    const audConfig = adoptFirstPositionCurrency(config, "asx", "AUD")!;
+    expect(adoptFirstPositionCurrency(audConfig, "asx", "USD")?.portfolios.find((entry) => entry.id === "asx")?.currency).toBe("USD");
+    expect(adoptFirstPositionCurrency(config, "asx", "USD")).toBeNull();
+    // Pence and free text never become a portfolio currency; team and broker portfolios keep theirs.
+    expect(adoptFirstPositionCurrency(config, "asx", "GBX")).toBeNull();
+    expect(adoptFirstPositionCurrency(config, "asx", "Aussie")).toBeNull();
+    expect(adoptFirstPositionCurrency(config, "team", "AUD")).toBeNull();
+    expect(adoptFirstPositionCurrency(config, "broker:ibkr", "AUD")).toBeNull();
+    // A base currency the user chose is what manual portfolios total in.
+    expect(adoptFirstPositionCurrency({ ...config, baseCurrency: "EUR" }, "asx", "AUD")).toBeNull();
   });
 });

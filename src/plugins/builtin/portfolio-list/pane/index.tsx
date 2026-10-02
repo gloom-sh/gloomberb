@@ -162,8 +162,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   // Totals, money columns and account values are in the portfolio's currency.
   const totalsCurrency = useMemo(
-    () => resolvePortfolioTotalsCurrency(currentPortfolio, tickers, config.baseCurrency),
-    [config.baseCurrency, currentPortfolio, tickers],
+    () => resolvePortfolioTotalsCurrency(currentPortfolio, config.baseCurrency),
+    [config.baseCurrency, currentPortfolio],
   );
   const trackedCurrencies = useMemo(
     () => buildTrackedCurrencies(tickers, financialsMap, accountState, totalsCurrency),
@@ -290,7 +290,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     isPortfolioTab,
     convertAccountValue,
     currency: totalsCurrency,
-  }), [convertAccountValue, isPortfolioTab, portfolioSummaryTotals, summaryAccountState, totalsCurrency]);
+    baseCurrency: config.baseCurrency,
+  }), [config.baseCurrency, convertAccountValue, isPortfolioTab, portfolioSummaryTotals, summaryAccountState, totalsCurrency]);
   // The header row sits in the pane's one-cell side padding, like the table.
   const summaryWidth = Math.max(0, width - 2);
   const summaryLayout = useMemo(() => layoutPortfolioSummaryHeader(summarySegments, summaryWidth, {

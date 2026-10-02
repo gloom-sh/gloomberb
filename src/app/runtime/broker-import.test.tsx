@@ -24,7 +24,7 @@ afterEach(() => {
 // it had copied before asking, which closed any pane opened in the meantime.
 test("the startup broker sync keeps a pane opened while the broker was answering", async () => {
   const instance: BrokerInstanceConfig = { id: "demo-broker", brokerType: "demo", label: "Demo", config: {}, enabled: true };
-  const config = { ...createDefaultConfig("/tmp/gloomberb-broker-import-test"), brokerInstances: [instance] };
+  const config = { ...createDefaultConfig("/tmp/gloomberb-broker-import-test"), brokerInstances: [instance], portfolioCurrenciesAdopted: true };
   let answer!: () => void;
   const answered = new Promise<void>((resolve) => { answer = resolve; });
   const broker = {

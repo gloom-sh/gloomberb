@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PluginRegistry } from "../../plugins/registry";
 import {
   addTickerToPortfolio,
+  adoptFirstPositionCurrency,
+  hasOpenPortfolioPositions,
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
 } from "../../plugins/builtin/portfolio-list/mutations";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
+import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import { resolveTickerSearch, upsertTickerFromSearchResult, type ResolvedTickerSearch } from "../../tickers/search";
 import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
@@ -217,6 +220,7 @@ export function useOnboardingPositions({
 
       const portfolio = stateRef.current.config.portfolios.find((entry) => entry.id === portfolioId);
       let nextTicker: TickerRecord;
+      let positionCurrency: string | null = null;
       if (shares === null) {
         nextTicker = addTickerToPortfolio(ticker, portfolioId).ticker;
       } else {
@@ -226,20 +230,29 @@ export function useOnboardingPositions({
           setError(t("No live price yet. Enter the average cost."));
           return false;
         }
+        positionCurrency = resolveManualPositionCurrency(
+          undefined,
+          ticker,
+          portfolio ?? { id: portfolioId, name: portfolioId, currency: stateRef.current.config.baseCurrency },
+          stateRef.current.config.baseCurrency,
+        );
         nextTicker = setManualPortfolioPosition(ticker, portfolioId, {
           shares,
           avgCost: costBasis,
-          currency: resolveManualPositionCurrency(
-            undefined,
-            ticker,
-            portfolio ?? { id: portfolioId, name: portfolioId, currency: stateRef.current.config.baseCurrency },
-            stateRef.current.config.baseCurrency,
-          ),
+          currency: positionCurrency,
         }).ticker;
       }
 
+      const firstPosition = !hasOpenPortfolioPositions(portfolioId, stateRef.current.tickers.values());
       await pluginRegistry.tickerRepository.saveTicker(nextTicker);
       dispatch({ type: "UPDATE_TICKER", ticker: nextTicker });
+      const adopted = positionCurrency && firstPosition
+        ? adoptFirstPositionCurrency(stateRef.current.config, portfolioId, positionCurrency)
+        : null;
+      if (adopted) {
+        dispatch({ type: "SET_CONFIG", config: adopted });
+        await saveConfigImmediately(adopted);
+      }
       if (created) {
         pluginRegistry.events.emit("ticker:added", { symbol: nextTicker.metadata.ticker, ticker: nextTicker });
       }

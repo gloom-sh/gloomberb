@@ -62,6 +62,7 @@ export function normalizeLoadedConfig(
     brokerInstances: sanitizeBrokerInstances(candidate.brokerInstances),
     disabledPlugins,
     seededPlugins: sanitizeUniqueStringList(candidate.seededPlugins),
+    ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
     theme: typeof candidate.theme === "string" ? candidate.theme : defaults.theme,

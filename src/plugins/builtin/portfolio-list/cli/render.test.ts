@@ -23,7 +23,7 @@ test("CLI rejects blank acquisition cost before resolving or writing a ticker, a
   let reads = 0;
   const saved: TickerRecord[] = [];
   const ctx = createTestCliContext({ config,
-    store: { loadTicker: async () => { reads++; return ticker; }, saveTicker: async (record: TickerRecord) => { saved.push(record); } },
+    store: { loadTicker: async () => { reads++; return ticker; }, loadAllTickers: async () => [], saveTicker: async (record: TickerRecord) => { saved.push(record); } },
     dataProvider: createTestDataProvider(),
   }).context;
   for (const cost of ["", "  ", "NaN"]) {

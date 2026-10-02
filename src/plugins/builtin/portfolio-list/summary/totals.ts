@@ -2,7 +2,6 @@ import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
 import { getCurrencySymbol } from "../../../../market-data/market/format";
-import { resolveCurrencyUnit } from "../../../../utils/currency-units";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { isManualPortfolio } from "../mutations";
@@ -57,40 +56,32 @@ function currencyCode(value: string | undefined): string | null {
 }
 
 /**
- * The currency a portfolio's totals, market values and P&L are in: the
- * portfolio's own, else the base currency (watchlists too). A manual portfolio
- * has no currency picker and takes the base currency when created, so one
- * whose positions are all in one currency totals in that currency; mixed
- * holdings convert into the portfolio's currency.
+ * The currency a portfolio's totals, market values and P&L are in. A broker
+ * portfolio uses its account currency. A manual portfolio uses its stored
+ * currency with the default USD base (its first holding sets it, see
+ * adoptFirstPositionCurrency); a base currency the user chose is what manual
+ * portfolios and watchlists total in.
  */
-export function resolvePortfolioTotalsCurrency(
-  portfolio: Portfolio | null | undefined,
-  tickers: Iterable<TickerRecord>,
-  baseCurrency: string,
-): string {
-  const fallback = currencyCode(portfolio?.currency) ?? currencyCode(baseCurrency) ?? "USD";
-  if (!portfolio || !isManualPortfolio(portfolio)) return fallback;
-  let held: string | null = null;
-  for (const ticker of tickers) {
-    for (const position of ticker.metadata.positions) {
-      if (position.portfolio !== portfolio.id || position.shares === 0) continue;
-      const raw = (position.currency || ticker.metadata.currency || "").trim();
-      // Pence and other minor units, or free text, never become the totals currency.
-      if (!CURRENCY_CODE.test(raw) || resolveCurrencyUnit(raw).divisor !== 1) return fallback;
-      if (held && held !== raw) return fallback;
-      held = raw;
-    }
-  }
-  return held ?? fallback;
+export function resolvePortfolioTotalsCurrency(portfolio: Portfolio | null | undefined, baseCurrency: string): string {
+  const base = currencyCode(baseCurrency) ?? "USD";
+  if (!portfolio) return base;
+  if (isManualPortfolio(portfolio) && base !== "USD") return base;
+  return currencyCode(portfolio.currency) ?? base;
 }
 
 /**
- * A compact total in the portfolio's currency. USD stays bare, as the pane has
- * always shown it; another currency leads with its symbol, as prices do: A$108.6k, +A$600.12.
+ * A compact total in the portfolio's currency. Bare when both it and the app's
+ * base currency are USD, as the pane has always shown it; otherwise it leads
+ * with the currency symbol, as prices do: A$108.6k, +$600.12.
  */
-export function formatPortfolioAmount(value: number | undefined, currency: string, { signed = false }: { signed?: boolean } = {}): string {
+export function formatPortfolioAmount(
+  value: number | undefined,
+  currency: string,
+  { signed = false, baseCurrency = "USD" }: { signed?: boolean; baseCurrency?: string } = {},
+): string {
   const text = formatCompactAmount(value, { signed });
-  if (currency === "USD" || value == null || !Number.isFinite(value)) return text;
+  const bare = currency === "USD" && (currencyCode(baseCurrency) ?? "USD") === "USD";
+  if (bare || value == null || !Number.isFinite(value)) return text;
   const sign = text.startsWith("+") || text.startsWith("-") ? text.charAt(0) : "";
   return `${sign}${getCurrencySymbol(currency)}${text.slice(sign.length)}`;
 }

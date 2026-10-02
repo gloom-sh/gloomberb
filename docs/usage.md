@@ -432,7 +432,7 @@ Official plugins, the ones published under [github.com/gloom-sh](https://github.
 
 ## Portfolio currency
 
-A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are in the portfolio's currency, as are `PORT` and `gloomberb portfolio show`. A broker portfolio uses its account currency. A manual portfolio whose positions are all in one currency uses that currency; with mixed holdings, each position converts into the portfolio's currency, the base currency it was created with. Totals in a currency other than USD lead with its symbol, such as A$108.6k. LAST, AVG COST and TARGET stay in the listing's currency.
+A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are in the portfolio's currency, as are `PORT` and `gloomberb portfolio show`. A broker portfolio uses its account currency. A manual portfolio uses your base currency (`config set baseCurrency`). With the default USD base, a manual portfolio takes the currency of its first position instead: a portfolio of ASX shares bought in AUD totals in AUD, and holdings added later in other currencies convert into it. Totals lead with the currency symbol, such as A$108.6k, unless both they and the base currency are USD. LAST, AVG COST and TARGET stay in the listing's currency.
 
 ## Broker position sync
 

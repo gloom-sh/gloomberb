@@ -217,6 +217,11 @@ export interface AppConfig {
    * not fought with.
    */
   seededPlugins?: string[];
+  /**
+   * Manual portfolios have taken the one currency their positions share. Runs
+   * once per install, so later holdings never move a portfolio's currency.
+   */
+  portfolioCurrenciesAdopted?: boolean;
   disabledSources: string[];
   pluginConfig: Record<string, Record<string, unknown>>;
   theme: string;

@@ -47,7 +47,7 @@ export function renderCollectionOverview(config: AppConfig, tickers: TickerRecor
       ],
       config.portfolios.map((portfolio) => [
         portfolio.name,
-        resolvePortfolioTotalsCurrency(portfolio, tickers, config.baseCurrency),
+        resolvePortfolioTotalsCurrency(portfolio, config.baseCurrency),
         String(countCollectionTickers(tickers, "portfolios", portfolio.id)),
       ]),
     ));
@@ -108,7 +108,7 @@ async function showCollectionWithMarketData(
     isPortfolio ? ticker.metadata.portfolios.includes(id) : ticker.metadata.watchlists.includes(id)
   );
   // A portfolio reports in its own currency, as its pane totals; a watchlist in the base currency.
-  const currency = resolvePortfolioTotalsCurrency(matchedPortfolio, filtered, config.baseCurrency);
+  const currency = resolvePortfolioTotalsCurrency(matchedPortfolio, config.baseCurrency);
   const toBase = createBaseConverter(dataProvider, currency);
 
   if (filtered.length === 0 && !structured) {

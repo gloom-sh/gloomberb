@@ -8,8 +8,10 @@ import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
 import {
   addTickerToPortfolio,
+  adoptFirstPositionCurrency,
   createManualPortfolio,
   deleteManualPortfolio,
+  hasOpenPortfolioPositions,
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
@@ -27,7 +29,7 @@ async function listCollections(ctx: CliCommandContext) {
           portfolios: config.portfolios.map((portfolio) => ({
             id: portfolio.id,
             name: portfolio.name,
-            currency: resolvePortfolioTotalsCurrency(portfolio, tickers, config.baseCurrency),
+            currency: resolvePortfolioTotalsCurrency(portfolio, config.baseCurrency),
             brokerId: portfolio.brokerId ?? "",
             brokerInstanceId: portfolio.brokerInstanceId ?? "",
             brokerAccountId: portfolio.brokerAccountId ?? "",
@@ -139,7 +141,10 @@ async function setPositionCommand(
         avgCost,
         currency,
       });
+      const firstPosition = !hasOpenPortfolioPositions(portfolio.id, await store.loadAllTickers());
       await store.saveTicker(result.ticker);
+      const adopted = firstPosition ? adoptFirstPositionCurrency(config, portfolio.id, currency) : null;
+      if (adopted) await saveConfig(adopted);
       console.log(cliStyles.success(`Set position for ${result.ticker.metadata.ticker} in "${portfolio.name}".`));
       console.log(renderStats([
         ["Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })],

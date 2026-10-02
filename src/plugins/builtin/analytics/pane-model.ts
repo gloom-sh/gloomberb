@@ -209,6 +209,7 @@ export function buildAnalyticsSummaryRows({
   portfolioStats,
   convertAccountValue = (value) => value,
   currency = "USD",
+  baseCurrency = "USD",
 }: {
   accountState: ResolvedPortfolioAccountState | null;
   activePortfolio: Portfolio | null;
@@ -218,9 +219,11 @@ export function buildAnalyticsSummaryRows({
   convertAccountValue?: (value: number) => number;
   /** The portfolio's totals currency, as its portfolio pane header shows it. */
   currency?: string;
+  /** The app's base currency: amounts are bare only when both are USD. */
+  baseCurrency?: string;
 }): AnalyticsMetricRow[] {
   const rows: AnalyticsMetricRow[] = [];
-  const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed });
+  const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed, baseCurrency });
   const account = accountState?.account;
   // The same live carry-forward as the portfolio header, so both show one figure.
   const basis = accountState?.snapshotBasis;

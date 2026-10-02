@@ -8,6 +8,7 @@ import {
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
+import { adoptHeldPortfolioCurrencies } from "../../plugins/builtin/portfolio-list/mutations";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { AppConfig } from "../../types/config";
@@ -133,11 +134,12 @@ export function useBrokerImportRuntime({
   }, [applyBrokerImportResult, pluginRegistry.brokers, pluginRegistry.persistence.resources, stateRef, tickerRepository]);
 
   const autoImportBrokerPositions = useCallback(async (tickerMap: Map<string, TickerRecord>) => {
-    const restoredConfig = restoreBrokerPortfoliosFromTickerPositions(
+    // Once per install, manual portfolios held in one other currency take it (see adoptHeldPortfolioCurrencies).
+    const restoredConfig = adoptHeldPortfolioCurrencies(restoreBrokerPortfoliosFromTickerPositions(
       stateRef.current.config,
       tickerMap.values(),
       pluginRegistry.brokers,
-    );
+    ), tickerMap.values());
     if (restoredConfig !== stateRef.current.config) {
       dispatch({ type: "SET_CONFIG", config: restoredConfig });
       await saveConfigImmediately(restoredConfig);

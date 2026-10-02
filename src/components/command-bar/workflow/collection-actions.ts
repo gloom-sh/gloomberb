@@ -17,8 +17,10 @@ import {
 } from "../../../brokers/signed-in/connect";
 import {
   addTickerToPortfolio,
+  adoptFirstPositionCurrency,
   createManualPortfolio as createManualPortfolioConfig,
   deleteManualPortfolio,
+  hasOpenPortfolioPositions,
   isManualPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
@@ -253,8 +255,14 @@ export function createCommandBarCollectionWorkflowActions(options: {
         avgCost,
         currency,
       });
+      const firstPosition = !hasOpenPortfolioPositions(portfolio.id, getState().tickers.values());
       await tickerRepository.saveTicker(result.ticker);
       dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
+      const adopted = firstPosition ? adoptFirstPositionCurrency(getState().config, portfolio.id, currency) : null;
+      if (adopted) {
+        dispatch({ type: "SET_CONFIG", config: adopted });
+        persistConfig(adopted);
+      }
       pluginRegistry.events.emit("host:portfolio-ticker-saved", {
         symbol: result.ticker.metadata.ticker,
         portfolioId: portfolio.id,

@@ -188,8 +188,8 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const { accountState, accountsError } = usePortfolioAccountState(activePortfolio, accountStateInput);
   // The portfolio pane's totals currency, so its header and this overview show one figure.
   const totalsCurrency = useMemo(
-    () => resolvePortfolioTotalsCurrency(activePortfolio, portfolioTickers, baseCurrency),
-    [activePortfolio, baseCurrency, portfolioTickers],
+    () => resolvePortfolioTotalsCurrency(activePortfolio, baseCurrency),
+    [activePortfolio, baseCurrency],
   );
   const trackedCurrencies = useMemo(
     () => [...buildTrackedCurrencies(portfolioTickers, financials, totalsCurrency), accountState?.account.currency],
@@ -283,8 +283,9 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
         exchangeRates,
       ),
       currency: totalsCurrency,
+      baseCurrency,
     }),
-    [accountState, activePortfolio, brokerPerformance.performance, exchangeRates, portfolioStats, totalsCurrency],
+    [accountState, activePortfolio, baseCurrency, brokerPerformance.performance, exchangeRates, portfolioStats, totalsCurrency],
   );
 
   const riskRows = useMemo(

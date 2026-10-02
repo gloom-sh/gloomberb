@@ -220,6 +220,7 @@ export function buildPortfolioSummarySegments({
   isPortfolioTab = true,
   convertAccountValue = (value) => value,
   currency = "USD",
+  baseCurrency = "USD",
 }: {
   totals: PortfolioSummaryTotals;
   accountState: PortfolioSummaryAccountState | null;
@@ -228,8 +229,10 @@ export function buildPortfolioSummarySegments({
   convertAccountValue?: (value: number) => number;
   /** The totals currency. */
   currency?: string;
+  /** The app's base currency: amounts are bare only when both are USD. */
+  baseCurrency?: string;
 }): PortfolioSummarySegment[] {
-  const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed });
+  const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed, baseCurrency });
   if (!isPortfolioTab) {
     return totals.watchlistCount > 0
       ? [createSummarySegment("avg-day", [

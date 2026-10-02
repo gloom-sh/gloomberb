@@ -1,5 +1,6 @@
 import type { AppConfig } from "../../../types/config";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../types/ticker";
+import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { slugifyName } from "../../../utils/slugify";
 
 export interface DeleteManualPortfolioResult {
@@ -68,6 +69,76 @@ export function resolveManualPositionCurrency(
   baseCurrency: string | undefined,
 ): string {
   return (rawCurrency?.trim() || ticker.metadata.currency || portfolio.currency || baseCurrency || "USD").toUpperCase();
+}
+
+/** A plain ISO code in major units (AUD), else null: pence-type units and free text never total a portfolio. */
+function majorCurrencyCode(value: string | undefined): string | null {
+  const raw = value?.trim() ?? "";
+  return /^[A-Z]{3}$/.test(raw) && resolveCurrencyUnit(raw).divisor === 1 ? raw : null;
+}
+
+/** The currencies of a portfolio's open positions, as entered (or the listing's when a position has none). */
+function openPositionCurrencies(portfolioId: string, tickers: Iterable<TickerRecord>): Set<string> {
+  const currencies = new Set<string>();
+  for (const ticker of tickers) {
+    for (const position of ticker.metadata.positions) {
+      if (position.portfolio !== portfolioId || position.shares === 0) continue;
+      currencies.add((position.currency || ticker.metadata.currency || "").trim());
+    }
+  }
+  return currencies;
+}
+
+export function hasOpenPortfolioPositions(portfolioId: string, tickers: Iterable<TickerRecord>): boolean {
+  return openPositionCurrencies(portfolioId, tickers).size > 0;
+}
+
+/**
+ * Whether a manual portfolio's currency follows its holdings. Only with the
+ * default USD base: a base currency the user chose is what manual portfolios
+ * total in. Team portfolios keep the currency the team gave them.
+ */
+function takesHoldingsCurrency(config: AppConfig, portfolio: Portfolio): boolean {
+  return isManualPortfolio(portfolio) && !portfolio.teamId && config.baseCurrency.trim().toUpperCase() === "USD";
+}
+
+function withPortfolioCurrency(config: AppConfig, portfolioId: string, currency: string): AppConfig {
+  return {
+    ...config,
+    portfolios: config.portfolios.map((portfolio) => (portfolio.id === portfolioId ? { ...portfolio, currency } : portfolio)),
+  };
+}
+
+/**
+ * The first position set in a manual portfolio decides its currency, so ASX
+ * shares bought in AUD total in AUD and later holdings convert into it. Call
+ * only when the portfolio had no open positions before this one. Null when
+ * nothing changes.
+ */
+export function adoptFirstPositionCurrency(config: AppConfig, portfolioId: string, positionCurrency: string): AppConfig | null {
+  const portfolio = config.portfolios.find((entry) => entry.id === portfolioId);
+  const currency = majorCurrencyCode(positionCurrency);
+  if (!portfolio || !currency || portfolio.currency === currency || !takesHoldingsCurrency(config, portfolio)) return null;
+  return withPortfolioCurrency(config, portfolioId, currency);
+}
+
+/**
+ * Once per install, for portfolios entered before the first position set the
+ * currency: a manual portfolio still on USD whose open positions are all in
+ * one other currency (ASX shares in AUD) takes that currency. Records that it
+ * ran, so later changes in holdings never move a portfolio's currency.
+ */
+export function adoptHeldPortfolioCurrencies(config: AppConfig, tickers: Iterable<TickerRecord>): AppConfig {
+  if (config.portfolioCurrenciesAdopted) return config;
+  const records = [...tickers];
+  let next: AppConfig = { ...config, portfolioCurrenciesAdopted: true };
+  for (const portfolio of config.portfolios) {
+    if (portfolio.currency !== "USD" || !takesHoldingsCurrency(config, portfolio)) continue;
+    const held = [...openPositionCurrencies(portfolio.id, records)];
+    const currency = held.length === 1 ? majorCurrencyCode(held[0]) : null;
+    if (currency && currency !== "USD") next = withPortfolioCurrency(next, portfolio.id, currency);
+  }
+  return next;
 }
 
 export function createManualPortfolio(
