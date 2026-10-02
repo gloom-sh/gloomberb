@@ -7,7 +7,7 @@ import {
 } from "./client";
 import { shortInterestHeadless } from "./headless";
 import { ShortInterestResearchTab, ShortInterestSurface } from "./surface";
-import { shortVolumeSettings } from "../short-volume";
+import { followsWithoutFinraOverride, shortVolumeSettings } from "../short-volume";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
 
@@ -48,6 +48,7 @@ export const shortInterestModule: PluginModule = {
       icon: "S",
       component: ShortInterestSurface,
       defaultPosition: "right",
+      tickerFollower: followsWithoutFinraOverride,
       defaultMode: "floating",
       defaultFloatingSize: { width: 90, height: 25 },
       tableExport: true,

@@ -1,15 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, createElement, useState } from "react";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { setAppVisible } from "../../../../state/app/activity";
 import { useLiveSessionRefresh, usOptionsSession } from "./live-session";
 
 const realNow = Date.now;
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness({ width: 10, height: 2 });
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   Date.now = realNow;
   setAppVisible(true);
 });
@@ -37,7 +35,7 @@ async function renderRefresh(now: number, enabled = true) {
     active = useLiveSessionRefresh(() => { calls += 1; }, 20, enabled);
     return null;
   }
-  await act(async () => { setup = await testRender(createElement(Probe), { width: 10, height: 2 }); });
+  await act(async () => { await tui.render(createElement(Probe)); });
   const wait = async (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
   return { calls: () => calls, active: () => active, wait };
 }
@@ -53,15 +51,13 @@ test("refreshes only while visible, enabled and in session, and never on mount",
   await open.wait(70);
   expect(open.calls()).toBe(hidden);
   expect(open.active()).toBe(false);
-  await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+  await tui.destroy();
 
   const closed = await renderRefresh(Date.parse("2026-09-23T21:00:00Z"));
   await closed.wait(70);
   expect(closed.calls()).toBe(0);
   expect(closed.active()).toBe(false);
-  await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+  await tui.destroy();
 
   const disabled = await renderRefresh(Date.parse("2026-09-23T15:00:00Z"), false);
   await disabled.wait(70);
@@ -79,7 +75,7 @@ test("a cycle enabled by a slow load waits an interval; returning from a long hi
     useLiveSessionRefresh(() => { calls += 1; }, 1_000, props.enabled, props.loadedAt);
     return null;
   }
-  await act(async () => { setup = await testRender(createElement(Probe), { width: 10, height: 2 }); });
+  await act(async () => { await tui.render(createElement(Probe)); });
   // The first load outlasted the interval; its own data is the latest refresh.
   now += 5_000;
   await act(async () => setProps({ enabled: true, loadedAt: now }));

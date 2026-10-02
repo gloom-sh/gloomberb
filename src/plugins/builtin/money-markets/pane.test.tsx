@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useCallback, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../../api-client/money-markets";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -52,21 +52,19 @@ function payload(): MoneyMarketsPayload {
   };
 }
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let spy: { mockRestore(): void } | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   spy?.mockRestore(); spy = undefined;
   moneyMarketsCache.reset();
 });
 
 async function settle() {
-  for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await setup!.renderOnce(); });
+  for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce(); });
 }
 
 async function render(width: number, height: number, tab = "rates"): Promise<string[]> {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
+  await tui.destroy();
   spy ??= spyOn(apiClient, "getCloudMoneyMarkets").mockImplementation(async () => payload());
   const initial = createInitialState(createTestPaneConfig("/tmp/gloom-money-markets-test", {
     instanceId: "btmm", paneId: "money-markets", binding: { kind: "none" }, settings: { tab },
@@ -80,15 +78,15 @@ async function render(width: number, height: number, tab = "rates"): Promise<str
       {(body) => <MoneyMarketsPane paneId="btmm" paneType="money-markets" focused {...body} />}
     </TestPaneFrame>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height }); });
+  await act(async () => { await tui.render(<Harness />, { width, height }); });
   await settle();
-  return setup!.captureCharFrame().split("\n");
+  return tui.frame().split("\n");
 }
 
 async function pressDown() {
-  await act(async () => { setup!.mockInput.pressArrow("down"); await setup!.renderOnce(); });
+  await act(async () => { tui.setup().mockInput.pressArrow("down"); await tui.setup().renderOnce(); });
   await settle();
-  return setup!.captureCharFrame().split("\n");
+  return tui.frame().split("\n");
 }
 
 /** The lines above the board's header row. */

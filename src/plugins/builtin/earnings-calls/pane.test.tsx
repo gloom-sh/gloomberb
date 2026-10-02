@@ -5,13 +5,13 @@ import { appReducer, createInitialState, type AppAction, type AppState } from ".
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Box } from "../../../ui";
 import { attachEarningsCallsPersistence, resetEarningsCallsPersistence } from "./data";
 import { EarningsCallsPane } from "./pane";
 import { TranscriptView, type ReaderTab } from "./transcript-view";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let setSymbol: (symbol: string | null) => void;
 const runtime = createTestPluginRuntime();
 const restorers: Array<() => void> = [];
@@ -48,27 +48,23 @@ function signIn() {
   } as never);
 }
 async function frames() {
-  for (let i = 0; i < 6; i++) await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
+  for (let i = 0; i < 6; i++) await act(async () => { await Bun.sleep(5); await tui.setup().renderOnce(); });
 }
 /** Renders until `done` holds; a slow runner needs more frames than a fixed count. */
 async function framesUntil(done: () => boolean, limit = 200) {
-  for (let i = 0; i < limit && !done(); i++) await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
+  for (let i = 0; i < limit && !done(); i++) await act(async () => { await Bun.sleep(5); await tui.setup().renderOnce(); });
 }
 async function mount(width = 80, initialSymbol: string | null = "FIRST", initialPaneState?: AppState["paneState"]) {
   await act(async () => {
-    setup = await testRender(<Harness width={width} initialSymbol={initialSymbol} initialPaneState={initialPaneState} />, { width, height: 21 });
+    await tui.render(<Harness width={width} initialSymbol={initialSymbol} initialPaneState={initialPaneState} />, { width, height: 21 });
   });
   await frames();
 }
-async function destroy() {
-  if (setup) { await act(async () => setup!.renderer.destroy()); setup = undefined; }
-}
 async function press(key: string) {
-  await act(async () => { key === "return" ? setup!.mockInput.pressEnter() : setup!.mockInput.pressKey(key); });
+  await act(async () => { key === "return" ? tui.setup().mockInput.pressEnter() : tui.setup().mockInput.pressKey(key); });
   await frames();
 }
-afterEach(async () => {
-  await destroy();
+afterEach(() => {
   for (const restore of restorers.splice(0)) restore();
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
@@ -91,15 +87,15 @@ function manualPollTimers() {
   const originalClear = globalThis.clearTimeout;
   let nextId = 900_000_000;
   const pending = new Map<number, () => void>();
-  const set = spyOn(globalThis, "setTimeout").mockImplementation(((callback, delay, ...args) => {
+  const set = spyOn(globalThis, "setTimeout").mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
     if (delay !== 20_000 && delay !== 15_000) return originalSet(callback, delay, ...args);
     const id = ++nextId;
     pending.set(id, () => callback(...args));
     return id;
   }) as typeof setTimeout);
-  const clear = spyOn(globalThis, "clearTimeout").mockImplementation((timer) => {
+  const clear = spyOn(globalThis, "clearTimeout").mockImplementation(((timer?: Parameters<typeof originalClear>[0]) => {
     if (!pending.delete(Number(timer))) originalClear(timer);
-  });
+  }) as typeof clearTimeout);
   restorers.push(() => { set.mockRestore(); clear.mockRestore(); });
   return {
     pending,
@@ -129,12 +125,12 @@ test("scrolling to the end of the shelf appends the next page instead of stoppin
     return Response.json({ calls: offset > 0 ? shelf(50, 1) : shelf(0, 50) });
   });
   await mount(80, null);
-  await framesUntil(() => setup!.captureCharFrame().includes("COMPANY 0"));
+  await framesUntil(() => tui.frame().includes("COMPANY 0"));
   expect(offsets).toEqual([null]);
-  expect(setup!.captureCharFrame()).toContain("COMPANY 0");
-  expect(setup!.captureCharFrame()).not.toContain("COMPANY 50");
+  expect(tui.frame()).toContain("COMPANY 0");
+  expect(tui.frame()).not.toContain("COMPANY 50");
 
-  await emitKeypress(setup!, Array.from({ length: 50 }, () => ({ name: "j", sequence: "j" })));
+  await tui.emitKeypress(Array.from({ length: 50 }, () => ({ name: "j", sequence: "j" })));
   // A session refresh can repeat the first-page request; only paging requests matter here.
   const pages = () => offsets.filter((offset) => offset !== null);
   await framesUntil(() => pages().length > 0);
@@ -142,10 +138,10 @@ test("scrolling to the end of the shelf appends the next page instead of stoppin
   expect(pages()).toEqual(["50"]);
 
   // The page that arrived is reachable, and a short page ends the paging.
-  await emitKeypress(setup!, Array.from({ length: 5 }, () => ({ name: "j", sequence: "j" })));
-  await framesUntil(() => setup!.captureCharFrame().includes("COMPANY 50"));
+  await tui.emitKeypress(Array.from({ length: 5 }, () => ({ name: "j", sequence: "j" })));
+  await framesUntil(() => tui.frame().includes("COMPANY 50"));
   await frames();
-  expect(setup!.captureCharFrame()).toContain("COMPANY 50");
+  expect(tui.frame()).toContain("COMPANY 50");
   expect(pages()).toEqual(["50"]);
 });
 
@@ -154,10 +150,10 @@ test("a pending company lookup remains pending after the pane reopens", async ()
   attachEarningsCallsPersistence(new MemoryPluginPersistence());
   setCloudApiFetchTransport(async () => Response.json({ calls: [], pending: true }));
   await mount();
-  expect(setup!.captureCharFrame()).toContain("Looking for FIRST");
-  await destroy();
+  expect(tui.frame()).toContain("Looking for FIRST");
+  await tui.destroy();
   await mount();
-  expect(setup!.captureCharFrame()).toContain("Looking for FIRST");
+  expect(tui.frame()).toContain("Looking for FIRST");
 });
 
 test("identical pending responses keep polling until calls arrive and unmount cancels the next poll", async () => {
@@ -169,15 +165,15 @@ test("identical pending responses keep polling until calls arrive and unmount ca
   await mount();
   await timers.fire();
   expect(requests).toBe(2);
-  expect(setup!.captureCharFrame()).toContain("Looking for FIRST");
+  expect(tui.frame()).toContain("Looking for FIRST");
   await timers.fire();
   expect(requests).toBe(3);
-  expect(setup!.captureCharFrame()).toContain("FIRST CORP");
+  expect(tui.frame()).toContain("FIRST CORP");
   expect(timers.pending.size).toBe(0);
   setCloudApiFetchTransport(async () => Response.json({ calls: [], pending: true }));
   await press("r");
   expect(timers.pending.size).toBe(1);
-  await destroy();
+  await tui.destroy();
   expect(timers.pending.size).toBe(0);
 });
 
@@ -190,12 +186,12 @@ for (const rejected of [false, true]) {
     await mount();
     await act(async () => setSymbol("SECOND"));
     await frames();
-    expect(setup!.captureCharFrame()).toContain("SECOND CORP");
+    expect(tui.frame()).toContain("SECOND CORP");
     await act(async () => finishFirst(rejected
       ? Response.json({ error: "Controlled denied" }, { status: 403 }) : Response.json({ calls: [call("FIRST")] })));
     await frames();
-    expect(setup!.captureCharFrame()).toContain("SECOND CORP");
-    expect(setup!.captureCharFrame()).not.toContain("FIRST CORP");
+    expect(tui.frame()).toContain("SECOND CORP");
+    expect(tui.frame()).not.toContain("FIRST CORP");
   });
 }
 
@@ -218,14 +214,14 @@ for (const change of ["ticker", "access", "unmount"] as const) {
     expect(detailRequests).toBe(1);
     if (change === "ticker") { await act(async () => setSymbol("SECOND")); await frames(); }
     if (change === "access") { await act(async () => apiClient.setSessionToken(null)); await frames(); }
-    if (change === "unmount") await destroy();
+    if (change === "unmount") await tui.destroy();
     // If the old detail handler survived, this response would schedule production polling.
     await act(async () => finishDetail(Response.json({ status: "pending" }, { status: 202 })));
-    if (setup) await frames();
+    if (tui.isMounted()) await frames();
     expect(timers.pending.size).toBe(0);
     expect(detailRequests).toBe(1);
-    if (change === "ticker") expect(setup!.captureCharFrame()).toContain("SECOND CORP");
-    if (change === "access") expect(setup!.captureCharFrame()).toContain("Sign in");
+    if (change === "ticker") expect(tui.frame()).toContain("SECOND CORP");
+    if (change === "access") expect(tui.frame()).toContain("Sign in");
   });
 }
 
@@ -245,11 +241,11 @@ test("a late published transcript cannot appear under a newly opened company", a
   await act(async () => setSymbol("SECOND"));
   await frames();
   await press("return");
-  expect(setup!.captureCharFrame()).toContain("SECOND CONTROLLED SUMMARY");
+  expect(tui.frame()).toContain("SECOND CONTROLLED SUMMARY");
   await act(async () => finishFirst(Response.json(transcript("FIRST"))));
   await frames();
-  expect(setup!.captureCharFrame()).toContain("SECOND CONTROLLED SUMMARY");
-  expect(setup!.captureCharFrame()).not.toContain("FIRST CONTROLLED SUMMARY");
+  expect(tui.frame()).toContain("SECOND CONTROLLED SUMMARY");
+  expect(tui.frame()).not.toContain("FIRST CONTROLLED SUMMARY");
 });
 
 for (const persisted of [false, true]) {
@@ -262,14 +258,14 @@ for (const persisted of [false, true]) {
     await mount();
     fail = true;
     await press("r");
-    expect(setup!.captureCharFrame()).toContain("FIRST CORP");
-    expect(setup!.captureCharFrame().includes("stale cache")).toBe(persisted);
-    expect(setup!.captureCharFrame()).toContain("Controlled outage");
+    expect(tui.frame()).toContain("FIRST CORP");
+    expect(tui.frame().includes("stale cache")).toBe(persisted);
+    expect(tui.frame()).toContain("Controlled outage");
     fail = false;
     await press("r");
-    expect(setup!.captureCharFrame()).toContain("FIRST CORP");
-    expect(setup!.captureCharFrame()).not.toContain("Controlled outage");
-    expect(setup!.captureCharFrame()).not.toContain("stale cache");
+    expect(tui.frame()).toContain("FIRST CORP");
+    expect(tui.frame()).not.toContain("Controlled outage");
+    expect(tui.frame()).not.toContain("stale cache");
   });
 }
 
@@ -280,8 +276,8 @@ test("an explicit unauthorized response gates the pane even after a successful c
   await mount();
   setCloudApiFetchTransport(async () => Response.json({ error: "Controlled auth required" }, { status: 401 }));
   await press("r");
-  expect(setup!.captureCharFrame()).toContain("Sign in");
-  expect(setup!.captureCharFrame()).not.toContain("FIRST CORP");
+  expect(tui.frame()).toContain("Sign in");
+  expect(tui.frame()).not.toContain("FIRST CORP");
 });
 
 for (const width of [48, 80, 120]) {
@@ -294,20 +290,20 @@ for (const width of [48, 80, 120]) {
         loading={false} error={null} tab={view.tab} query={view.query} onTabChange={() => {}}
         tabsFocused={false} width={width} /></Box>;
     }
-    await act(async () => { setup = await testRender(<Reader />, { width, height: 20 }); });
+    await act(async () => { await tui.render(<Reader />, { width, height: 20 }); });
     await frames();
-    expect(setup!.captureCharFrame()).toContain("SYN controlled full text");
+    expect(tui.frame()).toContain("SYN controlled full text");
     await act(async () => setView({ tab: "transcript", query: "margin" }));
     await frames();
-    expect(setup!.captureCharFrame()).toContain("Margin outlook remains available");
-    expect(setup!.captureCharFrame()).not.toContain("SYN controlled full text");
+    expect(tui.frame()).toContain("Margin outlook remains available");
+    expect(tui.frame()).not.toContain("SYN controlled full text");
     await act(async () => setView({ tab: "transcript", query: "absent" }));
     await frames();
-    expect(setup!.captureCharFrame()).toContain("Nothing matching");
+    expect(tui.frame()).toContain("Nothing matching");
     await act(async () => setView({ tab: "qa" }));
     await frames();
-    expect(setup!.captureCharFrame()).toContain("No question and answer");
-    expect(setup!.captureCharFrame()).not.toContain("SYN controlled full text");
+    expect(tui.frame()).toContain("No question and answer");
+    expect(tui.frame()).not.toContain("SYN controlled full text");
   });
 }
 
@@ -325,19 +321,19 @@ test("opening another quarter never displays the previous quarter's transcript",
   });
   await mount();
   await press("return");
-  expect(setup!.captureCharFrame()).toContain("Q2 ONLY OLD SUMMARY");
-  await emitKeypress(setup!, { name: "escape", sequence: "\u001b" });
+  expect(tui.frame()).toContain("Q2 ONLY OLD SUMMARY");
+  await tui.emitKeypress({ name: "escape", sequence: "\u001b" });
   await frames();
   await press("j");
   await press("return");
-  const loading = setup!.captureCharFrame();
+  const loading = tui.frame();
   expect(loading).toContain("Q1");
   expect(loading).toContain("Loading transcript");
   expect(loading).not.toContain("Q2 ONLY OLD SUMMARY");
   await act(async () => finish(Response.json({ ...transcript("FIRST"), ...q1, summary: "Q1 NEW SUMMARY" })));
   await frames();
-  expect(setup!.captureCharFrame()).toContain("Q1 NEW SUMMARY");
-  expect(setup!.captureCharFrame()).not.toContain("Q2 ONLY OLD SUMMARY");
+  expect(tui.frame()).toContain("Q1 NEW SUMMARY");
+  expect(tui.frame()).not.toContain("Q2 ONLY OLD SUMMARY");
 });
 
 test("a restored call missing from the reloaded shelf closes the reader instead of reopening on a cursor move", async () => {
@@ -347,21 +343,21 @@ test("a restored call missing from the reloaded shelf closes the reader instead 
     : Response.json({ calls: [call("OTHER"), { ...call("THIRD"), callAt: "2026-07-01T20:00:00Z" }] }));
   // Opened from a company lookup last session: the shelf alone does not list it.
   await mount(80, null, { "calls:test": { pluginState: { research: { detailOpen: true, selectedId: "GONE-call" } } } });
-  expect(setup!.captureCharFrame()).toContain("[/]search");
+  expect(tui.frame()).toContain("[/]search");
   await press("j");
   await act(async () => { await Bun.sleep(200); });
   await frames();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("OTHER CORP");
   expect(frame).not.toContain("THIRD CONTROLLED SUMMARY");
 });
 
 async function findInPane(query: string) {
   await press("/");
-  await act(async () => { await setup!.mockInput.typeText(query); });
+  await act(async () => { await tui.setup().mockInput.typeText(query); });
   await act(async () => { await Bun.sleep(100); });
   await frames();
-  await emitKeypress(setup!, { name: "down", sequence: "\u001b[B" });
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" });
   await frames();
 }
 
@@ -373,17 +369,17 @@ for (const width of [48, 80, 120]) {
     await mount(width);
     await press("return");
     await findInPane("margin");
-    expect(setup!.captureCharFrame()).toContain("Margin outlook remains available");
+    expect(tui.frame()).toContain("Margin outlook remains available");
     await press("s");
-    expect(setup!.captureCharFrame()).toContain("FIRST CONTROLLED SUMMARY");
+    expect(tui.frame()).toContain("FIRST CONTROLLED SUMMARY");
     await press("t");
-    expect(setup!.captureCharFrame()).toContain("Margin outlook remains available");
-    const lines = setup!.captureCharFrame().split("\n");
+    expect(tui.frame()).toContain("Margin outlook remains available");
+    const lines = tui.frame().split("\n");
     const row = lines.findIndex(line => line.includes("Summary"));
-    await act(async () => { await setup!.mockMouse.click(lines[row]!.indexOf("Summary") + 1, row); });
+    await act(async () => { await tui.setup().mockMouse.click(lines[row]!.indexOf("Summary") + 1, row); });
     await frames();
-    expect(setup!.captureCharFrame()).toContain("FIRST CONTROLLED SUMMARY");
-    expect(setup!.captureCharFrame()).toContain('/ margin');
+    expect(tui.frame()).toContain("FIRST CONTROLLED SUMMARY");
+    expect(tui.frame()).toContain('/ margin');
   });
 }
 
@@ -407,13 +403,13 @@ for (const alreadyOnShelf of [true, false]) {
     await act(async () => { await Bun.sleep(600); });
     await frames();
     expect(requested).toEqual([null, "FIRST"]);
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("FQ2 26");
     expect(frame).toContain("FQ1 26");
     expect(frame).not.toContain("queued");
     await press("j");
     await press("return");
-    expect(setup!.captureCharFrame()).toContain("EARLIER QUARTER GUIDANCE");
+    expect(tui.frame()).toContain("EARLIER QUARTER GUIDANCE");
   });
 }
 
@@ -426,7 +422,7 @@ for (const answer of [{ calls: [], pending: false }, { calls: [], unknownTicker:
     await findInPane("MSFT");
     await act(async () => { await Bun.sleep(600); });
     await frames();
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain(answer.unknownTicker ? "MSFT not found" : "no MSFT calls yet");
     expect(frame).not.toContain(answer.unknownTicker ? "no MSFT calls yet" : "MSFT not found");
   });
@@ -448,14 +444,14 @@ test("shelf refresh reloads the active company and a slower older lookup cannot 
   await findInPane("FIRST");
   await act(async () => { await Bun.sleep(600); });
   await frames();
-  expect(setup!.captureCharFrame()).toContain("queued");
+  expect(tui.frame()).toContain("queued");
   refreshed = true;
   await press("r");
   expect(requests).toEqual([null, "FIRST", null, "FIRST"]);
-  expect(setup!.captureCharFrame()).not.toContain("queued");
+  expect(tui.frame()).not.toContain("queued");
   await act(async () => completeLookup(Response.json({ calls: [q2] })));
   await frames();
-  expect(setup!.captureCharFrame()).not.toContain("queued");
+  expect(tui.frame()).not.toContain("queued");
 });
 
 test("stale company fallback retains older quarters and its failure without replacing fresh global calls", async () => {
@@ -477,14 +473,14 @@ test("stale company fallback retains older quarters and its failure without repl
   await findInPane("FIRST");
   await act(async () => { await Bun.sleep(600); });
   await frames();
-  const staleFrame = setup!.captureCharFrame();
+  const staleFrame = tui.frame();
   expect(staleFrame).not.toContain("queued");
   expect(staleFrame).toContain("FQ1 26");
   expect(staleFrame).toContain("FIRST stale cache");
   expect(staleFrame).toContain("Controlled company outage");
   fail = false;
   await press("r");
-  const freshFrame = setup!.captureCharFrame();
+  const freshFrame = tui.frame();
   expect(freshFrame).toContain("FQ1 26");
   expect(freshFrame).not.toContain("stale cache");
   expect(freshFrame).not.toContain("Controlled company outage");
@@ -505,10 +501,10 @@ for (const status of [503, 403]) {
     await findInPane("FIRST");
     await act(async () => { await Bun.sleep(600); });
     await frames();
-    expect(setup!.captureCharFrame()).toContain("FQ1 26");
+    expect(tui.frame()).toContain("FQ1 26");
     fail = true;
     await press("r");
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame.includes("FQ1 26")).toBe(status === 503);
     expect(frame.includes("stale cache")).toBe(status === 503);
     expect(frame).toContain("Controlled lookup failure");

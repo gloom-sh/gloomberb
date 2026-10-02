@@ -7,7 +7,7 @@ import type { TapeSnapshot } from "../../../api-client/tape";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";
 import { ChartSnapshotContext } from "../../../time-series/hooks";
-import { decodeRpcValue } from "./rpc-codec";
+import { decodeRpcValue } from "../shared/rpc-codec";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
 import { createAppRuntime } from "../../../core/app-runtime";
 import { JsonPersistence } from "../../../data/json-persistence";
@@ -20,7 +20,7 @@ import {
 } from "../../../cli/desktop-pane-shot-routes";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import type { RendererHost } from "../../../ui/host";
-import { DomHostProviders } from "./dom-host-providers";
+import { DomHostProviders } from "../../dom/dom-host-providers";
 import { webUiHost } from "./ui-host";
 import { getLoadablePlugins } from "../../../plugins/catalog";
 import { setCurrentPluginTarget } from "../../../plugins/current-target";
@@ -360,7 +360,7 @@ function createShotAppServices(payload: DesktopPaneShotPayload, externalPlugins:
       connectionHealth: createCliPaneShotConnectionHealth(),
     },
     configure({ pluginRegistry, marketData, newsService }) {
-      pluginRegistry.getPaneRuntimeStateFn = (paneId) => payload.paneState[paneId] ?? null;
+      pluginRegistry.bindHost({ getPaneRuntimeState: (paneId) => payload.paneState[paneId] ?? null });
       // Capability handlers are off, so nothing registers a news source and
       // every news pane rendered its empty state. The desktop view registers
       // the cloud feed by hand for the same reason; the proxied session makes
@@ -488,7 +488,6 @@ async function render() {
             config: payload.config,
             paneState: payload.paneState,
             focusedPaneId: payload.paneId,
-            activePanel: "right",
             statusBarVisible: false,
           }}>
             <HydratePayload payload={payload}>

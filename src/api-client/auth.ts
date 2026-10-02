@@ -6,6 +6,7 @@ import type {
   AuthUser,
   BuildoutAccountResponse,
   BuildoutTokenResponse,
+  CalendarFeed,
   CloudAccountPlan,
   CloudBrowserHandoffResponse,
   CloudPricing,
@@ -248,6 +249,33 @@ export class CloudAuthApi {
         body: JSON.stringify({}),
       },
     );
+  }
+
+  /** The private calendar feed link, or null until it is first created. */
+  async getCalendarFeed(): Promise<CalendarFeed | null> {
+    const result = await this.options.request<{ feed: CalendarFeed | null }>(
+      "/account/calendar-feed",
+      { method: "GET" },
+    );
+    return result.feed;
+  }
+
+  /** The calendar feed link, created on first use. */
+  async ensureCalendarFeed(): Promise<CalendarFeed> {
+    const result = await this.options.request<{ feed: CalendarFeed }>(
+      "/account/calendar-feed",
+      { method: "POST", body: JSON.stringify({}) },
+    );
+    return result.feed;
+  }
+
+  /** A new calendar feed link; the old one stops working. */
+  async rotateCalendarFeed(): Promise<CalendarFeed> {
+    const result = await this.options.request<{ feed: CalendarFeed }>(
+      "/account/calendar-feed/rotate",
+      { method: "POST", body: JSON.stringify({}) },
+    );
+    return result.feed;
   }
 
   async updateAccountProfile(

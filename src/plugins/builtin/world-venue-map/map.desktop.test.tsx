@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { act } from "react";
 import { WorldVenueMap } from "./map";
 import type { CloudWorldVenuePayload } from "../../../api-client";
-import { createDomTestHarness } from "../../../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 
 const { window: testWindow, render: renderDom } = createDomTestHarness();
 

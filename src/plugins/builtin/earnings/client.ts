@@ -40,7 +40,7 @@ function validReport(report: EarningsReport): boolean {
     && (report.realized === null || (typeof report.realized === "object" && Number.isFinite(report.realized.move)));
 }
 
-export function validateEarningsCalendar(payload: EarningsCalendarPayload): EarningsCalendarPayload {
+function validateEarningsCalendar(payload: EarningsCalendarPayload): EarningsCalendarPayload {
   if (!payload || !isDate(payload.from) || !isDate(payload.to) || !Array.isArray(payload.reports)
     || payload.reports.some((report) => !validReport(report) || !numberOrNull(report.averageMove))) {
     throw new Error("The server returned an invalid earnings calendar");
@@ -48,7 +48,7 @@ export function validateEarningsCalendar(payload: EarningsCalendarPayload): Earn
   return payload;
 }
 
-export function validateEarningsHistory(payload: EarningsHistoryPayload, symbol: string): EarningsHistoryPayload {
+function validateEarningsHistory(payload: EarningsHistoryPayload, symbol: string): EarningsHistoryPayload {
   if (!payload || payload.symbol !== symbol || !Array.isArray(payload.reports)
     || payload.reports.some((report) => !validReport(report) || !numberOrNull(report.revenueActual))) {
     throw new Error("The server returned an invalid earnings history");

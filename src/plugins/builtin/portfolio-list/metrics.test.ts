@@ -1,16 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import type { CollectionSortPreference } from "../../../state/app/context";
-import type { ColumnConfig } from "../../../types/config";
+import { createDefaultConfig, type ColumnConfig } from "../../../types/config";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { blendHex, colors } from "../../../theme/colors";
 import { buildPortfolioSummaryNotices, buildPortfolioSummarySegments } from "./summary";
+import { adoptHeldPortfolioCurrencies } from "./mutations";
 import {
   calculatePortfolioSummaryTotals,
   getColumnValue,
   getSortValue,
   resolveCollectionSortPreference,
   resolvePortfolioPriceValue,
+  resolvePortfolioTotalsCurrency,
   type ColumnContext,
 } from "./metrics";
 import { createTestTicker } from "../../../test-support/ticker";
@@ -81,6 +83,86 @@ describe("portfolio-metrics", () => {
     expect(restored.totalMktValue).toBe(2640);
     expect(restored.unrealizedPnl).toBe(440);
     expect(restored.unavailableConversions).toBeUndefined();
+  });
+
+  test("totals a manual portfolio in the currency its holdings gave it, whatever it holds later", () => {
+    const bhp = createTestTicker("BHP", "BHP Group", { currency: "AUD", positions: [
+      { portfolio: "asx", shares: 1000, avgCost: 40, broker: "manual", currency: "AUD" },
+    ] });
+    const aapl = createTicker({ positions: [{ portfolio: "asx", shares: 10, avgCost: 100, broker: "manual", currency: "USD" }] });
+    const financials = new Map([
+      ["BHP", createFinancials({ quote: { symbol: "BHP", currency: "AUD", price: 60, change: 1, changePercent: 1.69, previousClose: 59 } })],
+      ["AAPL", createFinancials()],
+    ]);
+    const summary = (totals: ReturnType<typeof calculatePortfolioSummaryTotals>, currency: string, baseCurrency = "USD") =>
+      buildPortfolioSummarySegments({ totals, accountState: null, currency, baseCurrency })
+        .flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
+    // A manual portfolio is created in the base currency; the AUD lives only in its positions.
+    const defaults = createDefaultConfig("/tmp/gloomberb-portfolio-currency");
+    const config = { ...defaults, portfolios: [...defaults.portfolios, { id: "asx", name: "ASX", currency: "USD" }] };
+
+    const adopted = adoptHeldPortfolioCurrencies(config, [bhp]);
+    const portfolio = adopted.portfolios.find((entry) => entry.id === "asx")!;
+    expect(portfolio.currency).toBe("AUD");
+    const aud = resolvePortfolioTotalsCurrency(portfolio, adopted.baseCurrency);
+    expect(aud).toBe("AUD");
+    const audTotals = calculatePortfolioSummaryTotals([bhp], financials, aud, new Map(), true, "asx");
+    expect(audTotals).toMatchObject({ totalMktValue: 60_000, totalCostBasis: 40_000, unrealizedPnl: 20_000, dailyPnl: 1000 });
+    expect(audTotals.unavailableConversions).toBeUndefined();
+    expect(summary(audTotals, aud)).toBe("Val A$60.0k Day +A$1.0k (+1.69%) P&L +A$20.0k (+50.00%)");
+    const audContext = { ...defaultColumnContext, activeTab: "asx", baseCurrency: aud, exchangeRates: new Map() };
+    const mktValue: ColumnConfig = { id: "mkt_value", label: "MKT VAL", width: 10, align: "right" };
+    expect(getColumnValue(mktValue, bhp, financials.get("BHP"), audContext).text).toBe("60.0k");
+
+    // A USD holding added later converts into AUD; the totals stay in AUD and name the pair when the rate is missing.
+    const withUsd = calculatePortfolioSummaryTotals([bhp, aapl], financials, aud, new Map([["AUD", 0.65]]), true, "asx");
+    expect(withUsd.totalMktValue).toBeCloseTo(60_000 + 1200 / 0.65);
+    const missing = calculatePortfolioSummaryTotals([bhp, aapl], financials, aud, new Map(), true, "asx");
+    expect(missing.unavailableConversions).toEqual(["USD/AUD"]);
+    expect(buildPortfolioSummaryNotices({ totals: missing, accountState: null, baseCurrency: aud })[0]).toBe("FX unavailable: USD/AUD");
+
+    // It runs once: holdings that change afterwards never move a portfolio's currency.
+    expect(adoptHeldPortfolioCurrencies(adopted, [aapl])).toBe(adopted);
+    const later = { ...config, portfolioCurrenciesAdopted: true };
+    expect(adoptHeldPortfolioCurrencies(later, [bhp])).toBe(later);
+    // Mixed holdings, or a portfolio already in another currency, keep what they have.
+    expect(adoptHeldPortfolioCurrencies(config, [bhp, aapl]).portfolios.find((entry) => entry.id === "asx")!.currency).toBe("USD");
+    const usdPortfolio = { id: "asx", name: "ASX", currency: "USD" };
+    expect(summary(calculatePortfolioSummaryTotals([aapl], financials, "USD", new Map(), true, "asx"), resolvePortfolioTotalsCurrency(usdPortfolio, "USD")))
+      .toBe("Val 1.2k Day +50.00 (+4.35%) P&L +200.00 (+20.00%)");
+
+    // A broker portfolio stays in its account currency; a watchlist uses the base currency.
+    expect(resolvePortfolioTotalsCurrency({ ...usdPortfolio, brokerId: "ibkr", brokerInstanceId: "ibkr-live" }, "USD")).toBe("USD");
+    expect(resolvePortfolioTotalsCurrency(null, "EUR")).toBe("EUR");
+  });
+
+  test("totals manual portfolios in a chosen base currency and marks USD totals beside it", () => {
+    const eurConfig = { ...createDefaultConfig("/tmp/gloomberb-portfolio-currency"), baseCurrency: "EUR" };
+    const aapl = createTicker({ positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "manual", currency: "USD" }] });
+    const sap = createTestTicker("SAP", "SAP SE", { currency: "EUR", positions: [
+      { portfolio: "main", shares: 10, avgCost: 150, broker: "manual", currency: "EUR" },
+    ] });
+    // Main Portfolio is seeded in USD; a base the user chose is what it totals in, whatever it holds.
+    const main = adoptHeldPortfolioCurrencies(eurConfig, [aapl]).portfolios[0]!;
+    expect(main.currency).toBe("USD");
+    expect(resolvePortfolioTotalsCurrency(main, eurConfig.baseCurrency)).toBe("EUR");
+    expect(resolvePortfolioTotalsCurrency(adoptHeldPortfolioCurrencies(eurConfig, [aapl, sap]).portfolios[0], "EUR")).toBe("EUR");
+    expect(resolvePortfolioTotalsCurrency({ id: "uk", name: "UK", currency: "GBP" }, "EUR")).toBe("EUR");
+
+    const financials = new Map([
+      ["AAPL", createFinancials()],
+      ["SAP", createFinancials({ quote: { symbol: "SAP", currency: "EUR", price: 200, change: 2, changePercent: 1.01, previousClose: 198 } })],
+    ]);
+    const totals = calculatePortfolioSummaryTotals([aapl, sap], financials, "EUR", new Map([["EUR", 1.1]]), true, "main");
+    const text = (currency: string, value: typeof totals) =>
+      buildPortfolioSummarySegments({ totals: value, accountState: null, currency, baseCurrency: "EUR" })
+        .flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
+    expect(text("EUR", totals)).toStartWith("Val €3.1k");
+    // A USD broker account in a EUR app shows its symbol, so it never reads as euros.
+    const usdBroker = { id: "broker:ibkr", name: "IBKR", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-live" };
+    expect(resolvePortfolioTotalsCurrency(usdBroker, "EUR")).toBe("USD");
+    const usdTotals = calculatePortfolioSummaryTotals([aapl], financials, "USD", new Map(), true, "main");
+    expect(text("USD", usdTotals)).toBe("Val $1.2k Day +$50.00 (+4.35%) P&L +$200.00 (+20.00%)");
   });
 
   test("leaves watchlists unsorted by default and respects persisted overrides", () => {

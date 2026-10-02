@@ -143,6 +143,7 @@ export const tickerNewsModule: PluginModule = {
       icon: "C",
       component: TickerNewsView,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 32 },
     },

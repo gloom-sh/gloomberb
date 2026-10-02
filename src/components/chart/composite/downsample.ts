@@ -163,7 +163,7 @@ export function downsampleOhlcProjectedPoints(
     .map(([, bucket]) => aggregateOhlcProjectedBucket(bucket));
 }
 
-export function downsampleProjectedSeries(
+function downsampleProjectedSeries(
   series: CompositeProjectedSeries,
   pixelWidth: number,
 ): CompositeProjectedSeries {

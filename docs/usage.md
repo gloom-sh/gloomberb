@@ -4,11 +4,13 @@
 
 - [Research data conventions](research-data.md)
 - [Financial ratios](financial-ratios.md)
+- [Options positioning (OPX)](options-positioning.md)
 - [Keyboard shortcuts](#keyboard)
 - [Command reference and chart composer](#command-reference)
 - [Live prices and refresh cadence](#live-prices-and-refresh-cadence)
 - [CLI commands and output formats](#cli)
 - [Plugins pane](#plugins-pane)
+- [Portfolio currency](#portfolio-currency)
 - [Broker position sync](#broker-position-sync)
 - [Gloom Cloud sign-in](#gloom-cloud-sign-in)
 - [Debt maturities](#debt-maturities)
@@ -54,6 +56,8 @@ The desktop app and TUI share the command language and plugin system. The [brows
 Desktop builds also accept `Cmd/Ctrl+K` for the command bar, the matching `Cmd` shortcuts on macOS, `Cmd/Ctrl+Shift+O` to pop out a pane, `Cmd/Ctrl+Shift+C` to copy a focused pane screenshot, and `Cmd/Ctrl+Shift+Enter` / `Cmd/Ctrl+Shift+Backspace` for notifications.
 
 The focused pane's footer shows its actions with their keys, such as `[a]dd`, and every one of them works from the keyboard. The pane menu (`.`, or the `...` button) lists them all, including any a narrow footer cuts off, followed by what the pane's table, filters and tabs offer (sort by a column, change a filter, close a tab), its quick toggles, and the pane and window actions. A retry or sign-in button in an empty pane answers `Enter`. In dialogs, `Enter` confirms and `Esc` closes; on the desktop `Tab` moves between a dialog's controls. A command that needs values or a confirmation (New Portfolio, Add Alert, Delete Watchlist) opens it as a centered dialog once the command bar closes: `Tab` and the arrows move between fields, `Enter` goes to the next field and sends the form from the last one, `Cmd/Ctrl+S` sends it from any field, and `y` or `n` answers a confirm. In pane settings the arrows move between settings, `Left` / `Right` change a choice or a toggle in place, and `Enter` opens a field's editor.
+
+A pane that shows one ticker, such as a price chart (`GP`, `GIP`), `OMON`, `OPX`, `SEAS`, `FA` or company news, can follow a watchlist, portfolio or scanner the way the research pane does: choose **Link to** and the list's name in its pane menu, and it moves with that list's selection, titled for example `OPX NVDA  ⧉ Linked to Watchlist`. **Unlink from** keeps the ticker it shows, and closing the list does the same; if the list was empty, a linked `OMON`, `CN`, `FA`, `HP`, `SEC`, `INS`, `HDS`, `ANR`, `EVT` or `EE` pane has no ticker to keep and closes with it. Typing `OPX AAPL` while a linked OPX is open opens a separate pane rather than unlinking it. A linked chart saves its spec each time the selection moves, so its range and studies carry over.
 
 Wide tables retain their columns in narrow panes. Use their horizontal scrollbar or horizontal wheel/trackpad scrolling to reach additional fields; `Ctrl+Left` / `Ctrl+Right` moves by half a table viewport. Plain arrows keep their existing navigation behavior, and text-field shortcuts remain with the editor.
 
@@ -122,8 +126,10 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `SEC <ticker>` | SEC filings and company disclosures |
 | `OMON <ticker>` | Options chain, expected moves, 25-delta skew and adjacent-expiry term slope |
 | `OVDV <ticker>` | Rotatable 3D implied-volatility surface by delta or moneyness, smiles, term structure, skew and forwards |
+| `OPX [ticker]` / `GEX [ticker]` | Open interest by strike and expiry with max pain, and dealer gamma by strike with its flip level; `GEX` opens on the gamma tab, `MAXPAIN` is `OPX`. SPY with no ticker ([method](options-positioning.md)) |
 | `HVG <ticker>` | Realized volatility by estimator and window, price, and current ATM IV |
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
+| `SEAS <ticker>` | Seasonality: monthly returns by year, each month's average and hit rate, and year overlays |
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
@@ -156,7 +162,7 @@ G AAPL:price, MSFT:revenue, FRED:CPIAUCSL
 
 Open **Series** to add, remove, reorder, or hide series and choose each series' field, chart style, transform, axis, panel, period, and panel scale. Price data supports candles, OHLC, HLC, line, and area; scalar data supports its compatible line, area, step, column, and point modes. Panels can use independent left/right axes and linear or logarithmic scales.
 
-The toolbar controls preset or exact date ranges, intervals from one minute through monthly, the primary chart mode, technical indicators, and pair formulas. Indicators include volume, SMA, EMA, Bollinger Bands, RSI, MACD, and Realized Volatility; formulas include ratio, spread, and rolling correlation. Realized Volatility has window and estimator controls in pane settings. Auto resolution requests daily bars for that indicator; explicit weekly or intraday bars cannot be annualized as daily sessions. Mixed-frequency values use as-of alignment: fundamentals use filing dates when available, sparse series carry forward only after becoming available, and missing publication dates appear behind the warning indicator in the existing chart footer (click it or press `!`).
+The toolbar controls preset or exact date ranges, intervals from one minute through monthly, the primary chart mode, technical indicators, and pair formulas. Indicators include volume, SMA, EMA, Bollinger Bands, VWAP, anchored VWAP, volume profile, RSI, MACD, ATR, and Realized Volatility; formulas include ratio, spread, and rolling correlation. Realized Volatility has window and estimator controls in pane settings. Auto resolution requests daily bars for that indicator; explicit weekly or intraday bars cannot be annualized as daily sessions. Mixed-frequency values use as-of alignment: fundamentals use filing dates when available, sparse series carry forward only after becoming available, and missing publication dates appear behind the warning indicator in the existing chart footer (click it or press `!`).
 
 Spread calculates the first input minus the second input times its configured multiplier. It requires matching known input dimensions, currencies, and scales; an incompatible formula is unavailable and appears in the existing chart/report errors while usable series remain available. Market prices also require a declared per-unit basis: two bare USD futures quotes do not establish comparable physical quantities. A multiplier does not supply missing units or establish a conversion. No implicit FX conversion occurs. Studies use source values before chart presentation transforms, so selecting a percent or index display does not convert foreign-currency inputs before subtraction. Ratios retain derived units such as USD/EUR or 1/share and have no value at a zero denominator. As-of alignment can combine observations from different dates; the source dates do not establish a synchronized executable price.
 
@@ -164,13 +170,28 @@ When either ratio input has unknown units or a missing price basis, its numeric 
 
 Correlation uses matching observation times when inputs have different frequencies. Chart panes keep units and active failures visible; recurring FX and alignment explanations remain in these docs and export/share metadata.
 
+On intraday charts, bars outside the venue's regular session (pre-market, after-hours, and after an early close) sit on a tinted band; the terminal text renderer marks where the regular session starts and ends with a dotted rule. The session comes from the same calendar VWAP uses, so a venue without known hours has no band. Intraday history for US listings currently covers the regular session, so the band appears where a source sends extended-hours bars.
+
+#### Trader studies
+
+In the Indicators dialog (`i`), the highlighted study's setting sits beside Done: Period (`p`) for SMA, EMA, Bollinger, RSI and ATR, Bands (`b`) for VWAP, Rows (`n`) for the volume profile and Anchors (`a`) for anchored VWAP.
+
+- **VWAP** is the volume-weighted average of the typical price, (high + low + close) / 3, from each session open. It restarts at the open the venue's calendar gives: 09:30 New York for US listings, so a pre-market bar still belongs to the session before; 17:00 Central the evening before for CME Group futures (CME, CBOT, NYMEX, COMEX) and Cboe VIX futures; and each ICE U.S. contract's published open (Coffee 04:15, Sugar 03:30, Cocoa 04:45, Orange Juice 08:00 New York, Cotton 21:00 and the dollar index 20:00 the evening before). Futures holidays are not modelled. A venue without known hours restarts at local midnight, or at midnight UTC for crypto. It needs intraday bars, and a first session that opened before the loaded bars is left out rather than drawn from part of its volume. Bands add and subtract a whole number of volume-weighted standard deviations.
+- **Anchored VWAP** runs the same average from bars you pick and never restarts. Turning it on, or `v` while it is on, waits for a click on a bar (or Enter at the keyboard cursor; Esc cancels). Anchors also take a date (`2026-09-30`, the first bar of that session) or an exchange time (`2026-09-30 10:00`), and up to eight can be on one chart. An anchor older than the loaded bars draws nothing until a longer range loads it.
+- **Volume profile** spreads each bar's volume evenly over its high-low range into equal price rows across the bars in view, so it follows pan and zoom. The busiest row is the point of control, drawn as a dotted level; the value area grows from it one neighbouring row at a time, taking the busier side, until it holds 70% of the volume. It needs the price in its own values, not a percent or index display.
+- **ATR** is Wilder's average true range in its own panel: the mean true range of the first period, then each bar adds 1/period of its true range. A bar's true range is the largest of its high-low range and its distance from the previous close.
+
+#### Price levels
+
+The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price levels that belong to the ticker, not the pane: every chart of that listing shows them, a generic future's under any roll or adjustment, and they sync with your account. With the tool in hand, a click adds a level, dragging one moves it, Enter adds one at the keyboard cursor's price, `[` and `]` pick one, Up and Down move the picked one and Backspace deletes it. `Shift+A` on a level sets an ALRT price alert there: above when the level is over the current quote, below when it is under, crosses when it is on it. Levels with an alert, and active alerts on the ticker set elsewhere, draw in red; an alert's own line is changed in ALRT. Levels draw on the first price series while it shows its own values, not a percent or index display.
+
 `GIP` session loading retains finite zero and negative prices when provider metadata identifies a futures instrument. If another or unknown instrument type reports a nonpositive close in the selected window or its calculation buffer, the result is unavailable; JSON metadata retains the rejected values and dates in `intradayPriceDomainFailures`. Inconsistent OHLC bars still become gaps. Logarithmic scales and transforms retain their positive-value requirement.
 
 ### Markets, News, and Macro
 
 | Shortcut | Function |
 |----------|----------|
-| `TOP` | Ranked market stories |
+| `TOP` | The 20 top-ranked market stories |
 | `HM` | Market heatmap for large US stocks and ETFs |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
@@ -178,7 +199,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `PM <query>` | Polymarket and Kalshi prediction data ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |
-| `NI` | Sector news |
+| `NI [code]` | News by topic: `MNA`, `CB` (central banks), `ENERGY`, `REG` (regulation), `CRYPTO`, `EARN`, `IPO`, or a sector: `TECH`, `FIN`, `HEALTH`, `INDU`, `CONSD`, `CONSS`, `COMMS`, `MATS`, `UTIL` |
 | `SUB` | Authenticated Substack reader feed ([Substack plugin](https://github.com/gloom-sh/gloom-substack)) |
 | `FIRST` | Breaking news |
 | `TWIT <query>` | Ticker-related market posts |
@@ -197,7 +218,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap; stablecoins on their own tab |
 | `ECO` | Economic events and releases |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
-| `GC [YYYY-MM-DD]` | Treasury yield curve for the latest session or a historical date; CLI also accepts `--date YYYY-MM-DD` |
+| `GC [curve] [YYYY-MM-DD]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve and a World tab; CLI also accepts `--curve`, `--date`, `--compare 1Y` and `--tab world` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
 | `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
@@ -211,7 +232,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `VAL [indicator]` | Whole-market valuation: Buffett, CAPE, excess CAPE yield, Tobin Q, investor equity allocation, dividend yield, margin debt, cap/profits, cap/M2 |
 | `CDS [ticker]` | Single-name corporate CDS activity: most-active issuers, or one issuer's 5Y spread history and trades |
 | `EVTS` | The market's earnings days, implied against past moves |
-| `IPO` | Upcoming and recent IPOs ([IPO Calendar plugin](https://github.com/gloom-sh/gloom-ipo-calendar)) |
+| `IPO` | Upcoming and recent IPOs worldwide |
 | `HALT` | US trading halts with reason and resumption times |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |
 | `BI` | S&P 500 sector performance |
@@ -252,6 +273,8 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 
 `CBR`, `ECFC` and `CBRT` open the same Central Bank Rates board. Each row shows its policy rate or target range, last observed move and date, one-year percentile, history and latest observation date. Select a row and press Enter or click for the source instrument, reporting lag, one-year range and history; Back returns to the board. `o` opens its official source and `r` refreshes. The US detail includes its verified next FOMC meeting; other meeting dates remain unavailable. Reports support `gloomberb fn CBR --json` and its aliases.
 
+`IPO` lists deals on the main US, Asia-Pacific and European exchanges from the last three months and the next six: upcoming soonest first, then priced and listed deals most recent first, then postponed deals. The All, US, APAC and Europe tabs pick the region, and `/` searches company names in either script, tickers, markets, countries and status. DATE is the listing date in the venue's own calendar, dimmed while it is only expected. PRICE is the offer price once set, else the range, in the deal's currency (London in pence); SIZE is the money raised in US dollars at the rate of the day it priced; RETURN is the first session's close against the offer price. Enter or click opens a deal's ticker on its own exchange once it has one. When a market's calendar could not be refreshed, the footer names it. `gloomberb fn IPO --region apac --status upcoming --json` returns the same deals, and `--status filed` or `--status withdrawn` the filings and withdrawn deals the pane leaves out.
+
 `CRYP` opens the crypto board: the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows, moving every return and the market cap with them. Enter or click opens the coin in the ticker pane; column headers sort, `r` refreshes, and CSV export keeps every column. `gloomberb fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins.
 
 ### Workspace and App Controls
@@ -277,6 +300,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
 | `PS` | Open focused pane settings |
 | `LAY` | Open the layout browser to switch, publish, or add layouts |
+| `DESK [desk]` | Add a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading |
 | `LMA <query>` | Layout and pane arrangement actions |
 | `WIN move\|resize` | Move or resize the focused window |
 | `GL` | Tidy all windows |
@@ -403,9 +427,13 @@ Open it with `PL` in the command bar. It lists what you have installed, what the
 
 A plugin installed or updated from the pane is loaded into the running session: its panes and commands are available immediately. If your app starts with a plugin that failed to load, a notification says so and opens this pane.
 
-You do not need the pane to get an official plugin. Type its code, such as `TV`, `IPO`, `POLL`, `PM`, `HN` or `SUB`, and the command bar offers to install it after the same confirmation, then opens it with whatever you typed after the code.
+You do not need the pane to get an official plugin. Type its code, such as `TV`, `POLL`, `PM`, `HN` or `SUB`, and the command bar offers to install it after the same confirmation, then opens it with whatever you typed after the code.
 
 Official plugins, the ones published under [github.com/gloom-sh](https://github.com/gloom-sh), update on their own in the background: once after Gloomberb itself updates, then at most once a day. A plugin you linked or edited locally is left alone, and when an update needs a restart to finish, one notification says so. Third-party plugins update only when you press `g` or run `gloomberb update`. **Update official plugins automatically** in this pane's settings turns it off.
+
+## Portfolio currency
+
+A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are in the portfolio's currency, as are `PORT` and `gloomberb portfolio show`. A broker portfolio uses its account currency. A manual portfolio uses your base currency (`config set baseCurrency`). With the default USD base, a manual portfolio takes the currency of its first position instead: a portfolio of ASX shares bought in AUD totals in AUD, and holdings added later in other currencies convert into it. Totals lead with the currency symbol, such as A$108.6k, unless both they and the base currency are USD. LAST, AVG COST and TARGET stay in the listing's currency.
 
 ## Broker position sync
 
@@ -453,15 +481,15 @@ Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Ja
 
 ## Market and macro plugins
 
-The IPO Calendar and Polls each live in their own repository rather than inside the app. Each reads one third-party site directly, so a plugin can ship a fix the day that site changes instead of waiting for an app release.
+Polls lives in its own repository rather than inside the app. It reads one third-party site directly, so the plugin can ship a fix the day that site changes instead of waiting for an app release.
 
-Existing installations restore both once after upgrading, keeping their saved panes: the pane and template ids are unchanged. The IPO Calendar stays off where Macro was switched off, and a deliberate removal is respected. To install one by hand:
+Existing installations restore it once after upgrading, keeping its saved panes: the pane and template ids are unchanged. A deliberate removal is respected. To install it by hand:
 
 ```bash
 gloomberb install gloom-sh/gloom-polls
 ```
 
-Fear & Greed, Market Heatmap and Market Halts are built in again, with the same panes, shortcuts and settings. Where Market Overview was switched off, each starts switched off too unless its plugin was installed; `PL` turns them on. A copy installed while they were plugins is no longer loaded; `gloomberb plugins` lists it, and `gloomberb remove gloom-fear-greed` (or `gloom-market-heatmap`, `gloom-market-halts`) deletes it.
+Fear & Greed, Market Heatmap, Market Halts and the IPO Calendar are built in again, with the same panes, shortcuts and settings. Where Market Overview was switched off, the first three start switched off too, and the IPO Calendar where Macro was, unless its plugin was installed; `PL` turns them on. A copy installed while they were plugins is no longer loaded; `gloomberb plugins` lists it, and `gloomberb remove gloom-fear-greed` (or `gloom-market-heatmap`, `gloom-market-halts`, `gloom-ipo-calendar`) deletes it.
 
 ## Live TV
 

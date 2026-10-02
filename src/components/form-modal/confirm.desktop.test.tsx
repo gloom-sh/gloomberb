@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
 import { act } from "react";
-import { createDomTestHarness } from "../../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import { openConfirmModal } from "./request";
 import { createDesktopFormControls, createSaveNoteRegistry, renderDesktopFormHost } from "./test-harness";
 

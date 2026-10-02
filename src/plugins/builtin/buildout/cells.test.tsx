@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { Box } from "../../../ui";
-import { createDomTestHarness } from "../../../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 import { renderBuildoutCell } from "./cells";
 import type { BuildoutRow } from "./model/types";
 import { favoriteKey } from "./table-model";

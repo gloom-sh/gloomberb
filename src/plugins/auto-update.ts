@@ -24,7 +24,7 @@ import type { PluginOperationResult, PluginPin } from "./builtin/plugin-marketpl
  * (absorbed.ts) is never pulled, however stale the registry.
  */
 
-export const OFFICIAL_PLUGIN_OWNER = "gloom-sh";
+const OFFICIAL_PLUGIN_OWNER = "gloom-sh";
 
 /**
  * The Plugins pane setting, kept in the config of the built-in plugin that
@@ -209,7 +209,7 @@ export interface PluginAutoUpdateState {
 }
 
 /** A full check is due once on every new Gloomberb version, and then once a day. */
-export function pluginAutoUpdateDue(
+function pluginAutoUpdateDue(
   state: PluginAutoUpdateState | null,
   now: number,
   hostVersion: string = VERSION,

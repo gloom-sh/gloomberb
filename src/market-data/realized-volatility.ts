@@ -5,7 +5,7 @@ import {
   type PriceHistoryIntegrity,
 } from "../utils/price-history-integrity";
 
-export const VOLATILITY_TRADING_DAYS = 252;
+const VOLATILITY_TRADING_DAYS = 252;
 export const REALIZED_VOLATILITY_WINDOWS = [10, 20, 30, 60, 90, 180, 260] as const;
 
 export const REALIZED_VOLATILITY_ESTIMATORS = [
@@ -17,7 +17,7 @@ export function isRealizedVolatilityEstimator(value: unknown): value is Realized
   return REALIZED_VOLATILITY_ESTIMATORS.some((estimator) => estimator === value);
 }
 
-export type RealizedVolatilityUnavailableReason =
+type RealizedVolatilityUnavailableReason =
   | "invalid-window"
   | "invalid-date"
   | "insufficient-history"

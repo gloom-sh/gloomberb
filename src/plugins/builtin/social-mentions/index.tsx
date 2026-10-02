@@ -4,7 +4,7 @@ import { socialMentionPostsCache, socialMentionsCache } from "./client";
 import { socialMentionsHeadless } from "./headless";
 import { SocialMentionsPane } from "./pane";
 
-export const socialMentionsSettings = [
+const socialMentionsSettings = [
   { key: "socialRange", label: "History", type: "select" as const,
     options: [{ value: "1y", label: "1 year" }, { value: "5y", label: "5 years" }, { value: "max", label: "Since 2012" }] },
 ];

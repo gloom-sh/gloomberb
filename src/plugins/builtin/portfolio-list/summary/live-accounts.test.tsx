@@ -1,21 +1,15 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
 import { useLiveBrokerAccounts, type LiveBrokerAccounts } from "./live-accounts";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let latest: LiveBrokerAccounts | null = null;
 let setRefreshKey: ((key: number) => void) | null = null;
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   latest = null;
   setRefreshKey = null;
 });
@@ -59,11 +53,11 @@ test("reloads accounts on connection changes and explicit refreshes, not on stat
   const settle = async () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   };
 
-  testSetup = await testRender(<Harness broker={broker} />, { width: 10, height: 1 });
+  await tui.render(<Harness broker={broker} />, { width: 10, height: 1 });
   await settle();
   expect(loads).toBe(0);
 

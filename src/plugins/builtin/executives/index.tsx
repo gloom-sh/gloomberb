@@ -34,6 +34,7 @@ export const executivesModule: PluginModule = {
       icon: "X",
       component: ExecutivesPane,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },
     },

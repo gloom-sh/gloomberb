@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { apiClient, setCloudApiFetchTransport } from "./index";
-import { publishableMarketplaceLayout } from "../layout-marketplace/payload";
+import { publishableMarketplaceLayout } from "../shares/portable-layout";
 import { createDefaultConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 import { GloomberbCloudProvider } from "../sources/gloomberb-cloud";
@@ -1144,7 +1144,7 @@ describe("apiClient command assist", () => {
     expect(curve?.arg).toEqual({ kind: "text", optional: true });
   });
 
-  test("asks the server to keep the query only when told so", async () => {
+  test("passes the caller's log choice through, false included", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     apiClient.setSessionToken("session-token");
     apiClient.restoreCachedUser(verifiedUser);
@@ -1158,8 +1158,8 @@ describe("apiClient command assist", () => {
     await apiClient.assistCommand("gamestop options", [], { log: false });
 
     expect(logged.searchId).toBe("search-1");
-    // Released builds send no flag, so the server keeps nothing unless asked.
-    expect(bodies.map((body) => "log" in body ? body.log : "absent")).toEqual(["absent", true, "absent"]);
+    // The server keeps a query unless told not to, so false must go out.
+    expect(bodies.map((body) => "log" in body ? body.log : "absent")).toEqual(["absent", true, false]);
   });
 });
 
@@ -1249,6 +1249,23 @@ describe("apiClient cloud news", () => {
     expect(url.searchParams.get("since")).toBe("2026-04-01T00:00:00.000Z");
     expect(url.searchParams.get("cursor")).toBe("cursor-1");
     expect(result).toEqual({ items: [], nextCursor: null });
+  });
+});
+
+describe("apiClient IPO calendar", () => {
+  test("asks for the default window with no params and sends only the filters given", async () => {
+    const seen: URL[] = [];
+    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
+      seen.push(new URL(String(input)));
+      return Response.json({ asOf: "2026-09-29T00:00:00Z", deals: [], sources: [] });
+    });
+
+    expect(await apiClient.getCloudIpoCalendar()).toEqual({ asOf: "2026-09-29T00:00:00Z", deals: [], sources: [] });
+    expect(seen[0]!.pathname).toBe("/cloud/ipo/calendar");
+    expect(seen[0]!.search).toBe("");
+
+    await apiClient.getCloudIpoCalendar({ region: "apac", status: undefined, from: "2026-10-01" });
+    expect(seen[1]!.search).toBe("?region=apac&from=2026-10-01");
   });
 });
 

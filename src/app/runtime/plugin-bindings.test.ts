@@ -28,6 +28,7 @@ test("a profile goes even when its adapter's disconnect throws", async () => {
     })]]),
     persistence: { resources: { list: () => [], delete: () => {} } },
     events: { emit() {} },
+    bindHost(actions: object) { Object.assign(this, actions); return () => {}; },
   } as unknown as PluginRegistry;
   bindPluginRegistryRuntimeAccess({
     dataProvider: {} as DataProvider,
@@ -39,7 +40,7 @@ test("a profile goes even when its adapter's disconnect throws", async () => {
     tickerRepository: {} as never,
   });
 
-  await pluginRegistry.removeBrokerInstanceFn("demo-live");
+  await pluginRegistry.removeBrokerInstance("demo-live");
 
   expect(stateRef.current.config.brokerInstances).toEqual([]);
   expect(saved.at(-1)?.brokerInstances).toEqual([]);

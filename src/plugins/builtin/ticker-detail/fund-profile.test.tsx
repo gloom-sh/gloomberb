@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender, settleFrame } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
@@ -23,11 +23,7 @@ function tickerCommandContext(financials: TickerFinancials) {
   });
 }
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 for (const quoted of [true, false]) test(`fund classification and profile survive ${quoted ? "generic saved broker type" : "missing quote"} across consumers`, async () => {
   const financials: TickerFinancials = {
@@ -35,13 +31,13 @@ for (const quoted of [true, false]) test(`fund classification and profile surviv
     profile, fundamentals: { dividendYield: 0 }, priceHistory: [], annualStatements: [], quarterlyStatements: [],
   };
   await act(async () => {
-    setup = await testRender(<AppContext value={createStaticAppStore(createInitialState(config))}>
+    await tui.render(<AppContext value={createStaticAppStore(createInitialState(config))}>
       <OverviewTab ticker={ticker} financials={financials} width={80} />
     </AppContext>, { width: 80, height: 24 });
   });
-  await settleFrame(setup!, 10);
-  const frame = setup!.captureCharFrame();
-  expect(frame).toMatch(/Type:\s*ETF/);
+  await settleFrame(tui.setup(), 10);
+  const frame = tui.frame();
+  expect(frame).toMatch(/Type\s+ETF/);
   expect(frame).toContain(profile.description);
   expect(frame).toMatch(/Div Yield\s+0.00%/);
   const text = await buildTickerReport({ symbol: "CLASSA", tickerFile: ticker, financials, config, toBase: async v => v });

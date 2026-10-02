@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
+import type { HeadlessPaneContext, HeadlessPaneEntry, HeadlessPaneLoadArgs, HeadlessSeriesResult } from "../../../types/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { correlationHeadless, relationshipHeadless } from "./headless";
 import { buildCorrelationMatrix, buildCorrelationSeries, buildStatusSummary, pairKey } from "./matrix/model";
@@ -21,6 +21,12 @@ function context(missing = "", disjoint = false): HeadlessPaneContext {
       },
     }),
   } as HeadlessPaneContext;
+}
+
+/** The relationship report lists its figures as entries, not as a keyed record. */
+function statEntries(result: HeadlessSeriesResult): HeadlessPaneEntry[] {
+  if (!Array.isArray(result.stats)) throw new Error("Expected stat entries");
+  return result.stats;
 }
 
 test("correlation retains usable pairs and marks failed histories without discarding their peers", async () => {
@@ -68,7 +74,7 @@ test("rolling correlation waits for the entire selected observation window", asy
   expect(result.series[0]!.points).toHaveLength(7);
   expect(result.series[1]!.points).toHaveLength(0);
   expect(result.metadata).toMatchObject({ latestCorrelation: null, returnCount: 6 });
-  expect(result.stats?.find((stat) => stat.key === "beta")?.value).toBeCloseTo(1);
+  expect(statEntries(result).find((stat) => stat.key === "beta")?.value).toBeCloseTo(1);
 });
 
 
@@ -100,7 +106,7 @@ test("inconsistent OHLC quarantines risk windows, retains original diagnostics a
   })]));
   const relationship = await relationshipHeadless.load(args(["ABC", "SPY"]), ctx);
   expect(relationship.series.every((series) => series.points.length === 0)).toBe(true);
-  expect(relationship.stats?.filter((stat) => stat.key !== "returnCount").every((stat) => stat.value === null)).toBe(true);
+  expect(statEntries(relationship).filter((stat) => stat.key !== "returnCount").every((stat) => stat.value === null)).toBe(true);
   expect(relationship.unavailableSymbols).toEqual(["SPY"]);
   expect(relationship.errors).toEqual([expect.stringContaining("Inconsistent OHLC")]);
   expect(relationship.metadata?.integrity).toMatchObject({ right: [{ sourcePoints: [expect.objectContaining({ close: corrupt.close })] }] });
@@ -108,7 +114,7 @@ test("inconsistent OHLC quarantines risk windows, retains original diagnostics a
   expect(history[3]!.open).toBe(764.0800);
   ctx.marketData = createTestDataProvider({ getPriceHistory: async () => cleanHistory });
   const recovered = await relationshipHeadless.load(args(["ABC", "SPY"]), ctx);
-  expect(recovered.stats?.find((stat) => stat.key === "rSquared")?.value).toBeCloseTo(1);
+  expect(statEntries(recovered).find((stat) => stat.key === "rSquared")?.value).toBeCloseTo(1);
   expect(recovered.errors).toEqual([]);
 });
 
@@ -140,7 +146,7 @@ test("a zero-variance latest rolling window never publishes an older correlation
   const result = await relationshipHeadless.load(args(["ABC", "SPY"]), ctx);
   expect(result.series[1]?.points.length).toBeGreaterThan(0);
   expect(result.series[1]?.points.at(-1)).toEqual({ date: "2026-09-11T00:00:00.000Z", value: null });
-  expect(result.stats?.find(stat => stat.key === "latestCorrelation")?.value).toBeNull();
+  expect(statEntries(result).find(stat => stat.key === "latestCorrelation")?.value).toBeNull();
   expect(result.metadata?.latestCorrelation).toBeNull();
   expect(result.errors).toEqual([expect.stringContaining("zero return variance in the latest 5 shared returns")]);
   expect(result.metadata?.regression).toMatchObject({ rSquared: 1, sampleSize: 10 });

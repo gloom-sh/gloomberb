@@ -6,9 +6,9 @@ import {
   getDockedPaneIds,
   isPaneInLayout,
   isPaneDocked,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
-import { findFixedTickerPaneForSymbol } from "../../plugins/ticker-navigation";
+import { findFixedTickerPaneForSymbol } from "../../layout/ticker-navigation";
 import type { AppAction, AppState } from "../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID, normalizePaneId } from "../../types/config";
 import type {
@@ -30,7 +30,7 @@ import { instrumentFromTicker } from "../../market-data/request-types";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
 
 interface UseAppTickerOpenRuntimeOptions {
-  activatePane: (paneId: string, layout?: LayoutConfig) => void;
+  activatePane: (paneId: string) => void;
   buildPaneInstance: (paneType: string, options?: {
     title?: string;
     binding?: PaneBinding;
@@ -154,7 +154,7 @@ export function useAppTickerOpenRuntime({
     });
     if (!instance) return;
 
-    const { width, height } = pluginRegistry.getTermSizeFn();
+    const { width, height } = pluginRegistry.getTermSize();
     const shouldFloat = options?.floating ?? true;
     const nextLayout = shouldFloat
       ? addPaneFloating(currentLayout, instance, width, height, paneDef)
@@ -172,7 +172,7 @@ export function useAppTickerOpenRuntime({
     if (paneType === TICKER_RESEARCH_PANE_ID && options?.tabId) {
       dispatch({ type: "UPDATE_PANE_STATE", paneId: instance.instanceId, patch: { activeTabId: options.tabId } });
     }
-    activatePane(instance.instanceId, nextLayout);
+    activatePane(instance.instanceId);
   }, [
     activatePane,
     buildPaneInstance,

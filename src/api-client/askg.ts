@@ -83,7 +83,7 @@ export interface ASKGConversationTool {
   note?: string;
 }
 
-export interface ASKGConversationMessage {
+interface ASKGConversationMessage {
   seq: number;
   role: "user" | "assistant";
   text: string;
@@ -224,7 +224,7 @@ function isAskgEvent(value: unknown): value is ASKGSseEvent {
 }
 
 /** Parses one frame payload, ignoring keep-alives and unknown shapes. */
-export function parseASKGFrame(frame: SseFrame): ASKGSseEvent | null {
+function parseASKGFrame(frame: SseFrame): ASKGSseEvent | null {
   const data = frame.data.trim();
   if (!data || data === "[DONE]") return null;
   try {

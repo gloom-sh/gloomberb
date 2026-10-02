@@ -19,12 +19,40 @@ export function normalizeFieldOptions(
   }));
 }
 
-function dependenciesMet(
-  dependsOn: CommandBarWorkflowField["dependsOn"],
-  values: Record<string, CommandBarFieldValue>,
+type FieldDependency = { key: string; value: string };
+
+/**
+ * Whether a workflow field or wizard step shows for the answers so far: every
+ * answer it depends on, read as a string, holds the expected value. The
+ * command-bar form and the dialog wizard both decide visibility here.
+ */
+export function dependenciesMet(
+  dependsOn: FieldDependency | FieldDependency[] | undefined,
+  values: Record<string, unknown>,
 ): boolean {
-  if (!dependsOn || dependsOn.length === 0) return true;
-  return dependsOn.every((dependency) => String(values[dependency.key] ?? "") === dependency.value);
+  if (!dependsOn) return true;
+  const dependencies = Array.isArray(dependsOn) ? dependsOn : [dependsOn];
+  return dependencies.every((dependency) => String(values[dependency.key] ?? "") === dependency.value);
+}
+
+/**
+ * The later answers a change resets: the field's `clearOnChange` keys when the
+ * new value differs from the one it replaces. The form compares with the value
+ * it held, the dialog wizard with the one the step offered.
+ */
+export function keysClearedByChange(
+  clearOnChange: string[] | undefined,
+  previous: unknown,
+  next: unknown,
+): string[] {
+  return clearOnChange && !Object.is(previous, next) ? clearOnChange : [];
+}
+
+/** The answer a wizard step starts on: its default, else a select's first option. */
+export function wizardStepInitialValue(step: WizardStep): string | undefined {
+  if (step.defaultValue) return step.defaultValue;
+  if (step.type === "select" && step.options?.[0]?.value) return step.options[0].value;
+  return undefined;
 }
 
 export function getVisibleWorkflowFields(
@@ -137,6 +165,8 @@ export function normalizeWizardFields(steps: WizardStep[]): {
         : step.type === "select"
           ? "select"
           : "text";
+    const initialValue = wizardStepInitialValue(step);
+    if (initialValue) initialValues[step.key] = initialValue;
     if (type === "select") {
       fields.push({
         id: step.key,
@@ -149,11 +179,6 @@ export function normalizeWizardFields(steps: WizardStep[]): {
         dependsOn: step.dependsOn ? [{ key: step.dependsOn.key, value: step.dependsOn.value }] : undefined,
         clearOnChange: step.clearOnChange,
       });
-      if (step.defaultValue) {
-        initialValues[step.key] = step.defaultValue;
-      } else if (step.options?.[0]?.value) {
-        initialValues[step.key] = step.options[0].value;
-      }
       continue;
     }
 
@@ -167,9 +192,6 @@ export function normalizeWizardFields(steps: WizardStep[]): {
       dependsOn: step.dependsOn ? [{ key: step.dependsOn.key, value: step.dependsOn.value }] : undefined,
       clearOnChange: step.clearOnChange,
     });
-    if (step.defaultValue) {
-      initialValues[step.key] = step.defaultValue;
-    }
   }
 
   return { fields, description, initialValues, pendingLabel, successLabel };

@@ -44,7 +44,7 @@ const positive = (value: number | null | undefined): value is number => isFinite
 const utcDay = (ms: number) => Math.floor(ms / DAY_MS);
 
 /** The close `days` UTC days before today, the basis the day change also uses. */
-export function closeDaysAgo(asset: CryptoMarketAsset, days: number, now: number): number | null {
+function closeDaysAgo(asset: CryptoMarketAsset, days: number, now: number): number | null {
   const history = asset.history;
   if (!history) return null;
   const index = utcDay(now) - days - utcDay(Date.parse(`${history.start}T00:00:00Z`));
@@ -56,7 +56,7 @@ const percentChange = (price: number, reference: number | null) =>
   reference != null && reference > 0 ? (price / reference - 1) * 100 : null;
 
 /** A live quote replaces the board's snapshot once it is at least as new. */
-export function liveQuote(
+function liveQuote(
   asset: CryptoMarketAsset,
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
 ): Quote | null {
@@ -80,7 +80,7 @@ function completedCloses(asset: CryptoMarketAsset): PricePoint[] {
   return closes;
 }
 
-export function buildCryptoRow(
+function buildCryptoRow(
   asset: CryptoMarketAsset,
   quote: Quote | null,
   now = Date.now(),
@@ -173,7 +173,7 @@ export function formatCryptoPercent(value: number | null): string {
 
 // Sorting ---------------------------------------------------------------------
 
-export type CryptoColumnId =
+type CryptoColumnId =
   | "rank"
   | "code"
   | "name"

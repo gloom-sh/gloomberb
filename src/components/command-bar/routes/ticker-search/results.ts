@@ -83,7 +83,7 @@ export function mergeTickerSearchResultItems(
       : item);
 }
 
-export const ROOT_INSTRUMENTS_CATEGORY = "Instruments";
+const ROOT_INSTRUMENTS_CATEGORY = "Instruments";
 
 /** Enough to surface the listing the user means without burying the sections below. */
 const ROOT_INSTRUMENTS_LIMIT = 5;

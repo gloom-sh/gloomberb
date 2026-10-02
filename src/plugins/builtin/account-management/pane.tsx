@@ -56,6 +56,7 @@ import {
   type AccountFieldKey,
 } from "./model";
 import { PasswordChangeDialog } from "./password-dialog";
+import { CalendarAccountTab } from "./calendar-tab";
 import { useAccountManagementFooter } from "./footer";
 import { useAccountManagementKeyboard } from "./keyboard";
 import {
@@ -81,6 +82,7 @@ type AccountBusy = "profile" | "password" | "alerts" | "billing" | "delete" | nu
 const ACCOUNT_TAB_DEFS: Array<{ label: string; value: AccountManagementTab }> = [
   { label: "Profile", value: "profile" },
   { label: "Emails", value: "emails" },
+  { label: "Calendar", value: "calendar" },
   { label: "Pro", value: "pro" },
   { label: "Teams", value: "teams" },
   { label: "Advanced", value: "advanced" },
@@ -105,6 +107,8 @@ const ACCOUNT_TAB_FIELD_ORDER: Record<AccountManagementTab, AccountFieldKey[]> =
     "positionAlertsEnabled",
     "emailAlertsOffAction",
   ],
+  // Its actions are footer hints; the tab owns its footer.
+  calendar: [],
   pro: ["upgradeAction"],
   // The Teams tab owns its own keyboard handling (a list, not form fields).
   teams: [],
@@ -687,6 +691,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
   useAccountManagementFooter({
     busy,
+    // The Calendar tab saves nothing and shows its own status.
+    enabled: activeTab !== "calendar",
     hasSession,
     message,
     saveProfile,
@@ -699,7 +705,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     draftRef,
     fieldOrder,
     // Behind the sign-in wall the fields are not there, and Enter is the wall's.
-    focused: focused && activeTab !== "teams" && (hasSession || apiClient.isSignedIn()),
+    focused: focused && activeTab !== "teams" && activeTab !== "calendar" && (hasSession || apiClient.isSignedIn()),
     openPasswordDialog,
     openPortfolioDialog: openPortfolioPicker,
     openUpgrade,
@@ -878,6 +884,10 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 <Button label={busy === "profile" ? t("Saving...") : t("Save")} variant="primary" onPress={() => { void saveProfile(); }} disabled={!!busy} />
               </Box>
             </>
+          ) : null}
+
+          {activeTab === "calendar" ? (
+            <CalendarAccountTab width={contentWidth} sessionMarker={sessionMarker} />
           ) : null}
 
           {activeTab === "pro" ? (

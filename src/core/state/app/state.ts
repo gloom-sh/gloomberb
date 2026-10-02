@@ -128,13 +128,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, recentTickers: nextRecentTickers(state.recentTickers, action.symbol) };
 
     case "SET_ACTIVE_PANEL": {
-      const firstPane = action.preserveFocus
-        ? state.focusedPaneId
-        : getPanelFocusTarget(state.config.layout, action.panel);
-      return withFocusedPane(state, state.config, {
-        activePanel: action.panel,
-        focusedPaneId: firstPane ?? state.focusedPaneId,
-      });
+      if (action.preserveFocus) return state;
+      const paneId = getPanelFocusTarget(state.config.layout, action.panel);
+      return paneId ? focusPaneState(state, paneId) : state;
     }
 
     case "TOGGLE_COMMAND_BAR":
@@ -265,7 +261,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
       return {
         ...state,
-        config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId, state.activePanel),
+        config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId),
         paneState,
         recentTickers,
       };
@@ -284,7 +280,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         : state.recentTickers;
       return {
         ...state,
-        config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId, state.activePanel),
+        config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId),
         paneState,
         recentTickers,
       };
@@ -312,7 +308,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
       return {
         ...state,
-        config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId, state.activePanel),
+        config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId),
         paneState,
       };
     }
@@ -333,13 +329,11 @@ export function createInitialState(config: AppConfig, sessionSnapshot: AppSessio
     && config.layout.instances.some((instance) => instance.instanceId === requestedFocusedPaneId)
     ? requestedFocusedPaneId
     : defaultFocusedPaneId;
-  const activePanel = activeSavedLayout?.activePanel ?? (sessionSnapshot?.activePanel === "right" ? "right" : "left");
   const focusedLayout = focusedPaneId ? bringFloatingToFront(config.layout, focusedPaneId) : config.layout;
   const focusedConfig = syncConfigActiveLayoutState(
     focusedLayout === config.layout ? config : { ...config, layout: focusedLayout },
     paneState,
     focusedPaneId,
-    activePanel,
   );
   return {
     config: focusedConfig,
@@ -347,7 +341,6 @@ export function createInitialState(config: AppConfig, sessionSnapshot: AppSessio
     financials: new Map(),
     exchangeRates: new Map([["USD", 1]]),
     brokerAccounts: {},
-    activePanel,
     focusedPaneId,
     previousFocusedPaneId: null,
     paneState,

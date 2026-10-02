@@ -89,7 +89,7 @@ export function useCommandBarPaneTemplateActions({
     createOptions?: PaneTemplateCreateOptions,
   ) => {
     try {
-      await pluginRegistry.createPaneFromTemplateAsyncFn(template.id, createOptions);
+      await pluginRegistry.createPaneFromTemplateAsync(template.id, createOptions);
       closeAll({ revertThemePreview: false });
     } catch (error) {
       const displayLabel = getPaneTemplateDisplayLabel(template);

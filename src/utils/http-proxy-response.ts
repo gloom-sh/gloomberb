@@ -13,7 +13,7 @@
  * plugin completing a login, need `get("set-cookie")` and `getSetCookie()` to
  * work, so `createProxyResponse` restores them.
  */
-export interface HttpProxyRequestInit {
+interface HttpProxyRequestInit {
   method?: string;
   headers?: Record<string, string>;
   body?: string;

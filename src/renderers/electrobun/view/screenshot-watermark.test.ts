@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createDomTestHarness } from "./test-utils";
+import { createDomTestHarness } from "../../dom/test-utils";
 import { installScreenshotWatermark, screenshotKeySignal } from "./screenshot-watermark";
 import { SCREENSHOT_WATERMARK_ATTRIBUTE } from "../../../utils/screenshot-watermark";
 

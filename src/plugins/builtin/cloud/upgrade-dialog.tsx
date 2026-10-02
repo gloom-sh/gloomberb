@@ -96,7 +96,7 @@ const PRO_FEATURES: Array<{ label: string; value: string }> = [
   { label: "Flow and X", value: "Options flow, the X feed and sentiment" },
 ];
 
-export async function loadUpgradeOffer(): Promise<UpgradeOffer> {
+async function loadUpgradeOffer(): Promise<UpgradeOffer> {
   const [pricing, account] = await Promise.allSettled([
     apiClient.getCloudPricing(),
     apiClient.getCloudAccountPlan(),
@@ -109,7 +109,7 @@ export async function loadUpgradeOffer(): Promise<UpgradeOffer> {
   };
 }
 
-export function UpgradeDialog({
+function UpgradeDialog({
   dialogId,
   resolve,
   dismiss,

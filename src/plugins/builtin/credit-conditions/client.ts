@@ -3,7 +3,7 @@ import {
   getCachedFredSeries,
   loadCachedFredSeries,
   type FredSeriesRequest,
-} from "../../../data/fred-series";
+} from "../../../sources/gloomberb-cloud/fred-series";
 import {
   CREDIT_SERIES,
   normalizeCreditSeries,

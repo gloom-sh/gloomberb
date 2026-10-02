@@ -34,7 +34,7 @@ export function formatInlinePreview(text: string, width: number) {
   return truncateWithEllipsis(normalizeInlinePreview(text), width);
 }
 
-export type ChatBodyInlineToken = InlineContentToken;
+type ChatBodyInlineToken = InlineContentToken;
 
 export type ChatBodyLine = ChatBodyInlineToken[];
 
@@ -249,7 +249,7 @@ export function getMessageBodyTokenLines(
   return lines.length > 0 ? lines : [[]];
 }
 
-export function getMessageBodyLines(
+function getMessageBodyLines(
   message: ChatMessage,
   width: number,
   catalog?: Record<string, InlineTickerCatalogEntry>,

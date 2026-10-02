@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   attachFredSeriesPersistence,
   resetFredSeriesPersistence,
-} from "../../../data/fred-series";
+} from "../../../sources/gloomberb-cloud/fred-series";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { loadCreditConditions } from "./client";
 import { CREDIT_SERIES, type CreditSeriesId } from "./model";

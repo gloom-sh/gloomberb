@@ -64,12 +64,14 @@ export function createAppRuntime({
     ...newsOptions,
   });
   const modules = { pluginRegistry, marketData, newsService };
-  pluginRegistry.getConfigFn = () => config;
-  pluginRegistry.getLayoutFn = () => config.layout;
-  pluginRegistry.registerNewsCapabilityFn = registryOptions?.enableCapabilityHandlers === false
-    ? () => () => {}
-    : (capability) => newsService.register(capability);
-  pluginRegistry.watchNewsQueryFn = (query, listener) => newsService.watchQuery(query, listener);
+  pluginRegistry.bindHost({
+    getConfig: () => config,
+    getLayout: () => config.layout,
+    registerNewsCapability: registryOptions?.enableCapabilityHandlers === false
+      ? () => () => {}
+      : (capability) => newsService.register(capability),
+    watchNewsQuery: (query, listener) => newsService.watchQuery(query, listener),
+  });
   setSharedMarketDataCoordinator(marketData);
   setSharedNewsService(newsService);
 

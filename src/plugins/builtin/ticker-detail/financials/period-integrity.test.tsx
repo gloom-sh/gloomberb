@@ -1,8 +1,8 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { buildHeadlessFunctionReport, renderHeadlessPaneText } from "../../../../cli/pane-functions/headless";
 import { PaneFooterBar, PaneFooterProvider } from "../../../../components/layout/pane/footer";
-import { takeSavedTextFile, testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../../state/app/context";
 import { createStaticAppStore } from "../../../../test-support/app-store";
 import { exportPaneTable } from "../../../../state/pane-table-export-registry";
@@ -35,12 +35,7 @@ interface StatementColumn {
 
 const PANE_ID = "financials:test";
 const SYMBOL = "ACME";
-let setup: Awaited<ReturnType<typeof testRender>> | null = null;
-
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = null;
-});
+const tui = createOpenTuiTestHarness();
 
 function paneConfig(dataDir: string) {
   return createTestPaneConfig(dataDir, {
@@ -89,13 +84,13 @@ async function mount(financials: TickerFinancials, period: Period = "annual") {
       </AppContext>
     );
   }
-  setup = await testRender(<Harness />, { width: 120, height: 28 });
-  for (let i = 0; i < 3; i++) await act(async () => setup!.renderOnce());
+  await tui.render(<Harness />, { width: 120, height: 28 });
+  await tui.renderFrames(3);
   await act(async () => {
-    setup!.mockInput.pressKey("e");
-    await setup!.renderOnce();
+    tui.setup().mockInput.pressKey("e");
+    await tui.setup().renderOnce();
   });
-  await act(async () => setup!.renderOnce());
+  await act(async () => tui.setup().renderOnce());
 }
 
 /** The pane's CSV export plus the headless report for the same financials. */
@@ -119,7 +114,7 @@ function columns(result: HeadlessRowsResult): StatementColumn[] {
 }
 
 function frame() {
-  return setup!.captureCharFrame();
+  return tui.frame();
 }
 
 test("actual financial table and CSV retain the derived TTM window and known field publication dates", async () => {
@@ -224,10 +219,10 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
     expect(y).toBeGreaterThanOrEqual(0);
     const x = rows[y]!.indexOf("[p]eriod");
     await act(async () => {
-      await setup!.mockMouse.click(x + 1, y);
-      await setup!.renderOnce();
+      await tui.setup().mockMouse.click(x + 1, y);
+      await tui.setup().renderOnce();
     });
-    await act(async () => setup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
   }
 
   await clickPeriod();

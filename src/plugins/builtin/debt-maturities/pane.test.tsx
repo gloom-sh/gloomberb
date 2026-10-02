@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { DebtMaturitiesPayload, DebtMetric } from "../../../api-client/debt-maturities";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -30,20 +30,18 @@ function payload(): DebtMaturitiesPayload {
     history: [...history, last] };
 }
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let spy: { mockRestore(): void } | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   spy?.mockRestore(); spy = undefined;
 });
 
 async function settle() {
-  for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await setup!.renderOnce(); });
+  for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce(); });
 }
 
 async function render(width: number, height: number, tab = "maturities"): Promise<string[]> {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
+  await tui.destroy();
   spy ??= spyOn(apiClient, "getCloudDebtMaturities").mockImplementation(async () => payload());
   const initial = createInitialState(createTestPaneConfig("/tmp/gloom-debt-test", { instanceId: "ddis", paneId: "debt-maturities" }));
   initial.focusedPaneId = "ddis";
@@ -58,9 +56,9 @@ async function render(width: number, height: number, tab = "maturities"): Promis
       {(body) => <DebtMaturitiesPane paneId="ddis" paneType="debt-maturities" focused {...body} />}
     </TestPaneFrame>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height }); });
+  await act(async () => { await tui.render(<Harness />, { width, height }); });
   await settle();
-  return setup!.captureCharFrame().split("\n");
+  return tui.frame().split("\n");
 }
 
 const bar = (line: string | undefined) => (line?.match(/[█▏▎▍▌▋▊▉]+/)?.[0] ?? "").length;
@@ -77,7 +75,7 @@ test("the maturity wall is an inline bar column scaled to the dated years", asyn
   expect(dated[1]! / dated[0]!).toBeCloseTo(2, 0);
   // Thereafter (60M) runs past the scale, capped; its PRINCIPAL cell says how much, once.
   const thereafter = row("AfterYearFive")!;
-  expect(bar(thereafter)).toBe(dated[4]);
+  expect(bar(thereafter)).toBe(dated[4]!);
   expect(thereafter).toContain("▸");
   expect(thereafter.split("60.00M")).toHaveLength(2);
   // The figures stay above the table.
@@ -113,9 +111,9 @@ test("the filing history names its bars and puts each year under its own bar", a
 
 test("moving the filing selection moves the chart cursor", async () => {
   await render(94, 29, "history");
-  await emitKeypress(setup!, { name: "down" });
+  await tui.emitKeypress({ name: "down" });
   await settle();
-  const lines = setup!.captureCharFrame().split("\n");
+  const lines = tui.frame().split("\n");
   expect(lines[1]).toContain("● Principal total (USD) 200.00M");
   expect(lines.find((line) => /(^|\s)2022(\s|$)/.test(line))).toContain("2024-06-30");
 });

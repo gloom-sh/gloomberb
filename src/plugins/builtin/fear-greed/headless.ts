@@ -8,7 +8,7 @@ import { loadFearGreed, type FearGreedLoadResult } from "./cache";
 import { fetchFearGreedData, type FearGreedData } from "./data";
 import { formatIndicatorValue, formatScore, ratingLabel } from "./format";
 
-export function projectFearGreedHeadless(data: FearGreedData): HeadlessBundleResult {
+function projectFearGreedHeadless(data: FearGreedData): HeadlessBundleResult {
   return {
     sections: [
       {

@@ -114,7 +114,7 @@ export function useCommandBarRouteActions({
       return;
     }
     closeAll({ revertThemePreview: false });
-    pluginRegistry.openPaneSettingsFn(paneId, fieldKey ? { fieldKey } : undefined);
+    pluginRegistry.openPaneSettings(paneId, fieldKey ? { fieldKey } : undefined);
   }, [closeAll, notify, pluginRegistry]);
 
   const executeCollectionCommand = useCallback(async (

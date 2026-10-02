@@ -72,7 +72,7 @@ function expiryDaysFromNow(expiry: string, now: number): number | null {
 }
 
 /** The OSI root a listed symbol's options trade under: BRK.B trades as BRKB. */
-export function flowOptionRoot(symbol: string): string {
+function flowOptionRoot(symbol: string): string {
   return symbol.trim().toUpperCase().replace(/[.\-/ ]/g, "");
 }
 
@@ -176,9 +176,9 @@ export function formatFlowTime(at: number, now = Date.now()): string {
 }
 
 /** Rows per page of recorded prints below the live tape. */
-export const FLOW_HISTORY_PAGE = 100;
+const FLOW_HISTORY_PAGE = 100;
 /** Live prints a pane keeps once they scroll off the shared tape. */
-export const FLOW_KEPT_PRINTS = 20_000;
+const FLOW_KEPT_PRINTS = 20_000;
 
 /** Newest first; ties keep the server's byte order on id so pages line up. */
 export function compareFlowDesc(left: ScannerFlowEvent, right: ScannerFlowEvent): number {

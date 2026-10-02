@@ -1,20 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { emitKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import { Text } from "../../ui";
 import { useFieldRing, type FieldRingOptions } from "./field-ring";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let active: string | null = null;
 const pressed: string[] = [];
 
-afterEach(async () => {
+afterEach(() => {
   pressed.length = 0;
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 function Ring(props: Pick<FieldRingOptions<string>, "wrap" | "wrapArrows">) {
@@ -33,15 +28,15 @@ function Ring(props: Pick<FieldRingOptions<string>, "wrap" | "wrapArrows">) {
 }
 
 async function renderRing(props: Pick<FieldRingOptions<string>, "wrap" | "wrapArrows"> = {}) {
-  testSetup = await testRender(<Ring {...props} />, { width: 20, height: 3 });
+  await tui.render(<Ring {...props} />, { width: 20, height: 3 });
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
 /** Presses keys in one batch and says whether the last one was taken. */
 async function press(...events: TestKeyEvent[]): Promise<boolean> {
-  const last = await emitKeypress(testSetup!, events, { trackPropagation: true }) as { propagationStopped: boolean };
+  const last = await tui.emitKeypress(events, { trackPropagation: true }) as { propagationStopped: boolean };
   return last.propagationStopped;
 }
 
@@ -72,10 +67,6 @@ describe("useFieldRing", () => {
     expect(active).toBe("c");
     await press({ name: "j", sequence: "j" });
     expect(active).toBe("a");
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-
     await renderRing({ wrapArrows: true });
     expect(await press(BACKTAB)).toBe(false);
     await press({ name: "k", sequence: "k" });

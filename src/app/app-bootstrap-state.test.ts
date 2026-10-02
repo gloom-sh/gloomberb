@@ -28,7 +28,6 @@ function createSessionSnapshot(overrides: Partial<AppSessionSnapshot> = {}): App
   return {
     paneState: {},
     focusedPaneId: "portfolio-list:main",
-    activePanel: "left",
     statusBarVisible: true,
     openPaneIds: ["portfolio-list:main"],
     hydrationTargets: [],
@@ -103,14 +102,12 @@ describe("app bootstrap state", () => {
     const config = createDefaultConfig("/tmp/gloomberb-detached-bootstrap");
     const persisted = createSessionSnapshot({
       paneState: { "portfolio-list:main": { cursorSymbol: "MSFT" } },
-      activePanel: "left",
       statusBarVisible: true,
     });
     const desktopSnapshot: DesktopSharedStateSnapshot = {
       config,
       paneState: { "ticker-detail:main": { cursorSymbol: "AAPL" } },
       focusedPaneId: "ticker-detail:main",
-      activePanel: "right",
       statusBarVisible: false,
     };
 
@@ -124,7 +121,6 @@ describe("app bootstrap state", () => {
 
     expect(result?.paneState).toEqual({ "ticker-detail:main": { cursorSymbol: "AAPL" } });
     expect(result?.focusedPaneId).toBe("ticker-detail:main");
-    expect(result?.activePanel).toBe("right");
     expect(result?.statusBarVisible).toBe(false);
     expect(result?.openPaneIds).toEqual(["portfolio-list:main"]);
   });

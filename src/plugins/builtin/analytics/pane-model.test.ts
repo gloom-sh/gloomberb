@@ -23,7 +23,7 @@ function riskHistory(): PricePoint[] {
 const rejectedSpy = { date: new Date("2026-09-10"), open: 764.08, high: 758.555, low: 757.57, close: 758.15, volume: 3461376 };
 
 test("a rejected benchmark suppresses beta while the independent basket Sharpe remains available", () => {
-  const request = buildPortfolioChartTargets([riskTicker("SPY")])[0]!.request;
+  const request = buildPortfolioChartTargets([riskTicker("SPY")])[0]!.request!;
   const history = [...riskHistory().slice(0, -1), rejectedSpy];
   const entries = new Map([[buildChartKey(request), { data: history }]]);
   const result = buildBenchmarkReturnSeries(request, entries);
@@ -40,7 +40,7 @@ test("a rejected benchmark suppresses beta while the independent basket Sharpe r
 
 test("a corrupt holding cannot be silently dropped from estimated portfolio risk", () => {
   const targets = buildPortfolioChartTargets([riskTicker("SPY"), riskTicker("MSFT")]);
-  const chartEntries = new Map(targets.map(({ request }, index) => [buildChartKey(request), {
+  const chartEntries = new Map(targets.map(({ request }, index) => [buildChartKey(request!), {
     data: index === 0 ? [...riskHistory().slice(0, -1), rejectedSpy] : riskHistory(),
   }]));
   const input = { chartTargets: targets, chartEntries, financials: new Map(),
@@ -50,7 +50,7 @@ test("a corrupt holding cannot be silently dropped from estimated portfolio risk
   expect(result.historyIntegrity[0]).toMatchObject({ symbol: "SPY", integrity: { sourcePoints: [{ ...rejectedSpy, date: "2026-09-10T00:00:00.000Z" }] } });
   const rows = buildAnalyticsRiskRows({ ...result, sharpe: 2, beta: 1 });
   expect(rows.every((row) => row.value === "—" && row.detail === "Inconsistent OHLC history: SPY")).toBe(true);
-  chartEntries.set(buildChartKey(targets[0]!.request), { data: riskHistory() });
+  chartEntries.set(buildChartKey(targets[0]!.request!), { data: riskHistory() });
   expect(buildPortfolioReturnSeries(input).returns).toHaveLength(20);
   expect(buildPortfolioReturnSeries(input).historyIntegrity).toEqual([]);
 });
@@ -123,7 +123,7 @@ test("does not publish portfolio risk from just the valued portion when FX is mi
   })));
   const targets = buildPortfolioChartTargets(tickers);
   const sessionDates = ["01", "02", "03", "04", "05", "08", "09", "10", "11", "12", "15", "16", "17", "18", "22", "23", "24", "25", "26", "29"];
-  const chartEntries = new Map(targets.map(({ request }) => [buildChartKey(request), {
+  const chartEntries = new Map(targets.map(({ request }) => [buildChartKey(request!), {
     data: sessionDates.map((day, index) => ({ date: new Date(`2026-06-${day}`), close: 100 + index + index % 2 })),
   }]));
   const input = {

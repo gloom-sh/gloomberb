@@ -19,6 +19,7 @@ import { alertsPlugin } from "./builtin/alerts";
 import { marketHeatmapPlugin } from "./builtin/market-heatmap";
 import { marketHaltsPlugin } from "./builtin/market-halts";
 import { fearGreedPlugin } from "./builtin/fear-greed";
+import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
 import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
 import { changelogModule } from "./builtin/changelog";
 import { chartComposerModule } from "./builtin/chart-composer";
@@ -27,6 +28,7 @@ import { relativeRotationModule } from "./builtin/relative-rotation";
 import { equityScreenerModule } from "./builtin/equity-screener";
 import { correlationModule } from "./builtin/correlation";
 import { cdsModule } from "./builtin/cds";
+import { creditBoardsModule } from "./builtin/credit-boards";
 import { creditConditionsModule } from "./builtin/credit-conditions";
 import { marketValuationModule } from "./builtin/market-valuation";
 import { macroSharedResourcesModule } from "./builtin/macro-resources";
@@ -45,10 +47,12 @@ import { secModule } from "./builtin/sec";
 import { insiderModule } from "./builtin/insider";
 import { jobsModule } from "./builtin/jobs";
 import { optionsModule } from "./builtin/options";
+import { optionsPositioningModule } from "./builtin/options-positioning";
 import { optionsScenarioModule } from "./builtin/options-scenario";
 import { optionsCalculatorModule } from "./builtin/options-calculator";
 import { volSurfaceModule } from "./builtin/vol-surface";
 import { realizedVolModule } from "./builtin/realized-vol";
+import { seasonalityModule } from "./builtin/seasonality";
 import { ivHistoryModule } from "./builtin/iv-history";
 import { backtestModule } from "./builtin/backtest";
 import { composeBuiltinPlugin } from "./builtin/plugin-module";
@@ -91,10 +95,12 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     tickerDetailModule,
     chartComposerModule,
     optionsModule,
+    optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
+    seasonalityModule,
     ivHistoryModule,
     backtestModule,
     timeSalesModule,
@@ -144,7 +150,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
 
 const browserMacroPlugin = composeBuiltinPlugin({
   ...macroPluginMeta,
-  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, and Treasury auctions.",
+  description: "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, and Treasury auctions.",
   modules: [
     macroSharedResourcesModule,
     economicCalendarModule,
@@ -158,6 +164,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
     creditConditionsModule,
     marketValuationModule,
     cdsModule,
+    creditBoardsModule,
     treasuryAuctionsModule,
   ],
 });
@@ -177,6 +184,7 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   marketHeatmapPlugin,
   marketHaltsPlugin,
   fearGreedPlugin,
+  ipoCalendarPlugin,
   browserMacroPlugin,
   alertsPlugin,
   researchSearchPlugin,

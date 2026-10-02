@@ -32,7 +32,7 @@ export type JsonValue =
 export type WriteTier = RemoteWriteTier;
 
 /** Runtime that opened an ASKG session. */
-export type ASKGClientKind = "tui" | "desktop" | "web";
+type ASKGClientKind = "tui" | "desktop" | "web";
 
 /** Origin of an advertised client tool. */
 /**
@@ -47,7 +47,7 @@ export type ToolManifestSource = "headless" | "remote-op" | "server";
 export type ClientToolManifestSource = Exclude<ToolManifestSource, "server">;
 
 /** Headless result shapes supported by the tool timeline. */
-export type ToolManifestShape = HeadlessPaneShape;
+type ToolManifestShape = HeadlessPaneShape;
 
 /** Serializable headless argument declaration. */
 export type ToolManifestArgument = HeadlessPaneArgumentDef;
@@ -59,12 +59,12 @@ export type ToolManifestOption = Omit<HeadlessPaneOptionDef, "settingKey" | "plu
 export type ToolManifestColumn = Omit<HeadlessPaneColumn, "format">;
 
 /** JSON Schema accepted by a remote operation tool. */
-export type ToolInputSchema = RemoteJsonSchema;
+type ToolInputSchema = RemoteJsonSchema;
 
 /** Client or server tool metadata negotiated when a session starts. */
 export type ClientToolManifest = ToolManifest & { source: ClientToolManifestSource };
 
-export interface ToolManifest {
+interface ToolManifest {
   /** Lowercase stable identifier matching TOOL_NAME_PATTERN. */
   name: string;
   source: ToolManifestSource;
@@ -115,7 +115,7 @@ export interface ASKGLimits {
 }
 
 /** Client tool rejected during session negotiation. */
-export interface ASKGRejectedTool {
+interface ASKGRejectedTool {
   name: string;
   reason: string;
 }
@@ -153,12 +153,12 @@ export interface ASKGTurnRequest {
 }
 
 /** Shared fields carried by every turn stream event. */
-export interface ASKGEventBase {
+interface ASKGEventBase {
   seq: number;
 }
 
 /** Announces the session and turn attached to this stream. */
-export interface ASKGSessionEvent extends ASKGEventBase {
+interface ASKGSessionEvent extends ASKGEventBase {
   type: "session";
   sessionId: string;
   turnId: string;
@@ -169,7 +169,7 @@ export interface ASKGSessionEvent extends ASKGEventBase {
 }
 
 /** Appends model text to the visible answer. */
-export interface ASKGTextDeltaEvent extends ASKGEventBase {
+interface ASKGTextDeltaEvent extends ASKGEventBase {
   type: "text-delta";
   turnId: string;
   delta: string;
@@ -190,7 +190,7 @@ export interface ASKGToolCallEvent extends ASKGEventBase {
 }
 
 /** Compact result information suitable for the tool timeline. */
-export interface ToolExecutionSummary {
+interface ToolExecutionSummary {
   rowCount?: number;
   elapsedMs: number;
   truncated: boolean;
@@ -208,7 +208,7 @@ export type ToolResultStatus =
   | "cancelled";
 
 /** Reports a completed server tool or an accepted client execution. */
-export interface ASKGToolExecutedEvent extends ASKGEventBase {
+interface ASKGToolExecutedEvent extends ASKGEventBase {
   type: "tool-executed";
   turnId: string;
   toolCallId: string;
@@ -219,7 +219,7 @@ export interface ASKGToolExecutedEvent extends ASKGEventBase {
 }
 
 /** Confirms that one client tool result was accepted by the turn loop. */
-export interface ASKGToolResultAckEvent extends ASKGEventBase {
+interface ASKGToolResultAckEvent extends ASKGEventBase {
   type: "tool-result-ack";
   turnId: string;
   toolCallId: string;
@@ -237,7 +237,7 @@ export type ASKGErrorCode =
   | "internal";
 
 /** Reports a recoverable or terminal session or turn failure. */
-export interface ASKGErrorEvent extends ASKGEventBase {
+interface ASKGErrorEvent extends ASKGEventBase {
   type: "error";
   turnId?: string;
   code: ASKGErrorCode;
@@ -247,7 +247,7 @@ export interface ASKGErrorEvent extends ASKGEventBase {
 }
 
 /** Token accounting emitted when the model provider supplies it. */
-export interface ASKGUsageEvent extends ASKGEventBase {
+interface ASKGUsageEvent extends ASKGEventBase {
   type: "usage";
   turnId: string;
   inputTokens?: number;
@@ -260,7 +260,7 @@ export interface ASKGUsageEvent extends ASKGEventBase {
 export type ASKGDoneReason = "complete" | "cancelled" | "error" | "timeout";
 
 /** Terminates a turn stream. */
-export interface ASKGDoneEvent extends ASKGEventBase {
+interface ASKGDoneEvent extends ASKGEventBase {
   type: "done";
   turnId: string;
   reason: ASKGDoneReason;

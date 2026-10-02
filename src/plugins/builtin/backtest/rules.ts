@@ -13,15 +13,15 @@ export type Operand =
   | { kind: "number"; value: number }
   | { kind: "field"; field: "close" | "open" | "high" | "low" }
   | { kind: "indicator"; name: IndicatorName; args: number[] };
-export type IndicatorName = "sma" | "ema" | "rsi" | "macd" | "macd_signal" | "bb_upper" | "bb_lower" | "highest" | "lowest";
-export type Comparator = ">" | "<" | ">=" | "<=" | "crosses above" | "crosses below";
-export interface Condition { left: Operand; comparator: Comparator; right: Operand }
+type IndicatorName = "sma" | "ema" | "rsi" | "macd" | "macd_signal" | "bb_upper" | "bb_lower" | "highest" | "lowest";
+type Comparator = ">" | "<" | ">=" | "<=" | "crosses above" | "crosses below";
+interface Condition { left: Operand; comparator: Comparator; right: Operand }
 /** Conditions are ANDed. */
 export type Rule = Condition[];
 
 interface IndicatorSpec { defaults: number[]; bounds: Array<[number, number, boolean]>; usage: string }
 const PERIOD: [number, number, boolean] = [1, 500, true];
-export const INDICATORS: Record<IndicatorName, IndicatorSpec> = {
+const INDICATORS: Record<IndicatorName, IndicatorSpec> = {
   sma: { defaults: [20], bounds: [PERIOD], usage: "sma(n)" },
   ema: { defaults: [20], bounds: [PERIOD], usage: "ema(n)" },
   rsi: { defaults: [14], bounds: [[2, 500, true]], usage: "rsi(n)" },
@@ -81,7 +81,7 @@ export function parseRule(text: string): Rule {
 }
 
 /** Sessions of history an operand needs before its first value. */
-export function operandWarmup(operand: Operand): number {
+function operandWarmup(operand: Operand): number {
   if (operand.kind !== "indicator") return 0;
   const [a = 0, b = 0, c = 0] = operand.args;
   if (operand.name === "macd") return b;

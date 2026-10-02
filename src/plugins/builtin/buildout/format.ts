@@ -124,7 +124,7 @@ export function uniqueStrings(values: readonly string[]) {
   return result;
 }
 
-export function domainFromUrl(value: string | null | undefined) {
+function domainFromUrl(value: string | null | undefined) {
   if (!value) return null;
   try {
     const hostname = new URL(value).hostname.replace(/^www\./, "");

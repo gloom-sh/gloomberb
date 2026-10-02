@@ -1,6 +1,7 @@
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { overlayScreenerQuoteEntries } from "../../../market-data/quotes/screener-live-quotes";
 import type { Quote } from "../../../types/financials";
+import type { CloudSessionMoversCategory } from "../../../api-client/market-movers";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { formatNumber } from "../../../utils/format";
 import { formatMarketPriceWithCurrency, stablePriceFractionDigits } from "../../../market-data/market/format";
@@ -8,16 +9,23 @@ import type { DataTableColumn } from "../../../components";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { MARKET_SUMMARY_SYMBOLS, convertScreenerPriceUnit, screenerNumber, screenerVolume, screenerVolumeRatio, type MarketSummaryQuote, type ScreenerCategory, type ScreenerQuote } from "./screener";
 
-export type TabId = "gainers" | "losers" | "actives" | "trending";
+/** Lists ranked from day screeners and trending symbols. */
+export type ScreenerTabId = "gainers" | "losers" | "actives" | "trending";
+/** Pre-market, after-hours and gap lists from the whole listed market. */
+export type SessionTabId = CloudSessionMoversCategory;
+export type TabId = ScreenerTabId | SessionTabId;
 
 export const TABS: Array<{ id: TabId; label: string }> = [
   { id: "gainers", label: "Gainers" },
   { id: "losers", label: "Losers" },
   { id: "actives", label: "Most Active" },
   { id: "trending", label: "Trending" },
+  { id: "premarket", label: "Pre-market" },
+  { id: "afterhours", label: "After hours" },
+  { id: "gaps", label: "Gaps" },
 ];
 
-export const CATEGORY_MAP: Record<Exclude<TabId, "trending">, ScreenerCategory> = {
+export const CATEGORY_MAP: Record<Exclude<ScreenerTabId, "trending">, ScreenerCategory> = {
   gainers: "day_gainers",
   losers: "day_losers",
   actives: "most_actives",

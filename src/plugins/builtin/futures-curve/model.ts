@@ -107,7 +107,7 @@ export function newestQuote(contracts: readonly { asOf: string | null }[]): stri
  * a sliver while contracts quoted years ago shape the curve. The table keeps
  * every contract.
  */
-export function charted<T extends { expiration: string }>(rows: readonly T[], horizon: string, now: number): T[] {
+function charted<T extends { expiration: string }>(rows: readonly T[], horizon: string, now: number): T[] {
   const months = Number(horizon);
   if (!Number.isFinite(months) || months <= 0) return [...rows];
   const end = new Date(now);
@@ -132,7 +132,7 @@ export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePal
   })];
 }
 
-export type CurveLookback = "1W" | "1M";
+type CurveLookback = "1W" | "1M";
 export type CurveContractChanges = ReadonlyMap<string, Readonly<Record<CurveLookback, number | null>>>;
 
 /**

@@ -13,7 +13,7 @@ import {
   type SyncTransport,
 } from "./types";
 
-export type CloudSyncPhase = "idle" | "disabled" | "syncing" | "synced" | "error";
+type CloudSyncPhase = "idle" | "disabled" | "syncing" | "synced" | "error";
 
 export interface CloudSyncStatus {
   phase: CloudSyncPhase;

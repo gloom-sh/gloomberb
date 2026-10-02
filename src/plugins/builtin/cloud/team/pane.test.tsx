@@ -1,18 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../../api-client";
-import { testRender } from "../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
-import { cleanupChatTest, installChatApiTestDefaults } from "../../chat/test-harness";
+import { createChatTestHarness } from "../../chat/test-harness";
 import { TeamPane } from "./pane";
 import { requestTeamPaneView } from "./pane-request";
 import { teamStore } from "./store";
 import { createTestTeam } from "./test-fixture";
 
-type Setup = Awaited<ReturnType<typeof testRender>>;
-let setup: Setup | undefined;
+// The pane hosts team chat, so it needs the chat API defaults and cleanup too.
+const tui = createChatTestHarness();
 
 const macroDesk = createTestTeam({ role: "owner" });
 
@@ -74,7 +73,6 @@ function Pane({ focused = true }: { focused?: boolean }) {
 }
 
 beforeEach(() => {
-  installChatApiTestDefaults();
   requests.length = 0;
   receivedInvitations = [];
   setCloudApiFetchTransport(async (url, init) => {
@@ -91,9 +89,7 @@ beforeEach(() => {
   (teamStore as any).update({ teams: [macroDesk], invitations: [], loaded: true });
 });
 
-afterEach(async () => {
-  await cleanupChatTest(setup);
-  setup = undefined;
+afterEach(() => {
   (teamStore as any).update({ teams: [], invitations: [], loaded: false });
   apiClient.setSessionToken(null);
 });
@@ -101,10 +97,9 @@ afterEach(async () => {
 describe("TeamPane", () => {
   test("loads and lists the team's members", async () => {
     await act(async () => {
-      setup = await testRender(<Pane />, { width: 84, height: 24 });
+      await tui.render(<Pane />, { width: 84, height: 24 });
     });
-    await flush();
-    const frame = setup!.captureCharFrame();
+    const frame = await tui.waitForFrameToContain("@alice");
     expect(frame).not.toContain("Members (3)");
     expect(frame).toContain("@ada");
     expect(frame).toContain("@alice");
@@ -113,14 +108,14 @@ describe("TeamPane", () => {
 
   test("switches sections on request: invites list pending people and links, never emails", async () => {
     await act(async () => {
-      setup = await testRender(<Pane />, { width: 84, height: 24 });
+      await tui.render(<Pane />, { width: 84, height: 24 });
     });
     await flush();
     await act(async () => {
       requestTeamPaneView({ teamId: "org-1", section: "invites" });
     });
-    await flush();
-    const frame = setup!.captureCharFrame();
+    await tui.waitForFrameToContain("@carol");
+    const frame = await tui.waitForFrameToContain("3 uses");
     expect(frame).toContain("INVITE BY USERNAME");
     expect(frame).toContain("@carol");
     expect(frame).toContain("gloom.sh/teams/invite/aaaaaaaa");
@@ -139,30 +134,16 @@ describe("TeamPane", () => {
     }];
     (teamStore as any).update({ teams: [macroDesk], invitations: receivedInvitations, loaded: true });
     await act(async () => {
-      setup = await testRender(<Pane />, { width: 84, height: 24 });
+      await tui.render(<Pane />, { width: 84, height: 24 });
     });
-    await flush();
-    const frame = setup!.captureCharFrame();
+    const frame = await tui.waitForFrameToContain("@ann invited you");
     expect(frame).toContain("RD· Rates Desk");
     expect(frame).toContain("@ann invited you");
     expect(frame).toContain("Accept");
     expect(frame).toContain("Decline");
 
     // The keyboard lands on Accept, so joining needs no mouse.
-    await act(async () => {
-      setup!.renderer.keyInput.emit("keypress", {
-        name: "return",
-        sequence: "\r",
-        ctrl: false,
-        meta: false,
-        option: false,
-        shift: false,
-        eventType: "press",
-        repeated: false,
-        preventDefault: () => {},
-        stopPropagation: () => {},
-      } as any);
-    });
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
     await flush();
     expect(requests).toContain("POST /teams/invitations/inv-9/accept");
   });

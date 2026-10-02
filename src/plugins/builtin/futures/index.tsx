@@ -57,7 +57,7 @@ import {
 } from "./table";
 import { useFrontContractReturns } from "./use-front-returns";
 
-export const FUTURES_PANE_ID = "futures";
+const FUTURES_PANE_ID = "futures";
 
 const FUTURES_SYMBOLS = FUTURES_CONTRACTS.map((contract) => contract.symbol);
 

@@ -64,3 +64,46 @@ range endpoints are converted to that subdivision. Unknown or different
 currencies cannot support a retained range. No foreign-exchange conversion is
 performed. Listing keys are preserved when a row opens ticker research, and the
 opened source supplies its own security type.
+
+### Pre-market, after hours and gaps
+
+These three lists cover every listed US common stock, ADR and ETF (warrants,
+rights, units, preferreds and listed notes are left out) and need Gloom Cloud
+Pro. They are built from consolidated-tape half-hour bars, 04:00 to 20:00 New
+York, and rebuilt once a minute; while a list's session is trading its rows
+update with live quotes. With Pro, MOST opens on the session that is trading:
+Pre-market before 09:30, the day's lists during the regular session, After
+hours from the close; without it MOST stays on the day's lists. A list picked
+by hand stays until that session ends, and one asked for with `--list` stays
+until another is picked. Before 04:00, on weekends and holidays, and for After
+hours during the day, a list shows the previous session and the footer names
+its date.
+
+- Floors. Pre-market and After hours need a last price and reference close of
+  at least $1 and 20,000 shares traded in the session. Gaps need a prior close
+  and last price of at least $1 and 50,000 shares traded today, pre-market
+  included.
+- Change. Pre-market moves are measured from the prior regular close. After
+  hours moves are measured from the day's official close, and after-hours
+  volume leaves out the closing auction: the close-minute bar and the NYSE and
+  NYSE American closing crosses that print up to ten minutes after the close
+  belong to the regular session.
+- Gap. The official opening print against the prior close. Before the open,
+  and for a name that has not opened yet, the last pre-market price stands in:
+  the gap the market is indicating.
+- VWAP. The regular session's volume-weighted average price so far; `VWAP%`
+  is the last price against it.
+- Relative volume (`RVOL`). Volume so far in the segment (pre-market, regular
+  or after hours) against the average volume by the same time of day over the
+  last ten full sessions. Inside the half hour in progress the average is
+  taken as evenly spread, which is an approximation. It is blank with fewer
+  than five sessions of history, when under 1,000 shares usually trade by that
+  time, and after hours on a 13:00 early close.
+- Float. The free float reported with the company's statistics, shown only
+  beside a share count it does not exceed. Blank otherwise; it is never
+  estimated.
+- `EVENT`. In the list's own window (Pre-market: from the prior regular close
+  to the open; Gaps: from the prior regular close through the day; After hours:
+  from the day's close): a trading halt, an 8-K, or a news
+  story about the company. When there are several, the halt shows first, then
+  the 8-K.

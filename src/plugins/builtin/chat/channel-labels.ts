@@ -5,7 +5,7 @@ import { teamPrefix } from "../cloud/team/model";
 import { teamStore } from "../cloud/team/store";
 
 /** `MD·` for a team channel, empty otherwise. Team markers never depend on color. */
-export function teamChannelPrefix(channel: ChatChannel | undefined, fallbackId: string): string {
+function teamChannelPrefix(channel: ChatChannel | undefined, fallbackId: string): string {
   const teamId = channel?.kind === "team" ? channel.teamId ?? null : null;
   const team = teamStore.getTeam(teamId) ?? teamStore.getTeamForChannel(fallbackId);
   return team ? teamPrefix(team) : "";

@@ -18,7 +18,7 @@ import { colors } from "../../../theme/colors";
 import type { ChartSpec } from "../../../time-series/types";
 import { getSharedRegistry } from "../../registry";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
-import { appendChartSeries } from "./presets";
+import { appendChartSeries } from "./chart-spec-edit";
 import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "./series-catalog";
 import { useSeriesCatalogSuggestions } from "./use-series-catalog";
 import { clampIndex } from "../../../utils/math";
@@ -41,7 +41,7 @@ interface ClosestElementLike {
  * only reaches the element it still owns. A no-op unless this widget truly holds
  * the document focus, so a click inside a dialog leaves that dialog alone.
  */
-export function releaseQuickAddFocus(quickAddId: string): void {
+function releaseQuickAddFocus(quickAddId: string): void {
   const active = (globalThis as {
     document?: { activeElement?: { blur?: () => void } | null };
   }).document?.activeElement;
@@ -65,8 +65,8 @@ function defaultCatalogInstrument(spec: ChartSpec): SeriesCatalogInstrument {
   const instrument = security?.source.kind === "security" ? security.source.instrument : undefined;
   const symbol = instrument?.symbol ?? "AAPL";
   const registry = getSharedRegistry();
-  const saved = typeof registry?.getTickerFn === "function"
-    ? registry.getTickerFn(symbol)
+  const saved = typeof registry?.getTicker === "function"
+    ? registry.getTicker(symbol)
     : undefined;
   return {
     symbol,

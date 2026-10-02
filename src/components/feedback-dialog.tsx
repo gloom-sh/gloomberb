@@ -54,7 +54,7 @@ function errorMessage(error: unknown): string {
 
 type KeyLike = KeyChordEventLike & { preventDefault?: () => void };
 
-export function FeedbackDialog({
+function FeedbackDialog({
   dialogId,
   resolve,
   dismiss,

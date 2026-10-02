@@ -5,43 +5,18 @@ import {
   type ReactNode,
 } from "react";
 import type { BrokerAdapter } from "../../types/broker";
-import type { BrokerInstanceConfig } from "../../types/config";
 import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { CapabilityInvoker, PluginCapability } from "../../capabilities";
 import type { DataProvider } from "../../types/data-provider";
-import type {
-  AppNotificationRequest,
-  BrokerInstanceUpdateOptions,
-  PaneTemplateCreateOptions,
-  PinTickerOptions,
-} from "../../types/plugin";
+import type { PluginRuntimeHostActions } from "../registry/host-actions";
 
-export interface PluginRuntimeAccess extends CapabilityInvoker {
+export interface PluginRuntimeAccess extends CapabilityInvoker, PluginRuntimeHostActions {
   getMarketData(): DataProvider | null;
   getConnectionHealth(): ConnectionHealthRegistry;
   getCapability(capabilityId: string): PluginCapability | null;
   getBrokerAdapter(brokerType: string): BrokerAdapter | null;
   /** Every broker adapter installed now, read when called: plugins come and go. */
   listBrokerAdapters(): BrokerAdapter[];
-  createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>): Promise<BrokerInstanceConfig>;
-  connectBrokerInstance(instanceId: string): Promise<void>;
-  updateBrokerInstance(instanceId: string, values: Record<string, unknown>, options?: BrokerInstanceUpdateOptions): Promise<void>;
-  syncBrokerInstance(instanceId: string): Promise<void>;
-  removeBrokerInstance(instanceId: string): Promise<void>;
-  pinTicker(symbol: string, options?: PinTickerOptions): void;
-  navigateTicker(symbol: string, options?: { sourcePaneId?: string | null }): void;
-  selectTicker(symbol: string, paneId?: string): void;
-  switchTab(tabId: string, paneId?: string): void;
-  switchPanel(panel: "left" | "right"): void;
-  openCommandBar(query?: string): void;
-  showPane(paneId: string): void;
-  createPaneFromTemplate(templateId: string, options?: PaneTemplateCreateOptions): void;
-  hidePane(paneId: string): void;
-  focusPane(paneId: string): void;
-  openPaneSettings(paneId?: string): void;
-  sharePane(paneId?: string): void;
-  openPluginCommandWorkflow(commandId: string): void;
-  notify(notification: AppNotificationRequest): void;
   subscribeResumeState(pluginId: string, key: string, listener: () => void): () => void;
   getResumeState<T = unknown>(pluginId: string, key: string, schemaVersion?: number): T | null;
   setResumeState(pluginId: string, key: string, value: unknown, schemaVersion?: number): void;

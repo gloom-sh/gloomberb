@@ -480,7 +480,7 @@ export function evaluateRatio(def: RatioDef, period: RatioPeriod): RatioCell {
 }
 
 /** The label an input row shows: the operator that joins it and the quarterly annualization. */
-export function ratioInputLabel(input: RatioInputDef, quarterly: boolean): string {
+function ratioInputLabel(input: RatioInputDef, quarterly: boolean): string {
   const label = input.annualized && quarterly ? `${input.label} × ${QUARTERS_PER_YEAR}` : input.label;
   return input.operator ? `${input.operator} ${label}` : label;
 }

@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { MiniWorkspace } from "./mini-workspace";
 import { testLayout, testPanes as panes } from "./test-fixture";
-import { createDomTestHarness } from "../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../renderers/dom/test-utils";
 
 const { render: renderDom } = createDomTestHarness();
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../../api-client/money-markets";
 import { ApiRequestError } from "../../../api-client/errors";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { fetchMoneyMarkets, validateMoneyMarkets } from "./client";
 import { moneyMarketAxis, moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRows } from "./model";
 
@@ -56,7 +57,7 @@ describe("money-market boundary", () => {
     expect(moneyMarketObservations(observation)).toEqual([{ date: "2025-09-21", value: 4 }, { date: "2026-09-21", value: 0 }]);
   });
   test("chart labels read in the board's units at the range's precision", () => {
-    const domain = (min: number, max: number) => ({ side: "right" as const, min, max, scale: "linear" as const, unit: "", unitGroup: "" });
+    const domain = (min: number, max: number): CompositeAxisDomain => ({ side: "right", min, max, scale: "linear", unit: "", unitGroup: "", seriesIds: [] });
     expect(moneyMarketAxis("percent")(3.84, domain(3.45, 4.36))).toBe("3.84%");
     expect(moneyMarketAxis("usd-billions")(5800, domain(5559, 6021))).toBe("$5,800B");
     expect(moneyMarketAxis("usd-billions")(0.5, domain(0.2, 0.9))).toBe("$0.50B");

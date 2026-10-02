@@ -23,7 +23,7 @@ export function isPlainBackspace(event: BackNavigationEventLike): boolean {
     && !event.shift;
 }
 
-export function isPlainEscape(event: BackNavigationEventLike): boolean {
+function isPlainEscape(event: BackNavigationEventLike): boolean {
   return (event.name === "escape" || event.name === "esc")
     && !event.ctrl
     && !event.meta

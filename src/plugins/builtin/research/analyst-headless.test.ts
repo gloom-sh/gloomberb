@@ -45,7 +45,7 @@ describe("analyst research headless model", () => {
 
     const latest = await headless.load(args({ limit: 1 }), createTestHeadlessContext());
     expect(latest.sections[0]?.title).toBe("Summary");
-    const entries = "entries" in latest.sections[0]! ? latest.sections[0]!.entries : [];
+    const entries = latest.sections[0]!.entries ?? [];
     expect(entries.slice(0, 2)).toMatchObject([
       { label: "Average target", value: 180 },
       { label: "Target upside", value: 0.2 },
@@ -56,7 +56,7 @@ describe("analyst research headless model", () => {
     });
 
     const byFirm = await headless.load(args({ sort: "firm", order: "desc", limit: 2 }), createTestHeadlessContext());
-    const ratings = "rows" in byFirm.sections[1]! ? byFirm.sections[1]!.rows : [];
+    const ratings = byFirm.sections[1]!.rows ?? [];
     expect(ratings.map((row) => row.firm)).toEqual(["Beta", "Alpha"]);
   });
 });

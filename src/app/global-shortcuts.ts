@@ -6,9 +6,13 @@ import { useToastHost } from "../ui/toast";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
 import type { TickerRecord } from "../types/ticker";
+import { findPaneInstance } from "../types/config";
 import type { ReleaseInfo } from "../updater";
 import { canSelfUpdate } from "../updater";
 import { getVisiblePaneCycleOrder } from "../components/layout/pane/cycle-order";
+import { requestFunctionHelp, useFunctionHelpHost } from "../plugins/builtin/help/function-card";
+import { buildRegistryHelpIndex, helpFunctionForPane } from "../plugins/builtin/help/function-index";
+import { recordFunctionOpen } from "../telemetry/usage-counts";
 import { isMoveDownShortcut, isMoveUpShortcut } from "../components/command-bar/keyboard-handlers";
 import {
   copyActiveSelection,
@@ -106,6 +110,11 @@ export function useAppGlobalShortcuts({
   const uiKind = useUiHost().kind;
   const toastHost = useToastHost();
   useKeybindingIssueNotice(keybindings, pluginRegistry, state.initialized);
+  useFunctionHelpHost({
+    closeCommandBar: () => {
+      if (state.commandBarOpen) dispatch({ type: "SET_COMMAND_BAR", open: false });
+    },
+  });
 
   useShortcut((event) => {
     if (isCopyShortcut(event) && copyActiveSelection(nativeRenderer)) {
@@ -204,6 +213,18 @@ export function useAppGlobalShortcuts({
         query: match.command.query,
         launch: { kind: "run-query", query: match.command.query },
       });
+      return;
+    }
+
+    // A function key is never text, so the card opens from a focused field too.
+    if (action === "function-help") {
+      event.preventDefault();
+      event.stopPropagation();
+      recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
+      const instance = state.focusedPaneId ? findPaneInstance(state.config.layout, state.focusedPaneId) : undefined;
+      const fn = instance ? helpFunctionForPane(buildRegistryHelpIndex(pluginRegistry), pluginRegistry, instance) : null;
+      if (fn && requestFunctionHelp({ kind: "function", fn })) return;
+      if (!isDetachedWindow) pluginRegistry.showPane("help");
       return;
     }
 

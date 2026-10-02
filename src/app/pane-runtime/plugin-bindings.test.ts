@@ -25,11 +25,11 @@ function bindPortablePaneRuntime(disabledPlugins: string[] = [], options: { isDe
   const shown: string[] = [];
   const pluginRegistry = {
     panes: new Map<string, PaneDef>([[paneDef.id, paneDef], ["brokers", { ...paneDef, id: "brokers", name: "Brokers" }]]),
-    showPane: (paneId: string) => shown.push(paneId),
     getPanePluginId: () => "prediction-markets",
-    getTermSizeFn: () => ({ width: 120, height: 40 }),
+    getTermSize: () => ({ width: 120, height: 40 }),
     commands: new Map([["set-alert", { id: "set-alert", label: "Add Alert", wizard: [{ key: "symbol", label: "Symbol" }] }]]),
     notify: (notification: { body?: string }) => notes.push(notification.body ?? ""),
+    bindHost(actions: object) { Object.assign(this, actions); return () => {}; },
   } as any;
 
   bindAppPanePluginRegistry({
@@ -55,7 +55,7 @@ function bindPortablePaneRuntime(disabledPlugins: string[] = [], options: { isDe
     resolveOpenTickerTarget: async () => null,
     resolvePaneTarget: () => null,
     selectTickerInPane() {},
-    showPane() {},
+    showPane: (paneId) => { shown.push(paneId); },
     state,
     stateRef: { current: state },
     switchTickerResearchTab() {},
@@ -90,7 +90,7 @@ describe("portable pane runtime", () => {
   test("creates a fresh floating pane and restores its complete state", async () => {
     const runtime = bindPortablePaneRuntime();
 
-    await runtime.pluginRegistry.openPortablePaneShareAsyncFn(portablePane);
+    await runtime.pluginRegistry.openPortablePaneShareAsync(portablePane);
 
     expect(runtime.built).toHaveLength(1);
     expect(runtime.built[0]).toMatchObject({
@@ -115,7 +115,7 @@ describe("portable pane runtime", () => {
 
   test("rejects panes owned by a disabled plugin", async () => {
     const runtime = bindPortablePaneRuntime(["prediction-markets"]);
-    await expect(runtime.pluginRegistry.openPortablePaneShareAsyncFn(portablePane)).rejects.toThrow(
+    await expect(runtime.pluginRegistry.openPortablePaneShareAsync(portablePane)).rejects.toThrow(
       "unavailable",
     );
     expect(runtime.built).toHaveLength(0);
@@ -133,9 +133,9 @@ describe("form launches", () => {
     });
     try {
       const runtime = bindPortablePaneRuntime();
-      runtime.pluginRegistry.openBuiltInWorkflowFn("new-portfolio");
-      runtime.pluginRegistry.openPluginCommandWorkflowFn("set-alert");
-      runtime.pluginRegistry.openBuiltInWorkflowFn("add-broker-account");
+      runtime.pluginRegistry.openBuiltInWorkflow("new-portfolio");
+      runtime.pluginRegistry.openPluginCommandWorkflow("set-alert");
+      runtime.pluginRegistry.openBuiltInWorkflow("add-broker-account");
       expect(requests).toEqual([
         { kind: "builtin", actionId: "new-portfolio" },
         { kind: "plugin-command", commandId: "set-alert" },
@@ -156,8 +156,8 @@ describe("form launches", () => {
     });
     try {
       const runtime = bindPortablePaneRuntime([], { isDetachedWindow: true });
-      runtime.pluginRegistry.openBuiltInWorkflowFn("add-broker-account");
-      runtime.pluginRegistry.openPluginCommandWorkflowFn("set-alert");
+      runtime.pluginRegistry.openBuiltInWorkflow("add-broker-account");
+      runtime.pluginRegistry.openPluginCommandWorkflow("set-alert");
       expect(requests).toEqual([]);
       expect(runtime.notes).toEqual(["Open this from the main window.", "Open this from the main window."]);
     } finally {

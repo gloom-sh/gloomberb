@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer, type ReactNode } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { AppContext, appReducer, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
@@ -8,36 +8,30 @@ import { createDefaultConfig } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { PaneContent } from "./content";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let scrollRef: ScrollBoxRenderable | null = null;
 let hiddenScrollRef: ScrollBoxRenderable | null = null;
 
 afterEach(() => {
-  if (testSetup) {
-    act(() => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
   scrollRef = null;
   hiddenScrollRef = null;
 });
 
 function emitDownArrow() {
   return act(async () => {
-    testSetup!.mockInput.pressArrow("down");
-    await testSetup!.renderOnce();
+    tui.setup().mockInput.pressArrow("down");
+    await tui.setup().renderOnce();
   });
 }
 
 async function renderHarness(component: ReactNode) {
   await act(async () => {
-    testSetup = await testRender(component, { width: 30, height: 5 });
+    await tui.render(component, { width: 30, height: 5 });
   });
   await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 

@@ -1,6 +1,6 @@
 import {
   publishableMarketplacePane,
-} from "../layout-marketplace/payload";
+} from "./portable-layout";
 import type { PluginRegistry } from "../plugins/registry";
 import type { PaneInstanceConfig } from "../types/config";
 import type { TickerRecord } from "../types/ticker";
@@ -46,12 +46,12 @@ export async function openPaneShare(
   share: PaneShareData,
 ): Promise<void> {
   if (share.version === 2) {
-    await pluginRegistry.openPortablePaneShareAsyncFn(share.layout);
+    await pluginRegistry.openPortablePaneShareAsync(share.layout);
     return;
   }
   const template = pluginRegistry.paneTemplates.get(share.templateId);
   if (!template?.publicShare) throw new Error("This shared pane is unavailable in this version of Gloomberb.");
   const options = template.publicShare.restore(share.data);
   if (!options) throw new Error("This shared pane contains invalid settings.");
-  await pluginRegistry.createPaneFromTemplateAsyncFn(template.id, options);
+  await pluginRegistry.createPaneFromTemplateAsync(template.id, options);
 }

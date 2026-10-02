@@ -9,7 +9,7 @@ export type ChatSidebarSection = "public" | "direct";
 
 const SECTIONS: readonly ChatSidebarSection[] = ["public", "direct"];
 
-export interface ChatSidebarSnapshot {
+interface ChatSidebarSnapshot {
   /** Width in cells the person dragged the sidebar to; null follows the pane. */
   width: number | null;
   collapsedSections: ReadonlySet<ChatSidebarSection>;
@@ -31,7 +31,7 @@ function isSection(value: unknown): value is ChatSidebarSection {
  * fixed sections are folded. Global rather than per-pane so every open chat
  * pane reads the same sidebar, the way folded teams already do.
  */
-export class ChatSidebarStore {
+class ChatSidebarStore {
   private snapshot: ChatSidebarSnapshot = EMPTY;
   private readonly listeners = new Set<Listener>();
   private persistence: PluginPersistence | null = null;

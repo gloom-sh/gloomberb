@@ -3,7 +3,7 @@ import type {
   DesktopSharedStateSnapshot,
   DesktopThemePreviewState,
 } from "../../../../types/desktop-window";
-import { encodeRpcValue } from "../../view/rpc-codec";
+import { encodeRpcValue } from "../../shared/rpc-codec";
 
 export interface DesktopStateRpc {
   send: {

@@ -12,7 +12,7 @@ import type { BrokerOption } from "./wizard-model";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 
-export function summarizeOnboardingError(error: unknown): string {
+function summarizeOnboardingError(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message.trim();
   }

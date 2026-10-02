@@ -12,7 +12,7 @@ import {
   type DockGeometryOptions,
   type LayoutBounds,
   type ResolvedPane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
 import { contextMenuDivider } from "../../../types/context-menu";
@@ -112,7 +112,6 @@ export function Shell({
   const paneState = useAppSelector((state) => state.paneState);
   const focusedPaneId = useAppSelector((state) => state.focusedPaneId);
   const previousFocusedPaneId = useAppSelector((state) => state.previousFocusedPaneId);
-  const activePanel = useAppSelector((state) => state.activePanel);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const stateRef = useAppStateRef();
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
@@ -130,7 +129,7 @@ export function Shell({
 
   const appHeaderHeight = resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx });
   const contentHeight = Math.max(1, height - appHeaderHeight - (statusBarVisible ? 1 : 0));
-  pluginRegistry.getTermSizeFn = () => ({ width, height: contentHeight });
+  pluginRegistry.bindHost({ getTermSize: () => ({ width, height: contentHeight }) });
 
   const layout = useAppSelector((state) => state.config.layout);
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
@@ -209,7 +208,6 @@ export function Shell({
       { ...currentState.config, layout: nextLayout },
       currentState.paneState,
       hasFocusTarget ? (options.focusedPaneId ?? null) : currentState.focusedPaneId,
-      currentState.activePanel,
     ));
   }, [dispatch, stateRef]);
 
@@ -379,12 +377,7 @@ export function Shell({
     () => togglePaneFullscreen(focusedPaneId),
     [focusedPaneId, togglePaneFullscreen],
   );
-  useEffect(() => {
-    pluginRegistry.togglePaneFullscreenFn = togglePaneFullscreen;
-    return () => {
-      if (pluginRegistry.togglePaneFullscreenFn === togglePaneFullscreen) pluginRegistry.togglePaneFullscreenFn = () => false;
-    };
-  }, [pluginRegistry, togglePaneFullscreen]);
+  useEffect(() => pluginRegistry.bindHost({ togglePaneFullscreen }), [pluginRegistry, togglePaneFullscreen]);
   const activateTransientFocusLayout = useCallback(() => {
     const current = transientFocusLayoutStateRef.current;
     if (!current) return;
@@ -525,16 +518,12 @@ export function Shell({
   ), [focusedPaneId, sharePaneById]);
   // Pane-level share hints (chart, news) go through the same live hand-off as
   // the shell shortcut and the pane menu.
-  useEffect(() => {
-    const share = (paneId?: string) => {
+  useEffect(() => pluginRegistry.bindHost({
+    sharePane: (paneId) => {
       const target = paneId ?? stateRef.current.focusedPaneId;
       if (target) sharePaneById(target);
-    };
-    pluginRegistry.sharePaneFn = share;
-    return () => {
-      if (pluginRegistry.sharePaneFn === share) pluginRegistry.sharePaneFn = () => {};
-    };
-  }, [pluginRegistry, sharePaneById, stateRef]);
+    },
+  }), [pluginRegistry, sharePaneById, stateRef]);
 
   const openPaneMenuRef = useRef<((paneId: string, rect: LayoutBounds, event?: undefined, options?: { keyboard?: boolean }) => void) | null>(null);
   const openFocusedPaneMenu = useCallback(() => {
@@ -617,7 +606,7 @@ export function Shell({
         instance: pane.instance,
         layout: visibleLayout,
         panes: pluginRegistry.panes,
-        state: titleState,
+        state: { ...titleState, tickers: stateRef.current.tickers },
         persistLayout,
       }),
       canExportPaneCsv(paneId) ? exportPaneCsv : undefined,

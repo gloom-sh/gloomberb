@@ -65,7 +65,7 @@ export function isQuestionLike(query: string): boolean {
  * Whether the assistant pane is worth offering: the user asked a question, or
  * the command translation came back without a command that fits.
  */
-export function shouldOfferAskGloom({
+function shouldOfferAskGloom({
   query,
   state,
 }: {

@@ -8,7 +8,7 @@ import { buildCustomChartPreset, buildPriceChartPreset } from "./presets";
 
 const daily = [100, 105, 103, 108].map((close, index) => ({ date: new Date(Date.UTC(2026, 8, index + 1)), close, volume: 10 + index }));
 const fine = [1, 2, 3, 4].map((close, index) => ({ date: new Date(Date.UTC(2026, 8, 1, 9, index * 15)), close, volume: 20 + index }));
-const metadata = (symbol: string) => ({ symbol, currency: "USD", instrumentType: "EQUITY" });
+const metadata = (symbol: string) => ({ symbol, currency: "USD", instrumentType: "EQUITY", source: {} });
 const window = { range: "1M" as const, resolution: "auto" as const, dateWindow: { start: "2026-09-01", end: "2026-09-05" } };
 const NOW = Date.parse("2026-09-22T12:00:00Z"), DAY = 86_400_000;
 afterEach(() => setSystemTime());

@@ -16,7 +16,7 @@ export function setWindowFullscreen(next: boolean): void {
   for (const listener of [...listeners]) listener();
 }
 
-export function isWindowFullscreen(): boolean {
+function isWindowFullscreen(): boolean {
   return windowFullscreen;
 }
 

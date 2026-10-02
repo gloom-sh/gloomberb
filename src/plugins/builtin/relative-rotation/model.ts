@@ -24,14 +24,14 @@ export interface RotationHistory {
   stale: boolean;
   error: string | null;
 }
-export interface RotationPoint {
+interface RotationPoint {
   date: string;
   week: string;
   strength: number | null;
   momentum: number | null;
   relativeReturn13w: number | null;
 }
-export interface RotationRank {
+interface RotationRank {
   percentile: number | null;
   samples: number;
   firstDate: string | null;
@@ -131,7 +131,7 @@ export function rotationCloses(
   for (const date of invalid) rows.delete(date);
   return rows;
 }
-export function rotationRank(
+function rotationRank(
   points: RotationPoint[],
   metric: "strength" | "momentum",
   current: number | null,

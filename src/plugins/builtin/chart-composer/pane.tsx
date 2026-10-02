@@ -1,6 +1,6 @@
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import {
   ChoiceDialog,
   EmptyState,
@@ -12,10 +12,12 @@ import {
 import {
   MultiSelectDialogButton,
   NumberPromptDialog,
+  TextPromptDialog,
   type MultiSelectDialogButtonHandle,
   type MultiSelectRowAction,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
+import type { CompositeChartLevels, CompositeLevelEdit } from "../../../components/chart/composite/levels";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
@@ -40,7 +42,7 @@ import {
   type AppState,
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -62,40 +64,57 @@ import {
   futuresGenericRollValue,
   type FuturesGenericAdjust,
 } from "../../../utils/futures-generic";
+import { chartSeriesLabel } from "./series-expression";
 import {
-  buildEmptyChartPreset,
-  buildPriceChartPreset,
   chartFuturesGeneric,
-  chartSeriesLabel,
   defaultFinancialTimestampMode,
+  setChartFuturesGeneric,
+  rebindResearchChartSpec,
+} from "./chart-spec-edit";
+import {
   builtinStudyPeriod,
+  builtinStudySetting,
+  builtinVwapAnchors,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
+  isNumberSettingStudy,
   isPeriodStudy,
+  parseVwapAnchor,
   setBuiltinStudies,
   setBuiltinStudyPeriod,
-  setChartFuturesGeneric,
+  setBuiltinStudySetting,
+  setBuiltinVwapAnchors,
   setPairStudies,
-  rebindResearchChartSpec,
+  STUDY_NUMBER_SETTINGS,
   STUDY_PERIOD_MAX,
   STUDY_PERIOD_MIN,
   type BuiltinStudySelection,
   type PairStudySelection,
-} from "./presets";
+} from "./studies";
+import { buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import type { ChartInteractionViewport } from "./chart-spec";
 import {
   CHART_FORMULA_OPTIONS,
   CHART_RANGES as RANGES,
   CHART_RESOLUTIONS as RESOLUTIONS,
-  chartStudyLabel,
   chartStudyOptionsFor,
   chartStudyPeriodTitle,
+  chartStudySettingLabel,
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
 import { ChartSeriesQuickAdd } from "./quick-add";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { usePluginAppActions } from "../../runtime";
+import { usePluginAppActions, usePluginConfigState } from "../../runtime";
+import { usePluginRenderContext } from "../../runtime/context";
+import { activePriceAlertsFor, addLevelAlert, PRICE_ALERTS_STORE, type AlertTarget } from "../alerts/levels";
+import { formatAlertDescription } from "../alerts/alert-engine";
+import { alertInstrument, syncAlertQuoteStream } from "../alerts/live";
+import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { resolveEntryData } from "../../../market-data/selectors";
+import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
+import { canonicalExchange } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
@@ -170,6 +189,54 @@ function footerAnchorPoint(event?: PaneFooterPressEvent): { x: number; y: number
   return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y)
     ? { x, y }
     : undefined;
+}
+
+/** An alert's level, and a drawn level that has one, take this colour. */
+const ALERT_LEVEL_COLOR = "#ff6b6b";
+
+/**
+ * The listing price levels belong to: the chart's first price series shown
+ * in its own values, under the exchange its data resolved to.
+ */
+function levelListing(spec: ChartSpec, series: readonly ResolvedSeries[]): {
+  seriesId: string;
+  key: string;
+  target: AlertTarget;
+  instrument: InstrumentRef;
+  lastPrice: number | null;
+} | null {
+  const entry = spec.series.find((candidate) => (
+    candidate.visible !== false
+    && candidate.transform === "raw"
+    && candidate.source.kind === "security"
+    && (candidate.source.fieldId === "market.ohlcv" || candidate.source.fieldId === "market.close")
+  ));
+  const resolved = entry ? series.find((candidate) => candidate.id === entry.id) : undefined;
+  if (!entry || entry.source.kind !== "security" || !resolved) return null;
+  const exchange = resolved.timeBasis?.exchange || canonicalExchange(entry.source.instrument.exchange) || undefined;
+  const last = resolved.points.findLast((point) => Number.isFinite(point.close ?? point.value));
+  return {
+    seriesId: entry.id,
+    key: priceLevelTickerKey(entry.source.instrument.symbol, exchange),
+    target: { symbol: entry.source.instrument.symbol, exchange },
+    instrument: entry.source.instrument,
+    lastPrice: last ? last.close ?? last.value : null,
+  };
+}
+
+/**
+ * The price an alert at a level is set against: the quote the alert will be
+ * judged on, else the chart's. The chart's newest close is the fallback only,
+ * since a date window that ends in the past would make an old close current
+ * and point the alert the wrong way.
+ */
+function currentListingPrice(listing: { target: AlertTarget; instrument: InstrumentRef; lastPrice: number | null }): number | null {
+  const coordinator = getSharedMarketDataCoordinator();
+  for (const instrument of coordinator ? [alertInstrument(listing.target), listing.instrument] : []) {
+    const price = getActiveQuoteDisplay(resolveEntryData(coordinator!.getQuoteEntry(instrument)))?.price;
+    if (typeof price === "number" && Number.isFinite(price)) return price;
+  }
+  return listing.lastPrice;
 }
 
 function isPriceStudyTarget(spec: ChartSpec): boolean {
@@ -328,7 +395,82 @@ function ChartComposerSurface({
     ),
     [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
-  const { sharePane } = usePluginAppActions();
+  const { sharePane, notify } = usePluginAppActions();
+  const { runtime } = usePluginRenderContext();
+  const [levelStore, setLevelStore] = usePluginConfigState<unknown>(PRICE_LEVELS_KEY, null);
+  const alertsJson = useAppSelector((state) => state.config.pluginConfig[PRICE_ALERTS_STORE.pluginId]?.[PRICE_ALERTS_STORE.key]);
+  const alertsOn = useAppSelector((state) => !state.config.disabledPlugins.includes(PRICE_ALERTS_STORE.pluginId));
+  // The listing only changes with the chart's ticker; the last price moves
+  // every tick, so it is read at the moment an alert is made.
+  const freshListing = levelListing(spec, resolution.bufferedSeries ?? resolution.series);
+  const listingRef = useRef(freshListing);
+  listingRef.current = freshListing;
+  const listing = useMemo(
+    () => listingRef.current,
+    [freshListing?.seriesId, freshListing?.key, freshListing?.target.symbol, freshListing?.target.exchange],
+  );
+  const editLevels = useCallback((edit: CompositeLevelEdit) => {
+    const key = listingRef.current?.key;
+    if (!key) return;
+    setLevelStore((current: unknown) => {
+      const stored = parsePriceLevels(current);
+      const next = editPriceLevels(stored, key, edit.kind === "remove" ? edit : { kind: edit.kind, id: edit.id, price: edit.value });
+      // An edit that changed nothing writes nothing, so it never reaches sync.
+      return next === stored ? current : next;
+    });
+  }, [setLevelStore]);
+  const alertAtLevel = useCallback(async (price: number) => {
+    const current = listingRef.current;
+    if (!current) return;
+    const result = addLevelAlert(
+      runtime.getConfigState<string>(PRICE_ALERTS_STORE.pluginId, PRICE_ALERTS_STORE.key),
+      current.target,
+      price,
+      currentListingPrice(current),
+    );
+    if ("error" in result) {
+      notify({ body: `Saved alerts could not be read: ${result.error}`, type: "error" });
+      return;
+    }
+    if (result.created) {
+      await runtime.setConfigState(PRICE_ALERTS_STORE.pluginId, PRICE_ALERTS_STORE.key, result.json);
+      syncAlertQuoteStream();
+    }
+    notify({
+      body: `${result.created ? "Alert set" : "Alert already set"}: ${formatAlertDescription(result.alert)}`,
+      type: "success",
+    });
+  }, [notify, runtime]);
+  const chartLevels = useMemo<CompositeChartLevels | null>(() => {
+    if (!listing) return null;
+    const stored = parsePriceLevels(levelStore)[listing.key] ?? [];
+    const alerts = alertsOn ? activePriceAlertsFor(alertsJson, listing.target) : [];
+    const alerted = new Set(alerts.map((alert) => alert.targetPrice));
+    const drawn = new Set(stored.map((level) => level.price));
+    const alertOnly = [...new Map(alerts.filter((alert) => !drawn.has(alert.targetPrice))
+      .map((alert) => [alert.targetPrice, alert] as const)).values()];
+    return {
+      seriesId: listing.seriesId,
+      items: [
+        ...stored.map((level) => ({
+          id: level.id,
+          value: level.price,
+          color: alerted.has(level.price) ? ALERT_LEVEL_COLOR : level.color,
+          editable: true,
+          actionable: alertsOn && !alerted.has(level.price),
+        })),
+        ...alertOnly.map((alert) => ({
+          id: `alert:${alert.id}`,
+          value: alert.targetPrice,
+          color: ALERT_LEVEL_COLOR,
+          editable: false,
+          actionable: false,
+        })),
+      ],
+      onEdit: editLevels,
+      ...(alertsOn ? { action: { label: "alert", title: "Alert at Level", run: (level) => { void alertAtLevel(level.value); } } } : {}),
+    };
+  }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing]);
   const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (shareTimerRef.current !== null) clearTimeout(shareTimerRef.current);
@@ -345,11 +487,90 @@ function ChartComposerSurface({
   const specRef = useRef(spec);
   specRef.current = spec;
   const studyOptions = useMemo(() => chartStudyOptionsFor(spec), [spec]);
-  const studyPeriodAction = useMemo<MultiSelectRowAction>(() => ({
+  const updateSpec = useCallback((nextSpec: ChartSpec) => {
+    specRef.current = nextSpec;
+    setSpec(nextSpec);
+  }, [setSpec]);
+  // Picking an anchor on the plot starts once the Indicators dialog is out of the way.
+  const [pickingAnchor, setPickingAnchor] = useState(false);
+  const pickAnchorAfterDialogRef = useRef(false);
+  const anchorInputRef = useRef<ResolvedSeries | undefined>(undefined);
+  const avwapInputId = spec.studies.find((study) => study.kind === "anchored-vwap" && study.id.startsWith("builtin:"))?.inputSeriesIds[0];
+  anchorInputRef.current = (resolution.bufferedSeries ?? resolution.series).find((entry) => entry.id === avwapInputId);
+  const editVwapAnchors = useCallback(async (): Promise<string | { close: true } | void> => {
+    const anchors = builtinVwapAnchors(specRef.current);
+    const labels = new Map((resolution.legendSeries ?? []).map((entry) => [entry.id, entry.label] as const));
+    const choice = await dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<string>) => (
+        <ChoiceDialog
+          {...ctx}
+          title="VWAP anchors"
+          choices={[
+            { id: "pick", label: "Pick a bar on the chart" },
+            { id: "date", label: "Enter a date" },
+            ...anchors.map((anchor) => {
+              const avwap = [...labels].find(([id]) => id.endsWith(`:${anchor}`))?.[1];
+              return { id: `remove:${anchor}`, label: `Remove ${avwap ?? new Date(anchor).toISOString().slice(0, 16).replace("T", " ")}` };
+            }),
+          ]}
+        />
+      ),
+    }).catch(() => undefined);
+    if (choice === "pick") {
+      pickAnchorAfterDialogRef.current = true;
+      return { close: true };
+    }
+    if (choice?.startsWith("remove:")) {
+      const anchor = Number(choice.slice("remove:".length));
+      const nextSpec = setBuiltinVwapAnchors(specRef.current, anchors.filter((entry) => entry !== anchor));
+      updateSpec(nextSpec);
+      return chartStudySettingLabel("anchored-vwap", nextSpec);
+    }
+    if (choice !== "date") return;
+    const text = await dialog.prompt<string>({
+      content: (ctx: PromptContext<string>) => (
+        <TextPromptDialog {...ctx} title="Anchor VWAP at" placeholder="2026-09-30 or 2026-09-30 10:00" confirmLabel="Anchor" width={44} />
+      ),
+    }).catch(() => undefined);
+    if (!text) return;
+    const anchor = parseVwapAnchor(text, anchorInputRef.current);
+    if (anchor === null) {
+      notify({ body: `No bar at ${text}. Use a date like 2026-09-30 or 2026-09-30 10:00.`, type: "error" });
+      return;
+    }
+    const nextSpec = setBuiltinVwapAnchors(specRef.current, [...builtinVwapAnchors(specRef.current), anchor]);
+    updateSpec(nextSpec);
+    return chartStudySettingLabel("anchored-vwap", nextSpec);
+  }, [dialog, notify, resolution.legendSeries, updateSpec]);
+  const studySettingsAction = useMemo<MultiSelectRowAction>(() => ({
     label: "Period",
     shortcut: "p",
-    appliesTo: (value, selected) => selected && isPeriodStudy(value),
+    labelFor: (value) => value === "anchored-vwap" ? "Anchors" : value === "vwap" ? "Bands" : value === "volume-profile" ? "Rows" : "Period",
+    shortcutFor: (value) => value === "anchored-vwap" ? "a" : value === "vwap" ? "b" : value === "volume-profile" ? "n" : "p",
+    appliesTo: (value, selected) => selected && (isPeriodStudy(value) || isNumberSettingStudy(value) || value === "anchored-vwap"),
     run: async (value) => {
+      if (value === "anchored-vwap") return editVwapAnchors();
+      if (isNumberSettingStudy(value)) {
+        const { min, max } = STUDY_NUMBER_SETTINGS[value];
+        const current = builtinStudySetting(specRef.current, value);
+        const next = await dialog.prompt<number>({
+          content: (ctx: PromptContext<number>) => (
+            <NumberPromptDialog
+              {...ctx}
+              title={value === "vwap" ? "VWAP bands (standard deviations, 0 for none)" : "Volume profile rows"}
+              initialValue={current}
+              min={min}
+              max={max}
+              invalidMessage={`Whole number from ${min} to ${max}`}
+            />
+          ),
+        });
+        if (next === undefined || next === current) return;
+        const nextSpec = setBuiltinStudySetting(specRef.current, value, next);
+        updateSpec(nextSpec);
+        return chartStudySettingLabel(value, nextSpec);
+      }
       if (!isPeriodStudy(value)) return;
       const current = builtinStudyPeriod(specRef.current, value) ?? STUDY_PERIOD_MIN;
       const next = await dialog.prompt<number>({
@@ -366,11 +587,18 @@ function ChartComposerSurface({
       });
       if (next === undefined || next === current) return;
       const nextSpec = setBuiltinStudyPeriod(specRef.current, value, next);
-      specRef.current = nextSpec;
-      setSpec(nextSpec);
-      return chartStudyLabel(value, next);
+      updateSpec(nextSpec);
+      return chartStudySettingLabel(value, nextSpec);
     },
-  }), [dialog, setSpec]);
+  }), [dialog, editVwapAnchors, updateSpec]);
+  const timePick = useMemo(() => pickingAnchor ? {
+    label: "anchor here",
+    onPick: (date: Date) => {
+      setPickingAnchor(false);
+      updateSpec(setBuiltinVwapAnchors(specRef.current, [...builtinVwapAnchors(specRef.current), date.getTime()]));
+    },
+    onCancel: () => setPickingAnchor(false),
+  } : null, [pickingAnchor, updateSpec]);
   const formulasDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
   const indicatorsDisabled = !isPriceStudyTarget(spec);
   const formulasDisabled = spec.series.filter((series) => series.visible !== false).length < 2;
@@ -385,10 +613,12 @@ function ChartComposerSurface({
     setInteractionCapturedState(next);
     onCapture?.(next);
   }, [onCapture]);
-  const setIndicatorsOpen = useCallback(
-    (open: boolean) => setInteractionCaptured("indicators", open),
-    [setInteractionCaptured],
-  );
+  const setIndicatorsOpen = useCallback((open: boolean) => {
+    setInteractionCaptured("indicators", open);
+    if (open || !pickAnchorAfterDialogRef.current) return;
+    pickAnchorAfterDialogRef.current = false;
+    setPickingAnchor(true);
+  }, [setInteractionCaptured]);
   const setFormulasOpen = useCallback(
     (open: boolean) => setInteractionCaptured("formulas", open),
     [setInteractionCaptured],
@@ -652,18 +882,27 @@ function ChartComposerSurface({
     formulasDialogRef.current?.open(footerAnchorPoint(event));
   }, []);
 
+  const anchoredVwapOn = selectedStudies.includes("anchored-vwap");
+  useEffect(() => {
+    if (!anchoredVwapOn) setPickingAnchor(false);
+  }, [anchoredVwapOn]);
+  const anchorable = anchoredVwapOn && !pickingAnchor;
+  const footerAnchor = useCallback(() => setPickingAnchor(true), []);
   usePaneFooter(footerId, () => ({
     info: resolution.loading
       ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
-      : [],
+      : pickingAnchor
+        ? [{ id: "anchor", parts: [{ text: "pick a bar to anchor VWAP", tone: "muted" as const }] }]
+        : [],
     hints: [
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
+      ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
       ...(publicSharing ? [{ id: "share", key: "y", label: " share", onPress: footerShare }] : []),
     ],
-  }), [resolution.loading, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, publicSharing, footerShare]);
+  }), [resolution.loading, pickingAnchor, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, publicSharing, footerShare]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {
@@ -708,7 +947,7 @@ function ChartComposerSurface({
       : statusErrorNotice ?? comparisonUnavailable ?? "No observations in this range";
 
   return (
-    <Box flexDirection="column" width={width} height={height} backgroundColor={colors.panel}>
+    <Box flexDirection="column" width={width} height={height}>
       <QueryBar
         width={width}
         filters={[
@@ -732,11 +971,17 @@ function ChartComposerSurface({
         options={studyOptions}
         selectedValues={selectedStudies}
         onChange={(values) => {
+          const previous = getSelectedBuiltinStudies(specRef.current);
           const nextSpec = setBuiltinStudies(specRef.current, values as BuiltinStudySelection[]);
-          specRef.current = nextSpec;
-          setSpec(nextSpec);
+          // A new anchored VWAP has nothing to draw until it has an anchor.
+          if (values.includes("anchored-vwap") && !previous.includes("anchored-vwap") && builtinVwapAnchors(nextSpec).length === 0) {
+            pickAnchorAfterDialogRef.current = true;
+          } else if (!values.includes("anchored-vwap")) {
+            pickAnchorAfterDialogRef.current = false;
+          }
+          updateSpec(nextSpec);
         }}
-        rowAction={studyPeriodAction}
+        rowAction={studySettingsAction}
         disabled={indicatorsDisabled}
         idPrefix={`${footerId}:indicators`}
         shortcutKey="i"
@@ -777,6 +1022,8 @@ function ChartComposerSurface({
           onActivate={activatePane}
           onToggleSeries={toggleSeries}
           isSeriesToggleable={isSeriesToggleable}
+          timePick={timePick}
+          levels={chartLevels}
           emptyMessage={emptyMessage}
           legendAccessory={(
             <ChartSeriesQuickAdd
@@ -798,6 +1045,10 @@ function ChartComposerSurface({
     </Box>
   );
 }
+
+const sameTicker = (left: string, right: string) => (
+  parsePublicTickerKey(left).symbol.toUpperCase() === parsePublicTickerKey(right).symbol.toUpperCase()
+);
 
 export function ChartComposerPane({ paneId, focused, width, height }: PaneProps) {
   const { symbol, error } = usePaneTicker();
@@ -827,21 +1078,45 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
     () => resolveFollowSeriesIds(stored, previousTarget.current, target, savedIds),
     [savedIds, stored, target],
   );
+  // What the chart showed while it followed, and the saved spec it drew that from. Unlinking pins it
+  // there, even when that spec was only rebound for display and never saved (see below).
+  const shown = useRef<{ spec: ChartSpec; stored: ChartSpec } | null>(null);
+  const binding = instance?.binding;
+  // Only an unlink or a closed list pins in place: the same saved spec, now fixed on the ticker
+  // last followed. An undo, another device's unlink or another layout brings its own saved spec
+  // and binding, and is shown as saved.
+  const unlinkedFrom = !follows && shown.current && binding?.kind === "fixed" && previousTarget.current
+    && sameTicker(binding.symbol, previousTarget.current.symbol)
+    && (stored === shown.current.stored || JSON.stringify(stored) === JSON.stringify(shown.current.stored))
+    ? shown.current.spec
+    : null;
   // Resolve before rendering so the new title never carries the old asset's data.
   const spec = useMemo(
-    () => follows ? rebindFollowChartSpec(stored, previousTarget.current, target, ownedIds) : stored,
-    [follows, ownedIds, stored, target],
+    () => follows ? rebindFollowChartSpec(stored, previousTarget.current, target, ownedIds) : unlinkedFrom ?? stored,
+    [follows, ownedIds, stored, target, unlinkedFrom],
   );
   const setSpec = useCallback((next: ChartSpec) => updateSettings({
     [CHART_SPEC_SETTING_KEY]: next,
     ...(follows ? { [CHART_FOLLOW_SERIES_SETTING_KEY]: resolveFollowSeriesIds(next, target, target, ownedIds) } : {}),
   }), [follows, ownedIds, target, updateSettings]);
+  // The rebound spec is saved once per target. A spec synced in from another device, whose list
+  // cursor sits elsewhere, is rebound for display only: saving it would push it back, and two
+  // devices following the same list would rewrite each other on every sync.
+  const savedForTarget = useRef<string | null>(null);
   useEffect(() => {
-    if (follows && target && (spec !== stored || ownedIds !== savedIds)) {
+    const targetKey = target ? JSON.stringify(target) : null;
+    if (follows && target && ((spec !== stored && targetKey !== savedForTarget.current) || ownedIds !== savedIds)) {
       setSpec(spec);
     }
-    if (target) previousTarget.current = target;
-  }, [follows, ownedIds, savedIds, setSpec, spec, stored, target]);
+    if (unlinkedFrom && JSON.stringify(unlinkedFrom) !== JSON.stringify(stored)) {
+      updateSettings({ [CHART_SPEC_SETTING_KEY]: unlinkedFrom });
+    }
+    shown.current = follows && target ? { spec, stored } : null;
+    if (target) {
+      previousTarget.current = target;
+      savedForTarget.current = targetKey;
+    }
+  }, [follows, ownedIds, savedIds, setSpec, spec, stored, target, unlinkedFrom, updateSettings]);
   if (follows && !target && ownedIds.length > 0) {
     return <EmptyState title={error ?? "No ticker selected."} />;
   }

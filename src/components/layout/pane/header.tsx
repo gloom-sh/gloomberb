@@ -15,7 +15,7 @@ const HEADER_TAB_TOP_GAP = 2;
 const PANE_HEADER_GRIP = ":: ";
 export const PANE_HEADER_ACTION = " ... ";
 export const PANE_HEADER_CLOSE = " x ";
-export const PANE_HEADER_LOCK = " 🔒 ";
+const PANE_HEADER_LOCK = " 🔒 ";
 
 interface PaneHeaderProps {
   title: string;

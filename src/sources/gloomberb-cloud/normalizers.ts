@@ -3,6 +3,7 @@ import type { TimeRange } from "../../time-series/range";
 import type {
   FinancialStatement,
   Fundamentals,
+  NextEarnings,
   OptionsChain,
   PricePoint,
   Quote,
@@ -193,7 +194,7 @@ const CLOUD_PER_SHARE_BASES = ["forwardEps", "dividendRate"] as const;
  * and the dividend yield from; JSON encodes a withdrawn one as null, and only
  * a finite number is kept.
  */
-export function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fundamentals | undefined {
+function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fundamentals | undefined {
   const value = redactUnavailableFundamentals(fundamentals);
   if (!value) return value;
   let result = value;
@@ -204,6 +205,19 @@ export function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fu
     delete result[field];
   }
   return result;
+}
+
+const EARNINGS_TIMINGS: ReadonlySet<unknown> = new Set(["bmo", "dmh", "amc"]);
+const EARNINGS_TIMING_SOURCES: ReadonlySet<unknown> = new Set(["filing", "calendar", "history"]);
+
+/** The served next report; one without a calendar date is left out. */
+function mapCloudNextEarnings(value: NextEarnings | undefined): NextEarnings | undefined {
+  if (!value || typeof value.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.date)) return undefined;
+  return {
+    date: value.date,
+    timing: EARNINGS_TIMINGS.has(value.timing) ? value.timing : null,
+    timingSource: EARNINGS_TIMING_SOURCES.has(value.timingSource) ? value.timingSource : null,
+  };
 }
 
 /**
@@ -228,6 +242,7 @@ export function mapCloudFinancials(
     quoteMetadata: financials.quoteMetadata,
     quoteContributions: financials.quoteContributions,
     profile: financials.profile,
+    ...(financials.nextEarnings ? { nextEarnings: mapCloudNextEarnings(financials.nextEarnings) } : {}),
     fundamentals: mapCloudFundamentals(financials.fundamentals),
     financialCurrency: financials.financialCurrency,
     statementHistory: financials.statementHistory,

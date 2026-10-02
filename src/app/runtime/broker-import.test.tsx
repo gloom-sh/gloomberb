@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { setConfigStoreHost, type ConfigStoreHost } from "../../data/config/store";
-import { addPaneToLayout, getDockedPaneIds, isPaneInLayout } from "../../plugins/pane-manager";
+import { addPaneToLayout, getDockedPaneIds, isPaneInLayout } from "../../layout/pane-manager";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../state/app/context";
 import { createDefaultConfig, createPaneInstance, type AppConfig, type BrokerInstanceConfig } from "../../types/config";
 import type { BrokerAdapter } from "../../types/broker";
@@ -14,11 +14,9 @@ setConfigStoreHost({
   saveConfig: async (config: AppConfig) => { saved.push(config); },
 } as unknown as ConfigStoreHost);
 
-let rendered: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   saved.length = 0;
-  if (rendered) await act(async () => { rendered!.renderer.destroy(); });
-  rendered = undefined;
 });
 
 // The startup broker sync runs while the app is already usable, and a broker
@@ -26,7 +24,7 @@ afterEach(async () => {
 // it had copied before asking, which closed any pane opened in the meantime.
 test("the startup broker sync keeps a pane opened while the broker was answering", async () => {
   const instance: BrokerInstanceConfig = { id: "demo-broker", brokerType: "demo", label: "Demo", config: {}, enabled: true };
-  const config = { ...createDefaultConfig("/tmp/gloomberb-broker-import-test"), brokerInstances: [instance] };
+  const config = { ...createDefaultConfig("/tmp/gloomberb-broker-import-test"), brokerInstances: [instance], portfolioCurrenciesAdopted: true };
   let answer!: () => void;
   const answered = new Promise<void>((resolve) => { answer = resolve; });
   const broker = {
@@ -62,8 +60,8 @@ test("the startup broker sync keeps a pane opened while the broker was answering
     });
     return <text>harness</text>;
   }
-  rendered = await testRender(<Harness />, { width: 20, height: 2 });
-  await act(async () => { await rendered!.renderOnce(); });
+  await tui.render(<Harness />, { width: 20, height: 2 });
+  await act(async () => { await tui.setup().renderOnce(); });
 
   const importing = runtime.autoImportBrokerPositions(new Map(tickers));
   await new Promise((resolve) => setTimeout(resolve, 10));

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { apiClient, type AuthUser } from "../../api-client";
 import { ApiRequestError } from "../../api-client/errors";
 import type { SignedInBroker } from "../../brokers/signed-in/client";
@@ -13,8 +13,6 @@ import { CTRL_S, ENTER, ESC, createFormModalTestSession } from "./test-harness";
 
 const session = createFormModalTestSession();
 const { frame, press, renderForm, settle, spy, waitForForm, waitForFrameToContain } = session;
-
-afterEach(() => session.cleanup());
 
 describe("broker connect step", () => {
   const ROBINHOOD: SignedInBroker = {
@@ -64,15 +62,15 @@ describe("broker connect step", () => {
     sync: () => Promise<void> = async () => {},
   ) {
     return (registry: PluginRegistry) => {
-      registry.createBrokerInstanceFn = async (brokerType) => {
+      registry.createBrokerInstance = async (brokerType) => {
         record.created.push(brokerType);
         return PROFILE;
       };
-      registry.syncBrokerInstanceFn = async (instanceId) => {
+      registry.syncBrokerInstance = async (instanceId) => {
         record.synced.push(instanceId);
         await sync();
       };
-      registry.getConfigFn = () => {
+      registry.getConfig = () => {
         const config = storeRef.current!.getState().config;
         return record.created.length === 0 ? config : {
           ...config,

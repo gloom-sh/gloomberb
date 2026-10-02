@@ -16,7 +16,7 @@ import { displayWidth } from "../../../utils/format";
 const BADGE_CHROME_WIDTH = 2;
 const BADGE_GAP = 1;
 
-export function badgeGroupWidth(labels: readonly string[]): number {
+function badgeGroupWidth(labels: readonly string[]): number {
   if (labels.length === 0) return 0;
   return labels.reduce((total, label) => total + displayWidth(label) + BADGE_CHROME_WIDTH, 0)
     + BADGE_GAP * (labels.length - 1);

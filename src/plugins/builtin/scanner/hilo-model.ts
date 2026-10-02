@@ -1,11 +1,11 @@
 import type { ScannerHiloExtreme, ScannerHiloPayload } from "../../../api-client";
 
-export type HiloWindowKey = keyof ScannerHiloPayload["windows"];
+type HiloWindowKey = keyof ScannerHiloPayload["windows"];
 export type HiloMinPrice = "off" | "1" | "5";
 export type HiloSort = "recent" | "count";
 
 /** Widest window first, so the dominant bar reads as the top of the funnel. */
-export const HILO_WINDOW_ROWS: ReadonlyArray<{ key: HiloWindowKey; label: string }> = [
+const HILO_WINDOW_ROWS: ReadonlyArray<{ key: HiloWindowKey; label: string }> = [
   { key: "m5", label: "5 min" },
   { key: "m1", label: "1 min" },
   { key: "s30", label: "30 sec" },
@@ -97,7 +97,7 @@ export function terminalBarCells(ratio: number, halfWidth: number): TerminalBarC
   return { full, half };
 }
 
-export function hiloMinPriceValue(setting: HiloMinPrice): number {
+function hiloMinPriceValue(setting: HiloMinPrice): number {
   return setting === "1" ? 1 : setting === "5" ? 5 : 0;
 }
 

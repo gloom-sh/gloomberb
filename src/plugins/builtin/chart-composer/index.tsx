@@ -10,6 +10,7 @@ import { parseTickerListInput } from "../../../tickers/list";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { tickerInstrumentLabel } from "../../../tickers/instrument-label";
 import type { ChartSpec } from "../../../time-series/types";
+import { isPriceOnlyMarketFieldId } from "../../../time-series/field-catalog";
 import { ChartComposerPane, ChartComposerResearchTab } from "./pane";
 import { DataCatalogPane } from "./data-catalog-pane";
 import {
@@ -395,6 +396,24 @@ const chartComposerTemplates: PaneTemplateDef[] = [
   }),
 ];
 
+/**
+ * A price chart of one security (GP, GIP, a custom price chart of one ticker) can follow a list.
+ * A comparison would move only its first ticker, a FRED-only chart has no ticker to follow, and
+ * fundamental and valuation graphs (GF, GE) stay out even for one ticker.
+ */
+function chartShowsOneSecurity(pane: PaneInstanceConfig): boolean {
+  const spec = parseChartSpec(pane.settings?.[CHART_SPEC_SETTING_KEY]);
+  // Without a saved spec the pane draws its bound ticker's price.
+  if (!spec) return true;
+  const symbols = new Set<string>();
+  for (const series of spec.series) {
+    if (series.source.kind !== "security") continue;
+    if (!isPriceOnlyMarketFieldId(series.source.fieldId)) return false;
+    symbols.add(parsePublicTickerKey(series.source.instrument.symbol).symbol.toUpperCase());
+  }
+  return symbols.size === 1;
+}
+
 export const chartComposerModule: PluginModule = {
   panes: [{
     id: CHART_COMPOSER_PANE_ID,
@@ -402,6 +421,7 @@ export const chartComposerModule: PluginModule = {
     icon: "G",
     component: ChartComposerPane,
     defaultPosition: "right",
+    tickerFollower: chartShowsOneSecurity,
     defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 32 },
     portableShare: { prepare: prepareChartPaneForShare },

@@ -25,7 +25,7 @@ export interface BacktestHistory {
 }
 
 /** One bar per UTC session date, ascending; later duplicates replace earlier ones. */
-export function toBacktestBars(points: readonly PricePoint[]): BacktestBar[] {
+function toBacktestBars(points: readonly PricePoint[]): BacktestBar[] {
   const byDate = new Map<string, BacktestBar>();
   for (const point of points) {
     const time = point.date instanceof Date ? point.date.getTime() : Date.parse(String(point.date));

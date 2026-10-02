@@ -58,7 +58,7 @@ export function buildLiveQuoteTarget(
   };
 }
 
-export function buildLiveQuoteTargets(
+function buildLiveQuoteTargets(
   tickers: readonly TickerRecord[],
   options: LiveQuoteStreamOptions = {},
 ): QuoteSubscriptionTarget[] {
@@ -96,7 +96,7 @@ export function useTickerQuoteStream(
 }
 
 /** Stream a set of tickers' quotes (deduped per symbol) into the shared store. */
-export function useTickerQuoteStreams(
+function useTickerQuoteStreams(
   tickers: readonly TickerRecord[],
   options: LiveQuoteStreamOptions = {},
 ): void {

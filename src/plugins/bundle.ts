@@ -87,7 +87,7 @@ export interface BundlePluginResult {
  * how names are discovered — the bundler runs in Bun and can simply import the
  * real module, but a test should not have to.
  */
-export function createSharedModuleResolver(
+function createSharedModuleResolver(
   exportNamesFor: (specifier: string) => Promise<readonly string[]>,
   onShared?: (specifier: string) => void,
 ): import("bun").BunPlugin {

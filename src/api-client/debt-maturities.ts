@@ -8,7 +8,7 @@ export interface DebtFact {
   filed: string;
   form: string;
 }
-export interface DebtBorrowingCost {
+interface DebtBorrowingCost {
   value: number;
   interest: DebtFact;
   opening: DebtFact[];
@@ -16,7 +16,7 @@ export interface DebtBorrowingCost {
   periodStart: string;
   periodEnd: string;
 }
-export interface DebtPercentile {
+interface DebtPercentile {
   value: number | null;
   rank: number | null;
   sampleCount: number;

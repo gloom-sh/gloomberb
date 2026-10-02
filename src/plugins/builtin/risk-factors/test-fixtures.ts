@@ -1,6 +1,6 @@
 import type { CloudRiskReportListPayload, CloudRiskReportPayload } from "../../../api-client";
 
-export const company = { ticker: "ACME", cik: "0000000001", name: "Acme Corp", shortName: "Acme" };
+const company = { ticker: "ACME", cik: "0000000001", name: "Acme Corp", shortName: "Acme" };
 
 export function report(year: number): CloudRiskReportPayload {
   return {

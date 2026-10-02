@@ -14,7 +14,7 @@ import { useViewport } from "../../../react/input";
 import { useOptionalDialog } from "../../../ui/dialog";
 import { promptCloudUpgrade } from "../cloud/upgrade-dialog";
 
-export const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
+const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
 
 /**
  * The renderer host only exists inside React, so UI that uses it publishes an
@@ -39,7 +39,7 @@ export interface CloudUpgradeOptions {
   sheet?: boolean;
 }
 
-export async function resolveCloudUpgradeUrl(options: CloudUpgradeOptions = {}): Promise<string> {
+async function resolveCloudUpgradeUrl(options: CloudUpgradeOptions = {}): Promise<string> {
   if (options.recordIntent !== false) recordResearchActivity("upgrade_intent");
   const returnTo = getCurrentPluginTarget() === "web" ? window.location.href : undefined;
   if (!apiClient.isSignedIn()) return researchUpgradeUrl(returnTo);

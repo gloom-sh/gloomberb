@@ -1,4 +1,4 @@
-import { Box, useUiCapabilities } from "../ui";
+import { Box, Text, useUiCapabilities } from "../ui";
 import { colors } from "../theme/colors";
 import { Checkbox } from "./ui/checkbox";
 import { ListView, type ListRowState, type ListViewItem } from "./ui/list-view";
@@ -8,6 +8,8 @@ interface ToggleListItem {
   label: string;
   enabled: boolean;
   description?: string;
+  /** Muted text at the row's right edge, always shown. */
+  detail?: string;
   disabled?: boolean;
 }
 
@@ -58,15 +60,18 @@ function DesktopToggleRow({
         opacity: state.disabled ? 0.55 : 1,
       }}
     >
-      <Checkbox
-        label={item.label}
-        checked={enabled}
-        disabled={state.disabled}
-        active={state.selected}
-        width="100%"
-        variant="desktop"
-        onChange={onPress}
-      />
+      <Box flexGrow={1} minWidth={0}>
+        <Checkbox
+          label={item.label}
+          checked={enabled}
+          disabled={state.disabled}
+          active={state.selected}
+          width="100%"
+          variant="desktop"
+          onChange={onPress}
+        />
+      </Box>
+      {item.detail ? <Text fg={colors.textMuted} style={{ flexShrink: 0 }}>{item.detail}</Text> : null}
     </Box>
   );
 }
@@ -94,6 +99,7 @@ export function ToggleList({
     id: item.id,
     label: item.label,
     description: item.description,
+    detail: item.detail,
     disabled: item.disabled,
   }));
 
@@ -143,6 +149,7 @@ export function ToggleList({
           <Box
             id={rowIdPrefix ? `${rowIdPrefix}:${item.id}` : undefined}
             flexDirection="row"
+            justifyContent="space-between"
             onMouseDown={activate}
           >
             <Checkbox
@@ -152,6 +159,7 @@ export function ToggleList({
               active={state.selected}
               onChange={() => activate()}
             />
+            {item.detail ? <Text fg={colors.textMuted}>{item.detail}</Text> : null}
           </Box>
         );
       }}

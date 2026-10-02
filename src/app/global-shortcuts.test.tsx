@@ -1,32 +1,14 @@
-import { createTestRenderer } from "@opentui/core/testing";
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import type { PluginRegistry } from "../plugins/registry";
-import { TestDialogProvider, createOpenTuiTestRoot as createRoot, emitKeypress as emitTuiKeypress, type TestKeyEvent } from "../renderers/opentui/test-utils";
+import { TestDialogProvider, createOpenTuiTestHarness, type TestKeyEvent } from "../renderers/opentui/test-utils";
 import { createInitialState, type AppAction, type AppState } from "../state/app/context";
 import { cloneLayout, createDefaultConfig, type KeybindingsConfig } from "../types/config";
 import type { ReleaseInfo } from "../updater";
 import { useAppGlobalShortcuts } from "./global-shortcuts";
 import { resolveKeybindings } from "./keybindings";
 
-let testSetup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;
-let root: ReturnType<typeof createRoot> | undefined;
-const actEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
-actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
-
-afterEach(async () => {
-  if (root) {
-    await act(async () => {
-      root!.unmount();
-      await Promise.resolve();
-    });
-    root = undefined;
-  }
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-});
+const tui = createOpenTuiTestHarness({ width: 40, height: 8 });
 
 function createRegistry(
   shortcutExecute?: () => void,
@@ -92,36 +74,32 @@ async function renderHarness(
     startUpdate?: (release: ReleaseInfo) => void;
   } = {},
 ) {
-  testSetup = await createTestRenderer({ width: 40, height: 8 });
-  root = createRoot(testSetup.renderer);
-  act(() => {
-    root!.render(
-      <TestDialogProvider>
-        <ShortcutHarness
-          dispatch={dispatch}
-          focusedTickerSymbol={options.focusedTickerSymbol}
-          pluginRegistry={registry}
-          refreshTicker={options.refreshTicker}
-          startUpdate={options.startUpdate}
-          state={state}
-        />
-      </TestDialogProvider>,
-    );
-  });
+  await tui.render(
+    <TestDialogProvider>
+      <ShortcutHarness
+        dispatch={dispatch}
+        focusedTickerSymbol={options.focusedTickerSymbol}
+        pluginRegistry={registry}
+        refreshTicker={options.refreshTicker}
+        startUpdate={options.startUpdate}
+        state={state}
+      />
+    </TestDialogProvider>,
+  );
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
 /** The OpenTUI input host derives `targetEditable` from the focused editor. */
 function focusEditor() {
-  Object.defineProperty(testSetup!.renderer, "currentFocusedEditor", {
+  Object.defineProperty(tui.setup().renderer, "currentFocusedEditor", {
     configurable: true,
     get: () => ({}),
   });
 }
 
-const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { trackPropagation: true });
+const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event, { trackPropagation: true });
 
 describe("useAppGlobalShortcuts", () => {
   // The open bar moves its selection on Ctrl+P, so that chord must reach it.

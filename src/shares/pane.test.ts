@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { LayoutMarketplacePayload } from "../layout-marketplace/payload";
+import type { LayoutMarketplacePayload } from "./portable-layout";
 import type { PaneDef, PaneTemplateDef } from "../types/plugin";
 import { buildPaneSharePayload, openPaneShare } from "./pane";
 
@@ -18,10 +18,10 @@ function registry(template?: PaneTemplateDef, pane: PaneDef = paneDef) {
     portable,
     panes: new Map([[pane.id, pane]]),
     paneTemplates: new Map(template ? [[template.id, template]] : []),
-    createPaneFromTemplateAsyncFn: async (templateId: string, options: unknown) => {
+    createPaneFromTemplateAsync: async (templateId: string, options: unknown) => {
       opened.push([templateId, options]);
     },
-    openPortablePaneShareAsyncFn: async (layout: LayoutMarketplacePayload) => {
+    openPortablePaneShareAsync: async (layout: LayoutMarketplacePayload) => {
       portable.push(layout);
     },
   } as any;

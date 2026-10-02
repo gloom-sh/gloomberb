@@ -11,7 +11,7 @@ import {
 import { teamPrefix } from "./model";
 import { teamStore } from "./store";
 
-export const CLOUD_VIEWS_CAPABILITY_ID = "cloud.views";
+const CLOUD_VIEWS_CAPABILITY_ID = "cloud.views";
 
 type Listener = () => void
 
@@ -22,7 +22,7 @@ type Listener = () => void
  * through here, which is how a teammate's later revision reaches an open
  * pane without republishing.
  */
-export class TeamViewsStore {
+class TeamViewsStore {
   private views = new Map<string, TeamView>();
   private readonly listeners = new Set<Listener>();
   private readonly templateDisposers = new Map<string, () => void>();

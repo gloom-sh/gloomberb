@@ -2,6 +2,8 @@ import { resolveCanonicalQuote } from "../../../market-data/quotes/resolution";
 import { expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestHeadlessContext } from "../../../test-support/headless";
+import type { QuoteContribution } from "../../../types/financials";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless } from "./headless";
 
@@ -99,7 +101,7 @@ test("quote monitor exports retain FX precision and small changes without alteri
 
 test("historical prices use remembered exchanges and clip and sort the full OHLCV history", async () => {
   const requests: unknown[] = [];
-  const ctx = {
+  const ctx = createTestHeadlessContext({
     resolveInstrument: async () => ({ symbol: "ABC", exchange: "LSE" }),
     marketData: createTestDataProvider({
       async getPriceHistory(...request) {
@@ -111,7 +113,7 @@ test("historical prices use remembered exchanges and clip and sort the full OHLC
         ];
       },
     }),
-  } as HeadlessPaneContext;
+  });
   const result = await historicalPricesHeadless.load(args(["ABC"], { range: "1M" }), ctx);
   expect(requests).toEqual([["ABC", "LSE", "1M"]]);
   expect(result.rows.map((row) => row.close)).toEqual([18, 22]);
@@ -148,12 +150,14 @@ test("financial JSON exports preserve selected metric availability separately fr
 
 
 test("canonical missing changes survive JSON roundtrip into default Quote Monitor text beside zero and derived change", async () => {
-  const base = { symbol: "MISSING", price: 12, currency: "USD", lastUpdated: Date.now(), marketState: "CLOSED" };
-  const inputs = [base, { ...base, symbol: "ZERO", change: 0, changePercent: 0 }, { ...base, symbol: "DERIVED", previousClose: 10 }];
+  const base = { symbol: "MISSING", providerId: "test-provider", price: 12, currency: "USD", lastUpdated: Date.now(), marketState: "CLOSED" as const };
+  // A provider can leave the daily change out, which the contribution type does not model.
+  const withoutChange = (quote: Omit<QuoteContribution, "change" | "changePercent">) => quote as QuoteContribution;
+  const inputs = [withoutChange(base), { ...base, symbol: "ZERO", change: 0, changePercent: 0 }, withoutChange({ ...base, symbol: "DERIVED", previousClose: 10 })];
   const quotes = inputs.map(quote => resolveCanonicalQuote({ quote }).quote!);
   expect(quotes[0]!.change).toBeNaN();
   expect(quotes[0]!.changePercent).toBeNaN();
-  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({ getQuote: async symbol => quotes.find(quote => quote.symbol === symbol)! }) } as HeadlessPaneContext;
+  const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({ getQuote: async symbol => quotes.find(quote => quote.symbol === symbol)! }) });
   const input = args(["MISSING", "ZERO", "DERIVED"]);
   const model = await quoteComparisonHeadless.load(input, ctx);
   const transported = JSON.parse(JSON.stringify(model));

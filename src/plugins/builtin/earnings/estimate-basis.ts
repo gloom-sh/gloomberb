@@ -1,6 +1,6 @@
 import type { EarningsEstimateBasis, EarningsEstimateField, EarningsEvent } from "../../../types/data-provider";
 
-export const EARNINGS_ESTIMATE_FIELDS: readonly EarningsEstimateField[] = [
+const EARNINGS_ESTIMATE_FIELDS: readonly EarningsEstimateField[] = [
   "epsEstimate", "epsLow", "epsHigh", "epsYearAgo", "epsGrowth", "epsAnalysts",
   "epsTrend7dAgo", "epsTrend30dAgo", "epsRevisionUp7d", "epsRevisionUp30d", "epsRevisionDown7d", "epsRevisionDown30d",
   "revenueEstimate", "revenueLow", "revenueHigh", "revenueYearAgo", "revenueGrowth", "revenueAnalysts",
@@ -19,7 +19,7 @@ function finiteValue(event: EarningsEvent, field: EarningsEstimateField): number
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function sameEarningsForecast(
+function sameEarningsForecast(
   left: EarningsEstimateBasis | undefined,
   right: EarningsEstimateBasis | undefined,
 ): boolean {
@@ -68,9 +68,4 @@ export function earningsForecastPeriod(event: EarningsEvent): { period: string; 
   const first = bases[0];
   if (!first?.period || !first.periodEndDate || bases.some(basis => !sameEarningsForecast(first, basis))) return null;
   return { period: first.period, periodEndDate: first.periodEndDate };
-}
-
-/** Source-selected values after normalization; literal provider amounts remain in estimateBasis. */
-export function earningsSourceEstimates(event: EarningsEvent): Record<string, number | null> {
-  return Object.fromEntries(EARNINGS_ESTIMATE_FIELDS.map(field => [field, finiteValue(event, field)]));
 }

@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender, emitKeypress } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
@@ -10,11 +10,11 @@ import { Box } from "../../../ui";
 import { buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
 import { buildEventRows } from "./event-model";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 async function frame() {
   await act(async () => { await Bun.sleep(1); });
-  await act(async () => { await setup!.renderOnce(); });
+  await act(async () => { await tui.setup().renderOnce(); });
 }
 
 async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80) {
@@ -44,26 +44,21 @@ async function render(actions: CorporateActionsData, variant: "corporate-actions
     );
   }
   await act(async () => {
-    setup = await testRender(<Harness />, { width, height: 24 });
+    await tui.render(<Harness />, { width, height: 24 });
   });
   for (let index = 0; index < 4; index++) await frame();
 }
-
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
-});
 
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {
   await render({ symbol: "TEST", dividends: [], splits: [], earnings: [
     { date: "2026-09-30", dateType: "announcement", epsEstimate: 2.2 },
     { date: "2026-09-30", dateType: "fiscal-period-end", epsActual: 2, epsEstimate: 1.8, currency: "USD" },
   ] }, "earnings-estimates", 120);
-  await emitKeypress(setup!, { name: "down" });
+  await tui.emitKeypress({ name: "down" });
   await frame();
-  await emitKeypress(setup!, { name: "return" });
+  await tui.emitKeypress({ name: "return" });
   await frame();
-  const detail = setup!.captureCharFrame();
+  const detail = tui.frame();
   expect(detail).toMatch(/Actual\s+2 USD/);
   expect(detail).toMatch(/Consensus\s+1\.8 USD/);
   expect(detail).not.toMatch(/Consensus\s+2\.2/);
@@ -74,7 +69,7 @@ test.each(["corporate-actions", "earnings-estimates"] as const)("%s preserves un
     dividends: variant === "earnings-estimates" ? [{ exDate: "2026-09-30", amount: 0.1 }] : [],
     coverage: { dividends: "available", splits: "unavailable", earnings: "unavailable" },
   }, variant);
-  expect(setup!.captureCharFrame()).toContain(variant === "earnings-estimates" ? "Unavailable: earnings" : "Unavailable: splits, earnings");
+  expect(tui.frame()).toContain(variant === "earnings-estimates" ? "Unavailable: earnings" : "Unavailable: splits, earnings");
 });
 
 /** The detail as text, one line per heading, labelled figure or note. */

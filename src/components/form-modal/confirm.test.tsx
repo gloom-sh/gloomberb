@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import type { AppContextStoreValue } from "../../state/app/context";
 import { createTestTicker } from "../../test-support/ticker";
@@ -9,8 +9,6 @@ import { ENTER, ESC, createFormModalTestSession } from "./test-harness";
 
 const session = createFormModalTestSession();
 const { frame, press, render, renderForm, settle, waitForForm, waitForFrameToContain } = session;
-
-afterEach(() => session.cleanup());
 
 describe("confirm modal", () => {
   function confirmRequest(overrides: Partial<ConfirmModalOptions>): Extract<Parameters<typeof openFormModal>[0], { kind: "confirm" }> {

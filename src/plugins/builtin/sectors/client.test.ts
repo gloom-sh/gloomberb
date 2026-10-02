@@ -11,11 +11,11 @@ const sectors = [
 const quote = (symbol: string): Quote => ({
   symbol, price: 105, change: 5, changePercent: 5, currency: "USD", lastUpdated: Date.parse("2026-09-10T18:00:00Z"), changeSessionDate: "2026-09-10",
 });
-const history = [
-  { date: "2025-09-10", close: 80 },
-  { date: "2026-08-10", close: 90 },
-  { date: "2026-09-10", close: 100 },
-] as PricePoint[];
+const history: PricePoint[] = [
+  { date: new Date("2025-09-10"), close: 80 },
+  { date: new Date("2026-08-10"), close: 90 },
+  { date: new Date("2026-09-10"), close: 100 },
+];
 
 describe("sector quote recovery", () => {
   test("retries missing batch items without refetching successful quotes", async () => {
@@ -60,18 +60,18 @@ test("uses one session for live returns and rejects short or outdated histories"
 });
 
 test("requests a boundary buffer when the prior-year date falls on a holiday", async () => {
-  let requestedStart: string | null = null;
+  const requestedStarts: string[] = [];
   const sessionQuote = { ...quote("XLK"), changeSessionDate: "2026-10-12", lastUpdated: Date.parse("2026-10-12T18:00:00Z") };
   const provider = {
     getQuote: async () => sessionQuote,
     getPriceHistory: async () => [{ date: new Date("2025-10-13"), close: 101 }, { date: new Date("2026-10-12"), close: 104 }],
     getDetailedPriceHistory: async (_symbol: string, _exchange: string, start: Date) => {
-      requestedStart = start.toISOString().slice(0, 10);
+      requestedStarts.push(start.toISOString().slice(0, 10));
       return [{ date: new Date("2025-10-10"), close: 100 }];
     },
   } as unknown as DataProvider;
   const [result] = await loadSectorRows(sectors.slice(0, 1), provider);
-  expect(requestedStart).toBe("2025-10-05");
+  expect(requestedStarts.at(-1)).toBe("2025-10-05");
   expect(result?.row?.return1Y).toBeCloseTo(5);
   expect(result?.row?.return1YStartDate).toBe("2025-10-10");
 });

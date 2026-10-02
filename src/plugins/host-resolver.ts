@@ -91,7 +91,10 @@ export function installPluginHostResolver(): boolean {
   return true;
 }
 
-/** Whether the resolver is serving host modules in this process. */
+/**
+ * Whether the resolver is serving host modules in this process.
+ * @knipignore Imported by the script host-resolver.test.ts compiles and runs.
+ */
 export function isPluginHostResolverInstalled(): boolean {
   return installed;
 }

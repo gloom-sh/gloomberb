@@ -1,4 +1,5 @@
 import type { PluginRuntimeAccess } from "../plugins/runtime";
+import { createDefaultHostActions, pickPluginRuntimeHostActions } from "../plugins/registry/host-actions";
 import { ConnectionHealthRegistry } from "../core/connection-health";
 import type { AppConfig } from "../types/config";
 
@@ -12,6 +13,7 @@ export function createTestPluginRuntime(
 ): PluginRuntimeAccess {
   const connectionHealth = new ConnectionHealthRegistry();
   return {
+    ...pickPluginRuntimeHostActions(createDefaultHostActions()),
     getMarketData: () => null,
     getConnectionHealth: () => connectionHealth,
     getCapability: () => null,
@@ -21,27 +23,6 @@ export function createTestPluginRuntime(
     },
     getBrokerAdapter: () => null,
     listBrokerAdapters: () => [],
-    createBrokerInstance: async () => {
-      throw new Error("This test plugin runtime creates no broker profiles.");
-    },
-    connectBrokerInstance: async () => {},
-    updateBrokerInstance: async () => {},
-    syncBrokerInstance: async () => {},
-    removeBrokerInstance: async () => {},
-    pinTicker() {},
-    navigateTicker() {},
-    selectTicker() {},
-    switchTab() {},
-    switchPanel() {},
-    openCommandBar() {},
-    showPane() {},
-    createPaneFromTemplate() {},
-    hidePane() {},
-    focusPane() {},
-    openPaneSettings() {},
-    sharePane() {},
-    openPluginCommandWorkflow() {},
-    notify() {},
     subscribeResumeState: () => () => {},
     getResumeState: () => null,
     setResumeState() {},

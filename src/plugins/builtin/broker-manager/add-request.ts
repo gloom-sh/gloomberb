@@ -2,7 +2,7 @@ import { t } from "../../../i18n";
 import type { PluginRegistry } from "../../registry";
 import { resolvePaneInstance } from "../../../types/config";
 
-export const BROKERS_PANE_ID = "brokers";
+const BROKERS_PANE_ID = "brokers";
 
 /**
  * Pane state that asks a Brokers pane to start adding a profile. The pane
@@ -15,7 +15,7 @@ export const BROKER_ADD_REQUEST_KEY = "brokerAddRequest";
 
 type BrokerAddLauncher = Pick<
   PluginRegistry,
-  "panes" | "showPane" | "getLayoutFn" | "updatePaneRuntimeStateFn" | "notify"
+  "panes" | "showPane" | "getLayout" | "updatePaneRuntimeState" | "notify"
 >;
 
 /**
@@ -29,6 +29,6 @@ export function openBrokerAddFlow(registry: BrokerAddLauncher): void {
   }
   registry.showPane(BROKERS_PANE_ID);
   // The pane just shown: the layout is current the moment showPane placed it.
-  const pane = resolvePaneInstance(registry.getLayoutFn(), BROKERS_PANE_ID);
-  if (pane) registry.updatePaneRuntimeStateFn(pane.instanceId, { [BROKER_ADD_REQUEST_KEY]: Date.now() });
+  const pane = resolvePaneInstance(registry.getLayout(), BROKERS_PANE_ID);
+  if (pane) registry.updatePaneRuntimeState(pane.instanceId, { [BROKER_ADD_REQUEST_KEY]: Date.now() });
 }

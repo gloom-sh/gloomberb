@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { useThrottledCursorSymbol } from "./use-throttled-cursor-symbol";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let setHarnessCursorSymbol: ((symbol: string | null, options?: { immediate?: boolean }) => void) | null = null;
-let flushHarnessCursorSymbol: ((symbol?: string | null) => void) | null = null;
+let flushHarnessCursorSymbol: ReturnType<typeof useThrottledCursorSymbol>["flushCursorSymbol"] | null = null;
 let latestCursorSymbol: string | null = null;
 let latestCommittedCursorSymbol: string | null = null;
 
@@ -27,13 +27,7 @@ function ThrottledCursorHarness() {
   return <text>{cursorSymbol ?? "none"}|{committedCursorSymbol ?? "none"}</text>;
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   setHarnessCursorSymbol = null;
   flushHarnessCursorSymbol = null;
   latestCursorSymbol = null;
@@ -42,13 +36,13 @@ afterEach(async () => {
 
 describe("useThrottledCursorSymbol", () => {
   test("commits the first step at once and settles the rest of a burst to its last symbol", async () => {
-    testSetup = await testRender(<ThrottledCursorHarness />, {
+    await tui.render(<ThrottledCursorHarness />, {
       width: 24,
       height: 1,
     });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
@@ -56,7 +50,7 @@ describe("useThrottledCursorSymbol", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     // A single step reaches followers without waiting out the throttle.
@@ -68,7 +62,7 @@ describe("useThrottledCursorSymbol", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     // A second step inside the window is deferred, so a held key cannot
@@ -80,20 +74,20 @@ describe("useThrottledCursorSymbol", () => {
       await new Promise((resolve) => setTimeout(resolve, TEST_THROTTLE_MS + 20));
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(latestCommittedCursorSymbol).toBe("NVDA");
   });
 
   test("coalesces repeated cursor moves into the final committed symbol", async () => {
-    testSetup = await testRender(<ThrottledCursorHarness />, {
+    await tui.render(<ThrottledCursorHarness />, {
       width: 24,
       height: 1,
     });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
@@ -109,7 +103,7 @@ describe("useThrottledCursorSymbol", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(latestCursorSymbol).toBe("AMD");
@@ -119,20 +113,20 @@ describe("useThrottledCursorSymbol", () => {
       await new Promise((resolve) => setTimeout(resolve, TEST_THROTTLE_MS + 20));
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(latestCommittedCursorSymbol).toBe("AMD");
   });
 
   test("can flush a pending cursor immediately", async () => {
-    testSetup = await testRender(<ThrottledCursorHarness />, {
+    await tui.render(<ThrottledCursorHarness />, {
       width: 24,
       height: 1,
     });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
@@ -140,7 +134,7 @@ describe("useThrottledCursorSymbol", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
@@ -148,7 +142,7 @@ describe("useThrottledCursorSymbol", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(latestCommittedCursorSymbol).toBe("MSFT");
@@ -158,7 +152,7 @@ describe("useThrottledCursorSymbol", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(latestCommittedCursorSymbol).toBe("NVDA");

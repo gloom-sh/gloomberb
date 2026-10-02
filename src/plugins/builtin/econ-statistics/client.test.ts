@@ -30,7 +30,7 @@ test("explicit refresh retrieves a same-period revision while normal loads retai
   let calls = 0;
   const loader = createStatSeriesLoader({ getCloudFredSeries: async (seriesId) => {
     calls += 1;
-    return { seriesId, observations: observations(revised) };
+    return { observations: observations(revised), info: null };
   } });
   const initial = await loadStatsBundle({ loader, stats: [cpi] });
   expect(rows(initial)[0]).toMatchObject({ latest: 10.000000000000009, asOf: "2026-01-01", fetchedAt: now, stale: false });
@@ -57,9 +57,9 @@ test("failed forced refresh keeps cached CPI, independently updates unemployment
   const loader = createStatSeriesLoader({ getCloudFredSeries: async (seriesId) => {
     calls += 1;
     if (seriesId === cpi.seriesId && fail) throw new Error("Controlled CPI failure");
-    return { seriesId, observations: observations(true).map((entry) => ({
+    return { observations: observations(true).map((entry) => ({
       ...entry, value: seriesId === cpi.seriesId ? entry.value : fail ? 4.6 : 4.2,
-    })) };
+    })), info: null };
   } });
   await loadStatsBundle({ loader, stats: [cpi, unemployment] });
   time += 60_000;

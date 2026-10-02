@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer, type ReactElement } from "react";
-import { createTestControls, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Box } from "../../../ui";
 import {
   AppContext,
@@ -38,7 +38,7 @@ import { createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "ticker-research:test";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let harnessDispatch: React.Dispatch<AppAction> | null = null;
 let financialsHarnessState: ReturnType<typeof createInitialState> | null = null;
 let detailHarnessState: ReturnType<typeof createInitialState> | null = null;
@@ -240,34 +240,15 @@ function DetailHarness({
 
 async function flushFrame() {
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
 async function settleTickerTabCommit() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, TICKER_TAB_SETTLE_MS));
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-}
-
-async function emitKeypress(event: { name?: string; sequence?: string }) {
-  await act(async () => {
-    (testSetup!.renderer as any).keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      ...event,
-    });
-    await Promise.resolve();
-    await testSetup!.renderOnce();
-  });
-  await flushFrame();
 }
 
 function spanLineText(line: { spans: Array<{ text: string }> }): string {
@@ -286,10 +267,6 @@ function lineBackgroundKeys(line: { spans: Array<{ text: string; bg: { toInts():
 }
 
 afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
   harnessDispatch = null;
   financialsHarnessState = null;
   detailHarnessState = null;
@@ -299,7 +276,7 @@ afterEach(() => {
 
 describe("ResolvedFinancialsTab", () => {
   test("uses p to toggle the financial statement period", async () => {
-    testSetup = await testRender(createFinancialsTabFooterHarness(100, 20), {
+    await tui.render(createFinancialsTabFooterHarness(100, 20), {
       width: 100,
       height: 20,
     });
@@ -307,43 +284,43 @@ describe("ResolvedFinancialsTab", () => {
     await flushFrame();
     await flushFrame();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toContain("Annual");
     expect(frame).toContain("[p]eriod");
     expect(frame).not.toContain("[a/q]period");
 
     await act(async () => {
-      testSetup!.mockInput.pressKey("p");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressKey("p");
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(financialsHarnessState?.paneState["ticker-detail:main"]?.financialPeriod).toBe("quarterly");
     expect(frame).toContain("Quarterly");
     expect(frame).toContain("[p]eriod");
   });
 
   test("moves selection with down without collapsing the selected financial group", async () => {
-    testSetup = await testRender(createFinancialsTabFooterHarness(100, 20), {
+    await tui.render(createFinancialsTabFooterHarness(100, 20), {
       width: 100,
       height: 20,
     });
 
     await flushFrame();
     await flushFrame();
-    expect(testSetup.captureCharFrame()).toContain("Cost of Revenue");
+    expect(tui.frame()).toContain("Cost of Revenue");
 
     await act(async () => {
-      testSetup!.mockInput.pressArrow("down");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("down");
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
-    expect(testSetup.captureCharFrame()).toContain("Cost of Revenue");
+    expect(tui.frame()).toContain("Cost of Revenue");
   });
 
   test("uses one hover background across financial group rows", async () => {
-    testSetup = await testRender(createFinancialsTabFooterHarness(100, 20), {
+    await tui.render(createFinancialsTabFooterHarness(100, 20), {
       width: 100,
       height: 20,
     });
@@ -351,16 +328,16 @@ describe("ResolvedFinancialsTab", () => {
     await flushFrame();
     await flushFrame();
 
-    const rows = testSetup.captureCharFrame().split("\n");
+    const rows = tui.frame().split("\n");
     const groupRowY = rows.findIndex((line) => line.includes("Operating Inc"));
     expect(groupRowY).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.moveTo(2, groupRowY);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.moveTo(2, groupRowY);
+      await tui.setup().renderOnce();
     });
 
-    const groupLine = testSetup.captureSpans().lines.find((line) => (
+    const groupLine = tui.setup().captureSpans().lines.find((line) => (
       spanLineText(line).includes("Operating Inc")
     ));
     expect(groupLine).toBeDefined();
@@ -368,7 +345,7 @@ describe("ResolvedFinancialsTab", () => {
   });
 
   test("switches financial statement sections with left and right arrows", async () => {
-    testSetup = await testRender(createFinancialsTabFooterHarness(100, 20), {
+    await tui.render(createFinancialsTabFooterHarness(100, 20), {
       width: 100,
       height: 20,
     });
@@ -377,16 +354,16 @@ describe("ResolvedFinancialsTab", () => {
     await flushFrame();
 
     await act(async () => {
-      testSetup!.mockInput.pressArrow("right");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("right");
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
     expect(financialsHarnessState?.paneState["ticker-detail:main"]?.financialSubTab).toBe("cashflow");
 
     await act(async () => {
-      testSetup!.mockInput.pressArrow("left");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("left");
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
@@ -400,7 +377,7 @@ describe("TickerResearchPane", () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
@@ -412,7 +389,7 @@ describe("TickerResearchPane", () => {
     await flushFrame();
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Overview");
     expect(frame).toContain("Chart");
     expect(frame).toContain("Options");
@@ -425,7 +402,7 @@ describe("TickerResearchPane", () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
@@ -437,7 +414,7 @@ describe("TickerResearchPane", () => {
     );
 
     await flushFrame();
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Financials");
   });
 
@@ -445,7 +422,7 @@ describe("TickerResearchPane", () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
@@ -461,8 +438,8 @@ describe("TickerResearchPane", () => {
     expect(detailHarnessState?.paneState[TEST_PANE_ID]?.activeTabId).toBe("financials");
 
     await act(async () => {
-      testSetup!.mockInput.pressArrow("right");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("right");
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
@@ -470,8 +447,8 @@ describe("TickerResearchPane", () => {
     expect(detailHarnessState?.paneState[TEST_PANE_ID]?.activeTabId).toBe("chart");
 
     await act(async () => {
-      testSetup!.mockInput.pressArrow("left");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("left");
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
@@ -483,7 +460,7 @@ describe("TickerResearchPane", () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
@@ -493,7 +470,7 @@ describe("TickerResearchPane", () => {
     );
 
     await flushFrame();
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("SEC");
   });
 
@@ -508,7 +485,7 @@ describe("TickerResearchPane", () => {
     const config = createDetailConfig("AAPL");
     config.disabledPlugins = ["ticker-research"];
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={config}
         ticker={createTestTicker("AAPL")}
@@ -518,7 +495,7 @@ describe("TickerResearchPane", () => {
     );
 
     await flushFrame();
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).not.toContain("SEC");
   });
 
@@ -532,7 +509,7 @@ describe("TickerResearchPane", () => {
     } as unknown as PluginRegistry);
     setOptionsProvider(createProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
@@ -542,7 +519,7 @@ describe("TickerResearchPane", () => {
     );
 
     await flushFrame();
-    expect(testSetup.captureCharFrame()).not.toContain("Analyst");
+    expect(tui.frame()).not.toContain("Analyst");
 
     await act(async () => {
       tickerResearchTabs.set("analyst-research", {
@@ -556,7 +533,7 @@ describe("TickerResearchPane", () => {
     });
     await flushFrame();
 
-    expect(testSetup.captureCharFrame()).toContain("Analyst");
+    expect(tui.frame()).toContain("Analyst");
   });
 
   test("passes visible tab content height to plugin tabs", async () => {
@@ -572,7 +549,7 @@ describe("TickerResearchPane", () => {
     } as unknown as PluginRegistry);
     setOptionsProvider(createProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
@@ -584,7 +561,7 @@ describe("TickerResearchPane", () => {
     );
 
     await flushFrame();
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(Number(receivedHeight)).toBe(17);
     expect(frame).toContain("height:17");
   });
@@ -593,7 +570,7 @@ describe("TickerResearchPane", () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={createDetailConfig("SAP")}
         ticker={createTestTicker("SAP", "SAP SE", {
@@ -632,7 +609,7 @@ describe("TickerResearchPane", () => {
     await flushFrame();
 
     // The EUR rate arrives from the market data coordinator a frame later.
-    const frame = await createTestControls(() => testSetup!).waitForFrameToContain("2.20B USD");
+    const frame = await tui.waitForFrameToContain("2.20B USD");
     expect(frame).toContain("€125");
     expect(frame).toContain("Account");
     expect(frame).toContain("Qty");
@@ -656,7 +633,7 @@ describe("TickerResearchPane", () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={gatewayConfig}
         ticker={createTestTicker("AAPL")}
@@ -673,7 +650,7 @@ describe("TickerResearchPane", () => {
     });
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("active:ibkr-trade");
     expect(frame).not.toContain("Trade");
   });
@@ -686,7 +663,7 @@ describe("TickerResearchPane", () => {
       close: 100 + index,
     }));
 
-    testSetup = await testRender(
+    await tui.render(
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
@@ -698,12 +675,12 @@ describe("TickerResearchPane", () => {
     await flushFrame();
     // The chart is not interactive here, so the click has to bubble out of
     // the plot surface to the overview's handler.
-    const lines = testSetup.captureCharFrame().split("\n");
+    const lines = tui.frame().split("\n");
     const plotRow = lines.findIndex((line) => line.includes("$120"));
     expect(plotRow).toBeGreaterThan(0);
     await act(async () => {
-      await testSetup!.mockMouse.click(5, plotRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(5, plotRow);
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 

@@ -57,7 +57,7 @@ export function isDeviceSignInRetryKey(event: KeyboardModifierEventLike, snapsho
     || (isPlainKey(event, "enter", "return") && snapshot.phase === "denied");
 }
 
-export function deviceSignInStatus(snapshot: DeviceSignInSnapshot): { text: string; color: string } {
+function deviceSignInStatus(snapshot: DeviceSignInSnapshot): { text: string; color: string } {
   switch (snapshot.phase) {
     case "approved": {
       const email = snapshot.user?.email?.trim() || snapshot.user?.username?.trim() || "";

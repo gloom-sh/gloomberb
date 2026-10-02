@@ -52,10 +52,12 @@ beforeEach(() => {
   };
   apiClient.getAccountProfile = async () => { profileRequests += 1; throw new ApiRequestError("Controlled outage", 503); };
   apiClient.getChatState = async () => emptyState;
-  apiClient.subscribeChatNotifications = apiClient.subscribeChatPresence = (() => {
+  const subscribe = () => {
     activeSubscriptions += 1;
     return () => { activeSubscriptions -= 1; };
-  }) as typeof apiClient.subscribeChatNotifications;
+  };
+  apiClient.subscribeChatNotifications = subscribe;
+  apiClient.subscribeChatPresence = subscribe;
 });
 afterEach(() => {
   controller.dispose();

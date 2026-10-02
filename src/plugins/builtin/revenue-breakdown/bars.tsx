@@ -15,7 +15,7 @@ import { BAR_CELLS_PER_QUARTER } from "./model";
 const RAMP = "▁▂▃▄▅▆▇█";
 const TERMINAL_GAP = "·";
 
-export function terminalBarGlyph(level: number): string {
+function terminalBarGlyph(level: number): string {
   return RAMP[Math.min(RAMP.length, Math.max(1, Math.round(level * RAMP.length))) - 1]!;
 }
 

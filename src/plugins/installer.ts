@@ -4,7 +4,8 @@ import { execFile as execFileCallback, execFileSync, spawn } from "child_process
 import { promisify } from "util";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./builtin/plugin-marketplace/store";
-import { linkHostPackages } from "./host-link";
+import { bunCommand } from "./dependencies";
+import { linkHostPackages, missingPeerPlugins } from "./host-link";
 import {
   findAbsorbedCheckout,
   getPluginsDir,
@@ -13,6 +14,7 @@ import {
   readPluginCommit,
   resolvePluginEntry,
 } from "./loader";
+import { pluginDirectoryNames } from "./plugin-names";
 import { pluginFromModule } from "./plugin-export";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
@@ -241,7 +243,10 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
   // symlinked in instead, and pulling a second full copy here would both
   // waste a lot of disk and risk a duplicate React.
   const output = quiet ? "pipe" : "inherit";
-  const result = await run("bun", ["install", "--production"], targetDir, { stdout: output, stderr: output }).catch(() => null);
+  const bun = bunCommand();
+  const result = bun
+    ? await run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env).catch(() => null)
+    : null;
   if (result?.code !== 0 && !quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
 
   // After `bun install`, which prunes links it does not know about.
@@ -526,7 +531,15 @@ export async function installListedPlugin(
   const listing = (listings ?? await loadRegistryListings()).get(repo);
   const required = requiredGloomberb(listing?.minGloomberb);
   if (required) fail(`${ref} needs Gloomberb ${required}, this is ${VERSION}.`, "Update Gloomberb first.");
-  return installPlugin(ref, { ...options, ...(listing?.pin ? { pin: listing.pin } : {}) });
+  const installed = await installPlugin(ref, { ...options, ...(listing?.pin ? { pin: listing.pin } : {}) });
+  // A plugin that imports a sibling plugin (IBKR Gateway imports Interactive
+  // Brokers) brings it along, from the same registry.
+  const known = listings ?? await loadRegistryListings();
+  for (const peer of missingPeerPlugins(installed.path)) {
+    const repo = [...known.keys()].find((candidate) => pluginDirectoryNames(peer).includes(candidate.split("/")[1] ?? ""));
+    if (repo) await installListedPlugin(repo, options, known);
+  }
+  return installed;
 }
 
 /** Folder names of every installed plugin, clones and links alike. */

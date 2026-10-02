@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { getDockedPaneIds } from "../../plugins/pane-manager/dock-tree";
+import { getDockedPaneIds } from "../../layout/pane-manager/dock-tree";
 import { BROWSER_RESEARCH_PANE_ID, createBrowserConfigStore } from "./config-host";
 import type { StorageLike } from "../../data/json-storage";
 

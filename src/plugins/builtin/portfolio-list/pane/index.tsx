@@ -1,5 +1,4 @@
 import { Box } from "../../../../ui";
-import { colors } from "../../../../theme/colors";
 import { describeFundamentalMarketCap } from "../../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -29,7 +28,12 @@ import { getSharedMarketDataCoordinator } from "../../../../market-data/coordina
 import type { TickerRecord } from "../../../../types/ticker";
 import type { PaneProps } from "../../../../types/plugin";
 import type { InstrumentRef } from "../../../../market-data/request-types";
-import { calculatePortfolioSummaryTotals, resolveCollectionSortPreference, type ColumnContext } from "../metrics";
+import {
+  calculatePortfolioSummaryTotals,
+  resolveCollectionSortPreference,
+  resolvePortfolioTotalsCurrency,
+  type ColumnContext,
+} from "../metrics";
 import {
   cashMarginDrawerHeight,
   PortfolioCashMarginDrawer,
@@ -156,12 +160,17 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     [columns],
   );
 
+  // Totals, money columns and account values are in the portfolio's currency.
+  const totalsCurrency = useMemo(
+    () => resolvePortfolioTotalsCurrency(currentPortfolio, config.baseCurrency),
+    [config.baseCurrency, currentPortfolio],
+  );
   const trackedCurrencies = useMemo(
-    () => buildTrackedCurrencies(tickers, financialsMap, accountState, config.baseCurrency),
-    [accountState, config.baseCurrency, financialsMap, tickers],
+    () => buildTrackedCurrencies(tickers, financialsMap, accountState, totalsCurrency),
+    [accountState, financialsMap, tickers, totalsCurrency],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
-  const conversionCurrencies = trackedCurrencies.some((currency) => currency !== config.baseCurrency) ? trackedCurrencies : [];
+  const conversionCurrencies = trackedCurrencies.some((currency) => currency !== totalsCurrency) ? trackedCurrencies : [];
   const fxStatus = summarizeFxRates(conversionCurrencies, exchangeRates, (currency) => getSharedMarketDataCoordinator()?.getFxEntry(currency));
   const fxStatusText = fxStatusLabel(fxStatus);
   const activeSort = resolveCollectionSortPreference(activeCollectionId, isPortfolioTab, collectionSorts);
@@ -172,13 +181,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => needsWeightTotal ? calculatePortfolioSummaryTotals(
       tickers,
       financialsMap,
-      config.baseCurrency,
+      totalsCurrency,
       exchangeRates,
       isPortfolioTab,
       activeCollectionId,
     ).totalMktValue : undefined,
     [financialsMap],
-    [activeCollectionId, config.baseCurrency, exchangeRates, isPortfolioTab, needsWeightTotal, tickers],
+    [activeCollectionId, exchangeRates, isPortfolioTab, needsWeightTotal, tickers, totalsCurrency],
     WEIGHT_TOTAL_THROTTLE_MS,
   );
 
@@ -188,20 +197,20 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => calculatePortfolioSummaryTotals(
       tickers,
       financialsMap,
-      config.baseCurrency,
+      totalsCurrency,
       exchangeRates,
       isPortfolioTab,
       activeCollectionId,
     ),
     [financialsMap],
-    [activeCollectionId, config.baseCurrency, exchangeRates, isPortfolioTab, tickers],
+    [activeCollectionId, exchangeRates, isPortfolioTab, tickers, totalsCurrency],
     FOOTER_TOTALS_THROTTLE_MS,
   );
 
   const now = useColumnClock(columns, appActive && viewMode === "table");
   const baseColumnContext = useMemo(() => ({
     activeTab: isPortfolioTab ? activeCollectionId : undefined,
-    baseCurrency: config.baseCurrency,
+    baseCurrency: totalsCurrency,
     exchangeRates,
     portfolioTotalMarketValue,
     supplementalVersion: supplementalData.version,
@@ -210,11 +219,11 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     earningsEvents: supplementalData.earningsEvents,
   }), [
     activeCollectionId,
-    config.baseCurrency,
     exchangeRates,
     isPortfolioTab,
     portfolioTotalMarketValue,
     supplementalData,
+    totalsCurrency,
   ]);
   const columnContext: ColumnContext = useMemo(() => ({ ...baseColumnContext, now }), [baseColumnContext, now]);
   // The order only follows the per-second clock when sorting by quote age;
@@ -272,15 +281,17 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   );
   const accountCurrency = accountState?.account.currency ?? "";
   const convertAccountValue = useCallback(
-    (value: number) => convertCurrency(value, accountCurrency, config.baseCurrency, exchangeRates),
-    [accountCurrency, config.baseCurrency, exchangeRates],
+    (value: number) => convertCurrency(value, accountCurrency, totalsCurrency, exchangeRates),
+    [accountCurrency, exchangeRates, totalsCurrency],
   );
   const summarySegments = useMemo(() => buildPortfolioSummarySegments({
     totals: portfolioSummaryTotals,
     accountState: summaryAccountState,
     isPortfolioTab,
     convertAccountValue,
-  }), [convertAccountValue, isPortfolioTab, portfolioSummaryTotals, summaryAccountState]);
+    currency: totalsCurrency,
+    baseCurrency: config.baseCurrency,
+  }), [config.baseCurrency, convertAccountValue, isPortfolioTab, portfolioSummaryTotals, summaryAccountState, totalsCurrency]);
   // The header row sits in the pane's one-cell side padding, like the table.
   const summaryWidth = Math.max(0, width - 2);
   const summaryLayout = useMemo(() => layoutPortfolioSummaryHeader(summarySegments, summaryWidth, {
@@ -438,7 +449,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     ? buildPortfolioSummaryNotices({
       totals: portfolioSummaryTotals,
       accountState: summaryAccountState,
-      baseCurrency: config.baseCurrency,
+      baseCurrency: totalsCurrency,
       convertAccountValue,
       fxStatus: fxWarning ? fxStatus : undefined,
     })

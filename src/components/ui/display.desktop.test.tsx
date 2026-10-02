@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { createDomTestHarness } from "../../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import { syncTheme } from "../../theme/colors";
 import { ThemeProvider } from "../../theme/theme-context";
 import { DEFAULT_THEME } from "../../theme/themes";

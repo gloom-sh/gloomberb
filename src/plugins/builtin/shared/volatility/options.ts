@@ -70,7 +70,7 @@ export function optionMid(quote: Pick<ParityQuote, "bid" | "ask">): number | nul
     ? quote.bid + (quote.ask - quote.bid) / 2 : null;
 }
 
-export interface ParityPair {
+interface ParityPair {
   strike: number;
   forward: number;
   forwardBid: number;

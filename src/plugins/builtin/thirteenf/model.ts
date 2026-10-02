@@ -78,7 +78,7 @@ export function inferBrowserTabFromQuery(query: string): ThirteenFBrowserTab {
   return "funds";
 }
 
-export function normalizeQuarterDate(value: Date): string {
+function normalizeQuarterDate(value: Date): string {
   const year = value.getUTCFullYear();
   const month = value.getUTCMonth();
   const quarter = Math.floor(month / 3) + 1;

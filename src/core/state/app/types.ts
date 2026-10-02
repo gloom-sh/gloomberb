@@ -46,7 +46,7 @@ interface CommandBarRunQueryLaunchRequest extends CommandBarLaunchRequestBase {
 }
 
 /** Forms open in their own modal (`openFormModal`), so the bar launches only its own screens. */
-export type CommandBarLaunch =
+type CommandBarLaunch =
   | { kind: "ticker-search"; query?: string }
   | { kind: "run-query"; query: string };
 
@@ -60,7 +60,11 @@ export interface AppState {
    */
   exchangeRates: Map<string, number>;
   brokerAccounts: Record<string, BrokerAccount[]>;
-  activePanel: "left" | "right";
+  /**
+   * @deprecated Never set. The app has no left or right panel state; read
+   * `focusedPaneId` for the focused pane.
+   */
+  activePanel?: "left" | "right";
   focusedPaneId: string | null;
   previousFocusedPaneId: string | null;
   paneState: Record<string, PaneRuntimeState>;
@@ -100,6 +104,10 @@ export type AppAction =
   | { type: "HYDRATE_FINANCIALS"; financials: Map<string, TickerFinancials> }
   /** @deprecated Never dispatched by the app. Recent tickers follow a pane's `cursorSymbol`. */
   | { type: "TRACK_TICKER"; symbol: string | null }
+  /**
+   * @deprecated Focuses the leftmost or rightmost docked pane, and does nothing
+   * with `preserveFocus`. Use `switchPanel` or `FOCUS_PANE`.
+   */
   | { type: "SET_ACTIVE_PANEL"; panel: "left" | "right"; preserveFocus?: boolean }
   | { type: "TOGGLE_COMMAND_BAR" }
   | {

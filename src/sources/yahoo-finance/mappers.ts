@@ -87,7 +87,7 @@ function monthEndAfter(date: string, months: number): string | undefined {
  * The quote summary can label the next quarter with the current quarter's end
  * (ADBE: both 2026-11-30). A following period ends after the one before it.
  */
-export function withOrderedTrendPeriodEnds(trend: YahooEarningsTrend[]): YahooEarningsTrend[] {
+function withOrderedTrendPeriodEnds(trend: YahooEarningsTrend[]): YahooEarningsTrend[] {
   const endOf = (period: string) => trend.find((row) => row.period === period)?.endDate;
   return trend.map((row) => {
     const [previous, months] = row.period === "+1q" ? ["0q", 3] as const : row.period === "+1y" ? ["0y", 12] as const : [];

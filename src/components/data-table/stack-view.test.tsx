@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useRef, useState } from "react";
-import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -27,16 +27,11 @@ const rows: Row[] = [
   { id: "second", title: "Second row", body: "Second detail" },
 ];
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
+afterEach(() => {
   prefetched = [];
   detailScrollBox = null;
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 let prefetched: string[] = [];
@@ -129,26 +124,26 @@ function LongDetailPane({ focused, width, height }: PaneProps) {
 
 async function renderSettled() {
   await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
-const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
+const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event);
 
 describe("DataTableStackView", () => {
   test("owns table navigation, detail open, and back navigation", async () => {
-    testSetup = await testRender(<Harness />, { width: 60, height: 12 });
+    await tui.render(<Harness />, { width: 60, height: 12 });
 
     await renderSettled();
-    expect(testSetup.captureCharFrame()).toContain("First row");
-    expect(testSetup.captureCharFrame()).not.toContain("j/k move");
+    expect(tui.frame()).toContain("First row");
+    expect(tui.frame()).not.toContain("j/k move");
 
     await emitKeypress({ name: "j", sequence: "j" });
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
 
-    const detailFrame = testSetup.captureCharFrame();
+    const detailFrame = tui.frame();
     expect(detailFrame).toContain("\u2190 Back");
     expect(detailFrame).toContain("\u2190 Back Second row");
     expect(detailFrame).toContain("Second detail");
@@ -156,20 +151,20 @@ describe("DataTableStackView", () => {
     await emitKeypress({ name: "escape", sequence: "\u001b" });
     await renderSettled();
 
-    const rootFrame = testSetup.captureCharFrame();
+    const rootFrame = tui.frame();
     expect(rootFrame).toContain("Second row");
     expect(rootFrame).not.toContain("Second detail");
 
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
-    expect(testSetup.captureCharFrame()).toContain("Second detail");
+    expect(tui.frame()).toContain("Second detail");
     await emitKeypress({ name: "backspace", sequence: "\u007f" });
     await renderSettled();
-    expect(testSetup.captureCharFrame()).not.toContain("Second detail");
+    expect(tui.frame()).not.toContain("Second detail");
   });
 
   test("warms the detail of the row the cursor rests on, not the rows it passes", async () => {
-    testSetup = await testRender(<Harness />, { width: 60, height: 12 });
+    await tui.render(<Harness />, { width: 60, height: 12 });
     await renderSettled();
     // Mounting selects the first row without a cursor move; nothing is warmed.
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, DETAIL_PREFETCH_REST_MS + 30)); });
@@ -186,7 +181,7 @@ describe("DataTableStackView", () => {
 
   test("steps an open detail one line per key, where the pane scroll keys would page it", async () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-data-table-stack-view-test"));
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <PaneContent component={LongDetailPane} paneId="test-pane:main" paneType="test-pane" focused width={40} height={12} />
       </AppContext>,
@@ -195,21 +190,21 @@ describe("DataTableStackView", () => {
     await renderSettled();
     const press = (key: () => void) => act(async () => {
       key();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    await press(() => testSetup!.mockInput.pressEnter());
+    await press(() => tui.setup().mockInput.pressEnter());
     await renderSettled();
     expect(detailScrollBox?.scrollTop).toBe(0);
 
-    await press(() => testSetup!.mockInput.pressKey("j"));
-    await press(() => testSetup!.mockInput.pressArrow("down"));
+    await press(() => tui.setup().mockInput.pressKey("j"));
+    await press(() => tui.setup().mockInput.pressArrow("down"));
     expect(detailScrollBox?.scrollTop).toBe(2);
 
-    await press(() => testSetup!.mockInput.pressKey("k"));
+    await press(() => tui.setup().mockInput.pressKey("k"));
     expect(detailScrollBox?.scrollTop).toBe(1);
-    await press(() => testSetup!.mockInput.pressArrow("up"));
-    await press(() => testSetup!.mockInput.pressArrow("up"));
+    await press(() => tui.setup().mockInput.pressArrow("up"));
+    await press(() => tui.setup().mockInput.pressArrow("up"));
     expect(detailScrollBox?.scrollTop).toBe(0);
   });
 });

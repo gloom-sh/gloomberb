@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -40,15 +40,11 @@ const payload: RotationPayload = buildRotation(
   new Date("2026-09-22T12:00:00Z"),
 );
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 async function settle() {
   for (let i = 0; i < 8; i += 1) {
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await setup!.renderOnce(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce(); });
   }
 }
 
@@ -66,9 +62,9 @@ async function render(width: number, height: number): Promise<string[]> {
       {(body) => <RelativeRotationPane paneId="rrg" paneType="relative-rotation" focused {...body} />}
     </TestPaneFrame>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height }); });
+  await act(async () => { await tui.render(<Harness />, { width, height }); });
   await settle();
-  return setup!.captureCharFrame().split("\n");
+  return tui.frame().split("\n");
 }
 
 const tableHeader = (lines: string[]) => lines.findIndex((line) => line.includes("ETF") && line.includes("QUADRANT"));
@@ -98,9 +94,9 @@ test("the first row is selected by default, so the cursor reads it; moving the s
   // The cursor's strength sits on the axis row and its momentum in the gutter.
   expect(lines[header - 1]).toContain(first!.strength!.toFixed(2));
   expect(lines.slice(0, header).some((line) => line.trimEnd().endsWith(first!.momentum!.toFixed(1)))).toBe(true);
-  await emitKeypress(setup!, { name: "down" });
+  await tui.emitKeypress({ name: "down" });
   await settle();
-  const moved = setup!.captureCharFrame().split("\n");
+  const moved = tui.frame().split("\n");
   expect(moved[header - 1]).toContain(second!.strength!.toFixed(2));
   expect(moved[header - 1]).not.toContain(first!.strength!.toFixed(2));
 });

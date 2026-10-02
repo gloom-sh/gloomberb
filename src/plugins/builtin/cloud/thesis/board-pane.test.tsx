@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudThesis, type ThesisSignal } from "../../../../api-client";
 import { PaneFooterProvider } from "../../../../components/layout/pane/footer";
-import { TestDialogProvider, testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, TestDialogProvider } from "../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../../state/app/context";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
@@ -11,8 +11,7 @@ import { Box, Text } from "../../../../ui";
 import { ThesisBoardPane } from "./board-pane";
 import { thesisStore } from "./store";
 
-type Setup = Awaited<ReturnType<typeof testRender>>;
-let setup: Setup | undefined;
+const tui = createOpenTuiTestHarness();
 
 const PANE_ID = "thesis-test-pane";
 
@@ -158,13 +157,7 @@ beforeEach(() => {
   expect(apiClient.isVerified()).toBe(true);
 });
 
-afterEach(async () => {
-  if (setup) {
-    await act(async () => {
-      setup!.renderer.destroy();
-    });
-    setup = undefined;
-  }
+afterEach(() => {
   thesisStore.dispose();
   (thesisStore as unknown as { update: (patch: object) => void }).update({ theses: [], loaded: false, loading: false, error: null, offline: false });
   apiClient.setSessionToken(null);
@@ -174,10 +167,10 @@ describe("ThesisBoardPane", () => {
   test("lists theses needing attention first, then active ones, then positions without a thesis", async () => {
     thesisStore.start();
     await act(async () => {
-      setup = await testRender(<Harness />, { width: 110, height: 30 });
+      await tui.render(<Harness />, { width: 110, height: 30 });
     });
     await flush();
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(requests).toContain("GET /theses");
     const rows = ["NVDA", "ASML", "AAPL"].map((symbol) => frame.indexOf(symbol));
     expect(rows.every((index) => index >= 0)).toBe(true);
@@ -197,30 +190,30 @@ describe("ThesisBoardPane", () => {
     thesisStore.attach({ getState: (key: string) => saved.get(key) ?? null, setState: (key: string, value: unknown) => { saved.set(key, value); } } as unknown as PluginPersistence);
     thesisStore.start();
     await act(async () => {
-      setup = await testRender(<Harness />, { width: 110, height: 30 });
+      await tui.render(<Harness />, { width: 110, height: 30 });
     });
     await flush(null);
-    const loading = setup!.captureCharFrame();
+    const loading = tui.frame();
     expect(loading).toContain("ASML");
     expect(loading).toContain("footer: loading");
     expect(loading).not.toContain("offline copy");
     await act(async () => { failList(new Error("network down")); });
     await flush(null);
-    expect(setup!.captureCharFrame()).toContain("offline copy");
+    expect(tui.frame()).toContain("offline copy");
   });
 
   test("enter opens the thesis with its pillars and the open signal's source", async () => {
     thesisStore.start();
     await act(async () => {
-      setup = await testRender(<Harness />, { width: 110, height: 30 });
+      await tui.render(<Harness />, { width: 110, height: 30 });
     });
     await flush();
     await act(async () => {
-      setup!.mockInput.pressEnter();
-      await setup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await flush();
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(requests).toContain("GET /theses/t-nvda");
     expect(frame).toContain("Data center revenue grows over 50% YoY");
     expect(frame).toContain("10-Q: Q3 gross margin guide 72-73%");

@@ -95,7 +95,7 @@ const COLUMNS_BY_STATUS: Record<MnaStatusFilter, ColumnId[]> = {
 const DROP_ORDER: ColumnId[] = ["price", "close", "date", "value", "annualized", "terms", "stage", "acquirer", "spread"];
 
 /** Columns that fit `width`; `targetWidth` widens the target column, e.g. for the unlock prompt. */
-export function mnaColumns(status: MnaStatusFilter, width: number, targetWidth = COLUMNS.target.width): DataTableColumn[] {
+function mnaColumns(status: MnaStatusFilter, width: number, targetWidth = COLUMNS.target.width): DataTableColumn[] {
   const widthOf = (id: ColumnId) => (id === "target" ? Math.max(COLUMNS.target.width, targetWidth) : COLUMNS[id].width);
   let ids = [...COLUMNS_BY_STATUS[status]];
   const need = (list: ColumnId[]) => list.reduce((sum, id) => sum + widthOf(id) + 1, 0);
@@ -134,7 +134,7 @@ export function MnaTickerTab({ focused, width, height }: TickerResearchTabProps)
   return <MnaDealsView key={symbol} focused={focused} width={width} height={height} symbol={symbol} />;
 }
 
-export function MnaDealsView({ focused, width, height, symbol }: {
+function MnaDealsView({ focused, width, height, symbol }: {
   focused: boolean;
   width: number;
   height: number;

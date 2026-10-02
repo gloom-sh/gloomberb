@@ -175,7 +175,7 @@ export interface ScreenerQuote {
   previousClose?: number;
 }
 
-export type MarketMoversDataSource = "cloud" | "yahoo";
+type MarketMoversDataSource = "cloud" | "yahoo";
 
 export interface MarketMoversResult {
   quotes: ScreenerQuote[];

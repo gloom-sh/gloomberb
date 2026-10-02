@@ -54,7 +54,7 @@ const COLUMNS = [
   },
 ];
 
-export function projectWorldIndicesHeadless(
+function projectWorldIndicesHeadless(
   entries: readonly IndexEntry[],
   loaded: WorldIndexQuoteResult,
 ): HeadlessBundleResult {
@@ -89,7 +89,7 @@ export function projectWorldIndicesHeadless(
   };
 }
 
-export interface WorldIndicesHeadlessDependencies {
+interface WorldIndicesHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     entries: readonly IndexEntry[],
@@ -101,7 +101,7 @@ const defaultDependencies: WorldIndicesHeadlessDependencies = {
   load: (_args, entries, provider) => loadWorldIndexQuotes(entries, provider),
 };
 
-export function createWorldIndicesHeadless(
+function createWorldIndicesHeadless(
   dependencies: WorldIndicesHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"bundle"> {
   return {

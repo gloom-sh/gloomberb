@@ -213,7 +213,7 @@ export const SP500_DIVIDEND_YIELD: IndicatorDef = {
   link: { url: "https://en.wikipedia.org/wiki/Dividend_yield", label: "Dividend yield, Wikipedia" },
 };
 
-export const HOUSEHOLD_EQUITY_ALLOCATION: IndicatorDef = {
+const HOUSEHOLD_EQUITY_ALLOCATION: IndicatorDef = {
   id: "household-equity-allocation",
   label: "Investor Equity Allocation",
   shortLabel: "Equity alloc",
@@ -249,7 +249,7 @@ export const HOUSEHOLD_EQUITY_ALLOCATION: IndicatorDef = {
   },
 };
 
-export const MARKET_CAP_TO_M2: IndicatorDef = {
+const MARKET_CAP_TO_M2: IndicatorDef = {
   id: "market-cap-m2",
   label: "Market Cap to M2",
   shortLabel: "Cap / M2",
@@ -281,7 +281,7 @@ export const MARKET_CAP_TO_M2: IndicatorDef = {
   link: { url: "https://fred.stlouisfed.org/series/M2SL", label: "M2 money stock, FRED" },
 };
 
-export const MARGIN_DEBT_TO_GDP: IndicatorDef = {
+const MARGIN_DEBT_TO_GDP: IndicatorDef = {
   id: "margin-debt-gdp",
   label: "Margin Debt to GDP",
   shortLabel: "Margin debt",
@@ -318,7 +318,7 @@ export const MARGIN_DEBT_TO_GDP: IndicatorDef = {
   },
 };
 
-export const MARKET_CAP_TO_PROFITS: IndicatorDef = {
+const MARKET_CAP_TO_PROFITS: IndicatorDef = {
   id: "market-cap-profits",
   label: "Market Cap to Corporate Profits",
   shortLabel: "Cap / profits",

@@ -6,14 +6,18 @@ import {
   type PaneInstanceConfig,
 } from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
+import { paneTitleMnemonic } from "../../../layout/pane-follow";
+import { canFollowTickerSource } from "../../../layout/ticker-navigation";
 
 /** Single-cell link glyph: emoji link icons render double-width in terminals. */
 const LINK_GLYPH = "\u29c9";
 
-function getBasePaneDisplayTitle(
+/** The title without the link suffix; a menu row naming a source uses it as is. */
+export function getBasePaneDisplayTitle(
   state: Pick<AppState, "config" | "paneState">,
   instance: PaneInstanceConfig,
   paneDef: PaneDef,
+  panes?: ReadonlyMap<string, PaneDef>,
 ): string {
   if (instance.paneId === "chat") {
     const channelId = typeof instance.settings?.channelId === "string" && instance.settings.channelId.trim()
@@ -34,6 +38,15 @@ function getBasePaneDisplayTitle(
       ?? state.config.watchlists.find((watchlist) => watchlist.id === collectionId)?.name
       ?? instance.title
       ?? t(paneDef.name);
+  }
+
+  // A linked pane stores only its command ("OPX") and shows the ticker its source has selected.
+  const mnemonic = instance.binding?.kind === "follow" && panes && canFollowTickerSource(instance, panes)
+    ? paneTitleMnemonic(instance.title)
+    : null;
+  if (mnemonic) {
+    const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
+    return ticker ? `${mnemonic} ${ticker}` : mnemonic;
   }
 
   if (instance.title) return instance.title;
@@ -58,14 +71,17 @@ export function getPaneDisplayTitle(
   paneDef: PaneDef,
   panes?: ReadonlyMap<string, PaneDef>,
 ): string {
-  const title = getBasePaneDisplayTitle(state, instance, paneDef);
-  if (instance.paneId !== TICKER_RESEARCH_PANE_ID || instance.binding?.kind !== "follow" || !panes) {
-    return title;
-  }
+  const title = getBasePaneDisplayTitle(state, instance, paneDef, panes);
+  if (instance.binding?.kind !== "follow" || !panes) return title;
+  const research = instance.paneId === TICKER_RESEARCH_PANE_ID;
+  if (!research && !canFollowTickerSource(instance, panes)) return title;
 
   const source = findPaneInstance(state.config.layout, instance.binding.sourceInstanceId);
   const sourceDef = source ? panes.get(source.paneId) : null;
   if (!source || !sourceDef) return title;
+  // Other panes name only the list or scanner they follow; one chained to a fixed pane (a desk's
+  // OMON following OVDV) reads as it always has.
+  if (!research && !sourceDef.tickerSource) return title;
   const sourceTitle = getBasePaneDisplayTitle(state, source, sourceDef);
   return `${title}  ${LINK_GLYPH} ${tf("Linked to {source}", { source: sourceTitle })}`;
 }

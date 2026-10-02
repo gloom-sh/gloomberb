@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { ScrollBoxRenderable } from "../../../ui";
 import type { AppState } from "../../../state/app/context";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 import type { CommandBarPanelProps } from "./types";
 import { useCommandBarKeyboardShortcuts } from "../keyboard-shortcuts";
 import { useCommandBarListNavigation } from "../list/navigation";

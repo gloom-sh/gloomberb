@@ -1,10 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
+  // package.json "exports" are entries too, so the public plugin API is never
+  // reported. Types in the public folders that no entry re-exports yet carry a
+  // @public JSDoc tag instead.
   "entry": [
     "bin/gloomberb",
     "electrobun.config.ts",
     "scripts/install-electrobun-tui-shim.ts",
-    "src/cli/entry.ts",
+    // Preloaded by path in scripts/benchmark-tui-memory.ts.
+    "scripts/heap-probe.ts",
     "src/renderers/electrobun/bun/index.ts",
     "src/renderers/electrobun/bun/tui-entry.ts",
     "src/renderers/electrobun/view/main.tsx",
@@ -18,6 +22,10 @@
     "scripts/**/*.ts",
     "src/**/*.{ts,tsx}"
   ],
+  // Some tests write a script that imports app modules, then compile and run
+  // it. Knip cannot follow imports inside those strings, so the exports they
+  // use are tagged @knipignore with the test that needs them.
+  "tags": ["-knipignore"],
   "ignoreDependencies": [
     // Run by path from node_modules to build and embed the Windows app icon.
     "png-to-ico",
@@ -25,7 +33,6 @@
     // electrobun ships TypeScript source that imports three, which has no types of its own.
     "@types/three",
     // Loaded by package name through WEB_BUNDLED_PLUGIN_PACKAGES in src/plugins/web-bundled.ts.
-    "gloom-ipo-calendar",
     "gloom-polls",
     "gloom-prediction-markets"
   ]

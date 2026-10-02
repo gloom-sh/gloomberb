@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { act, useMemo, useState, type ReactNode } from "react";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../../../ui";
-import { createDomTestHarness } from "../../../../renderers/electrobun/view/test-utils";
-import { WebIcon, WebIconButton } from "../../../../renderers/electrobun/view/desktop/icons";
+import { createDomTestHarness } from "../../../../renderers/dom/test-utils";
+import { WebIcon, WebIconButton } from "../../../../renderers/dom/desktop/icons";
 import { PaneFooterBar, PaneFooterProvider, usePaneFooter, type PaneFooterSegment } from "./index";
 
 const { render } = createDomTestHarness();

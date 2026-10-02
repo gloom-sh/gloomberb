@@ -1,7 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
@@ -14,7 +14,7 @@ const TEST_PANE_ID = "analyst-research:NKE";
 const WIDTH = 96;
 const HEIGHT = 20;
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 const research: AnalystResearchData = {
   providerId: "test",
@@ -86,22 +86,15 @@ async function renderHarness(data: AnalystResearchData, height = HEIGHT): Promis
     getAnalystResearch: async () => data,
   } as unknown as DataProvider;
   await act(async () => {
-    testSetup = await testRender(<AnalystHarness provider={provider} height={height} />, { width: WIDTH, height });
+    await tui.render(<AnalystHarness provider={provider} height={height} />, { width: WIDTH, height });
   });
   for (let attempt = 0; attempt < 6; attempt += 1) {
     await act(async () => {
       await Bun.sleep(1);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
-
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => testSetup!.renderer.destroy());
-    testSetup = undefined;
-  }
-});
 
 /**
  * The pane used to reach a source that carries the aggregate price target but
@@ -114,7 +107,7 @@ test("renders each rating's price target and only dashes the rows without one", 
     recommendations: [{ period: "0m", strongBuy: 5, buy: 10, hold: 8, sell: 1, strongSell: 1 }],
   });
 
-  const frame = testSetup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toMatch(/Consensus\s+\$50\.46/);
   // Strong ratings fold into Buy and Sell, drawn as one split bar.
   expect(frame).toMatch(/Ratings\s+15 Buy · 8 Hold · 2 Sell █+/);
@@ -141,7 +134,7 @@ test("arrows walk the actions while the consensus context stays in the status ba
   }));
   await renderHarness({ ...research, ratings, fetchedAt: "2026-08-27T10:00:00Z" }, 24);
 
-  const before = testSetup!.captureCharFrame();
+  const before = tui.frame();
   expect(before).toContain("low $23.00 med $46.50 high $94.00");
   expect(before).toContain("rating 6.1/10");
   expect(before).toContain("upside vs $38.40");
@@ -156,10 +149,10 @@ test("arrows walk the actions while the consensus context stays in the status ba
   expect(before).toContain("Firm 00");
   expect(before).not.toContain(offscreenFirm);
   for (let step = 0; step < 20; step += 1) {
-    await emitKeypress(testSetup!, { name: "down", sequence: "\u001b[B" }, { frames: 2 });
+    await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { frames: 2 });
   }
-  await act(async () => { await Bun.sleep(200); await testSetup!.renderOnce(); });
-  expect(testSetup!.captureCharFrame()).toContain(offscreenFirm);
+  await act(async () => { await Bun.sleep(200); await tui.setup().renderOnce(); });
+  expect(tui.frame()).toContain(offscreenFirm);
 });
 
 test("the selected action is the mean-target cursor, and a short pane keeps the actions", async () => {
@@ -172,19 +165,17 @@ test("the selected action is the mean-target cursor, and a short pane keeps the 
   }));
   await renderHarness({ ...research, ratings }, 24);
   // Every firm's latest target: 40 through 51.
-  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target\s+12 firms/);
-  await emitKeypress(testSetup!, { name: "down", sequence: "\u001b[B" }, { frames: 2 });
-  await act(async () => { await Bun.sleep(200); await testSetup!.renderOnce(); });
+  expect(tui.frame()).toMatch(/● Mean target\s+12 firms/);
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { frames: 2 });
+  await act(async () => { await Bun.sleep(200); await tui.setup().renderOnce(); });
   // The day before, Firm 00 had not published: 41 through 51.
-  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target\s+11 firms/);
-  await emitKeypress(testSetup!, { name: "left" }, { frames: 2 });
-  await act(async () => { await Bun.sleep(50); await testSetup!.renderOnce(); });
-  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target\s+10 firms/);
-  await act(async () => testSetup!.renderer.destroy());
-
+  expect(tui.frame()).toMatch(/● Mean target\s+11 firms/);
+  await tui.emitKeypress({ name: "left" }, { frames: 2 });
+  await act(async () => { await Bun.sleep(50); await tui.setup().renderOnce(); });
+  expect(tui.frame()).toMatch(/● Mean target\s+10 firms/);
   // Eleven rows: the figures, the strip, then the table's header and rows.
   await renderHarness({ ...research, ratings }, 11);
-  const lines = testSetup!.captureCharFrame().split("\n");
+  const lines = tui.frame().split("\n");
   expect(lines[1]).toMatch(/^ ● Mean target [⠀-⣿]+\s*$/);
   expect(lines[2]).toContain("FIRM");
   expect(lines.filter((line) => line.includes("Raises")).length).toBeGreaterThanOrEqual(4);

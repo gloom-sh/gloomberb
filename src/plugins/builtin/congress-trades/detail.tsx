@@ -1,6 +1,6 @@
 import { aggregateLoadedCongress } from "./aggregates";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text, TextAttributes, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, Text, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableView,
   KeyValueRow,

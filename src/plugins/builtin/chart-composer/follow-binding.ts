@@ -3,7 +3,7 @@ import type { ChartSpec } from "../../../time-series/types";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { instrumentIdentityKey } from "../../../utils/instrument-identity";
 import { isSameFuturesGeneric } from "../../../utils/futures-generic";
-import { rebindChartSecuritySymbol, rebindResearchChartSpec } from "./presets";
+import { rebindChartSecuritySymbol, rebindResearchChartSpec } from "./chart-spec-edit";
 
 export const CHART_FOLLOW_SERIES_SETTING_KEY = "chartFollowSeriesIds";
 

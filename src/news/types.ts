@@ -68,7 +68,7 @@ export interface NewsQuery {
   cursor?: string;
 }
 
-export type NewsQueryPhase = "idle" | "loading" | "ready" | "refreshing" | "error";
+type NewsQueryPhase = "idle" | "loading" | "ready" | "refreshing" | "error";
 
 export interface NewsPage {
   /** Active source failure, including a partial failure with usable articles. */

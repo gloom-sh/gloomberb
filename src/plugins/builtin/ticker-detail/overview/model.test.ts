@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { Fundamentals, Quote } from "../../../../types/financials";
+import type { Fundamentals, NextEarnings, Quote } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
-import { buildOverviewStats, buildPositionRows } from "./model";
+import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./model";
 import { createTestTicker } from "../../../../test-support/ticker";
 
 function overview(fundamentals: Fundamentals) {
@@ -27,6 +27,24 @@ test("summary money keeps unknown units explicit without borrowing listing curre
   expect(overview({ financialCurrency: " ", eps: 0, revenue: 0, netIncome: NaN, freeCashFlow: Infinity }))
     .toEqual({ EPS: "0.00 (ccy?)", Revenue: "0 (ccy?)", "Net Income": "—", FCF: "—" });
   expect(overview({})).toEqual({});
+});
+
+test("holdings and short interest read as fractions; blank, zero and past figures are left out", () => {
+  const figures = (fundamentals: Fundamentals, nextEarnings?: NextEarnings) => Object.fromEntries(buildOverviewStats({
+    quote: undefined, fundamentals, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value,
+    nextEarnings, today: "2026-09-30",
+  }).map(({ label, value, detail }) => [label, detail ? `${value} ${[detail].flat()[0]}` : value]));
+  expect(figures({
+    floatShares: 23.13e9, beta: 2.217, shortPercentOfFloat: 0.012719, shortRatio: 2.29,
+    institutionPercentHeld: 0.71417, insiderPercentHeld: 0.04007, exDividendDate: "2026-09-10",
+  }, { date: "2026-11-18", timing: "amc", timingSource: "history" })).toEqual({
+    Float: "23.13B", Beta: "2.22", "Short Float": "1.27% 2.3d to cover",
+    "Inst Own": "71.42%", "Insider Own": "4.01%", "Ex-Dividend": "Sep 10", Earnings: "Nov 18 AMC in 49d",
+  });
+  expect(figures({ floatShares: 0, beta: Number.NaN, exDividendDate: "" },
+    { date: "2026-09-29", timing: null, timingSource: null })).toEqual({});
+  expect(buildProfileFields({ profile: { employees: 0, website: "javascript:alert(1)", fiscalYearEnd: "13-31", sic: "" } }))
+    .toEqual([]);
 });
 
 test("declaring minor currency units preserves the reported amount and case-sensitive unit", () => {

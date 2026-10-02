@@ -75,7 +75,7 @@ export interface RemoteIncludedState {
   help?: unknown;
 }
 
-export interface RemoteControlSuccess<T = unknown> {
+interface RemoteControlSuccess<T = unknown> {
   ok: true;
   data: T;
   rev?: string;
@@ -83,7 +83,7 @@ export interface RemoteControlSuccess<T = unknown> {
   warnings?: string[];
 }
 
-export interface RemoteControlFailure {
+interface RemoteControlFailure {
   ok: false;
   error: {
     code: string;
@@ -111,7 +111,7 @@ export type RemoteSideEffectLevel =
 
 export type RemoteWriteTier = "read" | "ui-write" | "user-data" | "broker";
 
-export type RemoteJsonSchemaType =
+type RemoteJsonSchemaType =
   | "object"
   | "array"
   | "string"

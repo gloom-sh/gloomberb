@@ -1,17 +1,9 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { MarkdownText } from "./markdown-text";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (!setup) return;
-  await act(async () => {
-    setup!.renderer.destroy();
-  });
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 const COMPARISON = [
   "| | JEPQ | QQQ |",
@@ -23,12 +15,12 @@ const COMPARISON = [
 
 async function render(text: string, width: number): Promise<string[]> {
   await act(async () => {
-    setup = await testRender(<MarkdownText text={text} lineWidth={width} />, { width, height: 40 });
+    await tui.render(<MarkdownText text={text} lineWidth={width} />, { width, height: 40 });
   });
   await act(async () => {
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  return setup!.captureCharFrame().split("\n").map((line) => line.trimEnd()).filter(Boolean);
+  return tui.frame().split("\n").map((line) => line.trimEnd()).filter(Boolean);
 }
 
 describe("MarkdownText tables", () => {

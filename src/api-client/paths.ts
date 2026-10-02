@@ -35,7 +35,7 @@ export type CloudCdsHistoryParams = {
   days?: number;
 };
 
-export type CloudCongressChamber = "all" | "house" | "senate";
+type CloudCongressChamber = "all" | "house" | "senate";
 
 export type CloudCongressHouseParams = {
   /** Which feed to read; House when omitted. */
@@ -104,7 +104,7 @@ const CRYPTO_QUOTE = /[-/](USD|USDT|USDC|EUR|GBP|BTC)$/;
 
 export type CloudLogoKind = "ticker" | "crypto";
 
-export function normalizeCloudLogoSymbol(
+function normalizeCloudLogoSymbol(
   kind: CloudLogoKind,
   symbol: string,
 ): string | null {
@@ -214,6 +214,13 @@ export function cloudCdsHistoryPath(params: CloudCdsHistoryParams): string {
   const search = new URLSearchParams({ issuer: params.issuer.trim() });
   if (params.days != null) search.set("days", String(params.days));
   return appendQuery("/cloud/credit/cds/history", search);
+}
+
+/** `/cloud/credit/cdx` or `/cloud/credit/sovr`. */
+export function cloudCreditBoardPath(board: "cdx" | "sovr", params: { days?: number } = {}): string {
+  const search = new URLSearchParams();
+  if (params.days != null) search.set("days", String(params.days));
+  return appendQuery(`/cloud/credit/${board}`, search);
 }
 
 export type CloudSecFilingsParams = {

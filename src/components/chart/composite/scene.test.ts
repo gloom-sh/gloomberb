@@ -19,6 +19,24 @@ import { createTestResolvedSeries as series, createTestSeriesPoint as point } fr
 const NEWEST_X_RATIO = 1 / (1 + COMPOSITE_RIGHT_OFFSET_RATIO);
 
 describe("composite chart scene", () => {
+  test("profiles only the bars in view and reads the point of control in the legend", () => {
+    const bar = (date: string, high: number, low: number, volume: number): TimeSeriesPoint => ({
+      ...point(date, low), high, low, close: low, volume,
+    });
+    const bars = [bar("2026-01-02", 200, 190, 1_000), bar("2026-01-05", 101, 100, 10), bar("2026-01-06", 102, 101, 30)];
+    const price = series({ id: "price", points: bars });
+    const profile = series({ id: "profile", points: bars, profile: { rows: 2 } });
+    const scene = buildCompositeChartScene([price, profile], [{ id: "main" }], {
+      width: 100, height: 20, viewport: { start: new Date("2026-01-05"), end: new Date("2026-01-06") },
+    })!;
+    const panel = scene.panels[0]!;
+    // The January 2 bar is out of view, so the profile spans 100 to 102 only.
+    expect(panel.volumeProfile?.rows.map((row) => row.volume)).toEqual([10, 30]);
+    expect(panel.volumeProfile?.poc).toBe(101.5);
+    expect(panel.series.find((entry) => entry.source.id === "profile")?.points).toEqual([]);
+    expect(scene.cursorValues.find((entry) => entry.seriesId === "profile")?.value).toBe(101.5);
+  });
+
   test("default legend stays inside the viewport when the right buffer contains a newer observation", () => {
     const margin = series({ id: "margin", unit: "%", unitGroup: "percent", points: [
       point("2024-06-30", 44.64), point("2025-06-30", 45.62), point("2026-06-30", 46.78),

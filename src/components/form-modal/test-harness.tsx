@@ -1,12 +1,12 @@
-import { expect } from "bun:test";
+import { afterEach, expect } from "bun:test";
 import type { Window } from "happy-dom";
 import { act, type ReactNode } from "react";
 import { AppDialogBridge } from "../../app/dialog-bridge";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { createRemoteUiRegistry } from "../../remote/semantic-tree";
-import { WebDialogHostProvider } from "../../renderers/electrobun/view/dialog-host";
-import { WebInputHostProvider } from "../../renderers/electrobun/view/input-host";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { WebDialogHostProvider } from "../../renderers/dom/dialog-host";
+import { WebInputHostProvider } from "../../renderers/dom/input-host";
+import { createOpenTuiTestHarness, type OpenTuiTestSetup } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState, type AppContextStoreValue } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createTestDataProvider } from "../../test-support/data-provider";
@@ -14,15 +14,9 @@ import { createDefaultConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { CommandDef, WizardStep } from "../../types/plugin";
 import type { TickerRecord } from "../../types/ticker";
-import {
-  CommandBarHarness,
-  createCommandBarTestControls,
-  emitKeypress,
-} from "../command-bar/surface/test-harness";
+import { CommandBarHarness } from "../command-bar/surface/test-harness";
 import { FormModalHost } from "./host";
 import { openFormModal } from "./request";
-
-type TestSetup = Awaited<ReturnType<typeof testRender>>;
 
 export const ENTER = { name: "return", sequence: "\r" };
 export const ESC = { name: "escape", sequence: "\x1b" };
@@ -107,13 +101,17 @@ export function createDesktopFormControls(testWindow: Window) {
 /**
  * One terminal render per test, in the command bar harness: the app's form
  * modal host is mounted there, and the dialog layer sits outside the app tree
- * as it does in production. `cleanup` goes in the suite's `afterEach`.
+ * as it does in production. The renderer goes after every test, then the
+ * test's spies, so call it once per suite.
  */
 export function createFormModalTestSession() {
-  let setup: TestSetup | undefined;
+  const tui = createOpenTuiTestHarness();
   let spies: Array<{ mockRestore(): void }> = [];
-  const current = () => setup!;
-  const { waitForFrameToContain } = createCommandBarTestControls(current);
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore();
+    spies = [];
+  });
+  const { waitForFrameToContain } = tui;
 
   /**
    * One key at a time, with the propagation the real input host tracks, and a
@@ -121,23 +119,23 @@ export function createFormModalTestSession() {
    */
   async function press(...keys: TestKey[]) {
     for (const key of keys) {
-      await emitKeypress(current(), key, { frames: 2, afterCommit: true, trackPropagation: true });
+      await tui.emitKeypress(key, { frames: 2, afterCommit: true, trackPropagation: true });
     }
   }
 
   async function type(text: string) {
     await act(async () => {
-      await current().mockInput.typeText(text);
-      await current().renderOnce();
+      await tui.setup().mockInput.typeText(text);
+      await tui.setup().renderOnce();
     });
   }
 
   async function settle() {
     await act(async () => {
       await Bun.sleep(5);
-      await current().renderOnce();
+      await tui.setup().renderOnce();
     });
-    await current().renderOnce();
+    await tui.setup().renderOnce();
   }
 
   /** The first frame with the form can come before its key handler is bound. */
@@ -146,13 +144,8 @@ export function createFormModalTestSession() {
     await settle();
   }
 
-  function frame(): string {
-    return current().captureCharFrame();
-  }
-
   async function render(element: ReactNode, size: { width: number; height: number } = { width: 90, height: 30 }) {
-    setup = await testRender(element, size);
-    return setup;
+    return tui.render(element, size);
   }
 
   /** Opens a form with the bar closed, as a pane or a menu does. */
@@ -193,20 +186,14 @@ export function createFormModalTestSession() {
   }
 
   return {
-    get setup(): TestSetup {
-      return current();
+    get setup(): OpenTuiTestSetup {
+      return tui.setup();
     },
     /** Restores the spy once the test ends. */
     spy(spy: { mockRestore(): void }) {
       spies.push(spy);
     },
-    cleanup() {
-      setup?.renderer.destroy();
-      setup = undefined;
-      for (const spy of spies) spy.mockRestore();
-      spies = [];
-    },
-    frame,
+    frame: tui.frame,
     press,
     render,
     renderForm,

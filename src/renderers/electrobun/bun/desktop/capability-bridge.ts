@@ -1,7 +1,7 @@
 import type { AppServices } from "../../../../core/app-services";
 import type { DesktopCapabilityRequest } from "../../shared/protocol";
 import { isBatchableQuoteOperation, QuoteEventBatcher } from "../../shared/quote-event-batch";
-import { encodeRpcValue } from "../../view/rpc-codec";
+import { encodeRpcValue } from "../../shared/rpc-codec";
 import { getServerClockOffsetMs } from "../../../../market-data/quotes/clock";
 
 type CapabilityRegistry = AppServices["pluginRegistry"]["capabilities"];

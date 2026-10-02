@@ -14,7 +14,7 @@ import { AuthForm, authFormTitle } from "./auth-form";
 import type { AccountMode } from "./auth-model";
 import { CloudVerificationPanel } from "./verification-panel";
 
-export function AuthDialog({
+function AuthDialog({
   initialMode,
   resolve,
   dismiss,

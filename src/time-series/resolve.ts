@@ -34,7 +34,7 @@ import { TIME_RANGES, type TimeRange } from "./range";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import type { Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../market-data/quotes/metadata";
-import type { FredSeriesLoadResult, FredSeriesRequest } from "../data/fred-series";
+import type { FredSeriesLoadResult, FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import { extractFredSeries, fredCreditCoverageNotice } from "./economic";
 import {
   getTimeSeriesField,
@@ -86,7 +86,8 @@ import type {
   TimeSeriesPoint,
 } from "./types";
 
-const SERIES_COLORS = [
+/** Colours for series told apart by name (compared tickers, markets). */
+export const SERIES_COLORS = [
   "#4dabf7",
   "#63e6be",
   "#f6c85f",
@@ -1012,10 +1013,12 @@ function baseSecuritySeries(
     panelId: spec.panelId,
     interpolation: spec.interpolation,
     observationKind: marketField ? "market" : undefined,
+    ...(marketField ? { listing: { symbol: spec.source.instrument.symbol, exchange: marketExchange ?? "" } } : {}),
     timeBasis: marketTimeZone
       ? {
           kind: "market",
           timeZone: marketTimeZone,
+          exchange: canonicalExchange(marketExchange) || undefined,
           cadenceMs: marketResolution
             ? CHART_RESOLUTION_STEP_MS[marketResolution]
             : undefined,
@@ -1163,6 +1166,11 @@ function studyForOutput(
     .sort((left, right) => right.id.length - left.id.length)[0];
 }
 
+/** Price overlays read in the price's own terms, so they take its transform. */
+function followsInputTransform(kind: ChartSpec["studies"][number]["kind"]): boolean {
+  return kind === "sma" || kind === "ema" || kind === "bollinger" || kind === "vwap" || kind === "anchored-vwap";
+}
+
 function presentationBounds(
   series: ResolvedSeries,
   studies: readonly ChartSpec["studies"][number][],
@@ -1170,7 +1178,7 @@ function presentationBounds(
   fallback: DateBounds,
 ): DateBounds {
   const study = studyForOutput(series.id, studies);
-  const sourceId = study && (study.kind === "sma" || study.kind === "ema" || study.kind === "bollinger")
+  const sourceId = study && followsInputTransform(study.kind)
     ? study.inputSeriesIds[0] : series.id;
   return (sourceId && comparison?.sourceBounds?.[sourceId]) || fallback;
 }
@@ -1186,7 +1194,7 @@ function applyStudyPresentationTransforms(
   const rawById = new Map(rawSeries.map((series) => [series.id, series] as const));
   return outputs.map((output) => {
     const study = studyForOutput(output.id, studies);
-    if (!study || (study.kind !== "sma" && study.kind !== "ema" && study.kind !== "bollinger")) {
+    if (!study || !followsInputTransform(study.kind)) {
       return output;
     }
     const input = rawById.get(study.inputSeriesIds[0] ?? "");

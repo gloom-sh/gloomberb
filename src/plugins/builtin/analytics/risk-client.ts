@@ -18,7 +18,7 @@ export interface RiskInstrument {
   symbol: string;
   exchange: string;
 }
-export interface RiskMarketHistory {
+interface RiskMarketHistory {
   instrument: RiskInstrument;
   currency: string | null;
   quote: CloudQuotePayload | null;
@@ -64,7 +64,7 @@ type RiskCloudClient = Pick<
   "getCloudHistory" | "getCloudQuotesBatch" | "getCloudFredSeries"
 >;
 
-export function validateRiskQuote(
+function validateRiskQuote(
   quote: CloudQuotePayload | null,
   instrument: RiskInstrument,
   now = new Date(),

@@ -20,7 +20,7 @@ export function normalizeShortcutChannelId(channelId: string | null | undefined)
   return normalizeChannelId(trimmed?.toLowerCase());
 }
 
-export function getLastVisitedChatChannelId(config: { pluginConfig: Record<string, Record<string, unknown>> }) {
+function getLastVisitedChatChannelId(config: { pluginConfig: Record<string, Record<string, unknown>> }) {
   return normalizeChannelId(config.pluginConfig["gloomberb-cloud"]?.[LAST_VISITED_CHAT_CHANNEL_KEY] as string | undefined);
 }
 

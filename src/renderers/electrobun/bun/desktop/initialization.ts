@@ -1,26 +1,17 @@
 import { existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { getGloomberbHome } from "../../../../data/config/home";
-import { createAppServices, type AppServices } from "../../../../core/app-services";
-import { loadDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
+import type { AppServices } from "../../../../core/app-services";
 import { restoreExtractedPlugins } from "../../../../cli/restore-plugins";
-import type { AppSessionSnapshot } from "../../../../core/state/session-persistence";
 import {
   getDataDir,
   initDataDir,
 } from "../../../../data/config/store";
 import type { AppConfig } from "../../../../types/config";
-import type {
-  DesktopSharedStateSnapshot,
-  DesktopThemePreviewState,
-} from "../../../../types/desktop-window";
 import {
   loadDesktopPluginState,
 } from "./plugin-state";
-import {
-  createDesktopWorkspace,
-  type DesktopWorkspace,
-} from "./workspace";
+import { createDesktopWorkspace } from "./workspace";
 import {
   MAIN_WINDOW_RPC_KEY,
   paneIdFromDetachedRpcKey,
@@ -29,43 +20,17 @@ import type { DesktopBackendRequestPayload, ElectrobunBackendInit } from "../../
 import type { CapabilityRegistry } from "../../../../capabilities";
 import { telemetryOptedOut } from "../../../../telemetry/crash-reports";
 import { describeNodeOs, readOrCreateInstallId } from "../../../../telemetry/crash-reports-node";
+import type { DesktopBackend, DesktopRpc } from "./backend";
 
 interface DesktopWindowTarget {
   kind: "main" | "detached";
   paneId?: string;
 }
 
-interface InitializeDesktopBackendOptions<TRpc> {
-  getCurrentConfig: () => AppConfig | null;
-  getCurrentServices: () => AppServices | null;
-  getDesktopSnapshot: () => DesktopSharedStateSnapshot | null;
-  getDesktopWorkspace: () => DesktopWorkspace | null;
-  getRpcWindowKey: (rpc: TRpc) => string | undefined;
-  getSessionSnapshot: () => AppSessionSnapshot | null;
-  getThemePreview: () => DesktopThemePreviewState;
-  markWindowRpcReady: (rpc: TRpc) => void;
-  payload: DesktopBackendRequestPayload<"init">;
-  reconcileDetachedWindows: () => void;
-  registerCoreCapabilities: () => void;
-  rpc: TRpc;
-  setCurrentConfig: (config: AppConfig) => void;
-  setDesktopWorkspace: (workspace: DesktopWorkspace) => void;
-  setServices: (services: AppServices) => void;
-  syncConfigAccessors: () => void;
-}
-
-interface InitializationPayloadOptions {
-  desktopThemePreview: DesktopThemePreviewState;
-  getDesktopSnapshot: () => DesktopSharedStateSnapshot | null;
-  getSessionSnapshot: () => AppSessionSnapshot | null;
-}
-
-function normalizeInitWindowTarget<TRpc>(
-  rpc: TRpc,
+function normalizeInitWindowTarget(
+  rpcKey: string | undefined,
   payload: DesktopBackendRequestPayload<"init">,
-  getRpcWindowKey: (rpc: TRpc) => string | undefined,
 ): DesktopWindowTarget {
-  const rpcKey = getRpcWindowKey(rpc);
   if (rpcKey === MAIN_WINDOW_RPC_KEY) return { kind: "main" };
 
   const detachedPaneId = paneIdFromDetachedRpcKey(rpcKey);
@@ -90,16 +55,16 @@ export function desktopRendererCapabilityManifests(registry: CapabilityRegistry)
 }
 
 function buildInitializationPayload(
+  backend: DesktopBackend,
   config: AppConfig,
   services: AppServices,
   windowTarget: DesktopWindowTarget,
-  options: InitializationPayloadOptions,
 ): ElectrobunBackendInit {
   return {
     config,
-    sessionSnapshot: options.getSessionSnapshot(),
-    desktopSnapshot: options.getDesktopSnapshot(),
-    desktopThemePreview: options.desktopThemePreview,
+    sessionSnapshot: backend.getSessionSnapshot(),
+    desktopSnapshot: backend.workspace?.getSnapshot() ?? null,
+    desktopThemePreview: backend.stateBroadcaster.currentThemePreview,
     pluginState: loadDesktopPluginState(services.pluginRegistry),
     capabilityManifests: desktopRendererCapabilityManifests(services.pluginRegistry.capabilities),
     desktopPlatform: process.platform,
@@ -122,24 +87,22 @@ async function resolveDesktopDataDir(): Promise<string> {
   return dataDir;
 }
 
-export async function initializeDesktopBackend<TRpc>(
-  options: InitializeDesktopBackendOptions<TRpc>,
+export async function initializeDesktopBackend(
+  backend: DesktopBackend,
+  rpc: DesktopRpc,
+  payload: DesktopBackendRequestPayload<"init">,
 ): Promise<ElectrobunBackendInit> {
-  const windowTarget = normalizeInitWindowTarget(options.rpc, options.payload, options.getRpcWindowKey);
-  options.markWindowRpcReady(options.rpc);
+  const windowTarget = normalizeInitWindowTarget(backend.rpcs.getRpcWindowKey(rpc), payload);
+  backend.rpcs.markWindowRpcReady(rpc);
 
-  const currentConfig = options.getCurrentConfig();
-  const currentServices = options.getCurrentServices();
+  const currentConfig = backend.config;
+  const currentServices = backend.services;
   if (currentConfig && currentServices) {
-    if (!options.getDesktopWorkspace()) {
-      options.setDesktopWorkspace(createDesktopWorkspace(currentConfig, options.getSessionSnapshot()));
-      options.reconcileDetachedWindows();
+    if (!backend.workspace) {
+      backend.workspace = createDesktopWorkspace(currentConfig, backend.getSessionSnapshot());
+      backend.detachedWindows.reconcile();
     }
-    return buildInitializationPayload(currentConfig, currentServices, windowTarget, {
-      getDesktopSnapshot: options.getDesktopSnapshot,
-      getSessionSnapshot: options.getSessionSnapshot,
-      desktopThemePreview: options.getThemePreview(),
-    });
+    return buildInitializationPayload(backend, currentConfig, currentServices, windowTarget);
   }
 
   const initialConfig = await initDataDir(await resolveDesktopDataDir());
@@ -148,24 +111,8 @@ export async function initializeDesktopBackend<TRpc>(
   // desktop-only user silently loses a feature the day it is extracted, since
   // nothing else installs it for them.
   const seededPlugins = await restoreExtractedPlugins();
-  options.setCurrentConfig(seededPlugins ? { ...initialConfig, seededPlugins } : initialConfig);
-  const config = options.getCurrentConfig();
-  if (!config) throw new Error("Desktop config failed to initialize.");
-
-  const services = createAppServices({
-    config,
-    ...await loadDesktopBackendPlugins(),
-  });
-  options.setServices(services);
-  await services.ready;
-  options.syncConfigAccessors();
-  options.registerCoreCapabilities();
-  options.setDesktopWorkspace(createDesktopWorkspace(config, options.getSessionSnapshot()));
-  options.reconcileDetachedWindows();
-
-  return buildInitializationPayload(config, services, windowTarget, {
-    getDesktopSnapshot: options.getDesktopSnapshot,
-    getSessionSnapshot: options.getSessionSnapshot,
-    desktopThemePreview: options.getThemePreview(),
-  });
+  const { config, services } = await backend.startServices(
+    seededPlugins ? { ...initialConfig, seededPlugins } : initialConfig,
+  );
+  return buildInitializationPayload(backend, config, services, windowTarget);
 }

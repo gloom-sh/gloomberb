@@ -35,6 +35,7 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
 import { tickerQuoteFooterInfo } from "./quote-footer";
 import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-keys";
+import { ResearchTabNavigationProvider } from "./research-tab-navigation";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 /** A tab counts as viewed once it stays open this long, not when h/l passes over it. */
@@ -261,6 +262,12 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   }, [focused, registry, resolvedTabId, showTabs]);
   const contentHeight = Math.max(1, height - tabBarHeight);
   const visibleTabIds = useMemo(() => new Set(allTabs.map((tab) => tab.id)), [visibleTabIdKey]);
+  // A figure on one tab can open the tab that explains it (holders, short interest).
+  const openResearchTab = useCallback((tabId: string) => {
+    if (!visibleTabIds.has(tabId)) return false;
+    setActiveTabId(tabId);
+    return true;
+  }, [setActiveTabId, visibleTabIds]);
   const renderedTabIds = useMemo(() => {
     const next = new Set<string>();
     for (const tabId of mountedTabIds) {
@@ -331,12 +338,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
               >
                 <PaneFooterScope active={isActive}>
                   <NestedPaneTabs>
-                    <TickerResearchTab
-                      width={width}
-                      height={contentHeight}
-                      focused={focused && isActive}
-                      onCapture={isActive ? handlePluginCapture : ignorePluginCapture}
-                    />
+                    <ResearchTabNavigationProvider value={showTabs ? openResearchTab : null}>
+                      <TickerResearchTab
+                        width={width}
+                        height={contentHeight}
+                        focused={focused && isActive}
+                        onCapture={isActive ? handlePluginCapture : ignorePluginCapture}
+                      />
+                    </ResearchTabNavigationProvider>
                   </NestedPaneTabs>
                 </PaneFooterScope>
               </Box>

@@ -23,7 +23,7 @@ import {
   getCorrelationPaneSettings,
   type CorrelationRangePreset,
 } from "./settings";
-import { resolveCorrelationHeatmapCellColors } from "./colors";
+import { resolveHeatCellColors } from "../../../theme/heat-colors";
 import {
   buildRelationshipGraphSettingsDef,
   createRelationshipPaneTemplate,
@@ -285,7 +285,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
                   {/* Cells */}
                   {symbols.map((colSym) => {
                     const r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
-                    const cellColors = resolveCorrelationHeatmapCellColors(r);
+                    const cellColors = resolveHeatCellColors(r, { quiet: rowSym === colSym });
                     const text = formatCorrelation(r);
                     return (
                       <Box

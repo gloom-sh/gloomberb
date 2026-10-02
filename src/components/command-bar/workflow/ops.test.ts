@@ -6,7 +6,7 @@ import { PANE_LOCK_SETTING_KEY } from "../../../pane-settings";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput, resolveTickerInputOrThrow, resolveTickerListInput } from "./ops";
 import type { TickerRecord } from "../../../types/ticker";
-import { bringToFront } from "../../../plugins/pane-manager/floating-actions";
+import { bringToFront } from "../../../layout/pane-manager/floating-actions";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import { createTestTicker } from "../../../test-support/ticker";
 
@@ -265,11 +265,11 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
       template: { id: "template", paneId: "chat", label: "Chat", description: "Chat", createInstance: () => spec },
       pane: { id: "chat", name: "Chat", component: () => null },
       registry: {
-        focusPaneFn: (paneId: string, nextLayout?: LayoutConfig) => {
+        focusPane: (paneId: string, nextLayout?: LayoutConfig) => {
           focused.push(paneId);
           if (batchedFloating) layouts.push(bringToFront(nextLayout ?? state.config.layout, paneId));
         },
-        updateLayoutFn: (next: LayoutConfig) => {
+        updateLayout: (next: LayoutConfig) => {
           layouts.push(next);
           if (!batchedFloating) state.config.layout = next;
         },
@@ -355,6 +355,43 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
 
     expect(result.focused).toEqual([]);
     expect(result.created).toBe(1);
+  });
+
+  // A ticker template's id names the ticker it opened on (`options:AAPL`). Once that pane is linked
+  // to a list, or unlinked on another ticker, typing `OMON AAPL` must neither unlink nor take it
+  // over, and typing it again must land on the same pinned pane even after it rewrote its settings.
+  test("opens one pinned pane beside a stable-id ticker pane that shows another ticker", async () => {
+    const spec = { instanceId: "chat:AAPL", title: "OMON AAPL", binding: { kind: "fixed", symbol: "AAPL" } };
+    const linked = {
+      instanceId: "chat:AAPL",
+      paneId: "chat",
+      title: "OMON",
+      binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" },
+    };
+
+    const first = await runTemplate(spec, [linked]);
+    expect(first.focused).toEqual([]);
+    expect(first.layouts).toEqual([]);
+    expect(first.createdWith).toMatchObject({ instanceId: "chat:AAPL:pinned", binding: { kind: "fixed", symbol: "AAPL" } });
+
+    const pinned = { ...spec, instanceId: "chat:AAPL:pinned", paneId: "chat", settings: { expirationTargetKey: "AAPL|AAPL" } };
+    const again = await runTemplate(spec, [linked, pinned]);
+    expect(again.focused).toEqual(["chat:AAPL:pinned"]);
+    expect(again.created).toBe(0);
+
+    const unlinked = await runTemplate(spec, [{ ...linked, title: "OMON MSFT", binding: { kind: "fixed", symbol: "MSFT" } }]);
+    expect(unlinked.layouts).toEqual([]);
+    expect(unlinked.createdWith).toMatchObject({ instanceId: "chat:AAPL:pinned" });
+
+    // The pinned pane can be linked or moved on too; the next command takes the next id and keeps
+    // landing there, instead of opening an unkeyed pane on every repeat.
+    const pinnedLinked = { ...pinned, binding: linked.binding };
+    const third = await runTemplate(spec, [linked, pinnedLinked]);
+    expect(third.layouts).toEqual([]);
+    expect(third.createdWith).toMatchObject({ instanceId: "chat:AAPL:pinned-2" });
+    const fourth = await runTemplate(spec, [linked, pinnedLinked, { ...pinned, instanceId: "chat:AAPL:pinned-2" }]);
+    expect(fourth.focused).toEqual(["chat:AAPL:pinned-2"]);
+    expect(fourth.created).toBe(0);
   });
 
   test("reuses an unkeyed template only on an equivalent spec, ignoring settings key order", async () => {

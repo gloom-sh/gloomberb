@@ -2,7 +2,7 @@ import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { EstimateObservation, EstimatePeriod, EstimateRevisionsPayload } from "../../../api-client/estimate-revisions";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -39,14 +39,13 @@ const payload = {
 const estimatesSpy = spyOn(apiClient, "getCloudEstimateRevisions").mockResolvedValue(payload);
 afterAll(() => estimatesSpy.mockRestore());
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) { await act(async () => setup?.renderer.destroy()); setup = undefined; }
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   estimateRevisionsCache.reset();
 });
 
 async function settle(delayMs = 5) {
-  for (let index = 0; index < 6; index += 1) await act(async () => { await Bun.sleep(delayMs); await setup!.renderOnce(); });
+  for (let index = 0; index < 6; index += 1) await act(async () => { await Bun.sleep(delayMs); await tui.setup().renderOnce(); });
 }
 
 /** The pane with the quarter's detail open, as a reload restores it. */
@@ -68,9 +67,9 @@ async function renderDetail(width: number, height: number): Promise<string[]> {
       </TestPaneFrame>
     );
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height: height + 1 }); });
+  await act(async () => { await tui.render(<Harness />, { width, height: height + 1 }); });
   await settle();
-  return setup!.captureCharFrame().split("\n");
+  return tui.frame().split("\n");
 }
 
 test("the period detail charts recorded and lookback EPS over its observations, the selected one as the cursor", async () => {
@@ -84,12 +83,12 @@ test("the period detail charts recorded and lookback EPS over its observations, 
   // The detail fills the body under the stack bar, down to the footer.
   expect(lines[27]).toMatch(/\d{4}-\d{2}-\d{2}/);
 
-  await emitKeypress(setup!, { name: "down" });
+  await tui.emitKeypress({ name: "down" });
   await settle(40);
-  expect(setup!.captureCharFrame()).toContain("● Recorded 1.7 ");
-  await emitKeypress(setup!, { name: "left" });
+  expect(tui.frame()).toContain("● Recorded 1.7 ");
+  await tui.emitKeypress({ name: "left" });
   await settle(20);
-  expect(setup!.captureCharFrame()).toContain("● Recorded 1.69 ");
+  expect(tui.frame()).toContain("● Recorded 1.69 ");
 });
 
 test("a short detail keeps the observations and draws the chart as a strip", async () => {

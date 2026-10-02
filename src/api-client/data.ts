@@ -1,10 +1,13 @@
 import type { DebtMaturitiesPayload } from "./debt-maturities";
 import type { RevenueBreakdownPayload, RevenueBreakdownView } from "./revenue-breakdown";
 import type { MnaDealPayload, MnaDealsParams, MnaDealsPayload } from "./mna";
+import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
+import type { CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
+import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
 import type { FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
@@ -15,12 +18,19 @@ import type { RatePathPayload } from "./rates";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsHistoryPayload } from "./earnings";
 import type { InstrumentSearchResult } from "../types/instrument";
 import {
+  isSessionMoversCategory,
+  type CloudSessionMoversCategory,
+  type CloudSessionMoversPayload,
+  type CloudSessionMoversSide,
+} from "./market-movers";
+import {
   normalizeSavedSearchResponse,
   normalizeSearchResponse,
   normalizeTweetSearchResponse,
 } from "./normalizers";
 import {
   cloudCdsHistoryPath,
+  cloudCreditBoardPath,
   cloudCdsPath,
   cloudCongressHousePath,
   cloudEarningsCallsPath,
@@ -150,6 +160,11 @@ export class CloudDataApi {
     return this.request<T>(`/cloud/iv/${path}`, init);
   }
 
+  /** Options positioning (OPX): open interest by strike and expiry, max pain, dealer gamma. */
+  optionsPositioning<T>(path: string, init?: RequestInit) {
+    return this.request<T>(`/cloud/options/${path}`, init);
+  }
+
   async searchInstruments(
     query: string,
     limit = 10,
@@ -198,20 +213,21 @@ export class CloudDataApi {
     );
   }
 
-  async getCloudMarketScreener(
-    category: CloudMarketScreenerCategory,
+  /** Gainers, losers and most active, or the pre-market, after-hours and gap lists with a `side`. */
+  async getCloudMarketScreener<Category extends CloudMarketScreenerCategory | CloudSessionMoversCategory>(
+    category: Category,
     count = 25,
     mode: "cache-first" | "refresh" = "cache-first",
-  ): Promise<CloudMarketResponse<CloudMarketScreenerPayload>> {
+    side?: CloudSessionMoversSide,
+  ): Promise<CloudMarketResponse<Category extends CloudSessionMoversCategory ? CloudSessionMoversPayload : CloudMarketScreenerPayload>> {
     const requestedCount = Number.isFinite(count) ? Math.round(count) : 25;
     const params = new URLSearchParams({
       category,
       count: String(Math.max(1, Math.min(50, requestedCount))),
       mode,
     });
-    return this.request<CloudMarketResponse<CloudMarketScreenerPayload>>(
-      `/market/screener?${params.toString()}`,
-    );
+    if (side && isSessionMoversCategory(category)) params.set("side", side);
+    return this.request(`/market/screener?${params.toString()}`);
   }
 
   async getCloudOptionsChain(
@@ -350,6 +366,17 @@ export class CloudDataApi {
     return this.request<CloudYieldPointPayload[]>("/cloud/econ/yield-curve");
   }
 
+  /** A curve's session on or before `date` (latest without one), with look-backs and spreads. */
+  async getCloudCurve(curve: CloudCurveId, date?: string | null): Promise<CloudCurveView> {
+    const query = date ? `?${new URLSearchParams({ date })}` : "";
+    return this.request<CloudCurveView>(`/cloud/econ/curves/${encodeURIComponent(curve)}${query}`, { signal: AbortSignal.timeout(30_000) });
+  }
+
+  /** Each market's latest curve and the session before, each on its own date. */
+  async getCloudWorldCurves(): Promise<CloudWorldCurves> {
+    return this.request<CloudWorldCurves>("/cloud/econ/curves", { signal: AbortSignal.timeout(30_000) });
+  }
+
   async getCloudCryptoMarkets(): Promise<CryptoMarketsPayload> {
     return this.request<CryptoMarketsPayload>("/cloud/crypto/markets", { signal: AbortSignal.timeout(45_000) });
   }
@@ -395,6 +422,16 @@ export class CloudDataApi {
     return this.request<MnaDealPayload>(`/cloud/mna/deals/${encodeURIComponent(id)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
   }
 
+  async getCloudIpoCalendar(params: IpoCalendarParams = {}, options?: { signal?: AbortSignal }): Promise<IpoCalendarPayload> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    }
+    const text = query.toString();
+    const suffix = text ? `?${text}` : "";
+    return this.request<IpoCalendarPayload>(`/cloud/ipo/calendar${suffix}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+  }
+
   async getCloudShortVolume(symbol: string, scope: ShortVolumeScope = "nms"): Promise<ShortVolumePayload> {
     const params = new URLSearchParams({ symbol, scope });
     return this.request<ShortVolumePayload>(`/cloud/short-volume?${params}`, { signal: AbortSignal.timeout(20_000) });
@@ -429,6 +466,14 @@ export class CloudDataApi {
 
   async getCloudCdsHistory(params: CloudCdsHistoryParams): Promise<CloudCdsHistoryResponse> {
     return this.request<CloudCdsHistoryResponse>(cloudCdsHistoryPath(params), { signal: AbortSignal.timeout(30_000) });
+  }
+
+  async getCloudCdxBoard(params: CloudCreditBoardParams = {}): Promise<CdxBoardPayload> {
+    return this.request<CdxBoardPayload>(cloudCreditBoardPath("cdx", params), { signal: AbortSignal.timeout(30_000) });
+  }
+
+  async getCloudSovrBoard(params: CloudCreditBoardParams = {}): Promise<SovrBoardPayload> {
+    return this.request<SovrBoardPayload>(cloudCreditBoardPath("sovr", params), { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudCongressHouse(

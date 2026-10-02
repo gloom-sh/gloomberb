@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, readlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
-import { linkHostPackages } from "./host-link";
+import { dirname, join } from "path";
+import { linkHostPackages, missingPeerPlugins } from "./host-link";
 
 /**
  * A plugin is installed into a directory named after its repository, but
@@ -35,8 +35,8 @@ describe("linkPeerPlugins", () => {
 
     // Named for the import specifier, pointing at the directory that exists.
     expect(result.linked).toContain("gloomberb-ibkr");
-    expect(readlinkSync(join(pluginDir, "node_modules", "gloomberb-ibkr"))).toBe(
-      join(pluginsDir, "gloom-ibkr"),
+    expect(realpathSync(join(pluginDir, "node_modules", "gloomberb-ibkr"))).toBe(
+      realpathSync(join(pluginsDir, "gloom-ibkr")),
     );
   });
 
@@ -63,7 +63,40 @@ describe("linkPeerPlugins", () => {
 
     expect(result.provider).toBe("symlink");
     expect(result.error).toBeUndefined();
-    expect(readlinkSync(join(pluginDir, "node_modules", "gloomberb"))).toBe(hostRoot);
+    expect(realpathSync(join(pluginDir, "node_modules", "gloomberb"))).toBe(realpathSync(hostRoot));
+  });
+
+  test("links a react that a global install hoisted beside the host", () => {
+    const root = mkdtempSync(join(tmpdir(), "gloom-host-link-hoisted-"));
+    const hostRoot = join(root, "node_modules", "gloomberb");
+    const react = join(root, "node_modules", "react");
+    const pluginDir = join(root, "plugins", "gloom-tv");
+    mkdirSync(hostRoot, { recursive: true });
+    mkdirSync(react, { recursive: true });
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(join(hostRoot, "package.json"), JSON.stringify({ name: "gloomberb" }));
+    writeFileSync(join(react, "package.json"), JSON.stringify({ name: "react", version: "19.0.0" }));
+
+    const result = linkHostPackages(pluginDir, hostRoot, join(root, "plugins"));
+
+    expect(result.linked).toContain("react");
+    expect(realpathSync(join(pluginDir, "node_modules", "react"))).toBe(realpathSync(react));
+  });
+
+  // Windows gets a junction here. Replacing one must remove the link itself:
+  // a recursive delete through it would empty the host install.
+  test("repoints a stale link without touching what it pointed at", () => {
+    const { hostRoot, pluginsDir, pluginDir } = setup("gloom-ibkr", "gloom-ibkr");
+    const otherHost = join(dirname(hostRoot), "other-host");
+    mkdirSync(otherHost, { recursive: true });
+    writeFileSync(join(hostRoot, "package.json"), "{}");
+
+    linkHostPackages(pluginDir, hostRoot, pluginsDir);
+    const result = linkHostPackages(pluginDir, otherHost, pluginsDir);
+
+    expect(result.error).toBeUndefined();
+    expect(realpathSync(join(pluginDir, "node_modules", "gloomberb"))).toBe(realpathSync(otherHost));
+    expect(existsSync(join(hostRoot, "package.json"))).toBe(true);
   });
 });
 
@@ -108,7 +141,7 @@ describe("linkHostPackages without a package root", () => {
     const result = linkHostPackages(pluginDir, null, pluginsDir, { installResolver: () => true });
 
     expect(result.linked).toEqual(["gloom-ibkr"]);
-    expect(readlinkSync(join(pluginDir, "node_modules", "gloom-ibkr"))).toBe(join(pluginsDir, "gloom-ibkr"));
+    expect(realpathSync(join(pluginDir, "node_modules", "gloom-ibkr"))).toBe(realpathSync(join(pluginsDir, "gloom-ibkr")));
   });
 
   test("keeps the error when the process cannot register a resolver", () => {
@@ -117,5 +150,21 @@ describe("linkHostPackages without a package root", () => {
     const result = linkHostPackages(pluginDir, null, pluginsDir, { installResolver: () => false });
 
     expect(result.error).toBe("Could not locate the Gloomberb install.");
+  });
+});
+
+describe("missingPeerPlugins", () => {
+  test("names a declared sibling plugin installed under neither name", () => {
+    const root = mkdtempSync(join(tmpdir(), "gloom-missing-peer-"));
+    const pluginsDir = join(root, "plugins");
+    const gateway = join(pluginsDir, "gloom-ibkr-gateway");
+    mkdirSync(gateway, { recursive: true });
+    writeFileSync(join(gateway, "package.json"), JSON.stringify({
+      peerDependencies: { gloomberb: ">=0.15.0", react: ">=19", "gloom-ibkr": ">=1.1.0" },
+    }));
+
+    expect(missingPeerPlugins(gateway, pluginsDir)).toEqual(["gloom-ibkr"]);
+    mkdirSync(join(pluginsDir, "gloomberb-ibkr"));
+    expect(missingPeerPlugins(gateway, pluginsDir)).toEqual([]);
   });
 });

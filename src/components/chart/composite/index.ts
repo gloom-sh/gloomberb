@@ -4,7 +4,6 @@ export {
   type PricePointsToResolvedSeriesOptions,
 } from "./price-series";
 export type {
-  BuildCompositeChartSceneOptions,
   CompositeAxisDomain,
   CompositeAxisSide,
   CompositeChartColors,

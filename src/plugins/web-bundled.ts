@@ -13,7 +13,6 @@
  * catalog stays installable on the desktop and in the terminal as before.
  */
 export const WEB_BUNDLED_PLUGIN_PACKAGES = [
-  "gloom-ipo-calendar",
   "gloom-polls",
   "gloom-prediction-markets",
 ] as const;

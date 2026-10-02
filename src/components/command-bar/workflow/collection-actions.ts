@@ -15,8 +15,10 @@ import { removeBrokerProfile } from "../../../brokers/remove-profile";
 import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect";
 import {
   addTickerToPortfolio,
+  adoptFirstPositionCurrency,
   createManualPortfolio as createManualPortfolioConfig,
   deleteManualPortfolio,
+  hasOpenPortfolioPositions,
   isManualPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
@@ -87,7 +89,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
 
   /** Lands on the synced profile's portfolio once a broker is connected. */
   const showConnectedBroker = (instanceId: string) => {
-    const freshConfig = pluginRegistry.getConfigFn();
+    const freshConfig = pluginRegistry.getConfig();
     dispatch({ type: "SET_CONFIG", config: freshConfig });
     const brokerTab = freshConfig.portfolios.find((portfolio) => portfolio.brokerInstanceId === instanceId);
     if (brokerTab) setActiveCollection(brokerTab.id);
@@ -105,20 +107,20 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (validationError) throw new Error(validationError);
 
       const brokerValues = buildBrokerProfileConfig(adapter, values);
-      const instance = await pluginRegistry.createBrokerInstanceFn(
+      const instance = await pluginRegistry.createBrokerInstance(
         brokerId,
         adapter.name.trim(),
         brokerValues as Record<string, unknown>,
       );
-      await pluginRegistry.syncBrokerInstanceFn(instance.id);
+      await pluginRegistry.syncBrokerInstance(instance.id);
       showConnectedBroker(instance.id);
     },
 
     async connectSignedInBroker(broker) {
       const connected = await connectSignedInBrokerProfile(broker, {
-        getConfig: () => pluginRegistry.getConfigFn(),
-        createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstanceFn(brokerType, label, values),
-        syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstanceFn(instanceId),
+        getConfig: () => pluginRegistry.getConfig(),
+        createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstance(brokerType, label, values),
+        syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstance(instanceId),
         requestSignIn: requestBrokerSignIn,
       });
       if (!connected) return false;
@@ -259,8 +261,14 @@ export function createCommandBarCollectionWorkflowActions(options: {
         avgCost,
         currency,
       });
+      const firstPosition = !hasOpenPortfolioPositions(portfolio.id, getState().tickers.values());
       await tickerRepository.saveTicker(result.ticker);
       dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
+      const adopted = firstPosition ? adoptFirstPositionCurrency(getState().config, portfolio.id, currency) : null;
+      if (adopted) {
+        dispatch({ type: "SET_CONFIG", config: adopted });
+        persistConfig(adopted);
+      }
       pluginRegistry.events.emit("host:portfolio-ticker-saved", {
         symbol: result.ticker.metadata.ticker,
         portfolioId: portfolio.id,
@@ -307,13 +315,13 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (!instance) {
         throw new Error(t("Broker profile not found."));
       }
-      const removal = await removeBrokerProfile(instance, instance.label, (id) => pluginRegistry.removeBrokerInstanceFn(id));
+      const removal = await removeBrokerProfile(instance, instance.label, (id) => pluginRegistry.removeBrokerInstance(id));
       notify(removal.message, { type: removal.accountKept ? "info" : "success" });
     },
   };
 }
 
-export type CollectionOwner = { kind: "user" } | { kind: "team"; teamId: string };
+type CollectionOwner = { kind: "user" } | { kind: "team"; teamId: string };
 
 /**
  * Creates the collection on the server. The collection.updated frame brings

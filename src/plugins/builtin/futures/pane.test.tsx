@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
-import type { PinTickerOptions, QuoteBatchResult } from "../../../types/plugin";
+import type { QuoteBatchResult } from "../../../types/data-provider";
+import type { PinTickerOptions } from "../../../types/plugin";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { futuresModule } from "./index";
 import { TestPaneProvider } from "../../../test-support/pane";
@@ -16,16 +17,11 @@ const FuturesPane = futuresModule.panes![0]!.component as (props: {
   height: number;
 }) => React.ReactNode;
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const pinned: Array<{ symbol: string; options?: PinTickerOptions }> = [];
 
-afterEach(async () => {
+afterEach(() => {
   pinned.length = 0;
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 function makeRuntime(quoteError?: string): PluginRuntimeAccess {
@@ -66,7 +62,7 @@ function makeRuntime(quoteError?: string): PluginRuntimeAccess {
     updateBrokerInstance: async () => {},
     syncBrokerInstance: async () => {},
     removeBrokerInstance: async () => {},
-    pinTicker: (symbol, options) => {
+    pinTicker: (symbol: string, options?: PinTickerOptions) => {
       pinned.push({ symbol, options });
     },
     navigateTicker: () => {},
@@ -101,28 +97,23 @@ function Harness({ quoteError }: { quoteError?: string }) {
   );
 }
 
-async function renderSettled() {
-  await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
-  });
-}
+const renderSettled = () => tui.renderFrames(2);
 
-const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
+const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event);
 
 describe("FuturesPane", () => {
   test("collapses and expands a sector from the keyboard", async () => {
-    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
+    await tui.render(<Harness />, { width: 80, height: 24 });
     await renderSettled();
 
     // Selection starts on the first contract, so step up onto its header.
-    expect(testSetup.captureCharFrame()).toContain("E-Mini S&P 500");
-    expect(testSetup.captureCharFrame()).toContain("▾ Equity Index");
+    expect(tui.frame()).toContain("E-Mini S&P 500");
+    expect(tui.frame()).toContain("▾ Equity Index");
 
     await emitKeypress({ name: "up", sequence: "\u001B[A" });
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
-    const collapsed = testSetup.captureCharFrame();
+    const collapsed = tui.frame();
     expect(collapsed).toContain("▸ Equity Index");
     expect(collapsed).not.toContain("E-Mini S&P 500");
     // Other sectors keep their contracts.
@@ -130,50 +121,50 @@ describe("FuturesPane", () => {
 
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
-    expect(testSetup.captureCharFrame()).toContain("E-Mini S&P 500");
+    expect(tui.frame()).toContain("E-Mini S&P 500");
   });
 
   test("clicking a sector header collapses it, and clicking again expands it", async () => {
-    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
+    await tui.render(<Harness />, { width: 80, height: 24 });
     await renderSettled();
 
-    const headerRow = () => testSetup!.captureCharFrame()
+    const headerRow = () => tui.frame()
       .split("\n")
       .findIndex((line) => line.includes("Equity Index"));
     const row = headerRow();
     expect(row).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(4, row);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(4, row);
+      await tui.setup().renderOnce();
     });
     await renderSettled();
 
-    const collapsed = testSetup.captureCharFrame();
+    const collapsed = tui.frame();
     expect(collapsed).toContain("▸ Equity Index");
     expect(collapsed).not.toContain("E-Mini S&P 500");
     // A header click must not also open the pinned-ticker pane.
     expect(pinned).toEqual([]);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(4, headerRow());
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(4, headerRow());
+      await tui.setup().renderOnce();
     });
     await renderSettled();
 
-    expect(testSetup.captureCharFrame()).toContain("E-Mini S&P 500");
+    expect(tui.frame()).toContain("E-Mini S&P 500");
     expect(pinned).toEqual([]);
   });
 
   test("a search shows matches inside a collapsed sector", async () => {
-    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
+    await tui.render(<Harness />, { width: 80, height: 24 });
     await renderSettled();
 
     // Collapse Equity Index from its header, then search for one of its rows.
     await emitKeypress({ name: "up", sequence: "\u001B[A" });
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
-    expect(testSetup.captureCharFrame()).not.toContain("E-Mini Dow");
+    expect(tui.frame()).not.toContain("E-Mini Dow");
 
     await emitKeypress({ name: "/", sequence: "/" });
     for (const character of "dow") {
@@ -181,17 +172,17 @@ describe("FuturesPane", () => {
     }
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await renderSettled();
 
-    const searching = testSetup.captureCharFrame();
+    const searching = tui.frame();
     expect(searching).toContain("E-Mini Dow");
     expect(searching).toContain("▾ Equity Index");
   });
 
   test("opens the selected contract in ticker research", async () => {
-    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
+    await tui.render(<Harness />, { width: 80, height: 24 });
     await renderSettled();
 
     await emitKeypress({ name: "enter", sequence: "\r" });
@@ -203,11 +194,11 @@ describe("FuturesPane", () => {
   });
 
   test("a board where no quote arrived says so instead of drawing dashes", async () => {
-    testSetup = await testRender(<Harness quoteError="Quotes are offline" />, { width: 80, height: 24 });
+    await tui.render(<Harness quoteError="Quotes are offline" />, { width: 80, height: 24 });
     await renderSettled();
     await renderSettled();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Futures quotes unavailable.");
     expect(frame).toContain("Quotes are offline");
     expect(frame).toContain("Retry");
@@ -215,7 +206,7 @@ describe("FuturesPane", () => {
   });
 
   test("search narrows the board to matching contracts", async () => {
-    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
+    await tui.render(<Harness />, { width: 80, height: 24 });
     await renderSettled();
 
     await emitKeypress({ name: "/", sequence: "/" });
@@ -225,11 +216,11 @@ describe("FuturesPane", () => {
     }
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await renderSettled();
 
-    const filtered = testSetup.captureCharFrame();
+    const filtered = tui.frame();
     expect(filtered).toContain("Gold");
     expect(filtered).not.toContain("E-Mini S&P 500");
   });

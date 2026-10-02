@@ -43,7 +43,7 @@ export function useLoadNewsStory(): (storyId: string) => Promise<NewsArticle | n
   return useCallback(async (storyId: string) => sharedService?.loadStory(storyId) ?? null, []);
 }
 
-export function useNewsLoadMore(query: NewsQuery | null | undefined): () => void {
+function useNewsLoadMore(query: NewsQuery | null | undefined): () => void {
   const key = query ? buildNewsQueryKey(query) : null;
   return useCallback(() => {
     if (!query) return;

@@ -38,6 +38,7 @@ export const riskFactorsModule: PluginModule = {
       component: RiskFactorsPane,
       headless: riskFactorsHeadless,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },
     },

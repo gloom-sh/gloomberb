@@ -1,5 +1,5 @@
 import type { PluginRegistry } from "../../plugins/registry";
-import { getLayoutPreview } from "../../plugins/pane-manager";
+import { getLayoutPreview } from "../../layout/pane-manager";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { LayoutConfig } from "../../types/config";
 import { fuzzyFilter } from "../../utils/fuzzy-search";

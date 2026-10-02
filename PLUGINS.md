@@ -843,9 +843,9 @@ there.
 ### Navigation
 
 ```typescript
-ctx.selectTicker("AAPL");              // Select ticker + focus right panel
+ctx.selectTicker("AAPL");              // Move the list cursor to a ticker
 ctx.selectTicker("AAPL", "my-pane:1"); // Select in a specific pane
-ctx.switchPanel("left");               // Switch active panel
+ctx.switchPanel("left");               // Focus the leftmost pane
 ctx.switchTab("chart");                // Switch Ticker Research tab by id
 ctx.switchTab("chart", "ticker-research:1"); // Switch tab in a specific pane
 ctx.openCommandBar();                  // Open the command bar (nothing while a dialog is open)
@@ -1263,6 +1263,8 @@ const rows = useLiveTickerFinancialsMap(tickers, { visible: false });
 ```
 
 `usePaneTickerIdentity()` returns the pane's symbol, ticker and contract without its financials; `usePaneTicker()` also re-renders on every quote tick of the symbol, so a pane that only needs the symbol (news, filings, holders) uses the identity hook.
+
+A pane that shows one ticker through these hooks can set `tickerFollower: true` on its `PaneDef`. Its pane menu then offers **Link to** each visible watchlist, portfolio or scanner (any pane with `tickerSource`), and once linked it follows that pane's selection, with **Unlink from** pinning it on the ticker it shows. A function decides per instance, for a pane that is single-ticker only in some setups (a price chart of one security, not a comparison or a fundamental graph). A linked pane changes ticker while mounted, so key the view by symbol and keep saved choices that only make sense for one ticker (an expiry, a strike) per symbol. Never write the pane's own `cursorSymbol`: it would win over the link.
 
 `createPluginCache` keeps the last good payload in plugin persistence with a TTL, so the pane has something to show before its first fetch after a restart. Table panes get `compareSortValues`, `nextHeaderSort` (header clicks) and `cycleSortPreference` (the keyboard equivalent) from `gloomberb/utils` so mixed columns sort like the host's.
 

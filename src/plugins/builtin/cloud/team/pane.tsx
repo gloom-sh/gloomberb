@@ -243,7 +243,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     if (team && !dirty) setDraft(draftFromTeam(team));
   }, [dirty, team]);
 
-  const { details, setDetails, reload } = useTeamDetails(team);
+  const { details, setDetails } = useTeamDetails(team);
 
   // The chat controller builds a fresh snapshot per call, so it is read
   // through a subscription and copied into state only when something changed.

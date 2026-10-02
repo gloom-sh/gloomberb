@@ -32,10 +32,9 @@ import { getSharedRegistry } from "../../plugins/registry";
 import {
   shouldShowTidyWindows,
   tidyWindows,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
-import type { LayoutConfig } from "../../types/config";
 import { VERSION } from "../../version";
 import { displayWidth } from "../../utils/format";
 import { Button } from "../ui/button";
@@ -93,7 +92,7 @@ type StatusBarViewProps = {
  * `⌘2` or `⇧⌘F`, in the order its menus write them. A digit chord names the
  * one digit given.
  */
-export function compactChordLabel(
+function compactChordLabel(
   chord: KeyChord,
   mode: ShortcutDisplayMode,
   platform: ShortcutPlatform = detectShortcutPlatform(),
@@ -253,10 +252,10 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     event?.stopPropagation?.();
     if (!registry) return;
     tidyWindows({
-      layout: registry.getLayoutFn(),
-      size: registry.getTermSizeFn(),
+      layout: registry.getLayout(),
+      size: registry.getTermSize(),
       paneTypes: registry.panes,
-      apply: registry.updateLayoutFn,
+      apply: registry.updateLayout,
       notify: registry.notify,
       onRevert: () => dispatch({ type: "UNDO_LAYOUT" }),
     });
@@ -324,6 +323,11 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
         id: "layout:new",
         label: "New Layout...",
         onSelect: () => openLayoutWorkflow("new-layout"),
+      },
+      {
+        id: "layout:add-desk",
+        label: "Add a Desk...",
+        onSelect: () => registry?.openCommandBar("DESK "),
       },
       {
         id: "layout:delete",

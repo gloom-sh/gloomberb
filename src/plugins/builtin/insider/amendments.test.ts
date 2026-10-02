@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createDefaultConfig } from "../../../types/config";
 import { buildHeadlessFunctionReport } from "../../../cli/pane-functions/headless";
+import type { PaneFunctionReport } from "../../../cli/pane-functions/report";
 import { insiderHeadless } from "./headless";
 import { buildInsiderRows, buildInsiderSummary, insiderReportedName, matchesInsiderOwner, parseInsiderFiling } from "./model";
 import { buildInsiderAmendmentScopes } from "./amendments";
@@ -27,6 +28,12 @@ async function report(entries: Array<{ filing: SecFilingItem; content: string | 
   });
   return buildHeadlessFunctionReport({ headless: insiderHeadless, token: "INS", label: "Insider", options: { name, limit: 20 }, instance: { settings: {} }, capability: { id: "insider" } } as never,
     { dataProvider: provider, config: createDefaultConfig("/tmp/unused-insider-amendment-test") } as never, "CONTROL");
+}
+
+function rows(report: PaneFunctionReport): unknown[] {
+  const value = report.data.rows;
+  if (!Array.isArray(value)) throw new Error("The insider report lists rows");
+  return value;
 }
 
 describe("as-filed insider amendments", () => {
@@ -68,8 +75,8 @@ describe("as-filed insider amendments", () => {
     expect(matchesInsiderOwner(entry, insiderReportedName(entry)!)).toBe(true);
     expect(matchesInsiderOwner(entry, "B. OFFICER")).toBe(true);
     const result = await report([{ filing: entry.filing, content }], insiderReportedName(entry)!);
-    expect(result.data.rows).toHaveLength(1);
-    expect(result.data.rows[0]).toMatchObject({ accessionNumber: "joint", status: "disclosure" });
+    expect(rows(result)).toHaveLength(1);
+    expect(rows(result)[0]).toMatchObject({ accessionNumber: "joint", status: "disclosure" });
   });
 
   test("an explanation-only amendment retains source text and owner filtering without inventing a missing transaction", async () => {
@@ -80,7 +87,7 @@ describe("as-filed insider amendments", () => {
     expect(buildInsiderRows(amended)[0]).toMatchObject({ status: "disclosure", insider: "A. OFFICER", shares: null, remarks: "Corrects direct & indirect ownership; no transaction amounts added.", footnotes: [{ id: "F1", text: "Corrects direct & indirect ownership; no transaction amounts added." }] });
     const result = await report([{ filing: amendedFiling, content }, { filing: filing("original"), content: xml() }], "a. officer");
     expect(result.data.complete).toBe(false);
-    expect(result.data.rows).toHaveLength(2);
+    expect(rows(result)).toHaveLength(2);
     expect(result.data.errors).toEqual(["explanation: Form 4/A is unreconciled; affected transaction totals are unavailable."]);
     expect(result.text).toContain("Original filed 2026-08-20");
     expect(result.text).toContain("Corrects direct & indirect ownership");
@@ -93,20 +100,20 @@ describe("as-filed insider amendments", () => {
       { filing: filing("independent"), content: xml({ owner: "B. OFFICER", cik: "222", shares: 500, security: "Class B" }) }];
     const result = await report(entries);
     expect(result.data.complete).toBe(false);
-    expect(result.data.rows[0]).toMatchObject({ form: "4/A", shares: 40, originalFilingDate: "2026-08-20", transactionFootnoteIds: ["F1"], remarks: "Corrects 100 shares to 40 shares." });
+    expect(rows(result)[0]).toMatchObject({ form: "4/A", shares: 40, originalFilingDate: "2026-08-20", transactionFootnoteIds: ["F1"], remarks: "Corrects 100 shares to 40 shares." });
     expect(result.text).toContain("Corrects 100 shares to 40 shares.");
     expect(result.text).toContain("4/A");
     const independentReport = await report(entries, "b. officer");
     expect(independentReport.data.complete).toBe(true);
-    expect(independentReport.data.rows).toHaveLength(1);
-    expect(independentReport.data.rows[0]).toMatchObject({ insider: "B. OFFICER", amendmentStatus: null });
+    expect(rows(independentReport)).toHaveLength(1);
+    expect(rows(independentReport)[0]).toMatchObject({ insider: "B. OFFICER", amendmentStatus: null });
     expect(independentReport.data.errors).toEqual([]);
   });
 
   test("failed amendment content still prevents trusting potentially affected originals", async () => {
     const result = await report([{ filing: filing("amendment", "4/A", "2026-08-21"), content: null }, { filing: filing("original"), content: xml() }], "a. officer");
     expect(result.data.complete).toBe(false);
-    expect(result.data.rows[0]).toMatchObject({ accessionNumber: "original", shares: 100, amendmentStatus: "potentially-amended" });
+    expect(rows(result)[0]).toMatchObject({ accessionNumber: "original", shares: 100, amendmentStatus: "potentially-amended" });
     expect(result.data.errors).toHaveLength(2);
   });
 });

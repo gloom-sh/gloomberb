@@ -8,6 +8,7 @@ import { relativeRotationModule } from "./relative-rotation";
 import { equityScreenerModule } from "./equity-screener";
 import { correlationModule } from "./correlation";
 import { cdsModule } from "./cds";
+import { creditBoardsModule } from "./credit-boards";
 import { creditConditionsModule } from "./credit-conditions";
 import { marketValuationModule } from "./market-valuation";
 import { economicCalendarModule } from "./econ";
@@ -51,10 +52,12 @@ import { holdersModule } from "./holders";
 import { insiderModule } from "./insider";
 import { jobsModule } from "./jobs";
 import { optionsModule } from "./options";
+import { optionsPositioningModule } from "./options-positioning";
 import { optionsScenarioModule } from "./options-scenario";
 import { optionsCalculatorModule } from "./options-calculator";
 import { volSurfaceModule } from "./vol-surface";
 import { realizedVolModule } from "./realized-vol";
+import { seasonalityModule } from "./seasonality";
 import { ivHistoryModule } from "./iv-history";
 import { backtestModule } from "./backtest";
 import { researchModule } from "./research";
@@ -89,10 +92,12 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     chartComposerModule,
     congressResearchModule,
     optionsModule,
+    optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
+    seasonalityModule,
     ivHistoryModule,
     backtestModule,
     estimateRevisionsModule,
@@ -147,7 +152,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
 
 export const macroPlugin = composeBuiltinPlugin({
   ...macroPluginMeta,
-  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, and earnings.",
+  description: "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, Treasury auctions, and earnings.",
   modules: [
     macroSharedResourcesModule,
     economicCalendarModule,
@@ -161,6 +166,7 @@ export const macroPlugin = composeBuiltinPlugin({
     creditConditionsModule,
     marketValuationModule,
     cdsModule,
+    creditBoardsModule,
     treasuryAuctionsModule,
     earningsModule,
     earningsCallsModule,

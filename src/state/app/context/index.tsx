@@ -36,7 +36,6 @@ import {
   appReducer,
   createInitialState,
   getEffectiveThemeId,
-  getFocusedTickerSymbol,
   type PaneRuntimeState,
   resolveCollectionForPane,
   resolveTickerForPane,
@@ -391,7 +390,7 @@ function useUpdatePaneLayout(options: { saveDelayMs?: number } = {}) {
     const layout = update(state.config.layout);
     if (layout === state.config.layout) return;
     const config = syncConfigActiveLayoutState(
-      { ...state.config, layout }, state.paneState, state.focusedPaneId, state.activePanel,
+      { ...state.config, layout }, state.paneState, state.focusedPaneId,
     );
     dispatch({ type: "SET_CONFIG", config });
     scheduleConfigSave(config, { delayMs: saveDelayMs });
@@ -491,7 +490,6 @@ export function AppProvider({
     config: currentState.config,
     paneState: currentState.paneState,
     focusedPaneId: currentState.focusedPaneId,
-    activePanel: currentState.activePanel,
     statusBarVisible: currentState.statusBarVisible,
   }), []);
 
@@ -499,7 +497,6 @@ export function AppProvider({
     config: snapshot.config,
     paneState: snapshot.paneState,
     focusedPaneId: snapshot.focusedPaneId,
-    activePanel: snapshot.activePanel,
     statusBarVisible: snapshot.statusBarVisible,
   }), []);
 
@@ -568,7 +565,6 @@ export function AppProvider({
     buildDesktopSnapshot,
     desktopBridge,
     serializeDesktopSnapshot,
-    state.activePanel,
     state.config,
     state.focusedPaneId,
     state.paneState,

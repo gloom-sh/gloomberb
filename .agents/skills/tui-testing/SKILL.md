@@ -112,40 +112,29 @@ Headless, deterministic component and integration tests using Bun's test runner 
 
 - **Deterministic**: `renderOnce()` guarantees the frame is complete before capture. No timing guesswork.
 - **Fast**: no real terminal, network, or app startup.
-- **Isolated**: each test gets its own headless renderer; destroy it in `afterEach`.
+- **Isolated**: each test gets its own headless renderer, and the harness destroys it after the test.
 - **Composable**: render individual components with controlled props/state.
 - **Snapshotable**: built-in `toMatchSnapshot()` for visual regression testing.
 
 ### Quick start
 
 ```typescript
-import { test, expect, afterEach } from "bun:test";
-import { testRender } from "../../renderers/opentui/test-utils"; // relative to your test file
+import { test, expect } from "bun:test";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils"; // relative to your test file
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-});
+// One renderer per test, destroyed after every test even when an assertion fails.
+const tui = createOpenTuiTestHarness({ width: 80, height: 24 });
 
 test("renders my component", async () => {
-  testSetup = await testRender(<MyComponent someProp="value" />, {
-    width: 80,
-    height: 24,
-  });
+  await tui.render(<MyComponent someProp="value" />);
 
-  await testSetup.renderOnce();
-  const frame = testSetup.captureCharFrame();
-
-  expect(frame).toContain("expected text");
+  // Polls until the text renders and throws with the last frame if it never does.
+  const frame = await tui.waitForFrameToContain("expected text");
   // or: expect(frame).toMatchSnapshot();
 });
 ```
 
-Import `testRender` from `src/renderers/opentui/test-utils`, not straight from `@opentui/react/test-utils`: the wrapper mounts the UI host, input, toast, and dialog providers that the shared kit needs. The same file has `emitKeypress`, `settleFrame`, and `createTestControls` for key events and frames that settle asynchronously.
+Import the harness from `src/renderers/opentui/test-utils` (plugins in their own repositories use `gloomberb/test-support`), not `testRender` straight from `@opentui/react/test-utils`: the wrapper mounts the UI host, input, toast, and dialog providers that the shared kit needs. Besides `render` and `setup()` (the current renderer), the harness has `frame()`, `emitKeypress`, `renderFrames`, `waitForFrameToContain`, `waitForFrameToExclude`, `clickFrameText` and `destroy()`. Prefer `waitForFrameToContain` over a fixed number of frames when a test waits for something to render: fixed frame counts flake on a loaded CI runner. A suite that must configure the renderer before anything mounts (kitty capabilities, pixel resolution) uses `tui.createRoot()` instead of `render`.
 
 ### Interaction testing
 
@@ -155,42 +144,37 @@ Use `mockInput` and React's `act()` to simulate user input:
 import { act } from "react";
 
 test("arrow keys navigate the list", async () => {
-  testSetup = await testRender(<MyList items={items} />, {
-    width: 80,
-    height: 24,
-  });
-
-  await testSetup.renderOnce();
+  await tui.render(<MyList items={items} />);
+  await tui.renderFrames(1);
 
   await act(async () => {
-    testSetup!.mockInput.pressArrow("down");
-    await testSetup!.renderOnce();
+    tui.setup().mockInput.pressArrow("down");
+    await tui.setup().renderOnce();
   });
 
-  expect(testSetup.captureCharFrame()).toContain("▸ Second Item");
+  expect(tui.frame()).toContain("▸ Second Item");
 });
 ```
 
 ### Testing components that need app context
 
-`testRender` already provides the dialog host. Components that read app state also need `AppContext`:
+The harness already provides the dialog host. Components that read app state also need `AppContext`:
 
 ```typescript
 import { AppContext, createInitialState } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 
 const state = createInitialState(createDefaultConfig("/tmp/gloomberb-my-test"));
-testSetup = await testRender(
+await tui.render(
   <AppContext value={{ state, dispatch: () => {} }}>
     <MyComponent />
   </AppContext>,
-  { width: 80, height: 24 },
 );
 ```
 
 `src/components/layout/header.test.tsx` is a short example that also records dispatched actions and clicks with `mockMouse`; `src/components/ui/ui.test.tsx` covers the shared kit (lists, tables, tabs, fields, dialogs).
 
-### Test setup return object
+### `tui.setup()` return object
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -213,7 +197,7 @@ bun test --update-snapshots           # Update snapshot files
 ### Conventions
 
 - Test files live next to source: `foo.tsx` → `foo.test.tsx`
-- Always call `renderer.destroy()` in `afterEach`
+- Create the renderer with `createOpenTuiTestHarness` so it is destroyed after every test; keep only suite-specific resets in your own `afterEach`
 - Always call `renderOnce()` before `captureCharFrame()`
 - Use consistent dimensions for snapshot stability (80×24 default)
 

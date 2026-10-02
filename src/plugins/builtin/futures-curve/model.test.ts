@@ -115,7 +115,7 @@ test("each contract's move since the look-back curves, with missing legs left em
 });
 
 test("axis labels take their decimals from the plotted range, never the contract tick", () => {
-  const domain = (min: number, max: number): CompositeAxisDomain => ({ side: "right", min, max, scale: "linear", unit: "", unitGroup: "" });
+  const domain = (min: number, max: number): CompositeAxisDomain => ({ side: "right", min, max, scale: "linear", unit: "", unitGroup: "", seriesIds: [] });
   // Hundreds of index points read as whole points, not 7800.00.
   expect(curveAxisPrice(7800, domain(7690, 8080), "ES")).toBe("7800");
   expect(curveAxisPrice(7803.75, domain(7690, 8080), "ES")).toBe("7804");

@@ -180,7 +180,7 @@ export function parsePaneCatalogArgs(args: string[]): ParsedPaneCatalogArgs {
 
 type PaneOptionValues = Record<string, string | number | boolean>;
 
-export function optionString(options: PaneOptionValues, key: string): string | undefined {
+function optionString(options: PaneOptionValues, key: string): string | undefined {
   const value = options[normalizeOptionKey(key)];
   return value === true || value === undefined ? undefined : String(value);
 }

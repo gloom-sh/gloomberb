@@ -31,7 +31,7 @@ const FORM_MODAL_WIDTH = 68;
 /** A prompt or a JSON body needs room to read. */
 const FORM_MODAL_TEXTAREA_WIDTH = 88;
 
-export function formModalWidth(route: FormRoute): number {
+function formModalWidth(route: FormRoute): number {
   return route.fields.some((field) => field.type === "textarea") ? FORM_MODAL_TEXTAREA_WIDTH : FORM_MODAL_WIDTH;
 }
 

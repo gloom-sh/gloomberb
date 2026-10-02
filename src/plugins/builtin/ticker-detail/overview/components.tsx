@@ -1,10 +1,12 @@
-import { t } from "../../../../i18n";
+import type { ReactNode } from "react";
+import { ExternalLinkText, usePaneLinkMenuEntry } from "../../../../components";
+import { t, tf } from "../../../../i18n";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
-import { colors, priceColor } from "../../../../theme/colors";
+import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
-import { displayWidth, formatNumber, padTo } from "../../../../utils/format";
-import type { PositionTableRow, StatField } from "./types";
+import { displayWidth, formatNumber, padTo, truncateToDisplayWidth } from "../../../../utils/format";
+import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import { portfolioPnlLabel } from "../../portfolio-list/position-metrics";
 
 const STAT_COLUMN_GAP = 2;
@@ -185,13 +187,75 @@ export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; asset
  * capped at FUNDAMENTALS_MAX_COLUMN_WIDTH so a wide pane gets more of them
  * instead of pushing each value half a pane away from its label.
  */
-export function fundamentalsGridColumns(width: number): number {
+function fundamentalsGridColumns(width: number): number {
   if (width < 58) return 1;
   return Math.max(2, Math.min(4, Math.ceil((width + STAT_COLUMN_GAP) / (FUNDAMENTALS_MAX_COLUMN_WIDTH + STAT_COLUMN_GAP))));
 }
 
-export function FundamentalsGrid({ fields, width }: { fields: StatField[]; width: number }) {
-  const columnCount = fundamentalsGridColumns(width);
+function gridLabelWidth(colWidth: number): number {
+  return Math.min(STAT_LABEL_WIDTH, Math.max(8, Math.floor(colWidth * 0.45)));
+}
+
+/**
+ * Columns for words rather than figures (an industry, a website): the most
+ * the grid allows at which every value reads whole. A title that may be cut
+ * (a SIC description) does not count.
+ */
+export function textGridColumns(fields: StatField[], width: number): number {
+  const widest = Math.max(0, ...fields.map((field) => displayWidth(field.value)));
+  for (let columns = fundamentalsGridColumns(width); columns > 1; columns -= 1) {
+    const colWidth = Math.floor((width - STAT_COLUMN_GAP * (columns - 1)) / columns);
+    if (colWidth - gridLabelWidth(colWidth) >= widest) return columns;
+  }
+  return 1;
+}
+
+/** A figure that opens its research function: the whole cell is the target. */
+function LinkedStatCell({
+  link,
+  width,
+  onOpen,
+  children,
+}: {
+  link: OverviewFunctionLink;
+  width: number;
+  onOpen: (link: OverviewFunctionLink) => void;
+  children: ReactNode;
+}) {
+  // The pane menu lists each function once, so the keyboard reaches what a click opens.
+  usePaneLinkMenuEntry(`function:${link.templateId}`, tf("Open {label}", { label: t(link.name) }), () => onOpen(link));
+  return (
+    <Box
+      width={width}
+      flexDirection="row"
+      hoverBackgroundColor={hoverBg()}
+      onMouseDown={(event?: { button?: number }) => {
+        if ((event?.button ?? 0) === 0) onOpen(link);
+      }}
+      cursor="pointer"
+      data-gloom-interactive="true"
+      data-gloom-label={tf("Open {label}", { label: t(link.name) })}
+      data-gloom-ui="key-value-row"
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function FundamentalsGrid({
+  fields,
+  width,
+  columns,
+  onOpenLink,
+}: {
+  fields: StatField[];
+  width: number;
+  /** Fixed column count; by default as many as keep each value near its label. */
+  columns?: number;
+  /** Opens a figure's research function; without it figures are plain. */
+  onOpenLink?: (link: OverviewFunctionLink) => void;
+}) {
+  const columnCount = columns ?? fundamentalsGridColumns(width);
   const availableWidth = width - STAT_COLUMN_GAP * (columnCount - 1);
   const baseColWidth = Math.floor(availableWidth / columnCount);
   const extraWidth = availableWidth - baseColWidth * columnCount;
@@ -215,19 +279,34 @@ export function FundamentalsGrid({ fields, width }: { fields: StatField[]; width
                 </Box>
               );
             }
-            const labelWidth = Math.min(STAT_LABEL_WIDTH, Math.max(8, Math.floor(colWidth * 0.45)));
+            const labelWidth = gridLabelWidth(colWidth);
             const valueWidth = Math.max(1, colWidth - labelWidth);
+            // A long value (an industry, a SIC title) is cut from the end, never from the label side.
+            const value = truncateToDisplayWidth(field.value, valueWidth);
+            const detailRoom = valueWidth - displayWidth(value) - 1;
+            const details = typeof field.detail === "string" ? [field.detail] : field.detail ?? [];
+            // A cut "in 4..." misleads; a title cut to "Semicond..." still names it.
+            const detail = details.find((text) => displayWidth(text) <= detailRoom)
+              ?? (field.clipDetail && details[0] && detailRoom >= 4 ? truncateToDisplayWidth(details[0], detailRoom) : "");
+            const content = (
+              <>
+                <Box width={labelWidth} overflow="hidden">
+                  <Text fg={colors.textDim}>{t(field.label)}</Text>
+                </Box>
+                <Box flexDirection="row" width={valueWidth} justifyContent="flex-end" overflow="hidden">
+                  {field.url
+                    ? <ExternalLinkText url={field.url} label={value} color={field.valueColor ?? colors.text} />
+                    : <Text fg={field.valueColor ?? colors.text}>{value}</Text>}
+                  {detail ? <Text fg={colors.textDim}>{` ${detail}`}</Text> : null}
+                </Box>
+              </>
+            );
             return (
               <Box key={j} flexDirection="row">
                 {j > 0 && <Box width={STAT_COLUMN_GAP} />}
-                <Box width={colWidth} flexDirection="row" data-gloom-ui="key-value-row">
-                  <Box width={labelWidth} overflow="hidden">
-                    <Text fg={colors.textDim}>{t(field.label)}</Text>
-                  </Box>
-                  <Box flexDirection="row" width={valueWidth} justifyContent="flex-end" overflow="hidden">
-                    <Text fg={field.valueColor ?? colors.text}>{field.value}</Text>
-                  </Box>
-                </Box>
+                {field.link && onOpenLink
+                  ? <LinkedStatCell link={field.link} width={colWidth} onOpen={onOpenLink}>{content}</LinkedStatCell>
+                  : <Box width={colWidth} flexDirection="row" data-gloom-ui="key-value-row">{content}</Box>}
               </Box>
             );
           })}

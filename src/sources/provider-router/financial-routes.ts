@@ -8,7 +8,6 @@ import type {
   TickerFinancials,
 } from "../../types/financials";
 import { parseOptionSymbol } from "../../utils/options";
-import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { isQuoteContributionStaleForCurrentSession, resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
 import {
   listCachedResources,

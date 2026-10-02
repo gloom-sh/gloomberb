@@ -38,7 +38,7 @@ export function normalizeSavedSearchResponse(
  * join it into search text, and hand it to a badge, and a null reaches each of
  * those as an empty chip, the literal "null", or a crash.
  */
-export function normalizeSearchHit(hit: CloudSearchHit): CloudSearchHit {
+function normalizeSearchHit(hit: CloudSearchHit): CloudSearchHit {
   return hit.ticker ? hit : { ...hit, ticker: "" };
 }
 

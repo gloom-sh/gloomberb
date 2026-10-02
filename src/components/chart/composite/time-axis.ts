@@ -52,7 +52,7 @@ interface CompositeTimeAxisCandidate extends CompositeTimeAxisSample {
   boundary: boolean;
 }
 
-export interface CompositeTimeAxisTick extends CompositeTimeAxisSample {
+interface CompositeTimeAxisTick extends CompositeTimeAxisSample {
   label: string;
   start: number;
   end: number;

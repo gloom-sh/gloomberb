@@ -1,11 +1,11 @@
 import {
   parseMarketplaceLayoutPayload,
   type LayoutMarketplacePayload,
-} from "../layout-marketplace/payload";
+} from "./portable-layout";
 import { safeExternalUrl } from "../utils/external-url";
 import { isRecord } from "../utils/guards";
 
-export const MAX_SHARE_BYTES = 128 * 1024;
+const MAX_SHARE_BYTES = 128 * 1024;
 const MAX_TITLE_LENGTH = 200;
 const MAX_TEXT_LENGTH = 50_000;
 const MAX_TABLE_COLUMNS = 20;
@@ -20,9 +20,9 @@ const MAX_PANE_STRING_LENGTH = 4_096;
 const PANE_TEMPLATE_ID = /^[a-z0-9][a-z0-9._:-]{0,119}$/;
 
 type CellValue = string | number | boolean | null;
-export type ShareJsonValue = CellValue | ShareJsonValue[] | { [key: string]: ShareJsonValue };
+type ShareJsonValue = CellValue | ShareJsonValue[] | { [key: string]: ShareJsonValue };
 
-export interface TableShareData {
+interface TableShareData {
   title: string;
   columns: Array<{ key: string; label: string }>;
   rows: Array<Record<string, CellValue>>;
@@ -42,13 +42,13 @@ export interface ChartShareData {
   sourceUrl?: string;
 }
 
-export interface ArticleShareData {
+interface ArticleShareData {
   title: string;
   text: string;
   sourceUrl?: string;
 }
 
-export interface LegacyPaneShareData {
+interface LegacyPaneShareData {
   version: 1;
   templateId: string;
   title: string;
@@ -56,7 +56,7 @@ export interface LegacyPaneShareData {
   data: Record<string, ShareJsonValue>;
 }
 
-export interface PortablePaneShareData {
+interface PortablePaneShareData {
   version: 2;
   title: string;
   description?: string;

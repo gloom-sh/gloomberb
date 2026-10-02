@@ -7,8 +7,8 @@ export const MARKET_HEATMAP_UNIVERSES = [
 ] as const;
 
 export type MarketHeatmapUniverseId = typeof MARKET_HEATMAP_UNIVERSES[number]["id"];
-export type MarketHeatmapSource = "yahoo" | "nasdaq";
-export type MarketHeatmapSizeKind = "market-cap" | "net-assets";
+type MarketHeatmapSource = "yahoo" | "nasdaq";
+type MarketHeatmapSizeKind = "market-cap" | "net-assets";
 
 export interface MarketHeatmapAsset {
   symbol: string;
@@ -46,11 +46,11 @@ export interface MarketHeatmapFetchOptions {
   cache?: boolean;
 }
 
-export interface YahooMarketHeatmapClient {
+interface YahooMarketHeatmapClient {
   postJsonWithCrumb<T>(url: string, body: unknown): Promise<T>;
 }
 
-export type MarketHeatmapFetchTransport = HttpFetchTransport;
+type MarketHeatmapFetchTransport = HttpFetchTransport;
 
 export interface MarketHeatmapSources {
   yahooClient?: YahooMarketHeatmapClient;

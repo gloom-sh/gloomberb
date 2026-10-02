@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useMemo, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudFilingEventPayload } from "../../../api-client";
 import type { CombinedPaneFooter } from "../../../components/layout/pane/footer";
-import { emitKeypress, settleFrame, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -10,7 +10,7 @@ import { UiHostProvider, useNativeRenderer, useRendererHost, useUiHost } from ".
 import { FilingEventsPane } from "./pane";
 
 const PANE_ID = "filing-events:test";
-let setup: Awaited<ReturnType<typeof testRender>> | null = null;
+const tui = createOpenTuiTestHarness();
 let footer: CombinedPaneFooter;
 let selectCompany: (symbol: string) => void;
 let requests: string[] = [];
@@ -73,22 +73,18 @@ function transport(respond: (ticker: string) => Response | Promise<Response>) {
 }
 
 async function mount() {
-  await act(async () => { setup = await testRender(<Harness />, { width: 100, height: 24 }); });
-  await settleFrame(setup!, 8);
+  await act(async () => { await tui.render(<Harness />, { width: 100, height: 24 }); });
+  await settleFrame(tui.setup(), 8);
 }
 
 async function select(symbol: string) {
   await act(async () => selectCompany(symbol));
-  await settleFrame(setup!, 6);
+  await settleFrame(tui.setup(), 6);
 }
 
-function frame() {
-  return setup!.captureCharFrame();
-}
+const frame = tui.frame;
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = null;
+afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.dispose();
   requests = [];
@@ -105,19 +101,18 @@ test("pending company changes hide previous issuer content and source actions", 
 
   await select("SECOND");
   expect(frame()).not.toContain("FIRST acquisition terms");
-  await emitKeypress(setup!, { name: "o", sequence: "o" });
+  await tui.emitKeypress({ name: "o", sequence: "o" });
   expect(opened).toEqual([]);
 
   await act(async () => resolveSecond(Response.json({ ticker: "SECOND", events: [event("SECOND")] })));
-  await settleFrame(setup!, 8);
-  expect(frame()).toContain("SECOND acquisition terms");
+  await tui.waitForFrameToContain("SECOND acquisition terms");
 });
 
 test("clearing the company removes its filing open shortcut", async () => {
   transport((ticker) => Response.json({ ticker, events: [event(ticker)] }));
   await mount();
   await select("");
-  await emitKeypress(setup!, { name: "o", sequence: "o" });
+  await tui.emitKeypress({ name: "o", sequence: "o" });
   expect(opened).toEqual([]);
 });
 
@@ -131,10 +126,9 @@ test("plain refresh retries an initial outage and loads current filings", async 
 
   recovered = true;
   const count = requests.length;
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
-  await settleFrame(setup!, 8);
+  await tui.emitKeypress({ name: "r", sequence: "r" });
+  await tui.waitForFrameToContain("FIRST acquisition terms");
   expect(requests.length).toBe(count + 1);
-  expect(frame()).toContain("FIRST acquisition terms");
 });
 
 test("same-company refresh preserves selection and source during transient failure, then recovers", async () => {
@@ -147,23 +141,23 @@ test("same-company refresh preserves selection and source during transient failu
   await mount();
   const initialRows = frame().split("\n");
   const row = initialRows.findIndex((line) => line.includes("FIRST acquisition terms"));
-  await act(async () => setup!.mockMouse.click(initialRows[row]!.indexOf("FIRST acquisition terms") + 2, row));
-  await settleFrame(setup!, 4);
+  await act(async () => tui.setup().mockMouse.click(initialRows[row]!.indexOf("FIRST acquisition terms") + 2, row));
+  await settleFrame(tui.setup(), 4);
 
   mode = "failed";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
-  await settleFrame(setup!, 8);
+  await tui.emitKeypress({ name: "r", sequence: "r" });
+  await settleFrame(tui.setup(), 8);
   expect(frame()).toContain("FIRST acquisition terms");
   expect(JSON.stringify(footer)).toContain("Refresh outage");
-  await emitKeypress(setup!, { name: "o", sequence: "o" });
+  await tui.emitKeypress({ name: "o", sequence: "o" });
   expect(opened.at(-1)).toContain("/kept.htm");
 
   mode = "recovered";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
-  await settleFrame(setup!, 8);
+  await tui.emitKeypress({ name: "r", sequence: "r" });
+  await settleFrame(tui.setup(), 8);
   expect(frame().split("FIRST acquisition terms").length - 1).toBe(2);
   expect(JSON.stringify(footer)).not.toContain("Refresh outage");
-  await emitKeypress(setup!, { name: "o", sequence: "o" });
+  await tui.emitKeypress({ name: "o", sequence: "o" });
   expect(opened.at(-1)).toContain("/kept.htm");
 });
 
@@ -176,11 +170,11 @@ test("obsolete company response cannot overwrite a newer company or restore its 
   await select("SECOND");
   await select("THIRD");
   await act(async () => pending(Response.json({ ticker: "SECOND", events: [event("SECOND")] })));
-  await settleFrame(setup!, 8);
+  await settleFrame(tui.setup(), 8);
   const current = frame();
   expect(current).toContain("THIRD acquisition terms");
   expect(current).not.toContain("SECOND acquisition terms");
-  await emitKeypress(setup!, { name: "o", sequence: "o" });
+  await tui.emitKeypress({ name: "o", sequence: "o" });
   expect(opened.at(-1)).toContain("/THIRD/");
 });
 
@@ -188,20 +182,20 @@ test("page keys move the selection a screen at a time and Enter opens it", async
   transport((ticker) => Response.json({ ticker, events: Array.from({ length: 12 }, (_, index) => event(ticker, `f${index}`)) }));
   await mount();
   const openSelected = async () => {
-    await emitKeypress(setup!, { name: "return" });
+    await tui.emitKeypress({ name: "return" });
     return Number(/f(\d+)\.htm$/.exec(opened.at(-1) ?? "")?.[1]);
   };
-  const end = await emitKeypress(setup!, { name: "end" }, { trackPropagation: true });
+  const end = await tui.emitKeypress({ name: "end" }, { trackPropagation: true });
   expect(end.defaultPrevented).toBe(true);
   expect(await openSelected()).toBe(11);
-  await emitKeypress(setup!, { name: "home" });
+  await tui.emitKeypress({ name: "home" });
   expect(await openSelected()).toBe(0);
-  await emitKeypress(setup!, { name: "pagedown" });
+  await tui.emitKeypress({ name: "pagedown" });
   const paged = await openSelected();
   expect(paged).toBeGreaterThan(1);
-  await emitKeypress(setup!, { name: "pageup" });
+  await tui.emitKeypress({ name: "pageup" });
   expect(await openSelected()).toBe(0);
   // With nothing further to select, the key is left to scroll the feed.
-  const top = await emitKeypress(setup!, { name: "k" }, { trackPropagation: true });
+  const top = await tui.emitKeypress({ name: "k" }, { trackPropagation: true });
   expect(top.defaultPrevented).toBe(false);
 });

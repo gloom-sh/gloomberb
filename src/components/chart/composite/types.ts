@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { CompositeChartLevels } from "./levels";
 import type {
   ChartPanelSpec,
   PanelScale,
@@ -50,7 +51,7 @@ export interface CompositeProjectedPoint {
   breakBefore: boolean;
 }
 
-export interface CompositeCalendarTimeScale {
+interface CompositeCalendarTimeScale {
   kind: "calendar";
   startTime: number;
   endTime: number;
@@ -62,7 +63,7 @@ export interface CompositeCalendarTimeScale {
   rightOffsetRatio?: number;
 }
 
-export interface CompositeMarketTimeScale {
+interface CompositeMarketTimeScale {
   kind: "market";
   startTime: number;
   endTime: number;
@@ -87,12 +88,35 @@ export interface CompositeProjectedSeries {
 }
 
 /** Level line at the newest close of the chart's primary price series. */
-export interface CompositeLastPriceMarker {
+interface CompositeLastPriceMarker {
   seriesId: string;
   color: string;
   axis: CompositeAxisSide;
   value: number;
   yRatio: number;
+}
+
+/**
+ * A run of extended-hours bars on the plot, as x ratios, and whether a
+ * regular-session bar lies on each side of it.
+ */
+export interface CompositeExtendedHoursSpan {
+  start: number;
+  end: number;
+  startsAfterBar: boolean;
+  endsBeforeBar: boolean;
+}
+
+/** Volume traded at each price over the bars in view, drawn against the right edge. */
+export interface CompositeVolumeProfile {
+  seriesId: string;
+  color: string;
+  /** Lowest price first; ratios run down the plot, so `lowRatio` is the larger. */
+  rows: Array<{ lowRatio: number; highRatio: number; volume: number; valueArea: boolean }>;
+  maxVolume: number;
+  /** Point of control: the middle of the busiest row. */
+  poc: number;
+  pocRatio: number;
 }
 
 export interface CompositePanelScene {
@@ -104,6 +128,10 @@ export interface CompositePanelScene {
   series: CompositeProjectedSeries[];
   /** Present only on the panel that holds the primary price series. */
   lastPrice?: CompositeLastPriceMarker;
+  /** Present on a panel holding a volume-profile study. */
+  volumeProfile?: CompositeVolumeProfile;
+  /** Plot spans (x ratios) of intraday bars outside the regular session, shared by every panel. */
+  extendedHours?: readonly CompositeExtendedHoursSpan[];
 }
 
 export interface CompositeCursorValue {
@@ -226,4 +254,15 @@ export interface CompositeChartProps {
   onActivate?: () => void;
   onToggleSeries?: (seriesId: string) => void;
   isSeriesToggleable?: (series: ResolvedSeries) => boolean;
+  /**
+   * Picks a bar instead of panning: a press on the plot, or Enter at the
+   * keyboard cursor, hands back that bar's date; Esc cancels. `label` is the
+   * Enter hint, such as "anchor here".
+   */
+  timePick?: { label: string; onPick: (date: Date) => void; onCancel: () => void } | null;
+  /**
+   * Horizontal price levels on one series' panel. With `onEdit` the level
+   * tool (Shift+H) adds, moves and deletes them by mouse and keyboard.
+   */
+  levels?: CompositeChartLevels | null;
 }

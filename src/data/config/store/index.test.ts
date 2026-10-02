@@ -10,8 +10,8 @@ import {
   findPaneInstance,
   type AppConfig,
 } from "../../../types/config";
-import { getDockedPaneIds } from "../../../plugins/pane-manager";
-import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "../../../plugins/seed";
+import { getDockedPaneIds } from "../../../layout/pane-manager";
+import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "../../../plugins/extracted-plugins";
 
 const tempDirs: string[] = [];
 const originalGloomberbHome = process.env.GLOOMBERB_HOME;
@@ -783,8 +783,9 @@ describe("loadConfig", () => {
       "ibkr",
       "broker",
       "portfolio",
-      // Built in again, and off like the rest of Market Overview.
+      // Built in again, and off like the rest of Market Overview and Macro.
       "market-halts",
+      "ipo-calendar",
     ]);
   });
 
@@ -811,6 +812,28 @@ describe("loadConfig", () => {
     const persisted = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as Record<string, unknown>;
     await writeConfigJson(dataDir, { ...persisted, configVersion: 22 });
     expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["market-overview"]);
+  });
+
+  /** The IPO Calendar was a Macro module, then a plugin the seeder skipped while Macro was off. */
+  test("keeps the IPO Calendar off where Macro was off, unless a copy was installed since", async () => {
+    await usePluginCheckouts();
+    const dataDir = await createTempConfigDir();
+    await writeConfigJson(dataDir, createSavedConfig({ configVersion: 22, disabledPlugins: ["macro"] }));
+    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["macro", "ipo-calendar"]);
+
+    // Saved at 23 by a build that absorbed only the Market Overview modules.
+    const afterMarketOverview = await createTempConfigDir();
+    await writeConfigJson(afterMarketOverview, createSavedConfig({
+      configVersion: 23,
+      disabledPlugins: ["macro"],
+      seededPlugins: ["absorbed:market-heatmap", "absorbed:market-halts", "absorbed:fear-greed"],
+    }));
+    expect((await loadConfig(afterMarketOverview)).disabledPlugins).toEqual(["macro", "ipo-calendar"]);
+
+    await usePluginCheckouts("gloom-ipo-calendar");
+    const installed = await createTempConfigDir();
+    await writeConfigJson(installed, createSavedConfig({ configVersion: 22, disabledPlugins: ["macro"] }));
+    expect((await loadConfig(installed)).disabledPlugins).toEqual(["macro"]);
   });
 
   test("migrates grouped built-in plugin config keys", async () => {
@@ -931,11 +954,11 @@ describe("loadConfig", () => {
       },
     });
     expect(config.layouts[0]?.focusedPaneId).toBe("ticker-detail:main");
-    expect(config.layouts[0]?.activePanel).toBe("right");
+    expect(config.layouts[0]).not.toHaveProperty("activePanel");
 
     await saveConfig(config);
     const persisted = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as {
-      layouts: Array<{ paneState?: Record<string, unknown>; focusedPaneId?: string | null; activePanel?: string }>;
+      layouts: Array<{ paneState?: Record<string, unknown>; focusedPaneId?: string | null }>;
     };
     expect(persisted.layouts[0]?.paneState).toEqual({
       "ticker-detail:main": {
@@ -946,7 +969,7 @@ describe("loadConfig", () => {
       },
     });
     expect(persisted.layouts[0]?.focusedPaneId).toBe("ticker-detail:main");
-    expect(persisted.layouts[0]?.activePanel).toBe("right");
+    expect(persisted.layouts[0]).not.toHaveProperty("activePanel");
   });
 
   test("does not replay historical migrations for current configs or saves", async () => {

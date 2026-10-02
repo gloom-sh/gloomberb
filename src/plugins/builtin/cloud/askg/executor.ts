@@ -38,14 +38,14 @@ interface HeadlessExecution {
   errors?: string[];
 }
 
-export interface HeadlessToolCall {
+interface HeadlessToolCall {
   name: string;
   args: Record<string, JsonValue>;
   manifest: ClientToolManifest;
   signal: AbortSignal;
 }
 
-export type HeadlessToolExecutor = (call: HeadlessToolCall) => Promise<HeadlessExecution>;
+type HeadlessToolExecutor = (call: HeadlessToolCall) => Promise<HeadlessExecution>;
 
 export interface ASKGToolExecutorDependencies {
   manifests: readonly ClientToolManifest[];
@@ -57,7 +57,7 @@ export interface ASKGToolExecutorDependencies {
   now?: () => number;
 }
 
-export interface ASKGToolExecutionOptions {
+interface ASKGToolExecutionOptions {
   signal?: AbortSignal;
   confirmed?: boolean;
 }

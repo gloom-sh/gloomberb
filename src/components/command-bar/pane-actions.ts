@@ -10,7 +10,7 @@ import {
 import {
   addPaneFloating,
   addPaneToLayout,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { PinTickerOptions } from "../../types/plugin";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
@@ -95,7 +95,7 @@ export function useCommandBarPaneActions({
   }, [openFixedTickerPane, retargetTickerResearchPane, stateRef]);
 
   const persistLayoutChange = useCallback((nextLayout: LayoutConfig) => {
-    pluginRegistry.updateLayoutFn(nextLayout);
+    pluginRegistry.updateLayout(nextLayout);
   }, [pluginRegistry]);
 
   const duplicatePane = useCallback((paneId: string) => {
@@ -112,7 +112,7 @@ export function useCommandBarPaneActions({
       settings: pane.settings,
     });
 
-    const { width, height } = pluginRegistry.getTermSizeFn();
+    const { width, height } = pluginRegistry.getTermSize();
     const nextLayout = currentState.config.layout.floating.some((entry) => entry.instanceId === paneId)
       ? addPaneFloating(currentState.config.layout, duplicate, width, height, paneDef)
       : addPaneToLayout(currentState.config.layout, duplicate, { relativeTo: paneId, position: "right" });

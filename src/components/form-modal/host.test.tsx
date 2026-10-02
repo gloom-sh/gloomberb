@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppContextStoreValue } from "../../state/app/context";
@@ -11,8 +11,6 @@ import { ENTER, createFormModalTestSession, registerCommand } from "./test-harne
 
 const session = createFormModalTestSession();
 const { frame, press, render, renderForm, settle, type, waitForForm, waitForFrameToContain } = session;
-
-afterEach(() => session.cleanup());
 
 describe("form modal host", () => {
   test("a form from the bar closes the bar and takes the keyboard, and Enter on the last field sends it", async () => {

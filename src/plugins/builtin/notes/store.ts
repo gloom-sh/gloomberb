@@ -41,7 +41,7 @@ export function noteOwnerKey(owner: NoteOwner): string {
   return owner.kind === "user" ? "user" : `team:${owner.teamId}`;
 }
 
-export function noteOwnerScope(owner: NoteOwner): CloudNoteScope {
+function noteOwnerScope(owner: NoteOwner): CloudNoteScope {
   return owner.kind === "user" ? { scope: "user" } : { scope: "team", teamId: owner.teamId };
 }
 

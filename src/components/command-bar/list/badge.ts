@@ -31,7 +31,7 @@ const SHORTCUT_PATTERN = /^[A-Z0-9][A-Z0-9-]{0,5}$/;
 
 type BadgeSource = Pick<ResultItem, "accent" | "badge" | "right" | "kind">;
 
-export function looksLikeShortcut(value: string | undefined): value is string {
+function looksLikeShortcut(value: string | undefined): value is string {
   return value !== undefined && SHORTCUT_PATTERN.test(value);
 }
 

@@ -97,9 +97,9 @@ export async function updatePlugins(name?: string) {
   }
 }
 
-export type PluginCheckStatus = "ok" | "warn" | "fail";
+type PluginCheckStatus = "ok" | "warn" | "fail";
 
-export interface PluginCheck {
+interface PluginCheck {
   id: string;
   status: PluginCheckStatus;
   message: string;
@@ -150,7 +150,7 @@ function listedHostImports<T>(
  * the targets are real, the hosts it reaches are declared, and the browser
  * build the desktop and web app need actually compiles.
  */
-export async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
+async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
   const candidate = nameOrPath.includes("/") || nameOrPath.startsWith(".") ? resolve(nameOrPath) : join(PLUGINS_DIR, nameOrPath);
   if (!existsSync(candidate)) fail(`Plugin "${nameOrPath}" was not found.`, PLUGINS_DIR);
   const directory = basename(candidate);

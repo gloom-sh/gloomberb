@@ -49,7 +49,7 @@ const GLYPHS: Record<string, string> = {
   "+": "00000/00100/00100/11111/00100/00100/00000", " ": "00000/00000/00000/00000/00000/00000/00000",
 };
 const GLYPH_ROWS = Object.fromEntries(Object.entries(GLYPHS).map(([key, glyph]) => [key, glyph.split("/")]));
-export const surface3DLabelWidth = (text: string, scale: number) => Math.max(0, text.length * 6 - 1) * scale;
+const surface3DLabelWidth = (text: string, scale: number) => Math.max(0, text.length * 6 - 1) * scale;
 
 function paintLabel(bitmap: NativeChartBitmap, text: string, x: number, y: number, color: RgbaColor, scale: number) {
   const left = Math.round(x), top = Math.round(y);

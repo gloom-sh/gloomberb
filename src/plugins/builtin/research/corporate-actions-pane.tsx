@@ -194,7 +194,7 @@ function earningsInput(value: number | undefined, currency?: string): string {
   return currency ? `${amount} ${currency}` : amount;
 }
 
-export type EventDetailBlock =
+type EventDetailBlock =
   | { kind: "row"; label: string; value: string; detail?: string; tone?: "positive" | "negative" }
   | { kind: "note"; text: string }
   | { kind: "prose"; text: string };

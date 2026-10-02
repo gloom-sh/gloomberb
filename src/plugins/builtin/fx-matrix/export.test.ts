@@ -13,7 +13,7 @@ test("cross exports keep each leg's observation, receipt, raw rate and stale fai
   expect(metadata[2]).toEqual(["USD", 1, "", "", "identity", ""]);
   expect(metadata[3]).toEqual(["EUR", 1.2, new Date(now - 600_000).toISOString(), new Date(now - 1000).toISOString(), "current", ""]);
   expect(metadata[4]).toEqual(["GBP", 1.5, new Date(now - 10_800_000).toISOString(), new Date(now - 1000).toISOString(), "stale", "=provider,failed"]);
-  const csv = createDataTableCsv({ columns: [{ id: "rate", label: "EUR/GBP", width: 10 }], items: ["0.8000"],
+  const csv = createDataTableCsv({ columns: [{ id: "rate", label: "EUR/GBP", width: 10, align: "left" }], items: ["0.8000"],
     renderCell: (text) => ({ text }), getExportMetadata: () => metadata });
   expect(csv).toStartWith("\uFEFFEUR/GBP\n0.8000\n\nCross rate,");
   expect(csv).toContain('"\'=provider,failed"');

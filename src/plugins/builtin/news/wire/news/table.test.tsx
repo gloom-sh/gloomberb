@@ -1,8 +1,8 @@
 import { TextAttributes } from "@opentui/core";
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import { Box } from "../../../../../ui";
-import { testRender } from "../../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -14,7 +14,7 @@ import type { MarketNewsItem } from "../../../../../types/news-source";
 import { createTestArticle } from "../../../../../test-support/news";
 import { NewsArticleStackView, buildColumns, type NewsSortPreference } from "./table";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 const sortPreference: NewsSortPreference = {
   columnId: "time",
@@ -66,25 +66,16 @@ function Harness() {
   );
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
-});
-
 describe("NewsArticleStackView", () => {
   test("renders unopened stories bold and opened stories normal weight", async () => {
-    testSetup = await testRender(<Harness />, { width: 90, height: 10 });
+    await tui.render(<Harness />, { width: 90, height: 10 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const boldText = testSetup.captureSpans().lines
+    const boldText = tui.setup().captureSpans().lines
       .flatMap((line) => line.spans)
       .filter((span) => (span.attributes & TextAttributes.BOLD) !== 0)
       .map((span) => span.text)
@@ -99,7 +90,7 @@ describe("NewsArticleStackView", () => {
       createDefaultConfig("/tmp/gloomberb-news-table-layout-test"),
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="news-top:main">
           <NewsArticleStackView
@@ -113,7 +104,7 @@ describe("NewsArticleStackView", () => {
               }),
             ]}
             focused
-            width={90}
+            width={94}
             rootHeight={10}
             selectedArticleId="macro"
             setSelectedArticleId={() => {}}
@@ -128,19 +119,19 @@ describe("NewsArticleStackView", () => {
           />
         </PaneInstanceProvider>
       </AppContext>,
-      { width: 90, height: 10 },
+      { width: 94, height: 10 },
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const lines = testSetup.captureCharFrame().split("\n");
+    const lines = tui.frame().split("\n");
     // The sorted column and its indicator must survive the layout arithmetic.
     expect(lines[0]).toContain("SCORE");
     expect(lines[0]).toContain("\u25bc");
-    expect(lines[0]!.length).toBeLessThanOrEqual(90);
+    expect(lines[0]!.length).toBeLessThanOrEqual(94);
     expect(lines[1]).toContain("87");
     // Snake_case ids and mid-word clipping never reach the user.
     expect(lines[1]).toContain("Politics");
@@ -152,12 +143,12 @@ describe("NewsArticleStackView", () => {
   test("narrowing gives up category, then ticker room, before the headline", () => {
     const ids = (width: number) => buildColumns(width, ["time", "source", "title", "tickers", "categories", "importance"])
       .map((column) => column.id === "tickers" ? `tickers:${column.width}` : column.id);
-    expect(ids(120)).toEqual(["time", "source", "title", "tickers:18", "categories", "importance"]);
-    expect(ids(95)).toEqual(["time", "source", "title", "tickers:18", "importance"]);
-    expect(ids(85)).toEqual(["time", "source", "title", "tickers:10", "importance"]);
-    expect(ids(75)).toEqual(["time", "title", "tickers:10", "importance"]);
-    expect(ids(60)).toEqual(["time", "title", "importance"]);
-    expect(ids(45)).toEqual(["time", "title"]);
+    expect(ids(127)).toEqual(["time", "source", "title", "tickers:18", "categories", "importance"]);
+    expect(ids(102)).toEqual(["time", "source", "title", "tickers:18", "importance"]);
+    expect(ids(92)).toEqual(["time", "source", "title", "tickers:10", "importance"]);
+    expect(ids(79)).toEqual(["time", "title", "tickers:10", "importance"]);
+    expect(ids(64)).toEqual(["time", "title", "importance"]);
+    expect(ids(49)).toEqual(["time", "title"]);
   });
 
   test("dedupes exchange-qualified ticker aliases in table cells", async () => {
@@ -165,7 +156,7 @@ describe("NewsArticleStackView", () => {
       createDefaultConfig("/tmp/gloomberb-news-table-ticker-dedupe-test"),
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="news-feed:main">
           <NewsArticleStackView
@@ -196,11 +187,11 @@ describe("NewsArticleStackView", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("NFLX");
     expect(frame).toContain("PARA");
     expect(frame).not.toContain("NFLX:XNAS");

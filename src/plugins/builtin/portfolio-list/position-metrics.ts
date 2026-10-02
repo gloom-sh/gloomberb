@@ -61,7 +61,7 @@ export function signedPositionDirection(position: { shares: number; side?: "long
   return position.shares < 0 ? -1 : 1;
 }
 
-export function resolvePositionCostMultiplier(position: TickerRecord["metadata"]["positions"][number]): number {
+function resolvePositionCostMultiplier(position: TickerRecord["metadata"]["positions"][number]): number {
   const priceMultiplier = normalizePositionMultiplier(position.multiplier);
   if (priceMultiplier === 1) return 1;
   if (position.marketValue == null || position.unrealizedPnl == null

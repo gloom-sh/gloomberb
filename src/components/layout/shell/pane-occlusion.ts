@@ -1,4 +1,4 @@
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 
 export interface OcclusionPane {
   paneId: string;

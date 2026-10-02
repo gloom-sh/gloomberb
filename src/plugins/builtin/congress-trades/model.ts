@@ -15,7 +15,7 @@ export const CONGRESS_TRADE_LIMIT = 200;
 export const CONGRESS_FILING_LIMIT = 60;
 export const CONGRESS_MEMBER_TRADE_LIMIT = 2000;
 export const CONGRESS_MEMBER_FILING_LIMIT = 500;
-export const CONGRESS_EARLIEST_YEAR = 2008;
+const CONGRESS_EARLIEST_YEAR = 2008;
 
 export type CongressTab = "trades" | "members" | "tickers";
 export type LoadStatus = "idle" | "loading" | "loaded" | "error";

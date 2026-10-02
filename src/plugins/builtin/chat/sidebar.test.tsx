@@ -1,6 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { act, useCallback, useMemo, useRef, useState } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, appReducer, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createConfigBackedTestPluginRuntime, createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -21,34 +20,17 @@ import {
   type AccountManagementTab,
 } from "../account-management/navigation";
 import {
-  cleanupChatTest,
-  createChatTestControls,
+  createChatTestHarness,
   createController,
-  createHarness,
-  installChatApiTestDefaults,
   installServerChannels,
   lineText,
   makeAccountProfile,
   makeMessage,
   MemoryPersistence,
-  type ChatTestSetup,
 } from "./test-harness";
 
-let testSetup: ChatTestSetup | undefined;
-function setup(): ChatTestSetup {
-  if (!testSetup) throw new Error("chat sidebar test setup is missing");
-  return testSetup;
-}
-const { flushFrame, emitKeypress } = createChatTestControls(setup);
-
-beforeEach(() => {
-  installChatApiTestDefaults();
-});
-
-afterEach(async () => {
-  await cleanupChatTest(testSetup);
-  testSetup = undefined;
-});
+const tui = createChatTestHarness();
+const { flushFrame, emitKeypress, mountChat } = tui;
 
 function createChannelPane(
   controller: ReturnType<typeof createController>,
@@ -103,25 +85,24 @@ describe("ChatContent channel sidebar", () => {
     );
 
     await act(async () => {
-      testSetup = await testRender(renderChannelPane(90), {
+      await tui.render(renderChannelPane(90), {
         width: 90,
         height: 12,
       });
     });
 
     await flushFrame();
-    expect(setup().captureCharFrame()).toContain("options");
+    expect(tui.frame()).toContain("options");
 
     await act(async () => {
-      testSetup?.renderer.destroy();
-      testSetup = await testRender(renderChannelPane(60), {
+      await tui.render(renderChannelPane(60), {
         width: 60,
         height: 12,
       });
     });
 
     await flushFrame();
-    expect(setup().captureCharFrame()).not.toContain("options");
+    expect(tui.frame()).not.toContain("options");
   });
 
   test("selects a sidebar channel from a single text click", async () => {
@@ -132,16 +113,16 @@ describe("ChatContent channel sidebar", () => {
     const ChannelPane = createChannelPane(controller);
 
     await act(async () => {
-      testSetup = await testRender(<ChannelPane />, {
+      await tui.render(<ChannelPane />, {
         width: 90,
         height: 12,
       });
     });
 
     await flushFrame();
-    expect(setup().captureCharFrame()).toContain("#equities");
+    expect(tui.frame()).toContain("#equities");
 
-    const lines = setup().captureCharFrame().split("\n");
+    const lines = tui.frame().split("\n");
     const row = lines.findIndex((line) => line.includes("options"));
     const col = lines[row]?.indexOf("options") ?? -1;
 
@@ -149,13 +130,13 @@ describe("ChatContent channel sidebar", () => {
     expect(col).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await setup().mockMouse.click(col + 1, row);
-      await setup().renderOnce();
-      await setup().renderOnce();
+      await tui.setup().mockMouse.click(col + 1, row);
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
-    expect(setup().captureCharFrame()).toContain("#options");
+    expect(tui.frame()).toContain("#options");
   });
 
   test("renders unread sidebar channels in bold and clears them when opened", async () => {
@@ -168,29 +149,29 @@ describe("ChatContent channel sidebar", () => {
     const ChannelPane = createChannelPane(controller);
 
     await act(async () => {
-      testSetup = await testRender(<ChannelPane />, {
+      await tui.render(<ChannelPane />, {
         width: 90,
         height: 12,
       });
     });
 
     await flushFrame();
-    const unreadLine = setup().captureSpans().lines.find((line) => lineText(line).includes("options"));
+    const unreadLine = tui.setup().captureSpans().lines.find((line) => lineText(line).includes("options"));
     const unreadSpan = unreadLine?.spans.find((span) => span.text.includes("options"));
     expect((unreadSpan?.attributes ?? 0) & TextAttributes.BOLD).toBe(TextAttributes.BOLD);
 
-    const lines = setup().captureCharFrame().split("\n");
+    const lines = tui.frame().split("\n");
     const row = lines.findIndex((line) => line.includes("options"));
     const col = lines[row]?.indexOf("options") ?? -1;
 
     await act(async () => {
-      await setup().mockMouse.click(col + 1, row);
-      await setup().renderOnce();
-      await setup().renderOnce();
+      await tui.setup().mockMouse.click(col + 1, row);
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
-    const readLine = setup().captureSpans().lines.find((line) => lineText(line).includes("#options"));
+    const readLine = tui.setup().captureSpans().lines.find((line) => lineText(line).includes("#options"));
     const readSpan = readLine?.spans.find((span) => span.text.includes("options"));
     expect((readSpan?.attributes ?? 0) & TextAttributes.BOLD).toBe(0);
   });
@@ -207,14 +188,14 @@ describe("ChatContent channel sidebar", () => {
     const ChannelPane = createChannelPane(controller);
 
     await act(async () => {
-      testSetup = await testRender(<ChannelPane />, {
+      await tui.render(<ChannelPane />, {
         width: 90,
         height: 12,
       });
     });
 
     await flushFrame();
-    const frame = setup().captureCharFrame();
+    const frame = tui.frame();
     const lines = frame.split("\n");
     const row = lines.findIndex((line) => line.includes("options"));
     const col = lines[row]?.lastIndexOf("·") ?? -1;
@@ -222,15 +203,15 @@ describe("ChatContent channel sidebar", () => {
     expect(col).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await setup().mockMouse.click(col, row);
-      await setup().renderOnce();
-      await setup().renderOnce();
+      await tui.setup().mockMouse.click(col, row);
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
     expect(toggles).toEqual([{ channelId: "options", enabled: true }]);
-    expect(setup().captureCharFrame()).toContain("#equities");
-    expect(setup().captureCharFrame()).not.toContain("#options");
+    expect(tui.frame()).toContain("#equities");
+    expect(tui.frame()).not.toContain("#options");
   });
 
   test("folding the Channels header hides public channels and keeps arrows out of them", async () => {
@@ -250,21 +231,21 @@ describe("ChatContent channel sidebar", () => {
     const ChannelPane = createChannelPane(controller, "everyone", (channelId) => selected.push(channelId));
 
     await act(async () => {
-      testSetup = await testRender(<ChannelPane />, { width: 90, height: 14 });
+      await tui.render(<ChannelPane />, { width: 90, height: 14 });
     });
     await flushFrame();
-    expect(setup().captureCharFrame()).toContain("▾ Channels");
+    expect(tui.frame()).toContain("▾ Channels");
 
-    const lines = setup().captureCharFrame().split("\n");
+    const lines = tui.frame().split("\n");
     const row = lines.findIndex((line) => line.includes("Channels"));
     await act(async () => {
-      await setup().mockMouse.click(2, row);
-      await setup().renderOnce();
-      await setup().renderOnce();
+      await tui.setup().mockMouse.click(2, row);
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
-    const folded = setup().captureCharFrame();
+    const folded = tui.frame();
     expect(folded).toContain("▸ Channels");
     expect(folded).not.toContain("equities");
     expect(folded).toContain("@bob");
@@ -278,7 +259,7 @@ describe("ChatContent channel sidebar", () => {
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
-      await setup().renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(selected.length).toBeGreaterThan(0);
     expect(selected.every((channelId) => channelId.startsWith("dm:"))).toBe(true);
@@ -287,7 +268,7 @@ describe("ChatContent channel sidebar", () => {
     await emitKeypress({ name: "k", sequence: "k" });
     await emitKeypress({ name: "return", sequence: "\r" });
     await flushFrame();
-    const unfolded = setup().captureCharFrame();
+    const unfolded = tui.frame();
     expect(unfolded).toContain("▾ Channels");
     expect(unfolded).toContain("equities");
     expect(selected.every((channelId) => channelId.startsWith("dm:"))).toBe(true);
@@ -324,40 +305,40 @@ describe("ChatContent channel sidebar", () => {
 
     try {
       await act(async () => {
-        testSetup = await testRender(<ChannelPane />, {
+        await tui.render(<ChannelPane />, {
           width: 90,
           height: 14,
         });
       });
 
       await flushFrame();
-      const lines = setup().captureCharFrame().split("\n");
+      const lines = tui.frame().split("\n");
       const row = lines.findIndex((line) => line.includes("DMs"));
       const col = lines[row]?.lastIndexOf("+") ?? -1;
       expect(row).toBeGreaterThanOrEqual(0);
       expect(col).toBeGreaterThanOrEqual(0);
 
       await act(async () => {
-        await setup().mockMouse.click(col, row);
-        await setup().renderOnce();
-        await setup().renderOnce();
+        await tui.setup().mockMouse.click(col, row);
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
       });
       await flushFrame();
 
-      expect(setup().captureCharFrame()).toContain("New DM");
+      expect(tui.frame()).toContain("New DM");
 
       await act(async () => {
-        await setup().mockInput.typeText("@bob");
-        setup().mockInput.pressEnter();
-        await setup().renderOnce();
-        await setup().renderOnce();
+        await tui.setup().mockInput.typeText("@bob");
+        tui.setup().mockInput.pressEnter();
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
       });
       await flushFrame();
 
       expect(openedTargets).toEqual([{ username: "bob" }]);
       expect(selectedChannels).toEqual(["dm:bob"]);
-      expect(setup().captureCharFrame()).toContain("@bob");
-      expect(setup().captureCharFrame()).not.toContain("New DM");
+      expect(tui.frame()).toContain("@bob");
+      expect(tui.frame()).not.toContain("New DM");
     } finally {
       apiClient.openDirectChannel = originalOpenDirectChannel;
     }
@@ -390,24 +371,18 @@ describe("ChatContent channel sidebar", () => {
     });
 
     try {
-      await act(async () => {
-        testSetup = await testRender(createHarness(controller, { width: 90, height: 14, runtime }), {
-          width: 90,
-          height: 14,
-        });
-      });
-      await flushFrame();
+      await mountChat(controller, { width: 90, height: 14, runtime });
       await flushFrame();
 
-      const lines = setup().captureCharFrame().split("\n");
+      const lines = tui.frame().split("\n");
       const row = lines.findIndex((line) => line.includes("@ Profile"));
       const col = lines[row]?.indexOf("Profile") ?? -1;
       expect(row).toBeGreaterThanOrEqual(0);
 
       await act(async () => {
-        await setup().mockMouse.click(col + 1, row);
-        await setup().renderOnce();
-        await setup().renderOnce();
+        await tui.setup().mockMouse.click(col + 1, row);
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
       });
       await flushFrame();
 
@@ -422,17 +397,10 @@ describe("ChatContent channel sidebar", () => {
         profilePublic: false,
         sharedPortfolioId: null,
       });
-      await act(async () => {
-        testSetup?.renderer.destroy();
-        testSetup = await testRender(createHarness(controller, { width: 90, height: 14, runtime }), {
-          width: 90,
-          height: 14,
-        });
-      });
-      await flushFrame();
+      await mountChat(controller, { width: 90, height: 14, runtime });
       await flushFrame();
 
-      expect(setup().captureCharFrame()).not.toContain("@ Profile");
+      expect(tui.frame()).not.toContain("@ Profile");
     } finally {
       unsubscribe();
       apiClient.getAccountProfile = originalGetAccountProfile;
@@ -447,21 +415,21 @@ describe("ChatContent channel sidebar", () => {
     const ChannelPane = createChannelPane(controller);
 
     await act(async () => {
-      testSetup = await testRender(<ChannelPane />, {
+      await tui.render(<ChannelPane />, {
         width: 90,
         height: 12,
       });
     });
 
     await flushFrame();
-    expect(setup().captureCharFrame()).toContain("#equities");
+    expect(tui.frame()).toContain("#equities");
     const getActiveChannelBackgrounds = () => {
-      const activeLine = setup().captureSpans().lines.find((line) => lineText(line).includes("#equities"));
+      const activeLine = tui.setup().captureSpans().lines.find((line) => lineText(line).includes("#equities"));
       expect(activeLine).toBeDefined();
       return activeLine!.spans.map((span) => span.bg.toInts().join(","));
     };
     const getContentBackgrounds = () => {
-      const contentLine = setup().captureSpans().lines.find((line) => lineText(line).includes("No messages yet"));
+      const contentLine = tui.setup().captureSpans().lines.find((line) => lineText(line).includes("No messages yet"));
       expect(contentLine).toBeDefined();
       return contentLine!.spans.map((span) => span.bg.toInts().join(","));
     };
@@ -469,7 +437,7 @@ describe("ChatContent channel sidebar", () => {
     const rightFocusedBackgrounds = getContentBackgrounds();
 
     await emitKeypress({ name: "down", sequence: "\u001b[B" });
-    expect(setup().captureCharFrame()).toContain("#equities");
+    expect(tui.frame()).toContain("#equities");
 
     await emitKeypress({ name: "left", sequence: "\u001b[D" });
     await flushFrame();
@@ -477,11 +445,11 @@ describe("ChatContent channel sidebar", () => {
     expect(getContentBackgrounds()).not.toEqual(rightFocusedBackgrounds);
     await emitKeypress({ name: "down", sequence: "\u001b[B" });
     await flushFrame();
-    expect(setup().captureCharFrame()).toContain("#options");
+    expect(tui.frame()).toContain("#options");
 
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
     await flushFrame();
-    expect(setup().captureCharFrame()).toContain("#equities");
+    expect(tui.frame()).toContain("#equities");
 
     await emitKeypress({ name: "right", sequence: "\u001b[C" });
     await flushFrame();
@@ -489,7 +457,7 @@ describe("ChatContent channel sidebar", () => {
     expect(getContentBackgrounds()).toEqual(rightFocusedBackgrounds);
     await emitKeypress({ name: "down", sequence: "\u001b[B" });
     await flushFrame();
-    expect(setup().captureCharFrame()).toContain("#equities");
+    expect(tui.frame()).toContain("#equities");
   });
 
   test("coalesces rapid sidebar navigation to the final channel", async () => {
@@ -532,7 +500,7 @@ describe("ChatContent channel sidebar", () => {
     }
 
     await act(async () => {
-      testSetup = await testRender(<NavigationHarness />, {
+      await tui.render(<NavigationHarness />, {
         width: 90,
         height: 12,
       });
@@ -543,7 +511,7 @@ describe("ChatContent channel sidebar", () => {
       navigation?.moveSidebarChannelSelection("down");
       navigation?.moveSidebarChannelSelection("down");
       navigation?.moveSidebarChannelSelection("down");
-      await setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(latestCursorChannelId).toBe("crypto");
@@ -552,7 +520,7 @@ describe("ChatContent channel sidebar", () => {
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 180));
-      await setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(channelChanges).toEqual(["crypto"]);
@@ -574,7 +542,7 @@ describe("ChatContent channel sidebar", () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
 
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <AppContext value={createStaticAppStore(state)}>
           <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
             <ChatContent
@@ -596,7 +564,7 @@ describe("ChatContent channel sidebar", () => {
 
     await flushFrame();
 
-    const frame = setup().captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("#options");
     expect(frame).toContain("Loading...");
   });
@@ -680,6 +648,8 @@ describe("ChatContent channel sidebar", () => {
           <PaneInstanceProvider paneId={paneInstanceId}>
             <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
               <ResolvedChatPaneComponent
+                paneId={paneInstanceId}
+                paneType="chat"
                 width={90}
                 height={12}
                 focused
@@ -693,14 +663,14 @@ describe("ChatContent channel sidebar", () => {
 
     try {
       await act(async () => {
-        testSetup = await testRender(<ChatPaneHarness />, {
+        await tui.render(<ChatPaneHarness />, {
           width: 90,
           height: 12,
         });
       });
 
       await flushFrame();
-      const lines = setup().captureCharFrame().split("\n");
+      const lines = tui.frame().split("\n");
       const row = lines.findIndex((line) => line.includes("options"));
       const col = lines[row]?.indexOf("options") ?? -1;
 
@@ -708,16 +678,16 @@ describe("ChatContent channel sidebar", () => {
       expect(col).toBeGreaterThanOrEqual(0);
 
       await act(async () => {
-        await setup().mockMouse.click(col + 1, row);
-        await setup().renderOnce();
-        await setup().renderOnce();
+        await tui.setup().mockMouse.click(col + 1, row);
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
       });
       await flushFrame();
 
       expect(findPaneInstance(latestState.config.layout, paneInstanceId)?.settings?.channelId).toBe("options");
       expect(findPaneInstance(latestState.config.layout, paneInstanceId)?.title).toBe("#options");
       expect(latestState.config.pluginConfig["gloomberb-cloud"]?.lastChatChannelId).toBe("options");
-      expect(setup().captureCharFrame()).toContain("#options");
+      expect(tui.frame()).toContain("#options");
     } finally {
       chatController.refreshChannels = originalRefreshChannels;
       chatController.refreshSession = originalRefreshSession;
@@ -747,11 +717,11 @@ describe("team channels in the sidebar", () => {
     const ChannelPane = createChannelPane(controller, "everyone");
 
     await act(async () => {
-      testSetup = await testRender(<ChannelPane />, { width: 90, height: 12 });
+      await tui.render(<ChannelPane />, { width: 90, height: 12 });
     });
     await flushFrame();
 
-    const frame = setup().captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("MD· Macro Desk");
     const lines = frame.split("\n");
     const header = lines.findIndex((line) => line.includes("MD· Macro Desk"));
@@ -773,10 +743,10 @@ describe("team channels in the sidebar", () => {
     const ChannelPane = createChannelPane(controller, "everyone");
 
     await act(async () => {
-      testSetup = await testRender(<ChannelPane />, { width: 90, height: 14 });
+      await tui.render(<ChannelPane />, { width: 90, height: 14 });
     });
     await flushFrame();
-    let frame = setup().captureCharFrame();
+    let frame = tui.frame();
     expect(frame).toMatch(/▾ MD· Macro Desk\s+\+ /);
     expect(frame).toContain("trades");
 
@@ -784,7 +754,7 @@ describe("team channels in the sidebar", () => {
       teamStore.toggleTeamCollapsed("org-1");
     });
     await flushFrame();
-    frame = setup().captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("▸ MD· Macro Desk");
     expect(frame).not.toContain("trades");
     (teamStore as any).update({ collapsedTeams: new Set() });
@@ -803,10 +773,10 @@ describe("team channels in the sidebar", () => {
       );
     }
     await act(async () => {
-      testSetup = await testRender(<Chip />, { width: 40, height: 3 });
+      await tui.render(<Chip />, { width: 40, height: 3 });
     });
     await flushFrame();
-    expect(setup().captureCharFrame()).toContain("MD");
+    expect(tui.frame()).toContain("MD");
     expect(chatController.getSnapshot().channelStates).toEqual(previousChannelStates);
   });
 

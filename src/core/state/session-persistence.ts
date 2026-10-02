@@ -1,7 +1,7 @@
 import { findPaneInstance, type AppConfig } from "../../types/config";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { getDockedPaneIds } from "../../plugins/pane-manager";
+import { getDockedPaneIds } from "../../layout/pane-manager";
 import { normalizeBuiltinPaneStatePluginOwners } from "../../plugins/ownership";
 import { canonicalExchange, normalizeSymbol } from "../../utils/exchanges";
 import { instrumentFromTicker } from "../../market-data/request-types";
@@ -24,7 +24,8 @@ interface HydrationTarget {
 export interface AppSessionSnapshot {
   paneState: Record<string, Record<string, unknown>>;
   focusedPaneId: string | null;
-  activePanel: "left" | "right";
+  /** @deprecated Ignored on read and no longer written. `focusedPaneId` is the resumed focus. */
+  activePanel?: "left" | "right";
   statusBarVisible: boolean;
   openPaneIds: string[];
   hydrationTargets: HydrationTarget[];
@@ -40,7 +41,6 @@ interface SessionStateInput {
   config: AppConfig;
   paneState: Record<string, Record<string, unknown>>;
   focusedPaneId: string | null;
-  activePanel: "left" | "right";
   statusBarVisible: boolean;
   recentTickers: string[];
   tickers: Map<string, TickerRecord>;
@@ -107,7 +107,6 @@ export function buildAppSessionSnapshot(state: SessionStateInput): AppSessionSna
         .map(([paneId, value]) => [paneId, { ...value }]),
     ),
     focusedPaneId: state.focusedPaneId,
-    activePanel: state.activePanel,
     statusBarVisible: state.statusBarVisible,
     openPaneIds: [
       ...getDockedPaneIds(state.config.layout),
@@ -142,7 +141,6 @@ export function reconcileAppSessionSnapshot(
   return {
     paneState,
     focusedPaneId,
-    activePanel: snapshot.activePanel === "right" ? "right" : "left",
     statusBarVisible: snapshot.statusBarVisible !== false,
     openPaneIds,
     hydrationTargets,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiClient, type ScannerFlowEvent } from "../../../api-client";
+import type { ScannerFlowEvent } from "../../../api-client";
 import {
   DataTableView,
   PaneStatusBody,

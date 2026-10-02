@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../market-data/coordinator";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { AppProvider, PaneInstanceProvider } from "../../state/app/context";
@@ -9,7 +9,7 @@ import { useLiveStreamingSetting } from "./live-streaming";
 import { useLiveQuoteEntries, useQuoteStreaming, useQuoteUpdates } from "./quote-streaming";
 import { PaneInViewProvider, setAppActive, setAppVisible } from "../app/activity";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let bumpHarness: (() => void) | null = null;
 let toggleStreamingPriority: (() => void) | null = null;
 let togglePollingPriority: (() => void) | null = null;
@@ -119,13 +119,7 @@ function LiveQuoteFreshnessHarness() {
   return <text>{symbol}</text>;
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   bumpHarness = null;
   setHarnessPaneInView = null;
   toggleStreamingPriority = null;
@@ -151,26 +145,26 @@ describe("useQuoteStreaming", () => {
       },
     };
     setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
-    testSetup = await testRender(<QuoteStreamingHarness />, { width: 20, height: 1 });
-    await act(async () => testSetup!.renderOnce());
+    await tui.render(<QuoteStreamingHarness />, { width: 20, height: 1 });
+    await act(async () => tui.setup().renderOnce());
     expect(subscribeCalls).toBe(1);
 
     // Watching quotes from a second screen while typing elsewhere.
     await act(async () => {
       setAppActive(false);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(unsubscribeCalls).toBe(0);
 
     await act(async () => {
       setAppVisible(false);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(unsubscribeCalls).toBe(1);
 
     await act(async () => {
       setAppVisible(true);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(subscribeCalls).toBe(2);
   });
@@ -188,13 +182,13 @@ describe("useQuoteStreaming", () => {
     };
     setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
 
-    testSetup = await testRender(<QuoteStreamingHarness />, {
+    await tui.render(<QuoteStreamingHarness />, {
       width: 20,
       height: 1,
     });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(subscribeCalls).toBe(1);
@@ -205,7 +199,7 @@ describe("useQuoteStreaming", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(subscribeCalls).toBe(1);
@@ -226,13 +220,13 @@ describe("useQuoteStreaming", () => {
         );
       },
     } as unknown as MarketDataCoordinator);
-    testSetup = await testRender(<CoverablePaneHarness />, { width: 20, height: 1 });
-    await act(async () => testSetup!.renderOnce());
+    await tui.render(<CoverablePaneHarness />, { width: 20, height: 1 });
+    await act(async () => tui.setup().renderOnce());
     expect(subscribed[0]?.[0]?.priority).toMatchObject({ visible: true, selected: true, weight: 100 });
 
     await act(async () => {
       setHarnessPaneInView?.(false);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     // Same subscription, so totals stay current and nothing reconnects.
     expect(subscribed).toHaveLength(1);
@@ -241,14 +235,14 @@ describe("useQuoteStreaming", () => {
 
     await act(async () => {
       setHarnessPaneInView?.(true);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(updates.at(-1)?.[0]?.priority).toMatchObject({ visible: true, selected: true, weight: 100 });
 
     // Only a hidden app drops the stream.
     await act(async () => {
       setAppVisible(false);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(unsubscribeCalls).toBe(1);
   });
@@ -269,11 +263,11 @@ describe("useQuoteStreaming", () => {
     };
     setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
 
-    testSetup = await testRender(<QuoteStreamingPriorityHarness />, {
+    await tui.render(<QuoteStreamingPriorityHarness />, {
       width: 20,
       height: 1,
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
     expect(initialTargets).toHaveLength(1);
     expect(initialTargets[0]?.[0]).toMatchObject({
@@ -296,7 +290,7 @@ describe("useQuoteStreaming", () => {
     await act(async () => {
       toggleStreamingPriority?.();
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(initialTargets).toHaveLength(1);
@@ -335,8 +329,8 @@ describe("useQuoteStreaming", () => {
     };
     setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
 
-    testSetup = await testRender(<QuotePollingHarness />, { width: 20, height: 1 });
-    await act(async () => testSetup!.renderOnce());
+    await tui.render(<QuotePollingHarness />, { width: 20, height: 1 });
+    await act(async () => tui.setup().renderOnce());
     expect(subscribeCalls).toBe(0);
     expect(loadCalls).toBe(1);
 
@@ -364,7 +358,7 @@ describe("useQuoteStreaming", () => {
       },
     } as unknown as MarketDataCoordinator);
 
-    testSetup = await testRender(
+    await tui.render(
       <AppProvider config={config}>
         <PaneInstanceProvider paneId="ticker-detail:main">
           <FollowedQuoteStreamingHarness />
@@ -372,9 +366,9 @@ describe("useQuoteStreaming", () => {
       </AppProvider>,
       { width: 20, height: 1 },
     );
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
 
-    expect(testSetup.captureCharFrame()).toContain("polling");
+    expect(tui.frame()).toContain("polling");
     expect(subscribeCalls).toBe(0);
     expect(loadCalls).toBe(1);
   });
@@ -390,15 +384,15 @@ describe("useQuoteStreaming", () => {
     };
     setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
 
-    testSetup = await testRender(<QuotePollingPriorityHarness />, { width: 20, height: 1 });
-    await act(async () => testSetup!.renderOnce());
+    await tui.render(<QuotePollingPriorityHarness />, { width: 20, height: 1 });
+    await act(async () => tui.setup().renderOnce());
     expect(loadCalls).toBe(1);
 
     await act(async () => {
       togglePollingPriority?.();
       await Promise.resolve();
     });
-    await act(async () => testSetup!.renderOnce());
+    await act(async () => tui.setup().renderOnce());
     expect(loadCalls).toBe(1);
   });
 
@@ -411,12 +405,12 @@ describe("useQuoteStreaming", () => {
     })));
 
     try {
-      testSetup = await testRender(<LiveQuoteFreshnessHarness />, {
+      await tui.render(<LiveQuoteFreshnessHarness />, {
         width: 20,
         height: 1,
       });
       await act(async () => {
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
       expect(observedSubscriptionStartedAt).toBe(100);
 
@@ -424,7 +418,7 @@ describe("useQuoteStreaming", () => {
       await act(async () => {
         updateLiveTargets?.("MSFT");
         await Promise.resolve();
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
       expect(observedSubscriptionStartedAt).toBe(100);
 
@@ -432,7 +426,7 @@ describe("useQuoteStreaming", () => {
       await act(async () => {
         updateFreshnessScope?.("expiration-2");
         await Promise.resolve();
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
       expect(observedSubscriptionStartedAt).toBe(300);
     } finally {

@@ -55,7 +55,7 @@ function expectedReturn(outcomes: KellyOutcome[]): number {
   return outcomes.reduce((sum, outcome) => sum + outcome.probability * outcome.returnPct, 0);
 }
 
-export function computeExpectedLogGrowth(fraction: number, outcomes: KellyOutcome[]): number {
+function computeExpectedLogGrowth(fraction: number, outcomes: KellyOutcome[]): number {
   if (!finite(fraction) || fraction < 0) return Number.NEGATIVE_INFINITY;
   let growth = 0;
   for (const outcome of outcomes) {

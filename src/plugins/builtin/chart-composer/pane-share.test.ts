@@ -11,10 +11,12 @@ import {
   CHART_DRAWINGS_SETTING_KEY,
   parseChartDrawings,
 } from "../../../components/chart/composite/tools";
-import { buildCustomChartPreset, buildPriceChartPreset, setPairStudies } from "./presets";
+import { setPairStudies } from "./studies";
+import { buildCustomChartPreset, buildPriceChartPreset } from "./presets";
 import { applyChartComposerPaneSetting, CHART_SETTING_KEYS } from "./settings";
 import { buildPaneSharePayload } from "../../../shares/pane";
 import type { PluginRegistry } from "../../registry";
+import type { ChartStudySpec } from "../../../time-series/types";
 import type { TickerRecord } from "../../../types/ticker";
 
 const context = createTestTemplateContext();
@@ -63,7 +65,7 @@ describe("chart pane sharing", () => {
   test("persisted and shared authored formulas survive toggling another formula", async () => {
     const template = chartComposerModule.paneTemplates?.find((entry) => entry.id === "chart-composer-pane");
     const spec = setPairStudies(buildCustomChartPreset("TARGET:NASDAQ:market.close,ACQUIRER:NASDAQ:market.close"), ["spread", "correlation"]);
-    spec.studies = spec.studies.map((study) => ({ ...study,
+    spec.studies = spec.studies.map((study): ChartStudySpec => ({ ...study,
       parameters: study.kind === "spread" ? { multiplier: 0.5 } : { period: 13, returns: 0 },
       color: "#f5a524", axis: "right", panelId: `authored-${study.kind}`, visible: study.kind !== "correlation",
     }));
@@ -80,9 +82,9 @@ describe("chart pane sharing", () => {
       for (const selected of [["spread", "correlation", "ratio"], ["spread", "correlation"]]) {
         settings = applyChartComposerPaneSetting(settings, { key: CHART_SETTING_KEYS.formulas, label: "Formulas", type: "multi-select", options: [] }, selected);
         const updated = parseChartSpec(settings.chartSpec)!;
-        expect(updated.studies.filter(({ kind }) => kind !== "ratio")).toEqual(parseChartSpec(spec)?.studies);
+        expect(updated.studies.filter(({ kind }) => kind !== "ratio")).toEqual(parseChartSpec(spec)!.studies);
         expect(updated.panels.filter(({ id }) => id.startsWith("authored-")))
-          .toEqual(parseChartSpec(spec)?.panels.filter(({ id }) => id.startsWith("authored-")));
+          .toEqual(parseChartSpec(spec)!.panels.filter(({ id }) => id.startsWith("authored-")));
         expect(updated.studies.some(({ kind }) => kind === "ratio")).toBe(selected.includes("ratio"));
       }
       expect(parseChartSpec(initial.chartSpec)?.studies).toEqual(parseChartSpec(spec)?.studies);

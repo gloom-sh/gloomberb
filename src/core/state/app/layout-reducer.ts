@@ -89,7 +89,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       const target = currentConfig.layouts[action.index]!;
       return withFocusedPane(state, {
@@ -99,7 +98,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
       }, {
         paneState: target.paneState ? clonePaneStateMap(target.paneState) : {},
         focusedPaneId: target.focusedPaneId ?? null,
-        activePanel: target.activePanel ?? state.activePanel,
       });
     }
 
@@ -117,7 +115,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       const layouts = [...currentConfig.layouts];
       const [movedLayout] = layouts.splice(fromIndex, 1);
@@ -140,7 +137,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       const newLayout: SavedLayout = {
         name: action.name,
@@ -167,7 +163,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       const installed: SavedLayout = {
         name: availableLayoutName(action.name, currentConfig.layouts),
@@ -196,7 +191,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       const layouts = currentConfig.layouts.filter((_, index) => index !== action.index);
       const nextActiveLayoutIndex = action.index <= state.config.activeLayoutIndex
@@ -214,7 +208,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
       }, {
         paneState: nextLayout.paneState ? clonePaneStateMap(nextLayout.paneState) : {},
         focusedPaneId: nextLayout.focusedPaneId ?? null,
-        activePanel: nextLayout.activePanel ?? state.activePanel,
       });
     }
 
@@ -224,7 +217,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       return {
         ...state,
@@ -245,7 +237,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       const replaced: SavedLayout = {
         ...currentConfig.layouts[action.index]!,
@@ -283,7 +274,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       return {
         ...state,
@@ -302,7 +292,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.config,
         state.paneState,
         state.focusedPaneId,
-        state.activePanel,
       );
       const source = currentConfig.layouts[action.index]!;
       const duplicate: SavedLayout = {
@@ -321,7 +310,6 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
       }, {
         paneState: duplicate.paneState ? clonePaneStateMap(duplicate.paneState) : {},
         focusedPaneId: duplicate.focusedPaneId ?? state.focusedPaneId,
-        activePanel: duplicate.activePanel ?? state.activePanel,
       });
     }
 

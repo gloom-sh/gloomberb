@@ -36,10 +36,11 @@ export const testBroker: BrokerAdapter = {
         { value: "local", label: "Local" },
       ],
       defaultValue: "token",
+      required: false,
     },
-    { key: "token", label: "API Token", type: "password", required: true, visibleWhen: { connectionMode: "token" } },
-    { key: "accountId", label: "Account", type: "text", required: true, visibleWhen: { connectionMode: "token" } },
-    { key: "host", label: "Host", type: "text", defaultValue: "127.0.0.1", visibleWhen: { connectionMode: "local" } },
+    { key: "token", label: "API Token", type: "password", required: true },
+    { key: "accountId", label: "Account", type: "text", required: true },
+    { key: "host", label: "Host", type: "text", required: false, defaultValue: "127.0.0.1" },
   ],
 
   async validate() {

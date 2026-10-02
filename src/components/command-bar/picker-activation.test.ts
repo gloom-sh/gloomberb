@@ -18,7 +18,7 @@ function confirmDisconnect(instance: BrokerInstanceConfig): string[] {
     layout: {} as LayoutConfig,
     openInlineConfirm,
     persistLayoutChange: () => {},
-    pluginRegistry: { getConfigFn: () => config } as unknown as PluginRegistry,
+    pluginRegistry: { getConfig: () => config } as unknown as PluginRegistry,
     route: {
       kind: "picker",
       pickerId: "disconnect-broker",

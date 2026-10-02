@@ -26,7 +26,7 @@ import { FormModalHost } from "../../form-modal";
 import { CommandBar } from "./index";
 import { createTestTicker } from "../../../test-support/ticker";
 
-export { createTestControls as createCommandBarTestControls, emitKeypress, settleFrame } from "../../../renderers/opentui/test-utils";
+export { createTestControls as createCommandBarTestControls, settleFrame } from "../../../renderers/opentui/test-utils";
 
 export function expectSingleBackControl(frame: string): void {
   expect(frame.match(/\bBack\b/g)?.length ?? 0).toBe(1);
@@ -161,19 +161,18 @@ function makePluginRegistry(hasPaneSettings: (paneId: string) => boolean = () =>
     pinTicker: () => {},
     showPane: () => {},
     openWindowMode: () => {},
-    openWindowModeFn: () => {},
-    updateLayoutFn: () => {},
-    getTermSizeFn: () => ({ width: 80, height: 24 }),
+    updateLayout: () => {},
+    getTermSize: () => ({ width: 80, height: 24 }),
     notify: () => {},
-    createPaneFromTemplateFn: () => {},
-    createPaneFromTemplateAsyncFn: async () => {},
-    openPaneSettingsFn: () => {},
-    applyPaneSettingValueFn: async () => {},
+    createPaneFromTemplate: () => {},
+    createPaneFromTemplateAsync: async () => {},
+    openPaneSettings: () => {},
+    applyPaneSettingValue: async () => {},
     resolvePaneSettings: () => null,
-    createBrokerInstanceFn: async () => { throw new Error("unused"); },
-    syncBrokerInstanceFn: async () => {},
-    removeBrokerInstanceFn: async () => {},
-    getConfigFn: () => createDefaultConfig("/tmp/gloomberb-test"),
+    createBrokerInstance: async () => { throw new Error("unused"); },
+    syncBrokerInstance: async () => {},
+    removeBrokerInstance: async () => {},
+    getConfig: () => createDefaultConfig("/tmp/gloomberb-test"),
   } as unknown as PluginRegistry;
 }
 

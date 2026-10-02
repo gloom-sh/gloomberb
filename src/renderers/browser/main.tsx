@@ -1,14 +1,14 @@
 /** @jsxImportSource react */
 import { setCurrentPluginTarget } from "../../plugins/current-target";
-import "../electrobun/view/styles.css";
+import "../dom/styles.css";
 import { createRoot } from "react-dom/client";
 import { App } from "../../app";
 import { loadConfig } from "../../data/config/store";
 import { applyLanguageFromConfig } from "../../i18n";
 import { getBrowserPlugins } from "../../plugins/catalog-browser";
-import { DomErrorBoundary, DomHostProviders } from "../electrobun/view/dom-host-providers";
-import { installFocusScopeRelease } from "../electrobun/view/host/focus-scope";
-import { installDomMarketDataFrames } from "../electrobun/view/data-frames";
+import { DomErrorBoundary, DomHostProviders } from "../dom/dom-host-providers";
+import { installFocusScopeRelease } from "../dom/host/focus-scope";
+import { installDomMarketDataFrames } from "../dom/data-frames";
 import { createBrowserAppServices } from "./app-services";
 import {
   installBrowserFetchTransports,

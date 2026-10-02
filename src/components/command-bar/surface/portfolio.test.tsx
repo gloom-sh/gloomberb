@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { AppState } from "../../../state/app/context";
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
@@ -10,16 +10,9 @@ import {
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(() => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-});
-
-const { waitForFrameToContain, clickFrameText } = createCommandBarTestControls(() => testSetup!);
+const { waitForFrameToContain, clickFrameText } = createCommandBarTestControls(() => tui.setup());
 
 function withResearchPortfolio(config: AppConfig, name = "Research"): AppConfig {
   return {
@@ -55,7 +48,7 @@ describe("CommandBar portfolio commands", () => {
   test("AW AAPL uses the active watchlist target by default", async () => {
     const saved: TickerRecord[] = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="AW AAPL"
         onSaveTicker={(ticker) => {
@@ -74,11 +67,11 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(saved.at(-1)?.metadata.watchlists).toEqual(["watchlist"]);
@@ -87,7 +80,7 @@ describe("CommandBar portfolio commands", () => {
   test("bare AW without a compatible active target adds to the sole watchlist directly", async () => {
     const saved: TickerRecord[] = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="AW"
         selectedTicker="AAPL"
@@ -98,18 +91,18 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(saved.at(-1)?.metadata.watchlists).toEqual(["watchlist"]);
   });
 
   test("bare AW without a compatible active target opens inline target selection when multiple watchlists exist", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="AW"
         selectedTicker="AAPL"
@@ -124,20 +117,20 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Add AAPL to Watchlist");
     expect(frame).toContain("Watchlist");
     expect(frame).toContain("Back");
   });
 
   test("typing add still surfaces Add to Portfolio for a ticker already in the active manual portfolio", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="add"
         selectedTicker="AAPL"
@@ -150,14 +143,14 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Add AAPL to Portfolio");
   });
 
   test("AP opens the add-to-portfolio workflow and prefills avg cost from the current price", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="AP AAPL"
         selectedTicker="AAPL"
@@ -185,10 +178,10 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 30 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     const frame = await waitForFrameToContain("Avg Cost");
@@ -201,7 +194,7 @@ describe("CommandBar portfolio commands", () => {
 
   // Picking where to add is still a bar list; the position is a form.
   test("AP with several manual portfolios picks the target in the bar, then opens the form", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="AP AAPL"
         live
@@ -220,13 +213,13 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 30 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await waitForFrameToContain("Add AAPL to Portfolio");
-    expect(testSetup.captureCharFrame()).toContain("bar:open");
+    expect(tui.frame()).toContain("bar:open");
 
     await clickFrameText("Growth");
     const frame = await waitForFrameToContain("Avg Cost");
@@ -238,7 +231,7 @@ describe("CommandBar portfolio commands", () => {
   test("add-to-portfolio can still add membership without entering a position", async () => {
     const saved: TickerRecord[] = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="AP AAPL"
         selectedTicker="AAPL"
@@ -251,10 +244,10 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 30 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     const frame = await waitForFrameToContain("Avg Cost");
@@ -264,7 +257,7 @@ describe("CommandBar portfolio commands", () => {
     await clickFrameText("Add to Portfolio");
     await act(async () => {
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(saved.at(-1)?.metadata.portfolios).toEqual(["research"]);
@@ -272,16 +265,15 @@ describe("CommandBar portfolio commands", () => {
   });
 
   test("only surfaces Set Portfolio Position when a manual portfolio exists", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness query="Set Portfolio Position" />,
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Set Portfolio Position");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Set Portfolio Position");
 
-    testSetup.renderer.destroy();
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="Set Portfolio Position"
         configureConfig={(config) => ({
@@ -298,15 +290,15 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
-    const frame = testSetup.captureCharFrame();
+    await tui.setup().renderOnce();
+    const frame = tui.frame();
     // Nothing local matches, so the AI fallback row is all that is offered.
     expect(frame).toContain("Ask AI");
     expect(frame).not.toContain("Create or update a manual position in a portfolio");
   });
 
   test("prefills the portfolio position workflow from the active manual portfolio and ticker", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="Set Position for AAPL"
         selectedTicker="AAPL"
@@ -320,10 +312,10 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 30 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     const frame = await waitForFrameToContain("Avg Cost");
@@ -337,7 +329,7 @@ describe("CommandBar portfolio commands", () => {
   test("submits the portfolio position workflow and persists a manual position", async () => {
     const saved: TickerRecord[] = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="Set Position for AAPL"
         selectedTicker="AAPL"
@@ -350,44 +342,44 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 30 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      testSetup!.mockInput.pressTab();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressTab();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressTab();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressTab();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockInput.typeText("10");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("10");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressTab();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressTab();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockInput.typeText("180");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("180");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressTab();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressTab();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockInput.typeText("EUR");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("EUR");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(saved.at(-1)?.metadata.portfolios).toEqual(["research"]);
@@ -403,7 +395,7 @@ describe("CommandBar portfolio commands", () => {
   test("removing a ticker from a manual portfolio also removes its position", async () => {
     const saved: TickerRecord[] = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="RP AAPL"
         selectedTicker="AAPL"
@@ -420,11 +412,11 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(saved.at(-1)?.metadata.portfolios).toEqual([]);
@@ -434,7 +426,7 @@ describe("CommandBar portfolio commands", () => {
   test("deleting a manual portfolio also cleans saved ticker positions", async () => {
     const saved: TickerRecord[] = [];
 
-    testSetup = await testRender(
+    await tui.render(
       <CommandBarHarness
         query="Delete Portfolio"
         onSaveTicker={(ticker) => {
@@ -450,25 +442,25 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 20 },
     );
 
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     // The confirm opens in the form modal.
     await waitForFrameToContain('Delete "Research"?');
     await act(async () => {
       await Bun.sleep(5);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(saved.at(-1)?.metadata.portfolios).toEqual([]);

@@ -2,7 +2,7 @@ import type { AppSessionSnapshot } from "../../../../../core/state/session-persi
 import { clonePaneStateMap, syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../../../core/state/app/state";
 import { cloneLayout, findPaneInstance, type AppConfig, type LayoutConfig } from "../../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../../types/desktop-window";
-import { detachPaneToFrame, dockPane, insertAtRootEdge, removePane } from "../../../../../plugins/pane-manager";
+import { detachPaneToFrame, dockPane, insertAtRootEdge, removePane } from "../../../../../layout/pane-manager";
 import type { WindowFrame } from "../../window/frame";
 
 function cloneSavedLayouts(config: AppConfig): AppConfig["layouts"] {
@@ -115,13 +115,10 @@ export function createDesktopWorkspace(
   const initialFocusedPaneId = config.layouts[config.activeLayoutIndex]?.focusedPaneId
     ?? sessionSnapshot?.focusedPaneId
     ?? null;
-  const initialActivePanel = config.layouts[config.activeLayoutIndex]?.activePanel
-    ?? (sessionSnapshot?.activePanel === "right" ? "right" : "left");
   let sharedState: DesktopSharedStateSnapshot = {
-    config: syncConfigActiveLayoutState(config, initialPaneState, initialFocusedPaneId, initialActivePanel),
+    config: syncConfigActiveLayoutState(config, initialPaneState, initialFocusedPaneId),
     paneState: initialPaneState,
     focusedPaneId: initialFocusedPaneId,
-    activePanel: initialActivePanel,
     statusBarVisible: sessionSnapshot?.statusBarVisible !== false,
     mainStateRevision: 0,
   };
@@ -131,7 +128,6 @@ export function createDesktopWorkspace(
       nextConfig,
       sharedState.paneState,
       sharedState.focusedPaneId,
-      sharedState.activePanel,
     );
     sharedState = {
       ...sharedState,
@@ -154,7 +150,6 @@ export function createDesktopWorkspace(
     },
     paneState: clonePaneStateMap(sharedState.paneState),
     focusedPaneId: sharedState.focusedPaneId,
-    activePanel: sharedState.activePanel,
     statusBarVisible: sharedState.statusBarVisible,
     mainStateRevision: sharedState.mainStateRevision,
     layoutChanged: sharedState.layoutChanged,
@@ -174,7 +169,6 @@ export function createDesktopWorkspace(
         { ...snapshot.config, layout: keepDetachedFrames(snapshot.config.layout, sharedState.config.layout) },
         snapshot.paneState,
         snapshot.focusedPaneId,
-        snapshot.activePanel,
       );
       sharedState = {
         config: {
@@ -184,7 +178,6 @@ export function createDesktopWorkspace(
         },
         paneState: filterPaneState(syncedConfig.layout, clonePaneStateMap(snapshot.paneState)),
         focusedPaneId: snapshot.focusedPaneId,
-        activePanel: snapshot.activePanel,
         statusBarVisible: snapshot.statusBarVisible,
         mainStateRevision: snapshot.mainStateRevision ?? currentRevision,
         layoutChanged: snapshot.layoutChanged,
@@ -220,7 +213,6 @@ export function createDesktopWorkspace(
           sharedState.config,
           nextPaneState,
           sharedState.focusedPaneId,
-          sharedState.activePanel,
         ),
         paneState: nextPaneState,
       };

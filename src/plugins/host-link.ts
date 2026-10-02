@@ -1,5 +1,5 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync } from "fs";
-import { dirname, join, resolve } from "path";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, type Stats } from "fs";
+import { basename, dirname, join, resolve } from "path";
 
 import { installPluginHostResolver } from "./host-resolver";
 import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
@@ -31,7 +31,10 @@ const LINKED_PACKAGES = ["gloomberb", "react"] as const;
 
 let cachedHostRoot: string | null | undefined;
 
-/** Walks up from this module to the directory holding the `gloomberb` package.json. */
+/**
+ * Walks up from this module to the directory holding the `gloomberb` package.json.
+ * @knipignore Also imported by the script host-resolver.test.ts compiles and runs.
+ */
 export function findHostPackageRoot(startDir: string = import.meta.dir): string | null {
   if (cachedHostRoot !== undefined && startDir === import.meta.dir) return cachedHostRoot;
   let dir = resolve(startDir);
@@ -88,16 +91,32 @@ export function hostPublicModules(): ReadonlyMap<string, string> {
 function linkTarget(hostRoot: string, pkg: string): string | null {
   if (pkg === "gloomberb") return hostRoot;
   const candidate = join(hostRoot, "node_modules", pkg);
-  return existsSync(candidate) ? candidate : null;
+  if (existsSync(candidate)) return candidate;
+  // A global install hoists dependencies beside the package rather than
+  // inside it (`bun add -g` keeps one flat node_modules), so `react` is found
+  // the way the host itself resolves it.
+  try {
+    return dirname(Bun.resolveSync(`${pkg}/package.json`, hostRoot));
+  } catch {
+    return null;
+  }
 }
 
-/** True when `path` is already a symlink pointing at `target`. */
+/** True when `path` is already a link pointing at `target`. Compared by real
+ * path: Windows spells a junction's target its own way. */
 function alreadyLinked(path: string, target: string): boolean {
   try {
-    return lstatSync(path).isSymbolicLink() && resolve(dirname(path), readlinkSync(path)) === resolve(target);
+    return isLink(path, lstatSync(path)) && realpathSync(path) === realpathSync(target);
   } catch {
     return false;
   }
+}
+
+/** A symlink or a junction. A directory whose real path is somewhere else is
+ * treated as a link too, so a recursive delete never walks into its target. */
+function isLink(path: string, stats: Stats): boolean {
+  if (stats.isSymbolicLink()) return true;
+  return stats.isDirectory() && realpathSync(path) !== join(realpathSync(dirname(path)), basename(path));
 }
 
 /**
@@ -109,10 +128,13 @@ function alreadyLinked(path: string, target: string): boolean {
 function ensureDirLink(linkPath: string, target: string): void {
   if (alreadyLinked(linkPath, target)) return;
   mkdirSync(dirname(linkPath), { recursive: true });
-  if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false })) {
-    rmSync(linkPath, { recursive: true, force: true });
-  }
-  symlinkSync(target, linkPath, "dir");
+  const existing = lstatSync(linkPath, { throwIfNoEntry: false });
+  if (existing && isLink(linkPath, existing)) unlinkSync(linkPath);
+  else if (existing) rmSync(linkPath, { recursive: true, force: true });
+  // A directory symlink on Windows needs Developer Mode or admin rights, and
+  // without them every external plugin lost `gloomberb` and `react`. A
+  // junction needs neither; other platforms ignore the type.
+  symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
 }
 
 /**
@@ -120,6 +142,22 @@ function ensureDirLink(linkPath: string, target: string): void {
  * installed, by package name, with the folder each one is installed in. The
  * automatic updater orders updates by the same answer the links are made from.
  */
+/**
+ * Sibling plugins a plugin declares as peer dependencies that are not
+ * installed under either name. IBKR Gateway, for one, imports the Interactive
+ * Brokers plugin and cannot load without it.
+ */
+export function missingPeerPlugins(pluginDir: string, pluginsDir: string = dirname(pluginDir)): string[] {
+  let peers: string[] = [];
+  try {
+    const pkg = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8"));
+    peers = Object.keys(pkg.peerDependencies ?? {}).filter(isPluginPackageName);
+  } catch {
+    return [];
+  }
+  return peers.filter((peer) => !pluginDirectoryNames(peer).some((name) => existsSync(join(pluginsDir, name))));
+}
+
 export function installedPeerPlugins(pluginDir: string, pluginsDir: string = dirname(pluginDir)): Array<{ peer: string; directory: string }> {
   let peers: string[] = [];
   try {

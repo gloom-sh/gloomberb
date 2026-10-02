@@ -14,7 +14,7 @@ import {
   defaultFinancialTimestampMode,
   getCompatibleSeriesStyles,
   getCompatibleSeriesTransforms,
-} from "../presets";
+} from "../chart-spec-edit";
 
 export type SeriesEditorFieldId =
   | "style"
@@ -28,7 +28,7 @@ export type SeriesEditorFieldId =
 
 export type SeriesEditorFocus = "add" | "series" | "source" | SeriesEditorFieldId;
 
-export interface SeriesEditorOption {
+interface SeriesEditorOption {
   value: string;
   label: string;
   disabled?: boolean;

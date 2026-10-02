@@ -24,7 +24,7 @@ function errorMessage(error: unknown): string {
  * confirm came from. The modal opens after the bar closed, so there is nothing
  * to go back to.
  */
-export function confirmCancelLabel(label: string | undefined): string {
+function confirmCancelLabel(label: string | undefined): string {
   return !label || label === "Back" ? "Cancel" : label;
 }
 

@@ -56,7 +56,7 @@ function downgradeOffscreenQuoteTarget(target: QuoteSubscriptionTarget): QuoteSu
   return { ...target, visible: false, selected: false, weight };
 }
 
-export function buildQuoteStreamSubscriptionIdentityKey(target: QuoteSubscriptionTarget): string {
+function buildQuoteStreamSubscriptionIdentityKey(target: QuoteSubscriptionTarget): string {
   return `${instrumentIdentityKey(instrumentFromQuoteTarget(target))}|${target.route ?? "auto"}`;
 }
 

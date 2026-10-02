@@ -1,7 +1,6 @@
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../../ui";
 import type { Dispatch, SetStateAction } from "react";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
-import { Button } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import type { ChatMessage, ChatUserSummary } from "../../../../api-client";

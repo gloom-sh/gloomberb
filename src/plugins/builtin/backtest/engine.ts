@@ -19,7 +19,7 @@ export interface BacktestTrade {
   sessions: number;
   open: boolean;
 }
-export interface PerformanceStats {
+interface PerformanceStats {
   totalReturnPct: number;
   cagrPct: number | null;
   volatilityPct: number | null;

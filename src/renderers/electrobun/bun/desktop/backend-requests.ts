@@ -1,99 +1,44 @@
-import { createAppServices, type AppServices } from "../../../../core/app-services";
-import { loadDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
-import type { AppSessionSnapshot } from "../../../../core/state/session-persistence";
 import {
   exportConfig,
   importConfig,
   resetAllData,
   saveConfig,
 } from "../../../../data/config/store";
-import type { AppConfig } from "../../../../types/config";
-import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
+import type { UpdateProgress } from "../../../../updater";
 import type {
-  DesktopBackendRequestPayload,
   DesktopBackendRequestResponse,
   DesktopCoreRequest,
 } from "../../shared/protocol";
+import { encodeRpcValue } from "../../shared/rpc-codec";
+import { paneIdFromDetachedRpcKey } from "../window/focus";
+import type { DesktopBackend, DesktopRpc } from "./backend";
 import {
   checkElectrobunDesktopUpdate,
+  runElectrobunDesktopUpdate,
 } from "./update";
-import {
-  createDesktopWorkspace,
-  type DesktopWorkspace,
-} from "./workspace";
 
-interface DesktopBackendRequestOptions {
-  clearCurrentConfig: () => void;
-  closeAllDetachedWindows: () => void;
-  commitDesktopSnapshot: (snapshot: DesktopSharedStateSnapshot) => Promise<DesktopSharedStateSnapshot>;
-  getConfig: () => AppConfig;
-  getDesktopWorkspace: () => DesktopWorkspace | null;
-  getServices: () => AppServices;
-  getSessionSnapshot: () => AppSessionSnapshot | null;
-  request: DesktopCoreRequest;
-  /** The pane of the popped-out window that sent the request; null for the main window. */
-  senderDetachedPaneId: string | null;
-  reconcileDetachedWindows: () => void;
-  registerCoreCapabilities: () => void;
-  sendDesktopState: (snapshot: DesktopSharedStateSnapshot) => void;
-  setCurrentConfig: (config: AppConfig) => void;
-  setDesktopWorkspace: (workspace: DesktopWorkspace | null) => void;
-  setServices: (services: AppServices) => void;
-  startUpdate: (currentVersion: string) => void;
-  syncConfigAccessors: () => void;
-  teardownServices: () => void;
+function sendUpdateProgress(rpc: DesktopRpc, progress: UpdateProgress): void {
+  try {
+    rpc.send["update.progress"]({
+      progress: encodeRpcValue(progress) as UpdateProgress,
+    });
+  } catch (error) {
+    console.warn("update progress send failed", error);
+  }
 }
 
-async function importDesktopConfig({
-  closeAllDetachedWindows,
-  getConfig,
-  getSessionSnapshot,
-  reconcileDetachedWindows,
-  registerCoreCapabilities,
-  sendDesktopState,
-  setCurrentConfig,
-  setDesktopWorkspace,
-  setServices,
-  syncConfigAccessors,
-  teardownServices,
-}: DesktopBackendRequestOptions,
-  payload: DesktopBackendRequestPayload<"config.import">,
-): Promise<AppConfig> {
-  closeAllDetachedWindows();
-  setDesktopWorkspace(null);
-  teardownServices();
-  setCurrentConfig(await importConfig(payload.dataDir, payload.srcPath));
-  setServices(createAppServices({
-    config: getConfig(),
-    ...await loadDesktopBackendPlugins(),
-  }));
-  syncConfigAccessors();
-  registerCoreCapabilities();
-  const desktopWorkspace = createDesktopWorkspace(getConfig(), getSessionSnapshot());
-  setDesktopWorkspace(desktopWorkspace);
-  reconcileDetachedWindows();
-  sendDesktopState(desktopWorkspace.getSnapshot());
-  return getConfig();
+/** Every window loses its popped-out panes, workspace and services before the data they read is replaced. */
+function closeDesktopSession(backend: DesktopBackend): void {
+  backend.detachedWindows.closeAll();
+  backend.workspace = null;
+  backend.teardownServices();
 }
 
 export async function handleDesktopBackendRequest(
-  options: DesktopBackendRequestOptions,
+  backend: DesktopBackend,
+  rpc: DesktopRpc,
+  request: DesktopCoreRequest,
 ): Promise<DesktopBackendRequestResponse<DesktopCoreRequest["method"]>> {
-  const {
-    clearCurrentConfig,
-    closeAllDetachedWindows,
-    commitDesktopSnapshot,
-    getConfig,
-    getDesktopWorkspace,
-    getServices,
-    request,
-    senderDetachedPaneId,
-    setCurrentConfig,
-    setDesktopWorkspace,
-    startUpdate,
-    teardownServices,
-  } = options;
-
   switch (request.method) {
     case "update.check":
       return checkElectrobunDesktopUpdate(
@@ -101,52 +46,59 @@ export async function handleDesktopBackendRequest(
       );
     case "update.start": {
       const { release, currentVersion } = request.payload;
-      startUpdate(typeof currentVersion === "string" ? currentVersion : release.version);
+      void runElectrobunDesktopUpdate(
+        typeof currentVersion === "string" ? currentVersion : release.version,
+        (progress) => sendUpdateProgress(rpc, progress),
+      );
       return null;
     }
     case "ticker.loadAll":
-      return getServices().tickerRepository.loadAllTickers();
+      return backend.requireServices().tickerRepository.loadAllTickers();
     case "ticker.load":
-      return getServices().tickerRepository.loadTicker(request.payload.symbol);
+      return backend.requireServices().tickerRepository.loadTicker(request.payload.symbol);
     case "ticker.save":
-      await getServices().tickerRepository.saveTicker(request.payload.ticker);
+      await backend.requireServices().tickerRepository.saveTicker(request.payload.ticker);
       return null;
     case "ticker.delete":
-      await getServices().tickerRepository.deleteTicker(request.payload.symbol);
+      await backend.requireServices().tickerRepository.deleteTicker(request.payload.symbol);
       return null;
     case "config.save": {
-      const desktopWorkspace = getDesktopWorkspace();
+      const desktopWorkspace = backend.workspace;
       if (desktopWorkspace) {
-        await commitDesktopSnapshot(senderDetachedPaneId
+        // Null for the main window; a popped-out window's save counts only for its own pane.
+        const senderDetachedPaneId = paneIdFromDetachedRpcKey(backend.rpcs.getRpcWindowKey(rpc));
+        await backend.commitDesktopSnapshot(senderDetachedPaneId
           ? desktopWorkspace.replaceConfigFromDetachedPane(senderDetachedPaneId, request.payload.config)
           : desktopWorkspace.replaceConfig(request.payload.config, { layoutChanged: true }));
         return null;
       }
-      setCurrentConfig(request.payload.config);
-      await saveConfig(getConfig());
+      backend.setConfig(request.payload.config);
+      await saveConfig(backend.requireConfig());
       return null;
     }
     case "config.resetAllData":
-      closeAllDetachedWindows();
-      setDesktopWorkspace(null);
-      teardownServices();
-      clearCurrentConfig();
+      closeDesktopSession(backend);
+      backend.config = null;
       await resetAllData(request.payload.dataDir);
       return null;
     case "config.export":
       await exportConfig(request.payload.config, request.payload.destPath);
       return null;
-    case "config.import":
-      return importDesktopConfig(options, request.payload);
+    case "config.import": {
+      closeDesktopSession(backend);
+      await backend.startServices(await importConfig(request.payload.dataDir, request.payload.srcPath));
+      backend.stateBroadcaster.sendDesktopState(backend.requireWorkspace().getSnapshot());
+      return backend.requireConfig();
+    }
     case "session.set":
-      getServices().persistence.sessions.set(
+      backend.requireServices().persistence.sessions.set(
         request.payload.sessionId,
         request.payload.value,
         request.payload.schemaVersion,
       );
       return null;
     case "session.delete":
-      getServices().persistence.sessions.delete(request.payload.sessionId);
+      backend.requireServices().persistence.sessions.delete(request.payload.sessionId);
       return null;
     default: {
       const exhaustive: never = request;

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -12,14 +12,17 @@ import { chatController } from "../../plugins/builtin/chat/controller";
 import { EventBus } from "../../plugins/event-bus";
 import { useShortcut } from "../../react/input";
 import type { PluginRegistry } from "../../plugins/registry";
-import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
   AppProvider,
   useAppDispatch,
   useAppSelector,
   useAppStateRef,
 } from "../../state/app/context";
+import { createPaneDiscoveryContext } from "../../cli/pane-functions/discovery";
+import { uiBuiltinPlugins } from "../../plugins/catalog-ui";
 import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
+import type { GloomPlugin } from "../../types/plugin";
 import {
   createDefaultConfig,
   type AppConfig,
@@ -27,7 +30,7 @@ import {
 import type { DataProvider } from "../../types/data-provider";
 import { OnboardingWizard } from "./onboarding-wizard";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let tempDataDir: string | null = null;
 let capturedConfig: AppConfig | null = null;
 let capturedBrokerAccounts: Record<string, unknown> | null = null;
@@ -69,6 +72,29 @@ function createPluginRegistry(options: {
     openCommandBar: () => {},
     navigateTicker: () => {},
   } as unknown as PluginRegistry;
+}
+
+const startedPlugins: GloomPlugin[] = [];
+afterAll(() => {
+  for (const plugin of startedPlugins.splice(0).reverse()) plugin.dispose?.();
+});
+
+let builtInFunctions: Promise<Pick<PluginRegistry, "panes" | "paneTemplates">> | null = null;
+
+/** A registry that also has the app's own functions, so desks build from the real ones. */
+async function createDeskRegistry(tickerRepository: AppTickerRepositoryPort): Promise<PluginRegistry> {
+  builtInFunctions ??= (async () => {
+    const config = createDefaultConfig("/tmp/onboarding-desks");
+    const { panes, paneTemplates, ...context } = createPaneDiscoveryContext({ getConfig: () => config });
+    for (const plugin of uiBuiltinPlugins) {
+      for (const pane of plugin.panes ?? []) panes.set(pane.id, pane);
+      for (const template of plugin.paneTemplates ?? []) paneTemplates.set(template.id, template);
+      startedPlugins.push(plugin);
+      await plugin.setup?.({ ...context, registerCommand: () => {} });
+    }
+    return { panes, paneTemplates } as Pick<PluginRegistry, "panes" | "paneTemplates">;
+  })();
+  return { ...createPluginRegistry({ tickerRepository }), ...await builtInFunctions } as PluginRegistry;
 }
 
 function StateCapture() {
@@ -175,27 +201,28 @@ function RuntimeWizardHarness({
   );
 }
 
-const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
+const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event);
 const pressEnter = () => emitKeypress({ name: "return", sequence: "\r" });
 const pressEscape = () => emitKeypress({ name: "escape", sequence: "\u001b" });
+const pressSpace = () => emitKeypress({ name: "space", sequence: " " });
 
 async function typeText(text: string): Promise<void> {
   await act(async () => {
-    await testSetup!.mockInput.typeText(text);
-    await testSetup!.renderOnce();
+    await tui.setup().mockInput.typeText(text);
+    await tui.setup().renderOnce();
   });
 }
 
 async function waitForFrame(text: string, attempts = 60): Promise<string> {
   for (let index = 0; index < attempts; index += 1) {
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     if (frame.includes(text)) return frame;
     await act(async () => {
       // Sleeping zero only drains the task queue. These steps wait on real
       // filesystem writes and debounced lookups, so once the fast path has not
       // settled the retries need actual elapsed time.
       await Bun.sleep(index < 5 ? 0 : 10);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
   throw new Error(`Timed out waiting for "${text}".`);
@@ -218,6 +245,12 @@ async function addManualPosition(symbol: string, shares = "", avgCost = ""): Pro
   await waitForFrame(`Positions (${expectedPositionCount})`);
 }
 
+/** Leaves "What do you trade?" without a desk, which keeps today's first-run workspace. */
+async function skipDesks(): Promise<void> {
+  await waitForFrame("What do you trade?");
+  await emitKeypress({ name: "s", sequence: "s" });
+}
+
 // Milestones and pricing go to the network; neither belongs in a render test.
 const originalRecordResearchActivity = apiClient.recordResearchActivity;
 const originalGetCloudPricing = apiClient.getCloudPricing;
@@ -228,10 +261,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  if (testSetup) {
-    await act(async () => testSetup!.renderer.destroy());
-    testSetup = undefined;
-  }
   apiClient.recordResearchActivity = originalRecordResearchActivity;
   apiClient.getCloudPricing = originalGetCloudPricing;
   apiClient.setSessionToken(null);
@@ -249,20 +278,20 @@ describe("OnboardingWizard", () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
     const tickerRepository = new JsonTickerRepository();
     const pluginRegistry = createPluginRegistry({ tickerRepository });
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const first = testSetup.captureCharFrame();
+    const first = tui.frame();
     expect(first).toContain("What do you hold?");
     expect(first).not.toContain("Skip setup");
     expect(first).not.toContain("Recommended");
 
     await addManualPosition("MSFT", "4", "400");
     await addManualPosition("AAPL", "10", "180");
-    const listed = testSetup.captureCharFrame();
+    const listed = tui.frame();
     expect(listed).toContain("Positions (2)");
     expect(listed).toContain("10 @ 180");
     expect(listed).toContain("$1,000");
@@ -270,6 +299,7 @@ describe("OnboardingWizard", () => {
     await pressEscape();
     await pressEnter();
 
+    await skipDesks();
     const frame = await waitForFrame("Connect free Cloud");
     expect(frame).toContain("Built around AAPL");
     expect(capturedConfig?.onboardingProgress).toMatchObject({
@@ -278,7 +308,10 @@ describe("OnboardingWizard", () => {
       portfolioId: "main",
       tickerSymbol: "AAPL",
       positionsImported: 2,
+      desks: [],
     });
+    // Skipping the desks keeps today's tabs.
+    expect(capturedConfig?.layouts.map((layout) => layout.name)).toEqual(["Home", "Monitor", "Macro"]);
     const saved = await tickerRepository.loadTicker("AAPL");
     expect(saved?.metadata.positions).toEqual([
       { portfolio: "main", shares: 10, avgCost: 180, currency: "USD", broker: "manual" },
@@ -300,14 +333,14 @@ describe("OnboardingWizard", () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-follow-"));
     const tickerRepository = new JsonTickerRepository();
     const pluginRegistry = createPluginRegistry({ tickerRepository });
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await addManualPosition("NVDA");
-    expect(testSetup.captureCharFrame()).toContain("following");
+    expect(tui.frame()).toContain("following");
     expect((await tickerRepository.loadTicker("NVDA"))?.metadata).toMatchObject({ portfolios: ["main"], positions: [] });
 
     await addManualPosition("AAPL", "3");
@@ -317,14 +350,80 @@ describe("OnboardingWizard", () => {
 
     await pressEscape();
     await pressEnter();
+    await skipDesks();
     await waitForFrame("Built around AAPL");
+  });
+
+  test("What do you trade? opens the ticked desks as tabs after Home, in the order they were ticked", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-desks-"));
+    const pluginRegistry = await createDeskRegistry(new JsonTickerRepository());
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "desks" as const, path: "manual" as const, portfolioId: "main", tickerSymbol: "AAPL" },
+    };
+    await tui.render(<WizardHarness config={config} pluginRegistry={pluginRegistry} />, { width: 100, height: 32 });
+    await tui.setup().renderOnce();
+    const frame = tui.frame();
+    expect(frame).toContain("What do you trade?");
+    for (const label of ["Equities", "Options", "Futures & commodities", "Rates & credit", "FX & macro", "Active trading"]) {
+      expect(frame).toContain(label);
+    }
+
+    // Continue waits for a desk.
+    await pressEnter();
+    await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
+    expect(capturedConfig?.onboardingProgress?.stage ?? "desks").toBe("desks");
+
+    // Rates, then Equities, then FX & macro with the mouse; then Equities off again.
+    for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "j", sequence: "j" });
+    await pressSpace();
+    for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "k", sequence: "k" });
+    await pressSpace();
+    await tui.clickFrameText("FX & macro");
+    for (let step = 0; step < 4; step += 1) await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await pressSpace();
+    await pressEnter();
+
+    expect(await waitForFrame("Built around AAPL")).toContain("Your desks are tabs at the bottom");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "research", desks: ["rates", "fx"] });
+    expect(capturedConfig?.layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "FX & Macro", "Monitor", "Macro"]);
+    expect(capturedConfig?.activeLayoutIndex).toBe(0);
+    expect(capturedConfig?.layouts[1]?.layout.instances.map((instance) => instance.paneId)).toEqual([
+      "rate-path", "yield-curve", "money-markets", "cdx-board", "sovr-board", "central-bank-rates",
+    ]);
+  });
+
+  test("the first-run milestone that ends onboarding names the desks picked", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-desks-event-"));
+    const sent: Array<{ event: string; desks?: readonly string[] }> = [];
+    apiClient.recordResearchActivity = (async (payload) => { sent.push(payload); }) as typeof apiClient.recordResearchActivity;
+    apiClient.setSessionToken("onboarding-desks-session");
+    apiClient.restoreCachedUser({ id: "user-desks", email: "desks@example.com", emailVerified: true, plan: "free" });
+    let completed = false;
+    await tui.render(
+      <WizardHarness
+        config={{
+          ...createDefaultConfig(tempDataDir),
+          onboardingProgress: { version: 1, stage: "ready", accountStatus: "signed-in", tickerSymbol: "AAPL", desks: ["options", "active"] },
+        }}
+        pluginRegistry={createPluginRegistry()}
+        onComplete={() => { completed = true; }}
+      />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+    await pressEnter();
+    for (let index = 0; index < 20 && !completed; index += 1) {
+      await act(async () => { await Bun.sleep(0); await tui.setup().renderOnce(); });
+    }
+    expect(sent.find((payload) => payload.event === "onboarding_completed")?.desks).toEqual(["options", "active"]);
   });
 
   test("cannot be skipped or continued before the first position", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-required-portfolio-"));
     const pluginRegistry = createPluginRegistry();
     let completionCount = 0;
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness
         config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
@@ -332,17 +431,17 @@ describe("OnboardingWizard", () => {
       />,
       { width: 80, height: 30 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    expect(testSetup.captureCharFrame()).not.toContain("Skip setup");
+    expect(tui.frame()).not.toContain("Skip setup");
     await emitKeypress({ name: "f10" });
     expect(completionCount).toBe(0);
     await pressEscape();
     await pressEnter();
-    await act(async () => { await Bun.sleep(20); await testSetup!.renderOnce(); });
+    await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
     expect(completionCount).toBe(0);
     expect(capturedConfig?.onboardingProgress?.stage ?? "portfolio").toBe("portfolio");
-    expect(testSetup.captureCharFrame()).toContain("What do you hold?");
+    expect(tui.frame()).toContain("What do you hold?");
   });
 
   test("imports a broker portfolio after the first manual position and opens its largest holding", async () => {
@@ -381,7 +480,7 @@ describe("OnboardingWizard", () => {
       brokers: new Map([["demo", broker]]),
       tickerRepository,
     });
-    testSetup = await testRender(
+    await tui.render(
       <RuntimeWizardHarness
         config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
@@ -389,12 +488,12 @@ describe("OnboardingWizard", () => {
       />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     // The broker path only opens once a manual position exists.
     await pressEscape();
     await emitKeypress({ name: "b", sequence: "b" });
-    expect(testSetup.captureCharFrame()).toContain("What do you hold?");
+    expect(tui.frame()).toContain("What do you hold?");
     await emitKeypress({ name: "a", sequence: "a" });
 
     await addManualPosition("NVDA", "1", "100");
@@ -403,6 +502,7 @@ describe("OnboardingWizard", () => {
     await waitForFrame("Connect Demo Broker");
     await pressEnter();
 
+    await skipDesks();
     const frame = await waitForFrame("Connect free Cloud");
     expect(frame).toContain("Built around MSFT");
     expect(capturedConfig?.onboardingProgress).toMatchObject({
@@ -447,7 +547,7 @@ describe("OnboardingWizard", () => {
       delete: () => {},
     } as any;
 
-    testSetup = await testRender(
+    await tui.render(
       <RuntimeWizardHarness
         config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
@@ -455,7 +555,7 @@ describe("OnboardingWizard", () => {
       />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await addManualPosition("NVDA", "1", "100");
     await pressEscape();
@@ -479,7 +579,7 @@ describe("OnboardingWizard", () => {
         assetCategory: "STK",
       }]);
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(capturedConfig?.brokerInstances).toEqual([]);
@@ -539,7 +639,7 @@ describe("OnboardingWizard", () => {
       brokers: new Map([["committing", broker]]),
       tickerRepository,
     });
-    testSetup = await testRender(
+    await tui.render(
       <RuntimeWizardHarness
         config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
@@ -547,7 +647,7 @@ describe("OnboardingWizard", () => {
       />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await addManualPosition("NVDA", "1", "100");
     await pressEscape();
@@ -557,17 +657,18 @@ describe("OnboardingWizard", () => {
     await firstWriteStarted;
 
     await pressEscape();
-    expect(testSetup.captureCharFrame()).toContain("Importing");
+    expect(tui.frame()).toContain("Importing");
     await emitKeypress({ name: "f10" });
-    expect(testSetup.captureCharFrame()).toContain("Importing");
+    expect(tui.frame()).toContain("Importing");
     expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "NVDA"]);
 
     await act(async () => {
       releaseSecondWrite();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
+    await skipDesks();
     await waitForFrame("Connect free Cloud");
     const held = (await tickerRepository.loadAllTickers())
       .filter((ticker) => ticker.metadata.portfolios.length > 0)
@@ -620,7 +721,7 @@ describe("OnboardingWizard", () => {
       };
     };
 
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness
         config={config}
         pluginRegistry={pluginRegistry}
@@ -629,7 +730,7 @@ describe("OnboardingWizard", () => {
       />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await addManualPosition("NVDA", "1", "100");
     await pressEscape();
@@ -640,15 +741,16 @@ describe("OnboardingWizard", () => {
     await waitForFrame("Importing");
 
     await emitKeypress({ name: "f10" });
-    expect(testSetup.captureCharFrame()).toContain("Importing");
+    expect(tui.frame()).toContain("Importing");
     expect(completionCount).toBe(0);
 
     await act(async () => {
       releaseResult();
       await Bun.sleep(0);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
+    await skipDesks();
     await waitForFrame("Connect free Cloud");
     expect(completionCount).toBe(0);
     expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
@@ -679,8 +781,8 @@ describe("OnboardingWizard", () => {
           tickerSymbol: "AAPL",
         },
       };
-      testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
-      await testSetup.renderOnce();
+      await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+      await tui.setup().renderOnce();
       const form = await waitForFrame("Email");
       expect(form).toContain("Connect Gloom Cloud");
       expect(form).not.toContain("Sign up free");
@@ -724,8 +826,8 @@ describe("OnboardingWizard", () => {
         ...createDefaultConfig(tempDataDir),
         onboardingProgress: { version: 1 as const, stage: "account" as const, path: "manual" as const, portfolioId: "main" },
       };
-      testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
-      await testSetup.renderOnce();
+      await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+      await tui.setup().renderOnce();
 
       await waitForFrame("Email");
       await typeText("returning@example.com");
@@ -739,6 +841,41 @@ describe("OnboardingWizard", () => {
       apiClient.signUp = originalSignUp;
       apiClient.signIn = originalSignIn;
       chatController.refreshSession = originalRefresh;
+    }
+  });
+
+  test("a fall-through login with the wrong password stays on the email and keeps the reason", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-login-mismatch-"));
+    const originalSignUp = apiClient.signUp;
+    const originalSignIn = apiClient.signIn;
+    apiClient.signUp = (async () => {
+      throw new Error("An account with this email already exists");
+    }) as typeof apiClient.signUp;
+    apiClient.signIn = (async () => {
+      throw new Error("Invalid email or password");
+    }) as typeof apiClient.signIn;
+    try {
+      const config = {
+        ...createDefaultConfig(tempDataDir),
+        onboardingProgress: { version: 1 as const, stage: "account" as const, path: "manual" as const, portfolioId: "main" },
+      };
+      await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+      await tui.setup().renderOnce();
+
+      await waitForFrame("Email");
+      await typeText("returning@example.com");
+      await pressEnter();
+      await typeText("longenough1");
+      await pressEnter();
+
+      // Switching the form to login must not wipe the message that explains why.
+      const frame = await waitForFrame("already has an account, and that password did");
+      expect(frame).toContain("Enter the password for this account.");
+      expect(frame).toContain("returning@example.com");
+      expect(frame).not.toContain("*".repeat("longenough1".length));
+    } finally {
+      apiClient.signUp = originalSignUp;
+      apiClient.signIn = originalSignIn;
     }
   });
 
@@ -760,11 +897,11 @@ describe("OnboardingWizard", () => {
           accountStatus: "signed-in" as const,
         },
       };
-      testSetup = await testRender(
+      await tui.render(
         <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
         { width: 100, height: 32 },
       );
-      await testSetup.renderOnce();
+      await tui.setup().renderOnce();
       await act(async () => {
         resolvePricing({
           currency: "usd",
@@ -773,7 +910,7 @@ describe("OnboardingWizard", () => {
           yearly: { amount: 63000 },
         });
         await Bun.sleep(0);
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
 
       // The offline fallback is also $70/mo, so wait on what only the
@@ -811,8 +948,8 @@ describe("OnboardingWizard", () => {
         ...createDefaultConfig(tempDataDir),
         onboardingProgress: { version: 1 as const, stage: "upgrade" as const, accountStatus: "signed-in" as const },
       };
-      testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
-      await testSetup.renderOnce();
+      await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+      await tui.setup().renderOnce();
       await waitForFrame("Start 7-day free trial");
 
       await emitKeypress({ name: "right", sequence: "\u001b[C" });
@@ -820,7 +957,7 @@ describe("OnboardingWizard", () => {
       for (let index = 0; index < 30 && checkouts.length === 0; index += 1) {
         await act(async () => {
           await Bun.sleep(5);
-          await testSetup!.renderOnce();
+          await tui.setup().renderOnce();
         });
       }
       // Unverified accounts go straight to checkout too; the status bar keeps asking for the email.
@@ -845,11 +982,11 @@ describe("OnboardingWizard", () => {
       },
     };
     let completed: AppConfig | null = null;
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness config={config} pluginRegistry={pluginRegistry} onComplete={(next) => { completed = next; }} />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     const form = await waitForFrame("Email");
     expect(form).toContain("Skip setup");
     expect(form).toContain("b: sign in with the browser instead");
@@ -858,7 +995,7 @@ describe("OnboardingWizard", () => {
     for (let index = 0; index < 30 && !completed; index += 1) {
       await act(async () => {
         await Bun.sleep(0);
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
     }
     expect(completed?.onboardingComplete).toBe(true);
@@ -883,11 +1020,11 @@ describe("OnboardingWizard", () => {
         accountStatus: "signed-in" as const,
       },
     };
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await pressEscape();
 
@@ -899,12 +1036,12 @@ describe("OnboardingWizard", () => {
 
   test("a saved verify stage resumes on the Pro step", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-legacy-verify-"));
-    testSetup = await testRender(<WizardHarness config={{
+    await tui.render(<WizardHarness config={{
       ...createDefaultConfig(tempDataDir),
       onboardingProgress: { version: 1, stage: "verify", accountStatus: "signed-in" },
     }} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Start 7-day free trial");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Start 7-day free trial");
   });
 
   test("persists completion only from the ready step", async () => {
@@ -921,7 +1058,7 @@ describe("OnboardingWizard", () => {
       },
     };
     let completed: AppConfig | null = null;
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness
         config={config}
         pluginRegistry={pluginRegistry}
@@ -929,14 +1066,14 @@ describe("OnboardingWizard", () => {
       />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Your workspace is ready");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Your workspace is ready");
 
     await pressEnter();
     for (let index = 0; index < 20 && !completed; index += 1) {
       await act(async () => {
         await Bun.sleep(0);
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
     }
 
@@ -949,7 +1086,7 @@ describe("OnboardingWizard", () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-dismiss-"));
     const pluginRegistry = createPluginRegistry();
     let completed: AppConfig | null = null;
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness
         config={{
           ...createDefaultConfig(tempDataDir),
@@ -960,37 +1097,18 @@ describe("OnboardingWizard", () => {
       />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    await act(async () => {
-      // Back queues a progress save; Start exploring must still finish.
-      testSetup!.renderer.keyInput.emit("keypress", {
-        name: "escape",
-        sequence: "\u001b",
-        ctrl: false,
-        meta: false,
-        option: false,
-        shift: false,
-        eventType: "press",
-        repeated: false,
-      } as any);
-      testSetup!.renderer.keyInput.emit("keypress", {
-        name: "return",
-        sequence: "\r",
-        ctrl: false,
-        meta: false,
-        option: false,
-        shift: false,
-        eventType: "press",
-        repeated: false,
-      } as any);
-      await testSetup!.renderOnce();
-    });
+    // Back queues a progress save; Start exploring must still finish.
+    await tui.emitKeypress([
+      { name: "escape", sequence: "\u001b" },
+      { name: "return", sequence: "\r" },
+    ]);
 
     for (let index = 0; index < 30 && !completed; index += 1) {
       await act(async () => {
         await Bun.sleep(0);
-        await testSetup!.renderOnce();
+        await tui.setup().renderOnce();
       });
     }
 
@@ -1000,11 +1118,11 @@ describe("OnboardingWizard", () => {
   test("the keyboard removes an added position once the fields let go", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-remove-"));
     const tickerRepository = new JsonTickerRepository();
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry({ tickerRepository })} />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
     await addManualPosition("NVDA");
     await addManualPosition("AAPL");
@@ -1026,14 +1144,14 @@ describe("OnboardingWizard", () => {
       ...createDefaultConfig(tempDataDir),
       onboardingProgress: { version: 1 as const, stage: "upgrade" as const, accountStatus: "signed-in" as const },
     };
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness config={config} pluginRegistry={createPluginRegistry()} before={<KeyProbe seen={reached} />} />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
     await waitForFrame("Start 7-day free trial");
 
-    const press = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { trackPropagation: true });
+    const press = (event: TestKeyEvent) => tui.emitKeypress(event, { trackPropagation: true });
     await press({ name: "tab", sequence: "\t" });
     await press({ name: "j", sequence: "j" });
     await press({ name: "q", sequence: "q" });
@@ -1059,19 +1177,19 @@ describe("OnboardingWizard", () => {
         tickerSymbol: "AAPL",
       },
     };
-    testSetup = await testRender(
+    await tui.render(
       <WizardHarness config={config} pluginRegistry={createPluginRegistry()} after={<KeyProbe seen={reached} />} />,
       { width: 100, height: 32 },
     );
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toMatch(/Connect free Cloud\s+Alt\+Enter/);
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toMatch(/Connect free Cloud\s+Alt\+Enter/);
 
     // The command bar and panes mount after the wizard and still get Enter.
-    await emitTuiKeypress(testSetup, { name: "return", sequence: "\r" }, { trackPropagation: true });
+    await tui.emitKeypress({ name: "return", sequence: "\r" }, { trackPropagation: true });
     expect(reached).toEqual(["return"]);
     expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
 
-    await emitTuiKeypress(testSetup, { name: "return", sequence: "\r", meta: true }, { trackPropagation: true });
+    await tui.emitKeypress({ name: "return", sequence: "\r", meta: true }, { trackPropagation: true });
     await waitForFrame("Connect Gloom Cloud");
     expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
   });

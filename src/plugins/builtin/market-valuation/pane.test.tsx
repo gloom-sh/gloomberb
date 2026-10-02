@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { valuationCache } from "./cache";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MarketValuationPane } from "./pane";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 function obs(values: Array<[string, number]>) {
   return values.map(([date, value]) => ({ date, value }));
@@ -78,13 +78,13 @@ async function settle() {
   await act(async () => {
     for (let index = 0; index < 8; index += 1) {
       await Promise.resolve();
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     }
   });
   for (let index = 0; index < 3; index += 1) {
     await act(async () => {
       await Promise.resolve();
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
@@ -103,9 +103,9 @@ async function renderPane(settings: Record<string, unknown> = {}, width = 128, h
       {(body) => <MarketValuationPane paneId={TEST_PANE_ID} paneType="market-valuation" focused {...body}/>}
     </TestPaneFrame>;
   }
-  setup = await testRender(<Harness/>, { width, height: height + 1 });
+  await tui.render(<Harness/>, { width, height: height + 1 });
   await settle();
-  return setup.captureCharFrame();
+  return tui.frame();
 }
 
 beforeEach(() => {
@@ -114,11 +114,7 @@ beforeEach(() => {
   valuationCache.hydrate(LEGS);
 });
 
-afterEach(async () => {
-  if (setup) {
-    await act(async () => setup?.renderer.destroy());
-    setup = undefined;
-  }
+afterEach(() => {
   valuationCache.reset();
 });
 

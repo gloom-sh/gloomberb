@@ -1,18 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState, type Dispatch, type SetStateAction } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { GridFieldView } from "./field-grid";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let setFieldActive: Dispatch<SetStateAction<boolean>> | null = null;
 
-afterEach(async () => {
+afterEach(() => {
   setFieldActive = null;
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 function InlineFieldHarness({ commits }: { commits: number[] }) {
@@ -43,59 +38,59 @@ function InlineFieldHarness({ commits }: { commits: number[] }) {
 describe("GridFieldView", () => {
   test("replaces the formatted value and commits when focus leaves the active field", async () => {
     const commits: number[] = [];
-    testSetup = await testRender(<InlineFieldHarness commits={commits} />, { width: 36, height: 4 });
+    await tui.render(<InlineFieldHarness commits={commits} />, { width: 36, height: 4 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
       setFieldActive?.(true);
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("2");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("2");
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
       setFieldActive?.(false);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(commits.at(-1)).toBeCloseTo(0.02);
-    expect(testSetup.captureCharFrame()).toContain("2.00");
+    expect(tui.frame()).toContain("2.00");
   });
 
   test("submitted percentage precision stays visible and is not recommitted from rounded text", async () => {
     const commits: number[] = [];
-    testSetup = await testRender(<InlineFieldHarness commits={commits} />, { width: 36, height: 4 });
+    await tui.render(<InlineFieldHarness commits={commits} />, { width: 36, height: 4 });
 
     await act(async () => {
       setFieldActive?.(true);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("12.3456");
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("12.3456");
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
-    expect(testSetup.captureCharFrame()).toContain("12.3456");
+    expect(tui.frame()).toContain("12.3456");
     expect(commits.at(-1)).toBeCloseTo(0.123456, 10);
 
     await act(async () => {
       setFieldActive?.(false);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(commits.at(-1)).toBeCloseTo(0.123456, 10);

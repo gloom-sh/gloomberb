@@ -46,7 +46,7 @@ export function addDays(date: string, days: number): string {
 }
 
 /** NYSE sessions from the published calendar; weekdays for years it does not cover. */
-export function isSession(date: string): boolean {
+function isSession(date: string): boolean {
   const known = getPublishedUsEquityCalendarDay("NYSE", date);
   if (known) return known === "session";
   const day = new Date(`${date}T00:00:00Z`).getUTCDay();

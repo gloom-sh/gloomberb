@@ -1,7 +1,6 @@
 import type { KeybindingsConfig } from "../../types/config";
 import type { KeyboardShortcut } from "../../types/plugin";
 import {
-  getKeybindingAction,
   isCoreKeybindingActionId,
   KEYBINDING_ACTIONS,
   PANE_ACTION_IDS,
@@ -66,7 +65,7 @@ export interface ResolveKeybindingsOptions {
   host?: "terminal" | "desktop";
 }
 
-export function pluginShortcutDefaultChord(shortcut: KeyboardShortcut): KeyChord {
+function pluginShortcutDefaultChord(shortcut: KeyboardShortcut): KeyChord {
   return {
     key: shortcut.key.toLowerCase(),
     ctrl: shortcut.ctrl === true,
@@ -280,9 +279,3 @@ export function describeKeybindingIssue(issue: KeybindingIssue): string {
       return `${serializeKeyChord(issue.chord)} is bound to ${issue.targets.join(" and ")}.`;
   }
 }
-
-export function keybindingActionLabel(action: ResolvedKeybindingAction): string {
-  return action.def?.description ?? action.pluginShortcut?.description ?? action.id;
-}
-
-export { getKeybindingAction };

@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 import type { ScrollBoxRenderable } from "../../../ui";
 import type { CommandBarListRow, ListScreenState, ResultItem } from "../list/model";
 import type { CommandBarListScrollEvent } from "../list/view";

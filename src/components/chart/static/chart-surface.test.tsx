@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useEffect } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { colors } from "../../../theme/colors";
 import { RemoteUiRegistryProvider, useRemoteUiRegistry, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { resolveChartPalette } from "../core/palette";
@@ -9,17 +9,11 @@ import type { ProjectedChartPoint } from "../core/data";
 import { buildCompositeChartScene } from "../composite/scene";
 import type { CompositeAxisDomain } from "../composite/types";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let remoteRegistry: RemoteUiRegistry | null = null;
 
-afterEach(async () => {
-  const setup = testSetup;
-  testSetup = undefined;
+afterEach(() => {
   remoteRegistry = null;
-  if (!setup) return;
-  await act(async () => {
-    setup.renderer.destroy();
-  });
 });
 
 const points: ProjectedChartPoint[] = [
@@ -59,7 +53,7 @@ describe("StaticChartSurface", () => {
   });
 
   test("renders custom x-axis labels and decision markers instead of dates", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <StaticChartSurface
         points={points}
         width={56}
@@ -78,11 +72,11 @@ describe("StaticChartSurface", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("0%");
     expect(frame).toContain("50%");
     expect(frame).toContain("100%");
@@ -96,7 +90,7 @@ describe("StaticChartSurface", () => {
   // Regression: the surface dropped the domain, so no y formatter could size its digits to the span.
   test("passes the axis domain to the y-axis formatter", async () => {
     const domains: Array<CompositeAxisDomain | undefined> = [];
-    testSetup = await testRender(
+    await tui.render(
       <StaticChartSurface
         points={points}
         width={48}
@@ -112,11 +106,11 @@ describe("StaticChartSurface", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toMatch(/D\d\.\d/);
     expect(frame).not.toContain("none");
     expect(domains.length).toBeGreaterThan(0);
@@ -127,7 +121,7 @@ describe("StaticChartSurface", () => {
   });
 
   test("moves a remote-controlled cursor and labels both axes through the formatters", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <RemoteUiRegistryProvider>
         <RemoteRegistryProbe />
         <StaticChartSurface
@@ -145,10 +139,10 @@ describe("StaticChartSurface", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
-    const initialFrame = testSetup.captureCharFrame();
+    const initialFrame = tui.frame();
     const chartNode = remoteRegistry?.snapshot().find((node) => node.metadata?.kind === "static-chart");
     expect(chartNode?.actions).toContain("moveCursor");
 
@@ -156,11 +150,11 @@ describe("StaticChartSurface", () => {
       await remoteRegistry!.invoke(chartNode!.id, "moveCursor", { x: 20, y: 4 });
     });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).not.toBe(initialFrame);
     expect(frame).toMatch(/X\d+/);
     expect(frame).toMatch(/Y\d\.\d\d/);

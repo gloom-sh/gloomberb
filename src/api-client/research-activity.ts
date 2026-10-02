@@ -318,12 +318,14 @@ function attributionPayload(): Record<string, string> | undefined {
 /**
  * Counts milestones once per feature/session/account, never their content.
  * Native surfaces report anonymously only with an identifier the website
- * handed over; they still never mint one of their own.
+ * handed over; they still never mint one of their own. `desks` rides on the
+ * end of the first-run funnel: the desks picked at "What do you trade?".
  */
 export function recordResearchActivity(
   event: ResearchActivity,
   feature?: ResearchFeature,
   tab?: string,
+  desks?: readonly string[],
 ): void {
   const target = getCurrentPluginTarget();
   const user = apiClient.getCurrentUser();
@@ -342,6 +344,7 @@ export function recordResearchActivity(
       attribution: attributionPayload(),
       feature,
       tab,
+      desks,
     })
     .catch(() => {
       sent.delete(key);

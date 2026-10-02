@@ -53,7 +53,7 @@ export function termsLabel(terms: MnaTerms): string {
   return label;
 }
 
-export const STATUS_LABELS: Record<MnaStatus, string> = {
+const STATUS_LABELS: Record<MnaStatus, string> = {
   talks: "Talks",
   pending: "Pending",
   completed: "Completed",
@@ -89,7 +89,7 @@ function inQuoteCurrency(amount: number, from: string | null, quoteCurrency: str
  * quote's currency. Null when a leg cannot be priced: no terms, a ratio
  * without its listing, or cash in another currency.
  */
-export function offerValue(deal: MnaDeal, targetQuote: Quote | null, ratioQuote: Quote | null): number | null {
+function offerValue(deal: MnaDeal, targetQuote: Quote | null, ratioQuote: Quote | null): number | null {
   const { terms } = deal;
   if (terms.cashPerShare == null && terms.exchangeRatio == null) return null;
   let total = 0;
@@ -174,11 +174,6 @@ export function dealSpread(
     ? spread * 365 / days
     : null;
   return { offer, price, spread, annualized };
-}
-
-/** Days from `from` to `to`, both YYYY-MM-DD. */
-export function daysBetween(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
 }
 
 /** Target name for a table cell: the symbol when listed, else the name. */

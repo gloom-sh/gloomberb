@@ -37,7 +37,7 @@ export function shillerObservations(
   return observations;
 }
 
-export function historyToObservations(
+function historyToObservations(
   points: ReadonlyArray<{ date: string; close: number | null }>,
 ): DatedObservation[] {
   const observations: DatedObservation[] = [];

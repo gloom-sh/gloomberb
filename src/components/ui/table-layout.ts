@@ -46,7 +46,7 @@ export function tableColumnWidth(column: TableWidthColumn): number {
   return Math.max(width, displayWidth(column.label) + HEADER_RESERVED_WIDTH);
 }
 
-export function normalizeTableColumns<C extends TableWidthColumn>(columns: readonly C[]): C[] {
+function normalizeTableColumns<C extends TableWidthColumn>(columns: readonly C[]): C[] {
   return columns.map((column) => {
     const width = tableColumnWidth(column);
     return width === column.width ? column : { ...column, width };

@@ -1,6 +1,6 @@
 import { brokerProfileRemovalConfirm } from "../../brokers/remove-profile";
 import type { PluginRegistry } from "../../plugins/registry";
-import { swapPanes } from "../../plugins/pane-manager";
+import { swapPanes } from "../../layout/pane-manager";
 import type { LayoutConfig } from "../../types/config";
 import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";
 import type { OpenInlineConfirm } from "./routing/confirm";
@@ -67,7 +67,7 @@ export function activatePickerSelectionAction({
       return;
     case "disconnect-broker": {
       // The same confirm as the Brokers pane's, which says when the Gloom account's connection goes too.
-      const instance = pluginRegistry.getConfigFn().brokerInstances.find((entry) => entry.id === option.id);
+      const instance = pluginRegistry.getConfig().brokerInstances.find((entry) => entry.id === option.id);
       if (!instance) return;
       openInlineConfirm(brokerProfileRemovalConfirm(instance, instance.label, async () => {
         await collectionWorkflowActions.disconnectBrokerInstance(option.id);

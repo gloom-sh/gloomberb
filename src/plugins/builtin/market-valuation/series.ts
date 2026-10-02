@@ -1,6 +1,6 @@
 import type { SeriesCacheMetadata, SeriesProviderMetadata } from "../shared/series-cache";
 
-export type SeriesProvenance = "fred" | "market" | "shiller";
+type SeriesProvenance = "fred" | "market" | "shiller";
 
 export interface DatedObservation {
   date: string;

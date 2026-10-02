@@ -1,4 +1,4 @@
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 import { resolveAppHeaderHeightCells, resolveHeaderPromptGeometry } from "../../layout/shell/chrome";
 import { NATIVE_COMMAND_SURFACE } from "./native-surface";
 import type { CommandBarRoute } from "../workflow/types";

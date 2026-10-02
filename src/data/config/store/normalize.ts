@@ -62,6 +62,7 @@ export function normalizeLoadedConfig(
     brokerInstances: sanitizeBrokerInstances(candidate.brokerInstances),
     disabledPlugins,
     seededPlugins: sanitizeUniqueStringList(candidate.seededPlugins),
+    ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
     theme: typeof candidate.theme === "string" ? candidate.theme : defaults.theme,
@@ -198,6 +199,7 @@ const ONBOARDING_STAGES = new Set<OnboardingProgress["stage"]>([
   "welcome",
   "portfolio",
   "add-ticker",
+  "desks",
   "research",
   "verify",
   "account",
@@ -228,6 +230,7 @@ function sanitizeOnboardingProgress(value: unknown): OnboardingProgress | undefi
       : undefined,
     accountStatus,
     checkoutOpenedAt: typeof value.checkoutOpenedAt === "string" ? value.checkoutOpenedAt : undefined,
+    desks: Array.isArray(value.desks) ? sanitizeUniqueStringList(value.desks) : undefined,
   };
 }
 
@@ -390,9 +393,6 @@ function sanitizeSavedLayouts(
         focusedPaneId: typeof entry.focusedPaneId === "string"
           ? placedPaneIds.has(entry.focusedPaneId) ? entry.focusedPaneId : null
           : entry.focusedPaneId === null ? null : undefined,
-        activePanel: entry.activePanel === "right" || entry.activePanel === "left"
-          ? entry.activePanel
-          : undefined,
         ...(sanitizeLayoutOrigin(entry.origin) ? { origin: sanitizeLayoutOrigin(entry.origin) } : {}),
       };
     });

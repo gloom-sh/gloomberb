@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";
@@ -15,7 +15,6 @@ import {
   getAvailableCommandBarSearchProviders,
   useCommandBarSearchProviders,
 } from "../routes/root/search-providers";
-import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
 import { useCommandSearchReport } from "../routes/root/search-report";
@@ -248,8 +247,8 @@ export function CommandBar({
   const assistAutoAsk = !currentRoute
     && planAccess.emailVerified
     && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootShortcutIntent.kind !== "none" });
-  // The server keeps a question only when asked to: with the Usage setting
-  // on, and never for text remote control typed.
+  // The server keeps a question unless told not to, so the answer always
+  // goes out: false with the Usage setting off or for text remote control typed.
   const logSearches = useCallback((query: string) => (
     searchLoggingAllowed() && !automationActive() && !isAutomationQuery(query)
   ), [isAutomationQuery, searchLoggingAllowed]);

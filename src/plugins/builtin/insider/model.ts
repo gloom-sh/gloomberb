@@ -54,7 +54,7 @@ export function buildInsiderDisclosureText(entry: ParsedInsiderFiling): string {
   ].filter(Boolean).join("\n\n");
 }
 
-export interface InsiderSideTotal {
+interface InsiderSideTotal {
   security: string;
   side: "P" | "S";
   shares: number;

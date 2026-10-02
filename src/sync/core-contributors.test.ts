@@ -60,6 +60,37 @@ describe("core sync contributors", () => {
     expect(serialized).toContain("Demo Broker");
   });
 
+  // The pushed payload drops every token, so applying a pull as-is deleted
+  // them here: an alert added on the laptop logged every plugin out on the
+  // desktop, and Gloom Social asked for its token again.
+  test("a pulled plugin config keeps this device's tokens and paths", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-secrets-test");
+    config.pluginConfig = {
+      "gloom-social": { apiUrl: "https://social.gloom.sh", token: "local-token" },
+      "byok-ai": { apiKey: "local-key", accounts: { main: { model: "a", refreshToken: "local-refresh" } } },
+      notes: { notesDirectory: "/Users/ada/notes" },
+      alerts: { alerts: "[]" },
+    };
+    const lastSynced = await coreConfigSyncContributor.collect({ state: createInitialState(config) });
+
+    const elsewhere = createDefaultConfig("/tmp/gloomberb-sync-secrets-elsewhere");
+    elsewhere.pluginConfig = {
+      "gloom-social": { apiUrl: "https://social.gloom.sh" },
+      "byok-ai": { accounts: { main: { model: "b" } } },
+      alerts: { alerts: "[{\"id\":\"a1\"}]" },
+    };
+    const pulled = await coreConfigSyncContributor.collect({ state: createInitialState(elsewhere) });
+
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, pulled, config, lastSynced);
+
+    expect(merged?.pluginConfig).toEqual({
+      "gloom-social": { apiUrl: "https://social.gloom.sh", token: "local-token" },
+      "byok-ai": { apiKey: "local-key", accounts: { main: { model: "b", refreshToken: "local-refresh" } } },
+      notes: { notesDirectory: "/Users/ada/notes" },
+      alerts: { alerts: "[{\"id\":\"a1\"}]" },
+    });
+  });
+
   test("normalizes legacy built-in ownership in pulled config", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     const layouts = config.layouts.map((savedLayout) => savedLayout);

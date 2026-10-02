@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import { testRender, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { blockExternalNetwork } from "../../../test-support/network-guard";
@@ -11,12 +11,7 @@ import { sectorsModule } from "./index";
 blockExternalNetwork();
 
 const Pane = sectorsModule.panes![0]!.component;
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 for (const version of ["v3", "v4"]) test(`opening without a provider handles the ${version} computed-row cache`, async () => {
   const config = createTestPaneConfig("/tmp/gloomberb-sector-cache-test", {
@@ -41,9 +36,9 @@ for (const version of ["v3", "v4"]) test(`opening without a provider handles the
       <Pane paneId="sector-cache" paneType="sectors" focused width={82} height={10} />
     </TestPaneProvider>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width: 82, height: 10 }); });
-  for (let index = 0; index < 4; index++) await act(async () => { await setup!.renderOnce(); });
-  const frame = setup!.captureCharFrame();
+  await act(async () => { await tui.render(<Harness />, { width: 82, height: 10 }); });
+  for (let index = 0; index < 4; index++) await act(async () => { await tui.setup().renderOnce(); });
+  const frame = tui.frame();
   await exportPaneTable("sector-cache", `${version}.csv`);
   const csv = takeSavedTextFile()!.text;
   expect(frame).toContain("GDX");

@@ -4,7 +4,7 @@ import type {
   CompositeProjectedSeries,
 } from "./types";
 
-export interface CompositeColumnGroupSlot {
+interface CompositeColumnGroupSlot {
   index: number;
   count: number;
   xRatio: number;

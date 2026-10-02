@@ -1,5 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { createTestRenderer } from "@opentui/core/testing";
+import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { ChartSurface, Text } from "../../ui";
 import { getNativeSurfaceManager } from "../../components/chart/native/surface/manager";
@@ -7,11 +6,9 @@ import type { ChartRendererPreference } from "../../components/chart/core/types"
 import type { CellRect } from "../../components/chart/native/chart-rasterizer";
 import { AppProvider } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
-import { createOpenTuiTestRoot } from "./test-utils";
+import { createOpenTuiTestHarness } from "./test-utils";
 
-let testSetup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;
-let root: ReturnType<typeof createOpenTuiTestRoot> | undefined;
-const actEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
+const tui = createOpenTuiTestHarness({ width: 40, height: 12 });
 
 const bitmap = {
   width: 4,
@@ -20,12 +17,12 @@ const bitmap = {
 };
 
 function setNativeRendererReady(): void {
-  (testSetup!.renderer as { _capabilities: unknown })._capabilities = { kitty_graphics: true };
-  (testSetup!.renderer as { _resolution: unknown })._resolution = { width: 800, height: 400 };
+  (tui.setup().renderer as { _capabilities: unknown })._capabilities = { kitty_graphics: true };
+  (tui.setup().renderer as { _resolution: unknown })._resolution = { width: 800, height: 400 };
 }
 
 function surfaces(): Map<string, { snapshot: { rect: CellRect; imageZIndex?: number } }> {
-  const manager = getNativeSurfaceManager(testSetup!.renderer as never) as unknown as {
+  const manager = getNativeSurfaceManager(tui.setup().renderer as never) as unknown as {
     surfaces: Map<string, { snapshot: { rect: CellRect; imageZIndex?: number } }>;
   };
   return manager.surfaces;
@@ -37,10 +34,10 @@ function surfaceCount(): number {
 
 async function flushFrames(): Promise<void> {
   await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
@@ -68,62 +65,42 @@ function Harness({
   );
 }
 
-afterEach(() => {
-  if (root) {
-    act(() => {
-      root!.unmount();
-    });
-    root = undefined;
-  }
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-  actEnvironment.IS_REACT_ACT_ENVIRONMENT = false;
-});
-
 describe("OpenTuiChartSurface", () => {
   test("does not register kitty surfaces when the chart renderer is forced to braille", async () => {
-    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
-    testSetup = await createTestRenderer({ width: 40, height: 12 });
+    const { root } = await tui.createRoot();
     setNativeRendererReady();
-    root = createOpenTuiTestRoot(testSetup.renderer);
 
     act(() => {
-      root!.render(<Harness preference="braille" />);
+      root.render(<Harness preference="braille" />);
     });
 
     await flushFrames();
 
-    expect(testSetup.captureCharFrame()).toContain("fallback chart");
+    expect(tui.frame()).toContain("fallback chart");
     expect(surfaceCount()).toBe(0);
   });
 
   test("registers kitty surfaces when the chart renderer is forced to kitty and native graphics are ready", async () => {
-    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
-    testSetup = await createTestRenderer({ width: 40, height: 12 });
+    const { root } = await tui.createRoot();
     setNativeRendererReady();
-    root = createOpenTuiTestRoot(testSetup.renderer);
 
     act(() => {
-      root!.render(<Harness preference="kitty" />);
+      root.render(<Harness preference="kitty" />);
     });
 
     await flushFrames();
 
-    expect(testSetup.captureCharFrame()).not.toContain("fallback chart");
+    expect(tui.frame()).not.toContain("fallback chart");
     expect(surfaceCount()).toBe(1);
   });
 
   test("overlays the crosshair as thin strips above the plot and drops them with the cursor", async () => {
-    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
-    testSetup = await createTestRenderer({ width: 40, height: 12 });
+    const { root } = await tui.createRoot();
     setNativeRendererReady();
-    root = createOpenTuiTestRoot(testSetup.renderer);
 
     // Cursor at the middle of a 4x4 source bitmap, scaled onto a 20x4 cell plot.
     act(() => {
-      root!.render(<Harness preference="kitty" initialCrosshair={{ pixelX: 2, pixelY: 2, color: "#ffcc00" }} />);
+      root.render(<Harness preference="kitty" initialCrosshair={{ pixelX: 2, pixelY: 2, color: "#ffcc00" }} />);
     });
     await flushFrames();
 

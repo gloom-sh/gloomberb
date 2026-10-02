@@ -1204,7 +1204,7 @@ function Seed-DesktopConfig {
     theme = "amber"
     # This fixture covers window behavior. Plugin restoration has separate tests
     # and must not add network installs to the desktop screenshot check.
-    seededPlugins = @((& bun -e 'import { EXTRACTED_PLUGINS } from "./src/plugins/seed"; console.log(JSON.stringify(EXTRACTED_PLUGINS.map(plugin => plugin.id)))') | ConvertFrom-Json)
+    seededPlugins = @((& bun -e 'import { EXTRACTED_PLUGINS } from "./src/plugins/extracted-plugins"; console.log(JSON.stringify(EXTRACTED_PLUGINS.map(plugin => plugin.id)))') | ConvertFrom-Json)
     layout = $Layout
     layouts = @(
       @{
@@ -1212,7 +1212,6 @@ function Seed-DesktopConfig {
         layout = $Layout
         paneState = @{}
         focusedPaneId = "portfolio-list:main"
-        activePanel = "left"
       }
     )
     activeLayoutIndex = 0

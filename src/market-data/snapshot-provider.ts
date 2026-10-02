@@ -12,7 +12,7 @@ import type { HistorySession } from "../types/price-history";
 import { fetchHistoryResult, historyResolutionForInterval, normalizeHistoryResult } from "../sources/history-result";
 
 /** Omitted expiry retains a legacy/default slice; the catalogue is not its identity. */
-export type SnapshotOptionsChain = readonly [symbol: string, chain: OptionsChain, expirationDate?: number];
+type SnapshotOptionsChain = readonly [symbol: string, chain: OptionsChain, expirationDate?: number];
 
 export interface SnapshotMarketData {
   financials: ReadonlyArray<readonly [string, TickerFinancials]>;

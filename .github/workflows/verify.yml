@@ -23,8 +23,13 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
-      - name: Typecheck production runtimes
+      - name: Typecheck production runtimes and built-in plugin tests
         run: bun run typecheck
+
+      # Fails on unused files, exports and dependencies. See knip.jsonc for
+      # what it deliberately skips.
+      - name: Check for unused code
+        run: bun run knip
 
       # Fails when a built-in plugin changes without regenerating the published
       # manifest, which is what the plugin directory renders for built-ins.

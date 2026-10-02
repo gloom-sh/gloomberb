@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import type { NewsService } from "./aggregator";
 import { setSharedNewsService, useNewsArticles } from "./hooks";
 import type { NewsQueryState } from "./types";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let rerenderHarness: (() => void) | null = null;
 
 function NewsHookHarness() {
@@ -15,11 +15,7 @@ function NewsHookHarness() {
   return <text>{state.phase}:{renderCount}</text>;
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => testSetup?.renderer.destroy());
-    testSetup = undefined;
-  }
+afterEach(() => {
   rerenderHarness = null;
   setSharedNewsService(null);
 });
@@ -47,8 +43,8 @@ test("useNewsArticles watches once and unwatches on unmount", async () => {
   } as unknown as NewsService;
   setSharedNewsService(service);
 
-  testSetup = await testRender(<NewsHookHarness />, { width: 20, height: 1 });
-  await act(async () => testSetup?.renderOnce());
+  await tui.render(<NewsHookHarness />, { width: 20, height: 1 });
+  await act(async () => tui.setup().renderOnce());
 
   expect(watchCount).toBe(1);
   expect(unwatchCount).toBe(0);
@@ -56,11 +52,10 @@ test("useNewsArticles watches once and unwatches on unmount", async () => {
   await act(async () => {
     rerenderHarness?.();
     await Promise.resolve();
-    await testSetup?.renderOnce();
+    await tui.setup().renderOnce();
   });
   expect(watchCount).toBe(1);
 
-  await act(async () => testSetup?.renderer.destroy());
-  testSetup = undefined;
+  await tui.destroy();
   expect(unwatchCount).toBe(1);
 });

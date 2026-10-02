@@ -62,6 +62,7 @@ describe("import boundaries", () => {
       }
       if (specifier === "react-dom" || specifier.startsWith("react-dom/")) {
         return ![
+          "src/renderers/dom/",
           "src/renderers/electrobun/",
           "src/renderers/browser/",
           "src/renderers/share/",

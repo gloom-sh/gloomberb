@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useMemo, useState } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { QuoteBatchResult } from "../../../types/data-provider";
@@ -69,30 +69,22 @@ function Harness() {
   );
 }
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 async function settle() {
   await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
 describe("WorldIndicesPane", () => {
   test("keeps the last good prices when the provider starts failing", async () => {
-    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
+    await tui.render(<Harness />, { width: 80, height: 24 });
     await settle();
-    expect(testSetup.captureCharFrame()).toContain("6,812.44");
+    expect(tui.frame()).toContain("6,812.44");
     // Index levels are points, not money.
-    expect(testSetup.captureCharFrame()).not.toContain("$6,812.44");
+    expect(tui.frame()).not.toContain("$6,812.44");
 
     await act(async () => {
       breakProvider();
@@ -100,7 +92,7 @@ describe("WorldIndicesPane", () => {
     await settle();
 
     // Regression: a failed load blanked every price to "—" mid-session.
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("6,812.44");
     expect(frame).toContain("SPX");
   });
@@ -131,14 +123,14 @@ test.each([80, 120])("saved index selection prunes unavailable counts and source
       </Box>}</PaneFooterProvider>
     </TestPaneProvider>;
   }
-  await act(async () => { testSetup = await testRender(<SelectionHarness />, { width, height: 24 }); });
+  await act(async () => { await tui.render(<SelectionHarness />, { width, height: 24 }); });
   await settle();
   const formatTime = (value: number) => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  expect(testSetup!.captureCharFrame()).toContain("1 unavailable");
-  expect(testSetup!.captureCharFrame()).toContain(formatTime(times["^GSPC"]));
+  expect(tui.frame()).toContain("1 unavailable");
+  expect(tui.frame()).toContain(formatTime(times["^GSPC"]));
   await act(async () => selectSymbols(["^FTSE"]));
   await settle();
-  const frame = testSetup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("FTSE");
   expect(frame).not.toContain("DXY");
   expect(frame).not.toContain("unavailable");

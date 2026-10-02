@@ -205,7 +205,7 @@ export async function submitCommandBarWorkflow(options: {
         values,
         arg: argPlaceholder ? values[argPlaceholder] : baseOptions?.arg,
       };
-      await pluginRegistry.createPaneFromTemplateAsyncFn(template.id, createOptions);
+      await pluginRegistry.createPaneFromTemplateAsync(template.id, createOptions);
       if (route.successLabel) {
         notify(route.successLabel, { type: "success" });
       }

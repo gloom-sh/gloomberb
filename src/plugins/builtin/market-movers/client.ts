@@ -1,5 +1,11 @@
+import { apiClient } from "../../../api-client";
+import type {
+  CloudSessionMoversCategory,
+  CloudSessionMoversPayload,
+  CloudSessionMoversSide,
+} from "../../../api-client/market-movers";
 import type { DataProvider } from "../../../types/data-provider";
-import { CATEGORY_MAP, screenerQuoteFromQuote, type TabId } from "./model";
+import { CATEGORY_MAP, screenerQuoteFromQuote, type ScreenerTabId } from "./model";
 import {
   fetchPreferredMarketMovers,
   fetchTrending,
@@ -9,7 +15,7 @@ import {
 } from "./screener";
 
 export interface MarketMoverTabResult extends MarketMoversResult {
-  tab: TabId;
+  tab: ScreenerTabId;
 }
 
 export interface MarketMoverTabDependencies {
@@ -57,7 +63,7 @@ async function hydrateTrending(
 }
 
 export async function loadMarketMoverTab(
-  tab: TabId,
+  tab: ScreenerTabId,
   provider: DataProvider | null,
   options?: { forceRefresh?: boolean },
   dependencies: MarketMoverTabDependencies = defaultDependencies,
@@ -73,4 +79,25 @@ export async function loadMarketMoverTab(
   }
   const result = await dependencies.fetchPreferred(CATEGORY_MAP[tab], 25, options);
   return { ...result, tab };
+}
+
+/** The server refused the list for the account's plan. */
+export class SessionMoversAccessError extends Error {
+  constructor() {
+    super("Pre-market, after-hours and gap lists need Pro");
+    this.name = "SessionMoversAccessError";
+  }
+}
+
+export async function loadSessionMovers(
+  view: CloudSessionMoversCategory,
+  side: CloudSessionMoversSide,
+  options?: { forceRefresh?: boolean },
+): Promise<CloudSessionMoversPayload> {
+  const response = await apiClient.getCloudMarketScreener(view, 25, options?.forceRefresh ? "refresh" : "cache-first", side);
+  if (response.reasonCode === "PRO_REQUIRED") throw new SessionMoversAccessError();
+  if ((response.status === "success" || response.status === "partial") && response.data) {
+    return response.stale ? { ...response.data, stale: true } : response.data;
+  }
+  throw new Error("Session movers temporarily unavailable");
 }

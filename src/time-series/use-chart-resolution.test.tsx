@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { DataProvider } from "../types/data-provider";
 import type { PricePoint, TickerFinancials } from "../types/financials";
@@ -19,7 +19,7 @@ import {
 
 type AutoViewport = NonNullable<Parameters<typeof useChartResolution>[2]["autoViewport"]>;
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let setAutoViewport: ((viewport: AutoViewport | null) => void) | null = null;
 let setRequestViewport: ((viewport: AutoViewport | null) => void) | null = null;
 let setChartSpec: ((spec: ChartSpec) => void) | null = null;
@@ -129,7 +129,7 @@ async function flushEffects(iterations = 1): Promise<void> {
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     await act(async () => {
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
@@ -143,13 +143,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   throw new Error("Timed out waiting for chart resolution.");
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   setAutoViewport = null;
   setRequestViewport = null;
   setChartSpec = null;
@@ -181,7 +175,7 @@ describe("useChartResolution", () => {
       },
     });
     setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
-    testSetup = await testRender(<PollingResolutionHarness sources={sourcesFor(provider)} />, {
+    await tui.render(<PollingResolutionHarness sources={sourcesFor(provider)} />, {
       width: 24,
       height: 1,
     });
@@ -213,13 +207,13 @@ describe("useChartResolution", () => {
     const spec: ChartSpec = { ...SPEC, viewport: { range: "1D", resolution: "1m" }, series: [{ ...SPEC.series[0]!,
       source: { kind: "security", instrument: { symbol: "LIVE-BARS", exchange: "CCC" }, fieldId: "market.ohlcv" } }] };
     const sources: ChartResolveSources = { dataProvider: provider, loadFredSeries: async () => { throw new Error("unused"); } };
-    testSetup = await testRender(<ResolutionHarness sources={sources} spec={spec} />, { width: 24, height: 1 });
+    await tui.render(<ResolutionHarness sources={sources} spec={spec} />, { width: 24, height: 1 });
     const bars = () => (latestResult?.bufferedSeries ?? []).find((entry) => entry.id === "price")?.points ?? [];
     const settle = async (predicate: () => boolean) => {
       for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
         await act(async () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
-          await testSetup!.renderOnce();
+          await tui.setup().renderOnce();
         });
       }
       expect(predicate()).toBe(true);
@@ -269,7 +263,7 @@ describe("useChartResolution", () => {
     });
     setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
     const sources = sourcesFor(provider);
-    testSetup = await testRender(<ResolutionHarness sources={sources} />, {
+    await tui.render(<ResolutionHarness sources={sources} />, {
       width: 24,
       height: 1,
     });
@@ -283,7 +277,7 @@ describe("useChartResolution", () => {
         start: new Date("2025-01-02T00:00:00.000Z"),
         end: new Date("2025-01-04T00:00:00.000Z"),
       });
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitFor(() => detailedCalls === 1);
 
@@ -309,7 +303,7 @@ describe("useChartResolution", () => {
         lastUpdated: Date.parse("2025-01-03T20:00:00.000Z"),
       });
       await new Promise((resolve) => setTimeout(resolve, 10));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushEffects(3);
 
@@ -343,7 +337,7 @@ describe("useChartResolution", () => {
     });
     setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
     const sources = sourcesFor(provider);
-    testSetup = await testRender(<ResolutionHarness sources={sources} />, {
+    await tui.render(<ResolutionHarness sources={sources} />, {
       width: 24,
       height: 1,
     });
@@ -357,7 +351,7 @@ describe("useChartResolution", () => {
         start: new Date("2024-12-20T00:00:00.000Z"),
         end: new Date("2024-12-27T00:00:00.000Z"),
       });
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitFor(() => detailedCalls === 1);
     await flushEffects(3);
@@ -375,7 +369,7 @@ describe("useChartResolution", () => {
         lastUpdated: Date.parse("2025-01-03T20:00:00.000Z"),
       });
       await new Promise((resolve) => setTimeout(resolve, 10));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushEffects(3);
 
@@ -391,7 +385,7 @@ describe("useChartResolution", () => {
       getPriceHistoryForResolution: async () => INITIAL_HISTORY,
     });
     const sources = sourcesFor(provider);
-    testSetup = await testRender(<ResolutionHarness sources={sources} />, {
+    await tui.render(<ResolutionHarness sources={sources} />, {
       width: 24,
       height: 1,
     });
@@ -408,7 +402,7 @@ describe("useChartResolution", () => {
         start: new Date("2025-01-02T00:00:00.000Z"),
         end: new Date("2025-01-04T00:00:00.000Z"),
       });
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushEffects(3);
 
@@ -435,7 +429,7 @@ describe("useChartResolution", () => {
     const coldSpec: ChartSpec = { ...SPEC, series: SPEC.series.map(entry => ({ ...entry,
       source: { kind: "security", instrument: { symbol: "RESOLUTION-COLD-RELOAD", exchange: "NASDAQ" }, fieldId: "market.ohlcv" },
     })) };
-    testSetup = await testRender(<ResolutionHarness sources={sources} spec={coldSpec} />, {
+    await tui.render(<ResolutionHarness sources={sources} spec={coldSpec} />, {
       width: 24,
       height: 1,
     });
@@ -446,12 +440,12 @@ describe("useChartResolution", () => {
 
     await act(async () => {
       initialHistory.resolve(INITIAL_HISTORY);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitFor(() => latestResult?.loading === false && latestResult.series[0]?.points.length === 2);
     await act(async () => {
       latestResult!.reload();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitFor(() => historyCalls === 2);
 
@@ -459,7 +453,7 @@ describe("useChartResolution", () => {
 
     await act(async () => {
       reloadHistory.resolve([]);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitFor(() => (
       latestResult?.loading === false
@@ -492,7 +486,7 @@ describe("useChartResolution", () => {
       }),
     } as never);
 
-    testSetup = await testRender(<ResolutionHarness sources={sourcesFor(provider)} spec={{
+    await tui.render(<ResolutionHarness sources={sourcesFor(provider)} spec={{
       ...SPEC,
       viewport: { range: "5Y", resolution: "auto" },
     }} />, {
@@ -505,7 +499,7 @@ describe("useChartResolution", () => {
 
     await act(async () => {
       history.resolve(INITIAL_HISTORY);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitFor(() => latestResult?.loading === false);
   });
@@ -523,7 +517,7 @@ describe("useChartResolution", () => {
       getChartEntry: () => ({ ...createIdleEntry<PricePoint[]>(), phase: "ready",
         data: INITIAL_HISTORY, lastGoodData: INITIAL_HISTORY, source: "test", fetchedAt: Date.now() }),
     } as never);
-    testSetup = await testRender(<ResolutionHarness sources={sourcesFor(provider)} />, { width: 24, height: 1 });
+    await tui.render(<ResolutionHarness sources={sourcesFor(provider)} />, { width: 24, height: 1 });
     expect(latestResult?.loading).toBe(true);
     expect(latestResult?.series[0]?.points.length).toBe(2);
     history.reject(new Error("Selected history unavailable"));
@@ -543,7 +537,7 @@ describe("useChartResolution", () => {
       getPriceHistory: async () => [],
     });
     const sources = { ...sourcesFor(provider), onSecurityData: () => { resolvedInputs += 1; } };
-    testSetup = await testRender(<MutableSpecHarness sources={sources} />, { width: 24, height: 1 });
+    await tui.render(<MutableSpecHarness sources={sources} />, { width: 24, height: 1 });
     await waitFor(() => historyCalls === 1);
     for (let index = 0; index < 3; index += 1) {
       await act(async () => { setChartSpec?.(JSON.parse(JSON.stringify(SPEC))); });
@@ -563,13 +557,13 @@ describe("useChartResolution", () => {
       getPriceHistoryForResolution: async (symbol) => symbol === "OTHER" ? other.promise : INITIAL_HISTORY,
       getPriceHistory: async () => { throw new Error("OTHER unavailable"); },
     });
-    testSetup = await testRender(<MutableSpecHarness sources={sourcesFor(provider)} />, { width: 24, height: 1 });
+    await tui.render(<MutableSpecHarness sources={sourcesFor(provider)} />, { width: 24, height: 1 });
     await waitFor(() => latestResult?.loading === false && latestResult.series[0]?.points.length === 2);
     await act(async () => {
       setChartSpec?.({ ...SPEC, series: [{ ...SPEC.series[0]!, source: {
         kind: "security", instrument: { symbol: "OTHER", exchange: "NASDAQ" }, fieldId: "market.ohlcv",
       } }] });
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(latestResult?.series.flatMap((entry) => entry.points)).toEqual([]);
     expect(latestResult?.loading).toBe(true);
@@ -590,7 +584,7 @@ describe("useChartResolution", () => {
       },
       getPriceHistory: async () => [],
     });
-    testSetup = await testRender(<MutableSpecHarness sources={sourcesFor(provider)} />, {
+    await tui.render(<MutableSpecHarness sources={sourcesFor(provider)} />, {
       width: 24,
       height: 1,
     });
@@ -598,7 +592,7 @@ describe("useChartResolution", () => {
     await waitFor(() => historyCalls === 1);
     await act(async () => {
       initialHistory.resolve(INITIAL_HISTORY);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await waitFor(() => latestResult?.loading === false && latestResult.series[0]?.points.length === 2);
 
@@ -610,7 +604,7 @@ describe("useChartResolution", () => {
           style: "line",
         }],
       });
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushEffects(3);
 

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { TeamNotification, TeamReceivedInvitation, TeamSummary, TeamUpdatedEvent } from "../../../../api-client";
 import { MemoryPluginPersistence } from "../../../../test-support/plugin-persistence";
-import { TeamStore, type TeamStoreClient } from "./store";
+import type { AppNotificationRequest } from "../../../../types/plugin";
+import { TeamStore, type TeamStoreClient, type TeamStoreSnapshot } from "./store";
 import { createTestTeam, createTestTeamCard } from "./test-fixture";
 
 const teamCard = createTestTeamCard();
@@ -115,7 +116,7 @@ describe("TeamStore", () => {
     expect(store.getDefaultTeamId()).toBeNull();
 
     store.setFocus("personal");
-    expect(persistence.getState("team-focus")).toBe("personal");
+    expect(persistence.getState<TeamStoreSnapshot["focus"]>("team-focus")).toBe("personal");
   });
 
   test("receives cards, notifies with an action, refreshes on joins, and dismisses", async () => {
@@ -123,7 +124,7 @@ describe("TeamStore", () => {
     const store = new TeamStore(fake.client);
     const persistence = new MemoryPluginPersistence();
     store.attach(persistence);
-    const toasts: Array<{ title?: string; body: string; action?: { label: string } }> = [];
+    const toasts: Array<Pick<AppNotificationRequest, "title" | "body" | "action">> = [];
     const opened: string[] = [];
     store.setNotifier((request) => {
       toasts.push({ title: request.title, body: request.body, action: request.action });
@@ -139,7 +140,7 @@ describe("TeamStore", () => {
       { title: "MD· Macro Desk", body: "@alice joined Macro Desk.", action: { label: "Open chat", onClick: expect.any(Function) } },
     ]);
     expect(fake.listCalls).toBe(before + 1);
-    toasts[0]?.action && (toasts[0].action as { onClick: () => void }).onClick();
+    toasts[0]?.action?.onClick();
     expect(opened).toEqual(["org-1"]);
     expect(persistence.getState<TeamNotification[]>("team-notifications")?.map((entry) => entry.id)).toEqual(["n1"]);
 
@@ -176,7 +177,7 @@ describe("TeamStore", () => {
 
     store.toggleTeamCollapsed("org-1");
     expect(store.isTeamCollapsed("org-1")).toBe(true);
-    expect(persistence.getState("team-collapsed-channels")).toEqual(["org-1"]);
+    expect(persistence.getState<string[]>("team-collapsed-channels")).toEqual(["org-1"]);
     store.toggleTeamCollapsed("org-1");
     expect(store.isTeamCollapsed("org-1")).toBe(false);
 
@@ -191,12 +192,12 @@ describe("TeamStore", () => {
   });
 
   test("refresh is shared while in flight and reports errors without dropping teams", async () => {
-    let resolveList: ((teams: TeamSummary[]) => void) | null = null;
+    const list: { resolve?: (teams: TeamSummary[]) => void } = {};
     let calls = 0;
     const fake = fakeClient({
       listTeams: () => new Promise((resolve) => {
         calls += 1;
-        resolveList = resolve;
+        list.resolve = resolve;
       }),
     });
     const store = new TeamStore(fake.client);
@@ -204,7 +205,7 @@ describe("TeamStore", () => {
     const second = store.refresh();
     expect(calls).toBe(1);
     expect(store.getSnapshot().loading).toBe(true);
-    resolveList?.([createTestTeam()]);
+    list.resolve?.([createTestTeam()]);
     await Promise.all([first, second]);
     expect(store.getSnapshot().teams).toHaveLength(1);
     expect(calls).toBe(1);

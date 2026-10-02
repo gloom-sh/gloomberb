@@ -8,7 +8,7 @@ import type { DataTableColumn } from "./types";
  * keypress. Compares every own field of every column so a pane-specific field
  * that changes still gets through.
  */
-export function columnsEqual<C extends DataTableColumn>(
+function columnsEqual<C extends DataTableColumn>(
   previous: readonly C[],
   next: readonly C[],
 ): boolean {

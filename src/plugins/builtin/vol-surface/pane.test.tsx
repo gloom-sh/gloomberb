@@ -3,7 +3,7 @@ import { act, Profiler, useReducer } from "react";
 import { apiClient } from "../../../api-client";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { MarketDataCoordinator, getSharedMarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
@@ -19,7 +19,7 @@ import { buildSurfaceExpiry } from "./model";
 const PANE_ID = "vol-surface:interaction-test";
 const SYMBOL = "VOLTEST";
 const WIDTH = 112, HEIGHT = 26;
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | undefined;
 let previousCoordinator: ReturnType<typeof getSharedMarketDataCoordinator>;
 let treasury: ReturnType<typeof spyOn<typeof apiClient, "getCloudYieldCurve">> | undefined;
@@ -47,7 +47,7 @@ async function settle(frames = 7) {
   for (let frame = 0; frame < frames; frame += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
@@ -128,19 +128,17 @@ async function mount({ missingSelection = false, holdSecond = false, pinnedSelec
         ? { ...instance, settings: { ...instance.settings, expiration } } : instance) } });
     return <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime}>
       <Profiler id="surface" onRender={() => { commits += 1; }}>
-        <PaneFooterProvider>{() => <VolSurfacePane focused width={WIDTH} height={HEIGHT} />}</PaneFooterProvider>
+        <PaneFooterProvider>{() => <VolSurfacePane paneId={PANE_ID} paneType="vol-surface" focused width={WIDTH} height={HEIGHT} />}</PaneFooterProvider>
       </Profiler>
     </TestPaneProvider>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width: WIDTH, height: HEIGHT }); });
+  await act(async () => { await tui.render(<Harness />, { width: WIDTH, height: HEIGHT }); });
   await settle();
   return { now, expirations, absentExpiry, pins, paneSymbol, calls, opened, changeExpiration: (value: number) => changeExpiration(value), get state() { return currentState; },
     get commits() { return commits; }, finishSecond: () => held.resolve(quotedChain(expirations, expirations[1]!, now)) };
 }
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   coordinator?.destroy(); coordinator = undefined;
   setSharedMarketDataCoordinator(previousCoordinator ?? null);
   treasury?.mockRestore(); treasury = undefined;
@@ -149,7 +147,7 @@ afterEach(async () => {
 
 test("a pinned unsampled expiry survives handback and loaded selections do not restart the surface", async () => {
   const context = await mount({ pinnedSelection: true });
-  await emitKeypress(setup!, { name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   expect(context.opened.at(-1)).toMatchObject({ id: "options-pane", options: {
     symbol: SYMBOL, values: { expiration: String(context.pins[0]) }, listing: { exchange: "NASDAQ", currency: "USD" },
     ticker: { metadata: { ticker: SYMBOL } },
@@ -166,15 +164,15 @@ test("a pinned unsampled expiry survives handback and loaded selections do not r
   const completedCommits = context.commits;
   await settle();
   expect(context.commits).toBe(completedCommits);
-  await emitKeypress(setup!, { name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   expect(context.opened.at(-1)!.options!.values!.expiration).toBe(String(context.expirations[0]));
 });
 
 test("an option holding uses its underlying spot and retains its original scope on handback", async () => {
   const context = await mount({ optionTicker: true });
-  await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "p", sequence: "p" }, { trackPropagation: true });
   expect(context.opened.at(-1)!.options!.values!.spot).toBe("100");
-  await emitKeypress(setup!, { name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   expect(context.opened.at(-1)!.options).toMatchObject({ symbol: context.paneSymbol,
     ticker: { metadata: { ticker: context.paneSymbol, assetCategory: "OPT" } },
     values: { expiration: String(context.expirations[0]) },
@@ -183,9 +181,9 @@ test("an option holding uses its underlying spot and retains its original scope 
 
 test("surface text fallback navigates cells and expiries and seeds the selected fitted contract", async () => {
   const context = await mount();
-  await emitKeypress(setup!, { name: "right", sequence: "\u001b[C" }, { trackPropagation: true });
-  await emitKeypress(setup!, { name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
-  await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "right", sequence: "\u001b[C" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "p", sequence: "p" }, { trackPropagation: true });
   expect(context.opened).toHaveLength(1);
   const seed = context.opened[0]!;
   expect(seed.id).toBe("options-calculator-pane");
@@ -201,12 +199,12 @@ test("surface text fallback navigates cells and expiries and seeds the selected 
 
 test("an explicitly saved missing expiry cannot silently seed a different expiry", async () => {
   const context = await mount({ missingSelection: true });
-  await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "p", sequence: "p" }, { trackPropagation: true });
   expect(context.opened).toEqual([]);
   expect(context.state.config.layout.instances[0]!.settings?.expiration).toBe(context.absentExpiry);
   // An explicit navigation choice restores a valid contract and enables pricing.
-  await emitKeypress(setup!, { name: "]", sequence: "]" }, { trackPropagation: true });
-  await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "]", sequence: "]" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "p", sequence: "p" }, { trackPropagation: true });
   expect(context.opened).toHaveLength(1);
   expect(Number(context.opened[0]!.options!.values!.days)).toBeCloseTo(daysToExpiryFrom(context.expirations[0]!, context.now), 3);
 });
@@ -216,19 +214,19 @@ test("a missing handoff after loading warns and cannot reuse the previous select
   await act(async () => context.changeExpiration(context.absentExpiry));
   await settle();
   expect(treasury).toHaveBeenCalledTimes(1);
-  await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "p", sequence: "p" }, { trackPropagation: true });
   expect(context.opened).toEqual([]);
-  await emitKeypress(setup!, { name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   expect(context.opened.at(-1)!.options!.values!.expiration).toBe(String(context.absentExpiry));
-  await emitKeypress(setup!, { name: "!", sequence: "!" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "!", sequence: "!" }, { trackPropagation: true });
   await settle();
-  expect(setup!.captureCharFrame()).toContain("selected expiration unavailable");
+  expect(tui.frame()).toContain("selected expiration unavailable");
 });
 
 test("partial expiry progress settles without reloading or rendering indefinitely", async () => {
   const context = await mount({ holdSecond: true });
   expect(context.calls).toHaveLength(2);
-  await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "p", sequence: "p" }, { trackPropagation: true });
   expect(context.opened).toHaveLength(1);
   expect(Number(context.opened[0]!.options!.values!.days)).toBeCloseTo(daysToExpiryFrom(context.expirations[0]!, context.now), 3);
   const partialCommits = context.commits;
@@ -245,7 +243,7 @@ test("partial expiry progress settles without reloading or rendering indefinitel
 
 test("a chain with no two-sided quote explains itself instead of drawing an empty surface", async () => {
   await mount({ zeroBids: true });
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("No two-sided option quotes");
   expect(frame).toContain("have a zero bid");
 });
@@ -253,7 +251,7 @@ test("a chain with no two-sided quote explains itself instead of drawing an empt
 test("with no live quote the latest stored close stands in, labelled as such", async () => {
   await mount({ zeroBids: true, storedDates: true });
   await settle();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).not.toContain("No two-sided option quotes");
   expect(frame).toContain("Stored close");
   expect(frame).toContain("2026-09-22");

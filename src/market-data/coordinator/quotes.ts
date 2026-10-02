@@ -18,7 +18,7 @@ import {
   readyQuoteEntry,
 } from "./entries";
 
-export type QuoteSubscriptionPriority = Pick<QuoteSubscriptionTarget, "route" | "surface" | "visible" | "selected" | "weight">;
+type QuoteSubscriptionPriority = Pick<QuoteSubscriptionTarget, "route" | "surface" | "visible" | "selected" | "weight">;
 
 export interface QuoteSubscriptionRequest {
   instrument: InstrumentRef;
@@ -49,7 +49,7 @@ interface PendingStreamQuote {
 export const QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS = 250;
 export const QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS = 100;
 /** Keys nobody is looking at still feed totals and alerts, just not every frame. */
-export const BACKGROUND_QUOTE_APPLY_INTERVAL_MS = 1_000;
+const BACKGROUND_QUOTE_APPLY_INTERVAL_MS = 1_000;
 
 /**
  * Visible and selected keys apply every data frame; every other key waits for
@@ -58,7 +58,7 @@ export const BACKGROUND_QUOTE_APPLY_INTERVAL_MS = 1_000;
  * selected at about 1 Hz, so a consumer that gives no hint is paced on both
  * ends rather than polled every frame for ticks that never come.
  */
-export function isForegroundQuoteTarget(target: Pick<QuoteSubscriptionTarget, "visible" | "selected">): boolean {
+function isForegroundQuoteTarget(target: Pick<QuoteSubscriptionTarget, "visible" | "selected">): boolean {
   return target.selected === true || target.visible === true;
 }
 

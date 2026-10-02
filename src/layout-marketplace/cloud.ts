@@ -4,12 +4,12 @@ import {
   type LayoutMarketplaceAuthor,
   type LayoutMarketplacePayload,
   parseMarketplaceLayoutPayload,
-} from "./payload";
+} from "../shares/portable-layout";
 import { isRecord } from "../utils/guards";
 import { fnv1aHex } from "../utils/hash";
 import { RevisionConflictError } from "../api-client/errors";
 
-export type CloudLayoutVisibility = "private" | "team" | "public";
+type CloudLayoutVisibility = "private" | "team" | "public";
 
 export interface LayoutRequirement {
   pluginId: string;
@@ -45,7 +45,7 @@ function parseAuthor(value: unknown): LayoutMarketplaceAuthor | null {
   return { username: value.username as string | null, displayName: value.displayName };
 }
 
-export function parseLayoutRequirements(value: unknown): LayoutRequirement[] {
+function parseLayoutRequirements(value: unknown): LayoutRequirement[] {
   if (!Array.isArray(value)) return [];
   const requires: LayoutRequirement[] = [];
   for (const entry of value) {

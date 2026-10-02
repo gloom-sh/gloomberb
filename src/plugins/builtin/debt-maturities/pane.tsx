@@ -32,6 +32,7 @@ import type {
   DebtMetric,
 } from "../../../api-client/debt-maturities";
 import { isAccessDenied } from "../../../api-client/errors";
+import { formatCompactAxis } from "../../../components/chart-table";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
@@ -49,7 +50,6 @@ import {
   bucketShare,
   datedBucketScale,
   debtAmount,
-  debtAxisAmount,
   debtFilingUrl,
   debtMetricCaption,
   debtMetricValue,
@@ -595,7 +595,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                           showTimeAxis
                           xAxis={barAxis}
                           formatValue={(value) => debtAmount(value)}
-                          formatAxisValue={debtAxisAmount}
+                          formatAxisValue={formatCompactAxis}
                           legendAccessory={<Text fg={colors.textMuted}>{historyWindow}</Text>}
                           legendAccessoryWidth={historyWindow.length}
                           remoteKind="debt-filing-history"

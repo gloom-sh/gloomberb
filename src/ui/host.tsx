@@ -179,7 +179,10 @@ export interface NativeCursorState {
 
 export type NativePostProcessFn = (buffer: unknown, deltaTime: number) => void;
 
-/** One styled run of a rendered terminal row; colours are 0-255 RGBA. */
+/**
+ * One styled run of a rendered terminal row; colours are 0-255 RGBA.
+ * @public
+ */
 export interface NativeFrameSpan {
   text: string;
   fg: readonly [number, number, number, number];
@@ -551,6 +554,7 @@ export interface UiHost {
   colorFromHex?(hex: string): unknown;
 }
 
+/** @public */
 export interface SaveTextFileRequest {
   name: string;
   text: string;

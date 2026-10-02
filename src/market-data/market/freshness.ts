@@ -33,6 +33,28 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   HKEX: 9 * 60 + 30,
   TWSE: 9 * 60,
   NSE: 9 * 60 + 15,
+  // Continuous trading opens, as each venue publishes them, for the venues
+  // whose closes are listed below.
+  FWB: 8 * 60,
+  SWX: 9 * 60,
+  VIE: 9 * 60,
+  OSL: 9 * 60,
+  ICEX: 9 * 60 + 30,
+  WSE: 9 * 60,
+  PSE: 9 * 60,
+  TPEX: 9 * 60,
+  BSE: 9 * 60 + 15,
+  ASX: 10 * 60,
+  SGX: 9 * 60,
+  KRX: 9 * 60,
+  KOSDAQ: 9 * 60,
+  NZX: 10 * 60,
+  SSE: 9 * 60 + 30,
+  SZSE: 9 * 60 + 30,
+  BMV: 8 * 60 + 30,
+  B3: 10 * 60,
+  BYMA: 11 * 60,
+  JSE: 9 * 60,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
 // early would let a copy fetched during the auction pass as final.
@@ -194,6 +216,48 @@ export function latestRegularSessionClose(
     if (close != null && close <= time) return { date, close, timeZone };
   }
   return null;
+}
+
+/**
+ * The open of the regular session `time` falls in, or of the latest one
+ * before it: the published calendar for US venues, otherwise the venue's
+ * local open on a weekday that is not a published closure. Null for
+ * round-the-clock venues and venues without a known open hour.
+ */
+export function latestRegularSessionOpen(exchange: string | undefined, time: number): number | null {
+  const canonical = canonicalExchange(exchange);
+  const timeZone = sessionCalendarTimeZone(canonical);
+  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
+  const minutes = REGULAR_OPEN_MINUTES[canonical];
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
+  for (let offset = 0; offset <= 10; offset++) {
+    const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
+    const published = getPublishedUsEquitySession(canonical, date);
+    let open: number | null = null;
+    if (published) {
+      if (published.kind === "session") open = published.open;
+    } else if (minutes === undefined) {
+      return null;
+    } else if (isLocalTradingDay(canonical, date)) {
+      open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
+        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
+    }
+    if (open != null && open <= time) return open;
+  }
+  return null;
+}
+
+/**
+ * Whether `time` is inside a regular session: at or after its open and
+ * before its close. Null for venues without known hours.
+ */
+export function isRegularSessionTime(exchange: string | undefined, time: number): boolean | null {
+  const open = latestRegularSessionOpen(exchange, time);
+  if (open === null) return null;
+  // Before this session's close, the latest close is still the one before it opened.
+  const close = latestRegularSessionClose(exchange, time);
+  return !close || close.close < open;
 }
 
 /**

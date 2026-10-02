@@ -16,7 +16,7 @@ export interface MultiLineChartSeries {
   points: Array<{ date: Date; value: number | null }>;
 }
 
-export function formatNullableNumber(value: number | null | undefined, decimals: number): string {
+function formatNullableNumber(value: number | null | undefined, decimals: number): string {
   return typeof value === "number" && Number.isFinite(value) ? formatNumber(value, decimals) : "-";
 }
 

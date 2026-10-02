@@ -89,19 +89,20 @@ describe("matchPluginInstallOffer", () => {
   });
 
   /**
-   * Fear & Greed, Market Heatmap and Market Halts are built in again, and a
-   * feed can still list their repositories as plugins to install. The
-   * installer refuses them, so not even a code nothing claims offers one.
+   * Fear & Greed, Market Heatmap, Market Halts and the IPO Calendar are built
+   * in again, and a feed can still list their repositories as plugins to
+   * install. The installer refuses them, so not even a code nothing claims
+   * offers one.
    */
   test("never offers a plugin that is built in now, whatever the feed says", () => {
-    const absorbed = ([["fear-greed", "FNG"], ["market-heatmap", "HM"], ["market-halts", "HALT"]] as const)
-      .map(([id, code]) => registryPlugin({
-        id,
-        repo: `gloom-sh/gloom-${id}`,
-        contributes: { panes: [id], capabilities: [], broker: false, shortcuts: [{ code, name: id, description: "" }] },
-      }));
+    const codes = [["fear-greed", "FNG"], ["market-heatmap", "HM"], ["market-halts", "HALT"], ["ipo-calendar", "IPO"]] as const;
+    const absorbed = codes.map(([id, code]) => registryPlugin({
+      id,
+      repo: `gloom-sh/gloom-${id}`,
+      contributes: { panes: [id], capabilities: [], broker: false, shortcuts: [{ code, name: id, description: "" }] },
+    }));
 
-    for (const code of ["FNG", "HM", "HALT"]) expect(match(code, { registry: absorbed })).toBeNull();
+    for (const [, code] of codes) expect(match(code, { registry: absorbed })).toBeNull();
   });
 
   test("offers only plugins Gloom publishes from gloom-sh", () => {

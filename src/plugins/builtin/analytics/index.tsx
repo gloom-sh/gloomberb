@@ -4,7 +4,6 @@ import { portfolioRiskHeadless } from "./risk-headless";
 import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { TextAttributes } from "../../../ui";
 import {
   chartTableChromeRows,
   ChartTableHeader,
@@ -33,7 +32,7 @@ import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { usePortfolioAccountState } from "../portfolio-list/summary/live-accounts";
-import { calculatePortfolioSummaryTotals, type ColumnContext } from "../portfolio-list/metrics";
+import { calculatePortfolioSummaryTotals, resolvePortfolioTotalsCurrency, type ColumnContext } from "../portfolio-list/metrics";
 import { accountDailyReturns, buildAccountRiskRows } from "./account-returns";
 import {
   buildPerformanceChartPoints,
@@ -187,28 +186,33 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   );
   const accountStateInput = useMemo(() => ({ brokerAccounts, config }), [brokerAccounts, config]);
   const { accountState, accountsError } = usePortfolioAccountState(activePortfolio, accountStateInput);
+  // The portfolio pane's totals currency, so its header and this overview show one figure.
+  const totalsCurrency = useMemo(
+    () => resolvePortfolioTotalsCurrency(activePortfolio, baseCurrency),
+    [activePortfolio, baseCurrency],
+  );
   const trackedCurrencies = useMemo(
-    () => [...buildTrackedCurrencies(portfolioTickers, financials, baseCurrency), accountState?.account.currency],
-    [accountState?.account.currency, baseCurrency, financials, portfolioTickers],
+    () => [...buildTrackedCurrencies(portfolioTickers, financials, totalsCurrency), accountState?.account.currency],
+    [accountState?.account.currency, financials, portfolioTickers, totalsCurrency],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
   const columnContext = useMemo<ColumnContext>(() => ({
     activeTab: activePortfolioId || undefined,
-    baseCurrency,
+    baseCurrency: totalsCurrency,
     exchangeRates,
     now: Date.now(),
-  }), [activePortfolioId, baseCurrency, exchangeRates]);
+  }), [activePortfolioId, exchangeRates, totalsCurrency]);
 
   const portfolioStats = useMemo(
     () => calculatePortfolioSummaryTotals(
       portfolioTickers,
       financials,
-      baseCurrency,
+      totalsCurrency,
       exchangeRates,
       true,
       activePortfolioId || null,
     ),
-    [activePortfolioId, baseCurrency, exchangeRates, financials, portfolioTickers],
+    [activePortfolioId, exchangeRates, financials, portfolioTickers, totalsCurrency],
   );
 
   const returnSeriesResult = useMemo(
@@ -275,11 +279,13 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
       convertAccountValue: (value) => convertCurrency(
         value,
         accountState?.account.currency ?? "",
-        baseCurrency,
+        totalsCurrency,
         exchangeRates,
       ),
+      currency: totalsCurrency,
+      baseCurrency,
     }),
-    [accountState, activePortfolio, baseCurrency, brokerPerformance.performance, exchangeRates, portfolioStats],
+    [accountState, activePortfolio, baseCurrency, brokerPerformance.performance, exchangeRates, portfolioStats, totalsCurrency],
   );
 
   const riskRows = useMemo(

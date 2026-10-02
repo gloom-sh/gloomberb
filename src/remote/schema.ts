@@ -9,7 +9,7 @@ import type {
 } from "./types";
 
 export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
-  { uri: "app://snapshot", description: "Current app snapshot including layout, focus, panes, command bar, and plugin/capability catalogs." },
+  { uri: "app://snapshot", description: "Current app snapshot including layout, focus, panes, command bar, and plugin/capability catalogs. app.activePanel is deprecated and always \"left\"; read app.focusedPaneId." },
   { uri: "app://config", description: "Current app config.", patchable: true },
   { uri: "app://layout/current", description: "Current active layout.", patchable: true },
   { uri: "app://layouts", description: "Saved layouts." },
@@ -88,7 +88,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "app.switchPanel",
-    "Switch the active panel.",
+    "Focus the leftmost or rightmost docked pane.",
     "{ panel: 'left' | 'right' }",
     "local-write",
     objectSchema({ panel: { type: "string", enum: ["left", "right"] } }, ["panel"]),

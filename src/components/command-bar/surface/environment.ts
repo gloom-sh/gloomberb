@@ -20,7 +20,6 @@ export function persistWorkflowConfig(state: AppState, nextConfig: AppState["con
     nextConfig,
     state.paneState,
     state.focusedPaneId,
-    state.activePanel,
   ));
 }
 
@@ -30,7 +29,6 @@ function useCommandBarAppState(): AppState {
   const tickers = useAppSelector((state) => state.tickers);
   const financials = useAppSelector((state) => state.financials);
   const focusedPaneId = useAppSelector((state) => state.focusedPaneId);
-  const activePanel = useAppSelector((state) => state.activePanel);
   const layoutHistory = useAppSelector((state) => state.layoutHistory);
   const recentTickers = useAppSelector((state) => state.recentTickers);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
@@ -47,7 +45,6 @@ function useCommandBarAppState(): AppState {
     tickers,
     financials,
     focusedPaneId,
-    activePanel,
     layoutHistory,
     recentTickers,
     commandBarOpen,
@@ -58,7 +55,6 @@ function useCommandBarAppState(): AppState {
     updateCheckInProgress,
     updateNotice,
   }) as AppState, [
-    activePanel,
     commandBarLaunchRequest,
     commandBarOpen,
     commandBarQuery,

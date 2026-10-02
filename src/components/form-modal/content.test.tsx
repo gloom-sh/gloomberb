@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { formSnapshot } from "../../remote/form";
@@ -11,8 +11,6 @@ import { CTRL_S, ENTER, ESC, createFormModalTestSession, registerCommand } from 
 
 const session = createFormModalTestSession();
 const { frame, press, renderForm, settle, type, waitForForm, waitForFrameToContain } = session;
-
-afterEach(() => session.cleanup());
 
 describe("form modal", () => {
   test("Ctrl+N and Ctrl+P move between fields, as they move through the bar's lists", async () => {
@@ -439,7 +437,7 @@ describe("form modal", () => {
     const created: PaneTemplateCreateOptions[] = [];
     await renderForm((registry) => {
       registerCompareTemplate(registry);
-      registry.createPaneFromTemplateAsyncFn = async (_templateId, options) => {
+      registry.createPaneFromTemplateAsync = async (_templateId, options) => {
         created.push(options ?? {});
         if (!options?.arg?.includes("COST:")) throw COST;
         if (!options.arg.includes("BP:")) throw BP;
@@ -470,7 +468,7 @@ describe("form modal", () => {
     const created: PaneTemplateCreateOptions[] = [];
     await renderForm((registry) => {
       registerCompareTemplate(registry);
-      registry.createPaneFromTemplateAsyncFn = async (_templateId, options) => {
+      registry.createPaneFromTemplateAsync = async (_templateId, options) => {
         created.push(options ?? {});
         throw COST;
       };
@@ -493,7 +491,7 @@ describe("form modal", () => {
     const remoteRegistry = createRemoteUiRegistry();
     await renderForm((registry) => {
       registerCompareTemplate(registry);
-      registry.createPaneFromTemplateAsyncFn = async () => { throw COST; };
+      registry.createPaneFromTemplateAsync = async () => { throw COST; };
     }, { kind: "pane-template", templateId: "compare-pane" }, { remoteRegistry });
     await waitForForm("Tickers");
 
@@ -519,7 +517,7 @@ describe("form modal", () => {
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
     await renderForm((registry) => {
       registerCompareTemplate(registry);
-      registry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+      registry.createPaneFromTemplateAsync = async (templateId, options) => {
         created.push({ templateId, options });
       };
     }, { kind: "pane-template", templateId: "compare-pane", options: { symbol: "AAPL", symbols: ["AAPL"] } });

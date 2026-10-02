@@ -2,7 +2,7 @@ import type { PluginTarget } from "../../../types/plugin";
 import { compareSemver, formatVersion, requiredGloomberb } from "../../../utils/semver";
 import { runsExternalPlugins } from "../../current-target";
 
-export type PluginTier = "official" | "verified" | "community";
+type PluginTier = "official" | "verified" | "community";
 
 /** A command-bar code a registry plugin answers to, such as `POLL`. */
 export interface RegistryPluginShortcut {

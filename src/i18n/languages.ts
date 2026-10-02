@@ -1,4 +1,4 @@
-export const APP_LANGUAGES = ["en", "es", "zh-CN", "zh-TW", "ja", "ko"] as const;
+const APP_LANGUAGES = ["en", "es", "zh-CN", "zh-TW", "ja", "ko"] as const;
 
 export type AppLanguage = typeof APP_LANGUAGES[number];
 

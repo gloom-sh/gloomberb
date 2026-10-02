@@ -1,4 +1,4 @@
-import { getDockLeafLayouts, type LayoutBounds } from "../plugins/pane-manager";
+import { getDockLeafLayouts, type LayoutBounds } from "../layout/pane-manager";
 import type { LayoutConfig } from "../types/config";
 
 export type LayoutPreviewKind = "docked" | "floating" | "detached";

@@ -33,6 +33,7 @@ export const revenueBreakdownModule: PluginModule = {
       icon: "R",
       component: RevenueBreakdownPane,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 16 },
       tableExport: true,

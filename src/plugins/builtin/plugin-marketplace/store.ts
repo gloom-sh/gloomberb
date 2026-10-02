@@ -34,7 +34,7 @@ export interface MarketplaceHost {
   notify(notification: { body: string; type: "info" | "success" | "error" }): void;
 }
 
-export interface PluginContributions {
+interface PluginContributions {
   panes: Array<{ id: string; name: string }>;
   templates: Array<{ id: string; label: string; prefix?: string }>;
   commands: Array<{ id: string; label: string }>;

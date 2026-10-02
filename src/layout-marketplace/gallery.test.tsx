@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { AppContext, createInitialState, type AppAction } from "../state/app/context";
 import { createStaticAppStore } from "../test-support/app-store";
 import { cloneLayout, createDefaultConfig } from "../types/config";
@@ -10,14 +10,7 @@ import type { PluginRegistry } from "../plugins/registry";
 import { LayoutMarketplaceGallery } from "./gallery";
 import { testPanes as panes } from "./test-fixture";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  await act(async () => {
-    testSetup?.renderer.destroy();
-    testSetup = undefined;
-  });
-});
+const tui = createOpenTuiTestHarness();
 
 const registry = {
   panes,
@@ -34,7 +27,7 @@ async function renderGallery() {
   const actions: AppAction[] = [];
   let closed = false;
 
-  testSetup = await testRender(
+  await tui.render(
     <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
       <PaneFooterProvider>
         {(footer) => (
@@ -55,14 +48,14 @@ async function renderGallery() {
     </AppContext>,
     { width: 100, height: 24 },
   );
-  await testSetup.renderOnce();
+  await tui.setup().renderOnce();
   return { actions, isClosed: () => closed };
 }
 
 test("lists owned layouts before Discover and details the selected layout", async () => {
   await renderGallery();
 
-  const frame = testSetup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("YOUR LAYOUTS (2)");
   expect(frame).toContain("Default");
   expect(frame).toContain("Research Desk");
@@ -89,22 +82,22 @@ test("search Enter returns to the list before activating the filtered layout", a
   const { actions, isClosed } = await renderGallery();
 
   await act(async () => {
-    testSetup!.mockInput.pressKey("/");
-    await testSetup!.renderOnce();
+    tui.setup().mockInput.pressKey("/");
+    await tui.setup().renderOnce();
   });
   await act(async () => {
-    await testSetup!.mockInput.typeText("Research");
-    testSetup!.mockInput.pressEnter();
-    await testSetup!.renderOnce();
+    await tui.setup().mockInput.typeText("Research");
+    tui.setup().mockInput.pressEnter();
+    await tui.setup().renderOnce();
   });
 
   expect(isClosed()).toBe(false);
   expect(actions.some((action) => action.type === "SWITCH_LAYOUT")).toBe(false);
-  expect(testSetup!.captureCharFrame()).toContain("/ Research");
+  expect(tui.frame()).toContain("/ Research");
 
   await act(async () => {
-    testSetup!.mockInput.pressEnter();
-    await testSetup!.renderOnce();
+    tui.setup().mockInput.pressEnter();
+    await tui.setup().renderOnce();
   });
 
   expect(actions).toContainEqual({ type: "SWITCH_LAYOUT", index: 1 });
@@ -115,12 +108,12 @@ test("j/k move the selection and Enter switches to the layout and closes", async
   const { actions, isClosed } = await renderGallery();
 
   await act(async () => {
-    testSetup!.mockInput.pressKey("j");
-    await testSetup!.renderOnce();
+    tui.setup().mockInput.pressKey("j");
+    await tui.setup().renderOnce();
   });
   await act(async () => {
-    testSetup!.mockInput.pressEnter();
-    await testSetup!.renderOnce();
+    tui.setup().mockInput.pressEnter();
+    await tui.setup().renderOnce();
   });
 
   expect(actions).toContainEqual({ type: "SWITCH_LAYOUT", index: 1 });

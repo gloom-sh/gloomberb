@@ -25,12 +25,12 @@ export interface SeriesCacheInput {
 
 export interface SeriesCacheLoadResult extends SeriesCacheMetadata, SeriesCacheInput {}
 
-export interface SeriesCacheEntry extends SeriesCacheLoadResult {
+interface SeriesCacheEntry extends SeriesCacheLoadResult {
   fetchedAt: number;
   stale: boolean;
 }
 
-export interface SeriesCacheLoadOptions {
+interface SeriesCacheLoadOptions {
   force?: boolean;
   replace?: boolean;
 }

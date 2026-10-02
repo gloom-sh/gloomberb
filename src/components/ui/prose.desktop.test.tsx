@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createDomTestHarness } from "../../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import { ThemeProvider } from "../../theme/theme-context";
 import { DEFAULT_THEME } from "../../theme/themes";
 import { Prose } from "./prose";

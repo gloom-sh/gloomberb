@@ -8,14 +8,14 @@
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { isRecord } from "../../../utils/guards";
 
-export const VIEW_SPEC_VERSION = 1;
-export const MAX_VIEW_COLUMNS = 24;
-export const MAX_VIEW_FILTERS = 12;
-export const MAX_VIEW_LIMIT = 2_000;
+const VIEW_SPEC_VERSION = 1;
+const MAX_VIEW_COLUMNS = 24;
+const MAX_VIEW_FILTERS = 12;
+const MAX_VIEW_LIMIT = 2_000;
 
 export type ViewTransform = "raw" | "percent" | "compact" | "abs" | "index100";
-export type ViewFilterOp = "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains" | "in" | "exists";
-export type ViewPrimitive = string | number | boolean | null;
+type ViewFilterOp = "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains" | "in" | "exists";
+type ViewPrimitive = string | number | boolean | null;
 
 export interface ViewColumn {
   key: string;
@@ -25,7 +25,7 @@ export interface ViewColumn {
   transform?: ViewTransform;
 }
 
-export interface ViewFilter {
+interface ViewFilter {
   key: string;
   op: ViewFilterOp;
   value?: ViewPrimitive | ViewPrimitive[];
@@ -58,7 +58,7 @@ export interface ViewProjection {
   limit?: number;
 }
 
-export interface ViewPresentation {
+interface ViewPresentation {
   title?: string;
   density?: "compact" | "regular";
   /** Column key whose value becomes the row's ticker, for follow bindings and open actions. */
@@ -72,7 +72,7 @@ export interface ViewSpec {
   presentation: ViewPresentation;
 }
 
-export interface ViewSpecIssue {
+interface ViewSpecIssue {
   path: string;
   code: string;
   message: string;

@@ -6,7 +6,7 @@ import { buildPriceChartPreset } from "../plugins/builtin/chart-composer/presets
 import { createDefaultConfig } from "../types/config";
 import { quoteMetadataFromQuote } from "./quotes/metadata";
 import { buildDesktopShotPayload, createDesktopShotBridge } from "../cli/pane-functions/screenshot";
-import { decodeRpcValue, encodeRpcValue } from "../renderers/electrobun/view/rpc-codec";
+import { decodeRpcValue, encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
 import type { InstrumentRef } from "./request-types";
 import type { Quote } from "../types/financials";
 

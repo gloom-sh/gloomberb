@@ -275,7 +275,7 @@ export interface PaneScreenshotExpectedSelection {
   label?: string;
 }
 
-export interface PaneScreenshotChartPointEvidence {
+interface PaneScreenshotChartPointEvidence {
   date: string;
   close: number;
 }
@@ -314,7 +314,7 @@ export interface PaneScreenshotExpectedChartEvidence {
   }>;
 }
 
-export interface PaneScreenshotPriceComparisonEvidence {
+interface PaneScreenshotPriceComparisonEvidence {
   kind: "price-comparison";
   symbols: string[];
   range: string;
@@ -326,7 +326,7 @@ export interface PaneScreenshotPriceComparisonEvidence {
   }>;
 }
 
-export interface PaneScreenshotPriceSeriesEvidence {
+interface PaneScreenshotPriceSeriesEvidence {
   kind: "price-series";
   symbol: string;
   range: string;
@@ -337,7 +337,7 @@ export interface PaneScreenshotPriceSeriesEvidence {
   sessionDates?: string[];
 }
 
-export interface PaneScreenshotFundamentalSeriesEvidence {
+interface PaneScreenshotFundamentalSeriesEvidence {
   kind: "fundamental-series";
   metric: string;
   period: FundamentalPeriod;
@@ -347,7 +347,7 @@ export interface PaneScreenshotFundamentalSeriesEvidence {
   }>;
 }
 
-export interface PaneScreenshotFinancialStatementEvidence {
+interface PaneScreenshotFinancialStatementEvidence {
   kind: "financial-statement";
   symbol: string;
   statement: string;
@@ -485,7 +485,6 @@ export async function buildDesktopShotPayload(
       layout,
       paneState,
       focusedPaneId: resolved.instance.instanceId,
-      activePanel: "right" as const,
     }],
     activeLayoutIndex: 0,
     onboardingComplete: true,

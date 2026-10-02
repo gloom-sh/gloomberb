@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
@@ -18,7 +18,7 @@ const EconPane = economicCalendarModule.panes![0]!.component as (props: {
   height: number;
 }) => React.ReactNode;
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 function seedCalendar(): void {
   const persistence = new MemoryPluginPersistence();
@@ -54,18 +54,14 @@ beforeEach(() => {
   setSystemTime(new Date("2026-08-21T12:00:00.000Z"));
 });
 
-afterEach(async () => {
+afterEach(() => {
   setSystemTime();
-  if (setup) {
-    await act(async () => setup?.renderer.destroy());
-    setup = undefined;
-  }
   resetEconCalendarPersistence();
 });
 
 async function renderPane(width: number) {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-econ-test"));
-  setup = await testRender(
+  await tui.render(
     <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
       <PaneFooterProvider>
         {() => (
@@ -78,10 +74,10 @@ async function renderPane(width: number) {
   await act(async () => {
     for (let index = 0; index < 6; index += 1) {
       await Promise.resolve();
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     }
   });
-  return setup.captureCharFrame();
+  return tui.frame();
 }
 
 describe("EconCalendarPane", () => {

@@ -60,7 +60,7 @@ export function resolveAppHeaderHeightCells(options: { titleBarOverlay?: boolean
  * a document snippet still has room but a label does not run past where the
  * eye goes.
  */
-export function resolveCommandSurfaceWidth(options: { termWidth: number; nativePaneChrome?: boolean }): number {
+function resolveCommandSurfaceWidth(options: { termWidth: number; nativePaneChrome?: boolean }): number {
   const { termWidth } = options;
   return options.nativePaneChrome
     ? Math.max(COMMAND_SURFACE_MIN_WIDTH.native, Math.min(104, termWidth - 10, Math.floor(termWidth * 0.64)))

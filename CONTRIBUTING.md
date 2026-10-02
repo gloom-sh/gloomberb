@@ -37,10 +37,16 @@ This fetches the latest upstream version.
 | Path | Contents |
 |---|---|
 | `src/plugins/builtin/` | The built-in plugins: Portfolio, Ticker Research, News and every other product area |
-| `src/plugins/` | The plugin host: catalog, loader, registry, pane manager, and the bundler for external plugins |
+| `src/plugins/` | The plugin host: catalog, loader, registry and the bundler for external plugins |
+| `src/layout/` | The pane layout engine: the dock tree, floating windows, where a launched pane opens and which pane a ticker opens in |
 | `src/components/`, `src/ui/` | The shared UI kit every pane is built from |
+| `src/sources/` | Data provider adapters (Gloom Cloud, Yahoo Finance, SEC EDGAR) and the router that picks a provider for each request |
+| `src/market-data/` | What panes read market data through: the request coordinator, its React hooks, quote display and exchange session calendars |
+| `src/time-series/` | Chart specs and the series they draw: the field catalog, resolving a spec into data, transforms and studies |
+| `src/data/` | Persistence: SQLite, the resource store, the config store and the plugin cache |
 | `src/renderers/opentui/` | The terminal renderer |
-| `src/renderers/electrobun/` | The desktop app: `bun/` is the native process, `view/` the web view |
+| `src/renderers/dom/` | The DOM renderer the desktop view and the web app share: host primitives, controls, data table, dialogs, toasts and the page build |
+| `src/renderers/electrobun/` | The desktop app: `bun/` is the native process, `view/` the desktop-only parts of the web view, `shared/` the protocol and RPC codec both use |
 | `src/renderers/browser/`, `src/renderers/cloudflare/` | The web app and the Cloudflare Worker that serves it |
 | `src/renderers/share/` | Public share pages |
 | `src/cli/` | `gloomberb <command>`, including the `fn` and `shot` pane reports |
@@ -55,7 +61,8 @@ This fetches the latest upstream version.
 CI runs these on every pull request. Run them before you push:
 
 ```bash
-bun run typecheck   # six projects: terminal, desktop Bun process, desktop view, browser, Worker, scripts
+bun run typecheck   # terminal, desktop Bun process, desktop view, browser, Worker, scripts, built-in plugin tests
+bun run knip        # unused files, exports and dependencies
 bun test
 ```
 
@@ -90,8 +97,8 @@ Tests run on `bun test` and sit next to the code they cover as `*.test.ts` or `*
 
 - `src/test-support/` is the home for shared fixtures and fakes: a data provider with quote and financials factories, ticker records, news articles, resolved chart series and points, a stand-in broker, a doubled plugin runtime, plugin persistence, market sessions, a static app store (`createStaticAppStore`), pane providers and the `TestPaneFrame` footer shell, headless and CLI contexts, a Cloud API WebSocket fake and temporary databases. Put a new shared fixture there instead of declaring it inline in another test. A fixture only one feature's tests share can sit next to them in a `test-fixture.ts` (or `test-harness.tsx` for render helpers), which the published package leaves out.
 - For a pending result, use `Promise.withResolvers()` rather than a local `deferred()` helper.
-- `src/renderers/opentui/test-utils.tsx` renders into a test terminal: `testRender`, `emitKeypress`, `settleFrame`.
-- `src/renderers/electrobun/view/test-utils.tsx` renders the desktop view into happy-dom: `createDomTestHarness`.
+- `src/renderers/opentui/test-utils.tsx` renders into a test terminal. `createOpenTuiTestHarness` mounts one renderer per test and destroys it after every test, with `frame`, `emitKeypress`, `renderFrames`, `waitForFrameToContain` and `clickFrameText` on the current renderer; `testRender`, `emitKeypress` and `settleFrame` remain for lower-level use.
+- `src/renderers/dom/test-utils.tsx` renders the desktop and web view into happy-dom: `createDomTestHarness`.
 - A few features keep a harness beside their code, such as the command bar (`src/components/command-bar/surface/test-harness.tsx`) and chat.
 - Plugins in their own repositories get the same fakes and render harness from `gloomberb/test-support`.
 

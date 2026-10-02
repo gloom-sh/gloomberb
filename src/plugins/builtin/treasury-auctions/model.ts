@@ -4,7 +4,7 @@ import { AUCTION_HISTORY_DAYS } from "./client";
 import type { TreasuryAuction } from "./types";
 
 /** Windows the Fiscal Data query supports without paging past MAX_PAGES. */
-export const AUCTION_HISTORY_WINDOWS = [30, 90, 120, 365] as const;
+const AUCTION_HISTORY_WINDOWS = [30, 90, 120, 365] as const;
 
 /** Pane settings arrive as unvalidated strings, so anything unknown falls back. */
 export function auctionHistoryDays(settings: Record<string, unknown> | undefined): number {

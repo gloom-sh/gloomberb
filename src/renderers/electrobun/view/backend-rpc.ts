@@ -12,7 +12,7 @@ import {
   type RemoteControlRequestMessage,
   type ElectrobunDesktopRpcSchema,
 } from "../shared/protocol";
-import { decodeRpcResponse, decodeRpcValue, encodeRpcValue } from "./rpc-codec";
+import { decodeRpcResponse, decodeRpcValue, encodeRpcValue } from "../shared/rpc-codec";
 import { subscribeCapability, type CapabilitySubscriptionOptions } from "./capability-subscription";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 

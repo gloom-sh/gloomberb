@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -10,10 +10,8 @@ import { statsCache } from "./cache";
 import { EconStatisticsPane } from "./pane";
 import { STATS } from "./stats";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   statsCache.reset();
 });
 
@@ -32,7 +30,7 @@ test.each([
     instanceId: "ecst:test", paneId: "econ-statistics", settings: { stat: "curve-spread" },
   }));
   await act(async () => {
-    setup = await testRender(
+    await tui.render(
       <TestPaneProvider state={state} paneId="ecst:test" pluginId="market-overview" runtime={createTestPluginRuntime()}>
         <PaneFooterProvider>{() => <Box width={width} height={36}>
           <EconStatisticsPane paneId="ecst:test" paneType="econ-statistics" width={width} height={36} focused />
@@ -43,14 +41,14 @@ test.each([
   });
   for (let frame = 0; frame < 4; frame++) await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  expect(setup!.captureCharFrame()).toContain("2s10s");
+  expect(tui.frame()).toContain("2s10s");
   await act(async () => {
-    for (let tick = 0; tick < 8; tick++) await setup!.mockMouse.scroll(width - 1, 34, "down");
-    await setup!.renderOnce();
+    for (let tick = 0; tick < 8; tick++) await tui.setup().mockMouse.scroll(width - 1, 34, "down");
+    await tui.setup().renderOnce();
   });
-  const scrolled = setup!.captureCharFrame();
+  const scrolled = tui.frame();
   expect(scrolled).toContain("FRED T10Y2Y");
   expect(scrolled).toContain("10Y minus 2Y");
   expect(scrolled).toMatch(/High\s+124\.00%\s+2021-01-01/);
@@ -59,11 +57,11 @@ test.each([
   expect(scrolled).toContain("All");
   if (partial) {
     expect(scrolled).not.toContain("CPIAUCNS");
-    await emitKeypress(setup!, { name: "!", sequence: "!", shift: true }, { trackPropagation: true });
-    await act(async () => { await setup!.renderOnce(); });
-    expect(setup!.captureCharFrame()).toContain("CPIAUCNS");
-    await emitKeypress(setup!, { name: "escape" }, { trackPropagation: true });
-    await act(async () => { await setup!.renderOnce(); });
-    expect(setup!.captureCharFrame()).toContain("FRED T10Y2Y");
+    await tui.emitKeypress({ name: "!", sequence: "!", shift: true }, { trackPropagation: true });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("CPIAUCNS");
+    await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("FRED T10Y2Y");
   }
 });

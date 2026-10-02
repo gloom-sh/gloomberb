@@ -14,6 +14,7 @@ export const riskQuote = (symbol = "SPY", listing = "ARCA"): CloudQuotePayload =
   lastUpdated: now.getTime() - 86_400_000,
   listingExchangeName: listing,
   providerId: "gloomberb-cloud",
+  dataSource: "delayed",
 });
 export function riskHistory(): CloudMarketResponse<CloudPricePointPayload[]> {
   const data: CloudPricePointPayload[] = [];

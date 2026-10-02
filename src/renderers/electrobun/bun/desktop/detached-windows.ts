@@ -1,8 +1,6 @@
 import type { BrowserWindow } from "electrobun/bun";
-import { findPaneInstance, type AppConfig } from "../../../../types/config";
-import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
-import { isPaneDetached } from "../../../../plugins/pane-manager";
-import type { DesktopWorkspace } from "./workspace";
+import { findPaneInstance } from "../../../../types/config";
+import { isPaneDetached } from "../../../../layout/pane-manager";
 import {
   DEFAULT_WINDOW_FRAME,
   DETACHED_WINDOW_MIN_SIZE,
@@ -16,28 +14,12 @@ import {
 } from "../window/focus";
 import { getWindowFrame } from "../window/events";
 import { createAppWindow } from "../window/create";
-import type { DesktopStateBroadcaster, DesktopStateRpc } from "./state-broadcaster";
+import type { DesktopBackend } from "./backend";
 
 const INITIAL_DOCK_SUPPRESSION_MS = 800;
 const WINDOW_CONTROL_DOCK_SUPPRESSION_MS = 5_000;
 
-interface DesktopDetachedWindowManagerOptions<Rpc extends DesktopStateRpc> {
-  createRpc: (key: string) => Rpc;
-  getConfig: () => AppConfig;
-  getCurrentConfig: () => AppConfig | null;
-  getDesktopWorkspace: () => DesktopWorkspace;
-  getDesktopWorkspaceOrNull: () => DesktopWorkspace | null;
-  getMainWindow: () => BrowserWindow | null;
-  commitDesktopSnapshot: (
-    snapshot: DesktopSharedStateSnapshot,
-    options?: { persistConfig?: boolean; reconcileWindows?: boolean },
-  ) => Promise<DesktopSharedStateSnapshot>;
-  disposeWindowScopedResources: (windowKey: string) => void;
-  unregisterWindowRpc: (key: string) => void;
-  stateBroadcaster: DesktopStateBroadcaster<Rpc>;
-}
-
-export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
+export class DesktopDetachedWindowManager {
   private readonly windows = new Map<string, BrowserWindow>();
   private readonly frameTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly dockTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -46,14 +28,14 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
   private readonly suppressDockUntil = new Map<string, number>();
   private readonly windowControlDockSuppressed = new Set<string>();
 
-  constructor(private readonly options: DesktopDetachedWindowManagerOptions<Rpc>) {}
+  constructor(private readonly backend: DesktopBackend) {}
 
   focusDetachedPane(instanceId: string): boolean {
     return this.focusWindowForRpcKey(detachedRpcKey(instanceId));
   }
 
   focusWindowForRpcKey(rpcKey: string | undefined): boolean {
-    return focusWindowForRpcKey(rpcKey, this.options.getMainWindow(), this.windows);
+    return focusWindowForRpcKey(rpcKey, this.backend.mainWindow, this.windows);
   }
 
   getWindowForRpcKey(rpcKey: string | undefined): BrowserWindow | null {
@@ -66,19 +48,19 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
     if (!paneId || !this.windows.has(paneId)) return;
     this.windowControlDockSuppressed.add(paneId);
     this.suppressDockUntil.set(paneId, Date.now() + WINDOW_CONTROL_DOCK_SUPPRESSION_MS);
-    this.options.stateBroadcaster.clearDockPreview(paneId);
+    this.backend.stateBroadcaster.clearDockPreview(paneId);
   }
 
   resolveFrame(instanceId: string): WindowFrame {
-    const detachedEntry = this.options.getConfig().layout.detached.find((entry) => entry.instanceId === instanceId);
+    const detachedEntry = this.backend.requireConfig().layout.detached.find((entry) => entry.instanceId === instanceId);
     if (detachedEntry) {
       return normalizeWindowFrameWithMinimum(detachedEntry, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE);
     }
-    const remembered = findPaneInstance(this.options.getConfig().layout, instanceId)?.placementMemory?.detached;
+    const remembered = findPaneInstance(this.backend.requireConfig().layout, instanceId)?.placementMemory?.detached;
     if (remembered) {
       return normalizeWindowFrameWithMinimum(remembered, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE);
     }
-    const mainFrame = getWindowFrame(this.options.getMainWindow()) ?? DEFAULT_WINDOW_FRAME;
+    const mainFrame = getWindowFrame(this.backend.mainWindow) ?? DEFAULT_WINDOW_FRAME;
     return normalizeWindowFrameWithMinimum({
       x: mainFrame.x + 72,
       y: mainFrame.y + 72,
@@ -88,7 +70,7 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
   }
 
   reconcile(): void {
-    const config = this.options.getCurrentConfig();
+    const config = this.backend.config;
     if (!config) return;
 
     const desiredEntries = new Map(config.layout.detached.map((entry) => [entry.instanceId, entry] as const));
@@ -132,18 +114,18 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
       this.cleanupState(instanceId);
       (window as any).close?.();
     }
-    this.options.stateBroadcaster.resetDockPreview();
+    this.backend.stateBroadcaster.resetDockPreview();
   }
 
   private resolveTitle(instanceId: string): string {
-    const config = this.options.getCurrentConfig();
+    const config = this.backend.config;
     const instance = config ? findPaneInstance(config.layout, instanceId) : null;
     if (!instance) return "Gloomberb";
     return instance.title?.trim() || instance.paneId;
   }
 
   private resolveDockEdge(frame: WindowFrame): "left" | "right" | "top" | "bottom" | null {
-    const mainFrame = getWindowFrame(this.options.getMainWindow());
+    const mainFrame = getWindowFrame(this.backend.mainWindow);
     if (!mainFrame) return null;
     const threshold = 72;
     const headerMidX = frame.x + (frame.width / 2);
@@ -159,21 +141,21 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
   }
 
   private cleanupState(instanceId: string): void {
-    this.options.disposeWindowScopedResources(detachedRpcKey(instanceId));
+    this.backend.disposeWindowResources(detachedRpcKey(instanceId));
     this.windows.delete(instanceId);
     this.clearTimer(this.frameTimers, instanceId);
     this.clearTimer(this.dockTimers, instanceId);
     this.pendingMoveFlush.delete(instanceId);
     this.suppressDockUntil.delete(instanceId);
     this.windowControlDockSuppressed.delete(instanceId);
-    this.options.unregisterWindowRpc(detachedRpcKey(instanceId));
+    this.backend.rpcs.unregisterWindowRpc(detachedRpcKey(instanceId));
   }
 
   private createWindow(
     instanceId: string,
     frame: Partial<WindowFrame>,
   ): BrowserWindow {
-    const rpc = this.options.createRpc(detachedRpcKey(instanceId));
+    const rpc = this.backend.createWindowRpc(detachedRpcKey(instanceId));
     const initialFrame = normalizeWindowFrameWithMinimum(frame, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE);
     const title = this.resolveTitle(instanceId);
     const window = createAppWindow({
@@ -189,12 +171,12 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
     (window as any).on?.("close", () => {
       const shouldIgnore = this.closingPanes.delete(instanceId);
       this.cleanupState(instanceId);
-      const workspace = this.options.getDesktopWorkspaceOrNull();
-      const config = this.options.getCurrentConfig();
+      const workspace = this.backend.workspace;
+      const config = this.backend.config;
       if (shouldIgnore || !workspace || !config || !isPaneDetached(config.layout, instanceId)) {
         return;
       }
-      void this.options.commitDesktopSnapshot(this.options.getDesktopWorkspace().closeDetachedPane(instanceId));
+      void this.backend.commitDesktopSnapshot(this.backend.requireWorkspace().closeDetachedPane(instanceId));
     });
 
     return window;
@@ -211,8 +193,8 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
 
   private handleMove(instanceId: string): void {
     const window = this.windows.get(instanceId);
-    const workspace = this.options.getDesktopWorkspaceOrNull();
-    const config = this.options.getCurrentConfig();
+    const workspace = this.backend.workspace;
+    const config = this.backend.config;
     if (!window || !workspace || !config || !isPaneDetached(config.layout, instanceId)) {
       return;
     }
@@ -224,18 +206,18 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
     this.clearTimer(this.frameTimers, instanceId);
     this.frameTimers.set(instanceId, setTimeout(() => {
       this.frameTimers.delete(instanceId);
-      const nextConfig = this.options.getCurrentConfig();
-      const nextWorkspace = this.options.getDesktopWorkspaceOrNull();
+      const nextConfig = this.backend.config;
+      const nextWorkspace = this.backend.workspace;
       if (!nextConfig || !nextWorkspace || !isPaneDetached(nextConfig.layout, instanceId)) return;
-      void this.options.commitDesktopSnapshot(
-        this.options.getDesktopWorkspace().updateDetachedFrame(instanceId, frame),
+      void this.backend.commitDesktopSnapshot(
+        this.backend.requireWorkspace().updateDetachedFrame(instanceId, frame),
         { reconcileWindows: false },
       );
     }, 120));
 
     this.clearTimer(this.dockTimers, instanceId);
     if (this.windowControlDockSuppressed.has(instanceId)) {
-      this.options.stateBroadcaster.clearDockPreview(instanceId);
+      this.backend.stateBroadcaster.clearDockPreview(instanceId);
       if (!edge) {
         this.windowControlDockSuppressed.delete(instanceId);
       }
@@ -244,28 +226,28 @@ export class DesktopDetachedWindowManager<Rpc extends DesktopStateRpc> {
 
     const suppressDockUntil = this.suppressDockUntil.get(instanceId) ?? 0;
     if (Date.now() < suppressDockUntil) {
-      this.options.stateBroadcaster.clearDockPreview(instanceId);
+      this.backend.stateBroadcaster.clearDockPreview(instanceId);
       return;
     }
     this.suppressDockUntil.delete(instanceId);
 
     if (!edge) {
-      this.options.stateBroadcaster.clearDockPreview(instanceId);
+      this.backend.stateBroadcaster.clearDockPreview(instanceId);
       return;
     }
 
-    this.options.stateBroadcaster.sendDockPreview({ paneId: instanceId, edge });
+    this.backend.stateBroadcaster.sendDockPreview({ paneId: instanceId, edge });
     this.dockTimers.set(instanceId, setTimeout(() => {
       this.dockTimers.delete(instanceId);
-      const nextConfig = this.options.getCurrentConfig();
-      const nextWorkspace = this.options.getDesktopWorkspaceOrNull();
+      const nextConfig = this.backend.config;
+      const nextWorkspace = this.backend.workspace;
       if (!nextConfig || !nextWorkspace || !isPaneDetached(nextConfig.layout, instanceId)) return;
       if (
-        this.options.stateBroadcaster.currentDockPreview.paneId !== instanceId
-        || this.options.stateBroadcaster.currentDockPreview.edge !== edge
+        this.backend.stateBroadcaster.currentDockPreview.paneId !== instanceId
+        || this.backend.stateBroadcaster.currentDockPreview.edge !== edge
       ) return;
-      this.options.stateBroadcaster.clearDockPreview(instanceId);
-      void this.options.commitDesktopSnapshot(this.options.getDesktopWorkspace().dockDetachedPane(instanceId, edge));
+      this.backend.stateBroadcaster.clearDockPreview(instanceId);
+      void this.backend.commitDesktopSnapshot(this.backend.requireWorkspace().dockDetachedPane(instanceId, edge));
     }, 120));
   }
 

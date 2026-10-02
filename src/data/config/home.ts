@@ -11,7 +11,7 @@ import { join } from "path";
  * file holding the edit lives in the folder being moved, and a launch that
  * did not find it there started a fresh `~/.gloomberb`.
  */
-export const GLOOMBERB_HOME_ENV = "GLOOMBERB_HOME";
+const GLOOMBERB_HOME_ENV = "GLOOMBERB_HOME";
 
 function getUserHome(env: NodeJS.ProcessEnv): string {
   return env.HOME || homedir();

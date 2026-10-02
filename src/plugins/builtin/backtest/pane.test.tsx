@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
@@ -12,7 +12,7 @@ import { BacktestPane } from "./pane";
 
 const PANE_ID = "backtest:layout-test";
 const SYMBOL = "BTTEST";
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let previousCoordinator: ReturnType<typeof getSharedMarketDataCoordinator>;
 
 /** Three years of sessions that trend up with a dip, so both rules fire. */
@@ -36,13 +36,7 @@ function installCoordinator() {
   setSharedMarketDataCoordinator(coordinator);
 }
 
-afterEach(async () => {
-  if (setup) {
-    await act(async () => {
-      setup!.renderer.destroy();
-    });
-    setup = undefined;
-  }
+afterEach(() => {
   setSharedMarketDataCoordinator(previousCoordinator ?? null);
 });
 
@@ -53,7 +47,7 @@ async function renderPane(width: number, height: number) {
   });
   const state = createInitialState(config);
   state.tickers.set(SYMBOL, createTestTicker(SYMBOL, SYMBOL, { exchange: "NASDAQ", currency: "USD", assetCategory: "STK" }));
-  setup = await testRender(
+  await tui.render(
     <TestPaneProvider state={state} paneId={PANE_ID} pluginId="backtest" runtime={createTestPluginRuntime()}>
       <BacktestPane paneId={PANE_ID} paneType="backtest" focused width={width} height={height} />
     </TestPaneProvider>,
@@ -62,10 +56,10 @@ async function renderPane(width: number, height: number) {
   for (let frame = 0; frame < 8; frame += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
-  return setup.captureCharFrame();
+  return tui.frame();
 }
 
 /** The row holding the metrics table header. */

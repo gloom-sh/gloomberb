@@ -4,7 +4,7 @@ import {
   parseMarketplaceLayoutList,
   type LayoutMarketplaceEntry,
   type LayoutMarketplacePayload,
-} from "../layout-marketplace/payload";
+} from "../shares/portable-layout";
 import {
   type CloudLayoutEntry,
   type LayoutRequirement,
@@ -38,18 +38,14 @@ import type {
   PersistedAuthUser
 } from "./types";
 
-export { ASKGTransportError } from "./askg";
-export type { ASKGToolResultOutcome, ASKGTransport } from "./askg";
 export { setCloudApiFetchTransport } from "./request";
 export { NoteConflictError } from "./notes";
 export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
-export { TEAM_ACCENT_COLORS } from "./types";
 export type * from "./types";
 export type {
   CommandSearchChoice,
   CommandSearchOutcome,
-  CommandSearchReport,
   CrashReportError,
   CrashReportKind,
   CrashReportSurface,
@@ -364,7 +360,7 @@ class GloomApiClient {
     event: import("./research-activity").ResearchActivity; eventId: string;
     surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
-    tab?: string;
+    tab?: string; desks?: readonly string[];
   }): Promise<void> {
     await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
   }
@@ -409,6 +405,9 @@ class GloomApiClient {
   getBuildoutAccount = this.auth.getBuildoutAccount.bind(this.auth);
   getBuildoutToken = this.auth.getBuildoutToken.bind(this.auth);
   updateAccountProfile = this.auth.updateAccountProfile.bind(this.auth);
+  getCalendarFeed = this.auth.getCalendarFeed.bind(this.auth);
+  ensureCalendarFeed = this.auth.ensureCalendarFeed.bind(this.auth);
+  rotateCalendarFeed = this.auth.rotateCalendarFeed.bind(this.auth);
 
   async getSyncSnapshot(): Promise<CloudSyncSnapshotResponse> {
     return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", { method: "GET" });
@@ -542,8 +541,9 @@ class GloomApiClient {
    * Resolves a natural-language command-bar query into runnable command-bar
    * inputs. Requires a verified session; free accounts are included. The
    * request is bounded client-side so a stalled upstream cannot hold the
-   * command bar in its loading state. The server keeps the query, and
-   * answers with a `searchId`, only when asked with `log: true`.
+   * command bar in its loading state. The server keeps the query and answers
+   * with a `searchId` unless told `log: false`, so an opt-out has to be sent
+   * explicitly.
    */
   async assistCommand(
     query: string,
@@ -565,7 +565,7 @@ class GloomApiClient {
         body: JSON.stringify({
           query: query.trim().slice(0, ASSIST_QUERY_MAX_LENGTH),
           commands: commands.slice(0, ASSIST_COMMAND_LIMIT).map(capAssistArgOptions),
-          ...(options?.log === true ? { log: true } : {}),
+          ...(options?.log !== undefined ? { log: options.log } : {}),
         }),
         signal: controller.signal,
       });
@@ -700,10 +700,12 @@ class GloomApiClient {
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
   equityScreener = this.data.equityScreener.bind(this.data);
   impliedVolatility = this.data.impliedVolatility.bind(this.data);
+  optionsPositioning = this.data.optionsPositioning.bind(this.data);
   getCloudDebtMaturities = this.data.getCloudDebtMaturities.bind(this.data);
   getCloudRevenueBreakdown = this.data.getCloudRevenueBreakdown.bind(this.data);
   getCloudMnaDeals = this.data.getCloudMnaDeals.bind(this.data);
   getCloudMnaDeal = this.data.getCloudMnaDeal.bind(this.data);
+  getCloudIpoCalendar = this.data.getCloudIpoCalendar.bind(this.data);
   getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
   getCloudSocialMentions = this.data.getCloudSocialMentions.bind(this.data);
   getCloudSocialMentionPosts = this.data.getCloudSocialMentionPosts.bind(this.data);
@@ -715,8 +717,12 @@ class GloomApiClient {
   getCloudCotContract = this.data.getCloudCotContract.bind(this.data);
   getCloudTape = this.data.getCloudTape.bind(this.data);
   getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
+  getCloudCurve = this.data.getCloudCurve.bind(this.data);
+  getCloudWorldCurves = this.data.getCloudWorldCurves.bind(this.data);
   getCloudCds = this.data.getCloudCds.bind(this.data);
   getCloudCdsHistory = this.data.getCloudCdsHistory.bind(this.data);
+  getCloudCdxBoard = this.data.getCloudCdxBoard.bind(this.data);
+  getCloudSovrBoard = this.data.getCloudSovrBoard.bind(this.data);
   getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);
   getCloudJobs = this.data.getCloudJobs.bind(this.data);
   getCloudJobsPostings = this.data.getCloudJobsPostings.bind(this.data);
@@ -745,5 +751,3 @@ class GloomApiClient {
 }
 
 export const apiClient = new GloomApiClient();
-
-export type { FuturesCurveAsOfPayload, FuturesCurvePayload, FuturesContract } from "./futures-curve";

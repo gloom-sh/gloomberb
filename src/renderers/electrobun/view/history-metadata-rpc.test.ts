@@ -6,7 +6,7 @@ import type { PriceHistoryResult } from "../../../types/price-history";
 import { HistoryRetentionError, type HistoryRetention } from "../../../sources/history-retention";
 import { DesktopCapabilityBridge } from "../bun/desktop/capability-bridge";
 import { createRpcLoopback } from "../../../test-support/rpc-loopback";
-import { decodeRpcResponse, decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "./rpc-codec";
+import { decodeRpcResponse, decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "../shared/rpc-codec";
 
 function transport(provider: DataProvider) {
   const registry = new CapabilityRegistry();

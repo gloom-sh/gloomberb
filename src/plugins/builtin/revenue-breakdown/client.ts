@@ -29,7 +29,7 @@ const finiteOrNull = (value: unknown) =>
 const day = (value: unknown) =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
-export function validateRevenueBreakdown(data: RevenueBreakdownPayload): RevenueBreakdownPayload {
+function validateRevenueBreakdown(data: RevenueBreakdownPayload): RevenueBreakdownPayload {
   const width = data?.periods?.length;
   const valid =
     !!data

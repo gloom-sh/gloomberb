@@ -2,6 +2,7 @@ import {
   getFirstVisibleFieldId,
   getVisibleWorkflowFields,
   getWorkflowFieldDescription,
+  keysClearedByChange,
 } from "../command-bar/workflow/fields";
 import type {
   CommandBarFieldValue,
@@ -57,9 +58,7 @@ export function initialFormFocus(route: FormRoute): FormFocus {
 export function applyFormValue(route: FormRoute, fieldId: string, value: CommandBarFieldValue): FormRoute {
   const values = { ...route.values, [fieldId]: value };
   const changedField = route.fields.find((field) => field.id === fieldId);
-  if (!Object.is(route.values[fieldId], value)) {
-    for (const key of changedField?.clearOnChange ?? []) values[key] = "";
-  }
+  for (const key of keysClearedByChange(changedField?.clearOnChange, route.values[fieldId], value)) values[key] = "";
   const visible = getVisibleWorkflowFields(route.fields, values);
   const activeFieldId = route.activeFieldId && visible.some((field) => field.id === route.activeFieldId)
     ? route.activeFieldId

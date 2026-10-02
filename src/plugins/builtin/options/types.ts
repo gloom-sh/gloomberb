@@ -16,7 +16,7 @@ export type OptionFieldId =
   | "volume"
   | "openInterest";
 
-export type OptionColumnId = "strike" | `${OptionSide}${Capitalize<OptionFieldId>}`;
+type OptionColumnId = "strike" | `${OptionSide}${Capitalize<OptionFieldId>}`;
 
 export type OptionColumn = DataTableColumn & {
   id: OptionColumnId;

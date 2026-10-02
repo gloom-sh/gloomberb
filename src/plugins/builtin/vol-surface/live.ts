@@ -3,7 +3,7 @@ import { surfaceSheetSnapshot, surfaceSheetTenors, type SurfaceExpiry, type Surf
 /** In session, while visible, a real-time surface reloads at this cadence. */
 export const SURFACE_LIVE_RELOAD_MS = 15_000;
 
-export type SurfaceSheetTenors = ReadonlyArray<{ label: string; years: number }>;
+type SurfaceSheetTenors = ReadonlyArray<{ label: string; years: number }>;
 
 /** The constant maturities the 3D sheet drew for one settled set of listed expiries. */
 export interface SurfaceSheetAxes {

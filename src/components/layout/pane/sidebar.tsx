@@ -4,7 +4,6 @@ import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { blendHex, colors, hoverBg } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { usePaneFooter } from "./footer/registration";
-import { getPaneSidebarWidthRange } from "./sidebar-metrics";
 
 // The width and visibility maths live in a module with no React in it, so a
 // store can read them without importing a component tree.

@@ -1,14 +1,12 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { usePagedRows, type PageLoader, type PageRequest, type RowPage } from "./paged-rows";
 
 type Page = RowPage<string>;
-let setup: Awaited<ReturnType<typeof testRender>>;
+const tui = createOpenTuiTestHarness();
 let paged: ReturnType<typeof usePagedRows<Page>>;
 let changeLoader: (next: PageLoader<Page> | null) => void;
-
-afterEach(() => setup?.renderer.destroy());
 
 async function mount(loader: PageLoader<Page> | null, options: { keepPreviousRows?: boolean } = {}) {
   function Probe() {
@@ -17,8 +15,8 @@ async function mount(loader: PageLoader<Page> | null, options: { keepPreviousRow
     paged = usePagedRows(request, { getId: (row) => row, ...options });
     return null;
   }
-  setup = await testRender(<Probe />, { width: 20, height: 5 });
-  await act(async () => { await setup.renderOnce(); });
+  await tui.render(<Probe />, { width: 20, height: 5 });
+  await act(async () => { await tui.setup().renderOnce(); });
 }
 
 /** A loader whose every request waits for the test to answer it. */

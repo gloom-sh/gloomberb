@@ -1,3 +1,4 @@
+import type { PaneInstanceConfig } from "../../../types/config";
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { shortVolumeCache } from "./client";
@@ -9,9 +10,13 @@ export const shortVolumeSettings = [
     options: [{ value: "nms", label: "NMS off-exchange" }, { value: "otc", label: "OTC Reporting Facility" }] },
   { key: "finraSymbol", label: "FINRA symbol override", type: "text" as const, placeholder: "Exact source identity, e.g. ABRpD" },
 ];
+/** A FINRA symbol override names one security, so that pane cannot follow a list. */
+export const followsWithoutFinraOverride = (pane: PaneInstanceConfig) => (
+  typeof pane.settings?.finraSymbol !== "string" || !pane.settings.finraSymbol.trim()
+);
 export const shortVolumeModule: PluginModule = {
   panes: [{ id: "short-volume", name: "Daily Short Volume", icon: "S", component: ShortVolumePane,
-    defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 92, height: 28 },
+    defaultPosition: "right", tickerFollower: followsWithoutFinraOverride, defaultMode: "floating", defaultFloatingSize: { width: 92, height: 28 },
     tableExport: true, headless: shortVolumeHeadless, settings: { title: "Daily Short Volume", fields: shortVolumeSettings } }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({ id: "short-volume-pane", paneId: "short-volume", label: "Daily Short Volume",
     description: "FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities.",

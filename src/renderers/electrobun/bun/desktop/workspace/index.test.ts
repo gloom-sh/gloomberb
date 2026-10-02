@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../../../types/config";
-import { addPaneFloating } from "../../../../../plugins/pane-manager";
+import { addPaneFloating } from "../../../../../layout/pane-manager";
 import { updatePaneInstance } from "../../../../../pane-settings";
 import { createDesktopWorkspace } from "./index";
 
@@ -129,7 +129,6 @@ describe("desktop workspace", () => {
       },
       paneState: monitorLayout.paneState ?? {},
       focusedPaneId: monitorLayout.focusedPaneId ?? null,
-      activePanel: monitorLayout.activePanel ?? "left" as const,
       mainStateRevision: 2,
     };
     const staleSnapshot = {

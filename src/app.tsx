@@ -19,6 +19,7 @@ import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
+import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
 import { SignInGate } from "./components/sign-in-gate";
 import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
@@ -31,7 +32,7 @@ import type { CliLaunchRequest, GloomPlugin } from "./types/plugin";
 import type { DataProvider } from "./types/data-provider";
 import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindowBridge } from "./types/desktop-window";
 import type { DesktopApplicationMenuBridge } from "./types/desktop-menu";
-import type { LayoutBounds } from "./plugins/pane-manager";
+import type { LayoutBounds } from "./layout/pane-manager";
 import type { AppSessionSnapshot } from "./core/state/session-persistence";
 import type { MarketDataCoordinator } from "./market-data/coordinator";
 import { createAppNotifier } from "./notifications/app-notifier";
@@ -370,7 +371,7 @@ function AppInner({
   });
 
   // Wire up app-level notifications.
-  pluginRegistry.notifyFn = appNotifier.notify;
+  pluginRegistry.bindHost({ notify: appNotifier.notify });
 
   // Persist layout changes (switching, saving, deleting, renaming layouts).
   // The saved layouts also mirror live pane state and focus, so they change on
@@ -464,12 +465,13 @@ function AppInner({
             />
             <StatusBar
               onOpenChangelog={(version) => {
-                void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
+                void pluginRegistry.createPaneFromTemplateAsync("changelog-pane", {
                   values: { version },
                 }).catch(() => {});
               }}
             />
           </TransientLayoutProvider>
+          {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard
               pluginRegistry={pluginRegistry}

@@ -46,7 +46,7 @@ interface CommandBarModeRoute extends CommandBarRouteBase {
   payload?: Record<string, unknown>;
 }
 
-export interface CommandBarPickerOption {
+interface CommandBarPickerOption {
   id: string;
   label: string;
   detail?: string;

@@ -1,5 +1,5 @@
 import { useEffect, type Dispatch } from "react";
-import { tidyWindows } from "../../plugins/pane-manager";
+import { tidyWindows } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { DesktopApplicationMenuBridge } from "../../types/desktop-menu";
@@ -40,10 +40,10 @@ export function useDesktopApplicationMenuRuntime({
           dispatch({ type: "SET_COMMAND_BAR", open: true, query: command.query });
           break;
         case "open-plugin-workflow":
-          pluginRegistry.openPluginCommandWorkflowFn(command.commandId);
+          pluginRegistry.openPluginCommandWorkflow(command.commandId);
           break;
         case "open-builtin-workflow":
-          pluginRegistry.openBuiltInWorkflowFn(command.actionId);
+          pluginRegistry.openBuiltInWorkflow(command.actionId);
           break;
         case "open-url":
           void rendererHost.openExternal(command.url).catch((error) => {
@@ -74,9 +74,9 @@ export function useDesktopApplicationMenuRuntime({
         case "layout-gridlock":
           tidyWindows({
             layout: stateRef.current.config.layout,
-            size: pluginRegistry.getTermSizeFn(),
+            size: pluginRegistry.getTermSize(),
             paneTypes: pluginRegistry.panes,
-            apply: pluginRegistry.updateLayoutFn,
+            apply: pluginRegistry.updateLayout,
             notify: pluginRegistry.notify,
             onRevert: () => dispatch({ type: "UNDO_LAYOUT" }),
           });

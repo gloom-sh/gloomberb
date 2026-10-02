@@ -344,6 +344,7 @@ export const insiderModule: PluginModule = {
       icon: "I",
       component: InsiderView,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },
       tableExport: true,

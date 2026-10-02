@@ -7,7 +7,7 @@ import {
   type DropTarget,
   type FloatingRect,
   type LayoutBounds,
-} from "../../../../plugins/pane-manager";
+} from "../../../../layout/pane-manager";
 import type { DesktopDockPreviewState } from "../../../../types/desktop-window";
 import type { LayoutConfig } from "../../../../types/config";
 import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE } from "../../pane/header";

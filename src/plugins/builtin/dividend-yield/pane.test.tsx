@@ -3,16 +3,14 @@ import { act, useState } from "react";
 import { createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
 import { fetchDividendData } from "./client";
 import { chartResponse, yahooTransport } from "./test-fixture";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   setHttpFetchTransport(null);
 });
 
@@ -24,7 +22,7 @@ async function mountDividendPane(symbol: string, width = 80) {
   }));
   state.tickers.set(symbol, createTestTicker(symbol));
   await act(async () => {
-    setup = await testRender(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
+    await tui.render(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
       {(body) => <DividendYieldPane focused {...body} />}
     </TestPaneFrame>, { width, height: 24 });
   });
@@ -33,9 +31,9 @@ async function mountDividendPane(symbol: string, width = 80) {
 async function frame() {
   for (let i = 0; i < 3; i++) await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  return setup!.captureCharFrame();
+  return tui.frame();
 }
 
 test("summary failures retain cash and recover dated payment information through refresh", async () => {
@@ -66,7 +64,7 @@ test("summary failures retain cash and recover dated payment information through
   for (const nextMode of ["failed", "invalid-ex", "invalid-pay", "valid"] as const) {
     mode = nextMode;
     const requestsBefore = chartRequests;
-    await emitKeypress(setup!, { name: "r", sequence: "r" });
+    await tui.emitKeypress({ name: "r", sequence: "r" });
     const current = await frame();
     expect(chartRequests).toBe(requestsBefore + 1);
     expect(current).toContain("4.00%");
@@ -104,14 +102,14 @@ test.each([48, 80, 120])("native dividend refresh keeps the selected price's tim
   expect(before).not.toContain("cash yield may be out of date");
 
   priceTime = undefined;
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const missing = await frame();
   expect(missing).toContain("4.00%");
   expect(missing).toContain("Reference price time unavailable");
   expect(missing).not.toContain(new Date(oldTime * 1000).toISOString());
 
   priceTime = sourceTime;
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const fresh = await frame();
   expect(fresh).toContain("4.00%");
   expect(fresh).toContain(new Date(sourceTime * 1000).toISOString());
@@ -120,7 +118,7 @@ test.each([48, 80, 120])("native dividend refresh keeps the selected price's tim
   if (width >= 80) expect(fresh).toContain("History fetched");
 
   fail = true;
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const failed = await frame();
   expect(failed).toContain("No dividend data found");
   expect(failed).toContain("4.00%"); // Retained cash stays usable while its current failure is explicit.
@@ -153,7 +151,7 @@ test.each([48, 80, 120])("cash integrity failures preserve usable rows and recov
   expect(complete).toContain(recentDate);
 
   mode = "partial";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const partial = await frame();
   expect(partial).toContain(recentDate);
   expect(partial).toContain("$4.00");
@@ -164,14 +162,14 @@ test.each([48, 80, 120])("cash integrity failures preserve usable rows and recov
   expect(partial.trimEnd().split("\n").at(-1)).toContain("Incomplete cash history");
 
   mode = "invalid";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const invalid = await frame();
   expect(invalid).toContain(recentDate);
   expect(invalid).toContain("Incomplete cash history");
   expect(invalid).not.toContain("4.00%");
 
   mode = "empty";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const empty = await frame();
   expect(empty).toContain("0.00%");
   expect(empty).toContain("No cash distributions reported.");
@@ -179,14 +177,14 @@ test.each([48, 80, 120])("cash integrity failures preserve usable rows and recov
   expect(empty).not.toContain("Incomplete cash history");
 
   mode = "unknown-currency";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const unknown = await frame();
   expect(unknown).toContain("Dividend currency is unavailable");
   expect(unknown).not.toContain(recentDate);
   expect(unknown).not.toContain("4.00%");
 
   mode = "complete";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const recovered = await frame();
   expect(recovered).toContain("4.00%");
   expect(recovered).toContain(recentDate);
@@ -230,12 +228,12 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
       {(body) => <DividendYieldPane focused {...body} loadData={loadData} />}
     </TestPaneFrame>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height: 24 }); });
+  await act(async () => { await tui.render(<Harness />, { width, height: 24 }); });
   const complete = await frame();
   expect(complete).toContain("4.00%");
   expect(complete).toContain("TTM dividend");
   mode = "failure";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const failed = await frame();
   expect(failed).toContain(recentDate);
   expect(failed).toContain(cashLabel);
@@ -246,23 +244,23 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   expect(failed).toContain(failure === "invalid" ? "Incomplete cash history" : "Dividend currency is unavailable");
   if (cashCurrency === "GBP") expect(failed).not.toContain("$4.00");
   mode = "complete";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const recovered = await frame();
   expect(recovered).toContain("4.00%");
   expect(recovered).toContain("TTM dividend");
   mode = "empty";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const empty = await frame();
   expect(empty).toContain("0.00%");
   expect(empty).not.toContain(recentDate);
   mode = "failure";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const failedAfterEmpty = await frame();
   expect(failedAfterEmpty).not.toContain(recentDate);
   // Four columns at 80 are too narrow for the full label, so it reads "TTM yld".
   expect(failedAfterEmpty).toMatch(/TTM yi?e?ld\s+—/);
   mode = "complete";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const restored = await frame();
   expect(restored).toContain(recentDate);
   mode = "failure";
@@ -272,7 +270,7 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   expect(changed).not.toContain(cashRow);
   expect(changed).toContain(failure === "invalid" ? "Incomplete cash history" : "Dividend currency is unavailable");
   mode = "complete";
-  await emitKeypress(setup!, { name: "r", sequence: "r" });
+  await tui.emitKeypress({ name: "r", sequence: "r" });
   const newSecurity = await frame();
   expect(newSecurity).toContain("7.00%");
   expect(newSecurity).not.toContain(cashRow);
@@ -285,7 +283,7 @@ async function renderLoaded(data: Awaited<ReturnType<typeof fetchDividendData>>,
   }));
   state.tickers.set("INCOME", createTestTicker("INCOME"));
   await act(async () => {
-    setup = await testRender(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()}>
+    await tui.render(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()}>
       <DividendYieldPane focused width={width} height={height} loadData={async () => data} />
     </TestPaneProvider>, { width, height });
   });
@@ -318,7 +316,7 @@ test("short dividend panes keep the yields and every payment row within reach", 
   expect(lines[1]).toContain("●");
   expect(lines[2]).toContain("EX-DATE");
   expect(lines[3]).toContain(latest);
-  await emitKeypress(setup!, Array.from({ length: 8 }, () => ({ name: "down" })), { trackPropagation: true });
+  await tui.emitKeypress(Array.from({ length: 8 }, () => ({ name: "down" })), { trackPropagation: true });
   const moved = await frame();
   expect(moved.split("EX-DATE")[1]).not.toContain(latest);
   expect(moved).toContain(payments[8]!.exDate.toISOString().slice(0, 10));
@@ -333,10 +331,10 @@ test("the TTM dividend steps up at each raise and follows the selected payment",
   expect(initial).toMatch(/EX-DATE ▼ +AMOUNT\s*\n/);
   expect(initial).not.toContain("CCY");
   // Four payments back, the year before the last raise.
-  await emitKeypress(setup!, Array.from({ length: 4 }, () => ({ name: "down" })));
+  await tui.emitKeypress(Array.from({ length: 4 }, () => ({ name: "down" })));
   await act(async () => { await Bun.sleep(200); });
   expect(await frame()).toContain("● TTM dividend $1.16");
-  await emitKeypress(setup!, { name: "right" });
+  await tui.emitKeypress({ name: "right" });
   expect(await frame()).toContain("● TTM dividend $1.17");
 });
 

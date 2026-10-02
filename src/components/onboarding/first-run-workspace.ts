@@ -24,7 +24,7 @@ export const FIRST_RUN_WATCHLIST: ReadonlyArray<Pick<TickerMetadata, "ticker" | 
   { ticker: "AMZN", name: "Amazon.com Inc.", exchange: "NASDAQ", assetCategory: "STK" },
   { ticker: "TSLA", name: "Tesla Inc.", exchange: "NASDAQ", assetCategory: "STK" },
 ];
-export const FIRST_RUN_WATCHLIST_SIZE = 7;
+const FIRST_RUN_WATCHLIST_SIZE = 7;
 
 export const FIRST_RUN_PANE_IDS = {
   heatmap: "portfolio-list:home-heatmap",

@@ -8,7 +8,7 @@ import {
   isPaneInLayout,
   type DockGeometryOptions,
   type LayoutBounds,
-} from "../../../../plugins/pane-manager";
+} from "../../../../layout/pane-manager";
 import type { PluginRegistry, WindowEditMode } from "../../../../plugins/registry";
 import type { LayoutConfig } from "../../../../types/config";
 import {
@@ -120,14 +120,7 @@ export function useShellWindowMode({
     if (windowModePaneId) focusPane(windowModePaneId);
   }, [focusPane, windowModePaneId]);
 
-  useEffect(() => {
-    pluginRegistry.openWindowModeFn = startWindowMode;
-    return () => {
-      if (pluginRegistry.openWindowModeFn === startWindowMode) {
-        pluginRegistry.openWindowModeFn = () => {};
-      }
-    };
-  }, [pluginRegistry, startWindowMode]);
+  useEffect(() => pluginRegistry.bindHost({ openWindowMode: startWindowMode }), [pluginRegistry, startWindowMode]);
 
   const cancelWindowMode = useCallback(() => {
     setWindowMode(null);

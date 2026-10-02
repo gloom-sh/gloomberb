@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import { createTestRenderer } from "@opentui/core/testing";
 import { act, useEffect, useReducer, useRef } from "react";
-import { createOpenTuiTestRoot as createRoot } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -22,12 +21,8 @@ import { CompositeChart, pricePointsToResolvedSeries } from "./index";
  */
 const TEST_PANE_ID = "composite-scroll:test";
 
-let testSetup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;
-let root: ReturnType<typeof createRoot> | undefined;
+const tui = createOpenTuiTestHarness({ width: 100, height: 24 });
 let scrollBoxRef: ScrollBoxRenderable | null = null;
-const actEnvironment = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean;
-};
 
 const PRICE_SERIES = pricePointsToResolvedSeries(
   [
@@ -86,46 +81,33 @@ async function flushFrames(count = 4) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
 
 afterEach(() => {
   scrollBoxRef = null;
-  if (root) {
-    act(() => {
-      root!.unmount();
-    });
-    root = undefined;
-  }
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
-  actEnvironment.IS_REACT_ACT_ENVIRONMENT = false;
 });
 
 describe("CompositeChart kitty scrolling", () => {
   test("creates a native chart surface when scrolled into view", async () => {
-    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
-    testSetup = await createTestRenderer({ width: 100, height: 24 });
-    (testSetup.renderer as unknown as { _capabilities: unknown })._capabilities = {
+    const { setup, root } = await tui.createRoot();
+    (setup.renderer as unknown as { _capabilities: unknown })._capabilities = {
       kitty_graphics: true,
     };
-    (testSetup.renderer as unknown as { _resolution: unknown })._resolution = {
+    (setup.renderer as unknown as { _resolution: unknown })._resolution = {
       width: 1000,
       height: 720,
     };
 
-    root = createRoot(testSetup.renderer);
     act(() => {
-      root!.render(<ChartScrollHarness />);
+      root.render(<ChartScrollHarness />);
     });
 
     await flushFrames();
 
-    const manager = getNativeSurfaceManager(testSetup.renderer as never) as unknown as {
+    const manager = getNativeSurfaceManager(setup.renderer as never) as unknown as {
       surfaces: Map<
         string,
         {

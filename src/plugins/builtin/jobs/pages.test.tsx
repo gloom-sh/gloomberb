@@ -1,19 +1,14 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useEffect, useRef, useSyncExternalStore } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Text } from "../../../ui";
 import { useAppendedPages } from "./pages";
 
-let setup: Awaited<ReturnType<typeof testRender>> | null = null;
-
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = null;
-});
+const tui = createOpenTuiTestHarness();
 
 async function frames(count = 4) {
   for (let index = 0; index < count; index++) {
-    await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
+    await act(async () => { await Bun.sleep(5); await tui.setup().renderOnce(); });
   }
 }
 
@@ -53,7 +48,7 @@ function Harness({ store, loadPage }: { store: ReturnType<typeof createScene>; l
 
 async function mount(store: ReturnType<typeof createScene>, loadPage: (offset: number) => Promise<string[]>) {
   await act(async () => {
-    setup = await testRender(<Harness store={store} loadPage={loadPage} />, { width: 60, height: 2 });
+    await tui.render(<Harness store={store} loadPage={loadPage} />, { width: 60, height: 2 });
   });
   await frames();
 }
@@ -71,11 +66,11 @@ test("pages append from the first response's end and stop at the total", async (
   };
   const store = createScene({ requestKey: "a", firstCount: 3, total: 5, pulls: 0 });
   await mount(store, loadPage);
-  expect(setup!.captureCharFrame()).toContain("items=0 more=true");
+  expect(tui.frame()).toContain("items=0 more=true");
 
   await pull(store);
   expect(offsets).toEqual([3]);
-  expect(setup!.captureCharFrame()).toContain("items=2 more=false");
+  expect(tui.frame()).toContain("items=2 more=false");
 
   // Nothing left to ask for, so another pull is a no-op.
   await pull(store);
@@ -87,11 +82,11 @@ test("a new first response drops the pages appended to the old one", async () =>
   const store = createScene({ requestKey: "a", firstCount: 1, total: 10, pulls: 0 });
   await mount(store, loadPage);
   await pull(store);
-  expect(setup!.captureCharFrame()).toContain("items=1 more=true");
+  expect(tui.frame()).toContain("items=1 more=true");
 
   await act(async () => { store.set({ requestKey: "b" }); });
   await frames();
-  expect(setup!.captureCharFrame()).toContain("items=0 more=true");
+  expect(tui.frame()).toContain("items=0 more=true");
 });
 
 test("an empty page ends the list even when the total says otherwise", async () => {
@@ -99,5 +94,5 @@ test("an empty page ends the list even when the total says otherwise", async () 
   const store = createScene({ requestKey: "a", firstCount: 1, total: 10, pulls: 0 });
   await mount(store, loadPage);
   await pull(store);
-  expect(setup!.captureCharFrame()).toContain("items=0 more=false");
+  expect(tui.frame()).toContain("items=0 more=false");
 });

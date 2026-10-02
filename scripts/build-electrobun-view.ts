@@ -3,7 +3,7 @@ import { join } from "path";
 import {
   electrobunViewPath,
   writeElectrobunViewPage,
-} from "../src/renderers/electrobun/view/build-assets";
+} from "../src/renderers/dom/build-assets";
 
 const outdir = join(process.cwd(), "dist", "electrobun-view");
 
