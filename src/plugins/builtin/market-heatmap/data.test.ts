@@ -24,3 +24,21 @@ test("backend failures do not cache an empty success and later requests recover"
   expect((await fetchMarketHeatmap("us-equity")).fetchedAt).toBe(123);
   expect(api).toHaveBeenCalledTimes(2);
 });
+
+for (const staleLocation of ["envelope", "data"] as const) test(`retained ${staleLocation} status preserves the heatmap timestamp and rows`, async () => {
+  const asset = { symbol: "ACME", price: 100 } as any;
+  const response = { status: "partial" as const, stale: staleLocation === "envelope",
+    data: { universe: "us-equity" as const, source: "gloom" as const, fetchedAt: 123, stale: staleLocation === "data", assets: [asset] } };
+  const result = await fetchMarketHeatmap("us-equity", { cache: false }, { client: { getMarketHeatmap: async () => response } });
+  expect(result).toMatchObject({ stale: true, fetchedAt: 123, assets: [asset] });
+});
+
+test("mismatched universes and failed envelopes never become a usable cached board", async () => {
+  for (const response of [
+    { status: "success", data: { universe: "us-etf", assets: [] } },
+    { status: "retryable_error", data: { universe: "us-equity", assets: [] } },
+  ]) {
+    await expect(fetchMarketHeatmap("us-equity", { cache: false }, { client: { getMarketHeatmap: async () => response as any } }))
+      .rejects.toThrow("Market heatmap unavailable");
+  }
+});

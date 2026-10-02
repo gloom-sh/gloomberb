@@ -49,6 +49,7 @@ export interface MarketHeatmapAsset {
 }
 
 export interface MarketHeatmapResult {
+  stale?: boolean;
   universe: MarketHeatmapUniverseId;
   source: MarketHeatmapSource;
   fetchedAt: number;

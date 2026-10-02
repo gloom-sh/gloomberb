@@ -15,8 +15,9 @@ const memoryCache = new Map<string, { expiresAt: number; result: MarketHeatmapRe
 
 async function loadMarketHeatmap(universe: MarketHeatmapUniverseId, count: number, sources?: MarketHeatmapSources): Promise<MarketHeatmapResult> {
   const response = await (sources?.client ?? apiClient).getMarketHeatmap(universe, count);
-  if (!response.data || !Array.isArray(response.data.assets)) throw new Error("Market heatmap unavailable");
-  return { ...response.data, assets: response.data.assets.slice(0, count) };
+  if (!response.data || !Array.isArray(response.data.assets) || response.data.universe !== universe
+    || (response.status !== "success" && response.status !== "partial")) throw new Error("Market heatmap unavailable");
+  return { ...response.data, stale: response.stale === true || response.data.stale === true, assets: response.data.assets.slice(0, count) };
 }
 
 export async function fetchMarketHeatmap(

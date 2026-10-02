@@ -10,6 +10,7 @@ import {
   unavailableText,
   usePaneFooter,
   usePaneHeaderTabs,
+  usePaneStatusFooter,
   type MetricTreemapDirection,
   type MetricTreemapItem,
 } from "../../../components";
@@ -114,6 +115,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   // The first load starts before the effect runs; an empty board is not "no data".
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const fetchGenRef = useRef(0);
   const boardAssets = loadedUniverse === activeUniverse ? assets : NO_ASSETS;
@@ -190,6 +192,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
       setAssets(result.assets);
       setLoadedUniverse(universe);
       setLastUpdated(result.fetchedAt);
+      setStale(result.stale === true);
       // Selection is the user's; the effect below only fills it when it is gone.
     } catch {
       if (fetchGenRef.current !== gen) return;
@@ -315,6 +318,8 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
 
   const updated = useUpdatedAgo(loadedUniverse === activeUniverse ? lastUpdated : null);
   useAutoRefresh(lastUpdated, refresh);
+
+  usePaneStatusFooter({ registrationId: "market-heatmap-retained", stale: hasBoard && stale });
 
   usePaneFooter("market-heatmap", () => ({
     info: [
