@@ -161,6 +161,7 @@ describe("AlertsPane", () => {
       condition: "crosses",
       targetPrice: 310,
       createdAt: 1_700_000_000_000,
+      armedAt: expect.any(Number),
       status: "active",
     }]);
   });
