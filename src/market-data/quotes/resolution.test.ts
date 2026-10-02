@@ -14,7 +14,7 @@ describe("quote-resolution", () => {
     const contributions: QuoteContributionMap = {
       ibkr: { symbol: "PLTR", providerId: "ibkr", dataSource: "live", price: 166, mark: 166, lastTradePrice: 165.9,
         currency: "USD", change: 1, changePercent: 1, lastUpdated: now, lastTradeTime: now - 2000 },
-      yahoo: { symbol: "PLTR", providerId: "yahoo", dataSource: "delayed", price: 165, lastTradePrice: 164.9,
+      gloom: { symbol: "PLTR", providerId: "gloom", dataSource: "delayed", price: 165, lastTradePrice: 164.9,
         currency: "USD", change: 0, changePercent: 0, lastUpdated: now - 900000, lastTradeTime: now - 900000 },
     };
     expect(resolveCanonicalQuote(contributions, now).quote).toMatchObject({ price: 166, lastTradePrice: 165.9, lastTradeTime: now - 2000 });
@@ -53,9 +53,9 @@ describe("quote-resolution", () => {
         listingExchangeFullName: "NASDAQ",
         sessionConfidence: "unknown",
       },
-      yahoo: {
+      gloom: {
         symbol: "AMD",
-        providerId: "yahoo",
+        providerId: "gloom",
         dataSource: "delayed",
         price: 99.7,
         currency: "USD",
@@ -81,9 +81,9 @@ describe("quote-resolution", () => {
     expect(quote?.listingExchangeName).toBe("NASDAQ");
     expect(quote?.routingExchangeName).toBe("SMART");
     expect(quote?.provenance?.price?.providerId).toBe("ibkr");
-    expect(quote?.provenance?.session?.providerId).toBe("yahoo");
+    expect(quote?.provenance?.session?.providerId).toBe("gloom");
 
-    const streamed = upsertQuoteContributionMap({ yahoo: contributions.yahoo! }, contributions.ibkr!, { now });
+    const streamed = upsertQuoteContributionMap({ gloom: contributions.gloom! }, contributions.ibkr!, { now });
     expect(streamed.ibkr?.price).toBe(100);
     expect(resolveCanonicalQuote(streamed, now).quote).toMatchObject({ price: 100, marketState: "PRE", preMarketPrice: 101 });
   });
@@ -91,12 +91,12 @@ describe("quote-resolution", () => {
   test("admits incomplete price contributions only from the current extended session", () => {
     for (const [nowIso, marketState] of [["2026-09-14T11:00:00Z", "PRE"], ["2026-09-14T22:00:00Z", "POST"]] as const) {
       const now = Date.parse(nowIso);
-      const yahoo = { symbol: "AMD", providerId: "yahoo", price: 99, currency: "USD", change: 0, changePercent: 0,
+      const gloom = { symbol: "AMD", providerId: "gloom", price: 99, currency: "USD", change: 0, changePercent: 0,
         lastUpdated: now - 60_000, listingExchangeName: "NASDAQ", marketState,
         ...(marketState === "PRE" ? { preMarketPrice: 101 } : { postMarketPrice: 102 }) };
-      const ibkr = { ...yahoo, providerId: "ibkr", dataSource: "live" as const, price: 100,
+      const ibkr = { ...gloom, providerId: "ibkr", dataSource: "live" as const, price: 100,
         marketState: undefined, preMarketPrice: undefined, postMarketPrice: undefined };
-      const good = resolveCanonicalQuote({ yahoo, ibkr }, now).quote;
+      const good = resolveCanonicalQuote({ gloom, ibkr }, now).quote;
       expect(good).toMatchObject({ price: 100, marketState });
       for (const overrides of [
         { stale: true }, { lastUpdated: now - 86_400_000 }, { lastUpdated: NaN }, { lastUpdated: Infinity },
@@ -105,8 +105,8 @@ describe("quote-resolution", () => {
         { marketState: marketState === "PRE" ? "POST" as const : "PRE" as const, preMarketPrice: 101, postMarketPrice: 102 },
       ]) {
         const rejected = { ...ibkr, ...overrides };
-        expect(resolveCanonicalQuote({ yahoo, ibkr: rejected }, now).quote?.price).toBe(99);
-        expect(upsertQuoteContributionMap({ yahoo }, rejected, { now }).ibkr).toBeUndefined();
+        expect(resolveCanonicalQuote({ gloom, ibkr: rejected }, now).quote?.price).toBe(99);
+        expect(upsertQuoteContributionMap({ gloom }, rejected, { now }).ibkr).toBeUndefined();
       }
       // Price-only contributions remain useful as retained data; they cannot
       // establish a complete current-session quote without session metadata.
@@ -132,9 +132,9 @@ describe("quote-resolution", () => {
         routingExchangeName: "SMART",
         sessionConfidence: "unknown",
       },
-      yahoo: {
+      gloom: {
         symbol: "VICR",
-        providerId: "yahoo",
+        providerId: "gloom",
         dataSource: "delayed",
         price: 299.74,
         currency: "USD",
@@ -156,7 +156,7 @@ describe("quote-resolution", () => {
     expect(quote?.change).toBeCloseTo(16.85, 10);
     expect(quote?.changePercent).toBeCloseTo((16.85 / 282.95) * 100, 10);
     expect(quote?.provenance?.price?.providerId).toBe("ibkr");
-    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("gloom");
   });
 
   test("prefers fresher/provider-ranked non-live price candidates", () => {
@@ -185,9 +185,9 @@ describe("quote-resolution", () => {
             routingExchangeName: "SMART",
             sessionConfidence: "unknown",
           },
-          yahoo: {
+          gloom: {
             symbol: "LPK.DE",
-            providerId: "yahoo",
+            providerId: "gloom",
             dataSource: "delayed",
             price: 17.85,
             currency: "EUR",
@@ -200,7 +200,7 @@ describe("quote-resolution", () => {
             sessionConfidence: "derived",
           },
         },
-        expectedProvider: "yahoo",
+        expectedProvider: "gloom",
         expectedPrice: 17.85,
         expectedChangePercent: ((17.85 - 19.6) / 19.6) * 100,
         expectedRoute: "SMART",
@@ -221,9 +221,9 @@ describe("quote-resolution", () => {
             marketState: "REGULAR",
             sessionConfidence: "derived",
           },
-          yahoo: {
+          gloom: {
             symbol: "3HNX.L",
-            providerId: "yahoo",
+            providerId: "gloom",
             dataSource: "delayed",
             price: 5.9775,
             currency: "GBP",
@@ -236,7 +236,7 @@ describe("quote-resolution", () => {
             sessionConfidence: "derived",
           },
         },
-        expectedProvider: "yahoo",
+        expectedProvider: "gloom",
         expectedPrice: 5.9775,
       },
     ];
@@ -255,7 +255,7 @@ describe("quote-resolution", () => {
     }
   });
 
-  test("prefers yahoo day reference fields over stale cloud previous close data", () => {
+  test("prefers gloom day reference fields over stale cloud previous close data", () => {
     const now = Date.parse("2026-07-06T15:45:00Z");
     const contributions: QuoteContributionMap = {
       "gloomberb-cloud": {
@@ -272,9 +272,9 @@ describe("quote-resolution", () => {
         marketState: "REGULAR",
         sessionConfidence: "derived",
       },
-      yahoo: {
+      gloom: {
         symbol: "VICR",
-        providerId: "yahoo",
+        providerId: "gloom",
         dataSource: "delayed",
         price: 297.9,
         currency: "USD",
@@ -296,10 +296,10 @@ describe("quote-resolution", () => {
     expect(quote?.change).toBeCloseTo(16.85, 10);
     expect(quote?.changePercent).toBeCloseTo((16.85 / 282.95) * 100, 10);
     expect(quote?.provenance?.price?.providerId).toBe("gloomberb-cloud");
-    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("gloom");
   });
 
-  test("prefers cloud session data over yahoo when confidence is tied", () => {
+  test("prefers cloud session data over gloom when confidence is tied", () => {
     const now = Date.parse("2026-04-08T11:00:00Z");
     const contributions: QuoteContributionMap = {
       "gloomberb-cloud": {
@@ -316,9 +316,9 @@ describe("quote-resolution", () => {
         sessionConfidence: "derived",
         preMarketPrice: 89,
       },
-      yahoo: {
+      gloom: {
         symbol: "ELF",
-        providerId: "yahoo",
+        providerId: "gloom",
         dataSource: "delayed",
         price: 87.5,
         currency: "USD",
@@ -339,7 +339,7 @@ describe("quote-resolution", () => {
     expect(quote?.provenance?.session?.providerId).toBe("gloomberb-cloud");
   });
 
-  test("prefers yahoo extended-hours session data when cloud premarket lacks an active-session price", () => {
+  test("prefers gloom extended-hours session data when cloud premarket lacks an active-session price", () => {
     const now = Date.parse("2026-04-08T11:00:00Z");
     const contributions: QuoteContributionMap = {
       "gloomberb-cloud": {
@@ -355,9 +355,9 @@ describe("quote-resolution", () => {
         marketState: "PRE",
         sessionConfidence: "derived",
       },
-      yahoo: {
+      gloom: {
         symbol: "AMD",
-        providerId: "yahoo",
+        providerId: "gloom",
         dataSource: "delayed",
         price: 221.53,
         currency: "USD",
@@ -378,8 +378,8 @@ describe("quote-resolution", () => {
     expect(quote?.marketState).toBe("PRE");
     expect(quote?.preMarketPrice).toBe(231.7);
     expect(quote?.preMarketChangePercent).toBe(4.59);
-    expect(quote?.provenance?.session?.providerId).toBe("yahoo");
-    expect(quote?.provenance?.fields?.preMarketPrice?.providerId).toBe("yahoo");
+    expect(quote?.provenance?.session?.providerId).toBe("gloom");
+    expect(quote?.provenance?.fields?.preMarketPrice?.providerId).toBe("gloom");
   });
 
   test("does not fabricate delayed derived premarket prices from the regular last trade", () => {
@@ -447,7 +447,7 @@ describe("quote-resolution", () => {
     });
   });
 
-  test("ignores stale cloud price contributions when a fresh yahoo quote exists", () => {
+  test("ignores stale cloud price contributions when a fresh gloom quote exists", () => {
     const now = Date.parse("2026-04-08T10:30:00Z");
     const contributions: QuoteContributionMap = {
       "gloomberb-cloud": {
@@ -463,9 +463,9 @@ describe("quote-resolution", () => {
         marketState: "REGULAR",
         sessionConfidence: "explicit",
       },
-      yahoo: {
+      gloom: {
         symbol: "HY9H",
-        providerId: "yahoo",
+        providerId: "gloom",
         dataSource: "delayed",
         price: 598,
         currency: "EUR",
@@ -481,16 +481,16 @@ describe("quote-resolution", () => {
     const quote = resolveCanonicalQuote(contributions, now).quote;
 
     expect(quote?.price).toBe(598);
-    expect(quote?.providerId).toBe("yahoo");
-    expect(quote?.provenance?.price?.providerId).toBe("yahoo");
+    expect(quote?.providerId).toBe("gloom");
+    expect(quote?.provenance?.price?.providerId).toBe("gloom");
   });
 
   test("rejects an incoming stale cloud contribution when a fresh quote already exists", () => {
     const now = Date.parse("2026-04-08T10:30:00Z");
     const current: QuoteContributionMap = {
-      yahoo: {
+      gloom: {
         symbol: "HY9H",
-        providerId: "yahoo",
+        providerId: "gloom",
         dataSource: "delayed",
         price: 598,
         currency: "EUR",
@@ -598,7 +598,7 @@ test("a current live price outranks a delayed one stamped later, but a stale liv
   const common = { symbol: "AAPL", currency: "USD", change: 0, changePercent: 0, listingExchangeName: "NASDAQ", marketState: "REGULAR" as const };
   const contributions: QuoteContributionMap = {
     "gloomberb-cloud": { ...common, providerId: "gloomberb-cloud", dataSource: "live", price: 231.4, lastUpdated: now - 30_000 },
-    yahoo: { ...common, providerId: "yahoo", dataSource: "delayed", price: 229.9, lastUpdated: now - 5_000 },
+    gloom: { ...common, providerId: "gloom", dataSource: "delayed", price: 229.9, lastUpdated: now - 5_000 },
   };
   expect(resolveCanonicalQuote(contributions, now).quote?.price).toBe(231.4);
 

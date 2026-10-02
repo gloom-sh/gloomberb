@@ -40,7 +40,7 @@
 在 **macOS（Apple Silicon）** 上：
 
 ```bash
-brew install --cask vincelwt/tap/gloomberb
+brew install --cask gloomberb
 ```
 
 在 **Windows 11** 上，[下载安装程序](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)。支持 x64，也可通过 x64 仿真在 ARM64 上运行。

@@ -8,7 +8,7 @@ export type FuturesSector =
   | "currencies";
 
 export interface FuturesContract {
-  /** Yahoo continuous front-month symbol. */
+  /** Continuous front-month symbol. */
   symbol: string;
   /** Exchange code traders quote, e.g. ES. */
   code: string;
@@ -21,7 +21,7 @@ export interface FuturesContract {
    * 32nd-based ticks (down to 1/256) do not map to a readable decimal count.
    */
   tick?: number;
-  /** Exchange suffix of the root's listed contracts on Yahoo: CLZ26.NYM. */
+  /** Exchange suffix of the root's listed contracts: CLZ26.NYM. */
   venue: "CME" | "CBT" | "NYM" | "CMX" | "NYB";
   /** Lists a contract for every calendar month. */
   everyMonth?: true;
@@ -36,7 +36,7 @@ export function tickDecimals(tick: number): number {
 
 /**
  * Front-month continuous contracts, every one confirmed to resolve through the
- * Yahoo provider. `DX=F` is deliberately absent: Yahoo 404s it, and the dollar
+ * market backend. `DX=F` is unavailable, and the dollar
  * index is already on the world indices board as `DX-Y.NYB`.
  */
 export const FUTURES_CONTRACTS: FuturesContract[] = [

@@ -35,7 +35,8 @@ function BrokerConfigFieldEditor({
 }: {
   field: BrokerConfigField;
   draft: BrokerProfileDraft;
-  previous: BrokerInstanceConfig;
+  /** The profile being edited; none while adding one. */
+  previous: BrokerInstanceConfig | null;
   adapter: BrokerAdapter;
   focused: boolean;
   width: number;
@@ -46,7 +47,7 @@ function BrokerConfigFieldEditor({
   onSubmit: () => void;
 }) {
   const value = draft.values[field.key] ?? "";
-  const previousPassword = field.type === "password"
+  const previousPassword = field.type === "password" && previous
     ? String(((adapter.toConfigValues?.(previous) ?? previous.config)[field.key] ?? "") || "")
     : "";
 
@@ -77,7 +78,8 @@ function BrokerConfigFieldEditor({
         width={width}
         type={field.type === "password" ? "password" : "text"}
         placeholder={field.type === "password" && previousPassword ? t(PRESERVED_PASSWORD_HINT) : field.placeholder ? t(field.placeholder) : undefined}
-        hint={field.placeholder ? t(field.placeholder) : undefined}
+        // The placeholder already says it; a stored password's placeholder says "unchanged" instead.
+        hint={field.type === "password" && previousPassword && field.placeholder ? t(field.placeholder) : undefined}
         onChange={(nextValue) => onChange(field.key, nextValue)}
         onSubmit={onSubmit}
       />
@@ -92,6 +94,110 @@ function accountDetail(account: BrokerAccount): string {
     account.buyingPower != null ? tf("{value} buying power", { value: formatCurrency(account.buyingPower, account.currency || "USD") }) : null,
   ];
   return parts.filter(Boolean).join(" · ");
+}
+
+/**
+ * A broker profile's fields and the buttons that save them: editing a profile
+ * (with its Enabled switch) or adding one (Connect). Enter saves, Esc cancels.
+ */
+export function BrokerProfileForm({
+  adapter,
+  draft,
+  fields,
+  previous,
+  activeKey,
+  busy,
+  width,
+  scope,
+  paneFocused,
+  submitLabel,
+  rowRef,
+  onActiveKeyChange,
+  onLabelChange,
+  onEnabledChange,
+  onValueChange,
+  onSubmit,
+  onCancel,
+}: {
+  adapter: BrokerAdapter;
+  draft: BrokerProfileDraft;
+  fields: BrokerConfigField[];
+  previous: BrokerInstanceConfig | null;
+  activeKey: BrokerEditKey;
+  busy: string | null;
+  /** Columns a text field may take. */
+  width: number;
+  /** The form's shortcut scope, shared with the pane's field ring. */
+  scope: string;
+  /** The form's fields take keys only while the pane has the keyboard. */
+  paneFocused: boolean;
+  submitLabel: string;
+  /** Each field's outer box, for the form's field ring to scroll into view. */
+  rowRef: (key: BrokerEditKey) => RowRef;
+  onActiveKeyChange: (key: BrokerEditKey) => void;
+  onLabelChange: (label: string) => void;
+  /** Editing only: a new profile starts enabled. */
+  onEnabledChange?: (enabled: boolean) => void;
+  onValueChange: (key: string, value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <>
+      <Box ref={rowRef("label")} onMouseDown={() => onActiveKeyChange("label")}>
+        <TextField
+          label={t("Profile Label")}
+          active={activeKey === "label"}
+          value={draft.label}
+          focused={paneFocused && activeKey === "label"}
+          width={width}
+          onChange={onLabelChange}
+          onSubmit={onSubmit}
+        />
+      </Box>
+      {onEnabledChange && (
+        <Box ref={rowRef("enabled")} flexDirection="column" onMouseDown={() => onActiveKeyChange("enabled")}>
+          <FieldLabel label={t("Enabled")} active={activeKey === "enabled"} />
+          <SegmentedControl
+            value={draft.enabled ? "yes" : "no"}
+            focused={paneFocused && activeKey === "enabled"}
+            options={[
+              { label: t("Enabled"), value: "yes" },
+              { label: t("Disabled"), value: "no" },
+            ]}
+            onChange={(value) => onEnabledChange(value === "yes")}
+            allowEditable
+            shortcutScope={scope}
+          />
+        </Box>
+      )}
+      {fields.map((field) => (
+        <BrokerConfigFieldEditor
+          key={field.key}
+          field={field}
+          draft={draft}
+          previous={previous}
+          adapter={adapter}
+          focused={paneFocused && activeKey === field.key}
+          width={width}
+          scope={scope}
+          rowRef={rowRef(field.key)}
+          onFocus={() => onActiveKeyChange(field.key)}
+          onChange={onValueChange}
+          onSubmit={onSubmit}
+        />
+      ))}
+      <Box flexDirection="row" gap={1}>
+        <Button label={submitLabel} shortcut="Enter" variant="primary" onPress={onSubmit} disabled={!!busy} />
+        <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={onCancel} disabled={!!busy} />
+      </Box>
+    </>
+  );
+}
+
+/** Never wider than the pane, so a narrow floating pane shrinks a field instead of clipping it. */
+export function profileFieldWidth(width: number): number {
+  return Math.max(12, Math.min(34, width - 2));
 }
 
 export function BrokerDetailContent({
@@ -149,8 +255,6 @@ export function BrokerDetailContent({
 
   if (!row) return <Box flexGrow={1} />;
 
-  // Never wider than the detail pane, so a narrow floating pane shrinks instead of clipping.
-  const fieldWidth = Math.max(12, Math.min(34, width - 2));
   // A failed action outranks the profile's own status until the next action.
   const actionError = message?.tone === "error" ? message.text : null;
   const detailStatusMessage = actionError ?? (row.message || t("No status message."));
@@ -180,51 +284,25 @@ export function BrokerDetailContent({
         {editDraft && editAdapter ? (
           <Box flexDirection="column" gap={1}>
             <SectionHeading title="Edit Profile" />
-            <Box ref={rowRef("label")} onMouseDown={() => onActiveEditKeyChange("label")}>
-              <TextField
-                label={t("Profile Label")}
-                active={activeEditKey === "label"}
-                value={editDraft.label}
-                focused={paneFocused && activeEditKey === "label"}
-                width={fieldWidth}
-                onChange={onDraftLabelChange}
-                onSubmit={onSaveEdit}
-              />
-            </Box>
-            <Box ref={rowRef("enabled")} flexDirection="column" onMouseDown={() => onActiveEditKeyChange("enabled")}>
-              <FieldLabel label={t("Enabled")} active={activeEditKey === "enabled"} />
-              <SegmentedControl
-                value={editDraft.enabled ? "yes" : "no"}
-                focused={paneFocused && activeEditKey === "enabled"}
-                options={[
-                  { label: t("Enabled"), value: "yes" },
-                  { label: t("Disabled"), value: "no" },
-                ]}
-                onChange={(value) => onDraftEnabledChange(value === "yes")}
-                allowEditable
-                shortcutScope={editScope}
-              />
-            </Box>
-            {editFields.map((field) => (
-              <BrokerConfigFieldEditor
-                key={field.key}
-                field={field}
-                draft={editDraft}
-                previous={row.instance}
-                adapter={editAdapter}
-                focused={paneFocused && activeEditKey === field.key}
-                width={fieldWidth}
-                scope={editScope}
-                rowRef={rowRef(field.key)}
-                onFocus={() => onActiveEditKeyChange(field.key)}
-                onChange={onDraftValueChange}
-                onSubmit={onSaveEdit}
-              />
-            ))}
-            <Box flexDirection="row" gap={1}>
-              <Button label={t("Save")} shortcut="Enter" variant="primary" onPress={onSaveEdit} disabled={!!busy} />
-              <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={onCancelEdit} disabled={!!busy} />
-            </Box>
+            <BrokerProfileForm
+              adapter={editAdapter}
+              draft={editDraft}
+              fields={editFields}
+              previous={row.instance}
+              activeKey={activeEditKey}
+              busy={busy}
+              width={profileFieldWidth(width)}
+              scope={editScope}
+              paneFocused={paneFocused}
+              submitLabel={t("Save")}
+              rowRef={rowRef}
+              onActiveKeyChange={onActiveEditKeyChange}
+              onLabelChange={onDraftLabelChange}
+              onEnabledChange={onDraftEnabledChange}
+              onValueChange={onDraftValueChange}
+              onSubmit={onSaveEdit}
+              onCancel={onCancelEdit}
+            />
           </Box>
         ) : (
           // Edit, test, sync, open and disconnect are the footer's e, c, s, o and d.

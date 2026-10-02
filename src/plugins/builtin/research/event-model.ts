@@ -244,7 +244,7 @@ function reportedPeriodTimes(
 }
 
 /**
- * Yahoo can keep serving a reported quarter as "0q" until its trend rolls
+ * An upstream snapshot can keep serving a reported quarter as "0q" until its trend rolls
  * (REF and ORCL in Sep 2026), so that consensus describes a past period.
  */
 function isReportedQuarter(periodEnd: string, reportedPeriodEnds: readonly number[]): boolean {

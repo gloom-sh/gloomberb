@@ -2,7 +2,7 @@ import type {
   TickerSearchInstrumentClass,
   TickerSearchRankableItem,
 } from "./types";
-import { getYahooSymbol, tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
+import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
@@ -112,7 +112,7 @@ export function isCryptoInstrumentType(type?: string): boolean {
 
 function isQualifiedTickerQuery(query: string): boolean {
   const symbol = normalizeTickerSymbol(query);
-  return isExplicitMarketSymbol(symbol) || !!parsePublicTickerKey(symbol).exchange || tickerHasYahooSuffix(symbol);
+  return isExplicitMarketSymbol(symbol) || !!parsePublicTickerKey(symbol).exchange || tickerHasListingSuffix(symbol);
 }
 
 /** Futures, currency pairs, and indices use punctuation as part of their identity. */
@@ -151,7 +151,7 @@ function matchesQualifiedTicker(
     const pair = forexPair(requested.symbol);
     return candidate.symbol === requested.symbol || (pair != null && forexPair(candidate.symbol) === pair);
   }
-  return exchanges.some((exchange) => getYahooSymbol(candidate.symbol, exchange).toUpperCase() === normalized);
+  return exchanges.some((exchange) => getListingSymbol(candidate.symbol, exchange).toUpperCase() === normalized);
 }
 
 function getTickerSearchListingKey(item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>): string {
@@ -335,7 +335,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       if (aSynthetic !== bSynthetic) return aSynthetic ? 1 : -1;
       // A company searched by name leads with its home listing when the
       // provider types the other line as a receipt. An exact ticker search
-      // (ASML) keeps provider order, and untyped ADRs (Yahoo's TM) cannot be
+      // (ASML) keeps provider order, and untyped ADRs (Gloom's TM) cannot be
       // told apart from a second home listing, so they stay in provider order.
       if (a.nameOnly && b.nameOnly) {
         const aReceipt = isDepositaryReceiptType(a.item.instrumentType);

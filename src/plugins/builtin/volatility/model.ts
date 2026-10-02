@@ -29,7 +29,7 @@ const VOLATILITY_BOARD_INDICES = [
   { id: "vxgog", symbol: "^VXGOG", label: "Alphabet" },
   { id: "vxgs", symbol: "^VXGS", label: "Goldman Sachs" },
   { id: "vxibm", symbol: "^VXIBM", label: "IBM" },
-  // CBOE S&P 500 implied correlation: daily closes come from Cloud (CBOE history), not Yahoo's single print.
+  // CBOE S&P 500 implied correlation: daily closes use CBOE history from the market backend.
   { id: "cor1m", symbol: "^COR1M", label: "S&P 500 corr 1M" },
   { id: "cor3m", symbol: "^COR3M", label: "S&P 500 corr 3M" },
 ] as const;

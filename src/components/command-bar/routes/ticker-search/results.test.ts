@@ -105,7 +105,7 @@ test("folds a plain query's symbol hits into one capped Instruments section behi
  * mutual fund, and an unclassified instrument gets no tag rather than a stand-in.
  */
 test("names the instrument class for the badge column", () => {
-  const search = (type: string) => ({ providerId: "yahoo", symbol: "X", name: "X", exchange: "NYQ", type });
+  const search = (type: string) => ({ providerId: "gloom", symbol: "X", name: "X", exchange: "NYQ", type });
   expect(formatInstrumentBadge({ instrumentClass: "equity" })).toBe("EQ");
   expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("ETF") })).toBe("ETF");
   expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("ETN") })).toBe("ETF");

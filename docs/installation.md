@@ -7,12 +7,12 @@
 Install the desktop app and the `gloomberb` terminal command:
 
 ```bash
-brew install --cask vincelwt/tap/gloomberb
+brew install --cask gloomberb
 # or
 curl -fsSL gloom.sh/install | bash
 ```
 
-Both install `Gloomberb.app` and a `gloomberb` command that runs the TUI through the app bundle, so the bundled runtime is stored once.
+The cask is in Homebrew itself; `vincelwt/tap/gloomberb`, the older tap, installs the same app. Both routes install `Gloomberb.app` and a `gloomberb` command that runs the TUI through the app bundle, so the bundled runtime is stored once.
 
 `Gloomberb.app` is Apple Silicon (arm64) only. On an Intel Mac the install script installs the standalone `gloomberb` terminal app instead, and the Homebrew cask refuses to install rather than leaving an app that cannot launch.
 

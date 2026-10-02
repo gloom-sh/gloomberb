@@ -17,7 +17,7 @@ const nullableTime = (value: unknown) => value === null || timestamp(value);
 const conditions = (value: unknown) => Array.isArray(value) && value.every(text);
 
 export function validateTape(data: TapeSnapshot, symbol: string, exchange: string): TapeSnapshot {
-  if (!data || data.source !== "Alpaca" || data.symbol !== normalizeSymbol(symbol) || canonicalExchange(data.exchange) !== canonicalExchange(exchange)
+  if (!data || !text(data.source) || !data.source.trim() || data.symbol !== normalizeSymbol(symbol) || canonicalExchange(data.exchange) !== canonicalExchange(exchange)
     || !timestamp(data.generatedAt) || !nullableTime(data.asOf) || !nullableTime(data.observedFrom)
     || !["available", "partial", "unavailable"].includes(data.status)
     || !Array.isArray(data.gaps) || !data.gaps.every(text) || typeof data.connected !== "boolean"
@@ -52,8 +52,8 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
     || (data.session.date === null) !== (data.session.asOf === null) || data.session.high !== null && !positive(data.session.high)
     || data.session.low !== null && !positive(data.session.low)
     || data.session.high != null && data.session.low != null && data.session.low > data.session.high) throw new Error("The server returned invalid session context");
-  // Normalize only event ordering. Source prices, identities and nanoseconds survive.
-  return { ...data, trades: [...data.trades].sort((a, b) => tapeTimeKey(a.timestamp).localeCompare(tapeTimeKey(b.timestamp))),
+  // Public attribution is stable across backend versions; event prices, identities and nanoseconds survive.
+  return { ...data, source: "Gloom Cloud", trades: [...data.trades].sort((a, b) => tapeTimeKey(a.timestamp).localeCompare(tapeTimeKey(b.timestamp))),
     quotes: [...data.quotes].sort((a, b) => tapeTimeKey(a.timestamp).localeCompare(tapeTimeKey(b.timestamp))) };
 }
 export async function fetchTape(symbol: string, exchange: string, signal?: AbortSignal,

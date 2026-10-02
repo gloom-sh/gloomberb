@@ -13,6 +13,7 @@ import {
 } from "../../../../theme/colors";
 import { clampFontSize, MIN_FONT_SIZE_PX } from "../../../../theme/font-scale";
 import type { AppAction, AppState } from "../../../../state/app/context";
+import { openBrokerAddFlow } from "../../../../plugins/builtin/broker-manager/add-request";
 import { isManualPortfolio } from "../../../../plugins/builtin/portfolio-list/mutations";
 import { CHART_RENDERER_PREFERENCES } from "../../../chart/core/types";
 import type { Command } from "../registry";
@@ -51,7 +52,7 @@ export function runDirectCommandAction(options: {
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string) => void;
-  openPaneSettingsRoute: (paneId: string) => void;
+  openPaneSettings: (paneId: string | null) => void;
   pluginRegistry: PluginRegistry;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pushRoute: (route: CommandBarRoute) => void;
@@ -76,7 +77,7 @@ export function runDirectCommandAction(options: {
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openPaneSettingsRoute,
+    openPaneSettings,
     persistConfig,
     pluginRegistry,
     pushRoute,
@@ -106,7 +107,7 @@ export function runDirectCommandAction(options: {
       pluginRegistry.showPane("layout-marketplace");
       return;
     case "pane-settings":
-      if (state.focusedPaneId) openPaneSettingsRoute(state.focusedPaneId);
+      openPaneSettings(state.focusedPaneId);
       return;
     case "window-mode":
       closeAll({ revertThemePreview: false });
@@ -118,6 +119,10 @@ export function runDirectCommandAction(options: {
       controlWindow(command.id === "minimize-window" ? "minimize" : "toggle-maximize");
       return;
     case "add-broker-account":
+      // Profiles are added in the Brokers pane.
+      closeAll({ revertThemePreview: false });
+      openBrokerAddFlow(pluginRegistry);
+      return;
     case "new-portfolio":
     case "new-watchlist":
     case "set-portfolio-position":
@@ -126,8 +131,7 @@ export function runDirectCommandAction(options: {
     case "delete-portfolio":
     case "reset-all-data":
       if (
-        command.id === "add-broker-account"
-        || command.id === "new-portfolio"
+        command.id === "new-portfolio"
         || command.id === "new-watchlist"
         || command.id === "set-portfolio-position"
       ) {

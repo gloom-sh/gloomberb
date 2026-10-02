@@ -52,7 +52,7 @@ test("calendar daily and weekly caches keep their established date-only normaliz
   const cached = [{ date: new Date("2026-09-21"), close: 100 }];
   try {
     for (const bar of ["1d", "1day", "1wk", "1week"]) store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "BTC-USD",
-      variantKey: `exchange=CCC;start=2026-09-21;end=2026-09-21;bar=${bar};version=6`, sourceKey: "provider:window-test" },
+      variantKey: `exchange=CCC;start=2026-09-21;end=2026-09-21;bar=${bar};version=7`, sourceKey: "provider:window-test" },
     { points: cached, resolution: bar.startsWith("1d") ? "1d" : "1wk" }, { cachePolicy: policy });
     const calls: string[] = [], router = new AssetDataRouter(source(calls), [], store.resources);
     for (const bar of ["1d", "1day", "1wk", "1week"]) {

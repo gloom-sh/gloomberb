@@ -1,307 +1,128 @@
-import type { YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
-
-// Relevant fields from captured Yahoo calendar/0q trend modules, 2026-09-12.
-// Display strings and unrelated modules omitted; provider values and currencies unchanged.
-export const recordedEarnings: Record<string, YahooQuoteSummaryResult> = {
+// Captured normalized responses preserve independently stated EPS and revenue units.
+export const recordedEarnings = {
   "SONY": {
-    "quoteType": {
-      "shortName": "Sony Group Corporation",
-      "longName": "Sony Group Corporation"
-    },
-    "calendarEvents": {
-      "earnings": {
-        "earningsDate": [
-          { "raw": 1793881800 }
-        ],
-        "earningsCallDate": [],
-        "isEarningsDateEstimate": false,
-        "earningsAverage": {},
-        "earningsLow": {},
-        "earningsHigh": {},
-        "revenueAverage": { "raw": 3148616803450 },
-        "revenueLow": { "raw": 3040688221520 },
-        "revenueHigh": { "raw": 3325900000000 }
+    "symbol": "SONY",
+    "earningsDate": "2026-11-05T12:30:00.000Z",
+    "earningsCallDate": null,
+    "epsEstimate": 0.33459,
+    "revenueEstimate": 3148616803450,
+    "estimateBasis": {
+      "epsEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 0.33459,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "USD",
+        "sourceCurrency": "USD"
+      },
+      "revenueEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 3148616803450,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "JPY",
+        "sourceCurrency": "JPY"
       }
-    },
-    "earningsTrend": {
-      "trend": [
-        {
-          "period": "0q",
-          "endDate": "2026-09-30",
-          "earningsEstimate": {
-            "avg": { "raw": 0.33459 },
-            "low": { "raw": 0.33459 },
-            "high": { "raw": 0.33459 },
-            "yearAgoEps": { "raw": 0.33591 },
-            "numberOfAnalysts": { "raw": 1 },
-            "growth": { "raw": -0.0039 },
-            "earningsCurrency": "USD"
-          },
-          "revenueEstimate": {
-            "avg": { "raw": 3148616803450 },
-            "low": { "raw": 3040688221520 },
-            "high": { "raw": 3325900000000 },
-            "numberOfAnalysts": { "raw": 10 },
-            "yearAgoRevenue": { "raw": 3107900000000 },
-            "growth": { "raw": 0.013099999 },
-            "revenueCurrency": "JPY"
-          },
-          "epsTrend": {
-            "current": { "raw": 0.33459 },
-            "7daysAgo": { "raw": 0.33459 },
-            "30daysAgo": { "raw": 0.33459 },
-            "epsTrendCurrency": "USD"
-          },
-          "epsRevisions": {
-            "upLast7days": { "raw": 0 },
-            "upLast30days": { "raw": 0 },
-            "downLast30days": { "raw": 1 },
-            "downLast7Days": { "raw": 1 }
-          }
-        }
-      ]
     }
   },
   "6758.T": {
-    "quoteType": {
-      "shortName": "SONY GROUP CORPORATION",
-      "longName": "Sony Group Corporation"
-    },
-    "calendarEvents": {
-      "earnings": {
-        "earningsDate": [
-          { "raw": 1793860200 }
-        ],
-        "earningsCallDate": [],
-        "isEarningsDateEstimate": false,
-        "earningsAverage": {},
-        "earningsLow": {},
-        "earningsHigh": {},
-        "revenueAverage": { "raw": 3148616803450 },
-        "revenueLow": { "raw": 3040688221520 },
-        "revenueHigh": { "raw": 3325900000000 }
+    "symbol": "6758.T",
+    "earningsDate": "2026-11-05T06:30:00.000Z",
+    "earningsCallDate": null,
+    "epsEstimate": 63.08788,
+    "revenueEstimate": 3148616803450,
+    "estimateBasis": {
+      "epsEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 63.08788,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "JPY",
+        "sourceCurrency": "JPY"
+      },
+      "revenueEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 3148616803450,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "JPY",
+        "sourceCurrency": "JPY"
       }
-    },
-    "earningsTrend": {
-      "trend": [
-        {
-          "period": "0q",
-          "endDate": "2026-09-30",
-          "earningsEstimate": {
-            "avg": { "raw": 63.08788 },
-            "low": { "raw": 56.6 },
-            "high": { "raw": 68.5 },
-            "yearAgoEps": { "raw": 60.43 },
-            "numberOfAnalysts": { "raw": 5 },
-            "growth": { "raw": 0.044 },
-            "earningsCurrency": "JPY"
-          },
-          "revenueEstimate": {
-            "avg": { "raw": 3148616803450 },
-            "low": { "raw": 3040688221520 },
-            "high": { "raw": 3325900000000 },
-            "numberOfAnalysts": { "raw": 10 },
-            "yearAgoRevenue": { "raw": 3107900000000 },
-            "growth": { "raw": 0.013099999 },
-            "revenueCurrency": "JPY"
-          },
-          "epsTrend": {
-            "current": { "raw": 63.08788 },
-            "7daysAgo": { "raw": 63.08788 },
-            "30daysAgo": { "raw": 63.08788 },
-            "epsTrendCurrency": "JPY"
-          },
-          "epsRevisions": {
-            "upLast7days": { "raw": 4 },
-            "upLast30days": { "raw": 5 },
-            "downLast30days": { "raw": 0 },
-            "downLast7Days": { "raw": 0 }
-          }
-        }
-      ]
     }
   },
   "BABA": {
-    "quoteType": {
-      "shortName": "Alibaba Group Holding Limited",
-      "longName": "Alibaba Group Holding Limited"
-    },
-    "calendarEvents": {
-      "earnings": {
-        "earningsDate": [
-          { "raw": 1795523400 }
-        ],
-        "earningsCallDate": [
-          { "raw": 1787225400 }
-        ],
-        "isEarningsDateEstimate": true,
-        "earningsAverage": { "raw": 10.97892 },
-        "earningsLow": { "raw": 8.59 },
-        "earningsHigh": { "raw": 15.46022 },
-        "revenueAverage": { "raw": 270450881010 },
-        "revenueLow": { "raw": 263355000000 },
-        "revenueHigh": { "raw": 279044566170 }
+    "symbol": "BABA",
+    "earningsDate": "2026-11-24T12:30:00.000Z",
+    "earningsCallDate": "2026-08-20T11:30:00.000Z",
+    "epsEstimate": 10.97892,
+    "revenueEstimate": 270450881010,
+    "estimateBasis": {
+      "epsEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 10.97892,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "CNY",
+        "sourceCurrency": "CNY"
+      },
+      "revenueEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 270450881010,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "CNY",
+        "sourceCurrency": "CNY"
       }
-    },
-    "earningsTrend": {
-      "trend": [
-        {
-          "period": "0q",
-          "endDate": "2026-09-30",
-          "earningsEstimate": {
-            "avg": { "raw": 10.97892 },
-            "low": { "raw": 8.59 },
-            "high": { "raw": 15.46022 },
-            "yearAgoEps": { "raw": 4.36 },
-            "numberOfAnalysts": { "raw": 17 },
-            "growth": { "raw": 1.5181 },
-            "earningsCurrency": "CNY"
-          },
-          "revenueEstimate": {
-            "avg": { "raw": 270450881010 },
-            "low": { "raw": 263355000000 },
-            "high": { "raw": 279044566170 },
-            "numberOfAnalysts": { "raw": 19 },
-            "yearAgoRevenue": { "raw": 247795000000 },
-            "growth": { "raw": 0.091400005 },
-            "revenueCurrency": "CNY"
-          },
-          "epsTrend": {
-            "current": { "raw": 10.97892 },
-            "7daysAgo": { "raw": 10.97892 },
-            "30daysAgo": { "raw": 9.84987 },
-            "epsTrendCurrency": "CNY"
-          },
-          "epsRevisions": {
-            "upLast7days": { "raw": 2 },
-            "upLast30days": { "raw": 11 },
-            "downLast30days": { "raw": 3 },
-            "downLast7Days": { "raw": 0 }
-          }
-        }
-      ]
     }
   },
   "9988.HK": {
-    "quoteType": {
-      "shortName": "BABA-W",
-      "longName": "Alibaba Group Holding Limited"
-    },
-    "calendarEvents": {
-      "earnings": {
-        "earningsDate": [
-          { "raw": 1795507800 }
-        ],
-        "earningsCallDate": [
-          { "raw": 1787225400 }
-        ],
-        "isEarningsDateEstimate": true,
-        "earningsAverage": { "raw": 1.47221 },
-        "earningsLow": { "raw": 1.29442 },
-        "earningsHigh": { "raw": 1.93253 },
-        "revenueAverage": { "raw": 270450881010 },
-        "revenueLow": { "raw": 263355000000 },
-        "revenueHigh": { "raw": 279044566170 }
+    "symbol": "9988.HK",
+    "earningsDate": "2026-11-24T08:10:00.000Z",
+    "earningsCallDate": "2026-08-20T11:30:00.000Z",
+    "epsEstimate": 1.47221,
+    "revenueEstimate": 270450881010,
+    "estimateBasis": {
+      "epsEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 1.47221,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "CNY",
+        "sourceCurrency": "CNY"
+      },
+      "revenueEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 270450881010,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "CNY",
+        "sourceCurrency": "CNY"
       }
-    },
-    "earningsTrend": {
-      "trend": [
-        {
-          "period": "0q",
-          "endDate": "2026-09-30",
-          "earningsEstimate": {
-            "avg": { "raw": 1.47221 },
-            "low": { "raw": 1.29442 },
-            "high": { "raw": 1.93253 },
-            "yearAgoEps": { "raw": 0.55 },
-            "numberOfAnalysts": { "raw": 5 },
-            "growth": { "raw": 1.6767 },
-            "earningsCurrency": "CNY"
-          },
-          "revenueEstimate": {
-            "avg": { "raw": 270450881010 },
-            "low": { "raw": 263355000000 },
-            "high": { "raw": 279044566170 },
-            "numberOfAnalysts": { "raw": 19 },
-            "yearAgoRevenue": { "raw": 247795000000 },
-            "growth": { "raw": 0.091400005 },
-            "revenueCurrency": "CNY"
-          },
-          "epsTrend": {
-            "current": { "raw": 1.47221 },
-            "7daysAgo": { "raw": 1.27619 },
-            "30daysAgo": { "raw": 1.27619 },
-            "epsTrendCurrency": "CNY"
-          },
-          "epsRevisions": {
-            "upLast7days": { "raw": 1 },
-            "upLast30days": { "raw": 4 },
-            "downLast30days": { "raw": 1 },
-            "downLast7Days": { "raw": 0 }
-          }
-        }
-      ]
     }
   },
   "AAPL": {
-    "quoteType": {
-      "shortName": "Apple Inc.",
-      "longName": "Apple Inc."
-    },
-    "calendarEvents": {
-      "earnings": {
-        "earningsDate": [
-          { "raw": 1793304000 }
-        ],
-        "earningsCallDate": [
-          { "raw": 1785441600 }
-        ],
-        "isEarningsDateEstimate": false,
-        "earningsAverage": { "raw": 1.98124 },
-        "earningsLow": { "raw": 1.93 },
-        "earningsHigh": { "raw": 2.07 },
-        "revenueAverage": { "raw": 113624521680 },
-        "revenueLow": { "raw": 112248100000 },
-        "revenueHigh": { "raw": 117219700000 }
+    "symbol": "AAPL",
+    "earningsDate": "2026-10-29T20:00:00.000Z",
+    "earningsCallDate": "2026-07-30T20:00:00.000Z",
+    "epsEstimate": 1.97754,
+    "revenueEstimate": 113624521680,
+    "estimateBasis": {
+      "epsEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 1.97754,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "USD",
+        "sourceCurrency": "USD"
+      },
+      "revenueEstimate": {
+        "source": "earningsTrend",
+        "sourceValue": 113624521680,
+        "period": "0q",
+        "periodEndDate": "2026-09-30",
+        "currency": "USD",
+        "sourceCurrency": "USD"
       }
-    },
-    "earningsTrend": {
-      "trend": [
-        {
-          "period": "0q",
-          "endDate": "2026-09-30",
-          "earningsEstimate": {
-            "avg": { "raw": 1.97754 },
-            "low": { "raw": 1.93 },
-            "high": { "raw": 2.07 },
-            "yearAgoEps": { "raw": 1.85 },
-            "numberOfAnalysts": { "raw": 27 },
-            "growth": { "raw": 0.0689 },
-            "earningsCurrency": "USD"
-          },
-          "revenueEstimate": {
-            "avg": { "raw": 113624521680 },
-            "low": { "raw": 112248100000 },
-            "high": { "raw": 117219700000 },
-            "numberOfAnalysts": { "raw": 27 },
-            "yearAgoRevenue": { "raw": 102466000000 },
-            "growth": { "raw": 0.1089 },
-            "revenueCurrency": "USD"
-          },
-          "epsTrend": {
-            "current": { "raw": 1.97754 },
-            "7daysAgo": { "raw": 1.97656 },
-            "30daysAgo": { "raw": 1.97656 },
-            "epsTrendCurrency": "USD"
-          },
-          "epsRevisions": {
-            "upLast7days": { "raw": 1 },
-            "upLast30days": { "raw": 7 },
-            "downLast30days": { "raw": 14 },
-            "downLast7Days": { "raw": 0 }
-          }
-        }
-      ]
     }
   }
 };

@@ -17,6 +17,8 @@ export interface ScenarioLeg {
   price: number;
   /** Decimal annualized volatility. */
   volatility: number;
+  /** "mid" when the IV was solved from the quote midpoint rather than taken from the provider. */
+  volatilitySource?: "mid";
   multiplier: number;
 }
 

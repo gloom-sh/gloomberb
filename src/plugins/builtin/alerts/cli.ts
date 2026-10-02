@@ -5,7 +5,7 @@ import { requireArg } from "../../../cli/commands/command-utils";
 import { saveConfig } from "../../../data/config/store";
 import type { CliCommandDef } from "../../../types/plugin";
 import { cliStyles } from "../../../utils/cli-output";
-import { createAlert, deserializeAlerts, serializeAlerts } from "./alert-engine";
+import { createAlert, deserializeAlerts, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY } from "./constants";
 import type { AlertCondition } from "./types";
 
@@ -81,7 +81,7 @@ export const alertsCliCommand: CliCommandDef = {
       }
       if (action === "rearm") {
         const id = requireArg(args[1], "Usage: gloomberb alerts rearm <id>", ctx);
-        const next = alerts.map((alert) => alert.id === id ? { ...alert, status: "active" as const, triggeredAt: undefined } : alert);
+        const next = alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert);
         await saveAlerts(next);
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, id } }, {
           text: (data) => alerts.some((alert) => alert.id === id)

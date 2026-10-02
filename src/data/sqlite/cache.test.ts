@@ -14,7 +14,7 @@ describe("AppPersistence", () => {
       namespace: "market",
       kind: "quote",
       entityKey: "AAPL",
-      sourceKey: "provider:yahoo",
+      sourceKey: "provider:gloom",
     }, {
       price: 123,
     }, {
@@ -27,7 +27,7 @@ describe("AppPersistence", () => {
       namespace: "market",
       kind: "quote",
       entityKey: "AAPL",
-      sourceKey: "provider:yahoo",
+      sourceKey: "provider:gloom",
     }, { allowExpired: true })?.value.price).toBe(123);
     const listed = persistence.resources.list<{ price: number }>({
       namespace: "market", kind: "quote", entityKey: "AAPL",
@@ -43,7 +43,7 @@ describe("AppPersistence", () => {
       namespace: "market",
       kind: "quote",
       entityKey: "AAPL",
-      sourceKey: "provider:yahoo",
+      sourceKey: "provider:gloom",
     };
 
     persistence.database.connection.exec("PRAGMA busy_timeout=1");

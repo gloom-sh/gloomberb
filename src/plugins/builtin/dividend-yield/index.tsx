@@ -3,31 +3,31 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   attachDividendYieldHealth,
   resetDividendYieldHealth,
-  YAHOO_DIVIDENDS_CONNECTION_ID,
+  DIVIDENDS_CONNECTION_ID,
 } from "./client";
 import { DividendYieldPane } from "./pane";
 import { dividendYieldHeadless } from "./headless";
 
-export function createDividendYieldModule({
+function createDividendYieldModule({
   component = DividendYieldPane,
   headless = dividendYieldHeadless,
-  yahooConnection = true,
+  marketConnection = true,
 }: {
   component?: typeof DividendYieldPane;
   headless?: typeof dividendYieldHeadless;
-  yahooConnection?: boolean;
+  marketConnection?: boolean;
 } = {}): PluginModule {
   let disposeConnection: (() => void) | null = null;
   return {
     setup(ctx) {
-      if (yahooConnection) {
+      if (marketConnection) {
         attachDividendYieldHealth(ctx.connectionHealth);
         disposeConnection = ctx.connectionHealth.registerSource({
-          id: YAHOO_DIVIDENDS_CONNECTION_ID,
-          name: "Yahoo Finance Dividends",
+          id: DIVIDENDS_CONNECTION_ID,
+          name: "Gloom Dividends",
           kind: "api",
           ownerId: "ticker-research",
-          detail: "finance.yahoo.com",
+          detail: "api.gloom.sh",
           priority: 300,
         });
       }
@@ -44,7 +44,7 @@ export function createDividendYieldModule({
     dispose() {
       disposeConnection?.();
       disposeConnection = null;
-      if (yahooConnection) resetDividendYieldHealth();
+      if (marketConnection) resetDividendYieldHealth();
     },
 
     panes: [

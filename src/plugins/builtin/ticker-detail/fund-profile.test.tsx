@@ -98,12 +98,12 @@ test("blank source type cannot hide retained fund classification while reports s
 test("quote-free reported capitalization retains source units, zero, and provenance without borrowing unknown units", async () => {
   for (const [marketCap, currency] of [[200_000_000, "GBP"], [0, "USD"], [200_000_000, undefined]] as const) {
     const financials: TickerFinancials = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
-      fundamentals: { marketCap, marketCapCurrency: currency, source: "yahoo", fetchedAt: "2026-09-11T14:00:00Z", stale: true },
+      fundamentals: { marketCap, marketCapCurrency: currency, source: "gloom", fetchedAt: "2026-09-11T14:00:00Z", stale: true },
     };
     const text = await buildTickerReport({ symbol: "CLASSA", tickerFile: ticker, financials, config, toBase: async () => Number.NaN });
     if (currency) {
       expect(text).toContain(currency === "GBP" ? "200M GBP" : "0 USD");
-      expect(text).toContain("yahoo fundamentals");
+      expect(text).toContain("gloom fundamentals");
       expect(text).toContain("stale; valuation date unavailable");
     } else expect(text).not.toContain("Market Cap");
     expect(text).toContain("Quote unavailable.");

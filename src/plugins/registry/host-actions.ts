@@ -37,7 +37,10 @@ export interface PluginHostActions {
   switchTab(tabId: string, paneId?: string): void;
   openCommandBar(query?: string): void;
   openPluginCommandWorkflow(commandId: string): void;
-  openPaneSettings(paneId?: string): void;
+  /** Opens one of the app's own forms, such as `new-portfolio`, or Add Broker in the Brokers pane. Not on the plugin API. */
+  openBuiltInWorkflow(actionId: string): void;
+  /** `options.fieldKey` starts the cursor on that setting, as a setting picked in the command bar does. */
+  openPaneSettings(paneId?: string, options?: { fieldKey?: string }): void;
   sharePane(paneId?: string): void;
   openWindowMode(paneId?: string, mode?: WindowEditMode): void;
   /** The shell's fullscreen toggle for a pane; false when there is nothing to fill the window with. */
@@ -87,6 +90,7 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
     switchTab: () => {},
     openCommandBar: () => {},
     openPluginCommandWorkflow: () => {},
+    openBuiltInWorkflow: () => {},
     openPaneSettings: () => {},
     sharePane: () => {},
     openWindowMode: () => {},
@@ -122,6 +126,7 @@ export const HOST_ACTION_NAMES = Object.keys(createDefaultHostActions()) as Read
 
 /** The host actions a plugin's panes reach through their render context. */
 const PLUGIN_RUNTIME_HOST_ACTIONS = [
+  "createBrokerInstance",
   "connectBrokerInstance",
   "updateBrokerInstance",
   "syncBrokerInstance",

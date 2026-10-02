@@ -22,7 +22,7 @@ export interface EstimateObservation {
   analysts: number | null;
   range: number | null;
   relativeRange: number | null;
-  source: "yahoo" | "yahoo-eps-trend";
+  source: "gloom" | "gloom-eps-trend";
 }
 interface RevisionBreadth {
   days: 7 | 30;

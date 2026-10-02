@@ -1,19 +1,24 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
-import { cacheRouterResource, FINANCIALS_SCHEMA_VERSION, listCachedResources, QUOTE_SCHEMA_VERSION } from "./cache";
+import { cacheRouterResource, FINANCIALS_SCHEMA_VERSION, listCachedResources, QUOTE_SCHEMA_VERSION, MARKET_METADATA_SCHEMA_VERSION } from "./cache";
 import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 afterEach(removeTempDbFiles);
 
-test("financials and quotes written under another schema version are misses until rewritten", () => {
+test("market resources written under another schema version are misses until rewritten", () => {
   const persistence = new AppPersistence(createTempDbPath("market-schema-gate"));
   const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
-  const key = { namespace: "market", entityKey: "MSFT", variantKey: "exchange=NASDAQ", sourceKey: "provider:yahoo" };
+  const key = { namespace: "market", entityKey: "MSFT", variantKey: "exchange=NASDAQ", sourceKey: "provider:gloom" };
   const financials = createTestFinancials({ annualStatements: [{ date: "2025-06-30", totalRevenue: 100 }] });
   const quote = createTestQuote({ symbol: "MSFT" });
   const read = (kind: string) => listCachedResources(persistence.resources, kind, "MSFT", [key.variantKey], [key.sourceKey], true);
-  for (const [kind, value, current] of [["financials", financials, FINANCIALS_SCHEMA_VERSION], ["quote", quote, QUOTE_SCHEMA_VERSION]] as const) {
+  const resources = [
+    ["financials", financials, FINANCIALS_SCHEMA_VERSION], ["quote", quote, QUOTE_SCHEMA_VERSION],
+    ...["holders", "analystResearch-v2", "corporateActions-v2", "options-chain", "exchange-rate"]
+      .map((kind) => [kind, { source: "gloom" }, MARKET_METADATA_SCHEMA_VERSION] as const),
+  ] as const;
+  for (const [kind, value, current] of resources) {
     for (const schemaVersion of [current - 1, current + 1]) {
       persistence.resources.set({ ...key, kind }, value, { cachePolicy, schemaVersion });
       expect(read(kind)).toEqual([]);
@@ -33,7 +38,7 @@ test("cloud yields without provenance refresh without discarding quotes, account
     fundamentals: { dividendYield: 0.16, revenue: 88775000064 }, profile: { description: "Nestle" },
     annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }] });
   // A new client can cache an old backend response during a rolling deploy.
-  for (const sourceKey of [key.sourceKey, "provider:yahoo"]) cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, sourceKey, old, cachePolicy);
+  for (const sourceKey of [key.sourceKey, "provider:gloom"]) cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, sourceKey, old, cachePolicy);
   const read = (sourceKey = key.sourceKey) => listCachedResources(persistence.resources, "financials", "NESN", [key.variantKey], [sourceKey], true)[0]!;
   const record = read(); const value = record.value as ReturnType<typeof createTestFinancials>;
   expect(record.stale).toBe(true);
@@ -41,8 +46,8 @@ test("cloud yields without provenance refresh without discarding quotes, account
   expect(value.quote).toEqual(old.quote);
   expect(value.annualStatements).toEqual(old.annualStatements);
   expect(value.fundamentals?.revenue).toBe(88775000064);
-  expect((read("provider:yahoo").value as ReturnType<typeof createTestFinancials>).fundamentals?.dividendYield).toBe(0.16);
-  const corrected = { ...old, fundamentals: { ...old.fundamentals, dividendYield: 0.0399, dividendYieldBasis: "forward" as const, dividendYieldSource: "yahoo" as const } };
+  expect((read("provider:gloom").value as ReturnType<typeof createTestFinancials>).fundamentals?.dividendYield).toBe(0.16);
+  const corrected = { ...old, fundamentals: { ...old.fundamentals, dividendYield: 0.0399, dividendYieldBasis: "forward" as const, dividendYieldSource: "gloom" as const } };
   cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, key.sourceKey, corrected, cachePolicy);
   expect(read().stale).toBe(false);
   expect(read().value).toEqual(corrected);

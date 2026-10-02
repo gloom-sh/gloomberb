@@ -130,6 +130,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       : this.capabilities.invoke<T>(capabilityId, operationId, payload, { renderer: true, signal: options.signal })
   );
   getBrokerAdapter = (brokerType: string) => this.contributions.brokersMap.get(brokerType) ?? null;
+  listBrokerAdapters = () => [...this.contributions.brokersMap.values()];
 
   constructor(
     marketData: DataProvider,

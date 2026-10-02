@@ -47,6 +47,8 @@ import {
   requirePaneInstance,
 } from "./layout-helpers";
 import { createRemoteResources } from "./resources";
+import { dismissTopmostDialog, isDialogOpen as isAnyDialogOpen } from "../ui/dialog-stack";
+import { findFormNode } from "./form";
 import { asRecord } from "../utils/guards";
 import { runAutomated } from "../telemetry/usage-counts";
 
@@ -57,9 +59,14 @@ interface AppRemoteControllerOptions {
   uiRegistry: RemoteUiRegistry | null;
   desktopWindowBridge?: DesktopWindowBridge;
   afterMutation?: () => Promise<void> | void;
+  /** Whether a dialog (a form, a confirm, pane settings) is open now. */
+  isDialogOpen?: () => boolean;
+  /** Closes the dialog on top as Esc would; false when none is open. */
+  closeTopmostDialog?: () => boolean;
 }
 
-const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar"];
+// A command with a wizard closes the bar and opens its form, so every call says whether one is open.
+const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar", "form"];
 const MAX_MARKET_DATA_SEARCH_RESULTS = 20;
 const MAX_MARKET_DATA_FILINGS = 20;
 const MAX_MARKET_DATA_EARNINGS_SYMBOLS = 25;
@@ -88,12 +95,15 @@ export function createAppRemoteController({
   uiRegistry,
   desktopWindowBridge,
   afterMutation = () => {},
+  isDialogOpen = isAnyDialogOpen,
+  closeTopmostDialog = dismissTopmostDialog,
 }: AppRemoteControllerOptions) {
   const { buildIncludedState, getResource, patchTarget } = createRemoteResources({
     dispatch,
     getState,
     pluginRegistry,
     uiRegistry,
+    isDialogOpen,
   });
 
   const getAfterMutationSummary = async (extra?: Record<string, unknown>): Promise<unknown> => {
@@ -206,6 +216,8 @@ export function createAppRemoteController({
   const openCommandBar = async (input: Record<string, unknown>): Promise<unknown> => {
     const mode = optionalString(input, "mode") ?? "command";
     const query = optionalString(input, "query") ?? "";
+    // The bar would open over the dialog without its keys.
+    if (isDialogOpen()) throw new Error("A dialog is open. Close it first with app.closeDialog.");
     if (getState().commandBarOpen) {
       dispatch({ type: "SET_COMMAND_BAR", open: false });
       await afterMutation();
@@ -264,7 +276,12 @@ export function createAppRemoteController({
     const index = optionalNumber(input, "index");
     const action = optionalString(input, "action") ?? "press";
     const metadataFilter = asRecord(input.metadata);
-    const candidates = (uiRegistry?.snapshot() ?? []).filter((node) => {
+    const nodes = uiRegistry?.snapshot() ?? [];
+    // A dialog over the form (a listing picker, a sign-in) keeps its controls
+    // out of reach, as it does from the mouse.
+    const formCovered = findFormNode(nodes)?.metadata?.covered === true;
+    const candidates = nodes.filter((node) => {
+      if (formCovered && node.metadata?.scope === "form") return false;
       if (role && node.role !== role) return false;
       if (label && node.label !== label && node.metadata?.item && typeof node.metadata.item === "object") {
         const item = node.metadata.item as Record<string, unknown>;
@@ -287,7 +304,11 @@ export function createAppRemoteController({
       if (node.disabled) return false;
       return true;
     });
-    const node = typeof index === "number" ? candidates[index] : candidates[0];
+    // An open form or confirm covers every pane, so its own controls come
+    // first: its Cancel, not a pane's Cancel behind it.
+    const inForm = candidates.filter((node) => node.metadata?.scope === "form");
+    const matches = inForm.length > 0 ? inForm : candidates;
+    const node = typeof index === "number" ? matches[index] : matches[0];
     if (!node) throw new Error("No matching semantic UI node is visible.");
     const result = await uiRegistry?.invoke(node.id, action, input.input);
     return getAfterMutationSummary({ invokedNode: node, result });
@@ -308,6 +329,9 @@ export function createAppRemoteController({
         return openCommandBar(input);
       case "app.closeCommandBar":
         dispatch({ type: "SET_COMMAND_BAR", open: false });
+        return getAfterMutationSummary();
+      case "app.closeDialog":
+        if (!closeTopmostDialog()) throw new Error("No dialog is open.");
         return getAfterMutationSummary();
       case "app.setCommandBarQuery":
         await setVisibleCommandBarQuery(stringInput(input, "query"));

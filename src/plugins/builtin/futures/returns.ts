@@ -11,7 +11,7 @@ export const NO_FUTURES_RETURNS: FuturesReturnValues = { "1W": null, "1M": null,
 const MONTH_CODES = "FGHJKMNQUVXZ";
 const DAY_MS = 86_400_000;
 
-/** Yahoo symbol of one listed contract: LEZ26.CME. */
+/** Gloom symbol of one listed contract: LEZ26.CME. */
 function listedContractSymbol(contract: FuturesContract, year: number, month: number): string {
   return `${contract.code}${MONTH_CODES[month]}${String(year % 100).padStart(2, "0")}.${contract.venue}`;
 }

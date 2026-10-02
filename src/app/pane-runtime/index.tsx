@@ -6,6 +6,7 @@ import {
   bringToFront,
   findDockLeaf,
   getDockedPaneIds,
+  isPaneDetached,
   isPaneInLayout,
 } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -52,6 +53,8 @@ interface AppPaneRuntimeArgs {
   dialog: DialogApi;
   dispatch: Dispatch<AppAction>;
   externalPlugins: readonly LoadedExternalPlugin[];
+  /** Desktop main window: raises a detached pane's own window. */
+  focusDetachedPane?: (paneId: string) => void;
   isDetachedWindow: boolean;
   notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
   persistConfig: (nextConfig: AppState["config"]) => void;
@@ -67,6 +70,7 @@ export function useAppPaneRuntime({
   dialog,
   dispatch,
   externalPlugins,
+  focusDetachedPane,
   isDetachedWindow,
   notify,
   persistConfig,
@@ -159,7 +163,9 @@ export function useAppPaneRuntime({
       persistLayout(nextLayout, { pushHistory: false });
     }
     activatePane(paneId);
-  }, [activatePane, persistLayout, state.config.layout]);
+    // Focus in this window's state alone would leave the pane's window behind this one.
+    if (isPaneDetached(nextLayout, paneId)) focusDetachedPane?.(paneId);
+  }, [activatePane, focusDetachedPane, persistLayout, state.config.layout]);
 
   const placePaneInstance = useCallback((
     instance: PaneInstanceConfig,
@@ -240,7 +246,6 @@ export function useAppPaneRuntime({
   const { createPaneFromTemplate } = useAppPaneTemplateRuntime({
     buildPaneInstance,
     dataProvider,
-    dialog,
     dispatch,
     notify,
     placePaneInstance,

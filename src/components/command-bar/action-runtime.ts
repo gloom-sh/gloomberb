@@ -2,7 +2,6 @@ import {
   useCallback,
   type Dispatch,
   type MutableRefObject,
-  type SetStateAction,
 } from "react";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -15,7 +14,7 @@ import { useCommandBarTickerSearchActions } from "./routes/ticker-search/actions
 import { useCommandBarPluginCommandActions } from "./commands/plugin/actions";
 import { useCommandBarPaneTemplateActions } from "./pane-templates/workflow";
 import { useCommandBarDirectCommandRuntime } from "./commands/direct/runtime";
-import { useCommandBarConfirmRoute } from "./routing/confirm";
+import { useCommandBarInlineConfirm } from "./routing/confirm";
 import { useCommandBarPaneActions } from "./pane-actions";
 import { useCommandBarWorkflowCoordinator } from "./workflow/coordinator";
 import { useCommandBarRouteActions } from "./routing/actions";
@@ -29,7 +28,6 @@ interface UseCommandBarActionRuntimeOptions {
   activeTickerSymbol: string | null;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   config: AppState["config"];
-  currentRoute: CommandBarRoute | null;
   dataProvider: DataProvider;
   dispatch: Dispatch<AppAction>;
   focusedPaneId: string | null;
@@ -40,14 +38,12 @@ interface UseCommandBarActionRuntimeOptions {
   quitApp: () => void;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
   setRootQuery: (query: string) => void;
-  setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   skipTickerSearchDebounceRef: MutableRefObject<boolean>;
   state: AppState;
   stateRef: MutableRefObject<AppState>;
   themePickerRef: MutableRefObject<ThemePickerHandle | null>;
   tickerRepository: AppTickerRepositoryPort;
   tickers: AppState["tickers"];
-  updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
 }
 
 export function useCommandBarActionRuntime({
@@ -57,7 +53,6 @@ export function useCommandBarActionRuntime({
   activeTickerSymbol,
   closeAll,
   config,
-  currentRoute,
   dataProvider,
   dispatch,
   focusedPaneId,
@@ -68,20 +63,17 @@ export function useCommandBarActionRuntime({
   quitApp,
   rootThemeBaseIdRef,
   setRootQuery,
-  setRouteStack,
   skipTickerSearchDebounceRef,
   state,
   stateRef,
   themePickerRef,
   tickerRepository,
   tickers,
-  updateTopRoute,
 }: UseCommandBarActionRuntimeOptions) {
   const {
     duplicatePane,
     focusTicker,
     persistLayoutChange,
-    setActiveCollection,
   } = useCommandBarPaneActions({
     dispatch,
     pluginRegistry,
@@ -128,58 +120,26 @@ export function useCommandBarActionRuntime({
   const {
     buildSharedWorkflowDeps,
     collectionWorkflowActions,
-    ensureRouteFieldFocus,
-    focusWorkflowField,
-    getWorkflowFieldStringValue,
-    getWorkflowInputRef,
-    moveWorkflowFocus,
-    openWorkflowFieldPicker,
-    openWorkflowRoute,
-    setWorkflowSelectFieldRef,
-    submitWorkflowRoute,
-    syncActiveWorkflowTextarea,
-    updateWorkflowValue,
-    workflowSelectFieldRefs,
-    workflowScrollRef,
     openAddToPortfolioWorkflow,
     openBuiltInWorkflow,
+    openForm,
   } = useCommandBarWorkflowCoordinator({
-    activeCollectionId,
-    activeLayoutIndex: config.activeLayoutIndex,
-    activeTicker: activeTickerData,
-    activeTickerSymbol,
     closeAll,
-    currentRoute,
     dataProvider,
     dispatch,
     notify,
-    persistConfig,
     pluginRegistry,
-    pushRoute,
-    setActiveCollection,
-    setRouteStack,
-    stateRef,
     tickerRepository,
-    updateTopRoute,
   });
 
-  const {
-    confirmCurrentRoute,
-    openInlineConfirm,
-  } = useCommandBarConfirmRoute({
-    closeAll,
-    currentRoute,
-    pushRoute,
-    setRouteStack,
-    updateTopRoute,
-  });
+  const openInlineConfirm = useCommandBarInlineConfirm({ closeAll });
 
   const {
     buildLayoutItems,
     buildPaneSettingItems,
     buildWindowModeItems,
     executeCollectionCommand,
-    openPaneSettingsRoute,
+    openPaneSettings,
     tickerActionItems,
   } = useCommandBarRouteActions({
     activeCollectionId,
@@ -195,14 +155,12 @@ export function useCommandBarActionRuntime({
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openWorkflowRoute,
     persistConfig,
     persistLayoutChange,
     pluginRegistry,
     pushRoute,
     state,
     stateRef,
-    updateTopRoute,
   });
 
   const {
@@ -217,19 +175,15 @@ export function useCommandBarActionRuntime({
     closeAll,
     config,
     notify,
+    openForm,
     openInlineConfirm,
-    openWorkflowRoute,
     pluginRegistry,
   });
 
   useCommandBarLaunchRequest({
-    activeTickerSymbol,
     commandBarLaunchRequest: state.commandBarLaunchRequest,
     commandBarOpen: state.commandBarOpen,
-    openBuiltInWorkflow,
     openModeRoute,
-    openPluginCommandWorkflow,
-    pluginRegistry,
   });
 
   const {
@@ -249,8 +203,8 @@ export function useCommandBarActionRuntime({
     executeCollectionCommand,
     focusedPaneId,
     notify,
+    openForm,
     openModeRoute,
-    openWorkflowRoute,
     pluginRegistry,
   });
 
@@ -270,14 +224,13 @@ export function useCommandBarActionRuntime({
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openPaneSettingsRoute,
+    openPaneSettings,
     persistConfig,
     pluginRegistry,
     pushRoute,
     quitApp,
     rootThemeBaseIdRef,
     setRootQuery,
-    stateRef,
     themePickerRef,
   });
 
@@ -288,26 +241,19 @@ export function useCommandBarActionRuntime({
     buildTickerSearchResultItems,
     buildWindowModeItems,
     collectionWorkflowActions,
-    confirmCurrentRoute,
     createPaneTemplateItem,
     createPluginCommandItem,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
     getAvailablePaneTemplates,
     getAvailablePluginCommands,
-    getWorkflowFieldStringValue,
-    getWorkflowInputRef,
-    ensureRouteFieldFocus,
-    focusWorkflowField,
     localTickerSearchResultItems,
     mapTickerSearchCandidateToResultItem,
-    moveWorkflowFocus,
     nonShortcutPaneTemplateItems,
     openInlineConfirm,
     openModeRoute,
     openPaneTemplateWorkflow,
     openPluginCommandWorkflow,
-    openWorkflowFieldPicker,
     paneShortcutItems,
     persistLayoutChange,
     pluginCommandItems,
@@ -315,13 +261,7 @@ export function useCommandBarActionRuntime({
     readTickerSearchCache,
     runDirectCommand,
     runSecurityDescriptionShortcut,
-    setWorkflowSelectFieldRef,
-    submitWorkflowRoute,
-    syncActiveWorkflowTextarea,
     tickerActionItems,
-    updateWorkflowValue,
-    workflowSelectFieldRefs,
-    workflowScrollRef,
     writeTickerSearchCache,
   };
 }

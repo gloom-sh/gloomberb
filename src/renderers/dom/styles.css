@@ -516,6 +516,10 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   .gloom-toast[data-actionable="true"] { transition: none; }
   .gloom-toast[data-actionable="true"]:active { transform: none; }
 }
+/* The dialog takes focus only so its content can; its controls show their own rings. */
+.gloom-dialog:focus {
+  outline: none;
+}
 .gloom-dialog-backdrop {
   position: fixed;
   inset: 0;

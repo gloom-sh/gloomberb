@@ -215,9 +215,12 @@ export function OnboardingTitle({
   title,
   titleSuffix,
   description,
+  standalone = false,
 }: {
   step?: string;
   title: string;
+  /** No progress header above it, so it sits at the top of the card. */
+  standalone?: boolean;
   /** Short qualifier after the title, e.g. how many months yearly saves. */
   titleSuffix?: string;
   description?: string;
@@ -227,7 +230,7 @@ export function OnboardingTitle({
 
   if (desktop) {
     return (
-      <Box flexDirection="column" style={{ marginTop: ONBOARDING_DESKTOP.afterProgress }}>
+      <Box flexDirection="column" style={{ marginTop: standalone ? 0 : ONBOARDING_DESKTOP.afterProgress }}>
         {step ? (
           <Text
             fg={colors.borderFocused}

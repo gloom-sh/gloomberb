@@ -31,7 +31,7 @@ for (const venue of ["ARCA", undefined]) for (const state of ["fresh", "stale", 
     let store = new AppPersistence(db);
     const q = { ...quote("ETF", venue), stale: state !== "fresh" };
     const fresh: TickerFinancials = { ...snapshot(q),
-      fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "twelvedata" },
+      fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "gloom" },
       profile: { description: "Verified fund" },
     };
     let loads = 0;
@@ -53,7 +53,7 @@ for (const venue of ["ARCA", undefined]) for (const state of ["fresh", "stale", 
       const reopened = new AssetDataRouter(provider, [], store.resources).getCachedFinancialsForTargets([{ symbol: "FUND" }]).get("FUND");
       for (const value of [result, reopened]) {
         expect(value?.quoteMetadata?.instrumentType).toBe("ETF");
-        expect(value?.fundamentals).toMatchObject({ dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "twelvedata" });
+        expect(value?.fundamentals).toMatchObject({ dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "gloom" });
         for (const field of Object.keys(issuerFields) as Array<keyof typeof issuerFields>) expect(value?.fundamentals?.[field]).toBeUndefined();
         expect(value?.annualStatements).toEqual([]);
         if (!venue) expect(value?.quoteMetadata?.listingExchangeName).toBeUndefined();

@@ -3,7 +3,7 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { buildDividendMetrics, dividendReferencePrice, INCOMPLETE_DIVIDEND_HISTORY, MISSING_DIVIDEND_CURRENCY, toDividendPayment, type DividendData } from "./client";
 import { dividendQuotePriceMetadata } from "./reference-price";
 
-/** Hosted browsers use their configured provider instead of cross-origin Yahoo requests. */
+/** Custom data providers can supply their own cash history and reference quote. */
 export async function fetchProviderDividendData(
   provider: Pick<DataProvider, "getCorporateActions" | "getQuote">,
   symbol: string,

@@ -8,7 +8,7 @@ const originalHistory = apiClient.getCloudHistory;
 afterEach(() => { apiClient.getCloudHistory = originalHistory; setSystemTime(); });
 const NOW = Date.parse("2026-09-22T12:42:12Z");
 const session = (interval = "15min"): HistorySession => ({ version: 1, kind: "regular", calendar: "us-equity",
-  timeZone: "America/New_York", symbol: "AAPL", exchange: "NASDAQ", interval, source: "yahoo",
+  timeZone: "America/New_York", symbol: "AAPL", exchange: "NASDAQ", interval, source: "gloom",
   timestampConvention: "bar-open", barAlignment: "session-open", observedAt: NOW - 60_000 });
 const points: CloudPricePointPayload[] = [{ date: "2026-09-21T19:45:00Z", open: 339.19, high: 339.64,
   low: 338.81, close: 338.8900146484375, volume: 2218511 }];
@@ -65,8 +65,8 @@ test("absent or unreadable Cloud metadata remains compatible but contradictory d
     await expect(provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1M", "15m"))
       .rejects.toThrow("session metadata does not match");
   }
-  for (const providerMeta of [{ provider: "twelvedata" }, { normalizedSymbol: "MSFT" },
-    { provider: "cache", upstream: "twelvedata" },
+  for (const providerMeta of [{ provider: "other" }, { normalizedSymbol: "MSFT" },
+    { provider: "cache", upstream: "other" },
     { normalizedExchange: "LSE" }, { currency: "CAD" }, { servedResolution: "5min" },
     { requestedResolution: "1day", servedResolution: "15min" }]) {
     wire(() => ({ status: "success", data: points, historySession: session(), providerMeta }));

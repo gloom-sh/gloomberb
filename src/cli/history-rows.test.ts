@@ -7,7 +7,7 @@ const daily = (bars: number[][]) => historyRows(bars.map(([open, high, low, clos
 
 describe("history rows", () => {
   test("float32 noise from either source becomes the intended decimal while real precision stays", () => {
-    // Yahoo sends the exact float32.
+    // The feed sends the exact float32.
     expect(cleanFloat32Price(Math.fround(340.33))).toBe(340.33);
     expect(cleanFloat32Price(Math.fround(109556.16))).toBe(109556.16);
     expect(cleanFloat32Price(Math.fround(0.00000537))).toBe(0.00000537);

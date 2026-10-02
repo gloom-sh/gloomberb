@@ -130,7 +130,7 @@ test("partial event data keeps usable rows and reports an auth-denied source onc
 
 test("Cloud account detection does not turn unrelated provider failures into sign-in prompts", () => {
   expect(isCloudSessionRequired(denial)).toBe(true);
-  for (const error of [null, "Unauthorized: Yahoo", "Verification service unavailable", "Cloud request failed", "Gloom Cloud Pro required"]) {
+  for (const error of [null, "Unauthorized: Gloom", "Verification service unavailable", "Cloud request failed", "Gloom Cloud Pro required"]) {
     expect(isCloudSessionRequired(error)).toBe(false);
   }
 });

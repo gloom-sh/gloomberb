@@ -40,7 +40,8 @@ type PriceHistoryCachePolicyKey = Extract<
   "priceHistoryIntraday" | "priceHistoryDaily"
 >;
 // Bumped instead of adding markers: every older record is a miss and refetches.
-const PRICE_HISTORY_CACHE_VERSION = 6;
+// Refetch source/session metadata under the current public backend contract.
+const PRICE_HISTORY_CACHE_VERSION = 7;
 interface HistoryRequestDescriptor {
   target: { symbol: string; exchange: string };
   identity: RouterRequestIdentity;
@@ -491,7 +492,7 @@ export class ProviderRouterHistoryRoutes {
       ["bar", barSize],
       // An ordinary Cloud cache does not identify its internal winning source.
       // Scoped recovery must only reuse a cache explicitly acquired this way.
-      ["historyRecovery", context?.historyRecovery ? "yahoo" : undefined],
+      ["historyRecovery", context?.historyRecovery ? "gloom" : undefined],
     ];
     const fallbackParts = primaryParts.slice(1);
     const identity = makeHistoryRequestIdentity(this.deps, {

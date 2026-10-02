@@ -66,7 +66,7 @@ test("ADRs keep independent consensus EPS and revenue currencies and never infer
 });
 
 test("quarterly consensus for a quarter that already has a reported row is dropped", () => {
-  // REF in Sep 2026: Yahoo still served the reported June quarter as 0q; SEC re-dated the statement to 06-27.
+  // REF in Sep 2026: Gloom still served the reported June quarter as 0q; SEC re-dated the statement to 06-27.
   const rows = buildEventRows({ symbol: "REF", dividends: [], splits: [], earnings: [
     { date: "2026-11-10", dateType: "announcement", time: "AMC" },
     { date: "2026-06-30", dateType: "fiscal-period-end", currency: "USD", epsActual: 0.2393, epsEstimate: 0.22282 },
@@ -135,7 +135,7 @@ test("EE ignores dividends, adjustments and pending announcements when assessing
 
 test("period aliases retain exact filing provenance and raw surprise inputs", () => {
   const evidence = { accessionNumber: "0000909832-26-000051", filed: "2026-06-03", startDate: "2026-02-16" };
-  const [row] = buildEventRows({ symbol: "COST", providerId: "yahoo", dividends: [], splits: [], earnings: [
+  const [row] = buildEventRows({ symbol: "COST", providerId: "gloom", dividends: [], splits: [], earnings: [
     { date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, epsEstimate: 4.9231, difference: 0.0069, surprisePercent: 0.14 },
   ] }, null, { quarterlyStatements: [{ date: "2026-05-10", providerDate: "2026-05-31", dateSource: "sec", dateEvidence: evidence, totalRevenue: 70_527_000_000, currency: "USD" }] }, "USD");
   expect(row).toMatchObject({ date: "2026-05-10", providerPeriodDate: "2026-05-31", fiscalPeriodEnd: "2026-05-10", period: "May 2026", dateEvidence: evidence,
@@ -302,7 +302,7 @@ describe("event rows", () => {
     expect(ttm()).toMatchObject({ date: "2026-06-30", epsCurrency: "USD", annualRevenue: 400, detail: "sum" });
 
     // A quarter without its reported row cannot be summed from the rows, so the statement TTM
-    // stays and is not labelled as their sum (ADBE: Yahoo omitted two of the last four quarters).
+    // stays and is not labelled as their sum (ADBE: Gloom omitted two of the last four quarters).
     actions.earnings.splice(1, 1);
     expect(ttm()?.annualEps).toBeCloseTo(15.55, 10);
     expect(ttm()?.detail).toBe("statement EPS");

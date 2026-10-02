@@ -2,6 +2,7 @@ import type { PluginConfigState } from "../../../../types/plugin";
 import { DEFAULT_FEEDS } from "./default-feeds";
 import { hashString } from "./hash";
 import type { RssFeedConfig } from "./rss/parser";
+import { isManagedNewsFeedUrl, MANAGED_NEWS_FEED } from "./rss/managed-feed";
 
 const USER_FEEDS_KEY = "feeds";
 const DISABLED_DEFAULT_FEED_IDS_KEY = "disabledDefaultFeedIds";
@@ -72,7 +73,7 @@ export function createUserFeed(input: UserNewsFeedInput): RssFeedConfig {
   return {
     id: input.id?.trim() || createUserFeedId(url, name),
     url,
-    name,
+    name: isManagedNewsFeedUrl(url) ? MANAGED_NEWS_FEED.name : name,
     category: normalizeCategory(input.category) ?? "general",
     authority: normalizeAuthority(input.authority, 50),
     enabled: input.enabled !== false,
@@ -102,6 +103,9 @@ function normalizeDisabledDefaultFeedIds(values: unknown[]): string[] {
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
     if (DEFAULT_FEED_IDS.has(trimmed)) ids.add(trimmed);
+    // Retired bundled feeds now flow through the managed news feed. Keep a
+    // previous opt-out without retaining obsolete default identifiers.
+    else if (trimmed.startsWith("default-")) ids.add(MANAGED_NEWS_FEED.id);
   }
   return [...ids];
 }

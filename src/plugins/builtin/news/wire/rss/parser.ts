@@ -2,6 +2,7 @@ import type { MarketNewsItem } from "../../../../../types/news-source";
 import { decodeHtmlEntities } from "../../../../../utils/html-entities";
 import { hashString } from "../hash";
 import { feedChildren, feedText, parseFeedXml, resolveFeedUrl, type FeedElement } from "./feed-xml";
+import { isManagedNewsFeedUrl } from "./managed-feed";
 
 export interface RssFeedConfig {
   id: string;
@@ -23,6 +24,13 @@ function stripHtml(s: string): string {
 function extractText(s: string): string {
   // Decode entities first so escaped HTML tags become real tags, then strip them
   return stripHtml(decodeHtmlEntities(stripCdata(s))).trim();
+}
+
+function atomTextConstruct(node: FeedElement | undefined): string {
+  const value = feedText(node);
+  // Atom text is literal. HTML constructs encode markup; XHTML was parsed as
+  // elements already. The same rules apply to article and origin titles.
+  return node?.attributes.type === "html" ? decodeHtmlEntities(stripHtml(value)).trim() : value;
 }
 
 function parseDate(s: string): Date {
@@ -74,8 +82,12 @@ function parseRssItems(xml: string, config: RssFeedConfig, root: FeedElement): M
     const desc = descRaw ? extractText(descRaw) : undefined;
     const categoryRaw = tagContent("category");
     const category = categoryRaw ? extractText(categoryRaw) : undefined;
+    const publisher = extractText(tagContent("source"));
 
     if (!title && !url) continue;
+    // Managed syndication must name the article's publisher. The feed's own
+    // label describes a delivery service, not the author of an article.
+    if (!publisher && isManagedNewsFeedUrl(config.url)) continue;
 
     const summary = desc
       ? desc.slice(0, 300) + (desc.length > 300 ? "…" : "")
@@ -90,7 +102,7 @@ function parseRssItems(xml: string, config: RssFeedConfig, root: FeedElement): M
       id,
       title,
       url,
-      source: config.name,
+      source: publisher || config.name,
       publishedAt,
       summary,
       imageUrl,
@@ -118,14 +130,11 @@ function parseRssItems(xml: string, config: RssFeedConfig, root: FeedElement): M
 function parseAtomEntries(xml: string, config: RssFeedConfig, root: FeedElement): MarketNewsItem[] {
   return feedChildren(root, "entry").flatMap((entry): MarketNewsItem[] => {
     const text = (name: string) => feedText(feedChildren(entry, name)[0]);
-    const construct = (name: string) => {
-      const node = feedChildren(entry, name)[0];
-      const value = feedText(node);
-      // Atom's default text construct contains literal text. Only HTML text
-      // constructs use escaped markup; XHTML has already been read as elements.
-      return node?.attributes.type === "html" ? decodeHtmlEntities(stripHtml(value)).trim() : value;
-    };
+    const construct = (name: string) => atomTextConstruct(feedChildren(entry, name)[0]);
     const title = construct("title");
+    const origin = feedChildren(entry, "source")[0];
+    const publisher = origin ? atomTextConstruct(feedChildren(origin, "title")[0]) : "";
+    if (!publisher && isManagedNewsFeedUrl(config.url)) return [];
     const links = feedChildren(entry, "link")
       .filter((link) => !link.attributes.rel || link.attributes.rel === "alternate"
         || link.attributes.rel === "http://www.iana.org/assignments/relation/alternate")
@@ -147,7 +156,7 @@ function parseAtomEntries(xml: string, config: RssFeedConfig, root: FeedElement)
     const categories = config.category ? [config.category] : [];
     const imageUrl = extractImageUrl(xml.slice(entry.innerStart, entry.innerEnd));
     return [{
-      id, title, url, source: config.name, publishedAt, summary, imageUrl,
+      id, title, url, source: publisher || config.name, publishedAt, summary, imageUrl,
       topic: categories[0] ?? "general", topics: categories, sectors: [], categories, tickers: [],
       scores: { importance: 0, urgency: 0, marketImpact: 0, novelty: 0, confidence: 0 },
       importance: 0, isBreaking: false, isDeveloping: false,

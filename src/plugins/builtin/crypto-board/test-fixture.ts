@@ -34,8 +34,8 @@ export function cryptoFixture(): CryptoMarketsPayload {
     asOf: "2026-09-23T11:59:00.000Z",
     status: "available",
     source: {
-      name: "Yahoo Finance",
-      url: "https://finance.yahoo.com/markets/crypto/all/",
+      name: "Gloom",
+      url: "https://gloom.sh",
       screenerFetchedAt: "2026-09-23T11:59:30.000Z",
       historyFetchedAt: "2026-09-23T00:05:00.000Z",
     },

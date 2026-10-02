@@ -17,7 +17,7 @@ const CONTRACTS = ["ESZ26", "ESH27", "ESM27", "ESU27", "ESZ27", "ESH28", "ESM28"
 // Listed, but past any chart horizon: the Contracts tab shows it, the Curve tab does not.
 const FAR: FuturesContract = { ...first, symbol: "ESZ40.CME", expiration: "2040-12-21", price: 9000 };
 function payload(contracts: FuturesContract[] = CONTRACTS): FuturesCurvePayload {
-  return { root: "ES", name: "E-mini S&P 500", source: "yahoo", currency: "USD", quoteUnit: "index points", asOf: first.asOf,
+  return { root: "ES", name: "E-mini S&P 500", source: "gloom", currency: "USD", quoteUnit: "index points", asOf: first.asOf,
     fetchedAt: "2026-09-22T15:05:00Z", status: "available", stale: false,
     catalogue: { method: "bounded-search", complete: true, horizonEnd: "2029-09-01" }, contracts,
     ghosts: [{ label: "1W", requestedDate: "2026-09-15", asOf: "2026-09-15", points: contracts.map((row) => ({

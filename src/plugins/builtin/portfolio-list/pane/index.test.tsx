@@ -1209,10 +1209,10 @@ describe("PortfolioListPane cash and margin UI", () => {
         });
       },
     });
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...cloudProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
         return createTestFinancials({
@@ -1232,7 +1232,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       },
     };
 
-    const seedRouter = new AssetDataRouter(yahooProvider, [cloudProvider], persistence.resources);
+    const seedRouter = new AssetDataRouter(gloomProvider, [cloudProvider], persistence.resources);
     await seedRouter.getTickerFinancials("AAPL", "NASDAQ", {
       brokerId: "ibkr",
       brokerInstanceId: "ibkr-live",
@@ -1241,10 +1241,10 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     let liveCalls = 0;
     const cachedRouter = new AssetDataRouter({
-      ...yahooProvider,
+      ...gloomProvider,
       async getTickerFinancials() {
         liveCalls += 1;
-        throw new Error("expected cached yahoo snapshot");
+        throw new Error("expected cached gloom snapshot");
       },
     }, [{
       ...cloudProvider,

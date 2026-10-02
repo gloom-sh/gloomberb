@@ -50,7 +50,7 @@ test("daily history fetched before a close is refetched, and kept when the refet
 
 test("a weekly series ending in a trade-time row is refetched after the close", async () => {
   const calls: string[] = [];
-  // Yahoo's weekly chart before the close: the week row stops at Monday and
+  // Gloom's weekly chart before the close: the week row stops at Monday and
   // the live observation trails it, so the points share no clock time.
   let load = (): PricePoint[] => [["2026-09-08T04:00:00Z", 230], ["2026-09-15T04:00:00Z", 236], ["2026-09-21T04:00:00Z", 227.38],
     ["2026-09-22T19:53:00Z", 228.1]].map(([date, close]) => ({ date: new Date(date as string), close: close as number }));

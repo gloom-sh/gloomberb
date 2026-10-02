@@ -13,8 +13,7 @@ export type ShillerField =
   | "excessCapeYield";
 
 /**
- * Every leg resolves through the Gloom Cloud proxy. Nothing here talks to Yahoo or
- * FRED directly, which is what lets the pane run in the hosted browser build.
+ * Every leg resolves through the market backend, including the hosted browser build.
  */
 type SeriesSource =
   | { kind: "fred"; seriesId: string; limit: number }

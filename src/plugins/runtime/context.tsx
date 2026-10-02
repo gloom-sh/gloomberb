@@ -15,6 +15,8 @@ export interface PluginRuntimeAccess extends CapabilityInvoker, PluginRuntimeHos
   getConnectionHealth(): ConnectionHealthRegistry;
   getCapability(capabilityId: string): PluginCapability | null;
   getBrokerAdapter(brokerType: string): BrokerAdapter | null;
+  /** Every broker adapter installed now, read when called: plugins come and go. */
+  listBrokerAdapters(): BrokerAdapter[];
   subscribeResumeState(pluginId: string, key: string, listener: () => void): () => void;
   getResumeState<T = unknown>(pluginId: string, key: string, schemaVersion?: number): T | null;
   setResumeState(pluginId: string, key: string, value: unknown, schemaVersion?: number): void;

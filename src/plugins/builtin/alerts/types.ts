@@ -10,6 +10,8 @@ export interface AlertRule {
   condition: AlertCondition;
   targetPrice: number;
   createdAt: number;
+  /** When an edit or re-arm last armed the rule; createdAt until then. Gloom Cloud emails a trigger once per arming. */
+  armedAt?: number;
   status: AlertStatus;
   triggeredAt?: number;
   lastCheckedPrice?: number;

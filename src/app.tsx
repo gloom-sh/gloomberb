@@ -19,6 +19,7 @@ import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
+import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
 import { SignInGate } from "./components/sign-in-gate";
 import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
@@ -39,6 +40,7 @@ import { useBrokerImportRuntime } from "./app/runtime/broker-import";
 import { useDesktopDeepLinkRuntime } from "./app/runtime/desktop-deeplink";
 import { useDesktopApplicationMenuRuntime } from "./app/runtime/desktop-menu";
 import { useAppGlobalShortcuts } from "./app/global-shortcuts";
+import { AppDialogBridge } from "./app/dialog-bridge";
 import { KeybindingsProvider, useResolvedKeybindings } from "./app/keybindings";
 import { useAppPaneRuntime } from "./app/pane-runtime";
 import { bindPluginRegistryRuntimeAccess } from "./app/runtime/plugin-bindings";
@@ -181,6 +183,10 @@ function AppInner({
   const toast = useToastHost();
   const isDetachedWindow = desktopWindowBridge?.kind === "detached";
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
+  const focusDetachedPane = useMemo(() => {
+    const focus = desktopWindowBridge?.kind === "main" ? desktopWindowBridge.focusDetachedPane : undefined;
+    return focus ? (paneId: string) => { void focus(paneId).catch(() => {}); } : undefined;
+  }, [desktopWindowBridge]);
   const [desktopDockPreview, setDesktopDockPreview] = useState<DesktopDockPreviewState | null>(null);
   const [commandBarNativeOccluder, setCommandBarNativeOccluder] = useState<LayoutBounds | null>(null);
   appActiveRef.current = appActive;
@@ -354,6 +360,7 @@ function AppInner({
     dialog,
     dispatch,
     externalPlugins,
+    focusDetachedPane,
     isDetachedWindow,
     notify,
     persistConfig,
@@ -409,6 +416,7 @@ function AppInner({
   if (desktopWindowBridge?.kind === "detached" && desktopWindowBridge.paneId) {
     return (
       <KeybindingsProvider value={keybindings}>
+        <AppDialogBridge />
         <ContextMenuProvider pluginRegistry={pluginRegistry}>
           <RemoteControlHost
             adapter={remoteControlAdapter}
@@ -432,6 +440,7 @@ function AppInner({
 
   return (
     <KeybindingsProvider value={keybindings}>
+    <AppDialogBridge />
     <ContextMenuProvider pluginRegistry={pluginRegistry}>
       <RemoteControlHost
         adapter={remoteControlAdapter}
@@ -448,6 +457,8 @@ function AppInner({
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}
+              dataProvider={dataProvider}
+              tickerRepository={tickerRepository}
               desktopWindowBridge={desktopWindowBridge}
               desktopDockPreview={desktopDockPreview}
               commandBarNativeOccluder={commandBarNativeOccluder}
@@ -460,6 +471,7 @@ function AppInner({
               }}
             />
           </TransientLayoutProvider>
+          {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard
               pluginRegistry={pluginRegistry}

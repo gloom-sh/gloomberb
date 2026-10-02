@@ -5,6 +5,7 @@ import { afterEach } from "bun:test";
 import { act, useMemo, type ReactNode } from "react";
 import { UiHostProvider, type NativeRendererHost, type RendererHost } from "../../ui";
 import { ToastHostProvider } from "../../ui/toast";
+import { AppDialogBridge } from "../../app/dialog-bridge";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
 import { OpenTuiInputHostProvider } from "./input-host";
 import { provideKittyServices } from "./kitty-services";
@@ -62,11 +63,17 @@ export function takeSavedTextFile(): { name: string; text: string } | null {
   return saved;
 }
 
+/**
+ * Dialogs open in testRender's host, outside the tree under test, as they open
+ * outside the app in production. This registers the app's bridge the way App
+ * does, so dialog content reaches only the providers the app would give it.
+ */
 export function TestDialogProvider({ children }: { children: ReactNode }) {
   return (
-    <OpenTuiDialogHostProvider>
+    <>
+      <AppDialogBridge />
       {children}
-    </OpenTuiDialogHostProvider>
+    </>
   );
 }
 

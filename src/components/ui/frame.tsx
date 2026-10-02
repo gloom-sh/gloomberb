@@ -41,16 +41,21 @@ export interface DialogFrameProps {
   showTitleDivider?: boolean;
   /** Adds a close button at the right of the title (desktop). Esc still closes every dialog. */
   onClose?: () => void;
+  /**
+   * Desktop: lets the frame shrink inside a dialog that caps its height, so a
+   * scrolling body in it gives up the height and the rows after it stay in view.
+   */
+  shrinkable?: boolean;
 }
 
-export function DialogFrame({ title: rawTitle, subtitle, children, footer: rawFooter, showTitleDivider = false, onClose }: DialogFrameProps) {
+export function DialogFrame({ title: rawTitle, subtitle, children, footer: rawFooter, showTitleDivider = false, onClose, shrinkable }: DialogFrameProps) {
   const title = t(rawTitle);
   const footer = rawFooter === undefined ? undefined : t(rawFooter);
   const colors = useThemeColors();
   const HostDialogFrame = useUiHost().DialogFrame as ComponentType<DialogFrameProps> | undefined;
   if (HostDialogFrame) {
     return (
-      <HostDialogFrame title={title} subtitle={subtitle} footer={footer} showTitleDivider={showTitleDivider} onClose={onClose}>
+      <HostDialogFrame title={title} subtitle={subtitle} footer={footer} showTitleDivider={showTitleDivider} onClose={onClose} shrinkable={shrinkable}>
         {children}
       </HostDialogFrame>
     );
