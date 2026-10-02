@@ -8,7 +8,7 @@ import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
 import { formatShortDate } from "../../../../utils/datetime-format";
-import { displayWidth, formatCompactAmount, formatPercentRaw } from "../../../../utils/format";
+import { displayWidth, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
 import {
   resolvePortfolioAccountMetrics,
@@ -16,7 +16,7 @@ import {
   resolvePortfolioNetLiquidation,
   type BrokerSnapshotBasis,
 } from "../account-metrics";
-import type { PortfolioSummaryTotals } from "./totals";
+import { formatPortfolioAmount, type PortfolioSummaryTotals } from "./totals";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";
@@ -219,12 +219,17 @@ export function buildPortfolioSummarySegments({
   accountState,
   isPortfolioTab = true,
   convertAccountValue = (value) => value,
+  currency = "USD",
 }: {
   totals: PortfolioSummaryTotals;
   accountState: PortfolioSummaryAccountState | null;
   isPortfolioTab?: boolean;
+  /** Into the totals currency. */
   convertAccountValue?: (value: number) => number;
+  /** The totals currency. */
+  currency?: string;
 }): PortfolioSummarySegment[] {
+  const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed });
   if (!isPortfolioTab) {
     return totals.watchlistCount > 0
       ? [createSummarySegment("avg-day", [
@@ -245,26 +250,26 @@ export function buildPortfolioSummarySegments({
   const accountValue = (id: string, label: string, value: number | undefined) => value != null
     ? createSummarySegment(id, [
       { text: label, tone: "label" },
-      { text: formatCompactAmount(convertAccountValue(value)), tone: "value", bold: true },
+      { text: money(convertAccountValue(value)), tone: "value", bold: true },
     ])
     : null;
 
   if (netLiquidation != null) {
     candidates.push(createSummarySegment("netliq", [
       { text: "Net Liq", tone: "label" },
-      { text: formatCompactAmount(netLiquidation), tone: "value", bold: true },
+      { text: money(netLiquidation), tone: "value", bold: true },
     ]));
   }
 
   candidates.push(createSummarySegment("val", [
     { text: totals.hasShorts ? "Gross" : "Val", tone: "label" },
-    { text: formatCompactAmount(totalMarketValue), tone: "value", bold: true },
+    { text: money(totalMarketValue), tone: "value", bold: true },
   ]));
 
   if (totals.hasShorts && totals.netMktValue != null) {
     candidates.push(createSummarySegment("net-value", [
       { text: "Net", tone: "label" },
-      { text: formatCompactAmount(totals.netMktValue), tone: "value", bold: true },
+      { text: money(totals.netMktValue), tone: "value", bold: true },
     ]));
   }
 
@@ -273,7 +278,7 @@ export function buildPortfolioSummarySegments({
 
   candidates.push(createSummarySegment("day", [
     { text: "Day", tone: "label" },
-    { text: formatCompactAmount(accountMetrics.dailyPnl, { signed: true }), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
+    { text: money(accountMetrics.dailyPnl, true), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
     { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.dailyPnlPct) },
   ]));
   candidates.push(createSummarySegment("pnl", [
@@ -281,7 +286,7 @@ export function buildPortfolioSummarySegments({
       && totals.unrealizedPnlBasis === "broker-snapshot" ? "Broker P&L"
       : !Number.isFinite(account?.unrealizedPnl)
         && totals.unrealizedPnlBasis === "mixed" ? "Mixed P&L" : "P&L", tone: "label" },
-    { text: formatCompactAmount(accountMetrics.unrealizedPnl, { signed: true }), tone: "value", color: priceColor(accountMetrics.unrealizedPnl), bold: true },
+    { text: money(accountMetrics.unrealizedPnl, true), tone: "value", color: priceColor(accountMetrics.unrealizedPnl), bold: true },
     { text: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.unrealizedPnlPct) },
   ]));
 
@@ -290,7 +295,7 @@ export function buildPortfolioSummarySegments({
   const realized = accountMetrics.realizedPnl != null
     ? createSummarySegment("realized", [
       { text: "Realized", tone: "label" },
-      { text: formatCompactAmount(accountMetrics.realizedPnl, { signed: true }), tone: "value", color: priceColor(accountMetrics.realizedPnl), bold: true },
+      { text: money(accountMetrics.realizedPnl, true), tone: "value", color: priceColor(accountMetrics.realizedPnl), bold: true },
     ])
     : null;
   return [
@@ -377,6 +382,7 @@ export function buildPortfolioSummaryNotices({
 }: {
   totals: PortfolioSummaryTotals;
   accountState: PortfolioSummaryAccountState | null;
+  /** The totals currency, which missing account pairs convert into. */
   baseCurrency: string;
   convertAccountValue?: (value: number) => number;
   fxStatus?: FxRateStatus;

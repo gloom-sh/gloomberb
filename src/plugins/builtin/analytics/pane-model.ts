@@ -5,7 +5,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { instrumentFromTicker, type ChartRequest, type TickerInstrumentOptions } from "../../../market-data/request-types";
@@ -17,6 +17,7 @@ import {
 } from "../portfolio-list/account-metrics";
 import type { ColumnContext, PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
+import { formatPortfolioAmount } from "../portfolio-list/summary/totals";
 import { buildPerformanceChartPoints, resolvePerformanceMetric } from "./broker-performance";
 import { formatReturn } from "./display";
 import {
@@ -207,14 +208,19 @@ export function buildAnalyticsSummaryRows({
   brokerPerformance,
   portfolioStats,
   convertAccountValue = (value) => value,
+  currency = "USD",
 }: {
   accountState: ResolvedPortfolioAccountState | null;
   activePortfolio: Portfolio | null;
   brokerPerformance: BrokerPortfolioPerformance | null;
   portfolioStats: PortfolioSummaryTotals;
+  /** Into the totals currency. */
   convertAccountValue?: (value: number) => number;
+  /** The portfolio's totals currency, as its portfolio pane header shows it. */
+  currency?: string;
 }): AnalyticsMetricRow[] {
   const rows: AnalyticsMetricRow[] = [];
+  const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed });
   const account = accountState?.account;
   // The same live carry-forward as the portfolio header, so both show one figure.
   const basis = accountState?.snapshotBasis;
@@ -236,7 +242,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "net-liquidation",
       label: "Net Liq",
-      value: formatCompactAmount(netLiquidation),
+      value: money(netLiquidation),
       color: colors.text,
     });
   }
@@ -245,7 +251,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "total-value",
       label: "Val",
-      value: formatCompactAmount(totalMarketValue),
+      value: money(totalMarketValue),
       color: colors.text,
     });
   }
@@ -264,7 +270,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "cash",
       label: "Cash",
-      value: formatCompactAmount(convertAccountValue(account.totalCashValue)),
+      value: money(convertAccountValue(account.totalCashValue)),
       color: colors.text,
     });
   }
@@ -275,7 +281,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "day-pnl",
       label: "Day",
-      value: formatCompactAmount(accountMetrics.dailyPnl, { signed: true }),
+      value: money(accountMetrics.dailyPnl, true),
       detail: `(${formatPercentRaw(dailyPnlPct)})`,
       color: priceColor(accountMetrics.dailyPnl),
     });
@@ -284,7 +290,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "pnl",
       label: "P&L",
-      value: formatCompactAmount(accountMetrics.unrealizedPnl, { signed: true }),
+      value: money(accountMetrics.unrealizedPnl, true),
       detail: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`,
       color: priceColor(accountMetrics.unrealizedPnl),
     });
@@ -293,7 +299,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "realized-pnl",
       label: "Realized",
-      value: formatCompactAmount(accountMetrics.realizedPnl, { signed: true }),
+      value: money(accountMetrics.realizedPnl, true),
       color: priceColor(accountMetrics.realizedPnl),
     });
   }
@@ -315,7 +321,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "settled-cash",
       label: "Settled",
-      value: formatCompactAmount(convertAccountValue(account.settledCash)),
+      value: money(convertAccountValue(account.settledCash)),
       color: colors.text,
     });
   }
@@ -323,7 +329,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "available-funds",
       label: "Avail",
-      value: formatCompactAmount(convertAccountValue(account.availableFunds)),
+      value: money(convertAccountValue(account.availableFunds)),
       color: colors.text,
     });
   }
@@ -331,7 +337,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "excess-liquidity",
       label: "Excess",
-      value: formatCompactAmount(convertAccountValue(account.excessLiquidity)),
+      value: money(convertAccountValue(account.excessLiquidity)),
       color: colors.text,
     });
   }
@@ -339,7 +345,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "buying-power",
       label: "BP",
-      value: formatCompactAmount(convertAccountValue(account.buyingPower)),
+      value: money(convertAccountValue(account.buyingPower)),
       color: colors.text,
     });
   }

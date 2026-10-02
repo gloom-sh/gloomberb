@@ -81,19 +81,25 @@ function getNumberFormatter(
   return formatter;
 }
 
-function getCurrencySymbol(currency: string): string {
+/** The currency's symbol as prices show it (A$, €, CHF); a code Intl rejects shows as itself. */
+export function getCurrencySymbol(currency: string): string {
   const normalizedCurrency = currency.trim().toUpperCase() || "USD";
   const cached = currencySymbols.get(normalizedCurrency);
   if (cached) return cached;
 
-  const formatter = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: normalizedCurrency,
-    currencyDisplay: "symbol",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-  const symbol = formatter.formatToParts(0).find((part) => part.type === "currency")?.value ?? normalizedCurrency;
+  let symbol = normalizedCurrency;
+  try {
+    const formatter = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: normalizedCurrency,
+      currencyDisplay: "symbol",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+    symbol = formatter.formatToParts(0).find((part) => part.type === "currency")?.value ?? normalizedCurrency;
+  } catch {
+    // A malformed code (free text typed as a position currency) has no symbol.
+  }
   currencySymbols.set(normalizedCurrency, symbol);
   return symbol;
 }

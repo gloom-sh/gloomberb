@@ -15,6 +15,7 @@ import { formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { currencyMinorDigits, formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../position-metrics";
+import { resolvePortfolioTotalsCurrency } from "../summary/totals";
 import { exchangeShortName, getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext } from "../../../../types/plugin";
@@ -46,7 +47,7 @@ export function renderCollectionOverview(config: AppConfig, tickers: TickerRecor
       ],
       config.portfolios.map((portfolio) => [
         portfolio.name,
-        portfolio.currency,
+        resolvePortfolioTotalsCurrency(portfolio, tickers, config.baseCurrency),
         String(countCollectionTickers(tickers, "portfolios", portfolio.id)),
       ]),
     ));
@@ -84,9 +85,6 @@ async function showCollectionWithMarketData(
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
   );
-  const baseCurrency = config.baseCurrency;
-  const toBase = createBaseConverter(dataProvider, baseCurrency);
-
   const normalized = name.trim().toLowerCase();
   const matchedPortfolio = config.portfolios.find((portfolio) =>
     portfolio.id.toLowerCase() === normalized || portfolio.name.toLowerCase() === normalized
@@ -105,11 +103,13 @@ async function showCollectionWithMarketData(
   const isPortfolio = !!matchedPortfolio;
   const id = matchedPortfolio?.id ?? matchedWatchlist!.id;
   const displayName = matchedPortfolio?.name ?? matchedWatchlist!.name;
-  const currency = matchedPortfolio?.currency ?? baseCurrency;
   const structured = isPortfolio && ctx.cliOptions?.format != null && ctx.cliOptions.format !== "text";
   const filtered = tickers.filter((ticker) =>
     isPortfolio ? ticker.metadata.portfolios.includes(id) : ticker.metadata.watchlists.includes(id)
   );
+  // A portfolio reports in its own currency, as its pane totals; a watchlist in the base currency.
+  const currency = resolvePortfolioTotalsCurrency(matchedPortfolio, filtered, config.baseCurrency);
+  const toBase = createBaseConverter(dataProvider, currency);
 
   if (filtered.length === 0 && !structured) {
     console.log(cliStyles.bold(displayName));
@@ -162,12 +162,12 @@ async function showCollectionWithMarketData(
         rows.push([ticker.metadata.ticker, priceText, changeText, "—", "—", "—"]);
         positionsExport.push({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange, shares: null, avgCost: null,
           positionCurrency: null, quotePrice: known(activeQuote?.price), quoteCurrency: quote?.currency ?? null,
-          costBasis: null, marketValue: null, unrealizedPnl: null, baseCurrency });
+          costBasis: null, marketValue: null, unrealizedPnl: null, baseCurrency: currency });
         continue;
       }
 
       for (const position of positions) {
-        const quoteCurrency = quote?.currency ?? ticker.metadata.currency ?? baseCurrency;
+        const quoteCurrency = quote?.currency ?? ticker.metadata.currency ?? config.baseCurrency;
         const metrics = getPortfolioPositionMetrics({ ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, id, quoteCurrency, undefined, quote);
         const valuationQuote = getPortfolioQuoteDisplay(metrics, quote);
         const positionCurrency = metrics.positionCurrency;
@@ -175,7 +175,7 @@ async function showCollectionWithMarketData(
 
         const positionRate = positionCurrency ? await toBase(1, positionCurrency) : Number.NaN;
         const baseMetrics = getPortfolioPositionMetrics({ ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, id, quoteCurrency,
-          { currency: baseCurrency, convert: value => value * positionRate }, quote);
+          { currency, convert: value => value * positionRate }, quote);
         const currentValueBase = resolvePortfolioMarketValue(baseMetrics,
           valuationQuote ? await toBase(valuationQuote.price, quoteCurrency) : null)?.gross ?? null;
         const selectedPnl = resolvePortfolioPositionPnl(baseMetrics,
@@ -192,7 +192,7 @@ async function showCollectionWithMarketData(
           priceBasis: position.priceBasis ?? null, quantityUnit: metrics.priceBasis === "percent-of-par" ? "face" : null, quotePriceBasis: quote?.priceBasis ?? null,
           quotePrice: known(activeQuote?.price), quoteCurrency, quoteAsOf: quote?.lastUpdated ?? null,
           costBasis: known(direction * costBasisBase), marketValue: currentValueBase == null ? null : known(direction * currentValueBase),
-          unrealizedPnl: known(pnl), baseCurrency, dateAcquired: position.dateAcquired ?? null,
+          unrealizedPnl: known(pnl), baseCurrency: currency, dateAcquired: position.dateAcquired ?? null,
           pnlBasis: selectedPnl.basis, brokerUnrealizedPnl: known(position.unrealizedPnl), brokerPnlCurrency: positionCurrency, brokerPnlAsOf: null });
 
         rows.push([
@@ -201,7 +201,7 @@ async function showCollectionWithMarketData(
           changeText,
           formatMarketQuantity(metrics.totalShares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency }),
           formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }),
-          pnl == null || !Number.isFinite(pnl) ? "—" : colorBySign(formatSignedCurrency(pnl, baseCurrency), pnl),
+          pnl == null || !Number.isFinite(pnl) ? "—" : colorBySign(formatSignedCurrency(pnl, currency), pnl),
         ]);
       }
     }
@@ -212,7 +212,7 @@ async function showCollectionWithMarketData(
       : null;
     if (structured) {
       ctx.printResult({ data: positionsExport, metadata: {
-        portfolioId: id, portfolioName: displayName, baseCurrency,
+        portfolioId: id, portfolioName: displayName, baseCurrency: currency,
         totalUnrealizedPnl: unavailablePnl.size > 0 ? null : totalPnl,
         complete: unavailablePnl.size === 0 && unavailableCost.size === 0 && unavailableMarketValue.size === 0,
         unavailableSymbols: [...new Set([...unavailablePnl, ...unavailableCost, ...unavailableMarketValue])],
@@ -234,7 +234,7 @@ async function showCollectionWithMarketData(
       rows,
     ));
     console.log("");
-    console.log(renderStats([[brokerPnlSymbols.size ? "Total P&L (incl. broker snapshots)" : "Total P&L", unavailablePnl.size > 0 ? "—" : colorBySign(formatSignedCurrency(totalPnl, baseCurrency), totalPnl)]]));
+    console.log(renderStats([[brokerPnlSymbols.size ? "Total P&L (incl. broker snapshots)" : "Total P&L", unavailablePnl.size > 0 ? "—" : colorBySign(formatSignedCurrency(totalPnl, currency), totalPnl)]]));
     if (unavailableCost.size > 0) console.log(cliStyles.muted(`Cost unavailable for ${[...unavailableCost].join(", ")}.`));
     if (unavailablePnl.size > 0) console.log(cliStyles.muted(`P&L unavailable for ${[...unavailablePnl].join(", ")}.`));
   } else {
@@ -246,7 +246,7 @@ async function showCollectionWithMarketData(
         : "—";
       const changeText = quote ? colorBySign(formatPercentRaw(quote.changePercent), quote.change) : "—";
       const marketCapText = quote?.marketCap != null
-        ? `${formatCompact(await toBase(quote.marketCap, quote.currency || ticker.metadata.currency || baseCurrency))} ${baseCurrency}`
+        ? `${formatCompact(await toBase(quote.marketCap, quote.currency || ticker.metadata.currency || currency))} ${currency}`
         : "—";
 
       rows.push([

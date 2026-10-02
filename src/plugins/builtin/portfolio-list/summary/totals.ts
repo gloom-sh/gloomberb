@@ -1,8 +1,11 @@
 import type { TickerFinancials } from "../../../../types/financials";
-import type { TickerRecord } from "../../../../types/ticker";
-import { convertCurrency } from "../../../../utils/format";
+import type { Portfolio, TickerRecord } from "../../../../types/ticker";
+import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
+import { getCurrencySymbol } from "../../../../market-data/market/format";
+import { resolveCurrencyUnit } from "../../../../utils/currency-units";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
+import { isManualPortfolio } from "../mutations";
 import {
   getPortfolioPositionMetrics,
   getPortfolioQuoteDisplay,
@@ -12,7 +15,7 @@ import {
   type PortfolioPositionPnl,
 } from "../position-metrics";
 
-/** A position lot valued from a current quote, in the base currency. */
+/** A position lot valued from a current quote, in the totals currency. */
 interface PricedPortfolioLot {
   /** Stable for the lot while the positions stay as imported. */
   key: string;
@@ -46,10 +49,57 @@ export interface PortfolioSummaryTotals {
   pricedLots?: PricedPortfolioLot[];
 }
 
+const CURRENCY_CODE = /^[A-Z]{3}$/;
+
+function currencyCode(value: string | undefined): string | null {
+  const code = value?.trim().toUpperCase() ?? "";
+  return CURRENCY_CODE.test(code) ? code : null;
+}
+
+/**
+ * The currency a portfolio's totals, market values and P&L are in: the
+ * portfolio's own, else the base currency (watchlists too). A manual portfolio
+ * has no currency picker and takes the base currency when created, so one
+ * whose positions are all in one currency totals in that currency; mixed
+ * holdings convert into the portfolio's currency.
+ */
+export function resolvePortfolioTotalsCurrency(
+  portfolio: Portfolio | null | undefined,
+  tickers: Iterable<TickerRecord>,
+  baseCurrency: string,
+): string {
+  const fallback = currencyCode(portfolio?.currency) ?? currencyCode(baseCurrency) ?? "USD";
+  if (!portfolio || !isManualPortfolio(portfolio)) return fallback;
+  let held: string | null = null;
+  for (const ticker of tickers) {
+    for (const position of ticker.metadata.positions) {
+      if (position.portfolio !== portfolio.id || position.shares === 0) continue;
+      const raw = (position.currency || ticker.metadata.currency || "").trim();
+      // Pence and other minor units, or free text, never become the totals currency.
+      if (!CURRENCY_CODE.test(raw) || resolveCurrencyUnit(raw).divisor !== 1) return fallback;
+      if (held && held !== raw) return fallback;
+      held = raw;
+    }
+  }
+  return held ?? fallback;
+}
+
+/**
+ * A compact total in the portfolio's currency. USD stays bare, as the pane has
+ * always shown it; another currency leads with its symbol, as prices do: A$108.6k, +A$600.12.
+ */
+export function formatPortfolioAmount(value: number | undefined, currency: string, { signed = false }: { signed?: boolean } = {}): string {
+  const text = formatCompactAmount(value, { signed });
+  if (currency === "USD" || value == null || !Number.isFinite(value)) return text;
+  const sign = text.startsWith("+") || text.startsWith("-") ? text.charAt(0) : "";
+  return `${sign}${getCurrencySymbol(currency)}${text.slice(sign.length)}`;
+}
+
+/** Totals over the collection, every amount converted into `totalsCurrency`. */
 export function calculatePortfolioSummaryTotals(
   tickers: TickerRecord[],
   financialsMap: Map<string, TickerFinancials>,
-  baseCurrency: string,
+  totalsCurrency: string,
   exchangeRates: Map<string, number>,
   isPortfolio: boolean,
   collectionId: string | null,
@@ -73,8 +123,8 @@ export function calculatePortfolioSummaryTotals(
   const pricedLots: PricedPortfolioLot[] = [];
   const now = Date.now();
   const toBase = (value: number, currency: string) => {
-    const converted = convertCurrency(value, currency, baseCurrency, exchangeRates);
-    if (Number.isFinite(value) && !Number.isFinite(converted)) unavailableConversions.add(`${currency}/${baseCurrency}`);
+    const converted = convertCurrency(value, currency, totalsCurrency, exchangeRates);
+    if (Number.isFinite(value) && !Number.isFinite(converted)) unavailableConversions.add(`${currency}/${totalsCurrency}`);
     return converted;
   };
 
@@ -94,7 +144,7 @@ export function calculatePortfolioSummaryTotals(
     }
 
     const positionMetrics = getPortfolioPositionMetrics(ticker, collectionId ?? undefined, quoteCurrency, {
-      currency: baseCurrency, convert: toBase,
+      currency: totalsCurrency, convert: toBase,
     }, quote);
     activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
     const { totalPriceUnits, grossPriceUnits, totalCost } = positionMetrics;

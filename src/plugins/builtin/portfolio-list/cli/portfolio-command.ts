@@ -15,6 +15,7 @@ import {
   setManualPortfolioPosition,
 } from "../mutations";
 import { renderCollectionOverview, showCollection } from "./render";
+import { resolvePortfolioTotalsCurrency } from "../summary/totals";
 import { parseFiniteNumber, requireManualPortfolio } from "./shared";
 
 async function listCollections(ctx: CliCommandContext) {
@@ -26,7 +27,7 @@ async function listCollections(ctx: CliCommandContext) {
           portfolios: config.portfolios.map((portfolio) => ({
             id: portfolio.id,
             name: portfolio.name,
-            currency: portfolio.currency,
+            currency: resolvePortfolioTotalsCurrency(portfolio, tickers, config.baseCurrency),
             brokerId: portfolio.brokerId ?? "",
             brokerInstanceId: portfolio.brokerInstanceId ?? "",
             brokerAccountId: portfolio.brokerAccountId ?? "",
