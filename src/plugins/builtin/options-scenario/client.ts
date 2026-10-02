@@ -6,9 +6,9 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { surfaceTreasuryRate } from "../vol-surface/model";
-import { daysToExpiryFrom, optionMid, solveImpliedVolatility } from "../shared/volatility";
+import { daysToExpiryFrom, extractImpliedForward, optionMid, solveImpliedVolatility } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
-import { optionExpirationClose, parseLegs, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
+import { parseLegs, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 
@@ -60,7 +60,6 @@ export interface ScenarioMarketRequest {
 }
 
 const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
-const DAY_MS = 86_400_000;
 const symbolMatches = (actual: string | undefined, expected: string) => actual?.trim().toUpperCase() === expected;
 const CANCELLED = "Scenario load was cancelled";
 
@@ -180,8 +179,7 @@ export function scenarioPositionFromSettings(
     if (!market?.chain || market.warnings.includes("Options chain is stale")) throw new Error("A current options chain is required to seed a strategy");
     if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
     // A missing IV is solved at the market's own spot and time, never at a what-if override.
-    const pricing = market.spot != null && rate != null && dividendYield != null
-      ? { spot: market.spot, asOf: market.asOf, rate, dividendYield } : null;
+    const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate } : null;
     legs = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing);
   }
   if (!legs.length) return null;
@@ -202,27 +200,45 @@ export function scenarioPositionFromSettings(
   return position;
 }
 
-interface StrategyPricing { spot: number; asOf: number; rate: number; dividendYield: number }
+interface StrategyPricing { spot: number; asOf: number; rate: number }
 
 const usableVolatility = (value: unknown): value is number => positive(value) && value <= 5;
 
 /**
  * An explicit strategy request uses only two-sided quotes. A leg takes the
  * provider's observed IV; where the chain has none (OPRA leaves it out on an
- * expiration date), the IV at which OSA's own pricer returns the quote
- * midpoint at the market spot and time, marked as solved from the midpoint.
+ * expiration date), the IV its quote midpoint implies against the expiry's
+ * put-call parity forward with the time left at the market timestamp, marked
+ * as solved from the midpoint. The forward comes from the same quotes, so a
+ * spot that moved after they were taken (an after-hours or pre-market print
+ * against the close's chain) does not skew the call against the put. When
+ * the spot sits too far from every parity forward to trust the quotes, the
+ * legs stay without IV and no strategy is seeded.
  */
 function scenarioStrategyLegs(
   chain: OptionsChain, spot: number, strategy: "vertical" | "straddle", pricing: StrategyPricing | null,
 ): ScenarioLeg[] {
+  const parity = new Map<number, { forward: number; daysToExpiry: number } | null>();
+  const parityFor = (expiration: number) => {
+    if (!pricing) return null;
+    if (!parity.has(expiration)) {
+      const daysToExpiry = daysToExpiryFrom(expiration, pricing.asOf);
+      const { forward } = extractImpliedForward(chain.calls.filter((call) => call.expiration === expiration),
+        chain.puts.filter((put) => put.expiration === expiration), pricing.spot, daysToExpiry / 365, pricing.rate,
+        chain.underlyingSymbol);
+      parity.set(expiration, forward == null ? null : { forward, daysToExpiry });
+    }
+    return parity.get(expiration)!;
+  };
   const quoted = (contracts: OptionsChain["calls"], side: ScenarioLeg["side"]) => contracts.flatMap((contract) => {
     const mid = optionMid(contract);
     if (!positive(contract.strike) || mid == null) return [];
     if (usableVolatility(contract.impliedVolatility)) return [{ contract, mid, volatility: contract.impliedVolatility, solved: false }];
-    if (!pricing) return [];
-    const volatility = solveImpliedVolatility({ side, spot: pricing.spot, strike: contract.strike,
-      daysToExpiry: Math.max(0, (optionExpirationClose(contract.expiration) - pricing.asOf) / DAY_MS),
-      rate: pricing.rate, dividendYield: pricing.dividendYield }, mid).volatility;
+    const expiry = parityFor(contract.expiration);
+    if (!expiry) return [];
+    // q=r turns the spot pricer into discounted forward pricing.
+    const volatility = solveImpliedVolatility({ side, spot: expiry.forward, strike: contract.strike,
+      daysToExpiry: expiry.daysToExpiry, rate: pricing!.rate, dividendYield: pricing!.rate }, mid).volatility;
     return usableVolatility(volatility) ? [{ contract, mid, volatility, solved: true }] : [];
   });
   const calls = quoted(chain.calls, "call").sort((a, b) => Math.abs(a.contract.strike - spot) - Math.abs(b.contract.strike - spot));

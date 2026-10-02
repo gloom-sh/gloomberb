@@ -5,7 +5,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, type ScenarioLoaderDependencies } from "./client";
-import { valueOption } from "../shared/volatility";
+import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { optionsScenarioHeadless } from "./headless";
 import { optionExpirationClose } from "./model";
 
@@ -143,7 +143,7 @@ describe("scenario headless inputs", () => {
     expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "vertical" }, { ...market, warnings: ["Options chain is stale"] })).toThrow("current options chain");
   });
 
-  test("a leg the chain gives no IV takes the one its midpoint implies at the market spot and time", async () => {
+  test("a leg the chain gives no IV takes the one its midpoint implies at the market time", async () => {
     const market = await loadScenarioMarket({ instrument: { symbol: "AAPL" } }, dependencies());
     const daysToExpiry = (optionExpirationClose(expiration) - now) / 86_400_000;
     const priced = (side: "call" | "put", strike: number, impliedVolatility: number) => {
@@ -161,8 +161,45 @@ describe("scenario headless inputs", () => {
     expect(position.legs[0]!.volatility).toBeCloseTo(0.3, 6);
     expect(position.legs[1]).toMatchObject({ side: "put", volatility: 0.28 });
     expect(position.legs[1]!.volatilitySource).toBeUndefined();
-    // A midpoint below intrinsic value has no IV; nothing is invented.
-    const unpriceable = await withChain([{ ...priced("call", 80, 0), bid: 1, ask: 1.2 }], [priced("put", 80, 0.28)]);
-    expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, unpriceable)).toThrow("no complete quoted strategy");
+    // A midpoint below intrinsic value has no IV; the seed passes over it rather than invent one.
+    const strikes = [95, 100, 105];
+    const unpriceable = await withChain([{ ...priced("call", 80, 0), bid: 1, ask: 1.2 }, ...strikes.map((strike) => priced("call", strike, 0))],
+      [80, ...strikes].map((strike) => priced("put", strike, 0.28)));
+    const passedOver = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle", spot: "80" }, unpriceable)!;
+    expect(passedOver.legs.map((leg) => leg.strike)).toEqual([95, 95]);
+  });
+
+  test("a chain quoted before the spot moved solves its missing IVs against its own parity forward", async () => {
+    // Tomorrow's expiry, quoted four hours before the spot print OSA values at.
+    const near = Date.UTC(2026, 8, 23) / 1000;
+    const quotedAt = now - 4 * 3_600_000;
+    const quotedDays = daysToExpiryFrom(near, quotedAt);
+    // The 1M bill, held flat for a one-day expiry.
+    const rate = 0.04;
+    const contract = (side: "call" | "put", strike: number) => {
+      const { price } = valueOption({ side, spot: 100, strike, daysToExpiry: quotedDays, rate, dividendYield: 0.005, volatility: 0.3 });
+      return { contractSymbol: `AAPL${side}${strike}`, strike, bid: price - 0.01, ask: price + 0.01, currency: "USD",
+        expiration: near, impliedVolatility: 0, lastPrice: 0, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: quotedAt / 1000 };
+    };
+    const strikes = [98, 100, 102, 104];
+    const stale = { ...chain, expirationDates: [near], asOf: new Date(quotedAt).toISOString(),
+      calls: strikes.map((strike) => contract("call", strike)), puts: strikes.map((strike) => contract("put", strike)) };
+    const after = async (price: number) => {
+      const market = await loadScenarioMarket({ instrument: { symbol: "AAPL" } }, dependencies({
+        loadQuote: async () => ready({ ...quote, price }), loadOptions: async () => ready(stale) }));
+      expect(market.rate).toBe(rate);
+      return market;
+    };
+    // A 2% move: the call and the put share the forward's volatility, with the
+    // time left at the market timestamp, so each still returns its midpoint there.
+    // Solved at the moved spot instead, the call would read low and the put high.
+    const moved = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, await after(102))!;
+    expect(moved.legs.map((leg) => [leg.side, leg.volatilitySource])).toEqual([["call", "mid"], ["put", "mid"]]);
+    expect(moved.legs[0]!.strike).toBe(moved.legs[1]!.strike);
+    const expected = 0.3 * Math.sqrt(quotedDays / daysToExpiryFrom(near, now));
+    for (const leg of moved.legs) expect(leg.volatility).toBeCloseTo(expected, 3);
+    // An 8% move leaves no parity forward the spot can trust: no strategy rather than invented IVs.
+    const gapped = await after(108);
+    expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, gapped)).toThrow("no complete quoted strategy");
   });
 });
