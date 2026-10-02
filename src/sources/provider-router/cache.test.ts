@@ -1,19 +1,24 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
-import { cacheRouterResource, FINANCIALS_SCHEMA_VERSION, listCachedResources, QUOTE_SCHEMA_VERSION } from "./cache";
+import { cacheRouterResource, FINANCIALS_SCHEMA_VERSION, listCachedResources, QUOTE_SCHEMA_VERSION, MARKET_METADATA_SCHEMA_VERSION } from "./cache";
 import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 afterEach(removeTempDbFiles);
 
-test("financials and quotes written under another schema version are misses until rewritten", () => {
+test("market resources written under another schema version are misses until rewritten", () => {
   const persistence = new AppPersistence(createTempDbPath("market-schema-gate"));
   const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
   const key = { namespace: "market", entityKey: "MSFT", variantKey: "exchange=NASDAQ", sourceKey: "provider:gloom" };
   const financials = createTestFinancials({ annualStatements: [{ date: "2025-06-30", totalRevenue: 100 }] });
   const quote = createTestQuote({ symbol: "MSFT" });
   const read = (kind: string) => listCachedResources(persistence.resources, kind, "MSFT", [key.variantKey], [key.sourceKey], true);
-  for (const [kind, value, current] of [["financials", financials, FINANCIALS_SCHEMA_VERSION], ["quote", quote, QUOTE_SCHEMA_VERSION]] as const) {
+  const resources = [
+    ["financials", financials, FINANCIALS_SCHEMA_VERSION], ["quote", quote, QUOTE_SCHEMA_VERSION],
+    ...["holders", "analystResearch-v2", "corporateActions-v2", "options-chain", "exchange-rate"]
+      .map((kind) => [kind, { source: "gloom" }, MARKET_METADATA_SCHEMA_VERSION] as const),
+  ] as const;
+  for (const [kind, value, current] of resources) {
     for (const schemaVersion of [current - 1, current + 1]) {
       persistence.resources.set({ ...key, kind }, value, { cachePolicy, schemaVersion });
       expect(read(kind)).toEqual([]);

@@ -26,7 +26,7 @@ test("session metadata binds a canonical listing, supported cadence and source c
     { symbol: "AAPL:NASDAQ" }, { symbol: "aapl" }, { symbol: "AAPL\n" }, { exchange: "NASDAQGS" },
     { exchange: "SMART" }, { exchange: "CCC" }, { exchange: "LSE" }, { source: "ibkr" }, { source: "unknown" },
     { interval: "2m" }, { interval: "60m" }, { interval: "1d" }, { interval: "1wk" }, { interval: "auto" },
-    { timestampConvention: "bar-close" }, { barAlignment: undefined }, { barAlignment: "unknown" }, { source: "alpaca", timestampConvention: "bar-open-with-final-observation" },
+    { timestampConvention: "bar-close" }, { barAlignment: undefined }, { barAlignment: "unknown" },
     { observedAt: NOW + 5 * 60_000 + 1 }, { observedAt: 0 }, { observedAt: -1 }, { observedAt: NaN },
     { observedAt: Infinity }, { observedAt: NOW - 0.5 }, { observedAt: String(NOW) },
   ]) expect(parseHistorySession({ ...original, ...override }, undefined, NOW)).toBeNull();

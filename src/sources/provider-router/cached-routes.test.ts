@@ -5,6 +5,7 @@ import { buildArticleSummaryKey } from "../../market-data/selectors";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { BrokerAdapter } from "../../types/broker";
 import { AssetDataRouter } from "./index";
+import { MARKET_METADATA_SCHEMA_VERSION } from "./cache";
 import { attachTestRegistry, brokerInstance, createBrokerConfig } from "./test-support";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -53,7 +54,7 @@ describe("shared cached market queries", () => {
     const provider = createTestDataProvider({ id: "fx", getExchangeRate: () => { calls += 1; return pending.promise; } });
     const fetchedAt = Date.now() - 2 * 60 * 60_000;
     persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "EUR/USD", sourceKey: "provider:fx" }, { rate: 1.08 }, {
-      fetchedAt, cachePolicy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
+      schemaVersion: MARKET_METADATA_SCHEMA_VERSION, fetchedAt, cachePolicy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
     });
     const router = new AssetDataRouter(provider, [], persistence.resources);
     const first = new MarketDataCoordinator(router);
@@ -87,7 +88,7 @@ describe("shared cached market queries", () => {
     const staleFetch = Date.now() - 4 * 24 * 60 * 60_000;
     persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "JPY/USD", sourceKey: "provider:fx" },
       { rate: 1 / 156.86, asOf: new Date(staleFetch).toISOString(), stale: true },
-      { fetchedAt: staleFetch, cachePolicy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 } });
+      { schemaVersion: MARKET_METADATA_SCHEMA_VERSION, fetchedAt: staleFetch, cachePolicy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 } });
     const cli = new AssetDataRouter(provider, [], persistence.resources);
     cli.setBackgroundRevalidation(false);
     try {
@@ -161,7 +162,7 @@ describe("shared cached market queries", () => {
       await router.getOptionsChain("AAPL", undefined, undefined, { cacheMode: "refresh" });
       expect(modes).toEqual([undefined, "refresh"]);
       persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "EUR/USD", sourceKey: "provider:provider" },
-        { rate: 0 }, { cachePolicy: { staleMs: 60_000, expireMs: 120_000 } });
+        { rate: 0 }, { schemaVersion: MARKET_METADATA_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 120_000 } });
       expect(await router.getExchangeRate("EUR")).toBe(1.15);
     } finally { persistence.close(); }
   });
@@ -197,7 +198,7 @@ describe("shared cached market queries", () => {
     const provider = createTestDataProvider({ id: "fx" });
     persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "EUR/USD", sourceKey: "provider:fx" },
       { fromCurrency: "JPY", toCurrency: "USD", rate: 0.0065 },
-      { fetchedAt: Date.now() - 10_000, cachePolicy: { staleMs: 1, expireMs: 2 } });
+      { schemaVersion: MARKET_METADATA_SCHEMA_VERSION, fetchedAt: Date.now() - 10_000, cachePolicy: { staleMs: 1, expireMs: 2 } });
     const router = new AssetDataRouter(provider, [], persistence.resources);
     try {
       expect(router.getCachedExchangeRates(["EUR"], { allowExpired: true }).has("EUR")).toBe(false);

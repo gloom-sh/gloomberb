@@ -105,7 +105,7 @@ export interface QuoteContribution extends Quote {
 export type QuoteContributionMap = Record<string, QuoteContribution>;
 
 export interface Fundamentals {
-  source?: "twelvedata" | "gloom";
+  source?: "gloom";
   fetchedAt?: string;
   stale?: boolean;
   /** Currency of reported revenue, income, and cash flows; may differ from the listing. */
@@ -130,7 +130,7 @@ export interface Fundamentals {
   freeCashFlow?: number;
   dividendYield?: number;
   dividendYieldBasis?: "forward" | "trailing";
-  dividendYieldSource?: "twelvedata" | "gloom";
+  dividendYieldSource?: "gloom";
   /**
    * Annual dividend per share behind `dividendYield`, in the listing's major
    * currency unit. Served only when its basis matches the yield, so the yield
@@ -370,7 +370,7 @@ export interface ReportedOperatingCohort {
 
 /** @deprecated No longer populated. */
 export interface ProviderOperatingObservation {
-  provider: "gloom" | "twelvedata";
+  provider: "gloom";
   sourceField: string;
   period: "annual" | "quarterly";
   endDate: string;

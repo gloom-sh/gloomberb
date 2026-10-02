@@ -65,8 +65,8 @@ test("absent or unreadable Cloud metadata remains compatible but contradictory d
     await expect(provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1M", "15m"))
       .rejects.toThrow("session metadata does not match");
   }
-  for (const providerMeta of [{ provider: "twelvedata" }, { normalizedSymbol: "MSFT" },
-    { provider: "cache", upstream: "twelvedata" },
+  for (const providerMeta of [{ provider: "other" }, { normalizedSymbol: "MSFT" },
+    { provider: "cache", upstream: "other" },
     { normalizedExchange: "LSE" }, { currency: "CAD" }, { servedResolution: "5min" },
     { requestedResolution: "1day", servedResolution: "15min" }]) {
     wire(() => ({ status: "success", data: points, historySession: session(), providerMeta }));

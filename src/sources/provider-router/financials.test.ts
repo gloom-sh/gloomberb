@@ -180,7 +180,7 @@ test("fallback reporting currency does not label unknown primary statement units
 
 test("yield basis and source stay attached to the selected yield observation", () => {
   const forward = createTestFinancials({ fundamentals: { dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "gloom" } });
-  const trailing = createTestFinancials({ fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "twelvedata", revenue: 100 } });
+  const trailing = createTestFinancials({ fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "gloom", revenue: 100 } });
   expect(mergeFinancials(forward, trailing)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "gloom", revenue: 100 });
   const unknown = createTestFinancials({ fundamentals: { dividendYield: 0.16 } });
   expect(mergeFinancials(unknown, forward)?.fundamentals?.dividendYieldBasis).toBeUndefined();

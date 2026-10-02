@@ -121,7 +121,7 @@ Basic UI must use the shared kit: actions, selectable and expandable rows, field
 [PLUGINS.md](PLUGINS.md) is the guide to building a plugin and its APIs. [docs/pane-conventions.md](docs/pane-conventions.md) covers how a pane is put together: where actions, status and warnings go, detail stacks, load-more lists, tabs, forms, reserved keys, and a checklist for a new pane. The rules that come up most in review:
 
 - The pane footer shows what changes (loading, error, live or delayed, stale, auth state) and the pane's action keys. No fixed labels, row counts or generic keyboard hints there, and no button rows in the body.
-- Never show the data provider in a pane (`provider:*`, Gloom Cloud, Alpaca and so on). Say what the data is instead: real-time, 15m delayed, settlement, as of a date.
+- Never show internal provider or source identifiers in a pane (`provider:*`, raw feed names). Say what the data is instead: real-time, 15m delayed, settlement, as of a date. Gloom Cloud is the public market-data service.
 - Say each thing once. When a pane title or detail header names the item, the body starts with metadata or content.
 - Methodology, model assumptions and usage explanations go in `docs/`, not in always-visible pane text or new info buttons. Units, source dates and active data failures stay in context.
 - Everything interactive works with the mouse and the keyboard.

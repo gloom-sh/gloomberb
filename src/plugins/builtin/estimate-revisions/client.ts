@@ -14,7 +14,7 @@ export const estimateRevisionsCache =
   createPluginCache<EstimateRevisionsPayload>({
     kind: "estimate-revisions",
     source: "gloom-cloud",
-    schemaVersion: 1,
+    schemaVersion: 2,
     policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 },
   });
 const number = (value: unknown) =>

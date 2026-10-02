@@ -101,7 +101,7 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
   expect(frame).toContain("Bitcoin");
   expect(frame).toContain("HYPE");
   expect(frame).not.toContain("USDT");
-  expect(frame).not.toMatch(/alpaca|utc day/i);
+  expect(frame).not.toMatch(/gloom cloud|utc day/i);
 
   await exportPaneTable("cryp", "coins.csv");
   const csv = takeSavedTextFile()!.text;

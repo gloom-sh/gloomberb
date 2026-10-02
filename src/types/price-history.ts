@@ -10,7 +10,7 @@ export interface HistorySession {
   symbol: string;
   exchange: string;
   interval: string;
-  source: "gloom" | "twelvedata" | "alpaca";
+  source: "gloom";
   timestampConvention: "bar-open" | "bar-open-with-final-observation";
   barAlignment: "session-open" | "clock";
   /** Actual acquisition time, retained unchanged through source/cache projections. */

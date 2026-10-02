@@ -40,7 +40,8 @@ type PriceHistoryCachePolicyKey = Extract<
   "priceHistoryIntraday" | "priceHistoryDaily"
 >;
 // Bumped instead of adding markers: every older record is a miss and refetches.
-const PRICE_HISTORY_CACHE_VERSION = 6;
+// Refetch source/session metadata under the current public backend contract.
+const PRICE_HISTORY_CACHE_VERSION = 7;
 interface HistoryRequestDescriptor {
   target: { symbol: string; exchange: string };
   identity: RouterRequestIdentity;

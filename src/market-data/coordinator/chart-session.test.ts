@@ -75,7 +75,7 @@ test("empty and failed refreshes preserve retained history's own source, acquisi
   let calls = 0;
   const instance = coordinator(async () => {
     if (++calls === 1) return result();
-    if (calls === 2) return result(undefined, { points: [], sourceKey: "provider:other", session: proof({ source: "twelvedata" }) });
+    if (calls === 2) return result(undefined, { points: [], sourceKey: "provider:other", session: proof({ barAlignment: "clock" }) });
     throw new Error("Controlled provider outage");
   });
   const first = await instance.loadChart(request);

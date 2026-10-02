@@ -167,14 +167,8 @@ function mapCloudPriceHistory(
       `Cloud chart data is unavailable for ${ticker}`,
     ).map((point) => mapPricePoint(point, divisor, exchange)),
   );
-  const upstream = (
-    response.providerMeta?.provider
-    ?? response.providerMeta?.upstream
-    ?? ""
-  ).trim().toLowerCase();
   if (
     /^\d+(min|h)$/i.test(interval)
-    && upstream !== "gloom"
     && hasMalformedIntradayHistory(points)
   ) {
     throw createProviderMiss(`Cloud chart data failed OHLC validation for ${ticker}`);

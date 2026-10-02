@@ -59,7 +59,7 @@ test("mixed source exhaustion freezes eligible ownership and replays only the se
     const candidate = failure.candidates[0]!;
     // Ordinary Cloud data at the same bounds does not attest the hidden source.
     store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "BTC-USD", sourceKey: "provider:cloud-test",
-      variantKey: `exchange=CCC;start=${new Date(candidate.retention.availableStart).toISOString()};end=${new Date(candidate.retention.requestedEnd).toISOString()};bar=15m;version=6` },
+      variantKey: `exchange=CCC;start=${new Date(candidate.retention.availableStart).toISOString()};end=${new Date(candidate.retention.requestedEnd).toISOString()};bar=15m;version=7` },
     { points: [{ date: points()[0]!.date, close: 999 }], resolution: "15m" }, { cachePolicy: { staleMs: 60_000, expireMs: 600_000 } });
     expect((await recover(router, candidate))[0]!.close).toBe(100);
     expect((await recover(router, candidate))[0]!.close).toBe(100);
@@ -104,7 +104,7 @@ test("an already returned broad success stays successful when a slower retention
 test("fresh broad cache fallback, reported gaps and coverage restrictions precede recovery", async () => {
   const store = new AppPersistence(createTempDbPath("retention-precedence")), calls: string[] = [];
   try {
-    store.resources.set({ namespace: "market", kind: "price-history", entityKey: "BTC-USD", variantKey: "exchange=CCC;range=3M;resolution=15m;version=6", sourceKey: "provider:cloud-test" },
+    store.resources.set({ namespace: "market", kind: "price-history", entityKey: "BTC-USD", variantKey: "exchange=CCC;range=3M;resolution=15m;version=7", sourceKey: "provider:cloud-test" },
       { points: points(), resolution: "15m" }, { cachePolicy: { staleMs: 60_000, expireMs: 600_000 } });
     expect((await history(new AssetDataRouter(limited(calls), [], store.resources), { cacheMode: "refresh" }))[0]!.close).toBe(100);
     const gaps = [{ date: points()[0]!.date, close: null }] as PricePoint[];

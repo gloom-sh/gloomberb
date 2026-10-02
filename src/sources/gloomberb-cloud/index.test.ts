@@ -543,7 +543,7 @@ describe("GloomberbCloudProvider", () => {
     expect(history).toHaveLength(3);
   });
 
-  test("preserves backend-validated fallback history", async () => {
+  test("generic managed attribution cannot bypass malformed intraday history validation", async () => {
     apiClient.ensureVerifiedSession = async () => verifiedUser;
     apiClient.getCloudHistory = async () => ({
       status: "success",
@@ -563,14 +563,12 @@ describe("GloomberbCloudProvider", () => {
     });
 
     const provider = new GloomberbCloudProvider();
-    const history = await provider.getPriceHistoryForResolution(
+    await expect(provider.getPriceHistoryForResolution(
       "SPY",
       "NYSEARCA",
       "1W",
       "1m",
-    );
-
-    expect(history[1]?.low).toBe(686.98);
+    )).rejects.toThrow("failed OHLC validation");
   });
 
   test("normalizes daily detailed history requests to 1day", async () => {

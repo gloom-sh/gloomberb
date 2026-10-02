@@ -118,7 +118,7 @@ test("public cache identity checks retain exact suffix aliases, unidentified sta
   const cases = [
     { entity: "SHOP", variant: variants[0]!, source: "provider:gloomberb-cloud", financials: value({ quote: undefined }) },
     { entity: "SHOP", variant: variants[0]!, source: "provider:gloom", financials: value({ quote: undefined, quoteMetadata: { symbol: "SHOP" } }) },
-    { entity: "SHOP", variant: variants[0]!, source: "provider:twelvedata", financials: value({ quote: createTestQuote({ symbol: "SHOP" }) }) },
+    { entity: "SHOP", variant: variants[0]!, source: "provider:other", financials: value({ quote: createTestQuote({ symbol: "SHOP" }) }) },
     { entity: "2330", variant: "exchange=TWSE", source: "provider:gloom", financials: value({ quote: createTestQuote({ symbol: "2330.TW", listingExchangeName: "TAI", currency: "TWD" }) }) },
     { entity: "contract:12345", variant: variants[0]!, source: "provider:gloomberb-cloud", financials: value() },
     { entity: "SHOP", variant: variants[0]!, source: "broker:account", financials: value({ quote: createTestQuote({ symbol: "BROKER-LOCAL", listingExchangeName: "SMART" }) }) },

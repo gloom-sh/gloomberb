@@ -17,7 +17,7 @@ function quote(overrides: Partial<Quote> = {}): Quote {
 }
 
 test("cloud snapshots include the latest regular trade beyond a lagging daily bar", () => {
-  // The production Alpaca quote had no venue, only an explicit session date.
+  // The production Cloud quote had no venue, only an explicit session date.
   const nvda = mapQuote(quote({ price: 217.77, low: 217.79, listingExchangeName: undefined,
     sessionConfidence: "derived", changeSessionDate: "2026-09-10" }));
   expect(nvda).toMatchObject({ high: 220.99, low: 217.77 });
