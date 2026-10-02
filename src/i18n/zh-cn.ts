@@ -14,6 +14,8 @@ export const zhCN: Record<string, string> = {
   "Close": "关闭",
   "Open": "打开",
   "Linked to {source}": "已链接到 {source}",
+  "Link to {source}": "链接到 {source}",
+  "Unlink from {source}": "取消链接 {source}",
   "Working…": "处理中…",
   "Searching…": "搜索中…",
   "Loading...": "加载中...",

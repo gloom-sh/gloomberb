@@ -45,6 +45,7 @@ export const optionsPositioningModule: PluginModule = {
     icon: "O",
     component: OptionsPositioningPane,
     defaultPosition: "right",
+    tickerFollower: true,
     defaultMode: "floating",
     defaultFloatingSize: { width: 104, height: 34 },
     tableExport: true,

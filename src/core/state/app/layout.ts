@@ -1,4 +1,5 @@
 import { getDockLeafLayouts, getDockedPaneIds } from "../../../layout/pane-manager";
+import { pinFollowingPane } from "../../../layout/pane-follow";
 import {
   cloneLayout,
   findPaneInstance,
@@ -532,6 +533,7 @@ export function withFocusedPane(
   const normalizedLayout = normalizePaneLayout(config.layout, {
     // Keep a follower alive on its last symbol when its source pane is gone.
     resolveOrphanSymbol: (instanceId) => resolveTickerForPane(state, instanceId),
+    pinOrphan: pinFollowingPane,
   });
   const nextConfig = normalizedLayout === config.layout
     ? config

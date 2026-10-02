@@ -35,6 +35,7 @@ export const tickerDetailModule: PluginModule = {
       icon: "D",
       component: TickerResearchPane,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(
@@ -49,6 +50,7 @@ export const tickerDetailModule: PluginModule = {
       component: FinancialAnalysisPane,
       headless: financialStatementsHeadless,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 98, height: 30 },
       tableExport: true,
@@ -75,6 +77,7 @@ export const tickerDetailModule: PluginModule = {
       component: HistoricalPricesPane,
       headless: historicalPricesHeadless,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 26 },
       tableExport: true,

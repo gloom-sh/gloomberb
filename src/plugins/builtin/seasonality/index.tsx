@@ -6,7 +6,7 @@ import { LOOKBACK_OPTIONS, SeasonalityPane } from "./pane";
 export const seasonalityModule: PluginModule = {
   panes: [{
     id: "seasonality", name: "Seasonality", icon: "S", component: SeasonalityPane,
-    defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 112, height: 30 },
+    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 112, height: 30 },
     tableExport: true,
     settings: { title: "Seasonality Settings", fields: [
       { key: "lookbackYears", label: "Lookback", type: "select", options: LOOKBACK_OPTIONS },

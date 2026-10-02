@@ -398,6 +398,7 @@ export const secModule: PluginModule = {
       icon: "S",
       component: SecView,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 32 },
       tableExport: true,

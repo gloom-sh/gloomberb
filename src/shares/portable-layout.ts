@@ -1,5 +1,6 @@
 import type { PaneRuntimeState } from "../core/state/app/types";
 import { publicTickerBindingSymbol } from "../tickers/selection";
+import { pinFollowingPane } from "../layout/pane-follow";
 import {
   CURRENT_CONFIG_VERSION,
   removePaneInstances,
@@ -617,15 +618,12 @@ export function publishableMarketplacePane(
 ): LayoutMarketplacePayload {
   const def = panes.get(pane.paneId);
   if (!def) throw new Error("This pane is unavailable.");
-  const binding = pane.binding?.kind === "follow"
-    ? resolvedTicker?.trim()
-      ? { kind: "fixed" as const, symbol: resolvedTicker.trim() }
-      : { kind: "none" as const }
-    : pane.binding;
+  // A shared follower travels pinned on what it shows, retitled "OMON MSFT" if it was linked.
+  const instance = pane.binding?.kind === "follow" ? pinFollowingPane(pane, resolvedTicker) : pane;
   const size = def.defaultFloatingSize ?? { width: 80, height: 24 };
   return publishableLayout({
     dockRoot: null,
-    instances: [{ ...pane, ...(binding ? { binding } : {}) }],
+    instances: [instance],
     floating: [{
       instanceId: pane.instanceId,
       x: 0,

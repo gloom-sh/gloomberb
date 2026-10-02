@@ -65,6 +65,7 @@ export const optionsModule: PluginModule = {
       icon: "O",
       component: OptionsPane,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 112, height: 28 },
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],

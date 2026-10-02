@@ -395,6 +395,20 @@ const chartComposerTemplates: PaneTemplateDef[] = [
   }),
 ];
 
+/**
+ * A chart of one security (GP, GIP, a custom chart of one ticker) can follow a list. A comparison
+ * would move only its first ticker, and a FRED-only chart has no ticker to follow.
+ */
+function chartShowsOneSecurity(pane: PaneInstanceConfig): boolean {
+  const spec = parseChartSpec(pane.settings?.[CHART_SPEC_SETTING_KEY]);
+  // Without a saved spec the pane draws its bound ticker's price.
+  if (!spec) return true;
+  const symbols = new Set(spec.series.flatMap((series) => (
+    series.source.kind === "security" ? [parsePublicTickerKey(series.source.instrument.symbol).symbol.toUpperCase()] : []
+  )));
+  return symbols.size === 1;
+}
+
 export const chartComposerModule: PluginModule = {
   panes: [{
     id: CHART_COMPOSER_PANE_ID,
@@ -402,6 +416,7 @@ export const chartComposerModule: PluginModule = {
     icon: "G",
     component: ChartComposerPane,
     defaultPosition: "right",
+    tickerFollower: chartShowsOneSecurity,
     defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 32 },
     portableShare: { prepare: prepareChartPaneForShare },

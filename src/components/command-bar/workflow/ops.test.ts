@@ -357,6 +357,33 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
     expect(result.created).toBe(1);
   });
 
+  // A ticker template's id names the ticker it opened on (`options:AAPL`). Once that pane is linked
+  // to a list, or unlinked on another ticker, typing `OMON AAPL` must neither unlink nor take it
+  // over, and typing it again must land on the same pinned pane even after it rewrote its settings.
+  test("opens one pinned pane beside a stable-id ticker pane that shows another ticker", async () => {
+    const spec = { instanceId: "chat:AAPL", title: "OMON AAPL", binding: { kind: "fixed", symbol: "AAPL" } };
+    const linked = {
+      instanceId: "chat:AAPL",
+      paneId: "chat",
+      title: "OMON",
+      binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" },
+    };
+
+    const first = await runTemplate(spec, [linked]);
+    expect(first.focused).toEqual([]);
+    expect(first.layouts).toEqual([]);
+    expect(first.createdWith).toMatchObject({ instanceId: "chat:AAPL:pinned", binding: { kind: "fixed", symbol: "AAPL" } });
+
+    const pinned = { ...spec, instanceId: "chat:AAPL:pinned", paneId: "chat", settings: { expirationTargetKey: "AAPL|AAPL" } };
+    const again = await runTemplate(spec, [linked, pinned]);
+    expect(again.focused).toEqual(["chat:AAPL:pinned"]);
+    expect(again.created).toBe(0);
+
+    const unlinked = await runTemplate(spec, [{ ...linked, title: "OMON MSFT", binding: { kind: "fixed", symbol: "MSFT" } }]);
+    expect(unlinked.layouts).toEqual([]);
+    expect(unlinked.createdWith).toMatchObject({ instanceId: "chat:AAPL:pinned" });
+  });
+
   test("reuses an unkeyed template only on an equivalent spec, ignoring settings key order", async () => {
     const existing = [{
       instanceId: "chat:stored",

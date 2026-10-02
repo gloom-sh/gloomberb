@@ -1074,21 +1074,37 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
     () => resolveFollowSeriesIds(stored, previousTarget.current, target, savedIds),
     [savedIds, stored, target],
   );
+  // What the chart showed while it followed. Unlinking pins it there, even when that spec was only
+  // rebound for display and never saved (see below).
+  const shownSpec = useRef<ChartSpec | null>(null);
+  const unlinkedFrom = follows ? null : shownSpec.current;
   // Resolve before rendering so the new title never carries the old asset's data.
   const spec = useMemo(
-    () => follows ? rebindFollowChartSpec(stored, previousTarget.current, target, ownedIds) : stored,
-    [follows, ownedIds, stored, target],
+    () => follows ? rebindFollowChartSpec(stored, previousTarget.current, target, ownedIds) : unlinkedFrom ?? stored,
+    [follows, ownedIds, stored, target, unlinkedFrom],
   );
   const setSpec = useCallback((next: ChartSpec) => updateSettings({
     [CHART_SPEC_SETTING_KEY]: next,
     ...(follows ? { [CHART_FOLLOW_SERIES_SETTING_KEY]: resolveFollowSeriesIds(next, target, target, ownedIds) } : {}),
   }), [follows, ownedIds, target, updateSettings]);
+  // The rebound spec is saved once per target. A spec synced in from another device, whose list
+  // cursor sits elsewhere, is rebound for display only: saving it would push it back, and two
+  // devices following the same list would rewrite each other on every sync.
+  const savedForTarget = useRef<string | null>(null);
   useEffect(() => {
-    if (follows && target && (spec !== stored || ownedIds !== savedIds)) {
+    const targetKey = target ? JSON.stringify(target) : null;
+    if (follows && target && ((spec !== stored && targetKey !== savedForTarget.current) || ownedIds !== savedIds)) {
       setSpec(spec);
     }
-    if (target) previousTarget.current = target;
-  }, [follows, ownedIds, savedIds, setSpec, spec, stored, target]);
+    if (unlinkedFrom && JSON.stringify(unlinkedFrom) !== JSON.stringify(stored)) {
+      updateSettings({ [CHART_SPEC_SETTING_KEY]: unlinkedFrom });
+    }
+    shownSpec.current = follows && target ? spec : null;
+    if (target) {
+      previousTarget.current = target;
+      savedForTarget.current = targetKey;
+    }
+  }, [follows, ownedIds, savedIds, setSpec, spec, stored, target, unlinkedFrom, updateSettings]);
   if (follows && !target && ownedIds.length > 0) {
     return <EmptyState title={error ?? "No ticker selected."} />;
   }

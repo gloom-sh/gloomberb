@@ -95,6 +95,31 @@ test("follow chart retains range while switching BTC to SHOP, including saved re
   expect(requests).not.toContain("BTC-USD:CCC");
 });
 
+// Each device has its own list cursor, so a follower's saved spec synced in from another device
+// names that device's ticker. Saving the local rebind would push it back, and two devices would
+// rewrite each other on every sync.
+test("a follower shows a synced-in spec rebound to its own target without saving it, until unlinked", async () => {
+  const host = store(); setConfigStoreHost(host);
+  const config = await host.loadConfig("browser://local");
+  const requests: string[] = [];
+  await mount(config, requests);
+  await settle(() => requests.includes("BTC-USD:CCC") && Boolean(findPaneInstance(latest.config.layout, chartId)?.settings?.chartSpec));
+  const settings = findPaneInstance(latest.config.layout, chartId)!.settings!;
+  const pulled = rebindFollowChartSpec(settings.chartSpec as any, null, { symbol: "SHOP", exchange: "NASDAQ" });
+  const synced = updatePaneInstance(latest.config.layout, chartId, pane => ({ ...pane, settings: { ...settings, chartSpec: pulled } }));
+  requests.length = 0;
+  await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: synced } }));
+  for (let i = 0; i < 5; i++) await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
+  expect(tui.frame()).toContain("BTC-USD:CCC Price");
+  expect(requests).not.toContain("SHOP:NASDAQ");
+  expect(findPaneInstance(latest.config.layout, chartId)!.settings!.chartSpec).toEqual(pulled);
+
+  const unlinked = updatePaneInstance(latest.config.layout, chartId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "BTC-USD:CCC" } }));
+  await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: unlinked } }));
+  await settle(() => (findPaneInstance(latest.config.layout, chartId)?.settings?.chartSpec as any)?.series[0].source.instrument.symbol === "BTC-USD");
+  expect(requests).not.toContain("SHOP:NASDAQ");
+});
+
 test("fixed custom comparison does not follow the research pane", async () => {
   const host = store(); setConfigStoreHost(host);
   const config = await host.loadConfig("browser://local");

@@ -692,6 +692,8 @@ export function normalizePaneLayout(
     defaultFollowSourceInstanceId?: string | null;
     /** Last resolved symbol used to pin an orphaned follower; otherwise it remains safely unlinked. */
     resolveOrphanSymbol?: (instanceId: string) => string | null;
+    /** Pins an orphaned follower on its last symbol; by default only its binding changes. */
+    pinOrphan?: (instance: PaneInstanceConfig, symbol: string | null) => PaneInstanceConfig;
   },
 ): LayoutConfig {
   const fallbackSourceId = options?.defaultFollowSourceInstanceId ?? null;
@@ -718,18 +720,18 @@ export function normalizePaneLayout(
   for (;;) {
     const validInstanceIds = new Set(nextLayout.instances.map((instance) => instance.instanceId));
     const removedIds = new Set<string>();
-    const orphanBindings = new Map<string, PaneBinding>();
+    const orphanPins = new Map<string, PaneInstanceConfig>();
 
     for (const instance of nextLayout.instances) {
       if (instance.binding?.kind === "follow" && !validInstanceIds.has(instance.binding.sourceInstanceId)) {
         // Structural helpers remove the source before the app can resolve its last ticker. Preserve
         // the dangling binding until the runtime normalizes again with a resolver.
         if (!options?.resolveOrphanSymbol) continue;
-        const orphanSymbol = options.resolveOrphanSymbol(instance.instanceId)?.trim();
-        orphanBindings.set(
-          instance.instanceId,
-          orphanSymbol ? { kind: "fixed", symbol: orphanSymbol } : { kind: "none" },
-        );
+        const orphanSymbol = options.resolveOrphanSymbol(instance.instanceId)?.trim() || null;
+        orphanPins.set(instance.instanceId, options.pinOrphan?.(instance, orphanSymbol) ?? {
+          ...instance,
+          binding: orphanSymbol ? { kind: "fixed", symbol: orphanSymbol } : { kind: "none" },
+        });
         continue;
       }
 
@@ -748,13 +750,10 @@ export function normalizePaneLayout(
       }
     }
 
-    if (orphanBindings.size > 0) {
+    if (orphanPins.size > 0) {
       nextLayout = {
         ...nextLayout,
-        instances: nextLayout.instances.map((instance) => {
-          const binding = orphanBindings.get(instance.instanceId);
-          return binding ? { ...instance, binding } : instance;
-        }),
+        instances: nextLayout.instances.map((instance) => orphanPins.get(instance.instanceId) ?? instance),
       };
     }
 
@@ -762,7 +761,7 @@ export function normalizePaneLayout(
       nextLayout = removePaneInstances(nextLayout, removedIds);
       continue;
     }
-    if (orphanBindings.size === 0) break;
+    if (orphanPins.size === 0) break;
   }
 
   const validInstanceIds = new Set(nextLayout.instances.map((instance) => instance.instanceId));

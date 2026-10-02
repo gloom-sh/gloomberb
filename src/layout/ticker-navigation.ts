@@ -21,6 +21,19 @@ export function listVisibleTickerSourcePanes(
   ));
 }
 
+/**
+ * Whether the pane menu may link this pane to a ticker source (`PaneDef.tickerFollower`). A source
+ * never follows: its own cursor symbol would win over the binding.
+ */
+export function canFollowTickerSource(
+  instance: PaneInstanceConfig,
+  panes: ReadonlyMap<string, PaneDef>,
+): boolean {
+  const def = panes.get(instance.paneId);
+  if (!def || def.tickerSource) return false;
+  return typeof def.tickerFollower === "function" ? def.tickerFollower(instance) : def.tickerFollower === true;
+}
+
 /** The visible Ticker Research pane that follows `sourceInstanceId`, if any. */
 export function findTickerResearchFollower(
   layout: LayoutConfig,

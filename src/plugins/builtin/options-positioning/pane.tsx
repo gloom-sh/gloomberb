@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   chartTableChromeRows,
   ChartTableHeader,
@@ -25,7 +25,7 @@ import {
 import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
-import { useAsyncResource, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
+import { useAsyncResource, usePaneSettingValue, usePluginPaneState, usePrunePluginPaneState } from "../../../public/react";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useShortcut } from "../../../react/input";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -157,6 +157,9 @@ function PositioningChart(props: PositioningChartProps) {
     legendAccessoryWidth={props.legendAccessoryWidth} remoteKind={props.remoteKind} />;
 }
 
+/** Saved choices that belong to one underlying, stored as `opx:expiry:<symbol>`. */
+const UNDERLYING_STATE_KEY = /^opx:(expiry|gammaExpiry|strike|expiryRow|gammaStrike)(:|$)/;
+
 export function OptionsPositioningPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();
   // A new underlying starts over rather than relabelling the last one's data.
@@ -166,15 +169,23 @@ export function OptionsPositioningPane(props: PaneProps) {
 
 function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & { symbol: string }) {
   const colors = useThemeColors();
+  // A pane linked to a watchlist changes underlying with the cursor. The expiry and strike it
+  // saved for one would otherwise open the next on the same date, so they are kept per symbol
+  // and the last symbol's are dropped.
+  const own = (key: string) => `${key}:${symbol}`;
+  const pruneState = usePrunePluginPaneState();
+  useEffect(() => {
+    pruneState((key) => UNDERLYING_STATE_KEY.test(key) && !key.endsWith(`:${symbol}`));
+  }, [pruneState, symbol]);
   const [initialTab] = usePaneSettingValue("tab", "strikes");
   const [savedTab, setTab] = usePluginPaneState<string>("opx:tab", initialTab);
   const [initialExpiry] = usePaneSettingValue("expiry", "");
-  const [requestedExpiry, setRequestedExpiry] = usePluginPaneState<string | null>("opx:expiry", initialExpiry || null);
+  const [requestedExpiry, setRequestedExpiry] = usePluginPaneState<string | null>(own("opx:expiry"), initialExpiry || null);
   // An expiry the pane was opened with (shot --expiry) applies to gamma too.
-  const [gammaExpiry, setGammaExpiry] = usePluginPaneState<string>("opx:gammaExpiry", initialExpiry || ALL_EXPIRIES);
-  const [selectedStrike, setSelectedStrike] = usePluginPaneState<string | null>("opx:strike", null);
-  const [selectedExpiry, setSelectedExpiry] = usePluginPaneState<string | null>("opx:expiryRow", null);
-  const [selectedGammaStrike, setSelectedGammaStrike] = usePluginPaneState<string | null>("opx:gammaStrike", null);
+  const [gammaExpiry, setGammaExpiry] = usePluginPaneState<string>(own("opx:gammaExpiry"), initialExpiry || ALL_EXPIRIES);
+  const [selectedStrike, setSelectedStrike] = usePluginPaneState<string | null>(own("opx:strike"), null);
+  const [selectedExpiry, setSelectedExpiry] = usePluginPaneState<string | null>(own("opx:expiryRow"), null);
+  const [selectedGammaStrike, setSelectedGammaStrike] = usePluginPaneState<string | null>(own("opx:gammaStrike"), null);
   const [strikeSort, setStrikeSort] = useState<Sort>({ columnId: "strike", direction: "asc" });
   const [expirySort, setExpirySort] = useState<Sort>({ columnId: "date", direction: "asc" });
   const [gammaSort, setGammaSort] = useState<Sort>({ columnId: "strike", direction: "asc" });

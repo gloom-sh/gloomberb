@@ -114,6 +114,13 @@ export interface PaneDef {
   defaultMode?: "docked" | "floating";
   /** Pane publishes its selected symbol as pane-state `cursorSymbol`, so ticker panes can follow it. */
   tickerSource?: boolean;
+  /**
+   * Pane shows one ticker read through its binding (`usePaneTicker`, `usePaneTickerIdentity`), so
+   * its pane menu offers "Link to" each visible `tickerSource` pane and it then follows that pane's
+   * selection. A function decides per instance (a chart with one security, not a comparison). A
+   * follower must never write its own `cursorSymbol`: that would win over the binding.
+   */
+  tickerFollower?: boolean | ((pane: PaneInstanceConfig) => boolean);
   /** Renderer-neutral data model used by CLI functions, automation, and hosted tools. */
   headless?: HeadlessPaneDefinition;
   /** Add an Excel-compatible CSV action for the pane's single active DataTable. */

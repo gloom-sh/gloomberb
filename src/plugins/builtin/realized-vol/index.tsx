@@ -7,7 +7,7 @@ import { ESTIMATOR_OPTIONS, WINDOW_OPTIONS } from "./settings";
 export const realizedVolModule: PluginModule = {
   panes: [{
     id: "realized-vol", name: "Realized Volatility", icon: "V", component: RealizedVolPane,
-    defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 112, height: 36 },
+    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 112, height: 36 },
     tableExport: true,
     quickSettings: [{ type: "toggle", key: "showIv", icon: "zap", label: "Current ATM IV" }],
     settings: { title: "Realized Volatility Settings", fields: [

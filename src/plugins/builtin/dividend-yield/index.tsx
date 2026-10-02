@@ -54,6 +54,7 @@ export function createDividendYieldModule({
         icon: "D",
         component,
         defaultPosition: "right",
+        tickerFollower: true,
         defaultMode: "floating",
         defaultFloatingSize: { width: 90, height: 28 },
         tableExport: true,

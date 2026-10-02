@@ -598,7 +598,7 @@ export function Shell({
         instance: pane.instance,
         layout: visibleLayout,
         panes: pluginRegistry.panes,
-        state: titleState,
+        state: { ...titleState, tickers: stateRef.current.tickers },
         persistLayout,
       }),
       canExportPaneCsv(paneId) ? exportPaneCsv : undefined,

@@ -99,11 +99,41 @@ function stableKey(value: unknown): string {
 }
 
 /**
+ * A ticker pane's id names the ticker it opened on (`options:AAPL`), but a pane linked to a list
+ * since then, or unlinked on another ticker, shows something else. Typing `OMON AAPL` must not
+ * retarget it: a linked pane would silently stop following, and an unlinked one would be taken over.
+ */
+function showsOtherTicker(owner: PaneInstanceConfig, spec: PaneTemplateInstanceConfig): boolean {
+  return spec.binding?.kind === "fixed" && (
+    owner.binding?.kind === "follow"
+    || (owner.binding?.kind === "fixed" && owner.binding.symbol !== spec.binding.symbol)
+  );
+}
+
+/**
+ * When the pane holding a ticker template's id shows another ticker, the command opens its own
+ * pinned pane under a second stable id, so typing it again lands on that pane rather than a
+ * third one (OMON keeps rewriting its settings, so the whole-spec match below would miss it).
+ */
+function withFreeTickerInstanceId(
+  instances: PaneInstanceConfig[],
+  paneId: string,
+  spec: PaneTemplateInstanceConfig,
+): PaneTemplateInstanceConfig {
+  if (!spec.instanceId) return spec;
+  const owner = instances.find((instance) => instance.instanceId === spec.instanceId);
+  return owner?.paneId === paneId && showsOtherTicker(owner, spec)
+    ? { ...spec, instanceId: `${spec.instanceId}:pinned` }
+    : spec;
+}
+
+/**
  * Find the pane a template would otherwise duplicate. A template that owns a
  * stable instance id (Chat keys one pane per channel) claims that instance even
  * after its settings drifted at runtime, as long as the id still belongs to the
- * same kind of pane; everything else has to match the whole create spec, so a
- * different ticker, collection or setting still opens its own pane.
+ * same kind of pane and, for a ticker pane, still shows that ticker; everything
+ * else has to match the whole create spec, so a different ticker, collection or
+ * setting still opens its own pane.
  */
 function findReusablePaneInstance(
   instances: PaneInstanceConfig[],
@@ -112,7 +142,8 @@ function findReusablePaneInstance(
 ): PaneInstanceConfig | null {
   if (spec.instanceId) {
     const owner = instances.find((instance) => instance.instanceId === spec.instanceId);
-    return owner?.paneId === paneId ? owner : null;
+    if (!owner || owner.paneId !== paneId) return null;
+    if (!showsOtherTicker(owner, spec)) return owner;
   }
   const specKey = stableKey([spec.binding ?? { kind: "none" }, spec.params ?? {}, spec.settings ?? {}]);
   return instances.find((instance) => (
@@ -277,6 +308,7 @@ export async function createPaneTemplateOrThrow(
   }
 
   const instances = deps.getState().config.layout.instances;
+  spec = withFreeTickerInstanceId(instances, template.paneId, spec);
   const existing = findReusablePaneInstance(instances, template.paneId, spec);
   if (existing) {
     const retargeted = retargetPaneInstance(existing, spec);
