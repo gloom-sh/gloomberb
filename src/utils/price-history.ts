@@ -301,6 +301,27 @@ export function calendarHistoryFetchState(
   return now - lastCheck >= pace ? "recheck" : "behind";
 }
 
+/**
+ * True when the latest bar is from the venue's latest settled session or a
+ * later one, read on the calendar calendarHistoryFetchState uses. A venue
+ * whose sessions are unknown, round-the-clock ones included, proves nothing.
+ */
+export function reachesLatestSettledSession(
+  points: PricePoint[],
+  now = Date.now(),
+  options: Pick<PriceHistoryFreshnessOptions, "exchange" | "intervalMs"> = {},
+): boolean {
+  const normalized = normalizePriceHistory(points);
+  const latest = normalized.findLast(hasFiniteClose);
+  const latestTime = latest ? getPricePointTimestamp(latest) : Number.NaN;
+  if (!Number.isFinite(latestTime)) return false;
+  // Bare symbols resolve to their US listing at the sources.
+  const session = latestRegularSessionClose(canonicalExchange(options.exchange) || "NYSE", now - SESSION_BAR_SETTLE_MS);
+  if (!session) return false;
+  const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalized) ?? DAY_MS;
+  return !isBarBeforeSession(latestTime, session.date, Math.max(intervalMs, DAY_MS), session.timeZone);
+}
+
 function isPlaceholderBar(point: PricePoint): boolean {
   return point.volume === 0 && Number.isFinite(point.close)
     && point.open === point.close && point.high === point.close && point.low === point.close;
