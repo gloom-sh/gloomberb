@@ -72,10 +72,12 @@ import {
 } from "./parsed-history-cache";
 import {
   canonicalExchange,
+  isUsListingExchange,
   publicTickerKey,
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
 import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../utils/price-history";
+import { latestSessionStart, latestTradingSessionOpen, priorSessionClose } from "../market-data/market/trading-sessions";
 import { futuresGenericCaption, futuresGenericListing, futuresGenericPriceBasis } from "../utils/futures-generic";
 import { isOhlcSeriesStyle } from "./spec";
 import type {
@@ -144,6 +146,7 @@ interface LiveTailRequest {
   source: Extract<ChartSeriesSpec["source"], { kind: "security" }>;
   resolution: ManualChartResolution;
   accumulationKey: string;
+  historySession?: "extended";
 }
 
 /** Recent-window requests for the same history, shared by every chart asking at once. */
@@ -214,6 +217,8 @@ interface PriceHistoryRequest {
   support: readonly ChartResolutionSupport[];
   requiredWarmupPoints: number;
   historyRequestKey?: string;
+  /** Ask for pre-market and after-hours bars. */
+  historySession?: "extended";
 }
 
 interface LoadedPriceHistory extends PriceHistoryResult {
@@ -545,6 +550,47 @@ function followLatestMarketObservation(
   };
 }
 
+/**
+ * 1D shows the latest trading session of the chart's first market listing,
+ * from its open to the newest bar, with the close before it as a reference.
+ * Null keeps the rolling day: crypto, FX and venues without known hours.
+ * The reference is the quote's previous close when the quote is from the
+ * session shown, as the legend's change is; otherwise the last bar of the
+ * session before.
+ */
+function latestSessionView(
+  primary: ResolvedSeries | undefined,
+  marketSeries: readonly ResolvedSeries[],
+  extendedHours: boolean,
+  quoteReference: { close: number; time: number } | undefined,
+): { bounds: DateBounds; priorClose: number | null } | null {
+  if (!primary?.listing) return null;
+  const bars = primary.points.flatMap((point) => {
+    const close = point.close ?? point.value;
+    const time = point.date.getTime();
+    return typeof close === "number" && Number.isFinite(close) && Number.isFinite(time) ? [{ time, close }] : [];
+  });
+  const latest = bars.at(-1)?.time;
+  if (latest === undefined) return null;
+  const { symbol, exchange } = primary.listing;
+  const open = latestSessionStart(symbol, exchange, latest, { extendedHours });
+  if (open === null) return null;
+  // The axis starts at the session's first bar, which a quiet pre-market can leave well after the open.
+  const start = bars.find((bar) => bar.time >= open)?.time ?? open;
+  // Another listing on the chart can trade later than the primary one.
+  let end = latest;
+  for (const entry of marketSeries) {
+    const last = entry.points.at(-1)?.date.getTime();
+    if (last !== undefined && Number.isFinite(last) && last > end) end = last;
+  }
+  const regularOpen = latestTradingSessionOpen(symbol, exchange, latest);
+  const quoteOpen = quoteReference ? latestTradingSessionOpen(symbol, exchange, quoteReference.time) : null;
+  const priorClose = quoteReference && regularOpen !== null && quoteOpen === regularOpen
+    ? quoteReference.close
+    : priorSessionClose(bars, open, symbol, exchange);
+  return { bounds: { start, end }, priorClose };
+}
+
 function emptyFinancials(priceHistory: TickerFinancials["priceHistory"] = []): TickerFinancials {
   return { annualStatements: [], quarterlyStatements: [], priceHistory };
 }
@@ -762,7 +808,7 @@ function mergeHistory(
   exchange?: string,
   appendQuote = true,
   assetCategory?: string,
-  live?: { bars: LiveBarAccumulator; since?: number; session?: HistorySession },
+  live?: { bars: LiveBarAccumulator; since?: number; session?: HistorySession; extendedHours?: boolean },
 ): TickerFinancials {
   const base = financials ?? emptyFinancials();
   const quote = latestQuote(base.quote, quoteOverride);
@@ -771,7 +817,8 @@ function mergeHistory(
   // Market bars fold every observed quote into the forming bar; other series
   // price their latest point from the current quote alone.
   const priceHistory = live && liveBarResolution
-    ? live.bars.apply(history, quote, { now, resolution: liveBarResolution, exchange, liveSince: live.since, session: live.session })
+    ? live.bars.apply(history, quote, { now, resolution: liveBarResolution, exchange, liveSince: live.since, session: live.session,
+      extendedHours: live.extendedHours })
     : appendLiveQuotePoint(history, quote, liveBarResolution
       ? { now, mode: "ohlc", resolution: liveBarResolution, exchange }
       : { now });
@@ -810,7 +857,8 @@ async function loadPriceHistory(
   source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
   request: PriceHistoryRequest,
 ): Promise<LoadedPriceHistory> {
-  const context = { ...requestContext(source), historyRequestKey: request.historyRequestKey };
+  const context = { ...requestContext(source), historyRequestKey: request.historyRequestKey,
+    ...(request.historySession ? { historySession: request.historySession } : {}) };
   let coverageNotice: string | null = null;
   let retentionError: HistoryRetentionError | null = null;
   const observeFailure = (error: unknown) => {
@@ -1414,6 +1462,11 @@ export async function resolveChartSpecData(
   const hasExplicitWindow = explicitBounds(spec) !== null
     || (requestBounds !== null && !sameBounds(requestBounds, initialVisibleBounds));
 
+  // Only US listings trade before and after the regular session; asking elsewhere costs a request for nothing.
+  const extendedHoursFor = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>, resolution: ManualChartResolution) => (
+    spec.viewport.extendedHours === true && isMarketFieldId(source.fieldId) && isIntradayResolution(resolution)
+      && !source.instrument.instrument && isUsListingExchange(source.instrument.exchange)
+  );
   const loadHistory = async (
     source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
     all = false,
@@ -1437,10 +1490,12 @@ export async function resolveChartSpecData(
       allowProviderDefaultFallback: spec.viewport.resolution === "auto",
       support,
       requiredWarmupPoints: maxStudyWarmupPoints(spec.studies),
+      ...(extendedHoursFor(source, initialResolution) ? { historySession: "extended" as const } : {}),
     };
     const key = [
       instrumentKey(source),
       request.resolution,
+      ...(request.historySession ? [request.historySession] : []),
       request.fallbackRange,
       request.allowProviderDefaultFallback ? "auto" : "manual",
       isMarketFieldId(source.fieldId) ? source.period ?? "auto" : "auto",
@@ -1507,7 +1562,8 @@ export async function resolveChartSpecData(
     if (coverageNotice) priorityWarnings.push(coverageNotice);
     // Only proven equal cadences can share an accumulated observation window.
     // An opaque default result stays attached to its original acquisition.
-    const accumulationKey = loaded.resolution === null ? null : `${instrumentKey(source)}|${loaded.resolution}|${priceHistoryAcquisitionIdentity(loaded)}`;
+    const accumulationKey = loaded.resolution === null ? null
+      : `${instrumentKey(source)}|${loaded.resolution}|${loaded.extendedHours ? "extended|" : ""}${priceHistoryAcquisitionIdentity(loaded)}`;
     const previous = accumulationKey ? cache.accumulatedPriceHistory.get(accumulationKey) : undefined;
     const previousHistory = previous?.points ?? [];
     if (
@@ -1540,7 +1596,8 @@ export async function resolveChartSpecData(
     const accumulated = combined.points;
     if (accumulationKey && loaded.resolution && isIntradayResolution(loaded.resolution)
       && isMarketFieldId(source.fieldId) && currentWindow()) {
-      liveTails.set(key, { source, resolution: loaded.resolution, accumulationKey });
+      liveTails.set(key, { source, resolution: loaded.resolution, accumulationKey,
+        ...(request.historySession && loaded.extendedHours ? { historySession: request.historySession } : {}) });
     }
     return { ...combined, requestKey: key, accumulationKey,
       ...(loaded.recovery ? { recovery: { ...loaded.recovery,
@@ -1561,6 +1618,10 @@ export async function resolveChartSpecData(
     return pending;
   };
 
+  // The previous close each listing's quote measures its move from, and when it was quoted.
+  const quoteReferences = new Map<string, { close: number; time: number }>();
+  // Series whose history came with the pre-market and after-hours bars asked for.
+  const extendedHistories = new Set<string>();
   const realizedVolInputs = new Set(spec.studies.filter((study) => study.kind === "realized-vol" && study.visible !== false)
     .flatMap((study) => study.inputSeriesIds));
   const historicalPriceSeries = new Map<string, ResolvedSeries>();
@@ -1634,6 +1695,10 @@ export async function resolveChartSpecData(
         ]);
         resolvedSource = sourceWithResolvedExchange(source, financials);
       }
+      if (history?.extendedHours) extendedHistories.add(seriesSpec.id);
+      else if (history && marketField && seriesSpec.visible !== false && extendedHoursFor(resolvedSource, initialResolution)) {
+        warnings.push(`${instrumentLabel(resolvedSource)}: pre-market and after-hours bars are unavailable; the chart shows the regular session.`);
+      }
       if (forwardPE && financials?.epsEstimates && !history) {
         history = await loadHistory(resolvedSource, true).catch((error: unknown) => {
           warnings.push(`${seriesSpec.label ?? seriesSpec.id}: ${error instanceof Error ? error.message : String(error)}`);
@@ -1675,7 +1740,8 @@ export async function resolveChartSpecData(
           liveBarResolution ?? undefined, resolvedSource.instrument.exchange,
           liveBarResolution != null && !comparedSeriesIds.has(seriesSpec.id), resolvedSource.instrument.instrument?.secType,
           marketField && history.accumulationKey
-            ? { bars: cache.liveBarsFor(history.accumulationKey), since: sources.liveSince, session: history.session }
+            ? { bars: cache.liveBarsFor(history.accumulationKey), since: sources.liveSince, session: history.session,
+              extendedHours: history.extendedHours === true }
             : undefined),
           priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey,
           priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey };
@@ -1697,6 +1763,13 @@ export async function resolveChartSpecData(
         quoteMetadata,
       );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
+      const reference = merged.quote;
+      // A rolled generic's previous session can be another contract; its bars carry the roll.
+      if (marketField && reference && hasValidQuoteObservationTime(reference) && reference.previousClose !== undefined
+        && Number.isFinite(reference.previousClose) && reference.previousClose > 0
+        && !futuresGenericListing(resolvedSource.instrument.symbol, resolvedSource.instrument.exchange)) {
+        quoteReferences.set(seriesSpec.id, { close: reference.previousClose, time: reference.lastUpdated });
+      }
       if (realizedVolInputs.has(seriesSpec.id)) {
         const historicalResult = baseSecuritySeries(resolvedSpec, historical, index, history?.resolution, quoteMetadata);
         if (historicalResult) historicalPriceSeries.set(seriesSpec.id, historicalResult);
@@ -1730,9 +1803,20 @@ export async function resolveChartSpecData(
   // asynchronously can be timestamped just after that reference, so advance an
   // untouched market viewport by the same amount instead of clipping its tail.
   // Explicit and user-created windows stay fixed through hasExplicitWindow.
+  const primaryRaw = primaryMarketSeries ? rawSeries.find((entry) => entry.id === primaryMarketSeries.id) : undefined;
+  // A panned day keeps its reference line; an authored date window has no latest session.
+  const sessionView = spec.viewport.range === "1D" && !explicitBounds(spec)
+    ? latestSessionView(primaryRaw, rawSeries.filter((entry) => entry.observationKind === "market"),
+      extendedHistories.has(primaryRaw?.id ?? ""), quoteReferences.get(primaryRaw?.id ?? ""))
+    : null;
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
-    : followLatestMarketObservation(initialVisibleBounds, rawSeries);
+    : sessionView?.bounds ?? followLatestMarketObservation(initialVisibleBounds, rawSeries);
+  if (sessionView?.priorClose != null && primaryRaw?.transform === "raw"
+    && primaryRaw.unitGroup.startsWith("price") && primaryRaw.unitGroup !== "price:unknown") {
+    const index = rawSeries.indexOf(primaryRaw);
+    rawSeries[index] = { ...primaryRaw, priorClose: sessionView.priorClose };
+  }
   const servedCadences = new Set(rawSeries.filter((entry) => entry.observationKind === "market" && entry.points.length > 0)
     .map((entry) => entry.historyResolution));
   const commonCadence = servedCadences.size === 1 ? [...servedCadences][0] : undefined;
@@ -1911,9 +1995,9 @@ export function reconcileChartTail(
     const start = Math.floor((latest - step) / step) * step;
     const end = Math.ceil(now / 60_000) * 60_000;
     const { symbol, exchange } = tail.source.instrument;
-    const context = requestContext(tail.source);
+    const context = { ...requestContext(tail.source), ...(tail.historySession ? { historySession: tail.historySession } : {}) };
     const requestKey = JSON.stringify([symbol, exchange ?? "", context.brokerId ?? null,
-      context.brokerInstanceId ?? null, context.instrument ?? null, tail.resolution, start, end]);
+      context.brokerInstanceId ?? null, context.instrument ?? null, tail.resolution, start, end, tail.historySession ?? null]);
     const shared = tailRequestsInFlight.get(provider) ?? new Map<string, Promise<PriceHistoryResult | null>>();
     tailRequestsInFlight.set(provider, shared);
     let request = shared.get(requestKey);
@@ -1928,7 +2012,7 @@ export function reconcileChartTail(
       request = fetched;
     }
     const result = await request;
-    if (!result || result.resolution !== loaded.resolution
+    if (!result || result.resolution !== loaded.resolution || !!result.extendedHours !== !!loaded.extendedHours
       || priceHistoryAcquisitionIdentity(result) !== priceHistoryAcquisitionIdentity(loaded)) return false;
     const points = result.points.filter((point) => {
       const time = getPricePointTimestamp(point);

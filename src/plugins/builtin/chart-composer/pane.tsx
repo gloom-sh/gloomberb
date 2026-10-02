@@ -23,6 +23,7 @@ import type { ChartResolution, TimeRange } from "../../../components/chart/core/
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
 import {
   getSupportedChartResolutionsForViewport,
+  isIntradayResolution,
   type ManualChartResolution,
 } from "../../../time-series/resolution";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
@@ -42,7 +43,7 @@ import {
   type AppState,
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { isUsListingExchange, parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -940,6 +941,31 @@ function ChartComposerSurface({
     ];
   }, [generic, setSpec]);
 
+  // Pre-market and after-hours bars exist for US listings' intraday history.
+  // The toggle stays while it is on, so it can always be turned off.
+  const extendedHoursOn = spec.viewport.extendedHours === true;
+  const extendedHoursListing = useMemo(() => {
+    const primary = (resolution.bufferedSeries ?? resolution.series).find((entry) => entry.observationKind === "market" && entry.listing);
+    if (!primary?.listing || !primary.historyResolution) return null;
+    return isUsListingExchange(primary.listing.exchange) && isIntradayResolution(primary.historyResolution);
+  }, [resolution.bufferedSeries, resolution.series]);
+  const extendedHoursShownRef = useRef(false);
+  // Keep the last answer while a reload has none, so the bar does not jump.
+  if (extendedHoursListing !== null) extendedHoursShownRef.current = extendedHoursListing;
+  const extendedHoursFilters = extendedHoursOn || extendedHoursShownRef.current
+    ? [{
+      id: "extended-hours",
+      kind: "toggle" as const,
+      label: "Extended hours",
+      short: "Ext hours",
+      value: extendedHoursOn,
+      onChange: (value: boolean) => {
+        const { extendedHours: _previous, ...viewport } = specRef.current.viewport;
+        updateSpec({ ...specRef.current, viewport: value ? { ...viewport, extendedHours: true } : viewport });
+      },
+    }]
+    : [];
+
   const emptyMessage = spec.series.length === 0
     ? "Add a series to start the chart"
     : resolution.loading
@@ -956,6 +982,7 @@ function ChartComposerSurface({
             options: RANGE_OPTIONS,
             onChange: (value: string) => setRange(value as TimeRange) },
           ...genericFilters,
+          ...extendedHoursFilters,
         ]}
         view={resolutionOptions.length > 1 ? {
           value: spec.viewport.resolution,

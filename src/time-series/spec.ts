@@ -320,6 +320,7 @@ export function normalizeChartSpec(value: unknown, fallback: ChartSpec = DEFAULT
         && viewport.maxPoints > 0
         ? Math.min(10_000, Math.floor(viewport.maxPoints))
         : undefined,
+      ...(viewport?.extendedHours === true ? { extendedHours: true } : {}),
     },
     panels,
     series,

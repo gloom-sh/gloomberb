@@ -132,6 +132,28 @@ function isStaleCloudResponse(response: CloudMarketResponse<unknown>): boolean {
   return response.stale === true || response.providerMeta?.stale === true;
 }
 
+/**
+ * History with the pre-market and after-hours bars when the chart asks for
+ * them. A backend that cannot serve them answers the regular session, and one
+ * that ignores the request answers it without saying it served them.
+ */
+async function loadCloudHistory(
+  interval: string,
+  load: (session?: "extended") => Promise<CloudMarketResponse<CloudPricePointPayload[]>>,
+  context: MarketDataRequestContext | undefined,
+): Promise<{ response: CloudMarketResponse<CloudPricePointPayload[]>; extendedHours: boolean }> {
+  if (context?.historySession !== "extended" || !/^\d+(min|h)$/i.test(interval)) return { response: await load(), extendedHours: false };
+  try {
+    const response = await load("extended");
+    if (response.status === "success" || response.status === "partial" || response.status === "empty") {
+      return { response, extendedHours: response.session === "extended" };
+    }
+  } catch {
+    // The regular session below.
+  }
+  return { response: await load(), extendedHours: false };
+}
+
 function mapCloudPriceHistory(
   response: CloudMarketResponse<CloudPricePointPayload[]>,
   ticker: string,
@@ -139,6 +161,7 @@ function mapCloudPriceHistory(
   interval: string,
   requestedStart: Date,
   requestedEnd?: Date,
+  extendedHours = false,
 ): PriceHistoryResult {
   const coverageStart = parseHistoryCoverageStart(response.coverage);
   if (response.status === "empty" && coverageStart
@@ -193,6 +216,7 @@ function mapCloudPriceHistory(
     resolution,
     ...(session && matchingSource && matchingIdentity ? { session } : {}),
     ...(coverageStart ? { coverageStart } : {}),
+    ...(extendedHours ? { extendedHours: true } : {}),
   };
 }
 
@@ -542,11 +566,11 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const target = cloudInstrumentTarget(ticker, exchange);
     exchange = target.exchange ?? "";
     const request = toHistoryRequest(range);
-    const response = await withCloudFallback(
-      () => apiClient.getCloudHistory(target.symbol, exchange, request),
+    const { response, extendedHours } = await withCloudFallback(
+      () => loadCloudHistory(request.interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, { ...request, ...(session ? { session } : {}) }), _context),
       `Cloud chart data is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, target.symbol, exchange, request.interval, subtractTimeRange(new Date(), range));
+    return mapCloudPriceHistory(response, target.symbol, exchange, request.interval, subtractTimeRange(new Date(), range), undefined, extendedHours);
   }
 
   async getPriceHistoryForResolution(
@@ -570,15 +594,16 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const endDate = new Date();
     const startDate = subtractTimeRange(endDate, bufferRange);
     const includeTime = /^\d+(min|h)$/i.test(interval);
-    const response = await withCloudFallback(
-      () => apiClient.getCloudHistory(target.symbol, exchange, {
+    const { response, extendedHours } = await withCloudFallback(
+      () => loadCloudHistory(interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,
         startDate: formatCloudDateTime(startDate, includeTime, exchange),
         endDate: formatCloudDateTime(endDate, includeTime, exchange),
-      }),
+        ...(session ? { session } : {}),
+      }), _context),
       `Cloud chart data is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, target.symbol, exchange, interval, startDate, endDate);
+    return mapCloudPriceHistory(response, target.symbol, exchange, interval, startDate, endDate, extendedHours);
   }
 
   async getDetailedPriceHistory(
@@ -601,16 +626,17 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const interval = toCloudInterval(barSize);
     const includeTime = /^\d+(min|h)$/i.test(interval);
     const historyRecovery = cloudHistoryRecovery(_context, ticker, target.symbol, exchange, interval, startDate, endDate);
-    const response = await withCloudFallback(
-      () => apiClient.getCloudHistory(target.symbol, exchange, {
+    const { response, extendedHours } = await withCloudFallback(
+      () => loadCloudHistory(interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,
         startDate: formatCloudDateTime(startDate, includeTime, exchange),
         endDate: formatCloudDateTime(endDate, includeTime, exchange),
         ...(historyRecovery ? { historyRecovery } : {}),
-      }),
+        ...(session ? { session } : {}),
+      }), historyRecovery ? undefined : _context),
       `Cloud detailed chart history is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, target.symbol, exchange, interval, startDate, endDate);
+    return mapCloudPriceHistory(response, target.symbol, exchange, interval, startDate, endDate, extendedHours);
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, _context?: MarketDataRequestContext): Promise<OptionsChain> {

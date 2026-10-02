@@ -132,6 +132,8 @@ export interface CompositePanelScene {
   volumeProfile?: CompositeVolumeProfile;
   /** Plot spans (x ratios) of intraday bars outside the regular session, shared by every panel. */
   extendedHours?: readonly CompositeExtendedHoursSpan[];
+  /** The previous session's close on a one-day chart, drawn as a dotted reference line. */
+  priorClose?: { axis: CompositeAxisSide; value: number; yRatio: number };
 }
 
 export interface CompositeCursorValue {
@@ -156,6 +158,8 @@ export interface CompositeChartScene {
   cursorDate: Date | null;
   cursorXRatio: number | null;
   cursorValues: CompositeCursorValue[];
+  /** IANA zone the time axis and cursor read in: the venue's for intraday market bars, else UTC. */
+  timeZone?: string;
 }
 
 export interface BuildCompositeChartSceneOptions {

@@ -278,4 +278,31 @@ describe("adaptive composite time axis", () => {
     expect(layout.text).toContain("03:00");
     expectValidLayout(layout, 165);
   });
+
+  test("reads an intraday chart on its venue's clock, named as the tape names it", () => {
+    const venueScene = (start: string, end: string, timeZone: string): CompositeChartScene => {
+      const startTime = Date.parse(start);
+      const endTime = Date.parse(end);
+      return {
+        ...marketScene([start, end], [0, 1]),
+        startTime,
+        endTime,
+        timeScale: { kind: "calendar", startTime, endTime },
+        timeZone,
+      };
+    };
+    // A New York session on the Monday after clocks went back.
+    const newYork = buildCompositeTimeAxisLayout(venueScene("2026-11-02T14:30:00Z", "2026-11-02T21:00:00Z", "America/New_York"), 80);
+    expect(newYork.ticks[0]?.label).toBe("09:30 ET");
+    expect(newYork.ticks.at(-1)?.label).toBe("16:00 ET");
+    expect(newYork.ticks.slice(1, -1).map((tick) => tick.label)).toContain("12:00");
+    expectValidLayout(newYork, 80);
+    // Half-hour offsets still step on the local hour, and the date turns at local midnight:
+    // 04:00 on Oct 2 in Mumbai is still Oct 1 in UTC.
+    const mumbai = buildCompositeTimeAxisLayout(venueScene("2026-10-01T18:00:00Z", "2026-10-02T10:00:00Z", "Asia/Kolkata"), 120);
+    expect(mumbai.ticks[0]?.label).toBe("Oct 1 23:30 IST");
+    for (const tick of mumbai.ticks.slice(1, -1)) expect(tick.label).toMatch(/(^|\s)\d{2}:00$/);
+    expect(mumbai.ticks[1]?.label).toBe("Oct 2 04:00");
+    expectValidLayout(mumbai, 120);
+  });
 });

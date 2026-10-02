@@ -2,6 +2,7 @@ import type { CompositeViewportRange } from "./interactions";
 import { projectCompositeTimestamp } from "./time-scale";
 import type { CompositeChartScene } from "./types";
 import { clamp } from "../../../utils/math";
+import { timeZoneLabel, zonedWallClockMs, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 
 const MONTHS = [
   "Jan",
@@ -63,6 +64,43 @@ export interface CompositeTimeAxisLayout {
   ticks: CompositeTimeAxisTick[];
 }
 
+/**
+ * The clock the axis reads: wall-clock readings are timestamps whose UTC
+ * fields show the local date and time, so calendar steps and labels work the
+ * same in any zone.
+ */
+interface AxisClock {
+  wall(timestamp: number): number;
+  instant(wall: number): number;
+  label: string;
+}
+
+const UTC_CLOCK: AxisClock = { wall: (timestamp) => timestamp, instant: (wall) => wall, label: "UTC" };
+const axisClocks = new Map<string, AxisClock>();
+
+function axisClock(timeZone: string | undefined): AxisClock {
+  if (!timeZone || timeZone === "UTC") return UTC_CLOCK;
+  let clock = axisClocks.get(timeZone);
+  if (!clock) {
+    try {
+      zonedWallClockMs(0, timeZone);
+    } catch {
+      return UTC_CLOCK;
+    }
+    clock = {
+      wall: (timestamp) => zonedWallClockMs(timestamp, timeZone),
+      instant: (wall) => {
+        const date = new Date(wall);
+        return zonedWallClockToUtcMs(timeZone, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(),
+          date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds());
+      },
+      label: timeZoneLabel(timeZone),
+    };
+    axisClocks.set(timeZone, clock);
+  }
+  return clock;
+}
+
 const TIME_AXIS_INTERVALS: readonly CompositeTimeAxisInterval[] = [
   { unit: "millisecond", step: 1, approximateMs: 1 },
   { unit: "millisecond", step: 5, approximateMs: 5 },
@@ -104,9 +142,9 @@ function validTimestamp(value: number): boolean {
   return Number.isFinite(value);
 }
 
-function axisLabelWidth(interval: CompositeTimeAxisInterval, startTime: number, endTime: number): number {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+function axisLabelWidth(interval: CompositeTimeAxisInterval, startTime: number, endTime: number, clock: AxisClock): number {
+  const start = new Date(clock.wall(startTime));
+  const end = new Date(clock.wall(endTime));
   const spansDays = start.getUTCFullYear() !== end.getUTCFullYear()
     || start.getUTCMonth() !== end.getUTCMonth()
     || start.getUTCDate() !== end.getUTCDate();
@@ -134,10 +172,11 @@ function resolveTimeAxisInterval(
   startTime: number,
   endTime: number,
   width: number,
+  clock: AxisClock,
 ): CompositeTimeAxisInterval {
   const span = Math.max(endTime - startTime, 1);
   for (const interval of TIME_AXIS_INTERVALS) {
-    const labelWidth = axisLabelWidth(interval, startTime, endTime);
+    const labelWidth = axisLabelWidth(interval, startTime, endTime, clock);
     const maximumLabels = Math.max(2, Math.floor(width / (labelWidth + 2)));
     const estimatedLabels = Math.floor(span / interval.approximateMs) + 1;
     if (estimatedLabels <= maximumLabels) return interval;
@@ -185,7 +224,25 @@ function nextYearBoundary(startTime: number, step: number): number {
   return boundary;
 }
 
+/** Calendar steps between two instants, taken on the axis clock. */
 function calendarBoundaries(
+  startTime: number,
+  endTime: number,
+  interval: CompositeTimeAxisInterval,
+  clock: AxisClock,
+): number[] {
+  const instants: number[] = [];
+  for (const wall of wallBoundaries(clock.wall(startTime), clock.wall(endTime), interval)) {
+    const instant = clock.instant(wall);
+    // A wall time skipped or repeated by a clock change lands on a neighbour.
+    if (instant > startTime && instant < endTime && instant > (instants.at(-1) ?? Number.NEGATIVE_INFINITY)) {
+      instants.push(instant);
+    }
+  }
+  return instants;
+}
+
+function wallBoundaries(
   startTime: number,
   endTime: number,
   interval: CompositeTimeAxisInterval,
@@ -252,9 +309,11 @@ function calendarBoundaries(
 }
 
 function intervalBucketKey(
-  timestamp: number,
+  instant: number,
   interval: CompositeTimeAxisInterval,
+  clock: AxisClock,
 ): number {
+  const timestamp = clock.wall(instant);
   switch (interval.unit) {
     case "millisecond":
       return Math.floor(timestamp / interval.step);
@@ -305,7 +364,7 @@ function normalizeMarketSamples(scene: CompositeChartScene): CompositeTimeAxisSa
   ));
 }
 
-function sameUtcDay(left: number, right: number): boolean {
+function sameWallDay(left: number, right: number): boolean {
   const leftDate = new Date(left);
   const rightDate = new Date(right);
   return leftDate.getUTCFullYear() === rightDate.getUTCFullYear()
@@ -313,7 +372,7 @@ function sameUtcDay(left: number, right: number): boolean {
     && leftDate.getUTCDate() === rightDate.getUTCDate();
 }
 
-function sameUtcMonth(left: number, right: number): boolean {
+function sameWallMonth(left: number, right: number): boolean {
   const leftDate = new Date(left);
   const rightDate = new Date(right);
   return leftDate.getUTCFullYear() === rightDate.getUTCFullYear()
@@ -338,12 +397,15 @@ function calendarLabel(timestamp: number, includeYear: boolean): string {
 }
 
 function formatBoundaryLabel(
-  timestamp: number,
-  counterpart: number,
+  instant: number,
+  counterpartInstant: number,
   interval: CompositeTimeAxisInterval,
+  axis: AxisClock,
   includeTimeZone = true,
   includeBoundaryYear = true,
 ): string {
+  const timestamp = axis.wall(instant);
+  const counterpart = axis.wall(counterpartInstant);
   const date = new Date(timestamp);
   switch (interval.unit) {
     case "millisecond":
@@ -351,8 +413,8 @@ function formatBoundaryLabel(
     case "minute":
     case "hour": {
       const clock = clockLabel(timestamp, interval.unit);
-      const suffix = includeTimeZone ? " UTC" : "";
-      if (sameUtcDay(timestamp, counterpart)) return `${clock}${suffix}`;
+      const suffix = includeTimeZone ? ` ${axis.label}` : "";
+      if (sameWallDay(timestamp, counterpart)) return `${clock}${suffix}`;
       const includeYear = includeBoundaryYear
         && date.getUTCFullYear() !== new Date(counterpart).getUTCFullYear();
       return `${calendarLabel(timestamp, includeYear)} ${clock}${suffix}`;
@@ -368,10 +430,13 @@ function formatBoundaryLabel(
 }
 
 function formatInteriorLabel(
-  timestamp: number,
-  previousTimestamp: number,
+  instant: number,
+  previousInstant: number,
   interval: CompositeTimeAxisInterval,
+  axis: AxisClock,
 ): string {
+  const timestamp = axis.wall(instant);
+  const previousTimestamp = axis.wall(previousInstant);
   const date = new Date(timestamp);
   const previous = new Date(previousTimestamp);
   switch (interval.unit) {
@@ -380,7 +445,7 @@ function formatInteriorLabel(
     case "minute":
     case "hour": {
       const clock = clockLabel(timestamp, interval.unit);
-      if (sameUtcDay(timestamp, previousTimestamp)) return clock;
+      if (sameWallDay(timestamp, previousTimestamp)) return clock;
       return `${calendarLabel(
         timestamp,
         date.getUTCFullYear() !== previous.getUTCFullYear(),
@@ -388,7 +453,7 @@ function formatInteriorLabel(
     }
     case "day":
     case "week":
-      if (sameUtcMonth(timestamp, previousTimestamp)) return `${date.getUTCDate()}`;
+      if (sameWallMonth(timestamp, previousTimestamp)) return `${date.getUTCDate()}`;
       return calendarLabel(
         timestamp,
         date.getUTCFullYear() !== previous.getUTCFullYear(),
@@ -433,10 +498,13 @@ function layoutTimeAxis({
   width,
   samples,
   timeRatio,
+  timeZone,
 }: {
   startTime: number;
   endTime: number;
   width: number;
+  /** IANA zone the labels read in; UTC when absent. */
+  timeZone?: string;
   samples?: readonly CompositeTimeAxisSample[];
   /**
    * Where a timestamp lands across the plot. Defaults to the viewport filling
@@ -451,7 +519,8 @@ function layoutTimeAxis({
     return { text: axis.join(""), ticks: [] };
   }
 
-  const interval = resolveTimeAxisInterval(startTime, endTime, axisWidth);
+  const clock = axisClock(timeZone);
+  const interval = resolveTimeAxisInterval(startTime, endTime, axisWidth, clock);
   const span = Math.max(endTime - startTime, 1);
   const ratioAt = (timestamp: number) => {
     const projected = timeRatio?.(timestamp);
@@ -469,14 +538,14 @@ function layoutTimeAxis({
     ratio: 0,
     boundary: true,
   }];
-  const firstBucket = intervalBucketKey(firstTimestamp, interval);
+  const firstBucket = intervalBucketKey(firstTimestamp, interval, clock);
 
-  for (const boundary of calendarBoundaries(startTime, endTime, interval)) {
+  for (const boundary of calendarBoundaries(startTime, endTime, interval, clock)) {
     if (marketSamples) {
       const sample = marketSamples[lowerBoundSample(marketSamples, boundary)];
       if (
         sample
-        && intervalBucketKey(sample.timestamp, interval) !== firstBucket
+        && intervalBucketKey(sample.timestamp, interval, clock) !== firstBucket
         && sample.timestamp < lastTimestamp
         && sample.ratio < 1
       ) {
@@ -484,7 +553,7 @@ function layoutTimeAxis({
       }
       continue;
     }
-    const bucket = intervalBucketKey(boundary, interval);
+    const bucket = intervalBucketKey(boundary, interval, clock);
     if (bucket === firstBucket) continue;
     addCandidate(candidates, {
       timestamp: boundary,
@@ -501,7 +570,7 @@ function layoutTimeAxis({
   candidates.sort((left, right) => left.ratio - right.ratio || left.timestamp - right.timestamp);
 
   if (candidates.length === 1 || firstTimestamp === lastTimestamp) {
-    const label = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval);
+    const label = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval, clock);
     const visibleLabel = label.slice(0, axisWidth);
     const start = Math.max(Math.floor((axisWidth - visibleLabel.length) / 2), 0);
     writeLabel(axis, start, visibleLabel);
@@ -517,22 +586,22 @@ function layoutTimeAxis({
     };
   }
 
-  let startLabel = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval);
-  let endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval);
+  let startLabel = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval, clock);
+  let endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, clock);
   if (startLabel.length + endLabel.length + 1 > axisWidth) {
-    startLabel = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval, false);
-    endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, false);
+    startLabel = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval, clock, false);
+    endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, clock, false);
   }
   if (startLabel.length + endLabel.length + 1 > axisWidth) {
     // A standalone same-year chart still needs its year. Shorten the right
     // endpoint first instead of dropping that context from both boundaries.
-    if (new Date(firstTimestamp).getUTCFullYear() === new Date(lastTimestamp).getUTCFullYear()) {
-      endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, false, false);
+    if (new Date(clock.wall(firstTimestamp)).getUTCFullYear() === new Date(clock.wall(lastTimestamp)).getUTCFullYear()) {
+      endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, clock, false, false);
     }
   }
   if (startLabel.length + endLabel.length + 1 > axisWidth) {
-    startLabel = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval, false, false);
-    endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, false, false);
+    startLabel = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval, clock, false, false);
+    endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, clock, false, false);
   }
   if (startLabel.length + endLabel.length + 1 > axisWidth) {
     const visibleLabel = startLabel.slice(0, axisWidth);
@@ -573,7 +642,7 @@ function layoutTimeAxis({
   let previousTimestamp = firstTimestamp;
   let previousEnd = startLabel.length - 1;
   for (const candidate of candidates.filter((entry) => !entry.boundary)) {
-    const label = formatInteriorLabel(candidate.timestamp, previousTimestamp, interval);
+    const label = formatInteriorLabel(candidate.timestamp, previousTimestamp, interval, clock);
     // A year boundary inside the final year would repeat the right endpoint's year.
     if (label === endLabel) continue;
     const center = candidate.ratio * Math.max(axisWidth - 1, 0);
@@ -620,6 +689,7 @@ export function buildCompositeTimeAxisLayout(
       ? normalizeMarketSamples(scene)
       : undefined,
     timeRatio: (timestamp) => projectCompositeTimestamp(scene.timeScale, timestamp)?.ratio ?? Number.NaN,
+    timeZone: scene.timeZone,
   });
 }
 

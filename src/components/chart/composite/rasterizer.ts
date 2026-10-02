@@ -39,6 +39,9 @@ interface RenderCompositePanelBitmapOptions {
 const LAST_PRICE_DASH_PIXELS = 6;
 const LAST_PRICE_GAP_PIXELS = 5;
 const LAST_PRICE_OPACITY = 0.9;
+const PRIOR_CLOSE_DOT_PIXELS = 2;
+const PRIOR_CLOSE_GAP_PIXELS = 3;
+const PRIOR_CLOSE_OPACITY = 0.7;
 
 function pixelPoint(point: CompositeProjectedPoint, width: number, height: number): { x: number; y: number } {
   return {
@@ -343,27 +346,19 @@ function drawOhlc(
   }
 }
 
-function drawLastPriceLevel(
+function drawDashedLevel(
   data: Uint8Array,
   width: number,
   height: number,
   yRatio: number,
   color: RgbaColor,
+  dash = LAST_PRICE_DASH_PIXELS,
+  gap = LAST_PRICE_GAP_PIXELS,
+  opacity = LAST_PRICE_OPACITY,
 ): void {
   const y = Math.round(clamp(yRatio * Math.max(height - 1, 0), 0, Math.max(height - 1, 0)));
-  const period = LAST_PRICE_DASH_PIXELS + LAST_PRICE_GAP_PIXELS;
-  for (let x = 0; x < width; x += period) {
-    fillRect(
-      data,
-      width,
-      height,
-      x,
-      y,
-      Math.min(x + LAST_PRICE_DASH_PIXELS - 1, width - 1),
-      y,
-      color,
-      LAST_PRICE_OPACITY,
-    );
+  for (let x = 0; x < width; x += dash + gap) {
+    fillRect(data, width, height, x, y, Math.min(x + dash - 1, width - 1), y, color, opacity);
   }
 }
 
@@ -388,6 +383,11 @@ export function renderCompositePanelBitmap(
     fillRect(data, width, height, 0, y, width - 1, y + 0.6, grid, 0.42);
   }
   if (panel.volumeProfile) paintVolumeProfile(data, width, height, panel.volumeProfile);
+  // Under the bars, which read across it.
+  if (panel.priorClose) {
+    drawDashedLevel(data, width, height, panel.priorClose.yRatio, parseHex(options.colors.textDim),
+      PRIOR_CLOSE_DOT_PIXELS, PRIOR_CLOSE_GAP_PIXELS, PRIOR_CLOSE_OPACITY);
+  }
 
   const ordered = [...panel.series].sort((left, right) => {
     const rank = (style: string) => style === "area" || style === "columns" ? 0 : 1;
@@ -449,7 +449,7 @@ export function renderCompositePanelBitmap(
   }
 
   if (panel.lastPrice) {
-    drawLastPriceLevel(data, width, height, panel.lastPrice.yRatio, parseHex(panel.lastPrice.color));
+    drawDashedLevel(data, width, height, panel.lastPrice.yRatio, parseHex(panel.lastPrice.color));
   }
 
   return { width, height, pixels: data };

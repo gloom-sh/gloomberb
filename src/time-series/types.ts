@@ -88,6 +88,8 @@ export interface ChartViewportSpec {
   dateWindow?: { start: string; end: string };
   /** Optional latest-observation cap, useful for period-based financial views. */
   maxPoints?: number;
+  /** Intraday market history includes pre-market and after-hours bars where the venue has them. */
+  extendedHours?: boolean;
 }
 
 export interface ChartSpec {
@@ -176,6 +178,8 @@ export interface ResolvedSeries {
   observationKind?: "market";
   /** Regular-session move supplied with the latest market quote. */
   latestChangePercent?: number;
+  /** The previous session's close, set on a one-day chart's price series and drawn as its reference line. */
+  priorClose?: number;
   points: TimeSeriesPoint[];
   /** Rejected valuation price inputs, retained independently of usable observations. */
   valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];

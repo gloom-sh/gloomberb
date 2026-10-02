@@ -74,6 +74,17 @@ describe("LiveBarAccumulator", () => {
       .toBe(history);
   });
 
+  test("a history with extended hours forms after-hours bars at the after-hours price, not past their close", () => {
+    const history = [bar("19:58:00", 100, 101, 99, 100, 5_000), bar("19:59:00", 100, 100.5, 99.5, 100.2, 800)];
+    const bars = new LiveBarAccumulator();
+    const options = (next: Quote) => ({ now: next.lastUpdated, resolution: "1m" as const, exchange: "NASDAQ", liveSince: at("19:00:00"), extendedHours: true });
+    const post = quote("20:01:00", 100.4, 90_000, { marketState: "POST", postMarketPrice: 99 });
+    expect(bars.apply(history, post, options(post)).at(-1)).toMatchObject({ date: new Date(at("20:01:00")), close: 99 });
+    // Past the after-hours close, quotes form nothing.
+    const overnight = quote("23:59:30", 98.5, 90_000, { marketState: "POSTPOST", postMarketPrice: 98.5 });
+    expect(bars.apply(history, overnight, options(overnight)).at(-1)).toMatchObject({ date: new Date(at("20:01:00")), close: 99 });
+  });
+
   test("updates today's daily candle and starts the next session's candle on its date label", () => {
     const history = [bar("00:00:00", 100, 104, 98, 103, 40_000_000)];
     const bars = new LiveBarAccumulator();

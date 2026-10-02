@@ -74,3 +74,32 @@ test("absent or unreadable Cloud metadata remains compatible but contradictory d
       new Date("2026-09-20T00:00:00Z"), "15m")).rejects.toThrow("session metadata does not match");
   }
 });
+
+test("extended hours are asked for by name and only counted when the answer says so", async () => {
+  setSystemTime(NOW);
+  const provider = new GloomberbCloudProvider();
+  const extended = { historySession: "extended" as const };
+  // A backend that serves them.
+  let calls = wire(url => url.searchParams.get("session") === "extended"
+    ? { status: "success", data: points, session: "extended" } : { status: "success", data: points, historySession: session() });
+  const served = await provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1W", "15m", extended);
+  expect(served.extendedHours).toBe(true);
+  expect(served.session).toBeUndefined();
+  expect(calls.map(url => url.searchParams.get("session"))).toEqual(["extended"]);
+  // One that ignores the parameter answers the regular session, used as is.
+  calls = wire(() => ({ status: "success", data: points, historySession: session() }));
+  const ignored = await provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1W", "15m", extended);
+  expect(ignored.extendedHours).toBeUndefined();
+  expect(ignored.session).toEqual(session());
+  expect(calls).toHaveLength(1);
+  // One that cannot serve them falls back to the regular session.
+  calls = wire(url => url.searchParams.get("session") === "extended"
+    ? { status: "unsupported", data: null, reasonCode: "UNSUPPORTED_SESSION" } : { status: "success", data: points, historySession: session() });
+  const unsupported = await provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1W", "15m", extended);
+  expect(unsupported.extendedHours).toBeUndefined();
+  expect(calls.map(url => url.searchParams.get("session"))).toEqual(["extended", null]);
+  // Daily bars have no extended session to ask for.
+  calls = wire(() => ({ status: "success", data: points }));
+  await provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1Y", "1d", extended);
+  expect(calls.map(url => url.searchParams.get("session"))).toEqual([null]);
+});

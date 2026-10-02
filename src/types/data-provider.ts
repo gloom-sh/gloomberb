@@ -114,6 +114,8 @@ export interface MarketDataRequestContext {
   historyRecovery?: import("../sources/history-retention").HistoryRecoveryCandidate;
   /** Stable acquisition identity for capture/replay of opaque history responses. */
   historyRequestKey?: string;
+  /** Intraday history should include pre-market and after-hours bars where the source has them. */
+  historySession?: "extended";
 }
 
 export interface CachedFinancialsTarget {

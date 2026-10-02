@@ -40,6 +40,7 @@ export function normalizeHistoryResult(
     ...(session ? { session } : {}),
     ...(typeof result.sourceKey === "string" && /^(provider|broker):[^\r\n\0]+$/.test(result.sourceKey) ? { sourceKey: result.sourceKey } : {}),
     ...(isHistoryCoverageDate(result.coverageStart) ? { coverageStart: result.coverageStart } : {}),
+    ...(result.extendedHours === true ? { extendedHours: true } : {}),
   };
 }
 

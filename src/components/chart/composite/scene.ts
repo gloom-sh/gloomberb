@@ -24,7 +24,8 @@ import { compositeAxisMaxTicks, seriesPriceReference } from "./format";
 import type { CompositeTimeScale } from "./types";
 import { isFiniteNumber } from "../../../utils/guards";
 import { volumeProfile } from "../../../time-series/trader-studies";
-import { extendedHoursSpans } from "./session-shading";
+import { extendedHoursSpans, isIntradaySeries } from "./session-shading";
+import { listingTimeZone } from "../../../market-data/market/trading-sessions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -300,6 +301,24 @@ function axisPriceReferences(axisSeries: ResolvedSeries[]): Record<string, numbe
   return references;
 }
 
+/**
+ * A one-day chart's previous close joins the axis when it lies within one
+ * session range of the bars, so a quiet session still shows where it opened
+ * from; a far gap leaves the bars their full height.
+ */
+function priorCloseInReach(series: readonly ResolvedSeries[], values: readonly number[]): number[] {
+  const reference = series.find((entry) => isFiniteNumber(entry.priorClose) && entry.points.length > 0)?.priorClose;
+  if (reference === undefined || values.length === 0) return [];
+  let low = Number.POSITIVE_INFINITY;
+  let high = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (value < low) low = value;
+    if (value > high) high = value;
+  }
+  const span = high - low;
+  return reference >= low - span && reference <= high + span ? [reference] : [];
+}
+
 function buildAxisDomain(
   side: CompositeAxisSide,
   series: ResolvedSeries[],
@@ -308,7 +327,8 @@ function buildAxisDomain(
 ): CompositeAxisDomain | undefined {
   const axisSeries = series.filter((entry) => entry.axis === side);
   if (axisSeries.length === 0) return undefined;
-  const { min, max } = paddedDomain(axisSeries.flatMap(seriesDomainValues), scale);
+  const values = axisSeries.flatMap(seriesDomainValues);
+  const { min, max } = paddedDomain([...values, ...priorCloseInReach(axisSeries, values)], scale);
   const first = axisSeries[0]!;
   return {
     side,
@@ -494,6 +514,30 @@ function attachLastPriceMarker(
     value,
     yRatio,
   };
+}
+
+/** Marks the previous session's close a one-day chart carries on its price series. */
+function attachPriorClose(panels: CompositePanelScene[], series: readonly ResolvedSeries[]): void {
+  const entry = series.find((candidate) => isFiniteNumber(candidate.priorClose));
+  const panel = entry ? panels.find((candidate) => candidate.id === entry.panelId) : undefined;
+  const domain = entry ? panel?.axes[entry.axis] : undefined;
+  if (!entry || !panel || !domain || !panel.series.some((candidate) => candidate.source.id === entry.id)) return;
+  const yRatio = projectCompositeValue(entry.priorClose!, domain);
+  // Off the axis it marks nothing; the axis follows the session's own bars.
+  if (yRatio === null || yRatio < 0 || yRatio > 1) return;
+  panel.priorClose = { axis: entry.axis, value: entry.priorClose!, yRatio };
+}
+
+/**
+ * The zone intraday market bars read in: the venue's own clock, as the tape
+ * does. Daily and longer bars carry dates, which stay in UTC.
+ */
+function sceneTimeZone(anchor: ResolvedSeries | undefined, series: readonly ResolvedSeries[]): string | undefined {
+  const market = anchor ?? series.find((entry) => entry.observationKind === "market");
+  if (!market || !isIntradaySeries(market)) return undefined;
+  const zone = market.timeBasis?.timeZone
+    ?? (market.listing ? listingTimeZone(market.listing.symbol, market.listing.exchange) : null);
+  return zone && zone !== "UTC" ? zone : undefined;
 }
 
 /**
@@ -754,6 +798,8 @@ export function buildCompositeChartScene(
   });
   panelScenes.forEach(attachVolumeProfile);
   attachLastPriceMarker(panelScenes, usableSeries);
+  attachPriorClose(panelScenes, usableSeries);
+  const timeZone = sceneTimeZone(anchor, timelineSeries);
 
   return {
     width: Math.max(1, Math.floor(options.width)),
@@ -767,6 +813,7 @@ export function buildCompositeChartScene(
     cursorDate,
     cursorXRatio,
     cursorValues: buildCursorValues(panelScenes, cursorDate, { startTime, endTime, timeScale }),
+    ...(timeZone ? { timeZone } : {}),
   };
 }
 

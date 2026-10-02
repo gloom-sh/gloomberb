@@ -13,6 +13,8 @@ export type CloudHistoryParams = {
   endDate?: string;
   rangeKey?: string;
   historyRecovery?: HistoryRetention;
+  /** Ask for pre-market and after-hours bars too. */
+  session?: "extended";
 };
 
 export type CloudFredSeriesParams = {
@@ -172,6 +174,7 @@ export function cloudHistoryPath(
   if (params.endDate) search.set("endDate", params.endDate);
   if (params.rangeKey) search.set("rangeKey", params.rangeKey);
   if (params.historyRecovery) search.set("historyRecovery", JSON.stringify(params.historyRecovery));
+  if (params.session) search.set("session", params.session);
   return appendQuery("/market/history", search);
 }
 
