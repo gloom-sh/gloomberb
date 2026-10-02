@@ -112,19 +112,30 @@ function showsOtherTicker(owner: PaneInstanceConfig, spec: PaneTemplateInstanceC
 
 /**
  * When the pane holding a ticker template's id shows another ticker, the command opens its own
- * pinned pane under a second stable id, so typing it again lands on that pane rather than a
- * third one (OMON keeps rewriting its settings, so the whole-spec match below would miss it).
+ * pinned pane under a further stable id (`options:AAPL:pinned`, then `:pinned-2`), so typing it
+ * again lands on that pane rather than a new one (OMON keeps rewriting its settings, so the
+ * whole-spec match below would miss it). A pinned pane that was linked or moved on since is
+ * skipped the same way, so the ids never run out into unkeyed duplicates.
  */
 function withFreeTickerInstanceId(
   instances: PaneInstanceConfig[],
   paneId: string,
   spec: PaneTemplateInstanceConfig,
 ): PaneTemplateInstanceConfig {
-  if (!spec.instanceId) return spec;
-  const owner = instances.find((instance) => instance.instanceId === spec.instanceId);
-  return owner?.paneId === paneId && showsOtherTicker(owner, spec)
-    ? { ...spec, instanceId: `${spec.instanceId}:pinned` }
-    : spec;
+  const baseId = spec.instanceId;
+  if (!baseId) return spec;
+  const byId = new Map(instances.map((instance) => [instance.instanceId, instance]));
+  const owner = byId.get(baseId);
+  if (owner?.paneId !== paneId || !showsOtherTicker(owner, spec)) return spec;
+  let free: string | null = null;
+  // One more id than there are panes is always enough to find a free one.
+  for (let index = 1; index <= instances.length + 1; index += 1) {
+    const instanceId = index === 1 ? `${baseId}:pinned` : `${baseId}:pinned-${index}`;
+    const holder = byId.get(instanceId);
+    if (!holder) free ??= instanceId;
+    else if (holder.paneId === paneId && !showsOtherTicker(holder, spec)) return { ...spec, instanceId };
+  }
+  return { ...spec, instanceId: free ?? undefined };
 }
 
 /**

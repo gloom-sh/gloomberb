@@ -42,7 +42,7 @@ import {
   type AppState,
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -1046,6 +1046,10 @@ function ChartComposerSurface({
   );
 }
 
+const sameTicker = (left: string, right: string) => (
+  parsePublicTickerKey(left).symbol.toUpperCase() === parsePublicTickerKey(right).symbol.toUpperCase()
+);
+
 export function ChartComposerPane({ paneId, focused, width, height }: PaneProps) {
   const { symbol, error } = usePaneTicker();
   const instance = usePaneInstance();
@@ -1074,10 +1078,18 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
     () => resolveFollowSeriesIds(stored, previousTarget.current, target, savedIds),
     [savedIds, stored, target],
   );
-  // What the chart showed while it followed. Unlinking pins it there, even when that spec was only
-  // rebound for display and never saved (see below).
-  const shownSpec = useRef<ChartSpec | null>(null);
-  const unlinkedFrom = follows ? null : shownSpec.current;
+  // What the chart showed while it followed, and the saved spec it drew that from. Unlinking pins it
+  // there, even when that spec was only rebound for display and never saved (see below).
+  const shown = useRef<{ spec: ChartSpec; stored: ChartSpec } | null>(null);
+  const binding = instance?.binding;
+  // Only an unlink or a closed list pins in place: the same saved spec, now fixed on the ticker
+  // last followed. An undo, another device's unlink or another layout brings its own saved spec
+  // and binding, and is shown as saved.
+  const unlinkedFrom = !follows && shown.current && binding?.kind === "fixed" && previousTarget.current
+    && sameTicker(binding.symbol, previousTarget.current.symbol)
+    && (stored === shown.current.stored || JSON.stringify(stored) === JSON.stringify(shown.current.stored))
+    ? shown.current.spec
+    : null;
   // Resolve before rendering so the new title never carries the old asset's data.
   const spec = useMemo(
     () => follows ? rebindFollowChartSpec(stored, previousTarget.current, target, ownedIds) : unlinkedFrom ?? stored,
@@ -1099,7 +1111,7 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
     if (unlinkedFrom && JSON.stringify(unlinkedFrom) !== JSON.stringify(stored)) {
       updateSettings({ [CHART_SPEC_SETTING_KEY]: unlinkedFrom });
     }
-    shownSpec.current = follows && target ? spec : null;
+    shown.current = follows && target ? { spec, stored } : null;
     if (target) {
       previousTarget.current = target;
       savedForTarget.current = targetKey;

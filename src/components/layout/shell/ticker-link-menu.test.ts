@@ -107,7 +107,13 @@ describe("tickerLinkMenuItems", () => {
       binding: { kind: "follow", sourceInstanceId: surface.instanceId },
     });
     const notes = createPaneInstance("notes", { instanceId: "notes:1", binding: { kind: "fixed", symbol: "AAPL" } });
-    const added = [opx, surface, chain, notes];
+    // Linked some other way, so its stored title still names the ticker it opened on.
+    const legacy = createPaneInstance("options", {
+      instanceId: "options:legacy",
+      title: "OMON AAPL",
+      binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" },
+    });
+    const added = [opx, surface, chain, notes, legacy];
     let layout: LayoutConfig = {
       ...state.config.layout,
       instances: [...state.config.layout.instances, ...added],
@@ -161,6 +167,10 @@ describe("tickerLinkMenuItems", () => {
     }).config.layout;
     expect(findPaneInstance(closed, opx.instanceId)).toMatchObject({
       title: "OPX MSFT",
+      binding: { kind: "fixed", symbol: "MSFT" },
+    });
+    expect(findPaneInstance(closed, legacy.instanceId)).toMatchObject({
+      title: "OMON MSFT",
       binding: { kind: "fixed", symbol: "MSFT" },
     });
   });

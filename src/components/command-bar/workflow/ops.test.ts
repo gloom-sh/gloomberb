@@ -382,6 +382,16 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
     const unlinked = await runTemplate(spec, [{ ...linked, title: "OMON MSFT", binding: { kind: "fixed", symbol: "MSFT" } }]);
     expect(unlinked.layouts).toEqual([]);
     expect(unlinked.createdWith).toMatchObject({ instanceId: "chat:AAPL:pinned" });
+
+    // The pinned pane can be linked or moved on too; the next command takes the next id and keeps
+    // landing there, instead of opening an unkeyed pane on every repeat.
+    const pinnedLinked = { ...pinned, binding: linked.binding };
+    const third = await runTemplate(spec, [linked, pinnedLinked]);
+    expect(third.layouts).toEqual([]);
+    expect(third.createdWith).toMatchObject({ instanceId: "chat:AAPL:pinned-2" });
+    const fourth = await runTemplate(spec, [linked, pinnedLinked, { ...pinned, instanceId: "chat:AAPL:pinned-2" }]);
+    expect(fourth.focused).toEqual(["chat:AAPL:pinned-2"]);
+    expect(fourth.created).toBe(0);
   });
 
   test("reuses an unkeyed template only on an equivalent spec, ignoring settings key order", async () => {

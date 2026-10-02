@@ -120,6 +120,46 @@ test("a follower shows a synced-in spec rebound to its own target without saving
   expect(requests).not.toContain("SHOP:NASDAQ");
 });
 
+// Unlinking pins what was shown, but only an unlink: a fixed binding on another ticker arriving
+// through sync or an undo carries its own saved spec, and rewriting it would save one ticker's
+// data under another's title on every device.
+test("another device's unlink on its own ticker keeps the synced spec", async () => {
+  const host = store(); setConfigStoreHost(host);
+  const config = await host.loadConfig("browser://local");
+  const requests: string[] = [];
+  await mount(config, requests);
+  await settle(() => requests.includes("BTC-USD:CCC") && Boolean(findPaneInstance(latest.config.layout, chartId)?.settings?.chartSpec));
+  const settings = findPaneInstance(latest.config.layout, chartId)!.settings!;
+  const pulled = rebindFollowChartSpec(settings.chartSpec as any, null, { symbol: "SHOP", exchange: "NASDAQ" });
+  const synced = updatePaneInstance(latest.config.layout, chartId, pane => ({ ...pane, settings: { ...settings, chartSpec: pulled } }));
+  await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: synced } }));
+  await settle(() => tui.frame().includes("BTC-USD:CCC Price"));
+  const unlinked = updatePaneInstance(latest.config.layout, chartId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
+  await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: unlinked } }));
+  await settle(() => requests.includes("SHOP:NASDAQ"));
+  expect(tui.frame()).not.toContain("BTC-USD:CCC Price");
+  expect(findPaneInstance(latest.config.layout, chartId)!.settings!.chartSpec).toEqual(pulled);
+});
+
+test("an undo back to the fixed chart keeps its saved spec", async () => {
+  const host = store(); setConfigStoreHost(host);
+  const config = await host.loadConfig("browser://local");
+  const requests: string[] = [];
+  await mount(config, requests);
+  await settle(() => requests.includes("BTC-USD:CCC") && Boolean(findPaneInstance(latest.config.layout, chartId)?.settings?.chartSpec));
+  const before = structuredClone(findPaneInstance(latest.config.layout, chartId)!.settings!);
+  const moved = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
+  await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: moved } }));
+  await settle(() => (findPaneInstance(latest.config.layout, chartId)?.settings?.chartSpec as any)?.series[0].source.instrument.symbol === "SHOP");
+  // A list cursor is not part of the layout, so the source still shows SHOP after the undo.
+  const undone = updatePaneInstance(latest.config.layout, chartId, pane => ({ ...pane,
+    title: "GP BTC-USD:CCC", binding: { kind: "fixed", symbol: "BTC-USD:CCC" }, settings: before }));
+  await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: undone } }));
+  await settle(() => tui.frame().includes("BTC-USD:CCC Price"));
+  expect(tui.frame()).not.toContain("SHOP:XNAS Price");
+  expect(findPaneInstance(latest.config.layout, chartId)!.settings).toEqual(before);
+});
+
 test("fixed custom comparison does not follow the research pane", async () => {
   const host = store(); setConfigStoreHost(host);
   const config = await host.loadConfig("browser://local");

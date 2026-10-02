@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { createPaneInstance } from "../../../types/config";
+import type { ChartSpec } from "../../../time-series/types";
 import { getSelectedBuiltinStudies } from "./studies";
+import { chartComposerModule } from "./index";
+import { CHART_SPEC_SETTING_KEY } from "./chart-spec";
 import {
   buildComparisonChartPreset,
   buildCustomChartPreset,
   buildFundamentalChartPreset,
   buildIntradayPriceChartPreset,
   buildPriceChartPreset,
+  buildValuationChartPreset,
 } from "./presets";
 
 describe("chart composer presets", () => {
@@ -39,5 +44,21 @@ describe("chart composer presets", () => {
       height: 0.24,
     });
     expect(followed).toEqual(price);
+  });
+
+  // GF and GE stay out of list linking even for one ticker; only price charts of one security follow.
+  test("only a price chart of one security can follow a list", () => {
+    const follower = chartComposerModule.panes![0]!.tickerFollower as (pane: ReturnType<typeof createPaneInstance>) => boolean;
+    const canFollow = (spec: ChartSpec) => follower(createPaneInstance("chart-composer", {
+      binding: { kind: "fixed", symbol: "AAPL" },
+      settings: { [CHART_SPEC_SETTING_KEY]: spec },
+    }));
+    expect(canFollow(buildPriceChartPreset("AAPL"))).toBe(true);
+    expect(canFollow(buildIntradayPriceChartPreset("AAPL"))).toBe(true);
+    expect(canFollow(buildCustomChartPreset("AAPL, AAPL:volume"))).toBe(true);
+    expect(canFollow(buildFundamentalChartPreset(["AAPL"]))).toBe(false);
+    expect(canFollow(buildValuationChartPreset(["AAPL"]))).toBe(false);
+    expect(canFollow(buildCustomChartPreset("AAPL, AAPL:revenue"))).toBe(false);
+    expect(canFollow(buildComparisonChartPreset(["AAPL", "MSFT"]))).toBe(false);
   });
 });
