@@ -343,8 +343,6 @@ export const zhTW: Record<string, string> = {
   "Debug Log": "除錯日誌",
   "Changelog": "更新日誌",
   "Substack": "Substack",
-  "Yahoo Finance": "Yahoo 財經",
-  "Yahoo Fallback": "Yahoo 備用來源",
   "Provider Search": "資料來源搜尋",
   "Research": "研究",
   "Chat": "聊天",

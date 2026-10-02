@@ -24,7 +24,7 @@ export const DEFAULT_FEEDS: RssFeedConfig[] = [
   },
   {
     id: "default-yahoo-finance",
-    url: "https://finance.yahoo.com/news/rssindex",
+    url: "https://api.gloom.sh/news/rss",
     name: "Yahoo Finance",
     category: "general",
     authority: 60,

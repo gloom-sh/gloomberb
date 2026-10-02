@@ -1,4 +1,4 @@
-import { CANONICAL_EXCHANGE_ALIASES, canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
+import { CANONICAL_EXCHANGE_ALIASES, canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 
 const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   NASDAQ: "", NMS: "", NYSE: "", AMEX: "", ARCA: "", NYSEArca: "", BATS: "", BYX: "", IEX: "", PINK: "", OTC: "",
@@ -46,24 +46,24 @@ const KNOWN_SUFFIXES = new Set(
     .concat(GENERIC_SUFFIX_FALLBACKS.filter(Boolean)),
 );
 
-// Yahoo's PSE entry means the Philippines; the host's PSE means Prague (.PR).
-// Keep that provider spelling out of host venue inference and conflict checks.
+// The legacy PSE suffix entry means the Philippines; the host's PSE means Prague (.PR).
+// Keep that spelling out of host venue inference and conflict checks.
 const HOST_SUFFIX_ENTRIES = Object.entries(EXCHANGE_SUFFIX_MAP)
   .filter(([venue, suffix]) => venue !== "PSE" || suffix !== ".PS")
   .map(([venue, suffix]) => [canonicalExchange(venue), suffix] as const);
 const KNOWN_HOST_VENUES = new Set(Object.values(CANONICAL_EXCHANGE_ALIASES));
 
-export function getYahooSymbol(ticker: string, exchange: string): string {
+export function getListingSymbol(ticker: string, exchange: string): string {
   const qualified = parsePublicTickerKey(ticker);
   ticker = qualified.symbol;
   exchange = qualified.exchange || exchange;
-  if (tickerHasYahooSuffix(ticker)) return ticker;
+  if (tickerHasListingSuffix(ticker)) return ticker;
   const canonical = canonicalExchange(exchange) || exchange;
   const suffix = EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? "";
-  return `${normalizeYahooTicker(ticker, canonical)}${suffix}`;
+  return `${normalizeListingTicker(ticker, canonical)}${suffix}`;
 }
 
-export function getYahooSymbolsToTry(
+export function getListingSymbolsToTry(
   ticker: string,
   exchange: string,
   options: { exactExchange?: boolean } = {},
@@ -78,12 +78,12 @@ export function getYahooSymbolsToTry(
     ? Object.entries(EXCHANGE_SUFFIX_MAP).find(([key]) => canonicalExchange(key) === canonical)?.[1]
     : undefined;
   if (options.exactExchange && exactSuffix === undefined) return [];
-  if (tickerHasYahooSuffix(ticker)) {
+  if (tickerHasListingSuffix(ticker)) {
     if (options.exactExchange && (!exactSuffix || !ticker.endsWith(exactSuffix))) return [];
     return [ticker];
   }
 
-  const normalized = normalizeYahooTicker(ticker, canonical);
+  const normalized = normalizeListingTicker(ticker, canonical);
   const dotVariant = normalized.includes(".") ? normalized.replace(/\./g, "-") : null;
 
   if (!canonical) {
@@ -108,7 +108,7 @@ export function getYahooSymbolsToTry(
     return results;
   }
 
-  const primary = options.exactExchange ? `${normalized}${exactSuffix}` : getYahooSymbol(ticker, canonical);
+  const primary = options.exactExchange ? `${normalized}${exactSuffix}` : getListingSymbol(ticker, canonical);
   if (dotVariant) {
     const suffix = exactSuffix ?? EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? "";
     return [`${dotVariant}${suffix}`, primary];
@@ -116,40 +116,15 @@ export function getYahooSymbolsToTry(
   return [primary];
 }
 
-/**
- * Runs `load` for each Yahoo spelling of a listing and returns the first
- * success. With `hasValue`, an empty success is kept only until a later symbol
- * returns data. Throws the last error when every symbol fails.
- */
-export async function withYahooSymbols<T>(
-  symbols: readonly string[],
-  load: (symbol: string) => Promise<T>,
-  hasValue?: (value: T) => boolean,
-): Promise<T> {
-  let firstEmpty: { value: T } | undefined;
-  let lastError: unknown;
-  for (const symbol of symbols) {
-    try {
-      const value = await load(symbol);
-      if (!hasValue || hasValue(value)) return value;
-      firstEmpty ??= { value };
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  if (firstEmpty) return firstEmpty.value;
-  throw lastError ?? new Error("No Yahoo symbol for this listing");
-}
-
-export function tickerHasYahooSuffix(ticker: string): boolean {
+export function tickerHasListingSuffix(ticker: string): boolean {
   const dot = ticker.indexOf(".");
   if (dot < 0) return false;
   return KNOWN_SUFFIXES.has(ticker.slice(dot));
 }
 
 /** Unknown venue mappings cannot establish a suffix conflict. */
-export function yahooSuffixConflictsWithExchange(ticker: string, exchange: string): boolean {
-  if (!tickerHasYahooSuffix(ticker)) return false;
+export function listingSuffixConflictsWithExchange(ticker: string, exchange: string): boolean {
+  if (!tickerHasListingSuffix(ticker)) return false;
   const canonical = canonicalExchange(exchange);
   const suffixes = HOST_SUFFIX_ENTRIES
     .filter(([venue]) => venue === canonical)
@@ -158,8 +133,8 @@ export function yahooSuffixConflictsWithExchange(ticker: string, exchange: strin
 }
 
 /** Infer a venue only when the suffix names one recognized host exchange. */
-export function yahooSuffixExchange(ticker: string): string | undefined {
-  if (!tickerHasYahooSuffix(ticker)) return undefined;
+export function listingSuffixExchange(ticker: string): string | undefined {
+  if (!tickerHasListingSuffix(ticker)) return undefined;
   const suffix = ticker.slice(ticker.indexOf("."));
   const venues = new Set(HOST_SUFFIX_ENTRIES
     .filter(([, candidate]) => candidate === suffix)
@@ -168,7 +143,7 @@ export function yahooSuffixExchange(ticker: string): string | undefined {
   return venues.size === 1 ? [...venues][0] : undefined;
 }
 
-function normalizeYahooTicker(ticker: string, exchange: string): string {
+function normalizeListingTicker(ticker: string, exchange: string): string {
   if (isHongKongExchange(exchange) && /^\d+$/.test(ticker)) {
     return ticker.padStart(4, "0");
   }

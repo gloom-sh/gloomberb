@@ -19,7 +19,7 @@ test("confirmed fund classification prevents cached company accounts from return
   const now = Date.now();
   const fund = createTestFinancials({ quote: createTestQuote({ symbol: "IWDA.L", providerId: "gloomberb-cloud", instrumentType: "ETF", currency: "USD", lastUpdated: now }) });
   const contaminated = createTestFinancials({
-    quote: createTestQuote({ symbol: "IWDA.L", providerId: "yahoo", currency: "USD", lastUpdated: now - 1000 }),
+    quote: createTestQuote({ symbol: "IWDA.L", providerId: "gloom", currency: "USD", lastUpdated: now - 1000 }),
     fundamentals: { trailingPE: 0.238, revenue: 0 }, profile: { industry: "Specialty Chemicals" },
     annualStatements: [{ date: "2025-12-31", totalRevenue: 0 }],
   });
@@ -47,7 +47,7 @@ test("fund research keeps distribution yield and description through cache and m
     expect(value.annualStatements).toEqual([]);
   }
   const company = createTestFinancials({
-    quote: createTestQuote({ symbol: "SGOV", providerId: "yahoo", instrumentType: "EQUITY", lastUpdated: now - 1000 }),
+    quote: createTestQuote({ symbol: "SGOV", providerId: "gloom", instrumentType: "EQUITY", lastUpdated: now - 1000 }),
     fundamentals: { dividendYield: 0.99, revenue: 0 }, profile: { description: "Wrong company" },
   });
   const emptyFund = createTestFinancials({ quote: fund.quote });
@@ -110,7 +110,7 @@ describe("AssetDataRouter cached financials", () => {
         kind: "financials",
         entityKey: "HY9H",
         variantKey: "exchange=FWB2",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestFinancials({
         quote: createTestQuote({
@@ -123,7 +123,7 @@ describe("AssetDataRouter cached financials", () => {
           marketState: "REGULAR",
           exchangeName: "FWB2",
           listingExchangeName: "FWB2",
-          providerId: "yahoo",
+          providerId: "gloom",
           dataSource: "delayed",
         }),
       }),
@@ -136,8 +136,8 @@ describe("AssetDataRouter cached financials", () => {
 
     const router = new AssetDataRouter({
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async getTickerFinancials() {
         throw new Error("should not fetch financials");
       },
@@ -156,7 +156,7 @@ describe("AssetDataRouter cached financials", () => {
       exchange: "FWB2",
     }], { allowExpired: true });
 
-    expect(cached.get("HY9H")?.quote?.providerId).toBe("yahoo");
+    expect(cached.get("HY9H")?.quote?.providerId).toBe("gloom");
     expect(cached.get("HY9H")?.quote?.price).toBe(596);
     expect(cached.get("HY9H")?.fundamentals?.revenue).toBe(1234);
     expect(cached.get("HY9H")?.profile?.description).toBe("Cloud profile");
@@ -204,7 +204,7 @@ describe("AssetDataRouter cached financials", () => {
         kind: "financials",
         entityKey: "AMD",
         variantKey: "exchange=NASDAQ",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestFinancials({
         quote: createTestQuote({
@@ -219,7 +219,7 @@ describe("AssetDataRouter cached financials", () => {
           preMarketChangePercent: 4.27,
           exchangeName: "NASDAQ",
           listingExchangeName: "NASDAQ",
-          providerId: "yahoo",
+          providerId: "gloom",
           dataSource: "delayed",
         }),
       }),
@@ -232,8 +232,8 @@ describe("AssetDataRouter cached financials", () => {
 
     const router = new AssetDataRouter({
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async getTickerFinancials() {
         throw new Error("should not fetch financials");
       },
@@ -252,7 +252,7 @@ describe("AssetDataRouter cached financials", () => {
       exchange: "NASDAQ",
     }], { allowExpired: true });
 
-    expect(cached.get("AMD")?.quote?.providerId).toBe("yahoo");
+    expect(cached.get("AMD")?.quote?.providerId).toBe("gloom");
     expect(cached.get("AMD")?.quote?.preMarketPrice).toBe(231);
 
     persistence.close();
@@ -385,12 +385,12 @@ describe("AssetDataRouter cached financials", () => {
         kind: "financials",
         entityKey: "contract:14015423",
         variantKey: "exchange=JPX",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestFinancials({
         quote: createTestQuote({
           symbol: "4092.T",
-          providerId: "yahoo",
+          providerId: "gloom",
           price: 3770,
           currency: "JPY",
           change: 145,
@@ -413,12 +413,12 @@ describe("AssetDataRouter cached financials", () => {
         kind: "financials",
         entityKey: getRouterEntityKey("4092.T"),
         variantKey: "exchange=JPX",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestFinancials({
         quote: createTestQuote({
           symbol: "4092.T",
-          providerId: "yahoo",
+          providerId: "gloom",
           price: 3925,
           currency: "JPY",
           change: 20,
@@ -439,8 +439,8 @@ describe("AssetDataRouter cached financials", () => {
 
     const router = new AssetDataRouter({
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async getTickerFinancials() {
         throw new Error("should not fetch financials");
       },
@@ -517,7 +517,7 @@ describe("AssetDataRouter cached financials", () => {
         kind: "financials",
         entityKey: "contract:275759",
         variantKey: "exchange=NASDAQ",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestFinancials({
         annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }],
@@ -534,12 +534,12 @@ describe("AssetDataRouter cached financials", () => {
         kind: "financials",
         entityKey: "VICR",
         variantKey: "exchange=NASDAQ",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestFinancials({
         quote: createTestQuote({
           symbol: "VICR",
-          providerId: "yahoo",
+          providerId: "gloom",
           price: 294.39,
           currency: "USD",
           previousClose: 282.95,
@@ -561,8 +561,8 @@ describe("AssetDataRouter cached financials", () => {
 
     const router = new AssetDataRouter({
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async getTickerFinancials() {
         throw new Error("should not fetch financials");
       },
@@ -596,7 +596,7 @@ describe("AssetDataRouter cached financials", () => {
 
     // A reference captured for this exact target can still enrich its quote.
     const referenceKey = { namespace: "market", kind: "financials", entityKey: "VICR",
-      variantKey: "exchange=NASDAQ", sourceKey: "provider:yahoo" };
+      variantKey: "exchange=NASDAQ", sourceKey: "provider:gloom" };
     const reference = persistence.resources.get<ReturnType<typeof createTestFinancials>>(referenceKey)!.value;
     persistence.resources.set({ ...referenceKey, entityKey: "contract:275759" }, reference, {
       schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 }, fetchedAt: now,
@@ -605,7 +605,7 @@ describe("AssetDataRouter cached financials", () => {
     expect(exact.quote?.price).toBe(292.83);
     expect(exact.quote?.previousClose).toBe(282.95);
     expect(exact.quote?.changePercent).toBeCloseTo(((292.83 - 282.95) / 282.95) * 100, 10);
-    expect(exact.quote?.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+    expect(exact.quote?.provenance?.fields?.previousClose?.providerId).toBe("gloom");
 
     persistence.close();
   });
@@ -622,12 +622,12 @@ describe("AssetDataRouter cached financials", () => {
         kind: "financials",
         entityKey: "contract:14016494",
         variantKey: "exchange=JPX",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestFinancials({
         quote: createTestQuote({
           symbol: "6315.T",
-          providerId: "yahoo",
+          providerId: "gloom",
           price: 3380,
           currency: "JPY",
           change: 75,
@@ -654,11 +654,11 @@ describe("AssetDataRouter cached financials", () => {
         kind: "quote",
         entityKey: "contract:14016494",
         variantKey: "exchange=JPX",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestQuote({
         symbol: "6315.T",
-        providerId: "yahoo",
+        providerId: "gloom",
         price: 2688,
         currency: "JPY",
         change: 13,
@@ -677,8 +677,8 @@ describe("AssetDataRouter cached financials", () => {
 
     const router = new AssetDataRouter({
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async getTickerFinancials() {
         throw new Error("should not fetch financials");
       },

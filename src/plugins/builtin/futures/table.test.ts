@@ -157,8 +157,8 @@ describe("contract tick precision", () => {
 });
 
 describe("futures catalog", () => {
-  test("holds only live-validated Yahoo continuous symbols", () => {
-    // DX=F 404s on Yahoo; the dollar index lives on the world indices board.
+  test("holds only available continuous symbols", () => {
+    // DX=F is unavailable; the dollar index lives on the world indices board.
     expect(FUTURES_CONTRACTS.some((contract) => contract.symbol === "DX=F")).toBe(false);
     const symbols = FUTURES_CONTRACTS.map((contract) => contract.symbol);
     expect(new Set(symbols).size).toBe(symbols.length);

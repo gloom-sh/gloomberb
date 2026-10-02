@@ -53,7 +53,7 @@ test("malformed response metadata cannot become a trusted API rejection", () => 
 
 function retentionFixture(): { retention: HistoryRetention; candidate: HistoryRecoveryCandidate } {
   const now = Math.floor(Date.now() / 1000) * 1000;
-  const retention: HistoryRetention = { version: 1, source: "yahoo", symbol: "BTC-USD", exchange: "CCC", interval: "15min",
+  const retention: HistoryRetention = { version: 1, source: "gloom", symbol: "BTC-USD", exchange: "CCC", interval: "15min",
     requestedStart: now - 90 * 86_400_000, requestedEnd: now, observedAt: now, availableStart: now - 60 * 86_400_000 };
   return { retention, candidate: { sourceKey: "provider:cloud-test", retention, request: {
     symbol: "BTC-USD", exchange: "CCC", entityKey: "contract:11", brokerId: "ibkr", brokerInstanceId: "work",

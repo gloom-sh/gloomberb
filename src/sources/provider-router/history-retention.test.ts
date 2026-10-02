@@ -15,7 +15,7 @@ afterEach(removeTempDbFiles);
 const DAY = 86_400_000;
 const proof = (patch: Partial<HistoryRetention> = {}): HistoryRetention => {
   const observedAt = Math.floor(Date.now() / 1000) * 1000;
-  return { version: 1, source: "yahoo", symbol: "BTC-USD", exchange: "CCC", interval: "15min",
+  return { version: 1, source: "gloom", symbol: "BTC-USD", exchange: "CCC", interval: "15min",
     requestedStart: observedAt - 90 * DAY, requestedEnd: observedAt, observedAt, availableStart: observedAt - 60 * DAY, ...patch };
 };
 const points = (): PricePoint[] => [{ date: new Date(Math.floor(Date.now() / 1000) * 1000 - 900_000), close: 100 }];
@@ -25,7 +25,7 @@ function limited(calls: string[], id = "cloud-test", data = proof()): DataProvid
     async getPriceHistoryForResolution() { calls.push(`${id}:broad`); throw new HistoryRetentionError(data); },
     async getDetailedPriceHistory(_ticker, _exchange, start, end, bar, context) {
       calls.push(`${id}:detailed`);
-      expect(context?.historyRecovery?.retention.source).toBe("yahoo");
+      expect(context?.historyRecovery?.retention.source).toBe("gloom");
       expect(+start).toBeGreaterThanOrEqual(data.availableStart);
       expect(+end).toBeLessThanOrEqual(data.requestedEnd);
       expect(bar).toBe("15m");

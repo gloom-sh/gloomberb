@@ -454,6 +454,7 @@ export interface CloudCdsHistoryResponse {
 
 interface CloudShortInterestPointPayload {
   settlementDate: string;
+  shortPercentFloat?: number | null;
   sharesShort: number;
   previousSharesShort: number | null;
   averageDailyVolume: number | null;
@@ -463,6 +464,7 @@ interface CloudShortInterestPointPayload {
 }
 
 export interface CloudShortInterestPayload {
+  source?: "finra" | "gloom";
   symbol: string;
   issueName: string | null;
   points: CloudShortInterestPointPayload[];

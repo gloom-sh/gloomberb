@@ -491,7 +491,7 @@ export class ProviderRouterHistoryRoutes {
       ["bar", barSize],
       // An ordinary Cloud cache does not identify its internal winning source.
       // Scoped recovery must only reuse a cache explicitly acquired this way.
-      ["historyRecovery", context?.historyRecovery ? "yahoo" : undefined],
+      ["historyRecovery", context?.historyRecovery ? "gloom" : undefined],
     ];
     const fallbackParts = primaryParts.slice(1);
     const identity = makeHistoryRequestIdentity(this.deps, {

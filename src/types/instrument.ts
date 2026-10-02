@@ -56,7 +56,7 @@ export interface InstrumentSearchResult {
   currency?: string;
   primaryExchange?: string;
   brokerContract?: BrokerContractRef;
-  /** How often the listing is searched, higher is more (Yahoo's search score,
+  /** How often the listing is searched, higher is more (the search service score,
    * sent by newer cloud servers). Only comparable within one response. */
   popularity?: number;
 }

@@ -306,7 +306,7 @@ export function activeUsExtendedHoursSession(now: number): "PRE" | "POST" | null
 
 /**
  * Before any pre-market trade, a US quote's last print is the previous
- * session's close, and that close is the current price (Yahoo also stamps a
+ * session's close, and that close is the current price (a source may also stamp a
  * pre-market quote with that regular-session time). The provider must have
  * observed this pre-market session and the print must be from the session
  * immediately before today, at or after its regular open. An earlier print that

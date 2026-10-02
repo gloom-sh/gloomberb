@@ -27,8 +27,8 @@ test("persisted public financials reject every conflicting identity before quote
     { quoteMetadata: { symbol: "OTHER", listingExchangeName: "NASDAQ" } },
     { quoteMetadata: { symbol: "SHOP", listingExchangeName: "TSX" } },
     { quote: undefined, quoteMetadata: { symbol: "OTHER", listingExchangeName: "NASDAQ" } },
-    { quoteContributions: { yahoo: { ...matching.quote!, symbol: "OTHER" } } },
-    { quoteContributions: { yahoo: { ...matching.quote!, listingExchangeName: "TSX" } } },
+    { quoteContributions: { gloom: { ...matching.quote!, symbol: "OTHER" } } },
+    { quoteContributions: { gloom: { ...matching.quote!, listingExchangeName: "TSX" } } },
     { quoteMetadata: { symbol: 42, listingExchangeName: "NASDAQ" } as never },
     { quote: { ...matching.quote!, listingExchangeName: 42 } as never },
   ];
@@ -66,16 +66,16 @@ test("cache selection falls through a conflicting source while preserving valid 
   const wrong = value({ quoteMetadata: { symbol: "OTHER", listingExchangeName: "NASDAQ" } });
   try {
     cacheRouterResource(store.resources, "financials", "SHOP", "exchange=NASDAQ", "provider:gloomberb-cloud", wrong, policy);
-    cacheRouterResource(store.resources, "financials", "SHOP", "exchange=NASDAQ", "provider:yahoo", good, policy);
+    cacheRouterResource(store.resources, "financials", "SHOP", "exchange=NASDAQ", "provider:gloom", good, policy);
     const cloud = createTestDataProvider({ id: "gloomberb-cloud", priority: 1 });
-    const yahoo = createTestDataProvider({ id: "yahoo", priority: 2 });
-    const cached = new AssetDataRouter(yahoo, [cloud], store.resources).getCachedFinancialsForTargets([target]).get("SHOP")!;
+    const gloom = createTestDataProvider({ id: "gloom", priority: 2 });
+    const cached = new AssetDataRouter(gloom, [cloud], store.resources).getCachedFinancialsForTargets([target]).get("SHOP")!;
     expect(cached.quote).toBeUndefined();
     expect(cached.quoteMetadata).toMatchObject({ symbol: "SHOP:XNAS", listingExchangeName: "NMS" });
     expect(cached.annualStatements).toEqual(good.annualStatements);
     expect(cached.profile).toEqual(good.profile);
-    expect(listCachedResources(store.resources, "financials", "SHOP", ["exchange=NASDAQ"], ["provider:gloomberb-cloud", "provider:yahoo"], true)
-      .map(record => record.sourceKey)).toEqual(["provider:yahoo"]);
+    expect(listCachedResources(store.resources, "financials", "SHOP", ["exchange=NASDAQ"], ["provider:gloomberb-cloud", "provider:gloom"], true)
+      .map(record => record.sourceKey)).toEqual(["provider:gloom"]);
   } finally { store.close(); }
 });
 
@@ -117,9 +117,9 @@ test("public cache identity checks retain exact suffix aliases, unidentified sta
   const variants = ["exchange=NASDAQ"];
   const cases = [
     { entity: "SHOP", variant: variants[0]!, source: "provider:gloomberb-cloud", financials: value({ quote: undefined }) },
-    { entity: "SHOP", variant: variants[0]!, source: "provider:yahoo", financials: value({ quote: undefined, quoteMetadata: { symbol: "SHOP" } }) },
+    { entity: "SHOP", variant: variants[0]!, source: "provider:gloom", financials: value({ quote: undefined, quoteMetadata: { symbol: "SHOP" } }) },
     { entity: "SHOP", variant: variants[0]!, source: "provider:twelvedata", financials: value({ quote: createTestQuote({ symbol: "SHOP" }) }) },
-    { entity: "2330", variant: "exchange=TWSE", source: "provider:yahoo", financials: value({ quote: createTestQuote({ symbol: "2330.TW", listingExchangeName: "TAI", currency: "TWD" }) }) },
+    { entity: "2330", variant: "exchange=TWSE", source: "provider:gloom", financials: value({ quote: createTestQuote({ symbol: "2330.TW", listingExchangeName: "TAI", currency: "TWD" }) }) },
     { entity: "contract:12345", variant: variants[0]!, source: "provider:gloomberb-cloud", financials: value() },
     { entity: "SHOP", variant: variants[0]!, source: "broker:account", financials: value({ quote: createTestQuote({ symbol: "BROKER-LOCAL", listingExchangeName: "SMART" }) }) },
   ];

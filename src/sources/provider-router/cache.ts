@@ -1,4 +1,4 @@
-import { yahooSuffixExchange } from "../yahoo-finance/symbols";
+import { listingSuffixExchange } from "../listing-symbols";
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
@@ -57,7 +57,7 @@ export function buildVariantKey(parts: Array<[string, string | number | undefine
 export function getRouterEntityKey(ticker: string, instrument?: BrokerContractRef | null): string {
   if (instrument) return `contract:${brokerContractIdentityKey(instrument)}`;
   const target = parsePublicTickerKey(ticker);
-  const suffixExchange = !target.exchange && yahooSuffixExchange(target.symbol);
+  const suffixExchange = !target.exchange && listingSuffixExchange(target.symbol);
   // Earlier bare-suffix caches may have parsed dates using unrelated exchange
   // metadata or UTC. A qualified entity bypasses those records on upgrade.
   return suffixExchange ? `${target.symbol}:${suffixExchange}` : normalizeTicker(ticker);
@@ -191,7 +191,7 @@ export function listCachedResources<T>(
     const value = record.value as TickerFinancials;
     const statistics = value.fundamentals;
     const hasDividendProvenance = ["forward", "trailing"].includes(statistics?.dividendYieldBasis ?? "")
-      && ["twelvedata", "yahoo"].includes(statistics?.dividendYieldSource ?? "");
+      && ["twelvedata", "gloom"].includes(statistics?.dividendYieldSource ?? "");
     if (statistics?.dividendYield == null || hasDividendProvenance) return record;
     return { ...record, stale: true, value: { ...value, fundamentals: { ...statistics,
       dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined, dividendRate: undefined } } as T };

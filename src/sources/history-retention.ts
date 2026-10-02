@@ -6,10 +6,10 @@ export const HISTORY_RETENTION_MAX_AGE_MS = 5 * 60_000;
 // The record carries the server's clock; the server revalidates it on retry.
 const HISTORY_RETENTION_CLOCK_SKEW_MS = 5 * 60_000;
 
-/** A source-proven Yahoo retention boundary, not an inferred range failure. */
+/** A source-proven Gloom retention boundary, not an inferred range failure. */
 export interface HistoryRetention {
   readonly version: 1;
-  readonly source: "yahoo";
+  readonly source: "gloom";
   readonly symbol: string;
   readonly exchange: string;
   readonly interval: string;
@@ -48,7 +48,7 @@ const outcomes = new Set<HistorySourceOutcomeKind>(["success", "retention", "aut
   "missing-method", "stale", "malformed", "reported-gaps", "timeout", "coverage"]);
 const text = (value: unknown, max = 256): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\r\n\0]/.test(value);
 const instant = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= 8_640_000_000_000_000;
-const yahooRetentionIntervals = new Set(["1min", "5min", "15min", "30min", "1h"]);
+const retentionIntervals = new Set(["1min", "5min", "15min", "30min", "1h"]);
 
 export function canonicalHistoryInterval(value: unknown): string | null {
   const interval = parseBarInterval(value);
@@ -56,7 +56,7 @@ export function canonicalHistoryInterval(value: unknown): string | null {
 }
 
 export function parseHistoryRetention(value: unknown, now = Date.now()): HistoryRetention | null {
-  if (!isRecord(value) || value.version !== 1 || value.source !== "yahoo"
+  if (!isRecord(value) || value.version !== 1 || value.source !== "gloom"
     || !text(value.symbol) || typeof value.exchange !== "string" || value.exchange.length > 256
     || !instant(value.requestedStart) || !instant(value.requestedEnd)
     || !instant(value.observedAt) || !instant(value.availableStart)) return null;
@@ -64,13 +64,13 @@ export function parseHistoryRetention(value: unknown, now = Date.now()): History
   const target = parsePublicTickerKey(value.symbol);
   const exchange = canonicalExchange(value.exchange);
   const retentionDays = (value.observedAt - value.availableStart) / 86_400_000;
-  if (!interval || !yahooRetentionIntervals.has(interval) || !Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 730
+  if (!interval || !retentionIntervals.has(interval) || !Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 730
     || target.exchange || target.symbol !== value.symbol
     || exchange !== value.exchange || value.requestedStart >= value.availableStart
     || value.requestedStart >= value.requestedEnd || value.availableStart > value.observedAt
     || value.observedAt > now + HISTORY_RETENTION_CLOCK_SKEW_MS || now - value.observedAt > HISTORY_RETENTION_MAX_AGE_MS
     || [value.requestedStart, value.requestedEnd, value.observedAt, value.availableStart].some((time) => time % 1000 !== 0)) return null;
-  return Object.freeze({ version: 1, source: "yahoo", symbol: target.symbol, exchange, interval,
+  return Object.freeze({ version: 1, source: "gloom", symbol: target.symbol, exchange, interval,
     requestedStart: value.requestedStart, requestedEnd: value.requestedEnd,
     observedAt: value.observedAt, availableStart: value.availableStart });
 }

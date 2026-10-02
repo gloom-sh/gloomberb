@@ -101,7 +101,7 @@ export function marketChangeColor(change: number | undefined, state?: MarketStat
 export function exchangeShortName(exchangeName?: string, fullExchangeName?: string): string {
   if (!exchangeName && !fullExchangeName) return "";
   const name = exchangeName || fullExchangeName || "";
-  // Common Yahoo Finance exchange abbreviations
+  // Common market data exchange abbreviations
   const map: Record<string, string> = {
     NMS: "NASDAQ", NGM: "NASDAQ", NCM: "NASDAQ", NAS: "NASDAQ",
     NYQ: "NYSE", NYS: "NYSE",

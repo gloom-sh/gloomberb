@@ -31,7 +31,7 @@ function fixture(): EstimateRevisionsPayload {
     analysts: 2,
     range: 0.4,
     relativeRange: 0.4,
-    source: "yahoo" as const,
+    source: "gloom" as const,
   };
   const period: EstimatePeriod = {
     id: "quarterly:2026-09-30:USD",
@@ -42,7 +42,7 @@ function fixture(): EstimateRevisionsPayload {
     current: { ...point, growth: null },
     revenue: null,
     recorded: [point],
-    lookbacks: [{ ...point, date: "2026-08-21", source: "yahoo-eps-trend" }],
+    lookbacks: [{ ...point, date: "2026-08-21", source: "gloom-eps-trend" }],
     percentile: {
       ...stats,
       window: "1Y",
@@ -97,8 +97,8 @@ function fixture(): EstimateRevisionsPayload {
 test("period identity and actual-versus-lookback boundaries reject unsafe ranks and revisions", () => {
   const data = validateEstimates(fixture(), "AAPL", "NASDAQ");
   expect(estimateHistory(data.periods[0]!).map((row) => row.source)).toEqual([
-    "yahoo",
-    "yahoo-eps-trend",
+    "gloom",
+    "gloom-eps-trend",
   ]);
   expect(estimateCurrent({ ...data.periods[0]!, current: null })?.date).toBe(
     "2026-09-21",
@@ -107,7 +107,7 @@ test("period identity and actual-versus-lookback boundaries reject unsafe ranks 
   currency.periods[0]!.currency = "DKK";
   expect(() => validateEstimates(currency, "AAPL", "NASDAQ")).toThrow();
   const source = fixture();
-  source.periods[0]!.recorded[0]!.source = "yahoo-eps-trend";
+  source.periods[0]!.recorded[0]!.source = "gloom-eps-trend";
   expect(() => validateEstimates(source, "AAPL", "NASDAQ")).toThrow();
   const rank = fixture();
   rank.periods[0]!.percentile.percentile = 50;
@@ -191,7 +191,7 @@ test("fiscal pin preserves frequency and currency identity and rejects invalid o
 
 test("untracked listings resolve only an exact unambiguous Cloud search identity", async () => {
   const listing = {
-    providerId: "yahoo",
+    providerId: "gloom",
     symbol: "AAPL",
     name: "Apple",
     exchange: "NASDAQ",

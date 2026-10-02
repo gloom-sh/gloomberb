@@ -22,7 +22,7 @@ function installCloud() {
   const calls: Array<[string, string, string | undefined]> = [];
   apiClient.getCloudQuote = (async (symbol: string, exchange: string) => { calls.push(["quote", symbol, exchange]); return { status: "success", data: quote() }; }) as any;
   apiClient.getCloudFinancials = (async (symbol: string, exchange: string) => { calls.push(["financials", symbol, exchange]); return { status: "success", data: financials() }; }) as any;
-  apiClient.getCloudHistory = (async (symbol: string, exchange: string) => { calls.push(["history", symbol, exchange]); return { status: "success", providerMeta: { provider: "yahoo" }, currency: "JPY", data: [{ date: "2026-09-10 10:00:00", close: 3025 }] }; }) as any;
+  apiClient.getCloudHistory = (async (symbol: string, exchange: string) => { calls.push(["history", symbol, exchange]); return { status: "success", providerMeta: { provider: "gloom" }, currency: "JPY", data: [{ date: "2026-09-10 10:00:00", close: 3025 }] }; }) as any;
   return calls;
 }
 

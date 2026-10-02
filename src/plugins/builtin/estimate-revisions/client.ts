@@ -96,8 +96,8 @@ export function validateEstimates(
       return invalid();
     identities.add(period.id);
     for (const [source, rows] of [
-      ["yahoo", period.recorded],
-      ["yahoo-eps-trend", period.lookbacks],
+      ["gloom", period.recorded],
+      ["gloom-eps-trend", period.lookbacks],
     ] as const) {
       const dates = new Set<string>();
       for (const point of rows) {

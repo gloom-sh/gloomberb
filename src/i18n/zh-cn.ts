@@ -343,8 +343,6 @@ export const zhCN: Record<string, string> = {
   "Debug Log": "调试日志",
   "Changelog": "更新日志",
   "Substack": "Substack",
-  "Yahoo Finance": "雅虎财经",
-  "Yahoo Fallback": "雅虎备用源",
   "Provider Search": "数据源搜索",
   "Research": "研究",
   "Chat": "聊天",

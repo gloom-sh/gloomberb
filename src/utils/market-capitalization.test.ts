@@ -3,14 +3,14 @@ import { selectMarketCapitalization, describeFundamentalMarketCap } from "./mark
 import type { Quote } from "../types/financials";
 
 const quote: Quote = { symbol: "F:XNYS", price: 14.01, currency: "USD", change: 0, changePercent: 0,
-  lastUpdated: Date.parse("2026-09-11T15:30:00Z"), providerId: "yahoo" };
-const fundamentals = { marketCap: 55_866_216_448, marketCapCurrency: "USD", source: "yahoo" as const,
+  lastUpdated: Date.parse("2026-09-11T15:30:00Z"), providerId: "gloom" };
+const fundamentals = { marketCap: 55_866_216_448, marketCapCurrency: "USD", source: "gloom" as const,
   fetchedAt: "2026-09-11T15:23:57.311Z", financialCurrency: "USD", freeCashFlow: -7_940_250_112, stale: false };
 
 test("a lightweight quote preserves the separately sourced capitalization and retrieval time", () => {
   const selected = selectMarketCapitalization(quote, fundamentals)!;
   expect(selected).toEqual({ value: fundamentals.marketCap, currency: "USD",
-    provenance: { kind: "fundamentals", source: "yahoo", retrievedAt: fundamentals.fetchedAt, stale: false } });
+    provenance: { kind: "fundamentals", source: "gloom", retrievedAt: fundamentals.fetchedAt, stale: false } });
   expect(describeFundamentalMarketCap(selected.provenance)).toContain("retrieved 2026-09-11 15:23:57 UTC");
   expect(describeFundamentalMarketCap(selected.provenance)).toContain("valuation date unavailable");
   expect(selectMarketCapitalization(undefined, fundamentals)).toEqual(selected);
@@ -19,7 +19,7 @@ test("a lightweight quote preserves the separately sourced capitalization and re
 
 test("a valid quote capitalization wins without borrowing the fallback currency or retrieval time", () => {
   expect(selectMarketCapitalization({ ...quote, marketCap: 60e9 }, { ...fundamentals, marketCapCurrency: "EUR" }))
-    .toEqual({ value: 60e9, currency: "USD", provenance: { kind: "quote", source: "yahoo" } });
+    .toEqual({ value: 60e9, currency: "USD", provenance: { kind: "quote", source: "gloom" } });
   expect(selectMarketCapitalization({ ...quote, marketCap: 0 }, fundamentals)?.value).toBe(0);
 });
 

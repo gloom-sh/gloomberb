@@ -12,7 +12,7 @@ const DAY = 86_400_000, STEP = 900_000;
 const NOW = Date.parse("2026-09-22T12:00:00Z");
 afterEach(() => setSystemTime());
 const proof = (symbol = "RETENTION", interval = "15min"): HistoryRetention => ({
-  version: 1, source: "yahoo", symbol, exchange: "CCC", interval,
+  version: 1, source: "gloom", symbol, exchange: "CCC", interval,
   requestedStart: NOW - 92 * DAY, requestedEnd: NOW, observedAt: NOW, availableStart: NOW - 60 * DAY,
 });
 const history = (start = NOW - 40 * DAY, end = NOW): PricePoint[] => Array.from(

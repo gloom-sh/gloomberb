@@ -5,7 +5,7 @@ import { zonedDateKey } from "../utils/zoned-date-time";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "./published-us-sessions";
 
 const intervals = new Set(["1min", "5min", "15min", "30min", "1h"]);
-const sourceKinds = new Set(["yahoo", "twelvedata", "alpaca"]);
+const sourceKinds = new Set(["gloom", "twelvedata", "alpaca"]);
 const DAY = 86_400_000;
 const FEED_DELAY = 15 * 60_000;
 // Sources stamp observedAt with their own clock; a desktop clock a little
@@ -27,7 +27,7 @@ export function parseHistorySession(
     || !sourceKinds.has(record.source)
     || (record.barAlignment !== "session-open" && record.barAlignment !== "clock")
     || (record.timestampConvention !== "bar-open"
-      && !(record.timestampConvention === "bar-open-with-final-observation" && record.source === "yahoo"))
+      && !(record.timestampConvention === "bar-open-with-final-observation" && record.source === "gloom"))
     || typeof record.observedAt !== "number" || !Number.isSafeInteger(record.observedAt)
     || record.observedAt <= 0 || record.observedAt > now + HISTORY_CLOCK_SKEW_MS) return null;
   const target = parsePublicTickerKey(record.symbol);

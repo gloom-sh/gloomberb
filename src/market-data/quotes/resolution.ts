@@ -83,7 +83,7 @@ function providerKindRank(providerId?: string): number {
   switch (providerId) {
     case "gloomberb-cloud":
       return 0;
-    case "yahoo":
+    case "gloom":
       return 1;
     case "ibkr":
       return 2;
@@ -94,7 +94,7 @@ function providerKindRank(providerId?: string): number {
 
 function dailyReferenceRank(providerId?: string): number {
   switch (providerId) {
-    case "yahoo":
+    case "gloom":
       return 0;
     case "gloomberb-cloud":
       return 1;
@@ -121,7 +121,7 @@ function priceProviderTieRank(providerId?: string): number {
   switch (providerId) {
     case "gloomberb-cloud":
       return 0;
-    case "yahoo":
+    case "gloom":
       return 1;
     case "ibkr":
       return 2;

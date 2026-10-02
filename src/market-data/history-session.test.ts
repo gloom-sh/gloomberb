@@ -6,7 +6,7 @@ const time = (value: string) => Date.parse(value);
 const NOW = time("2026-09-22T12:42:00Z");
 const metadata = (overrides: Partial<HistorySession> = {}): HistorySession => ({
   version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York",
-  symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "yahoo",
+  symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "gloom",
   timestampConvention: "bar-open", barAlignment: "session-open", observedAt: NOW, ...overrides,
 });
 function stale(latest: string, now: string, overrides: Partial<HistorySession> = {}) {

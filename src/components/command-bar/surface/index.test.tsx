@@ -76,8 +76,8 @@ describe("CommandBar", () => {
       dataProvider={makeDataProvider(async (query) => {
         searchQueries.push(query);
         return [
-          { providerId: "yahoo", symbol: "MSFT", name: "Microsoft Corp", exchange: "NASDAQ", type: "EQUITY" },
-          { providerId: "yahoo", symbol: "MSF", name: "MFS Municipal Fund", exchange: "NYSE", type: "ETF" },
+          { providerId: "gloom", symbol: "MSFT", name: "Microsoft Corp", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "MSF", name: "MFS Municipal Fund", exchange: "NYSE", type: "ETF" },
         ];
       })}
     />, {
@@ -112,7 +112,7 @@ describe("CommandBar", () => {
       }}
       dataProvider={makeDataProvider(async () => {
         await held;
-        return [{ providerId: "yahoo", symbol: "LIST", name: "List Corp", exchange: "NYSE", type: "EQUITY" }];
+        return [{ providerId: "gloom", symbol: "LIST", name: "List Corp", exchange: "NYSE", type: "EQUITY" }];
       })}
     />, {
       width: 100,
@@ -892,11 +892,11 @@ describe("CommandBar", () => {
       <CommandBarHarness
         query="DES appl"
         dataProvider={makeDataProvider(async () => [
-          { providerId: "yahoo", symbol: "IVSX", name: "Invsivx Holdings", exchange: "NYSE", type: "ETF" },
-          { providerId: "yahoo", symbol: "AAPL", name: "Apple Inc", exchange: "NASDAQ", type: "EQUITY" },
-          { providerId: "yahoo", symbol: "AMAT", name: "Applied Materials", exchange: "NASDAQ", type: "EQUITY" },
-          { providerId: "yahoo", symbol: "AAOI", name: "Applied Optoelectronics", exchange: "NASDAQ", type: "EQUITY" },
-          { providerId: "yahoo", symbol: "APP", name: "AppLovin Corp", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "IVSX", name: "Invsivx Holdings", exchange: "NYSE", type: "ETF" },
+          { providerId: "gloom", symbol: "AAPL", name: "Apple Inc", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "AMAT", name: "Applied Materials", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "AAOI", name: "Applied Optoelectronics", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "APP", name: "AppLovin Corp", exchange: "NASDAQ", type: "EQUITY" },
         ])}
       />,
       { width: 80, height: 24 },
@@ -942,7 +942,7 @@ describe("CommandBar", () => {
         })}
         dataProvider={makeDataProvider(async () => [
           {
-            providerId: "yahoo",
+            providerId: "gloom",
             symbol: "AAPL",
             name: "Apple Inc.",
             exchange: "NASDAQ",
@@ -960,7 +960,7 @@ describe("CommandBar", () => {
             currency: "EUR",
           },
           {
-            providerId: "yahoo",
+            providerId: "gloom",
             symbol: "APLY",
             name: "Apple Yield Shares ETF",
             exchange: "NYSE Arca",

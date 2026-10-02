@@ -12,7 +12,7 @@ import { tickerSelectionFromSearchResult } from "./selection";
 import { normalizeTickerSymbol } from "./search/ranking";
 import type { TickerOpenTarget } from "./search/types";
 import { parsePublicTickerKey } from "../utils/exchanges";
-import { getYahooSymbol, tickerHasYahooSuffix } from "../sources/yahoo-finance/symbols";
+import { getListingSymbol, tickerHasListingSuffix } from "../sources/listing-symbols";
 
 export type { TickerOpenTarget } from "./search/types";
 
@@ -34,7 +34,7 @@ export async function resolveTickerOpenTarget({
   const symbol = normalizeTickerInput(null, query);
   if (!symbol) return null;
   const requested = parsePublicTickerKey(symbol);
-  const preserveListingKey = !!requested.exchange || tickerHasYahooSuffix(symbol);
+  const preserveListingKey = !!requested.exchange || tickerHasListingSuffix(symbol);
 
   let resolved: Awaited<ReturnType<typeof resolveTickerSearch>> | null = null;
   try {
@@ -84,8 +84,8 @@ export async function resolveTickerOpenTarget({
       if (!findExactTickerSearchMatch([{ label: baseSymbol, right: quoteExchange }], symbol)) return null;
     }
     if (preserveListingKey) {
-      const yahooAlias = requested.exchange ? getYahooSymbol(requested.symbol, requested.exchange) : symbol;
-      const explicitAliasMatches = tickerHasYahooSuffix(yahooAlias) && normalizeTickerSymbol(quote.symbol) === yahooAlias;
+      const listingAlias = requested.exchange ? getListingSymbol(requested.symbol, requested.exchange) : symbol;
+      const explicitAliasMatches = tickerHasListingSuffix(listingAlias) && normalizeTickerSymbol(quote.symbol) === listingAlias;
       if (!explicitAliasMatches && !findExactTickerSearchMatch([{ label: quote.symbol, right: quoteExchange }], symbol)) return null;
     }
     const quoteSymbol = preserveListingKey ? symbol : normalizeTickerSymbol(quote.symbol || symbol);

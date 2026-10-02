@@ -341,8 +341,6 @@ export const ko: Record<string, string> = {
   "Debug Log": "디버그 로그",
   "Changelog": "변경 내역",
   "Substack": "Substack",
-  "Yahoo Finance": "Yahoo Finance",
-  "Yahoo Fallback": "Yahoo 보조 소스",
   "Provider Search": "데이터 소스 검색",
   "Research": "리서치",
   "Chat": "채팅",

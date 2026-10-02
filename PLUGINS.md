@@ -310,9 +310,8 @@ To be bundled, a plugin has to be web-capable in practice, not just in its
   `Referer` and `User-Agent` are dropped. `httpFetch` reaches the API directly
   in the terminal, hands it to the Bun process on the desktop, and routes it
   through the web app's worker proxy.
-- `hosts` lists every host the plugin reaches, including ones reached on its
-  behalf by a host client such as `YahooHttpClient` (which collects a cookie
-  from `fc.yahoo.com` before any screener call). The worker proxies exactly
+- `hosts` lists every host the plugin reaches, including any hosts reached by
+  shared HTTP clients. Built-in market data uses the Gloom API. The worker proxies exactly
   what the bundled plugins declare and refuses the rest, so a missing host
   works on the desktop and fails on the web.
 - no `node:*` imports on the path the browser entry pulls in.
@@ -1622,8 +1621,8 @@ The shortcut appears in Help > Shortcuts, where users can move it to another key
 setup(ctx) {
   ctx.registerTickerAction({
     id: "open-in-browser",
-    label: "Open in Yahoo Finance",
-    keywords: ["open", "yahoo", "browser"],
+    label: "Open company website",
+    keywords: ["open", "website", "browser"],
     // Optional: only show for certain tickers
     filter: (ticker) => ticker.metadata.exchange === "US",
     execute(ticker, financials) {

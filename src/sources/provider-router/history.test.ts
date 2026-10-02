@@ -58,8 +58,8 @@ describe("AssetDataRouter chart history", () => {
   test("does not log expected provider misses for missing chart data", async () => {
     const noisyProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async getPriceHistory() {
         throw new Error('[404] {"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}');
       },
@@ -89,21 +89,21 @@ describe("AssetDataRouter chart history", () => {
         return [];
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getPriceHistory() {
         return [{ date: new Date("2026-03-28T00:00:00Z"), close: 101 }];
       },
     };
 
-    const seedRouter = new AssetDataRouter(yahooProvider, [cloudProvider], persistence.resources);
+    const seedRouter = new AssetDataRouter(gloomProvider, [cloudProvider], persistence.resources);
     const seeded = await seedRouter.getPriceHistory("AAPL", "NASDAQ", "1Y");
     expect(seeded[0]?.close).toBe(101);
 
-    const cachedRouter = new AssetDataRouter(yahooProvider, [cloudProvider], persistence.resources);
+    const cachedRouter = new AssetDataRouter(gloomProvider, [cloudProvider], persistence.resources);
     const cached = await cachedRouter.getPriceHistory("AAPL", "NASDAQ", "1Y");
     expect(cached[0]?.close).toBe(101);
 
@@ -202,7 +202,7 @@ describe("AssetDataRouter chart history", () => {
         kind: "price-history",
         entityKey: "AAPL",
         variantKey: "exchange=NASDAQ;range=1Y",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       [
         { date: null, close: 101 },
@@ -216,8 +216,8 @@ describe("AssetDataRouter chart history", () => {
     let providerCalls = 0;
     const router = new AssetDataRouter({
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async getPriceHistory() {
         providerCalls += 1;
         return [
@@ -517,17 +517,17 @@ describe("AssetDataRouter chart history", () => {
         return [];
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getPriceHistoryForResolution() {
         return [{ date: new Date("2026-03-28T00:00:00Z"), close: 102 }];
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const history = await router.getPriceHistoryForResolution("AAPL", "NASDAQ", "1Y", "1d");
 
     expect(history[0]?.close).toBe(102);
@@ -547,10 +547,10 @@ describe("AssetDataRouter chart history", () => {
           return [];
         },
       };
-      const yahooProvider: DataProvider = {
+      const gloomProvider: DataProvider = {
         ...fallbackProvider,
-        id: "yahoo",
-        name: "Yahoo",
+        id: "gloom",
+        name: "Gloom",
         priority: 1000,
         async getPriceHistoryForResolution() {
           return [
@@ -560,7 +560,7 @@ describe("AssetDataRouter chart history", () => {
         },
       };
 
-      const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+      const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
       const history = await router.getPriceHistoryForResolution("AAPL", "", "1M", "15m");
 
       expect(history.map((point) => point.close)).toEqual([101, 102]);
@@ -579,17 +579,17 @@ describe("AssetDataRouter chart history", () => {
         return [];
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getChartResolutionCapabilities() {
         return ["1wk", "auto", "1d", "bogus"] as any;
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     expect(await router.getChartResolutionCapabilities("AAPL", "NASDAQ")).toEqual(["1d", "1wk"]);
   });
 
@@ -608,17 +608,17 @@ describe("AssetDataRouter chart history", () => {
         return [{ resolution: "1m", maxRange: "1W" }];
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       getChartResolutionSupport() {
         return [{ resolution: "1d", maxRange: "5Y" }];
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
 
     expect(await router.getChartResolutionSupport("AAPL", "NASDAQ")).toEqual([
       { resolution: "1d", maxRange: "5Y" },
@@ -712,17 +712,17 @@ describe("AssetDataRouter chart history", () => {
         return [];
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getDetailedPriceHistory() {
         return [{ date: new Date("2026-03-28T10:00:00Z"), close: 102 }];
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const history = await router.getDetailedPriceHistory(
       "AAPL",
       "NASDAQ",

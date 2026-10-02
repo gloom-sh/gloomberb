@@ -5,9 +5,7 @@ import type { DatedObservation, DatedSeries } from "./series";
 import type { SeriesCacheInput } from "../shared/series-cache";
 
 /**
- * Every leg goes through the Gloom Cloud proxy. Earlier revisions reached Yahoo and
- * fredgraph.csv directly, which forced the pane out of the hosted browser build,
- * since both are blocked there by CORS and the worker's connect-src policy.
+ * Every leg goes through the market backend so terminal and browser use the same data.
  */
 export interface ValuationSourceDeps {
   loadFred: (seriesId: string, limit: number) => Promise<DatedObservation[] | SeriesCacheInput>;

@@ -3,7 +3,6 @@ import type { DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
 import { createTestDataProvider } from "../../test-support/data-provider";
-import { loadYahooQuote } from "../../sources/yahoo-finance/snapshots";
 import {
   AmbiguousTickerError,
   buildTickerSearchCandidates,
@@ -136,20 +135,6 @@ describe("ticker-search utilities", () => {
     expect(await resolveTickerSearch({ query: "BRK-B", activeTicker: null, tickers: new Map(),
       dataProvider: makeDataProvider([makeSearchResult("BRK.B", "Berkshire", { exchange: "NYSE" })]) }))
       .toMatchObject({ symbol: "BRK.B" });
-  });
-
-  test("native Yahoo chart instrument type verifies an omitted crypto catalogue entry", async () => {
-    const dataProvider = createTestDataProvider({
-      search: async () => [makeSearchResult("SHIB/USD", "Shiba Inu", { exchange: "COINBASE PRO", type: "Digital Currency" })],
-      getQuote: async (symbol) => loadYahooQuote(symbol, {
-        providerId: "yahoo-finance",
-        fetchChart: async () => ({ meta: { instrumentType: "CRYPTOCURRENCY", currency: "USD", exchangeName: "CCC",
-          regularMarketPrice: 0.00000509, regularMarketTime: 1789077420 }, history: [{ date: new Date("2026-09-10"), close: 0.00000509 }] }),
-        fetchQuoteSupplement: async () => ({}), fetchExtendedHoursData: async () => ({}),
-      }),
-    });
-    expect(await resolveTickerSearch({ query: "SHIB-USD", activeTicker: null, tickers: new Map(), dataProvider }))
-      .toMatchObject({ symbol: "SHIB-USD", result: { type: "CRYPTOCURRENCY", exchange: "CCC" } });
   });
 
   test("preserves futures, FX and index identity across saved and provider search matches", async () => {
@@ -546,7 +531,7 @@ describe("ticker-search utilities", () => {
   });
 
   describe("provider popularity", () => {
-    // Cloud responses captured from Yahoo's search scores on 2026-09-23.
+    // Cloud responses with recorded search scores on 2026-09-23.
     const listing = (symbol: string, name: string, exchange: string, popularity?: number, type = "EQUITY") =>
       makeSearchResult(symbol, name, { exchange, type, ...(popularity == null ? {} : { popularity }) });
     const build = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
@@ -611,7 +596,7 @@ describe("ticker-search utilities", () => {
         listing("8015", "Toyota Tsusho Corporation", "JPX", 20033),
         listing("TOM", "Toyota Motor Corp.", "XHAN"),
       ];
-      // Yahoo files TM as plain NYSE equity, exactly like a second home line.
+      // The catalogue files TM as plain NYSE equity, exactly like a second home line.
       expect(symbols("Toyota", toyota)).toEqual(["TM", "7203", "TOYOF", "TOM", "8015"]);
       const typed = toyota.map((result) => result.symbol === "TM" ? { ...result, type: "Depositary Receipt" } : result);
       expect(symbols("Toyota", typed)).toEqual(["7203", "TOYOF", "TOM", "TM", "8015"]);

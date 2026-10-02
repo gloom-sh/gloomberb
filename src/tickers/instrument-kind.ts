@@ -65,7 +65,7 @@ function classifyInstrumentType(type: string | null | undefined): TickerInstrume
   return null;
 }
 
-/** Yahoo-style listing syntax: `CCC` coins, `^` indices, `=X` pairs, `=F` futures. */
+/** Market listing listing syntax: `CCC` coins, `^` indices, `=X` pairs, `=F` futures. */
 function kindFromListing(ticker: TickerRecord | null | undefined): TickerInstrumentKind | null {
   if (!ticker) return null;
   if (canonicalExchange(ticker.metadata.exchange) === "CCC") return "crypto";

@@ -176,7 +176,7 @@ for (const cache of ["parsed", "coordinator"] as const) {
       });
       if (spec.series[0]!.source.kind === "security") spec.series[0]!.source.instrument = instrument;
       const session: HistorySession = { version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York",
-        symbol: scenario === "wrong-target" ? "MSFT" : symbol, exchange: "NASDAQ", interval: "15min", source: "yahoo",
+        symbol: scenario === "wrong-target" ? "MSFT" : symbol, exchange: "NASDAQ", interval: "15min", source: "gloom",
         timestampConvention: "bar-open", barAlignment: "session-open",
         observedAt: scenario.startsWith("historical") ? Date.parse("2026-09-21T19:50:00Z") : PREOPEN,
       };

@@ -342,8 +342,6 @@ export const es: Record<string, string> = {
   "Debug Log": "Registro de depuración",
   "Changelog": "Historial de cambios",
   "Substack": "Substack",
-  "Yahoo Finance": "Yahoo Finance",
-  "Yahoo Fallback": "Respaldo de Yahoo",
   "Provider Search": "Búsqueda de proveedores",
   "Research": "Investigación",
   "Chat": "Chat",

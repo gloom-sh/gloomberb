@@ -12,7 +12,7 @@ const request: ChartRequest = { instrument: { symbol: "AAPL", exchange: "NASDAQ"
   granularity: "resolution", resolution: "15m" };
 const sourceKey = "provider:gloomberb-cloud";
 const proof = (patch: Partial<HistorySession> = {}): HistorySession => ({ version: 1, kind: "regular", calendar: "us-equity",
-  timeZone: "America/New_York", symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "yahoo",
+  timeZone: "America/New_York", symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "gloom",
   timestampConvention: "bar-open", barAlignment: "session-open", observedAt: Date.now(), ...patch });
 function result(time = "2026-09-21T19:45:00Z", patch: Partial<PriceHistoryResult> = {}): PriceHistoryResult {
   return { points: [{ date: new Date(time), close: 338.8900146484375, volume: 2218511 }],
@@ -32,7 +32,7 @@ test("coordinator retains actual source/session/cadence and does not renew cache
   const instance = coordinator(async () => { calls++; return result(); });
   const first = await instance.loadChart(request);
   expect(first.data?.[0]?.close).toBe(338.8900146484375);
-  expect(first.history).toMatchObject({ resolution: "15m", sourceKey, session: { observedAt: preopen, source: "yahoo" } });
+  expect(first.history).toMatchObject({ resolution: "15m", sourceKey, session: { observedAt: preopen, source: "gloom" } });
   expect(first.source).toBe(sourceKey);
   setSystemTime(preopen + 9 * 60_000);
   const cached = await instance.loadChart(request);

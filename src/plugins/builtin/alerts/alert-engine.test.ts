@@ -53,7 +53,7 @@ describe("editAlert", () => {
       lastCheckError: "boom",
       lastQuoteUpdatedAt: 125,
       lastQuoteSource: "live" as const,
-      lastQuoteProviderId: "yahoo",
+      lastQuoteProviderId: "gloom",
     };
 
     const edited = editAlert(alert, "aapl", "crosses", 180);

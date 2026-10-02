@@ -1286,7 +1286,7 @@ export async function resolveChartSpecData(
   };
   // True when a price-only chart painted with the placeholder list because the
   // real one had not answered yet. The placeholder must not narrow Auto's
-  // choices: it is Yahoo-shaped and omits 1m and 30m that other sources serve.
+  // choices: it is provider-shaped and omits 1m and 30m that other sources serve.
   let provisionalSupport = false;
   const notifiedSupportKeys = new Set<string>();
   const startResolutionSupport = (

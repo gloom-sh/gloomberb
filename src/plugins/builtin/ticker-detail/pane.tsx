@@ -32,7 +32,7 @@ import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
+import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
 import { tickerQuoteFooterInfo } from "./quote-footer";
 import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-keys";
 import { ResearchTabNavigationProvider } from "./research-tab-navigation";
@@ -147,7 +147,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     url.searchParams.set("ticker", ticker.metadata.ticker);
     // A bare ticker can name different issuers on different venues. Keep the
     // selected listing on reload, and replace any previous pane's venue.
-    if (ticker.metadata.exchange && !parsePublicTickerKey(ticker.metadata.ticker).exchange && !tickerHasYahooSuffix(ticker.metadata.ticker)) {
+    if (ticker.metadata.exchange && !parsePublicTickerKey(ticker.metadata.ticker).exchange && !tickerHasListingSuffix(ticker.metadata.ticker)) {
       url.searchParams.set("exchange", ticker.metadata.exchange);
     } else {
       url.searchParams.delete("exchange");

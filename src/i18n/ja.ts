@@ -343,8 +343,6 @@ export const ja: Record<string, string> = {
   "Debug Log": "デバッグ ログ",
   "Changelog": "変更履歴",
   "Substack": "Substack",
-  "Yahoo Finance": "Yahoo Finance",
-  "Yahoo Fallback": "Yahoo フォールバック",
   "Provider Search": "プロバイダー検索",
   "Research": "研究",
   "Chat": "チャット",

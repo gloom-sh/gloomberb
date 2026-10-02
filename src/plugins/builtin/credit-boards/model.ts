@@ -160,7 +160,7 @@ export function formatCurrencyMove(currency: string, movePercent: number | null)
 /** Quoted as XXX/USD; every other currency is quoted per dollar. */
 const USD_QUOTED = new Set(["EUR", "GBP", "AUD", "NZD"]);
 
-/** The Yahoo-style pair for a currency against the dollar, and whether its rate is dollars per unit. */
+/** The exchange-suffixed pair for a currency against the dollar, and whether its rate is dollars per unit. */
 export function currencyPair(currency: string): { symbol: string; dollarsPerUnit: boolean } | null {
   const code = currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(code) || code === "USD") return null;

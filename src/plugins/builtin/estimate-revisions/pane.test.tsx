@@ -13,11 +13,11 @@ import { EstimateRevisionsPane } from "./pane";
 const recorded: EstimateObservation[] = Array.from({ length: 12 }, (_, index) => {
   const date = new Date(Date.UTC(2026, 6, 1) + index * 7 * 86_400_000).toISOString().slice(0, 10);
   const average = Number((1.6 + index * 0.01).toFixed(2));
-  return { date, recordedAt: `${date}T21:00:00Z`, average, low: 1.5, high: 1.8, analysts: 28, range: 0.3, relativeRange: 0.18, source: "yahoo" };
+  return { date, recordedAt: `${date}T21:00:00Z`, average, low: 1.5, high: 1.8, analysts: 28, range: 0.3, relativeRange: 0.18, source: "gloom" };
 });
 const lookbacks: EstimateObservation[] = [["2026-07-10", 1.58], ["2026-08-09", 1.62]].map(([date, average]) => ({
   date: date as string, recordedAt: "2026-09-20T21:00:00Z", average: average as number,
-  low: null, high: null, analysts: null, range: null, relativeRange: null, source: "yahoo-eps-trend" as const,
+  low: null, high: null, analysts: null, range: null, relativeRange: null, source: "gloom-eps-trend" as const,
 }));
 const latest = recorded.at(-1)!;
 const stats = { percentile: null, samples: 0, min: null, max: null, mean: null };

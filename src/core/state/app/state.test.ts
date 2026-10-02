@@ -468,7 +468,7 @@ describe("quote merging", () => {
     initial.financials.set("IQE", createTestFinancials({
       quote: {
         symbol: "IQE.L",
-        providerId: "yahoo",
+        providerId: "gloom",
         price: 0.245,
         currency: "GBP",
         change: -0.021,

@@ -159,12 +159,9 @@ function installShotCloudApiTransport(): void {
 }
 
 /**
- * Panes such as DVD and SI call a third-party API through httpFetch. A browser
- * cannot do that cross-origin, so those requests died in CORS and the panes
- * reported the ticker as having no data. The desktop renderer proxies the same
- * calls through its native half; here the Bun process that serves this page
- * runs them and returns the response, cookies included so the Yahoo crumb
- * handshake still works.
+ * External plugins can request third-party data through httpFetch. The preview
+ * page sends those requests through its local Bun server, matching the desktop
+ * renderer's native HTTP bridge and preserving upstream response cookies.
  */
 function installShotHttpFetchTransport(): void {
   setHttpFetchTransport(async (url, init) => {
