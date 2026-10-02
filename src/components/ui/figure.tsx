@@ -8,12 +8,18 @@ import { displayWidth } from "../../utils/format";
 export type FigurePart = "value" | "sub";
 
 const FIGURE_FONT_PX: Record<FigurePart, number> = { value: 22, sub: 13 };
+const FIGURE_LINE_HEIGHT: Record<FigurePart, number> = { value: 1.05, sub: 1.1 };
 
 // The desktop sets figures larger and heavier than body text; the terminal has one size, so the value is bold.
-const DESKTOP_FIGURE_STYLE: Record<FigurePart, { fontSize: string; lineHeight: string; fontWeight: number }> = {
-  value: { fontSize: `${FIGURE_FONT_PX.value}px`, lineHeight: "1.05", fontWeight: 700 },
-  sub: { fontSize: `${FIGURE_FONT_PX.sub}px`, lineHeight: "1.1", fontWeight: 500 },
+const DESKTOP_FIGURE_STYLE: Record<FigurePart, { fontSize: string; lineHeight: number; fontWeight: number }> = {
+  value: { fontSize: `${FIGURE_FONT_PX.value}px`, lineHeight: FIGURE_LINE_HEIGHT.value, fontWeight: 700 },
+  sub: { fontSize: `${FIGURE_FONT_PX.sub}px`, lineHeight: FIGURE_LINE_HEIGHT.sub, fontWeight: 500 },
 };
+
+/** Height of one desktop figure line in px, for whatever is sized against it (a logo beside a price). */
+export function figureLinePx(part: FigurePart = "value"): number {
+  return FIGURE_FONT_PX[part] * FIGURE_LINE_HEIGHT[part];
+}
 
 /** Advance of the desktop's monospace face, as a fraction of its size. */
 const MONO_ADVANCE = 0.6;
