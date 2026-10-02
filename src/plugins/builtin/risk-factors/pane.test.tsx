@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useEffect, useMemo, useState } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
@@ -14,6 +14,10 @@ import { RiskFactorsPane } from "./pane";
 import { list, report } from "./test-fixtures";
 
 blockExternalNetwork();
+
+const PRO_USER = { id: "pro", emailVerified: true, plan: "pro" };
+const currentUser = spyOn(apiClient, "getCurrentUser").mockReturnValue(PRO_USER as never);
+afterAll(() => currentUser.mockRestore());
 
 const PANE_ID = "risk-factors:test";
 const tui = createOpenTuiTestHarness();
@@ -102,6 +106,7 @@ async function key(value: string) {
 }
 
 afterEach(() => {
+  currentUser.mockReturnValue(PRO_USER as never);
   resetRiskFactorsPersistence();
   setCloudApiFetchTransport(null);
   apiClient.dispose();
@@ -197,7 +202,7 @@ test("a ticker without a 10-K report shows the empty state, not a load error", a
   expect(empty).toContain("No 10-K risk factors on file for ACME.");
   expect(empty).not.toContain("Report list:");
   expect(empty).not.toContain("Could not load risk reports");
-  expect(requests).toEqual(["/public/risks/ACME"]);
+  expect(requests).toEqual(["/cloud/risks/ACME"]);
 });
 
 test("changing ticker while a historical report is pending cannot adopt the old security or year", async () => {
@@ -221,7 +226,7 @@ test("changing ticker while a historical report is pending cannot adopt the old 
   await act(async () => selectTicker("OTHER"));
   await settle();
   expect(frame()).toContain("Only OTHER 2024 risk analysis");
-  expect(requests).not.toContain("/public/risks/OTHER/2025");
+  expect(requests).not.toContain("/cloud/risks/OTHER/2025");
 
   pending.resolve(Response.json(report(2025)));
   await settle();
@@ -248,10 +253,20 @@ test("in-memory report survives transient refresh with its source dates but clea
   expect(failed).toContain("Temporary report outage");
   expect(failed).toContain("Filed 2026-02-03");
 
-  status = 403;
+  status = 402;
   await key("r");
   const denied = frame();
   expect(denied).not.toContain("Only 2026 risk analysis");
-  expect(denied).toContain("Access denied");
+  expect(denied).toContain("Risk factors are part of Gloom Cloud Pro.");
   expect(denied).not.toContain("[o]pen filing");
+});
+
+test("a free account gets the upgrade wall and reads nothing", async () => {
+  currentUser.mockReturnValue({ ...PRO_USER, plan: "free" } as never);
+  transport(() => Response.json(list([2026])));
+
+  await mount();
+  expect(frame()).toContain("Risk factors are part of Gloom Cloud Pro.");
+  expect(frame()).toContain("Upgrade to Pro");
+  expect(requests).toEqual([]);
 });

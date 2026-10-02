@@ -23,6 +23,7 @@ import {
 } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
+import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
 import { useBoundTicker, useTickerRequest } from "../shared/ticker-request";
 import {
   buildFilingEventsFeed,
@@ -32,7 +33,11 @@ import {
 
 export const FILING_EVENTS_PANE_ID = "filing-events";
 
-const loadFilingEvents = (symbol: string) => apiClient.getFilingEvents(symbol, 100);
+const EK_WALL: ProFeatureWallCopy = {
+  action: "read 8-K filings",
+  title: "8-K filings are part of Gloom Cloud Pro.",
+  message: "Every 8-K classified by item and read: agreements, executive changes, auditor changes, restructurings, and what each one said.",
+};
 
 /** One filing: when it was filed, what it was about, and what it said. */
 function FilingEntry({
@@ -94,19 +99,31 @@ function FilingEntry({
   );
 }
 
-export function FilingEventsPane({
-  focused,
-  width,
-}: {
+interface FilingEventsPaneProps {
   focused: boolean;
   width: number;
   height: number;
-}) {
+}
+
+export function FilingEventsPane(props: FilingEventsPaneProps) {
+  const { wall, guard } = useProFeatureWall(EK_WALL);
+  return wall ?? <FilingEventsReader {...props} guard={guard} />;
+}
+
+function FilingEventsReader({
+  focused,
+  width,
+  guard,
+}: FilingEventsPaneProps & { guard: ReadGuard }) {
   const { symbol, exchange } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
 
+  const loadFilingEvents = useCallback(
+    (listing: string) => guard(apiClient.getFilingEvents(listing, 100)),
+    [guard],
+  );
   const { data, loading, error, reload } = useTickerRequest(loadFilingEvents, ticker, exchange);
   const events = data?.events ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);

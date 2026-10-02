@@ -20,6 +20,7 @@ import {
 import { isPermanentClientError } from "../../../api-client/errors";
 import { usePluginPaneState } from "../../runtime";
 import { useFilingYearReader } from "../shared/filing-year-reader";
+import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
 import { useBoundTicker } from "../shared/ticker-request";
 import { loadRiskReport, loadRiskReports } from "./data";
 
@@ -69,21 +70,35 @@ function RiskLine({
   );
 }
 
-export function RiskFactorsResearchTab(props: { focused: boolean; width: number; height: number }) {
-  return <RiskFactorsPane {...props} nested />;
-}
+const RISK_WALL: ProFeatureWallCopy = {
+  action: "read risk factors",
+  title: "Risk factors are part of Gloom Cloud Pro.",
+  message: "Every 10-K's risk factors grouped by theme, with what was added, dropped or rewritten since the year before.",
+};
 
-export function RiskFactorsPane({
-  focused,
-  width,
-  nested = false,
-}: {
+interface RiskFactorsPaneProps {
   focused: boolean;
   width: number;
   height: number;
   /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
   nested?: boolean;
-}) {
+}
+
+export function RiskFactorsResearchTab(props: { focused: boolean; width: number; height: number }) {
+  return <RiskFactorsPane {...props} nested />;
+}
+
+export function RiskFactorsPane(props: RiskFactorsPaneProps) {
+  const { wall, guard } = useProFeatureWall(RISK_WALL);
+  return wall ?? <RiskFactorsReader {...props} guard={guard} />;
+}
+
+function RiskFactorsReader({
+  focused,
+  width,
+  nested = false,
+  guard,
+}: RiskFactorsPaneProps & { guard: ReadGuard }) {
   const { symbol } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
@@ -93,13 +108,13 @@ export function RiskFactorsPane({
   // one the pane opened with, so a restored year applies to it.
   const [selectedYear, setSelectedYear] = usePluginPaneState<number | null>("filingYear", null);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(ticker);
-  const listLoader = useCallback((force: boolean) => loadRiskReports(ticker!, { force }), [ticker]);
+  const listLoader = useCallback((force: boolean) => guard(loadRiskReports(ticker!, { force })), [guard, ticker]);
   const list = useAsyncResource(ticker ? listLoader : null, { clearOnError: isPermanentClientError });
   const years = useMemo(() => (list.data?.reports ?? []).map((entry) => entry.reportYear).sort((a, b) => b - a), [list.data]);
   // Null follows the newest discovered filing; an explicit choice stays on that year.
   const year = selectedTicker === ticker && selectedYear !== null
     ? selectedYear : years[0] ?? null;
-  const reportLoader = useCallback((force: boolean) => loadRiskReport(ticker!, year!, { force }), [ticker, year]);
+  const reportLoader = useCallback((force: boolean) => guard(loadRiskReport(ticker!, year!, { force })), [guard, ticker, year]);
   const detail = useAsyncResource(ticker && year !== null ? reportLoader : null, { clearOnError: isPermanentClientError });
   const report = detail.data;
   const listError = list.error ?? list.data?.refreshError ?? null;

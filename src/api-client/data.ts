@@ -39,11 +39,11 @@ import {
   cloudJobsPath,
   cloudJobsPostingsPath,
   type CloudJobsPostingsParams,
-  publicProxyStatementPath,
-  publicFilingEventsPath,
-  publicRiskReportPath,
-  publicRiskReportsPath,
-  publicProxyStatementsPath,
+  cloudProxyStatementPath,
+  cloudFilingEventsPath,
+  cloudRiskReportPath,
+  cloudRiskReportsPath,
+  cloudProxyStatementsPath,
   cloudExchangeRatePath,
   cloudSec13FPath,
   cloudSecFilingContentPath,
@@ -521,7 +521,7 @@ export class CloudDataApi {
     ticker: string,
   ): Promise<CloudProxyStatementListPayload> {
     return this.request<CloudProxyStatementListPayload>(
-      publicProxyStatementsPath(ticker),
+      cloudProxyStatementsPath(ticker),
     );
   }
 
@@ -530,7 +530,7 @@ export class CloudDataApi {
     year: number,
   ): Promise<CloudProxyStatementPayload> {
     return this.request<CloudProxyStatementPayload>(
-      publicProxyStatementPath(ticker, year),
+      cloudProxyStatementPath(ticker, year),
     );
   }
 
@@ -539,13 +539,13 @@ export class CloudDataApi {
     limit?: number,
   ): Promise<{ ticker: string; events: CloudFilingEventPayload[] }> {
     return this.request<{ ticker: string; events: CloudFilingEventPayload[] }>(
-      publicFilingEventsPath(ticker, limit),
+      cloudFilingEventsPath(ticker, limit),
     );
   }
 
   async getRiskReports(ticker: string): Promise<CloudRiskReportListPayload> {
     return this.request<CloudRiskReportListPayload>(
-      publicRiskReportsPath(ticker),
+      cloudRiskReportsPath(ticker),
     );
   }
 
@@ -554,7 +554,7 @@ export class CloudDataApi {
     year: number,
   ): Promise<CloudRiskReportPayload> {
     return this.request<CloudRiskReportPayload>(
-      publicRiskReportPath(ticker, year),
+      cloudRiskReportPath(ticker, year),
     );
   }
 

@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudProxyStatementListPayload, type CloudProxyStatementPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -22,6 +22,8 @@ function statement(ticker: string, year: number): CloudProxyStatementPayload {
     highlights: `${ticker} compensation ${year}`, keyFigures: [], otherYears: [],
   };
 }
+const proUser = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "pro", emailVerified: true, plan: "pro" } as never);
+afterAll(() => proUser.mockRestore());
 const tui = createOpenTuiTestHarness();
 const restore: Array<() => void> = [];
 afterEach(() => {
@@ -73,14 +75,14 @@ test("a qualified US pane binding reaches issuer proxy list and year endpoints",
   setCloudApiFetchTransport(async (url) => {
     const path = new URL(url).pathname;
     paths.push(path);
-    if (path === "/public/proxies/AAPL") return Response.json({
+    if (path === "/cloud/proxies/AAPL") return Response.json({
       company: statement("AAPL", 2026).company, proxies: [statement("AAPL", 2026)],
     });
-    if (path === "/public/proxies/AAPL/2026") return Response.json(statement("AAPL", 2026));
+    if (path === "/cloud/proxies/AAPL/2026") return Response.json(statement("AAPL", 2026));
     return Response.json({ message: "Unknown ticker" }, { status: 404 });
   });
   await mount("AAPL:XNAS");
-  expect(paths).toEqual(["/public/proxies/AAPL", "/public/proxies/AAPL/2026"]);
+  expect(paths).toEqual(["/cloud/proxies/AAPL", "/cloud/proxies/AAPL/2026"]);
   expect(tui.frame()).toContain("AAPL compensation 2026");
 });
 
@@ -228,7 +230,13 @@ for (const status of [401, 402, 403, 404]) test(`authoritative ${status} respons
   expect(frame).not.toContain("ALPHA compensation");
   expect(frame).not.toContain("pen filing");
   expect(frame).not.toContain("⚠");
-  expect(frame).toContain(status === 404 ? "No proxy statement on file" : "Account not found");
+  // A refusal is the wall the plan or the session calls for, not an error.
+  expect(frame).toContain({
+    401: "Sign in to see executive pay.",
+    402: "Executive pay is part of Gloom Cloud Pro.",
+    403: "Verify your email to see executive pay.",
+    404: "No proxy statement on file",
+  }[status]!);
   if (status !== 404) expect(frame).not.toContain("No proxy statement on file");
 });
 
@@ -280,11 +288,11 @@ test("in-memory data survives a transient refresh but is removed when access is 
   await settle();
   expect(tui.frame()).toContain("ALPHA compensation 2026");
   expect(tui.frame()).toContain("⚠");
-  failure = new ApiRequestError("Account not found", 403);
+  failure = new ApiRequestError("Pro plan required", 402);
   await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
   const frame = tui.frame();
-  expect(frame).toContain("Account not found");
+  expect(frame).toContain("Executive pay is part of Gloom Cloud Pro.");
   expect(frame).not.toContain("ALPHA compensation");
   expect(frame).not.toContain("pen filing");
   expect(frame).not.toContain("⚠");
