@@ -2531,3 +2531,69 @@ describe("one-day charts show the latest session", () => {
     expect(result.series[0]?.priorClose).toBeUndefined();
   });
 });
+
+describe("Auto charts a young listing over the range it has traded", () => {
+  const NOW = new Date("2026-10-02T22:00:00Z");
+  const DAY = 86_400_000;
+  const support = [
+    { resolution: "1m", maxRange: "1W" }, { resolution: "5m", maxRange: "1M" }, { resolution: "15m", maxRange: "3M" },
+    { resolution: "30m", maxRange: "6M" }, { resolution: "1h", maxRange: "1Y" }, { resolution: "1d", maxRange: "5Y" },
+    { resolution: "1wk", maxRange: "5Y" }, { resolution: "1mo", maxRange: "ALL" },
+  ] as const;
+  const minutes: Record<string, number> = { "1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60 };
+  // What a source serves at each interval for a US listing that traded on these days.
+  const listingBars = (sessions: string[], resolution: string) => {
+    const bar = (time: number) => ({ date: new Date(time), open: 17, high: 18, low: 16, close: 17, volume: 1000 });
+    const step = minutes[resolution];
+    if (step) return sessions.flatMap((day) => Array.from({ length: Math.ceil(390 / step) },
+      (_, index) => bar(Date.parse(`${day}T13:30:00Z`) + index * step * 60_000)));
+    const period = (day: string) => {
+      const time = Date.parse(day);
+      if (resolution === "1wk") return time - ((new Date(time).getUTCDay() + 6) % 7) * DAY;
+      return resolution === "1mo" ? Date.parse(`${day.slice(0, 7)}-01`) : time;
+    };
+    return [...new Set(sessions.map(period))].map(bar);
+  };
+  const resolveListing = async (sessions: string[], range: "5Y" | "ALL") => {
+    const requested = new Set<string>();
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [...support],
+      getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => {
+        requested.add(resolution);
+        return listingBars(sessions, resolution);
+      },
+    });
+    const result = await resolveChartSpecData(chartSpec({
+      viewport: { range, resolution: "auto" },
+      series: [chartSeries({ source: { kind: "security", instrument: { symbol: "ACCV", exchange: "NASDAQ" }, fieldId: "market.close" } })],
+    }), { dataProvider: provider, now: NOW, loadFredSeries: async () => fredLoad() }, undefined, { awaitResolutionSupport: true });
+    return { result, requested };
+  };
+
+  test("two or three daily bars chart their days at five-minute bars on 5Y and ALL", async () => {
+    for (const sessions of [["2026-09-30", "2026-10-01", "2026-10-02"], ["2026-10-01", "2026-10-02"]]) {
+      for (const range of ["5Y", "ALL"] as const) {
+        const { result } = await resolveListing(sessions, range);
+        expect(result.errors).toEqual([]);
+        expect(result.resolution).toBe("5m");
+        expect(result.series[0]?.points).toHaveLength(sessions.length * 78);
+        expect(result.viewport).toEqual({ start: new Date(`${sessions[0]}T13:30:00Z`), end: NOW });
+      }
+    }
+  });
+
+  test("a listing with enough bars keeps its range and interval", async () => {
+    const sessions: string[] = [];
+    for (let time = Date.parse("2021-01-04"); time <= Date.parse("2026-10-02"); time += DAY) {
+      if (new Date(time).getUTCDay() % 6) sessions.push(new Date(time).toISOString().slice(0, 10));
+    }
+    const fiveYear = await resolveListing(sessions, "5Y");
+    expect(fiveYear.result.resolution).toBe("1wk");
+    expect([...fiveYear.requested]).toEqual(["1wk"]);
+    const all = await resolveListing(sessions, "ALL");
+    expect(all.result.resolution).toBe("1mo");
+    expect(all.result.viewport).toBeUndefined();
+    expect([...all.requested]).toEqual(["1mo"]);
+  });
+});

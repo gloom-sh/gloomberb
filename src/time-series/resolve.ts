@@ -1257,11 +1257,94 @@ function applyStudyPresentationTransforms(
   });
 }
 
+/** Fewer daily or coarser bars than this make a line or two, not a chart. */
+const SHORT_HISTORY_MAX_BARS = 20;
+
+/**
+ * Auto on a preset range of market series alone, at no authored period and
+ * untouched by pan or zoom: the chart that can fall back to the range a young
+ * listing has traded.
+ */
+function canFitShortHistory(spec: ChartSpec, options: ChartResolveOptions): boolean {
+  const visible = spec.series.filter((entry) => entry.visible !== false);
+  return spec.viewport.resolution === "auto" && spec.viewport.range !== "1D" && !explicitBounds(spec)
+    && spec.viewport.maxPoints === undefined && !runtimeAutoBounds(options) && !runtimeRequestBounds(options)
+    && visible.length > 0 && visible.every((entry) => entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId)
+      && (entry.source.period ?? "auto") === "auto");
+}
+
+function visibleMarketBars(result: ChartResolutionResult): { count: number; first: number } {
+  let count = 0;
+  let first = Number.POSITIVE_INFINITY;
+  for (const series of result.series) {
+    if (series.observationKind !== "market") continue;
+    let bars = 0;
+    for (const point of series.points) {
+      const time = point.date.getTime();
+      if (point.value === null || !Number.isFinite(point.value) || !Number.isFinite(time)) continue;
+      bars += 1;
+      first = Math.min(first, time);
+    }
+    count = Math.max(count, bars);
+  }
+  return { count, first };
+}
+
+/** The shortest preset range that holds an observation at `first`. */
+function coveringRange(first: number, now: Date): TimeRange | null {
+  return TIME_RANGES.find((range) => range !== "ALL" && subtractTimeRange(now, range).getTime() <= first) ?? null;
+}
+
 export async function resolveChartSpecData(
   spec: ChartSpec,
   sources: ChartResolveSources,
   cache = new ChartResolveCache(),
   options: ChartResolveOptions = {},
+): Promise<ChartResolutionResult> {
+  if (!canFitShortHistory(spec, options)) return resolveChartSpecPass(spec, sources, cache, options);
+  // Captured inputs belong to the chart that is returned.
+  type Capture = Parameters<NonNullable<ChartResolveSources["onSecurityData"]>>;
+  const capturing = (captured: Capture[]): ChartResolveSources => sources.onSecurityData
+    ? { ...sources, onSecurityData: (...args) => { captured.push(args); } } : sources;
+  const now = sources.now ?? new Date();
+  let captured: Capture[] = [];
+  let shownSpec = spec;
+  let result = await resolveChartSpecPass(spec, capturing(captured), cache, options);
+  // A listing younger than the range has a bar or two at weekly or monthly
+  // size. When its sources serve finer bars, Auto charts the shortest range
+  // that holds them all, at that range's interval. Coarse bars are dated at
+  // their period's start, so the finer bars can place the first trade in a
+  // shorter range still.
+  const coarse = !!result.resolution && !isIntradayResolution(result.resolution)
+    && !!result.resolutionSupport?.some((entry) => isIntradayResolution(entry.resolution));
+  let shown = coarse ? visibleMarketBars(result) : { count: 0, first: Number.POSITIVE_INFINITY };
+  let range = shown.count > 0 && shown.count < SHORT_HISTORY_MAX_BARS ? coveringRange(shown.first, now) : null;
+  while (range && TIME_RANGES.indexOf(range) < TIME_RANGES.indexOf(shownSpec.viewport.range)) {
+    const liveTails = cache.liveTails;
+    const narrowedCaptured: Capture[] = [];
+    const narrowedSpec = { ...shownSpec, viewport: { ...shownSpec.viewport, range } };
+    const narrowed = await resolveChartSpecPass(narrowedSpec, capturing(narrowedCaptured), cache, options);
+    const bars = visibleMarketBars(narrowed);
+    if (bars.count <= shown.count) {
+      cache.liveTails = liveTails;
+      break;
+    }
+    [shownSpec, result, shown, captured] = [narrowedSpec, narrowed, bars, narrowedCaptured];
+    range = coveringRange(bars.first, now);
+  }
+  // The axis opens at the first trade, as ALL does, not at an empty week.
+  if (shownSpec !== spec && result.viewport && shown.first > result.viewport.start.getTime()) {
+    result = { ...result, viewport: { start: new Date(shown.first), end: result.viewport.end } };
+  }
+  for (const args of captured) sources.onSecurityData?.(...args);
+  return result;
+}
+
+async function resolveChartSpecPass(
+  spec: ChartSpec,
+  sources: ChartResolveSources,
+  cache: ChartResolveCache,
+  options: ChartResolveOptions,
 ): Promise<ChartResolutionResult> {
   const errors: string[] = [];
   const warnings: string[] = spec.series.some((entry) => entry.visible !== false
