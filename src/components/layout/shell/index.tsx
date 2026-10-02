@@ -430,6 +430,31 @@ export function Shell({
 
   const dockLeafLayouts = useMemo(() => getDockLeafLayouts(activeLayout, bounds, dockGeometryOptions), [activeLayout, bounds, dockGeometryOptions]);
   const dockDividerLayouts = useMemo(() => getDockDividerLayouts(activeLayout, bounds, dockGeometryOptions), [activeLayout, bounds, dockGeometryOptions]);
+  // What is on screen. In fullscreen that is one pane filling the content
+  // area, while the layout above still holds the tiled and floating rects it
+  // returns to. Everything drawn, hit tested or cut out over the panes (the
+  // focus border, the pointer, kitty image occluders) reads these, or it lands
+  // on cells the fullscreen pane now owns.
+  const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
+  const screenDockLeafLayouts = useMemo(() => (
+    transientFocusActive
+      ? dockLeafLayouts.filter((leaf) => leaf.instanceId === transientFocusPaneId).map((leaf) => ({ ...leaf, rect: fullscreenRect }))
+      : dockLeafLayouts
+  ), [dockLeafLayouts, fullscreenRect, transientFocusActive, transientFocusPaneId]);
+  const screenFloatingPanes = useMemo(() => (
+    transientFocusActive
+      ? visibleFloatingPanes.filter(({ pane }) => pane.instance.instanceId === transientFocusPaneId).map((entry) => ({ ...entry, rect: fullscreenRect }))
+      : visibleFloatingPanes
+  ), [fullscreenRect, transientFocusActive, transientFocusPaneId, visibleFloatingPanes]);
+  const screenDockedPanes = useMemo(() => (
+    transientFocusActive
+      ? dockedPanes.filter((pane) => pane.instance.instanceId === transientFocusPaneId)
+      : dockedPanes
+  ), [dockedPanes, transientFocusActive, transientFocusPaneId]);
+  const screenDividerLayouts = useMemo(
+    () => (transientFocusActive ? [] : dockDividerLayouts),
+    [dockDividerLayouts, transientFocusActive],
+  );
   const snapGuides = useMemo(() => makeSnapGuides(width, contentHeight), [contentHeight, width]);
   const externalDockPreview = useMemo(
     () => resolveExternalDockPreview(desktopDockPreview, bounds),
@@ -448,13 +473,13 @@ export function Shell({
     contentHeight,
     dialogOpen,
     dividerPreview,
-    dockDividerLayouts,
-    dockedPanes,
+    dockDividerLayouts: screenDividerLayouts,
+    dockedPanes: screenDockedPanes,
     dragFloatingRect,
     effectiveDockPreview,
     menuState,
     nativeWindowModePanelRect,
-    visibleFloatingPanes,
+    visibleFloatingPanes: screenFloatingPanes,
     width,
     windowModeDockMovePreview,
   });
@@ -528,14 +553,12 @@ export function Shell({
   const openPaneMenuRef = useRef<((paneId: string, rect: LayoutBounds, event?: undefined, options?: { keyboard?: boolean }) => void) | null>(null);
   const openFocusedPaneMenu = useCallback(() => {
     if (!focusedPaneId || windowMode) return false;
-    const rect = transientFocusActive && transientFocusPaneId === focusedPaneId
-      ? { x: 0, y: 0, width, height: contentHeight }
-      : dockLeafLayouts.find((leaf) => leaf.instanceId === focusedPaneId)?.rect
-        ?? visibleFloatingPanes.find(({ pane }) => pane.instance.instanceId === focusedPaneId)?.rect;
+    const rect = screenDockLeafLayouts.find((leaf) => leaf.instanceId === focusedPaneId)?.rect
+      ?? screenFloatingPanes.find(({ pane }) => pane.instance.instanceId === focusedPaneId)?.rect;
     if (!rect || !openPaneMenuRef.current) return false;
     openPaneMenuRef.current(focusedPaneId, rect, undefined, { keyboard: true });
     return true;
-  }, [contentHeight, dockLeafLayouts, focusedPaneId, transientFocusActive, transientFocusPaneId, visibleFloatingPanes, width, windowMode]);
+  }, [focusedPaneId, screenDockLeafLayouts, screenFloatingPanes, windowMode]);
 
   useShellPaneManagementShortcuts({
     cancelActiveDrag,
@@ -706,21 +729,6 @@ export function Shell({
     if (menuState && !paneMap.has(menuState.paneId)) closePaneMenu();
   }, [closePaneMenu, menuState, paneMap]);
 
-  // In fullscreen the pointer only ever meets the one pane on screen: hit
-  // testing the tiled rects behind it would focus a pane nobody can see.
-  const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
-  const pointerDockLeafLayouts = useMemo(() => (
-    transientFocusActive
-      ? dockLeafLayouts.filter((leaf) => leaf.instanceId === transientFocusPaneId).map((leaf) => ({ ...leaf, rect: fullscreenRect }))
-      : dockLeafLayouts
-  ), [dockLeafLayouts, fullscreenRect, transientFocusActive, transientFocusPaneId]);
-  const pointerFloatingPanes = useMemo(() => (
-    transientFocusActive
-      ? visibleFloatingPanes.filter(({ pane }) => pane.instance.instanceId === transientFocusPaneId).map((entry) => ({ ...entry, rect: fullscreenRect }))
-      : visibleFloatingPanes
-  ), [fullscreenRect, transientFocusActive, transientFocusPaneId, visibleFloatingPanes]);
-  const pointerDividerLayouts = transientFocusActive ? [] : dockDividerLayouts;
-
   const {
     handleFloatingCloseMouseDown,
     handleMouse,
@@ -738,8 +746,10 @@ export function Shell({
     closePaneMenu,
     contentHeight,
     dockGeometryOptions,
-    dockDividerLayouts: pointerDividerLayouts,
-    dockLeafLayouts: pointerDockLeafLayouts,
+    // In fullscreen the pointer only ever meets the one pane on screen: hit
+    // testing the tiled rects behind it would focus a pane nobody can see.
+    dockDividerLayouts: screenDividerLayouts,
+    dockLeafLayouts: screenDockLeafLayouts,
     dragRuntime,
     focusPane,
     focusedPaneId,
@@ -756,7 +766,7 @@ export function Shell({
     snapGuides,
     transientFocusActive,
     updateWindowModePreviewLayout,
-    visibleFloatingPanes: pointerFloatingPanes,
+    visibleFloatingPanes: screenFloatingPanes,
     visibleLayout,
     width,
     windowMode,
@@ -851,7 +861,7 @@ export function Shell({
         bounds={bounds}
         contentHeight={contentHeight}
         dockGeometryOptions={dockGeometryOptions}
-        dockLeafLayouts={dockLeafLayouts}
+        dockLeafLayouts={screenDockLeafLayouts}
         dragFloatingRect={dragFloatingRect}
         focusedPaneId={focusedPaneId}
         getPaneTitle={getPaneTitle}
@@ -860,7 +870,7 @@ export function Shell({
         nativeWindowModePanelRect={nativeWindowModePanelRect}
         overlayOpen={overlayOpen}
         paneMap={paneMap}
-        visibleFloatingPanes={visibleFloatingPanes}
+        visibleFloatingPanes={screenFloatingPanes}
         width={width}
         windowMode={windowMode}
         windowModeDockMovePreview={windowModeDockMovePreview}
