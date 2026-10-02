@@ -20,12 +20,15 @@ export function CompanyLogo({
   name,
   width = 5,
   height = 2,
+  style,
 }: {
   symbol: string;
   assetCategory?: string;
   name?: string;
   width?: number;
   height?: number;
+  /** Desktop placement in px, such as the gap to the text beside it. */
+  style?: { marginTop?: number; marginRight?: number };
 }) {
   const { nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18 } = useUiCapabilities();
   const src = nativePaneChrome === true ? resolveCompanyLogoSrc({ symbol, assetCategory }) : null;
@@ -46,6 +49,7 @@ export function CompanyLogo({
         width: cellWidthPx * width,
         height: cellHeightPx * height,
         flexShrink: 0,
+        ...style,
       }}
     >
       {/* Without a logo the initial fills the same tile, so the header keeps its shape. */}

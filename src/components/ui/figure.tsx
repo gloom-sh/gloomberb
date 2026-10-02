@@ -16,9 +16,39 @@ const DESKTOP_FIGURE_STYLE: Record<FigurePart, { fontSize: string; lineHeight: n
   sub: { fontSize: `${FIGURE_FONT_PX.sub}px`, lineHeight: FIGURE_LINE_HEIGHT.sub, fontWeight: 500 },
 };
 
-/** Height of one desktop figure line in px, for whatever is sized against it (a logo beside a price). */
-export function figureLinePx(part: FigurePart = "value"): number {
+function figureLinePx(part: FigurePart): number {
   return FIGURE_FONT_PX[part] * FIGURE_LINE_HEIGHT[part];
+}
+
+/**
+ * Vertical metrics the desktop's monospace faces (SF Mono, Menlo, JetBrains Mono) share
+ * closely enough, as fractions of the size: ascent less descent, and cap height.
+ */
+const MONO_ASCENT_LESS_DESCENT = 0.72;
+const MONO_CAP_HEIGHT = 0.73;
+/** Desktop body text is set two thirds of a cell tall (12px in an 18px row). */
+const BODY_FONT_PER_CELL = 2 / 3;
+
+/** Where the ink of a desktop text line sits, in px from the top of its line box. */
+interface LineInk {
+  /** Top of the capitals. */
+  capTop: number;
+  baseline: number;
+}
+
+function lineInk(fontPx: number, linePx: number): LineInk {
+  const baseline = (linePx + fontPx * MONO_ASCENT_LESS_DESCENT) / 2;
+  return { capTop: baseline - fontPx * MONO_CAP_HEIGHT, baseline };
+}
+
+/** Ink of a desktop figure line, for whatever is aligned to it (a logo beside a price). */
+export function figureLineInk(part: FigurePart = "value"): LineInk {
+  return lineInk(FIGURE_FONT_PX[part], figureLinePx(part));
+}
+
+/** Ink of a desktop body text row `cellHeightPx` tall. */
+export function bodyLineInk(cellHeightPx: number): LineInk {
+  return lineInk(cellHeightPx * BODY_FONT_PER_CELL, cellHeightPx);
 }
 
 /** Advance of the desktop's monospace face, as a fraction of its size. */

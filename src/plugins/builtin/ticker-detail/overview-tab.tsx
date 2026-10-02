@@ -1,7 +1,7 @@
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
-import { FigureText, figureLinePx, useFigureCells } from "../../../components/ui/figure";
+import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
 import { useFxRatesMap } from "../../../market-data/hooks";
@@ -36,6 +36,8 @@ import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-li
 const RANGE_PAIR_GAP = 4;
 /** Shortest track that still reads as a range; below it the two ranges stack. */
 const RANGE_INLINE_MIN_TRACK = 10;
+/** Desktop px between the logo and the name and price beside it. */
+const LOGO_GAP_PX = 6;
 
 interface OverviewTabProps {
   width?: number;
@@ -56,7 +58,7 @@ export function OverviewTab(props: OverviewTabProps) {
 function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
-  const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18 } = useUiCapabilities();
+  const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
   const figureCells = useFigureCells();
 
   const quote = financials?.quote;
@@ -134,14 +136,19 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
   const marketStateText = quote?.marketState ? t(marketStateLabel(quote.marketState)) : "";
   const hasIdentityLine = Boolean(companyName || venueText || marketStateText);
-  // The desktop logo is a square as tall as the identity line and the price line together,
-  // so its top meets the company name and its bottom the price. Without a price it keeps two rows.
+  // The desktop logo is a square from the top of the company name's capitals down to the
+  // price's baseline, so its edges meet the text's and the three read as one block. The
+  // extended-hours line hangs below, as it comes and goes with the session. Without a
+  // price the logo keeps two rows.
   const hasLogo = nativePaneChrome === true
     && resolveCompanyLogoSrc({ symbol: ticker.metadata.ticker, assetCategory: ticker.metadata.assetCategory }) != null;
-  const logoPx = quote
-    ? (hasIdentityLine ? cellHeightPx : 0) + figureLinePx()
-    : cellHeightPx * 2;
-  const logoCells = hasLogo ? Math.ceil(logoPx / cellWidthPx) + 1 : 0;
+  const priceInk = figureLineInk();
+  // The top snaps up to a whole px so it never starts below the capitals; the bottom lands
+  // on the device pixel nearest the baseline.
+  const logoTopPx = quote ? Math.floor(hasIdentityLine ? bodyLineInk(cellHeightPx).capTop : priceInk.capTop) : 0;
+  const logoBottomPx = Math.round(((hasIdentityLine ? cellHeightPx : 0) + priceInk.baseline) * pixelRatio) / pixelRatio;
+  const logoPx = quote ? logoBottomPx - logoTopPx : cellHeightPx * 2;
+  const logoCells = hasLogo ? Math.ceil((logoPx + LOGO_GAP_PX) / cellWidthPx) : 0;
   const quoteTextWidth = Math.max(1, quoteSummaryWidth - logoCells);
   const quoteChangeCells = figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");
   const stackQuoteChange = quoteChangeCells > quoteTextWidth;
@@ -214,6 +221,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
               name={ticker.metadata.name || quote?.name}
               width={logoPx / cellWidthPx}
               height={logoPx / cellHeightPx}
+              style={{ marginTop: logoTopPx, marginRight: LOGO_GAP_PX }}
             />
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
             {hasIdentityLine && (
