@@ -23,6 +23,7 @@ export type RemoteStateInclude =
   | "panes"
   | "commandBar"
   | "commandBar.results"
+  | "form"
   | "ui"
   | "schema"
   | "help"
@@ -68,6 +69,7 @@ export interface RemoteIncludedState {
   layout?: unknown;
   panes?: unknown;
   commandBar?: unknown;
+  form?: unknown;
   ui?: RemoteUiNodeSnapshot[];
   schema?: RemoteControlSchema;
   help?: unknown;

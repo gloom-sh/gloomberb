@@ -12,6 +12,7 @@ import { assetDataProvider, newsProvider, type PluginCapability } from "../../ca
 import type {
   AssetDataProvider,
   CachedFinancialsTarget,
+  EarningsEvent,
   SecFilingDocument,
   SecFilingItem,
   MarketDataRequestContext,
@@ -42,7 +43,7 @@ import { createProviderMiss } from "../provider-errors";
 import { publicListingTarget } from "../listing-target";
 import { canonicalHistoryInterval, HistoryRetentionError, parseHistoryRecoveryCandidate, parseHistoryRetention, type HistoryRetention } from "../history-retention";
 import { getRouterEntityKey } from "../provider-router/cache";
-import { tickerHasYahooSuffix } from "../yahoo-finance/symbols";
+import { tickerHasListingSuffix } from "../listing-symbols";
 import { parseSecAcceptanceTime } from "../sec-edgar/acceptance-time";
 import { hasMalformedIntradayHistory } from "../../time-series/history-quality";
 import {
@@ -166,14 +167,8 @@ function mapCloudPriceHistory(
       `Cloud chart data is unavailable for ${ticker}`,
     ).map((point) => mapPricePoint(point, divisor, exchange)),
   );
-  const upstream = (
-    response.providerMeta?.provider
-    ?? response.providerMeta?.upstream
-    ?? ""
-  ).trim().toLowerCase();
   if (
     /^\d+(min|h)$/i.test(interval)
-    && upstream !== "yahoo"
     && hasMalformedIntradayHistory(points)
   ) {
     throw createProviderMiss(`Cloud chart data failed OHLC validation for ${ticker}`);
@@ -209,7 +204,7 @@ function cloudHistoryResolution(interval: string): ManualChartResolution | null 
 
 function quoteTargetKey(symbol: string, exchange?: string): string {
   const target = publicListingTarget(symbol, exchange);
-  const base = target.exchange && tickerHasYahooSuffix(target.symbol) ? target.symbol.slice(0, target.symbol.indexOf(".")) : target.symbol;
+  const base = target.exchange && tickerHasListingSuffix(target.symbol) ? target.symbol.slice(0, target.symbol.indexOf(".")) : target.symbol;
   return canonicalTickerKey(base, target.exchange);
 }
 
@@ -280,20 +275,13 @@ function matchCloudBatchItems<T extends { symbol: string; exchange?: string }, I
 }
 
 function retainRequestedQuoteSymbol(quote: Quote, ticker: string): Quote {
-  return parsePublicTickerKey(ticker).exchange || tickerHasYahooSuffix(ticker) ? { ...quote, symbol: ticker } : quote;
+  return parsePublicTickerKey(ticker).exchange || tickerHasListingSuffix(ticker) ? { ...quote, symbol: ticker } : quote;
 }
 
 function retainRequestedFinancialsSymbol(financials: TickerFinancials, ticker: string): TickerFinancials {
   return financials.quote
     ? { ...financials, quote: retainRequestedQuoteSymbol(financials.quote, ticker) }
     : financials;
-}
-
-async function requireVerifiedSession(): Promise<void> {
-  const user = await apiClient.ensureVerifiedSession();
-  if (!user) {
-    throw createProviderMiss("Gloom Cloud requires signup and email verification");
-  }
 }
 
 function unwrapRequiredCloudResponse<T>(response: CloudMarketResponse<T>, message: string): T {
@@ -467,7 +455,6 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getSecFilings(ticker: string, count = 15): Promise<SecFilingItem[]> {
-    await requireVerifiedSession();
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudSecFilings({ ticker, limit: count, offset: 0 });
       return response.filings.map(mapCloudSecFiling);
@@ -475,7 +462,6 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getSecFilingDocuments(filing: SecFilingItem): Promise<SecFilingDocument[]> {
-    await requireVerifiedSession();
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudSecFilingDocuments({
         cik: filing.cik,
@@ -489,7 +475,6 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getSecFilingContent(filing: SecFilingItem): Promise<string | null> {
-    await requireVerifiedSession();
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudSecFilingContent({
         cik: filing.cik,
@@ -505,7 +490,6 @@ export class GloomberbCloudProvider implements AssetDataProvider {
 
   async getHolders(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<HolderData> {
     const target = cloudInstrumentTarget(ticker, exchange);
-    await requireVerifiedSession();
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudHolders(target.symbol, target.exchange);
       return unwrapRequiredCloudResponse(response, `Cloud holders are unavailable for ${ticker}`) as CloudHoldersPayload;
@@ -514,7 +498,6 @@ export class GloomberbCloudProvider implements AssetDataProvider {
 
   async getAnalystResearch(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<AnalystResearchData> {
     const target = cloudInstrumentTarget(ticker, exchange);
-    await requireVerifiedSession();
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudAnalystResearch(target.symbol, target.exchange);
       return unwrapRequiredCloudResponse(response, `Cloud analyst research is unavailable for ${ticker}`) as CloudAnalystResearchPayload;
@@ -523,15 +506,31 @@ export class GloomberbCloudProvider implements AssetDataProvider {
 
   async getCorporateActions(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<CorporateActionsData> {
     const target = cloudInstrumentTarget(ticker, exchange);
-    await requireVerifiedSession();
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudCorporateActions(target.symbol, target.exchange);
       return unwrapRequiredCloudResponse(response, `Cloud corporate actions are unavailable for ${ticker}`) as CloudCorporateActionsPayload;
     }, `Cloud corporate actions are unavailable for ${ticker}`);
   }
 
-  async getArticleSummary(_url: string): Promise<string | null> {
-    throw createProviderMiss("Cloud article summaries are not available");
+  async getArticleSummary(url: string): Promise<string | null> {
+    return (await apiClient.getCloudArticleSummary(url)).summary;
+  }
+
+  async getEarningsCalendar(symbols: string[]): Promise<EarningsEvent[]> {
+    const unique = [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
+    const events: EarningsEvent[] = [];
+    for (let index = 0; index < unique.length; index += 100) {
+      const response = await apiClient.getMarketEarningsCalendar(unique.slice(index, index + 100));
+      const payload = unwrapRequiredCloudResponse(response, "Cloud earnings calendar is unavailable");
+      for (const event of payload) {
+        const earningsDate = new Date(event.earningsDate);
+        if (!Number.isFinite(earningsDate.getTime())) continue;
+        const earningsCallDate = event.earningsCallDate ? new Date(event.earningsCallDate) : null;
+        events.push({ ...event, earningsDate,
+          earningsCallDate: earningsCallDate && Number.isFinite(earningsCallDate.getTime()) ? earningsCallDate : null });
+      }
+    }
+    return events.sort((left, right) => left.earningsDate.getTime() - right.earningsDate.getTime());
   }
 
   async getPriceHistory(ticker: string, exchange: string, range: TimeRange, _context?: MarketDataRequestContext): Promise<PricePoint[]> {

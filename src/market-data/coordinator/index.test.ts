@@ -150,7 +150,7 @@ describe("MarketDataCoordinator", () => {
     const provider = createProvider({
       getExchangeRateSnapshot: async () => {
         if (++calls > 1) throw new Error("rate provider offline");
-        return { fromCurrency: "EUR", toCurrency: "USD", rate: 1.16, source: "yahoo",
+        return { fromCurrency: "EUR", toCurrency: "USD", rate: 1.16, source: "gloom",
           asOf: new Date(now - 7_200_000).toISOString(), fetchedAt: new Date(now).toISOString(),
           staleAt: new Date(now - 3_600_000).toISOString(), stale: true };
       },
@@ -407,9 +407,9 @@ describe("MarketDataCoordinator", () => {
               marketState: "REGULAR",
               dataSource: "live",
             },
-            yahoo: {
+            gloom: {
               symbol: "VICR",
-              providerId: "yahoo",
+              providerId: "gloom",
               price: 294.39,
               currency: "USD",
               previousClose: 282.95,
@@ -473,7 +473,7 @@ describe("MarketDataCoordinator", () => {
     expect(quote?.price).toBe(293.07);
     expect(quote?.previousClose).toBe(282.95);
     expect(quote?.changePercent).toBeCloseTo(((293.07 - 282.95) / 282.95) * 100, 10);
-    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("gloom");
   });
 
   // Reading the cache costs a query, a parse and a sanitize of the whole
@@ -564,9 +564,9 @@ describe("MarketDataCoordinator", () => {
               marketState: "REGULAR",
               dataSource: "live",
             },
-            yahoo: {
+            gloom: {
               symbol: "VICR",
-              providerId: "yahoo",
+              providerId: "gloom",
               price: 294.39,
               currency: "USD",
               previousClose: 282.95,
@@ -615,7 +615,7 @@ describe("MarketDataCoordinator", () => {
     expect(quote?.price).toBe(293.07);
     expect(quote?.previousClose).toBe(282.95);
     expect(quote?.changePercent).toBeCloseTo(((293.07 - 282.95) / 282.95) * 100, 10);
-    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("gloom");
   });
 
   it("preserves requested quote stream routes", () => {
@@ -825,7 +825,7 @@ describe("MarketDataCoordinator", () => {
         getTickerFinancials: async () => createTestFinancials({
           quote: {
             symbol: "HY9H",
-            providerId: "yahoo",
+            providerId: "gloom",
             dataSource: "delayed",
             price: 598,
             currency: "EUR",
@@ -867,9 +867,9 @@ describe("MarketDataCoordinator", () => {
       );
 
       expect(coordinator.getQuoteEntry(instrument).data?.price).toBe(598);
-      expect(coordinator.getQuoteEntry(instrument).data?.providerId).toBe("yahoo");
+      expect(coordinator.getQuoteEntry(instrument).data?.providerId).toBe("gloom");
       expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.price).toBe(598);
-      expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.providerId).toBe("yahoo");
+      expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.providerId).toBe("gloom");
     } finally {
       Date.now = realDateNow;
     }
@@ -1053,7 +1053,7 @@ describe("MarketDataCoordinator", () => {
               lastUpdated: Date.parse("2026-05-13T06:24:00Z"),
               marketState: "CLOSED",
               listingExchangeName: "JPX",
-              providerId: "yahoo",
+              providerId: "gloom",
             },
           }));
         },

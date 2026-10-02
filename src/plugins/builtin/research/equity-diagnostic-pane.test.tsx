@@ -94,7 +94,7 @@ function makeReport(overrides: Partial<CloudEquityDiagnosticResponse> = {}): Clo
     ],
     watchItems: ["Next quarter gross margin guidance"],
     coverage: [
-      { dataset: "financials", status: "available", asOf: "2026-02-01", provider: "Twelve Data" },
+      { dataset: "financials", status: "available", asOf: "2026-02-01", provider: "Gloom Cloud" },
       { dataset: "insider", status: "no_data" },
     ],
     evidence: [
@@ -189,7 +189,6 @@ test("shows a cited preview to free accounts and gates the rest", async () => {
   expect(frame).toContain("Upgrade to Pro");
   // Coverage says what each dataset is, never which vendor served it.
   expect(frame).not.toContain("Gloom Cloud");
-  expect(frame).not.toContain("Twelve Data");
   expect(frame).not.toContain("efresh");
 });
 

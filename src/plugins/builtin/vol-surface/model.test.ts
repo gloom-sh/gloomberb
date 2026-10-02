@@ -69,7 +69,7 @@ describe("surface cleaning and midpoint model", () => {
   });
 
   test("does not fit a smile whose near-the-money quotes are all missing", () => {
-    // Yahoo's post-close LEAPS: the wings keep quotes while every strike near
+    // Gloom's post-close LEAPS: the wings keep quotes while every strike near
     // the forward is zero-bid. A fit bridging the wings invented a 12% ATM.
     const input = chain(expiration, 0.3, Array.from({ length: 33 }, (_, index) => 60 + index * 2.5));
     const unquoted = (contract: OptionContract) => contract.strike > 80 && contract.strike < 120 ? { ...contract, bid: 0, ask: 0 } : contract;

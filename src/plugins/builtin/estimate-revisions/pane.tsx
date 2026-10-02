@@ -98,7 +98,7 @@ const SURPRISE: DataTableColumn[] = [
 ];
 const historyId = (row: EstimateObservation) => `${row.source}:${row.date}`;
 const historyDate = (row: EstimateObservation) => new Date(`${row.date}T00:00:00Z`);
-const historySource = (row: EstimateObservation) => row.source === "yahoo" ? "Recorded" : "Reported lookback";
+const historySource = (row: EstimateObservation) => row.source === "gloom" ? "Recorded" : "Reported lookback";
 /** EPS ticks with the decimals the plotted range needs. */
 const formatEpsAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
 
@@ -230,7 +230,7 @@ function EstimateDetail({
               : number(
                   row[column.id as "average" | "low" | "high" | "analysts"],
                 ),
-        color: state.selected ? colors.selectedText : row.source === "yahoo" ? colors.text : colors.warning,
+        color: state.selected ? colors.selectedText : row.source === "gloom" ? colors.text : colors.warning,
       })}
       emptyStateTitle="No stored observations."
     />

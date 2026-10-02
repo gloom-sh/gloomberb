@@ -5,9 +5,10 @@ import {
 } from "react";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import type { PinTickerOptions } from "../../../../types/plugin";
-import type {
-  AppAction,
-  AppState,
+import {
+  useAppGetState,
+  type AppAction,
+  type AppState,
 } from "../../../../state/app/context";
 import { normalizeTickerInput } from "../../../../tickers/search";
 import { useRendererHost } from "../../../../ui";
@@ -45,14 +46,13 @@ interface UseCommandBarDirectCommandRuntimeOptions {
     initialQuery?: string,
     payload?: Record<string, unknown>,
   ) => void;
-  openPaneSettingsRoute: (paneId: string) => void;
+  openPaneSettings: (paneId: string | null) => void;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
   pushRoute: (route: CommandBarRoute) => void;
   quitApp: () => void;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
   setRootQuery: (query: string) => void;
-  stateRef: MutableRefObject<AppState>;
   themePickerRef: MutableRefObject<ThemePickerHandle | null>;
 }
 
@@ -69,16 +69,17 @@ export function useCommandBarDirectCommandRuntime({
   openBuiltInWorkflow,
   openInlineConfirm,
   openModeRoute,
-  openPaneSettingsRoute,
+  openPaneSettings,
   persistConfig,
   pluginRegistry,
   pushRoute,
   quitApp,
   rootThemeBaseIdRef,
   setRootQuery,
-  stateRef,
   themePickerRef,
 }: UseCommandBarDirectCommandRuntimeOptions) {
+  // A confirm it opens (Reset All Data) runs after the bar closed.
+  const getState = useAppGetState();
   const rendererHost = useRendererHost();
   const runSecurityDescriptionShortcut = useCallback(async (query?: string) => {
     const trimmed = query?.trim() || "";
@@ -131,13 +132,13 @@ export function useCommandBarDirectCommandRuntime({
       },
       dispatch,
       executeCollectionCommand,
-      getState: () => stateRef.current,
+      getState,
       notify,
       onCheckForUpdates,
       openBuiltInWorkflow,
       openInlineConfirm,
       openModeRoute,
-      openPaneSettingsRoute,
+      openPaneSettings,
       persistConfig,
       pluginRegistry,
       pushRoute,
@@ -154,12 +155,13 @@ export function useCommandBarDirectCommandRuntime({
     closeAll,
     dispatch,
     executeCollectionCommand,
+    getState,
     notify,
     onCheckForUpdates,
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openPaneSettingsRoute,
+    openPaneSettings,
     persistConfig,
     pluginRegistry,
     pushRoute,
@@ -168,7 +170,6 @@ export function useCommandBarDirectCommandRuntime({
     rootThemeBaseIdRef,
     runSecurityDescriptionShortcut,
     setRootQuery,
-    stateRef,
     themePickerRef,
   ]);
 

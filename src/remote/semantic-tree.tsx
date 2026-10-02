@@ -95,6 +95,21 @@ export function useRemoteUiRegistry(): RemoteUiRegistry | null {
   return useContext(RemoteUiRegistryContext);
 }
 
+const RemoteUiScopeContext = createContext<string | null>(null);
+
+/**
+ * Names the surface the kit buttons below belong to, as `metadata.scope`. The
+ * form modal marks its own "form", and `ui.invokeMatching` tries those first
+ * while it is open, since it sits over every pane.
+ */
+export function RemoteUiScope({ scope, children }: { scope: string; children: ReactNode }) {
+  return <RemoteUiScopeContext value={scope}>{children}</RemoteUiScopeContext>;
+}
+
+export function useRemoteUiScope(): string | null {
+  return useContext(RemoteUiScopeContext);
+}
+
 let nextRemoteNodeSequence = 0;
 
 /**

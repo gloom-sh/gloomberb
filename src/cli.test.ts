@@ -53,7 +53,7 @@ async function createCliFixture({
   if (baseCurrency) {
     config.baseCurrency = baseCurrency;
   }
-  config.disabledPlugins = [...new Set([...(config.disabledPlugins ?? []), "yahoo", "gloomberb-cloud"])];
+  config.disabledPlugins = [...new Set([...(config.disabledPlugins ?? []), "gloomberb-cloud"])];
   if (portfolios) {
     config.portfolios = portfolios;
   }
@@ -315,7 +315,7 @@ describe("CLI search helpers", () => {
       ],
       dataProvider: createTestDataProvider({
         search: async () => [{
-          providerId: "yahoo",
+          providerId: "gloom",
           symbol: "MSTR",
           name: "MicroStrategy Incorporated",
           exchange: "NASDAQ",
@@ -339,7 +339,7 @@ describe("CLI search helpers", () => {
     expect(report).toContain("MSTR");
     expect(report).toContain("MicroStrategy Incorporated");
     expect(report).toContain("Saved");
-    expect(report).toContain("yahoo");
+    expect(report).toContain("gloom");
   });
 
   test("renders an empty state when no search results match", () => {

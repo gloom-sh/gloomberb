@@ -25,7 +25,7 @@ gloomberb plugin enable my-plugin  # turn one on or off without removing it
 gloomberb plugin disable my-plugin
 ```
 
-Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder.
+Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder. A new Linux install without `~/.gloomberb` uses `~/.local/share/gloomberb/plugins/` (see [Where your data lives](docs/installation.md#where-your-data-lives)); `gloomberb plugins` prints the folder in use.
 
 A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) is installed at
 the tag and commit the registry reviewed, not at whatever the default branch
@@ -310,9 +310,8 @@ To be bundled, a plugin has to be web-capable in practice, not just in its
   `Referer` and `User-Agent` are dropped. `httpFetch` reaches the API directly
   in the terminal, hands it to the Bun process on the desktop, and routes it
   through the web app's worker proxy.
-- `hosts` lists every host the plugin reaches, including ones reached on its
-  behalf by a host client such as `YahooHttpClient` (which collects a cookie
-  from `fc.yahoo.com` before any screener call). The worker proxies exactly
+- `hosts` lists every host the plugin reaches, including any hosts reached by
+  shared HTTP clients. Built-in market data uses the Gloom API. The worker proxies exactly
   what the bundled plugins declare and refuses the rest, so a missing host
   works on the desktop and fails on the web.
 - no `node:*` imports on the path the browser entry pulls in.
@@ -848,7 +847,7 @@ ctx.selectTicker("AAPL", "my-pane:1"); // Select in a specific pane
 ctx.switchPanel("left");               // Focus the leftmost pane
 ctx.switchTab("chart");                // Switch Ticker Research tab by id
 ctx.switchTab("chart", "ticker-research:1"); // Switch tab in a specific pane
-ctx.openCommandBar();                  // Open the command bar
+ctx.openCommandBar();                  // Open the command bar (nothing while a dialog is open)
 ctx.openCommandBar("export");          // Open with a pre-filled query
 ctx.openPaneSettings();                // Open settings for the focused pane
 ctx.openPaneSettings("my-pane:1");     // Open settings for a specific pane
@@ -1118,7 +1117,7 @@ ctx.registerPaneTemplate({
     argKind: "ticker",
   },
 
-  // Optional: wizard steps shown before creating the pane
+  // Optional: fields asked in a form before creating the pane
   wizard: [
     { key: "interval", label: "Interval", type: "select", options: [
       { label: "1D", value: "1d" },
@@ -1178,7 +1177,7 @@ Choose the existing control that owns the interaction you need:
 | A form's field labels and keyboard ring | `FieldLabel`, `TextField` (`active`, `labelWidth`), `useFieldRing` |
 | Clickable/expandable summaries | `ActionRow` |
 | Selectable lists | `ListView` |
-| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean), `TextPromptDialog`, `PriceSelectorDialog` |
+| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean; `status` and `busy` show work the confirm started), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
@@ -1525,7 +1524,7 @@ setup(ctx) {
 }
 ```
 
-Commands can also define a multi-step wizard flow:
+Commands can also ask for values first. The wizard's steps open as one form in a centered dialog, every field at once:
 
 ```typescript
 ctx.registerCommand({
@@ -1540,16 +1539,15 @@ ctx.registerCommand({
       { label: "Below", value: "below" },
     ]},
   ],
-  wizardLayout: "form",  // "steps" (default) or "form" (all fields at once)
   async execute(values) {
     // values.price, values.direction
   },
 });
 ```
 
-Wizard step types: `text`, `password`, `number`, `select`, `info`. Steps can use `dependsOn` to conditionally appear based on a previous step's value.
+Wizard step types: `text`, `password`, `number`, `select`, `textarea`, `info`. A step is required unless it sets `required: false`, and `info` steps show their `body` above the fields. Steps can use `dependsOn` to conditionally appear based on a previous step's value. A pane template's `wizard` opens the same form, from the command bar or from `ctx.createPaneFromTemplate`, and creates the pane when it is sent. A form asked for while another is open, for example from a command's `execute`, opens once that one closes. `wizardLayout` is ignored.
 
-Commands can require confirmation before executing:
+Commands can require confirmation before executing. The confirm opens as a centered dialog:
 
 ```typescript
 ctx.registerCommand({
@@ -1622,8 +1620,8 @@ The shortcut appears in Help > Shortcuts, where users can move it to another key
 setup(ctx) {
   ctx.registerTickerAction({
     id: "open-in-browser",
-    label: "Open in Yahoo Finance",
-    keywords: ["open", "yahoo", "browser"],
+    label: "Open company website",
+    keywords: ["open", "website", "browser"],
     // Optional: only show for certain tickers
     filter: (ticker) => ticker.metadata.exchange === "US",
     execute(ticker, financials) {

@@ -14,6 +14,15 @@ import { commands } from "../commands/registry";
 import type { ThemePickerHandle } from "../theme-picker";
 import type { ListScreenState } from "../list/model";
 
+/** Saves a config with the live layout state folded in, as every workflow write does. */
+export function persistWorkflowConfig(state: AppState, nextConfig: AppState["config"]): void {
+  scheduleConfigSave(syncConfigActiveLayoutState(
+    nextConfig,
+    state.paneState,
+    state.focusedPaneId,
+  ));
+}
+
 function useCommandBarAppState(): AppState {
   const config = useAppSelector((state) => state.config);
   const paneState = useAppSelector((state) => state.paneState);
@@ -69,12 +78,7 @@ export function useCommandBarEnvironment() {
   const stateRef = useRef(state);
   stateRef.current = state;
   const persistConfig = useCallback((nextConfig: AppState["config"]) => {
-    const currentState = stateRef.current;
-    scheduleConfigSave(syncConfigActiveLayoutState(
-      nextConfig,
-      currentState.paneState,
-      currentState.focusedPaneId,
-    ));
+    persistWorkflowConfig(stateRef.current, nextConfig);
   }, []);
   const { symbol: activeTickerSymbol, ticker: activeTickerData, financials: activeFinancials } = useFocusedTicker();
   const { width: termWidth, height: termHeight } = useViewport();

@@ -296,23 +296,6 @@
         "capabilities": [],
         "broker": false
       }
-    },
-    {
-      "id": "yahoo",
-      "name": "Yahoo Fallback",
-      "description": "Built-in delayed fallback for quotes, fundamentals, charts, and unsupported cloud data.",
-      "categories": [
-        "data"
-      ],
-      "toggleable": false,
-      "contributes": {
-        "panes": [],
-        "capabilities": [
-          "asset-data.yahoo",
-          "news.yahoo"
-        ],
-        "broker": false
-      }
     }
   ]
 }

@@ -144,9 +144,6 @@ function HelpPane({ focused, width, height }: PaneProps) {
       entry("clear", ["Ctrl+U"], "Clear command text."),
       entry("delete-word", ["Ctrl+W"], "Delete the previous word in command text."),
       entry("back", ["Backspace"], "Go back from a nested command screen when the query is empty."),
-      entry("toggle", ["Space"], "Toggle command-bar plugin rows, toggles, and multi-select choices."),
-      entry("reorder", ["[", "]"], "Reorder ordered multi-select choices."),
-      entry("submit", shortcutDisplayMode === "terminal" ? ["Ctrl+S"] : [platformShortcut("S")], "Submit command bar forms from any field."),
     ],
   }], [commandBarBadges, tickerSearchBadges]);
 
@@ -165,6 +162,14 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("search", ["/"], "Search in the focused pane."),
         entry("warnings", ["!"], "Open the focused pane's data warnings."),
         entry("notification", [...actionBadges("notification-action"), ...actionBadges("notification-dismiss")], "Run or dismiss the newest notification."),
+      ],
+    },
+    {
+      label: "Forms",
+      items: [
+        entry("toggle", ["Space"], "Toggle a checkbox or a multi-select choice."),
+        entry("reorder", ["[", "]"], "Reorder ordered multi-select choices."),
+        entry("submit", shortcutDisplayMode === "terminal" ? ["Ctrl+S"] : [platformShortcut("S")], "Submit a form from any field."),
       ],
     },
     {

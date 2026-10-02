@@ -53,3 +53,13 @@ describe("applicationMenuCommand", () => {
     })).toBeNull();
   });
 });
+
+describe("buildDesktopApplicationMenu", () => {
+  // A form item that only pre-fills the bar leaves the user one Enter short.
+  test("opens the File menu's forms directly", () => {
+    const commands = menuCommands(buildDesktopApplicationMenu("darwin"));
+    for (const actionId of ["new-portfolio", "new-watchlist", "set-portfolio-position", "add-broker-account"]) {
+      expect(commands).toContainEqual({ type: "open-builtin-workflow", actionId });
+    }
+  });
+});

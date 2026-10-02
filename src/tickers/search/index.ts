@@ -2,7 +2,7 @@ import type { SearchRequestContext, DataProvider } from "../../types/data-provid
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
-import { tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
+import { tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { searchContractKey, searchInstrumentKey } from "./identity";
@@ -274,7 +274,7 @@ export async function resolveTickerSearch({
     throw new AmbiguousContractError(symbol, matches.map((item) => tickerInstrumentLabel(item.symbol, item.result?.brokerContract)));
   }
   const listings = new Set(matches.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!))));
-  if (listings.size > 1 && !parsePublicTickerKey(symbol).exchange && !tickerHasYahooSuffix(symbol)) {
+  if (listings.size > 1 && !parsePublicTickerKey(symbol).exchange && !tickerHasListingSuffix(symbol)) {
     // Search order is relevance, not a canonical listing identifier. Align bare
     // symbols with the quote source only when it supplies the exact identity.
     let verified: TickerSearchCandidate[] = [];
@@ -439,7 +439,7 @@ function buildProviderSearchQueries(query: string): string[] {
   if (!trimmedQuery) return [];
   const qualified = parsePublicTickerKey(trimmedQuery);
   if (qualified.exchange) return [trimmedQuery.toUpperCase(), qualified.symbol];
-  if (tickerHasYahooSuffix(trimmedQuery.toUpperCase())) return [trimmedQuery.toUpperCase()];
+  if (tickerHasListingSuffix(trimmedQuery.toUpperCase())) return [trimmedQuery.toUpperCase()];
 
   const symbolLike = /^[A-Za-z0-9.^=\-/]+$/.test(trimmedQuery);
   const queries = new Set<string>();

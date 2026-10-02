@@ -59,7 +59,7 @@ the pane's own name; fixed labels; generic key hints (`j/k`, `Enter to open`,
 
 **The data provider is invisible.** Never show which vendor or internal
 route served the data: no `provider:gloomberb-cloud`, `gloomberb-cloud`,
-Gloom Cloud, Yahoo, Alpaca, Twelve Data, OPRA, SIP or `entry.source` values
+raw feed names or `entry.source` values
 in a footer, status line, header meta, table column, legend, tooltip or
 headless report column. Say what the data is instead: `real-time`,
 `15m delayed`, `settlement`, `daily closes`, `trade closes since …`, `as of`

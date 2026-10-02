@@ -22,6 +22,7 @@ export function createAlert(
 /**
  * Rebuilt from a whitelist rather than spread so every trigger/quote lifecycle
  * field is dropped: a re-armed `crosses` alert must start from a fresh baseline.
+ * armedAt marks a new arming, so the cloud can email this rule's trigger again.
  */
 export function editAlert(
   alert: AlertRule,
@@ -37,6 +38,7 @@ export function editAlert(
     condition,
     targetPrice,
     createdAt: alert.createdAt,
+    armedAt: Date.now(),
     status: "active",
     message: alert.message,
   };

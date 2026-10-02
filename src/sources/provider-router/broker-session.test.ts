@@ -16,12 +16,12 @@ test("broker price and provider session survive scalar, batch and cached financi
       const brokerQuote: Quote = { symbol: "AMD", providerId: "ibkr", dataSource: "live", price: 100.25,
         currency: "USD", change: 1, changePercent: 1, lastUpdated: now - 60_000,
         listingExchangeName: "NASDAQ", routingExchangeName: "SMART", sessionConfidence: "unknown" };
-      const yahoo: Quote = { ...brokerQuote, providerId: "yahoo", dataSource: "delayed", price: 99.7,
+      const gloom: Quote = { ...brokerQuote, providerId: "gloom", dataSource: "delayed", price: 99.7,
         lastUpdated: now - 180_000, routingExchangeName: undefined, marketState, sessionConfidence: "derived",
         ...(marketState === "PRE" ? { preMarketPrice: 101 } : { postMarketPrice: 102 }) };
       let brokerCalls = 0;
-      const router = new AssetDataRouter({ ...fallbackProvider, id: "yahoo",
-        getQuote: async () => yahoo, getTickerFinancials: async () => createTestFinancials({ quote: yahoo }) }, [], store.resources);
+      const router = new AssetDataRouter({ ...fallbackProvider, id: "gloom",
+        getQuote: async () => gloom, getTickerFinancials: async () => createTestFinancials({ quote: gloom }) }, [], store.resources);
       attachTestRegistry(router, { brokers: [["ibkr", {
         id: "ibkr", name: "Test broker", configSchema: [], validate: async () => true, importPositions: async () => [],
         getQuote: async () => { brokerCalls += 1; return brokerQuote; },
@@ -32,7 +32,7 @@ test("broker price and provider session survive scalar, batch and cached financi
       const target = { symbol: "AMD", exchange: "NASDAQ", ...context };
       function expectComposed(quote: Quote | undefined | null, price: number) {
         expect(quote).toMatchObject({ price, lastUpdated: brokerQuote.lastUpdated, marketState, routingExchangeName: "SMART" });
-        expect(quote?.provenance).toMatchObject({ price: { providerId: "ibkr" }, session: { providerId: "yahoo" } });
+        expect(quote?.provenance).toMatchObject({ price: { providerId: "ibkr" }, session: { providerId: "gloom" } });
         expect(isQuoteStaleForCurrentSession(quote, now)).toBe(false);
       }
       expectComposed((await router.getTickerFinancials("AMD", "NASDAQ", context)).quote, 100);

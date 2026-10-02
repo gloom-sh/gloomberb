@@ -58,7 +58,6 @@ const EDITORIAL: Record<
   portfolio: { categories: ["portfolio"] },
   "research-search": { categories: ["research", "news"] },
   "ticker-research": { categories: ["research"] },
-  yahoo: { categories: ["data"] },
 };
 
 export interface BuiltinManifest {

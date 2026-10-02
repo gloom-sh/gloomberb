@@ -6,7 +6,6 @@ import { serializeCliResult } from "../../../cli/result";
 import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { loadYahooOptionsChain } from "../../../sources/yahoo-finance/options";
 import { createInitialState } from "../../../state/app/context";
 import { createTestCliContext } from "../../../test-support/cli-context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -56,7 +55,7 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
     bid: 9,
     ask: 11,
     impliedVolatility: 0.25,
-    volume: activity === "missing" && side === "P" ? null : activity === "zero" && side === "P" ? 0 : 10,
+    volume: activity === "missing" && side === "P" ? undefined : activity === "zero" && side === "P" ? 0 : 10,
     openInterest: activity === "missing" && side === "C" ? undefined : activity === "zero" && side === "P" ? 0 : 20,
     change: 0,
     percentChange: 0,
@@ -65,16 +64,11 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
     lastTradeDate: NOW / 1000 - 86400,
   });
   const provider = createTestDataProvider({
-    getOptionsChain: async (symbol, exchange, expirationDate) => loadYahooOptionsChain({
-      ticker: symbol,
-      exchange: exchange ?? "",
-      expirationDate,
-      fetchJsonWithCrumb: async <T,>(): Promise<T> => {
-        if (failure) throw new Error("Chain source outage");
-        const options = [{ calls: callsAvailable ? rows.map((s) => raw(s, "C")) : [], puts: rows.map((s) => raw(s, "P")) }];
-        return { optionChain: { result: [{ underlyingSymbol: symbol, expirationDates: [EXPIRY], options }] } } as T;
-      },
-    }),
+    getOptionsChain: async (symbol) => {
+      if (failure) throw new Error("Chain source outage");
+      return { underlyingSymbol: symbol, expirationDates: [EXPIRY], calls: callsAvailable ? rows.map(s => raw(s, "C")) : [], puts: rows.map(s => raw(s, "P")),
+        dataSource: "delayed", feed: "gloom", delayMinutes: 15, realtimeEligible: false, asOf: new Date().toISOString() };
+    },
   });
   coordinator = new MarketDataCoordinator(provider);
   setSharedMarketDataCoordinator(coordinator);

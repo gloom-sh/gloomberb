@@ -1,7 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { loadYahooEarningsCalendar } from "../../../sources/yahoo-finance/quote-summary";
-import { mapYahooCalendarEarnings, mapYahooEarningsCalendarEvent } from "../../../sources/yahoo-finance/mappers";
-import type { YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
+import type { EarningsEvent, EarningsEstimateBasis } from "../../../types/data-provider";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { attachEarningsCalendarPersistence, loadEarningsCalendar, resetEarningsCalendarPersistence } from "./data/cache";
 import { coherentEarningsValue, earningsEpsChange30d, earningsForecastPeriod } from "./estimate-basis";
@@ -17,12 +15,8 @@ const fixtures = [
 ] as const;
 for (const [symbol, epsCurrency, revenueCurrency, eps] of fixtures) {
   test(`recorded ${symbol} keeps each explicit forecast unit and fiscal end through loading and the cache`, async () => {
-    let requests = 0;
-    const events = await loadYahooEarningsCalendar([symbol], async <T>(url: string) => {
-      requests++;
-      expect(new URL(url).searchParams.get("modules")).toBe("calendarEvents,earningsTrend,earningsHistory,quoteType");
-      return { quoteSummary: { result: [recordedEarnings[symbol]] } } as T;
-    });
+    const captured = recordedEarnings[symbol];
+    const events = [{ ...captured, earningsDate: new Date(captured.earningsDate), earningsCallDate: captured.earningsCallDate ? new Date(captured.earningsCallDate) : null }] as unknown as EarningsEvent[];
     const event = events[0]!;
     expect(event.epsEstimate).toBe(eps);
     expect(event.estimateBasis?.epsEstimate).toMatchObject({ currency: epsCurrency, period: "0q", periodEndDate: "2026-09-30", source: "earningsTrend" });
@@ -36,137 +30,39 @@ for (const [symbol, epsCurrency, revenueCurrency, eps] of fixtures) {
     const cached = await loadEarningsCalendar(provider, [symbol]);
     expect(cached.events[0]?.estimateBasis).toEqual(event.estimateBasis);
     expect(providerCalls).toBe(1);
-    expect(requests).toBe(1);
   });
 }
 
-function synthetic(): YahooQuoteSummaryResult {
-  return {
-    price: { currency: "USD" },
-    calendarEvents: { earnings: { earningsDate: [{ raw: Date.parse("2026-11-05T21:00:00Z") / 1000 }], earningsAverage: 5, earningsLow: 4, earningsHigh: 6, revenueAverage: 100 } },
-    earningsTrend: { trend: [{ period: "0q", endDate: "2026-09-30",
-      earningsEstimate: { avg: 150, low: 120, high: 180, yearAgoEps: 100, numberOfAnalysts: 4, growth: 0.5, earningsCurrency: "GBp" },
-      revenueEstimate: { avg: 100, revenueCurrency: "GBP" },
-      epsTrend: { "7daysAgo": 0.2, "30daysAgo": 0.5, epsTrendCurrency: "GBP" },
-      epsRevisions: { upLast30days: 2, downLast30days: 0 },
-    }] },
-  };
+function synthetic(): EarningsEvent {
+  const basis = (currency: string | null = "GBP"): EarningsEstimateBasis => ({ source: "earningsTrend", sourceValue: 1.5, sourceCurrency: currency, currency, period: "0q", periodEndDate: "2026-09-30" });
+  return { symbol: "SYN", earningsDate: new Date("2026-11-05"), epsEstimate: 1.5, epsLow: 1.2, epsHigh: 1.8, epsTrend30dAgo: 0.5,
+    estimateBasis: { epsEstimate: basis(), epsLow: basis(), epsHigh: basis(), epsTrend30dAgo: basis() } } as EarningsEvent;
 }
 
-test("explicit minor-unit amounts normalize once, including zero, without changing counts or growth", () => {
-  const source = synthetic();
-  const event = mapYahooEarningsCalendarEvent(source, "SYN")!;
-  expect(event).toMatchObject({ epsEstimate: 1.5, epsLow: 1.2, epsHigh: 1.8, epsYearAgo: 1, epsAnalysts: 4, epsGrowth: 0.5, epsTrend30dAgo: 0.5 });
-  expect(event.estimateBasis?.epsEstimate).toMatchObject({ currency: "GBP", sourceCurrency: "GBp", sourceValue: 150 });
+test("EPS comparisons require matching units and fiscal periods even when values are available", () => {
+  const event = synthetic();
   expect(earningsEpsChange30d(event)).toBe(1);
-  expect(event.estimateBasis?.epsAnalysts?.currency).toBeUndefined();
-  source.earningsTrend!.trend![0]!.earningsEstimate!.avg = 0;
-  const zero = mapYahooEarningsCalendarEvent(source, "SYN")!;
-  expect(zero.epsEstimate).toBe(0);
-  expect(earningsEpsChange30d(zero)).toBe(-0.5);
-});
-
-test("missing or incompatible EPS trend currency/period cannot create a 30-day change", () => {
-  for (const currency of [undefined, "", "XXX", "unknown", "JPY"]) {
-    const source = synthetic();
-    source.earningsTrend!.trend![0]!.epsTrend!.epsTrendCurrency = currency;
-    const event = mapYahooEarningsCalendarEvent(source, "SYN")!;
+  event.epsEstimate = 0;
+  expect(earningsEpsChange30d(event)).toBe(-0.5);
+  for (const currency of [null, "", "XXX", "JPY"]) {
+    event.estimateBasis!.epsTrend30dAgo!.currency = currency;
     expect(earningsEpsChange30d(event)).toBeNull();
   }
-  for (const endDate of [undefined, "", "2026-02-30"]) {
-    const source = synthetic();
-    source.earningsTrend!.trend![0]!.endDate = endDate;
-    expect(earningsEpsChange30d(mapYahooEarningsCalendarEvent(source, "SYN")!)).toBeNull();
-  }
-  const source = synthetic();
-  source.earningsTrend!.trend![0]!.earningsEstimate!.earningsCurrency = undefined;
-  const unknown = mapYahooEarningsCalendarEvent(source, "SYN")!;
-  expect(unknown.estimateBasis?.epsEstimate?.currency).toBeNull();
-  expect(unknown.epsEstimate).toBe(150);
-  expect(earningsEpsChange30d(unknown)).toBeNull();
-  const no30d = synthetic();
-  delete no30d.earningsTrend!.trend![0]!.epsTrend!["30daysAgo"];
-  expect(earningsEpsChange30d(mapYahooEarningsCalendarEvent(no30d, "SYN")!)).toBeNull();
-});
-
-test("a forecast quarter Yahoo already reports as actual carries no estimates into the next announcement", () => {
-  // ORCL on 2026-09-23: 0q still ended 2026-08-31 (reported 1.92 on Sep 10) against the Dec 10 date,
-  // and calendarEvents repeated that quarter's consensus.
-  const source = synthetic();
-  source.calendarEvents!.earnings = { ...source.calendarEvents!.earnings, earningsAverage: 150, earningsLow: 120, earningsHigh: 7 };
-  source.earningsHistory = { history: [
-    { quarter: { raw: Date.parse("2026-06-30T00:00:00Z") / 1000 }, epsActual: 1.1 },
-    { quarter: { raw: Date.parse("2026-09-30T00:00:00Z") / 1000 }, epsActual: 1.4 },
-  ] };
-  const now = Date.parse("2026-10-20T12:00:00Z");
-  const event = mapYahooEarningsCalendarEvent(source, "SYN", now)!;
-  expect(event.earningsDate.toISOString().slice(0, 10)).toBe("2026-11-05");
-  expect([event.epsEstimate, event.epsLow, event.revenueEstimate, event.epsAnalysts, event.epsTrend30dAgo]).toEqual([null, null, null, null, null]);
-  expect(event.epsHigh).toBe(7);
-  expect(earningsForecastPeriod(event)).toBeNull();
-  expect(mapYahooCalendarEarnings(source, now)[0]?.epsEstimate).toBeUndefined();
-
-  // On report day history can carry the actual before Yahoo rolls the date; that consensus is today's.
-  const reportDay = Date.parse("2026-11-05T13:00:00Z");
-  expect(mapYahooEarningsCalendarEvent(source, "SYN", reportDay)!.estimateBasis?.epsEstimate).toMatchObject({ source: "earningsTrend", periodEndDate: "2026-09-30" });
-  expect(mapYahooCalendarEarnings(source, reportDay)[0]).toMatchObject({ epsEstimate: 1.5, currency: "GBP" });
-
-  source.earningsHistory.history!.pop();
-  expect(mapYahooEarningsCalendarEvent(source, "SYN", now)!.estimateBasis?.epsEstimate).toMatchObject({ source: "earningsTrend", periodEndDate: "2026-09-30" });
-});
-
-test("calendar fallback values retain unknown basis while unrelated trend ranges/counts stay separate", () => {
-  const source = synthetic();
-  source.earningsTrend!.trend![0]!.earningsEstimate!.avg = null;
-  source.earningsTrend!.trend![0]!.earningsEstimate!.high = null;
-  const event = mapYahooEarningsCalendarEvent(source, "SYN")!;
-  expect(event.epsEstimate).toBe(5);
-  expect(event.estimateBasis?.epsEstimate).toEqual({ source: "calendarEvents", sourceValue: 5, period: null, periodEndDate: null, currency: null, sourceCurrency: null });
-  expect(event.epsLow).toBe(1.2);
-  expect(event.epsHigh).toBe(6);
-  expect(coherentEarningsValue(event, "epsLow")).toBeNull();
-  expect(coherentEarningsValue(event, "epsHigh")).toBe(6);
-  for (const field of ["epsGrowth", "epsAnalysts", "epsRevisionUp30d", "epsRevisionDown30d"] as const) expect(coherentEarningsValue(event, field)).toBeNull();
+  event.estimateBasis!.epsTrend30dAgo!.currency = "GBP";
+  event.estimateBasis!.epsTrend30dAgo!.periodEndDate = "2026-06-30";
   expect(earningsEpsChange30d(event)).toBeNull();
+  expect(earningsForecastPeriod(event)).toEqual({ period: "0q", periodEndDate: "2026-09-30" });
+});
+
+test("independently sourced ranges cannot inherit an average's basis or a shared fiscal date", () => {
+  const event = synthetic();
+  event.estimateBasis!.epsEstimate = { source: "calendarEvents", sourceValue: 5, currency: null, sourceCurrency: null, period: null, periodEndDate: null };
+  expect(coherentEarningsValue(event, "epsEstimate")).toBe(1.5);
+  expect(coherentEarningsValue(event, "epsLow")).toBeNull();
   expect(earningsForecastPeriod(event)).toBeNull();
-  expect(coherentEarningsValue(event, "epsEstimate")).toBe(5);
-});
-
-test("missing averages cannot combine independently sourced range endpoints", () => {
-  const source = synthetic();
-  const trend = source.earningsTrend!.trend![0]!;
-  const calendar = source.calendarEvents!.earnings!;
-  trend.earningsEstimate!.avg = null;
-  trend.earningsEstimate!.high = null;
-  trend.revenueEstimate!.avg = null;
-  trend.revenueEstimate!.low = 80;
-  calendar.earningsAverage = undefined;
-  calendar.revenueAverage = undefined;
-  calendar.revenueHigh = 120;
-  const event = mapYahooEarningsCalendarEvent(source, "SYN")!;
-  for (const field of ["epsEstimate", "epsLow", "epsHigh", "revenueEstimate", "revenueLow", "revenueHigh"] as const) {
-    expect(coherentEarningsValue(event, field)).toBeNull();
-  }
-  expect(event.estimateBasis).toMatchObject({ epsLow: { sourceValue: 120, sourceCurrency: "GBp" }, epsHigh: { sourceValue: 6, currency: null } });
-  trend.earningsEstimate!.high = 180;
-  const samePeriod = mapYahooEarningsCalendarEvent(source, "SYN")!;
-  expect(coherentEarningsValue(samePeriod, "epsLow")).toBe(1.2);
-  expect(coherentEarningsValue(samePeriod, "epsHigh")).toBe(1.8);
-});
-
-test("a common fiscal end cannot assign the revenue period to an independently sourced EPS range", () => {
-  const source = synthetic();
-  source.earningsTrend!.trend![0]!.earningsEstimate = {};
-  source.earningsTrend!.trend![0]!.epsTrend = {};
-  source.earningsTrend!.trend![0]!.epsRevisions = {};
-  source.calendarEvents!.earnings!.earningsAverage = undefined;
-  const mixed = mapYahooEarningsCalendarEvent(source, "SYN")!;
-  expect(coherentEarningsValue(mixed, "epsLow")).toBe(4);
-  expect(coherentEarningsValue(mixed, "epsHigh")).toBe(6);
-  expect(earningsForecastPeriod(mixed)).toBeNull();
-  expect(mixed.estimateBasis?.revenueEstimate?.periodEndDate).toBe("2026-09-30");
-  source.calendarEvents!.earnings!.earningsLow = undefined;
-  source.calendarEvents!.earnings!.earningsHigh = undefined;
-  expect(earningsForecastPeriod(mapYahooEarningsCalendarEvent(source, "SYN")!))
-    .toEqual({ period: "0q", periodEndDate: "2026-09-30" });
+  event.epsEstimate = null;
+  expect(coherentEarningsValue(event, "epsLow")).toBe(1.2);
+  event.estimateBasis!.epsHigh!.currency = "USD";
+  expect(coherentEarningsValue(event, "epsLow")).toBeNull();
+  expect(coherentEarningsValue(event, "epsHigh")).toBeNull();
 });

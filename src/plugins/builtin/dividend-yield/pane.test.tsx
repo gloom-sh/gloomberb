@@ -7,11 +7,13 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
 import { fetchDividendData } from "./client";
-import { chartResponse, yahooTransport } from "./test-fixture";
+import { chartResponse, marketTransport } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
+const realNow = Date.now;
 afterEach(() => {
   setHttpFetchTransport(null);
+  Date.now = realNow;
 });
 
 /** Render the pane bound to `symbol` in its footer frame. */
@@ -42,7 +44,7 @@ test("summary failures retain cash and recover dated payment information through
   const payDate = day + 30 * 86400;
   let mode: "valid" | "failed" | "invalid-ex" | "invalid-pay" = "valid";
   let chartRequests = 0;
-  setHttpFetchTransport(yahooTransport(async (url) => {
+  setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) {
       chartRequests++;
       return chartResponse({
@@ -80,11 +82,15 @@ test("summary failures retain cash and recover dated payment information through
 });
 
 test.each([48, 80, 120])("native dividend refresh keeps the selected price's time and status reachable at %d columns", async (width) => {
+  const session = new Date();
+  session.setUTCHours(18, 0, 0, 0);
+  while (session.getUTCDay() === 0 || session.getUTCDay() === 6) session.setUTCDate(session.getUTCDate() - 1);
+  Date.now = () => session.getTime();
   const sourceTime = Math.floor(Date.now() / 1000);
   const oldTime = sourceTime - 10 * 86_400;
   let priceTime: number | undefined = oldTime;
   let fail = false;
-  setHttpFetchTransport(yahooTransport(async (url) => {
+  setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) {
       if (fail) throw new Error("Controlled cash source unavailable");
       return chartResponse({
@@ -92,7 +98,7 @@ test.each([48, 80, 120])("native dividend refresh keeps the selected price's tim
         time: sourceTime, dividends: { cash: { date: sourceTime - 86_400, amount: 4 } },
       });
     }
-    return Response.json({ quoteSummary: { result: [] } });
+    return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency: "USD" } }] } });
   }));
   await mountDividendPane("FUND", width);
   const before = await frame();
@@ -130,7 +136,7 @@ test.each([48, 80, 120])("cash integrity failures preserve usable rows and recov
   const recent = day - 10 * 86_400 + 14 * 3600;
   const recentDate = new Date(recent * 1000).toISOString().slice(0, 10);
   let mode: "complete" | "partial" | "invalid" | "empty" | "unknown-currency" = "complete";
-  setHttpFetchTransport(yahooTransport(async (url) => {
+  setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) {
       const cash = { date: recent, amount: 4 };
       const old = { date: recent - 3 * 365 * 86_400, amount: 1 };
@@ -202,7 +208,7 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   const cashLabel = cashCurrency === "GBP" ? "£4.00" : "$4.00";
   // The payment row: a round axis tick can share the amount.
   const cashRow = `${cashLabel} ${cashCurrency}`;
-  setHttpFetchTransport(yahooTransport(async (url) => {
+  setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) {
       const dividends = mode === "empty" ? {} : mode === "failure" && failure === "invalid" ? { invalid: { date: recent } }
         : { cash: { date: recent, amount: url.includes("OTHER") ? 7 : 4 }, old: { date: recent - 3 * 365 * 86400, amount: 1 } };

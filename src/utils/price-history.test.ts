@@ -172,7 +172,7 @@ describe("calendar history fetched copies", () => {
     const fx = bars("2026-09-20T23:00:00Z", "2026-09-21T23:00:00Z");
     expect(outdated(fx, "2026-09-22T21:00:00Z", "2026-09-23T02:00:00Z", { exchange: "" })).toBe(false);
     expect(outdated(bars("2026-09-17T00:00:00Z", "2026-09-18T00:00:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T12:00:00Z", { exchange: "" })).toBe(false);
-    // Yahoo labels BSE bars at the 09:15 IST open, the previous New York date.
+    // The feed labels BSE bars at the 09:15 IST open, the previous New York date.
     expect(outdated(bars("2026-09-21T03:45:00Z", "2026-09-22T03:45:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T02:00:00Z", { exchange: "" })).toBe(false);
     // KRX is closed for Chuseok 09-24 to 09-26 and publishes no calendar here:
     // one refetch after each weekday close it cannot tell from a session.
@@ -221,7 +221,7 @@ describe("calendar history fetched copies", () => {
   });
 
   test("the latest bar is dated in the venue's zone, as the fetch state reads it", () => {
-    // Yahoo stamps a JPX daily bar at 00:00 JST, Cloud at UTC midnight.
+    // The feed stamps a JPX daily bar at 00:00 JST, Cloud at UTC midnight.
     expect(calendarHistoryLastBarDate(bars("2026-09-16T15:00:00Z", "2026-09-17T15:00:00Z"), "JPX")).toBe("2026-09-18");
     expect(calendarHistoryLastBarDate(bars("2026-09-17T00:00:00Z", "2026-09-18T00:00:00Z"), "JPX")).toBe("2026-09-18");
     expect(calendarHistoryLastBarDate(bars("2026-09-21T04:00:00Z", "2026-09-22T04:00:00Z"), "")).toBe("2026-09-22");

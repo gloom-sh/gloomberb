@@ -4,6 +4,9 @@ import {
   createPaneTemplateOrThrow,
 } from "../../components/command-bar/workflow/ops";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
+import { openFormModal } from "../../components/form-modal";
+import { t } from "../../i18n";
+import { openBrokerAddFlow } from "../../plugins/builtin/broker-manager/add-request";
 import { getPanelFocusTarget } from "../../core/state/app/layout";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
 import { setMarketplaceHost } from "../../plugins/builtin/plugin-marketplace/store";
@@ -48,6 +51,7 @@ import type {
 import type { TickerOpenTarget } from "../../tickers/open-target";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
+import { isDialogOpen } from "../../ui/dialog-stack";
 import { stableStringify } from "../../utils/hash";
 
 // Registry callbacks are rebound on renders. Request ownership must survive
@@ -70,7 +74,7 @@ interface BindAppPanePluginRegistryOptions {
   externalPlugins: readonly LoadedExternalPlugin[];
   focusVisiblePane: (paneId: string, layout?: LayoutConfig) => void;
   isDetachedWindow: boolean;
-  openPaneSettings: (paneId?: string) => Promise<void>;
+  openPaneSettings: (paneId?: string, options?: { fieldKey?: string }) => Promise<void>;
   openPinnedTicker: (rawSymbol: string, options?: PinTickerOptions) => Promise<void>;
   persistConfig: (nextConfig: AppState["config"]) => void;
   persistLayout: (layout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
@@ -131,25 +135,43 @@ export function bindAppPanePluginRegistry({
       if (paneId) dispatch({ type: "FOCUS_PANE", paneId });
     },
     switchTab: (tabId, paneId) => switchTickerResearchTab(tabId, paneId),
+    // The bar would open over a dialog without its keys, so it waits for none to be open.
     openCommandBar: (query) => {
-      if (isDetachedWindow) return;
+      if (isDetachedWindow || isDialogOpen()) return;
       dispatch({ type: "SET_COMMAND_BAR", open: true, query });
     },
+    // Forms submit through the main window's state, so a detached window says where to go.
     openPluginCommandWorkflow: (commandId) => {
-      if (isDetachedWindow) return;
-      dispatch({
-        type: "SET_COMMAND_BAR",
-        open: true,
-        query: "",
-        launch: { kind: "plugin-command", commandId },
-      });
+      if (isDetachedWindow) {
+        pluginRegistry.notify({ body: t("Open this from the main window."), type: "info" });
+        return;
+      }
+      const command = pluginRegistry.commands.get(commandId);
+      if (!command?.wizard || command.wizard.length === 0) {
+        // Nothing to fill in: the bar opens, as it always has for such a command.
+        if (!isDialogOpen()) dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
+        return;
+      }
+      openFormModal({ kind: "plugin-command", commandId });
+    },
+    openBuiltInWorkflow: (actionId) => {
+      if (isDetachedWindow) {
+        pluginRegistry.notify({ body: t("Open this from the main window."), type: "info" });
+        return;
+      }
+      // Profiles are added in the Brokers pane, not in a form.
+      if (actionId === "add-broker-account") {
+        openBrokerAddFlow(pluginRegistry);
+        return;
+      }
+      openFormModal({ kind: "builtin", actionId });
     },
     getLayout: () => stateRef.current.config.layout,
     updateLayout: (layout) => {
       if (isDetachedWindow) return;
       persistLayout(layout);
     },
-    openPaneSettings: (paneId) => { void openPaneSettings(paneId); },
+    openPaneSettings: (paneId, options) => { void openPaneSettings(paneId, options); },
     showPane: (paneId) => {
       if (isDetachedWindow) return;
       showPane(paneId);
@@ -335,7 +357,7 @@ export function bindAppPanePluginRegistry({
           toggleable: plugin.toggleable === true,
           enabled: !disabled.has(plugin.id),
           source: external ? "external" : "builtin",
-          ...(external?.directory ? { directory: external.directory } : {}),
+          ...(external?.directory ? { directory: external.directory, path: external.path } : {}),
           ...(external?.commit ? { commit: external.commit } : {}),
           ...(external?.linked ? { linked: true } : {}),
           hasSetup,
@@ -358,7 +380,7 @@ export function bindAppPanePluginRegistry({
           toggleable: true,
           enabled: !disabled.has(entry.plugin.id),
           source: "external",
-          ...(entry.directory ? { directory: entry.directory } : {}),
+          ...(entry.directory ? { directory: entry.directory, path: entry.path } : {}),
           ...(entry.commit ? { commit: entry.commit } : {}),
           ...(entry.linked ? { linked: true } : {}),
           ...(entry.unsupportedTarget ? { unsupportedTarget: entry.unsupportedTarget } : {}),

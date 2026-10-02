@@ -1,5 +1,6 @@
 import type { Dispatch } from "react";
 import { apiClient } from "../../../api-client";
+import { t } from "../../../i18n";
 import { teamCollectionLocalId } from "../../../plugins/builtin/cloud/team/collections";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
@@ -10,11 +11,8 @@ import {
   validateBrokerProfileValues,
 } from "../../../brokers/profile-form";
 import type { SignedInBroker } from "../../../brokers/signed-in/client";
-import {
-  connectSignedInBrokerProfile,
-  disconnectSignedInProfile,
-  signedInBrokerForProfile,
-} from "../../../brokers/signed-in/connect";
+import { removeBrokerProfile } from "../../../brokers/remove-profile";
+import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect";
 import {
   addTickerToPortfolio,
   adoptFirstPositionCurrency,
@@ -39,8 +37,11 @@ export type CommandBarNotifyFn = (
 
 export interface CommandBarCollectionWorkflowActions {
   connectBrokerProfile: (brokerId: string, values: WorkflowStringValues) => Promise<void>;
-  /** Opens the connect dialog; rejects with what to tell the user when it is not connected. */
-  connectSignedInBroker: (broker: SignedInBroker) => Promise<void>;
+  /**
+   * Asks the user to connect `broker` (the form's connect step), then syncs
+   * its profile. False when they backed out before it connected.
+   */
+  connectSignedInBroker: (broker: SignedInBroker) => Promise<boolean>;
   createManualPortfolio: (name: string, owner?: CollectionOwner) => Promise<void>;
   createWatchlist: (name: string, owner?: CollectionOwner) => Promise<void>;
   deletePortfolio: (portfolioId: string) => Promise<void>;
@@ -59,6 +60,8 @@ export function createCommandBarCollectionWorkflowActions(options: {
   notify: CommandBarNotifyFn;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
+  /** Shows the connect step for a signed-in broker; the app's connect dialog when missing. */
+  requestBrokerSignIn?: (broker: SignedInBroker) => Promise<boolean>;
   setActiveCollection: (collectionId: string) => void;
   tickerRepository: AppTickerRepositoryPort;
 }): CommandBarCollectionWorkflowActions {
@@ -71,6 +74,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
     notify,
     persistConfig,
     pluginRegistry,
+    requestBrokerSignIn,
     setActiveCollection,
     tickerRepository,
   } = options;
@@ -89,7 +93,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
     dispatch({ type: "SET_CONFIG", config: freshConfig });
     const brokerTab = freshConfig.portfolios.find((portfolio) => portfolio.brokerInstanceId === instanceId);
     if (brokerTab) setActiveCollection(brokerTab.id);
-    notify("Connected! Positions will sync automatically.", { type: "success" });
+    notify(t("Connected! Positions will sync automatically."), { type: "success" });
   };
 
   return {
@@ -117,9 +121,11 @@ export function createCommandBarCollectionWorkflowActions(options: {
         getConfig: () => pluginRegistry.getConfig(),
         createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstance(brokerType, label, values),
         syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstance(instanceId),
+        requestSignIn: requestBrokerSignIn,
       });
-      if (!connected) throw new Error(`${broker.name} was not connected.`);
+      if (!connected) return false;
       showConnectedBroker(connected.instance.id);
+      return true;
     },
 
     async createManualPortfolio(name, owner) {
@@ -307,19 +313,10 @@ export function createCommandBarCollectionWorkflowActions(options: {
     async disconnectBrokerInstance(instanceId) {
       const instance = getState().config.brokerInstances.find((entry) => entry.id === instanceId);
       if (!instance) {
-        throw new Error("Broker profile not found.");
+        throw new Error(t("Broker profile not found."));
       }
-      const { stillConnected } = await disconnectSignedInProfile(instance);
-      await pluginRegistry.removeBrokerInstance(instanceId);
-      const freshConfig = pluginRegistry.getConfig();
-      dispatch({ type: "SET_CONFIG", config: freshConfig });
-      if (stillConnected) {
-        // Signed out of Gloom, so the account keeps the broker for its other devices and agents.
-        const broker = signedInBrokerForProfile(instance, instance.label);
-        notify(`Removed ${instance.label}. Sign in to Gloom to disconnect ${broker.name} from your account.`, { type: "info" });
-        return;
-      }
-      notify(`Removed ${instance.label}.`, { type: "success" });
+      const removal = await removeBrokerProfile(instance, instance.label, (id) => pluginRegistry.removeBrokerInstance(id));
+      notify(removal.message, { type: removal.accountKept ? "info" : "success" });
     },
   };
 }

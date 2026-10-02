@@ -1,7 +1,5 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
-import type { DataProvider } from "../../../types/data-provider";
-import { useAlertWorkflowQuoteSync } from "../workflow/alert";
-import type { CommandBarRoute, CommandBarWorkflowRoute } from "../workflow/types";
+import type { CommandBarRoute } from "../workflow/types";
 
 interface CommandBarMainBrowseState {
   query: string;
@@ -12,28 +10,22 @@ interface CommandBarRouteEffectsOptions {
   clearThemePreview: (themeId: string | null | undefined) => void;
   committedThemeId: string;
   currentRoute: CommandBarRoute | null;
-  dataProvider: DataProvider;
-  ensureRouteFieldFocus: (route: CommandBarWorkflowRoute) => void;
   lastMainBrowseRef: MutableRefObject<CommandBarMainBrowseState>;
   rootModeKind: string;
   rootQuery: string;
   rootSelectedIdx: number;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
-  updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
 }
 
 export function useCommandBarRouteEffects({
   clearThemePreview,
   committedThemeId,
   currentRoute,
-  dataProvider,
-  ensureRouteFieldFocus,
   lastMainBrowseRef,
   rootModeKind,
   rootQuery,
   rootSelectedIdx,
   rootThemeBaseIdRef,
-  updateTopRoute,
 }: CommandBarRouteEffectsOptions): void {
   const previousRootModeRef = useRef(rootModeKind);
 
@@ -68,15 +60,4 @@ export function useCommandBarRouteEffects({
     rootModeKind,
     rootThemeBaseIdRef,
   ]);
-
-  useEffect(() => {
-    if (currentRoute?.kind !== "workflow") return;
-    ensureRouteFieldFocus(currentRoute);
-  }, [currentRoute, ensureRouteFieldFocus]);
-
-  useAlertWorkflowQuoteSync({
-    dataProvider,
-    route: currentRoute,
-    updateTopRoute,
-  });
 }

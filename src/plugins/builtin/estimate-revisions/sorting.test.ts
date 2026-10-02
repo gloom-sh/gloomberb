@@ -12,7 +12,7 @@ import {
 const observation = (
   date: string,
   average: number | null,
-  source: EstimateObservation["source"] = "yahoo",
+  source: EstimateObservation["source"] = "gloom",
 ): EstimateObservation => ({
   date,
   average,
@@ -30,7 +30,7 @@ test("history sorts numerically with unavailable observations last in both direc
     observation("2026-09-21", null),
     observation("2026-09-20", 0),
     observation("2026-09-19", -2),
-    observation("2026-09-20", 0, "yahoo-eps-trend"),
+    observation("2026-09-20", 0, "gloom-eps-trend"),
   ];
   expect(
     sortEstimateHistory(rows, { column: "average", direction: "asc" }).map(
@@ -43,8 +43,8 @@ test("history sorts numerically with unavailable observations last in both direc
   });
   expect(descending.map((row) => row.average)).toEqual([0, 0, -2, null]);
   expect(descending.slice(0, 2).map((row) => row.source)).toEqual([
-    "yahoo",
-    "yahoo-eps-trend",
+    "gloom",
+    "gloom-eps-trend",
   ]);
   expect(rows[0]?.average).toBeNull();
   expect(
@@ -64,7 +64,7 @@ test("surprise sorting preserves a measured zero, negative surprise, missing ran
     difference: null,
     percentile: null,
     samples: 1,
-    source: "Yahoo",
+    source: "Gloom",
   });
   const rows = [
     row("2026-09-21", null),

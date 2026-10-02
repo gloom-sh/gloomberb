@@ -17,7 +17,7 @@ const history = [9, 10, 11, 14, 15, 16, 17, 18, 21].flatMap((day, session) => Ar
   date: new Date(Date.UTC(2026, 8, day, 13, 30) + bar * 900_000), close: 100 + session * 26 + bar, volume: 10 + bar,
 })));
 const session = (observedAt = NOW): HistorySession => ({ version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York",
-  symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "yahoo", timestampConvention: "bar-open", barAlignment: "session-open", observedAt });
+  symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "gloom", timestampConvention: "bar-open", barAlignment: "session-open", observedAt });
 const result = (observedAt = Date.now(), points = history): PriceHistoryResult => ({ points, resolution: "15m", session: session(observedAt), sourceKey: "provider:actual-history-source" });
 const chart = (): ChartSpec => ({ version: 2, viewport: { range: "1M", resolution: "15m" }, panels: [{ id: "main" }],
   series: ["close", "volume"].map(field => ({ id: field, source: { kind: "security", instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: `market.${field}` },

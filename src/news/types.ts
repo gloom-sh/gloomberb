@@ -41,7 +41,7 @@ export interface NewsArticle {
   sourceCount?: number;
   items?: NewsStoryItem[];
 
-  // Compatibility aliases for RSS/Yahoo panes and existing table columns.
+  // Compatibility aliases for RSS/ticker-news panes and existing table columns.
   importance: number;
 }
 

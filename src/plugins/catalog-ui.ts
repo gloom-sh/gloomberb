@@ -43,7 +43,7 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
  * external plugins that loaded and support this renderer.
  *
  * Deliberately not `getLoadablePlugins`, which is the CLI catalog and also
- * carries the Yahoo fallback provider and the debug plugin. Routing the desktop
+ * carries the debug plugin. Routing the desktop
  * through it would quietly change which plugins the app runs.
  */
 export function getRendererPlugins(externalPlugins: readonly LoadedExternalPlugin[] = []): GloomPlugin[] {

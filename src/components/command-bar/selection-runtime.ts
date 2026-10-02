@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
-} from "react";
+import { useCallback, type MutableRefObject } from "react";
 import type { AppState } from "../../state/app/context";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { Command } from "./commands/registry";
@@ -14,10 +9,7 @@ import type {
 } from "../../types/plugin";
 import { resolveCommandBarMode, type CommandBarMode } from "./view-model";
 import type { ListScreenState, ResultItem } from "./list/model";
-import type {
-  CommandBarFieldValue,
-  CommandBarRoute,
-} from "./workflow/types";
+import type { CommandBarRoute } from "./workflow/types";
 import type { CollectionCommandId } from "./helpers";
 import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";
 import {
@@ -77,11 +69,9 @@ interface UseCommandBarSelectionRuntimeOptions {
   runRootRow?: RunRootRow;
   runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
   setRootQuery: (query: string) => void;
-  setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   stateConfigLayout: AppState["config"]["layout"];
   stateRef: MutableRefObject<AppState>;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
   visibleListStateRef: MutableRefObject<ListScreenState | null>;
 }
 
@@ -112,11 +102,9 @@ export function useCommandBarSelectionRuntime({
   runRootRow,
   runSecurityDescriptionShortcut,
   setRootQuery,
-  setRouteStack,
   stateConfigLayout,
   stateRef,
   updateTopRoute,
-  updateWorkflowValue,
   visibleListStateRef,
 }: UseCommandBarSelectionRuntimeOptions) {
   const startThemePicker = useCallback((arg: string) => {
@@ -170,8 +158,9 @@ export function useCommandBarSelectionRuntime({
   ]);
 
   /**
-   * Tab on a typed shortcut: it completes the prefix, or opens the shortcut's
-   * route (a ticker search, a pane form), which is the typed text running.
+   * Tab on a typed shortcut: it completes the prefix, or opens what the
+   * shortcut starts (a ticker search in the bar, a pane form in the form
+   * modal), which is the typed text running.
    */
   const acceptRootShortcutTab = useCallback((): boolean => {
     const query = rootQueryRef.current;
@@ -258,14 +247,7 @@ export function useCommandBarSelectionRuntime({
       return;
     }
 
-    if (route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings") {
-      updateTopRoute((route) => {
-        if (route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings") {
-          return { ...route, query: nextQuery, selectedIdx: 0, hoveredIdx: null };
-        }
-        return route;
-      });
-    }
+    updateTopRoute((route) => ({ ...route, query: nextQuery, selectedIdx: 0, hoveredIdx: null }));
   }, [
     availableCommands,
     clearThemePreview,
@@ -305,15 +287,7 @@ export function useCommandBarSelectionRuntime({
           pluginRegistry,
           route: currentRoute,
           selectedId: selected.id,
-          setRouteStack,
-          updateTopRoute,
-          updateWorkflowValue,
         });
-        return;
-      }
-
-      if (currentRoute?.kind === "pane-settings") {
-        void selected.action();
         return;
       }
 
@@ -345,10 +319,7 @@ export function useCommandBarSelectionRuntime({
     rootQuery,
     rootQueryRef,
     runRootRow,
-    setRouteStack,
     stateConfigLayout,
-    updateTopRoute,
-    updateWorkflowValue,
     visibleListStateRef,
   ]);
 

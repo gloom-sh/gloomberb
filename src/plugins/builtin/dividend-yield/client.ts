@@ -1,23 +1,17 @@
+import { apiClient } from "../../../api-client";
+import type { DividendSummary } from "../../../api-client/market-discovery";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
-import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
-import { deriveMarketState, financeRawNumber, mapYahooDividends } from "../../../sources/yahoo-finance/mappers";
-import { isTimestampStaleForExchangeSession } from "../../../market-data/market/freshness";
-import { fetchYahooChart, fetchYahooQuoteSummary } from "../../../sources/yahoo-finance/requests";
-import { getYahooSymbolsToTry, withYahooSymbols } from "../../../sources/yahoo-finance/symbols";
-import type { YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
 import type { DividendMetrics, DividendPayment } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { inferCadence, trailingCashAt } from "./trailing-cash";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { dividendPriceAsOf } from "./reference-price";
+import { dividendQuotePriceMetadata } from "./reference-price";
 
-export const YAHOO_DIVIDENDS_CONNECTION_ID = "yahoo-dividends";
+export const DIVIDENDS_CONNECTION_ID = "gloom-dividends";
 export const INCOMPLETE_DIVIDEND_HISTORY = "Incomplete cash history; totals unavailable.";
 export const MISSING_DIVIDEND_CURRENCY = "Dividend currency is unavailable; cash amounts cannot be compared safely.";
 export const UNAVAILABLE_DIVIDEND_SUMMARY = "Dividend summary unavailable.";
 export const INVALID_DIVIDEND_SUMMARY_DATE = "Invalid dividend summary date.";
-const yahoo = new YahooHttpClient();
 
 let connectionHealth: ConnectionHealthRegistry | null = null;
 
@@ -30,55 +24,12 @@ export function resetDividendYieldHealth(): void {
 }
 
 function trackRequest<T>(operation: string, request: () => Promise<T>): Promise<T> {
-  return connectionHealth?.hasSource(YAHOO_DIVIDENDS_CONNECTION_ID)
-    ? connectionHealth.track(YAHOO_DIVIDENDS_CONNECTION_ID, operation, request)
+  return connectionHealth?.hasSource(DIVIDENDS_CONNECTION_ID)
+    ? connectionHealth.track(DIVIDENDS_CONNECTION_ID, operation, request)
     : request();
 }
 
-interface QuoteSummaryDividendFields {
-  trailingAnnualDividendRate: number | null;
-  trailingAnnualDividendYield: number | null;
-  forwardAnnualDividendRate: number | null;
-  payoutRatio: number | null;
-  exDividendDate: number | null;
-  dividendDate: number | null;
-  currency: string | null;
-}
-
-const EMPTY_DIVIDEND_FIELDS: QuoteSummaryDividendFields = {
-  trailingAnnualDividendRate: null,
-  trailingAnnualDividendYield: null,
-  forwardAnnualDividendRate: null,
-  payoutRatio: null,
-  exDividendDate: null,
-  dividendDate: null,
-  currency: null,
-};
-
-export function extractDividendFields(result: YahooQuoteSummaryResult | undefined): QuoteSummaryDividendFields {
-  if (!result) return { ...EMPTY_DIVIDEND_FIELDS };
-
-  const summaryDetail = result.summaryDetail;
-  const financialData = result.financialData;
-  const defaultKeyStats = result.defaultKeyStatistics;
-  // Stock summaries often leave the payment date only in calendarEvents.
-  const calendarEvents = result.calendarEvents;
-
-  return {
-    trailingAnnualDividendRate: financeRawNumber(summaryDetail?.trailingAnnualDividendRate) ?? null,
-    trailingAnnualDividendYield: financeRawNumber(summaryDetail?.trailingAnnualDividendYield) ?? null,
-    forwardAnnualDividendRate: financeRawNumber(summaryDetail?.forwardAnnualDividendRate)
-      ?? financeRawNumber(summaryDetail?.dividendRate)
-      ?? null,
-    payoutRatio: financeRawNumber(financialData?.payoutRatio)
-      ?? financeRawNumber(defaultKeyStats?.payoutRatio)
-      ?? financeRawNumber(summaryDetail?.payoutRatio)
-      ?? null,
-    exDividendDate: financeRawNumber(summaryDetail?.exDividendDate) ?? financeRawNumber(calendarEvents?.exDividendDate) ?? null,
-    dividendDate: financeRawNumber(calendarEvents?.dividendDate) ?? financeRawNumber(summaryDetail?.dividendDate) ?? null,
-    currency: typeof summaryDetail?.currency === "string" ? summaryDetail.currency : null,
-  };
-}
+type QuoteSummaryDividendFields = DividendSummary;
 
 export function toDividendPayment(
   exDate: string,
@@ -125,84 +76,45 @@ export async function fetchDividendData(
   exchange = "",
   currentPriceCurrency?: string,
 ): Promise<DividendData> {
-  const qualified = parsePublicTickerKey(symbol);
-  const symbols = qualified.exchange
-    ? getYahooSymbolsToTry(symbol, exchange, { exactExchange: true })
-    : exchange ? getYahooSymbolsToTry(symbol, exchange) : [symbol];
-  if (symbols.length === 0) throw new Error(`Dividend source does not support the selected listing ${symbol}`);
-  return withYahooSymbols(symbols, (yahooSymbol) => fetchDividendDataForSymbol(yahooSymbol, currentPrice, currentPriceCurrency));
-}
-
-async function fetchDividendDataForSymbol(
-  symbol: string,
-  currentPrice: number | null,
-  currentPriceCurrency?: string,
-): Promise<DividendData> {
-  const [chartResult, quoteResult] = await Promise.allSettled([
-    trackRequest("dividend-history", () =>
-      fetchYahooChart(yahoo, symbol, "10y", "1mo"),
-    ),
-    trackRequest("quote-summary", () =>
-      fetchYahooQuoteSummary(yahoo, symbol, "summaryDetail,financialData,defaultKeyStatistics,calendarEvents"),
-    ),
-  ]);
-
-  const quoteFields = quoteResult.status === "fulfilled" ? extractDividendFields(quoteResult.value) : null;
-  const summaryError = !quoteFields ? UNAVAILABLE_DIVIDEND_SUMMARY
+  const response = await trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
+  if (!response.data) throw new Error(`No dividend data found for ${symbol}`);
+  const { actions, quote, summary: quoteFields } = response.data;
+  const summaryError = response.data.summaryError ?? (!quoteFields ? UNAVAILABLE_DIVIDEND_SUMMARY
     : [quoteFields.exDividendDate, quoteFields.dividendDate]
       .some((timestamp) => timestamp != null && reportedDividendDate(timestamp) === null)
-      ? INVALID_DIVIDEND_SUMMARY_DATE : undefined;
-
-  // Cash events and chart prices need their own denomination. A summary's
-  // currency cannot establish the units of a chart that omitted them.
-  const chart = chartResult.status === "fulfilled" ? chartResult.value : null;
-  const chartUnit = resolveCurrencyUnit(chart?.meta.currency);
+      ? INVALID_DIVIDEND_SUMMARY_DATE : undefined);
+  const cashUnit = resolveCurrencyUnit(actions?.currency);
   const summaryUnit = resolveCurrencyUnit(quoteFields?.currency);
-  const currency = chartUnit.currency || summaryUnit.currency;
-  let historyError = chart && !chartUnit.currency ? MISSING_DIVIDEND_CURRENCY : undefined;
+  const currency = cashUnit.currency || summaryUnit.currency;
+  let historyError = response.data.historyError;
+  if (actions && !cashUnit.currency) historyError = MISSING_DIVIDEND_CURRENCY;
   if (!currency && (quoteFields?.trailingAnnualDividendRate != null || quoteFields?.forwardAnnualDividendRate != null)) {
     historyError = MISSING_DIVIDEND_CURRENCY;
   }
-
-  const payments: DividendPayment[] = [];
-  if (chart && chartUnit.currency) {
-    for (const dividend of mapYahooDividends(chart.events, chart.meta)) {
-      const payment = toDividendPayment(dividend.exDate, dividend.amount, chart.meta.currency!);
-      if (payment) payments.push(payment);
-    }
-    payments.sort((a, b) => b.exDate.getTime() - a.exDate.getTime());
-    if (payments.length !== Object.keys(chart.events?.dividends ?? {}).length) historyError = INCOMPLETE_DIVIDEND_HISTORY;
+  const payments = actions && cashUnit.currency ? actions.dividends.flatMap(action => {
+    const payment = toDividendPayment(action.exDate, action.amount, actions.currency!);
+    return payment ? [payment] : [];
+  }).sort((a, b) => b.exDate.getTime() - a.exDate.getTime()) : [];
+  if (!historyError && actions && (actions.coverage?.dividends === "unavailable" || payments.length !== actions.dividends.length)) {
+    historyError = INCOMPLETE_DIVIDEND_HISTORY;
   }
-
-  const chartPrice = chartUnit.currency ? chart?.meta.regularMarketPrice : null;
   const suppliedPrice = dividendReferencePrice(currentPrice, currentPriceCurrency, currency);
-  const resolvedPrice = suppliedPrice
-    ?? (chartPrice != null && Number.isFinite(chartPrice) && chartPrice > 0 ? chartPrice / chartUnit.divisor : null);
-  const selectedChart = suppliedPrice == null && resolvedPrice != null && chartResult.status === "fulfilled"
-    ? chartResult.value.meta : null;
-  const priceAsOf = selectedChart ? dividendPriceAsOf((selectedChart.regularMarketTime ?? NaN) * 1000) : undefined;
-  const priceStale = selectedChart && priceAsOf
-    ? isTimestampStaleForExchangeSession(Date.parse(priceAsOf), selectedChart.exchangeName, Date.now(), deriveMarketState(selectedChart))
-    : undefined;
-
-  const historyAvailable = chart !== null && !historyError;
-  // Yahoo annual-rate fields can use a different denomination from its pence
-  // charts (VOD.L is one example). Cash history has explicit chart units.
-  const summaryRatesComparable = chartUnit.divisor === 1
+  const price = suppliedPrice ?? dividendReferencePrice(quote?.price ?? null, quote?.currency, currency);
+  const historyAvailable = actions !== null && !historyError;
+  // Minor-unit cash histories do not establish the denomination of annual-rate fields.
+  const summaryRatesComparable = cashUnit.divisor === 1
     && !!summaryUnit.currency && summaryUnit.currency === currency && summaryUnit.divisor === 1;
-  // A summary's trailing rate must not conceal an incomplete cash series.
-  // Its separately reported forward rate remains usable with known units.
-  const metricFields = historyError && quoteFields ? { ...quoteFields, trailingAnnualDividendRate: null } : quoteFields;
-  const metrics = buildDividendMetrics(payments, metricFields, resolvedPrice, { historyAvailable, summaryRatesComparable });
-
+  const metricFields = actions && historyError && quoteFields ? { ...quoteFields, trailingAnnualDividendRate: null } : quoteFields;
+  const metrics = buildDividendMetrics(payments, metricFields, price, { historyAvailable, summaryRatesComparable });
   if (!historyAvailable && !historyError && metrics.trailingRate == null && metrics.forwardRate == null) {
     throw new Error(`No dividend data found for ${symbol}`);
   }
-
-  return { payments, metrics, price: resolvedPrice, priceAsOf, priceStale, currency: currency || undefined, historyAvailable,
-    ...(historyError ? { historyError } : {}),
-    ...(summaryError ? { summaryError } : {}),
-    providerId: "yahoo", ...(chartResult.status === "fulfilled" ? { fetchedAt: new Date().toISOString() } : {}),
+  return {
+    payments, metrics, price, currency: currency || undefined, historyAvailable,
+    ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata({ ...quote, change: quote.change ?? NaN, changePercent: quote.changePercent ?? NaN }) : {}),
+    ...(historyError ? { historyError } : {}), ...(summaryError ? { summaryError } : {}),
+    providerId: actions?.providerId ?? "gloom", fetchedAt: actions?.fetchedAt,
+    stale: response.stale === true || response.data.stale === true || actions?.stale === true,
     notes: ["Cash yield excludes taxes and reinvestment. SEC yield, tax components and future payments are not modeled."],
   };
 }

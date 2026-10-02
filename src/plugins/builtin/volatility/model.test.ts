@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import { boardOrder, buildVolatilityData, volatilityCurveLookbacks, volatilityLookbackDate, withLiveVolatilityLevels, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
 
-function history(rows: Array<[string, number]>, source = "yahoo"): VolatilityHistoryInput {
+function history(rows: Array<[string, number]>, source = "gloom"): VolatilityHistoryInput {
   return { source, history: rows.map(([date, close]) => ({ date: new Date(date), close })) };
 }
 function fred(rows: Array<[string, number | null]>, observationEnd?: string): VolatilitySeriesInput {
@@ -28,7 +28,7 @@ describe("dated volatility sources", () => {
     expect(data.curve.slope).toBe(2);
     expect(data.curve.termState).toBe("normal");
     expect(data.curve.source).toBe("market-history");
-    expect(data.curve.points.map((point) => point.source)).toEqual(Array(5).fill("yahoo"));
+    expect(data.curve.points.map((point) => point.source)).toEqual(Array(5).fill("gloom"));
     expect(data.fred.termDate).toBe("2026-09-18");
     expect(data.fred.metrics[0]).toMatchObject({ date: "2026-09-18", observationEnd: "2026-09-17" });
     expect(data.board.find((item) => item.id === "vix")).toMatchObject({ date: "2026-09-22", value: 24 });
@@ -129,7 +129,7 @@ describe("dated volatility sources", () => {
 describe("cross-asset daily statistics", () => {
   test("requires broad coverage for a percentile and uses midrank for ties", () => {
     const start = Date.UTC(2025, 9, 20);
-    const spaced = (count: number, span: number, flat = false) => ({ source: "yahoo", history: Array.from({ length: count }, (_, index) => ({
+    const spaced = (count: number, span: number, flat = false) => ({ source: "gloom", history: Array.from({ length: count }, (_, index) => ({
       date: new Date(start + Math.round(index * span / (count - 1)) * 86400000), close: flat ? 20 : index + 1,
     })) });
     expect(row(spaced(199, 300)).percentile1y).toBeNull();

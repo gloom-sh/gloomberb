@@ -66,7 +66,7 @@ test("stale fundamentals retain their disclosure and export provenance with a fr
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getTickerFinancials: async (symbol) => ({
     annualStatements: [], quarterlyStatements: [], priceHistory: [],
     quote: { symbol, price: 135.75, change: 1, changePercent: 1, currency: "USD", lastUpdated: 1789567200000, stale: false, marketCap: 131e9 },
-    fundamentals: { trailingPE: 30.2, financialCurrency: "USD", source: "yahoo", fetchedAt: "2026-09-11T23:52:16.139Z", stale: symbol === "PLD" && stale },
+    fundamentals: { trailingPE: 30.2, financialCurrency: "USD", source: "gloom", fetchedAt: "2026-09-11T23:52:16.139Z", stale: symbol === "PLD" && stale },
   }) })));
   await tui.render(<Harness width={120} />, { width: 120, height: 16 });
   await settle();
@@ -80,7 +80,7 @@ test("stale fundamentals retain their disclosure and export provenance with a fr
   await exportPaneTable(paneId, "rv-stale-fundamentals.csv");
   const csv = takeSavedTextFile()!.text;
   expect(csv).toContain("PLD,Fundamentals retrieved,2026-09-11T23:52:16.139Z,Stale,true");
-  expect(csv).not.toContain("yahoo");
+  expect(csv).not.toContain("gloom");
   expect(csv).toContain("PLD,Fundamentals stale");
   stale = false;
   await act(async () => tui.setup().mockInput.pressKey("r"));

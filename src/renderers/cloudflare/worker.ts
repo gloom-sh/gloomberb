@@ -1,4 +1,5 @@
 import { handleHttpProxy } from "./http-proxy";
+import { createProxySessionGate } from "./proxy-session";
 import { HTTP_PROXY_PATH } from "../../utils/plugin-proxy-hosts";
 
 interface StaticAssetsBinding {
@@ -49,6 +50,8 @@ const APPLE_APP_SITE_ASSOCIATION = {
 const API_ORIGIN = "https://api.gloom.sh";
 const API_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
 type ApiFetch = (request: Request) => Promise<Response>;
+/** Module scope, so every request this isolate serves shares one session cache. */
+const proxySessions = createProxySessionGate({ sessionUrl: `${API_ORIGIN}/auth/get-session` });
 
 export const SECURITY_HEADERS = {
   "content-security-policy": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' https://api.github.com https://api.fiscaldata.treasury.gov https://plugins.gloom.sh; form-action 'self'; upgrade-insecure-requests",
@@ -92,7 +95,7 @@ export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: 
   if (API_PATH.test(url.pathname)) return proxyApi(request, fetchApi);
   // Before the GET/HEAD gate below, since plugin requests arrive as POST.
   if (url.pathname === HTTP_PROXY_PATH) {
-    return withSecurityHeaders(await handleHttpProxy(request));
+    return withSecurityHeaders(await handleHttpProxy(request, { sessions: proxySessions, fetchApi }));
   }
 
   if (request.method !== "GET" && request.method !== "HEAD") {

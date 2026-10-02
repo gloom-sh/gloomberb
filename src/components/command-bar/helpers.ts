@@ -8,12 +8,8 @@ export {
   coerceFieldString,
   coerceFieldValues,
   getFirstVisibleFieldId,
-  getWorkflowFieldDescription,
-  getVisibleWorkflowFields,
-  isWorkflowTextField,
   normalizeFieldOptions,
   normalizeWizardFields,
-  summarizeWorkflowFieldValue,
 } from "./workflow/fields";
 
 export type RouteCommandId = "security-description" | "layout";
@@ -52,38 +48,14 @@ export function getCollectionCommandVerb(action: CollectionMembershipAction): st
   return action === "add" ? "Add" : "Remove";
 }
 
-export function getScreenFooterLeft(route: CommandBarRoute | null): string {
-  if (!route) return "up/down move  enter select";
-  switch (route.kind) {
-    case "mode":
-      return "up/down move  enter select";
-    case "picker":
-      if (route.pickerId === "field-multi-select") {
-        const ordered = route.payload?.fieldType === "ordered-multi-select";
-        return ordered ? "up/down move  space toggle  [ ] reorder  enter done" : "up/down move  space toggle  enter done";
-      }
-      return "up/down move  enter select";
-    case "pane-settings":
-      return "up/down move  enter edit";
-    case "workflow":
-      return "tab move  enter act";
-    case "confirm":
-      return "enter confirm  esc cancel";
-    default:
-      return "up/down move  enter select";
-  }
+export function getScreenFooterLeft(_route: CommandBarRoute | null): string {
+  return "up/down move  enter select";
 }
 
 export function getScreenFooterRight(route: CommandBarRoute | null): string {
   if (!route) return "esc cancel";
 
-  if (route.kind === "workflow") return "backspace/esc back";
-  if (route.kind === "confirm") return "backspace/esc back";
-
-  if (
-    (route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings")
-    && route.query.trim().length > 0
-  ) {
+  if (route.query.trim().length > 0) {
     return "backspace delete  esc back";
   }
 

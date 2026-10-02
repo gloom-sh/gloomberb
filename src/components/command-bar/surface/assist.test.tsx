@@ -4,7 +4,7 @@ import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
-import type { AppAction } from "../../../state/app/context";
+import type { AppAction, AppContextStoreValue } from "../../../state/app/context";
 import { runAutomated } from "../../../telemetry/usage-counts";
 import { VERSION } from "../../../version";
 import { CommandBarHarness, createCommandBarTestControls, settleFrame } from "./test-harness";
@@ -673,7 +673,32 @@ describe("CommandBar search report", () => {
     expect(JSON.stringify(reports)).not.toContain("MSFT");
   });
 
-  test("sends the held choice as it stands when the bar closes on an open form", async () => {
+  // Closed with no Enter (a click outside, the bar's key, an unmount), the bar
+  // still sends the choice it held for the route a row opened.
+  test("sends the held choice as it stands when the bar closes on an open route", async () => {
+    signInVerified();
+    const reports: unknown[] = [];
+    mockAssistTransport(() => jsonResponse(generalAnswer), reports);
+
+    await tui.render(<CommandBarHarness query="DES" live />, { width: 100, height: 20 });
+
+    await tui.setup().renderOnce();
+    await tui.emitKeypress({ name: "tab" });
+    await typeKeys(["M", "S", "F", "T"]);
+    await waitForFrameToContain("NASDAQ MSFT");
+    await closeAndSettle();
+    expect(reports).toEqual([{
+      query: "DES",
+      outcome: "chosen",
+      choice: expect.objectContaining({ kind: "shortcut", input: "DES", rank: 0 }),
+      appVersion: VERSION,
+    }]);
+    expect(JSON.stringify(reports)).not.toContain("MSFT");
+  });
+
+  // A form opens in the form modal and the bar closes behind it, so the row
+  // that opened it ran; what is typed in the form is never part of the search.
+  test("reports a row that opened a form as chosen, and nothing typed in the form", async () => {
     signInVerified();
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
@@ -685,6 +710,7 @@ describe("CommandBar search report", () => {
     await waitForFrameToContain("Quote Tickers");
     await typeKeys(["N", "V", "D", "A"]);
     await waitForFrameToContain("NVDA");
+    await tui.emitKeypress({ name: "escape" });
     await closeAndSettle();
     expect(reports).toEqual([{
       query: "QQ",
@@ -695,23 +721,24 @@ describe("CommandBar search report", () => {
     expect(JSON.stringify(reports)).not.toContain("NVDA");
   });
 
-  test("backing out of the form a row opened takes that choice back", async () => {
+  test("backing out of the route a row opened takes that choice back", async () => {
     signInVerified();
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
 
-    await tui.render(<CommandBarHarness query="QQ" live />, { width: 100, height: 24 });
+    await tui.render(<CommandBarHarness query="DES" live />, { width: 100, height: 20 });
 
     await tui.setup().renderOnce();
-    await tui.emitKeypress({ name: "return", sequence: "\r" });
-    await waitForFrameToContain("Quote Tickers");
+    await tui.emitKeypress({ name: "tab" });
+    await typeKeys(["M", "S", "F", "T"]);
+    await waitForFrameToContain("NASDAQ MSFT");
     await tui.emitKeypress({ name: "escape" });
-    await waitForFrameWithout("Quote Tickers");
+    await waitForFrameWithout("NASDAQ MSFT");
     await typeKeys(["BACKSPACE"]);
     await tui.emitKeypress({ name: "escape" });
     await waitForReports(reports);
     await settleFrame(tui.setup(), 50);
-    expect(reports).toEqual([{ query: "Q", outcome: "dismissed", appVersion: VERSION }]);
+    expect(reports).toEqual([{ query: "DE", outcome: "dismissed", appVersion: VERSION }]);
   });
 
   test("reports a theme picked at the root, not the row that only opened the picker", async () => {
@@ -801,16 +828,16 @@ describe("CommandBar search report", () => {
     signInVerified(false);
     const reports: unknown[] = [];
     mockAssistTransport(() => jsonResponse(generalAnswer), reports);
-    let dispatch: ((action: AppAction) => void) | undefined;
+    const storeRef: { current: AppContextStoreValue | null } = { current: null };
 
     await tui.render(
-      <CommandBarHarness query="" live onDispatch={(next) => { dispatch = next; }} />,
+      <CommandBarHarness query="" live storeRef={storeRef} />,
       { width: 100, height: 20 },
     );
     await tui.setup().renderOnce();
     await typeKeys(["n", "v"]);
     await act(async () => {
-      dispatch?.({ type: "SET_COMMAND_BAR", open: true, query: "Reset All Data" });
+      storeRef.current!.dispatch({ type: "SET_COMMAND_BAR", open: true, query: "Reset All Data" });
       await tui.setup().renderOnce();
     });
     await settleFrame(tui.setup());

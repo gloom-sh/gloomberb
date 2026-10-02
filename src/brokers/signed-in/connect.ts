@@ -4,6 +4,7 @@
  * connecting again syncs the profile it already has.
  */
 import { ApiRequestError } from "../../api-client/errors";
+import { withDeadline } from "../../utils/async-deadline";
 import type { AppConfig, BrokerInstanceConfig } from "../../types/config";
 import { findSignedInBroker } from "./catalog";
 import { disconnectSignedInBroker, type SignedInBroker } from "./client";
@@ -31,7 +32,7 @@ export interface ConnectSignedInBrokerDeps<T> {
   getConfig(): AppConfig;
   createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>): Promise<BrokerInstanceConfig>;
   syncBrokerInstance(instanceId: string): Promise<T>;
-  /** Opens the connect dialog; replaced in tests. */
+  /** Asks the user to connect: a form's own connect step, or the connect dialog when missing. */
   requestSignIn?: (broker: SignedInBroker) => Promise<boolean>;
 }
 
@@ -50,20 +51,32 @@ export async function connectSignedInBrokerProfile<T>(
   return { instance, synced: await deps.syncBrokerInstance(instance.id) };
 }
 
+/** Long enough for a slow answer, short enough that removing a profile never hangs on one. */
+const DISCONNECT_TIMEOUT_MS = 10_000;
+
+/** What became of the Gloom account's connection behind a profile being removed. */
+export type SignedInProfileDisconnect =
+  | { stillConnected: false }
+  /** The account keeps the broker: signed out of Gloom, or Gloom did not do it. */
+  | { stillConnected: true; signedOut: boolean };
+
 /**
  * Disconnects the Gloom account's connection behind a signed-in profile before
- * the profile goes. Already gone is fine; signed out of Gloom, the account
- * keeps the broker, which the caller reports as `stillConnected`.
+ * the profile goes. Already gone is fine. It never throws: the profile leaves
+ * this device whatever Gloom answers, and the caller says what the account kept.
  */
-export async function disconnectSignedInProfile(instance: BrokerInstanceConfig): Promise<{ stillConnected: boolean }> {
+export async function disconnectSignedInProfile(instance: BrokerInstanceConfig): Promise<SignedInProfileDisconnect> {
   if (!isSignedInBrokerProfile(instance)) return { stillConnected: false };
   try {
-    await disconnectSignedInBroker(signedInBrokerId(instance));
+    await withDeadline(
+      disconnectSignedInBroker(signedInBrokerId(instance)),
+      DISCONNECT_TIMEOUT_MS,
+      "Gloom did not answer the disconnect.",
+    );
     return { stillConnected: false };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) return { stillConnected: false };
-    if (error instanceof ApiRequestError && error.status === 401) return { stillConnected: true };
-    throw error;
+    return { stillConnected: true, signedOut: error instanceof ApiRequestError && error.status === 401 };
   }
 }
 

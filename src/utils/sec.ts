@@ -8,7 +8,7 @@ const US_EQUITY_EXCHANGES = new Set([
   "IEX",
   "OTC",
   "PINK",
-  // Yahoo's codes for Cboe BZX and the OTC Markets tiers.
+  // Listing codes for Cboe BZX and the OTC Markets tiers.
   "BTS",
   "PNK",
   "OQB",

@@ -100,7 +100,7 @@ export function normalizeIncludes(
 ): RemoteStateInclude[] {
   const raw = include ?? defaults;
   if (raw.includes("all")) {
-    return ["app", "layout", "panes", "commandBar", "ui", "schema", "help"];
+    return ["app", "layout", "panes", "commandBar", "form", "ui", "schema", "help"];
   }
   return [...new Set(raw)];
 }

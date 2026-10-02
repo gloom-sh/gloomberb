@@ -14,7 +14,7 @@ const points = (time = "2026-09-21T19:45:00Z"): PricePoint[] => [
   { date: new Date(time), close: 338.8900146484375, volume: 203 },
 ];
 const session = (overrides: Partial<HistorySession> = {}): HistorySession => ({ version: 1, kind: "regular", calendar: "us-equity",
-  timeZone: "America/New_York", symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "yahoo",
+  timeZone: "America/New_York", symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "gloom",
   timestampConvention: "bar-open", barAlignment: "session-open", observedAt: PREOPEN, ...overrides });
 const policy = { staleMs: 86_400_000, expireMs: 172_800_000 };
 const read = (router: AssetDataRouter, end = new Date()) => router.getDetailedPriceHistoryWithMetadata("AAPL", "NASDAQ", start, end, "15m");
@@ -96,7 +96,7 @@ test("sessionless caches, foreign assets and contradictory session records canno
   ] as const) {
     const calls: string[] = [], store = new AppPersistence(createTempDbPath("regular-unknown"));
     try {
-      const variant = "exchange=" + exchange + ";range=1M;resolution=15m;version=6";
+      const variant = "exchange=" + exchange + ";range=1M;resolution=15m;version=7";
       store.resources.set({ namespace: "market", kind: "price-history", entityKey: symbol, variantKey: variant, sourceKey: "provider:gloomberb-cloud" },
         { points: points("2026-09-18T19:45:00Z"), resolution: "15m" }, { cachePolicy: policy });
       const router = new AssetDataRouter(provider(() => ({ points: points(), resolution: "15m", session: metadata }), calls), [], store.resources);

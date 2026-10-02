@@ -1,4 +1,4 @@
-import { yahooSuffixExchange } from "../yahoo-finance/symbols";
+import { listingSuffixExchange } from "../listing-symbols";
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
@@ -11,9 +11,19 @@ import { providerFinancialsMatchTarget, providerQuoteMatchesTarget } from "./fin
 const MARKET_NAMESPACE = "market";
 // A record written under another version is a miss: bump these instead of
 // repairing older records on read.
-export const FINANCIALS_SCHEMA_VERSION = 12;
-export const QUOTE_SCHEMA_VERSION = 2;
-const SCHEMA_VERSIONS: Record<string, number> = { financials: FINANCIALS_SCHEMA_VERSION, quote: QUOTE_SCHEMA_VERSION };
+export const FINANCIALS_SCHEMA_VERSION = 13;
+export const QUOTE_SCHEMA_VERSION = 3;
+export const MARKET_METADATA_SCHEMA_VERSION = 2;
+// Refresh persisted provider metadata through the managed backend on upgrade.
+const SCHEMA_VERSIONS: Record<string, number> = {
+  financials: FINANCIALS_SCHEMA_VERSION,
+  quote: QUOTE_SCHEMA_VERSION,
+  holders: MARKET_METADATA_SCHEMA_VERSION,
+  "analystResearch-v2": MARKET_METADATA_SCHEMA_VERSION,
+  "corporateActions-v2": MARKET_METADATA_SCHEMA_VERSION,
+  "options-chain": MARKET_METADATA_SCHEMA_VERSION,
+  "exchange-rate": MARKET_METADATA_SCHEMA_VERSION,
+};
 
 const DEFAULT_CACHE_POLICIES = {
   brokerQuote: { staleMs: 15_000, expireMs: 15 * 60_000 },
@@ -57,7 +67,7 @@ export function buildVariantKey(parts: Array<[string, string | number | undefine
 export function getRouterEntityKey(ticker: string, instrument?: BrokerContractRef | null): string {
   if (instrument) return `contract:${brokerContractIdentityKey(instrument)}`;
   const target = parsePublicTickerKey(ticker);
-  const suffixExchange = !target.exchange && yahooSuffixExchange(target.symbol);
+  const suffixExchange = !target.exchange && listingSuffixExchange(target.symbol);
   // Earlier bare-suffix caches may have parsed dates using unrelated exchange
   // metadata or UTC. A qualified entity bypasses those records on upgrade.
   return suffixExchange ? `${target.symbol}:${suffixExchange}` : normalizeTicker(ticker);
@@ -191,7 +201,7 @@ export function listCachedResources<T>(
     const value = record.value as TickerFinancials;
     const statistics = value.fundamentals;
     const hasDividendProvenance = ["forward", "trailing"].includes(statistics?.dividendYieldBasis ?? "")
-      && ["twelvedata", "yahoo"].includes(statistics?.dividendYieldSource ?? "");
+      && statistics?.dividendYieldSource === "gloom";
     if (statistics?.dividendYield == null || hasDividendProvenance) return record;
     return { ...record, stale: true, value: { ...value, fundamentals: { ...statistics,
       dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined, dividendRate: undefined } } as T };

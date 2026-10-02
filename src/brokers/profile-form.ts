@@ -1,6 +1,7 @@
 import type { BrokerAdapter, BrokerConfigField } from "../types/broker";
 import type { BrokerInstanceConfig } from "../types/config";
 import { resolveBrokerConfigFields } from "../types/broker";
+import { t, tf } from "../i18n";
 
 export interface BrokerProfileDraft {
   label: string;
@@ -93,7 +94,7 @@ export function validateBrokerProfileValues(
   for (const field of getVisibleBrokerConfigFields(adapter, resolvedValues)) {
     if (!field.required) continue;
     if (!normalizeFormValue(resolvedValues[field.key]).trim()) {
-      return `${field.label} is required.`;
+      return tf("{label} is required.", { label: t(field.label) });
     }
   }
   return null;

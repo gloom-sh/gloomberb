@@ -24,6 +24,7 @@ export function buildLayoutResultItems({
   confirmDangerousActions,
   dispatch,
   duplicatePane,
+  getState,
   openBuiltInWorkflow,
   openInlineConfirm,
   persistLayoutChange,
@@ -36,6 +37,7 @@ export function buildLayoutResultItems({
   confirmDangerousActions?: boolean;
   dispatch: Dispatch<AppAction>;
   duplicatePane: (paneId: string) => void;
+  getState: () => AppState;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   persistLayoutChange: (layout: LayoutConfig) => void;
@@ -50,6 +52,7 @@ export function buildLayoutResultItems({
     dispatch,
     duplicatePane,
     focusedPaneId: state.focusedPaneId,
+    getState,
     openBuiltInWorkflow,
     openInlineConfirm,
     persistLayoutChange,

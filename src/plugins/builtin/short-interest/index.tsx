@@ -3,7 +3,7 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   attachShortInterestHealth,
   resetShortInterestHealth,
-  YAHOO_SHORT_INTEREST_CONNECTION_ID,
+  SHORT_INTEREST_CONNECTION_ID,
 } from "./client";
 import { shortInterestHeadless } from "./headless";
 import { ShortInterestResearchTab, ShortInterestSurface } from "./surface";
@@ -17,11 +17,11 @@ export const shortInterestModule: PluginModule = {
   setup(ctx) {
     attachShortInterestHealth(ctx.connectionHealth);
     disposeConnection = ctx.connectionHealth.registerSource({
-      id: YAHOO_SHORT_INTEREST_CONNECTION_ID,
-      name: "Yahoo Finance Short Interest",
+      id: SHORT_INTEREST_CONNECTION_ID,
+      name: "Gloom Short Interest",
       kind: "api",
       ownerId: "ticker-research",
-      detail: "finance.yahoo.com",
+      detail: "api.gloom.sh",
       priority: 300,
     });
 
@@ -62,7 +62,7 @@ export const shortInterestModule: PluginModule = {
         id: "short-interest-pane",
         paneId: "short-interest",
         label: "Short Interest",
-        // Yahoo's key-statistics module only carries the current and prior settlement dates.
+        // The current snapshot only carries the current and prior settlement dates.
         description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume.",
         keywords: ["short", "interest", "si", "shorts", "borrow", "days", "cover"],
         shortcut: "SI",

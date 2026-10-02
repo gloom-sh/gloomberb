@@ -84,10 +84,10 @@ describe("event detail", () => {
   test("estimate drilldown and JSON retain distinct EPS/revenue inputs, currencies and attribution", () => {
     const eps = { date: "2026-09-30", period: "current quarter", currency: "USD", average: 4.4, low: 4, high: 5, yearAgo: 0, growth: 0, analysts: 12 };
     const revenue = { date: eps.date, period: eps.period, currency: "TWD", average: 1.45e12, low: 1.4e12, high: 1.5e12, yearAgo: 1e12, growth: .45, analysts: 20 };
-    const rows = buildEventRows(null, { symbol: "TSM", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z",
+    const rows = buildEventRows(null, { symbol: "TSM", providerId: "gloom", fetchedAt: "2026-09-11T12:00:00Z",
       recommendations: [], ratings: [], earningsEstimates: [eps], revenueEstimates: [revenue] }, null, "USD");
     const row = JSON.parse(JSON.stringify(rows[0]));
-    expect(row).toMatchObject({ estimateInputs: { eps, revenue }, estimateGrowthMetric: "eps", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z" });
+    expect(row).toMatchObject({ estimateInputs: { eps, revenue }, estimateGrowthMetric: "eps", providerId: "gloom", fetchedAt: "2026-09-11T12:00:00Z" });
     const detail = detailText(buildEventDetail({ row, secFilingsLoading: false, filing: null, documents: [], documentsLoading: false,
       inlineContent: new Map(), primaryContent: null, primaryContentLoading: false }));
     expect(detail).toContain("EPS consensus\nAverage: 4.4 USD\nLow: 4 USD\nHigh: 5 USD\nPrior year: 0 USD\nGrowth: 0.00%");
@@ -95,7 +95,7 @@ describe("event detail", () => {
     expect(detail).toContain("Growth: +45.00%");
     expect(detail).toContain("As of: 2026-09-11T12:00:00Z");
     // The pane says what the figures are, never which feed served them.
-    expect(detail).not.toContain("yahoo");
+    expect(detail).not.toContain("gloom");
   });
 
   test("matches reported earnings to nearby SEC earnings-release filings", () => {

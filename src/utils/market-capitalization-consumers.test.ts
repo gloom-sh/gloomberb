@@ -9,7 +9,7 @@ import { createTestTicker } from "../test-support/ticker";
 const ticker: TickerRecord = createTestTicker("F:XNYS", "Ford", { exchange: "NYSE" });
 const column = { id: "market_cap", label: "MCAP", width: 12, align: "right" as const };
 const fundamentals = { marketCap: 100, marketCapCurrency: "EUR", financialCurrency: "USD", freeCashFlow: -20,
-  source: "yahoo" as const, fetchedAt: "2026-09-11T15:23:57Z" };
+  source: "gloom" as const, fetchedAt: "2026-09-11T15:23:57Z" };
 const makeFinancials = (extra: Partial<TickerFinancials> = {}): TickerFinancials => ({
   annualStatements: [], quarterlyStatements: [], priceHistory: [], fundamentals, ...extra,
 });

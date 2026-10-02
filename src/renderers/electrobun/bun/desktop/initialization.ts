@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import { getGloomberbHome } from "../../../../data/config/home";
+import { getGloomberbDirs } from "../../../../data/config/home";
 import type { AppServices } from "../../../../core/app-services";
 import { restoreExtractedPlugins } from "../../../../cli/restore-plugins";
 import {
@@ -80,7 +80,7 @@ function buildInitializationPayload(
 }
 
 async function resolveDesktopDataDir(): Promise<string> {
-  const dataDir = await getDataDir() ?? getGloomberbHome();
+  const dataDir = await getDataDir() ?? getGloomberbDirs().data;
   if (!existsSync(dataDir)) {
     mkdirSync(dataDir, { recursive: true });
   }

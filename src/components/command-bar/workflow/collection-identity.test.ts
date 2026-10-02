@@ -97,7 +97,7 @@ test("portfolio forms update the selected portfolio owner without duplicating re
   }
 });
 
-test("watchlist commands reuse the existing membership for exchange and Yahoo aliases", async () => {
+test("watchlist commands reuse the existing membership for exchange and exchange-suffixed aliases", async () => {
   for (const query of ["VOD:XLON", "VOD.L"]) {
     const h = await harness(holding("VOD", { exchange: "LSE", currency: "GBP" }), query);
     await h.command("add-watchlist", "watchlist");

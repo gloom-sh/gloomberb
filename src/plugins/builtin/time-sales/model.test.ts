@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
+import type { TapeSnapshot } from "../../../api-client/tape";
 import { tapeFixture } from "./test-fixture";
 import { fetchTape, validateTape } from "./client";
 import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClock, tapeClockMs, tapeClockNewYork, tapeConditionWords, tapePrice, tapeStatistics, tapeTicks, tradeKey } from "./model";
@@ -30,6 +31,13 @@ test("one-sided, locked and crossed quotes retain source lots and never invent a
 });
 
 test("snapshot boundary rejects cross-ticker data, oversize buffers, malformed IDs and delayed-feed leaks", () => {
+  const legacy = { ...tapeFixture(), source: "prior-service" } as unknown as TapeSnapshot;
+  expect(validateTape(legacy, "AAPL", "NASDAQ")).toEqual({ ...tapeFixture(), source: "Gloom Cloud" });
+  expect(legacy.source as string).toBe("prior-service");
+  for (const source of ["", "  ", undefined, 42]) {
+    expect(() => validateTape({ ...tapeFixture(), source } as unknown as TapeSnapshot, "AAPL", "NASDAQ"))
+      .toThrow("invalid tape snapshot");
+  }
   expect(() => validateTape(tapeFixture(), "MSFT", "NASDAQ")).toThrow("invalid tape snapshot");
   const over = tapeFixture(); over.capacity.trades = 1001;
   expect(() => validateTape(over, "AAPL", "NASDAQ")).toThrow("invalid tape snapshot");

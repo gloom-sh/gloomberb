@@ -1,6 +1,6 @@
 import type { Quote, QuoteMetadata } from "../../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
-import { getYahooSymbolsToTry } from "../../sources/yahoo-finance/symbols";
+import { getListingSymbolsToTry } from "../../sources/listing-symbols";
 
 export function quoteMetadataFromQuote(quote: Quote): QuoteMetadata {
   return {
@@ -50,6 +50,6 @@ export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: stri
   if (target.symbol === actual.symbol) return true;
   const listing = requestedExchange || actualExchange;
   if (!listing) return false;
-  const candidates = getYahooSymbolsToTry(target.symbol, listing, { exactExchange: true });
-  return getYahooSymbolsToTry(actual.symbol, listing, { exactExchange: true }).some((candidate) => candidates.includes(candidate));
+  const candidates = getListingSymbolsToTry(target.symbol, listing, { exactExchange: true });
+  return getListingSymbolsToTry(actual.symbol, listing, { exactExchange: true }).some((candidate) => candidates.includes(candidate));
 }

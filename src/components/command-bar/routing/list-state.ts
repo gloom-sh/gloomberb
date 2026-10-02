@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import type { PluginRegistry } from "../../../plugins/registry";
 import {
   getEmptyState,
   type CommandBarCategoryPriorities,
@@ -16,9 +15,9 @@ import {
   type ResultItem,
 } from "../list/model";
 import type { matchPrefix } from "../commands/registry";
-import { getVisibleMultiSelectPickerOptions } from "../multi-select-picker";
+import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import type { CommandBarRoute } from "../workflow/types";
-import { tc } from "../../../i18n";
+import { t, tc } from "../../../i18n";
 
 type ActiveCommandMatch = ReturnType<typeof matchPrefix>;
 
@@ -29,14 +28,8 @@ interface BuildRouteListStateOptions {
     routePayload: Record<string, unknown> | undefined,
   ) => ResultItem;
   buildLayoutItems: (query: string) => ResultItem[];
-  buildPaneSettingItems: (
-    paneId: string | null,
-    query: string,
-    options?: { keepRouteOpen?: boolean },
-  ) => ResultItem[];
   currentRoute: CommandBarRoute | null;
   orderedRootResults: ResultItem[];
-  pluginRegistry: Pick<PluginRegistry, "resolvePaneSettings">;
   rootHoveredIdx: number | null;
   rootModeKind: CommandBarMode;
   rootQuery: string;
@@ -53,10 +46,8 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
     activeMatch,
     adaptTickerSearchRouteResult,
     buildLayoutItems,
-    buildPaneSettingItems,
     currentRoute,
     orderedRootResults,
-    pluginRegistry,
     rootHoveredIdx,
     rootModeKind,
     rootCategoryPriorities,
@@ -135,7 +126,9 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
   }
 
   if (currentRoute.kind === "picker") {
-    const filteredOptions = getVisibleMultiSelectPickerOptions(currentRoute);
+    const filteredOptions = currentRoute.query
+      ? fuzzyFilter(currentRoute.options, currentRoute.query, (option) => `${option.label} ${t(option.label)} ${option.detail || ""} ${option.description || ""}`)
+      : currentRoute.options;
     const filtered = filteredOptions.map((option) => ({
       id: option.id,
       label: option.label,
@@ -163,26 +156,6 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
     };
   }
 
-  if (currentRoute.kind === "pane-settings") {
-    const descriptor = pluginRegistry.resolvePaneSettings(currentRoute.paneId);
-    if (!descriptor) return null;
-    const filtered = buildPaneSettingItems(currentRoute.paneId, currentRoute.query, { keepRouteOpen: true });
-    return {
-      kind: "pane-settings",
-      title: descriptor.settingsDef.title || "Pane Settings",
-      subtitle: descriptor.pane.title || descriptor.paneDef.name,
-      query: currentRoute.query,
-      selectedIdx: currentRoute.selectedIdx,
-      hoveredIdx: currentRoute.hoveredIdx,
-      results: orderListResults(filtered),
-      searching: false,
-      emptyLabel: "No settings match",
-      emptyDetail: currentRoute.query || "This pane exposes no settings.",
-      footerLeft: getScreenFooterLeft(currentRoute),
-      footerRight: getScreenFooterRight(currentRoute),
-    };
-  }
-
   return null;
 }
 
@@ -191,10 +164,8 @@ export function useRouteListState(options: BuildRouteListStateOptions): ListScre
     activeMatch,
     adaptTickerSearchRouteResult,
     buildLayoutItems,
-    buildPaneSettingItems,
     currentRoute,
     orderedRootResults,
-    pluginRegistry,
     rootCategoryPriorities,
     rootHoveredIdx,
     rootModeKind,
@@ -210,10 +181,8 @@ export function useRouteListState(options: BuildRouteListStateOptions): ListScre
     activeMatch,
     adaptTickerSearchRouteResult,
     buildLayoutItems,
-    buildPaneSettingItems,
     currentRoute,
     orderedRootResults,
-    pluginRegistry,
     rootCategoryPriorities,
     rootHoveredIdx,
     rootModeKind,

@@ -1,14 +1,11 @@
 import { useShortcut, type KeyEventLike } from "../../react/input";
 import { matchesKeyChord, useKeybindings, type ResolvedKeybindings } from "../../app/keybindings";
-import type { SelectFieldHandle } from "../ui/select-field";
+import { useDialogState } from "../../ui/dialog";
 import {
   consumeShortcutEvent,
-  handleConfirmRouteShortcut,
-  handlePaneSettingsRouteShortcut,
   handlePickerRouteShortcut,
   handleRouteBackShortcut,
   handleThemePickerShortcut,
-  handleWorkflowRouteShortcut,
   isCommitShortcut,
   isMoveDownShortcut,
   isMoveUpShortcut,
@@ -18,46 +15,24 @@ import {
 } from "./keyboard-handlers";
 import type { ListJump, ListScreenState } from "./list/model";
 import type { ThemePickerHandle } from "./theme-picker";
-import type {
-  CommandBarFieldValue,
-  CommandBarRoute,
-  CommandBarWorkflowField,
-  CommandBarWorkflowRoute,
-} from "./workflow/types";
+import type { CommandBarRoute } from "./workflow/types";
 
 interface CommandBarKeyboardShortcutArgs {
   acceptRootShortcutTab: () => boolean;
   acceptSelectedShortcutTab: () => boolean;
   activateListSelection: (options?: { secondary?: boolean }) => void;
-  commitMultiSelectPicker: () => void;
-  confirmCurrentRoute: () => void | Promise<void>;
   currentRoute: CommandBarRoute | null;
   dismissCommandBar: () => void;
-  getWorkflowFieldStringValue: (
-    field: CommandBarWorkflowField,
-    value: CommandBarFieldValue | undefined,
-  ) => string;
-  handleMultiSelectMove: (direction: "up" | "down") => void;
-  handleMultiSelectToggle: (optionId: string) => void;
   jumpListSelection: (target: ListJump) => void;
   moveListSelection: (delta: number) => void;
-  moveWorkflowFocus: (delta: number) => void;
-  nativePaneChrome: boolean;
-  openWorkflowFieldPicker: (
-    route: CommandBarWorkflowRoute,
-    field: CommandBarWorkflowField,
-  ) => void;
   popRoute: () => void;
   /** Clears an AI assist request; returns true when Esc was spent on it. */
   resetAssist: () => boolean;
   rootModeKind: string;
   setActiveListQuery: (query: string) => void;
-  submitWorkflowRoute: (route: CommandBarWorkflowRoute) => void | Promise<void>;
   themePickerActive: boolean;
   themePickerRef: RefLike<ThemePickerHandle | null>;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
   visibleListStateRef: RefLike<ListScreenState | null>;
-  workflowSelectFieldRefs: RefLike<Map<string, SelectFieldHandle>>;
 }
 
 /**
@@ -75,39 +50,27 @@ function isTickerSearchToggle(event: KeyEventLike, keybindings: ResolvedKeybindi
   ));
 }
 
-/** Screens that type into the header prompt and pick from a list under it. */
-function isListScreenRoute(route: CommandBarRoute | null): boolean {
-  return !route || route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings";
-}
-
 export function useCommandBarKeyboardShortcuts({
   acceptRootShortcutTab,
   acceptSelectedShortcutTab,
   activateListSelection,
-  commitMultiSelectPicker,
-  confirmCurrentRoute,
   currentRoute,
   dismissCommandBar,
-  getWorkflowFieldStringValue,
-  handleMultiSelectMove,
-  handleMultiSelectToggle,
   jumpListSelection,
   moveListSelection,
-  moveWorkflowFocus,
-  nativePaneChrome,
-  openWorkflowFieldPicker,
   popRoute,
   resetAssist,
   rootModeKind,
   setActiveListQuery,
-  submitWorkflowRoute,
   themePickerActive,
   themePickerRef,
-  updateWorkflowValue,
   visibleListStateRef,
-  workflowSelectFieldRefs,
 }: CommandBarKeyboardShortcutArgs): void {
   const keybindings = useKeybindings();
+  // The bar sits under every dialog; one opened over it (a form, a sign-in)
+  // gets the keyboard. The bar's handler runs first in the dispatch, so it
+  // steps aside rather than relying on the dialog to stop it.
+  const dialogOpen = useDialogState((state) => state.isOpen);
   useShortcut((event) => {
     if (event.name === "escape" || isTickerSearchToggle(event, keybindings)) {
       event.stopPropagation();
@@ -118,34 +81,25 @@ export function useCommandBarKeyboardShortcuts({
       return;
     }
 
-    if (isListScreenRoute(currentRoute)) {
-      const jump = resolveListJump(event);
-      if (jump) {
-        consumeShortcutEvent(event);
-        if (themePickerActive) themePickerRef.current?.jump(jump);
-        else jumpListSelection(jump);
-        return;
-      }
-      // The query input keeps the keyboard: Tab completes a command prefix on
-      // the root and walks the list on nested screens, but never moves focus
-      // out of the bar.
-      if (isPlainTab(event)) {
-        consumeShortcutEvent(event);
-        if (currentRoute) {
-          moveListSelection(event.shift ? -1 : 1);
-        } else if (visibleListStateRef.current && !acceptRootShortcutTab()) {
-          acceptSelectedShortcutTab();
-        }
-        return;
-      }
+    // Every screen of the bar types into the header prompt and picks from a
+    // list under it.
+    const jump = resolveListJump(event);
+    if (jump) {
+      consumeShortcutEvent(event);
+      if (themePickerActive) themePickerRef.current?.jump(jump);
+      else jumpListSelection(jump);
+      return;
     }
-
-    if (handleConfirmRouteShortcut({
-      confirmCurrentRoute,
-      currentRoute,
-      event,
-      popRoute,
-    })) {
+    // The query input keeps the keyboard: Tab completes a command prefix on
+    // the root and walks the list on nested screens, but never moves focus
+    // out of the bar.
+    if (isPlainTab(event)) {
+      consumeShortcutEvent(event);
+      if (currentRoute) {
+        moveListSelection(event.shift ? -1 : 1);
+      } else if (visibleListStateRef.current && !acceptRootShortcutTab()) {
+        acceptSelectedShortcutTab();
+      }
       return;
     }
 
@@ -153,35 +107,7 @@ export function useCommandBarKeyboardShortcuts({
       return;
     }
 
-    if (handleWorkflowRouteShortcut({
-      currentRoute,
-      event,
-      getWorkflowFieldStringValue,
-      moveWorkflowFocus,
-      nativePaneChrome,
-      openWorkflowFieldPicker,
-      popRoute,
-      submitWorkflowRoute,
-      updateWorkflowValue,
-      workflowSelectFieldRefs,
-    })) {
-      return;
-    }
-
     if (handlePickerRouteShortcut({
-      activateListSelection,
-      commitMultiSelectPicker,
-      currentRoute,
-      event,
-      handleMultiSelectMove,
-      handleMultiSelectToggle,
-      moveListSelection,
-      visibleListStateRef,
-    })) {
-      return;
-    }
-
-    if (handlePaneSettingsRouteShortcut({
       activateListSelection,
       currentRoute,
       event,
@@ -235,5 +161,5 @@ export function useCommandBarKeyboardShortcuts({
       }
       activateListSelection();
     }
-  }, { phase: "before", allowEditable: true });
+  }, { phase: "before", allowEditable: true, enabled: !dialogOpen });
 }

@@ -1,7 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
-import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
 import { createOpenTuiTestHarness, settleFrame, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -18,13 +17,13 @@ afterEach(() => {
 
 test("reported percentages fit at normal width and dated rows remain usable through narrow scroll and refresh", async () => {
   let updated = false;
-  const cloud = spyOn(apiClient, "getCloudShortInterest").mockRejectedValue(new Error("Controlled history unavailable"));
-  const yahoo = spyOn(YahooHttpClient.prototype, "fetchJsonWithCrumb").mockImplementation(async <T,>() => ({ quoteSummary: { result: [{ defaultKeyStatistics: {
-    dateShortInterest: updated ? "2026-09-15" : "2026-08-31", sharesShort: { raw: 20_000_000 },
-    sharesShortPreviousMonthDate: "2026-08-14", sharesShortPriorMonth: { raw: 10_000_000 },
-    shortRatio: { raw: 2.3 }, shortPercentOfFloat: { raw: .25 }, floatShares: { raw: 100_000_000 },
-  } }] } }) as T);
-  restore = () => { cloud.mockRestore(); yahoo.mockRestore(); };
+  const cloud = spyOn(apiClient, "getCloudShortInterest").mockImplementation(async () => ({ status: "success", data: {
+    symbol: "TEST", issueName: null, source: "gloom", points: [
+      { settlementDate: "2026-08-14", sharesShort: 10_000_000, daysToCover: null, averageDailyVolume: null, previousSharesShort: null, changePercent: null, revised: false },
+      { settlementDate: updated ? "2026-09-15" : "2026-08-31", sharesShort: 20_000_000, daysToCover: 2.3, shortPercentFloat: 25, averageDailyVolume: null, previousSharesShort: null, changePercent: null, revised: false },
+    ],
+  } }));
+  restore = () => cloud.mockRestore();
   const config = createTestPaneConfig("/tmp/short-interest-test-unused", { instanceId: "si", paneId: "short-interest" });
   const state = createInitialState(config); state.focusedPaneId = "si";
   state.paneState.si = { cursorSymbol: "TEST" }; state.tickers.set("TEST", createTestTicker("TEST", "Controlled issuer", { assetCategory: "STK" }));
@@ -52,9 +51,9 @@ test("reported percentages fit at normal width and dated rows remain usable thro
   updated = true;
   await tui.emitKeypress({ name: "r" }); await settleFrame(tui.setup(), 10);
   expect(tui.frame()).toContain("2026-09-15");
-  expect(yahoo).toHaveBeenCalledTimes(2);
+  expect(cloud).toHaveBeenCalledTimes(2);
   await tui.emitKeypress({ name: "r", ctrl: true }); await settleFrame(tui.setup(), 6);
-  expect(yahoo).toHaveBeenCalledTimes(2);
+  expect(cloud).toHaveBeenCalledTimes(2);
 });
 
 test("the settlements table drives the shares-short chart and keeps its rows in a short pane", async () => {

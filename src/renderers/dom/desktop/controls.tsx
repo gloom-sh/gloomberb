@@ -537,10 +537,11 @@ export function WebDialogFrame({
   footer,
   showTitleDivider = false,
   onClose,
+  shrinkable = false,
 }: DialogFrameProps) {
   const colors = useThemeColors();
   return (
-    <Box flexDirection="column" style={{ padding: 14 }}>
+    <Box flexDirection="column" minHeight={shrinkable ? 0 : undefined} style={{ padding: 14 }}>
       <Box
         flexDirection="row"
         alignItems="flex-start"

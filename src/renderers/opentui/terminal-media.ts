@@ -1,5 +1,5 @@
 import { join } from "path";
-import { getGloomberbHome } from "../../data/config/home";
+import { getGloomberbDirs } from "../../data/config/home";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
 
 /** The subset of `Bun.Subprocess` this module needs, so tests can supply a fake. */
@@ -29,7 +29,7 @@ export interface TerminalMediaReaper {
 }
 
 export function terminalMediaStateFile(): string {
-  return join(getGloomberbHome(), "terminal-media.pid");
+  return join(getGloomberbDirs().data, "terminal-media.pid");
 }
 
 /**

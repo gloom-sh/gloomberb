@@ -18,7 +18,7 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
     || !Array.isArray(data.gaps) || !data.gaps.every((gap) => typeof gap === "string")
     || !data.catalogue || !data.slope || !timestamp(data.fetchedAt)
     || data.asOf !== null && !timestamp(data.asOf)
-    || !["yahoo", "cboe"].includes(data.source) || !["available", "partial", "unavailable"].includes(data.status)) {
+    || !["gloom", "cboe"].includes(data.source) || !["available", "partial", "unavailable"].includes(data.status)) {
     throw new Error("The server returned an invalid futures curve");
   }
   const symbols = new Set<string>();

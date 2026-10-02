@@ -1,23 +1,23 @@
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { createProviderMiss } from "./provider-errors";
-import { yahooSuffixConflictsWithExchange, yahooSuffixExchange } from "./yahoo-finance/symbols";
+import { listingSuffixConflictsWithExchange, listingSuffixExchange } from "./listing-symbols";
 
 /** Explicit public qualifications must agree; bare suffixes outrank remembered metadata. */
 export function publicListingTarget(symbol: string, exchange?: string) {
   const parsed = parsePublicTickerKey(symbol);
-  if (parsed.exchange && yahooSuffixConflictsWithExchange(parsed.symbol, parsed.exchange)) {
+  if (parsed.exchange && listingSuffixConflictsWithExchange(parsed.symbol, parsed.exchange)) {
     throw createProviderMiss(`Listing suffix conflicts with exchange ${parsed.exchange}: ${symbol}`);
   }
   return {
     symbol: parsed.symbol,
-    exchange: parsed.exchange ?? yahooSuffixExchange(parsed.symbol) ?? (exchange ? canonicalExchange(exchange) : exchange),
+    exchange: parsed.exchange ?? listingSuffixExchange(parsed.symbol) ?? (exchange ? canonicalExchange(exchange) : exchange),
   };
 }
 
 /** Preserve a provider's venue spelling when the symbol itself has no listing hint. */
 export function publicListingExchange(symbol: string, exchange?: string): string | undefined {
   const parsed = parsePublicTickerKey(symbol);
-  return parsed.exchange || yahooSuffixExchange(parsed.symbol)
+  return parsed.exchange || listingSuffixExchange(parsed.symbol)
     ? publicListingTarget(symbol, exchange).exchange : exchange;
 }
 

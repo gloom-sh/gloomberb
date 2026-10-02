@@ -1,5 +1,6 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
 import { useShortcut, type KeyEventLike, type ShortcutOptions } from "../react/input";
+import { DialogContext } from "./dialog-context";
 
 export interface AlertContext {
   dialogId?: string;
@@ -45,15 +46,6 @@ export interface DialogApi {
   alert(options: DialogOptions<AlertContext>): Promise<void>;
   prompt<T = string>(options: DialogOptions<PromptContext<T>>): Promise<T | undefined>;
 }
-
-interface DialogContextValue {
-  dialog: DialogApi;
-  isOpen: boolean;
-  dialogId?: string;
-  keyboardEnabled: boolean;
-}
-
-const DialogContext = createContext<DialogContextValue | null>(null);
 
 export function DialogHostProvider({
   dialog,

@@ -21,17 +21,14 @@ import {
   getAvailablePaneTemplatesForState,
   getPaneTemplateDisplayLabel,
 } from "./items";
-import type { CommandBarWorkflowRoute } from "../workflow/types";
+import type { FormModalRequest } from "../../form-modal";
 import {
   resolveTickerInput,
   resolveTickerListInput,
   type SharedWorkflowDeps,
 } from "../workflow/ops";
 import type { PluginRegistry } from "../../../plugins/registry";
-import {
-  buildPaneTemplateWorkflowRoute,
-  shouldOpenPaneTemplateConfig,
-} from "./workflow-route";
+import { shouldOpenPaneTemplateConfig } from "./workflow-route";
 
 type CloseAllFn = (options?: { revertThemePreview?: boolean }) => void;
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
@@ -56,8 +53,8 @@ interface UseCommandBarPaneTemplateActionsOptions {
   executeCollectionCommand: ExecuteCollectionCommandFn;
   focusedPaneId: string | null;
   notify: NotifyFn;
+  openForm: (request: FormModalRequest) => void;
   openModeRoute: OpenModeRouteFn;
-  openWorkflowRoute: (route: CommandBarWorkflowRoute) => void;
   pluginRegistry: PluginRegistry;
 }
 
@@ -72,8 +69,8 @@ export function useCommandBarPaneTemplateActions({
   executeCollectionCommand,
   focusedPaneId,
   notify,
+  openForm,
   openModeRoute,
-  openWorkflowRoute,
   pluginRegistry,
 }: UseCommandBarPaneTemplateActionsOptions) {
   const getPaneTemplateContext = useCallback(() => buildPaneTemplateContext({
@@ -84,12 +81,8 @@ export function useCommandBarPaneTemplateActions({
   }), [activeCollectionId, activeTickerSymbol, config, focusedPaneId]);
 
   const openPaneTemplateWorkflow = useCallback((template: PaneTemplateDef, options?: { arg?: string }) => {
-    openWorkflowRoute(buildPaneTemplateWorkflowRoute({
-      activeTicker: activeTickerSymbol,
-      arg: options?.arg,
-      template,
-    }));
-  }, [activeTickerSymbol, openWorkflowRoute]);
+    openForm({ kind: "pane-template", templateId: template.id, arg: options?.arg });
+  }, [openForm]);
 
   const openPaneTemplateDirect = useCallback(async (
     template: PaneTemplateDef,

@@ -87,7 +87,7 @@ export function useBrokerImportRuntime({
 
     for (const position of result.positions) {
       throwIfBrokerImportCancelled(options?.signal);
-      // Skip Yahoo Finance for broker option symbols; position marks are already available.
+      // Skip market data for broker option symbols; position marks are already available.
       // Position data (markPrice, marketValue, unrealizedPnl) is used directly.
       if (options?.refreshImportedTickers !== false && position.assetCategory !== "OPT") {
         refreshQuote(position.ticker, position.exchange, undefined, 1);

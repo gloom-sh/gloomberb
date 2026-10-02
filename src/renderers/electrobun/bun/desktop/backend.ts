@@ -286,7 +286,13 @@ export class DesktopBackend {
       setTimeout(() => this.quit(), QUIT_FALLBACK_MS);
       return;
     }
-    rpc?.send["application-menu.select"]({ command });
+    if (!rpc) return;
+    // The bar and every form open in the main window; with a detached window
+    // key, the keys would go there instead.
+    if (command.type === "open-command-bar" || command.type === "open-builtin-workflow" || command.type === "open-plugin-workflow") {
+      this.detachedWindows.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);
+    }
+    rpc.send["application-menu.select"]({ command });
   }
 
   private quit(): void {

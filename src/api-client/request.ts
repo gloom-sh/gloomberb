@@ -17,6 +17,12 @@ import { SESSION_COOKIE_NAMES } from "./session-cookie";
 
 const DEFAULT_API_URL = "https://api.gloom.sh";
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS = 45_000;
+// Research may fill missing sections after a primary read; quote/history reads remain latency bounded.
+const RESEARCH_MARKET_PATHS = new Set([
+  "/market/dividends", "/market/short-interest", "/market/movers", "/market/trending",
+  "/market/heatmap", "/market/earnings-calendar",
+]);
 /** Local status for "this runtime cannot stream", never returned by the server. */
 export const STREAMING_UNSUPPORTED_STATUS = 0;
 
@@ -140,6 +146,7 @@ export class CloudApiRequestTransport {
   private cookieSessionMode = false;
   private readonly fetchTransport: CloudApiFetchTransport | null;
   private readonly marketRequestTimeoutMs: number;
+  private readonly researchRequestTimeoutMs: number;
   private readonly connectionHealth: ConnectionHealthRegistry;
 
   readonly baseUrl = getCloudApiBaseUrl();
@@ -154,6 +161,7 @@ export class CloudApiRequestTransport {
     this.fetchTransport = options.fetchTransport ?? null;
     this.marketRequestTimeoutMs =
       options.marketRequestTimeoutMs ?? DEFAULT_MARKET_REQUEST_TIMEOUT_MS;
+    this.researchRequestTimeoutMs = options.marketRequestTimeoutMs ?? DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS;
     this.connectionHealth = options.connectionHealth ?? connectionHealth;
   }
 
@@ -257,6 +265,8 @@ export class CloudApiRequestTransport {
       return this.performRequest<T>(path, options, canApplySession);
     }
 
+    const timeoutMs = RESEARCH_MARKET_PATHS.has(path.split("?")[0]!)
+      ? this.researchRequestTimeoutMs : this.marketRequestTimeoutMs;
     const controller = new AbortController();
     const callerSignal = options?.signal;
     const abortFromCaller = () => controller.abort(callerSignal?.reason);
@@ -273,8 +283,8 @@ export class CloudApiRequestTransport {
       }, canApplySession);
       return await withDeadline(
         request,
-        this.marketRequestTimeoutMs,
-        `Cloud market request timed out after ${this.marketRequestTimeoutMs}ms: ${path}`,
+        timeoutMs,
+        `Cloud market request timed out after ${timeoutMs}ms: ${path}`,
         (error) => controller.abort(error),
       );
     } finally {

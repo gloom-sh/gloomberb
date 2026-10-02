@@ -22,7 +22,7 @@ function installCloud() {
   const calls: Array<[string, string, string | undefined]> = [];
   apiClient.getCloudQuote = (async (symbol: string, exchange: string) => { calls.push(["quote", symbol, exchange]); return { status: "success", data: quote() }; }) as any;
   apiClient.getCloudFinancials = (async (symbol: string, exchange: string) => { calls.push(["financials", symbol, exchange]); return { status: "success", data: financials() }; }) as any;
-  apiClient.getCloudHistory = (async (symbol: string, exchange: string) => { calls.push(["history", symbol, exchange]); return { status: "success", providerMeta: { provider: "yahoo" }, currency: "JPY", data: [{ date: "2026-09-10 10:00:00", close: 3025 }] }; }) as any;
+  apiClient.getCloudHistory = (async (symbol: string, exchange: string) => { calls.push(["history", symbol, exchange]); return { status: "success", providerMeta: { provider: "gloom" }, currency: "JPY", data: [{ date: "2026-09-10 10:00:00", close: 3025 }] }; }) as any;
   return calls;
 }
 
@@ -52,7 +52,7 @@ test("old wrong-venue and unqualified caches cannot reintroduce Tokyo prices or 
   let store = new AppPersistence(path);
   try {
     for (const variantKey of ["exchange=TSX", ""]) store.resources.set({ namespace: "market", kind: "financials", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, financials(999), { schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: policy });
-    for (const variantKey of ["exchange=TSX;start=2026-09-01;end=2026-09-11;bar=1h;version=6", "start=2026-09-01;end=2026-09-11;bar=1h;version=6"]) store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, { points: [{ date: new Date("2026-09-10T14:00:00Z"), close: 999 }], resolution: "1h" }, { cachePolicy: policy });
+    for (const variantKey of ["exchange=TSX;start=2026-09-01;end=2026-09-11;bar=1h;version=7", "start=2026-09-01;end=2026-09-11;bar=1h;version=7"]) store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, { points: [{ date: new Date("2026-09-10T14:00:00Z"), close: 999 }], resolution: "1h" }, { cachePolicy: policy });
     // Unrelated records must survive any targeted repair.
     store.resources.set({ namespace: "market", kind: "financials", entityKey: "UNRELATED", variantKey: "exchange=NYSE", sourceKey: "provider:gloomberb-cloud" }, { ...financials(777), quote: { ...quote(777), symbol: "UNRELATED", currency: "USD", exchangeName: "NYSE", listingExchangeName: "NYSE" } }, { schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: policy });
     store.close(); store = new AppPersistence(path);

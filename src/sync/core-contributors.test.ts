@@ -287,6 +287,101 @@ describe("core sync contributors", () => {
     ]);
   });
 
+  test("merges broker profiles one by one once this device changed its own, so a removal on either side wins", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-broker-merge-test");
+    const flex = { id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", config: { token: "secret" }, lastSyncedAt: 100 };
+    const signedIn = { id: "signed-in-ibkr", brokerType: "signed-in", label: "IBKR", connectionMode: "ibkr", config: {}, lastSyncedAt: 100 };
+    const robinhood = { id: "robinhood", brokerType: "robinhood", label: "Robinhood", config: {}, lastSyncedAt: 100 };
+    const signedInPortfolio = {
+      id: "broker:signed-in-ibkr:U1",
+      name: "U1",
+      currency: "USD",
+      brokerId: "signed-in",
+      brokerInstanceId: "signed-in-ibkr",
+      brokerAccountId: "U1",
+      lastSyncedAt: 100,
+    };
+    config.brokerInstances = [flex, signedIn, robinhood];
+    config.portfolios = [...config.portfolios, signedInPortfolio];
+    const lastSynced = __syncContributorInternalsForTests.collectCoreConfigPayload(config);
+
+    // Here: Robinhood removed, IBKR synced again. Elsewhere: IBKR removed with
+    // its portfolio, Robinhood renamed, Schwab added.
+    const local = {
+      ...config,
+      brokerInstances: [flex, { ...signedIn, lastSyncedAt: 200 }],
+      portfolios: config.portfolios.map((portfolio) => portfolio.brokerInstanceId ? { ...portfolio, lastSyncedAt: 200 } : portfolio),
+    };
+    const pulled = __syncContributorInternalsForTests.collectCoreConfigPayload({
+      ...config,
+      brokerInstances: [flex, { ...robinhood, label: "Robinhood IRA" }, { id: "schwab", brokerType: "schwab", label: "Schwab", config: {} }],
+      portfolios: config.portfolios.filter((portfolio) => !portfolio.brokerInstanceId),
+    });
+
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(local, pulled, local, lastSynced);
+
+    expect(merged?.brokerInstances.map((instance) => instance.id)).toEqual(["ibkr-flex", "schwab"]);
+    expect(merged?.brokerInstances[0]?.config).toEqual({ token: "secret" });
+    expect(merged?.portfolios.map((portfolio) => portfolio.id)).toEqual(["main"]);
+
+    // An older build that changed its own profiles pushes its whole list,
+    // which lacks any profile added since it last pulled: it removes nothing.
+    const { brokerInstancesMergedById: _mergedById, ...fromOlderBuild } = pulled as Record<string, unknown>;
+    const kept = __syncContributorInternalsForTests.mergeConfigPayload(local, fromOlderBuild, local, lastSynced);
+    expect(kept?.brokerInstances.map((instance) => instance.id)).toEqual(["ibkr-flex", "signed-in-ibkr", "schwab"]);
+    expect(kept?.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", "broker:signed-in-ibkr:U1"]);
+  });
+
+  test("a profile removed elsewhere takes its positions here, and the tickers it alone held", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-broker-holdings-test");
+    const signedIn = { id: "signed-in-ibkr", brokerType: "signed-in", label: "IBKR", connectionMode: "ibkr", config: {} };
+    const account = { id: "broker:signed-in-ibkr:U1", name: "U1", currency: "USD", brokerId: "signed-in", brokerInstanceId: "signed-in-ibkr", brokerAccountId: "U1" };
+    config.brokerInstances = [signedIn];
+    config.portfolios = [...config.portfolios, account];
+    // As another device's pull left them: the broker's identity stripped.
+    const held = { portfolio: account.id, shares: 10, broker: "signed-in" };
+    const state = createInitialState(config);
+    state.tickers = new Map([
+      ["AAPL", createTestTicker("AAPL", "Apple", { portfolios: [account.id], positions: [held] })],
+      ["MSFT", createTestTicker("MSFT", "Microsoft", {
+        portfolios: [account.id, "main"],
+        positions: [{ ...held, brokerInstanceId: "signed-in-ibkr" }, { portfolio: "main", shares: 2, broker: "manual" }],
+      })],
+      ["NVDA", createTestTicker("NVDA", "NVIDIA", { portfolios: [account.id], watchlists: ["tech"], positions: [held] })],
+    ]);
+    const lastSynced = __syncContributorInternalsForTests.collectCoreConfigPayload(config);
+    const pulled = __syncContributorInternalsForTests.collectCoreConfigPayload({
+      ...config,
+      brokerInstances: [],
+      portfolios: config.portfolios.filter((portfolio) => portfolio.id !== account.id),
+    });
+
+    let current = state;
+    const saved: string[] = [];
+    const deleted: string[] = [];
+    await coreConfigSyncContributor.apply?.(pulled, {
+      baselinePayload: lastSynced,
+      baselineState: state,
+      state,
+      getState: () => current,
+      isCurrent: () => true,
+      dispatch: (action: { type: string; config?: typeof config; tickers?: typeof state.tickers }) => {
+        if (action.type === "SET_CONFIG") current = { ...current, config: action.config! };
+        if (action.type === "SET_TICKERS") current = { ...current, tickers: action.tickers! };
+      },
+      tickerRepository: {
+        saveTicker: async (record: TickerRecord) => { saved.push(record.metadata.ticker); },
+        deleteTicker: async (symbol: string) => { deleted.push(symbol); },
+      },
+    } as unknown as Parameters<NonNullable<typeof coreConfigSyncContributor.apply>>[1]);
+
+    expect(current.config.brokerInstances).toEqual([]);
+    expect({ saved, deleted }).toEqual({ saved: ["MSFT", "NVDA"], deleted: ["AAPL"] });
+    expect([...current.tickers.keys()]).toEqual(["MSFT", "NVDA"]);
+    expect(current.tickers.get("MSFT")?.metadata).toMatchObject({ portfolios: ["main"], positions: [{ portfolio: "main", broker: "manual" }] });
+    expect(current.tickers.get("NVDA")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["tech"] });
+  });
+
   test("keeps resumable onboarding local until the guide is complete", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     config.onboardingComplete = false;
