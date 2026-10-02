@@ -178,7 +178,7 @@ export function scenarioPositionFromSettings(
     if (settings.strategy !== "vertical" && settings.strategy !== "straddle") throw new Error("strategy must be vertical or straddle");
     if (!market?.chain || market.warnings.includes("Options chain is stale")) throw new Error("A current options chain is required to seed a strategy");
     if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
-    // A missing IV is solved at the market's own spot and time, never at a what-if override.
+    // Leg IVs are solved at the market's own spot and time, never at a what-if override.
     const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate } : null;
     legs = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing);
   }
@@ -205,15 +205,18 @@ interface StrategyPricing { spot: number; asOf: number; rate: number }
 const usableVolatility = (value: unknown): value is number => positive(value) && value <= 5;
 
 /**
- * An explicit strategy request uses only two-sided quotes. A leg takes the
- * provider's observed IV; where the chain has none (OPRA leaves it out on an
- * expiration date), the IV its quote midpoint implies against the expiry's
- * put-call parity forward with the time left at the market timestamp, marked
- * as solved from the midpoint. The forward comes from the same quotes, so a
- * spot that moved after they were taken (an after-hours or pre-market print
- * against the close's chain) does not skew the call against the put. When
- * the spot sits too far from every parity forward to trust the quotes, the
- * legs stay without IV and no strategy is seeded.
+ * An explicit strategy request uses only two-sided quotes and enters each leg
+ * at its quote midpoint, so each leg takes the IV that midpoint implies against
+ * the expiry's put-call parity forward, with the time left at the market
+ * timestamp OSA values at. The scenario then starts at zero P&L, up to the
+ * spot's move since the quotes were taken, even when the chain carries a
+ * provider IV measured at another time (a same-day IV solved when the chain
+ * was served, hours after the after-hours print OSA values at). The forward
+ * comes from the same quotes, so a spot that moved after they were taken (an
+ * after-hours or pre-market print against the close's chain) does not skew the
+ * call against the put. A leg whose midpoint cannot be solved (a spot too far
+ * from every parity forward to trust the quotes, or a midpoint below intrinsic
+ * value) keeps a usable provider IV, and without one it is not eligible.
  */
 function scenarioStrategyLegs(
   chain: OptionsChain, spot: number, strategy: "vertical" | "straddle", pricing: StrategyPricing | null,
@@ -233,13 +236,12 @@ function scenarioStrategyLegs(
   const quoted = (contracts: OptionsChain["calls"], side: ScenarioLeg["side"]) => contracts.flatMap((contract) => {
     const mid = optionMid(contract);
     if (!positive(contract.strike) || mid == null) return [];
-    if (usableVolatility(contract.impliedVolatility)) return [{ contract, mid, volatility: contract.impliedVolatility, solved: false }];
     const expiry = parityFor(contract.expiration);
-    if (!expiry) return [];
     // q=r turns the spot pricer into discounted forward pricing.
-    const volatility = solveImpliedVolatility({ side, spot: expiry.forward, strike: contract.strike,
-      daysToExpiry: expiry.daysToExpiry, rate: pricing!.rate, dividendYield: pricing!.rate }, mid).volatility;
-    return usableVolatility(volatility) ? [{ contract, mid, volatility, solved: true }] : [];
+    const volatility = expiry ? solveImpliedVolatility({ side, spot: expiry.forward, strike: contract.strike,
+      daysToExpiry: expiry.daysToExpiry, rate: pricing!.rate, dividendYield: pricing!.rate }, mid).volatility : null;
+    if (usableVolatility(volatility)) return [{ contract, mid, volatility, solved: true }];
+    return usableVolatility(contract.impliedVolatility) ? [{ contract, mid, volatility: contract.impliedVolatility, solved: false }] : [];
   });
   const calls = quoted(chain.calls, "call").sort((a, b) => Math.abs(a.contract.strike - spot) - Math.abs(b.contract.strike - spot));
   const puts = quoted(chain.puts, "put");

@@ -61,7 +61,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...(midVolatility ? [{ key: "volatilityFrom", header: "IV from" }] : []),
           { key: "multiplier", header: "Multiplier" },
         ], rows: position!.legs.map((leg) => ({ ...leg, expiry: new Date(leg.expiration * 1000).toISOString().slice(0, 10),
-          ...(midVolatility ? { volatilityFrom: leg.volatilitySource === "mid" ? "quote mid" : "chain" } : {}) })) },
+          ...(midVolatility ? { volatilityFrom: leg.volatilitySource === "mid" ? "quote mid" : "provider" } : {}) })) },
         { title: "Valuation", entries: Object.entries(scenario.valuation).map(([key, value]) => ({ key, label: key, value, formatted: money(value) })) },
         { title: "Expiry risk", entries: [
           { label: "Breakevens", value: scenario.expiryRisk.breakevens },
