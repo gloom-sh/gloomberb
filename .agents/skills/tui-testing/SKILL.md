@@ -26,7 +26,7 @@ printf '{ "dataDir": "%s", "onboardingComplete": true }\n' "$SMOKE_HOME" > "$SMO
 grep '"dataDir"' "$SMOKE_HOME/config.json"   # must name $SMOKE_HOME, never ~/.gloomberb
 ```
 
-An empty `GLOOMBERB_HOME` falls back to `~/.gloomberb`. Shell variables do not carry over between separate shells, so set `SMOKE_HOME` again in every shell that launches the app, and write it as `${SMOKE_HOME:?}` in launch commands so an unset value aborts instead of opening the real profile.
+An empty `GLOOMBERB_HOME` falls back to the real profile: `~/.gloomberb`, or the XDG folders (`~/.config/gloomberb`, `~/.local/share/gloomberb`) on a Linux machine without one. Shell variables do not carry over between separate shells, so set `SMOKE_HOME` again in every shell that launches the app, and write it as `${SMOKE_HOME:?}` in launch commands so an unset value aborts instead of opening the real profile.
 
 If you start from a copy of a real config instead, rewrite its `dataDir` into the temp dir and confirm with the same `grep` before launching: the app reads and writes wherever `dataDir` points, so a copied config that still names `~/.gloomberb` edits the real profile. The first launch on a new profile reinstalls the plugins that moved out of this repo into `$SMOKE_HOME/plugins`, which needs network and takes a few seconds.
 

@@ -65,7 +65,7 @@ export interface DesktopPaneShotPayload {
   paneState: Record<string, PaneRuntimeState>;
   /**
    * Installed plugins compiled for the browser, the same way the desktop view
-   * receives them. Without these a pane from `~/.gloomberb/plugins` resolves in
+   * receives them. Without these a pane from the plugins folder resolves in
    * the CLI but is unknown to the page that renders it.
    */
   externalPlugins?: DesktopExternalPluginBundle[];

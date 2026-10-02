@@ -24,7 +24,7 @@ const log = debugLog.createLogger("desktop-plugins");
 /**
  * Prepares external plugins for the desktop view.
  *
- * The view is a browser context and cannot read `~/.gloomberb/plugins`, so the
+ * The view is a browser context and cannot read the plugins folder, so the
  * Bun process does both halves here: it imports each plugin natively to read
  * its metadata, and compiles it to an ES module the view can evaluate.
  *

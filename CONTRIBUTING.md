@@ -16,7 +16,7 @@ bun dev               # terminal app, restarted on save
 bun run desktop:dev   # desktop app
 ```
 
-Both use your real `~/.gloomberb`. To develop against a throwaway profile, point `GLOOMBERB_HOME` somewhere else:
+Both use your real profile (`~/.gloomberb`, or the XDG folders on a Linux install that never had one). To develop against a throwaway profile, point `GLOOMBERB_HOME` somewhere else:
 
 ```bash
 GLOOMBERB_HOME=/tmp/gloomberb-dev bun dev

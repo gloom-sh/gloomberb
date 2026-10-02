@@ -25,7 +25,7 @@ gloomberb plugin enable my-plugin  # turn one on or off without removing it
 gloomberb plugin disable my-plugin
 ```
 
-Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder.
+Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder. A new Linux install without `~/.gloomberb` uses `~/.local/share/gloomberb/plugins/` (see [Where your data lives](docs/installation.md#where-your-data-lives)); `gloomberb plugins` prints the folder in use.
 
 A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) is installed at
 the tag and commit the registry reviewed, not at whatever the default branch

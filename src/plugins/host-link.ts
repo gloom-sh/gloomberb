@@ -5,7 +5,7 @@ import { installPluginHostResolver } from "./host-resolver";
 import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
 
 /**
- * External plugins live in `~/.gloomberb/plugins/<name>/`, outside any
+ * External plugins live in `<plugins folder>/<name>/`, outside any
  * `node_modules` chain that could reach the running Gloomberb install. Left
  * alone, `import { Box } from "gloomberb/ui"` does not resolve, and a plugin
  * that lists `react` as a real dependency gets its *own* copy — two React

@@ -74,4 +74,6 @@ gloomberb
 
 The variable moves the whole folder. A `config.json` carried along that still names the old `~/.gloomberb` as its `dataDir` is corrected to the new home on the next launch, so nothing is recreated in your home directory. Set it in your shell profile, or in the environment of whatever launches the desktop app, so every launch finds the same folder.
 
+On Linux, a new install with no `~/.gloomberb` and no `GLOOMBERB_HOME` follows the XDG Base Directory spec instead: `config.json` in `~/.config/gloomberb`, the database and installed plugins in `~/.local/share/gloomberb`, and the plugin cache in `~/.cache/gloomberb` (or wherever `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` point). An existing `~/.gloomberb` keeps being used and is never moved, and once the XDG `config.json` exists it stays in use even if a `~/.gloomberb` appears later.
+
 `gloomberb version` prints the data directory in use.
