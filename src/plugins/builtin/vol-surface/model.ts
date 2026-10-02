@@ -260,7 +260,7 @@ export function optionQuoteValuationTime(chain: Pick<OptionsChain, "asOf">, now:
 /**
  * Listed strikes the cleaned smile may skip around the forward. A coarse
  * chain skips one; a chain whose near-the-money quotes are all zero-bid
- * (Yahoo after the close, on LEAPS) skips dozens, and a fit bridging the
+ * (after the close, on LEAPS) skips dozens, and a fit bridging the
  * wings then invents the ATM level.
  */
 const MAX_UNQUOTED_FORWARD_STRIKES = 8;

@@ -4,7 +4,7 @@ import { blendHex } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
-import { headerCase } from "./header-case";
+import { titleCase } from "./header-case";
 import { statToneColor, type StatTone } from "./stat-grid";
 
 export { BulletList, FigureList, Prose, READING_WIDTH } from "./prose";
@@ -19,10 +19,13 @@ export interface SectionHeadingProps {
 
 export function SectionHeading({ title, marginTop = 0, width, wrap = false }: SectionHeadingProps) {
   const colors = useThemeColors();
+  // English reads in title case; a translation keeps its own casing.
+  const translated = t(title);
+  const text = translated === title ? titleCase(title) : translated;
   return (
     <Box height={wrap ? undefined : 1} marginTop={marginTop} width={width} overflow="hidden" data-gloom-ui="section-heading">
-      <Text fg={colors.textDim} attributes={TextAttributes.BOLD} wrapText={wrap}>
-        {wrap || width === undefined ? headerCase(t(title)) : truncateToDisplayWidth(headerCase(t(title)), width)}
+      <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText={wrap}>
+        {wrap || width === undefined ? text : truncateToDisplayWidth(text, width)}
       </Text>
     </Box>
   );

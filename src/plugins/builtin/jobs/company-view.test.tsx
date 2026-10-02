@@ -60,7 +60,7 @@ test("the open-roles line sits beside the function bars and names what it plots"
   // Legend row under the figures: the series and its latest value, the bars' heading beside it.
   const legend = lines.findIndex((line) => line.includes("● Open roles"));
   expect(legend).toBe(2);
-  expect(lines[legend]).toMatch(/● Open roles 2,145\s+BY FUNCTION/);
+  expect(lines[legend]).toMatch(/● Open roles 2,145\s+By Function/);
   // A line on an axis cut to its range, not an area from zero.
   const band = lines.slice(legend + 1, lines.findIndex((line) => line.includes("Roles  Locations")));
   expect(band.some((line) => /2,1\d\d/.test(line))).toBe(true);

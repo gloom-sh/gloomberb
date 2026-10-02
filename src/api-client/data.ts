@@ -1,3 +1,5 @@
+import type { EarningsEvent } from "../types/data-provider";
+import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
 import type { DebtMaturitiesPayload } from "./debt-maturities";
 import type { RevenueBreakdownPayload, RevenueBreakdownView } from "./revenue-breakdown";
 import type { MnaDealPayload, MnaDealsParams, MnaDealsPayload } from "./mna";
@@ -39,11 +41,11 @@ import {
   cloudJobsPath,
   cloudJobsPostingsPath,
   type CloudJobsPostingsParams,
-  publicProxyStatementPath,
-  publicFilingEventsPath,
-  publicRiskReportPath,
-  publicRiskReportsPath,
-  publicProxyStatementsPath,
+  cloudProxyStatementPath,
+  cloudFilingEventsPath,
+  cloudRiskReportPath,
+  cloudRiskReportsPath,
+  cloudProxyStatementsPath,
   cloudExchangeRatePath,
   cloudSec13FPath,
   cloudSecFilingContentPath,
@@ -211,6 +213,31 @@ export class CloudDataApi {
     return this.request<CloudMarketResponse<CloudWorldVenueMapPayload>>(
       "/market/venues",
     );
+  }
+
+  getMarketEarningsCalendar(symbols: string[]): Promise<CloudMarketResponse<Array<Omit<EarningsEvent, "earningsDate" | "earningsCallDate"> & { earningsDate: string; earningsCallDate?: string | null }>>> {
+    return this.request(`/market/earnings-calendar?${new URLSearchParams({ symbols: symbols.join(",") })}`);
+  }
+
+  getCloudArticleSummary(url: string): Promise<{ summary: string | null }> {
+    return this.request(`/news/article-summary?${new URLSearchParams({ url })}`);
+  }
+
+  getMarketMovers(category: "day_gainers" | "day_losers" | "most_actives", count = 25, refresh = false): Promise<CloudMarketResponse<MarketMoversPayload>> {
+    const params = new URLSearchParams({ category, count: String(count), mode: refresh ? "refresh" : "cache-first" });
+    return this.request(`/market/movers?${params}`);
+  }
+
+  getMarketTrending(count = 25): Promise<CloudMarketResponse<Array<{ symbol: string }>>> {
+    return this.request(`/market/trending?count=${encodeURIComponent(count)}`);
+  }
+
+  getMarketHeatmap(universe: MarketHeatmapUniverseId, count = 80): Promise<CloudMarketResponse<MarketHeatmapResult>> {
+    return this.request(`/market/heatmap?${new URLSearchParams({ universe, count: String(count) })}`);
+  }
+
+  getMarketDividends(symbol: string, exchange = ""): Promise<CloudMarketResponse<MarketDividendsPayload>> {
+    return this.requestMarketSymbol("/market/dividends", symbol, exchange);
   }
 
   /** Gainers, losers and most active, or the pre-market, after-hours and gap lists with a `side`. */
@@ -521,7 +548,7 @@ export class CloudDataApi {
     ticker: string,
   ): Promise<CloudProxyStatementListPayload> {
     return this.request<CloudProxyStatementListPayload>(
-      publicProxyStatementsPath(ticker),
+      cloudProxyStatementsPath(ticker),
     );
   }
 
@@ -530,7 +557,7 @@ export class CloudDataApi {
     year: number,
   ): Promise<CloudProxyStatementPayload> {
     return this.request<CloudProxyStatementPayload>(
-      publicProxyStatementPath(ticker, year),
+      cloudProxyStatementPath(ticker, year),
     );
   }
 
@@ -539,13 +566,13 @@ export class CloudDataApi {
     limit?: number,
   ): Promise<{ ticker: string; events: CloudFilingEventPayload[] }> {
     return this.request<{ ticker: string; events: CloudFilingEventPayload[] }>(
-      publicFilingEventsPath(ticker, limit),
+      cloudFilingEventsPath(ticker, limit),
     );
   }
 
   async getRiskReports(ticker: string): Promise<CloudRiskReportListPayload> {
     return this.request<CloudRiskReportListPayload>(
-      publicRiskReportsPath(ticker),
+      cloudRiskReportsPath(ticker),
     );
   }
 
@@ -554,7 +581,7 @@ export class CloudDataApi {
     year: number,
   ): Promise<CloudRiskReportPayload> {
     return this.request<CloudRiskReportPayload>(
-      publicRiskReportPath(ticker, year),
+      cloudRiskReportPath(ticker, year),
     );
   }
 

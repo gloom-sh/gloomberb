@@ -22,6 +22,7 @@ export function createTestPluginRuntime(
       throw new Error("This test plugin runtime registers no capabilities.");
     },
     getBrokerAdapter: () => null,
+    listBrokerAdapters: () => [],
     subscribeResumeState: () => () => {},
     getResumeState: () => null,
     setResumeState() {},

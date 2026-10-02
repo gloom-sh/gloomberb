@@ -519,6 +519,7 @@ export interface CommandDef {
   description?: string;
   wizard?: WizardStep[];
   confirm?: CommandConfirmDef | ((context: CommandConfirmContext) => CommandConfirmDef | null);
+  /** @deprecated Ignored: a wizard always opens as one form with every step at once. */
   wizardLayout?: "steps" | "form";
   hidden?: () => boolean;
 }
@@ -837,9 +838,8 @@ export interface GloomPlugin {
    * the rest. A plugin that leaves a host out works on the desktop and fails
    * on the web.
    *
-   * Hosts reached on the plugin's behalf count too: `YahooHttpClient` collects
-   * a cookie from `fc.yahoo.com` before any screener call, so a plugin using it
-   * declares that host even though its own code never names it.
+   * Hosts reached by a plugin's dependencies count too: declare every host
+   * contacted on the plugin's behalf, including authentication endpoints.
    */
   hosts?: readonly string[];
   /** Shown in the marketplace pane and on the website. */

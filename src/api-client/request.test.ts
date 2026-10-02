@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import {
   ConnectionHealthRegistry,
   registerGloomCloudConnectionSources,
@@ -101,6 +101,31 @@ describe("CloudApiRequestTransport streaming", () => {
 });
 
 describe("CloudApiRequestTransport market deadlines", () => {
+  afterEach(() => jest.useRealTimers());
+
+  test("cold research may finish after the quote deadline while still aborting at its own limit", async () => {
+    jest.useFakeTimers();
+    const signals = new Map<string, AbortSignal>();
+    const transport = new CloudApiRequestTransport({ fetchTransport: async (url, init) => {
+      signals.set(new URL(url).pathname, init!.signal!);
+      return new Promise<Response>(() => {});
+    } });
+    const quote = transport.request("/market/quote?symbol=AAPL").catch(error => error);
+    const research = transport.request("/market/dividends?symbol=AAPL").catch(error => error);
+    jest.advanceTimersByTime(10_000);
+    expect(signals.get("/market/quote")?.aborted).toBe(true);
+    expect(signals.get("/market/dividends")?.aborted).toBe(false);
+    expect((await quote).message).toContain("10000ms");
+    jest.advanceTimersByTime(35_000);
+    expect(signals.get("/market/dividends")?.aborted).toBe(true);
+    expect((await research).message).toContain("45000ms");
+  });
+
+  test("injected deadlines also govern research requests", async () => {
+    const transport = new CloudApiRequestTransport({ marketRequestTimeoutMs: 10, fetchTransport: async () => new Promise<Response>(() => {}) });
+    await expect(transport.request("/market/earnings-calendar?symbols=AAPL")).rejects.toThrow("timed out after 10ms");
+  });
+
   test("aborts when response headers never arrive", async () => {
     let signal: AbortSignal | null | undefined;
     const transport = new CloudApiRequestTransport({

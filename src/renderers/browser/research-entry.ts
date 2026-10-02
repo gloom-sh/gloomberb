@@ -1,4 +1,4 @@
-import { tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
+import { tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 
 export function researchEntryFromSearch(search: string): { symbol: string; tab: string } | null {
@@ -13,7 +13,7 @@ export function researchEntryFromSearch(search: string): { symbol: string; tab: 
   if ([exchange, requested.exchange].some((venue) => venue && !/^[A-Z0-9][A-Z0-9 ._-]{0,31}$/.test(venue))) return null;
   // Carry a separate venue through the same listing-qualified resolver used by
   // search and deep links. An explicit symbol suffix/key remains authoritative.
-  const target = exchange && !requested.exchange && !tickerHasYahooSuffix(symbol)
+  const target = exchange && !requested.exchange && !tickerHasListingSuffix(symbol)
     ? publicTickerKey(symbol, exchange)
     : symbol;
   const tab = params.get("tab") ?? "overview";

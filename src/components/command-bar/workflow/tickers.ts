@@ -8,7 +8,7 @@ import type { Portfolio, TickerRecord, Watchlist } from "../../../types/ticker";
 import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";
 import { parseTickerListInput } from "../../../tickers/list";
 import { resolveTickerOpenTarget, type TickerOpenTarget } from "../../../tickers/open-target";
-import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
+import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
 import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 
 export interface SharedWorkflowDeps {
@@ -147,7 +147,7 @@ export async function resolveTickerInput(
   let resolvedTicker;
   try {
     const query = rawInput?.trim() || activeTicker || "";
-    if (options.preserveListingKey && (parsePublicTickerKey(query).exchange || tickerHasYahooSuffix(query.toUpperCase()))) {
+    if (options.preserveListingKey && (parsePublicTickerKey(query).exchange || tickerHasListingSuffix(query.toUpperCase()))) {
       // Commands and incoming layouts must preserve the same validated listing
       // key, including when the repository already stores a bare-symbol holding.
       const target = await resolveTickerOpenTarget({

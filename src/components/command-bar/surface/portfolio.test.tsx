@@ -7,7 +7,6 @@ import type { TickerRecord } from "../../../types/ticker";
 import {
   CommandBarHarness,
   createCommandBarTestControls,
-  expectSingleBackControl,
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 
@@ -190,7 +189,43 @@ describe("CommandBar portfolio commands", () => {
     expect(frame).toContain("Avg Cost");
     expect(frame).toContain("205.5");
     expect(frame).not.toContain("Only Manual Portfolio");
-    expectSingleBackControl(frame);
+    expect(frame).toContain("Cancel");
+  });
+
+  // Picking where to add is still a bar list; the position is a form.
+  test("AP with several manual portfolios picks the target in the bar, then opens the form", async () => {
+    await tui.render(
+      <CommandBarHarness
+        query="AP AAPL"
+        live
+        configureConfig={(config) => ({
+          ...config,
+          portfolios: [
+            { id: "research", name: "Research", currency: "USD" },
+            { id: "growth", name: "Growth", currency: "USD" },
+          ],
+        })}
+        configureState={(state) => ({
+          ...state,
+          paneState: { ...state.paneState, "portfolio-list:main": { collectionId: "watchlist" } },
+        })}
+      />,
+      { width: 100, height: 30 },
+    );
+
+    await tui.setup().renderOnce();
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    await waitForFrameToContain("Add AAPL to Portfolio");
+    expect(tui.frame()).toContain("bar:open");
+
+    await clickFrameText("Growth");
+    const frame = await waitForFrameToContain("Avg Cost");
+    expect(frame).toContain("Growth");
+    expect(frame).toContain("Shares");
+    expect(frame).toContain("bar:closed");
   });
 
   test("add-to-portfolio can still add membership without entering a position", async () => {
@@ -288,7 +323,7 @@ describe("CommandBar portfolio commands", () => {
     expect(frame).toContain("AAPL");
     expect(frame).toContain("10");
     expect(frame).toContain("180");
-    expectSingleBackControl(frame);
+    expect(frame).toContain("Cancel");
   });
 
   test("submits the portfolio position workflow and persists a manual position", async () => {
@@ -414,6 +449,12 @@ describe("CommandBar portfolio commands", () => {
     });
     await act(async () => {
       tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    // The confirm opens in the form modal.
+    await waitForFrameToContain('Delete "Research"?');
+    await act(async () => {
+      await Bun.sleep(5);
       await tui.setup().renderOnce();
     });
     await act(async () => {

@@ -454,6 +454,7 @@ export interface CloudCdsHistoryResponse {
 
 interface CloudShortInterestPointPayload {
   settlementDate: string;
+  shortPercentFloat?: number | null;
   sharesShort: number;
   previousSharesShort: number | null;
   averageDailyVolume: number | null;
@@ -463,6 +464,7 @@ interface CloudShortInterestPointPayload {
 }
 
 export interface CloudShortInterestPayload {
+  source?: "finra" | "gloom";
   symbol: string;
   issueName: string | null;
   points: CloudShortInterestPointPayload[];
@@ -1291,6 +1293,8 @@ export interface CloudMarketResponse<T> {
   historyRetention?: unknown;
   /** Source-declared history semantics; validated separately from quote metadata. */
   historySession?: unknown;
+  /** "extended" when the history includes the pre-market and after-hours bars asked for. */
+  session?: unknown;
   /** Untrusted until the history adapter validates its boundary dates. */
   coverage?: CloudHistoryCoverage;
   providerMeta?: {

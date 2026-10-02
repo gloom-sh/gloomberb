@@ -7,7 +7,7 @@ import { parseRssFeedDocument, type RssFeedConfig } from "./parser";
 import { enrichNewsItem } from "../categories";
 
 const RSS_CACHE_KIND = "rss-feed";
-export const RSS_FEED_CACHE_VERSION = 2;
+export const RSS_FEED_CACHE_VERSION = 3;
 export const RSS_FEED_CACHE_POLICY = {
   staleMs: 2 * 60 * 1000,
   expireMs: 7 * 24 * 60 * 60 * 1000,

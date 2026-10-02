@@ -22,7 +22,7 @@ function decimalPlaces(value: number): number {
 }
 
 /**
- * Providers serve prices as float32: Yahoo sends the exact float
+ * Providers serve prices as float32: The feed sends the exact float
  * (340.33 arrives as 340.3299865722656) and the cloud a float already rounded
  * to a few decimals (254.42999). Return the shortest decimal that is the same
  * float32. Values with fewer than five decimals are left alone, and a precise

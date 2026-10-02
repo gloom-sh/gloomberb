@@ -14,7 +14,7 @@ export const estimateRevisionsCache =
   createPluginCache<EstimateRevisionsPayload>({
     kind: "estimate-revisions",
     source: "gloom-cloud",
-    schemaVersion: 1,
+    schemaVersion: 2,
     policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 },
   });
 const number = (value: unknown) =>
@@ -96,8 +96,8 @@ export function validateEstimates(
       return invalid();
     identities.add(period.id);
     for (const [source, rows] of [
-      ["yahoo", period.recorded],
-      ["yahoo-eps-trend", period.lookbacks],
+      ["gloom", period.recorded],
+      ["gloom-eps-trend", period.lookbacks],
     ] as const) {
       const dates = new Set<string>();
       for (const point of rows) {

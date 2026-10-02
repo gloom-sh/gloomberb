@@ -112,7 +112,7 @@ const ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS = 30 * 60_000;
 
 /**
  * PRE and POST are live sessions only where the exchange trades outside
- * regular hours. Yahoo reports POST for Tokyo or Sydney for hours after the
+ * regular hours. Some sources report POST for Tokyo or Sydney for hours after the
  * close, and that closing quote is exactly what a world board should show.
  */
 function isQuoteInActiveSession(quote: Quote, now: number): boolean {

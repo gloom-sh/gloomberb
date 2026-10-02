@@ -24,7 +24,6 @@ interface UseCommandBarPanelStateOptions {
   rootShortcutFeedback: string | null;
   routeListState: ListScreenState | null;
   setRootSelectedIdx: Dispatch<SetStateAction<number>>;
-  showCustomMultiSelectPicker: boolean;
   termHeight: number;
   termWidth: number;
   themePickerActive: boolean;
@@ -43,7 +42,6 @@ export function useCommandBarPanelState({
   rootShortcutFeedback,
   routeListState,
   setRootSelectedIdx,
-  showCustomMultiSelectPicker,
   termHeight,
   termWidth,
   themePickerActive,
@@ -63,29 +61,18 @@ export function useCommandBarPanelState({
     const maxIndex = Math.max(0, listState.results.length - 1);
     if (listState.selectedIdx <= maxIndex) return;
 
-    if (currentRoute && (currentRoute.kind === "mode" || currentRoute.kind === "picker" || currentRoute.kind === "pane-settings")) {
-      updateTopRoute((route) => {
-        if (route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings") {
-          return {
-            ...route,
-            selectedIdx: maxIndex,
-            hoveredIdx: route.hoveredIdx != null && route.hoveredIdx > maxIndex ? null : route.hoveredIdx,
-          };
-        }
-        return route;
-      });
+    if (currentRoute) {
+      updateTopRoute((route) => ({
+        ...route,
+        selectedIdx: maxIndex,
+        hoveredIdx: route.hoveredIdx != null && route.hoveredIdx > maxIndex ? null : route.hoveredIdx,
+      }));
       return;
     }
     setRootSelectedIdx(maxIndex);
   }, [currentRoute, routeListState, setRootSelectedIdx, updateTopRoute]);
 
-  const visibleListState = routeListState
-    && (routeListState.kind === "root"
-      || routeListState.kind === "mode"
-      || routeListState.kind === "picker"
-      || routeListState.kind === "pane-settings")
-    ? routeListState
-    : null;
+  const visibleListState = routeListState;
   const hasVisibleListState = visibleListState != null;
   const listRows = useMemo(
     () => (visibleListState ? buildListRows(visibleListState) : []),
@@ -120,7 +107,6 @@ export function useCommandBarPanelState({
     nativeListRowCount: getListRowsHeight(nativeListRows),
     nativePaneChrome,
     nativeWindowChrome,
-    showCustomMultiSelectPicker,
     termHeight,
     termWidth,
     themePickerActive,
@@ -136,7 +122,6 @@ export function useCommandBarPanelState({
     nativeListRows,
     nativePaneChrome,
     nativeWindowChrome,
-    showCustomMultiSelectPicker,
     termHeight,
     termWidth,
     themePickerActive,
@@ -160,13 +145,11 @@ export function useCommandBarPanelState({
     selectedListRowIndex,
     selectionMoveRef.current.movedDown,
   );
-  const bodySlotKey = showCustomMultiSelectPicker
-    ? "picker:field-multi-select"
-    : themePickerActive
-      ? "theme-picker"
-      : currentRoute?.kind === "picker"
-        ? `picker:${currentRoute.pickerId}`
-        : currentRoute?.kind ?? "root";
+  const bodySlotKey = themePickerActive
+    ? "theme-picker"
+    : currentRoute?.kind === "picker"
+      ? `picker:${currentRoute.pickerId}`
+      : currentRoute?.kind ?? "root";
 
   return {
     bodySlotKey,

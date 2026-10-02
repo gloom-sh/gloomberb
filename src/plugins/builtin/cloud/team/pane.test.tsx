@@ -116,7 +116,7 @@ describe("TeamPane", () => {
     });
     await tui.waitForFrameToContain("@carol");
     const frame = await tui.waitForFrameToContain("3 uses");
-    expect(frame).toContain("INVITE BY USERNAME");
+    expect(frame).toContain("Invite by Username");
     expect(frame).toContain("@carol");
     expect(frame).toContain("gloom.sh/teams/invite/aaaaaaaa");
     expect(frame).toContain("3 uses");

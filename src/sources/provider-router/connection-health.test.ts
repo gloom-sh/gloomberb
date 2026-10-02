@@ -6,10 +6,10 @@ import { createTestDataProvider, createTestQuote } from "../../test-support/data
 describe("withProviderConnectionHealth", () => {
   test("attributes network calls without reporting cached or static checks", async () => {
     const health = new ConnectionHealthRegistry();
-    health.registerSource({ id: "asset-data.yahoo", name: "Yahoo", kind: "asset-data" });
+    health.registerSource({ id: "asset-data.gloom", name: "Gloom", kind: "asset-data" });
     const provider = withProviderConnectionHealth(createTestDataProvider({
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       canProvide: () => true,
       getCachedFinancialsForTargets: () => new Map(),
       getChartResolutionSupport: () => [],

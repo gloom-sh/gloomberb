@@ -67,12 +67,13 @@ function samePersistedArticles(left: PersistedNewsArticle[], right: PersistedNew
     const other = right[index];
     return other?.id === article.id &&
       other.publishedAt === article.publishedAt &&
+      other.source === article.source && other.url === article.url &&
       storyItemsSignature(other.items) === storyItemsSignature(article.items);
   });
 }
 
 function storyItemsSignature(items: PersistedNewsStoryItem[] | undefined): string {
-  return items?.map((item) => `${item.id}:${item.publishedAt}`).join("|") ?? "";
+  return JSON.stringify(items?.map((item) => [item.id, item.publishedAt, item.sourceName, item.sourceKey, item.url]) ?? []);
 }
 
 /**
@@ -91,16 +92,19 @@ export function usePersistedNewsArticles(
   articles: MarketNewsItem[],
   options: { keyFamily?: string } = {},
 ): MarketNewsItem[] {
+  // Refetch snapshots from before article-level publisher attribution. A new
+  // key keeps layouts readable by older clients that expect an article array.
+  const storageKey = `${key}:v2`;
   const [persistedArticles, setPersistedArticles] = usePluginPaneState<PersistedNewsArticle[]>(
-    key,
+    storageKey,
     EMPTY_PERSISTED_ARTICLES,
   );
   const pruneSiblings = usePrunePluginPaneState();
   const { keyFamily } = options;
   useEffect(() => {
-    if (!keyFamily) return;
-    pruneSiblings((candidate) => candidate !== key && candidate.startsWith(keyFamily));
-  }, [key, keyFamily, pruneSiblings]);
+    pruneSiblings((candidate) => candidate === key
+      || (!!keyFamily && candidate !== storageKey && candidate.startsWith(keyFamily)));
+  }, [key, storageKey, keyFamily, pruneSiblings]);
   const restoredArticles = useMemo(
     () => persistedArticles.map(restoreArticle).filter((article): article is MarketNewsItem => !!article),
     [persistedArticles],

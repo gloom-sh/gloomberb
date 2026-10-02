@@ -59,7 +59,7 @@ test("different assets retain individually served AUTO cadences through capture 
     getPriceHistoryForResolution: async (symbol, _exchange, _range, resolution) => {
       calls.push(`${symbol}:${resolution}`);
       if (symbol === "DAILY" && resolution === "15m") throw new HistoryRetentionError({
-        version: 1, source: "yahoo", symbol, exchange: "NASDAQ", interval: "15min",
+        version: 1, source: "gloom", symbol, exchange: "NASDAQ", interval: "15min",
         requestedStart: NOW - 92 * DAY, requestedEnd: NOW, observedAt: NOW, availableStart: NOW - 60 * DAY,
       });
       if (resolution !== (symbol === "FINE" ? "15m" : "1d")) throw new Error("Unsupported interval");
@@ -141,7 +141,7 @@ test("one instrument's finer market capture cannot substitute for its separately
     getChartResolutionSupport: () => [{ resolution: "15m", maxRange: "ALL" }, { resolution: "1d", maxRange: "ALL" }],
     getPriceHistoryForResolution: async (symbol, _exchange, range, resolution) => {
       if (range === "ALL" && resolution === "15m") throw new HistoryRetentionError({
-        version: 1, source: "yahoo", symbol, exchange: "NASDAQ", interval: "15min",
+        version: 1, source: "gloom", symbol, exchange: "NASDAQ", interval: "15min",
         requestedStart: NOW - 92 * DAY, requestedEnd: NOW, observedAt: NOW, availableStart: NOW - 60 * DAY,
       });
       return resolution === "15m" ? fine : daily;

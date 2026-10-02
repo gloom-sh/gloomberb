@@ -22,7 +22,7 @@ export interface FuturesContract {
 export interface FuturesCurvePayload {
   root: string
   name: string
-  source: "yahoo" | "cboe"
+  source: "gloom" | "cboe"
   currency: string | null
   quoteUnit: string | null
   asOf: string | null

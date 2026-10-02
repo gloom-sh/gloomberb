@@ -10,7 +10,6 @@ const BASE = {
   hasVisibleListState: true,
   nativeListRowCount: 8,
   nativePaneChrome: false,
-  showCustomMultiSelectPicker: false,
   themePickerActive: false,
   themePickerRowCount: 0,
   titleBarOverlay: undefined as boolean | undefined,

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useMemo, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudFilingEventPayload } from "../../../api-client";
 import type { CombinedPaneFooter } from "../../../components/layout/pane/footer";
@@ -10,6 +10,8 @@ import { UiHostProvider, useNativeRenderer, useRendererHost, useUiHost } from ".
 import { FilingEventsPane } from "./pane";
 
 const PANE_ID = "filing-events:test";
+const proUser = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "pro", emailVerified: true, plan: "pro" } as never);
+afterAll(() => proUser.mockRestore());
 const tui = createOpenTuiTestHarness();
 let footer: CombinedPaneFooter;
 let selectCompany: (symbol: string) => void;
@@ -66,7 +68,7 @@ function Harness() {
 function transport(respond: (ticker: string) => Response | Promise<Response>) {
   setCloudApiFetchTransport((async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
-    if (!url.pathname.startsWith("/public/events/")) throw new Error(`Unexpected route ${url.pathname}`);
+    if (!url.pathname.startsWith("/cloud/events/")) throw new Error(`Unexpected route ${url.pathname}`);
     requests.push(url.pathname);
     return respond(decodeURIComponent(url.pathname.split("/").at(-1)!));
   }) as typeof fetch);

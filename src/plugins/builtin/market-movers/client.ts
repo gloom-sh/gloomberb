@@ -73,7 +73,7 @@ export async function loadMarketMoverTab(
     return {
       tab,
       quotes: await hydrateTrending(trending, provider),
-      source: "yahoo",
+      source: "gloom",
       stale: false,
     };
   }

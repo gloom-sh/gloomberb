@@ -264,6 +264,14 @@ export function renderCompositePanelText(
       if (current === " " || current === "·") setCell(rows, x, row, "╌");
     }
   }
+  // The previous close, dotted, where the last price has not taken the row.
+  if (panel.priorClose) {
+    const row = clamp(Math.round(panel.priorClose.yRatio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
+    for (let x = 0; x < plotWidth; x += 1) {
+      const current = rows[row]?.[x];
+      if (current === " " || current === "·") setCell(rows, x, row, "┈");
+    }
+  }
 
   if (cursorXRatio !== null) {
     const cursorX = clamp(Math.round(cursorXRatio * Math.max(plotWidth - 1, 0)), 0, Math.max(plotWidth - 1, 0));

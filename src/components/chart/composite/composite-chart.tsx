@@ -1159,6 +1159,17 @@ function CompositePanelSurface({
       color: marker.color,
     };
   }, [formatAxisValue, panel]);
+  const priorCloseMarker = useMemo(() => {
+    const marker = panel.priorClose;
+    const domain = marker ? panel.axes[marker.axis] : undefined;
+    if (!marker || !domain) return null;
+    return {
+      side: marker.axis,
+      yRatio: marker.yRatio,
+      label: formatAxisValue ? formatAxisValue(marker.value, domain) : formatCompositeCursorValue(marker.value, domain),
+      color: colors.textDim,
+    };
+  }, [colors.textDim, formatAxisValue, panel]);
   const levelMarkers = useMemo(() => levelDomain ? [...projectedLevels]
     // The picked level's label first, then alerts', when they compete for room.
     .sort((left, right) => Number(right.level.id === selectedLevelId) - Number(left.level.id === selectedLevelId)
@@ -1181,7 +1192,8 @@ function CompositePanelSurface({
       !!marker && (marker.side === null || marker.side === side)
     );
     const fixed = [lastPriceMarker, axisMarkers].filter(onSide).map(toAxisMarker);
-    const levelLabels = levelMarkers.filter(onSide).map(toAxisMarker);
+    // The prior close's label yields to every level's.
+    const levelLabels = [...levelMarkers, priorCloseMarker].filter(onSide).map(toAxisMarker);
     // A label is a row tall, so close levels would stack into an unreadable
     // pile and hide the last price: each keeps its line, and only the labels
     // with a row to themselves show. Desktop badges sit between rows.
@@ -2885,7 +2897,7 @@ export function CompositeChart({
   const timeAxisCursorLabel = xAxis?.formatCursor && scene.cursorXRatio !== null
     ? xAxis.formatCursor(scene.cursorXRatio)
     : scene.cursorDate
-      ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime)
+      ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime, scene.timeZone)
       : null;
   // The crosshair labels the moving end, so the axis only adds the anchor.
   const timeAxisMarkers = toolSpan
@@ -2895,6 +2907,7 @@ export function CompositeChart({
         new Date(toolSpan.startTime),
         scene.startTime,
         scene.endTime,
+        scene.timeZone,
       ),
       color: toolSpan.color,
     }]

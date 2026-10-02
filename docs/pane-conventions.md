@@ -59,7 +59,7 @@ the pane's own name; fixed labels; generic key hints (`j/k`, `Enter to open`,
 
 **The data provider is invisible.** Never show which vendor or internal
 route served the data: no `provider:gloomberb-cloud`, `gloomberb-cloud`,
-Gloom Cloud, Yahoo, Alpaca, Twelve Data, OPRA, SIP or `entry.source` values
+raw feed names or `entry.source` values
 in a footer, status line, header meta, table column, legend, tooltip or
 headless report column. Say what the data is instead: `real-time`,
 `15m delayed`, `settlement`, `daily closes`, `trade closes since …`, `as of`
@@ -120,8 +120,10 @@ the origin of a number. The one count the kit draws is the
 
 ## 5. Lists and tables
 
-Header labels and section headings are uppercased by the kit; write them in
-any case. Pass `onHeaderClick` only when the table sorts (without it headers
+Table header labels are uppercased by the kit; write them in any case.
+Section headings read in title case, bright and bold: the kit capitalises
+lower-case words, so write acronyms in capitals and never a whole heading in
+capitals. Pass `onHeaderClick` only when the table sorts (without it headers
 are not interactive), and `selection={{ kind: "none" }}` for a static table.
 Never build a table from padded `Text` rows: the kit gives the header band,
 gutters and fill to the footer.

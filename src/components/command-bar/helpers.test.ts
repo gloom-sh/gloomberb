@@ -1,12 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { WizardStep } from "../../types/plugin";
 import type { CommandBarWorkflowField } from "./workflow/types";
-import {
-  getFirstVisibleFieldId,
-  getVisibleWorkflowFields,
-  normalizeWizardFields,
-  summarizeWorkflowFieldValue,
-} from "./helpers";
+import { getFirstVisibleFieldId, normalizeWizardFields } from "./helpers";
+import { getVisibleWorkflowFields, summarizeWorkflowFieldValue } from "./workflow/fields";
 
 const workflowFields: CommandBarWorkflowField[] = [
   {

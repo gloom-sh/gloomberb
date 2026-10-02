@@ -37,12 +37,40 @@ export function parseOwnerValue(value: unknown): { kind: "user" } | { kind: "tea
 }
 
 type BrokerWorkflowBuilder = (
-  selectorKey: "brokerType" | "source",
   title: string,
-  subtitle: string,
+  subtitle: string | undefined,
   submitLabel: string,
-  includeManualPortfolio: boolean,
-) => CommandBarWorkflowRoute | null;
+) => CommandBarWorkflowRoute;
+
+/**
+ * New Layout, or Rename Layout for the saved layout at `layoutIndex` with its
+ * name filled in to edit. The menus and the bar rename the active layout; the
+ * layout gallery renames the one picked in it.
+ */
+export function buildLayoutNameWorkflowRoute(
+  actionId: "new-layout" | "rename-layout",
+  layouts: AppState["config"]["layouts"],
+  layoutIndex: number,
+): CommandBarWorkflowRoute {
+  const renaming = actionId === "rename-layout";
+  const currentName = renaming ? layouts[layoutIndex]?.name ?? "" : "";
+  return buildCommandBarWorkflowRoute({
+    workflowId: `builtin:${actionId}`,
+    title: renaming ? "Rename Layout" : "New Layout",
+    fields: [{
+      id: "name",
+      label: "Layout Name",
+      type: "text",
+      placeholder: "Trading, Research, Overview",
+      required: true,
+    }],
+    values: { name: currentName },
+    submitLabel: renaming ? "Rename Layout" : "Create Layout",
+    pendingLabel: renaming ? "Renaming layout…" : "Creating layout…",
+    payload: { kind: "builtin", actionId },
+    ...(renaming ? { payloadMeta: { layoutIndex, layoutName: currentName } } : {}),
+  });
+}
 
 export type BuiltInWorkflowRouteResult =
   | { kind: "route"; route: CommandBarWorkflowRoute }
@@ -72,7 +100,6 @@ export function buildBuiltInWorkflowRoute(options: {
         route: buildCommandBarWorkflowRoute({
           workflowId: "builtin:new-watchlist",
           title: "New Watchlist",
-          subtitle: "Create a new watchlist inside the command bar.",
           fields: [
             ...(owner ? [owner.field] : []),
             {
@@ -95,34 +122,15 @@ export function buildBuiltInWorkflowRoute(options: {
     case "rename-layout":
       return {
         kind: "route",
-        route: buildCommandBarWorkflowRoute({
-          workflowId: `builtin:${actionId}`,
-          title: actionId === "new-layout" ? "New Layout" : "Rename Layout",
-          fields: [{
-            id: "name",
-            label: "Layout Name",
-            type: "text",
-            placeholder: actionId === "new-layout"
-              ? "Trading, Research, Overview"
-              : config.layouts[config.activeLayoutIndex]?.name || "Layout name",
-            required: true,
-          }],
-          values: { name: "" },
-          submitLabel: actionId === "new-layout" ? "Create Layout" : "Rename Layout",
-          pendingLabel: actionId === "new-layout" ? "Creating layout…" : "Renaming layout…",
-          payload: { kind: "builtin", actionId },
-        }),
+        route: buildLayoutNameWorkflowRoute(actionId, config.layouts, config.activeLayoutIndex),
       };
 
     case "new-portfolio": {
       const route = buildBrokerWorkflow(
-        "source",
         "New Portfolio",
         "Choose a source for the new portfolio.",
         "Create Portfolio",
-        true,
       );
-      if (!route) return { kind: "notice", message: "No connectable brokers are installed." };
       // A paper portfolio can belong to a team; broker portfolios never do.
       const owner = ownerField();
       if (owner && route.kind === "workflow") {
@@ -154,19 +162,6 @@ export function buildBuiltInWorkflowRoute(options: {
           payload: { kind: "builtin", actionId },
         }),
       };
-    }
-
-    case "add-broker-account": {
-      const route = buildBrokerWorkflow(
-        "brokerType",
-        "Add Broker Account",
-        "Connect a new broker profile without leaving the command bar.",
-        "Connect Broker",
-        false,
-      );
-      return route
-        ? { kind: "route", route }
-        : { kind: "notice", message: "No connectable brokers are installed." };
     }
 
     default:

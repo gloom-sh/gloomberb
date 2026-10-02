@@ -28,6 +28,7 @@ export function buildCurrentLayoutItems({
   confirmDangerousActions,
   currentLayout,
   dispatch,
+  getState,
   openBuiltInWorkflow,
   openInlineConfirm,
   persistLayoutChange,
@@ -154,7 +155,7 @@ export function buildCurrentLayoutItems({
             cancelLabel: "Back",
             tone: "danger",
             onConfirm: () => {
-              persistLayoutChange(removeFloatingPanes(currentLayout));
+              persistLayoutChange(removeFloatingPanes(getState().config.layout));
             },
           });
         }

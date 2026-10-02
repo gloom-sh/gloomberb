@@ -9,7 +9,7 @@ const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expirat
   price: 80, asOf: "2026-09-22T15:00:00Z", currency: "USD", quoteUnit: "USD", volume: 0, openInterest: 0, delayMinutes: 10,
   stale: false, percentile: 50, samples: 200, historyStart: "2025-09-22", historyEnd: "2026-09-21" };
 function payload(): FuturesCurvePayload {
-  return { root: "CL", name: "WTI Crude Oil", source: "yahoo", currency: "USD", quoteUnit: "USD", asOf: first.asOf,
+  return { root: "CL", name: "WTI Crude Oil", source: "gloom", currency: "USD", quoteUnit: "USD", asOf: first.asOf,
     fetchedAt: "2026-09-22T15:05:00Z", status: "partial", stale: false,
     catalogue: { method: "bounded-search", complete: false, horizonEnd: "2029-09-01" },
     contracts: [first, { ...first, symbol: "CLZ26.NYM", expiration: "2026-11-20", price: null, openInterest: null, percentile: null, samples: 0 }],

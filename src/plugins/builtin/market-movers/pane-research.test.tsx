@@ -20,8 +20,8 @@ import { createTestTicker } from "../../../test-support/ticker";
 
 useRegularMarketSession();
 
-const payload = (quotes: unknown[]) => ({ finance: { result: [{ quotes }], error: null } });
-const raw = (symbol: string, fields = {}) => ({ symbol, shortName: `${symbol} Research`, regularMarketPrice: 10, regularMarketChangePercent: 10, regularMarketVolume: 200, averageDailyVolume3Month: 100, currency: "USD", fullExchangeName: "NASDAQ", ...fields });
+const payload = (quotes: unknown[]) => ({ status: "success", data: { quotes, source: "gloom", stale: false, asOf: new Date().toISOString() } });
+const raw = (symbol: string, fields = {}) => ({ symbol, name: `${symbol} Research`, price: 10, changePercent: 10, volume: 200, avgVolume: 100, currency: "USD", exchange: "NASDAQ", ...fields });
 const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | undefined;
 let footer: any;
@@ -68,7 +68,7 @@ afterEach(() => {
 test("switching lists hides old rows while pending or failed and retains only same-list stale rows on refresh", async () => {
   let rejectLosers!: (reason: Error) => void, fail = false;
   const loserRequest = new Promise((_, reject) => { rejectLosers = reject; });
-  await mount(url => url.searchParams.get("scrIds") === "day_losers" ? loserRequest : fail ? Promise.reject(new Error("Controlled unavailable")) : payload([raw("GAINER")]));
+  await mount(url => url.searchParams.get("category") === "day_losers" ? loserRequest : fail ? Promise.reject(new Error("Controlled unavailable")) : payload([raw("GAINER")]));
   expect(await csv()).toContain("GAINER");
   await clickLabel("Losers");
   expect(await csv()).not.toContain("GAINER");
@@ -89,7 +89,7 @@ test("keyboard selects both same-symbol listings and the actual open runtime pre
   const provider = new AssetDataRouter(createTestDataProvider({ getQuote: async symbol => ({
     symbol: "ACME", price: 8, change: 0, changePercent: 0, currency: "GBP", instrumentType: "ETF", exchangeName: "LSE", listingExchangeName: "LSE", lastUpdated: Date.now() - 60_000, marketState: "CLOSED",
   }) }));
-  const { stateRef, pins, pending } = await mount(() => payload([raw("ACME", { shortName: "US share" }), raw("ACME", { shortName: "London fund", fullExchangeName: "LSE", currency: "GBP" })]), provider);
+  const { stateRef, pins, pending } = await mount(() => payload([raw("ACME", { name: "US share" }), raw("ACME", { name: "London fund", exchange: "LSE", currency: "GBP" })]), provider);
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" });
   await tui.emitKeypress({ name: "enter", sequence: "\r" });
   await act(async () => { await Promise.all(pending); }); await settleFrame(tui.setup(), 6);
@@ -120,7 +120,7 @@ test("routed major-unit and unknown-unit quotes keep range context honest", asyn
   let deliver!: (quote: any) => void;
   const provider = new AssetDataRouter(createTestDataProvider({ subscribeQuotes: (targets, onQuote) => { deliver = quote => onQuote(targets.find(target => target.symbol === "UNIT")!, quote); return () => {}; } }));
   coordinator = new MarketDataCoordinator(provider); setSharedMarketDataCoordinator(coordinator);
-  await mount(() => payload([raw("UNIT", { regularMarketPrice: 125, currency: "GBp", fiftyTwoWeekLow: 100, fiftyTwoWeekHigh: 200 })]));
+  await mount(() => payload([raw("UNIT", { price: 125, currency: "GBp", fiftyTwoWeekLow: 100, fiftyTwoWeekHigh: 200 })]));
   expect(await csv()).toMatch(/LAST \(£\),.*\n.*,1\.25,/);
   const quote = { symbol: "UNIT", price: 1.25, change: 0, changePercent: 0, currency: "GBP", exchangeName: "NASDAQ", listingExchangeName: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.now() - 60_000, dataSource: "live", delivery: "stream", stale: false };
   await act(async () => { deliver(quote); }); await settleFrame(tui.setup(), 4);

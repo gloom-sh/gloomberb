@@ -677,6 +677,12 @@ class GloomApiClient {
   getCloudQuote = this.data.getCloudQuote.bind(this.data);
   getCloudQuotesBatch = this.data.getCloudQuotesBatch.bind(this.data);
   getCloudWorldVenues = this.data.getCloudWorldVenues.bind(this.data);
+  getMarketEarningsCalendar = this.data.getMarketEarningsCalendar.bind(this.data);
+  getCloudArticleSummary = this.data.getCloudArticleSummary.bind(this.data);
+  getMarketMovers = this.data.getMarketMovers.bind(this.data);
+  getMarketTrending = this.data.getMarketTrending.bind(this.data);
+  getMarketHeatmap = this.data.getMarketHeatmap.bind(this.data);
+  getMarketDividends = this.data.getMarketDividends.bind(this.data);
   getCloudMarketScreener = this.data.getCloudMarketScreener.bind(this.data);
   getCloudOptionsChain = this.data.getCloudOptionsChain.bind(this.data);
   getCloudFinancials = this.data.getCloudFinancials.bind(this.data);

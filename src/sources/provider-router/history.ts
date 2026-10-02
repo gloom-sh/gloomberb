@@ -40,7 +40,8 @@ type PriceHistoryCachePolicyKey = Extract<
   "priceHistoryIntraday" | "priceHistoryDaily"
 >;
 // Bumped instead of adding markers: every older record is a miss and refetches.
-const PRICE_HISTORY_CACHE_VERSION = 6;
+// Refetch source/session metadata under the current public backend contract.
+const PRICE_HISTORY_CACHE_VERSION = 7;
 interface HistoryRequestDescriptor {
   target: { symbol: string; exchange: string };
   identity: RouterRequestIdentity;
@@ -142,15 +143,17 @@ function makeHistoryRequestIdentity(
     fallbackVariantParts: Array<[string, string | number | undefined | null]>;
   },
 ): Pick<HistoryRequestDescriptor, "identity" | "cacheVariantKeys" | "exactCacheVariantKeys" | "target"> {
+  // Extended-hours bars are another history; they never answer for the regular session.
+  const session: [string, string | undefined] = ["session", input.context?.historySession];
   const identity = makeRouterRequestIdentity(deps, {
     kind: input.kind,
     ticker: input.ticker,
     context: input.context,
-    variantParts: priceHistoryVariantParts(input.variantParts, input.exchange),
+    variantParts: priceHistoryVariantParts([...input.variantParts, session], input.exchange),
   });
   const cacheVariantKeys = [
     identity.variantKey,
-    buildVariantKey(priceHistoryVariantParts(input.fallbackVariantParts, input.exchange)),
+    buildVariantKey(priceHistoryVariantParts([...input.fallbackVariantParts, session], input.exchange)),
   ];
   return {
     target: { symbol: input.ticker, exchange: input.exchange },
@@ -491,7 +494,7 @@ export class ProviderRouterHistoryRoutes {
       ["bar", barSize],
       // An ordinary Cloud cache does not identify its internal winning source.
       // Scoped recovery must only reuse a cache explicitly acquired this way.
-      ["historyRecovery", context?.historyRecovery ? "yahoo" : undefined],
+      ["historyRecovery", context?.historyRecovery ? "gloom" : undefined],
     ];
     const fallbackParts = primaryParts.slice(1);
     const identity = makeHistoryRequestIdentity(this.deps, {

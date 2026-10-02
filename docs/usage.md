@@ -55,7 +55,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 
 Desktop builds also accept `Cmd/Ctrl+K` for the command bar, the matching `Cmd` shortcuts on macOS, `Cmd/Ctrl+Shift+O` to pop out a pane, `Cmd/Ctrl+Shift+C` to copy a focused pane screenshot, and `Cmd/Ctrl+Shift+Enter` / `Cmd/Ctrl+Shift+Backspace` for notifications.
 
-The focused pane's footer shows its actions with their keys, such as `[a]dd`, and every one of them works from the keyboard. The pane menu (`.`, or the `...` button) lists them all, including any a narrow footer cuts off, followed by what the pane's table, filters and tabs offer (sort by a column, change a filter, close a tab), its quick toggles, and the pane and window actions. A retry or sign-in button in an empty pane answers `Enter`. In dialogs, `Enter` confirms and `Esc` closes; on the desktop `Tab` moves between a dialog's controls. In pane settings the arrows move between settings, `Left` / `Right` change a choice or a toggle in place, and `Enter` opens a field's editor.
+The focused pane's footer shows its actions with their keys, such as `[a]dd`, and every one of them works from the keyboard. The pane menu (`.`, or the `...` button) lists them all, including any a narrow footer cuts off, followed by what the pane's table, filters and tabs offer (sort by a column, change a filter, close a tab), its quick toggles, and the pane and window actions. A retry or sign-in button in an empty pane answers `Enter`. In dialogs, `Enter` confirms and `Esc` closes; on the desktop `Tab` moves between a dialog's controls. A command that needs values or a confirmation (New Portfolio, Add Alert, Delete Watchlist) opens it as a centered dialog once the command bar closes: `Tab` and the arrows move between fields, `Enter` goes to the next field and sends the form from the last one, `Cmd/Ctrl+S` sends it from any field, and `y` or `n` answers a confirm. In pane settings the arrows move between settings, `Left` / `Right` change a choice or a toggle in place, and `Enter` opens a field's editor.
 
 A pane that shows one ticker, such as a price chart (`GP`, `GIP`), `OMON`, `OPX`, `SEAS`, `FA` or company news, can follow a watchlist, portfolio or scanner the way the research pane does: choose **Link to** and the list's name in its pane menu, and it moves with that list's selection, titled for example `OPX NVDA  ⧉ Linked to Watchlist`. **Unlink from** keeps the ticker it shows, and closing the list does the same; if the list was empty, a linked `OMON`, `CN`, `FA`, `HP`, `SEC`, `INS`, `HDS`, `ANR`, `EVT` or `EE` pane has no ticker to keep and closes with it. Typing `OPX AAPL` while a linked OPX is open opens a separate pane rather than unlinking it. A linked chart saves its spec each time the selection moves, so its range and studies carry over.
 
@@ -154,7 +154,7 @@ In a 13F fund detail, open Overlap, search a second fund by name or CIK, and sel
 
 ### Chart Composer
 
-`G`, `GP`, `GIP`, `CMP`, `GF`, and `GE` all open the same chart composer with different starting presets. `CAT` opens a searchable catalog of those chartable series so you can graph one without typing the expression; its SOURCE column names the provider a plain market request reaches first (Gloom Cloud in the app, a broker or the Yahoo fallback where those are what is registered), while FRED, treasury and valuation rows name their own source. A custom expression can mix unrelated data sources on one synchronized timeline:
+`G`, `GP`, `GIP`, `CMP`, `GF`, and `GE` all open the same chart composer with different starting presets. `CAT` opens a searchable catalog of those chartable series so you can graph one without typing the expression; its SOURCE column names the provider a plain market request reaches first (Gloom Cloud in the app, a broker where one is registered), while FRED, treasury and valuation rows name their own source. A custom expression can mix unrelated data sources on one synchronized timeline:
 
 ```text
 G AAPL:price, MSFT:revenue, FRED:CPIAUCSL
@@ -238,6 +238,11 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `BI` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge |
+
+News rows credit the article's publisher and open its original URL. The managed
+news feed includes only articles whose publisher and original link can be
+verified. Custom RSS and Atom feeds use each item's source when supplied,
+falling back to the name you configured for a direct publisher's feed.
 
 Ticker Research includes a **Congress** tab for House and Senate transactions in
 the selected ticker. The **Chamber** filter narrows `CG` and the tab to one chamber. Scroll to append filing windows; `n` or its footer action continues a
@@ -437,7 +442,7 @@ A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are
 
 ## Broker position sync
 
-Use **New Portfolio** or **Add Broker Account** to connect a broker. Gloomberb can import positions from Interactive Brokers, Public, Robinhood, and SimpleFIN.
+Press `a` in the **Brokers** pane (`BR`), or run **Add Broker Account**, to connect a broker; **New Portfolio** can start from one too. Gloomberb can import positions from Interactive Brokers, Public, Robinhood, and SimpleFIN.
 
 Each broker is a plugin with its own repository, installed on first launch and updatable on its own. Manage them from the plugin directory, or with `gloomberb install gloom-sh/gloom-public` and friends.
 

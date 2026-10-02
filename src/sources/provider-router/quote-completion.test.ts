@@ -26,8 +26,8 @@ test.each(["single", "batch"] as const)("%s financials recover a stale embedded 
     async getQuote() { return staleQuote; },
   };
   let quoteFails = false;
-  const yahoo: DataProvider = {
-    ...fallbackProvider, id: "yahoo", priority: 1000,
+  const gloom: DataProvider = {
+    ...fallbackProvider, id: "gloom", priority: 1000,
     async getTickerFinancials() { calls.fallbackFinancials++; throw new Error("No supplemental statements"); },
     async getQuote(symbol, exchange) {
       calls.fallbackQuote++;
@@ -35,16 +35,16 @@ test.each(["single", "batch"] as const)("%s financials recover a stale embedded 
       if (quoteFails) throw new Error("Quote unavailable");
       return createTestQuote({ symbol, price: 2994, currency: "JPY", change: 23,
         changePercent: 0.7741501178054527, lastUpdated: Date.parse("2026-09-10T06:30:00Z"),
-        exchangeName: "TYO", providerId: "yahoo", marketState: "PRE" });
+        exchangeName: "TYO", providerId: "gloom", marketState: "PRE" });
     },
   };
-  const router = new AssetDataRouter(yahoo, [cloud], persistence.resources);
+  const router = new AssetDataRouter(gloom, [cloud], persistence.resources);
   const load = async () => route === "single"
     ? router.getTickerFinancials("7203", "TYO")
     : (await router.getTickerFinancialsBatch([{ symbol: "7203", exchange: "TYO" }]))[0]!.financials!;
   try {
     const result = await load();
-    expect(result.quote).toMatchObject({ price: 2994, currency: "JPY", change: 23, providerId: "yahoo" });
+    expect(result.quote).toMatchObject({ price: 2994, currency: "JPY", change: 23, providerId: "gloom" });
     expect(result.annualStatements).toEqual(snapshot.annualStatements);
     expect(calls).toEqual({ financials: 1, fallbackFinancials: 0, fallbackQuote: 1 });
     expect((await load()).quote?.price).toBe(2994);
@@ -52,7 +52,7 @@ test.each(["single", "batch"] as const)("%s financials recover a stale embedded 
 
     // Historical research remains usable when every current quote source fails.
     quoteFails = true;
-    const withoutCache = new AssetDataRouter(yahoo, [cloud]);
+    const withoutCache = new AssetDataRouter(gloom, [cloud]);
     const historical = await withoutCache.getTickerFinancials("7203", "TYO");
     expect(historical.quote).toBeUndefined();
     expect(historical.annualStatements).toEqual(snapshot.annualStatements);

@@ -30,9 +30,9 @@ describe("AssetDataRouter", () => {
     expect(JSON.parse(JSON.stringify(result)).error).toBe("No quote provider available for ES=F");
   });
 
-  test("falls through to Yahoo quotes and history when Cloud market requests never settle", async () => {
+  test("falls through to Gloom quotes and history when Cloud market requests never settle", async () => {
     const cloudCalls = { quote: 0, history: 0 };
-    const yahooCalls = { quote: 0, history: 0 };
+    const gloomCalls = { quote: 0, history: 0 };
     const cloudTransport = new CloudApiRequestTransport({
       marketRequestTimeoutMs: 10,
       fetchTransport: async () => new Promise<Response>(() => {}),
@@ -53,34 +53,34 @@ describe("AssetDataRouter", () => {
         throw new Error("unreachable");
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getQuote() {
-        yahooCalls.quote += 1;
-        return createTestQuote({ providerId: "yahoo", price: 212.5 });
+        gloomCalls.quote += 1;
+        return createTestQuote({ providerId: "gloom", price: 212.5 });
       },
       async getPriceHistory() {
-        yahooCalls.history += 1;
+        gloomCalls.history += 1;
         return [
           { date: new Date("2026-07-10T00:00:00Z"), close: 210 },
           { date: new Date("2026-07-11T00:00:00Z"), close: 212.5 },
         ];
       },
     };
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     console.error = () => {};
 
     const quote = await router.getQuote("AAPL", "NASDAQ");
     const history = await router.getPriceHistory("AAPL", "NASDAQ", "1Y");
 
-    expect(quote.providerId).toBe("yahoo");
+    expect(quote.providerId).toBe("gloom");
     expect(quote.price).toBe(212.5);
     expect(history.map((point) => point.close)).toEqual([210, 212.5]);
     expect(cloudCalls).toEqual({ quote: 1, history: 1 });
-    expect(yahooCalls).toEqual({ quote: 1, history: 1 });
+    expect(gloomCalls).toEqual({ quote: 1, history: 1 });
   });
 
   test("routes market calls only through sources with market capability", async () => {
@@ -165,18 +165,18 @@ describe("AssetDataRouter", () => {
         };
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getHolders(symbol) {
         return {
-          providerId: "yahoo",
+          providerId: "gloom",
           symbol,
           currency: "USD",
           holders: [{
-            providerId: "yahoo",
+            providerId: "gloom",
             ownerType: "institution",
             name: "Vanguard Group Inc",
             shares: 1_200_000_000,
@@ -188,16 +188,16 @@ describe("AssetDataRouter", () => {
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const holders = await router.getHolders("AAPL", "NASDAQ");
 
-    expect(holders.providerId).toBe("yahoo");
+    expect(holders.providerId).toBe("gloom");
     expect(holders.holders[0]?.name).toBe("Vanguard Group Inc");
   });
 
   test("routes earnings calendars through providers and fills missing symbols from fallback", async () => {
     const cloudCalls: string[][] = [];
-    const yahooCalls: string[][] = [];
+    const gloomCalls: string[][] = [];
     const event = (symbol: string, date: string) => ({
       symbol,
       name: symbol,
@@ -219,22 +219,22 @@ describe("AssetDataRouter", () => {
         return [event("AAPL", "2026-07-30T20:00:00Z")];
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getEarningsCalendar(symbols) {
-        yahooCalls.push(symbols);
+        gloomCalls.push(symbols);
         return [event("MSFT", "2026-07-29T20:00:00Z")];
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const events = await router.getEarningsCalendar(["msft", " AAPL ", "aapl"]);
 
     expect(cloudCalls).toEqual([["MSFT", "AAPL"]]);
-    expect(yahooCalls).toEqual([["MSFT"]]);
+    expect(gloomCalls).toEqual([["MSFT"]]);
     expect(events.map((entry) => entry.symbol)).toEqual(["MSFT", "AAPL"]);
   });
 
@@ -255,18 +255,18 @@ describe("AssetDataRouter", () => {
         };
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getAnalystResearch(symbol) {
         return {
-          providerId: "yahoo",
+          providerId: "gloom",
           symbol,
           ratings: [{
             date: "2026-05-01",
-            firm: "Yahoo Firm",
+            firm: "Gloom Firm",
             action: "Raises",
             current: "Buy",
             prior: "Buy",
@@ -280,10 +280,10 @@ describe("AssetDataRouter", () => {
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const research = await router.getAnalystResearch("AAPL", "NASDAQ");
 
-    expect(research.providerId).toBe("yahoo");
+    expect(research.providerId).toBe("gloom");
     expect(research.ratings[0]?.currentPriceTarget).toBe(680);
     expect(research.ratings[0]?.priorPriceTarget).toBe(595);
   });
@@ -307,18 +307,18 @@ describe("AssetDataRouter", () => {
         };
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getAnalystResearch(symbol) {
         return {
-          providerId: "yahoo",
+          providerId: "gloom",
           symbol,
           ratings: [{
             date: "2026-05-01",
-            firm: "Yahoo Firm",
+            firm: "Gloom Firm",
             action: "Raises",
             current: "Buy",
             prior: "Buy",
@@ -342,17 +342,17 @@ describe("AssetDataRouter", () => {
     });
 
     try {
-      const seedRouter = new AssetDataRouter(yahooProvider, [cloudProvider], persistence.resources);
+      const seedRouter = new AssetDataRouter(gloomProvider, [cloudProvider], persistence.resources);
       await seedRouter.getAnalystResearch("AAPL", "NASDAQ");
 
       const cachedRouter = new AssetDataRouter(
-        unavailableProvider("yahoo", 1000),
+        unavailableProvider("gloom", 1000),
         [unavailableProvider("cloud", 100)],
         persistence.resources,
       );
       const research = await cachedRouter.getAnalystResearch("AAPL", "NASDAQ");
 
-      expect(research.providerId).toBe("yahoo");
+      expect(research.providerId).toBe("gloom");
       expect(research.ratings[0]?.currentPriceTarget).toBe(680);
       expect(research.ratings[0]?.priorPriceTarget).toBe(595);
     } finally {
@@ -398,11 +398,11 @@ describe("AssetDataRouter", () => {
   test("reconciles broker quote price with provider day reference fields", async () => {
     const router = new AssetDataRouter({
       ...fallbackProvider,
-      id: "yahoo",
+      id: "gloom",
       async getQuote() {
         return {
           symbol: "VICR",
-          providerId: "yahoo",
+          providerId: "gloom",
           price: 299.74,
           currency: "USD",
           previousClose: 282.95,
@@ -447,7 +447,7 @@ describe("AssetDataRouter", () => {
     expect(quote.change).toBeCloseTo(16.85, 5);
     expect(quote.changePercent).toBeCloseTo(5.955, 3);
     expect(quote.provenance?.price?.providerId).toBe("ibkr");
-    expect(quote.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+    expect(quote.provenance?.fields?.previousClose?.providerId).toBe("gloom");
   });
 
   test("refreshes broker option session references across the market close", async () => {
@@ -466,7 +466,7 @@ describe("AssetDataRouter", () => {
       },
     } as const;
     const entityKey = getRouterEntityKey(optionSymbol, context.instrument);
-    const providerSourceKey = "provider:yahoo";
+    const providerSourceKey = "provider:gloom";
     const cacheKey = {
       namespace: "market",
       kind: "quote",
@@ -476,7 +476,7 @@ describe("AssetDataRouter", () => {
     };
     const regularReference = createTestQuote({
       symbol: optionSymbol,
-      providerId: "yahoo",
+      providerId: "gloom",
       price: 15.775,
       change: 0.29,
       changePercent: 1.87,
@@ -489,8 +489,8 @@ describe("AssetDataRouter", () => {
     let providerAvailable = true;
     const provider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async getQuote() {
         providerCalls += 1;
         if (!providerAvailable) throw new Error("temporary provider outage");
@@ -555,7 +555,7 @@ describe("AssetDataRouter", () => {
       });
       const outageFallback = await router.getQuote(optionSymbol, "", context);
       expect(outageFallback.previousClose).toBe(15.485);
-      expect(outageFallback.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+      expect(outageFallback.provenance?.fields?.previousClose?.providerId).toBe("gloom");
       expect(outageFallback.marketState).toBeUndefined();
       expect(providerCalls).toBe(3);
     } finally {
@@ -610,14 +610,14 @@ describe("AssetDataRouter", () => {
     const realDateNow = Date.now;
     Date.now = () => fixedNow;
     try {
-      const yahooProvider: DataProvider = {
+      const gloomProvider: DataProvider = {
         ...fallbackProvider,
-        id: "yahoo",
-        name: "Yahoo",
+        id: "gloom",
+        name: "Gloom",
         async getQuote(symbol) {
           return {
             symbol,
-            providerId: "yahoo",
+            providerId: "gloom",
             price: 50_500,
             currency: "JPY",
             change: 4400,
@@ -629,7 +629,7 @@ describe("AssetDataRouter", () => {
           };
         },
       };
-      const router = new AssetDataRouter(yahooProvider);
+      const router = new AssetDataRouter(gloomProvider);
       const broker: BrokerAdapter = {
         id: "ibkr",
         name: "IBKR",
@@ -662,7 +662,7 @@ describe("AssetDataRouter", () => {
       ]);
 
       const quote = await router.getQuote("285A.T", "TSEJ", { brokerId: "ibkr", brokerInstanceId: "ibkr-work" });
-      expect(quote.providerId).toBe("yahoo");
+      expect(quote.providerId).toBe("gloom");
       expect(quote.price).toBe(50_500);
     } finally {
       Date.now = realDateNow;
@@ -746,11 +746,11 @@ describe("AssetDataRouter", () => {
     };
     const provider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       async search() {
         return [{
-          providerId: "yahoo",
+          providerId: "gloom",
           symbol: "AAPL",
           name: "Apple",
           exchange: "NASDAQ",
@@ -775,7 +775,7 @@ describe("AssetDataRouter", () => {
 
   test("does not search fallback providers when the preferred provider returns results", async () => {
     let cloudCalls = 0;
-    let yahooCalls = 0;
+    let gloomCalls = 0;
     const cloudProvider: DataProvider = {
       ...fallbackProvider,
       id: "cloud",
@@ -786,23 +786,23 @@ describe("AssetDataRouter", () => {
         return [{ providerId: "cloud", symbol: "SEC0", name: "iShares ETF", exchange: "XETRA", type: "ETF" }];
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async search() {
-        yahooCalls += 1;
-        return [{ providerId: "yahoo", symbol: "SEC0", name: "iShares ETF", exchange: "XETRA", type: "ETF" }];
+        gloomCalls += 1;
+        return [{ providerId: "gloom", symbol: "SEC0", name: "iShares ETF", exchange: "XETRA", type: "ETF" }];
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const results = await router.search("SEC0");
 
     expect(results[0]?.providerId).toBe("cloud");
     expect(cloudCalls).toBe(1);
-    expect(yahooCalls).toBe(0);
+    expect(gloomCalls).toBe(0);
   });
 
   test("routes through registered asset-data capabilities", async () => {
@@ -840,14 +840,14 @@ describe("AssetDataRouter", () => {
     const realDateNow = Date.now;
     Date.now = () => fixedNow;
     try {
-      const yahooProvider: DataProvider = {
+      const gloomProvider: DataProvider = {
         ...fallbackProvider,
-        id: "yahoo",
-        name: "Yahoo",
+        id: "gloom",
+        name: "Gloom",
         async getQuote(symbol) {
           return {
             symbol,
-            providerId: "yahoo",
+            providerId: "gloom",
             price: 168,
             currency: "TWD",
             change: 1,
@@ -896,14 +896,14 @@ describe("AssetDataRouter", () => {
           }));
         },
       };
-      const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+      const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
 
       const quote = await router.getQuote("2337", "TWSE");
-      expect(quote.providerId).toBe("yahoo");
+      expect(quote.providerId).toBe("gloom");
       expect(quote.price).toBe(168);
 
       const [batch] = await router.getQuotesBatch([{ symbol: "2337", exchange: "TWSE" }], { forceRefresh: true });
-      expect(batch?.quote?.providerId).toBe("yahoo");
+      expect(batch?.quote?.providerId).toBe("gloom");
       expect(batch?.quote?.price).toBe(168);
     } finally {
       Date.now = realDateNow;
@@ -1203,7 +1203,7 @@ describe("AssetDataRouter", () => {
           quote: createTestQuote({
             symbol: "IQE.L",
             listingExchangeName: "LSE",
-            providerId: "yahoo",
+            providerId: "gloom",
             price: 0.245,
             currency: "GBP",
             change: -0.021,
@@ -1250,7 +1250,7 @@ describe("AssetDataRouter", () => {
     });
 
     expect(merged.quote?.price).toBe(24.5);
-    expect(merged.quote?.provenance?.rejectedPriceProviders).toContain("yahoo");
+    expect(merged.quote?.provenance?.rejectedPriceProviders).toContain("gloom");
     expect(merged.priceHistory[0]?.close).toBe(0.245);
     expect(merged.fundamentals?.netIncome).toBe(200);
   });
@@ -1316,14 +1316,14 @@ describe("AssetDataRouter", () => {
         });
       },
     };
-    let yahooCalls = 0;
-    const yahooProvider: DataProvider = {
+    let gloomCalls = 0;
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
-        yahooCalls += 1;
+        gloomCalls += 1;
         return createTestFinancials({
           annualStatements: [{ date: "2025-12-31", totalRevenue: 391035000000 }],
           quarterlyStatements: [{ date: "2026-03-31", totalRevenue: 95359000000 }],
@@ -1341,7 +1341,7 @@ describe("AssetDataRouter", () => {
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const merged = await router.getTickerFinancials("AAPL", "NASDAQ");
 
     expect(merged.quote?.price).toBe(125);
@@ -1351,7 +1351,7 @@ describe("AssetDataRouter", () => {
     expect(merged.priceHistory).toEqual([]);
     expect(merged.annualStatements).toEqual([{ date: "2025-12-31", totalRevenue: 391035000000 }]);
     expect(merged.quarterlyStatements).toEqual([{ date: "2026-03-31", totalRevenue: 95359000000 }]);
-    expect(yahooCalls).toBe(1);
+    expect(gloomCalls).toBe(1);
   });
 
   test("supplements shallow preferred provider statement history", async () => {
@@ -1374,14 +1374,14 @@ describe("AssetDataRouter", () => {
         });
       },
     };
-    let yahooCalls = 0;
-    const yahooProvider: DataProvider = {
+    let gloomCalls = 0;
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
-        yahooCalls += 1;
+        gloomCalls += 1;
         return createTestFinancials({
           quarterlyStatements: [
             { date: "2024-03-31", operatingCashFlow: -601_000 },
@@ -1393,10 +1393,10 @@ describe("AssetDataRouter", () => {
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const merged = await router.getTickerFinancials("LINK", "NASDAQ");
 
-    expect(yahooCalls).toBe(1);
+    expect(gloomCalls).toBe(1);
     expect(merged.profile?.sector).toBe("Technology");
     expect(merged.quote?.price).toBe(25);
     expect(merged.quarterlyStatements.map((row) => row.date)).toEqual([
@@ -1447,14 +1447,14 @@ describe("AssetDataRouter", () => {
         }));
       },
     };
-    let yahooCalls = 0;
-    const yahooProvider: DataProvider = {
+    let gloomCalls = 0;
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
-        yahooCalls += 1;
+        gloomCalls += 1;
         return createTestFinancials({
           quarterlyStatements: [
             { date: "2024-03-31", eps: 0.07 },
@@ -1466,13 +1466,13 @@ describe("AssetDataRouter", () => {
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const results = await router.getTickerFinancialsBatch([{ symbol: "AMD", exchange: "NASDAQ" }], { forceRefresh: true });
     const financials = results[0]?.financials;
 
     expect(cloudBatchCalls).toBe(1);
     expect(cloudSingleCalls).toBe(1);
-    expect(yahooCalls).toBe(1);
+    expect(gloomCalls).toBe(1);
     expect(financials?.profile?.sector).toBe("Technology");
     expect(financials?.quote?.symbol).toBe("AMD");
     expect(financials?.quarterlyStatements.map((row) => row.date)).toEqual([
@@ -1510,14 +1510,14 @@ describe("AssetDataRouter", () => {
         });
       },
     };
-    let yahooCalls = 0;
-    const yahooProvider: DataProvider = {
+    let gloomCalls = 0;
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
-        yahooCalls += 1;
+        gloomCalls += 1;
         return createTestFinancials({
           quarterlyStatements: [
             { date: "2024-03-31", operatingCashFlow: -601_000 },
@@ -1533,10 +1533,10 @@ describe("AssetDataRouter", () => {
       const seedRouter = new AssetDataRouter(null, [cloudProvider], persistence.resources);
       await seedRouter.getTickerFinancials("LINK", "NASDAQ");
 
-      const cachedRouter = new AssetDataRouter(yahooProvider, [cloudProvider], persistence.resources);
+      const cachedRouter = new AssetDataRouter(gloomProvider, [cloudProvider], persistence.resources);
       const merged = await cachedRouter.getTickerFinancials("LINK", "NASDAQ");
 
-      expect(yahooCalls).toBe(1);
+      expect(gloomCalls).toBe(1);
       expect(merged.quarterlyStatements).toHaveLength(9);
     } finally {
       persistence.close();
@@ -1561,14 +1561,14 @@ describe("AssetDataRouter", () => {
         });
       },
     };
-    let yahooCalls = 0;
-    const yahooProvider: DataProvider = {
+    let gloomCalls = 0;
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
-        yahooCalls += 1;
+        gloomCalls += 1;
         return createTestFinancials({
           annualStatements: [{
             date: "2025-12-31",
@@ -1580,7 +1580,7 @@ describe("AssetDataRouter", () => {
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const merged = await router.getTickerFinancials("AMD", "NASDAQ");
 
     expect(merged.quote?.price).toBe(125);
@@ -1590,7 +1590,7 @@ describe("AssetDataRouter", () => {
       accountsReceivable: 250,
       inventory: 125,
     }]);
-    expect(yahooCalls).toBe(1);
+    expect(gloomCalls).toBe(1);
   });
 
   test("fills unusable preferred provider financial quotes from a later provider", async () => {
@@ -1614,10 +1614,10 @@ describe("AssetDataRouter", () => {
         });
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
         return createTestFinancials({
@@ -1634,7 +1634,7 @@ describe("AssetDataRouter", () => {
       },
     };
 
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider]);
     const merged = await router.getTickerFinancials("HY9H", "FWB2", { cacheMode: "refresh" });
 
     expect(merged.profile?.sector).toBe("Industrials");
@@ -1668,10 +1668,10 @@ describe("AssetDataRouter", () => {
         });
       },
     };
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
         return createTestFinancials({
@@ -1689,18 +1689,18 @@ describe("AssetDataRouter", () => {
       },
     };
 
-    const seedRouter = new AssetDataRouter(yahooProvider, [cloudProvider], persistence.resources);
+    const seedRouter = new AssetDataRouter(gloomProvider, [cloudProvider], persistence.resources);
     const seeded = await seedRouter.getTickerFinancials("AAPL", "NASDAQ");
     expect(seeded.quote?.price).toBe(125);
     expect(seeded.quote?.marketCap).toBeUndefined();
 
     let cloudCalls = 0;
-    let yahooCalls = 0;
+    let gloomCalls = 0;
     const cachedRouter = new AssetDataRouter({
-      ...yahooProvider,
+      ...gloomProvider,
       async getTickerFinancials() {
-        yahooCalls += 1;
-        throw new Error("expected cached yahoo financials");
+        gloomCalls += 1;
+        throw new Error("expected cached gloom financials");
       },
     }, [{
       ...cloudProvider,
@@ -1713,7 +1713,7 @@ describe("AssetDataRouter", () => {
     const cached = await cachedRouter.getTickerFinancials("AAPL", "NASDAQ");
 
     expect(cloudCalls).toBe(0);
-    expect(yahooCalls).toBe(0);
+    expect(gloomCalls).toBe(0);
     expect(cached.quote?.price).toBe(125);
     expect(cached.quote?.marketCap).toBeUndefined();
     expect(cached.fundamentals?.trailingPE).toBe(25);
@@ -1797,7 +1797,7 @@ describe("AssetDataRouter", () => {
           quote: createTestQuote({
             symbol: "IQE.L",
             listingExchangeName: "LSE",
-            providerId: "yahoo",
+            providerId: "gloom",
             price: 0.245,
             currency: "GBP",
             dataSource: "delayed",
@@ -1899,12 +1899,12 @@ describe("AssetDataRouter", () => {
         kind: "financials",
         entityKey: "contract:14075064",
         variantKey: "exchange=LSE",
-        sourceKey: "provider:yahoo",
+        sourceKey: "provider:gloom",
       },
       createTestFinancials({
         quote: createTestQuote({
           symbol: "IQE.L",
-          providerId: "yahoo",
+          providerId: "gloom",
           price: 0.231,
           currency: "GBP",
           change: -0.014,
@@ -1923,13 +1923,13 @@ describe("AssetDataRouter", () => {
       },
     );
 
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...fallbackProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 200,
       async getTickerFinancials() {
-        throw new Error("should not fetch yahoo financials");
+        throw new Error("should not fetch gloom financials");
       },
     };
     const cloudProvider: DataProvider = {
@@ -1941,7 +1941,7 @@ describe("AssetDataRouter", () => {
         throw new Error("should not fetch cloud financials");
       },
     };
-    const router = new AssetDataRouter(yahooProvider, [cloudProvider], persistence.resources);
+    const router = new AssetDataRouter(gloomProvider, [cloudProvider], persistence.resources);
 
     const financials = await router.getTickerFinancials("IQE", "LSE", {
       instrument: {

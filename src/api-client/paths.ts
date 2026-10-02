@@ -13,6 +13,8 @@ export type CloudHistoryParams = {
   endDate?: string;
   rangeKey?: string;
   historyRecovery?: HistoryRetention;
+  /** Ask for pre-market and after-hours bars too. */
+  session?: "extended";
 };
 
 export type CloudFredSeriesParams = {
@@ -172,6 +174,7 @@ export function cloudHistoryPath(
   if (params.endDate) search.set("endDate", params.endDate);
   if (params.rangeKey) search.set("rangeKey", params.rangeKey);
   if (params.historyRecovery) search.set("historyRecovery", JSON.stringify(params.historyRecovery));
+  if (params.session) search.set("session", params.session);
   return appendQuery("/market/history", search);
 }
 
@@ -311,30 +314,33 @@ export function cloudEarningsTranscriptPath(id: string): string {
   return `/cloud/transcripts/${encodeURIComponent(id)}`;
 }
 
-/** Executive compensation reads are open: no account, no plan. */
-export function publicProxyStatementsPath(ticker: string): string {
-  return `/public/proxies/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`;
+/**
+ * RISK, EXEC and EK are Pro: these reads need a verified Pro account. The same
+ * risk factors and pay are open under /public for the gloom.sh pages.
+ */
+export function cloudProxyStatementsPath(ticker: string): string {
+  return `/cloud/proxies/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`;
 }
 
-export function publicFilingEventsPath(ticker: string, limit?: number): string {
+export function cloudFilingEventsPath(ticker: string, limit?: number): string {
   const search = new URLSearchParams();
   if (limit != null) search.set("limit", String(limit));
   return appendQuery(
-    `/public/events/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`,
+    `/cloud/events/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`,
     search,
   );
 }
 
-export function publicRiskReportsPath(ticker: string): string {
-  return `/public/risks/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`;
+export function cloudRiskReportsPath(ticker: string): string {
+  return `/cloud/risks/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`;
 }
 
-export function publicRiskReportPath(ticker: string, year: number): string {
-  return `/public/risks/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/${year}`;
+export function cloudRiskReportPath(ticker: string, year: number): string {
+  return `/cloud/risks/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/${year}`;
 }
 
-export function publicProxyStatementPath(ticker: string, year: number): string {
-  return `/public/proxies/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/${year}`;
+export function cloudProxyStatementPath(ticker: string, year: number): string {
+  return `/cloud/proxies/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/${year}`;
 }
 
 export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {

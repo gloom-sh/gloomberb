@@ -27,6 +27,7 @@ import {
 } from "../../../ui";
 import { isPermanentClientError } from "../../../api-client/errors";
 import { useFilingYearReader } from "../shared/filing-year-reader";
+import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
 import { useBoundTicker } from "../shared/ticker-request";
 import { SplitBar } from "../../../components/ui/split-bar";
 import { loadProxyStatement, loadProxyStatements } from "./data";
@@ -228,6 +229,12 @@ function figuresOf(statement: CloudProxyStatementPayload) {
   return figures;
 }
 
+const EXEC_WALL: ProFeatureWallCopy = {
+  action: "see executive pay",
+  title: "Executive pay is part of Gloom Cloud Pro.",
+  message: "Named executive officers and how they were paid, read from each proxy statement and checked against the filing.",
+};
+
 export function ExecutivesPane({
   focused,
   width,
@@ -239,26 +246,28 @@ export function ExecutivesPane({
   /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
   nested?: boolean;
 }) {
+  const { wall, guard } = useProFeatureWall(EXEC_WALL);
   const { symbol } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
+  if (wall) return wall;
   if (!ticker) return <EmptyState title="Pick a ticker to see its executives." />;
-  return <ExecutiveResearch key={ticker} ticker={ticker} focused={focused} width={width} nested={nested} />;
+  return <ExecutiveResearch key={ticker} ticker={ticker} focused={focused} width={width} nested={nested} guard={guard} />;
 }
 
 export function ExecutivesResearchTab(props: { focused: boolean; width: number; height: number }) {
   return <ExecutivesPane {...props} nested />;
 }
 
-function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string; focused: boolean; width: number; nested: boolean }) {
+function ExecutiveResearch({ ticker, focused, width, nested, guard }: { ticker: string; focused: boolean; width: number; nested: boolean; guard: ReadGuard }) {
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
   const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
-  const loadYears = useCallback((force: boolean) => loadProxyStatements(ticker, { force }), [ticker]);
+  const loadYears = useCallback((force: boolean) => guard(loadProxyStatements(ticker, { force })), [guard, ticker]);
   const list = useAsyncResource(loadYears, { clearOnError: isPermanentClientError });
   const years = useMemo(() => (list.data?.data?.proxies ?? []).map((entry) => entry.proxyYear), [list.data]);
   const year = selectedYear !== null && years.includes(selectedYear)
     ? selectedYear : years[0] ?? null;
-  const loadStatement = useCallback((force: boolean) => loadProxyStatement(ticker, year!, { force }), [ticker, year]);
+  const loadStatement = useCallback((force: boolean) => guard(loadProxyStatement(ticker, year!, { force })), [guard, ticker, year]);
   const detail = useAsyncResource(year === null ? null : loadStatement, { clearOnError: isPermanentClientError });
   const statement = detail.data?.data ?? null;
   const loading = list.loading || detail.loading;

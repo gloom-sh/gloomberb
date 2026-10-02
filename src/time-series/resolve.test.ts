@@ -2464,3 +2464,70 @@ test.each([-9, 0, 12])("forward P/E chart handles reported multiple %s without i
   }
   expect(financials.fundamentals.forwardPE).toBe(forwardPE);
 });
+
+describe("one-day charts show the latest session", () => {
+  const hourlyBars = (from: string, to: string, close: number) => {
+    const bars = [];
+    for (let time = Date.parse(from); time <= Date.parse(to); time += 60 * 60_000) {
+      bars.push({ date: new Date(time), open: close, high: close, low: close, close });
+    }
+    return bars;
+  };
+  const resolveDay = async (symbol: string, exchange: string, bars: ReturnType<typeof hourlyBars>,
+    quote?: { previousClose: number; lastUpdated: number }) => {
+    const provider = createTestDataProvider({ getPriceHistoryForResolution: async () => bars });
+    const source = { kind: "security" as const, instrument: { symbol, exchange }, fieldId: "market.ohlcv" };
+    return resolveChartSpecData(chartSpec({ viewport: { range: "1D", resolution: "1h" }, series: [chartSeries({ style: "candles", source })] }), {
+      dataProvider: provider, now: new Date("2026-10-03T12:00:00Z"), loadFredSeries: async () => fredLoad(),
+      ...(quote ? { quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source),
+        { symbol, price: 1, currency: "USD", change: 0, changePercent: 0, ...quote }]]) } : {}),
+    });
+  };
+
+  test("opens at the venue's open on a weekend and measures from the close before it", async () => {
+    const bars = [...hourlyBars("2026-10-01T13:30:00Z", "2026-10-01T19:30:00Z", 330), ...hourlyBars("2026-10-02T13:30:00Z", "2026-10-02T19:30:00Z", 333)];
+    const fromBars = await resolveDay("AAPL", "NASDAQ", bars);
+    expect(fromBars.viewport).toEqual({ start: new Date("2026-10-02T13:30:00Z"), end: new Date("2026-10-02T19:30:00Z") });
+    expect(fromBars.series[0]?.priorClose).toBe(330);
+    // The quote's own reference wins when it describes the session shown, as the legend's change does.
+    const fromQuote = await resolveDay("AAPL", "NASDAQ", bars, { previousClose: 330.31, lastUpdated: Date.parse("2026-10-02T17:00:00Z") });
+    expect(fromQuote.series[0]?.priorClose).toBe(330.31);
+    const newerQuote = await resolveDay("AAPL", "NASDAQ", bars, { previousClose: 333, lastUpdated: Date.parse("2026-10-05T13:35:00Z") });
+    expect(newerQuote.series[0]?.priorClose).toBe(330);
+  });
+
+  test("asks US listings for extended hours and falls back to the regular session when they are not served", async () => {
+    const requests: Array<string | undefined> = [];
+    const bars = [...hourlyBars("2026-10-01T13:30:00Z", "2026-10-01T19:30:00Z", 330), ...hourlyBars("2026-10-02T08:00:00Z", "2026-10-02T23:00:00Z", 333)];
+    const resolveExtended = (symbol: string, exchange: string, served: boolean) => resolveChartSpecData(chartSpec({
+      viewport: { range: "1D", resolution: "1h", extendedHours: true },
+      series: [chartSeries({ style: "candles", source: { kind: "security", instrument: { symbol, exchange }, fieldId: "market.ohlcv" } })],
+    }), {
+      dataProvider: createTestDataProvider({
+        getPriceHistoryForResolutionWithMetadata: async (_symbol, _exchange, _range, resolution, context) => {
+          requests.push(context?.historySession);
+          const extended = served && context?.historySession === "extended";
+          return { points: extended ? bars : bars.filter((bar) => bar.date.getUTCHours() >= 13 && bar.date.getUTCHours() < 20), resolution,
+            ...(extended ? { extendedHours: true } : {}) };
+        },
+      }),
+      now: new Date("2026-10-03T12:00:00Z"), loadFredSeries: async () => fredLoad(),
+    });
+
+    const served = await resolveExtended("AAPL", "NASDAQ", true);
+    // The day opens with the 04:00 New York pre-market and runs through the after-hours.
+    expect(served.viewport).toEqual({ start: new Date("2026-10-02T08:00:00Z"), end: new Date("2026-10-02T23:00:00Z") });
+    expect(served.warnings).toEqual([]);
+    const unserved = await resolveExtended("AAPL", "NASDAQ", false);
+    expect(unserved.viewport?.start).toEqual(new Date("2026-10-02T14:00:00Z"));
+    expect(unserved.warnings).toContain("AAPL:XNAS: pre-market and after-hours bars are unavailable; the chart shows the regular session.");
+    await resolveExtended("7203.T", "JPX", true);
+    expect(requests).toEqual(["extended", "extended", undefined]);
+  });
+
+  test("keeps a rolling day for crypto", async () => {
+    const result = await resolveDay("BTC-USD", "CCC", hourlyBars("2026-10-02T00:00:00Z", "2026-10-03T11:00:00Z", 84_000));
+    expect(result.viewport).toEqual({ start: new Date("2026-10-02T12:00:00Z"), end: new Date("2026-10-03T12:00:00Z") });
+    expect(result.series[0]?.priorClose).toBeUndefined();
+  });
+});

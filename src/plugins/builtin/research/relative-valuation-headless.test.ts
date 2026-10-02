@@ -12,7 +12,7 @@ test("fresh quotes do not hide stale fundamentals in a peer research report", as
     async getTickerFinancials(symbol) {
       return { annualStatements: [], quarterlyStatements: [], priceHistory: [],
         quote: { symbol, price: 60, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1789567200000, stale: false, marketCap: 420e9 },
-        fundamentals: { trailingPE: 13.94, financialCurrency: "USD", source: "yahoo" as const,
+        fundamentals: { trailingPE: 13.94, financialCurrency: "USD", source: "gloom" as const,
           fetchedAt: "2026-09-14T17:23:38.462Z", stale: symbol === "BAC" && stale },
       };
     },
@@ -115,10 +115,10 @@ test("loss-making peers retain reported multiples without ranking them as cheap 
 test("qualified peers retain dated fundamental caps after stale quote removal and preserve cash-flow currency boundaries", async () => {
   const base = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
     fundamentals: { marketCap: 55_866_216_448, marketCapCurrency: "USD", financialCurrency: "USD",
-      freeCashFlow: -7_940_250_112, source: "yahoo" as const, fetchedAt: "2026-09-11T15:23:57.311Z", stale: false } };
+      freeCashFlow: -7_940_250_112, source: "gloom" as const, fetchedAt: "2026-09-11T15:23:57.311Z", stale: false } };
   const values = relativeValuationValues(base);
   expect(values).toMatchObject({ price: null, currency: null, marketCap: base.fundamentals.marketCap, marketCapCurrency: "USD",
-    marketCapProvenance: { kind: "fundamentals", source: "yahoo", retrievedAt: base.fundamentals.fetchedAt, stale: false } });
+    marketCapProvenance: { kind: "fundamentals", source: "gloom", retrievedAt: base.fundamentals.fetchedAt, stale: false } });
   expect(values.fcfYield).toBeCloseTo(-7_940_250_112 / 55_866_216_448, 12);
   expect(relativeValuationValues({ ...base, fundamentals: { ...base.fundamentals, financialCurrency: undefined } }).fcfYield).toBeNull();
   expect(relativeValuationValues({ ...base, fundamentals: { ...base.fundamentals, financialCurrency: "EUR" } }).fcfYield).toBeNull();
@@ -150,13 +150,13 @@ test("stale quotes cannot rank as current prices or seed quote-based cash-flow y
     quote: { symbol: "PLD", price: 135.75, change: 1.34, changePercent: .9969496317, currency: "USD",
       lastUpdated: 1789167600002, stale: true, marketCap: 131961405440, providerId: "gloomberb-cloud", dataSource: "delayed" as const },
     fundamentals: { trailingPE: 30.233854, freeCashFlow: 5406941184, financialCurrency: "USD", operatingMargin: .4,
-      source: "yahoo" as const, fetchedAt: "2026-09-11T23:52:16.139Z", stale: false } };
+      source: "gloom" as const, fetchedAt: "2026-09-11T23:52:16.139Z", stale: false } };
   const raw = structuredClone(observed);
   const values = relativeValuationValues(observed);
   expect(values).toMatchObject({ price: null, changePercent: null, marketCap: null, fcfYield: null,
     quoteStale: true, quoteAsOf: observed.quote.lastUpdated, trailingPE: 30.233854, operatingMargin: .4,
     reportedQuote: { price: 135.75, stale: true, marketCap: observed.quote.marketCap, lastUpdated: observed.quote.lastUpdated },
-    fundamentalsProvenance: { source: "yahoo", retrievedAt: observed.fundamentals.fetchedAt, stale: false } });
+    fundamentalsProvenance: { source: "gloom", retrievedAt: observed.fundamentals.fetchedAt, stale: false } });
   expect(observed).toEqual(raw);
   const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
     getTickerFinancials: async (symbol) => symbol === "MISSING" ? Promise.reject(new Error("source unavailable"))
@@ -180,11 +180,11 @@ test("stale quotes cannot rank as current prices or seed quote-based cash-flow y
 test("a stale quote may use an independent fundamental cap with its own source and currency", async () => {
   const financials = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
     quote: { symbol: "DUAL", price: 50, change: 1, changePercent: 2, currency: "USD", lastUpdated: 1789167600002, stale: true, marketCap: 500 },
-    fundamentals: { marketCap: 100, marketCapCurrency: "EUR", freeCashFlow: 5, financialCurrency: "EUR", source: "yahoo" as const,
+    fundamentals: { marketCap: 100, marketCapCurrency: "EUR", freeCashFlow: 5, financialCurrency: "EUR", source: "gloom" as const,
       fetchedAt: "2026-09-11T23:52:16.139Z", stale: false } };
   const values = relativeValuationValues(financials);
   expect(values).toMatchObject({ price: null, marketCap: 100, marketCapCurrency: "EUR", fcfYield: .05,
-    marketCapProvenance: { kind: "fundamentals", source: "yahoo", retrievedAt: financials.fundamentals.fetchedAt, stale: false } });
+    marketCapProvenance: { kind: "fundamentals", source: "gloom", retrievedAt: financials.fundamentals.fetchedAt, stale: false } });
   const recovered = relativeValuationValues({ ...financials, quote: { ...financials.quote, stale: false } });
   expect(recovered).toMatchObject({ price: 50, marketCap: 500, marketCapCurrency: "USD", fcfYield: null, quoteStale: false });
   const unknown = relativeValuationValues({ ...financials, quote: { ...financials.quote, stale: undefined } });

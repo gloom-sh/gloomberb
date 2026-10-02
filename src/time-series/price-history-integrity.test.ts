@@ -15,7 +15,7 @@ import { pricePointsToResolvedSeries } from "../components/chart/composite/price
 import { applyCompositeChartCursor, buildCompositeChartScene } from "../components/chart/composite/scene";
 import { CHART_SPEC_VERSION, type ChartSpec, type ResolvedSeries, type SeriesPeriod, type SeriesTransform } from "./types";
 
-// Actual SPY row retained from the September 10 Yahoo history cache. The open
+// Actual SPY row retained from the September 10 Gloom history cache. The open
 // exceeds the reported high; a later close does not tell us which field is wrong.
 const reported: PricePoint = {
   date: new Date("2026-09-10T13:30:00.000Z"),
@@ -62,10 +62,10 @@ test("the invariant detects contradictions without inventing missing OHLC or los
   const diagnostic = pricePointIntegrity(copy)!;
   copy.open = 1;
   expect(diagnostic.sourcePoints[0]!.open).toBe(reported.open);
-  const withSource: PricePoint = { ...reported, historySource: { provider: "yahoo", symbol: "ACME", exchange: "LSE", currency: "GBP" } };
+  const withSource: PricePoint = { ...reported, historySource: { provider: "gloom", symbol: "ACME", exchange: "LSE", currency: "GBP" } };
   const sourceDiagnostic = pricePointIntegrity(withSource)!;
-  withSource.historySource!.provider = "twelvedata";
-  expect(sourceDiagnostic.sourcePoints[0]!.historySource?.provider).toBe("yahoo");
+  withSource.historySource!.provider = "other";
+  expect(sourceDiagnostic.sourcePoints[0]!.historySource?.provider).toBe("gloom");
   expect(Object.isFrozen(sourceDiagnostic.sourcePoints[0]!.historySource)).toBe(true);
 });
 

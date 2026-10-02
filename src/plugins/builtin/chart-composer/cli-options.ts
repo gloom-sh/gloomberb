@@ -61,6 +61,10 @@ export function applyChartComposerCapabilityOptions(
     };
   }
 
+  if (capabilityId === "price-chart" && options.extendedHours === true) {
+    next = { ...next, viewport: { ...next.viewport, extendedHours: true } };
+  }
+
   if (PRICE_CAPABILITIES.has(capabilityId) && options.axisMode) {
     const transform = options.axisMode === "percent" ? "percent" : "raw";
     next = {

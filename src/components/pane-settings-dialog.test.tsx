@@ -213,6 +213,39 @@ describe("pane settings action rows", () => {
     expect(frame).toContain("About setting 14");
   });
 
+  test("starts on the setting picked in the command bar, scrolled into view", async () => {
+    const toggles: PaneSettingField[] = Array.from({ length: 14 }, (_, index) => ({
+      key: `field-${index + 1}`,
+      label: `Setting ${index + 1}`,
+      type: "toggle",
+    }));
+    const registry = {
+      ...makeRegistry(makeField()),
+      resolvePaneSettings: () => ({
+        paneId: context.paneId,
+        pane: { title: "AI", paneId: "test-pane" },
+        paneDef: { name: "AI" },
+        settingsDef: { title: "AI Settings", fields: toggles },
+        context,
+      }),
+    } as unknown as PluginRegistry;
+    await tui.render(
+      <TestDialogProvider>
+        <PaneSettingsDialogContent
+          dismiss={() => {}}
+          paneId={context.paneId}
+          pluginRegistry={registry}
+          applyFieldValue={async () => {}}
+          initialFieldKey="field-14"
+        />
+      </TestDialogProvider>,
+      { width: 72, height: 18 },
+    );
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("▸ Setting 14");
+  });
+
   test("routes keyboard input to a nested select instead of the parent settings list", async () => {
     const applied: unknown[] = [];
     const field: PaneSettingField = {

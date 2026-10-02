@@ -52,6 +52,12 @@ export const paneSchemas = {
         values: HISTORY_RANGE_VALUES,
         defaultValue: "5Y",
       },
+      {
+        key: "extendedHours",
+        description: "Include pre-market and after-hours bars on an intraday chart of a US listing.",
+        type: "boolean",
+        defaultValue: false,
+      },
     ],
     discovery: {
       id: "price-chart",

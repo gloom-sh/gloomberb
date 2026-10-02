@@ -55,7 +55,7 @@ test("enterprise value is shown in the market cap's currency, converted or label
   const unconverted = await render(async () => Number.NaN);
   expect(unconverted).toContain("Market Cap 200B CHF");
   expect(unconverted).toContain("Enterprise Value 255B CHF");
-  // Local Yahoo fundamentals declare no capitalization unit: the listing's quote currency applies.
+  // Fallback fundamentals declare no capitalization unit: the listing's quote currency applies.
   const undeclared: TickerFinancials = { quote: { ...quote, marketCap: 3.8e12 }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
     fundamentals: { enterpriseValue: 3.85e12 },
   };

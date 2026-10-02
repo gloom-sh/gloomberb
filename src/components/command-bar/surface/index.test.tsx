@@ -3,9 +3,10 @@ import { act } from "react";
 import { takeKeybindingCaptureRequest } from "../../../app/keybindings";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import type { CommandDef, CommandShortcutArgContext, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
+import type { CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
 import { CommandBarHarness, createCommandBarTestControls, expectSingleBackControl, makeDataProvider } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
+import type { AppContextStoreValue } from "../../../state/app/context";
 
 const tui = createOpenTuiTestHarness();
 
@@ -76,8 +77,8 @@ describe("CommandBar", () => {
       dataProvider={makeDataProvider(async (query) => {
         searchQueries.push(query);
         return [
-          { providerId: "yahoo", symbol: "MSFT", name: "Microsoft Corp", exchange: "NASDAQ", type: "EQUITY" },
-          { providerId: "yahoo", symbol: "MSF", name: "MFS Municipal Fund", exchange: "NYSE", type: "ETF" },
+          { providerId: "gloom", symbol: "MSFT", name: "Microsoft Corp", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "MSF", name: "MFS Municipal Fund", exchange: "NYSE", type: "ETF" },
         ];
       })}
     />, {
@@ -112,7 +113,7 @@ describe("CommandBar", () => {
       }}
       dataProvider={makeDataProvider(async () => {
         await held;
-        return [{ providerId: "yahoo", symbol: "LIST", name: "List Corp", exchange: "NYSE", type: "EQUITY" }];
+        return [{ providerId: "gloom", symbol: "LIST", name: "List Corp", exchange: "NYSE", type: "EQUITY" }];
       })}
     />, {
       width: 100,
@@ -255,7 +256,7 @@ describe("CommandBar", () => {
     expect(opened).toEqual([{ paneId: "portfolio-list:main", mode: "resize" }]);
   });
 
-  test("opens plugin command shortcut arguments in the wizard for confirmation", async () => {
+  test("opens plugin command shortcut arguments in the form for confirmation", async () => {
     const calls: Array<Record<string, string> | undefined> = [];
 
     await tui.render(<CommandBarHarness
@@ -291,7 +292,7 @@ describe("CommandBar", () => {
     expect(calls).toEqual([]);
   });
 
-  test("opens partial plugin command shortcut arguments in the wizard", async () => {
+  test("opens partial plugin command shortcut arguments in the form", async () => {
     await tui.render(<CommandBarHarness
       query="SA AMD"
       configurePluginRegistry={(pluginRegistry) => {
@@ -368,7 +369,7 @@ describe("CommandBar", () => {
     expect(workflowFrame).toContain("201.5");
   });
 
-  test("updates workflow select fields from the option picker", async () => {
+  test("updates form select fields from the stacked picker", async () => {
     await tui.render(<CommandBarHarness
       query="SA AMD"
       configurePluginRegistry={(pluginRegistry) => {
@@ -422,64 +423,46 @@ describe("CommandBar", () => {
     expect(frame).toContain("Below");
   });
 
-  test("opens plugin command workflows from a launch request", async () => {
+  test("Add Broker Account closes the bar and starts the Brokers pane's add flow", async () => {
+    const shown: string[] = [];
+    const storeRef: { current: AppContextStoreValue | null } = { current: null };
     await tui.render(<CommandBarHarness
-      query=""
-      selectedTicker="AMD"
-      extraTickers={[createTestTicker("AMD", "Advanced Micro Devices")]}
-      configureState={(state) => ({
-        ...state,
-        commandBarLaunchRequest: {
-          kind: "plugin-command",
-          commandId: "set-alert",
-          sequence: 1,
+      query="Add Broker Account"
+      live
+      storeRef={storeRef}
+      configureConfig={(config) => ({
+        ...config,
+        layout: {
+          ...config.layout,
+          instances: [...config.layout.instances, { instanceId: "brokers:main", paneId: "brokers", binding: { kind: "none" } }],
         },
       })}
       configurePluginRegistry={(pluginRegistry) => {
-        registerAlertCommand(pluginRegistry, {
-          label: "Set Alert",
-          keywords: ["alert", "price", "trigger"],
-          shortcutArg: {
-            placeholder: "symbol condition price",
-            kind: "ticker",
-            parse: (_arg: string, context: CommandShortcutArgContext): Record<string, string> => (
-              context?.activeTicker ? { symbol: context.activeTicker } : {}
-            ),
-          },
+        mutablePaneRegistryMap((pluginRegistry as MutablePaneRegistry).panes).set("brokers", {
+          id: "brokers",
+          name: "Brokers",
+          component: () => null,
+          defaultPosition: "right",
+          defaultMode: "floating",
         });
+        pluginRegistry.showPane = (paneId: string) => { shown.push(paneId); };
+        pluginRegistry.getLayout = () => storeRef.current!.getState().config.layout;
+        pluginRegistry.updatePaneRuntimeState = (paneId, patch) => {
+          storeRef.current!.dispatch({ type: "UPDATE_PANE_STATE", paneId, patch });
+        };
       }}
     />, {
       width: 80,
       height: 24,
     });
 
-    const frame = await waitForFrameToContain("Target Price");
-    expect(frame).toContain("Set Alert");
-    expect(frame).toContain("Symbol");
-    expect(frame).toContain("Condition");
-    expect(frame).toContain("AMD");
-  });
+    await tui.setup().renderOnce();
+    await waitForFrameToContain("Add Broker Account");
+    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, afterCommit: true });
+    await waitForFrameToContain("bar:closed");
 
-  // The status bar tab menu and the desktop Layout menu open New and Rename
-  // Layout this way; a launch the bar ignores leaves them on an empty bar.
-  test("opens a built-in workflow from a launch request", async () => {
-    await tui.render(<CommandBarHarness
-      query=""
-      configureState={(state) => ({
-        ...state,
-        commandBarLaunchRequest: {
-          kind: "builtin-workflow",
-          actionId: "new-layout",
-          sequence: 1,
-        },
-      })}
-    />, {
-      width: 80,
-      height: 24,
-    });
-
-    const frame = await waitForFrameToContain("Layout Name");
-    expect(frame).toContain("Create Layout");
+    expect(shown).toEqual(["brokers"]);
+    expect(storeRef.current!.getState().paneState["brokers:main"]?.brokerAddRequest).toEqual(expect.any(Number));
   });
 
   test("opens ticker search from a launch request with saved ticker metadata", async () => {
@@ -549,24 +532,23 @@ describe("CommandBar", () => {
     expect(frame).not.toContain("Back");
   });
 
-  test("QQ without an active ticker opens inline ticker-list entry on enter", async () => {
-    await tui.render(<CommandBarHarness query="QQ" />, {
+  test("QQ without an active ticker asks for the tickers in the form modal on enter", async () => {
+    await tui.render(<CommandBarHarness query="QQ" live />, {
       width: 100,
       height: 20,
     });
 
     await tui.setup().renderOnce();
     expect(tui.frame()).toContain("Quote Monitor");
-    expect(tui.frame()).not.toContain("Back");
 
     await act(async () => {
       tui.setup().mockInput.pressEnter();
       await tui.setup().renderOnce();
     });
 
-    const frame = tui.frame();
-    expect(frame).toContain("Back");
-    expect(frame).toContain("Quote Tickers");
+    const frame = await waitForFrameToContain("Quote Tickers");
+    expect(frame).toContain("Create Pane");
+    expect(frame).toContain("bar:closed");
   });
 
   test("T without an active ticker opens ticker search on enter", async () => {
@@ -892,11 +874,11 @@ describe("CommandBar", () => {
       <CommandBarHarness
         query="DES appl"
         dataProvider={makeDataProvider(async () => [
-          { providerId: "yahoo", symbol: "IVSX", name: "Invsivx Holdings", exchange: "NYSE", type: "ETF" },
-          { providerId: "yahoo", symbol: "AAPL", name: "Apple Inc", exchange: "NASDAQ", type: "EQUITY" },
-          { providerId: "yahoo", symbol: "AMAT", name: "Applied Materials", exchange: "NASDAQ", type: "EQUITY" },
-          { providerId: "yahoo", symbol: "AAOI", name: "Applied Optoelectronics", exchange: "NASDAQ", type: "EQUITY" },
-          { providerId: "yahoo", symbol: "APP", name: "AppLovin Corp", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "IVSX", name: "Invsivx Holdings", exchange: "NYSE", type: "ETF" },
+          { providerId: "gloom", symbol: "AAPL", name: "Apple Inc", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "AMAT", name: "Applied Materials", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "AAOI", name: "Applied Optoelectronics", exchange: "NASDAQ", type: "EQUITY" },
+          { providerId: "gloom", symbol: "APP", name: "AppLovin Corp", exchange: "NASDAQ", type: "EQUITY" },
         ])}
       />,
       { width: 80, height: 24 },
@@ -942,7 +924,7 @@ describe("CommandBar", () => {
         })}
         dataProvider={makeDataProvider(async () => [
           {
-            providerId: "yahoo",
+            providerId: "gloom",
             symbol: "AAPL",
             name: "Apple Inc.",
             exchange: "NASDAQ",
@@ -960,7 +942,7 @@ describe("CommandBar", () => {
             currency: "EUR",
           },
           {
-            providerId: "yahoo",
+            providerId: "gloom",
             symbol: "APLY",
             name: "Apple Yield Shares ETF",
             exchange: "NYSE Arca",
@@ -983,7 +965,7 @@ describe("CommandBar", () => {
     expect(aaplRow).toBeLessThan(apcRow);
   });
 
-  test("renders form-layout wizard fields together on one screen", async () => {
+  test("renders a wizard's fields together in the form modal", async () => {
     await tui.render(
       <CommandBarHarness
         query="auth login"
@@ -995,7 +977,6 @@ describe("CommandBar", () => {
             description: "Log in to your account",
             keywords: ["login", "auth"],
             category: "config",
-            wizardLayout: "form",
             wizard: [
               { key: "email", label: "Email", type: "text", placeholder: "email@example.com" },
               { key: "password", label: "Password", type: "password", placeholder: "Your password" },
@@ -1009,16 +990,11 @@ describe("CommandBar", () => {
 
     await tui.setup().renderOnce();
     await clickFrameText("Auth Login");
-    await act(async () => {
-      await tui.setup().renderOnce();
-    });
-
-    let frame = tui.frame();
-    expect(frame).toContain("Back");
+    const frame = await waitForFrameToContain("Your password");
     expect(frame).toContain("Email");
     expect(frame).toContain("Password");
-    expect(frame).toContain("Your password");
-    expectSingleBackControl(frame);
+    expect(frame).toContain("Cancel");
+    expect(frame).toContain("bar:closed");
   });
 
   test("submits single-field form-layout wizards", async () => {
@@ -1073,8 +1049,7 @@ describe("CommandBar", () => {
     expect(submitted).toEqual([{ name: "Research" }]);
   });
 
-  // Enter on a select opens its picker, and picking pops back without sending,
-  // so a form that ends in a select is only sendable by the chord.
+  // Enter on a select opens its picker, and picking moves on without sending.
   test("sends a form whose last field is a select with Ctrl+S", async () => {
     const submitted: Array<Record<string, string> | undefined> = [];
 
@@ -1109,13 +1084,15 @@ describe("CommandBar", () => {
     );
 
     await tui.setup().renderOnce();
-    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2 });
-    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2 });
+    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true });
+    await waitForFrameToContain("Filing");
+    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true });
     await waitForFrameToContain("Insider Trade");
-    await tui.emitKeypress([{ name: "down" }, { name: "return", sequence: "\r" }], { frames: 2 });
+    await tui.emitKeypress({ name: "down" }, { frames: 2, trackPropagation: true });
+    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true });
     expect(submitted).toEqual([]);
 
-    await tui.emitKeypress({ name: "s", ctrl: true, sequence: "\x13" }, { frames: 2 });
+    await tui.emitKeypress({ name: "s", ctrl: true, sequence: "\x13" }, { frames: 2, trackPropagation: true });
     await act(async () => {
       await Bun.sleep(0);
       await tui.setup().renderOnce();

@@ -15,13 +15,13 @@ export function createCliPaneShotConnectionHealth(now = Date.now()): ConnectionH
   });
   health.reportSocketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID, "open", "api.gloom.sh/cloud/ws");
   health.registerSource({
-    id: "asset-data.yahoo",
-    name: "Yahoo Finance",
+    id: "asset-data.gloomberb-cloud",
+    name: "Market data",
     kind: "asset-data",
     ownerId: "market-data",
     priority: 20,
   });
-  health.reportRequest("asset-data.yahoo", {
+  health.reportRequest("asset-data.gloomberb-cloud", {
     operation: "getPriceHistory",
     success: false,
     latencyMs: 240,

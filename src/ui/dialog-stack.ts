@@ -21,6 +21,46 @@ interface DialogStackOptions<E extends { id: string }> {
 
 let nextDialogId = 1;
 
+interface MountedStack {
+  /** The host's dialogs, updated the moment one opens or closes. */
+  readonly dialogs: { readonly current: readonly { id: string }[] };
+  close(id: string): void;
+}
+
+/** Every mounted host's stack. */
+const mountedStacks = new Set<MountedStack>();
+/** When each open dialog opened, across hosts. */
+const openedAt = new WeakMap<object, number>();
+
+/**
+ * Whether a dialog is open now. Read from the stacks rather than from a
+ * render, so a dialog that just closed itself (pane settings handing over to
+ * the bar) already counts as closed. Anything that would open the command bar
+ * checks this first: the bar would sit over the dialog without its keys.
+ */
+export function isDialogOpen(): boolean {
+  for (const stack of mountedStacks) {
+    if (stack.dialogs.current.length > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Closes the dialog opened last, the one on top, as Esc would. False when no
+ * dialog is open. For remote control, which has no Esc to press.
+ */
+export function dismissTopmostDialog(): boolean {
+  let top: { stack: MountedStack; id: string; order: number } | null = null;
+  for (const stack of mountedStacks) {
+    const entry = stack.dialogs.current.at(-1);
+    if (!entry) continue;
+    const order = openedAt.get(entry) ?? 0;
+    if (!top || order > top.order) top = { stack, id: entry.id, order };
+  }
+  top?.stack.close(top.id);
+  return top !== null;
+}
+
 export function useDialogStack<E extends { id: string }>(options: DialogStackOptions<E>) {
   const [dialogs, setDialogs] = useState<E[]>([]);
   const dialogsRef = useRef<E[]>([]);
@@ -52,7 +92,9 @@ export function useDialogStack<E extends { id: string }>(options: DialogStackOpt
   const open = useCallback(<T,>(kind: DialogKind, dialogOptions: DialogOptions<never>) => (
     new Promise<T | undefined>((resolve) => {
       const { createEntry, idPrefix } = optionsRef.current;
-      const entry = createEntry(`${idPrefix}-${nextDialogId++}`, kind, dialogOptions, dialogsRef.current.length === 0);
+      const order = nextDialogId++;
+      const entry = createEntry(`${idPrefix}-${order}`, kind, dialogOptions, dialogsRef.current.length === 0);
+      openedAt.set(entry, order);
       settlersRef.current.set(entry.id, (value) => resolve(value as T | undefined));
       publish([...dialogsRef.current, entry]);
     })
@@ -60,8 +102,12 @@ export function useDialogStack<E extends { id: string }>(options: DialogStackOpt
 
   useEffect(() => {
     mountedRef.current = true;
+    // `close` keeps its identity for the life of the host.
+    const mounted: MountedStack = { dialogs: dialogsRef, close };
+    mountedStacks.add(mounted);
     return () => {
       mountedRef.current = false;
+      mountedStacks.delete(mounted);
       const settlers = [...settlersRef.current.values()];
       settlersRef.current.clear();
       dialogsRef.current = [];

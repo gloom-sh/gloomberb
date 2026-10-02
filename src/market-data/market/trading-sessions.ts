@@ -1,6 +1,7 @@
 import { futuresListingVenue } from "../../utils/futures-generic";
+import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
-import { latestRegularSessionOpen } from "./freshness";
+import { isRegularSessionTime, latestRegularSessionOpen, sessionCalendarTimeZone } from "./freshness";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -69,4 +70,67 @@ export function latestTradingSessionOpen(symbol: string | undefined, exchange: s
   if (!Number.isFinite(time)) return null;
   const futures = symbol || exchange ? futuresSessionOpen(symbol ?? "", exchange) : null;
   return futures ? latestOpen(futures, time) : latestRegularSessionOpen(exchange, time);
+}
+
+/**
+ * The zone a listing's intraday times read in: a futures venue's own clock
+ * (Chicago for CME Group, New York for ICE U.S.), otherwise the venue's. Null
+ * for crypto, FX and venues without a known clock, which read in UTC.
+ */
+export function listingTimeZone(symbol: string | undefined, exchange: string | undefined): string | null {
+  const futures = symbol || exchange ? futuresSessionOpen(symbol ?? "", exchange) : null;
+  if (futures) return futures.timeZone;
+  const zone = sessionCalendarTimeZone(exchange);
+  return zone === "UTC" ? null : zone;
+}
+
+/** US pre-market trading opens at 04:00 New York time. */
+const US_PRE_MARKET_OPEN_MINUTES = 4 * 60;
+
+/**
+ * Where a one-day chart of a listing starts: the open of the trading session
+ * holding its latest bar, so a closed market, a weekend or a holiday shows
+ * the last session. Futures follow their venue's published open (17:00
+ * Central the evening before on CME Group), stocks their regular open. With
+ * extended hours a US listing starts at 04:00 New York on the latest bar's
+ * day, so a pre-market bar opens the new day. Null keeps a rolling day:
+ * crypto, FX and venues without known hours.
+ */
+export function latestSessionStart(
+  symbol: string | undefined,
+  exchange: string | undefined,
+  latest: number,
+  options: { extendedHours?: boolean } = {},
+): number | null {
+  const open = latestTradingSessionOpen(symbol, exchange, latest);
+  if (open === null || !options.extendedHours || !isUsListingExchange(exchange)
+    || (symbol && futuresSessionOpen(symbol, exchange))) return open;
+  const preMarket = (time: number) => {
+    const { year, month, day } = zonedDateTimeParts(time, NEW_YORK);
+    return zonedWallClockToUtcMs(NEW_YORK, year, month, day,
+      Math.floor(US_PRE_MARKET_OPEN_MINUTES / 60), US_PRE_MARKET_OPEN_MINUTES % 60, 0);
+  };
+  const today = preMarket(latest);
+  return today <= latest ? today : preMarket(open);
+}
+
+/**
+ * The close a session is measured from: the last bar before `start` that
+ * traded in the previous session, its regular hours on a stock venue with
+ * known hours. Null when the loaded history does not reach back that far.
+ */
+export function priorSessionClose(
+  bars: ReadonlyArray<{ time: number; close: number }>,
+  start: number,
+  symbol: string | undefined,
+  exchange: string | undefined,
+): number | null {
+  const futures = !!(symbol || exchange) && futuresSessionOpen(symbol ?? "", exchange) !== null;
+  const canonical = canonicalExchange(exchange);
+  for (let index = bars.length - 1; index >= 0; index -= 1) {
+    const bar = bars[index]!;
+    if (!(bar.time < start) || !Number.isFinite(bar.close)) continue;
+    if (futures || isRegularSessionTime(canonical, bar.time) !== false) return bar.close;
+  }
+  return null;
 }

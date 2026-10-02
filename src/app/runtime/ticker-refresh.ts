@@ -96,7 +96,7 @@ export function useTickerRefreshRuntime({
       if (quote.currency) void marketData.loadFxRate(quote.currency).catch(() => {});
       void marketData.loadFxRate(baseCurrency).catch(() => {});
     } catch {
-      // Silently fail - the list can fall back to stale cache or Yahoo.
+      // Silently fail - the list can fall back to stale cache or the backend.
     } finally {
       quoteRefreshInFlight.delete(key);
     }

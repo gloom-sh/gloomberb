@@ -3,11 +3,7 @@ import type { AppState } from "../../../../state/app/context";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import type { CommandDef, CommandResultDef } from "../../../../types/plugin";
 import type { OpenInlineConfirm } from "../../routing/confirm";
-import {
-  getFirstVisibleFieldId,
-  looksDestructiveCommand,
-  normalizeWizardFields,
-} from "../../helpers";
+import { looksDestructiveCommand } from "../../helpers";
 import type { ResultItem } from "../../list/model";
 import {
   buildPluginCommandItem,
@@ -15,7 +11,7 @@ import {
   getAvailablePluginCommandsForState,
   runPluginCommandDirect as runPluginCommandDirectAction,
 } from "./items";
-import type { CommandBarWorkflowRoute } from "../../workflow/types";
+import type { FormModalRequest } from "../../../form-modal";
 
 type CloseAllFn = (options?: { revertThemePreview?: boolean }) => void;
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
@@ -26,8 +22,8 @@ interface UseCommandBarPluginCommandActionsOptions {
   closeAll: CloseAllFn;
   config: AppState["config"];
   notify: NotifyFn;
+  openForm: (request: FormModalRequest) => void;
   openInlineConfirm: OpenInlineConfirm;
-  openWorkflowRoute: (route: CommandBarWorkflowRoute) => void;
   pluginRegistry: PluginRegistry;
 }
 
@@ -37,8 +33,8 @@ export function useCommandBarPluginCommandActions({
   closeAll,
   config,
   notify,
+  openForm,
   openInlineConfirm,
-  openWorkflowRoute,
   pluginRegistry,
 }: UseCommandBarPluginCommandActionsOptions) {
   const resolvePluginCommandConfirm = useCallback((command: CommandDef) => {
@@ -71,33 +67,8 @@ export function useCommandBarPluginCommandActions({
     options?: { values?: Record<string, string> },
   ) => {
     if (!command.wizard || command.wizard.length === 0) return;
-    const normalized = normalizeWizardFields(command.wizard);
-    const values = {
-      ...normalized.initialValues,
-      ...(options?.values ?? {}),
-    };
-    openWorkflowRoute({
-      kind: "workflow",
-      workflowId: `plugin-command:${command.id}`,
-      title: command.label,
-      subtitle: command.description,
-      description: normalized.description,
-      fields: normalized.fields,
-      values,
-      activeFieldId: getFirstVisibleFieldId(normalized.fields, values),
-      submitLabel: command.label,
-      cancelLabel: "Back",
-      pendingLabel: normalized.pendingLabel,
-      successLabel: normalized.successLabel,
-      pending: false,
-      error: null,
-      successBehavior: "close",
-      payload: {
-        kind: "plugin-command",
-        actionId: command.id,
-      },
-    });
-  }, [openWorkflowRoute]);
+    openForm({ kind: "plugin-command", commandId: command.id, values: options?.values });
+  }, [openForm]);
 
   const getAvailablePluginCommands = useCallback((): CommandDef[] => {
     return getAvailablePluginCommandsForState(pluginRegistry, config.disabledPlugins || []);

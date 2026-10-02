@@ -65,7 +65,7 @@ export interface DesktopPaneShotPayload {
   paneState: Record<string, PaneRuntimeState>;
   /**
    * Installed plugins compiled for the browser, the same way the desktop view
-   * receives them. Without these a pane from `~/.gloomberb/plugins` resolves in
+   * receives them. Without these a pane from the plugins folder resolves in
    * the CLI but is unknown to the page that renders it.
    */
   externalPlugins?: DesktopExternalPluginBundle[];
@@ -80,7 +80,7 @@ export interface DesktopPaneShotApiProxy {
 /**
  * The page renders panes that fetch their own data. Left alone it can only
  * reach the cloud API, so a pane whose values come from a provider the router
- * merges in (analyst price targets, Yahoo dividends) rendered thinner than the
+ * merges in (analyst price targets, cash dividends) rendered thinner than the
  * same pane in the terminal. The bridge lets the page ask the Bun process to
  * run those requests through the real provider router instead.
  */

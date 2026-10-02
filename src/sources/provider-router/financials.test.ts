@@ -93,7 +93,7 @@ describe("provider-router financial quote usability", () => {
     }), "NASDAQ")).toBe(false);
   });
 
-  test("keeps a closed Asian index that Yahoo still labels POST hours after the close", () => {
+  test("keeps a closed Asian index that Gloom still labels POST hours after the close", () => {
     expect(isProviderQuoteUsableForCurrentSession(createTestQuote({
       symbol: "^N225",
       dataSource: "delayed",
@@ -179,13 +179,13 @@ test("fallback reporting currency does not label unknown primary statement units
 });
 
 test("yield basis and source stay attached to the selected yield observation", () => {
-  const forward = createTestFinancials({ fundamentals: { dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo" } });
-  const trailing = createTestFinancials({ fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "twelvedata", revenue: 100 } });
-  expect(mergeFinancials(forward, trailing)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo", revenue: 100 });
+  const forward = createTestFinancials({ fundamentals: { dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "gloom" } });
+  const trailing = createTestFinancials({ fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "gloom", revenue: 100 } });
+  expect(mergeFinancials(forward, trailing)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "gloom", revenue: 100 });
   const unknown = createTestFinancials({ fundamentals: { dividendYield: 0.16 } });
   expect(mergeFinancials(unknown, forward)?.fundamentals?.dividendYieldBasis).toBeUndefined();
   expect(mergeFinancials(unknown, forward)?.fundamentals?.dividendYieldSource).toBeUndefined();
-  expect(mergeFinancials(createTestFinancials({ fundamentals: { revenue: 200 } }), forward)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo" });
+  expect(mergeFinancials(createTestFinancials({ fundamentals: { revenue: 200 } }), forward)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "gloom" });
 });
 
 test("per-share bases that reprice a multiple stay with that multiple's observation", () => {

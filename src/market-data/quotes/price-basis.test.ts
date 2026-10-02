@@ -8,11 +8,11 @@ const quote=(changes:Partial<Quote>={}):Quote=>({symbol:"CONTROLLED",price:87,cu
 
 test("selected price owns its unit; incompatible contributors cannot supply daily, session or range prices",()=>{
   const ibkr={...quote(),providerId:"ibkr",dataSource:"live" as const};
-  const yahoo={...quote({price:.87,previousClose:.86,priceBasis:"per-unit",marketState:"POST",postMarketPrice:.89,high52w:1,low52w:.8,bid:.85}),providerId:"yahoo"};
-  const selected=resolveCanonicalQuote({ibkr,yahoo},now).quote!;
+  const gloom={...quote({price:.87,previousClose:.86,priceBasis:"per-unit",marketState:"POST",postMarketPrice:.89,high52w:1,low52w:.8,bid:.85}),providerId:"gloom"};
+  const selected=resolveCanonicalQuote({ibkr,gloom},now).quote!;
   expect(selected).toMatchObject({price:87,priceBasis:"percent-of-par",previousClose:86,change:1});
   for(const key of ["bid","postMarketPrice","high52w","low52w"] as const)expect(selected[key]).toBeUndefined();
-  const unknown=resolveCanonicalQuote({ibkr:{...ibkr,priceBasis:undefined},yahoo:{...yahoo,priceBasis:"percent-of-par"}},now).quote!;
+  const unknown=resolveCanonicalQuote({ibkr:{...ibkr,priceBasis:undefined},gloom:{...gloom,priceBasis:"percent-of-par"}},now).quote!;
   expect(unknown.priceBasis).toBeUndefined();
   expect(unknown.postMarketPrice).toBeUndefined();
 });
@@ -30,11 +30,11 @@ test("new untagged responses clear prior basis and cannot inherit old unit-price
 
 test("unknown bond observations cannot borrow old or cross-provider units, anchors or descriptive share classification",()=>{
   const ibkr={...quote({priceBasis:undefined,previousClose:undefined,change:0}),providerId:"ibkr",dataSource:"live" as const};
-  const yahoo={...quote({priceBasis:undefined,previousClose:80,bid:85,high52w:100,marketState:"POST",postMarketPrice:89}),providerId:"yahoo"};
-  const selected=resolveCanonicalQuote({ibkr,yahoo},now).quote!;
+  const gloom={...quote({priceBasis:undefined,previousClose:80,bid:85,high52w:100,marketState:"POST",postMarketPrice:89}),providerId:"gloom"};
+  const selected=resolveCanonicalQuote({ibkr,gloom},now).quote!;
   expect(selected).toMatchObject({price:87,change:0,instrumentType:"BOND"});
   for(const key of ["priceBasis","previousClose","bid","postMarketPrice","high52w"] as const)expect(selected[key]).toBeUndefined();
-  const enriched=resolveCanonicalQuote({ibkr,yahoo:{...yahoo,instrumentType:"STK"}},now).quote!;
+  const enriched=resolveCanonicalQuote({ibkr,gloom:{...gloom,instrumentType:"STK"}},now).quote!;
   expect(enriched.instrumentType).toBe("BOND");expect(enriched.priceBasis).toBeUndefined();
   const old=normalizeQuoteContribution({...ibkr,previousClose:80,bid:85,open:84,high:90,low:80,high52w:100,lastTradePrice:86,lastTradeTime:now-1000,marketState:"REGULAR",exchangeName:"NYSE"})!;
   const next=mergeQuoteContribution(old,{...ibkr,lastUpdated:now+1000,marketState:"REGULAR",exchangeName:"NYSE"});

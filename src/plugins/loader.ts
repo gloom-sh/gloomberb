@@ -1,7 +1,7 @@
 import { readdir } from "fs/promises";
 import { basename, join } from "path";
 import { existsSync, lstatSync, readFileSync, statSync } from "fs";
-import { getGloomberbHome } from "../data/config/home";
+import { getGloomberbDirs } from "../data/config/home";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 import { reportCrash } from "../telemetry/crash-reports";
@@ -13,12 +13,13 @@ import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
 const loaderLog = debugLog.createLogger("plugin-loader");
 
-const PLUGINS_DIR = join(getGloomberbHome(), "plugins");
+const GLOOMBERB_DIRS = getGloomberbDirs();
+const PLUGINS_DIR = GLOOMBERB_DIRS.plugins;
 /**
- * Host-owned scratch space for plugins, kept beside the plugins folder rather
- * than inside it so nothing the host writes can be mistaken for an install.
+ * Host-owned scratch space for plugins, kept outside the plugins folder so
+ * nothing the host writes can be mistaken for an install.
  */
-const PLUGIN_CACHE_DIR = join(getGloomberbHome(), "plugin-cache");
+const PLUGIN_CACHE_DIR = GLOOMBERB_DIRS.pluginCache;
 
 export interface LoadedExternalPlugin {
   plugin: GloomPlugin;

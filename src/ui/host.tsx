@@ -116,6 +116,8 @@ export interface BoxRenderable {
 
 interface ScrollBarRenderable {
   visible: boolean;
+  /** Terminal only: whether a click on the bar moves the keyboard focus to it. */
+  focusable?: boolean;
   on?(event: "change", handler: () => void): void;
   off?(event: "change", handler: () => void): void;
 }
@@ -130,7 +132,8 @@ export interface ScrollBoxRenderable {
   scrollLeftPx?: number;
   scrollHeightPx?: number;
   scrollWidthPx?: number;
-  viewport?: { width: number; height: number };
+  /** In the terminal, `y` is the viewport's top row on screen, as laid out last. */
+  viewport?: { y?: number; width: number; height: number };
   viewportPx?: { width: number; height: number };
   visible?: boolean;
   parent?: unknown;
@@ -139,6 +142,8 @@ export interface ScrollBoxRenderable {
   verticalScrollBar?: ScrollBarRenderable;
   scrollTo(target: number | { x?: number; y?: number }, y?: number): void;
   scrollToPixels?(target: number | { x?: number; y?: number }, y?: number): void;
+  /** Terminal only: the scrolled content, whose descendants carry their screen rows as laid out last. */
+  content?: { findDescendantById?(id: string): { y: number; height: number } | undefined };
 }
 
 export interface InputRenderable {

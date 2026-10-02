@@ -43,7 +43,7 @@ test("BAC: quarters restated after the nine-month figure keep the fourth quarter
   const blocked = ["totalRevenue", "operatingRevenue", "netIncome", "pretaxIncome", "taxProvision"] as const;
   expect(sec.quarterlyStatements.find((row) => row.date === "2025-12-31")?.unavailableFields).toEqual(expect.arrayContaining([...blocked]));
 
-  // Yahoo's rows: its Q4 is the new-basis year minus the old nine months.
+  // Gloom's rows: its Q4 is the new-basis year minus the old nine months.
   const vendor = {
     annualStatements: [usd({ date: "2025-12-31", totalRevenue: 113_097 * M, operatingRevenue: 113_097 * M, netIncome: 30_509 * M, pretaxIncome: 37_695 * M, taxProvision: 7_186 * M })],
     quarterlyStatements: [
@@ -101,7 +101,7 @@ test("O: a vendor fourth quarter that absorbed a narrower quarterly measure is a
   };
   const quarterly = mergeFinancialStatementRows(withCheckedFourthQuarters(vendor, sec.fourthQuarters!), sec.quarterlyStatements);
   const annual = mergeFinancialStatementRows(vendor.annualStatements, sec.annualStatements);
-  // Without the gap the chart computed 5,749,377 less SEC's Q1 and Yahoo's
+  // Without the gap the chart computed 5,749,377 less SEC's Q1 and Gloom's
   // Q2 and Q3: 1,642,725,000, matching neither source.
   const q4 = deriveQuarterlyStatements(quarterly, annual).find((row) => row.date === "2025-12-31")!;
   expect(q4.totalRevenue).toBeUndefined();

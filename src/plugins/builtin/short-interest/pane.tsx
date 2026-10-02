@@ -49,8 +49,8 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true });
   const { error, updatedAt, reload: refresh } = resource;
   const records = resource.data?.records ?? EMPTY_RECORDS;
-  const yahooFallback = resource.data?.source === "yahoo" && records.length > 0;
-  const cloudSessionRequired = yahooFallback && resource.data?.cloudSessionRequired === true;
+  const latestSettlements = resource.data?.source === "gloom" && records.length > 0;
+  const cloudSessionRequired = latestSettlements && resource.data?.cloudSessionRequired === true;
   const status = skipNonUs ? "loaded" : resource.status;
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>(
     "short-interest:sort",
@@ -105,7 +105,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   usePaneFooter("short-interest", () => ({
     info: [
       ...loadingErrorFooterInfo(status === "loading", status === "error" ? error?.slice(0, 60) : null),
-      ...(yahooFallback ? [{
+      ...(latestSettlements ? [{
         id: "source",
         parts: [{
           text: cloudSessionRequired ? "latest 2 settlements, sign in for history" : "latest 2 settlements",
@@ -113,7 +113,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
         }],
       }] : []),
     ],
-  }), [cloudSessionRequired, error, status, yahooFallback]);
+  }), [cloudSessionRequired, error, status, latestSettlements]);
 
   if (!ticker || !symbol) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view short interest." />;

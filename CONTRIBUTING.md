@@ -16,7 +16,7 @@ bun dev               # terminal app, restarted on save
 bun run desktop:dev   # desktop app
 ```
 
-Both use your real `~/.gloomberb`. To develop against a throwaway profile, point `GLOOMBERB_HOME` somewhere else:
+Both use your real profile (`~/.gloomberb`, or the XDG folders on a Linux install that never had one). To develop against a throwaway profile, point `GLOOMBERB_HOME` somewhere else:
 
 ```bash
 GLOOMBERB_HOME=/tmp/gloomberb-dev bun dev
@@ -40,7 +40,7 @@ This fetches the latest upstream version.
 | `src/plugins/` | The plugin host: catalog, loader, registry and the bundler for external plugins |
 | `src/layout/` | The pane layout engine: the dock tree, floating windows, where a launched pane opens and which pane a ticker opens in |
 | `src/components/`, `src/ui/` | The shared UI kit every pane is built from |
-| `src/sources/` | Data provider adapters (Gloom Cloud, Yahoo Finance, SEC EDGAR) and the router that picks a provider for each request |
+| `src/sources/` | Data provider adapters (Gloom Cloud, SEC EDGAR) and the router that picks a provider for each request |
 | `src/market-data/` | What panes read market data through: the request coordinator, its React hooks, quote display and exchange session calendars |
 | `src/time-series/` | Chart specs and the series they draw: the field catalog, resolving a spec into data, transforms and studies |
 | `src/data/` | Persistence: SQLite, the resource store, the config store and the plugin cache |
@@ -121,7 +121,7 @@ Basic UI must use the shared kit: actions, selectable and expandable rows, field
 [PLUGINS.md](PLUGINS.md) is the guide to building a plugin and its APIs. [docs/pane-conventions.md](docs/pane-conventions.md) covers how a pane is put together: where actions, status and warnings go, detail stacks, load-more lists, tabs, forms, reserved keys, and a checklist for a new pane. The rules that come up most in review:
 
 - The pane footer shows what changes (loading, error, live or delayed, stale, auth state) and the pane's action keys. No fixed labels, row counts or generic keyboard hints there, and no button rows in the body.
-- Never show the data provider in a pane (`provider:*`, Gloom Cloud, Yahoo, Alpaca and so on). Say what the data is instead: real-time, 15m delayed, settlement, as of a date.
+- Never show internal provider or source identifiers in a pane (`provider:*`, raw feed names). Say what the data is instead: real-time, 15m delayed, settlement, as of a date. Gloom Cloud is the public market-data service.
 - Say each thing once. When a pane title or detail header names the item, the body starts with metadata or content.
 - Methodology, model assumptions and usage explanations go in `docs/`, not in always-visible pane text or new info buttons. Units, source dates and active data failures stay in context.
 - Everything interactive works with the mouse and the keyboard.

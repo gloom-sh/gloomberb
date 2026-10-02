@@ -119,6 +119,19 @@ export function useAppStateRef() {
   return stateRef;
 }
 
+/**
+ * Reads the store at the moment of the call. Unlike `useAppStateRef`, it stays
+ * current after the component unmounts, for work that outlives it: a confirm
+ * the command bar opened and then closed behind.
+ */
+export function useAppGetState(): () => AppState {
+  const context = useRequiredAppContext();
+  return useMemo(
+    () => isAppStoreContextValue(context) ? () => context.getState() : () => context.state,
+    [context],
+  );
+}
+
 export function useAppDispatch(): Dispatch<AppAction> {
   return useRequiredAppContext().dispatch;
 }

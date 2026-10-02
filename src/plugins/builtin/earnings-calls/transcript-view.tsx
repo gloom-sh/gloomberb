@@ -253,38 +253,38 @@ export function TranscriptView({
               />
               {transcript.keyFigures?.length ? (
                 <Box flexDirection="column">
-                  <SectionHeading marginTop={1} title="KEY FIGURES" />
+                  <SectionHeading marginTop={1} title="Key Figures" />
                   <FigureList figures={transcript.keyFigures} width={proseWidth} />
                 </Box>
               ) : null}
               <Section
-                title="SUMMARY"
+                title="Summary"
                 body={transcript.summary ?? ""}
                 width={proseWidth}
               />
               <Section
-                title="WHAT STOOD OUT"
+                title="What Stood Out"
                 body={transcript.notable ?? ""}
                 width={proseWidth}
               />
               <Section
-                title="ANALYSTS PRESSED ON"
+                title="Analysts Pressed On"
                 body={transcript.analystFocus ?? ""}
                 width={proseWidth}
               />
               <Section
-                title="GUIDANCE"
+                title="Guidance"
                 body={transcript.guidance ?? ""}
                 width={proseWidth}
               />
               <Section
-                title="RISKS"
+                title="Risks"
                 body={transcript.riskFactors ?? ""}
                 width={proseWidth}
               />
               {transcript.participants.length > 0 && (
                 <Box flexDirection="column">
-                  <SectionHeading marginTop={1} title="PARTICIPANTS" />
+                  <SectionHeading marginTop={1} title="Participants" />
                   {transcript.participants.map((participant) => (
                     <Prose
                       key={participant.name}

@@ -387,7 +387,7 @@ export function summarizeZoomSelection(
 
 /** The same preview for two times, in either order. */
 export function summarizeZoomRange(
-  scene: Pick<CompositeChartScene, "startTime" | "endTime">,
+  scene: Pick<CompositeChartScene, "startTime" | "endTime" | "timeZone">,
   first: number,
   second: number,
 ): string | null {
@@ -398,6 +398,7 @@ export function summarizeZoomRange(
     new Date(timestamp),
     scene.startTime,
     scene.endTime,
+    scene.timeZone,
   );
   return `${label(start)} → ${label(end)} · ${formatMeasureSpan(end - start)}`;
 }

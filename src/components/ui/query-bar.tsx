@@ -69,6 +69,8 @@ export interface QueryBarMultiFilter extends QueryBarFilterBase {
 export interface QueryBarToggleFilter extends QueryBarFilterBase {
   kind: "toggle";
   value: boolean;
+  /** A shorter label for the terminal's single row. */
+  short?: string;
   onChange: (value: boolean) => void;
   /**
    * The state the pane starts in; the other one narrows and gets a reset. True
@@ -431,7 +433,12 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
           return <Box key={filter.id} flexShrink={0}>{textNodes.get(filter.id)}</Box>;
         }
         if (filter.kind === "toggle") {
-          return <Checkbox key={filter.id} label={filter.label} checked={filter.value} onChange={filter.onChange} />;
+          // A squeezed checkbox wraps its label out of the one-row bar.
+          return (
+            <Box key={filter.id} flexShrink={0}>
+              <Checkbox label={filter.label} displayLabel={filter.short} checked={filter.value} onChange={filter.onChange} />
+            </Box>
+          );
         }
         if (filter.kind === "multi") {
           return (

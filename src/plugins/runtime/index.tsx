@@ -82,6 +82,8 @@ export function usePluginBrokerActions() {
   const { runtime } = usePluginRenderContext();
   return {
     getBrokerAdapter: runtime.getBrokerAdapter,
+    listBrokerAdapters: runtime.listBrokerAdapters,
+    createBrokerInstance: runtime.createBrokerInstance,
     connectBrokerInstance: runtime.connectBrokerInstance,
     updateBrokerInstance: runtime.updateBrokerInstance,
     syncBrokerInstance: runtime.syncBrokerInstance,

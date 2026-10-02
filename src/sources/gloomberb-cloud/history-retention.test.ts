@@ -19,11 +19,11 @@ const DAY = 86_400_000;
 type Envelope = CloudMarketResponse<CloudPricePointPayload[]>;
 const proof = (patch: Partial<HistoryRetention> = {}): HistoryRetention => {
   const observedAt = Math.floor(Date.now() / 1000) * 1000;
-  return { version: 1, source: "yahoo", symbol: "BTC-USD", exchange: "CCC", interval: "15min",
+  return { version: 1, source: "gloom", symbol: "BTC-USD", exchange: "CCC", interval: "15min",
     requestedStart: observedAt - 90 * DAY, requestedEnd: observedAt, observedAt, availableStart: observedAt - 60 * DAY, ...patch };
 };
 const unsupported = (retention: HistoryRetention): Envelope => ({ status: "unsupported", data: null, reasonCode: "HISTORY_RETENTION", historyRetention: retention });
-const success = (): Envelope => ({ status: "success", providerMeta: { provider: "yahoo" },
+const success = (): Envelope => ({ status: "success", providerMeta: { provider: "gloom" },
   data: [{ date: new Date(Date.now() - 900_000).toISOString(), close: 100 }] });
 function wire(handler: (url: URL) => Envelope | Promise<Envelope>): URL[] {
   const calls: URL[] = [];
@@ -102,7 +102,7 @@ test("trailing resolver acquisition shares source-computed Cloud recovery across
       retainedPoints = Array.from({ length: Math.floor((now - start) / step) + 1 }, (_, index) => ({
         date: new Date(start + index * step).toISOString(), close: 100 + index, volume: 1 + index,
       }));
-      return { status: "success", providerMeta: { provider: "yahoo" }, data: retainedPoints };
+      return { status: "success", providerMeta: { provider: "gloom" }, data: retainedPoints };
     }
     original = proof({
       requestedStart: Date.parse(url.searchParams.get("startDate")!.replace(" ", "T") + "Z"),

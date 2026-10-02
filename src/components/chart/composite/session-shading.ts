@@ -21,7 +21,8 @@ function isRegular(exchange: string, time: number): boolean | null {
   return regular;
 }
 
-function isIntraday(series: ResolvedSeries): boolean {
+/** Whether a series holds intraday bars, by its cadence or its acquired resolution. */
+export function isIntradaySeries(series: ResolvedSeries): boolean {
   const cadence = series.timeBasis?.cadenceMs;
   if (cadence !== undefined) return cadence < DAY_MS;
   return !!series.historyResolution && isIntradayResolution(series.historyResolution);
@@ -39,7 +40,7 @@ export function extendedHoursSpans(
   ratios: readonly number[],
 ): CompositeExtendedHoursSpan[] {
   const exchange = anchor?.timeBasis?.exchange;
-  if (!anchor || !exchange || !isIntraday(anchor) || dates.length === 0) return [];
+  if (!anchor || !exchange || !isIntradaySeries(anchor) || dates.length === 0) return [];
   const edge = (index: number, side: -1 | 1) => {
     const ratio = ratios[index]!;
     // At either end of the plot, mirror the gap to the bar on the other side.

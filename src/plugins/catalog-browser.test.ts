@@ -8,7 +8,7 @@ const templateIds = new Set(browserBuiltinPlugins.flatMap((plugin) => plugin.pan
 
 describe("browser plugin catalog", () => {
   test("excludes native, filesystem, and debug plugins", () => {
-    for (const forbidden of ["broker", "notes", "debug", "yahoo"]) {
+    for (const forbidden of ["broker", "notes", "debug"]) {
       expect(ids).not.toContain(forbidden);
     }
   });

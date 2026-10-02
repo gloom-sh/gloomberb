@@ -22,11 +22,10 @@ export function normalizeFieldOptions(
 type FieldDependency = { key: string; value: string };
 
 /**
- * Whether a workflow field or wizard step shows for the answers so far: every
- * answer it depends on, read as a string, holds the expected value. The
- * command-bar form and the dialog wizard both decide visibility here.
+ * Whether a workflow field shows for the answers so far: every answer it
+ * depends on, read as a string, holds the expected value.
  */
-export function dependenciesMet(
+function dependenciesMet(
   dependsOn: FieldDependency | FieldDependency[] | undefined,
   values: Record<string, unknown>,
 ): boolean {
@@ -37,8 +36,8 @@ export function dependenciesMet(
 
 /**
  * The later answers a change resets: the field's `clearOnChange` keys when the
- * new value differs from the one it replaces. The form compares with the value
- * it held, the dialog wizard with the one the step offered.
+ * new value differs from the one it replaces. The form modal and pane settings
+ * both reset answers here.
  */
 export function keysClearedByChange(
   clearOnChange: string[] | undefined,
@@ -49,7 +48,7 @@ export function keysClearedByChange(
 }
 
 /** The answer a wizard step starts on: its default, else a select's first option. */
-export function wizardStepInitialValue(step: WizardStep): string | undefined {
+function wizardStepInitialValue(step: WizardStep): string | undefined {
   if (step.defaultValue) return step.defaultValue;
   if (step.type === "select" && step.options?.[0]?.value) return step.options[0].value;
   return undefined;
@@ -75,21 +74,6 @@ export function getWorkflowFieldDescription(field: CommandBarWorkflowField): str
   if (!description) return null;
   if (normalizeWorkflowCopy(description) === normalizeWorkflowCopy(field.placeholder)) return null;
   return description;
-}
-
-export function estimateWorkflowBodyRows(route: CommandBarWorkflowRoute): number {
-  const visibleFields = getVisibleWorkflowFields(route.fields, route.values);
-  const introRows = (route.subtitle ? 1 : 0)
-    + (route.description?.length ?? 0)
-    + (route.subtitle || (route.description?.length ?? 0) > 0 ? 1 : 0);
-  const fieldRows = visibleFields.reduce((total, field, index) => {
-    const controlRows = field.type === "textarea" ? 6 : 1;
-    const descriptionRows = getWorkflowFieldDescription(field) ? 1 : 0;
-    const gapRows = index === visibleFields.length - 1 ? 0 : 1;
-    return total + 1 + controlRows + descriptionRows + gapRows;
-  }, 0);
-  const statusRows = (route.error ? 1 : 0) + (route.pending && route.pendingLabel ? 1 : 0);
-  return introRows + fieldRows + statusRows + 1;
 }
 
 export function coerceFieldString(value: CommandBarFieldValue | undefined): string {

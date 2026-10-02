@@ -5,7 +5,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { fetchDividendData } from "./client";
 import { createDividendYieldHeadless, projectDividendYieldHeadless } from "./headless";
 import { fetchProviderDividendData } from "./provider-client";
-import { chartResponse, yahooTransport } from "./test-fixture";
+import { chartResponse, marketTransport } from "./test-fixture";
 import { useRegularMarketSession } from "../../../test-support/market-session";
 
 useRegularMarketSession();
@@ -16,7 +16,7 @@ function chartFixture() {
   const timestamp = Math.floor(Date.now() / 1000);
   const meta = { currency: "USD", exchangeName: "NMS", regularMarketPrice: 100,
     regularMarketTime: timestamp, dataGranularity: "1mo" };
-  setHttpFetchTransport(yahooTransport(async (url) => {
+  setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) return chartResponse({
       meta, time: timestamp, dividends: { cash: { date: timestamp - 86_400, amount: 4 } },
     });
@@ -48,7 +48,7 @@ test("dividend price/time selection stays paired through native and headless fal
   }
 });
 
-test("old, missing and recovered Yahoo times do not alter the cash numerator or borrow fetch time", async () => {
+test("old, missing and recovered source times do not alter the cash numerator or borrow fetch time", async () => {
   const meta = chartFixture();
   const fresh = meta.regularMarketTime;
   for (const timestamp of [fresh - 10 * 86_400, undefined, 0, NaN, Infinity, 1e20, fresh + 86_400, fresh]) {

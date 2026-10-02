@@ -1,4 +1,4 @@
-import { getGloomberbHome } from "../../data/config/home";
+import { getGloomberbDirs } from "../../data/config/home";
 import { existsSync, mkdirSync } from "fs";
 import { App } from "../../app";
 import { getDataDir, initDataDir, loadConfig, setConfigStoreHost } from "../../data/config/store";
@@ -100,7 +100,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
     }, 0);
   };
   try {
-    const dataDir = await getDataDir() ?? getGloomberbHome();
+    const dataDir = await getDataDir() ?? getGloomberbDirs().data;
 
     if (!existsSync(dataDir)) {
       mkdirSync(dataDir, { recursive: true });

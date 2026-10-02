@@ -3,6 +3,8 @@ import { usePaneFooter, type PaneHint } from "../components/layout/pane/footer";
 import { ChoiceDialog } from "../components/ui/choice-dialog";
 import { confirmDialog } from "../components/ui/confirm-dialog";
 import { TextPromptDialog } from "../components/ui/text-prompt-dialog";
+import { buildLayoutNameWorkflowRoute } from "../components/command-bar/workflow/builtin";
+import { openFormModal } from "../components/form-modal";
 import { useShortcut } from "../react/input";
 import { isPlainKey } from "../utils/keyboard";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
@@ -407,10 +409,14 @@ export function LayoutMarketplaceGallery({
     pluginRegistry.notify({ body: `"${entry.name}" is a personal layout now.`, type: "success" });
   }, [dispatch, pluginRegistry, savedFor]);
 
+  // New and Rename Layout ask in the form modal, as the status bar, the bar
+  // and the menus do. A detached window has no form modal: it asks in its own
+  // dialog.
   const newLayout = useCallback(async () => {
+    if (openFormModal({ kind: "builtin", actionId: "new-layout" })) return;
     const name = await promptName({
       title: "New Layout",
-      label: "Layout name",
+      label: "Layout Name",
       confirmLabel: "Create Layout",
     });
     if (!name) return;
@@ -421,15 +427,17 @@ export function LayoutMarketplaceGallery({
 
   const renameLayout = useCallback(async (entry: GalleryEntry) => {
     if (entry.index === null) return;
+    const route = buildLayoutNameWorkflowRoute("rename-layout", layouts, entry.index);
+    if (openFormModal({ kind: "route", route })) return;
     const name = await promptName({
       title: "Rename Layout",
-      label: "New name",
+      label: "Layout Name",
       confirmLabel: "Rename Layout",
       initialValue: entry.name,
     });
     if (!name || name === entry.name) return;
     dispatch({ type: "RENAME_LAYOUT", index: entry.index, name });
-  }, [dispatch, promptName]);
+  }, [dispatch, layouts, promptName]);
 
   const duplicateLayout = useCallback((entry: GalleryEntry) => {
     if (entry.index === null) return;

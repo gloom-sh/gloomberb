@@ -11,7 +11,7 @@ export interface TapeQuote {
   timestamp: string;
   bid: number | null;
   ask: number | null;
-  /** Alpaca quote sizes are round lots. */
+  /** Quote sizes are round lots. */
   bidSize: number;
   askSize: number;
   bidExchange: string;
@@ -20,7 +20,7 @@ export interface TapeQuote {
   tape: string;
 }
 export interface TapeSnapshot {
-  source: "Alpaca";
+  source: "Gloom Cloud";
   symbol: string;
   exchange: string;
   access: "realtime" | "delayed";

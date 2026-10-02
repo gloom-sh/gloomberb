@@ -28,20 +28,16 @@ function signedIn(id: string, name: string): SignedInBroker {
   return { id, name, capabilities: { history: true, executions: true, orders: false, singleConnection: true } };
 }
 
-function addBrokerRoute(): CommandBarWorkflowRoute {
-  const route = buildBrokerWorkflowRoute({
+function newPortfolioRoute(adapters: BrokerAdapter[] = [ibkrDevice, signedInBrokerAdapter]): CommandBarWorkflowRoute {
+  return buildBrokerWorkflowRoute({
     directory: buildBrokerDirectory({
       signedIn: [signedIn("ibkr", "Interactive Brokers"), signedIn("robinhood", "Robinhood")],
-      adapters: [ibkrDevice, signedInBrokerAdapter],
+      adapters,
     }),
-    selectorKey: "brokerType",
-    title: "Add Broker Account",
+    title: "New Portfolio",
     subtitle: undefined,
-    submitLabel: "Connect Broker",
-    includeManualOption: false,
+    submitLabel: "Create Portfolio",
   });
-  if (!route) throw new Error("expected a route");
-  return route;
 }
 
 function view(route: CommandBarWorkflowRoute, values: Record<string, string>) {
@@ -49,27 +45,38 @@ function view(route: CommandBarWorkflowRoute, values: Record<string, string>) {
   return {
     fields: getVisibleWorkflowFields(next.fields, next.values).map((field) => field.id),
     submitLabel: getWorkflowSubmitLabel(next),
-    selection: resolveBrokerWorkflowSelection(next, "brokerType"),
+    selection: resolveBrokerWorkflowSelection(next),
   };
 }
 
 test("a broker offered both ways asks for the method, and only the device method asks for its fields", () => {
-  const route = addBrokerRoute();
+  const route = newPortfolioRoute();
 
-  const signIn = view(route, { brokerType: "ibkr" });
-  expect(signIn.fields).toEqual(["brokerType", "method:ibkr"]);
+  const signIn = view(route, { source: "ibkr" });
+  expect(signIn.fields).toEqual(["source", "method:ibkr"]);
   expect(signIn.submitLabel).toBe("Connect");
   expect(signIn.selection?.method.kind).toBe("signed-in");
 
-  const device = view(route, { brokerType: "ibkr", "method:ibkr": "device" });
-  expect(device.fields).toEqual(["brokerType", "method:ibkr", "ibkr:connectionMode", "ibkr:token"]);
-  expect(device.submitLabel).toBe("Connect Broker");
+  const device = view(route, { source: "ibkr", "method:ibkr": "device" });
+  expect(device.fields).toEqual(["source", "method:ibkr", "ibkr:connectionMode", "ibkr:token"]);
+  expect(device.submitLabel).toBe("Create Portfolio");
   expect(device.selection?.method).toEqual({ kind: "device", adapter: ibkrDevice });
 });
 
+test("the source list names each broker and says how it connects", () => {
+  const route = newPortfolioRoute([ibkrDevice, { ...ibkrDevice, id: "simplefin", name: "SimpleFIN" }, signedInBrokerAdapter]);
+  const source = route.fields.find((field) => field.id === "source");
+  expect(source?.type === "select" ? source.options.map(({ label, description }) => [label, description]) : null).toEqual([
+    ["Manual", "Add tickers and positions by hand"],
+    ["Interactive Brokers", "Sign in, or on this device"],
+    ["Robinhood", "Sign in"],
+    ["SimpleFIN", "On this device"],
+  ]);
+});
+
 test("a broker offered only by signing in has nothing to fill in", () => {
-  const robinhood = view(addBrokerRoute(), { brokerType: "robinhood" });
-  expect(robinhood.fields).toEqual(["brokerType"]);
+  const robinhood = view(newPortfolioRoute(), { source: "robinhood" });
+  expect(robinhood.fields).toEqual(["source"]);
   expect(robinhood.submitLabel).toBe("Connect");
   expect(robinhood.selection?.method).toEqual({ kind: "signed-in", broker: signedIn("robinhood", "Robinhood") });
 });
