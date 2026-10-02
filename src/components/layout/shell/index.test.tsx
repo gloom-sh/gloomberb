@@ -554,6 +554,45 @@ describe("Shell", () => {
     expect(frame).not.toContain("able State");
   });
 
+  // The focus border is drawn by the shell over the panes, from the layout's
+  // rects. In fullscreen those still hold where the pane sits when tiled or
+  // floating, and the border cut a column through the fullscreen content.
+  test.each([false, true])("draws no focus border through a fullscreen pane's content (floating=%s)", async (floating) => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-fullscreen-border-test");
+    const mainPane = requireLayoutInstance(config, "portfolio-list:main");
+    const detailPane = requireLayoutInstance(config, "ticker-detail:main");
+    const layout: LayoutConfig = floating
+      ? {
+        dockRoot: { kind: "pane", instanceId: mainPane.instanceId },
+        instances: [{ ...mainPane }, { ...detailPane }],
+        floating: [{ instanceId: detailPane.instanceId, x: 6, y: 2, width: 40, height: 10, zIndex: 50 }],
+        detached: [],
+      }
+      : {
+        dockRoot: {
+          kind: "split",
+          axis: "horizontal",
+          ratio: 0.5,
+          first: { kind: "pane", instanceId: detailPane.instanceId },
+          second: { kind: "pane", instanceId: mainPane.instanceId },
+        },
+        instances: [{ ...mainPane }, { ...detailPane }],
+        floating: [],
+        detached: [],
+      };
+    const Fill = ({ width, height }: PaneProps) => <Text>{Array.from({ length: height }, () => "#".repeat(width)).join("\n")}</Text>;
+    await renderShell(
+      createShellStateWithLayout(config, layout, detailPane.instanceId),
+      { registry: createShellPluginRegistry({ tickerDetailComponent: Fill }), width: 80, height: 18 },
+    );
+
+    await emitKeypress({ name: "f", ctrl: true, shift: true });
+
+    const filledRows = tui.frame().split("\n").filter((row) => row.includes("#"));
+    expect(filledRows.length).toBeGreaterThan(10);
+    expect(filledRows.filter((row) => !row.includes("#".repeat(80 - 2)))).toEqual([]);
+  });
+
   test("allows pane fullscreen shortcut while text input is captured on desktop", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-fullscreen-captured-input-test");
     const mainPane = requireLayoutInstance(config, "portfolio-list:main");

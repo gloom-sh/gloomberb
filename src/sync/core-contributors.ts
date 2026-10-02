@@ -28,6 +28,7 @@ import {
   normalizeBuiltinPluginStateMap,
 } from "../plugins/ownership";
 import { isRecord } from "../utils/guards";
+import { withoutMissingWatchlists } from "../plugins/builtin/portfolio-list/mutations";
 
 /**
  * What a saved layout mirrors from the live session rather than from the
@@ -920,6 +921,11 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     if (!isRecord(payload)) return;
     hydrateProfileAnalytics(payload);
     const lastSyncedTickers = lastSyncedTickersById(baselinePayload);
+    // The config contributor applies first, so these are the watchlists this
+    // pull left. Tickers here and pulled ones drop the ids of any list that is
+    // gone (removed elsewhere, or deleted by an older build that left its id on
+    // the tickers), so this device never pushes them back.
+    const watchlistIds = new Set(getState().config.watchlists.map((watchlist) => watchlist.id));
     const incomingRecords: TickerRecord[] = [];
     const rawTickers = Array.isArray(payload.tickers) ? payload.tickers : [];
     for (const rawTicker of rawTickers) {
@@ -943,16 +949,26 @@ export const coreCollectionsSyncContributor: SyncContributor = {
         positions: syncedPositions,
         broker_contracts: current?.metadata.broker_contracts ?? [],
       });
-      const record: TickerRecord = { metadata };
+      const record = withoutMissingWatchlists({ metadata }, watchlistIds);
       await tickerRepository.saveTicker(record);
       incomingRecords.push(record);
     }
 
-    if (!isCurrent() || incomingRecords.length === 0) return;
+    if (!isCurrent()) return;
     const nextTickers = new Map(getState().tickers);
     for (const record of incomingRecords) {
       nextTickers.set(record.metadata.ticker, record);
     }
+    let pruned = false;
+    for (const ticker of nextTickers.values()) {
+      const next = withoutMissingWatchlists(ticker, watchlistIds);
+      if (next === ticker) continue;
+      if (!isCurrent()) return;
+      await tickerRepository.saveTicker(next);
+      nextTickers.set(next.metadata.ticker, next);
+      pruned = true;
+    }
+    if (!isCurrent() || (incomingRecords.length === 0 && !pruned)) return;
     dispatch({ type: "SET_TICKERS", tickers: nextTickers });
   },
 };

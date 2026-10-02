@@ -1,7 +1,15 @@
 import type { AppConfig } from "../../../types/config";
-import type { Portfolio, TickerPosition, TickerRecord } from "../../../types/ticker";
+import type { Portfolio, TickerPosition, TickerRecord, Watchlist } from "../../../types/ticker";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { slugifyName } from "../../../utils/slugify";
+import { parseCollectionRef } from "../cloud/team/collections";
+
+export interface DeleteWatchlistResult {
+  config: AppConfig;
+  watchlist: Watchlist;
+  /** The tickers that listed it, without it. */
+  tickers: TickerRecord[];
+}
 
 export interface DeleteManualPortfolioResult {
   config: AppConfig;
@@ -207,6 +215,50 @@ export function addTickerToWatchlist(
       watchlists: [...ticker.metadata.watchlists, watchlistId],
     }),
   };
+}
+
+/**
+ * The ticker without the ids of watchlists missing from `watchlistIds`, or
+ * the same record when it lists none. Team watchlist ids stay: the team sync
+ * owns that membership and would take a dropped id as removing the ticker
+ * from the shared list. Portfolios and positions are never touched.
+ */
+export function withoutMissingWatchlists(ticker: TickerRecord, watchlistIds: ReadonlySet<string>): TickerRecord {
+  const kept = ticker.metadata.watchlists.filter((id) => watchlistIds.has(id) || parseCollectionRef(id).scope === "team");
+  if (kept.length === ticker.metadata.watchlists.length) return ticker;
+  return replaceTickerMetadata(ticker, { ...ticker.metadata, watchlists: kept });
+}
+
+/** The tickers that list a watchlist `config` no longer has, without those ids. */
+function pruneMissingWatchlists(config: AppConfig, tickers: Iterable<TickerRecord>): TickerRecord[] {
+  const watchlistIds = new Set(config.watchlists.map((watchlist) => watchlist.id));
+  const changed: TickerRecord[] = [];
+  for (const ticker of tickers) {
+    const next = withoutMissingWatchlists(ticker, watchlistIds);
+    if (next !== ticker) changed.push(next);
+  }
+  return changed;
+}
+
+/**
+ * Removes a watchlist and its id from every ticker that listed it. Left on a
+ * ticker, the id outlives the list: the ticker still counts as watched, and
+ * sync uploads it as a member of a list that is gone.
+ */
+export function deleteWatchlist(
+  config: AppConfig,
+  tickers: Iterable<TickerRecord>,
+  watchlistId: string,
+): DeleteWatchlistResult {
+  const watchlist = config.watchlists.find((entry) => entry.id === watchlistId);
+  if (!watchlist) {
+    throw new Error("Watchlist not found.");
+  }
+  const nextConfig: AppConfig = {
+    ...config,
+    watchlists: config.watchlists.filter((entry) => entry.id !== watchlistId),
+  };
+  return { config: nextConfig, watchlist, tickers: pruneMissingWatchlists(nextConfig, tickers) };
 }
 
 export function removeTickerFromPortfolio(

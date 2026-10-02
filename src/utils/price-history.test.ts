@@ -113,6 +113,18 @@ describe("normalizePriceHistory", () => {
     expect(isPriceHistoryStaleForCurrentWindow(london, Date.parse("2026-10-02T19:00:00Z"), { exchange: "LSE", intervalMs: 60_000 })).toBe(false);
   });
 
+  test("keeps the last session current after the next open until its first delayed bar is due", () => {
+    const stale = (date: string, at: string, interval: string) => isPriceHistoryStaleForCurrentWindow(
+      [{ date: new Date(date), close: 100 }], Date.parse(at), { exchange: "LSE", intervalMs: priceHistoryIntervalMs(interval) });
+    // London opens Friday at 08:00 BST (07:00Z); Thursday's last minute bar was 15:29Z.
+    expect(stale("2026-10-01T15:29:00Z", "2026-10-02T07:20:00Z", "1m")).toBe(false);
+    expect(stale("2026-10-01T15:29:00Z", "2026-10-02T07:40:00Z", "1m")).toBe(true);
+    // The first hourly bar closes at 08:00Z and arrives delayed after it.
+    expect(stale("2026-10-01T15:00:00Z", "2026-10-02T08:10:00Z", "1h")).toBe(false);
+    // A copy taken earlier in Thursday's session stays behind.
+    expect(stale("2026-10-01T10:00:00Z", "2026-10-02T07:20:00Z", "1m")).toBe(true);
+  });
+
   test("still treats old always-open market history as stale", () => {
     expect(
       isPriceHistoryStaleForCurrentWindow(

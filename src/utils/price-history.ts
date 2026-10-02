@@ -180,11 +180,15 @@ export function isPriceHistoryStaleForCurrentWindow(
   // Bars that reach the close of the venue's latest session stay current
   // once it has closed, so a closed market keeps its last session until the
   // next one opens. A copy taken earlier in that session is still behind.
-  if (isRegularSessionTime(exchange, now) === false) {
+  const regularSession = isRegularSessionTime(exchange, now);
+  if (regularSession !== null) {
     const open = latestRegularSessionOpen(exchange, now);
     const close = latestRegularSessionClose(exchange, now)?.close;
-    if (open !== null && close !== undefined && close > open && latestTime >= open
-      && latestTime >= close - allowedLag) return false;
+    if (open !== null && close !== undefined && latestTime >= close - allowedLag) {
+      if (!regularSession && close > open && latestTime >= open) return false;
+      // After the next open they answer until its first delayed bar is due.
+      if (regularSession && close < open && latestTime < open && now - open <= allowedLag) return false;
+    }
   }
   const hasExchangeSession = Boolean(resolveExchangeTimeZone(exchange));
   if (age <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) return hasExchangeSession;
