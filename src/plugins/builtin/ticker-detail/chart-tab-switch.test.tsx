@@ -172,11 +172,11 @@ describe("Ticker detail chart tab switching", () => {
     const manager = await renderKittyDetail(
       <DetailHarness
         config={config}
-        ticker={makeTicker(symbol)}
+        ticker={makeTicker(symbol, "Apple Inc.")}
         financials={makeFinancials(48)}
       />,
     );
-    expect(tui.frame()).toContain("AAPL");
+    expect(tui.frame()).toContain("Apple Inc.");
     expect(hasCompositeSurface(manager, TEST_PANE_ID)).toBe(true);
 
     act(() => {
@@ -205,7 +205,7 @@ describe("Ticker detail chart tab switching", () => {
 
     await flushFrames();
     const returnedOverview = tui.frame();
-    expect(returnedOverview).toContain("AAPL");
+    expect(returnedOverview).toContain("Apple Inc.");
     expect(hasCompositeSurface(manager, TEST_PANE_ID)).toBe(true);
   });
 

@@ -5,6 +5,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import type { QueryEntry } from "../../../../market-data/result-types";
 import { resolveEntryData } from "../../../../market-data/selectors";
 import { useDoubleClickActivation } from "../../../../components/use-double-click-activation";
+import { FigureText } from "../../../../components/ui/figure";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatPercentRaw } from "../../../../utils/format";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../../market-data/market/format";
@@ -97,8 +98,7 @@ export function QuoteMonitorCard({
   const quoteStatus = resolveQuoteStatus(quoteEntry, symbol, quote);
   const quoteFailed = quoteStatus.failed && !!display;
   const changeColor = quoteFailed ? colors.textDim : priceColor(display?.change ?? 0);
-  const priceAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.BOLD;
-  const changeAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.NONE;
+  const flashing = !!flashDirection;
   const currency = quote?.currency ?? ticker?.metadata.currency ?? "USD";
   const stacked = width < 31;
   const compactQuoteFailure = quoteFailed && stacked && height <= 3;
@@ -119,22 +119,8 @@ export function QuoteMonitorCard({
   const trend = quoteTrend(display?.change);
   const terminalSparklineHeight = !nativePaneChrome && !stacked && height >= 4 ? 2 : 1;
   const showTerminalSparkline = !quoteFailed || height >= (stacked ? 3 : 2) + 1 + terminalSparklineHeight;
-  const desktopPriceStyle = nativePaneChrome
-    ? {
-        fontSize: "22px",
-        lineHeight: "1.05",
-        fontWeight: 720,
-        textShadow: `0 1px 2px ${colors.bg}`,
-      }
-    : undefined;
-  const desktopChangeStyle = nativePaneChrome
-    ? {
-        fontSize: "12px",
-        lineHeight: "1.1",
-        fontWeight: 540,
-        textShadow: `0 1px 2px ${colors.bg}`,
-      }
-    : undefined;
+  // Figures sit over the sparkline, so the desktop rings them in the card colour.
+  const figureHalo = { textShadow: `0 1px 2px ${colors.bg}` };
   const desktopSymbolStyle = nativePaneChrome
     ? {
         fontSize: "15px",
@@ -253,16 +239,10 @@ export function QuoteMonitorCard({
               paddingBottom: 1,
             }}
           >
-            <Text
-              attributes={priceAttributes}
-              fg={changeColor}
-              style={desktopPriceStyle}
-            >
-              {priceText}
-            </Text>
+            <FigureText fg={changeColor} dim={flashing} style={figureHalo}>{priceText}</FigureText>
             <Box flexDirection="row" gap={1} justifyContent="flex-end">
-              <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changePercentText}</Text>
-              <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changeValueText}</Text>
+              <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
+              <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
             </Box>
           </Box>
 
@@ -294,12 +274,12 @@ export function QuoteMonitorCard({
                 {symbol}
               </Text>
               <Box flexDirection="column">
-                <Text attributes={priceAttributes} fg={changeColor} style={desktopPriceStyle}>
+                <FigureText fg={changeColor} dim={flashing} style={figureHalo}>
                   {compactQuoteFailure ? `${priceText} · ${quoteStatus.stale ? "STALE" : "ERROR"}` : priceText}
-                </Text>
+                </FigureText>
                 <Box flexDirection="row" gap={1}>
-                  <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changePercentText}</Text>
-                  <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changeValueText}</Text>
+                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
+                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
                 </Box>
               </Box>
             </Box>
@@ -331,16 +311,10 @@ export function QuoteMonitorCard({
                 )}
               </Box>
               <Box flexDirection="column" alignItems="flex-end">
-                <Text
-                  attributes={priceAttributes}
-                  fg={changeColor}
-                  style={desktopPriceStyle}
-                >
-                  {priceText}
-                </Text>
+                <FigureText fg={changeColor} dim={flashing} style={figureHalo}>{priceText}</FigureText>
                 <Box flexDirection="row" gap={1} justifyContent="flex-end">
-                  <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changePercentText}</Text>
-                  <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changeValueText}</Text>
+                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
+                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
                 </Box>
               </Box>
             </Box>

@@ -49,8 +49,8 @@ async function render(plan: "free" | "pro", width: number) {
     settings: { liveStreaming: false },
   });
   const initial = createInitialState(config);
-  for (const symbol of ["9988", "1211"]) {
-    initial.tickers.set(symbol, createTestTicker(symbol, symbol, { exchange: "HKEX", currency: "HKD" }));
+  for (const [symbol, name] of [["9988", "Alibaba Group"], ["1211", "BYD Company"]] as const) {
+    initial.tickers.set(symbol, createTestTicker(symbol, name, { exchange: "HKEX", currency: "HKD" }));
     initial.financials.set(symbol, financials(quote(symbol, symbol === "9988")));
   }
   initial.paneState[paneId] = { activeTabId: "overview" };
@@ -92,7 +92,7 @@ for (const plan of ["free", "pro"] as const) for (const width of [48, 80, 120]) 
       instances: state.config.layout.instances.map((instance) => ({ ...instance, binding: { kind: "fixed", symbol: "1211" } })),
     } } })); });
     const switched = await frame();
-    expect(switched).toContain("1211");
+    expect(switched).toContain("BYD Company");
     expect(switched).not.toContain("Stale quote");
     expect(switched).not.toContain("2026-09-11 08:08Z");
   });
