@@ -174,7 +174,7 @@ export function CalendarAccountTab({ width, sessionMarker }: { width: number; se
     return (
       <EmptyState
         title={t("No calendar link yet.")}
-        hint={t("Earnings, ex-dividend dates and US macro for your tickers, in any calendar app. Updates on its own.")}
+        hint={t("Updates on its own.")}
         actions={(
           <Button
             label={busy ? t("Creating...") : t("Copy Calendar Link")}

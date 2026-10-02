@@ -733,7 +733,7 @@ export const ja: Record<string, string> = {
   "add it in a calendar app": "カレンダーアプリに追加してください",
   "calendar link": "カレンダーリンク",
   "No calendar link yet.": "カレンダーリンクはまだありません。",
-  "Earnings, ex-dividend dates and US macro for your tickers, in any calendar app. Updates on its own.": "保有・ウォッチ銘柄の決算、権利落ち日、米国マクロ指標を任意のカレンダーアプリで。自動で更新されます。",
+  "Updates on its own.": "自動で更新されます。",
   "Creating...": "作成中...",
   "Status": "ステータス",
   "Manage Pro": "Pro を管理",

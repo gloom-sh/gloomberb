@@ -719,7 +719,7 @@ export const es: Record<string, string> = {
   "add it in a calendar app": "añádelo en una app de calendario",
   "calendar link": "enlace del calendario",
   "No calendar link yet.": "Aún no hay enlace de calendario.",
-  "Earnings, ex-dividend dates and US macro for your tickers, in any calendar app. Updates on its own.": "Resultados, fechas ex-dividendo y macro de EE. UU. para tus tickers, en cualquier app de calendario. Se actualiza solo.",
+  "Updates on its own.": "Se actualiza solo.",
   "Creating...": "Creando...",
   "Status": "Estado",
   "Manage Pro": "Gestionar Pro",

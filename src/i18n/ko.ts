@@ -731,7 +731,7 @@ export const ko: Record<string, string> = {
   "add it in a calendar app": "캘린더 앱에 추가하세요",
   "calendar link": "캘린더 링크",
   "No calendar link yet.": "아직 캘린더 링크가 없습니다.",
-  "Earnings, ex-dividend dates and US macro for your tickers, in any calendar app. Updates on its own.": "보유·관심 종목의 실적, 배당락일, 미국 거시 일정을 어떤 캘린더 앱에서든 볼 수 있습니다. 자동으로 업데이트됩니다.",
+  "Updates on its own.": "자동으로 업데이트됩니다.",
   "Creating...": "만드는 중...",
   "Status": "상태",
   "Manage Pro": "Pro 관리",

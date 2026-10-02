@@ -733,7 +733,7 @@ export const zhTW: Record<string, string> = {
   "add it in a calendar app": "請在行事曆 App 中新增",
   "calendar link": "行事曆連結",
   "No calendar link yet.": "還沒有行事曆連結。",
-  "Earnings, ex-dividend dates and US macro for your tickers, in any calendar app. Updates on its own.": "在任何行事曆 App 中查看你關注代號的財報、除息日與美國總經數據。自動更新。",
+  "Updates on its own.": "自動更新。",
   "Creating...": "建立中...",
   "Status": "狀態",
   "Manage Pro": "管理 Pro",

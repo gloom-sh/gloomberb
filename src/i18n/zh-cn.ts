@@ -733,7 +733,7 @@ export const zhCN: Record<string, string> = {
   "add it in a calendar app": "请在日历应用中添加",
   "calendar link": "日历链接",
   "No calendar link yet.": "还没有日历链接。",
-  "Earnings, ex-dividend dates and US macro for your tickers, in any calendar app. Updates on its own.": "在任意日历应用中查看你关注代码的财报、除息日和美国宏观数据。自动更新。",
+  "Updates on its own.": "自动更新。",
   "Creating...": "正在创建...",
   "Status": "状态",
   "Manage Pro": "管理 Pro",
