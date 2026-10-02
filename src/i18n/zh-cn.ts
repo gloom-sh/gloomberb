@@ -1384,4 +1384,15 @@ export const zhCN: Record<string, string> = {
   "Received": "已收到",
   "In progress": "处理中",
   "Resolved": "已解决",
+
+  // ── Company picker ───────────────────────────────────────────
+  "Which companies do you follow?": "你关注哪些公司？",
+  "Your watchlist, alerts and Monday brief will follow them.": "你的自选列表、提醒和周一简报将围绕这些公司。",
+  "Search any company or ticker": "搜索任意公司或股票代码",
+  "Pick at least {count} to continue.": "至少选择 {count} 家以继续。",
+  "{names}. {count} more to go.": "{names}。还需 {count} 家。",
+  "No company matches {query}.": "没有与 {query} 匹配的公司。",
+  "Picked": "已选",
+  "Follow {count} companies": "关注 {count} 家公司",
+  "Following {count} companies. Alerts and your Monday brief will cover them.": "已关注 {count} 家公司。提醒和周一简报将涵盖它们。",
 };

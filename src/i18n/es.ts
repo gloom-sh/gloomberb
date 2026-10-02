@@ -1388,4 +1388,15 @@ export const es: Record<string, string> = {
   "Received": "Recibido",
   "In progress": "En curso",
   "Resolved": "Resuelto",
+
+  // ── Company picker ───────────────────────────────────────────
+  "Which companies do you follow?": "¿Qué empresas sigues?",
+  "Your watchlist, alerts and Monday brief will follow them.": "Tu lista de seguimiento, tus alertas y tu resumen del lunes se centrarán en ellas.",
+  "Search any company or ticker": "Busca cualquier empresa o ticker",
+  "Pick at least {count} to continue.": "Elige al menos {count} para continuar.",
+  "{names}. {count} more to go.": "{names}. Faltan {count}.",
+  "No company matches {query}.": "Ninguna empresa coincide con {query}.",
+  "Picked": "Elegida",
+  "Follow {count} companies": "Seguir {count} empresas",
+  "Following {count} companies. Alerts and your Monday brief will cover them.": "Sigues {count} empresas. Las alertas y tu resumen del lunes las cubrirán.",
 };

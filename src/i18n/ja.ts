@@ -1384,4 +1384,15 @@ export const ja: Record<string, string> = {
   "Received": "受付済み",
   "In progress": "対応中",
   "Resolved": "解決済み",
+
+  // ── Company picker ───────────────────────────────────────────
+  "Which companies do you follow?": "どの企業をフォローしていますか？",
+  "Your watchlist, alerts and Monday brief will follow them.": "ウォッチリスト、アラート、月曜のブリーフがこれらの企業を中心に届きます。",
+  "Search any company or ticker": "企業名または銘柄コードで検索",
+  "Pick at least {count} to continue.": "続けるには {count} 社以上選んでください。",
+  "{names}. {count} more to go.": "{names}。あと {count} 社。",
+  "No company matches {query}.": "{query} に一致する企業はありません。",
+  "Picked": "選択済み",
+  "Follow {count} companies": "{count} 社をフォロー",
+  "Following {count} companies. Alerts and your Monday brief will cover them.": "{count} 社をフォローしました。アラートと月曜のブリーフで取り上げます。",
 };

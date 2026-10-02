@@ -1384,4 +1384,15 @@ export const zhTW: Record<string, string> = {
   "Received": "已收到",
   "In progress": "處理中",
   "Resolved": "已解決",
+
+  // ── Company picker ───────────────────────────────────────────
+  "Which companies do you follow?": "你關注哪些公司？",
+  "Your watchlist, alerts and Monday brief will follow them.": "你的自選清單、提醒和週一簡報將圍繞這些公司。",
+  "Search any company or ticker": "搜尋任何公司或股票代號",
+  "Pick at least {count} to continue.": "至少選擇 {count} 家以繼續。",
+  "{names}. {count} more to go.": "{names}。還需 {count} 家。",
+  "No company matches {query}.": "沒有與 {query} 相符的公司。",
+  "Picked": "已選",
+  "Follow {count} companies": "關注 {count} 家公司",
+  "Following {count} companies. Alerts and your Monday brief will cover them.": "已關注 {count} 家公司。提醒和週一簡報將涵蓋它們。",
 };

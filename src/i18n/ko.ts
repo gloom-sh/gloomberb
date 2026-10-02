@@ -1382,4 +1382,15 @@ export const ko: Record<string, string> = {
   "Received": "접수됨",
   "In progress": "진행 중",
   "Resolved": "해결됨",
+
+  // ── Company picker ───────────────────────────────────────────
+  "Which companies do you follow?": "어떤 기업을 팔로우하시나요?",
+  "Your watchlist, alerts and Monday brief will follow them.": "관심 목록, 알림, 월요일 브리핑이 이 기업들을 중심으로 구성됩니다.",
+  "Search any company or ticker": "기업명 또는 종목코드 검색",
+  "Pick at least {count} to continue.": "계속하려면 {count}개 이상 선택하세요.",
+  "{names}. {count} more to go.": "{names}. {count}개 더 선택하세요.",
+  "No company matches {query}.": "{query}와(과) 일치하는 기업이 없습니다.",
+  "Picked": "선택됨",
+  "Follow {count} companies": "{count}개 기업 팔로우",
+  "Following {count} companies. Alerts and your Monday brief will cover them.": "{count}개 기업을 팔로우합니다. 알림과 월요일 브리핑에서 다룹니다.",
 };
