@@ -47,7 +47,7 @@ import type { PluginRegistry } from "../../registry";
 
 const log = debugLog.createLogger("company-picker");
 
-export const MIN_COMPANY_PICKS = 2;
+const MIN_COMPANY_PICKS = 2;
 /** Only accounts this new are asked; nobody who has used Gloom for a while. */
 const NEW_ACCOUNT_MS = 24 * 60 * 60 * 1000;
 /** The seeded lists hold 7 (web first run) or 12 (startup) starter tickers. */
@@ -68,7 +68,7 @@ export const STARTER_SYMBOLS: ReadonlySet<string> = new Set([
 type Suggestion = Pick<TickerMetadata, "ticker" | "name" | "exchange" | "assetCategory" | "currency">;
 
 /** What people most often follow: big names first, then an index fund and bitcoin. */
-export const COMPANY_SUGGESTIONS: readonly Suggestion[] = [
+const COMPANY_SUGGESTIONS: readonly Suggestion[] = [
   { ticker: "NVDA", name: "NVIDIA", exchange: "NASDAQ", assetCategory: "STK", currency: "USD" },
   { ticker: "AAPL", name: "Apple", exchange: "NASDAQ", assetCategory: "STK", currency: "USD" },
   { ticker: "MSFT", name: "Microsoft", exchange: "NASDAQ", assetCategory: "STK", currency: "USD" },
