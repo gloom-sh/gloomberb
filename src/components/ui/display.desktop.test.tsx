@@ -39,7 +39,7 @@ test("stable display content follows theme changes and status transitions expose
   const headingColor = () => (container.querySelector('[data-gloom-ui="section-heading"] span') as HTMLElement).style.color;
   const original = headingColor();
   expect(container.querySelector('[data-gloom-status="loading"]')).not.toBeNull();
-  await act(async () => { updateTheme("midnight"); updateState("error"); });
+  await act(async () => { updateTheme("paper"); updateState("error"); });
   expect(headingColor()).not.toBe(original);
   expect(container.querySelector('[data-gloom-status="loading"]')).toBeNull();
   expect(container.querySelector('[data-gloom-status="empty"]')).toBeNull();
