@@ -193,6 +193,14 @@ export interface CloudPricing {
   yearly: CloudPricingTier;
 }
 
+/** The account's private calendar feed link (`/account/calendar-feed`). */
+export interface CalendarFeed {
+  url: string;
+  createdAt: string;
+  /** The last time a calendar app read it, to the hour. */
+  lastFetchedAt: string | null;
+}
+
 /** One command-bar prefix described for `/assist/command`. */
 export interface AssistCommandDescriptor {
   prefix: string;

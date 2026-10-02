@@ -10,11 +10,14 @@ import { useAppLanguage } from "../../../i18n/react";
  */
 export function useAccountManagementFooter({
   busy,
+  enabled,
   hasSession,
   message,
   saveProfile,
 }: {
   busy: "profile" | "password" | "alerts" | "billing" | "delete" | null;
+  /** Off while a tab that owns its footer is showing. */
+  enabled: boolean;
   hasSession: boolean;
   message: { tone: "info" | "success" | "error"; text: string } | null;
   saveProfile: () => Promise<void>;
@@ -24,11 +27,11 @@ export function useAccountManagementFooter({
     { id: "save", key: "Ctrl+S", label: t("save"), onPress: () => { void saveProfile(); }, disabled: !!busy || !hasSession },
   ], [busy, hasSession, language, saveProfile]);
 
-  usePaneFooter("account-management", () => ({
+  usePaneFooter("account-management", () => (enabled ? {
     info: [
       ...(busy ? [{ id: "busy", parts: [{ text: t("saving"), tone: "muted" as const }] }] : []),
       ...(message ? [{ id: "status", parts: [{ text: message.text, tone: message.tone === "error" ? "negative" as const : message.tone === "success" ? "positive" as const : "muted" as const }] }] : []),
     ],
     hints: footerHints,
-  }), [busy, footerHints, language, message]);
+  } : null), [busy, enabled, footerHints, language, message]);
 }
