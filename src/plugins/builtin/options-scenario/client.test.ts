@@ -5,7 +5,9 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, type ScenarioLoaderDependencies } from "./client";
+import { valueOption } from "../shared/volatility";
 import { optionsScenarioHeadless } from "./headless";
+import { optionExpirationClose } from "./model";
 
 const now = Date.UTC(2026, 8, 22, 14);
 const expiration = Date.UTC(2026, 11, 18) / 1000;
@@ -128,7 +130,7 @@ describe("scenario headless inputs", () => {
     expect(() => scenarioPositionFromSettings({ symbol: "AAPL:NASDAQ", legs }, { ...market, exchange: "NYSE" })).toThrow("Market snapshot does not match");
   });
 
-  test("explicit strategy seeds require matched two-sided quotes, IV and currency", async () => {
+  test("explicit strategy seeds require matched two-sided quotes and one currency", async () => {
     const contract = (strike: number, bid: number, ask: number) => ({ contractSymbol: `AAPL${strike}`, strike, bid, ask,
       currency: "USD", expiration, impliedVolatility: .25, lastPrice: 999, change: 0, percentChange: 0,
       inTheMoney: false, lastTradeDate: now / 1000 });
@@ -139,5 +141,28 @@ describe("scenario headless inputs", () => {
     expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, market)).toThrow("no complete quoted strategy");
     expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "vertical", currency: "EUR" }, market)).toThrow("Strategy currency differs");
     expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "vertical" }, { ...market, warnings: ["Options chain is stale"] })).toThrow("current options chain");
+  });
+
+  test("a leg the chain gives no IV takes the one its midpoint implies at the market spot and time", async () => {
+    const market = await loadScenarioMarket({ instrument: { symbol: "AAPL" } }, dependencies());
+    const daysToExpiry = (optionExpirationClose(expiration) - now) / 86_400_000;
+    const priced = (side: "call" | "put", strike: number, impliedVolatility: number) => {
+      const { price } = valueOption({ side, spot: 100, strike, daysToExpiry, rate: market.rate!,
+        dividendYield: market.dividendYield!, volatility: 0.3 });
+      return { contractSymbol: `AAPL${side}${strike}`, strike, bid: price - 0.05, ask: price + 0.05, currency: "USD",
+        expiration, impliedVolatility, lastPrice: 0, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: now / 1000 };
+    };
+    const withChain = (calls: OptionsChain["calls"], puts: OptionsChain["puts"]) =>
+      loadScenarioMarket({ instrument: { symbol: "AAPL" } }, dependencies({ loadOptions: async () => ready({ ...chain, calls, puts }) }));
+    const solved = await withChain([priced("call", 100, 0)], [priced("put", 100, 0.28)]);
+    // A what-if spot does not move the solved IV off the market observation.
+    const position = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle", spot: "110" }, solved)!;
+    expect(position.legs[0]).toMatchObject({ side: "call", volatilitySource: "mid" });
+    expect(position.legs[0]!.volatility).toBeCloseTo(0.3, 6);
+    expect(position.legs[1]).toMatchObject({ side: "put", volatility: 0.28 });
+    expect(position.legs[1]!.volatilitySource).toBeUndefined();
+    // A midpoint below intrinsic value has no IV; nothing is invented.
+    const unpriceable = await withChain([{ ...priced("call", 80, 0), bid: 1, ask: 1.2 }], [priced("put", 80, 0.28)]);
+    expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, unpriceable)).toThrow("no complete quoted strategy");
   });
 });

@@ -203,12 +203,14 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   ];
   const notices = [...new Set([...restored.warnings, ...(market?.warnings ?? []), ...(scenario?.warnings ?? []), ...(resource.error ? [resource.error] : [])])];
   usePaneNoticeFooter({ registrationId: "osa-notices", notices, focused, enabled: !detail || detail === "chain" });
+  // Following the market solves every quoted leg's IV from its live midpoint anyway.
+  const midVolatility = !live && !!position?.legs.some((leg) => leg.volatilitySource === "mid");
   usePaneFooter("osa", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading chain", tone: "muted" as const }] }] : []),
     ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ...(live ? [{ id: "asof", parts: [{ text: `${live.basis} · as of ${new Date(live.observedAt).toISOString().slice(11, 19)} UTC`, tone: "muted" as const }] }]
-      : position ? [{ id: "asof", parts: [{ text: `${dateLabel(position.asOf)} · ${market?.source ? "market" : "input assumptions"}`, tone: "muted" as const }] }] : []),
-  ], hints }), [hints, position, market?.source, resource.loading, error, live?.basis, live?.observedAt]);
+      : position ? [{ id: "asof", parts: [{ text: `${dateLabel(position.asOf)} · ${market?.source ? "market" : "input assumptions"}${midVolatility ? " · IV from quote mid" : ""}`, tone: "muted" as const }] }] : []),
+  ], hints }), [hints, position, market?.source, resource.loading, error, live?.basis, live?.observedAt, midVolatility]);
   useScenarioEvidence({ scenario, view: tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
   // A choice dialog (scenario date, saved strategies) owns the keys while open.
   const dialogOpen = useDialogState((state) => state.isOpen);

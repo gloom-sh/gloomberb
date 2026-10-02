@@ -51,14 +51,17 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const scenario = position && controls ? buildScenario(position, controls) : null;
     const errors = scenario ? [...new Set([...market.warnings, ...scenario.warnings])]
       : [...market.warnings, "No position supplied; add --legs or select --strategy"];
+    const midVolatility = !!position?.legs.some((leg) => leg.volatilitySource === "mid");
     return {
       sections: scenario ? [
         { title: "Position", columns: [
           { key: "side", header: "Side" }, { key: "strike", header: "Strike" }, { key: "expiry", header: "Expiry" },
           { key: "quantity", header: "Quantity" }, { key: "price", header: "Entry", format: money },
           { key: "volatility", header: "IV", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" },
+          ...(midVolatility ? [{ key: "volatilityFrom", header: "IV from" }] : []),
           { key: "multiplier", header: "Multiplier" },
-        ], rows: position!.legs.map((leg) => ({ ...leg, expiry: new Date(leg.expiration * 1000).toISOString().slice(0, 10) })) },
+        ], rows: position!.legs.map((leg) => ({ ...leg, expiry: new Date(leg.expiration * 1000).toISOString().slice(0, 10),
+          ...(midVolatility ? { volatilityFrom: leg.volatilitySource === "mid" ? "quote mid" : "chain" } : {}) })) },
         { title: "Valuation", entries: Object.entries(scenario.valuation).map(([key, value]) => ({ key, label: key, value, formatted: money(value) })) },
         { title: "Expiry risk", entries: [
           { label: "Breakevens", value: scenario.expiryRisk.breakevens },
