@@ -185,7 +185,7 @@ test("shows a cited preview to free accounts and gates the rest", async () => {
   expect(frame).toContain("Gross margin fell for three quarters");
   expect(frame).not.toContain("Receivables grew faster than sales");
   expect(frame).not.toContain("Risk skewed");
-  expect(frame).toContain("UNLOCK THE FULL DIAGNOSTIC");
+  expect(frame).toContain("Unlock the Full Diagnostic");
   expect(frame).toContain("Upgrade to Pro");
   // Coverage says what each dataset is, never which vendor served it.
   expect(frame).not.toContain("Gloom Cloud");

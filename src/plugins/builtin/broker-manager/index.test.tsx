@@ -121,8 +121,8 @@ describe("BrokersPane", () => {
     // Esc on a row without a text field would otherwise close the profile.
     await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
     const frame = tui.frame();
-    expect(frame).not.toContain("EDIT PROFILE");
-    expect(frame).toContain("ACCOUNTS");
+    expect(frame).not.toContain("Edit Profile");
+    expect(frame).toContain("Accounts");
 
     await pressKey("e");
     await pressKey("TAB");
