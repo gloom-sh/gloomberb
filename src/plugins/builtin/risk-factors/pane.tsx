@@ -217,14 +217,14 @@ function RiskFactorsReader({
             {report.overview ? (
               <Box flexDirection="column">
                 <SectionHeading
-                  title={diff ? "WHAT THE CHANGES SAY" : "WHAT DOMINATES"}
+                  title={diff ? "What the Changes Say" : "What Dominates"}
                 />
                 <BulletList items={report.overview.split("\n")} width={proseWidth} color={colors.text} />
               </Box>
             ) : null}
             {diff ? (
               <Box flexDirection="column">
-                <SectionHeading marginTop={report.overview ? 1 : 0} title="WHAT CHANGED" />
+                <SectionHeading marginTop={report.overview ? 1 : 0} title="What Changed" />
                 {diff.added.length === 0 &&
                 diff.removed.length === 0 &&
                 diff.reworded.length === 0 ? (
@@ -267,7 +267,7 @@ function RiskFactorsReader({
               </Box>
             ) : report.notes.top.length > 0 ? (
               <Box flexDirection="column">
-                <SectionHeading marginTop={report.overview ? 1 : 0} title="MOST SPECIFIC TO THE COMPANY" />
+                <SectionHeading marginTop={report.overview ? 1 : 0} title="Most Specific to the Company" />
                 {report.notes.top.map((note) => (
                   <RiskLine
                     key={`top-${note.index}`}
@@ -281,7 +281,7 @@ function RiskFactorsReader({
               </Box>
             ) : null}
             <Box flexDirection="column">
-              <SectionHeading marginTop={1} title="ALL RISK FACTORS" />
+              <SectionHeading marginTop={1} title="All Risk Factors" />
               {report.risks.map((risk, index) => (
                 <Prose
                   key={`${index}-${risk.heading}`}
