@@ -165,6 +165,30 @@ describe("static Cloudflare host", () => {
     expect(proxied).toBe(false);
   });
 
+  test("confirms plugin proxy sessions with api.gloom.sh, sending only the session cookie", async () => {
+    const { env, requests } = fixture();
+    const checks: Request[] = [];
+    const response = await handleRequest(new Request("https://term.example/http-proxy", {
+      method: "POST",
+      headers: {
+        Origin: "https://term.example",
+        Cookie: "theme=dark; __Secure-gloomberb.session_token=worker-route-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: "https://query1.finance.yahoo.com/v1/finance/screener" }),
+    }), env, async (request) => {
+      checks.push(request);
+      // What the API answers for a token it does not know.
+      return new Response(null, { status: 200 });
+    });
+
+    expect(response.status).toBe(401);
+    expect(checks).toHaveLength(1);
+    expect(checks[0]?.url).toBe("https://api.gloom.sh/auth/get-session");
+    expect(checks[0]?.headers.get("cookie")).toBe("__Secure-gloomberb.session_token=worker-route-test");
+    expect(requests).toHaveLength(0);
+  });
+
   test("rejects every non-API mutation without invoking assets or outbound fetch", async () => {
     const { env, requests } = fixture();
     const response = await handleRequest(new Request("https://term.example/shares", {
