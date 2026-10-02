@@ -99,6 +99,17 @@ describe("normalizePriceHistory", () => {
     ).toBe(false);
   });
 
+  test("keeps a non-US venue's session current after its close, until the next open", () => {
+    // Tokyo's last bar before the 15:30 closing auction, read that evening in Europe and the next morning.
+    const tokyo = [{ date: new Date("2026-10-02T06:24:00Z"), close: 2856.5 }];
+    expect(isPriceHistoryStaleForCurrentWindow(tokyo, Date.parse("2026-10-02T18:50:00Z"), { exchange: "JPX", intervalMs: 60_000 })).toBe(false);
+    // In session, an hour without a bar is still behind.
+    expect(isPriceHistoryStaleForCurrentWindow([{ date: new Date("2026-10-02T04:00:00Z"), close: 2860 }],
+      Date.parse("2026-10-02T05:30:00Z"), { exchange: "JPX", intervalMs: 60_000 })).toBe(true);
+    const london = [{ date: new Date("2026-10-02T15:29:00Z"), close: 100 }];
+    expect(isPriceHistoryStaleForCurrentWindow(london, Date.parse("2026-10-02T19:00:00Z"), { exchange: "LSE", intervalMs: 60_000 })).toBe(false);
+  });
+
   test("still treats old always-open market history as stale", () => {
     expect(
       isPriceHistoryStaleForCurrentWindow(

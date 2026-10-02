@@ -1,6 +1,6 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import { canonicalExchange, resolveExchangeTimeZone } from "./exchanges";
-import { hasPublishedSessionCalendar, isTimestampStaleForExchangeSession, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { hasPublishedSessionCalendar, isRegularSessionTime, isTimestampStaleForExchangeSession, latestRegularSessionClose, latestRegularSessionOpen, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
@@ -176,6 +176,12 @@ export function isPriceHistoryStaleForCurrentWindow(
     && isTimestampStaleForExchangeSession(latestTime, exchange, now)
   ) {
     return true;
+  }
+  // Bars from the venue's latest session stay current once it has closed,
+  // so a closed market keeps its last session until the next one opens.
+  if (isRegularSessionTime(exchange, now) === false) {
+    const open = latestRegularSessionOpen(exchange, now);
+    if (open !== null && latestTime >= open) return false;
   }
   const hasExchangeSession = Boolean(resolveExchangeTimeZone(exchange));
   if (age <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) return hasExchangeSession;
