@@ -38,7 +38,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 On **macOS (Apple Silicon)**:
 
 ```bash
-brew install --cask vincelwt/tap/gloomberb
+brew install --cask gloomberb
 ```
 
 On **Windows 11**, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe). It supports x64, and ARM64 through x64 emulation.
