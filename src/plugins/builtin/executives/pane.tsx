@@ -364,21 +364,21 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
           >
             {figures.length > 0 && (
               <Box flexDirection="column">
-                <SectionHeading title="Key Figures" />
+                <SectionHeading title="KEY FIGURES" />
                 <FigureList figures={figures} width={proseWidth} minValueWidth={4} maxValueWidth={14} />
               </Box>
             )}
             {statement.ceo && (
               <Box flexDirection="column">
                 <SectionHeading marginTop={figures.length > 0 ? 1 : 0}
-                  title={`How ${statement.ceo.name.split(" ").pop() ?? "the CEO"} Was Paid`}
+                  title={`HOW ${statement.ceo.name.split(" ").pop()?.toUpperCase() ?? "THE CEO"} WAS PAID`}
                 />
                 <PayMixBar row={statement.ceo} width={proseWidth} />
               </Box>
             )}
             {statement.namedExecutives.length > 0 && (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1} title="Named Executive Officers" />
+                <SectionHeading marginTop={1} title="NAMED EXECUTIVE OFFICERS" />
                 <ExecutiveRows
                   rows={statement.namedExecutives}
                   width={proseWidth}
@@ -387,7 +387,7 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
             )}
             {statement.highlights && (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1} title="What Changed" />
+                <SectionHeading marginTop={1} title="WHAT CHANGED" />
                 <BulletList items={statement.highlights.split("\n")} width={proseWidth} color={colors.text} />
               </Box>
             )}
