@@ -24,6 +24,16 @@ function proxyRequest(body: unknown, headers: Record<string, string> = {}): Requ
 const LIVE_SESSION = () => Response.json({ user: { id: "user_1" }, session: { id: "session_1" } });
 const NO_SESSION = () => new Response(null, { status: 200 });
 
+/** A live session for whichever user the forwarded `session_token` value names, like `user_a.sig`. */
+const SESSION_PER_TOKEN = (request: Request) => {
+  const token = /session_token=([^.;]+)/.exec(request.headers.get("cookie") ?? "")?.[1];
+  return Response.json({ user: { id: token }, session: { id: `session_${token}` } });
+};
+
+function asUser(token: string, extra = ""): Record<string, string> {
+  return { cookie: `__Secure-gloomberb.session_token=${token}${extra}` };
+}
+
 /**
  * A proxy wired to fakes: `api` answers the session check, `upstream` plays
  * the third party. Every call to either is recorded.
@@ -320,7 +330,7 @@ describe("proxy session check", () => {
     expect(proxy.apiCalls).toHaveLength(2);
   });
 
-  test("rate limits a single session and lets it back in after the window", async () => {
+  test("rate limits a single user and lets them back in after the window", async () => {
     const proxy = harness({ gate: { requestsPerWindow: 2, windowMs: 60_000 } });
     const statuses: number[] = [];
     for (let i = 0; i < 3; i += 1) {
@@ -336,8 +346,57 @@ describe("proxy session check", () => {
     expect((await proxy.send(proxyRequest({ url: "https://substack.com/x" }))).status).toBe(200);
   });
 
+  test("counts every cookie variant of a session against one window", async () => {
+    // The API reads only the token before the first "." and only whether
+    // dont_remember is present, so these all reach the same session. Each one
+    // is a separate cache entry, but none of them may start a fresh window.
+    const proxy = harness({ gate: { requestsPerWindow: 3 } });
+    const variants = [
+      SESSION_COOKIE,
+      "__Secure-gloomberb.session_token=abc123.other-signature",
+      "__Secure-gloomberb.session_token=abc123",
+      `${SESSION_COOKIE}; gloomberb.dont_remember=1`,
+      `${SESSION_COOKIE}; gloomberb.dont_remember=2`,
+      `${SESSION_COOKIE}; gloomberb.session_token=junk`,
+    ];
+    const statuses: number[] = [];
+    for (const cookie of variants) {
+      statuses.push((await proxy.send(proxyRequest({ url: "https://substack.com/x" }, { cookie }))).status);
+    }
+
+    expect(statuses).toEqual([200, 200, 200, 429, 429, 429]);
+    expect(proxy.upstreamCalls).toHaveLength(3);
+  });
+
+  test("gives each user their own window", async () => {
+    const proxy = harness({ api: SESSION_PER_TOKEN, gate: { requestsPerWindow: 1 } });
+    const first = await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_a")));
+    const again = await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_a")));
+    const other = await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_b")));
+
+    expect([first.status, again.status, other.status]).toEqual([200, 429, 200]);
+  });
+
+  test("stops one user's cookie variants from pushing others out of the cache", async () => {
+    const proxy = harness({ api: SESSION_PER_TOKEN, gate: { maxEntries: 4, maxEntriesPerUser: 2 } });
+    await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_b")));
+    for (let i = 0; i < 10; i += 1) {
+      await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_a", `.variant${i}`)));
+    }
+    proxy.apiCalls.length = 0;
+
+    // user_b is still cached; of user_a's variants only the newest two are.
+    await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_b")));
+    await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_a", ".variant9")));
+    await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_a", ".variant8")));
+    expect(proxy.apiCalls).toHaveLength(0);
+
+    await proxy.send(proxyRequest({ url: "https://substack.com/x" }, asUser("user_a", ".variant7")));
+    expect(proxy.apiCalls).toHaveLength(1);
+  });
+
   test("keeps the cache bounded", async () => {
-    const proxy = harness({ gate: { maxEntries: 2 } });
+    const proxy = harness({ api: SESSION_PER_TOKEN, gate: { maxEntries: 2 } });
     for (const token of ["a", "b", "c"]) {
       await proxy.send(proxyRequest({ url: "https://substack.com/x" }, { cookie: `gloomberb.session_token=${token}` }));
     }

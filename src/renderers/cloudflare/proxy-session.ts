@@ -7,6 +7,11 @@
  * the API rejects is not remembered, so signing in again works at once. When
  * the API cannot answer, the proxy refuses rather than guessing.
  *
+ * The cache is keyed by the exact cookies that were confirmed, but the rate
+ * limit is keyed by the user the API named. The API reads only part of those
+ * cookies, so many different Cookie headers reach the same session; counting
+ * by cookie would let one user reset their window by varying the rest.
+ *
  * Only plain data outlives a request. A check in flight is shared with the
  * requests that arrive while it runs, but the runtime drops a promise's
  * continuations once the request that started it ends (a plugin aborting its
@@ -32,14 +37,26 @@ const DEFAULT_CHECK_TIMEOUT_MS = 5_000;
 /** How long past its own timeout a shared check may run before a waiter gives up on it. */
 const SHARED_CHECK_GRACE_MS = 500;
 /**
- * Per session, per isolate. A focused prediction-market pane alone polls about
+ * Per user, per isolate. A focused prediction-market pane alone polls about
  * 60 requests a minute, so this leaves room for a busy layout while still
- * stopping a script from turning one session into a free proxy.
+ * stopping a script from turning one account into a free proxy.
  */
 const DEFAULT_REQUESTS_PER_WINDOW = 300;
 const DEFAULT_WINDOW_MS = 60_000;
+/**
+ * Confirmed cookie variants one user may hold in the cache at once. A user
+ * normally has one per browser; the cap stops one account from minting
+ * variants to push everyone else's confirmations out of the shared cache.
+ */
+const DEFAULT_MAX_ENTRIES_PER_USER = 4;
 
-type Verdict = "valid" | "invalid" | "unavailable";
+/** A live session names its user; anything else is refused or unanswered. */
+type Verdict = { userId: string } | "invalid" | "unavailable";
+
+interface Confirmation {
+  expiresAt: number;
+  userId: string;
+}
 
 interface PendingCheck {
   startedAt: number;
@@ -65,6 +82,7 @@ export interface ProxySessionGateOptions {
   now?: () => number;
   ttlMs?: number;
   maxEntries?: number;
+  maxEntriesPerUser?: number;
   requestsPerWindow?: number;
   windowMs?: number;
   checkTimeoutMs?: number;
@@ -152,7 +170,7 @@ async function checkSession(
     if (!text.trim()) return "invalid";
     const body = JSON.parse(text) as { user?: { id?: unknown } | null } | null;
     const id = body?.user?.id;
-    return typeof id === "string" && id.length > 0 ? "valid" : "invalid";
+    return typeof id === "string" && id.length > 0 ? { userId: id } : "invalid";
   } catch {
     return "unavailable";
   }
@@ -166,19 +184,34 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
+  const maxEntriesPerUser = Math.max(1, options.maxEntriesPerUser ?? DEFAULT_MAX_ENTRIES_PER_USER);
   const requestsPerWindow = options.requestsPerWindow ?? DEFAULT_REQUESTS_PER_WINDOW;
   const windowMs = options.windowMs ?? DEFAULT_WINDOW_MS;
   const checkTimeoutMs = options.checkTimeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS;
   const sharedWaitMs = checkTimeoutMs + SHARED_CHECK_GRACE_MS;
-  /** Session key to the time its confirmation expires. */
-  const confirmed = new Map<string, number>();
+  /** Cookie key to whose session it is and when that stops being trusted. */
+  const confirmed = new Map<string, Confirmation>();
   const pending = new Map<string, PendingCheck>();
+  /** Keyed by user id, not cookie, so every variant of a session shares one window. */
   const windows = new Map<string, RateWindow>();
+
+  /** Remembers `key` for `userId`, first dropping that user's oldest variants past the per-user cap. */
+  function confirm(key: string, userId: string): void {
+    const settledAt = now();
+    confirmed.delete(key);
+    const ownKeys: string[] = [];
+    for (const [other, entry] of confirmed) {
+      if (entry.userId === userId) ownKeys.push(other);
+    }
+    for (let i = 0; i <= ownKeys.length - maxEntriesPerUser; i += 1) confirmed.delete(ownKeys[i]!);
+    makeRoom(confirmed, maxEntries, (entry) => entry.expiresAt <= settledAt);
+    confirmed.set(key, { expiresAt: settledAt + ttlMs, userId });
+  }
 
   async function verdictFor(key: string, cookie: string, request: Request, fetchApi: ApiFetch): Promise<Verdict> {
     const at = now();
-    const until = confirmed.get(key);
-    if (until !== undefined && until > at) return "valid";
+    const known = confirmed.get(key);
+    if (known && known.expiresAt > at) return { userId: known.userId };
     confirmed.delete(key);
 
     const shared = pending.get(key);
@@ -200,23 +233,18 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
 
     const verdict = await check.verdict;
     if (pending.get(key) === check) pending.delete(key);
-    if (verdict === "valid") {
-      const settledAt = now();
-      confirmed.delete(key);
-      makeRoom(confirmed, maxEntries, (expiresAt) => expiresAt <= settledAt);
-      confirmed.set(key, settledAt + ttlMs);
-    }
+    if (typeof verdict === "object") confirm(key, verdict.userId);
     return verdict;
   }
 
-  function withinRate(key: string): ProxyAdmission {
+  function withinRate(userId: string): ProxyAdmission {
     const at = now();
-    let window = windows.get(key);
+    let window = windows.get(userId);
     if (!window || at - window.startedAt >= windowMs) {
-      windows.delete(key);
+      windows.delete(userId);
       makeRoom(windows, maxEntries, (entry) => at - entry.startedAt >= windowMs);
       window = { startedAt: at, count: 0 };
-      windows.set(key, window);
+      windows.set(userId, window);
     }
     window.count += 1;
     if (window.count <= requestsPerWindow) return { ok: true };
@@ -236,7 +264,7 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
       const verdict = await verdictFor(key, cookie, request, fetchApi);
       if (verdict === "invalid") return SIGN_IN;
       if (verdict === "unavailable") return UNAVAILABLE;
-      return withinRate(key);
+      return withinRate(verdict.userId);
     },
   };
 }
