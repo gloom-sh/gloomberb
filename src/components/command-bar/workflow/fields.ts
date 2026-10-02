@@ -22,11 +22,10 @@ export function normalizeFieldOptions(
 type FieldDependency = { key: string; value: string };
 
 /**
- * Whether a workflow field or wizard step shows for the answers so far: every
- * answer it depends on, read as a string, holds the expected value. The
- * command-bar form and the dialog wizard both decide visibility here.
+ * Whether a workflow field shows for the answers so far: every answer it
+ * depends on, read as a string, holds the expected value.
  */
-export function dependenciesMet(
+function dependenciesMet(
   dependsOn: FieldDependency | FieldDependency[] | undefined,
   values: Record<string, unknown>,
 ): boolean {
@@ -37,8 +36,8 @@ export function dependenciesMet(
 
 /**
  * The later answers a change resets: the field's `clearOnChange` keys when the
- * new value differs from the one it replaces. The form compares with the value
- * it held, the dialog wizard with the one the step offered.
+ * new value differs from the one it replaces. The form modal and pane settings
+ * both reset answers here.
  */
 export function keysClearedByChange(
   clearOnChange: string[] | undefined,
@@ -49,7 +48,7 @@ export function keysClearedByChange(
 }
 
 /** The answer a wizard step starts on: its default, else a select's first option. */
-export function wizardStepInitialValue(step: WizardStep): string | undefined {
+function wizardStepInitialValue(step: WizardStep): string | undefined {
   if (step.defaultValue) return step.defaultValue;
   if (step.type === "select" && step.options?.[0]?.value) return step.options[0].value;
   return undefined;
