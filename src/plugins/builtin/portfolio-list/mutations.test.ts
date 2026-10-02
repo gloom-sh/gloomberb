@@ -5,6 +5,7 @@ import {
   adoptFirstPositionCurrency,
   createManualPortfolio,
   deleteManualPortfolio,
+  deleteWatchlist,
   hasOpenPortfolioPositions,
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
@@ -74,6 +75,23 @@ describe("portfolio-list mutations", () => {
           broker: "manual",
         }],
       }),
+    ]);
+  });
+
+  test("deleting a watchlist takes its id off every ticker, and leaves other lists, portfolios and team lists alone", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-mutations");
+    config.watchlists = [{ id: "watchlist", name: "Watchlist" }, { id: "tech", name: "Tech" }];
+    const position = { portfolio: "main", shares: 3, avgCost: 200, currency: "USD", broker: "manual" };
+    const held = makeTicker({ ticker: "AAPL", portfolios: ["main"], watchlists: ["tech", "watchlist"], positions: [position] });
+    const shared = makeTicker({ ticker: "MSFT", watchlists: ["tech", "team:t1:w1"] });
+    const untouched = makeTicker({ ticker: "NVDA", watchlists: ["watchlist"] });
+
+    const result = deleteWatchlist(config, [held, shared, untouched], "tech");
+
+    expect(result.config.watchlists.map((watchlist) => watchlist.id)).toEqual(["watchlist"]);
+    expect(result.tickers).toEqual([
+      makeTicker({ ticker: "AAPL", portfolios: ["main"], watchlists: ["watchlist"], positions: [position] }),
+      makeTicker({ ticker: "MSFT", watchlists: ["team:t1:w1"] }),
     ]);
   });
 

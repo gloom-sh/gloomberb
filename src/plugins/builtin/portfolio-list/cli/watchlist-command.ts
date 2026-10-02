@@ -11,7 +11,7 @@ import {
 } from "../../../../utils/cli-output";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
-import { addTickerToWatchlist } from "../mutations";
+import { addTickerToWatchlist, deleteWatchlist as deleteWatchlistConfig } from "../mutations";
 import { showCollection } from "./render";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
@@ -41,28 +41,14 @@ async function deleteWatchlist(name: string, ctx: CliCommandContext) {
     const watchlist = findWatchlist(config, name);
     if (!watchlist) ctx.fail(`Watchlist "${name}" was not found.`);
 
-    const nextConfig = {
-      ...config,
-      watchlists: config.watchlists.filter((entry) => entry.id !== watchlist.id),
-    };
-
-    let cleanedTickers = 0;
-    for (const ticker of await store.loadAllTickers()) {
-      if (!ticker.metadata.watchlists.includes(watchlist.id)) continue;
-      const nextTicker: TickerRecord = {
-        ...ticker,
-        metadata: {
-          ...ticker.metadata,
-          watchlists: ticker.metadata.watchlists.filter((entry) => entry !== watchlist.id),
-        },
-      };
-      await store.saveTicker(nextTicker);
-      cleanedTickers += 1;
+    const result = deleteWatchlistConfig(config, await store.loadAllTickers(), watchlist.id);
+    for (const ticker of result.tickers) {
+      await store.saveTicker(ticker);
     }
 
-    await saveConfig(nextConfig);
+    await saveConfig(result.config);
     console.log(cliStyles.success(`Deleted watchlist "${watchlist.name}".`));
-    console.log(renderStats([["Cleaned Tickers", String(cleanedTickers)]]));
+    console.log(renderStats([["Cleaned Tickers", String(result.tickers.length)]]));
   });
 }
 

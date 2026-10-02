@@ -382,6 +382,54 @@ describe("core sync contributors", () => {
     expect(current.tickers.get("NVDA")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["tech"] });
   });
 
+  test("a watchlist removed elsewhere leaves no id on tickers, pulled or local", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-watchlist-removal-test");
+    config.watchlists = [{ id: "watchlist", name: "Watchlist" }, { id: "tech", name: "Tech" }];
+    const position = { portfolio: "main", shares: 3, avgCost: 200, currency: "USD", broker: "manual" };
+    const state = createInitialState(config);
+    state.tickers = new Map([
+      ["AAPL", createTestTicker("AAPL", "Apple", { portfolios: ["main"], watchlists: ["tech", "watchlist"], positions: [position] })],
+      ["MSFT", createTestTicker("MSFT", "Microsoft", { watchlists: ["tech", "team:t1:w1"] })],
+      ["NVDA", createTestTicker("NVDA", "NVIDIA", { watchlists: ["watchlist"] })],
+    ]);
+    const pulledConfig = __syncContributorInternalsForTests.collectCoreConfigPayload({
+      ...config,
+      watchlists: [{ id: "watchlist", name: "Watchlist" }],
+    });
+    // An older build deleted the list without clearing its tickers.
+    const pulledCollections = { tickers: [state.tickers.get("AAPL")!.metadata] };
+
+    let current = state;
+    const saved: string[] = [];
+    const context = {
+      baselineState: state,
+      state,
+      getState: () => current,
+      isCurrent: () => true,
+      dispatch: (action: { type: string; config?: typeof config; tickers?: typeof state.tickers }) => {
+        if (action.type === "SET_CONFIG") current = { ...current, config: action.config! };
+        if (action.type === "SET_TICKERS") current = { ...current, tickers: action.tickers! };
+      },
+      tickerRepository: { saveTicker: async (record: TickerRecord) => { saved.push(record.metadata.ticker); } },
+    };
+    type ApplyContext = Parameters<NonNullable<typeof coreConfigSyncContributor.apply>>[1];
+    await coreConfigSyncContributor.apply?.(pulledConfig, {
+      ...context,
+      baselinePayload: __syncContributorInternalsForTests.collectCoreConfigPayload(config),
+    } as unknown as ApplyContext);
+    await coreCollectionsSyncContributor.apply?.(pulledCollections, {
+      ...context,
+      state: current,
+      baselinePayload: null,
+    } as unknown as ApplyContext);
+
+    expect(current.config.watchlists.map((watchlist) => watchlist.id)).toEqual(["watchlist"]);
+    expect(saved).toEqual(["AAPL", "MSFT"]);
+    expect(current.tickers.get("AAPL")?.metadata).toMatchObject({ portfolios: ["main"], watchlists: ["watchlist"], positions: [position] });
+    expect(current.tickers.get("MSFT")?.metadata.watchlists).toEqual(["team:t1:w1"]);
+    expect(current.tickers.get("NVDA")?.metadata.watchlists).toEqual(["watchlist"]);
+  });
+
   test("keeps resumable onboarding local until the guide is complete", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     config.onboardingComplete = false;

@@ -18,6 +18,7 @@ import {
   adoptFirstPositionCurrency,
   createManualPortfolio as createManualPortfolioConfig,
   deleteManualPortfolio,
+  deleteWatchlist as deleteWatchlistConfig,
   hasOpenPortfolioPositions,
   isManualPortfolio,
   resolveManualPositionCurrency,
@@ -174,15 +175,16 @@ export function createCommandBarCollectionWorkflowActions(options: {
 
     async deleteWatchlist(watchlistId) {
       const currentState = getState();
-      const watchlist = currentState.config.watchlists.find((entry) => entry.id === watchlistId);
-      if (!watchlist) {
-        throw new Error("Watchlist not found.");
+      const { config: nextConfig, watchlist, tickers } = deleteWatchlistConfig(
+        currentState.config,
+        currentState.tickers.values(),
+        watchlistId,
+      );
+      for (const ticker of tickers) {
+        await tickerRepository.saveTicker(ticker);
+        dispatch({ type: "UPDATE_TICKER", ticker });
       }
 
-      const nextConfig = {
-        ...currentState.config,
-        watchlists: currentState.config.watchlists.filter((entry) => entry.id !== watchlistId),
-      };
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       if (activeCollectionId === watchlistId) {
         const fallback = nextConfig.portfolios[0]?.id || nextConfig.watchlists[0]?.id || "";
