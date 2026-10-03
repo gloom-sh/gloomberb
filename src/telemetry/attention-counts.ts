@@ -136,7 +136,7 @@ export function installAttentionCounter(isEnabled: () => boolean): () => void {
   counter?.dispose();
   const next = new AttentionCounter({
     isEnabled,
-    verifiedSession: () => apiClient.isVerified() ? apiClient.getCurrentUser() : null,
+    verifiedSession: () => apiClient.getVerifiedSessionIdentity(),
     send: (payload, signal) => apiClient.reportAttentionCounts(payload, signal),
   });
   counter = next;

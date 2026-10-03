@@ -89,6 +89,8 @@ interface PendingSessionRequest {
 
 class GloomApiClient {
   private currentUser: AuthUser | null = null;
+  /** Local identity of a verified user/credential pair, never serialized. */
+  private verifiedSessionIdentity: object | null = null;
   private sessionChecked = false;
   /** Last few session transitions, content-free, for app://auth. */
   private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
@@ -116,6 +118,8 @@ class GloomApiClient {
     markCurrentUserUnverified: () => {
       if (this.currentUser) {
         this.currentUser = { ...this.currentUser, emailVerified: false };
+        this.verifiedSessionIdentity = null;
+        this.emitCurrentUserChange();
       }
     },
     updateCurrentUserFromSocket: (user) => {
@@ -156,16 +160,22 @@ class GloomApiClient {
 
   setCookieSessionMode(enabled: boolean): void {
     this.sessionChecked = false;
+    this.verifiedSessionIdentity = null;
     this.transport.setCookieSessionMode(enabled);
+    this.emitCurrentUserChange();
   }
 
   setSessionToken(token: string | null): void {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
     this.transport.setSessionToken(token);
+    if (changed) this.verifiedSessionIdentity = null;
     this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
       this.currentUser = null;
+      this.verifiedSessionIdentity = null;
+    }
+    if (changed || !token) {
       this.emitCurrentUserChange();
     }
     this.socket.syncAuthState({ reconnect: changed });
@@ -190,7 +200,7 @@ class GloomApiClient {
     return !!this.transport.getSessionToken() || !!this.currentUser;
   }
 
-  /** Notifies when the signed-in user changes, including plan and trial entitlement. */
+  /** Notifies when the user or credential changes, including plan and trial entitlement. */
   subscribeCurrentUser(listener: () => void): () => void {
     this.currentUserListeners.add(listener);
     return () => {
@@ -204,6 +214,11 @@ class GloomApiClient {
 
   isVerified(): boolean {
     return this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified;
+  }
+
+  /** Null while a replacement credential still awaits its matching user. */
+  getVerifiedSessionIdentity(): object | null {
+    return this.isVerified() ? this.verifiedSessionIdentity : null;
   }
 
   /**
@@ -259,6 +274,7 @@ class GloomApiClient {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
+    this.verifiedSessionIdentity = this.isVerified() ? {} : null;
     this.socket.syncAuthState({ reconnect: changed });
     this.emitCurrentUserChange();
   }

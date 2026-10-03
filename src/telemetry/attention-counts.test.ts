@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { CloudTelemetryApi, type AttentionCountsPayload } from "../api-client/telemetry";
+import { apiClient } from "../api-client";
+import { verifiedUser } from "../test-support/cloud-api";
 import { normalizeLoadedConfig, normalizeConfigForSave } from "../data/config/store/normalize";
 import { createDefaultConfig } from "../types/config";
 import { __syncContributorInternalsForTests } from "../sync/core-contributors";
@@ -25,6 +27,36 @@ function harness() {
 }
 
 describe("attention consent", () => {
+  test("credential replacement invalidates counts before the new user is restored", async () => {
+    apiClient.setSessionToken("attention-account-one");
+    apiClient.restoreCachedUser(verifiedUser);
+    const sent: AttentionCountsPayload[] = [];
+    const counter = new AttentionCounter({ isEnabled: () => true,
+      verifiedSession: () => apiClient.getVerifiedSessionIdentity(),
+      send: async (payload) => { sent.push(payload); } });
+    counters.push(counter);
+    const stop = apiClient.subscribeCurrentUser(() => counter.refresh());
+    try {
+      const original = apiClient.getVerifiedSessionIdentity();
+      const pendingOpen = counter.capture();
+      pendingOpen("AAPL", "des");
+      // The legacy UI still has its cached user in this window, but that user
+      // is not proof of which account owns the newly installed credential.
+      apiClient.setSessionToken("attention-account-two");
+      expect(apiClient.getCurrentUser()).not.toBeNull();
+      expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+      counter.capture()("MSFT", "des");
+      apiClient.restoreCachedUser({ ...verifiedUser, id: "attention-other-account" });
+      expect(apiClient.getVerifiedSessionIdentity()).not.toBe(original);
+      pendingOpen("NVDA", "chart");
+      counter.capture()("VOD:LSE", "des");
+      await counter.flush();
+      expect(sent).toEqual([{ consent: true, events: [{ symbol: "VOD:LSE", action: "des" }] }]);
+    } finally {
+      stop();
+      apiClient.setSessionToken(null);
+    }
+  });
   test("cloud sync never exports consent or accepts remote opt-in", () => {
     const local = createDefaultConfig("/tmp/attention-sync");
     const enabled = { ...local, telemetry: { attention: true } };
