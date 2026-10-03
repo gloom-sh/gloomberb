@@ -3,7 +3,7 @@ import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
 import { HistoryCoverageError, historyCoverageNotice } from "../sources/history-coverage";
-import { HISTORY_RETENTION_MAX_AGE_MS, canonicalHistoryInterval, isHistoryRetentionError, parseHistoryRecoveryCandidate, type HistoryRecoveryCandidate, type HistoryRetentionError } from "../sources/history-retention";
+import { HISTORY_RETENTION_MAX_AGE_MS, canonicalHistoryInterval, historyRetentionNotice, isHistoryRetentionError, parseHistoryRecoveryCandidate, type HistoryRecoveryCandidate, type HistoryRetention, type HistoryRetentionError } from "../sources/history-retention";
 import { getRouterEntityKey } from "../sources/provider-router/cache";
 import { publicListingTarget } from "../sources/listing-target";
 import { fetchHistoryResult } from "../sources/history-result";
@@ -77,7 +77,7 @@ import {
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
 import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../utils/price-history";
-import { latestSessionStart, latestTradingSessionOpen, priorSessionClose } from "../market-data/market/trading-sessions";
+import { latestSessionStart, latestTradingSessionOpen, listingTimeZone, priorSessionClose } from "../market-data/market/trading-sessions";
 import { futuresGenericCaption, futuresGenericListing, futuresGenericPriceBasis } from "../utils/futures-generic";
 import { isOhlcSeriesStyle } from "./spec";
 import type {
@@ -227,10 +227,13 @@ interface LoadedPriceHistory extends PriceHistoryResult {
   accumulationKey?: string | null;
   recovery?: {
     sourceKey: string;
+    /** First bar requested from the retained window. */
     start: number;
     end: number;
     requiredWarmupPoints: number;
     usableWarmupPoints: number;
+    /** The validated source evidence the recovery was requested with. */
+    retention: HistoryRetention;
   };
 }
 
@@ -916,7 +919,11 @@ async function loadPriceHistory(
       const start = Math.ceil(candidate.retention.availableStart / step) * step + step;
       const end = candidate.retention.requestedEnd;
       const visibleEnd = request.visibleBounds.end === null ? end : Math.floor(request.visibleBounds.end / 1000) * 1000;
-      if (request.visibleBounds.start >= start && visibleEnd <= end && start < end) {
+      // A preset range at an interval the user chose charts what the source
+      // keeps when it reaches back further. Auto steps to coarser bars below
+      // instead, and a panned or authored window keeps its own dates.
+      const retainedOnly = !request.allowProviderDefaultFallback && !request.explicitWindow;
+      if ((retainedOnly || request.visibleBounds.start >= start) && visibleEnd <= end && start < end) {
         recoveryAttempted = true;
         try {
           const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
@@ -925,7 +932,7 @@ async function loadPriceHistory(
           observeCoverage(result);
           if (accepted(points)) return { ...result, expiresAt: retryAt,
             recovery: { sourceKey: candidate.sourceKey, start, end, requiredWarmupPoints: request.requiredWarmupPoints,
-              usableWarmupPoints: retainedWarmup(points, request.visibleBounds.start) } };
+              usableWarmupPoints: retainedWarmup(points, request.visibleBounds.start), retention: candidate.retention } };
         } catch (error) { observeFailure(error); }
       }
     }
@@ -1290,6 +1297,18 @@ function visibleMarketBars(result: ChartResolutionResult): { count: number; firs
   return { count, first };
 }
 
+/** The earliest plotted observation of any series, or +Infinity. */
+function firstObservationTime(series: readonly ResolvedSeries[]): number {
+  let first = Number.POSITIVE_INFINITY;
+  for (const entry of series) {
+    for (const point of entry.points) {
+      const time = point.date.getTime();
+      if (point.value !== null && Number.isFinite(point.value) && Number.isFinite(time) && time < first) first = time;
+    }
+  }
+  return first;
+}
+
 /** The shortest preset range that holds an observation at `first`. */
 function coveringRange(first: number, now: Date): TimeRange | null {
   return TIME_RANGES.find((range) => range !== "ALL" && subtractTimeRange(now, range).getTime() <= first) ?? null;
@@ -1550,6 +1569,8 @@ async function resolveChartSpecPass(
     spec.viewport.extendedHours === true && isMarketFieldId(source.fieldId) && isIntradayResolution(resolution)
       && !source.instrument.instrument && isUsListingExchange(source.instrument.exchange)
   );
+  // A history starts after the visible window because its source keeps no more.
+  let retainedHistoryOnly = false;
   const loadHistory = async (
     source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
     all = false,
@@ -1643,6 +1664,12 @@ async function resolveChartSpecPass(
     const history = loaded.points;
     const coverageNotice = historyCoverageNotice(loaded.coverageStart, request.visibleBounds.start);
     if (coverageNotice) priorityWarnings.push(coverageNotice);
+    // Read per request: one recovered window answers every visible window that shares its acquisition.
+    if (loaded.recovery && request.visibleBounds.start !== null && request.visibleBounds.start < loaded.recovery.start) {
+      priorityWarnings.push(historyRetentionNotice(loaded.recovery.retention, loaded.resolution ?? request.resolution,
+        listingTimeZone(source.instrument.symbol, source.instrument.exchange)));
+      retainedHistoryOnly = true;
+    }
     // Only proven equal cadences can share an accumulated observation window.
     // An opaque default result stays attached to its original acquisition.
     const accumulationKey = loaded.resolution === null ? null
@@ -2003,9 +2030,15 @@ async function resolveChartSpecPass(
 
   cache.liveTails = liveTails;
   const exposeViewport = hasExplicitWindow || spec.viewport.maxPoints === undefined;
-  const viewport = exposeViewport && displayBounds.start !== null && displayBounds.end !== null
+  let viewport = exposeViewport && displayBounds.start !== null && displayBounds.end !== null
     ? { start: new Date(displayBounds.start), end: new Date(displayBounds.end) }
     : undefined;
+  // The axis opens at the first retained bar, as a young listing's does, not
+  // at an empty stretch the source no longer keeps.
+  if (viewport && retainedHistoryOnly && !hasExplicitWindow) {
+    const first = firstObservationTime(resolved);
+    if (first > viewport.start.getTime() && first <= viewport.end.getTime()) viewport = { start: new Date(first), end: viewport.end };
+  }
   return {
     series: resolved,
     ...(priceHistoryIntegrity.length ? { priceHistoryIntegrity } : {}),
