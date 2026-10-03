@@ -166,6 +166,7 @@
           "fx-matrix",
           "gpu",
           "market-movers",
+          "perps",
           "relationship-graph",
           "relative-rotation",
           "scanner-flow",

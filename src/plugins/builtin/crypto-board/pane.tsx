@@ -1,3 +1,5 @@
+import { PerpsPane } from "../perps/pane";
+import { PaneFooterScope } from "../../../components";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, TextAttributes } from "../../../ui";
 import {
@@ -103,14 +105,20 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn): DataTableCell {
   }
 }
 
-export function CryptoBoardPane({ width, height, focused }: PaneProps) {
+export function CryptoBoardPane(props: PaneProps) {
+  const [active, setActive] = usePluginPaneState<CryptoAssetKind | "perps">("activeTab", "coin");
+  const { strip, rows } = usePaneTabs({ tabs: [...CRYPTO_TABS, { value: "perps", label: "Perps" }], activeValue: active, onSelect: (value) => setActive(value as CryptoAssetKind | "perps"), focused: props.focused, dense: true });
+  return <Box width={props.width} height={props.height} flexDirection="column">{strip}
+    <PaneFooterScope active>{active === "perps" ? <PerpsPane {...props} height={props.height - rows} embedded /> : <CryptoSpotPane {...props} activeTab={active} height={props.height - rows} />}</PaneFooterScope>
+  </Box>;
+}
+function CryptoSpotPane({ width, height, focused, activeTab }: PaneProps & { activeTab: CryptoAssetKind }) {
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadCryptoMarkets(force), [session.requestKey]);
   const resource = useAsyncResource(loader, { initialData: cachedCryptoMarkets, clearOnError: isAccessDenied });
   const data = resource.data?.payload;
   const { pinTicker } = usePluginTickerActions();
   const liveStreaming = useLiveStreamingSetting();
-  const [activeTab, setActiveTab] = usePluginPaneState<CryptoAssetKind>("activeTab", "coin");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
   const [visibleRange, setVisibleRange] = useState(INITIAL_STREAM_RANGE);
@@ -157,17 +165,6 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   );
   const columns = useMemo(() => buildCryptoColumns(width), [width]);
 
-  const tabItems = CRYPTO_TABS.map((tab) => ({
-    label: tab.label,
-    value: tab.value,
-  }));
-  const selectTab = (value: string) => {
-    setActiveTab(value as CryptoAssetKind);
-    setSelectedId(null);
-    setVisibleRange(INITIAL_STREAM_RANGE);
-  };
-  const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
-
   usePaneNoticeFooter({
     registrationId: "crypto-board:notices",
     focused,
@@ -195,7 +192,6 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
 
   return (
     <Box width={width} height={height} flexDirection="column">
-      {tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
       <PaneStatusBody
         loading={resource.loading && !data}
         error={!data ? resource.error : null}

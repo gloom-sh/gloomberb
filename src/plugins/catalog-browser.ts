@@ -1,3 +1,4 @@
+import { perpsModule } from "./builtin/perps";
 import { supplyChainModule } from "./builtin/supply-chain";
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
 import { revenueBreakdownModule } from "./builtin/revenue-breakdown";
@@ -154,6 +155,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
     doeModule,
     gpuModule,
     cryptoBoardModule,
+    perpsModule,
   ],
 });
 

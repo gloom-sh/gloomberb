@@ -735,6 +735,12 @@ class GloomApiClient {
   getCloudShiller = this.data.getCloudShiller.bind(this.data);
   getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);
   getCloudCotContract = this.data.getCloudCotContract.bind(this.data);
+  getCloudPerpsBoard = this.data.getCloudPerpsBoard.bind(this.data);
+  getCloudPerpsHistory = this.data.getCloudPerpsHistory.bind(this.data);
+  getCloudPerpsRankings = this.data.getCloudPerpsRankings.bind(this.data);
+  getCloudPerpsCompare = this.data.getCloudPerpsCompare.bind(this.data);
+  getCloudPerpsEquity = this.data.getCloudPerpsEquity.bind(this.data);
+  getCloudPerpsMarket = this.data.getCloudPerpsMarket.bind(this.data);
   getCloudSupplyChain = this.data.getCloudSupplyChain.bind(this.data);
   getCloudDoeBoard = this.data.getCloudDoeBoard.bind(this.data);
   getCloudGpuBoard = this.data.getCloudGpuBoard.bind(this.data);

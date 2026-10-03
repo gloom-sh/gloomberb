@@ -1,3 +1,4 @@
+import { perpsModule } from "./perps";
 import { supplyChainModule } from "./supply-chain";
 import { cryptoBoardModule } from "./crypto-board";
 import { portfolioAnalyticsModule } from "./analytics";
@@ -156,6 +157,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     doeModule,
     gpuModule,
     cryptoBoardModule,
+    perpsModule,
   ],
 });
 

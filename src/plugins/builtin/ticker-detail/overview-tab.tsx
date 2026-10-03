@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
@@ -40,6 +41,7 @@ const RANGE_INLINE_MIN_TRACK = 10;
 const LOGO_GAP_PX = 6;
 
 interface OverviewTabProps {
+  perpetuals?: ReactNode;
   width?: number;
   focused?: boolean;
   ticker: TickerRecord | null;
@@ -55,7 +57,7 @@ export function OverviewTab(props: OverviewTabProps) {
   return <ResolvedOverviewTab {...props} ticker={props.ticker} />;
 }
 
-function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
   const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
@@ -283,6 +285,8 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
             <QuoteBook quote={quote} assetCategory={moneyOptions.assetCategory} width={quoteBookWidth} />
           )}
         </Box>
+
+        {perpetuals}
 
         {(hasDayRange || yearRange) && quote && (
           <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={contentWidth}>

@@ -1,3 +1,4 @@
+import type { PerpBoardPayload, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery, PerpMarketPayload } from "./perps";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -388,6 +389,17 @@ export class CloudDataApi {
   async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
   }
+
+  async getCloudPerpsBoard(query: PerpBoardQuery = {}): Promise<PerpBoardPayload> {
+    return this.request(`/cloud/perps/board?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`);
+  }
+  async getCloudPerpsHistory(query: PerpHistoryQuery): Promise<PerpHistoryPayload> {
+    return this.request(`/cloud/perps/history?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`);
+  }
+  async getCloudPerpsRankings(): Promise<PerpRankingsPayload> { return this.request("/cloud/perps/rankings"); }
+  async getCloudPerpsCompare(baseAsset: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/compare?${new URLSearchParams({ baseAsset })}`); }
+  async getCloudPerpsEquity(symbol: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/equity/${encodeURIComponent(symbol)}`); }
+  async getCloudPerpsMarket(marketId: string): Promise<PerpMarketPayload> { return this.request(`/cloud/perps/market?${new URLSearchParams({ marketId })}`); }
 
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {
     return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}`);

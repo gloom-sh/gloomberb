@@ -1,3 +1,4 @@
+import { perpsHeadless } from "../perps/headless";
 import type { CryptoAssetKind } from "../../../api-client/crypto-markets";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact } from "../../../utils/format";
@@ -17,6 +18,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     description: "Coins or stablecoins.",
     type: "enum",
     values: [
+      { value: "perps" },
       { value: "coin", aliases: ["coins"] },
       { value: "stablecoin", aliases: ["stablecoins", "stable", "stables"] },
     ],
@@ -35,12 +37,16 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     { key: "volume24h", header: "Vol 24h", align: "right", format: compact },
     { key: "marketCap", header: "Market cap", align: "right", format: compact },
   ],
-  describe: (args) => `Crypto | ${args.options.list === "stablecoin" ? "Stablecoins" : "Coins"}`,
+  describe: (args) => `Crypto | ${args.options.list === "perps" ? "Perpetuals" : args.options.list === "stablecoin" ? "Stablecoins" : "Coins"}`,
   discovery: {
     aliases: ["CRYP"],
     dataRequirements: ["Gloom Cloud crypto markets"],
   },
   async load(args, ctx) {
+    if (args.options.list === "perps") {
+      const result = await perpsHeadless.load({ ...args, options: { ...args.options, tab: "board" } }, ctx);
+      return { columns: [{ key: "baseAsset", header: "Market" }, { key: "markPrice", header: "Mark" }, { key: "quoteCurrency", header: "Currency" }, { key: "fundingRate", header: "Funding (fraction)" }, { key: "fundingIntervalHours", header: "Interval (h)" }, { key: "openInterestUsd", header: "OI USD" }, { key: "observedAt", header: "Observed" }], rows: result.sections.flatMap((section) => section.rows ?? []), errors: result.errors, metadata: result.metadata };
+    }
     const kind = args.options.list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;
     const data = await fetchCryptoMarkets(ctx.apiClient);
     const rows = buildCryptoRows(data.assets, kind, NO_QUOTES).map((row) => ({

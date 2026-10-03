@@ -884,3 +884,8 @@ licensed sources behind the platform cannot support them honestly:
 - Supply chain and M&A databases: no free structured source.
 - Level 2 order book: the market data plan supplies trades and NBBO only; `TAS`
   and `QR` show what is available.
+
+
+## Perpetual markets (Pro)
+
+`PERP` and the Perps tab of `CRYP` cover the enabled global perpetual universe, including stock, index, commodity, FX and crypto contracts. Free accounts see three markets per asset class; Pro unlocks all markets and retained history. Raw, eight-hour and annualized funding retain their intervals. Open-interest changes use Gloom snapshots; closed-market stock premiums retain a dated underlying reference. See [perpetual methodology and coverage](perpetuals.md) for venue scope, disabled adapters, correction handling, currencies, nulls and exact formulas.

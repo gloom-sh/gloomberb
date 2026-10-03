@@ -1,3 +1,4 @@
+import { PerpEquityRow } from "../../perps/equity-row";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, useUiCapabilities } from "../../../../ui";
 import type { PaneProps } from "../../../../types/plugin";
@@ -263,6 +264,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
             selected={showCursor && index === cursorIndex}
             onSelect={setCursorSymbol}
             onOpen={openTicker}
+            perpetuals={cardHeight >= 8 ? <PerpEquityRow symbol={entry.symbol} instrumentType={entry.ticker?.metadata.assetCategory} /> : undefined}
           />
         ))}
       </Box>
@@ -297,6 +299,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
               selected={showCursor && rowIndex * columns + columnIndex === cursorIndex}
               onSelect={setCursorSymbol}
               onOpen={openTicker}
+              perpetuals={cardHeight >= 8 ? <PerpEquityRow symbol={entry.symbol} instrumentType={entry.ticker?.metadata.assetCategory} /> : undefined}
             />
           ))}
         </Box>

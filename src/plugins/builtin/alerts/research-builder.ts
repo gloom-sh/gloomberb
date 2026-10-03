@@ -3,13 +3,18 @@ import { isResearchAlertKind, normalizeResearchRule, readResearchRule, RESEARCH_
 import type { EventAlertRule } from "./events";
 
 export const RESEARCH_LABELS: Record<ResearchAlertKind, string> = {
-  earnings_date: "Earnings date", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", options_flow: "Options flow",
+  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", options_flow: "Options flow",
 };
 type Command = Parameters<Parameters<NonNullable<GloomPlugin["setup"]>>[0]["registerCommand"]>[0];
 type Field = NonNullable<Command["wizard"]>[number];
 const choices = (values: string[]) => values.map(value => ({label: value.replaceAll("_", " "), value}));
 export const researchWizardFields: Field[] = Object.keys(RESEARCH_LABELS).flatMap(kind => {
-  const fields: Field[] = kind === "iv_spike" ? [{key:"contract", label:"OCC contract", type:"text", placeholder:"AAPL261016C00300000", required:true}]
+  const fields: Field[] = kind === "perps_threshold" ? [
+    { key: "marketId", label: "Market", type: "text", placeholder: "hyperliquid:default:BTC", required: true },
+    { key: "metric", label: "Metric", type: "select", defaultValue: "funding8h", options: [{ value: "funding8h", label: "Funding / 8h" }, { value: "oiChange24h", label: "OI change / 24h" }, { value: "premium", label: "Premium vs oracle" }, { value: "closedMarketPremium", label: "Closed-market premium" }] },
+    { key: "direction", label: "Crossing", type: "select", defaultValue: "above", options: choices(["above", "below"]) },
+    { key: "threshold", label: "Threshold (%)", type: "number", defaultValue: "0.1" },
+  ] : kind === "iv_spike" ? [{key:"contract", label:"OCC contract", type:"text", placeholder:"AAPL261016C00300000", required:true}]
     : [{key:"symbol",label:kind === "news_keyword" ? "Symbol (optional)" : kind === "options_flow" ? "Symbol (blank: portfolio and watchlists)" : "Symbol",type:"text",placeholder:"AAPL", required:kind !== "news_keyword" && kind !== "options_flow"},
       {key:"exchange",label:"US exchange",type:"select",defaultValue:"US",options:choices(["US","NASDAQ","NYSE","ARCA","AMEX","BATS","OTC"])}];
   if (kind === "earnings_date") fields.push({key:"leadDays",label:"Days before earnings",type:"number",defaultValue:"1"});
@@ -30,7 +35,8 @@ export function createResearchAlert(kind: string, values: Record<string,string>,
   const input: Record<string,unknown> = {version:1};
   for (const [key,value] of Object.entries(values)) if (key.startsWith(`${kind}:`)) {
     const field = key.slice(kind.length+1);
-    if (value.trim()) input[field] = field === "threshold" || field === "leadDays" ? parseAmount(value) : value;
+    if (kind === "perps_threshold" && field === "threshold" && value.trim()) input[field] = Number(value) / 100;
+    else if (value.trim()) input[field] = field === "threshold" || field === "leadDays" ? parseAmount(value) : value;
   }
   const value = normalizeResearchRule(kind,input);
   if (!value) throw new Error(kind === "options_flow"
@@ -57,6 +63,7 @@ export function researchAlertDescription(rule: EventAlertRule): string {
   if (!config) return "Invalid rule";
   const symbol = config.symbol ?? "All symbols";
   switch(rule.kind) {
+    case "perps_threshold": return `${config.marketId} · ${config.metric} ${config.direction} ${((config.threshold ?? 0) * 100).toFixed(3)}%`;
     case "earnings_date": return `${symbol} · ${config.leadDays}d before`;
     case "filing_type": return `${symbol} · ${config.form}`;
     case "news_keyword": return `${symbol} · ${config.keyword}`;
