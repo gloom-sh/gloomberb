@@ -9,6 +9,10 @@ import { cleanTickerInput } from "./options";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import type { ResolvedPaneFunction } from "./resolver";
 import { toMarketDataContext } from "../../market-data/selectors";
+import { loadSeasonalityHistory, SEASONALITY_HISTORY_RESOLUTION } from "../../plugins/builtin/seasonality/client";
+import type { InstrumentRef } from "../../market-data/request-types";
+import { CORRELATION_HISTORY_RESOLUTION, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
+import type { TimeRange } from "../../time-series/range";
 
 const SHOT_PRICE_HISTORY_RANGE = "5Y" as const;
 const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
@@ -55,6 +59,45 @@ export async function withShotPriceHistory(
   } catch {
     return financials;
   }
+}
+
+/**
+ * SEAS reads monthly closes. Captured history answers every request, so the
+ * weekly seed would stand in for them and price each month at a week's close.
+ * The pane's own load fetches them, tagged so no other cadence is answered.
+ */
+export async function withShotSeasonalityHistory(
+  context: MarketContext,
+  instrument: InstrumentRef,
+  financials: TickerFinancials,
+): Promise<TickerFinancials> {
+  const monthly = await loadSeasonalityHistory({ instrument, forceRefresh: context.refresh }, context.dataProvider);
+  if (monthly.error || monthly.stale) {
+    throw new Error(`${instrument.symbol}: ${monthly.error ?? "monthly price history is stale"}`);
+  }
+  return { ...financials, priceHistory: monthly.history, priceHistoryResolution: SEASONALITY_HISTORY_RESOLUTION };
+}
+
+/** Correlation and relationship panes read daily returns at every range. */
+export function readsDailyReturns(resolved: ResolvedPaneFunction): boolean {
+  return resolved.capability.id === "return-correlation" || resolved.capability.id === "security-relationship";
+}
+
+/**
+ * A range capture is weekly at 5Y and monthly at ALL. Captured history answers
+ * the panes' daily request, so it would turn their daily returns into weekly or
+ * monthly ones.
+ */
+export async function withShotDailyReturns(
+  context: MarketContext,
+  instrument: InstrumentRef,
+  exchange: string,
+  range: TimeRange,
+  financials: TickerFinancials,
+): Promise<TickerFinancials> {
+  const priceHistory = await loadCorrelationHistory(context.dataProvider, instrument.symbol, exchange, range,
+    { ...toMarketDataContext(instrument), ...(context.refresh ? { cacheMode: "refresh" as const } : {}) });
+  return { ...financials, priceHistory, priceHistoryResolution: CORRELATION_HISTORY_RESOLUTION };
 }
 
 export function isFinancialAnalysisFunction(resolved: ResolvedPaneFunction): boolean {

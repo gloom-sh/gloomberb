@@ -36,6 +36,9 @@ import { calculatorSemanticEvidence } from "../../plugins/builtin/options-calcul
 import { draftFromCalculatorInputs } from "../../plugins/builtin/options-calculator/inputs";
 import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calculator/headless";
 import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/shared/volatility";
+import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client";
+import { createTestDataProvider, createTestFinancials } from "../../test-support/data-provider";
+import type { PricePoint } from "../../types/financials";
 
 test("calculator screenshots freeze percent inputs without market requests, including an inactive cash schedule", async () => {
   const request = { pane: { id: "options-calculator" }, capability: { id: "options-calculator-pane", options: optionsCalculatorHeadless.options },
@@ -206,6 +209,56 @@ describe("realized volatility screenshot history", () => {
     const captured = createSnapshotDataProvider(shot, {} as MarketContext["dataProvider"]);
     expect(await captured.getPriceHistoryForResolution!("AAPL", "NASDAQ", "1Y", "1d")).toEqual(daily);
   });
+});
+
+describe("seasonality screenshot history", () => {
+  const request = {
+    pane: { id: "seasonality" }, capability: { id: "seasonality-pane", options: [] },
+    instance: { instanceId: "seas:test", paneId: "seasonality", binding: { kind: "fixed", symbol: "SPY" }, settings: {} },
+    createOptions: { symbol: "SPY" }, options: {},
+  } as unknown as ResolvedPaneFunction;
+  // Monday-stamped weeks: none of these closes is a month-end close.
+  const weekly = [{ date: new Date("2026-08-31"), close: 770 }, { date: new Date("2026-09-28"), close: 769 }];
+  const monthly = [{ date: new Date("2026-08-01"), close: 760 }, { date: new Date("2026-09-01"), close: 765 },
+    { date: new Date("2026-10-01"), close: 772 }];
+  const capture = (history: (resolution: string) => PricePoint[]) => buildDesktopShotPayload(request, {
+    config: createDefaultConfig("/tmp/seasonality-shot-test"), store: { loadTicker: async () => null },
+    dataProvider: createTestDataProvider({ getTickerFinancials: async () => createTestFinancials(),
+      getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => history(resolution) }),
+  } as unknown as MarketContext, "SPY", {}, 800, 600, null, 1, null);
+
+  test("captures the pane's monthly closes, tagged 1mo, instead of the weekly seed", async () => {
+    const requested: string[] = [];
+    const shot = await capture((resolution) => { requested.push(resolution); return resolution === "1mo" ? monthly : weekly; });
+    expect(requested).toEqual(["1mo"]);
+    expect(shot.financials[0]![1]).toMatchObject({ priceHistory: monthly, priceHistoryResolution: "1mo" });
+    // The page answers the pane's own request from the capture, never from live data.
+    const page = createSnapshotDataProvider(JSON.parse(JSON.stringify(shot)), createTestDataProvider());
+    const replayed = await loadSeasonalityHistory({ instrument: { symbol: "SPY" } }, page);
+    expect(replayed.history.map((point) => point.close)).toEqual([760, 765, 772]);
+  });
+
+  test("fails instead of drawing another cadence when monthly history is missing", async () => {
+    await expect(capture((resolution) => resolution === "1mo" ? [] : weekly)).rejects.toThrow(/^SPY: /);
+  });
+});
+
+test("correlation screenshots capture daily closes where the range preset is weekly", async () => {
+  const request = {
+    pane: { id: "correlation" }, capability: { id: "return-correlation", options: [] },
+    instance: { instanceId: "corr:test", paneId: "correlation", binding: { kind: "none" }, settings: { rangePreset: "5Y" } },
+    createOptions: { symbols: ["SPY", "QQQ"] }, options: { rangePreset: "5Y" },
+  } as unknown as ResolvedPaneFunction;
+  const daily = [{ date: new Date("2026-09-30"), close: 100 }, { date: new Date("2026-10-01"), close: 101 }];
+  const requested: unknown[][] = [];
+  const shot = await buildDesktopShotPayload(request, {
+    config: createDefaultConfig("/tmp/correlation-shot-test"), store: { loadTicker: async () => null },
+    dataProvider: createTestDataProvider({ getTickerFinancials: async () => createTestFinancials(),
+      getPriceHistory: async () => { throw new Error("A 5Y range capture is weekly"); },
+      getPriceHistoryForResolution: async (symbol, _exchange, range, resolution) => { requested.push([symbol, range, resolution]); return daily; } }),
+  } as unknown as MarketContext, "SPY,QQQ", {}, 800, 600, null, 1, null);
+  expect(requested).toEqual([["SPY", "5Y", "1d"], ["QQQ", "5Y", "1d"]]);
+  expect(shot.financials.map(([, data]) => [data.priceHistory, data.priceHistoryResolution])).toEqual([[daily, "1d"], [daily, "1d"]]);
 });
 
 describe("volatility surface screenshot evidence", () => {

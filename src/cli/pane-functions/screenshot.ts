@@ -84,7 +84,10 @@ import {
   createFallbackTicker,
   fetchTickerFinancials,
   isFinancialAnalysisFunction,
+  readsDailyReturns,
+  withShotDailyReturns,
   withShotPriceHistory,
+  withShotSeasonalityHistory,
 } from "./data";
 
 const DESKTOP_CELL_WIDTH_PX = 8;
@@ -564,6 +567,10 @@ export async function buildDesktopShotPayload(
         "1d", toMarketDataContext(entry.instrument),
       );
       data = { ...data, priceHistory };
+    } else if (resolved.pane.id === "seasonality") {
+      data = await withShotSeasonalityHistory(context, entry.instrument, data);
+    } else if (requestedRange && readsDailyReturns(resolved)) {
+      data = await withShotDailyReturns(context, entry.instrument, exchange, requestedRange, data);
     } else if (requestedRange) {
       try {
         const priceHistory = await context.dataProvider.getPriceHistory(entry.instrument.symbol, exchange, requestedRange);

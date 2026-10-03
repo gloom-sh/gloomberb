@@ -1,5 +1,6 @@
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { InstrumentRef } from "../../../market-data/request-types";
+import type { ManualChartResolution } from "../../../time-series/resolution";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
 import { abortable, abortError } from "../../../utils/async-deadline";
@@ -13,6 +14,8 @@ export interface SeasonalityHistory {
 }
 
 const CANCELLED = "Seasonality history load was cancelled";
+/** The cadence the pane reads, and so the cadence a screenshot captures. */
+export const SEASONALITY_HISTORY_RESOLUTION: ManualChartResolution = "1mo";
 
 /**
  * Every month on record: the lookback is cut in the model, so changing it never
@@ -30,7 +33,7 @@ export async function loadSeasonalityHistory(
   try {
     if (!coordinator) throw new Error("Market data coordinator unavailable");
     const entry = await abortable(coordinator.loadChart({ instrument: request.instrument, bufferRange: "ALL",
-      granularity: "resolution", resolution: "1mo" }, { forceRefresh: request.forceRefresh }), request.signal, CANCELLED);
+      granularity: "resolution", resolution: SEASONALITY_HISTORY_RESOLUTION }, { forceRefresh: request.forceRefresh }), request.signal, CANCELLED);
     const history = resolveEntryValue(entry) ?? [];
     return { history, stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
       error: entry.error?.message ?? (history.length ? null : "Monthly price history unavailable"), fetchedAt: entry.fetchedAt ?? now };

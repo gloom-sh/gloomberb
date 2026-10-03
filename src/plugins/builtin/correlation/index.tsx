@@ -45,6 +45,7 @@ import {
 } from "./matrix/model";
 import { SymbolLabelCell } from "./matrix/symbol-cell";
 import { correlationHeadless, relationshipHeadless } from "./headless";
+import { CORRELATION_HISTORY_RESOLUTION } from "./history";
 
 function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
@@ -85,7 +86,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       },
       bufferRange: settings.rangePreset,
       granularity: "resolution" as const,
-      resolution: "1d" as const,
+      resolution: CORRELATION_HISTORY_RESOLUTION,
     })),
     [instrumentKey, settings.rangePreset],
   );
