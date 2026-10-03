@@ -30,6 +30,18 @@ describe("onboarding positions", () => {
     ]);
   });
 
+  test("a priced row is in the quote's currency, even when the cost was entered in another", () => {
+    const rows = listOnboardingPositions(
+      [ticker("SAP", 3, 200), ticker("VOD", 100, 70)],
+      "main",
+      (symbol) => ({ price: symbol === "SAP" ? 184 : 7200, currency: symbol === "SAP" ? "EUR" : "GBp" }) as never,
+    );
+    expect(rows.map((row) => [row.symbol, row.currency, row.value])).toEqual([
+      ["SAP", "EUR", 552],
+      ["VOD", "GBP", 7200],
+    ]);
+  });
+
   test("opens the largest holding, and the first row when nothing is priced", () => {
     const rows = listOnboardingPositions(
       [ticker("AAPL", 10, 180), ticker("MSFT", 4, 400), ticker("NVDA", null)],

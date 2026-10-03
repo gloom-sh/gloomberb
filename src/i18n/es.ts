@@ -1310,6 +1310,7 @@ export const es: Record<string, string> = {
   "your company": "tu empresa",
   "Shares": "Acciones",
   "Avg cost": "Coste medio",
+  "Currency": "Moneda",
   "optional": "opcional",
   "current price": "precio actual",
   "e.g. AAPL": "p. ej. AAPL",

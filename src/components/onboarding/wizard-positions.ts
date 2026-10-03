@@ -25,22 +25,24 @@ const onboardingLog = debugLog.createLogger("onboarding");
 const PREVIEW_DEBOUNCE_MS = 300;
 const SYMBOL_QUERY = /^[A-Z0-9][A-Z0-9.\-^=/\s]*$/;
 
-export type PositionFieldId = "ticker" | "shares" | "avgCost";
-export const POSITION_FIELDS: readonly PositionFieldId[] = ["ticker", "shares", "avgCost"];
+export type PositionFieldId = "ticker" | "shares" | "avgCost" | "currency";
+export const POSITION_FIELDS: readonly PositionFieldId[] = ["ticker", "shares", "avgCost", "currency"];
 
 export interface PositionDraft {
   ticker: string;
   shares: string;
   avgCost: string;
+  /** Prefilled with the listing's currency; blank falls back like the AP form. */
+  currency: string;
 }
 
 export type PositionPreview =
   | { status: "idle" }
   | { status: "checking"; query: string }
-  | { status: "ready"; query: string; symbol: string; name: string; quote: Quote | null; duplicate: boolean }
+  | { status: "ready"; query: string; symbol: string; name: string; quote: Quote | null; currency: string; duplicate: boolean }
   | { status: "missing"; query: string; message: string };
 
-const EMPTY_DRAFT: PositionDraft = { ticker: "", shares: "", avgCost: "" };
+const EMPTY_DRAFT: PositionDraft = { ticker: "", shares: "", avgCost: "", currency: "" };
 
 function normalizePositionQuery(value: string): string {
   return value.replace(/^\s*\$/, "").trim().toUpperCase().replace(/\s+/g, " ");
@@ -95,8 +97,15 @@ export function useOnboardingPositions({
   const [error, setError] = useState<string | null>(null);
   const [fetchedQuotes, setFetchedQuotes] = useState<Record<string, Quote>>({});
   const previewSeqRef = useRef(0);
+  // Once the user types a currency, a resolved ticker no longer prefills it.
+  const currencyEditedRef = useRef(false);
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const fallbackCurrency = useAppSelector((state) => (
+    state.config.portfolios.find((portfolio) => portfolio.id === portfolioId)?.currency
+      || state.config.baseCurrency
+      || "USD"
+  ));
 
   const positions = useMemo(
     () => listOnboardingPositions(
@@ -126,7 +135,7 @@ export function useOnboardingPositions({
       }
     }
     if (quote) setFetchedQuotes((current) => ({ ...current, [resolved.symbol]: quote! }));
-    return { resolved, ticker, quote, name: resolvedName(resolved, ticker) };
+    return { resolved, ticker, quote, name: resolvedName(resolved, ticker), currency: instrumentCurrency(resolved, quote) };
   }, [pluginRegistry.marketData, stateRef]);
 
   // Live preview of the symbol being typed: company name and last price, or
@@ -157,8 +166,12 @@ export function useOnboardingPositions({
           symbol: result.resolved.symbol,
           name: result.name,
           quote: result.quote,
+          currency: result.currency,
           duplicate: !!result.ticker?.metadata.portfolios.includes(portfolioId),
         });
+        if (!currencyEditedRef.current) {
+          setDraft((current) => ({ ...current, currency: result.currency.toUpperCase() }));
+        }
       }).catch(() => {
         if (previewSeqRef.current === seq) {
           setPreview({ status: "missing", query, message: t("Ticker lookup failed") });
@@ -170,7 +183,16 @@ export function useOnboardingPositions({
 
   const setField = useCallback((field: PositionFieldId, value: string) => {
     setError(null);
-    setDraft((current) => ({ ...current, [field]: field === "ticker" ? value.toUpperCase() : value }));
+    const nextValue = field === "ticker" || field === "currency" ? value.toUpperCase() : value;
+    // The input echoes a prefill back; only a different value is the user's.
+    if (field === "currency" && nextValue !== draftRef.current.currency) currencyEditedRef.current = true;
+    setDraft((current) => {
+      if (current[field] === nextValue) return current;
+      const next = { ...current, [field]: nextValue };
+      // Another ticker's prefill would no longer be its currency.
+      if (field === "ticker" && !currencyEditedRef.current) next.currency = "";
+      return next;
+    });
   }, []);
 
   const focusField = useCallback((index: number) => {
@@ -180,6 +202,7 @@ export function useOnboardingPositions({
   }, [onFieldEditing]);
 
   const resetDraft = useCallback(() => {
+    currencyEditedRef.current = false;
     setDraft(EMPTY_DRAFT);
     setFieldIdx(0);
     setPreview({ status: "idle" });
@@ -245,7 +268,7 @@ export function useOnboardingPositions({
           return false;
         }
         positionCurrency = resolveManualPositionCurrency(
-          listingCurrency || undefined,
+          current.currency.trim() || listingCurrency || undefined,
           ticker,
           portfolio ?? { id: portfolioId, name: portfolioId, currency: stateRef.current.config.baseCurrency },
           stateRef.current.config.baseCurrency,
@@ -320,6 +343,16 @@ export function useOnboardingPositions({
       setFieldIdx(2);
       return;
     }
+    if (fieldIdx === 2) {
+      const avgCost = parseAmount(current.avgCost);
+      if (avgCost !== null && (Number.isNaN(avgCost) || avgCost < 0)) {
+        setError(t("Average cost must be a number."));
+        return;
+      }
+      setError(null);
+      setFieldIdx(3);
+      return;
+    }
     void addPosition();
   }, [addPosition, fieldIdx, submitting]);
 
@@ -336,6 +369,8 @@ export function useOnboardingPositions({
     portfolioId,
     positions,
     draft,
+    /** What a blank Currency saves: the listing's currency, else the portfolio's. */
+    blankCurrency: (preview.status === "ready" && preview.currency ? preview.currency : fallbackCurrency).toUpperCase(),
     fieldIdx,
     preview,
     submitting,

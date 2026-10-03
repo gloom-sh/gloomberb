@@ -1306,6 +1306,7 @@ export const zhTW: Record<string, string> = {
   "your company": "你的公司",
   "Shares": "股數",
   "Avg cost": "平均成本",
+  "Currency": "貨幣",
   "optional": "選填",
   "current price": "目前價格",
   "e.g. AAPL": "例如 AAPL",

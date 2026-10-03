@@ -40,6 +40,8 @@ const KNOWN_LISTINGS: Record<string, { symbol: string; name: string; exchange: s
   MSFT: { symbol: "MSFT", name: "Microsoft Corp.", exchange: "NASDAQ", currency: "USD" },
   NVDA: { symbol: "NVDA", name: "NVIDIA Corp.", exchange: "NASDAQ", currency: "USD" },
   "TTALO.HE": { symbol: "TTALO", name: "Terveystalo Oyj", exchange: "HEL", currency: "EUR" },
+  // Neither search nor quote knows this listing's currency.
+  BARE: { symbol: "BARE", name: "Bare Listing", exchange: "XETRA", currency: "" },
 };
 
 /** Exact-symbol search plus a flat 100 quote in the listing's currency, enough to resolve and value a position. */
@@ -231,8 +233,11 @@ async function waitForFrame(text: string, attempts = 60): Promise<string> {
 
 let expectedPositionCount = 0;
 
-/** Types a position through the three fields; blank shares follows the company only. */
-async function addManualPosition(symbol: string, shares = "", avgCost = ""): Promise<void> {
+/**
+ * Types a position through the fields; blank shares follows the company only.
+ * A currency replaces whatever the field was prefilled with.
+ */
+async function addManualPosition(symbol: string, shares = "", avgCost = "", currency?: string): Promise<void> {
   await typeText(symbol);
   await pressEnter();
   if (shares) await typeText(shares);
@@ -240,7 +245,16 @@ async function addManualPosition(symbol: string, shares = "", avgCost = ""): Pro
   if (shares) {
     if (avgCost) await typeText(avgCost);
     await pressEnter();
+    if (currency !== undefined) {
+      for (let index = 0; index < 4; index += 1) await emitKeypress({ name: "backspace", sequence: "\x7f" });
+      if (currency) await typeText(currency);
+    }
+    await pressEnter();
   }
+  await waitForAddedPosition();
+}
+
+async function waitForAddedPosition(): Promise<void> {
   // The typed symbol also sits in the ticker field, so wait for the row count.
   expectedPositionCount += 1;
   await waitForFrame(`Positions (${expectedPositionCount})`);
@@ -337,7 +351,7 @@ describe("OnboardingWizard", () => {
     expect(watching).toEqual(["SPY", "QQQ", "NVDA", "AMZN", "TSLA"]);
   });
 
-  test("a euro listing is a euro holding beside a dollar one", async () => {
+  test("each position takes its listing's currency unless one is typed, and blank falls back to the portfolio's", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-currency-"));
     const tickerRepository = new JsonTickerRepository();
     const pluginRegistry = createPluginRegistry({ tickerRepository });
@@ -347,18 +361,28 @@ describe("OnboardingWizard", () => {
     );
     await tui.setup().renderOnce();
 
-    await addManualPosition("TTALO.HE", "100", "7.5");
+    await typeText("TTALO.HE");
+    expect(await waitForFrame("Terveystalo")).toMatch(/Currency\s+EUR/);
+    for (const value of ["100", "7.5"]) {
+      await pressEnter();
+      await typeText(value);
+    }
+    await pressEnter();
+    await pressEnter();
+    await waitForAddedPosition();
     await addManualPosition("AAPL", "10", "180");
+    await addManualPosition("MSFT", "2", "400", "eur");
+    await addManualPosition("BARE", "5", "20", "");
 
-    expect((await tickerRepository.loadTicker("TTALO"))?.metadata).toMatchObject({
-      currency: "EUR",
-      positions: [{ portfolio: "main", shares: 100, avgCost: 7.5, currency: "EUR", broker: "manual" }],
-    });
-    expect((await tickerRepository.loadTicker("AAPL"))?.metadata.positions).toEqual([
-      { portfolio: "main", shares: 10, avgCost: 180, currency: "USD", broker: "manual" },
-    ]);
-    // The first position set the portfolio's currency, as with the AP form.
+    const positionOf = async (symbol: string) => (await tickerRepository.loadTicker(symbol))?.metadata.positions[0]?.currency;
+    expect(await positionOf("TTALO")).toBe("EUR");
+    expect(await positionOf("AAPL")).toBe("USD");
+    expect(await positionOf("MSFT")).toBe("EUR");
+    // Unknown is not dollars: it lands in the portfolio's currency, which the
+    // first position set to EUR.
     expect(capturedConfig?.portfolios.find((portfolio) => portfolio.id === "main")?.currency).toBe("EUR");
+    expect(await positionOf("BARE")).toBe("EUR");
+    expect((await tickerRepository.loadTicker("BARE"))?.metadata.currency).toBe("");
   });
 
   test("a blank share count follows the company and prices a missing cost from the quote", async () => {
