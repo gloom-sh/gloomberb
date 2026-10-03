@@ -132,7 +132,12 @@ export function formatTrialEnd(endsAt: Date | null | undefined): string | null {
  * so it is never advertised as something the free plan includes.
  */
 export function formatTrialOffer(pricing: CloudPricing | null | undefined): string {
-  return tf("{days}-day free trial", { days: pricing?.trialDays ?? DEFAULT_TRIAL_DAYS });
+  return tf("{days}-day free trial", { days: trialDaysOf(pricing) });
+}
+
+/** The trial length `/pricing` gives, or today's length when it is unreachable. */
+export function trialDaysOf(pricing: CloudPricing | null | undefined): number {
+  return pricing?.trialDays ?? DEFAULT_TRIAL_DAYS;
 }
 
 export function countPortfolioHoldings(tickers: ReadonlyMap<string, TickerRecord>): Record<string, number> {

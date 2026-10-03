@@ -34,6 +34,7 @@ import {
 export const FILING_EVENTS_PANE_ID = "filing-events";
 
 const EK_WALL: ProFeatureWallCopy = {
+  placement: "ek-wall",
   action: "read 8-K filings",
   title: "8-K filings are part of Gloom Cloud Pro.",
   message: "Every 8-K classified by item and read: agreements, executive changes, auditor changes, restructurings, and what each one said.",

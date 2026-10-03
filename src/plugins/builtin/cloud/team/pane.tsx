@@ -184,7 +184,7 @@ function InvitationBanner({
 export function TeamPane({ focused, width, height, close }: PaneProps) {
   const { createPaneFromTemplate, notify } = usePluginAppActions();
   const rendererHost = useRendererHost();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("team");
   const plan = usePlanAccess();
   const { nativePaneChrome } = useUiCapabilities();
   const snapshot = useSyncExternalStore(

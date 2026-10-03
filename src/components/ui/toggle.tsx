@@ -107,7 +107,9 @@ export function SegmentedControl({
             cursor={option.disabled ? undefined : "pointer"}
           >
             <Text
-              fg={option.disabled ? colors.textMuted : active ? colors.selectedText : colors.textDim}
+              // The focused fill is the primary button's, so its text is too:
+              // selected text on it is unreadable in the white theme.
+              fg={option.disabled ? colors.textMuted : active ? (focused ? colors.bg : colors.selectedText) : colors.textDim}
               attributes={active ? TextAttributes.BOLD : 0}
             >
               {` ${option.label} `}

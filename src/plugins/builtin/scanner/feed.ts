@@ -69,6 +69,7 @@ export function useScannerStatusFooter(
     degraded: state.payload?.access === "delayed",
     focused,
     segmentId: `${registrationId}-access`,
+    placement: `${registrationId}-footer`,
     shortcutScope: `${registrationId}:upgrade`,
   });
 

@@ -192,7 +192,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
   }, [setCursorSymbol]);
 
   if (feed.denied) {
-    return <ScannerDeniedState reason={feed.deniedReason} />;
+    return <ScannerDeniedState reason={feed.deniedReason} placement="flow-wall" />;
   }
 
   return (

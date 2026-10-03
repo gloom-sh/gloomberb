@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { apiClient } from "./index";
 import {
   adoptDesktopHandoff,
   carriesHandoff,
   observeDesktopDeepLinks,
   readStoredAttribution,
+  recordResearchActivity,
   resolveBrowserAttribution,
 } from "./research-activity";
 
@@ -312,5 +314,35 @@ describe("desktop handoff", () => {
     expect(storage.getItem("gloomberb.web.anonymous-id")).toBe(ANON);
     unsubscribe();
     expect(listeners.size).toBe(0);
+  });
+});
+
+describe("upgrade intent placement", () => {
+  const originalRecord = apiClient.recordResearchActivity;
+  afterEach(() => {
+    apiClient.recordResearchActivity = originalRecord;
+    apiClient.setSessionToken(null);
+    apiClient.restoreCachedUser(null);
+  });
+
+  test("counts each prompt once a session and drops a malformed id rather than the intent", async () => {
+    const sent: Array<{ event: string; placement?: string }> = [];
+    apiClient.recordResearchActivity = (async (payload) => {
+      sent.push({ event: payload.event, placement: payload.placement });
+    }) as typeof apiClient.recordResearchActivity;
+    apiClient.setSessionToken("placement-session");
+    apiClient.restoreCachedUser({ id: "placement-user", email: "p@example.com", emailVerified: true, plan: "free" });
+
+    for (const placement of ["srch-wall", "status-widget", "srch-wall", "Upgrade to Pro"]) {
+      recordResearchActivity("upgrade_intent", undefined, undefined, { placement });
+    }
+    await Promise.resolve();
+
+    // A placement the server would refuse would cost the whole event.
+    expect(sent.filter((entry) => entry.event === "upgrade_intent")).toEqual([
+      { event: "upgrade_intent", placement: "srch-wall" },
+      { event: "upgrade_intent", placement: "status-widget" },
+      { event: "upgrade_intent", placement: undefined },
+    ]);
   });
 });

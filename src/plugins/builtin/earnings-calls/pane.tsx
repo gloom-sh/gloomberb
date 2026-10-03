@@ -747,6 +747,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   if (proRequired) {
     return (
       <ProWall
+        placement="calls-wall"
         title="Earnings call transcripts are part of Gloom Cloud Pro."
         message="Gloomberb transcribes the calls itself: full transcripts with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
       />
@@ -780,6 +781,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
 
   const detailContent = transcriptProRequired ? (
     <ProWall
+      placement="calls-transcript-wall"
       title="Earnings call transcripts are part of Gloom Cloud Pro."
       message="Full transcripts with speaker attribution, analyst Q&A, guidance and risk extraction, transcribed from the call itself."
     />

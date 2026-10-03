@@ -4,6 +4,8 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 
 export interface ProFeatureWallCopy {
+  /** The upgrade intent's placement id, e.g. "risk-wall". */
+  placement: string;
   /** Finishes "Sign in to …", e.g. "read risk factors". */
   action: string;
   /** The upgrade headline, e.g. "Risk factors are part of Gloom Cloud Pro." */
@@ -41,7 +43,7 @@ export function useProFeatureWall(copy: ProFeatureWallCopy): {
   } else if (!access.emailVerified || refused === 403) {
     wall = <SignInWall action={copy.action} needsVerification />;
   } else if (!access.hasProAccess || refused === 402) {
-    wall = <ProWall title={copy.title} message={copy.message} />;
+    wall = <ProWall placement={copy.placement} title={copy.title} message={copy.message} />;
   }
   return { wall, guard };
 }

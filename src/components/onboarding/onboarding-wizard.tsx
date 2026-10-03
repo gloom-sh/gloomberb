@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
-import { apiClient, type CloudPricing } from "../../api-client";
+import { apiClient } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { buildBrokerDirectory } from "../../brokers/directory";
 import {
@@ -60,6 +60,7 @@ import {
   formatCloudPrice,
   monthsFreeYearly,
 } from "../../plugins/builtin/account-management/model";
+import { loadUpgradeOffer, proStepCopy, type UpgradeOffer } from "../../plugins/builtin/cloud/upgrade-dialog";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
 import { resolvePlanAccess, usePlanAccess } from "../../api-client/plan-access";
 import { Button, SegmentedControl, type ListViewItem } from "../ui";
@@ -171,7 +172,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
   const researchOpenedRef = useRef<string | null>(null);
-  const [pricing, setPricing] = useState<CloudPricing | null>(null);
+  const [offer, setOffer] = useState<UpgradeOffer | null>(null);
+  const pricing = offer?.pricing ?? null;
   const [billingInterval, setBillingInterval] = useState<CloudBillingInterval>("month");
 
   const [portfolioSub, setPortfolioSub] = useState<PortfolioSub>("positions");
@@ -475,7 +477,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         complete: true,
         progress: undefined,
       });
-      recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed", undefined, undefined, desks);
+      recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed", undefined, undefined, { desks });
       await Promise.resolve(onComplete(nextConfig));
     } catch (error) {
       setPersistenceError(error instanceof Error ? error.message : String(error));
@@ -511,14 +513,22 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     recordResearchActivity("ticker_saved");
   }, [stage, progress.tickerSymbol]);
 
-  useEffect(() => {
-    if (stage !== "upgrade" || pricing) return;
-    void apiClient.getCloudPricing().then(setPricing).catch(() => {});
-  }, [pricing, stage]);
-
   const appActive = useAppActive();
   const planAccess = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("onboarding-pro");
+  // The price and whether this account still has its trial, asked again for
+  // whichever account reaches the step.
+  const accountId = planAccess.signedIn ? apiClient.getCurrentUser()?.id ?? null : null;
+  useEffect(() => {
+    if (stage !== "upgrade") return;
+    let live = true;
+    void loadUpgradeOffer().then((loaded) => {
+      if (live) setOffer(loaded);
+    });
+    return () => {
+      live = false;
+    };
+  }, [accountId, stage]);
   useEffect(() => {
     if (stage !== "upgrade" || !progress.checkoutOpenedAt || !appActive) return;
     void apiClient.getSession()
@@ -1267,7 +1277,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   }
 
   if (stage === "upgrade") {
-    const primaryLabel = planAccess.hasProAccess ? t("Continue with Pro") : t("Start 7-day free trial");
+    const proCopy = proStepCopy(offer);
+    const primaryLabel = planAccess.hasProAccess ? t("Continue with Pro") : proCopy.confirmLabel;
     const price = formatCloudPrice(pricing, billingInterval);
     const monthsFree = monthsFreeYearly(pricing);
     const yearlyLabel = monthsFree > 0 ? tf("Yearly, {months} months free", { months: monthsFree }) : t("Yearly");
@@ -1288,7 +1299,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           titleSuffix={!planAccess.hasProAccess && priceNote ? priceNote : undefined}
           description={planAccess.hasProAccess
             ? t("This account already has real-time Cloud data.")
-            : t("7 days free. Card required. Cancel anytime.")}
+            : proCopy.note}
         />
         {!planAccess.hasProAccess ? (
           <Box flexDirection="row" style={desktop ? { marginTop: 12 } : undefined} paddingTop={desktop ? undefined : 1}>

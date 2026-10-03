@@ -36,7 +36,7 @@ import type {
   CloudSearchSort,
 } from "../../../api-client";
 import { SignInWall } from "../cloud/auth-actions";
-import { useCloudPlanAction } from "../shared/cloud-upgrade";
+import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import {
   createSavedSearch,
@@ -94,6 +94,7 @@ interface RequestFailure {
 export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps) {
   const access = usePlanAccess();
   const openPlan = useCloudPlanAction();
+  const openUpgrade = useCloudUpgradeAction("srch-wall");
   const dialog = useDialog();
   const openTicker = useInlineTickerOpener();
 
@@ -383,7 +384,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     }
     // The results table and the document view each show their own failure, so
     // only a status token belongs here. Saved-search writes have nowhere else.
-    if (failure && status === "error") {
+    if (failure && status === "error" && !proRequired) {
       info.push({ id: "error", parts: [{ text: "error", tone: "warning" }] });
     }
     if (savedFailure) {
@@ -510,7 +511,10 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         <PaneStatusBody
           empty
           emptyTitle="This search needs Gloom Cloud Pro."
-          actions={<Button label="Manage account" variant="secondary" compact onPress={openPlan} />}
+          actions={<>
+            <Button label="Upgrade to Pro" compact onPress={openUpgrade} />
+            <Button label="Manage account" variant="secondary" compact onPress={openPlan} />
+          </>}
         />
       </Box>
     );

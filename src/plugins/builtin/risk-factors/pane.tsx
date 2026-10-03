@@ -71,6 +71,7 @@ function RiskLine({
 }
 
 const RISK_WALL: ProFeatureWallCopy = {
+  placement: "risk-wall",
   action: "read risk factors",
   title: "Risk factors are part of Gloom Cloud Pro.",
   message: "Every 10-K's risk factors grouped by theme, with what was added, dropped or rewritten since the year before.",

@@ -259,6 +259,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
     delayLabel: `${data?.delayDays || 7}d`,
     focused,
     shortcutScope: "mna",
+    placement: "ma-footer",
     degraded: data?.access === "delayed",
   });
   const openUpgrade = access.openUpgrade;

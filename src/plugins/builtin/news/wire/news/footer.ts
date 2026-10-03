@@ -54,6 +54,7 @@ export function useNewsArticleFooter({
     delayLabel: tf("{count}h", { count: CLOUD_NEWS_DELAY_HOURS }),
     focused,
     segmentId: "news-access",
+    placement: "news-footer",
     shortcutScope: `${registrationId}:news-upgrade`,
   });
 

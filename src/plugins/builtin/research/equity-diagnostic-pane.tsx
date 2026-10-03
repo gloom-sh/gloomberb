@@ -475,7 +475,7 @@ export function EquityDiagnosticView({ focused, width }: {
 }) {
   const { symbol, exchange } = useBoundTicker();
   const access = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("diag-preview");
   const openPlan = useCloudPlanAction();
   const { nativePaneChrome } = useUiCapabilities();
 
@@ -567,6 +567,7 @@ export function EquityDiagnosticView({ focused, width }: {
   if (proRequired) {
     return (
       <ProWall
+        placement="diag-wall"
         title="The Equity Diagnostic is part of Gloom Cloud Pro."
         message="An on-demand review of one company's filings, financials, ownership, and news, with red flags, anomalies, and green flags cited back to their source."
       />

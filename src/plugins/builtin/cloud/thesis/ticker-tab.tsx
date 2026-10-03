@@ -27,7 +27,7 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
   const dialog = useDialog();
   const { notify } = usePluginAppActions();
   const plan = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("thesis-tab");
   const snapshot = useSyncExternalStore((onChange) => thesisStore.subscribe(onChange), () => thesisStore.getSnapshot());
   const teams = useSyncExternalStore((onChange) => teamStore.subscribe(onChange), () => teamStore.getSnapshot()).teams;
   const signedIn = useSyncExternalStore((onChange) => apiClient.subscribeCurrentUser(onChange), () => apiClient.isVerified());

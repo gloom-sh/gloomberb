@@ -19,7 +19,7 @@ interface CloudUpgradeStatusWidgetProps {
  */
 export function CloudUpgradeStatusWidget({ controller = chatController }: CloudUpgradeStatusWidgetProps) {
   useAppLanguage();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("status-widget");
   const openPlan = useCloudPlanAction();
   // The status bar takes no keyboard focus; the chip names the command instead.
   const commandBarKey = useCommandBarShortcut();

@@ -82,6 +82,7 @@ type DetailTab = "roles" | "locations" | "seniority" | "salary";
 function HiringProWall({ symbol }: { symbol: string | null }) {
   return (
     <ProWall
+      placement="jobs-wall"
       title="Hiring data is part of Gloom Cloud Pro."
       message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges.${symbol ? ` Open ${symbol}'s hiring picture with Pro.` : ""}`}
     />

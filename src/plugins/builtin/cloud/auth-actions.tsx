@@ -107,6 +107,8 @@ export function SignInWall({ action, needsVerification = false, hint }: SignInWa
 }
 
 export interface ProWallProps {
+  /** The upgrade intent's placement id, e.g. "jobs-wall"; see `CloudUpgradeOptions.placement`. */
+  placement: string;
   /** The headline, e.g. "Hiring data is part of Gloom Cloud Pro." */
   title: string;
   /** What Pro unlocks here. */
@@ -114,8 +116,8 @@ export interface ProWallProps {
 }
 
 /** The upgrade wall for a pane body that needs Pro; Manage account covers a plan the account already has. */
-export function ProWall({ title, message }: ProWallProps) {
-  const openUpgrade = useCloudUpgradeAction();
+export function ProWall({ placement, title, message }: ProWallProps) {
+  const openUpgrade = useCloudUpgradeAction(placement);
   const openPlan = useCloudPlanAction();
   // The status body carries the pane inset that a bare EmptyState lacks.
   return (

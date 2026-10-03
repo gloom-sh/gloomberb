@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudPricing } from "../../../api-client";
-import { upgradeDialogCopy, type UpgradeOffer } from "./upgrade-dialog";
+import { proStepCopy, upgradeDialogCopy, type UpgradeOffer } from "./upgrade-dialog";
 
 const pricing: CloudPricing = {
   currency: "usd",
@@ -29,6 +29,19 @@ describe("upgrade sheet copy", () => {
     expect(upgradeDialogCopy(offer({ trialAvailable: false }), "month", now).subtitle).toBe(
       "$70/mo, billed today. Cancel anytime.",
     );
+  });
+
+  test("onboarding's Pro step skips the sheet but keeps its rule", () => {
+    expect(proStepCopy(offer({ pricing: { ...pricing, trialDays: 14 } }))).toEqual({
+      confirmLabel: "Start 14-day free trial",
+      note: "$0 today, free for 14 days. Card required. Cancel anytime.",
+    });
+    // Not loaded yet, unknown, or used: nothing free is promised.
+    for (const unconfirmed of [null, offer({ trialAvailable: null }), offer({ trialAvailable: false })]) {
+      const copy = proStepCopy(unconfirmed);
+      expect(copy.confirmLabel).toBe("Continue to checkout");
+      expect(`${copy.confirmLabel} ${copy.note}`).not.toMatch(/free|\$0/i);
+    }
   });
 
   test("asks a failed payment to be fixed instead of selling a plan", () => {

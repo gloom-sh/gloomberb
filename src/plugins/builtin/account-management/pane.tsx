@@ -22,7 +22,6 @@ import {
   ScrollBox,
   Textarea,
   TextAttributes,
-  useRendererHost,
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "../../../ui";
@@ -31,6 +30,7 @@ import type { SelectControl } from "../../../components/ui/select-button";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
+import { loadUpgradeOffer } from "../cloud/upgrade-dialog";
 import { TeamsAccountTab } from "../cloud/team/acm-tab";
 import {
   CheckboxRow,
@@ -74,7 +74,7 @@ import { setSyncedProfileAnalytics } from "../../../sync/profile-analytics";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { subscribeRequestedAccountManagementTab, type AccountManagementTab } from "./navigation";
-import { openCloudUpgrade } from "../shared/cloud-upgrade";
+import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState } from "../../runtime";
 
@@ -195,7 +195,6 @@ function buildAccountSessionMarker(): string {
 export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const language = useAppLanguage();
   const dialog = useDialog();
-  const renderer = useRendererHost();
   const config = usePaneAppConfig();
   const portfolios = config.portfolios;
   const baseCurrency = config.baseCurrency;
@@ -205,6 +204,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const [hasSession, setHasSession] = useState(() => apiClient.isSignedIn());
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [pricing, setPricing] = useState<CloudPricing | null>(null);
+  // Null until the server says; only a confirmed trial is offered.
+  const [trialAvailable, setTrialAvailable] = useState<boolean | null>(null);
   const [draft, setDraft] = useState<AccountDraft>(() => profileToDraft(null));
   const [activeTab, setActiveTab] = usePluginPaneState<AccountManagementTab>("activeTab", "profile");
   const [activeField, setActiveField] = useState<AccountFieldKey>(
@@ -253,9 +254,9 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
         detail: profile?.email ?? undefined,
       },
       { id: "price", label: "Price", value: planPrice },
-      ...(planAccess.hasProAccess ? [] : [{ id: "trial", label: "Trial", value: trialOffer }]),
+      ...(!planAccess.hasProAccess && trialAvailable === true ? [{ id: "trial", label: "Trial", value: trialOffer }] : []),
     ];
-  }, [planAccess.hasProAccess, planPrice, planStatusLabel, profile?.email, trialOffer]);
+  }, [planAccess.hasProAccess, planPrice, planStatusLabel, profile?.email, trialAvailable, trialOffer]);
 
   const portfolioHoldingCounts = useMemo(() => countPortfolioHoldings(tickers), [tickers]);
   const portfolioChoices = useMemo(
@@ -467,18 +468,21 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     void loadProfile();
   }, [loadProfile, sessionMarker]);
 
+  // Pricing is decoration (the table falls back to list prices), but whether
+  // the trial is still available belongs to the account, so both follow the session.
   useEffect(() => {
+    // Signed out, the pane is the sign-in wall.
+    if (!apiClient.isSignedIn()) return;
     let cancelled = false;
-    void apiClient.getCloudPricing()
-      .then((nextPricing) => {
-        if (!cancelled) setPricing(nextPricing);
-      })
-      // Pricing is decoration: the comparison table falls back to list prices.
-      .catch(() => {});
+    void loadUpgradeOffer().then((offer) => {
+      if (cancelled) return;
+      if (offer.pricing) setPricing(offer.pricing);
+      setTrialAvailable(offer.trialAvailable);
+    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sessionMarker]);
 
   useEffect(() => {
     if (!hasSession || !apiClient.isSignedIn()) return;
@@ -640,20 +644,27 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     }
   }, []);
 
+  // Through the upgrade sheet like every other prompt, so the interval is
+  // chosen and "$0 today" is said only when it is true. The button waits only
+  // while checkout opens; a checkout that cannot be created falls back to the
+  // Cloud page.
+  const startUpgrade = useCloudUpgradeAction("acm");
   const openUpgrade = useCallback(() => {
     setActiveField("upgradeAction");
-    setBusy("billing");
-    setMessage({ tone: "info", text: t("Opening Pro upgrade...") });
-    void openCloudUpgrade(renderer)
-      .then(() => setMessage(null))
-      .catch((error) => {
-        setMessage({
-          tone: "error",
-          text: error instanceof Error ? error.message : t("Failed to open upgrade page."),
-        });
-      })
-      .finally(() => setBusy(null));
-  }, [renderer]);
+    if (busy) return;
+    let opening = false;
+    void startUpgrade({
+      onOpening: () => {
+        opening = true;
+        setBusy("billing");
+        setMessage({ tone: "info", text: t("Opening Pro upgrade...") });
+      },
+    }).finally(() => {
+      if (!opening) return;
+      setBusy(null);
+      setMessage(null);
+    });
+  }, [busy, startUpgrade]);
 
   const deleteAccount = useCallback(async () => {
     setActiveField("deleteAccountAction");

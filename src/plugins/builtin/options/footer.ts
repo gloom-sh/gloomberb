@@ -106,6 +106,7 @@ export function useOptionsAccessFooter({
     delayLabel: resolveOptionsDelayLabel(chain),
     focused,
     segmentId: "options-access",
+    placement: "omon-footer",
     shortcutScope: "options:upgrade",
   });
   // Trial accounts stream real-time too, but the countdown is the status worth the row.

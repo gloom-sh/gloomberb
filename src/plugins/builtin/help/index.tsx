@@ -7,6 +7,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiHost } from "../../../ui";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
+import { apiClient, type CloudPricing } from "../../../api-client";
+import { trialDaysOf } from "../account-management/model";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { requestFeedbackDialog } from "../../../components/feedback-dialog";
@@ -58,6 +60,21 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
   const [functionsSearching, setFunctionsSearching] = useState(false);
+  // The UPGRADE line says how long the trial is; the length comes from /pricing.
+  const [pricing, setPricing] = useState<CloudPricing | null>(null);
+  useEffect(() => {
+    if (activeTabId !== "basics" || pricing) return;
+    let live = true;
+    void apiClient.getCloudPricing()
+      .then((next) => {
+        if (live) setPricing(next);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [activeTabId, pricing]);
+  const trialDays = trialDaysOf(pricing);
   // The Functions search only owns the keyboard while its tab is showing.
   const selectTab = (value: string) => {
     setFunctionsSearching(false);
@@ -135,7 +152,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         : []),
       entry("des", ["DES", "<ticker>"], "Open security details for a specific ticker."),
       entry("help-card", ["HELP", "<function>"], "Open a function's help card: what it shows, its keys, how fresh its data is. HELP HELP reaches support."),
-      entry("upgrade", ["UPGRADE"], "Go Pro for real-time data at gloom.sh/cloud, free for 7 days."),
+      entry("upgrade", ["UPGRADE"], tf("Go Pro for real-time data at gloom.sh/cloud, free for {days} days.", { days: trialDays })),
       entry("move", ["Up/Down", "Ctrl+P/N"], "Move through command bar results."),
       entry("page", ["PageUp/PageDown", "Ctrl+Home/End"], "Jump a page, or to the first or last result."),
       entry("run", ["Enter", "Shift+Enter"], "Run the selected result or its secondary action."),
@@ -145,7 +162,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       entry("delete-word", ["Ctrl+W"], "Delete the previous word in command text."),
       entry("back", ["Backspace"], "Go back from a nested command screen when the query is empty."),
     ],
-  }], [commandBarBadges, tickerSearchBadges]);
+  }], [commandBarBadges, tickerSearchBadges, trialDays]);
 
   const referenceSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [
     {

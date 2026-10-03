@@ -261,7 +261,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
 
   // Footer: what the data is (delayed or real time, the OI session), and its gaps.
   const { hint: upgradeHint, segment: accessSegment } = useCloudAccessFooter({
-    delayLabel: "15m", focused, segmentId: "opx-access", shortcutScope: "opx:upgrade",
+    delayLabel: "15m", focused, segmentId: "opx-access", shortcutScope: "opx:upgrade", placement: "opx-footer",
     degraded: (tab === "gex" ? gamma.data?.delayed : data?.delayed) ?? true,
   });
   const info = useMemo<PaneFooterSegment[]>(() => [

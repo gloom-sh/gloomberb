@@ -276,15 +276,18 @@ async function skipDesks(): Promise<void> {
 // Milestones and pricing go to the network; neither belongs in a render test.
 const originalRecordResearchActivity = apiClient.recordResearchActivity;
 const originalGetCloudPricing = apiClient.getCloudPricing;
+const originalGetCloudAccountPlan = apiClient.getCloudAccountPlan;
 beforeEach(() => {
   expectedPositionCount = 0;
   apiClient.recordResearchActivity = (async () => {}) as typeof apiClient.recordResearchActivity;
   apiClient.getCloudPricing = (async () => { throw new Error("offline"); }) as typeof apiClient.getCloudPricing;
+  apiClient.getCloudAccountPlan = (async () => ({ trialAvailable: true })) as typeof apiClient.getCloudAccountPlan;
 });
 
 afterEach(async () => {
   apiClient.recordResearchActivity = originalRecordResearchActivity;
   apiClient.getCloudPricing = originalGetCloudPricing;
+  apiClient.getCloudAccountPlan = originalGetCloudAccountPlan;
   apiClient.setSessionToken(null);
   apiClient.restoreCachedUser(null);
   capturedConfig = null;
@@ -1097,7 +1100,7 @@ describe("OnboardingWizard", () => {
       onboardingProgress: { version: 1, stage: "verify", accountStatus: "signed-in" },
     }} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
     await tui.setup().renderOnce();
-    expect(tui.frame()).toContain("Start 7-day free trial");
+    await waitForFrame("Start 7-day free trial");
   });
 
   test("persists completion only from the ready step", async () => {

@@ -71,6 +71,7 @@ export function SessionMoversBody(props: {
   if (!entitled) {
     return (
       <ProWall
+        placement="most-wall"
         title="Pre-market, after-hours and gap movers are part of Gloom Cloud Pro."
         message="The whole listed US market from 04:00 to 20:00, with relative volume, VWAP, float and catalysts."
       />

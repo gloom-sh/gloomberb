@@ -79,7 +79,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
   const session = useResearchCloudSession();
   const access = usePlanAccess();
   const pro = access.hasProAccess;
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("seg");
   const identity = listingIdentity(boundSymbol, ticker?.metadata.exchange ?? "");
   const symbol = identity?.symbol ?? null;
   const [requestedView, setView] = usePaneSettingValue<RevenueBreakdownView>("view", "product");

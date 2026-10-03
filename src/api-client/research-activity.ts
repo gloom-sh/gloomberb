@@ -38,8 +38,8 @@ const ATTRIBUTION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** Another device's clock may run slightly ahead; a touch from a minute in the future is still fresh. */
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const ANONYMOUS_ID = /^[a-f0-9-]{36}$/;
-/** The server accepts a tab id only in this shape. */
-const RESEARCH_TAB_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** The server accepts a tab id or an upgrade placement only in this shape. */
+const ACTIVITY_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const CAMPAIGN_KEYS = [
   "utm_source",
   "utm_medium",
@@ -315,23 +315,34 @@ function attributionPayload(): Record<string, string> | undefined {
   return undefined;
 }
 
+export interface ResearchActivityDetails {
+  /** The desks picked at "What do you trade?", on the milestone that ends the first run. */
+  desks?: readonly string[];
+  /**
+   * Which prompt raised an `upgrade_intent` (a pane footer, a wall, the
+   * command bar), as a short id like a tab id. Never the prompt's text.
+   */
+  placement?: string;
+}
+
 /**
- * Counts milestones once per feature/session/account, never their content.
- * Native surfaces report anonymously only with an identifier the website
- * handed over; they still never mint one of their own. `desks` rides on the
- * end of the first-run funnel: the desks picked at "What do you trade?".
+ * Counts milestones once per feature/tab/placement, session and account, never
+ * their content. Native surfaces report anonymously only with an identifier
+ * the website handed over; they still never mint one of their own.
  */
 export function recordResearchActivity(
   event: ResearchActivity,
   feature?: ResearchFeature,
   tab?: string,
-  desks?: readonly string[],
+  { desks, placement: rawPlacement }: ResearchActivityDetails = {},
 ): void {
   const target = getCurrentPluginTarget();
   const user = apiClient.getCurrentUser();
   if (!user && !anonymousId) return;
   if (!user && target !== "web" && target !== "desktop") return;
-  const key = `${user?.id ?? "guest"}:${event}:${feature ?? ""}:${tab ?? ""}`;
+  // The server refuses the whole event over a malformed id, so one is dropped instead.
+  const placement = rawPlacement && ACTIVITY_ID.test(rawPlacement) ? rawPlacement : undefined;
+  const key = `${user?.id ?? "guest"}:${event}:${feature ?? ""}:${tab ?? ""}:${placement ?? ""}`;
   if (sent.has(key)) return;
   sent.add(key);
   if (event !== "workspace_opened") recordResearchActivity("workspace_opened");
@@ -345,6 +356,7 @@ export function recordResearchActivity(
       feature,
       tab,
       desks,
+      placement,
     })
     .catch(() => {
       sent.delete(key);
@@ -357,7 +369,7 @@ export function recordResearchActivity(
  * someone installed stay private; so is any id the server would refuse.
  */
 export function recordResearchTabView(tabId: string, fromExternalPlugin: boolean): void {
-  const tab = !fromExternalPlugin && RESEARCH_TAB_ID.test(tabId) ? tabId : "plugin";
+  const tab = !fromExternalPlugin && ACTIVITY_ID.test(tabId) ? tabId : "plugin";
   recordResearchActivity("research_tab_viewed", undefined, tab);
 }
 

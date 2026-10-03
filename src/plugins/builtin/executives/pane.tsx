@@ -230,6 +230,7 @@ function figuresOf(statement: CloudProxyStatementPayload) {
 }
 
 const EXEC_WALL: ProFeatureWallCopy = {
+  placement: "exec-wall",
   action: "see executive pay",
   title: "Executive pay is part of Gloom Cloud Pro.",
   message: "Named executive officers and how they were paid, read from each proxy statement and checked against the filing.",
