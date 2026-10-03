@@ -10,7 +10,7 @@ import {
 } from "../sec/filing-display";
 import { isAmendedInsiderFiling } from "./amendments";
 import type { InsiderReportingOwner } from "./insider-data";
-import { buildInsiderDisclosureText, isInsiderDisclosureOnly } from "./model";
+import { buildInsiderDisclosureText, insiderDisplayName, isInsiderDisclosureOnly } from "./model";
 import type { InsiderTableRow } from "./table-model";
 import { insiderToneColor } from "./table";
 
@@ -32,9 +32,8 @@ function fullTitle(row: InsiderTableRow): string {
 }
 
 export function insiderDetailTitle(row: InsiderTableRow): string {
-  if (row.entry.transaction) return row.name;
   if (row.entry.isLoading) return `Loading ${formatFilingFormLabel(row.entry.filing.form)} filing...`;
-  return row.name;
+  return insiderDisplayName(row.entry) ?? row.name;
 }
 
 function detailMeta(row: InsiderTableRow): string[] {
@@ -63,7 +62,8 @@ function detailFields(row: InsiderTableRow): DetailField[] {
     const split = line.indexOf(": ");
     return split < 0 ? { label: "", value: line } : { label: line.slice(0, split), value: line.slice(split + 2) };
   });
-  if (transaction.rule10b51 != null) fields.push({ label: "10b5-1 Plan", value: transaction.rule10b51 ? "Yes" : "No" });
+  // One box for the whole form, so it says what the filer checked rather than which line it covers.
+  if (transaction.rule10b51 != null) fields.push({ label: "10b5-1 Box", value: transaction.rule10b51 ? "Checked" : "Not checked" });
   return fields;
 }
 

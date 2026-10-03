@@ -70,9 +70,10 @@ const INSIDER_WINDOW_CAP = 120;
 // until this many filings or company history ends.
 const SEC_FILING_SCAN_LIMIT = 20_000;
 // A narrowed list too short to scroll cannot ask for more, so older filings
-// load on their own until it fills a page, as far back as a year and this many.
+// load on their own until it fills a page, as far back as a year and no more
+// filings than a busy 90-day window already loads.
 const AUTO_FILL_DAYS = 365;
-const AUTO_FILL_FILING_CAP = 200;
+const AUTO_FILL_FILING_CAP = INSIDER_WINDOW_CAP;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Narrower panes pick the Type filter from a menu instead of showing every choice. */
 const TYPE_FILTER_INLINE_WIDTH = 80;

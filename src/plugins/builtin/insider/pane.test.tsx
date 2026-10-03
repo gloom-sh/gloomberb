@@ -92,19 +92,22 @@ test("owner filtering keeps explanation-only amendments and clears amendment sta
   expect(tui.frame()).not.toContain("⚠");
 });
 
+// Reading 25 and 121 filings one after another takes seconds on a loaded runner.
+const WINDOW_TEST_TIMEOUT_MS = 30_000;
+
 test("the 90-day totals load every filing in the window, past the first page", async () => {
   await mountWindow(25);
   const frame = tui.frame();
   expect(frame).toContain("2.5k shares");
   expect(frame).not.toContain("⚠");
-});
+}, WINDOW_TEST_TIMEOUT_MS);
 
 test("a window larger than the cap still says the totals are partial", async () => {
   await mountWindow(121);
   const frame = tui.frame();
   expect(frame).toContain("12k shares");
   expect(frame).toContain("⚠");
-});
+}, WINDOW_TEST_TIMEOUT_MS);
 
 async function mountMixed() {
   const recent = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
@@ -128,7 +131,10 @@ async function mountMixed() {
 
 test("the pane opens on open-market buys and sells, with the other lines one click away", async () => {
   await mountMixed();
-  let frame = await tui.waitForFrameToContain("Other (2)");
+  // Filings are read one after another; a loaded runner needs more frames.
+  for (let i = 0; i < 40 && !tui.frame().includes("Other (2)"); i++) await settle();
+  let frame = tui.frame();
+  expect(frame).toContain("Other (2)");
   expect(frame).toContain("Buys and sells (2)");
   expect(frame).toMatch(/Timothy D\. Cook\s+CEO\s+BUY/);
   expect(frame).toMatch(/Deirdre O'Brien\s+SVP\s+SELL/);

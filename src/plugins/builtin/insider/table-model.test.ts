@@ -21,10 +21,13 @@ function line(code: string, shares: number, price: number, security = "Common St
 const parsed: ParsedInsiderFiling[] = [
   ...parseInsiderFiling(filing("sale"), form4("Lund Deanna H", "EVP & CFO", line("S", 4100, 48.56), { plan: true })),
   ...parseInsiderFiling(filing("buy"), form4("BOURLA ALBERT", "Chairman & CEO", line("P", 38_000, 26.34), { plan: false })),
-  ...parseInsiderFiling(filing("award"), form4("Carrai Phillip D", "President, STC Division", line("A", 1200, 0, "Restricted Stock Unit", true))),
+  // The 10b5-1 box covers the whole form, but marks only its open-market trades.
+  ...parseInsiderFiling(filing("award"), form4("Carrai Phillip D", "President, STC Division", line("A", 1200, 0, "Restricted Stock Unit", true), { plan: true })),
   ...parseInsiderFiling(filing("amended", "4/A"), form4("O'BRIEN DEIRDRE", "Senior Vice President", line("S", 900, 255.12), { form: "4/A" })),
   ...parseInsiderFiling(filing("notice"), form4("Mendoza Marie", "SVP & General Counsel", "<remarks>No longer subject to Section 16.</remarks>")),
   ...parseInsiderFiling(filing("unread"), null),
+  // Joint filers read as the first and how many more.
+  ...parseInsiderFiling(filing("joint"), form4("BAKER BROS. ADVISORS LP", "", line("P", 5000, 20)).replace("</reportingOwner>", "</reportingOwner><reportingOwner><reportingOwnerId><rptOwnerCik>2</rptOwnerCik><rptOwnerName>BAKER FELIX</rptOwnerName></reportingOwnerId><reportingOwnerRelationship><isTenPercentOwner>1</isTenPercentOwner></reportingOwnerRelationship></reportingOwner>")),
   ...parseInsiderFiling(filing("loading"), null, true),
 ];
 
@@ -37,7 +40,9 @@ describe("insider table rows", () => {
       { name: "Phillip D. Carrai", role: "Div. Pres.", type: "AWARD", tone: "neutral", amended: false, plan: false, security: "RSU", shares: 1200, price: 0 },
       { name: "Deirdre O'Brien", role: "SVP", type: "SELL", tone: "sell", amended: true, plan: false, security: null, shares: 900, price: 255.12 },
     ]);
-    expect(rows.slice(4).map(({ name, type }) => [name, type])).toEqual([["Marie Mendoza", "NOTICE"], ["Unknown filer", "—"], ["Loading...", ""]]);
+    expect(rows.slice(4).map(({ name, role, type }) => [name, role, type])).toEqual([
+      ["Marie Mendoza", "GC", "NOTICE"], ["Unknown filer", "", "—"], ["BAKER BROS. ADVISORS LP +1", "10% owner", "BUY"], ["Loading...", "", ""],
+    ]);
   });
 
   test("buys and sells keep the theme's gain and loss colour, on the selected row too; other lines are dim", () => {
@@ -62,7 +67,7 @@ describe("insider Type filter", () => {
       .map((entry) => entry.filing.accessionNumber);
     expect(DEFAULT_INSIDER_TYPE_FILTER).toBe("trades");
     // An unread filing may hide a trade, so it shows in both narrower views.
-    expect(shown("trades")).toEqual(["sale", "buy", "amended", "unread"]);
+    expect(shown("trades")).toEqual(["sale", "buy", "amended", "unread", "joint"]);
     expect(shown("other")).toEqual(["award", "notice", "unread"]);
     expect(shown("all")).toHaveLength(parsed.length);
   });

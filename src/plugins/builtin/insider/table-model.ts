@@ -1,7 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import { displayWidth, formatCompact, formatCurrency } from "../../../utils/format";
 import { isAmendedInsiderFiling } from "./amendments";
-import { insiderSecurityTag, insiderTypeLabel, insiderTypeTone, type InsiderTypeTone } from "./display";
+import { insiderSecurityTag, insiderTypeLabel, insiderTypeTone, isOpenMarketTrade, type InsiderTypeTone } from "./display";
 import {
   insiderDisplayName,
   insiderRole,
@@ -29,7 +29,7 @@ export interface InsiderTableRow {
   tone: InsiderTypeTone;
   /** An amended filing (Form 4/A), marked after the type at every width. */
   amended: boolean;
-  /** Rule 10b5-1 plan trade, marked after the type when there is room. */
+  /** An open-market trade on a form with the Rule 10b5-1 box checked, marked after the type when there is room. */
   plan: boolean;
   security: string | null;
   shares: number | null;
@@ -43,11 +43,18 @@ function validDate(value: Date | string | number | null | undefined): Date | nul
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
+/** Joint filers (a fund and its general partners) read as the first one and how many more. */
+function tableName(entry: ParsedInsiderFiling): string | null {
+  const name = insiderDisplayName(entry);
+  const owners = name?.split("; ") ?? [];
+  return owners.length > 1 ? `${owners[0]} +${owners.length - 1}` : name;
+}
+
 export function buildInsiderTableRows(parsed: readonly ParsedInsiderFiling[]): InsiderTableRow[] {
   return parsed.map((entry) => {
     const { filing, transaction } = entry;
     const amendment = isAmendedInsiderFiling(entry);
-    const name = insiderDisplayName(entry);
+    const name = tableName(entry);
     if (!transaction) {
       const disclosure = !entry.isLoading && isInsiderDisclosureOnly(entry);
       return {
@@ -75,7 +82,8 @@ export function buildInsiderTableRows(parsed: readonly ParsedInsiderFiling[]): I
       type: insiderTypeLabel(transaction.transactionType),
       tone: insiderTypeTone(transaction.transactionType),
       amended: amendment,
-      plan: transaction.rule10b51 === true,
+      // The box covers the whole form; it is about the trade, not the vesting or tax lines beside it.
+      plan: transaction.rule10b51 === true && isOpenMarketTrade(transaction.transactionType),
       security: insiderSecurityTag(transaction),
       shares: transaction.shares,
       price: transaction.pricePerShare,
@@ -172,7 +180,7 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
   insider = Math.min(widths.insider, insider + Math.max(0, available - total()));
 
   const typeWidth = show.plan ? widths.typePlan : widths.typeBase;
-  return [
+  const columns: InsiderColumn[] = [
     { id: "date", label: "Date", width: widths.date, align: "left" },
     { id: "insider", label: "Insider", width: insider, align: "left" },
     ...(show.role ? [{ id: "role" as const, label: "Role", width: widths.role, align: "left" as const }] : []),
@@ -182,6 +190,15 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
     ...(show.price ? [{ id: "price" as const, label: "Price", width: widths.price, align: "right" as const }] : []),
     { id: "value", label: "Value", width: widths.value, align: "right" },
   ];
+  // Spare cells spread over the columns, so the value column ends at the
+  // pane's edge in the terminal as it does on the desktop.
+  const used = columns.reduce((sum, column) => sum + column.width + COLUMN_GAP, 0);
+  const spare = Math.max(0, available - used);
+  const each = Math.floor(spare / columns.length);
+  return columns.map((column) => ({
+    ...column,
+    width: column.width + each + (column.id === "insider" ? spare - each * columns.length : 0),
+  }));
 }
 
 function compareNullable(a: number | null, b: number | null): number {
