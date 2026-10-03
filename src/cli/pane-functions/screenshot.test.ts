@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
+  assessPaneScreenshot,
   buildDesktopShotPayload,
   chartSeriesEvidenceWithinRange,
   chartEvidenceMismatchesFor,
@@ -21,7 +22,7 @@ import { paneEvidenceMismatches } from "./screenshot-evidence";
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { coneChartSeries, realizedChartSeries } from "../../plugins/builtin/realized-vol/chart-model";
 import { collectShotSymbols } from "./data";
-import type { DesktopPaneShotPayload } from "../desktop-pane-shot";
+import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
@@ -37,8 +38,15 @@ import { draftFromCalculatorInputs } from "../../plugins/builtin/options-calcula
 import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calculator/headless";
 import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/shared/volatility";
 import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client";
-import { createTestDataProvider, createTestFinancials } from "../../test-support/data-provider";
-import type { PricePoint } from "../../types/financials";
+import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import type { FinancialStatement, PricePoint, TickerFinancials } from "../../types/financials";
+import { loadPeriodEndHistory } from "../../plugins/builtin/ticker-detail/financials/period-end-history";
+import {
+  RATIO_TABS,
+  formatRatioValue,
+  periodEndClose,
+  ratioTableForFinancials,
+} from "../../plugins/builtin/ticker-detail/financials/ratios";
 
 test("calculator screenshots freeze percent inputs without market requests, including an inactive cash schedule", async () => {
   const request = { pane: { id: "options-calculator" }, capability: { id: "options-calculator-pane", options: optionsCalculatorHeadless.options },
@@ -259,6 +267,131 @@ test("correlation screenshots capture daily closes where the range preset is wee
   } as unknown as MarketContext, "SPY,QQQ", {}, 800, 600, null, 1, null);
   expect(requested).toEqual([["SPY", "5Y", "1d"], ["QQQ", "5Y", "1d"]]);
   expect(shot.financials.map(([, data]) => [data.priceHistory, data.priceHistoryResolution])).toEqual([[daily, "1d"], [daily, "1d"]]);
+});
+
+describe("financial analysis ratio screenshots", () => {
+  // Every line any ratio tab reads, so a correct table has a number in each cell.
+  const fiscal = (date: string): FinancialStatement => ({
+    date, currency: "USD", totalRevenue: 400, costOfRevenue: 160, grossProfit: 240, operatingIncome: 120, pretaxIncome: 110, taxProvision: 22,
+    netIncome: 88, eps: 4.4, ordinarySharesNumber: 20, ebitda: 150, interestExpense: 5, operatingCashFlow: 130,
+    capitalExpenditure: -30, freeCashFlow: 100, totalAssets: 900, currentAssets: 300, currentLiabilities: 150, inventory: 40,
+    accountsReceivable: 60, accountsPayable: 30, totalDebt: 200, cashCashEquivalentsAndShortTermInvestments: 120, totalEquity: 500,
+  });
+  const statements = {
+    quote: createTestQuote({ symbol: "MSFT", currency: "USD" }),
+    annualStatements: ["2021-06-30", "2022-06-30", "2023-06-30", "2024-06-30", "2025-06-30", "2026-06-30"].map(fiscal),
+    quarterlyStatements: ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"].map(fiscal),
+  };
+  // The pane's columns: five years, or six quarters, back from June 2026.
+  const OLDEST = { annual: "2022-06-30", quarterly: "2025-03-31" } as const;
+  const DAY_MS = 86_400_000;
+  const RANGE_DAYS: Record<string, number> = { "6M": 183, "1Y": 366, "5Y": 1_827, ALL: 20_000 };
+  /** Weekday closes, or Monday-stamped weeks, over a range ending `end`. */
+  const bars = (range: string, resolution: string, end = Date.now()): PricePoint[] => {
+    const points: PricePoint[] = [];
+    for (let time = end - RANGE_DAYS[range]! * DAY_MS; time <= end; time += DAY_MS) {
+      const date = new Date(Math.floor(time / DAY_MS) * DAY_MS);
+      if (resolution === "1d" ? date.getUTCDay() % 6 !== 0 : date.getUTCDay() === 1) {
+        points.push({ date, close: 100 + (Math.floor(time / DAY_MS) % 97) });
+      }
+    }
+    return points;
+  };
+  const request = (statement: string, period: string) => ({
+    token: "FA", pane: { id: "financial-analysis" },
+    capability: { id: "financial-statements", options: [], screenshotReadiness: "ready" },
+    instance: { instanceId: "fa:test", paneId: "financial-analysis", binding: { kind: "fixed", symbol: "MSFT" }, settings: {} },
+    createOptions: { symbol: "MSFT" }, options: { statement, period },
+  }) as unknown as ResolvedPaneFunction;
+  const capture = (period: string, history: (range: string, resolution: string) => PricePoint[]) => buildDesktopShotPayload(
+    request("valuation", period), {
+      config: createDefaultConfig("/tmp/fa-shot-test"), store: { loadTicker: async () => null },
+      dataProvider: createTestDataProvider({ getTickerFinancials: async () => createTestFinancials(statements),
+        getPriceHistoryForResolution: async (_symbol, _exchange, range, resolution) => history(range, resolution) }),
+    } as unknown as MarketContext, "MSFT", {}, 800, 600, null, 1, null,
+  );
+
+  test.each(["annual", "quarterly"] as const)("valuation captures daily closes back to the oldest %s period end, tagged 1d", async (period) => {
+    const requested: string[] = [];
+    const shot = await capture(period, (range, resolution) => { requested.push(resolution); return bars(range, resolution); });
+    const [, captured] = shot.financials[0]!;
+    expect(requested).toEqual(["1d"]);
+    expect(captured.priceHistoryResolution).toBe("1d");
+    const oldestClose = periodEndClose(captured.priceHistory, OLDEST[period]);
+    expect(oldestClose).toBeNumber();
+    // The page answers the pane's own request from the capture, never from live data.
+    const page = createSnapshotDataProvider(JSON.parse(JSON.stringify(shot)), createTestDataProvider());
+    const replayed = await loadPeriodEndHistory(page, "MSFT", "", OLDEST[period]);
+    expect(periodEndClose(replayed, OLDEST[period])).toBe(oldestClose!);
+  });
+
+  test("valuation fails instead of drawing weekly bars when daily closes are missing, errored or stale", async () => {
+    await expect(capture("annual", (range, resolution) => resolution === "1d" ? [] : bars(range, resolution)))
+      .rejects.toThrow(/^MSFT: daily price history is unavailable/);
+    await expect(capture("annual", (range, resolution) => {
+      if (resolution === "1d") throw new Error("Source unavailable");
+      return bars(range, resolution);
+    })).rejects.toThrow(/^MSFT: Source unavailable/);
+    // A source that answers the daily request with weekly bars.
+    await expect(capture("annual", (range) => bars(range, "1wk"))).rejects.toThrow(/^MSFT: Daily closes are unavailable/);
+    // Closes that stop more than a week before the June 2026 period end.
+    await expect(capture("quarterly", (range, resolution) => bars(range, resolution, Date.parse("2026-06-01"))))
+      .rejects.toThrow(/^MSFT: daily price history is stale/);
+  });
+
+  /** The pane's collapsed table drawn from `history`, as the page renders it. */
+  const assess = (statement: string, financials: TickerFinancials, drawnHistory: PricePoint[] | null) => {
+    const tab = RATIO_TABS.find(({ key }) => key === statement)!;
+    const table = ratioTableForFinancials(financials, tab, "annual", drawnHistory);
+    const columns = table.periods.map(({ statement: { date } }, index) => ({ id: `statement:${date}:${index}`, label: date.slice(0, 4) }));
+    const rows = table.rows.flatMap((row, rowIndex) => row.kind === "ratio" ? [{
+      tableIndex: 0, rowIndex, key: row.id, selected: rowIndex === 0,
+      cells: [{ columnId: "metric", columnLabel: "Ratio", text: row.label }, ...columns.map((column, index) => ({
+        columnId: column.id, columnLabel: column.label, text: formatRatioValue(row.def.format, table.cells.get(row.id)![index]!.value),
+      }))],
+    }] : []);
+    const render: DesktopPaneShotRenderResult = {
+      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD · as of 2026-06-30 Annual Quarterly RATIO",
+        ...rows.flatMap(({ cells }) => cells.map(({ text }) => text))].join(" "),
+      rows, truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+      emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [],
+      semanticUi: [{ id: "query", role: "query-bar", actions: [], metadata: { selections: [
+        { id: "statement", value: "ratios", label: "Ratios" }, { id: "ratio", value: tab.key, label: tab.name },
+        { id: "view", value: "annual", label: "Annual" }] } }],
+    };
+    return assessPaneScreenshot(request(statement, "annual"), { financials: [["MSFT", financials]] } as unknown as DesktopPaneShotPayload,
+      render, "MSFT", "/tmp/fa-shot-test.png");
+  };
+  const daily = bars("5Y", "1d");
+  const captured = createTestFinancials({ ...statements, priceHistory: daily, priceHistoryResolution: "1d" });
+
+  test.each(RATIO_TABS.map(({ key }) => key))("%s: a correct shot is usable", (statement) => {
+    const shot = assess(statement, captured, statement === "valuation" ? daily : null);
+    expect(shot.render.missingExpectedText).toEqual([]);
+    expect(shot.unusableReason).toBeNull();
+    expect(shot.usable).toBe(true);
+    expect(shot.dataEvidence).toMatchObject({ kind: "financial-ratios", statement, latest: { date: "2026-06-30" } });
+  });
+
+  test.each(RATIO_TABS.map(({ key }) => key))("%s: a shot whose cells all read not reported is unusable", (statement) => {
+    const bare = createTestFinancials({ quote: statements.quote,
+      annualStatements: statements.annualStatements.map(({ date }) => ({ date, currency: "USD", totalRevenue: 400 })),
+      priceHistory: daily, priceHistoryResolution: "1d" });
+    const shot = assess(statement, bare, statement === "valuation" ? daily : null);
+    expect(shot.usable).toBe(false);
+    expect(shot.unusableReason).toMatch(/unreported/);
+  });
+
+  test("a valuation shot that reads no price is unusable, whether the capture or the page lost the closes", () => {
+    // The weekly seed, untagged: the page rejects it and every cell reads "no price".
+    const seeded = assess("valuation", createTestFinancials({ ...statements, priceHistory: bars("ALL", "1wk") }), null);
+    expect(seeded.usable).toBe(false);
+    expect(seeded.unusableReason).toMatch(/no period-end close/);
+    // A daily capture the page did not draw from.
+    const undrawn = assess("valuation", captured, null);
+    expect(undrawn.usable).toBe(false);
+    expect(undrawn.render.chartEvidenceMismatches[0]).toMatch(/^Valuation P\/E 2026 reads "no price"/);
+  });
 });
 
 describe("volatility surface screenshot evidence", () => {

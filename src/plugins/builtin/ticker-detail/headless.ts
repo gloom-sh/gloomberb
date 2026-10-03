@@ -14,7 +14,9 @@ import {
   findRatioTab,
   formatRatioInput,
   formatRatioValue,
+  oldestRatioPeriodEnd,
   ratioPeriodEnd,
+  ratioStatements,
   ratioTableForFinancials,
   resolveFinancialSectionKey,
   type RatioAmount,
@@ -105,10 +107,10 @@ async function loadRatioReport(
   period: "annual" | "quarterly",
   hasRequestedStatements: boolean,
 ) {
-  const oldest = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period).periods.at(-1) : undefined;
+  const oldest = hasRequestedStatements ? oldestRatioPeriodEnd(ratioStatements(financials, period)) : undefined;
   const history = oldest && tab.key === "valuation"
     ? await resolveHeadlessInstrument(ctx, symbol)
-      .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", ratioPeriodEnd(oldest.statement)))
+      .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", oldest))
       .catch(() => null)
     : null;
   const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history) : null;

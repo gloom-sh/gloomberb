@@ -85,3 +85,5 @@ The Valuation tab prices each period at its own period end, not today:
 - **Currency.** The close must be in the reporting currency; GBp converts to GBP without an FX rate. A foreign listing of a company reporting in another currency reads `no price`.
 
 Current multiples at today's price are in `DES` and `RV`.
+
+`gloomberb shot FA <ticker> --statement valuation` captures the same daily closes back to the oldest column. It stops with the reason when they are missing, fail to load or end more than a week before the latest period end. The shot's JSON reports `usable: false` while any column reads `no price`, and for any ratio tab when every ratio is `not reported` or `N/M`, or when the rendered cells differ from the table the captured data gives.

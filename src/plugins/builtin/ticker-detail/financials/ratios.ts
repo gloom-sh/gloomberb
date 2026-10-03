@@ -679,6 +679,22 @@ export function buildRatioTableModel(
 
 export const findRatioTab = (key: string) => RATIO_TABS.find((tab) => tab.key === key);
 
+const byDate = (statements: readonly FinancialStatement[]) => [...statements].sort((a, b) => a.date.localeCompare(b.date));
+
+/** A ratio tab's columns: Income's periods, with TTM, newest first. */
+export function ratioStatements(financials: TickerFinancials, period: FinancialPeriod): FinancialTableStatement[] {
+  return selectFinancialStatements(period, "income", byDate(financials.annualStatements), byDate(financials.quarterlyStatements)).statements;
+}
+
+/**
+ * The period end of a ratio tab's oldest column: how far back Valuation needs
+ * daily closes. The pane, reports and screenshots load the same span.
+ */
+export function oldestRatioPeriodEnd(statements: readonly FinancialTableStatement[]): string | undefined {
+  const oldest = statements.at(-1);
+  return oldest ? ratioPeriodEnd(oldest) : undefined;
+}
+
 /**
  * A ratio tab for reports: the pane's columns and math, every ratio expanded.
  * Without a price history, valuation ratios read "no price".
@@ -689,8 +705,8 @@ export function ratioTableForFinancials(
   period: FinancialPeriod,
   history?: readonly PricePoint[] | null,
 ): RatioTableModel {
-  const annual = [...financials.annualStatements].sort((a, b) => a.date.localeCompare(b.date));
-  const quarterly = [...financials.quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
+  const annual = byDate(financials.annualStatements);
+  const quarterly = byDate(financials.quarterlyStatements);
   const { statements } = selectFinancialStatements(period, "income", annual, quarterly);
   const currencies = createValuationCurrencyContext(financials);
   const price = (statement: FinancialTableStatement): RatioAmount => {

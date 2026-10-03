@@ -1,8 +1,11 @@
 import type { TimeRange } from "../../../../time-series/range";
+import type { ManualChartResolution } from "../../../../time-series/resolution";
 import type { AssetDataProvider, MarketDataRequestContext } from "../../../../types/data-provider";
 import type { PricePoint } from "../../../../types/financials";
 
 const DAY_MS = 86_400_000;
+/** The cadence valuation reads, and so the cadence a screenshot captures. */
+export const PERIOD_END_HISTORY_RESOLUTION: ManualChartResolution = "1d";
 
 /** The shortest range whose history still reaches the oldest period end. */
 function historyRange(oldestPeriodEnd: string, now: number): TimeRange {
@@ -34,8 +37,8 @@ export async function loadPeriodEndHistory(
 ): Promise<PricePoint[]> {
   const range = historyRange(oldestPeriodEnd, now);
   if (provider.getPriceHistoryForResolutionWithMetadata) {
-    return requireDaily((await provider.getPriceHistoryForResolutionWithMetadata(symbol, exchange, range, "1d", context)).points);
+    return requireDaily((await provider.getPriceHistoryForResolutionWithMetadata(symbol, exchange, range, PERIOD_END_HISTORY_RESOLUTION, context)).points);
   }
-  if (provider.getPriceHistoryForResolution) return requireDaily(await provider.getPriceHistoryForResolution(symbol, exchange, range, "1d", context));
+  if (provider.getPriceHistoryForResolution) return requireDaily(await provider.getPriceHistoryForResolution(symbol, exchange, range, PERIOD_END_HISTORY_RESOLUTION, context));
   return requireDaily(await provider.getPriceHistory(symbol, exchange, range, context));
 }
