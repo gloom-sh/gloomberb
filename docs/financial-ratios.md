@@ -16,10 +16,27 @@ The ratio tabs use the Income statement's columns: the latest fiscal years, with
 ## Missing and meaningless values
 
 - `not reported`: an input line is not in the statements for that period. Apple, for example, has not tagged interest expense since FY2023, so its interest coverage reads `not reported` from FY2024. A missing line is never read as zero; a reported zero stays a value.
-- `N/M`: the denominator is zero or negative, where the ratio means nothing: negative equity under ROE or P/B, a loss under P/E, negative EBITDA or enterprise value under EV/EBITDA, no interest expense under coverage.
+- `N/M`: the denominator is zero or negative, where the ratio means nothing: negative equity under ROE or P/B, a loss under P/E, negative EBITDA or enterprise value under EV/EBITDA, no interest expense under coverage. ROE is also `N/M` on [near-zero equity](#roe-on-near-zero-equity).
 - `no price`: there is no daily close in the week before the period end, or the quote currency differs from the reporting currency (the footer warning names both).
 
 Returns, margins, FCF/debt and FCF yield take the sign colour; other ratios are neutral, since a negative net debt or cash conversion cycle is not bad news.
+
+## ROE on near-zero equity
+
+ROE reads `N/M` when its average equity says nothing about the capital behind the return:
+
+- **Equity is zero or negative at either end of the year.** An average across a sign change can land anywhere near zero: AbbVie's equity went from 3.33bn to -3.27bn in FY2025, averaged 0.03bn, and the year read 15,367%. Boeing's FY2025 (from -3.91bn to 5.45bn, 289%) and Seagate's FY2026 (from -0.45bn to 2.17bn, 372%) are the same case.
+- **ROE is beyond ±500%**, so average equity is under a fifth of the year's net income or loss: Colgate-Palmolive's FY2025, 2.13bn on 0.13bn, 1,603%. A quarterly column compares its annualized return.
+
+The expanded rows still show Net Income and Avg Equity, and the Balance Sheet's Equity row shows both ends. The screener's FY ROE% uses the same rule: those names are empty and sort last.
+
+The cap is on the return, not on equity as a share of total assets. Insurers, brokers and the mortgage agencies run equity of 1% to 4% of assets and earn ordinary returns (Freddie Mac FY2023 24.9% on equity of 1.3% of assets, MetLife FY2025 12.1% on 3.9%, Interactive Brokers FY2025 20.4% on 2.7%), while Home Depot's FY2023 1,162% sat on 1.7%. Checked against 145 US companies' statements in October 2026:
+
+| | Examples |
+|---|---|
+| Now `N/M` | AbbVie FY2025 15,367%, Colgate FY2025 1,603% and FY2024 704%, Home Depot FY2023 1,162%, Seagate FY2026 372%, Boeing FY2025 289%, Coca-Cola Consolidated FY2025 168% (equity turned negative) |
+| Keep their ROE | Home Depot FY2025 146% and FY2024 385%, Mastercard 211%, Apple 171%, Kimberly-Clark 173%, Clorox 286%, Cencora 144%, Microsoft 34%, banks, insurers, brokers, Fannie Mae and Freddie Mac |
+| Already `N/M`, negative equity | Philip Morris, McDonald's, Starbucks, HP, Lowe's, Altria, AutoZone, Booking, Hilton |
 
 ## Definitions
 
