@@ -211,6 +211,8 @@ interface PriceHistoryRequest {
   bounds: DateBounds;
   visibleBounds: DateBounds;
   explicitWindow: boolean;
+  /** Dates the chart was given, not a view the user panned or zoomed to. */
+  authoredWindow: boolean;
   fallbackRange: TimeRange;
   resolution: ManualChartResolution;
   allowProviderDefaultFallback: boolean;
@@ -919,10 +921,11 @@ async function loadPriceHistory(
       const start = Math.ceil(candidate.retention.availableStart / step) * step + step;
       const end = candidate.retention.requestedEnd;
       const visibleEnd = request.visibleBounds.end === null ? end : Math.floor(request.visibleBounds.end / 1000) * 1000;
-      // A preset range at an interval the user chose charts what the source
-      // keeps when it reaches back further. Auto steps to coarser bars below
-      // instead, and a panned or authored window keeps its own dates.
-      const retainedOnly = !request.allowProviderDefaultFallback && !request.explicitWindow;
+      // At an interval the user chose, a preset range or a panned or zoomed
+      // view that reaches back past the retained bars, but still reaches them,
+      // charts what the source keeps. Auto steps to coarser bars below instead,
+      // and authored dates keep failing.
+      const retainedOnly = !request.allowProviderDefaultFallback && !request.authoredWindow && visibleEnd >= start;
       if ((retainedOnly || request.visibleBounds.start >= start) && visibleEnd <= end && start < end) {
         recoveryAttempted = true;
         try {
@@ -1561,8 +1564,9 @@ async function resolveChartSpecPass(
     requestVisibleBounds,
     initialResolution,
   );
-  const hasExplicitWindow = explicitBounds(spec) !== null
-    || (requestBounds !== null && !sameBounds(requestBounds, initialVisibleBounds));
+  // A view the user panned or zoomed to, as opposed to authored dates.
+  const movedWindow = requestBounds !== null && !sameBounds(requestBounds, initialVisibleBounds);
+  const hasExplicitWindow = explicitBounds(spec) !== null || movedWindow;
 
   // Only US listings trade before and after the regular session; asking elsewhere costs a request for nothing.
   const extendedHoursFor = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>, resolution: ManualChartResolution) => (
@@ -1589,6 +1593,7 @@ async function resolveChartSpecPass(
       bounds: historyBounds,
       visibleBounds: requestVisibleBounds,
       explicitWindow: hasExplicitWindow,
+      authoredWindow: hasExplicitWindow && !movedWindow,
       fallbackRange,
       resolution: initialResolution,
       allowProviderDefaultFallback: spec.viewport.resolution === "auto",
@@ -1606,6 +1611,8 @@ async function resolveChartSpecPass(
       ...(request.explicitWindow
         ? [request.bounds.start ?? "open", request.bounds.end ?? "open"]
         : []),
+      // A moved view can chart retained bars that the same authored dates cannot.
+      ...(request.explicitWindow && !request.authoredWindow && !request.allowProviderDefaultFallback ? ["moved"] : []),
     ].join("|");
     request.historyRequestKey = key;
     const expiresAt = cache.priceHistoryExpiryByRequest.get(key);

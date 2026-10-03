@@ -31,7 +31,7 @@ const retentionNotices = (warnings: readonly string[]) => warnings.filter(warnin
 const sources = (provider: DataProvider, now = NOW) => ({ dataProvider: provider, now: new Date(now),
   loadFredSeries: async () => { throw Error("No FRED expected"); } });
 
-function limited(options: { data?: PricePoint[]; symbol?: string; recoveryFails?: boolean; wrongInterval?: boolean } = {}) {
+function limited(options: { data?: PricePoint[]; symbol?: string; recoveryFails?: boolean; wrongInterval?: boolean; detailFails?: boolean } = {}) {
   const calls: Array<{ kind: string; start?: number; end?: number; context?: MarketDataRequestContext }> = [];
   const data = options.data ?? history();
   const provider = createTestDataProvider({ id: "gloomberb-cloud",
@@ -43,6 +43,7 @@ function limited(options: { data?: PricePoint[]; symbol?: string; recoveryFails?
     },
     async getDetailedPriceHistory(_symbol, _exchange, start, end, _interval, context) {
       calls.push({ kind: context?.historyRecovery ? "recovery" : "detailed", start: +start, end: +end, context });
+      if (!context?.historyRecovery && options.detailFails) throw Error("Detail unavailable");
       if (!context?.historyRecovery) throw new HistoryRetentionError({ ...proof(options.symbol), requestedStart: Math.floor(+start / 1000) * 1000, requestedEnd: Math.floor(+end / 1000) * 1000 });
       if (options.recoveryFails) throw Error("Still unavailable");
       return data;
@@ -109,10 +110,6 @@ test("old manual windows do not shrink into a recent recovery or become daily da
   const result = await resolveChartSpecData(spec, sources(provider));
   expect(result.errors).toHaveLength(2);
   expect(result.series.every(series => series.points.length === 0)).toBe(true);
-  // A panned window reaching back past the retained bars keeps its dates too.
-  const panned = await resolveChartSpecData(chart("RETENTION", "15m", "3M"), sources(provider), undefined,
-    { awaitResolutionSupport: true, requestViewport: { start: new Date(NOW - 70 * DAY), end: new Date(NOW - 10 * DAY) } });
-  expect(panned.errors).toHaveLength(2);
   expect(calls.some(call => call.kind === "recovery" || call.kind === "default" || call.kind === "1d")).toBe(false);
 });
 
@@ -144,6 +141,71 @@ test("an explicit interval on a range longer than the source keeps charts the re
   const refused = await resolveChartSpecData(chart("RETENTION", "15m", "3M"), sources(wrong.provider), undefined, { awaitResolutionSupport: true });
   expect(refused.errors).toHaveLength(2);
   expect(wrong.calls.some(call => call.kind === "recovery")).toBe(false);
+});
+
+const HOUR = 3_600_000;
+const moved = (provider: DataProvider, viewport: { start: Date; end: Date }, cache = new ChartResolveCache()) => resolveChartSpecData(
+  chart("RETENTION", "15m", "3M"), sources(provider), cache, { awaitResolutionSupport: true, requestViewport: viewport });
+
+test("zooming out or panning left past the first retained bar keeps the retained bars and the notice", async () => {
+  setSystemTime(NOW);
+  const firstBar = proof().availableStart + STEP;
+  // The chart's zoom stops a little before the first bar; a pan can end in the past.
+  for (const viewport of [{ start: new Date(firstBar - 16 * HOUR), end: new Date(NOW) },
+    { start: new Date(firstBar - 10 * DAY), end: new Date(NOW - 20 * DAY) }]) {
+    const { provider, calls, data } = limited({ data: history(firstBar) });
+    const result = await moved(provider, viewport);
+    expect(result.errors).toEqual([]);
+    expect(retentionNotices(result.warnings)).toEqual(["15m history starts Jul 24; the source keeps the last 60 days."]);
+    expect(result.viewport).toEqual(viewport);
+    expect(result.series.find(series => series.id === "close")!.points).toHaveLength(data.filter(point => point.date <= viewport.end).length);
+    // One request, inside the validated evidence.
+    expect(calls.filter(call => call.kind === "recovery")).toEqual([expect.objectContaining({ start: firstBar, end: +viewport.end })]);
+    expect(calls.find(call => call.kind === "recovery")!.context?.historyRecovery?.retention)
+      .toMatchObject({ availableStart: proof().availableStart, requestedEnd: +viewport.end });
+  }
+});
+
+test("a panned window wholly before the retained bars still fails without asking for them", async () => {
+  setSystemTime(NOW);
+  // Whether the evidence came from this window's request or the broad one.
+  for (const detailFails of [false, true]) {
+    const { provider, calls } = limited({ detailFails });
+    const result = await moved(provider, { start: new Date(NOW - 90 * DAY), end: new Date(NOW - 65 * DAY) });
+    expect(result.errors).toHaveLength(2);
+    expect(calls.some(call => call.kind === "recovery")).toBe(false);
+  }
+});
+
+test("authored dates reaching back past the retained bars keep failing, beside a view panned to the same end", async () => {
+  setSystemTime(NOW);
+  const { provider } = limited(), cache = new ChartResolveCache(), spec = chart("RETENTION", "15m", "3M");
+  spec.viewport.dateWindow = { start: "2026-07-01T00:00:00Z", end: "2026-08-31T00:00:00Z" };
+  const resolve = (requestViewport?: { start: Date; end: Date }) => resolveChartSpecData(spec, sources(provider), cache,
+    { awaitResolutionSupport: true, ...(requestViewport ? { requestViewport } : {}) });
+  expect((await resolve()).errors).toHaveLength(2);
+  // The panned view shares the authored dates' buffer but not their answer, in either order.
+  const panned = await resolve({ start: new Date("2026-07-10T00:00:00Z"), end: new Date("2026-08-31T00:00:00Z") });
+  expect(panned.errors).toEqual([]);
+  expect(retentionNotices(panned.warnings)).toHaveLength(1);
+  expect((await resolve()).errors).toHaveLength(2);
+});
+
+test("a panned window gets the same answer whether or not the retained window is cached", async () => {
+  setSystemTime(NOW);
+  const firstBar = proof().availableStart + STEP;
+  const zoomed = { start: new Date(firstBar - 16 * HOUR), end: new Date(NOW) };
+  const answer = (result: Awaited<ReturnType<typeof moved>>) => ({ errors: result.errors, warnings: result.warnings,
+    viewport: result.viewport, points: result.series.map(series => series.points.map(point => [+point.date, point.value])) });
+  // A restart with the saved zoom: nothing cached.
+  const uncached = await moved(limited({ data: history(firstBar) }).provider, zoomed);
+  // A view inside the retained window that shares its buffer recovered first.
+  const { provider, calls } = limited({ data: history(firstBar) }), cache = new ChartResolveCache();
+  await moved(provider, { start: new Date(NOW - 50 * DAY), end: new Date(NOW) }, cache);
+  const cached = await moved(provider, zoomed, cache);
+  expect(calls.filter(call => call.kind === "recovery")).toHaveLength(1);
+  expect(uncached.errors).toEqual([]);
+  expect(answer(cached)).toEqual(answer(uncached));
 });
 
 test("Auto on a range longer than the source keeps still steps to coarser bars", async () => {
