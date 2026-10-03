@@ -74,8 +74,9 @@ const shareScripts = outputFiles.filter((path) => /assets\/share\/.*\.js$/.test(
 const shareBytes = (await Promise.all(shareScripts.map((path) => stat(path)))).reduce((sum, entry) => sum + entry.size, 0);
 // The share page ships the shared API client, live quote socket included, so
 // the budget leaves room for its protocol; it exists to catch a dependency or
-// renderer pulled in by accident, not a few hundred bytes of socket handling.
-const SHARE_BUNDLE_LIMIT = 305_000;
+// renderer pulled in by accident, not a few hundred bytes of protocol methods.
+// The GPU request methods add 565 bytes to the shared client (305,392 total).
+const SHARE_BUNDLE_LIMIT = 306_000;
 if (shareBytes > SHARE_BUNDLE_LIMIT) failures.push(`share bundle is ${shareBytes} bytes (limit ${SHARE_BUNDLE_LIMIT})`);
 if (failures.length) throw new Error(`Web bundle audit failed:\n${failures.join("\n")}`);
 console.log(`Web bundle audit passed (${outputFiles.length} files, share JS ${shareBytes} bytes).`);
