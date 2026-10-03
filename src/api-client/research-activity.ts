@@ -1,6 +1,7 @@
 import { apiClient } from "./index";
 import { getCurrentPluginTarget } from "../plugins/current-target";
 import type { DesktopDeepLinkBridge } from "../types/desktop-deeplink";
+import { exposeExperiment, storedExperimentAssignments } from "./web-experiments";
 
 export type ResearchActivity =
   | "workspace_opened"
@@ -310,7 +311,7 @@ export function observeDesktopDeepLinks(
 /** What the server stores against the account: stored touches plus the product marker. */
 function attributionPayload(): Record<string, string> | undefined {
   const target = getCurrentPluginTarget();
-  if (target === "web") return { product: "gloomberb", ...attribution };
+  if (target === "web") return { product: "gloomberb", ...attribution, ...webExperimentAttribution() };
   if (target === "desktop" && Object.keys(attribution).length > 0) return { product: "gloomberb", ...attribution };
   return undefined;
 }
@@ -384,6 +385,46 @@ export function identifyResearchUser(): void {
     recordResearchActivity("workspace_opened");
   } catch {
     /* Analytics never blocks sign-in. */
+  }
+}
+
+/** The arms this browser was given, so each milestone carries them as `exp_<key>`. */
+function webExperimentAttribution(): { experiments?: string } {
+  if (!anonymousId) return {};
+  try {
+    const experiments = storedExperimentAssignments(localStorage);
+    return experiments ? { experiments } : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The arm of a web terminal experiment to show, asked for at the moment it
+ * would show and counted then, in every arm; null shows nothing. Only signed-out
+ * visitors on term.gloom.sh with an analytics id (no Do Not Track or Global
+ * Privacy Control) and not driven by automation are asked. See web-experiments.ts.
+ */
+export function exposeWebExperiment(experiment: string): Promise<string | null> {
+  if (getCurrentPluginTarget() !== "web") return Promise.resolve(null);
+  try {
+    return exposeExperiment(experiment, {
+      anonymousId,
+      signedIn: !!apiClient.getCurrentUser(),
+      automated: navigator.webdriver === true,
+      local: localStorage,
+      session: sessionStorage,
+      ask: ({ experiment: key, variant }) => apiClient.recordExperimentExposure({
+        eventId: crypto.randomUUID(),
+        surface: "web",
+        anonymousId,
+        attribution: attributionPayload(),
+        experiment: key,
+        variant,
+      }),
+    });
+  } catch {
+    return Promise.resolve(null);
   }
 }
 

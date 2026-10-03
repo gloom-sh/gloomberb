@@ -399,6 +399,20 @@ class GloomApiClient {
     return this.request<{ url: string }>("/stripe/portal", { method: "POST", body: JSON.stringify({}) });
   }
 
+  /**
+   * Asks which arm of a web terminal experiment this visitor is in, at the
+   * moment it would show. The API counts the answer as the exposure.
+   */
+  async recordExperimentExposure(payload: {
+    eventId: string; surface: "web"; anonymousId?: string;
+    attribution?: Record<string, string>; experiment: string; variant?: string;
+  }): Promise<import("./web-experiments").ExperimentAnswer> {
+    return this.request("/activity/research", {
+      method: "POST",
+      body: JSON.stringify({ event: "experiment_exposed", ...payload }),
+    });
+  }
+
   getAccountProfile = this.auth.getAccountProfile.bind(this.auth);
   getCloudPricing = this.auth.getCloudPricing.bind(this.auth);
   getCloudAccountPlan = this.auth.getCloudAccountPlan.bind(this.auth);

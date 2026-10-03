@@ -48,13 +48,16 @@ import { buildStatusBarTabGroups, groupIdFromMarkerValue, groupMarkerValue } fro
 import { requestFeedbackDialog } from "../feedback-dialog";
 import { openFormModal } from "../form-modal";
 import { recordFunctionOpen } from "../../telemetry/usage-counts";
+import {
+  STATUS_WIDGET_COLUMNS,
+  useClaimedStatusWidgetColumns,
+  usePublishStatusWidgetRoom,
+} from "./status-widget-space";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
 type HoveredControl = string | null;
 type SetHoveredControl = (updater: (current: HoveredControl) => HoveredControl) => void;
 
-/** Space held back for the `status:widget` plugin slot, which sizes itself. */
-const STATUS_WIDGET_COLUMNS = 20;
 /**
  * Where term.gloom.sh sends people who want the installed app. The route
  * picks the installer for the visitor's OS, so one link serves every platform.
@@ -383,12 +386,15 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     onContextMenu: handleLayoutTabContextMenu,
   }));
 
-  if (!statusBarVisible) return null;
-
+  const claimedWidgetColumns = useClaimedStatusWidgetColumns();
   const tidyWindowsKey = actionKey("tidy-windows");
   const leftWidth = 1
     + (hasMultipleLayouts ? layoutTabsWidth : 0)
     + (showTidyWindows ? terminalTidyWindowsLabel(tidyWindowsKey).length + 1 : 0);
+  const feedbackWidth = displayWidth(t("Feedback")) + 1;
+  usePublishStatusWidgetRoom(statusBarVisible ? Math.max(0, termWidth - leftWidth - feedbackWidth) : 0);
+
+  if (!statusBarVisible) return null;
 
   const viewProps: StatusBarViewProps = {
     activeLayoutIdx,
@@ -402,8 +408,9 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     layoutTabsWidth,
     openChangelog: onOpenChangelog ? openChangelog : undefined,
     openLayoutContextMenu,
-    // Feedback keeps the bottom-right corner; the version chip gives way first.
-    rightAvailableWidth: Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS - (displayWidth(t("Feedback")) + 1)),
+    // Feedback keeps the bottom-right corner; the version chip gives way first,
+    // also to a widget that claimed more than the usual room.
+    rightAvailableWidth: Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS - claimedWidgetColumns - feedbackWidth),
     setHoveredControl,
     showTidyWindows,
     tidyWindowsKey,
