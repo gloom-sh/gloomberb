@@ -1,7 +1,8 @@
 import type { SecFilingItem } from "../../../types/data-provider";
 import { formatCompact, formatCurrency } from "../../../utils/format";
-import { parseForm4Xml, parseForm4Disclosure, transactionTypeLabel, type InsiderTransaction, type InsiderFilingDisclosure } from "./insider-data";
+import { parseForm4Xml, parseForm4Disclosure, transactionTypeLabel, type InsiderTransaction, type InsiderFilingDisclosure, type InsiderReportingOwner } from "./insider-data";
 import { affectingInsiderAmendments, buildInsiderAmendmentScopes, isAmendedInsiderFiling } from "./amendments";
+import { formatInsiderName, isOpenMarketTrade, shortInsiderRole } from "./display";
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -38,11 +39,56 @@ export function insiderReportedName(entry: ParsedInsiderFiling): string | null {
     ?? (entry.disclosure?.reportingOwners.map((owner) => owner.name).filter(Boolean).join("; ") || null);
 }
 
+/** The reported name as the table shows it, first name first. */
+export function insiderDisplayName(entry: ParsedInsiderFiling): string | null {
+  const name = insiderReportedName(entry);
+  return name ? formatInsiderName(name) : null;
+}
+
+function insiderOwners(entry: ParsedInsiderFiling): InsiderReportingOwner[] {
+  return entry.disclosure?.reportingOwners ?? entry.transaction?.reportingOwners ?? [];
+}
+
+/** The owner's role in a word or two (CEO, Director, 10% owner); the full title stays in the detail. */
+export function insiderRole(entry: ParsedInsiderFiling): string {
+  const owners = insiderOwners(entry);
+  if (owners.length) return shortInsiderRole(owners, entry.disclosure?.remarks);
+  return entry.transaction?.title ? shortInsiderRole([{ title: entry.transaction.title }]) : "";
+}
+
+/** Matches the name as filed ("COOK TIMOTHY D") or as shown ("Timothy D. Cook"). */
 export function matchesInsiderOwner(entry: ParsedInsiderFiling, name: string): boolean {
   const normalized = name.trim().toLocaleLowerCase();
-  return insiderReportedName(entry)?.toLocaleLowerCase() === normalized
-    || (entry.disclosure?.reportingOwners ?? entry.transaction?.reportingOwners ?? [])
-      .some((owner) => owner.name.toLocaleLowerCase() === normalized);
+  const matches = (candidate: string | null | undefined) => !!candidate
+    && (candidate.toLocaleLowerCase() === normalized || formatInsiderName(candidate).toLocaleLowerCase() === normalized);
+  return matches(insiderReportedName(entry)) || insiderOwners(entry).some((owner) => matches(owner.name));
+}
+
+/**
+ * The Type filter: open-market buys and sells (codes P and S, the default),
+ * everything else (awards, exercises, tax withholding, gifts), or all.
+ */
+export type InsiderTypeFilter = "trades" | "other" | "all";
+
+export const DEFAULT_INSIDER_TYPE_FILTER: InsiderTypeFilter = "trades";
+
+export function isInsiderTypeFilter(value: unknown): value is InsiderTypeFilter {
+  return value === "trades" || value === "other" || value === "all";
+}
+
+/**
+ * Whether a row belongs in a Type view. A filing still being read shows only
+ * under All, so the narrower views do not flicker as it resolves. A filing
+ * that could not be read, or an amendment without transaction lines, may
+ * hide a trade, so it shows under both narrower views.
+ */
+export function matchesInsiderTypeFilter(entry: ParsedInsiderFiling, filter: InsiderTypeFilter): boolean {
+  if (filter === "all") return true;
+  const { transaction } = entry;
+  if (transaction) return isOpenMarketTrade(transaction.transactionType) === (filter === "trades");
+  if (entry.isLoading) return false;
+  if (isInsiderDisclosureOnly(entry)) return filter === "other" || isAmendedInsiderFiling(entry);
+  return true;
 }
 
 export function buildInsiderDisclosureText(entry: ParsedInsiderFiling): string {
@@ -125,6 +171,8 @@ export function buildInsiderRows(parsed: readonly ParsedInsiderFiling[], context
       filingDate: filing.filingDate instanceof Date ? filing.filingDate.toISOString() : String(filing.filingDate),
       transactionDate: transaction?.filingDate?.toISOString() ?? null,
       insider: insiderReportedName(entry),
+      insiderName: insiderDisplayName(entry),
+      role: insiderRole(entry) || null,
       reportingOwners: entry.disclosure?.reportingOwners ?? transaction?.reportingOwners ?? [],
       title: transaction?.title ?? (entry.disclosure?.reportingOwners.map((owner) => owner.title).filter(Boolean).join("; ") || null),
       security: transaction?.securityTitle ?? null,
@@ -137,6 +185,7 @@ export function buildInsiderRows(parsed: readonly ParsedInsiderFiling[], context
       shares: transaction?.shares ?? null,
       pricePerShare: transaction?.pricePerShare ?? null,
       totalValue: transaction?.totalValue ?? null,
+      rule10b51: transaction?.rule10b51 ?? null,
       sharesOwnedAfter: transaction?.sharesOwned ?? null,
       form: filing.form,
       documentForm: entry.disclosure?.form ?? transaction?.form ?? null,
