@@ -653,6 +653,7 @@ class GloomApiClient {
   listFeedback = this.feedback.listFeedback.bind(this.feedback);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
+  reportAttentionCounts = this.telemetry.reportAttentionCounts.bind(this.telemetry);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
   listTheses = this.theses.listTheses.bind(this.theses);
   getThesis = this.theses.getThesis.bind(this.theses);

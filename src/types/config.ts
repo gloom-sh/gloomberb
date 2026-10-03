@@ -199,6 +199,8 @@ export interface TelemetryConfig {
    * both off; absent means on.
    */
   usage?: boolean;
+  /** Ticker-level research counts. Only an explicit true opts in; absent is OFF. */
+  attention?: boolean;
 }
 
 export interface AppConfig {

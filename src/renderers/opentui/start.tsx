@@ -37,6 +37,7 @@ import {
 } from "../../telemetry/crash-reports-node";
 import { currentTelemetryConfig } from "../../telemetry/live-config";
 import { flushUsageCounts, installUsageCounter, usageCountsEnabled } from "../../telemetry/usage-counts";
+import { attentionCountsEnabled, installAttentionCounter } from "../../telemetry/attention-counts";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -119,8 +120,10 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
       getInstallId: () => readOrCreateInstallId(config.dataDir),
       officialPluginIds: loadOfficialPluginIds,
     });
+    const stopAttention = installAttentionCounter(() => attentionCountsEnabled(currentTelemetryConfig(config), process.env));
     host = await measurePerfAsync("startup.opentui.create-host", () => createOpenTuiHost());
     const renderer = host.renderer;
+    renderer.once("destroy", stopAttention);
     // The renderer already listens for uncaught errors and keeps the process
     // running; these listeners live exactly as long as it does, so nothing
     // changes about when the process exits.

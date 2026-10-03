@@ -153,6 +153,7 @@ function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
   const telemetry: TelemetryConfig = {
     ...(typeof value.crashReports === "boolean" ? { crashReports: value.crashReports } : {}),
     ...(typeof value.usage === "boolean" ? { usage: value.usage } : {}),
+    ...(typeof value.attention === "boolean" ? { attention: value.attention } : {}),
   };
   return Object.keys(telemetry).length > 0 ? telemetry : undefined;
 }

@@ -133,6 +133,8 @@ gloomberb config set telemetry.usage false
 
 Setting `GLOOMBERB_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` in the environment turns all of it off. The browser app also honours Do Not Track and Global Privacy Control.
 
+**Attention Counts are separate and off by default.** Run `Attention Counts` in the command bar and review the consent dialog to share ticker research counts for Gloom Trending. This sends ticker symbols and the kind of explicit research action only while signed in with a verified account. It does not send holdings, watchlist names, queries or an install id. Consent stays on this device; cloud sync cannot enable it elsewhere. Turn the setting off to discard unsent counts, or run `gloomberb config set telemetry.attention false`. The environment and browser opt-outs above also disable Attention Counts. See the [attention privacy review](docs/attention-privacy.md) for the authenticated collection boundary, retention, aggregation and remaining risks.
+
 ## Sponsors
 
 <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="Adjacent" width="56" /></a>
