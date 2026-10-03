@@ -75,6 +75,36 @@ test("a held Enter opens one checkout, and another only once a few seconds have 
   expect(opened).toHaveLength(2);
 });
 
+test("a checkout still opening after 30 seconds lets the next press try again", async () => {
+  const hung = [Promise.withResolvers<{ url: string }>(), Promise.withResolvers<{ url: string }>()];
+  apiClient.createCloudCheckout = (async () => {
+    checkouts += 1;
+    return hung[checkouts - 1]!.promise;
+  }) as typeof apiClient.createCloudCheckout;
+  const upgrade = await renderUpgradeAction();
+  const start = Date.now();
+
+  const first = upgrade({ sheet: false });
+  setSystemTime(new Date(start + 29_000));
+  await upgrade({ sheet: false });
+  expect(checkouts).toBe(1);
+
+  setSystemTime(new Date(start + 31_000));
+  const second = upgrade({ sheet: false });
+  expect(checkouts).toBe(2);
+
+  // The stale first call finishing must not cut the second one's block short.
+  hung[0]!.resolve({ url: "https://checkout.example/late" });
+  await first;
+  setSystemTime(new Date(start + 35_000));
+  await upgrade({ sheet: false });
+  expect(checkouts).toBe(2);
+
+  hung[1]!.resolve({ url: "https://checkout.example/session" });
+  await second;
+  expect(opened).toEqual(["https://checkout.example/late", "https://checkout.example/session"]);
+});
+
 test("a checkout that cannot be created falls back to the Cloud page once and lets a retry through", async () => {
   let failing = true;
   apiClient.createCloudCheckout = (async () => {

@@ -66,8 +66,16 @@ type CloudUpgradePage = "checkout" | "portal" | "cloud";
 const CLOUD_UPGRADE_REOPEN_MS = 3_000;
 
 /**
+ * How long a page may stay opening before another press tries again. The
+ * checkout and portal requests have no deadline of their own, and one that
+ * hangs must not block the page until the app restarts.
+ */
+const CLOUD_UPGRADE_PENDING_MS = 30_000;
+
+/**
  * When each page may open again: not while its URL is being created or
- * opened, and not for {@link CLOUD_UPGRADE_REOPEN_MS} after it opened. Every
+ * opened (up to {@link CLOUD_UPGRADE_PENDING_MS}), and not for
+ * {@link CLOUD_UPGRADE_REOPEN_MS} after it opened. Every
  * open creates a Stripe session and a browser tab, and a held Enter repeats a
  * press many times a second. Keyed by page, so a checkout that just opened
  * never swallows the billing portal or the Cloud page.
@@ -85,18 +93,25 @@ function isCloudUpgradeBlocked(page: CloudUpgradePage): boolean {
 
 /**
  * Runs `open` unless `page` is already opening or opened moments ago. A failed
- * open releases the page at once, so a retry works, and rethrows.
+ * open releases the page at once, so a retry works, and rethrows. A call that
+ * outlived its pending window leaves the block of the call after it alone.
  */
 async function openCloudUpgradePage(page: CloudUpgradePage, open: () => Promise<void>): Promise<void> {
   if (isCloudUpgradeBlocked(page)) return;
-  cloudUpgradeBlockedUntil.set(page, Number.POSITIVE_INFINITY);
+  const pending = Date.now() + CLOUD_UPGRADE_PENDING_MS;
+  cloudUpgradeBlockedUntil.set(page, pending);
+  const settle = (until: number | null) => {
+    if (cloudUpgradeBlockedUntil.get(page) !== pending) return;
+    if (until === null) cloudUpgradeBlockedUntil.delete(page);
+    else cloudUpgradeBlockedUntil.set(page, until);
+  };
   try {
     await open();
   } catch (error) {
-    cloudUpgradeBlockedUntil.delete(page);
+    settle(null);
     throw error;
   }
-  cloudUpgradeBlockedUntil.set(page, Date.now() + CLOUD_UPGRADE_REOPEN_MS);
+  settle(Date.now() + CLOUD_UPGRADE_REOPEN_MS);
 }
 
 /** Forgets every recent open, so one test's checkout does not swallow the next test's. */
