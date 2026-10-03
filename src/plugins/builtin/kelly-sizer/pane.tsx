@@ -449,7 +449,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const bodyRows = Math.max(0, height - 1 - tabRows - gridRows - resultRows);
   const chartHeight = showSensitivity ? 0 : bodyRows;
   const showChart = !showSensitivity && chartHeight >= 6 && curvePoints.length > 0;
-  const quoteCurrency = positionFinancials?.quote?.currency ?? ticker?.metadata.currency ?? config.baseCurrency;
+  const quoteCurrency = positionFinancials?.quote?.currency || ticker?.metadata.currency || config.baseCurrency;
   // The search shows the ticker and the Portfolio filter the account, so the
   // context is the price first, then the account only when there is no filter.
   const meta = [

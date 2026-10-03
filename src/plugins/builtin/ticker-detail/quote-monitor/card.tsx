@@ -99,7 +99,7 @@ export function QuoteMonitorCard({
   const changeColor = quoteFailed ? colors.textDim : priceColor(display?.change ?? 0);
   const priceAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.BOLD;
   const changeAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.NONE;
-  const currency = quote?.currency ?? ticker?.metadata.currency ?? "USD";
+  const currency = quote?.currency || ticker?.metadata.currency || "USD";
   const stacked = width < 31;
   const compactQuoteFailure = quoteFailed && stacked && height <= 3;
   // One decimal count per instrument, so streamed ticks never narrow or widen the price column.

@@ -103,7 +103,7 @@ export function listOnboardingPositions(
     rows.push({
       symbol: ticker.metadata.ticker,
       name: ticker.metadata.name || "",
-      currency: position?.currency ?? ticker.metadata.currency ?? "USD",
+      currency: position?.currency || ticker.metadata.currency || "USD",
       shares,
       avgCost,
       price: typeof price === "number" && Number.isFinite(price) ? price : null,

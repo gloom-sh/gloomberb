@@ -35,23 +35,24 @@ let tempDataDir: string | null = null;
 let capturedConfig: AppConfig | null = null;
 let capturedBrokerAccounts: Record<string, unknown> | null = null;
 
-const KNOWN_COMPANIES: Record<string, string> = {
-  AAPL: "Apple Inc.",
-  MSFT: "Microsoft Corp.",
-  NVDA: "NVIDIA Corp.",
+const KNOWN_LISTINGS: Record<string, { symbol: string; name: string; exchange: string; currency: string }> = {
+  AAPL: { symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", currency: "USD" },
+  MSFT: { symbol: "MSFT", name: "Microsoft Corp.", exchange: "NASDAQ", currency: "USD" },
+  NVDA: { symbol: "NVDA", name: "NVIDIA Corp.", exchange: "NASDAQ", currency: "USD" },
+  "TTALO.HE": { symbol: "TTALO", name: "Terveystalo Oyj", exchange: "HEL", currency: "EUR" },
 };
 
-/** Exact-symbol search plus a flat $100 quote, enough to resolve and value a position. */
+/** Exact-symbol search plus a flat 100 quote in the listing's currency, enough to resolve and value a position. */
 function createMarketData(): DataProvider {
   return {
     id: "test-market",
     async search(query: string) {
-      const symbol = query.trim().toUpperCase();
-      const name = KNOWN_COMPANIES[symbol];
-      return name ? [{ providerId: "test-market", symbol, name, exchange: "NASDAQ", type: "STK", currency: "USD" }] : [];
+      const listing = KNOWN_LISTINGS[query.trim().toUpperCase()];
+      return listing ? [{ providerId: "test-market", ...listing, type: "STK" }] : [];
     },
     async getQuote(symbol: string) {
-      return { symbol, price: 100, currency: "USD", change: 1, changePercent: 1, lastUpdated: Date.now() };
+      const currency = Object.values(KNOWN_LISTINGS).find((listing) => listing.symbol === symbol)?.currency ?? "USD";
+      return { symbol, price: 100, currency, change: 1, changePercent: 1, lastUpdated: Date.now() };
     },
   } as unknown as DataProvider;
 }
@@ -243,6 +244,13 @@ async function addManualPosition(symbol: string, shares = "", avgCost = ""): Pro
   // The typed symbol also sits in the ticker field, so wait for the row count.
   expectedPositionCount += 1;
   await waitForFrame(`Positions (${expectedPositionCount})`);
+  // The row lands before the add finishes; typing on would be lost.
+  for (let attempt = 0; attempt < 60 && tui.frame().includes("adding..."); attempt += 1) {
+    await act(async () => {
+      await Bun.sleep(attempt < 5 ? 0 : 10);
+      await tui.setup().renderOnce();
+    });
+  }
 }
 
 /** Leaves "What do you trade?" without a desk, which keeps today's first-run workspace. */
@@ -327,6 +335,30 @@ describe("OnboardingWizard", () => {
       .filter((ticker) => ticker.metadata.watchlists.includes("watchlist"))
       .map((ticker) => ticker.metadata.ticker);
     expect(watching).toEqual(["SPY", "QQQ", "NVDA", "AMZN", "TSLA"]);
+  });
+
+  test("a euro listing is a euro holding beside a dollar one", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-currency-"));
+    const tickerRepository = new JsonTickerRepository();
+    const pluginRegistry = createPluginRegistry({ tickerRepository });
+    await tui.render(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+
+    await addManualPosition("TTALO.HE", "100", "7.5");
+    await addManualPosition("AAPL", "10", "180");
+
+    expect((await tickerRepository.loadTicker("TTALO"))?.metadata).toMatchObject({
+      currency: "EUR",
+      positions: [{ portfolio: "main", shares: 100, avgCost: 7.5, currency: "EUR", broker: "manual" }],
+    });
+    expect((await tickerRepository.loadTicker("AAPL"))?.metadata.positions).toEqual([
+      { portfolio: "main", shares: 10, avgCost: 180, currency: "USD", broker: "manual" },
+    ]);
+    // The first position set the portfolio's currency, as with the AP form.
+    expect(capturedConfig?.portfolios.find((portfolio) => portfolio.id === "main")?.currency).toBe("EUR");
   });
 
   test("a blank share count follows the company and prices a missing cost from the quote", async () => {

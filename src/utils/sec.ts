@@ -45,8 +45,9 @@ export function isUsEquityTicker(ticker: TickerRecord | null | undefined): boole
     ticker.metadata.exchange,
   ];
 
+  // A listing saved without a known currency counts by its venue.
   return isEquityType(type)
-    && currency === "USD"
+    && (currency === "USD" || !currency)
     && exchangeCandidates.some((exchange) => isUsExchange(exchange));
 }
 

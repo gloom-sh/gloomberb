@@ -658,7 +658,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const statWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
   const statItems = optionsSummaryItems({
     spot: spotItem(underlying, isOpt ? undefined : ticker.metadata.assetCategory),
-    summary, enrichment, currency: underlying?.quote?.currency ?? ticker.metadata.currency ?? "",
+    summary, enrichment, currency: underlying?.quote?.currency || ticker.metadata.currency || "",
     ivRank: showIvRank ? { stats: ivRank } : null,
   });
   // The band keeps the chain's row budget (3, 4 or 6 rows by width). A live

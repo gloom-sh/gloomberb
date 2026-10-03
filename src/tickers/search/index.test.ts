@@ -15,6 +15,7 @@ import {
   upsertTickerFromSearchResult,
 } from "./index";
 import { createTestTicker } from "../../test-support/ticker";
+import { resolveManualPositionCurrency } from "../../plugins/builtin/portfolio-list/mutations";
 
 function makeSearchResult(
   symbol: string,
@@ -265,6 +266,28 @@ describe("ticker-search utilities", () => {
       kind: "provider",
       symbol: "MSFT",
     });
+  });
+
+  test("a venue code after the dot resolves like the listing suffix once the literal symbol finds nothing", async () => {
+    const queried: string[] = [];
+    const dataProvider = createTestDataProvider({
+      id: "test",
+      search: async (query: string) => {
+        queried.push(query);
+        if (query === "TTALO.HE") return [makeSearchResult("TTALO", "Terveystalo Oyj", { exchange: "HEL", currency: "EUR" })];
+        if (query === "ABC.LON") return [makeSearchResult("ABC.LON", "Literal Co")];
+        return [];
+      },
+    });
+    const resolve = (query: string) => resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider });
+
+    for (const query of ["TTALO.HEL", "TTALO.XHEL"]) {
+      expect(await resolve(query)).toMatchObject({ kind: "provider", symbol: "TTALO", result: { exchange: "HEL", currency: "EUR" } });
+    }
+    // A literal match wins; the rewrite is only a fallback.
+    queried.length = 0;
+    expect(await resolve("ABC.LON")).toMatchObject({ symbol: "ABC.LON" });
+    expect(queried.filter((query) => query === "ABC.L" || query === "ABC:LON")).toEqual([]);
   });
 
   test("combines local and provider candidates without duplicate saved symbols", async () => {
@@ -834,6 +857,19 @@ describe("ticker-search utilities", () => {
     expect(created).toBe(true);
     expect(ticker.metadata.ticker).toBe("NVDA");
     expect(saved).toHaveLength(0);
+  });
+
+  test("a listing searched without a currency is saved without one, so its position takes the portfolio's", async () => {
+    const repository = {
+      loadTicker: async () => null,
+      createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }),
+      saveTicker: async () => {},
+    };
+    const { ticker } = await upsertTickerFromSearchResult(repository as any, makeSearchResult("SAP", "SAP SE", { exchange: "XETRA" }));
+
+    expect(ticker.metadata.currency).toBe("");
+    const portfolio = { id: "main", name: "Main", currency: "EUR" };
+    expect(resolveManualPositionCurrency(undefined, ticker, portfolio, "USD")).toBe("EUR");
   });
 
   test("refreshes low-quality saved metadata when opening a provider-backed result", async () => {

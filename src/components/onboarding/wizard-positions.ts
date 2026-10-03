@@ -57,6 +57,14 @@ function parseAmount(value: string): number | null {
   return Number.isFinite(amount) ? amount : Number.NaN;
 }
 
+/** The listing's own currency as its quote or the search knows it; empty when neither does. */
+function instrumentCurrency(resolved: ResolvedTickerSearch, quote: Quote | null): string {
+  const listed = resolved.kind === "provider"
+    ? resolved.result.currency || resolved.result.brokerContract?.currency
+    : resolved.ticker.metadata.currency;
+  return (quote?.currency || listed || "").trim();
+}
+
 function resolvedName(resolved: ResolvedTickerSearch, ticker: TickerRecord | null): string {
   if (ticker?.metadata.name) return ticker.metadata.name;
   return resolved.kind === "provider" ? resolved.result.name : "";
@@ -218,6 +226,12 @@ export function useOnboardingPositions({
         created = upserted.created;
       }
 
+      // A Helsinki listing is a euro holding: the instrument's currency comes
+      // before the portfolio's and the base currency, as in the AP form.
+      const listingCurrency = instrumentCurrency(result.resolved, result.quote);
+      if (listingCurrency && !ticker.metadata.currency) {
+        ticker = { ...ticker, metadata: { ...ticker.metadata, currency: listingCurrency } };
+      }
       const portfolio = stateRef.current.config.portfolios.find((entry) => entry.id === portfolioId);
       let nextTicker: TickerRecord;
       let positionCurrency: string | null = null;
@@ -231,7 +245,7 @@ export function useOnboardingPositions({
           return false;
         }
         positionCurrency = resolveManualPositionCurrency(
-          undefined,
+          listingCurrency || undefined,
           ticker,
           portfolio ?? { id: portfolioId, name: portfolioId, currency: stateRef.current.config.baseCurrency },
           stateRef.current.config.baseCurrency,

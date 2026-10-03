@@ -99,7 +99,7 @@ export async function resolveTickerOpenTarget({
     const ticker = await tickerRepository.createTicker({
       ticker: quoteSymbol,
       exchange: requested.exchange ?? quote.listingExchangeName ?? quote.exchangeName ?? "",
-      currency: quote.currency || "USD",
+      currency: quote.currency || "",
       name: quote.name || quoteSymbol,
       assetCategory: undefined,
       portfolios: [],

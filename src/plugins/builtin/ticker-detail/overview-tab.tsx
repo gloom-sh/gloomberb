@@ -58,7 +58,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
     capitalization?.currency,
     ...ticker.metadata.positions.map((position) => position.currency),
   ]);
-  const quoteCurrency = quote?.currency ?? ticker.metadata.currency ?? baseCurrency;
+  const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
   const toBase = (value: number, fromCurrency: string) =>
     convertCurrency(value, fromCurrency, baseCurrency, exchangeRates);
   const sector = ticker.metadata.sector ?? profile?.sector;
