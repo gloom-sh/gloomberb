@@ -1306,6 +1306,7 @@ export const zhCN: Record<string, string> = {
   "your company": "你的公司",
   "Shares": "股数",
   "Avg cost": "平均成本",
+  "Currency": "货币",
   "optional": "可选",
   "current price": "当前价格",
   "e.g. AAPL": "例如 AAPL",

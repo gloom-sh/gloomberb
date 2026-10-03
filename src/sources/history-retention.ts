@@ -1,5 +1,7 @@
+import { formatShortDate } from "../utils/datetime-format";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { isRecord } from "../utils/guards";
+import { zonedDateKey } from "../utils/zoned-date-time";
 import { parseBarInterval } from "../time-series/resolution";
 
 export const HISTORY_RETENTION_MAX_AGE_MS = 5 * 60_000;
@@ -130,6 +132,20 @@ export class HistoryRetentionError extends Error {
     this.outcomes = Object.freeze(sourceOutcomes as HistorySourceOutcome[]);
     Object.freeze(this);
   }
+}
+
+/**
+ * Shown while a chart at an explicit interval reaches back past what the
+ * source keeps at it: the first retained day, read in the listing's zone
+ * (UTC when unknown), and the length of the window the source keeps.
+ */
+export function historyRetentionNotice(retention: HistoryRetention, interval: string, timeZone: string | null): string {
+  const zone = timeZone ?? "UTC";
+  const day = zonedDateKey(retention.availableStart, zone);
+  const sameYear = day.slice(0, 4) === zonedDateKey(retention.observedAt, zone).slice(0, 4);
+  const days = Math.round((retention.observedAt - retention.availableStart) / 86_400_000);
+  return `${interval} history starts ${formatShortDate(day, { utc: true, year: sameYear ? false : "numeric" })}; `
+    + `the source keeps the last ${days === 1 ? "day" : `${days} days`}.`;
 }
 
 export function isHistoryRetentionError(value: unknown): value is HistoryRetentionError {

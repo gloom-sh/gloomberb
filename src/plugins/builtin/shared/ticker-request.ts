@@ -32,7 +32,7 @@ export function useBoundTicker() {
     symbol,
     ticker,
     exchange: ticker?.metadata.exchange ?? "",
-    currency: ticker?.metadata.currency ?? "USD",
+    currency: ticker?.metadata.currency || "USD",
   };
 }
 

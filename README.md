@@ -76,6 +76,7 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `HVG AAPL` / `HVT AAPL` | Realized volatility and volatility cones |
 | `SEAS AAPL` | Seasonality: monthly returns by year and year overlays |
 | `COT [code or root]` | CFTC positioning and cross-market extremes |
+| `DOE` / `NGS` | EIA weekly oil stocks and gas storage, with builds, draws and five-year ranges |
 | `TOP` | Market stories |
 | `WIRP` / `FFIP` | US rate path and conditional FOMC probabilities |
 | `BTMM` | Funding rates, bill curves and Federal Reserve liquidity |

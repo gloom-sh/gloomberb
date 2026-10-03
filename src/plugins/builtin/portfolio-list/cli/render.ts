@@ -167,7 +167,7 @@ async function showCollectionWithMarketData(
       }
 
       for (const position of positions) {
-        const quoteCurrency = quote?.currency ?? ticker.metadata.currency ?? config.baseCurrency;
+        const quoteCurrency = quote?.currency || ticker.metadata.currency || config.baseCurrency;
         const metrics = getPortfolioPositionMetrics({ ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, id, quoteCurrency, undefined, quote);
         const valuationQuote = getPortfolioQuoteDisplay(metrics, quote);
         const positionCurrency = metrics.positionCurrency;

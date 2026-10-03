@@ -1306,6 +1306,7 @@ export const ja: Record<string, string> = {
   "your company": "あなたの企業",
   "Shares": "株数",
   "Avg cost": "平均取得価格",
+  "Currency": "通貨",
   "optional": "任意",
   "current price": "現在値",
   "e.g. AAPL": "例: AAPL",

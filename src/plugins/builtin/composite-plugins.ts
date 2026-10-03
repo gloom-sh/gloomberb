@@ -18,6 +18,7 @@ import { earningsCallsModule } from "./earnings-calls";
 import { futuresModule } from "./futures";
 import { futuresCurveModule } from "./futures-curve";
 import { cotModule } from "./cot";
+import { doeModule } from "./doe";
 import { fxMatrixModule } from "./fx-matrix";
 import { helpModule } from "./help";
 import { positionSizerModule } from "./kelly-sizer";
@@ -146,6 +147,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     futuresModule,
     futuresCurveModule,
     cotModule,
+    doeModule,
     cryptoBoardModule,
   ],
 });

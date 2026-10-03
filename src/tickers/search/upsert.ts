@@ -33,7 +33,10 @@ export async function upsertTickerFromSearchResult(
     const metadata: TickerMetadata = {
       ticker: symbol,
       exchange: result.exchange,
-      currency: result.currency || result.brokerContract?.currency || "USD",
+      // Unknown stays unknown (empty): a guessed USD outranked the portfolio's
+      // and base currency, and valued a Helsinki holding as dollars. A later
+      // search result that knows the currency fills it in.
+      currency: result.currency || result.brokerContract?.currency || "",
       name: result.name || symbol,
       assetCategory: result.brokerContract?.secType || result.type || undefined,
       broker_contracts: result.brokerContract ? [result.brokerContract] : [],

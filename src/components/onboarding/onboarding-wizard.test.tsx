@@ -35,23 +35,26 @@ let tempDataDir: string | null = null;
 let capturedConfig: AppConfig | null = null;
 let capturedBrokerAccounts: Record<string, unknown> | null = null;
 
-const KNOWN_COMPANIES: Record<string, string> = {
-  AAPL: "Apple Inc.",
-  MSFT: "Microsoft Corp.",
-  NVDA: "NVIDIA Corp.",
+const KNOWN_LISTINGS: Record<string, { symbol: string; name: string; exchange: string; currency: string }> = {
+  AAPL: { symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", currency: "USD" },
+  MSFT: { symbol: "MSFT", name: "Microsoft Corp.", exchange: "NASDAQ", currency: "USD" },
+  NVDA: { symbol: "NVDA", name: "NVIDIA Corp.", exchange: "NASDAQ", currency: "USD" },
+  "TTALO.HE": { symbol: "TTALO", name: "Terveystalo Oyj", exchange: "HEL", currency: "EUR" },
+  // Neither search nor quote knows this listing's currency.
+  BARE: { symbol: "BARE", name: "Bare Listing", exchange: "XETRA", currency: "" },
 };
 
-/** Exact-symbol search plus a flat $100 quote, enough to resolve and value a position. */
+/** Exact-symbol search plus a flat 100 quote in the listing's currency, enough to resolve and value a position. */
 function createMarketData(): DataProvider {
   return {
     id: "test-market",
     async search(query: string) {
-      const symbol = query.trim().toUpperCase();
-      const name = KNOWN_COMPANIES[symbol];
-      return name ? [{ providerId: "test-market", symbol, name, exchange: "NASDAQ", type: "STK", currency: "USD" }] : [];
+      const listing = KNOWN_LISTINGS[query.trim().toUpperCase()];
+      return listing ? [{ providerId: "test-market", ...listing, type: "STK" }] : [];
     },
     async getQuote(symbol: string) {
-      return { symbol, price: 100, currency: "USD", change: 1, changePercent: 1, lastUpdated: Date.now() };
+      const currency = Object.values(KNOWN_LISTINGS).find((listing) => listing.symbol === symbol)?.currency ?? "USD";
+      return { symbol, price: 100, currency, change: 1, changePercent: 1, lastUpdated: Date.now() };
     },
   } as unknown as DataProvider;
 }
@@ -230,8 +233,11 @@ async function waitForFrame(text: string, attempts = 60): Promise<string> {
 
 let expectedPositionCount = 0;
 
-/** Types a position through the three fields; blank shares follows the company only. */
-async function addManualPosition(symbol: string, shares = "", avgCost = ""): Promise<void> {
+/**
+ * Types a position through the fields; blank shares follows the company only.
+ * A currency replaces whatever the field was prefilled with.
+ */
+async function addManualPosition(symbol: string, shares = "", avgCost = "", currency?: string): Promise<void> {
   await typeText(symbol);
   await pressEnter();
   if (shares) await typeText(shares);
@@ -239,10 +245,26 @@ async function addManualPosition(symbol: string, shares = "", avgCost = ""): Pro
   if (shares) {
     if (avgCost) await typeText(avgCost);
     await pressEnter();
+    if (currency !== undefined) {
+      for (let index = 0; index < 4; index += 1) await emitKeypress({ name: "backspace", sequence: "\x7f" });
+      if (currency) await typeText(currency);
+    }
+    await pressEnter();
   }
+  await waitForAddedPosition();
+}
+
+async function waitForAddedPosition(): Promise<void> {
   // The typed symbol also sits in the ticker field, so wait for the row count.
   expectedPositionCount += 1;
   await waitForFrame(`Positions (${expectedPositionCount})`);
+  // The row lands before the add finishes; typing on would be lost.
+  for (let attempt = 0; attempt < 60 && tui.frame().includes("adding..."); attempt += 1) {
+    await act(async () => {
+      await Bun.sleep(attempt < 5 ? 0 : 10);
+      await tui.setup().renderOnce();
+    });
+  }
 }
 
 /** Leaves "What do you trade?" without a desk, which keeps today's first-run workspace. */
@@ -327,6 +349,40 @@ describe("OnboardingWizard", () => {
       .filter((ticker) => ticker.metadata.watchlists.includes("watchlist"))
       .map((ticker) => ticker.metadata.ticker);
     expect(watching).toEqual(["SPY", "QQQ", "NVDA", "AMZN", "TSLA"]);
+  });
+
+  test("each position takes its listing's currency unless one is typed, and blank falls back to the portfolio's", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-currency-"));
+    const tickerRepository = new JsonTickerRepository();
+    const pluginRegistry = createPluginRegistry({ tickerRepository });
+    await tui.render(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+
+    await typeText("TTALO.HE");
+    expect(await waitForFrame("Terveystalo")).toMatch(/Currency\s+EUR/);
+    for (const value of ["100", "7.5"]) {
+      await pressEnter();
+      await typeText(value);
+    }
+    await pressEnter();
+    await pressEnter();
+    await waitForAddedPosition();
+    await addManualPosition("AAPL", "10", "180");
+    await addManualPosition("MSFT", "2", "400", "eur");
+    await addManualPosition("BARE", "5", "20", "");
+
+    const positionOf = async (symbol: string) => (await tickerRepository.loadTicker(symbol))?.metadata.positions[0]?.currency;
+    expect(await positionOf("TTALO")).toBe("EUR");
+    expect(await positionOf("AAPL")).toBe("USD");
+    expect(await positionOf("MSFT")).toBe("EUR");
+    // Unknown is not dollars: it lands in the portfolio's currency, which the
+    // first position set to EUR.
+    expect(capturedConfig?.portfolios.find((portfolio) => portfolio.id === "main")?.currency).toBe("EUR");
+    expect(await positionOf("BARE")).toBe("EUR");
+    expect((await tickerRepository.loadTicker("BARE"))?.metadata.currency).toBe("");
   });
 
   test("a blank share count follows the company and prices a missing cost from the quote", async () => {

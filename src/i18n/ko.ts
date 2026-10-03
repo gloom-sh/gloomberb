@@ -1304,6 +1304,7 @@ export const ko: Record<string, string> = {
   "your company": "당신의 회사",
   "Shares": "주식 수",
   "Avg cost": "평균 단가",
+  "Currency": "통화",
   "optional": "선택",
   "current price": "현재가",
   "e.g. AAPL": "예: AAPL",

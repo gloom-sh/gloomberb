@@ -248,6 +248,10 @@ function seriesDomainValues(series: ResolvedSeries): number[] {
       for (const candidate of [point.open, point.high, point.low, point.close]) {
         if (isFiniteNumber(candidate)) values.push(candidate);
       }
+    } else if (series.style === "band") {
+      for (const candidate of [point.high, point.low]) {
+        if (isFiniteNumber(candidate)) values.push(candidate);
+      }
     }
   }
   if (series.style === "columns") values.push(0);

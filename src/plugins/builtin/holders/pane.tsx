@@ -67,7 +67,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   // refresh keeps the last holders; the failure goes to the footer.
   const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, { keepPreviousData: true });
 
-  const currency = data?.currency ?? ticker?.metadata.currency ?? "USD";
+  const currency = data?.currency || ticker?.metadata.currency || "USD";
   // A stake without a reported percentage is the holding's value over the
   // market cap. The stream keeps the cap current, about once a second; the
   // stakes follow it at most every few seconds so ticks do not re-sort them.

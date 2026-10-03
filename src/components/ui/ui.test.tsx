@@ -477,6 +477,43 @@ describe("shared UI kit", () => {
     expect(frame).not.toContain("secret");
   });
 
+  test("a field swapped out after the form clears it does not bring its text back", async () => {
+    let clearAndSwap = () => {};
+    let latest: Record<"cost" | "ticker", string> = { cost: "", ticker: "" };
+    function SwappingForm() {
+      const [active, setActive] = useState<"cost" | "ticker">("cost");
+      const [values, setValues] = useState({ cost: "", ticker: "" });
+      latest = values;
+      clearAndSwap = () => {
+        setValues({ cost: "", ticker: "" });
+        setActive("ticker");
+      };
+      return (
+        <TextField
+          key={active}
+          value={values[active]}
+          focused
+          width={12}
+          onChange={(next) => setValues((current) => ({ ...current, [active]: next }))}
+        />
+      );
+    }
+    await tui.render(<SwappingForm />, { width: 16, height: 2 });
+    await act(async () => {
+      await tui.setup().mockInput.typeText("180");
+      await tui.setup().renderOnce();
+    });
+    expect(latest.cost).toBe("180");
+
+    // The ticker field takes focus as the cost field leaves; the cost input
+    // blurs then and reports the text it still holds.
+    await act(async () => {
+      clearAndSwap();
+      await tui.setup().renderOnce();
+    });
+    expect(latest).toEqual({ cost: "", ticker: "" });
+  });
+
   test("does not allow selecting masked password fields", async () => {
     await tui.render(
       <TextField

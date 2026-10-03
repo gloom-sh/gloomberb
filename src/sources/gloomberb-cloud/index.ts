@@ -38,7 +38,7 @@ import type { NewsArticle, NewsQuery } from "../../types/news-source";
 import { normalizeNewsFeed } from "../../news/news-model";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
-import { normalizePriceHistory } from "../../utils/price-history";
+import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
 import { createProviderMiss } from "../provider-errors";
 import { publicListingTarget } from "../listing-target";
 import { canonicalHistoryInterval, HistoryRetentionError, parseHistoryRecoveryCandidate, parseHistoryRetention, type HistoryRetention } from "../history-retention";
@@ -166,7 +166,12 @@ function mapCloudPriceHistory(
   const coverageStart = parseHistoryCoverageStart(response.coverage);
   if (response.status === "empty" && coverageStart
     && requestedStart.getTime() < Date.parse(coverageStart)) throw new HistoryCoverageError(coverageStart);
-  if (isStaleCloudResponse(response)) {
+  // The server marks a cached copy it could not refresh in time. Bars that
+  // reach the venue's latest settled session still answer, and the router's
+  // own current-window check applies to them as to any other copy. Older bars,
+  // or a stale answer without bars, are a miss.
+  const stale = isStaleCloudResponse(response);
+  if (stale && response.status !== "success" && response.status !== "partial") {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
   }
   if (response.status === "unsupported" && response.reasonCode === "HISTORY_RETENTION" && requestedEnd) {
@@ -190,6 +195,9 @@ function mapCloudPriceHistory(
       `Cloud chart data is unavailable for ${ticker}`,
     ).map((point) => mapPricePoint(point, divisor, exchange)),
   );
+  if (stale && !reachesLatestSettledSession(points, Date.now(), { exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
+    throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
+  }
   if (
     /^\d+(min|h)$/i.test(interval)
     && hasMalformedIntradayHistory(points)

@@ -2,7 +2,7 @@ import type { SearchRequestContext, DataProvider } from "../../types/data-provid
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
-import { tickerHasListingSuffix } from "../../sources/listing-symbols";
+import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { searchContractKey, searchInstrumentKey } from "./identity";
@@ -56,6 +56,26 @@ export class AmbiguousContractError extends AmbiguousTickerError {
 const OPTION_TYPES = new Set(["OPT", "OPTION", "OPTIONS"]);
 
 const SHARE_CLASS_SUFFIXES = new Set(["A", "B", "C", "D", "K"]);
+
+/**
+ * Venue codes people type after a dot in place of the listing suffix:
+ * TTALO.HEL or TTALO.XHEL for TTALO.HE. Only tried once the literal symbol
+ * finds nothing, so class shares such as BRK.B never reach them.
+ */
+const DOTTED_VENUE_CODES = new Set([
+  "HEL", "XHEL", "STO", "XSTO", "CPH", "XCSE", "OSL", "XOSL",
+  "AMS", "XAMS", "PAR", "XPAR", "LON", "XLON", "ETR", "XETR",
+]);
+
+/** The listing-suffix and colon spellings of `SYM.<venue code>`, in that order. */
+function dottedVenueQueries(symbol: string): string[] {
+  const dot = symbol.lastIndexOf(".");
+  if (dot <= 0) return [];
+  const base = symbol.slice(0, dot);
+  const venue = symbol.slice(dot + 1);
+  if (!DOTTED_VENUE_CODES.has(venue)) return [];
+  return [...new Set([getListingSymbol(base, venue), `${base}:${venue}`])];
+}
 
 interface TickerSearchCandidateOptions {
   includeOptionContracts?: boolean;
@@ -230,22 +250,35 @@ export function buildTickerSearchCandidates({
   return limitTickerSearchCandidates(assignTickerSearchCategories(ranked), totalLimit, localLimit);
 }
 
-export async function resolveTickerSearch({
-  query,
-  activeTicker,
-  tickers,
-  dataProvider,
-  searchContext,
-}: {
+interface ResolveTickerSearchOptions {
   query?: string;
   activeTicker: string | null;
   tickers: ReadonlyMap<string, TickerRecord>;
   dataProvider: DataProvider;
   searchContext?: SearchRequestContext;
-}): Promise<ResolvedTickerSearch | null> {
-  const symbol = normalizeTickerInput(activeTicker, query);
-  if (!symbol) return null;
+}
 
+export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promise<ResolvedTickerSearch | null> {
+  const symbol = normalizeTickerInput(options.activeTicker, options.query);
+  if (!symbol) return Promise.resolve(null);
+  const literal = resolveTickerSymbol(symbol, options);
+  const alternatives = dottedVenueQueries(symbol);
+  // Most input has no venue code to retry: hand back the literal lookup
+  // itself, so it settles no later than it did before the retry existed.
+  if (alternatives.length === 0) return literal;
+  return literal.then(async (resolved) => {
+    for (const alternative of resolved ? [] : alternatives) {
+      const match = await resolveTickerSymbol(alternative, options);
+      if (match) return match;
+    }
+    return resolved;
+  });
+}
+
+async function resolveTickerSymbol(
+  symbol: string,
+  { tickers, dataProvider, searchContext }: ResolveTickerSearchOptions,
+): Promise<ResolvedTickerSearch | null> {
   const local = tickers.get(symbol)
     ?? findExactTickerSearchMatch(createLocalTickerSearchCandidates(tickers.values()), symbol)?.ticker
     ?? null;
