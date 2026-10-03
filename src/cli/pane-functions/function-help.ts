@@ -582,6 +582,21 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: same("Weekly: Tuesday positions, out on Friday"),
     bloomberg: ["COT"],
   },
+  DOE: {
+    summary: "The EIA's weekly petroleum and natural gas storage numbers: crude, Cushing and the SPR, gasoline, distillates, jet fuel and propane, refinery runs, trade and demand, and gas storage by region. Each row shows the week's build or draw, the change on a year ago and where it sits in its five-year range; the selected one is charted over the year against the five-year band with a plain read of the numbers.",
+    usage: ["DOE", "NGS"],
+    keys: [],
+    data: same("Weekly, on release"),
+    bloomberg: ["DOE"],
+  },
+  NGS: {
+    summary: "Lower 48 working gas in storage and each region's, the week's injection or withdrawal against a year ago and the five-year average, charted over the year. The Gas Storage tab of DOE.",
+    usage: ["NGS"],
+    keys: [],
+    data: same("Weekly, on release"),
+    bloomberg: [],
+    docs: "DOE",
+  },
   VIX: {
     summary: "Daily VIX tenor closes, the term structure and whether it is in contango or inverted, with the cross-asset volatility board beside it.",
     usage: ["VIX"],

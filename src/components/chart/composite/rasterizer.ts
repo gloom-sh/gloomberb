@@ -121,6 +121,53 @@ function fillAreaGradient(
   }
 }
 
+const BAND_FILL_OPACITY = 0.2;
+
+/**
+ * The range a band series spans, one flat fill per pixel column between its
+ * points' `low` and `high`, read straight across between neighbouring points.
+ */
+function fillBand(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  series: CompositeProjectedSeries,
+  domain: CompositeAxisDomain,
+  color: RgbaColor,
+): void {
+  const edges = series.points.map((projected) => {
+    const { high, low } = projected.point;
+    const x = pixelPoint(projected, width, height).x;
+    if (high == null || low == null || !Number.isFinite(high) || !Number.isFinite(low)) return null;
+    const top = pixelY(high, domain, height);
+    const bottom = pixelY(low, domain, height);
+    return top === null || bottom === null ? null : { x, top: Math.min(top, bottom), bottom: Math.max(top, bottom) };
+  });
+  const filled = new Uint8Array(width);
+  const fillColumn = (x: number, top: number, bottom: number) => {
+    if (x < 0 || x >= width || filled[x]) return;
+    filled[x] = 1;
+    for (let y = Math.max(0, Math.round(top)); y <= Math.min(height - 1, Math.round(bottom)); y += 1) {
+      blendPixel(data, width, height, x, y, color, BAND_FILL_OPACITY);
+    }
+  };
+  for (let index = 0; index < edges.length; index += 1) {
+    const current = edges[index];
+    if (!current) continue;
+    const previous = index > 0 && !series.points[index]?.breakBefore ? edges[index - 1] : null;
+    if (!previous) {
+      fillColumn(Math.round(current.x), current.top, current.bottom);
+      continue;
+    }
+    const start = Math.round(previous.x);
+    const span = Math.max(1, Math.round(current.x) - start);
+    for (let x = start; x <= start + span; x += 1) {
+      const t = (x - start) / span;
+      fillColumn(x, previous.top + (current.top - previous.top) * t, previous.bottom + (current.bottom - previous.bottom) * t);
+    }
+  }
+}
+
 function drawConnectedSeries(
   data: Uint8Array,
   width: number,
@@ -390,7 +437,7 @@ export function renderCompositePanelBitmap(
   }
 
   const ordered = [...panel.series].sort((left, right) => {
-    const rank = (style: string) => style === "area" || style === "columns" ? 0 : 1;
+    const rank = (style: string) => style === "area" || style === "columns" || style === "band" ? 0 : 1;
     return rank(left.source.style) - rank(right.source.style);
   });
   const columnLayout = buildCompositeColumnLayout(panel);
@@ -429,6 +476,10 @@ export function renderCompositePanelBitmap(
         break;
       case "area":
         drawConnectedSeries(data, width, height, series, domain, color, true);
+        break;
+      case "band":
+        fillBand(data, width, height, series, domain, color);
+        drawConnectedSeries(data, width, height, series, domain, color, false);
         break;
       case "points":
         for (const point of series.points) {

@@ -14,6 +14,7 @@ import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
 import type { FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
+import type { DoeBoardPayload } from "./doe";
 import type { TapeSnapshot } from "./tape";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
@@ -383,6 +384,10 @@ export class CloudDataApi {
 
   async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
+  }
+
+  async getCloudDoeBoard(): Promise<DoeBoardPayload> {
+    return this.request<DoeBoardPayload>("/cloud/doe/board");
   }
 
   async getCloudTape(symbol: string, exchange: string, signal?: AbortSignal): Promise<TapeSnapshot> {
