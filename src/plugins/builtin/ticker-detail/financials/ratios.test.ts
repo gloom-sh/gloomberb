@@ -21,6 +21,31 @@ function period(statement: FinancialStatement, opening?: FinancialStatement, ext
 
 const day = (date: string, close: number): PricePoint => ({ date: new Date(`${date}T13:30:00Z`), close });
 
+/**
+ * Fiscal years from the statements (USD) and the boundaries of the near-zero
+ * equity rule: name, net income, opening and closing equity, and the ROE
+ * percent shown, or null for N/M. No case carries total assets; the rule never
+ * reads them. The screener's Annual ROE runs the same cases in the platform's
+ * equity-screener research.test.ts; keep the two lists identical.
+ */
+const ROE_CASES: [string, number, number, number, number | null][] = [
+  ["AbbVie FY2025, equity turns negative", 4_226e6, 3_325e6, -3_270e6, null],
+  ["Boeing FY2025, equity turns positive", 2_235e6, -3_908e6, 5_454e6, null],
+  ["Seagate FY2026, equity turns positive", 3_184e6, -453e6, 2_167e6, null],
+  ["McDonald's FY2025, negative both ends", 8_563e6, -3_796e6, -1_790e6, null],
+  ["Colgate FY2025, 1,603%", 2_132e6, 212e6, 54e6, null],
+  ["Home Depot FY2023, 1,162%", 15_143e6, 1_562e6, 1_044e6, null],
+  ["Home Depot FY2024", 14_806e6, 1_044e6, 6_640e6, 385.4],
+  ["Apple FY2025", 112_010e6, 56_950e6, 73_733e6, 171.4],
+  // Equity is 1.3% of its 3.2tn total assets: leverage alone is no reason.
+  ["Freddie Mac FY2023", 10_538e6, 37_018e6, 47_722e6, 24.9],
+  ["just under +500%", 499, 100, 100, 499],
+  ["just over +500%", 501, 100, 100, null],
+  ["a loss just under -500%", -499, 100, 100, -499],
+  ["a loss just over -500%", -501, 100, 100, null],
+  ["zero equity at the opening", 10, 0, 200, null],
+];
+
 describe("financial ratios", () => {
   test("return ratios divide by the average of the opening and closing balance, annualizing a quarter", () => {
     const opening = { date: "2025-03-31", totalEquity: 80, totalAssets: 300 };
@@ -32,6 +57,32 @@ describe("financial ratios", () => {
     // Both ends must use one definition: common equity at one end and total at the other is not an average.
     expect(evaluateRatio(ratio("roe"), period(closing, { date: "2025-03-31", commonStockEquity: 80 })).value).toBe("not-reported");
     expect(evaluateRatio(ratio("roe"), period(closing)).value).toBe("not-reported");
+  });
+
+  test("ROE reads N/M when equity changes sign or is under a fifth of net income, keeping its inputs", () => {
+    for (const [name, netIncome, opening, closing, roe] of ROE_CASES) {
+      const cell = evaluateRatio(ratio("roe"), period(
+        { date: "2025-12-31", netIncome, totalEquity: closing },
+        { date: "2024-12-31", totalEquity: opening },
+      ));
+      // The input rows still show the numbers behind an N/M.
+      expect(cell.inputs, name).toEqual([netIncome, (opening + closing) / 2]);
+      if (roe === null) expect(cell.value, name).toBe("not-meaningful");
+      else expect((cell.value as number) * 100, name).toBeCloseTo(roe, 1);
+    }
+    // The cap applies to the annualized return: a quarter's 130 on 100 is 520% a year.
+    const quarter = (netIncome: number) => evaluateRatio(ratio("roe"), period(
+      { date: "2025-06-30", netIncome, totalEquity: 100 },
+      { date: "2025-03-31", totalEquity: 100 },
+      { quarterly: true },
+    ));
+    expect(quarter(130)).toEqual({ value: "not-meaningful", inputs: [130, 100] });
+    expect(quarter(120).value).toBeCloseTo(4.8);
+    // The rule reads the same line at both ends: common equity when total equity is missing at one.
+    expect(evaluateRatio(ratio("roe"), period(
+      { date: "2025-12-31", netIncome: 30, totalEquity: 140, commonStockEquity: -10 },
+      { date: "2024-12-31", commonStockEquity: 60 },
+    )).value).toBe("not-meaningful");
   });
 
   test("working-capital days spread the flow per day and the cycle nets them", () => {

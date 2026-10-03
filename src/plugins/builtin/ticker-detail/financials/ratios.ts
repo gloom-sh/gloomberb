@@ -64,7 +64,7 @@ export interface RatioDef {
   signed?: boolean;
   inputs: RatioInputDef[];
   /** From the inputs after annualization. */
-  compute: (values: number[]) => RatioAmount;
+  compute: (values: number[], period: RatioPeriod) => RatioAmount;
 }
 
 export interface RatioTabDef {
@@ -106,22 +106,51 @@ const line = (...keys: (keyof FinancialStatement)[]): BalanceLine => (statement)
 };
 
 /**
- * The mean of the opening and closing balance. Both ends must come from the
- * same definition, so a line is only used when both statements carry it.
+ * The opening and closing balance. Both ends must come from the same
+ * definition, so a line is only used when both statements carry it.
  */
-const average = (...lines: BalanceLine[]) => ({ statement, opening }: RatioPeriod): RatioAmount => {
-  if (!opening) return "not-reported";
+const balanceEnds = (...lines: BalanceLine[]) => ({ statement, opening }: RatioPeriod): [number, number] | undefined => {
+  if (!opening) return undefined;
   for (const read of lines) {
     const close = read(statement);
     const open = read(opening);
-    if (close !== undefined && open !== undefined) return (close + open) / 2;
+    if (close !== undefined && open !== undefined) return [open, close];
   }
-  return "not-reported";
+  return undefined;
+};
+
+/** The mean of the opening and closing balance. */
+const average = (...lines: BalanceLine[]) => {
+  const ends = balanceEnds(...lines);
+  return (period: RatioPeriod): RatioAmount => {
+    const pair = ends(period);
+    return pair ? (pair[0] + pair[1]) / 2 : "not-reported";
+  };
 };
 
 const closing = (read: BalanceLine) => ({ statement }: RatioPeriod): RatioAmount => reported(read(statement));
 
 const equity = line("totalEquity", "commonStockEquity");
+/** Total equity at both ends, or common equity at both, never one of each. */
+const equityLines = [line("totalEquity"), line("commonStockEquity")];
+const equityEnds = balanceEnds(...equityLines);
+
+/** Beyond ±500%, average equity is under a fifth of a year's net income. */
+const MAX_MEANINGFUL_ROE = 5;
+
+/**
+ * Net income over average equity, or N/M when that average says nothing about
+ * the capital: equity zero or negative at either end, where an average across
+ * a sign change can land anywhere near zero (AbbVie's FY2025 went from 3.33bn
+ * to -3.27bn and read 15,367%), or a return beyond ±500% (Colgate's FY2025,
+ * 1,603% on 0.13bn). The screener's Annual ROE applies the same rule.
+ */
+function returnOnEquity(income: number, [opening, closing]: [number, number]): RatioAmount {
+  if (opening <= 0 || closing <= 0) return "not-meaningful";
+  const value = income / ((opening + closing) / 2);
+  return Math.abs(value) > MAX_MEANINGFUL_ROE ? "not-meaningful" : value;
+}
+
 const cashAndShortTerm = line("cashCashEquivalentsAndShortTermInvestments", "cashAndCashEquivalents");
 const receivables = line("accountsReceivable", "receivables");
 /** Total debt plus equity, the definition of reported invested capital. */
@@ -234,8 +263,11 @@ export const RATIO_TABS: RatioTabDef[] = [
         label: "ROE",
         format: "percent",
         signed: true,
-        inputs: [netIncome, { label: "Avg Equity", operator: "÷", format: "money", value: average(line("totalEquity"), line("commonStockEquity")) }],
-        compute: ([income, base]) => over(income!, base!),
+        inputs: [netIncome, { label: "Avg Equity", operator: "÷", format: "money", value: average(...equityLines) }],
+        compute: ([income], period) => {
+          const ends = equityEnds(period);
+          return ends ? returnOnEquity(income!, ends) : "not-reported";
+        },
       },
       {
         id: "roa",
@@ -475,7 +507,7 @@ export function evaluateRatio(def: RatioDef, period: RatioPeriod): RatioCell {
   const values = inputs.map((amount, index) => (
     def.inputs[index]!.annualized && period.quarterly ? (amount as number) * QUARTERS_PER_YEAR : amount as number
   ));
-  const value = def.compute(values);
+  const value = def.compute(values, period);
   return { value: isGap(value) || Number.isFinite(value) ? value : "not-meaningful", inputs };
 }
 
