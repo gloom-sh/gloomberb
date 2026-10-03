@@ -13,6 +13,7 @@ import { creditBoardsModule } from "./credit-boards";
 import { creditConditionsModule } from "./credit-conditions";
 import { marketValuationModule } from "./market-valuation";
 import { economicCalendarModule } from "./econ";
+import { cpiModule } from "./cpi";
 import { econStatisticsModule } from "./econ-statistics";
 import { earningsModule } from "./earnings";
 import { earningsCallsModule } from "./earnings-calls";
@@ -163,6 +164,7 @@ export const macroPlugin = composeBuiltinPlugin({
     macroSharedResourcesModule,
     economicCalendarModule,
     econStatisticsModule,
+    cpiModule,
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,

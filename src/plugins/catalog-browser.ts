@@ -34,6 +34,7 @@ import { creditConditionsModule } from "./builtin/credit-conditions";
 import { marketValuationModule } from "./builtin/market-valuation";
 import { macroSharedResourcesModule } from "./builtin/macro-resources";
 import { economicCalendarModule } from "./builtin/econ";
+import { cpiModule } from "./builtin/cpi";
 import { econStatisticsModule } from "./builtin/econ-statistics";
 import { futuresModule } from "./builtin/futures";
 import { futuresCurveModule } from "./builtin/futures-curve";
@@ -161,6 +162,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
     macroSharedResourcesModule,
     economicCalendarModule,
     econStatisticsModule,
+    cpiModule,
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,
