@@ -727,11 +727,19 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   }, [account.accountSub, stage]);
 
   const startUpgrade = useCallback(() => {
-    void persistProgress({
-      stage: "upgrade",
-      accountStatus: progress.accountStatus,
-      checkoutOpenedAt: new Date().toISOString(),
-    }).then(() => openUpgrade({ interval: billingInterval, sheet: false })).catch(() => {});
+    void openUpgrade({
+      interval: billingInterval,
+      sheet: false,
+      // Stamped once per checkout that opens, not per keypress: the repeats
+      // of a held Enter are ignored.
+      onOpening: () => {
+        void persistProgress({
+          stage: "upgrade",
+          accountStatus: progress.accountStatus,
+          checkoutOpenedAt: new Date().toISOString(),
+        }).catch(() => {});
+      },
+    });
   }, [billingInterval, openUpgrade, persistProgress, progress.accountStatus]);
 
   const primaryUpgradeAction = useCallback(() => {

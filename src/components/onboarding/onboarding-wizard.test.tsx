@@ -9,6 +9,7 @@ import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { JsonTickerRepository } from "../../data/json-ticker-repository";
 import { chatController } from "../../plugins/builtin/chat/controller";
+import { resetCloudUpgradeGuardForTests } from "../../plugins/builtin/shared/cloud-upgrade";
 import { EventBus } from "../../plugins/event-bus";
 import { useShortcut } from "../../react/input";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -290,6 +291,7 @@ afterEach(async () => {
   apiClient.getCloudAccountPlan = originalGetCloudAccountPlan;
   apiClient.setSessionToken(null);
   apiClient.restoreCachedUser(null);
+  resetCloudUpgradeGuardForTests();
   capturedConfig = null;
   capturedBrokerAccounts = null;
   if (tempDataDir) {
@@ -992,7 +994,7 @@ describe("OnboardingWizard", () => {
     }
   });
 
-  test("the trial button opens checkout for the chosen billing interval", async () => {
+  test("the trial button opens one checkout for the chosen billing interval, however often Enter repeats", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-checkout-"));
     apiClient.setSessionToken("onboarding-checkout-session");
     apiClient.restoreCachedUser({ id: "user-2", email: "trial@example.com", emailVerified: false, plan: "free" });
@@ -1013,11 +1015,16 @@ describe("OnboardingWizard", () => {
 
       await emitKeypress({ name: "right", sequence: "\u001b[C" });
       await pressEnter();
-      for (let index = 0; index < 30 && checkouts.length === 0; index += 1) {
+      await pressEnter();
+      await pressEnter();
+      const opened = () => checkouts.length > 0 && !!capturedConfig?.onboardingProgress?.checkoutOpenedAt;
+      // A few frames past the first checkout, for any repeat to land.
+      for (let index = 0, settled = 0; index < 40 && settled < 5; index += 1) {
         await act(async () => {
           await Bun.sleep(5);
           await tui.setup().renderOnce();
         });
+        if (opened()) settled += 1;
       }
       // Unverified accounts go straight to checkout too; the status bar keeps asking for the email.
       expect(checkouts).toEqual([{ returnTo: undefined, interval: "year" }]);
