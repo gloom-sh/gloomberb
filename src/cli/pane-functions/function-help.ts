@@ -417,6 +417,20 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: pro("As calls, stories and filings arrive"),
     bloomberg: ["NSE"],
   },
+  COVN: {
+    summary: "Financial maintenance covenant thresholds, matching reported values and supported headroom. Open a covenant for its definition, calculation limits, literal filing evidence and instrument revisions.",
+    usage: ["COVN FICO"],
+    keys: [TABS, OPEN, OPEN_SOURCE, key("f", "a"), key("m", "aturities")],
+    data: { free: "As filed; three supported rows per section", pro: "As filed; all covenants, evidence and revisions" },
+    bloomberg: ["CAST"],
+  },
+  CRDOC: {
+    summary: "Issuer capital structure, contractual covenants, supported headroom and maturity walls. Open each instrument for verbatim filing evidence and immutable amendment history. Screen for low headroom and approaching springing maturities.",
+    usage: ["CRDOC FICO", "COVN AAPL"],
+    keys: [TABS, OPEN, OPEN_SOURCE, key("d", "es"), key("f", "a"), key("m", "aturities"), key("c", "ds")],
+    data: { free: "As filed; three rows per section with supporting evidence", pro: "As filed; all stored terms, revisions and risk screens" },
+    bloomberg: ["CAST", "DDIS"],
+  },
   SPLC: {
     summary: "Explore disclosed suppliers, customers and other relationships, plus the filings that name this company. Table and flow views include verbatim evidence. Disclosed in filings only. Absence is not proof of no relationship.",
     usage: ["SPLC NVDA", "SUPPLY AAPL"],

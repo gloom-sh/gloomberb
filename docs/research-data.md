@@ -884,3 +884,7 @@ licensed sources behind the platform cannot support them honestly:
 - Supply chain and M&A databases: no free structured source.
 - Level 2 order book: the market data plan supplies trades and NBBO only; `TAS`
   and `QR` show what is available.
+
+## Credit documents (CRDOC / COVN)
+
+Contract terms and revisions retain literal filing quotes, character spans, confidence and reporting dates. Headroom requires matching financial definitions and borrower scope; absent adjustments or stale financials withhold it. Contractual calendar-year maturities retain their native currencies, separate from DDIS fiscal buckets. This is a Pro dataset with evidence-bearing previews. See [credit documents](credit-documents.md) for methodology, coverage and screening limitations.
