@@ -66,8 +66,9 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 
 - **Net income** is attributable to the parent, the Income statement's Net Income line.
 - **Equity** is stockholders' equity excluding minority interests; common equity stands in where the filer reports no total.
+- **Total debt** is borrowings (current and long-term debt, commercial paper and other short-term borrowings) plus finance lease liabilities. Operating lease liabilities are never debt. For US filers the total is derived from the company's filings. Other listings keep the data vendor's total less its lease line, and only when that total is exactly long-term debt plus current debt plus the lease line; a total built any other way is kept as reported, so some non-US totals still include leases.
 - **NOPAT** is operating income × (1 − tax provision ÷ pretax income). The rate is held between 0% and 100%, and is 0% when pretax income is not positive.
-- **Invested capital** is total debt plus equity: the statements' figure, or the sum where it is missing.
+- **Invested capital** is the statements' figure (equity plus borrowings, without finance leases), or equity plus total debt where it is missing. With large finance leases the two differ: Microsoft's FY2026 total debt includes 66.6bn of finance leases beside 40.3bn of borrowings, and its invested capital leaves them out.
 - **Cash and short-term investments** falls back to cash alone when the filer does not report the total.
 - **Receivables** are trade accounts receivable, or total receivables where trade is not reported; **payables** likewise. Apple's total receivables include vendor non-trade receivables, which is why DSO uses the trade line.
 - **Free cash flow** is the reported figure, or operating cash flow plus (negative) capital expenditure.
