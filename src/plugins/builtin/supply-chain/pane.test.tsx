@@ -10,7 +10,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { supplyChainCache } from "./client";
 import { SupplyChainPane } from "./pane";
-import { supplyPayload, supplyRow } from "./test-fixture";
+import { entity, supplyPayload, supplyRow } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); });
@@ -64,7 +64,7 @@ test("reverse table labels the percentage denominator and diagram pages a crowde
 
 
 test("evidence preserves the reporting company and scope, then Enter drills into the selected counterparty", async () => {
-  const row = supplyRow("counterparty", { pctScope: "Business segments: Compute and networking" });
+  const row = supplyRow("counterparty", { counterparty: { ...entity("counterparty"), ticker: "2330", exchange: "TWSE" }, pctScope: "Business segments: Compute and networking" });
   setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [row] })));
   const opened: Array<[string, string | undefined]> = [];
   await mount(120, 24, "table", "says", (template, symbol) => opened.push([template, symbol]));
@@ -77,5 +77,5 @@ test("evidence preserves the reporting company and scope, then Enter drills into
   await tui.emitKeypress({ name: "escape" });
   await tui.waitForFrameToContain("COUNTERPARTY");
   await tui.emitKeypress({ name: "return" });
-  expect(opened).toEqual([["supply-chain-pane", "counterparty"]]);
+  expect(opened).toEqual([["supply-chain-pane", "2330:TWSE"]]);
 });

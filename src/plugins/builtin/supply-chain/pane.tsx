@@ -1,3 +1,4 @@
+import { publicTickerKey } from "../../../utils/exchanges";
 import { getSharedRegistry } from "../../registry/shared";
 import { useCallback, useMemo, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -85,7 +86,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   const navigate = (row: SupplyRow, template = "supply-chain-pane") => {
-    if (row.counterparty.ticker) createPaneFromTemplate(template, { symbol: row.counterparty.ticker });
+    if (row.counterparty.ticker) createPaneFromTemplate(template, { symbol: publicTickerKey(row.counterparty.ticker, row.counterparty.exchange ?? undefined) });
     else setOpen(row.id);
   };
   const evidence = () => {
@@ -98,7 +99,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     ...(selected?.counterparty.ticker ? [
       { id: "description", key: "d", label: "es", onPress: () => navigate(selected, "new-ticker-detail-pane") },
       { id: "financials", key: "f", label: "a", onPress: () => navigate(selected, "financial-analysis-pane") },
-      { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: selected.counterparty.ticker! }) },
+      { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: publicTickerKey(selected.counterparty.ticker!, selected.counterparty.exchange ?? undefined) }) },
       ...(getSharedRegistry()?.paneTemplates.has("buildout-pane") ? [{ id: "buildout", key: "t", label: "bo", onPress: () => createPaneFromTemplate("buildout-pane") }] : []),
     ] : []),
     ...(data?.truncated ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }] : []),
