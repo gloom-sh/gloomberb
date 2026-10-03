@@ -410,6 +410,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: pro("As calls, stories and filings arrive"),
     bloomberg: ["NSE"],
   },
+  SPLC: {
+    summary: "Explore disclosed suppliers, customers and other relationships, plus the filings that name this company. Table and flow views include verbatim evidence. Disclosed in filings only. Absence is not proof of no relationship.",
+    usage: ["SPLC NVDA", "SUPPLY AAPL"],
+    keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph")],
+    data: { free: "As filed; top three rows per role with evidence", pro: "As filed; all stored relationships" },
+    bloomberg: ["SPLC"],
+  },
   SEG: {
     summary: "Quarterly revenue by product, segment or region from the company's 10-Q and 10-K filings.",
     usage: ["SEG AAPL"],

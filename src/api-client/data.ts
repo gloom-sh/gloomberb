@@ -1,3 +1,4 @@
+import type { SupplyChainPayload } from "./supply-chain";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
 import type { DebtMaturitiesPayload } from "./debt-maturities";
@@ -384,6 +385,10 @@ export class CloudDataApi {
 
   async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
+  }
+
+  async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {
+    return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}`);
   }
 
   async getCloudDoeBoard(): Promise<DoeBoardPayload> {
