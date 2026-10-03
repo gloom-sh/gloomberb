@@ -24,10 +24,11 @@ export function SupplyFlow({ rows, symbol, focusId, width, height, focused, sele
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const bitmapSize = useStaticChartBitmapSize(width, height);
   const [pages, setPages] = useState<Partial<Record<FlowBand, number>>>({});
-  const hasRelated = rows.some((row) => row.role !== "supplier" && row.role !== "customer");
+  const hasRelated = rows.some((row) => !row.counterparty.aggregate && row.role !== "supplier" && row.role !== "customer");
   const plotRows = Math.max(4, height - (hasRelated ? 8 : 4));
   const limit = Math.max(2, Math.min(8, Math.floor(plotRows / 2)));
   const bands = useMemo(() => ({ ...flowBands(rows, limit, pages, focusId), related: flowBands(rows, 3, pages, focusId).related }), [rows, limit, pages, focusId]);
+  const customerScope = bands.customers.find((node) => node.weightScope)?.weightScope?.replace(/\s+And\s+/gi, " & ").replace(/\s+Segment$/i, "");
   const related = bands.related.length > 0;
   const labelWidth = Math.max(16, Math.min(27, Math.floor(width * 0.27)));
   const centerWidth = Math.max(9, Math.min(15, symbol.length + 5));
@@ -61,11 +62,11 @@ export function SupplyFlow({ rows, symbol, focusId, width, height, focused, sele
   });
   const vectors: ChartVectorShape[] = nodes.filter((node) => node.row && node.band !== "related").map((node) => {
     const left = node.band === "suppliers";
-    const startX = left ? node.x + node.width : centerX + centerWidth;
-    const endX = left ? centerX : node.x;
+    const startX = left ? node.x + node.width + 2 : centerX + centerWidth;
+    const endX = left ? centerX : node.x - 2;
     return { id: node.id, points: curve(startX / width, (left ? node.y + 0.5 : centerY + 0.5) / height,
       endX / width, (left ? centerY + 0.5 : node.y + 0.5) / height),
-      color: ROLE_COLORS[node.row!.role], strokeWidth: node.weight > 0.035 ? Math.max(1.5, node.weight * 16) : 1.5 };
+      color: ROLE_COLORS[node.row!.role], strokeWidth: node.weight === null ? 1.5 : node.weight * 16 };
   });
   const bitmap = useMemo(() => {
     if (desktop || !bitmapSize) return null;
@@ -104,7 +105,9 @@ export function SupplyFlow({ rows, symbol, focusId, width, height, focused, sele
       return spans;
     });
   }, [width, height, JSON.stringify(vectors), colors.textDim]);
-  const nodeMetric = (row: SupplyRow) => {
+  const nodeMetric = (node: FlowNode) => {
+    const row = node.row!;
+    if (node.weight !== null && node.weightBasis === "usd") return dollars(row);
     if (row.pctOfRevenue !== null) {
       if (row.reportingEntity.id !== focusId) return `${Number(row.pctOfRevenue.toFixed(1))}% of ${row.reportingEntity.ticker ?? row.reportingEntity.name}${row.pctBasis === "revenue" ? " rev" : ` ${row.pctBasis}`}`;
       return percentage(row);
@@ -116,7 +119,10 @@ export function SupplyFlow({ rows, symbol, focusId, width, height, focused, sele
       {!desktop ? fallback.map((spans, y) => <Text key={y}>{spans.map((span, i) => <Span key={i} fg={span.color}>{span.text}</Span>)}</Text>) : null}
     </ChartSurface>
     <Box position="absolute" top={0} left={1}><Text fg={ROLE_COLORS.supplier}>SUPPLIERS</Text></Box>
+    {bands.suppliers.some((node) => node.weightBasis === "usd") ? <Box position="absolute" top={1} left={1}><Text fg={colors.textDim}>Scale: USD</Text></Box> : null}
     <Box position="absolute" top={0} left={width - labelWidth - 1}><Text fg={ROLE_COLORS.customer}>CUSTOMERS</Text></Box>
+    {customerScope ? <Box position="absolute" top={1} left={width - Math.max(labelWidth, 30) - 1} width={Math.max(labelWidth, 30)}><Text fg={colors.textDim}>{truncateToDisplayWidth(`Scale: ${customerScope}`, Math.max(labelWidth, 30))}</Text></Box> : null}
+    {!customerScope && bands.customers.some((node) => node.weightBasis === "usd") ? <Box position="absolute" top={1} left={width - labelWidth - 1}><Text fg={colors.textDim}>Scale: USD</Text></Box> : null}
     <Box position="absolute" left={centerX} top={centerY} width={centerWidth} height={2} backgroundColor={colors.selected} alignItems="center" justifyContent="center"><Text fg={colors.textBright}>{symbol}</Text></Box>
     {bands.suppliers.length === 0 ? <Box position="absolute" top={3} left={1}><Text fg={colors.textDim}>None disclosed</Text></Box> : null}
     {bands.customers.length === 0 ? <Box position="absolute" top={3} left={width - labelWidth - 1}><Text fg={colors.textDim}>None disclosed</Text></Box> : null}
@@ -124,7 +130,7 @@ export function SupplyFlow({ rows, symbol, focusId, width, height, focused, sele
     {nodes.map((node) => <Box key={node.id} position="absolute" left={node.x} top={node.y} width={node.width} height={2} flexDirection="column" backgroundColor={colors.bg}>
       <ActionRow width={node.width} height={1} label={truncateToDisplayWidth(node.label, node.width - 1)} fg={node.row ? ROLE_COLORS[node.row.role] : colors.textMuted}
         active={nodes[selectedIndex]?.id === node.id} onPress={() => selectNode(node)} />
-      {node.row ? <Text fg={colors.textDim}>{truncateToDisplayWidth(nodeMetric(node.row), node.width - 1)}</Text> : null}
+      {node.row ? <Text fg={colors.textDim}>{truncateToDisplayWidth(nodeMetric(node), node.width - 1)}</Text> : null}
     </Box>)}
   </Box>;
 }

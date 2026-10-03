@@ -4,6 +4,7 @@ import { revenueAmount } from "../revenue-breakdown/model";
 
 export const ROLE_COLORS: Record<SupplyRole, string> = { supplier: "#6ca9df", customer: "#68cbb0", partner: "#b49bd7", competitor: "#e0a66b", investee: "#dc91b0" };
 export function counterpartyName(row: SupplyRow): string {
+  if (row.counterparty.aggregate) return `Group: ${row.counterparty.name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
   if (!row.counterparty.anonymous) return row.counterparty.name;
   const name = row.counterparty.name;
   const member = name.match(/^Undisclosed [^(]+\((.+)\)$/i)?.[1]
@@ -41,12 +42,14 @@ export function sortRows(rows: SupplyRow[], sort: SupplySort): SupplyRow[] {
     : x === y ? a.id.localeCompare(b.id) : (x < y ? -1 : 1) * (sort.direction === "asc" ? 1 : -1); });
 }
 export type FlowBand = "suppliers" | "customers" | "related";
-export interface FlowNode { id: string; label: string; row: SupplyRow | null; band: FlowBand; more: number; weight: number; }
+export interface FlowNode { id: string; label: string; row: SupplyRow | null; band: FlowBand; more: number; weight: number | null; weightScope: string | null; weightBasis: "revenue" | "usd" | null; }
+const revenueKey = (row: SupplyRow) => JSON.stringify([row.reportingEntity.id, row.period, row.pctScope]);
 /** Percentages from different filers and denominators are never summed. One latest edge per counterparty/role is drawn. */
 export function flowBands(rows: SupplyRow[], limit: number, pages: Partial<Record<FlowBand, number>> = {}, focusId?: string): Record<FlowBand, FlowNode[]> {
   const grouped: Record<FlowBand, SupplyRow[]> = { suppliers: [], customers: [], related: [] };
   const seen = new Set<string>();
   for (const row of [...rows].sort((a, b) => b.asOf.localeCompare(a.asOf) || Number(b.pctOfRevenue !== null || b.usd !== null) - Number(a.pctOfRevenue !== null || a.usd !== null) || b.confidence - a.confidence)) {
+    if (row.counterparty.aggregate) continue;
     const key = `${row.counterparty.id}:${row.role}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -54,15 +57,26 @@ export function flowBands(rows: SupplyRow[], limit: number, pages: Partial<Recor
   }
   return Object.fromEntries((Object.keys(grouped) as FlowBand[]).map((band) => {
     const values = sortRows(grouped[band], { column: "pct", direction: "desc" });
+    // One reporter, period and revenue scope form a compatible percentage scale.
+    // Prefer the largest compatible group, then whole-company revenue on a tie.
+    const revenueGroups = new Map<string, SupplyRow[]>();
+    for (const row of values) if (band === "customers" && row.pctBasis === "revenue" && (row.pctOfRevenue ?? 0) > 0 && (!focusId || row.reportingEntity.id === focusId)) {
+      const key = revenueKey(row);
+      revenueGroups.set(key, [...(revenueGroups.get(key) ?? []), row]);
+    }
+    const revenueGroup = [...revenueGroups.values()].sort((a, b) => b.length - a.length || Number(a[0]!.pctScope !== null) - Number(b[0]!.pctScope !== null))[0];
+    const scaleKey = revenueGroup ? revenueKey(revenueGroup[0]!) : null;
+    const value = (row: SupplyRow) => scaleKey === null ? row.usd ?? 0
+      : row.pctBasis === "revenue" && revenueKey(row) === scaleKey ? row.pctOfRevenue ?? 0 : 0;
+    // Use the entire band: paging must not change an existing ribbon's width.
+    const max = Math.max(0, ...values.map(value));
+    const ordered = [...values].sort((a, b) => value(b) - value(a));
     const pageSize = Math.max(1, limit - 1), paged = values.length > limit;
     const start = paged ? ((pages[band] ?? 0) % Math.ceil(values.length / pageSize)) * pageSize : 0;
-    const visible = values.slice(start, start + (paged ? pageSize : limit));
-    // A band uses one compatible unit. Unknown relationships remain a thin ribbon.
-    const percentageWeight = band === "customers" && visible.some((row) => row.pctBasis === "revenue" && row.pctScope === null && (!focusId || row.reportingEntity.id === focusId) && row.pctOfRevenue !== null);
-    const max = Math.max(1, ...visible.map((row) => percentageWeight ? row.pctBasis === "revenue" && row.pctScope === null && (!focusId || row.reportingEntity.id === focusId) ? row.pctOfRevenue ?? 0 : 0 : row.usd ?? 0));
+    const visible = ordered.slice(start, start + (paged ? pageSize : limit));
     const nodes: FlowNode[] = visible.map((row) => ({ id: row.id, label: counterpartyName(row), row, band, more: 0,
-      weight: Math.max(0.035, (percentageWeight ? row.pctBasis === "revenue" && row.pctScope === null && (!focusId || row.reportingEntity.id === focusId) ? row.pctOfRevenue ?? 0 : 0 : row.usd ?? 0) / max) }));
-    if (paged) nodes.push({ id: `more:${band}`, label: `+${values.length - visible.length} more`, row: null, band, more: values.length - visible.length, weight: 0 });
+      weight: value(row) > 0 ? value(row) / max : null, weightScope: revenueGroup?.[0]?.pctScope ?? null, weightBasis: scaleKey ? "revenue" : max > 0 ? "usd" : null }));
+    if (paged) nodes.push({ id: `more:${band}`, label: `+${values.length - visible.length} more`, row: null, band, more: values.length - visible.length, weight: null, weightScope: null, weightBasis: null });
     return [band, nodes];
   })) as Record<FlowBand, FlowNode[]>;
 }

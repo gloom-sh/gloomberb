@@ -3,7 +3,7 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache, validateSupplyChain } from "./client";
-import { flowBands, percentage, sortRows } from "./model";
+import { counterpartyName, flowBands, percentage, sortRows } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 
 afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); });
@@ -51,10 +51,10 @@ test("70 relationships remain bounded and every band page is reachable without i
   }
   expect(found.size).toBe(70);
   const unknown = flowBands([supplyRow("unknown", { pctOfRevenue: null, pctBasis: null })], 6).customers[0]!;
-  expect(unknown.weight).toBe(0.035);
+  expect(unknown.weight).toBeNull();
   const mixed = flowBands([supplyRow("scoped", { pctOfRevenue: 99, pctScope: "Segment" }), supplyRow("revenue", { pctOfRevenue: 80 }), supplyRow("receivables", { pctOfRevenue: 99, pctBasis: "receivables" })], 6).customers;
-  expect(mixed.find((node) => node.id === "receivables")?.weight).toBe(0.035);
-  expect(mixed.find((node) => node.id === "scoped")?.weight).toBe(0.035);
+  expect(mixed.find((node) => node.id === "receivables")?.weight).toBeNull();
+  expect(mixed.find((node) => node.id === "scoped")?.weight).toBeNull();
 });
 
 test("flow keeps the latest counterparty role once and does not total reverse concentrations", () => {
@@ -63,8 +63,39 @@ test("flow keeps the latest counterparty role once and does not total reverse co
   expect(flowBands([old, latest], 6).customers.map((node) => node.id)).toEqual(["latest"]);
   const reverse = supplyRow("reverse", { role: "supplier", direction: "in", reportingEntity: entity("CRUS"), pctOfRevenue: 91 });
   expect(percentage(reverse)).toBe("91% revenue");
-  expect(flowBands([reverse], 6).suppliers[0]?.weight).toBe(0.035);
+  expect(flowBands([reverse], 6).suppliers[0]?.weight).toBeNull();
   const reverseCustomer = supplyRow("buyer", { reportingEntity: entity("INGM"), pctOfRevenue: 21 });
-  expect(flowBands([reverseCustomer], 6, {}, "AAPL").customers[0]?.weight).toBe(0.035);
+  expect(flowBands([reverseCustomer], 6, {}, "AAPL").customers[0]?.weight).toBeNull();
   for (const direction of ["asc", "desc"] as const) expect(sortRows([latest, supplyRow("missing", { pctOfRevenue: null })], { column: "pct", direction }).at(-1)?.id).toBe("missing");
+});
+
+test("aggregate concentrations stay labeled table facts and never affect flow membership or scale", () => {
+  const group = supplyRow("group", { counterparty: { ...entity("group", "United States And Europe Based End Customers"), aggregate: true }, pctOfRevenue: 76 });
+  const payload = supplyPayload({ says: [group, supplyRow("one"), supplyRow("two", { pctOfRevenue: 14 })], totalRows: 3 });
+  payload.counts.says.customer = 3;
+  expect(validateSupplyChain(payload).says).toHaveLength(3);
+  expect(counterpartyName(group)).toStartWith("Group: ");
+  const nodes = flowBands(payload.says, 2, {}, "FOCUS").customers;
+  expect(nodes.map((node) => node.id)).toEqual(["one", "two"]);
+  expect(nodes.map((node) => node.weight)).toEqual([1, 14 / 22]);
+  const legacy = JSON.parse(JSON.stringify(payload));
+  delete legacy.says[1].counterparty.aggregate;
+  expect(validateSupplyChain(legacy).says[1]?.counterparty.aggregate).toBe(false);
+  legacy.says[1].counterparty.aggregate = "yes";
+  expect(() => validateSupplyChain(legacy)).toThrow("unreadable");
+});
+
+test("revenue ribbons share exact scope and period while dollar scales remain stable across pages", () => {
+  const scoped = (id: string, pct: number) => supplyRow(id, { pctScope: "Compute And Networking Segment", pctOfRevenue: pct });
+  const nodes = flowBands([scoped("one", 22), scoped("two", 14), supplyRow("other-scope", { pctScope: "Gaming", pctOfRevenue: 60 }),
+    supplyRow("old-period", { period: "2025-01-31", pctScope: "Compute And Networking Segment", pctOfRevenue: 95 })], 6, {}, "FOCUS").customers;
+  expect(nodes.find((node) => node.id === "one")?.weight).toBe(1);
+  expect(nodes.find((node) => node.id === "two")?.weight).toBe(14 / 22);
+  expect(nodes.find((node) => node.id === "other-scope")?.weight).toBeNull();
+  expect(nodes.find((node) => node.id === "old-period")?.weight).toBeNull();
+  const dollars = [149_000_000, 3_320_000, 1_000_000].map((usd, i) => supplyRow(`dollar-${i}`, { role: "supplier", usd, usdBasis: "disclosed", pctOfRevenue: null, pctBasis: null }));
+  dollars.unshift(supplyRow("unknown-dollars", { role: "supplier", pctOfRevenue: 99 }));
+  expect(flowBands(dollars, 2, { suppliers: 0 }).suppliers[0]?.id).toBe("dollar-0");
+  expect(flowBands(dollars, 2, { suppliers: 0 }).suppliers[0]?.weight).toBe(1);
+  expect(flowBands(dollars, 2, { suppliers: 1 }).suppliers[0]?.weight).toBe(3_320_000 / 149_000_000);
 });

@@ -8,6 +8,7 @@ export interface SupplyEntity {
   kind: "listed" | "private" | "government" | "unknown";
   identifiers: Record<string, unknown>;
   anonymous: boolean;
+  aggregate: boolean;
 }
 export interface SupplyRow {
   id: string;

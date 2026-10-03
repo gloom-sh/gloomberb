@@ -20,7 +20,8 @@ function entity(value: SupplyEntity): boolean {
   return !!value && text(value.id) && text(value.name) && nullableText(value.ticker) && nullableText(value.exchange)
     && nullableText(value.country) && ["listed", "private", "government", "unknown"].includes(value.kind)
     && !!value.identifiers && typeof value.identifiers === "object" && !Array.isArray(value.identifiers)
-    && typeof value.anonymous === "boolean" && (!value.anonymous || value.ticker === null);
+    && typeof value.anonymous === "boolean" && (!value.anonymous || value.ticker === null)
+    && (value.aggregate === undefined || typeof value.aggregate === "boolean");
 }
 function row(value: SupplyRow): boolean {
   return !!value && text(value.id) && entity(value.counterparty) && entity(value.reportingEntity)
@@ -50,7 +51,9 @@ export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayloa
     && typeof data.truncated === "boolean" && [3, null].includes(data.previewRowsPerRole)
     && text(data.disclaimer);
   if (!valid) throw new Error("The server returned unreadable supply chain disclosures");
-  return data;
+  const normalizeEntity = (value: SupplyEntity): SupplyEntity => ({ ...value, aggregate: value.aggregate ?? false });
+  const normalizeRow = (value: SupplyRow): SupplyRow => ({ ...value, counterparty: normalizeEntity(value.counterparty), reportingEntity: normalizeEntity(value.reportingEntity) });
+  return { ...data, entity: data.entity ? normalizeEntity(data.entity) : null, says: data.says.map(normalizeRow), names: data.names.map(normalizeRow) };
 }
 export async function fetchSupplyChain(symbol: string, client: Pick<typeof apiClient, "getCloudSupplyChain"> = apiClient) {
   try { return validateSupplyChain(await client.getCloudSupplyChain(symbol)); }

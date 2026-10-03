@@ -15,7 +15,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     const data = await fetchSupplyChain(args.symbols[0]!, ctx.apiClient);
     return { complete: !data.truncated, errors: data.truncated ? ["Additional relationships need Gloom Pro"] : [],
       sections: (["says", "names"] as const).map((view) => ({ title: view === "says" ? `${data.symbol} says` : `Names ${data.symbol}`,
-        rows: data[view].map((row) => ({ counterparty: row.counterparty.name, ticker: row.counterparty.ticker, role: row.role, direction: row.direction,
+        rows: data[view].map((row) => ({ counterparty: row.counterparty.name, ticker: row.counterparty.ticker, aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
           pct: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, fiscalYear: row.fiscalYear,
           source: row.sourceKind, filed: row.filedDate, confidence: row.confidence, reportingCompany: row.reportingEntity.name, quote: row.quote, quoteMatchMode: row.quoteMatchMode, filingUrl: row.filingUrl })) })),
       metadata: { symbol: data.symbol, asOf: data.asOf, counts: data.counts, disclaimer: data.disclaimer } };

@@ -28,6 +28,7 @@ function Evidence({ row, width, height }: { row: SupplyRow; width: number; heigh
   const desktop = !!useUiCapabilities().nativePaneChrome;
   return <ScrollBox width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     <KeyValueRow label="Reporting company" value={row.reportingEntity.name} labelWidth={20} />
+    {row.counterparty.aggregate ? <KeyValueRow label="Counterparty type" value="Aggregate concentration group" labelWidth={20} /> : null}
     <KeyValueRow label="Relationship" value={`${roleLabel(row.role)} · ${row.direction === "in" ? "inbound" : row.direction === "out" ? "outbound" : "mutual"}`} labelWidth={20} />
     <KeyValueRow label="Concentration" value={percentage(row)} detail={row.pctOfRevenue === null ? undefined : `of ${row.reportingEntity.name}`} labelWidth={20} />
     {row.pctScope ? <KeyValueRow label="Percentage scope" value={row.pctScope} labelWidth={20} /> : null}
