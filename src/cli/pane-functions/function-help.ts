@@ -589,6 +589,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: same("Weekly, on release"),
     bloomberg: ["DOE"],
   },
+  GPU: {
+    summary: "GPU rental list prices, provider-declared spot rates and marketplace asks in USD per GPU-hour. Compare clouds and hardware variants, inspect observations and dated price changes, and open related equities or TheBuildout.",
+    usage: ["GPU", "GPU H100", "GPU B200"],
+    keys: [key("t", "BO")],
+    data: same("Hourly asks and AWS spot; other published prices every 6 or 24 hours"),
+    bloomberg: [],
+  },
   NGS: {
     summary: "Lower 48 working gas in storage and each region's, the week's injection or withdrawal against a year ago and the five-year average, charted over the year. The Gas Storage tab of DOE.",
     usage: ["NGS"],

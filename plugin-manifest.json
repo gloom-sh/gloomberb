@@ -163,6 +163,7 @@
           "futures",
           "futures-curve",
           "fx-matrix",
+          "gpu",
           "market-movers",
           "relationship-graph",
           "relative-rotation",

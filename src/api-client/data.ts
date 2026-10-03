@@ -15,6 +15,7 @@ import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange 
 import type { FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
 import type { DoeBoardPayload } from "./doe";
+import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery } from "./gpu";
 import type { TapeSnapshot } from "./tape";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
@@ -388,6 +389,20 @@ export class CloudDataApi {
 
   async getCloudDoeBoard(): Promise<DoeBoardPayload> {
     return this.request<DoeBoardPayload>("/cloud/doe/board");
+  }
+
+  async getCloudGpuBoard(): Promise<GpuBoardPayload> {
+    return this.request<GpuBoardPayload>("/cloud/gpu/board");
+  }
+
+  async getCloudGpuHistory(query: GpuHistoryQuery = {}): Promise<GpuHistoryPayload> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<GpuHistoryPayload>(`/cloud/gpu/history?${params}`);
+  }
+
+  async getCloudGpuEvents(gpuModel?: string): Promise<GpuEventsPayload> {
+    const params = new URLSearchParams({ limit: "1000", ...(gpuModel ? { gpuModel } : {}) });
+    return this.request<GpuEventsPayload>(`/cloud/gpu/events?${params}`);
   }
 
   async getCloudTape(symbol: string, exchange: string, signal?: AbortSignal): Promise<TapeSnapshot> {
