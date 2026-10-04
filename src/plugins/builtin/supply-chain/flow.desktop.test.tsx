@@ -83,7 +83,7 @@ test("hovering a card brings its ribbon forward and names the figure, its denomi
   const card = [...container.querySelectorAll('[data-gloom-role="supply-flow-node"]')].find((node) => node.textContent?.startsWith("one"))!;
   await act(async () => { card.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }) as unknown as Event); });
   const tooltip = container.querySelector('[data-gloom-role="supply-flow-tooltip"]');
-  expect(tooltip?.textContent).toContain("22% of FY revenue");
+  expect(tooltip?.textContent).toContain("22% of revenue");
   expect(tooltip?.textContent).toContain("FOCUS 10-K filed 2026-02-25");
   const opacities = [...container.querySelectorAll("svg polygon")].map((polygon) => Number(polygon.getAttribute("opacity")));
   expect(opacities[0]).toBeGreaterThan(opacities[1]!);

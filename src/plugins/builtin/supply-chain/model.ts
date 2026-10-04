@@ -45,10 +45,14 @@ export function shareParts(row: SupplyRow, focusId?: string | null, { includeRep
   const reporter = includeReporter || (focusId && row.reportingEntity.id !== focusId) ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
   const scope = row.pctScope ? scopeWords(row.pctScope) : "";
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
+  // XBRL dimensions can qualify the numerator, denominator, or both. NVDA's
+  // NonUs fact is a share of total revenue, while TW omits a Data Center qualifier.
+  // Neither supports turning its dimensional member into an "of ..." claim.
+  if (row.sourceKind === "xbrl" && scope) return { value: `${Number(row.pctOfRevenue.toFixed(1))}%`, basis: `${reporter}${basis} · context: ${scope}` };
   // A scope that names its own denominator ("Vendor non-trade receivables") is a description, read in lower case.
   const scoped = scope && scope.toLowerCase().includes(basis) ? scope.replace(/^[A-Z](?=[a-z])/, (first) => first.toLowerCase()) : `${scope ? `${scope} ` : ""}${basis}`;
-  const period = !reporter && !scope && row.pctBasis === "revenue" ? row.form === "10-Q" ? "quarterly " : row.form === "10-K" || row.form === "20-F" ? "FY " : "" : "";
-  return { value: `${Number(row.pctOfRevenue.toFixed(1))}%`, basis: `of ${reporter}${period}${scoped}` };
+  // Form alone does not identify a metric's duration: a 10-Q includes YTD facts.
+  return { value: `${Number(row.pctOfRevenue.toFixed(1))}%`, basis: `of ${reporter}${scoped}` };
 }
 export function counterpartyName(row: SupplyRow): string {
   if (row.counterparty.aggregate) return `Group: ${row.counterparty.name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
@@ -73,7 +77,7 @@ export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL
 export function cellText(row: SupplyRow, column: string): string {
   return column === "name" ? counterpartyName(row) : column === "ticker" ? row.counterparty.ticker ?? "--"
     : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
-    : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? row.fiscalYear ?? row.period
+    : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? row.period
     : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name
     : column === "corroboration" ? corroborationLabel(row)
     : column === "evidence" ? evidenceLabel(row) : column === "source" ? sourceLabel(row) : column === "filed" ? evidenceDate(row) : `${Math.round(row.confidence * 100)}%`;
@@ -119,14 +123,14 @@ export function flowBands(rows: SupplyRow[], limit: number, pages: Partial<Recor
     // One reporter, period and revenue scope form a compatible percentage scale.
     // Prefer the largest compatible group, then whole-company revenue on a tie.
     const revenueGroups = new Map<string, SupplyRow[]>();
-    for (const row of values) if (trustTier(row) === 1 && band === "customers" && row.pctBasis === "revenue" && (row.pctOfRevenue ?? 0) > 0 && (!focusId || row.reportingEntity.id === focusId)) {
+    for (const row of values) if (trustTier(row) === 1 && band === "customers" && row.pctBasis === "revenue" && !(row.sourceKind === "xbrl" && row.pctScope) && (row.pctOfRevenue ?? 0) > 0 && (!focusId || row.reportingEntity.id === focusId)) {
       const key = revenueKey(row);
       revenueGroups.set(key, [...(revenueGroups.get(key) ?? []), row]);
     }
     const revenueGroup = [...revenueGroups.values()].sort((a, b) => b.length - a.length || Number(a[0]!.pctScope !== null) - Number(b[0]!.pctScope !== null))[0];
     const scaleKey = revenueGroup ? revenueKey(revenueGroup[0]!) : null;
     const value = (row: SupplyRow) => trustTier(row) !== 1 ? 0 : scaleKey === null ? row.usd ?? 0
-      : row.pctBasis === "revenue" && revenueKey(row) === scaleKey ? row.pctOfRevenue ?? 0 : 0;
+      : row.pctBasis === "revenue" && !(row.sourceKind === "xbrl" && row.pctScope) && revenueKey(row) === scaleKey ? row.pctOfRevenue ?? 0 : 0;
     // Use the entire band: paging must not change an existing ribbon's width.
     const max = Math.max(0, ...values.map(value));
     const ordered = [...values].sort((a, b) => value(b) - value(a));

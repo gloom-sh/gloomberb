@@ -115,12 +115,12 @@ test("revenue ribbons share exact scope and period while dollar scales remain st
   expect(flowBands(dollars, 2, { suppliers: 1 }).suppliers[0]?.weight).toBe(3_320_000 / 149_000_000);
 });
 
-test("a share always names its denominator: the reporting company's revenue in reverse, the scope, or receivables", () => {
+test("shares retain the reporter and distinguish tagged context from a prose denominator", () => {
   const reverse = supplyRow("crus", { role: "supplier", direction: "in", reportingEntity: entity("CRUS"), pctOfRevenue: 91 });
   expect(shareParts(reverse, "AAPL")).toEqual({ value: "91%", basis: "of CRUS revenue" });
-  expect(shareParts(supplyRow("own", { pctOfRevenue: 22.04 }), "FOCUS")).toEqual({ value: "22%", basis: "of FY revenue" });
-  expect(shareParts(supplyRow("seg", { pctOfRevenue: 14, pctScope: "Compute And Networking Segment" }), "FOCUS")?.basis).toBe("of Compute & Networking revenue");
-  expect(shareParts(supplyRow("ar", { pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")?.basis).toBe("of vendor non-trade receivables");
+  expect(shareParts(supplyRow("own", { pctOfRevenue: 22.04 }), "FOCUS")).toEqual({ value: "22%", basis: "of revenue" });
+  expect(shareParts(supplyRow("seg", { sourceKind: "filing_text", pctOfRevenue: 14, pctScope: "Compute And Networking Segment" }), "FOCUS")?.basis).toBe("of Compute & Networking revenue");
+  expect(shareParts(supplyRow("ar", { sourceKind: "filing_text", pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")?.basis).toBe("of vendor non-trade receivables");
   expect(shareParts(supplyRow("none", { pctOfRevenue: null, pctBasis: null }), "FOCUS")).toBeNull();
   // A multi-hop disclosure always names its reporter, even when it is the focus company.
   expect(shareParts(supplyRow("path", { pctOfRevenue: 22.04, pctBasis: "revenue" }), "FOCUS", { includeReporter: true }))
@@ -129,4 +129,19 @@ test("a share always names its denominator: the reporting company's revenue in r
   expect(shareParts(supplyRow("no-pct", { pctOfRevenue: null, pctBasis: "revenue" }), undefined, { includeReporter: true })).toBeNull();
   const group = supplyRow("group", { counterparty: { ...entity("group", "United States And Europe Based End Customers"), aggregate: true, ticker: null } });
   expect(counterpartyLabel(group)).toBe("United States and Europe based end customers");
+});
+
+test("NVDA geographic XBRL facts do not invent a denominator or quarterly duration", () => {
+  // 76% and 86%: Data Center sales to Taiwan-headquartered customers; 30%:
+  // total revenue from non-US customers over six months. Tags omit this prose.
+  for (const [pctOfRevenue, pctScope, form] of [[76, "TW", "10-K"], [86, "TW", "10-Q"], [30, "Non Us", "10-Q"]] as const) {
+    const row = supplyRow("nvda", { sourceKind: "xbrl", pctOfRevenue, pctScope, form });
+    expect(shareParts(row, "FOCUS")).toEqual({ value: `${pctOfRevenue}%`, basis: `revenue · context: ${pctScope === "TW" ? "TW" : "non-US"}` });
+    expect(shareParts(row, "OTHER")?.basis).toStartWith("FOCUS revenue · context:");
+  }
+  expect(shareParts(supplyRow("ytd", { form: "10-Q" }), "FOCUS")?.basis).toBe("of revenue");
+  const scoped = [22, 14].map((pct, i) => supplyRow(`xbrl-${i}`, { sourceKind: "xbrl", pctScope: "TW", pctOfRevenue: pct }));
+  expect(flowBands(scoped, 6, {}, "FOCUS").customers.map(row => row.weight)).toEqual([null, null]);
+  const mixed = flowBands([...scoped, supplyRow("prose", { pctScope: "TW" })], 6, {}, "FOCUS").customers;
+  expect(mixed.find(row => row.id === "xbrl-0")?.weight).toBeNull();
 });

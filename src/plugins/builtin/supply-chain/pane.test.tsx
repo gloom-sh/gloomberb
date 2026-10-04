@@ -69,7 +69,7 @@ test("preview keeps evidence-bearing rows, shows the standard upgrade, and narro
   data.says[0] = supplyRow("Known company", { nativeAmount: 315_813, nativeCurrency: "JPY", nativeScale: 1_000_000 });
   await mount(88, 20);
   const native = await tui.waitForFrameToContain("315,813 JPY million");
-  expect(native).toContain("FY2026");
+  expect(native).toContain("2026-01-31");
   expect(native).toContain("Upgrade to Pro");
   expect(native).toContain("Filing");
 });
@@ -116,7 +116,7 @@ test("narrow evidence wraps original quotes and glosses and scrolls to their end
     quoteGloss: "Samsung's principal customers include Alphabet, Apple, Deutsche Telekom, Hong Kong Techtronics and Supreme Electronics. Together they represented approximately 15% of total revenue." });
   setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [row] })));
   await mount(80, 20);
-  await tui.waitForFrameToContain("FY2026");
+  await tui.waitForFrameToContain("2026-01-31");
   await tui.emitKeypress({ name: "e" });
   await tui.waitForFrameToContain("Original quote");
   await tui.emitKeypress({ name: "end" });
@@ -136,7 +136,7 @@ test("evidence preserves the reporting company and scope, then Enter drills into
   for (const width of [88, 160]) {
     await mount(width, 24);
     const table = await tui.waitForFrameToContain("315,813 JPY million");
-    expect(table).toContain("FY2026");
+    expect(table).toContain("2026-01-31");
     expect(table).toContain("22%");
     if (width === 160) expect(table).toContain("ORIGINS");
     await tui.destroy();

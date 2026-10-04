@@ -37,6 +37,14 @@ const context = (payload: GraphPayload, requests: string[]) => createTestHeadles
 });
 
 describe("supply chain graph headless integration", () => {
+  test("scoped XBRL evidence exports its context without claiming a denominator", async () => {
+    const payload = graphPayload();
+    Object.assign(payload.links[0]!.evidence[0]!, { sourceKind: "xbrl", tier: "structured", pctScope: "Non Us" });
+    const report = await supplyChainHeadless.load(args({ tab: "graph" }), context(payload, []));
+    const evidence = report.sections.find(section => section.title === "Disclosure evidence")!.rows!;
+    expect(evidence[0]).toMatchObject({ pct: 20, pctBasis: "revenue", pctScope: "Non Us", denominator: null });
+    expect(evidence[1]).toMatchObject({ denominator: "B revenue" });
+  });
   test("CLI filters preserve validated values through settings and the graph request", async () => {
     const capability = getPaneFunctionCapability(undefined, { id: "supply-chain", name: "Supply Chain", headless: supplyChainHeadless } as PaneDef);
     const options = normalizeCapabilityOptions(capability, { tab: "graph", depth: "3", direction: "upstream", roles: "supplier", sources: "xbrl,filing_text",

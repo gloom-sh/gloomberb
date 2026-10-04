@@ -33,7 +33,7 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
     { key: "quote", header: "Quote" }, { key: "filingUrl", header: "Filing" },
   ], rows: data.links.flatMap(link => link.evidence.map(item => ({ id: item.id, linkId: link.id, primary: item.id === link.primaryEvidenceId,
     reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, pct: item.pctOfRevenue ?? null,
-    denominator: item.pctBasis ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
+    denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
     pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, filed: item.filedDate, asOf: item.asOf,
     confidence: item.confidence, quote: item.quote, quoteLanguage: item.quoteLanguage, quoteGloss: item.quoteGloss ?? null,
     quoteGlossKind: item.quoteGloss ? "machine_translation" : null, nativeAmount: item.nativeAmount ?? null,

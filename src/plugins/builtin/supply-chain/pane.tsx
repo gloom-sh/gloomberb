@@ -54,7 +54,7 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
     { id: "role", label: "Role", width: 11, align: "left" },
     share,
     ...(valueWidth !== null ? [{ id: "usd", label: "Value", width: Math.max(medium ? 10 : 8, valueWidth), align: "right" as const }] : []),
-    { id: "fy", label: "Period", width: medium ? 9 : 7, align: "left" },
+    { id: "fy", label: "Period", width: 10, align: "left" },
     ...(wide ? [
       { id: "filed", label: "Published", width: 10, align: "left" as const },
       { id: "publisher", label: "Publisher", width: 16, align: "left" as const },
@@ -63,8 +63,8 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
   ];
   // Preserve trust labels, native units and final columns before expanding the share and name.
   // The table ignores its last trailing gutter when deciding whether it fits.
-  if (valueWidth !== null) {
-    share.width = Math.max(14, share.width - Math.max(0, getTableWidth(columns) - width - 1));
+  if (valueWidth !== null || width >= 80) {
+    share.width = Math.max(valueWidth !== null ? 10 : 14, share.width - Math.max(0, getTableWidth(columns) - width - 1));
     name.width = Math.max(18, name.width - Math.max(0, getTableWidth(columns) - width - 1));
   }
   return columns;
@@ -224,7 +224,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         content: <ShareCell row={row} focusId={focusId} width={column.width} selected={state.selected} /> };
       case "usd": return nativeValue(row) === null && row.usd === null ? { text: "", value: null }
         : { text: disclosedValue(row).replace(/ (disclosed|derived)$/, ""), value: row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd, color: colors.text };
-      case "fy": return { text: row.fiscalYear ? `FY${row.fiscalYear}` : row.period, color: colors.textDim };
+      case "fy": return { text: row.period, color: colors.textDim };
       default: return { text: cellText(row, column.id) };
     }
   };

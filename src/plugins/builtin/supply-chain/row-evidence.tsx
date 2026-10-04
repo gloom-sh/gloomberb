@@ -23,7 +23,7 @@ export function SupplyVerification({ row }: { row: SupplyRow }) {
   return <>
     {isUnconfirmed(row) ? <KeyValueRow label="Why unconfirmed" value={row.whyUnconfirmed ?? "Awaiting independent confirmation"} labelWidth={20} /> : null}
     <KeyValueRow label="Corroboration" value={corroborationLabel(row)} labelWidth={20} />
-    {row.pctScope ? <KeyValueRow label="Percentage scope" value={row.pctScope} labelWidth={20} /> : null}
+    {row.pctScope ? <KeyValueRow label={row.sourceKind === "xbrl" ? "Tagged context" : "Percentage scope"} value={row.pctScope} labelWidth={20} /> : null}
     {row.sectionRef ? <KeyValueRow label="Section" value={row.sectionRef} labelWidth={20} /> : null}
     {row.jurisdiction ? <KeyValueRow label="Jurisdiction" value={row.jurisdiction} labelWidth={20} /> : null}
     {row.firstSeenAt ? <KeyValueRow label="First seen" value={row.firstSeenAt.slice(0, 10)} detail={row.lastSeenAt ? `last seen ${row.lastSeenAt.slice(0, 10)}` : undefined} labelWidth={20} /> : null}
@@ -72,7 +72,7 @@ export function RowEvidence({ row, focusId, width, height, focused }: { row: Sup
   const figures: StatItem[] = [
     ...(share ? [{ id: "share", label: "Share", value: share.value, detail: share.basis }] : []),
     ...(native || row.usd !== null ? [{ id: "value", label: "Value", value: disclosedValue(row) }] : []),
-    { id: "period", label: "Period", value: row.fiscalYear ? `FY ${row.fiscalYear}` : row.period, detail: row.fiscalYear ? row.period : undefined },
+    { id: "period", label: "Period", value: row.period, detail: row.fiscalYear ? `Fiscal year ${row.fiscalYear}` : undefined },
     { id: "published", label: "Published", value: evidenceDate(row), detail: evidenceLabel(row) },
     { id: "confidence", label: "Confidence", value: `${Math.round(row.confidence * 100)}%` },
   ];
