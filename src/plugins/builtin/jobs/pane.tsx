@@ -70,6 +70,7 @@ import {
 } from "./model";
 import { ShareBars } from "./share-bars";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
+import { listingIdentity } from "../shared/ticker-request";
 
 export const JOBS_PANE_ID = "jobs";
 
@@ -79,11 +80,11 @@ const MOVERS_PAGE = 200;
 
 type DetailTab = "roles" | "locations" | "seniority" | "salary";
 
-function HiringProWall({ symbol, width, height }: { symbol: string | null; width: number; height: number }) {
+function HiringProWall({ symbol, exchange, width, height }: { symbol: string | null; exchange?: string; width: number; height: number }) {
   return (
     <ProWall
       placement="jobs-wall"
-      symbol={symbol} width={width} height={height}
+      symbol={symbol} exchange={exchange} width={width} height={height}
       title="Hiring data is part of Gloom Cloud Pro."
       message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges.${symbol ? ` Open ${symbol}'s hiring picture with Pro.` : ""}`}
     />
@@ -513,6 +514,7 @@ function CompanyView({
  */
 function CompanyPanel({
   symbol,
+  exchange = "US",
   companyName,
   width,
   height,
@@ -521,6 +523,7 @@ function CompanyPanel({
   embedded = false,
 }: {
   symbol: string;
+  exchange?: string;
   companyName: string | null;
   width: number;
   height: number;
@@ -546,7 +549,7 @@ function CompanyPanel({
   }, [data, reload]);
 
   if (data?.kind === "denied") {
-    if (data.status === 402) return <HiringProWall symbol={symbol} width={width} height={height} />;
+    if (data.status === 402) return <HiringProWall symbol={symbol} exchange={exchange} width={width} height={height} />;
     return <SignInWall action="see who is hiring" needsVerification={data.status === 403} />;
   }
   if ((status === "idle" || status === "loading") && !data) {
@@ -735,15 +738,16 @@ interface JobsViewProps {
 }
 
 function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps) {
-  const { ticker } = usePaneTickerIdentity();
+  const { ticker, symbol: boundSymbol } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker ?? null;
+  const exchange = listingIdentity(boundSymbol, ticker?.metadata.exchange)?.exchange;
   const companyName = ticker?.metadata.name ?? null;
   const access = usePlanAccess();
   const registrationId = JOBS_PANE_ID;
 
   if (!access.signedIn) return <SignInWall action="see who is hiring" />;
   if (!access.emailVerified) return <SignInWall action="see who is hiring" needsVerification />;
-  if (!access.hasProAccess) return <HiringProWall symbol={symbol} width={width} height={height} />;
+  if (!access.hasProAccess) return <HiringProWall symbol={symbol} exchange={exchange} width={width} height={height} />;
 
   if (!symbol) {
     if (companyOnly) return <EmptyState title="No ticker selected." message="Select a ticker to see its hiring." />;
@@ -752,6 +756,7 @@ function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps
   return (
     <CompanyPanel
       symbol={symbol}
+      exchange={exchange}
       companyName={companyName}
       width={width}
       height={height}
