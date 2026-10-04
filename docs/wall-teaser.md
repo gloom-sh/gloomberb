@@ -109,26 +109,6 @@ an anonymous id. Signed-out desktop/TUI users send nothing new and are not part
 of this baseline, including installations with a website handoff id. No native
 identifier is minted. Existing non-wall milestones keep their existing rules.
 
-## Visual review
-
-These local fixtures render the production wall components and kit with
-controlled exposure answers. The RISK aggregate is the public AAPL response
-read on October 4, 2026: 31 factors, filed October 31, 2025. No fixture sends
-analytics or reads a Pro endpoint. Terminal captures use the existing screenshot
-tool's 2x pixel density at the stated viewport sizes.
-
-Screenshots are local review artifacts in
-`~/.local/state/gloom-pm/ab-inapp/shots-d/`; no PNGs or branch image links are
-published in this repository:
-
-- `terminal-risk-summary-{control,teaser}-{1280x540,720x360}.png`
-- `terminal-most-sample-{control,teaser}-{1280x540,720x360}.png`
-- `terminal-flow-sample-{control,teaser}-{1280x540,720x360}.png`
-- `web-most-sample-{control,teaser}-480x540.png`
-- `web-flow-sample-teaser-480x540.png`
-- `desktop-most-sample-teaser-1280x540.png`
-- `desktop-flow-sample-teaser-1280x540.png`
-
 ## What remains outside this change
 
 The 33 `SignInWall` uses remain phase 2. Signed-out screens that already choose
