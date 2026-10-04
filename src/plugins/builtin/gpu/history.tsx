@@ -9,9 +9,9 @@ import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
-import { loadGpuEvents, loadGpuHistory } from "./client";
+import { loadGpuHistory } from "./client";
 import {
-  GPU_MODELS, gpuBasisLabel, gpuBoardSections, gpuChange, gpuChangeColor, gpuHeadline, gpuHistoryChart, gpuMatches, gpuPricePeriods, gpuPrice, gpuShortSource,
+  GPU_MODELS, gpuBasisLabel, gpuBoardSections, gpuChange, gpuChangeColor, gpuHeadline, gpuHistoryChart, gpuHistoryViewport, gpuProvenanceLabel, gpuMatches, gpuPricePeriods, gpuPrice, gpuShortSource,
   gpuTime, gpuVariant, type GpuPricePeriod,
 } from "./model";
 
@@ -27,6 +27,7 @@ const listColumns = (width: number): DataTableColumn[] => [
 const PERIOD_COLUMNS: DataTableColumn[] = [
   { id: "from", label: "From (UTC)", width: 14, align: "left" }, { id: "to", label: "To", width: 14, flexGrow: 1, align: "left" },
   { id: "price", label: "$/GPU-hr", width: 10, align: "right" }, { id: "change", label: "Change", width: 9, align: "right" },
+  { id: "provenance", label: "Record", width: 10, align: "left" },
 ];
 /** The selected series and the medians it is read against; never the whole board. */
 const MAX_PLOTTED = 5;
@@ -39,43 +40,46 @@ function HistoryDetail({ row, peers, width, height, refreshVersion }: {
   const ids = plotted.map((entry) => entry.id).join("\n");
   const loader = useCallback(async (force: boolean) => {
     const refresh = force || refreshVersion > 0;
-    const [histories, events] = await Promise.all([Promise.all(ids.split("\n").map((id) => loadGpuHistory(id, refresh))), loadGpuEvents(row.gpuModel, refresh)]);
-    return { histories, events };
+    const histories = await Promise.all(ids.split("\n").map((id) => loadGpuHistory(id, refresh)));
+    return { histories };
   }, [ids, row.gpuModel, refreshVersion]);
   const resource = useAsyncResource(loader, { keepPreviousData: true });
   useAutoRefresh(resource.updatedAt, resource.load);
   const points = useMemo(() => resource.data?.histories.flatMap((history) => history.payload.points) ?? [], [resource.data]);
-  const events = resource.data?.events.payload.events ?? [];
-  const chart = useMemo(() => gpuHistoryChart(plotted, points, events, { selected: colors.textBright, marker: colors.warning }), [plotted, points, events, colors]);
+  const chart = useMemo(() => gpuHistoryChart(plotted, points, { selected: colors.textBright, marker: colors.warning }), [plotted, points, colors]);
+  const viewport = useMemo(() => gpuHistoryViewport(chart), [chart]);
   const own = useMemo(() => points.filter((point) => `${point.source}:${point.skuKey}` === row.id).sort((a, b) => a.observedAt.localeCompare(b.observedAt)), [points, row.id]);
   const periods = useMemo(() => gpuPricePeriods(own), [own]);
-  const refreshErrors = [resource.data?.events.refreshError, ...(resource.data?.histories.map((history) => history.refreshError) ?? [])];
+  const refreshErrors = resource.data?.histories.map((history) => history.refreshError) ?? [];
   usePaneStatusFooter({ registrationId: "gpu:history", loading: resource.loading, stale: resource.data?.histories.some((history) => history.stale),
     error: resource.error, info: own.length ? [{ id: "start", parts: [{ text: `history since ${gpuTime(own[0]!.observedAt, true)} UTC`, tone: "muted" }] }] : [] });
   usePaneNoticeFooter({ registrationId: "gpu:history-notice", focused: true, notices: refreshErrors.filter((value): value is string => !!value) });
   const first = own[0], last = own.at(-1);
+  const longHistory = first && last && Date.parse(last.observedAt) - Date.parse(first.observedAt) >= 365 * 86_400_000;
+  const historyDate = (value: string) => longHistory ? value.slice(0, 10) : gpuTime(value, true);
   const stats = row.stats;
   const figures: StatItem[] = [
     { id: "latest", label: "$/GPU-hr", value: gpuPrice(row.pricePerGpuHr), detail: gpuTime(row.observedAt, true) },
     // A change needs the same three observations a line does; before that the history is still being collected.
     ...(first && last && own.length >= 3 ? [{ id: "change", label: "Change", value: gpuChange((last.pricePerGpuHr / first.pricePerGpuHr - 1) * 100),
-      color: priceColor(last.pricePerGpuHr - first.pricePerGpuHr), detail: `since ${gpuTime(first.observedAt, true)}` }] : []),
+      color: priceColor(last.pricePerGpuHr - first.pricePerGpuHr), detail: `since ${historyDate(first.observedAt)}` }] : []),
     ...(stats && stats.p25 !== undefined && stats.p75 !== undefined ? [{ id: "iqr", label: "Middle half", value: `${gpuPrice(stats.p25)}–${gpuPrice(stats.p75)}`, detail: `${stats.n} offers` }]
       : stats && stats.min !== stats.max ? [{ id: "range", label: "Range", value: `${gpuPrice(stats.min)}–${gpuPrice(stats.max)}`,
         detail: `${stats.n} ${row.providerClass === "aggregate" ? "providers" : "samples"}` }] : []),
   ];
   const renderCell = (period: GpuPricePeriod, column: DataTableColumn): DataTableCell => {
-    if (column.id === "from") return { text: gpuTime(period.from, true), value: period.from };
-    if (column.id === "to") return period.to ? { text: gpuTime(period.to, true), value: period.to, color: colors.textDim } : { text: "now", value: null, color: colors.textDim };
+    if (column.id === "from") return { text: historyDate(period.from), value: period.from };
+    if (column.id === "to") return { text: historyDate(period.to), value: period.to, color: colors.textDim };
+    if (column.id === "provenance") return { text: gpuProvenanceLabel(period), color: period.provenance === "archive" ? colors.warning : colors.textDim };
     if (column.id === "price") return { text: gpuPrice(period.price), value: period.price, color: colors.textBright };
     return period.change == null ? { text: "", value: null } : { text: gpuChange(period.change), value: period.change, color: gpuChangeColor(period.change, colors) };
   };
   return <PaneStatusBody loading={resource.loading && !resource.data} error={!resource.data ? resource.error : null} subject="GPU price history">
     <DataTableView columns={PERIOD_COLUMNS} items={periods} rootWidth={width} rootHeight={height} focused={false}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={periods.length} tableColumns={PERIOD_COLUMNS} figures={figures}
-        chart={resource.error && !resource.data ? null : { series: chart, formatValue: (value) => `$${gpuPrice(value)}`, remoteKind: "gpu-rental-history",
+        chart={resource.error && !resource.data ? null : { series: chart, viewport, formatValue: (value) => `$${gpuPrice(value)}`, remoteKind: "gpu-rental-history",
           loading: resource.loading && !resource.data,
-          empty: chart.length ? undefined : first ? `Collecting history since ${gpuTime(first.observedAt, true)} UTC` : "Collecting history" }} />}
+          empty: resource.data?.histories.some((history) => history.payload.access?.locked) ? "Full history is available with Pro." : chart.length ? undefined : first ? `Collecting history since ${gpuTime(first.observedAt, true)} UTC` : "Collecting history" }} />}
       selection={{ kind: "none" }} getItemKey={(period) => period.from} sortColumnId={null} sortDirection="desc"
       renderCell={renderCell} emptyStateTitle="No observations for this series yet." />
   </PaneStatusBody>;

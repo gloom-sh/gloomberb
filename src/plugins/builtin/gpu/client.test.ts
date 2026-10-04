@@ -2,8 +2,8 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { GpuBoardPayload, GpuHistoryPayload, GpuHistoryQuery } from "../../../api-client/gpu";
-import { fetchGpuBoard, fetchGpuHistory, getCachedGpuBoard, gpuBoardCache, GPU_NOT_AVAILABLE, loadGpuBoard } from "./client";
-import { gpuBoard, gpuRow } from "./test-fixture";
+import { fetchGpuBoard, fetchGpuEvents, fetchGpuHistory, gpuCacheScope, getCachedGpuBoard, gpuBoardCache, GPU_NOT_AVAILABLE, loadGpuBoard } from "./client";
+import { gpuBoard, gpuEvent, gpuRow } from "./test-fixture";
 
 describe("GPU API boundary", () => {
   test("missing routes and uncollected prices are unavailable while failures retain their cause", async () => {
@@ -65,7 +65,7 @@ describe("GPU API boundary", () => {
 test("a refresh failure keeps a marked last-good board while access refusal still requires signing in", async () => {
   gpuBoardCache.reset();
   const saved = gpuBoard();
-  await gpuBoardCache.load("board", async () => saved);
+  await gpuBoardCache.load(`${gpuCacheScope()}:board`, async () => saved);
   const request = spyOn(apiClient, "getCloudGpuBoard").mockRejectedValue(new ApiRequestError("Bad gateway", 502));
   try {
     expect(getCachedGpuBoard()).toEqual({ payload: saved, stale: false, refreshError: null });
@@ -80,4 +80,35 @@ test("a refresh failure keeps a marked last-good board while access refusal stil
     request.mockRestore();
     gpuBoardCache.reset();
   }
+});
+
+
+test("history and availability events retain source evidence and reject malformed provenance", async () => {
+  const point = gpuRow({ provenance: "archive", provenanceLabel: "archived page, reconstructed", sourceUrl: "https://example.com/prices", evidenceUrl: "https://web.archive.org/web/20240101id_/https://example.com/prices" });
+  const payload = { generatedAt: point.observedAt, points: [point], effectivePoints: [], access: { tier: "pro" as const, preview: false, locked: false } };
+  expect(await fetchGpuHistory({}, { getCloudGpuHistory: async () => payload })).toEqual(payload);
+  for (const bad of [{ provenance: "estimated" }, { evidenceUrl: "javascript:alert(1)" }, { access: true }]) {
+    const malformed = "access" in bad ? { ...payload, access: bad.access } : { ...payload, points: [{ ...point, ...bad }] };
+    await expect(fetchGpuHistory({}, { getCloudGpuHistory: async () => malformed as GpuHistoryPayload })).rejects.toThrow("invalid GPU price history");
+  }
+  const event = gpuEvent({ kind: "availability", provenance: "archive", oldAvailability: null, newAvailability: "available" });
+  const events = { generatedAt: point.observedAt, events: [event] };
+  expect(await fetchGpuEvents(undefined, { getCloudGpuEvents: async () => events })).toEqual(events);
+});
+
+test("changing account or plan cannot reuse cached full data", async () => {
+  gpuBoardCache.reset();
+  const user = spyOn(apiClient, "getCurrentUser");
+  const full = { id: "full-user", emailVerified: true, plan: "pro" } as NonNullable<ReturnType<typeof apiClient.getCurrentUser>>;
+  user.mockReturnValue(full);
+  try {
+    await gpuBoardCache.load(`${gpuCacheScope()}:board`, async () => gpuBoard());
+    expect(getCachedGpuBoard()).not.toBeNull();
+    user.mockReturnValue({ ...full, plan: "free" });
+    expect(getCachedGpuBoard()).toBeNull();
+    user.mockReturnValue({ ...full, id: "other-user" });
+    expect(getCachedGpuBoard()).toBeNull();
+    user.mockReturnValue(null);
+    expect(getCachedGpuBoard()).toBeNull();
+  } finally { user.mockRestore(); gpuBoardCache.reset(); }
 });

@@ -1,5 +1,8 @@
 export type GpuBasis = "list" | "spot" | "ask" | "reserved" | "index";
 
+type GpuProvenance = "archive" | "official-history" | "live";
+interface GpuAccess { tier: "pro" | "preview"; preview: boolean; locked: boolean }
+
 export interface GpuObservation {
   source: string;
   skuKey: string;
@@ -17,6 +20,10 @@ export interface GpuObservation {
   availability: string | null;
   observedAt: string;
   effectiveAt: string | null;
+  provenance?: GpuProvenance;
+  provenanceLabel?: string;
+  evidenceUrl?: string | null;
+  sourceUrl?: string | null;
   stats?: {
     n: number; min: number; max: number;
     p25?: number; p75?: number;
@@ -39,6 +46,7 @@ export interface GpuBoardRow extends GpuObservation {
 }
 
 export interface GpuBoardPayload {
+  access?: GpuAccess;
   generatedAt: string;
   status: "available" | "partial" | "unavailable";
   asOf: string | null;
@@ -48,6 +56,7 @@ export interface GpuBoardPayload {
 }
 
 export interface GpuHistoryPayload {
+  access?: GpuAccess;
   generatedAt: string;
   points: GpuObservation[];
   /** Provider effective dates are separate from observations collected by Gloom. */
@@ -57,7 +66,13 @@ export interface GpuHistoryPayload {
 export interface GpuEvent {
   id: string;
   origin?: "published" | "observed";
-  kind: "price" | "membership";
+  kind: "price" | "membership" | "availability";
+  provenance?: GpuProvenance;
+  provenanceLabel?: string;
+  evidenceUrl?: string | null;
+  sourceUrl?: string | null;
+  oldAvailability?: string | null;
+  newAvailability?: string | null;
   source: string;
   skuKey: string;
   provider: string;
@@ -74,5 +89,5 @@ export interface GpuEvent {
   newMembers: string[] | null;
 }
 
-export interface GpuEventsPayload { generatedAt: string; events: GpuEvent[] }
+export interface GpuEventsPayload { access?: GpuAccess; generatedAt: string; events: GpuEvent[] }
 export interface GpuHistoryQuery { gpuModel?: string; basis?: GpuBasis; seriesId?: string; from?: string; to?: string; limit?: number }

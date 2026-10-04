@@ -1,6 +1,6 @@
 # GPU rental prices
 
-`GPU` opens GPU Rental Prices. `GPU H100` or `GPU B200` selects a GPU model. Board shows published rental rates, History charts Gloom's stored observations, Changes records price and list-median membership changes, and Equities shows related shares. The proof of concept is free. The standard pane refresh reads the latest stored data; the footer shows its observation time, stale status and current failures.
+`GPU` opens GPU Rental Prices. `GPU H100` or `GPU B200` selects a GPU model. Board shows published rental rates, History charts dated observations, Changes records price, availability and list-median membership changes, and Equities shows related shares. Full data and history require Pro; free accounts receive a preview. The standard pane refresh reads the latest stored data; the footer shows its observation time, stale status and current failures.
 
 ## Reading the board
 
@@ -8,11 +8,11 @@ With one GPU model selected, the band above the board places every basis on one 
 
 Rows are grouped by GPU model and basis, with the provider-class medians and the marketplace offer medians leading each section in bold, followed by their sample size. Form factor and memory appear as chips, and availability as a dot: green when offers are reported available, amber when a pooled supply is low, grey when the provider reports none. Range shows the interquartile range for marketplace medians and the lowest to highest constituent for list medians.
 
-Until a series has an earlier observation to compare against, its change column reads `new`. Once any 1D, 7D or 30D figure exists, those columns appear, and the medians of the selected model gain a one-month sparkline. Only those few medians fetch history for the board.
+When a series has no observation within the comparison window, its change column reads `-`, even when older historical observations exist. Once any 1D, 7D or 30D figure exists, those columns appear, and the medians of the selected model gain a one-month sparkline. Only those few medians fetch history for the board.
 
-History lists the selected model's series grouped the same way. The chart draws the chosen series as a step line together with the medians of the same basis, with list-price changes as markers; a series with fewer than three observations shows that history is still being collected. The table under the chart lists the spans a price held, so hourly snapshots of an unchanged rate read as one row.
+History lists the selected model's series grouped the same way. The chart draws the chosen series as a step line together with the medians of the same basis, starting at the first plotted observation with a small amount of trailing space. Markers identify actual observations in the selected series; amber Archived markers identify reconstructed rate cards. No synthetic daily observations are inserted; a series with fewer than three observations shows that history is still being collected. The table under the chart groups consecutive equal prices within the same record type and ends at the last observation, so hourly snapshots of an unchanged rate read as one row. Archived, Published and Observed records remain distinguishable.
 
-Changes groups moves by day, newest first, with the old and new price and the move coloured by its sign. Equities groups related shares into chip makers, hyperscalers, neoclouds, and hosts and builders, with each share's GPU price series, its seven-day move and a one-month price sparkline.
+Changes groups price and availability moves by their evidence date, newest first, with the old and new price and the move coloured by its sign. Equities groups related shares into chip makers, hyperscalers, neoclouds, and hosts and builders, with each share's GPU price series, its seven-day move and a one-month price sparkline.
 
 ## Price basis
 
@@ -49,7 +49,7 @@ GCP's **Price (USD)** header supplies list prices and **Current Spot pricing** s
 
 Each source can be disabled separately. A failed request or parse keeps the last good observations and reports the failure. Observations become stale after 48 hours without a successful collection. Refreshing the pane does not trigger another collection.
 
-History begins with Gloom's own observations. The store retains at most one observation per source and SKU per hour, with a daily observation even when a rate is unchanged. The 1D, 7D and 30D changes remain `-` until an earlier observation exists at or before the target time and within two hours of it. Missing collections can therefore leave changes unavailable. A published effective date is distinct from the time Gloom observed a price; the optional Azure backfill cannot reconstruct intervening daily rates or past cheapest-region selections.
+History combines stored observations, dated archived rate cards and official historical price versions. Archived records use the snapshot timestamp and are labelled `archived page, reconstructed` in exports. Official versions use their published date. Each imported record retains its original URL and evidence URL; an effective-date label alone never becomes a historical observation. The store retains at most one observation per source and SKU per hour, with a daily observation even when a rate is unchanged. The 1D, 7D and 30D changes remain `-` until an earlier observation exists at or before the target time and within two hours of it. Missing collections can therefore leave changes unavailable. A published effective date is distinct from the time Gloom observed a price; the optional Azure backfill cannot reconstruct intervening daily rates or past cheapest-region selections.
 
 ## Related equities
 

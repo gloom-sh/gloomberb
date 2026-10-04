@@ -1,3 +1,8 @@
+import { usePlanAccess } from "../../../api-client/plan-access";
+import { isAccessDenied } from "../../../api-client/errors";
+import { SignInWall } from "../cloud/auth-actions";
+import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useCallback } from "react";
 import { PaneStatusBody, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -6,34 +11,44 @@ import { usePaneInstance } from "../../../state/app/context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { GpuBoard } from "./board";
-import { getCachedGpuBoard, GPU_NOT_AVAILABLE, loadGpuBoard } from "./client";
+import { getCachedGpuBoard, gpuCacheScope, GPU_NOT_AVAILABLE, loadGpuBoard } from "./client";
 import { GpuChanges } from "./changes";
 import { GpuEquities } from "./equities";
 import { GpuHistory } from "./history";
 import { GPU_TABS, gpuTab, gpuTime } from "./model";
 
-export function GpuPane({ width, height, focused }: PaneProps) {
+export function GpuPane(props: PaneProps) {
+  usePlanAccess();
+  return <GpuView key={gpuCacheScope()} {...props} />;
+}
+
+function GpuView({ width, height, focused }: PaneProps) {
+  const session = useResearchCloudSession();
+  const upgrade = useCloudUpgradeAction("gpu");
   const params = usePaneInstance()?.params;
   const [openingTab] = usePaneSettingValue<string>("tab", "board");
   const [storedTab, setTab] = usePluginPaneState<string>("tab", openingTab);
   const tab = gpuTab(storedTab);
   const [model, setModel] = usePluginPaneState<string>("model", params?.gpuModel ?? "");
   const [selectedId, setSelectedId] = usePluginPaneState<string>("series", "");
-  const resource = useAsyncResource(loadGpuBoard, { initialData: getCachedGpuBoard });
+  const resource = useAsyncResource(loadGpuBoard, { initialData: getCachedGpuBoard, clearOnError: isAccessDenied });
   const data = resource.data?.payload;
   const { createPaneFromTemplate } = usePluginAppActions();
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused: focused && (tab === "board" || !data) });
+  const signIn = !data && (session.needsVerification || isCloudSessionRequired(resource.error));
   const notAvailable = !data && resource.error === GPU_NOT_AVAILABLE;
-  usePaneStatusFooter({ registrationId: "gpu", loading: resource.loading, error: notAvailable ? null : resource.error,
+  usePaneStatusFooter({ registrationId: "gpu", loading: resource.loading, error: notAvailable || signIn ? null : resource.error,
     stale: !!data && (data.stale || resource.data?.stale), info: data?.asOf ? [{ id: "asof", parts: [{ text: `as of ${gpuTime(data.asOf)}`, tone: "muted" }] }] : [] });
   usePaneNoticeFooter({ registrationId: "gpu:notices", focused,
     notices: [...(data?.gaps ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
-  usePaneFooter("gpu:actions", () => ({ hints: [{ id: "buildout", key: "t", label: "BO", title: "Open TheBuildout",
-    onPress: () => createPaneFromTemplate("buildout-pane") }] }), [createPaneFromTemplate]);
+  usePaneFooter("gpu:actions", () => ({ info: data?.access?.preview ? [{ id: "preview", parts: [{ text: "Free preview", tone: "muted" }] }] : [],
+    hints: [...(data?.access?.locked ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Unlock full GPU history with Pro", onPress: upgrade }] : []), { id: "buildout", key: "t", label: "BO", title: "Open TheBuildout",
+    onPress: () => createPaneFromTemplate("buildout-pane") }] }), [createPaneFromTemplate, data?.access, upgrade]);
   const { strip, rows: tabRows } = usePaneTabs(data ? { tabs: [...GPU_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   const body = { width, height: Math.max(3, height - tabRows), focused };
   const reloadBoard = useCallback(() => { void resource.reload(); }, [resource.reload]);
+  if (signIn) return <SignInWall placement="gpu" width={width} height={height} action="browse GPU rental prices" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PaneStatusBody loading={resource.loading && !data} error={!data && !notAvailable ? resource.error : null}

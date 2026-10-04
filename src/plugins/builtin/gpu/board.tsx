@@ -65,7 +65,7 @@ function boardColumns(width: number, options: { windows: GpuChangeKey[]; trend: 
   const wide = width >= 140, medium = width >= 100;
   const changes: DataTableColumn[] = options.windows.length
     ? options.windows.map((key) => ({ id: key, label: CHANGE_LABELS[key], width: medium ? 7 : 6, align: "right" }))
-    : [{ id: "new", label: "Change", width: medium ? 7 : 6, align: "right" }];
+    : [{ id: "unavailableChange", label: "Change", width: medium ? 7 : 6, align: "right" }];
   return [
     { id: "source", label: "Provider", width: wide ? 32 : medium ? 24 : 16, flexGrow: medium ? 0 : 1, align: "left" },
     { id: "variant", label: "Variant", width: medium ? 13 : 12, align: "left" },
@@ -121,10 +121,10 @@ export function GpuBoard({ rows, asOf, model, setModel, selectedId, select, widt
         if (!quartiles && stats.min === stats.max) return { text: "" };
         return { text: quartiles ? `${gpuPrice(stats.p25)}–${gpuPrice(stats.p75)}` : `${gpuPrice(stats.min)}–${gpuPrice(stats.max)}`, color: colors.textDim };
       }
-      case "new": return { text: "new", value: null, color: colors.textMuted };
+      case "unavailableChange": return { text: "-", value: null, color: colors.textMuted };
       case "change1d": case "change7d": case "change30d": {
         const value = row[column.id];
-        return value == null ? { text: "", value: null } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
+        return value == null ? { text: "-", value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
       }
       case "trend": {
         const points = history.get(row.id);

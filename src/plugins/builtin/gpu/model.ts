@@ -101,14 +101,14 @@ export function gpuBoardSections(rows: readonly GpuBoardRow[], model = ""): GpuB
 }
 
 export type GpuChangeKey = "change1d" | "change7d" | "change30d";
-/** Change windows with at least one figure; none means the history is too young and the board says "new". */
+/** Change windows with at least one figure; missing windows remain unavailable. */
 export const gpuChangeWindows = (rows: readonly GpuBoardRow[]): GpuChangeKey[] =>
   (["change1d", "change7d", "change30d"] as const).filter((key) => rows.some((row) => row[key] != null));
 
 /**
  * The series a board fetches history for: only the medians of the one model
- * shown, and only once some change figure exists. All GPUs, or a history
- * younger than a day, fetches nothing; no board row ever fetches its own.
+ * shown, and only once some change figure exists. All GPUs, or no comparable
+ * observation, fetches nothing; no board row ever fetches its own.
  */
 export function gpuSparklineSeries(rows: readonly GpuBoardRow[], model: string): string[] {
   if (!model) return [];
@@ -149,14 +149,15 @@ export function gpuAxisTicks(low: number, high: number): number[] {
   return ticks;
 }
 
-/** The day a change belongs to: the publisher's effective date when there is one, else when Gloom saw it. */
-const gpuEventDate = (event: Pick<GpuEvent, "effectiveAt" | "observedAt">) => (event.effectiveAt ?? event.observedAt).slice(0, 10);
+/** Published notices use their effective date; observed changes use the dated evidence. */
+export const gpuEventDate = (event: Pick<GpuEvent, "origin" | "effectiveAt" | "observedAt">) =>
+  event.origin === "published" ? event.effectiveAt ?? event.observedAt : event.observedAt;
 
 /** Price changes as a timeline: one section per UTC day, newest first, keeping the server's order within a day. */
 export function gpuEventSections(events: readonly GpuEvent[]): { label: string; items: GpuEvent[] }[] {
   const days = new Map<string, GpuEvent[]>();
   for (const event of [...events].sort((a, b) => gpuEventDate(b).localeCompare(gpuEventDate(a)))) {
-    const day = gpuEventDate(event);
+    const day = gpuEventDate(event).slice(0, 10);
     days.set(day, [...(days.get(day) ?? []), event]);
   }
   return [...days].map(([day, items]) => ({ label: new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US",
@@ -179,56 +180,74 @@ export function gpuAvailability(text: string | null | undefined): GpuAvailabilit
 const gpuSeriesLabel = (row: GpuObservation) => `${gpuLabel(row)} / ${gpuSource(row)} / ${gpuBasisLabel(row.basis)}`;
 export const gpuMatches = (row: GpuBoardRow, query: string) => query.split(/\s+/).every((part) => gpuSeriesLabel(row).toLowerCase().includes(part));
 
-/** Observation timestamps alone draw the line. Publisher effective dates never invent a past snapshot. */
-export function gpuHistorySeries(row: GpuBoardRow, points: readonly GpuObservation[], events: readonly GpuEvent[], color: string, markerColor: string): ResolvedSeries[] {
+/** Observations are dated by their evidence, never by a backdated effective-date label. */
+export function gpuHistorySeries(row: GpuBoardRow, points: readonly GpuObservation[], color: string, archiveColor: string): ResolvedSeries[] {
   const own = points.filter((point) => `${point.source}:${point.skuKey}` === row.id).sort((a, b) => a.observedAt.localeCompare(b.observedAt));
   if (own.length < 3) return [];
-  const line: ResolvedSeries = {
-    ...staticSeries(own.map((point) => ({ date: new Date(point.observedAt), observedAt: new Date(point.observedAt), value: point.pricePerGpuHr })),
-      { id: "rental-price", label: `${gpuSource(row)} ${gpuBasisLabel(row.basis).toLowerCase()}`, color, style: "step", calendarSpaced: true }),
-    unit: "$/GPU-hr", unitGroup: "gpu-rental-usd", interpolation: "step-after",
-  };
-  const markerDate = (event: GpuEvent) => event.origin === "published" ? event.effectiveAt ?? event.observedAt : event.observedAt;
-  const markers = events.filter((event) => event.kind === "price" && event.basis === "list"
-    && `${event.source}:${event.skuKey}` === row.id && markerDate(event) >= own[0]!.observedAt && markerDate(event) <= own.at(-1)!.observedAt);
-  return [line, ...(markers.length ? [{ ...staticSeries(markers.map((event) => ({ date: new Date(markerDate(event)), observedAt: new Date(event.observedAt), value: event.newPrice })),
-    { id: "price-changes", label: "List-price changes", color: markerColor, style: "points", calendarSpaced: true }), unit: "$/GPU-hr", unitGroup: "gpu-rental-usd" }] : [])];
+  const plotted = (observations: readonly GpuObservation[]) => observations.map((point) => ({
+    date: new Date(point.observedAt), observedAt: new Date(point.observedAt), value: point.pricePerGpuHr,
+  }));
+  const unit = { unit: "$/GPU-hr", unitGroup: "gpu-rental-usd" };
+  return [{ ...staticSeries(plotted(own), { id: "rental-price", label: `${gpuSource(row)} ${gpuBasisLabel(row.basis).toLowerCase()}`,
+    color, style: "step", calendarSpaced: true }), ...unit, interpolation: "step-after" },
+    ...([false, true] as const).flatMap((archived) => {
+      const observations = own.filter((point) => (point.provenance === "archive") === archived);
+      return observations.length ? [{ ...staticSeries(plotted(observations), { id: archived ? "archived-observations" : "observations",
+        label: archived ? "Archived" : "Observations", color: archived ? archiveColor : color, style: "points", calendarSpaced: true }), ...unit }] : [];
+    })];
 }
 
-/**
- * The History chart: the selected series and the medians beside it, each a
- * step line of its own observations, plus one marker series for list-price
- * changes on any of them. A series with fewer than three observations is left
- * out rather than drawn as a trend.
- */
-export function gpuHistoryChart(rows: readonly GpuBoardRow[], points: readonly GpuObservation[], events: readonly GpuEvent[],
+/** The selected series has real-observation markers; peer medians retain their own step lines. */
+export function gpuHistoryChart(rows: readonly GpuBoardRow[], points: readonly GpuObservation[],
   colors: { selected: string; marker: string }): ResolvedSeries[] {
   const lines: ResolvedSeries[] = [];
-  const markers: ResolvedSeries["points"] = [];
+  const markers: ResolvedSeries[] = [];
   const others = [0, 1, 3, 4, 5] as const;
   rows.forEach((row, index) => {
     const color = index === 0 ? colors.selected : SERIES_COLORS[others[(index - 1) % others.length]!];
-    const [line, marker] = gpuHistorySeries(row, points, events, color, colors.marker);
+    const [line, ...observations] = gpuHistorySeries(row, points, color, colors.marker);
     if (!line) return;
     const ambiguous = rows.some((other) => other.id !== row.id && gpuShortSource(other) === gpuShortSource(row));
     lines.push({ ...line, id: `rental-price:${row.id}`, label: ambiguous ? `${gpuShortSource(row)} ${gpuVariant(row).join(" ")}` : gpuShortSource(row) });
-    if (marker) markers.push(...marker.points);
+    if (index === 0) markers.push(...observations);
   });
-  if (!lines.length || !markers.length) return lines;
-  return [...lines, { ...staticSeries([...markers].sort((a, b) => a.date.getTime() - b.date.getTime()),
-    { id: "price-changes", label: "List-price changes", color: colors.marker, style: "points", calendarSpaced: true }), unit: "$/GPU-hr", unitGroup: "gpu-rental-usd" }];
+  return [...lines, ...markers];
 }
 
-export interface GpuPricePeriod { from: string; to: string | null; price: number; change: number | null }
+/** Override the daily-chart minimum: no blank fortnight before the first evidence point. */
+export function gpuHistoryViewport(series: readonly ResolvedSeries[]): { start: Date; end: Date } | undefined {
+  let first = Infinity, last = -Infinity;
+  for (const entry of series) for (const point of entry.points) {
+    const time = point.date.getTime();
+    if (point.value == null || !Number.isFinite(time)) continue;
+    first = Math.min(first, time);
+    last = Math.max(last, time);
+  }
+  if (!Number.isFinite(first)) return undefined;
+  // Five percent on the right lets the latest marker breathe; never more than a day.
+  const padding = Math.min(86_400_000, Math.max(60_000, (last - first) * 0.05));
+  return { start: new Date(first), end: new Date(last + padding) };
+}
 
-/** Observations folded into the spans a price held, newest first: hourly snapshots of an unchanged rate are one row. */
-export function gpuPricePeriods(points: readonly Pick<GpuObservation, "observedAt" | "pricePerGpuHr">[]): GpuPricePeriod[] {
+export const gpuProvenanceLabel = (point: Pick<GpuObservation, "provenance">, full = false) =>
+  point.provenance === "archive" ? full ? "archived page, reconstructed" : "Archived"
+    : point.provenance === "official-history" ? full ? "official published history" : "Published" : full ? "live observation" : "Observed";
+
+export interface GpuPricePeriod { from: string; to: string; price: number; change: number | null; provenance: GpuObservation["provenance"] }
+
+/** Fold equal-price observations only within the same provenance. End at the last real observation. */
+export function gpuPricePeriods(points: readonly Pick<GpuObservation, "observedAt" | "pricePerGpuHr" | "provenance">[]): GpuPricePeriod[] {
   const periods: GpuPricePeriod[] = [];
   for (const point of [...points].sort((a, b) => a.observedAt.localeCompare(b.observedAt))) {
     const last = periods.at(-1);
-    if (last && Math.abs(last.price - point.pricePerGpuHr) < 1e-9) continue;
+    const provenance = point.provenance ?? "live";
+    if (last && Math.abs(last.price - point.pricePerGpuHr) < 1e-9 && last.provenance === provenance) {
+      last.to = point.observedAt;
+      continue;
+    }
     if (last) last.to = point.observedAt;
-    periods.push({ from: point.observedAt, to: null, price: point.pricePerGpuHr, change: last ? (point.pricePerGpuHr / last.price - 1) * 100 : null });
+    periods.push({ from: point.observedAt, to: point.observedAt, price: point.pricePerGpuHr, provenance,
+      change: last ? (point.pricePerGpuHr / last.price - 1) * 100 : null });
   }
   return periods.reverse();
 }

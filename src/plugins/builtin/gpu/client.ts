@@ -1,3 +1,4 @@
+import { resolvePlanAccess } from "../../../api-client/plan-rules";
 import { apiClient } from "../../../api-client";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery, GpuObservation } from "../../../api-client/gpu";
 import { createPluginCache } from "../../../data/plugin-cache";
@@ -6,7 +7,7 @@ import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../
 import { equityFiveDayReturn, GPU_EQUITIES } from "./model";
 
 export const GPU_NOT_AVAILABLE = "GPU rental prices are not available yet.";
-const cacheOptions = { source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 } };
+const cacheOptions = { source: "gloom-cloud", schemaVersion: 2, policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 } };
 export const gpuBoardCache = createPluginCache<GpuBoardPayload>({ ...cacheOptions, kind: "gpu-board" });
 export const gpuHistoryCache = createPluginCache<GpuHistoryPayload>({ ...cacheOptions, kind: "gpu-history" });
 export const gpuEventsCache = createPluginCache<GpuEventsPayload>({ ...cacheOptions, kind: "gpu-events" });
@@ -20,10 +21,25 @@ const nullableText = (value: unknown) => value === null || typeof value === "str
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
 const basis = (value: unknown) => ["list", "spot", "ask", "reserved", "index"].includes(String(value));
 
+const provenance = (value: unknown) => value === undefined || ["archive", "official-history", "live"].includes(String(value));
+const optionalText = (value: unknown) => value === undefined || nullableText(value);
+const validAccess = (value: unknown) => value === undefined || record(value) && ["pro", "preview"].includes(value.tier)
+  && typeof value.preview === "boolean" && typeof value.locked === "boolean";
+const validEvidence = (row: Record<string, any>) => provenance(row.provenance) && optionalText(row.provenanceLabel)
+  && [row.evidenceUrl, row.sourceUrl].every((value) => value === undefined || value === null || typeof value === "string" && /^https?:\/\//.test(value));
+
+/** Account and plan transitions must never reuse a full-history cache as a free preview. */
+export function gpuCacheScope(): string {
+  const user = apiClient.getCurrentUser();
+  const access = resolvePlanAccess(user);
+  return JSON.stringify([user?.id ?? null, access.emailVerified, access.hasProAccess]);
+}
+const scopedKey = (key: string) => `${gpuCacheScope()}:${key}`;
+
 function validObservation(row: unknown): row is GpuObservation {
   if (!record(row)) return false;
   const stats = row.stats;
-  return [row.source, row.skuKey, row.provider, row.region, row.gpuModel].every((value) => typeof value === "string" && value.length > 0)
+  return validEvidence(row) && [row.source, row.skuKey, row.provider, row.region, row.gpuModel].every((value) => typeof value === "string" && value.length > 0)
     && ["hyperscaler", "neocloud", "marketplace", "aggregate"].includes(row.providerClass)
     && Number.isInteger(row.gpuCount) && row.gpuCount > 0 && nullableText(row.formFactor)
     && (row.memoryGb === null || finite(row.memoryGb) && row.memoryGb > 0)
@@ -39,7 +55,7 @@ function validObservation(row: unknown): row is GpuObservation {
 }
 
 function validateBoard(payload: GpuBoardPayload): GpuBoardPayload {
-  if (!record(payload) || !instant(payload.generatedAt) || !nullableInstant(payload.asOf) || typeof payload.stale !== "boolean"
+  if (!record(payload) || !validAccess(payload.access) || !instant(payload.generatedAt) || !nullableInstant(payload.asOf) || typeof payload.stale !== "boolean"
     || !["available", "partial", "unavailable"].includes(payload.status) || !strings(payload.gaps)
     || !Array.isArray(payload.rows) || !payload.rows.every((row) => validObservation(row)
       && typeof row.id === "string" && row.id === `${row.source}:${row.skuKey}` && typeof row.label === "string" && typeof row.sourceLabel === "string"
@@ -49,15 +65,16 @@ function validateBoard(payload: GpuBoardPayload): GpuBoardPayload {
 }
 
 function validateHistory(payload: GpuHistoryPayload): GpuHistoryPayload {
-  if (!record(payload) || !instant(payload.generatedAt) || !Array.isArray(payload.points) || !payload.points.every(validObservation)
+  if (!record(payload) || !validAccess(payload.access) || !instant(payload.generatedAt) || !Array.isArray(payload.points) || !payload.points.every(validObservation)
     || !Array.isArray(payload.effectivePoints) || !payload.effectivePoints.every(validObservation)) throw new Error("The server returned invalid GPU price history.");
   return payload;
 }
 
 function validateEvents(payload: GpuEventsPayload): GpuEventsPayload {
-  if (!record(payload) || !instant(payload.generatedAt) || !Array.isArray(payload.events) || !payload.events.every((event) => record(event)
+  if (!record(payload) || !validAccess(payload.access) || !instant(payload.generatedAt) || !Array.isArray(payload.events) || !payload.events.every((event) => record(event)
     && [event.id, event.source, event.skuKey, event.provider, event.gpuModel].every((value) => typeof value === "string")
-    && ["price", "membership"].includes(event.kind) && (event.origin === undefined || ["published", "observed"].includes(event.origin))
+    && ["price", "membership", "availability"].includes(event.kind) && validEvidence(event)
+    && optionalText(event.oldAvailability) && optionalText(event.newAvailability) && (event.origin === undefined || ["published", "observed"].includes(event.origin))
     && basis(event.basis) && nullableText(event.formFactor) && nullableNumber(event.memoryGb)
     && instant(event.observedAt) && nullableInstant(event.effectiveAt) && finite(event.oldPrice) && event.oldPrice > 0
     && finite(event.newPrice) && event.newPrice > 0 && finite(event.changePct)
@@ -89,11 +106,11 @@ export async function fetchGpuEvents(gpuModel?: string, client: Pick<GpuApi, "ge
   return validateEvents(await client.getCloudGpuEvents(gpuModel));
 }
 
-export const getCachedGpuBoard = () => cachedCloudResource(gpuBoardCache, "board", validateBoard);
-export const loadGpuBoard = (force = false) => loadCloudResource(gpuBoardCache, "board", () => fetchGpuBoard(), { force, validate: validateBoard });
-export const loadGpuHistory = (seriesId: string, force = false) => loadCloudResource(gpuHistoryCache, seriesId,
+export const getCachedGpuBoard = () => cachedCloudResource(gpuBoardCache, scopedKey("board"), validateBoard);
+export const loadGpuBoard = (force = false) => loadCloudResource(gpuBoardCache, scopedKey("board"), () => fetchGpuBoard(), { force, validate: validateBoard });
+export const loadGpuHistory = (seriesId: string, force = false) => loadCloudResource(gpuHistoryCache, scopedKey(seriesId),
   () => fetchGpuHistory({ seriesId, limit: 10_000 }), { force, validate: validateHistory });
-export const loadGpuEvents = (gpuModel?: string, force = false) => loadCloudResource(gpuEventsCache, gpuModel ?? "all",
+export const loadGpuEvents = (gpuModel?: string, force = false) => loadCloudResource(gpuEventsCache, scopedKey(gpuModel ?? "all"),
   () => fetchGpuEvents(gpuModel), { force, validate: validateEvents });
 
 /** Six daily closes, independently dated from the current quote, and the month they come from. Missing data stays unavailable. */
