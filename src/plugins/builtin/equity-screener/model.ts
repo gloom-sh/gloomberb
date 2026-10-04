@@ -1,5 +1,6 @@
 import {
   ATTENTION_FIELDS,
+  HIRING_APP_FIELDS,
   CATEGORY_FIELDS,
   NUMERIC_FIELDS,
   RESEARCH_FIELDS,
@@ -427,7 +428,7 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
       // A server from before social or research fields omits them; they read as unavailable.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...ATTENTION_FIELDS, ...KPI_FIELDS] as readonly string[]).includes(field))
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = unavailableMetric();
       const metric = row.metrics[field];
       if (

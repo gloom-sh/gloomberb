@@ -436,6 +436,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["ATTN", "ATTN 6758:JPX"],
     keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph"), key("n", "ews")],
     data: { free: "Three published rows per section and the latest history point", pro: "All published rows and hourly history; minimum one-hour publication lag" },
+    bloomberg: [],
   },
   HIRE: {
     summary: "Pro hiring momentum: weekly observed open roles, additions and removals, role families, seniority, remote and location mix, peers and primary posting evidence. Observed requisitions are not headcount. No argument opens the covered-company board.",
@@ -464,7 +465,6 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [TABS, OPEN, OPEN_SOURCE, key("t", "o calendar")],
     data: { free: "Three company events with evidence", pro: "All stored company dockets and history" },
     bloomberg: ["LITI"],
-  },
   },
   KPIS: {
     summary: "Company operating KPIs, fiscal history and revisions with source quotes.",

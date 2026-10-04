@@ -1,6 +1,6 @@
 import { creditScreenshotEvidence } from "../../plugins/builtin/credit-documents/evidence";
 import { attentionScreenshotEvidence } from "../../plugins/builtin/attention/evidence";
-import { attentionScreenshotEvidence } from "../../plugins/builtin/company-attention/evidence";
+import { attentionScreenshotEvidence as companyAttentionScreenshotEvidence } from "../../plugins/builtin/company-attention/evidence";
 import { catalystsScreenshotEvidence, litigationScreenshotEvidence } from "../../plugins/builtin/catalysts/evidence";
 import { companyKpisScreenshotEvidence, companyGuidanceScreenshotEvidence } from "../../plugins/builtin/company-kpis/screenshot-evidence";
 import { powerScreenshotEvidence } from "../../plugins/builtin/power/evidence";
@@ -80,8 +80,8 @@ const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
   supplyScreenshotEvidence,
   creditScreenshotEvidence,
   attentionScreenshotEvidence,
-  attentionScreenshotEvidence("hiring"),
-  attentionScreenshotEvidence("apps"),
+  companyAttentionScreenshotEvidence("hiring"),
+  companyAttentionScreenshotEvidence("apps"),
   catalystsScreenshotEvidence,
   litigationScreenshotEvidence,
   companyKpisScreenshotEvidence,
