@@ -4,20 +4,27 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { CATALYST_TYPES, type CatalystDetail, type CatalystEvent, type CatalystResponse } from "../../../api-client/catalysts";
-import { DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useTableLoadMore, type PageRequest, type PaneHint } from "../../../components";
+import { buildSectionedRows, DataTableView, EmptyState, EMPTY_TABLE_CELL, PageStackView, PaneStatusBody, QueryBar, renderSectionedRowHeader, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useTableLoadMore,
+  type DataTableCell, type PageRequest, type PaneHint, type SectionedRow } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { UpgradeLabel } from "../shared/locked-rows";
+import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { listingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalystDetail, loadCatalysts, validateCatalysts } from "./client";
 import { CatalystEventDetail } from "./detail";
-import { catalystAgency, catalystCell, catalystColumns, catalystLabel, catalystQuery, catalystSymbol, catalystTab, CATALYST_TABS } from "./model";
+import { catalystAgency, catalystCell, catalystColumns, catalystLabel, catalystQuery, catalystSection, catalystSymbol, catalystTab, CATALYST_TABS } from "./model";
+
+type Row = SectionedRow<CatalystEvent> | { kind: "locked"; key: string };
+const rowKey = (row: Row) => row.key;
+const isEventRow = (row: Row): row is { kind: "item"; key: string; item: CatalystEvent } => row.kind === "item";
+const isSelectable = (row: Row) => row.kind === "item" || row.kind === "locked";
 
 const EMPTY_FILTERS: Record<string, unknown> = {};
 const EMPTY_DETAILS: Record<string, CatalystDetail> = {};
@@ -32,6 +39,7 @@ export function LitigationPane(props: PaneProps) {
 }
 export function CatalystView({ width, height, focused, symbol, litigation = false }: Pick<PaneProps, "width" | "height" | "focused"> & { symbol: string | null; litigation?: boolean }) {
   const colors = useThemeColors();
+  const desktop = !!useUiCapabilities().nativePaneChrome;
   const instance = usePaneInstance();
   const session = useResearchCloudSession();
   const access = usePlanAccess();
@@ -66,6 +74,17 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const denied = isAccessDenied(error);
   const rows = denied ? [] : resource.rows;
   const selected = rows.find((event) => event.id === selectedId) ?? rows[0] ?? null;
+  const lockedRows = Math.min(3, data?.access?.lockedRows ?? 0);
+  // Grouped by month on the calendar and by day in the change feed, in the order the server sends them.
+  const items = useMemo<Row[]>(() => {
+    const groups = new Map<string, CatalystEvent[]>();
+    for (const event of rows) {
+      const label = catalystSection(event, query.dateField, tab === "changes");
+      groups.set(label, [...(groups.get(label) ?? []), event]);
+    }
+    return [...buildSectionedRows([...groups].map(([label, events]) => ({ label, items: events })), (event) => event.id),
+      ...Array.from({ length: lockedRows }, (_, index): Row => ({ kind: "locked", key: `locked:${index}` }))];
+  }, [rows, query.dateField, tab, lockedRows]);
   const listedOpen = rows.find((event) => event.id === openId) ?? null;
   const openLoader = useCallback((force: boolean) => loadCatalystDetail(openId!, accessKey, force), [openId, accessKey]);
   const externalOpen = useAsyncResource(openId && !listedOpen && !detailSnapshots[openId] ? openLoader : null, { clearOnError: isAccessDenied });
@@ -101,19 +120,39 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     ...(tab === "calendar" ? [{ id: "upcoming", kind: "toggle" as const, label: "Upcoming", value: filters.upcoming === true, onChange: (value: boolean) => changeFilter("upcoming", value) },
       { id: "date", label: "Date", value: String(filters.dateField ?? "any"), options: [{ value: "any", label: "Any date" }, { value: "announced", label: "Announced" }, { value: "effective", label: "Effective" }, { value: "deadline", label: "Deadlines" }], onChange: (value: string) => changeFilter("dateField", value) }] : []),
   ]} />;
+  const columns = catalystColumns(width, tab === "changes", litigation);
+  const renderCell = (row: Row, column: (typeof columns)[number], _index: number, state: { selected: boolean }): DataTableCell => {
+    if (row.kind === "locked") {
+      if (!desktop && column.id === "title" && row.key === "locked:0") return { text: "Upgrade for every catalyst and its history", content: <UpgradeLabel text="Upgrade for every catalyst and its history" onPress={openUpgrade} role="catalysts-upgrade" />, onMouseDown: openUpgrade };
+      return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === "title" ? "Additional catalyst" : "Hidden"}</Text></Blurred> } : { text: "░░░░", color: colors.textDim };
+    }
+    if (!isEventRow(row)) return EMPTY_TABLE_CELL;
+    const event = row.item;
+    const text = catalystCell(event, column.id, query.dateField, tab === "changes");
+    if (column.id === "ticker") {
+      const symbol = catalystSymbol(event);
+      if (!symbol) return { text, color: colors.textMuted };
+      const more = event.parties.filter((party) => party.ticker).length - 1;
+      return more > 0 ? { text, color: colors.textBright } : listingCell(symbol, colors, state.selected);
+    }
+    return { text, color: column.id === "title" ? colors.textBright : column.id === "date" ? colors.text
+      : column.id === "status" && tab === "changes" ? colors.text : colors.textDim };
+  };
   if (isCloudSessionRequired(error?.message)) return <SignInWall action="view catalysts" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PaneStatusBody loading={!openId && !data && resource.loading} error={!openId && (!data || denied) ? error?.message : null} subject={litigation ? "company litigation" : "catalysts"}>
       <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpenId("")} detailTitle={open?.title ?? "Catalyst"}
         detailContent={open ? <CatalystEventDetail key={open.id} event={open} accessKey={accessKey} snapshot={detailSnapshots[open.id]} width={width} height={Math.max(3, height - 1)} focused={focused} initialTab={detailTab} openUpgrade={openUpgrade} /> : <PaneStatusBody loading={externalOpen.loading} error={externalOpen.error} subject="catalyst event"><EmptyState title="Event unavailable." /></PaneStatusBody>}
-        rootContent={<DataTableView<CatalystEvent> rootWidth={width} rootHeight={Math.max(3, height - tabRows)} rootBefore={queryBar} focused={focused && !openId && !searchActive && !dateFieldActive}
-          items={rows} sortColumnId={null} sortDirection="asc" columns={catalystColumns(width, tab === "changes", litigation)} getItemKey={(event) => event.id}
-          selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (event) => event.id, onChange: setSelectedId }} onActivate={(event) => setOpenId(event.id)}
-          renderCell={(event, column) => ({ text: catalystCell(event, column.id, query.dateField, tab === "changes"), color: column.id === "title" ? colors.textBright : column.id === "ticker" ? colors.textBright : colors.text })}
+        rootContent={<DataTableView<Row> rootWidth={width} rootHeight={Math.max(3, height - tabRows)} rootBefore={queryBar} focused={focused && !openId && !searchActive && !dateFieldActive}
+          items={items} sortColumnId={null} sortDirection="asc" columns={columns} getItemKey={rowKey}
+          isNavigable={isSelectable} renderSectionHeader={(row) => row.kind === "locked" ? null : renderSectionedRowHeader(row)}
+          selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowKey, onChange: (id) => { if (!id.startsWith("locked:")) setSelectedId(id); } }}
+          onActivate={(row) => row.kind === "locked" ? openUpgrade() : isEventRow(row) ? setOpenId(row.item.id) : undefined}
+          renderCell={renderCell}
           scrollRef={scrollRef} onBodyScrollActivity={loadMore} resetScrollKey={JSON.stringify(query)} showHorizontalScrollbar selectedTextOverridesCellColor
           emptyStateTitle={data?.coverage.totalEvents === 0 ? "Catalyst history is collecting." : tab === "changes" ? "No observed status or date changes match." : "No events match these filters."}
-          bodyAfter={data?.access && data.access.lockedRows > 0 ? <UpgradeLabel text="Upgrade for every catalyst and its history" onPress={openUpgrade} role="catalysts-upgrade" /> : undefined} />}
+          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Upgrade for every catalyst and its history" onPress={openUpgrade} role="catalysts-upgrade" /> : undefined} />}
       />
     </PaneStatusBody>
   </Box>;

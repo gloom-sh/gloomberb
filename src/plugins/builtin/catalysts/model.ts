@@ -1,6 +1,7 @@
 import type { CatalystEvent, CatalystFilters, CatalystType } from "../../../api-client/catalysts";
 import type { DataTableColumn } from "../../../components";
 import { publicTickerKey } from "../../../utils/exchanges";
+import { humanLabel } from "../shared/research-cells";
 
 export const CATALYST_TABS = [{ value: "calendar", label: "Calendar" }, { value: "changes", label: "Changes" }] as const;
 export type CatalystTab = typeof CATALYST_TABS[number]["value"];
@@ -27,11 +28,25 @@ export function catalystColumns(width: number, changes: boolean, litigation: boo
     ...(!litigation ? [{ id: "ticker", label: "Ticker", width: width < 110 ? 12 : 14, align: "left" as const }] : []),
     { id: "title", label: litigation ? "Case / docket" : "Event", width: 30, flexGrow: 1, align: "left" },
     ...(width >= 115 ? [{ id: "type", label: "Type", width: 13, align: "left" as const }] : []),
-    { id: "status", label: changes ? "Changed" : "Status", width: width < 110 ? 14 : 20, align: "left" },
+    { id: "status", label: changes ? "Change" : "Status", width: changes ? width < 110 ? 22 : 34 : width < 110 ? 14 : 20, align: "left" },
     ...(width >= 145 ? [{ id: "agency", label: "Agency", width: 12, align: "left" as const }, { id: "country", label: "Country", width: 8, align: "left" as const }] : []),
   ];
 }
 export const changeValue = (value: unknown): string => value == null ? "--" : typeof value === "string" ? value : JSON.stringify(value);
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+/** The calendar groups by the month of the date it shows; the change feed by the day a change was observed. */
+export function catalystSection(event: CatalystEvent, field: CatalystFilters["dateField"], changes: boolean): string {
+  if (changes) return event.observedAt.slice(0, 10);
+  const date = catalystDate(event, field);
+  if (date === "--") return "Undated";
+  return /^\d{4}-\d{2}/.test(date) ? `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : date;
+}
+/** The first change in words, before and after: `Deadline 2027-03-01 → 2027-04-01`. */
+export function changeSummary(event: CatalystEvent): string {
+  const [first, ...rest] = event.changes;
+  if (!first) return "First observed";
+  return `${humanLabel(first.field.replace(/Date$/, ""))} ${changeValue(first.before)} → ${changeValue(first.after)}${rest.length ? ` +${rest.length}` : ""}`;
+}
 export const catalystCell = (event: CatalystEvent, column: string, field: CatalystFilters["dateField"], changes: boolean): string => {
   switch (column) {
     case "date": return catalystDate(event, changes ? "observed" : field);
@@ -39,7 +54,7 @@ export const catalystCell = (event: CatalystEvent, column: string, field: Cataly
     case "ticker": return catalystTickers(event) || "Unlinked";
     case "title": return event.title;
     case "type": return catalystLabel(event.type);
-    case "status": return changes ? event.changes.map((c) => catalystLabel(c.field)).join(", ") || "First observed" : catalystLabel(event.status);
+    case "status": return changes ? changeSummary(event) : humanLabel(event.status);
     case "agency": return catalystAgency(event.agency);
     case "country": return event.country ?? event.jurisdiction;
     default: return "";
