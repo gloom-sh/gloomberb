@@ -75,8 +75,10 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `OPX SPY` / `GEX SPY` | Open interest by strike and expiry, max pain and dealer gamma ([method](docs/options-positioning.md)) |
 | `HVG AAPL` / `HVT AAPL` | Realized volatility and volatility cones |
 | `SEAS AAPL` | Seasonality: monthly returns by year and year overlays |
+| `RDCF AAPL` | Reverse DCF: the cash flow growth the price assumes |
 | `COT [code or root]` | CFTC positioning and cross-market extremes |
 | `DOE` / `NGS` | EIA weekly oil stocks and gas storage, with builds, draws and five-year ranges |
+| `CPI [component]` / `ECAN` | US consumer prices by component, with weights, contributions to the headline and the next release |
 | `TOP` | Market stories |
 | `WIRP` / `FFIP` | US rate path and conditional FOMC probabilities |
 | `BTMM` | Funding rates, bill curves and Federal Reserve liquidity |

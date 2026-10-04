@@ -17,6 +17,7 @@ import type { FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-cur
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
 import type { DoeBoardPayload } from "./doe";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery } from "./gpu";
+import type { CpiBoardPayload } from "./cpi";
 import type { TapeSnapshot } from "./tape";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
@@ -408,6 +409,10 @@ export class CloudDataApi {
   async getCloudGpuEvents(gpuModel?: string): Promise<GpuEventsPayload> {
     const params = new URLSearchParams({ limit: "1000", ...(gpuModel ? { gpuModel } : {}) });
     return this.request<GpuEventsPayload>(`/cloud/gpu/events?${params}`);
+  }
+
+  async getCloudCpiBoard(): Promise<CpiBoardPayload> {
+    return this.request<CpiBoardPayload>("/cloud/cpi/board");
   }
 
   async getCloudTape(symbol: string, exchange: string, signal?: AbortSignal): Promise<TapeSnapshot> {

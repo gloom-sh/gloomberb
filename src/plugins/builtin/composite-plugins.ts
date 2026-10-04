@@ -13,6 +13,7 @@ import { creditBoardsModule } from "./credit-boards";
 import { creditConditionsModule } from "./credit-conditions";
 import { marketValuationModule } from "./market-valuation";
 import { economicCalendarModule } from "./econ";
+import { cpiModule } from "./cpi";
 import { econStatisticsModule } from "./econ-statistics";
 import { earningsModule } from "./earnings";
 import { earningsCallsModule } from "./earnings-calls";
@@ -61,6 +62,7 @@ import { optionsCalculatorModule } from "./options-calculator";
 import { volSurfaceModule } from "./vol-surface";
 import { realizedVolModule } from "./realized-vol";
 import { seasonalityModule } from "./seasonality";
+import { reverseDcfModule } from "./reverse-dcf";
 import { ivHistoryModule } from "./iv-history";
 import { backtestModule } from "./backtest";
 import { researchModule } from "./research";
@@ -101,6 +103,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     volSurfaceModule,
     realizedVolModule,
     seasonalityModule,
+    reverseDcfModule,
     ivHistoryModule,
     backtestModule,
     estimateRevisionsModule,
@@ -163,6 +166,7 @@ export const macroPlugin = composeBuiltinPlugin({
     macroSharedResourcesModule,
     economicCalendarModule,
     econStatisticsModule,
+    cpiModule,
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,

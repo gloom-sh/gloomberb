@@ -60,6 +60,17 @@ Chart controls: select ranges and intervals above the plot; click a legend entry
 
 The latest month is a return to date until December closes the year: the Returns table shows it untinted and marks its year with `*`, and it stays out of the month's average, median and up share. Those statistics cover completed months in the lookback only; a month with few years of history has few observations, and the headless `count` says how many. The Overlay tab draws each year's return since its prior year-end at each month-end on one January-to-December axis. The average path is the mean of the completed years at each month-end every one of them reached; the running year is drawn but left out of it.
 
+## Reverse DCF
+
+`RDCF <ticker>` turns a DCF around. A normal DCF assumes a growth rate and gets a value; a reverse DCF takes today's value and finds the growth rate. It answers "what does the price already assume?"
+
+- **Cash flow.** Free cash flow over the last twelve months (operating cash flow less capital expenditure), from the latest fundamentals.
+- **Value.** The reported enterprise value: market cap plus debt less cash, so the cash flow and the value both belong to all capital providers. It is the value from the latest fundamentals, not repriced tick by tick.
+- **Model.** The cash flow grows at one rate for ten years, then at 2.5% a year forever (a Gordon terminal value), and every year is discounted at the chosen rate (7% to 12%, 9% by default). The growth rate that makes this sum equal the enterprise value is found by bisection between −50% and +100% a year; a price outside that range reads `< -50%` or `> +100%`.
+- **Past growth.** The yearly growth between the latest annual free cash flow and the one up to five years earlier, when both are positive. When the priced-in growth is above it, the figure is red: the price needs faster growth than the company has delivered.
+- **Sensitivity.** The table solves the same growth for each discount rate and for terminal growth of 2%, 2.5% and 3%. Selecting a row sets the discount rate.
+- **Not computed.** Negative trailing free cash flow has no growth rate that prices it. A listing whose cash flows are reported in another currency than its market value (many ADRs) is not converted, and shows why instead.
+
 ## Price history corrections
 
 These rules apply to every symbol. The app keeps no per-company history fixes.

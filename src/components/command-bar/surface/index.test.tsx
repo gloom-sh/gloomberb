@@ -6,6 +6,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
 import { CommandBarHarness, createCommandBarTestControls, expectSingleBackControl, makeDataProvider } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
+import { cpiModule } from "../../../plugins/builtin/cpi";
 import type { AppContextStoreValue } from "../../../state/app/context";
 
 const tui = createOpenTuiTestHarness();
@@ -623,6 +624,42 @@ describe("CommandBar", () => {
         symbols: ["AAPL"],
       },
     }]);
+  });
+
+  test.each(["CPI", "ECAN"])("%s opens the consumer price pane, not a search for the CPI ticker", async (query) => {
+    // CPI is also a listed ETF; the mnemonic claims the query before any symbol search.
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+    const searchQueries: string[] = [];
+    await tui.render(<CommandBarHarness
+      query={query}
+      live
+      dataProvider={makeDataProvider(async (search) => {
+        searchQueries.push(search);
+        return [{ providerId: "gloom", symbol: "CPI", name: "IQ Real Return ETF", exchange: "NYSE", type: "ETF" }];
+      })}
+      configurePluginRegistry={(pluginRegistry) => {
+        mutablePaneRegistryMap(pluginRegistry.paneTemplates).set("cpi-pane", cpiModule.paneTemplates![0]!);
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
+          created.push({ templateId, options });
+        };
+      }}
+    />, {
+      width: 100,
+      height: 20,
+    });
+
+    await tui.setup().renderOnce();
+    await Bun.sleep(260);
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Shortcut: US Consumer Prices");
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Bun.sleep(0);
+      await tui.setup().renderOnce();
+    });
+
+    expect(created).toEqual([{ templateId: "cpi-pane", options: undefined }]);
+    expect(searchQueries).toEqual([]);
   });
 
   test("consumes enter before focused pane shortcuts when executing a pane shortcut", async () => {

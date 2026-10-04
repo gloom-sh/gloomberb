@@ -34,6 +34,7 @@ import { creditConditionsModule } from "./builtin/credit-conditions";
 import { marketValuationModule } from "./builtin/market-valuation";
 import { macroSharedResourcesModule } from "./builtin/macro-resources";
 import { economicCalendarModule } from "./builtin/econ";
+import { cpiModule } from "./builtin/cpi";
 import { econStatisticsModule } from "./builtin/econ-statistics";
 import { futuresModule } from "./builtin/futures";
 import { futuresCurveModule } from "./builtin/futures-curve";
@@ -56,6 +57,7 @@ import { optionsCalculatorModule } from "./builtin/options-calculator";
 import { volSurfaceModule } from "./builtin/vol-surface";
 import { realizedVolModule } from "./builtin/realized-vol";
 import { seasonalityModule } from "./builtin/seasonality";
+import { reverseDcfModule } from "./builtin/reverse-dcf";
 import { ivHistoryModule } from "./builtin/iv-history";
 import { backtestModule } from "./builtin/backtest";
 import { composeBuiltinPlugin } from "./builtin/plugin-module";
@@ -104,6 +106,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     volSurfaceModule,
     realizedVolModule,
     seasonalityModule,
+    reverseDcfModule,
     ivHistoryModule,
     backtestModule,
     timeSalesModule,
@@ -161,6 +164,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
     macroSharedResourcesModule,
     economicCalendarModule,
     econStatisticsModule,
+    cpiModule,
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,

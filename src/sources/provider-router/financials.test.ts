@@ -53,6 +53,18 @@ describe("provider-router financial quote usability", () => {
     expect(isProviderQuoteUsableForCurrentSession(toyota, "JPX")).toBe(false);
   });
 
+  test("keeps an NSE close through a published holiday and the weekend after it", () => {
+    const nifty = createTestQuote({ symbol: "^NSEI", listingExchangeName: "NSE", marketState: "CLOSED",
+      dataSource: "delayed", lastUpdated: Date.parse("2026-10-01T10:00:00Z") });
+    // Fri Oct 2 2026 (Gandhi Jayanti) is closed; Mon Oct 5 trades again.
+    for (const now of ["2026-10-03T06:00:00Z", "2026-10-05T03:00:00Z"]) {
+      clock.mockReturnValue(Date.parse(now));
+      expect(isProviderQuoteUsableForCurrentSession(nifty, "NSE")).toBe(true);
+    }
+    clock.mockReturnValue(Date.parse("2026-10-06T02:00:00Z"));
+    expect(isProviderQuoteUsableForCurrentSession(nifty, "NSE")).toBe(false);
+  });
+
   test("rejects old active-session provider quotes", () => {
     expect(isProviderQuoteUsableForCurrentSession(createTestQuote({
       listingExchangeName: "FWB2",

@@ -1,6 +1,7 @@
 import type { MarketState } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
+import { hasPublishedNseCalendar, isPublishedNseClosure } from "../published-nse-sessions";
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
 import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
@@ -154,7 +155,9 @@ function isoLocalDateToUtcDay(date: string): number | null {
 }
 
 function isPublishedClosure(exchange: string, date: string): boolean {
-  return exchange === "JPX" ? isPublishedJpxClosure(date) : getPublishedUsEquityCalendarDay(exchange, date) === "closed";
+  if (exchange === "JPX") return isPublishedJpxClosure(date);
+  if (exchange === "NSE" || exchange === "BSE") return isPublishedNseClosure(date);
+  return getPublishedUsEquityCalendarDay(exchange, date) === "closed";
 }
 
 function isLocalTradingDay(exchange: string, date: string): boolean {
@@ -262,12 +265,14 @@ export function isRegularSessionTime(exchange: string | undefined, time: number)
 
 /**
  * True when the venue's full-day closures for the year of `date` are
- * published: US venues and JPX. Elsewhere a local holiday reads as a weekday.
+ * published: US venues, JPX, NSE and BSE. Elsewhere a local holiday reads as a weekday.
  */
 export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
   const canonical = canonicalExchange(exchange);
   const year = Number(date.slice(0, 4));
-  return canonical === "JPX" ? hasPublishedJpxCalendar(year) : !!getPublishedUsEquityCalendarYears(canonical)?.includes(year);
+  if (canonical === "JPX") return hasPublishedJpxCalendar(year);
+  if (canonical === "NSE" || canonical === "BSE") return hasPublishedNseCalendar(year);
+  return !!getPublishedUsEquityCalendarYears(canonical)?.includes(year);
 }
 
 function usSessionState(timestampMs: number): UsSessionState {

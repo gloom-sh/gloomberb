@@ -283,6 +283,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: DAILY_CLOSES,
     bloomberg: ["SEAS"],
   },
+  RDCF: {
+    summary: "What growth is the price assuming? The yearly free cash flow growth over ten years that makes a DCF equal today's enterprise value, next to the growth the company delivered.",
+    usage: ["RDCF AAPL"],
+    keys: [],
+    data: ON_RELEASE,
+    bloomberg: [],
+  },
   VCA: {
     summary: "IV rank, term slope, skew and IV against realized vol for up to 60 US tickers, flagged rich or cheap against each name's own year. Alone it screens index and sector ETFs.",
     usage: ["VCA", "VCA NVDA, AAPL, TSLA"],
@@ -675,6 +682,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [SEARCH],
     data: ON_RELEASE,
     bloomberg: ["ECST"],
+  },
+  CPI: {
+    summary: "The US consumer price index by component: food, energy, core goods, shelter and services ex shelter, each with its weight, the month's change, three- and six-month annualised rates, the change on a year ago and its contribution in points to the headline. The selected row is charted month by month against the headline with a plain read of the numbers; the header gives the next release.",
+    usage: ["CPI", "CPI shelter", "ECAN"],
+    keys: [],
+    data: same("Monthly, on release"),
+    bloomberg: ["ECAN"],
   },
   CBR: {
     summary: "Policy rates for the G20 central banks with the last move, its date and a one-year percentile; open one for its history.",
