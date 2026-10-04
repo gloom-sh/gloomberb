@@ -437,7 +437,7 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
   const width = payload.widthCells;
   const height = payload.heightCells;
   return (
-    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} preserveStatus={pane.id === "time-sales" || pane.id === "gpu"}>
+    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} preserveStatus={["time-sales", "gpu", "hiring", "apps", "catalysts", "litigation", "perps"].includes(pane.id)}>
       {(bodyFrame) => <PaneContent
         component={pane.component}
         paneId={instance.instanceId}

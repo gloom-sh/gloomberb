@@ -1,4 +1,14 @@
+import type { AttentionPayload, AttentionWindow } from "./attention";
+import type { HiringBoard, HiringPayload } from "./hiring";
+import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
+import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
+import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
+import { companyDisclosurePath } from "./company-kpis";
+import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
+import type { PerpBoardPayload, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery, PerpMarketPayload } from "./perps";
+import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
 import type { SupplyChainPayload } from "./supply-chain";
+import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
 import type { DebtMaturitiesPayload } from "./debt-maturities";
@@ -389,12 +399,109 @@ export class CloudDataApi {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
   }
 
+  /** Credit-document paths stay with their pane; keep the shared client small. */
+  creditDocuments<T>(path: string): Promise<T> {
+    return this.request<T>(`/cloud/credit-documents/${path}`);
+  }
+
+  async getCloudHiring(symbol?: string, query: { limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<HiringBoard | HiringPayload> {
+    const params = new URLSearchParams({ limit: String(query.limit ?? 100), offset: String(query.offset ?? 0) });
+    return this.request<HiringBoard | HiringPayload>(symbol ? `/cloud/hiring/${encodeURIComponent(symbol)}` : `/cloud/hiring?${params}`, { signal });
+  }
+
+  async getCloudAppRankHistory(store: "app-store" | "google-play", appId: string, query: AppAttentionFilter = {}, signal?: AbortSignal): Promise<AppRankPayload> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<AppRankPayload>(`/cloud/app-attention/app/${store}/${encodeURIComponent(appId)}?${params}`, { signal });
+  }
+
+  async getCloudAppAttention(query: AppAttentionFilter = {}, signal?: AbortSignal): Promise<AppAttentionPayload> {
+    const { symbol, ...filters } = query;
+    const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<AppAttentionPayload>(`/cloud/app-attention/${symbol ? encodeURIComponent(symbol) : "board"}?${params}`, { signal });
+  }
+
+  async getCloudCatalysts(query: CatalystFilters = {}, signal?: AbortSignal): Promise<CatalystResponse> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    const route = query.litigation && query.symbol ? `/cloud/catalysts/litigation/${encodeURIComponent(query.symbol)}` : "/cloud/catalysts";
+    return this.request<CatalystResponse>(`${route}?${params}`, { signal });
+  }
+
+  async getCloudCatalystChanges(query: { since: string; cursor?: string; limit?: number }, signal?: AbortSignal): Promise<CatalystChanges> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<CatalystChanges>(`/cloud/catalysts/changes?${params}`, { signal });
+  }
+
+  async getCloudCatalystEvent(id: string, signal?: AbortSignal, query: { offset?: number; limit?: number } = {}): Promise<CatalystDetail> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<CatalystDetail>(`/cloud/catalysts/events/${encodeURIComponent(id)}?${params}`, { signal });
+  }
+
+  async getCloudCatalystStatus(): Promise<CatalystStatus> {
+    return this.request<CatalystStatus>("/cloud/catalysts/status");
+  }
+
+  async getCloudCompanyKpis(symbol: string, options: KpiQueryOptions = {}): Promise<KpisPayload> {
+    return this.request<KpisPayload>(companyDisclosurePath("kpis", symbol, options));
+  }
+
+  async getCloudCompanyGuidance(symbol: string, options: KpiQueryOptions = {}): Promise<GuidancePayload> {
+    return this.request<GuidancePayload>(companyDisclosurePath("guidance", symbol, options));
+  }
+  async getCloudPerpsBoard(query: PerpBoardQuery = {}): Promise<PerpBoardPayload> {
+    return this.request(`/cloud/perps/board?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`);
+  }
+  async getCloudPerpsHistory(query: PerpHistoryQuery): Promise<PerpHistoryPayload> {
+    return this.request(`/cloud/perps/history?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`);
+  }
+  async getCloudPerpsRankings(): Promise<PerpRankingsPayload> { return this.request("/cloud/perps/rankings"); }
+  async getCloudPerpsCompare(baseAsset: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/compare?${new URLSearchParams({ baseAsset })}`); }
+  async getCloudPerpsEquity(symbol: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/equity/${encodeURIComponent(symbol)}`); }
+  async getCloudPerpsMarket(marketId: string): Promise<PerpMarketPayload> { return this.request(`/cloud/perps/market?${new URLSearchParams({ marketId })}`); }
+
+  async analyzeCloudExposure(request: ExposureRequest): Promise<ExposurePayload> {
+    return this.request<ExposurePayload>("/cloud/exposure/analyze", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  async getCloudExposureScenarios(): Promise<{ scenarios: ExposureScenario[] }> {
+    return this.request<{ scenarios: ExposureScenario[] }>("/cloud/exposure/scenarios");
+  }
+
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {
     return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}`);
   }
 
+  getCloudAwards(query: AwardFilter = {}, signal?: AbortSignal): Promise<AwardsPayload> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value != null).map(([key, value]) => [key, `${value}`]));
+    return this.request<AwardsPayload>(`/cloud/awards?${params}`, { signal });
+  }
+
+  getCloudAward(id: string, signal?: AbortSignal, revisionsCursor?: string): Promise<AwardDetailPayload> {
+    const query = revisionsCursor ? `?${new URLSearchParams({ revisionsCursor })}` : "";
+    return this.request<AwardDetailPayload>(`/cloud/awards/detail/${encodeURIComponent(id)}${query}`, { signal });
+  }
+
   async getCloudDoeBoard(): Promise<DoeBoardPayload> {
     return this.request<DoeBoardPayload>("/cloud/doe/board");
+  }
+
+  async getCloudAttention(window: AttentionWindow = "now", symbol?: string): Promise<AttentionPayload> {
+    const path = symbol ? `/cloud/attention/${encodeURIComponent(symbol)}` : "/cloud/attention";
+    return this.request<AttentionPayload>(`${path}?window=${window}`);
+  }
+
+  async getCloudPowerBoard(query: PowerFilter = {}, signal?: AbortSignal): Promise<PowerBoard> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<PowerBoard>(`/cloud/power/board?${params}`, { signal });
+  }
+
+  async getCloudPowerHistory(query: PowerFilter = {}): Promise<PowerHistory> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<PowerHistory>(`/cloud/power/history?${params}`);
+  }
+
+  async getCloudPowerProject(id: string, query: Pick<PowerFilter, "offset" | "limit"> = {}, signal?: AbortSignal): Promise<PowerDetail> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<PowerDetail>(`/cloud/power/projects/${encodeURIComponent(id)}?${params}`, { signal });
   }
 
   async getCloudGpuBoard(): Promise<GpuBoardPayload> {

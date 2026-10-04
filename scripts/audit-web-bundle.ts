@@ -47,6 +47,9 @@ for (const path of outputFiles) {
   if (/sourceMappingURL=/.test(content)) failures.push(`${name}: source map reference`);
   if (NATIVE_OR_FORK.test(content)) failures.push(`${name}: forbidden native or fork code`);
   if (UNSUPPORTED_PROVIDER?.test(content)) failures.push(`${name}: unsupported provider code`);
+  if (name.startsWith("assets/share/") && /\/telemetry\/(?:attention|errors|usage)/.test(content)) {
+    failures.push(`${name}: authenticated telemetry client in a public share bundle`);
+  }
   if (name.endsWith(".html")) {
     if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(content)) failures.push(`${name}: inline script`);
     if (/<style\b/i.test(content)) failures.push(`${name}: inline style block`);

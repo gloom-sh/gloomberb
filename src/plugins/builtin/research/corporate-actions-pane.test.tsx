@@ -7,10 +7,29 @@ import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { CorporateActionsData } from "../../../types/financials";
 import { Box } from "../../../ui";
-import { buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
+import { buildEventColumns, buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildEventRows } from "./event-model";
 
 const tui = createOpenTuiTestHarness();
+
+test("EVT drops annual estimates before quarterly values and keeps VALUE and the complete period visible", () => {
+  for (const unit of [undefined, "USD"]) {
+    for (const width of [68, 88, 90, 120, 160]) {
+      const columns = buildEventColumns(width, unit);
+      expect(getTableWidth(columns)).toBeLessThanOrEqual(width - 1);
+      expect(columns.some(({ id }) => id === "value")).toBe(true);
+      expect(columns.find(({ id }) => id === "period")!.width).toBeGreaterThanOrEqual("After Hours".length);
+    }
+    const narrow = buildEventColumns(90, unit).map(({ id }) => id);
+    expect(narrow).toContain("qEps");
+    expect(narrow).toContain("qRevenue");
+    expect(narrow).toContain("detail");
+    expect(narrow).not.toContain("annualEps");
+    expect(narrow).not.toContain("annualRevenue");
+    expect(buildEventColumns(160, unit).map(({ id }) => id)).toContain("annualRevenue");
+  }
+});
 
 async function frame() {
   await act(async () => { await Bun.sleep(1); });

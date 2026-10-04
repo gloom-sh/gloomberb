@@ -7,6 +7,8 @@ import {
 } from "./client";
 import { shortInterestHeadless } from "./headless";
 import { ShortInterestResearchTab, ShortInterestSurface } from "./surface";
+import { shortWatchHeadless } from "./watch-headless";
+import { SHORT_WATCH_SCOPE_OPTIONS, ShortWatchPane } from "./watch-pane";
 import { followsWithoutFinraOverride, shortVolumeSettings } from "../short-volume";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
@@ -54,6 +56,21 @@ export const shortInterestModule: PluginModule = {
       tableExport: true,
       settings: { title: "Short Interest", fields: shortVolumeSettings },
     },
+    {
+      id: "short-watch",
+      name: "Short Squeeze Watch",
+      icon: "S",
+      component: ShortWatchPane,
+      defaultPosition: "right",
+      defaultMode: "floating",
+      defaultFloatingSize: { width: 92, height: 28 },
+      tableExport: true,
+      headless: shortWatchHeadless,
+      settings: { title: "Short Squeeze Watch", fields: [
+        { key: "scope", label: "Names", type: "select", options: [...SHORT_WATCH_SCOPE_OPTIONS] },
+        { key: "symbols", label: "Custom symbols", type: "text", placeholder: "GME, AMC, CVNA" },
+      ] },
+    },
   ],
 
   paneTemplates: [
@@ -68,6 +85,20 @@ export const shortInterestModule: PluginModule = {
         shortcut: "SI",
       }),
       headless: shortInterestHeadless,
+    },
+    {
+      id: "short-watch-pane",
+      paneId: "short-watch",
+      label: "Short Squeeze Watch",
+      description: "Short interest as a share of float, days to cover, the change since the prior settlement and the month's price move across your names.",
+      keywords: ["siw", "short", "squeeze", "crowded", "float", "days to cover", "watchlist", "portfolio"],
+      shortcut: { prefix: "SIW", argKind: "ticker-list" as const, argOptional: true },
+      headless: shortWatchHeadless,
+      createInstance: (_context, options) => ({
+        title: "Short Squeeze Watch",
+        placement: "floating" as const,
+        settings: options?.symbols?.length ? { scope: "custom", symbols: options.symbols.join(",") } : { scope: "mine" },
+      }),
     },
   ],
 };

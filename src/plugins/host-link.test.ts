@@ -1,8 +1,20 @@
-import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from "fs";
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { linkHostPackages, missingPeerPlugins } from "./host-link";
+
+const scratch: string[] = [];
+
+afterEach(() => {
+  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+function scratchDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  scratch.push(dir);
+  return dir;
+}
 
 /**
  * A plugin is installed into a directory named after its repository, but
@@ -14,7 +26,7 @@ import { linkHostPackages, missingPeerPlugins } from "./host-link";
 describe("linkPeerPlugins", () => {
   /** A plugins dir holding `peerDir`, plus a plugin that depends on `peerDep`. */
   function setup(peerDep: string, peerDir: string) {
-    const root = mkdtempSync(join(tmpdir(), "gloom-host-link-"));
+    const root = scratchDir("gloom-host-link-");
     const hostRoot = join(root, "host");
     const pluginsDir = join(root, "plugins");
     const pluginDir = join(pluginsDir, "gateway");
@@ -67,7 +79,7 @@ describe("linkPeerPlugins", () => {
   });
 
   test("links a react that a global install hoisted beside the host", () => {
-    const root = mkdtempSync(join(tmpdir(), "gloom-host-link-hoisted-"));
+    const root = scratchDir("gloom-host-link-hoisted-");
     const hostRoot = join(root, "node_modules", "gloomberb");
     const react = join(root, "node_modules", "react");
     const pluginDir = join(root, "plugins", "gloom-tv");
@@ -110,7 +122,7 @@ describe("linkPeerPlugins", () => {
  */
 describe("linkHostPackages without a package root", () => {
   function setup(peerDep?: string) {
-    const root = mkdtempSync(join(tmpdir(), "gloom-host-link-noroot-"));
+    const root = scratchDir("gloom-host-link-noroot-");
     const pluginsDir = join(root, "plugins");
     const pluginDir = join(pluginsDir, "gateway");
     mkdirSync(pluginDir, { recursive: true });
@@ -155,7 +167,7 @@ describe("linkHostPackages without a package root", () => {
 
 describe("missingPeerPlugins", () => {
   test("names a declared sibling plugin installed under neither name", () => {
-    const root = mkdtempSync(join(tmpdir(), "gloom-missing-peer-"));
+    const root = scratchDir("gloom-missing-peer-");
     const pluginsDir = join(root, "plugins");
     const gateway = join(pluginsDir, "gloom-ibkr-gateway");
     mkdirSync(gateway, { recursive: true });

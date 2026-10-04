@@ -1,5 +1,7 @@
 import { withDeadline } from "../utils/async-deadline";
 import type { CloudApiRequest } from "./request";
+import { getCurrentPluginTarget } from "../plugins/current-target";
+import { VERSION } from "../version";
 
 /** A report is fire-and-forget; a slow uplink must not hold anything open for long. */
 const REPORT_TIMEOUT_MS = 5_000;
@@ -26,6 +28,12 @@ export interface CrashReportsPayload {
 }
 
 export type UsageCountsSurface = "terminal" | "desktop" | "web";
+
+export type AttentionAction = "des" | "chart" | "quote" | "option_chain" | "watchlist_add";
+export interface AttentionCountsPayload {
+  consent: true;
+  events: Array<{ symbol: string; action: AttentionAction }>;
+}
 
 /** One function's counts since the last batch; `fn` is its mnemonic, or `plugin`. */
 export interface FunctionUsageCount {
@@ -114,6 +122,27 @@ function fitCommandSearchReport(report: CommandSearchReport): CommandSearchRepor
 
 export class CloudTelemetryApi {
   constructor(private readonly request: CloudApiRequest) {}
+
+  /** Authenticated first-party counts; never use the usage/crash install id. */
+  reportAttentionCounts(payload: AttentionCountsPayload, signal: AbortSignal): Promise<void> {
+    if (payload.consent !== true || signal.aborted) return Promise.resolve();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+    // Rebuild the allowlisted body so runtime extra properties cannot leak.
+    const body: AttentionCountsPayload = {
+      consent: true,
+      events: payload.events.map(({ symbol, action }) => ({ symbol, action })),
+    };
+    return withDeadline(this.request<void>("/telemetry/attention", {
+      method: "POST",
+      body: JSON.stringify(body),
+      ...(getCurrentPluginTarget() === "web" ? {} : { headers: { "User-Agent": `Gloomberb/${VERSION}` } }),
+      signal: controller.signal,
+    }), REPORT_TIMEOUT_MS, "Attention counts timed out.", abort)
+      .finally(() => signal.removeEventListener("abort", abort));
+  }
 
   /**
    * Sends a batch of app errors. The session goes along when one exists, so

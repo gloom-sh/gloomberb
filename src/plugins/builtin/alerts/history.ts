@@ -34,6 +34,7 @@ export interface AlertHistory {
 }
 
 const KIND_LABELS: Record<string, string> = {
+  catalyst: "Catalyst",
   price: "Price",
   breaking_news: "Breaking news",
   earnings: "Earnings",

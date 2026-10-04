@@ -249,6 +249,13 @@ export const commands: Command[] = [
     description: "Turn usage counts and the command bar search log on or off",
     category: "Config",
   },
+  {
+    id: "toggle-attention-counts",
+    prefix: "",
+    label: "Attention Counts",
+    description: "Opt in to sharing ticker research counts for Gloom Trending",
+    category: "Config",
+  },
 
   // Theme
   {

@@ -562,7 +562,8 @@ export async function buildDesktopShotPayload(
       ?? data.quote?.listingExchangeName
       ?? data.quote?.exchangeName
       ?? "";
-    if (resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "iv-screen"
+    const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day";
+    if (fiveYearsDaily || resolved.pane.id === "iv-screen" || resolved.pane.id === "short-watch"
       || resolved.pane.id === "backtest" || resolved.pane.id === OPTIONS_PANE_ID) {
       // Generic 5Y snapshots can contain weekly bars. The snapshot provider
       // treats captured history as authoritative, even for a later 1d request.
@@ -572,7 +573,7 @@ export async function buildDesktopShotPayload(
       }
       const priceHistory = await context.dataProvider.getPriceHistoryForResolution(
         entry.instrument.symbol, exchange,
-        resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" ? "5Y" : resolved.pane.id === "backtest" ? "ALL" : "1Y",
+        fiveYearsDaily ? "5Y" : resolved.pane.id === "backtest" ? "ALL" : "1Y",
         "1d", toMarketDataContext(entry.instrument),
       );
       data = { ...data, priceHistory };

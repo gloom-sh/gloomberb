@@ -89,6 +89,8 @@ interface PendingSessionRequest {
 
 class GloomApiClient {
   private currentUser: AuthUser | null = null;
+  /** Local identity of a verified user/credential pair, never serialized. */
+  private verifiedSessionIdentity: object | null = null;
   private sessionChecked = false;
   /** Last few session transitions, content-free, for app://auth. */
   private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
@@ -116,6 +118,8 @@ class GloomApiClient {
     markCurrentUserUnverified: () => {
       if (this.currentUser) {
         this.currentUser = { ...this.currentUser, emailVerified: false };
+        this.verifiedSessionIdentity = null;
+        this.emitCurrentUserChange();
       }
     },
     updateCurrentUserFromSocket: (user) => {
@@ -156,16 +160,22 @@ class GloomApiClient {
 
   setCookieSessionMode(enabled: boolean): void {
     this.sessionChecked = false;
+    this.verifiedSessionIdentity = null;
     this.transport.setCookieSessionMode(enabled);
+    this.emitCurrentUserChange();
   }
 
   setSessionToken(token: string | null): void {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
     this.transport.setSessionToken(token);
+    if (changed) this.verifiedSessionIdentity = null;
     this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
       this.currentUser = null;
+      this.verifiedSessionIdentity = null;
+    }
+    if (changed || !token) {
       this.emitCurrentUserChange();
     }
     this.socket.syncAuthState({ reconnect: changed });
@@ -190,7 +200,7 @@ class GloomApiClient {
     return !!this.transport.getSessionToken() || !!this.currentUser;
   }
 
-  /** Notifies when the signed-in user changes, including plan and trial entitlement. */
+  /** Notifies when the user or credential changes, including plan and trial entitlement. */
   subscribeCurrentUser(listener: () => void): () => void {
     this.currentUserListeners.add(listener);
     return () => {
@@ -204,6 +214,11 @@ class GloomApiClient {
 
   isVerified(): boolean {
     return this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified;
+  }
+
+  /** Null while a replacement credential still awaits its matching user. */
+  getVerifiedSessionIdentity(): object | null {
+    return this.isVerified() ? this.verifiedSessionIdentity : null;
   }
 
   /**
@@ -259,6 +274,7 @@ class GloomApiClient {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
+    this.verifiedSessionIdentity = this.isVerified() ? {} : null;
     this.socket.syncAuthState({ reconnect: changed });
     this.emitCurrentUserChange();
   }
@@ -653,6 +669,7 @@ class GloomApiClient {
   listFeedback = this.feedback.listFeedback.bind(this.feedback);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
+  reportAttentionCounts = this.telemetry.reportAttentionCounts.bind(this.telemetry);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
   listTheses = this.theses.listTheses.bind(this.theses);
   getThesis = this.theses.getThesis.bind(this.theses);
@@ -735,8 +752,32 @@ class GloomApiClient {
   getCloudShiller = this.data.getCloudShiller.bind(this.data);
   getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);
   getCloudCotContract = this.data.getCloudCotContract.bind(this.data);
+  creditDocuments = this.data.creditDocuments.bind(this.data);
+  getCloudHiring = this.data.getCloudHiring.bind(this.data);
+  getCloudAppRankHistory = this.data.getCloudAppRankHistory.bind(this.data);
+  getCloudAppAttention = this.data.getCloudAppAttention.bind(this.data);
+  getCloudCatalystChanges = this.data.getCloudCatalystChanges.bind(this.data);
+  getCloudCatalysts = this.data.getCloudCatalysts.bind(this.data);
+  getCloudCatalystEvent = this.data.getCloudCatalystEvent.bind(this.data);
+  getCloudCatalystStatus = this.data.getCloudCatalystStatus.bind(this.data);
+  getCloudCompanyKpis = this.data.getCloudCompanyKpis.bind(this.data);
+  getCloudCompanyGuidance = this.data.getCloudCompanyGuidance.bind(this.data);
+  getCloudPerpsBoard = this.data.getCloudPerpsBoard.bind(this.data);
+  getCloudPerpsHistory = this.data.getCloudPerpsHistory.bind(this.data);
+  getCloudPerpsRankings = this.data.getCloudPerpsRankings.bind(this.data);
+  getCloudPerpsCompare = this.data.getCloudPerpsCompare.bind(this.data);
+  getCloudPerpsEquity = this.data.getCloudPerpsEquity.bind(this.data);
+  getCloudPerpsMarket = this.data.getCloudPerpsMarket.bind(this.data);
+  analyzeCloudExposure = this.data.analyzeCloudExposure.bind(this.data);
+  getCloudExposureScenarios = this.data.getCloudExposureScenarios.bind(this.data);
   getCloudSupplyChain = this.data.getCloudSupplyChain.bind(this.data);
+  getCloudAwards = this.data.getCloudAwards.bind(this.data);
+  getCloudAward = this.data.getCloudAward.bind(this.data);
   getCloudDoeBoard = this.data.getCloudDoeBoard.bind(this.data);
+  getCloudAttention = this.data.getCloudAttention.bind(this.data);
+  getCloudPowerBoard = this.data.getCloudPowerBoard.bind(this.data);
+  getCloudPowerHistory = this.data.getCloudPowerHistory.bind(this.data);
+  getCloudPowerProject = this.data.getCloudPowerProject.bind(this.data);
   getCloudGpuBoard = this.data.getCloudGpuBoard.bind(this.data);
   getCloudGpuHistory = this.data.getCloudGpuHistory.bind(this.data);
   getCloudGpuEvents = this.data.getCloudGpuEvents.bind(this.data);

@@ -1,3 +1,5 @@
+import { TrendingSummary } from "../attention/trending";
+import type { ReactNode } from "react";
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
@@ -15,7 +17,7 @@ import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "../../../time-
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
-import { resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import {
@@ -40,6 +42,7 @@ const RANGE_INLINE_MIN_TRACK = 10;
 const LOGO_GAP_PX = 6;
 
 interface OverviewTabProps {
+  perpetuals?: ReactNode;
   width?: number;
   focused?: boolean;
   ticker: TickerRecord | null;
@@ -55,7 +58,7 @@ export function OverviewTab(props: OverviewTabProps) {
   return <ResolvedOverviewTab {...props} ticker={props.ticker} />;
 }
 
-function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
   const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
@@ -284,6 +287,8 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
           )}
         </Box>
 
+        {perpetuals}
+
         {(hasDayRange || yearRange) && quote && (
           <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={contentWidth}>
             {hasDayRange && (
@@ -373,6 +378,8 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
             </PaneLinkMenu>
           </Box>
         )}
+
+        <TrendingSummary symbol={publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)} onOpen={onOpenFunction ? () => onOpenFunction({ name: "Research attention", templateId: "attention-pane" }) : undefined} />
 
         {/* Description — last, collapsed */}
         {description && (

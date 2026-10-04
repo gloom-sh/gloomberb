@@ -27,6 +27,8 @@ import {
 import type { PluginRegistry } from "../../plugins/registry";
 import { reportCrash } from "../../telemetry/crash-reports";
 import { recordFunctionOpen, usageFunctionForPane } from "../../telemetry/usage-counts";
+import { captureAttentionAction } from "../../telemetry/attention-counts";
+import { publicTickerKey } from "../../utils/exchanges";
 import {
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
@@ -252,6 +254,7 @@ export function bindAppPanePluginRegistry({
     },
     navigateTicker: (rawSymbol, options) => {
       if (isDetachedWindow) return;
+      const recordAttention = captureAttentionAction();
       recordFunctionOpen(usageFunctionForPane(pluginRegistry, TICKER_RESEARCH_PANE_ID));
       const sourcePaneId = options?.sourcePaneId ?? stateRef.current.focusedPaneId;
       const requests = tickerNavigationRequests.get(pluginRegistry) ?? new Map<string | null, symbol>();
@@ -311,12 +314,14 @@ export function bindAppPanePluginRegistry({
             };
             persistLayout(nextLayout);
             focusIfStillOwned(detailPane.instanceId);
+            recordAttention(publicTickerKey(symbol, target.listing?.exchange ?? target.ticker.metadata.exchange), "des");
           } else if (shouldFocusTickerNavigationTarget({
             sourcePaneId,
             currentFocusedPaneId: stateRef.current.focusedPaneId,
             targetPaneId: null,
           })) {
             placePinnedTickerTarget(target, { floating: false });
+            recordAttention(publicTickerKey(symbol, target.listing?.exchange ?? target.ticker.metadata.exchange), "des");
           }
         } catch (err) {
           if (!canPresentFeedback()) return;

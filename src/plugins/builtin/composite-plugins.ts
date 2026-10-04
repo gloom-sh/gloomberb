@@ -1,4 +1,13 @@
+import { creditDocumentsModule } from "./credit-documents";
+import { attentionModule } from "./attention";
+import { companyAttentionModule } from "./company-attention";
+import { catalystsModule } from "./catalysts";
+import { companyKpisModule } from "./company-kpis";
+import { powerModule } from "./power";
+import { perpsModule } from "./perps";
+import { exposureModule } from "./exposure";
 import { supplyChainModule } from "./supply-chain";
+import { awardsModule } from "./awards";
 import { cryptoBoardModule } from "./crypto-board";
 import { portfolioAnalyticsModule } from "./analytics";
 import { brokerManagerModule } from "./broker-manager";
@@ -62,7 +71,9 @@ import { optionsCalculatorModule } from "./options-calculator";
 import { volSurfaceModule } from "./vol-surface";
 import { realizedVolModule } from "./realized-vol";
 import { seasonalityModule } from "./seasonality";
+import { earningsRippleModule } from "./earnings-ripple";
 import { reverseDcfModule } from "./reverse-dcf";
+import { macroDayModule } from "./macro-day";
 import { ivHistoryModule } from "./iv-history";
 import { backtestModule } from "./backtest";
 import { researchModule } from "./research";
@@ -103,7 +114,9 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     volSurfaceModule,
     realizedVolModule,
     seasonalityModule,
+    earningsRippleModule,
     reverseDcfModule,
+    macroDayModule,
     ivHistoryModule,
     backtestModule,
     estimateRevisionsModule,
@@ -113,6 +126,12 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     debtMaturitiesModule,
     revenueBreakdownModule,
     supplyChainModule,
+    creditDocumentsModule,
+    companyAttentionModule,
+    catalystsModule,
+    companyKpisModule,
+    awardsModule,
+    exposureModule,
     mnaModule,
     dividendYieldModule,
     holdersModule,
@@ -155,7 +174,10 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     cotModule,
     doeModule,
     gpuModule,
+    attentionModule,
+    powerModule,
     cryptoBoardModule,
+    perpsModule,
   ],
 });
 

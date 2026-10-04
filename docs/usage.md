@@ -130,7 +130,9 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `HVG <ticker>` | Realized volatility by estimator and window, price, and current ATM IV |
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
 | `SEAS <ticker>` | Seasonality: monthly returns by year, each month's average and hit rate, and year overlays |
+| `RIPL [tickers]` | Earnings Ripple: customers of your holdings (or the named tickers) that report in the next 30 days, with the share of each holding's revenue |
 | `RDCF <ticker>` | Reverse DCF: the ten-year free cash flow growth the enterprise value prices in, against past growth, by discount rate |
+| `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs and FOMC days against a normal day, and every release day |
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
@@ -139,6 +141,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `DVD <ticker>` | Dividend yield and history |
 | `SI <ticker>` | Short interest |
 | `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
+| `SIW [tickers]` | Short squeeze watch: short interest as a share of float, days to cover, change since the prior settlement and the 1M price move across your portfolios and watchlists, crowded names that are rising first |
 | `BUZZ <ticker>` | Daily posts on X naming the cashtag, the 30-day median, top posts and their stance |
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
 | `INS <ticker>` | Insider activity |
@@ -211,11 +214,14 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `TAS <ticker>` | Time and sales: trade prints, observed-window VWAP and large prints |
 | `QR <ticker>` | Quote recap: NBBO history with sizes, venues and spread (the same pane on its NBBO tab) |
 | `EM <ticker>` / `EEO <ticker>` | EPS estimate revisions, current analyst breadth and surprises; `--period YYYY-MM-DD --frequency quarterly` pins a fiscal period |
+| `KPIS <ticker>` | Company operating KPI tables, charts, revisions and verbatim evidence (Pro, Free preview) |
+| `GUIDE <ticker>` | Structured management ranges, raise/cut tracking and later actual versus guide (Pro, Free preview) |
 | `GUID <ticker>` | Company EPS guidance cited from filings and transcripts, against consensus (the same pane on its Guidance tab) |
 | `FUT` | Futures quote aliases across index, rates, energy, metals, grains and softs, livestock, and FX |
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
 | `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
+| `PERP [market]` | Pro per-market funding, open interest, premium history and evidence; latest-value free preview |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap; stablecoins on their own tab |
 | `ECO` | Economic events and releases |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
@@ -280,6 +286,8 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 `CBR`, `ECFC` and `CBRT` open the same Central Bank Rates board. Each row shows its policy rate or target range, last observed move and date, one-year percentile, history and latest observation date. Select a row and press Enter or click for the source instrument, reporting lag, one-year range and history; Back returns to the board. `o` opens its official source and `r` refreshes. The US detail includes its verified next FOMC meeting; other meeting dates remain unavailable. Reports support `gloomberb fn CBR --json` and its aliases.
 
 `IPO` lists deals on the main US, Asia-Pacific and European exchanges from the last three months and the next six: upcoming soonest first, then priced and listed deals most recent first, then postponed deals. The All, US, APAC and Europe tabs pick the region, and `/` searches company names in either script, tickers, markets, countries and status. DATE is the listing date in the venue's own calendar, dimmed while it is only expected. PRICE is the offer price once set, else the range, in the deal's currency (London in pence); SIZE is the money raised in US dollars at the rate of the day it priced; RETURN is the first session's close against the offer price. Enter or click opens a deal's ticker on its own exchange once it has one. When a market's calendar could not be refreshed, the footer names it. `gloomberb fn IPO --region apac --status upcoming --json` returns the same deals, and `--status filed` or `--status withdrawn` the filings and withdrawn deals the pane leaves out.
+
+`PERP [market]` opens [perpetual History and Evidence](perpetuals.md).
 
 `CRYP` opens the crypto board: the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows, moving every return and the market cap with them. Enter or click opens the coin in the ticker pane; column headers sort, `r` refreshes, and CSV export keeps every column. `gloomberb fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins.
 
@@ -647,3 +655,7 @@ gloomberb fn BT AAPL --json
 gloomberb fn BT SPY --preset custom --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
 gloomberb shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
 ```
+
+### Credit documents (CRDOC / COVN)
+
+`CRDOC FICO` opens capital structure, covenant headroom, instrument maturity walls and a global risk screen. Select an instrument for its exact terms, filing evidence and amendment history. `COVN` opens the Covenants tab. This Pro dataset includes a free preview. See [credit documents](credit-documents.md) for coverage, calculation limits and CLI options.

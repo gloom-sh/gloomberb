@@ -1,10 +1,10 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
 import { act, useState, type ReactNode } from "react";
-import { cloneLayout, createDefaultConfig } from "../types/config";
+import { createDefaultConfig } from "../types/config";
 import { LayoutGalleryDesktop } from "./gallery-desktop";
 import { buildOwnedEntries, type GalleryEntry } from "./model";
-import { testPanes as panes } from "./test-fixture";
+import { testDockedLayout, testPanes as panes } from "./test-fixture";
 import type { LayoutGalleryController } from "./gallery";
 import { createDomTestHarness } from "../renderers/dom/test-utils";
 import { WebInputHostProvider } from "../renderers/dom/input-host";
@@ -20,10 +20,9 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
   selections: (string | null)[];
   copied: GalleryEntry[];
 } {
-  const config = createDefaultConfig("/tmp/gloomberb-gallery-desktop-test");
   const owned = buildOwnedEntries([
-    { name: "Monitor", layout: cloneLayout(config.layout) },
-    { name: "Research Desk", layout: cloneLayout(config.layout) },
+    { name: "Monitor", layout: testDockedLayout() },
+    { name: "Research Desk", layout: testDockedLayout() },
   ], 1);
   const activated: GalleryEntry[] = [];
   const installed: GalleryEntry[] = [];

@@ -23,7 +23,7 @@ function stripRedundantFormPrefix(form: string, description: string): string {
   const pattern = escapeRegExp(form.trim()).replace(/\s+/g, "\\s+");
   return description
     .trim()
-    .replace(new RegExp(`^(?:FORM\\s+)?${pattern}(?:\\s*[:|-]\\s*|\\s+)`, "i"), "")
+    .replace(new RegExp(`^(?:FORM\\s+)?${pattern}(?:\\s*[:|–—-]\\s*|\\s+)`, "i"), "")
     .trim();
 }
 
@@ -44,6 +44,16 @@ export function getFilingDisplayTitle(filing: SecFilingItem): string {
   return description ? `${formLabel} | ${description}` : formLabel;
 }
 
+/** The adjacent FORM column already identifies the form. Keep its meaning here. */
+export function getFilingColumnText(filing: SecFilingItem): string {
+  const description = getMeaningfulPrimaryDescription(filing);
+  const meaning = getFormDescription(filing.form);
+  if (!description) return meaning || "Filing";
+  return meaning && normalizeComparableText(description) !== normalizeComparableText(meaning)
+    ? `${description} | ${meaning}`
+    : description;
+}
+
 export function getFormDescription(form: string): string {
   const normalized = form.trim().toUpperCase();
   switch (normalized) {
@@ -59,6 +69,8 @@ export function getFormDescription(form: string): string {
     case "4": return "Insider Transaction";
     case "3": return "Initial Insider Ownership";
     case "5": return "Annual Insider Ownership";
+    case "144": return "Notice of proposed sale of securities";
+    case "144/A": return "Notice of proposed sale of securities (Amended)";
     case "SC 13G":
     case "SCHEDULE 13G": return "Beneficial Ownership (Passive)";
     case "SC 13G/A":
@@ -76,8 +88,6 @@ export function getFormDescription(form: string): string {
 
 export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
   return filings.map((filing) => {
-    const displayTitle = getFilingDisplayTitle(filing);
-    const formDescription = getFormDescription(filing.form);
     return {
       filedAt: filing.filingDate instanceof Date
         ? filing.filingDate.toISOString()
@@ -86,7 +96,7 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       acceptedAtRaw: filing.acceptedAtRaw ?? null,
       acceptanceReported: secReportedAcceptance(filing),
       form: filing.form,
-      filing: formDescription ? `${displayTitle} | ${formDescription}` : displayTitle,
+      filing: getFilingColumnText(filing),
       items: secFilingItemCodes(filing.items),
       accessionNumber: filing.accessionNumber,
       primaryDocument: filing.primaryDocument ?? null,

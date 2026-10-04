@@ -1,3 +1,4 @@
+import { CATALYST_TYPES } from "../../../api-client/catalysts";
 import { isResearchAlertKind, normalizeResearchRule, type ResearchAlertKind } from "./research-rules";
 import { researchAlertDescription } from "./research-builder";
 export const EVENT_ALERTS_KEY = "eventAlerts";
@@ -5,14 +6,19 @@ export const MAX_EVENT_ALERTS = 40;
 
 export interface EventAlertRule {
   id: string;
-  kind: "congress_trade" | "thirteenf_filing" | ResearchAlertKind;
-  target: "watched" | "member" | "fund" | "rule";
+  kind: "congress_trade" | "thirteenf_filing" | "catalyst" | ResearchAlertKind;
+  target: "watched" | "member" | "fund" | "rule" | "ticker" | "type" | "agency" | "country";
   value: string;
   createdAt: number;
   status: "active" | "paused";
 }
 
 export const EVENT_ALERT_TEMPLATES = [
+  { id: "catalyst-watched", kind: "catalyst", target: "watched", label: "Catalyst: portfolio and watchlists", field: null, placeholder: "", normalize: (_value: string) => "" },
+  { id: "catalyst-ticker", kind: "catalyst", target: "ticker", label: "Catalyst: company", field: "Ticker", placeholder: "PFE or NOVN:SIX", normalize: (value: string) => /^[A-Z0-9][A-Z0-9.^:/-]{0,39}$/.test(value.trim().toUpperCase()) ? value.trim().toUpperCase() : "" },
+  { id: "catalyst-type", kind: "catalyst", target: "type", label: "Catalyst: event type", field: "Event type", placeholder: "clinical, antitrust, litigation, sanctions", normalize: (value: string) => CATALYST_TYPES.includes(value.trim().toLowerCase() as typeof CATALYST_TYPES[number]) ? value.trim().toLowerCase() : "" },
+  { id: "catalyst-agency", kind: "catalyst", target: "agency", label: "Catalyst: agency", field: "Agency", placeholder: "FDA, EMA, SEC", normalize: (value: string) => value.trim().length <= 80 ? value.trim() : "" },
+  { id: "catalyst-country", kind: "catalyst", target: "country", label: "Catalyst: country", field: "Country code", placeholder: "US, EU, GB", normalize: (value: string) => /^[A-Z]{2}$/.test(value.trim().toUpperCase()) ? value.trim().toUpperCase() : "" },
   {
     id: "congress-watched",
     kind: "congress_trade",
@@ -53,9 +59,9 @@ export function createEventAlert(
   const normalized = template.normalize(value);
   if (template.field && !normalized)
     throw new Error(
-      template.target === "fund" ? "Enter a numeric SEC CIK." : "Enter the member's first and last name.",
+      template.kind === "catalyst" ? "Enter a valid catalyst target." : template.target === "fund" ? "Enter a numeric SEC CIK." : "Enter the member's first and last name.",
     );
-  if (normalized.length > 160) throw new Error("The member name is too long.");
+  if (normalized.length > 160) throw new Error("The alert target is too long.");
   return {
     id: crypto.randomUUID(),
     kind: template.kind,
