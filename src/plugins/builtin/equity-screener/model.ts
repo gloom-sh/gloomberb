@@ -1,4 +1,5 @@
 import {
+  ATTENTION_FIELDS,
   CATEGORY_FIELDS,
   NUMERIC_FIELDS,
   RESEARCH_FIELDS,
@@ -47,6 +48,8 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   xPostsVsMedian: "X VS MED",
   wikiViewsPerDay: "WIKI/D",
   wikiViewsVsMedian: "WIKI VS MED",
+  attentionResearchUnits: "ATTN HRS",
+  attentionZScore: "ATTN Z",
   return1WPercent: "1W%",
   return1MPercent: "1M%",
   return3MPercent: "3M%",
@@ -73,7 +76,7 @@ const SIGNED = new Set<NumericField>([
 ]);
 /** Moves whose sign is the news: they take the sign colour. */
 export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent"]);
-const COUNTS = new Set<NumericField>(["insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank"]);
+const COUNTS = new Set<NumericField>(["attentionResearchUnits","insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank"]);
 const MONETARY = new Set<NumericField>(["price", "marketCap"]);
 /** Shown after the screen's own criteria when the pane has room. */
 const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "trailingPE", "revenueGrowthPercent", "operatingMarginPercent", "dividendYieldPercent"];
@@ -142,6 +145,8 @@ export const screenLabel = (field: string) =>
     xPostsVsMedian: "X posts vs median",
     wikiViewsPerDay: "Wikipedia views per day",
     wikiViewsVsMedian: "Wikipedia views vs median",
+    attentionResearchUnits: "Research attention hours (Pro)",
+    attentionZScore: "Abnormal research attention (Pro)",
     return1WPercent: "1W return %",
     return1MPercent: "1M return %",
     return3MPercent: "3M return %",
@@ -363,7 +368,7 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
       // A server from before social or research fields omits them; they read as unavailable.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS] as readonly string[]).includes(field))
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...ATTENTION_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = unavailableMetric();
       const metric = row.metrics[field];
       if (

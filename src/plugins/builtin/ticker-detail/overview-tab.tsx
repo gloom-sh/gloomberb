@@ -1,3 +1,4 @@
+import { TrendingSummary } from "../attention/trending";
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
@@ -15,7 +16,7 @@ import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "../../../time-
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
-import { resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import {
@@ -373,6 +374,8 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
             </PaneLinkMenu>
           </Box>
         )}
+
+        <TrendingSummary symbol={publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)} onOpen={onOpenFunction ? () => onOpenFunction({ name: "Research attention", templateId: "attention-pane" }) : undefined} />
 
         {/* Description — last, collapsed */}
         {description && (

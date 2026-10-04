@@ -24,7 +24,8 @@ import {
 } from "../../tickers/open-target";
 import { AmbiguousTickerError, findExactTickerSearchMatch } from "../../tickers/search";
 import { isDialogOpen } from "../../ui/dialog-stack";
-import { parsePublicTickerKey } from "../../utils/exchanges";
+import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { attentionActionForPane, captureAttentionAction } from "../../telemetry/attention-counts";
 import { tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
@@ -185,13 +186,18 @@ export function useAppTickerOpenRuntime({
   ]);
 
   const openPinnedTicker = useCallback(async (rawSymbol: string, options?: PinTickerOptions) => {
+    const recordAttention = captureAttentionAction();
     const selectedTicker = options?.instrument !== undefined && (options.instrument || options.listing) ? await tickerRepository.loadTicker(rawSymbol) : null;
     const target = selectedTicker
       ? { symbol: selectedTicker.metadata.ticker, ticker: selectedTicker, created: false, instrument: options?.instrument, listing: options?.listing }
       : await resolveOpenTickerTarget(rawSymbol, options?.instrument === null);
     if (!target) return;
     placePinnedTickerTarget(target, options);
-  }, [placePinnedTickerTarget, resolveOpenTickerTarget, tickerRepository]);
+    const action = attentionActionForPane(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
+    if (action && pluginRegistry.panes.has(options?.paneType ?? TICKER_RESEARCH_PANE_ID)) {
+      recordAttention(publicTickerKey(target.symbol, target.listing?.exchange ?? target.ticker.metadata.exchange), action);
+    }
+  }, [placePinnedTickerTarget, pluginRegistry, resolveOpenTickerTarget, tickerRepository]);
 
   return {
     openPinnedTicker,

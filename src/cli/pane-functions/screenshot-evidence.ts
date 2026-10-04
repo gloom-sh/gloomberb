@@ -1,4 +1,5 @@
 import { creditScreenshotEvidence } from "../../plugins/builtin/credit-documents/evidence";
+import { attentionScreenshotEvidence } from "../../plugins/builtin/attention/evidence";
 import { supplyScreenshotEvidence } from "../../plugins/builtin/supply-chain/evidence";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import type { TickerFinancials } from "../../types/financials";
@@ -71,6 +72,7 @@ export interface PaneScreenshotEvidenceHook<E extends PaneScreenshotEvidence = P
 const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
   supplyScreenshotEvidence,
   creditScreenshotEvidence,
+  attentionScreenshotEvidence,
   calculatorScreenshotEvidence,
   scenarioScreenshotEvidence,
   realizedVolScreenshotEvidence,

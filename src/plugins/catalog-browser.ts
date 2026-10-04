@@ -1,4 +1,5 @@
 import { creditDocumentsModule } from "./builtin/credit-documents";
+import { attentionModule } from "./builtin/attention";
 import { supplyChainModule } from "./builtin/supply-chain";
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
 import { revenueBreakdownModule } from "./builtin/revenue-breakdown";
@@ -155,6 +156,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
     cotModule,
     doeModule,
     gpuModule,
+    attentionModule,
     cryptoBoardModule,
   ],
 });

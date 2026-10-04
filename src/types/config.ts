@@ -199,6 +199,8 @@ export interface TelemetryConfig {
    * both off; absent means on.
    */
   usage?: boolean;
+  /** Ticker-level research counts. Only an explicit true opts in; absent is OFF. */
+  attention?: boolean;
 }
 
 export interface AppConfig {
@@ -307,9 +309,12 @@ const DEFAULT_HOME_LAYOUT: LayoutConfig = {
       first: { kind: "pane", instanceId: "portfolio-list:main" },
       second: { kind: "pane", instanceId: "chat:main" },
     },
-    second: { kind: "pane", instanceId: "ticker-detail:main" },
+    second: { kind: "split", axis: "vertical", ratio: 0.76,
+      first: { kind: "pane", instanceId: "ticker-detail:main" },
+      second: { kind: "pane", instanceId: "attention-trending:home" } },
   },
   instances: [
+    { instanceId: "attention-trending:home", paneId: "attention-trending", binding: { kind: "none" } },
     {
       instanceId: "portfolio-list:main",
       paneId: "portfolio-list",

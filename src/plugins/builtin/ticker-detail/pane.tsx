@@ -31,7 +31,8 @@ import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { captureAttentionAction } from "../../../telemetry/attention-counts";
 import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
 import { tickerQuoteFooterInfo } from "./quote-footer";
 import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-keys";
@@ -220,10 +221,17 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // those keys while it is open; Esc gives them back to the strip.
   const researchTabKeys = useResearchTabKeysHost();
   const stripFocused = focused && !pluginCaptured && !researchTabKeys.claimed;
+  const selectResearchTab = useCallback((tabId: string) => {
+    if (ticker && tabId !== resolvedTabId) {
+      const action = tabId === "chart" ? "chart" : tabId === "options" ? "option_chain" : null;
+      if (action) captureAttentionAction()(publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange), action);
+    }
+    setActiveTabId(tabId);
+  }, [resolvedTabId, setActiveTabId, ticker]);
   const { strip: tabStrip, rows: tabBarHeight } = usePaneTabs(!paneSettings.hideTabs && ticker ? {
     tabs: tabItems,
     activeValue: resolvedTabId,
-    onSelect: setActiveTabId,
+    onSelect: selectResearchTab,
     focused: stripFocused,
   } : null);
   // h/l step one tab at a time; with twenty tabs the pane menu jumps straight to one.
@@ -246,11 +254,11 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
             />
           ),
         }).then((tabId) => {
-          if (tabId) setActiveTabId(tabId);
+          if (tabId) selectResearchTab(tabId);
         }).catch(() => {});
       },
     }];
-  }, [dialog, resolvedTabId, setActiveTabId, showTabs, tabItems]);
+  }, [dialog, resolvedTabId, selectResearchTab, showTabs, tabItems]);
   // Which tabs people stay on. A pane pinned to one tab has no strip; opening
   // it is a function open, counted with those.
   useEffect(() => {
@@ -265,9 +273,9 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // A figure on one tab can open the tab that explains it (holders, short interest).
   const openResearchTab = useCallback((tabId: string) => {
     if (!visibleTabIds.has(tabId)) return false;
-    setActiveTabId(tabId);
+    selectResearchTab(tabId);
     return true;
-  }, [setActiveTabId, visibleTabIds]);
+  }, [selectResearchTab, visibleTabIds]);
   const renderedTabIds = useMemo(() => {
     const next = new Set<string>();
     for (const tabId of mountedTabIds) {

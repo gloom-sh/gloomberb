@@ -29,6 +29,7 @@ import {
   readOrCreateBrowserInstallId,
 } from "../../telemetry/crash-reports-dom";
 import { currentTelemetryConfig } from "../../telemetry/live-config";
+import { attentionCountsEnabled, installAttentionCounter } from "../../telemetry/attention-counts";
 import { installUsageCounter, recordRestoredFunctions, usageCountsEnabled } from "../../telemetry/usage-counts";
 import { installWindowUsageFlush } from "../../telemetry/usage-counts-dom";
 import type { AppConfig } from "../../types/config";
@@ -62,6 +63,7 @@ async function boot(): Promise<void> {
     getInstallId: () => readOrCreateBrowserInstallId(),
     officialPluginIds: loadOfficialPluginIds,
   });
+  installAttentionCounter(() => !browserDoNotTrack() && attentionCountsEnabled(currentTelemetryConfig(loadedConfig)));
   // A document reload does not unmount React. Flush both config and session
   // timers while localStorage is still available, including background tabs.
   window.addEventListener("pagehide", () => { void flushPendingPersistence(); });

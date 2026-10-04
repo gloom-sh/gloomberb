@@ -20,6 +20,8 @@ import {
 import { buildQuoteMonitorPaneTitle } from "../../../plugins/builtin/ticker-detail/settings";
 import { getPaneTemplateDisplayLabel } from "../pane-templates/items";
 import { automationActive, describeUsageFunction, recordFunctionOpen } from "../../../telemetry/usage-counts";
+import { attentionActionForPane, captureAttentionAction } from "../../../telemetry/attention-counts";
+import { publicTickerKey } from "../../../utils/exchanges";
 import { keysClearedByChange } from "./fields";
 import {
   resolveTickerInputOrThrow,
@@ -285,6 +287,7 @@ export async function createPaneTemplateOrThrow(
   // Read before the first await: automation that started this open may have
   // finished by the time the pane is placed.
   const openedByUser = !automationActive();
+  const recordAttention = captureAttentionAction();
 
   const state = deps.getState();
   const pluginId = deps.pluginRegistry.getPaneTemplatePluginId(templateId);
@@ -317,6 +320,20 @@ export async function createPaneTemplateOrThrow(
   if (!paneDef) {
     throw new Error(`Unknown pane "${template.paneId}".`);
   }
+  const countAttention = () => {
+    const action = attentionActionForPane(template.paneId);
+    if (!action || !openedByUser) return;
+    const primary = spec.binding?.kind === "fixed" ? spec.binding.symbol : null;
+    const symbols = template.paneId === "quote-monitor" && Array.isArray(spec.settings?.symbols)
+      ? spec.settings.symbols.filter((value): value is string => typeof value === "string")
+      : primary ? [primary] : [];
+    for (const symbol of symbols) {
+      const exchange = symbol === primary && spec.binding?.kind === "fixed"
+        ? spec.binding.listing?.exchange ?? deps.getState().tickers.get(symbol)?.metadata.exchange
+        : deps.getState().tickers.get(symbol)?.metadata.exchange;
+      recordAttention(publicTickerKey(symbol, exchange), action);
+    }
+  };
 
   const instances = deps.getState().config.layout.instances;
   spec = withFreeTickerInstanceId(instances, template.paneId, spec);
@@ -333,6 +350,7 @@ export async function createPaneTemplateOrThrow(
     // the front must use its retargeted settings, not the preceding render.
     deps.pluginRegistry.focusPane(existing.instanceId, nextLayout);
     if (openedByUser) countTemplateOpen(template, pluginId, deps);
+    countAttention();
     return;
   }
 
@@ -350,6 +368,7 @@ export async function createPaneTemplateOrThrow(
 
   deps.placePaneInstance(instance, paneDef, spec);
   if (openedByUser) countTemplateOpen(template, pluginId, deps);
+  countAttention();
 }
 
 /** Every pane template the user opens, from the command bar, a menu or another pane, passes here. */

@@ -19,6 +19,7 @@ const DOCTOR_COUNT_UNITS: Record<string, string> = { plugins: "loaded", capabili
 const TELEMETRY_CONFIG_KEYS = {
   "telemetry.crashReports": "crashReports",
   "telemetry.usage": "usage",
+  "telemetry.attention": "attention",
 } as const satisfies Record<string, keyof TelemetryConfig>;
 type TelemetryConfigKey = keyof typeof TELEMETRY_CONFIG_KEYS;
 const EDITABLE_CONFIG_KEYS = ["baseCurrency", "refreshIntervalMinutes", "theme", "valueFlashingEnabled", ...Object.keys(TELEMETRY_CONFIG_KEYS)];
@@ -195,6 +196,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           valueFlashingEnabled: context.config.valueFlashingEnabled,
           "telemetry.crashReports": context.config.telemetry?.crashReports !== false,
           "telemetry.usage": context.config.telemetry?.usage !== false,
+          "telemetry.attention": context.config.telemetry?.attention === true,
         };
 
         if (action === "list") {

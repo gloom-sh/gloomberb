@@ -1,3 +1,4 @@
+import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -400,6 +401,11 @@ export class CloudDataApi {
 
   async getCloudDoeBoard(): Promise<DoeBoardPayload> {
     return this.request<DoeBoardPayload>("/cloud/doe/board");
+  }
+
+  async getCloudAttention(window: AttentionWindow = "now", symbol?: string): Promise<AttentionPayload> {
+    const path = symbol ? `/cloud/attention/${encodeURIComponent(symbol)}` : "/cloud/attention";
+    return this.request<AttentionPayload>(`${path}?window=${window}`);
   }
 
   async getCloudGpuBoard(): Promise<GpuBoardPayload> {

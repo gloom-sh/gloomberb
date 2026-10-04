@@ -431,6 +431,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: { free: "As filed; three rows per section with supporting evidence", pro: "As filed; all stored terms, revisions and risk screens" },
     bloomberg: ["CAST", "DDIS"],
   },
+  ATTN: {
+    summary: "See which tickers opted-in Gloom users are researching, with delayed privacy-qualified hourly counts, abnormal attention, sectors, countries and market context. Suppressed activity is unavailable, never zero.",
+    usage: ["ATTN", "ATTN 6758:JPX"],
+    keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph"), key("n", "ews")],
+    data: { free: "Three published rows per section and the latest history point", pro: "All published rows and hourly history; minimum one-hour publication lag" },
+    bloomberg: [],
+  },
   SPLC: {
     summary: "Explore disclosed suppliers, customers and other relationships, plus the filings that name this company. Table and flow views include verbatim evidence. Disclosed in filings only. Absence is not proof of no relationship.",
     usage: ["SPLC NVDA", "SUPPLY AAPL"],

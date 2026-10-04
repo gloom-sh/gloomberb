@@ -15,6 +15,8 @@ import { formatMarketPrice } from "../../../../market-data/market/format";
 import { upsertTickerFromSearchResult } from "../../../../tickers/search";
 import type { TickerRecord } from "../../../../types/ticker";
 import { addTickerToPortfolio, addTickerToWatchlist } from "../mutations";
+import { captureAttentionAction } from "../../../../telemetry/attention-counts";
+import { publicTickerKey } from "../../../../utils/exchanges";
 import {
   IDLE_VALIDATION,
   isPlausibleTickerQuery,
@@ -175,6 +177,7 @@ export function QuickAddTickerInput({
   }, [inputValue, validateQuery]);
 
   const submitInput = useCallback(async (submittedValue?: string) => {
+    const recordAttention = captureAttentionAction();
     const query = normalizeQuickAddQuery(submittedValue ?? inputValue);
     if (!query || submitting) return;
 
@@ -241,6 +244,9 @@ export function QuickAddTickerInput({
 
       await registry.tickerRepository.saveTicker(result.ticker);
       dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
+      if (collectionKind === "watchlist") {
+        recordAttention(publicTickerKey(result.ticker.metadata.ticker, result.ticker.metadata.exchange), "watchlist_add");
+      }
       if (created) {
         registry.events.emit("ticker:added", {
           symbol: result.ticker.metadata.ticker,
