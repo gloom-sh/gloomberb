@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { EarningsCalendarReport } from "../../../api-client/earnings";
 import type { SupplyChainPayload, SupplyEntity, SupplyRow } from "../../../api-client/supply-chain";
-import { projectRipple } from "./model";
+import { projectRipple, rippleCustomerTickers } from "./model";
 
 const entity = (ticker: string | null, exchange: string | null, aggregate = false): SupplyEntity =>
   ({ id: ticker ?? "anon", name: ticker ?? "Customer A", ticker, exchange, country: null, kind: "listed", identifiers: {}, anonymous: !ticker, aggregate });
@@ -17,6 +17,20 @@ const chain = (symbol: string, says: SupplyRow[]): SupplyChainPayload => ({ symb
 const report = (symbol: string, date: string): EarningsCalendarReport => ({ symbol, name: symbol, date, timing: "amc", averageMove: 0.025, averageReports: 8 } as EarningsCalendarReport);
 
 describe("earnings ripple", () => {
+  test("collects uppercase customer tickers across holdings using the displayed revenue-customer filters", () => {
+    const chains = new Map([
+      ["CRUS", chain("CRUS", [
+        customer("aapl", "NASDAQ", 91), customer("AAPL", "NASDAQ", 83, { period: "2025-03-31" }),
+        customer("2317", "TWSE", 39), customer("MSFT", "NASDAQ", 40, { pctBasis: "receivables" }),
+        customer(null, null, 96), { ...customer("WMT", "NYSE", 12), counterparty: entity("WMT", "NYSE", true) },
+        customer("NVDA", "NASDAQ", 10, { role: "supplier" }), customer("AVGO", "NASDAQ", 10, { pctOfRevenue: null }),
+        customer("crus", "NASDAQ", 10),
+      ])],
+      ["qrvo", chain("QRVO", [customer("AAPL", "XNAS", 50), customer("arm", "NASDAQ", 12), customer("QRVO", "NASDAQ", 10)])],
+    ]);
+    expect(rippleCustomerTickers(chains).sort()).toEqual(["AAPL", "ARM"]);
+  });
+
   test("shows a customer's average move only once ERN would, with enough reports behind it", () => {
     const rows = projectRipple(new Map([["CRUS", chain("CRUS", [customer("AAPL", "NASDAQ", 91), customer("ARM", "NASDAQ", 12)])]]),
       [report("AAPL", "2026-10-29"), { ...report("ARM", "2026-10-30"), averageReports: 2 }]);

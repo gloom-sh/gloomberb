@@ -44,6 +44,18 @@ function revenueCustomers(chain: SupplyChainPayload): SupplyRow[] {
   return [...best.values()];
 }
 
+/** Calendar symbols use the same customer eligibility as the displayed rows. */
+export function rippleCustomerTickers(chains: ReadonlyMap<string, SupplyChainPayload>): string[] {
+  const customers = new Set<string>();
+  for (const [holding, chain] of chains) {
+    for (const row of revenueCustomers(chain)) {
+      const customer = row.counterparty.ticker!.toUpperCase();
+      if (customer !== holding.toUpperCase()) customers.add(customer);
+    }
+  }
+  return [...customers];
+}
+
 /** Customers of the holdings that report in the calendar, soonest first, then by the holding's exposure. */
 export function projectRipple(chains: ReadonlyMap<string, SupplyChainPayload>, reports: readonly EarningsCalendarReport[]): RippleRow[] {
   const next = new Map<string, EarningsCalendarReport>();
