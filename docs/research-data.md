@@ -2,6 +2,8 @@
 
 [User guide](usage.md) · [Price comparisons](price-comparisons.md) · [Economic statistics](economics-reference.md) · [Market valuation](valuation-reference.md)
 
+From an equity's description pane (`DES`), open the pane menu (`.` or `...`) and choose **Company Research** for Supply Chain, KPIs, Guidance, Credit Documents, Government Awards, Catalysts, Hiring Momentum or App Attention. Each opens for the selected listing, retaining its exchange. Disabled functions are omitted. Source evidence and any free-preview limits belong to the destination pane.
+
 Historical-price table CSVs retain the selected listing, requested range, UTC date convention, loading or refresh-failure status, and active integrity warnings. Their numeric values use the provider history units. This table's history contract does not supply general currency or price-basis metadata; the export does not borrow those units from a current quote or a saved holding. Use a chart report when independently sourced listing metadata is needed.
 
 Preset research ranges and return cutoffs use UTC dates and times. Changing the computer's timezone does not change the selected observations or correlation samples; source request timestamps still use the source's required exchange timezone.

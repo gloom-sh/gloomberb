@@ -37,10 +37,23 @@ import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
 import { tickerQuoteFooterInfo } from "./quote-footer";
 import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-keys";
 import { ResearchTabNavigationProvider } from "./research-tab-navigation";
+import { usePluginAppActions } from "../../../public/react";
+import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 /** A tab counts as viewed once it stays open this long, not when h/l passes over it. */
 const TICKER_RESEARCH_TAB_VIEW_DWELL_MS = 2_000;
+
+const COMPANY_RESEARCH = [
+  { id: "supply-chain-pane", label: "Supply Chain (SPLC)" },
+  { id: "company-kpis-pane", label: "Company KPIs (KPIS)" },
+  { id: "company-guidance-pane", label: "Company Guidance (GUIDE)" },
+  { id: "credit-documents-pane", label: "Credit Documents (CRDOC)" },
+  { id: "awards-pane", label: "Government Awards (AWARDS)" },
+  { id: "catalysts-pane", label: "Catalysts (CATL)" },
+  { id: "hiring-pane", label: "Hiring Momentum (HIRE)" },
+  { id: "apps-pane", label: "App Attention (APPS)" },
+];
 
 function sameStringSet(left: Set<string>, right: Set<string>): boolean {
   if (left.size !== right.size) return false;
@@ -101,6 +114,7 @@ function getCollectionName(state: AppState, collectionId: string | null): string
 
 export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const dispatch = useAppDispatch();
+  const { createPaneFromTemplate } = usePluginAppActions();
   const config = usePaneAppConfig();
   const paneInstance = usePaneInstance();
   const { ticker, financials, error: instrumentError } = usePaneTicker();
@@ -237,6 +251,28 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // h/l step one tab at a time; with twenty tabs the pane menu jumps straight to one.
   const dialog = useOptionalDialog();
   const showTabs = !paneSettings.hideTabs && !!ticker;
+  const companySymbol = ticker && resolveTickerInstrumentKind(ticker, financials) === "equity"
+    ? tickerHasListingSuffix(ticker.metadata.ticker) ? ticker.metadata.ticker : publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)
+    : null;
+  usePaneMenuItems("ticker-research:company-research", () => {
+    if (!companySymbol || !dialog) return null;
+    const choices = COMPANY_RESEARCH.filter((item) => {
+      if (!registry) return true;
+      const owner = registry.getPaneTemplatePluginId?.(item.id);
+      return registry.paneTemplates?.has(item.id) && (!owner || !disabledPlugins.includes(owner));
+    });
+    if (!choices.length) return null;
+    return [{ id: "company-research", label: t("Company Research…"), onSelect: () => {
+      void dialog.prompt<string>({
+        closeOnClickOutside: true,
+        content: (context: PromptContext<string>) => <ChoiceDialog {...context}
+          title={tf("Research {symbol}", { symbol: companySymbol })}
+          choices={choices.map((item) => ({ ...item, label: t(item.label) }))} />,
+      }).then((templateId) => {
+        if (templateId && choices.some((item) => item.id === templateId)) createPaneFromTemplate(templateId, { symbol: companySymbol });
+      }).catch(() => {});
+    } }];
+  }, [companySymbol, createPaneFromTemplate, dialog, disabledPlugins, registry, tickerResearchTabsSnapshot]);
   usePaneMenuItems("ticker-research:go-to-tab", () => {
     if (!showTabs || !dialog || tabItems.length < 2) return null;
     return [{
