@@ -756,6 +756,10 @@ class GloomApiClient {
   getCloudHiring = this.data.getCloudHiring.bind(this.data);
   getCloudAppRankHistory = this.data.getCloudAppRankHistory.bind(this.data);
   getCloudAppAttention = this.data.getCloudAppAttention.bind(this.data);
+  getCloudCatalystChanges = this.data.getCloudCatalystChanges.bind(this.data);
+  getCloudCatalysts = this.data.getCloudCatalysts.bind(this.data);
+  getCloudCatalystEvent = this.data.getCloudCatalystEvent.bind(this.data);
+  getCloudCatalystStatus = this.data.getCloudCatalystStatus.bind(this.data);
   getCloudSupplyChain = this.data.getCloudSupplyChain.bind(this.data);
   getCloudDoeBoard = this.data.getCloudDoeBoard.bind(this.data);
   getCloudAttention = this.data.getCloudAttention.bind(this.data);

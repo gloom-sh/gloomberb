@@ -451,6 +451,20 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: { free: "Latest values and three rows per section", pro: "Daily observations, full history, countries and evidence" },
     bloomberg: [],
   },
+  CATL: {
+    summary: "Regulatory, clinical, legal and trade-policy events linked to companies. Filter the calendar by type, agency, country and sector, follow upcoming dates or observed changes, and inspect source evidence and revision history.",
+    usage: ["CATL", "CATL PFE", "CATL NOVN:SIX"],
+    keys: [TABS, OPEN, OPEN_SOURCE, key("a", "lert"), key("d", "es")],
+    data: { free: "Three events with primary-source evidence", pro: "All stored events, revision history and local alerts" },
+    bloomberg: [],
+  },
+  LITI: {
+    summary: "Company litigation, enforcement and antitrust dockets with primary documents, resolved parties, dated status changes and revision history. Published coverage varies by jurisdiction.",
+    usage: ["LITI AAPL", "LITI MSFT"],
+    keys: [TABS, OPEN, OPEN_SOURCE, key("t", "o calendar")],
+    data: { free: "Three company events with evidence", pro: "All stored company dockets and history" },
+    bloomberg: ["LITI"],
+  },
   SPLC: {
     summary: "Explore disclosed suppliers, customers and other relationships, plus the filings that name this company. Table and flow views include verbatim evidence. Disclosed in filings only. Absence is not proof of no relationship.",
     usage: ["SPLC NVDA", "SUPPLY AAPL"],

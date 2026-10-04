@@ -1,6 +1,7 @@
 import { creditDocumentsModule } from "./credit-documents";
 import { attentionModule } from "./attention";
 import { companyAttentionModule } from "./company-attention";
+import { catalystsModule } from "./catalysts";
 import { supplyChainModule } from "./supply-chain";
 import { cryptoBoardModule } from "./crypto-board";
 import { portfolioAnalyticsModule } from "./analytics";
@@ -118,6 +119,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     supplyChainModule,
     creditDocumentsModule,
     companyAttentionModule,
+    catalystsModule,
     mnaModule,
     dividendYieldModule,
     holdersModule,

@@ -1,3 +1,4 @@
+import { startCatalystAlerts } from "./catalysts";
 import { RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
 import { isResearchAlertKind } from "./research-rules";
 import { EVENT_ALERTS_KEY, EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, readEventAlerts } from "./events";
@@ -29,6 +30,7 @@ import {
 import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
 import type { AlertRule } from "./types";
 
+let catalystAlertsStop: (() => void) | null = null;
 let pollGeneration = 0;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let alertStream: AlertQuoteStream | null = null;
@@ -50,6 +52,8 @@ export const alertsPlugin: GloomPlugin = {
 
   setup(ctx) {
     const generation = ++pollGeneration;
+    catalystAlertsStop?.();
+    catalystAlertsStop = startCatalystAlerts(ctx);
     const notifyTriggered = (alert: AlertRule, price: number) => {
       ctx.notify({
         body: `${formatAlertDescription(alert)} triggered at ${price}`,
@@ -314,6 +318,8 @@ export const alertsPlugin: GloomPlugin = {
   },
 
   dispose() {
+    catalystAlertsStop?.();
+    catalystAlertsStop = null;
     pollGeneration += 1;
     alertStream?.dispose();
     alertStream = null;
