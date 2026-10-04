@@ -389,6 +389,11 @@ export class CloudDataApi {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
   }
 
+  /** Credit-document paths stay with their pane; keep the shared client small. */
+  creditDocuments<T>(path: string): Promise<T> {
+    return this.request<T>(`/cloud/credit-documents/${path}`);
+  }
+
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {
     return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}`);
   }

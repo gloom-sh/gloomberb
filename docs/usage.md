@@ -647,3 +647,7 @@ gloomberb fn BT AAPL --json
 gloomberb fn BT SPY --preset custom --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
 gloomberb shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
 ```
+
+### Credit documents (CRDOC / COVN)
+
+`CRDOC FICO` opens capital structure, covenant headroom, instrument maturity walls and a global risk screen. Select an instrument for its exact terms, filing evidence and amendment history. `COVN` opens the Covenants tab. This Pro dataset includes a free preview. See [credit documents](credit-documents.md) for coverage, calculation limits and CLI options.
