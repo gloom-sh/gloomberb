@@ -18,6 +18,8 @@ Agency share is computed within one publication scope, currency and record type.
 
 Enable **New awards above 1% of annual revenue** in pane settings or quick settings for in-app event notifications. This is opt-in and runs while the pane is visible and polling. Opening a pane, enabling alerts or changing its scope first establishes a baseline. Subsequent refreshes notify only previously unseen records first observed after that baseline, awarded in the last seven days and above the threshold. Historical backfills and revisions to an already-seen award do not send duplicate alerts. This is not an unattended or mobile push subscription.
 
+Agencies and Sectors group their rows by scope and currency, since a share only compares within one, and draw each share as a bar against the largest row of the view.
+
 ## Coverage and evidence
 
 The common schema supports US federal prime awards and subawards, award transactions, European public procurement, UK notices and other national open portals. Actual availability depends on successful collection and published fields. The server exposes source status and dated backfill ranges in REST/JSON metadata. Incomplete scopes produce a warning in the pane footer. The presence of an adapter is not a claim of complete country coverage, and a missing award or subcontractor is not proof that no contract exists. Source accounts, keys, transport restrictions and access policies can leave an adapter disabled or blocked; the backend status command is authoritative.

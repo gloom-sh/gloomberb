@@ -8,6 +8,8 @@ This is a Pro dataset. A free account gets the same three leading published tick
 
 Ranking orders tickers by rounded researcher-hours. Abnormal orders available latest-hour z-scores. Sectors and Countries sum the same published ticker observations, grouped by listing metadata. Selecting a group filters the ranking. History charts published hours for the selected listing, with gaps wherever no hour was published. Evidence shows the publication period, delay, threshold, rounding, market timestamps and related dated news.
 
+Above the ranking, four figures summarise the whole board for the period: total research hours, the number of tickers with a latest-hour z-score of 2 or more, and the top sector and country by share. Share draws as a bar measured against the largest row. The free preview leaves the figures out, since it holds only its own rows.
+
 **Now** is the latest eligible completed UTC hour. **Today** starts at UTC midnight and ends with the latest eligible hour. **Week** is the trailing 168 hours. The publication lag is at least one hour after a bucket ends. The footer shows publication time and stale state; counts are never described as live.
 
 A research hour means one eligible opted-in contributor researched one ticker within one hour. Opening several supported functions for that ticker in that hour does not increase its contribution. Summing hours does not measure distinct people over a day or week. Research hours are rounded, so small differences and ranks should not be interpreted as precise estimates.

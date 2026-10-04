@@ -10,15 +10,17 @@ The tabs cover:
 | --- | --- |
 | Queue | Generation and storage interconnection applications. Active is an application state, not a promise of delivered supply. The Benchmark filter selects historical compilations separately. |
 | History | Recorded snapshots of queued MW by region, fuel and status. The complete matching history loads before a selected row charts its series; the table adds MW change and records with missing capacity. A line appears after three distinct dates with complete reported capacity; missing capacity creates gaps. |
-| Outcomes | Entry-year cohorts, completed and withdrawn counts, and rates over all eligible project records in that cohort. Selecting a status does not change the denominator. Summary and capacity-segment records are excluded. |
+| Outcomes | Entry-year cohorts grouped by region, each with a bar of completed, active and withdrawn projects, the counts and the rates over all eligible project records in that cohort. Selecting a status does not change the denominator. Summary and capacity-segment records are excluded. |
 | Loads | Public large-load requests, approvals and operating connections. Datacenters are distinguished from other loads only where the source states the class. |
-| Utilities | Large loads grouped by the stated utility or grid, with requested, approved and operating MW and resolved company tickers. An application can have several capacity segments; record counts retain this distinction. |
+| Utilities | Large loads grouped by the stated utility or grid, with a bar of operating, approved and requested MW, the figures themselves and resolved company tickers. An application can have several capacity segments; record counts retain this distinction. |
 | Capacity | Existing or planned generation capacity. The Context filter switches between generation capacity, reported generation in MWh, and utility context such as peak demand, sales and retail-sales revenue. A generation record has a Monthly generation detail view with the twelve reported months. Negative net generation is retained for consuming assets, including storage. Native metrics retain their original units in the detail. |
 | Coverage | The state, dates and record counts for each public jurisdiction and dataset, including pending, failed and disabled sources. Open a row for its current limitation and primary link. |
 
 Open a row with Enter or a click for dates, units, exact source cells, the primary document, confidence and revision history. Proposed, requested, completed and withdrawn dates remain distinct, including quarter-, month- or year-only dates where the source has no day. The observed timestamp records when Gloom captured the source; published as-of and reporting period are separate. A missing published date is never replaced with the capture date. Corrections retain older revisions; the evidence view loads all available revision pages. Confidence describes evidence and entity matching, not the probability a project will complete.
 
 `O` opens the selected source. For a mapped company, `D`, `F`, `G` and `S` open DES, FA, a chart and SPLC. `C` opens GPU rental prices. `T` opens TBO where installed, passing the selected ticker. TBO has independent coverage; its data does not feed POWER. Actions are also in the pane menu.
+
+Columns that would only repeat a default on every row, such as a project-level record scope or zero records with missing capacity, are left out until a row differs. The Queue figures carry the selected region's active, completed and withdrawn MW as one bar.
 
 ## History and comparability
 

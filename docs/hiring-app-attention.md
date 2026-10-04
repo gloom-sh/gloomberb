@@ -12,6 +12,8 @@ Open roles are requisitions observed on public career boards, not employees hire
 
 History starts with retained observations; legacy daily counts are identified separately and do not acquire invented role-level evidence. HIRE retains the first successful observation per source and UTC week for 52 weeks, including corrections within that window. Sparse history has an explicit collecting state. A new location means a newly observed posting location, not a confirmed physical office. Z-score surge and freeze signals require sufficient comparable history and cannot be inferred from a single capture. Immutable posting versions are reused across weekly snapshots.
 
+Weekly additions, removals, net change and z-score appear as columns and figures once consecutive complete captures can give them; until then the tables show what the first capture observed. Signals read in tone: a surge green, a freeze red, a company still collecting quiet. Role-family shares in Mix draw as bars. APPS leaves out its seven-day columns and figures the same way until a week of captures exists, and a company's own apps do not repeat its ticker.
+
 ## App attention
 
 Table shows each app, country and chart basis separately. Chart follows company attention history; Markets compares countries and cross-country rank spreads; Peers compares listed parents; Evidence retains source and ownership links with capture revisions. The country, chart and history-window controls apply to the request together. Lower ranks are better; positive rank changes and velocity mean improvement.

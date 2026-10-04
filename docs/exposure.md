@@ -19,6 +19,8 @@ The engine combines the current stored geographic and product revenue disclosure
 
 Disclosed direct percentages keep that classification at the component level. Scenario impacts, regional allocations, product/geography intersections and multi-hop products are estimates. A Greater China revenue share gives Taiwan a bounded share from zero to that regional total when the filing does not disclose Taiwan separately. A two-hop proportional estimate is shown separately from its conservative overlap bound. Ranges describe disclosure overlap and assumptions, not statistical confidence intervals. Different shocks must not be added without a joint model.
 
+The Evidence column says whether each exposure is disclosed, estimated or unknown, and marks a partial bound where the result covers only part of what the scenario touches. The range chart above the table puts the holdings that share the selected row's shock, basis and period on one scale; a disclosed point is a tick, an estimated interval a band.
+
 Country and counterparty scenarios apply a proportional change to supported operating shares. Commodity, tariff, rates and FX scenarios require a sourced sensitivity or an explicit user assumption before they can produce a quantitative operating stress. Missing sensitivity, unknown hedging, substitution, production geography, anonymous counterparties, graph limits and unquantified links stay in the unknowns. KPI, guidance and credit observations are included only when an adapter supplies source-supported data; their absence is visible. Latest available figures are not a historical point-in-time backtest, and corrections follow the underlying sources.
 
 ## Custom scenarios and headless output

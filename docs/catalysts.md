@@ -10,6 +10,8 @@ Enter opens evidence and history. Evidence includes primary document links, orig
 
 CATL and LITI are Pro functions. Free accounts see up to three events with current evidence and limited history. Pro sees all collected rows and revisions. These are public-record datasets, not an assurance that every legal or regulatory matter has been disclosed or linked correctly. A missing event is not evidence that none exists.
 
+The calendar groups events under the month of the date it shows, in date order, and the change feed groups revisions by the day they were observed, newest first, with the first changed field shown from and to.
+
 ## Alerts
 
 `A` opens the existing event alert wizard. Choose a catalyst target: company ticker, event type, agency, country, or portfolio and watchlists. Alerts require Pro and poll the change feed every five minutes while the app is running. They include first observations and later revisions after the rule's creation time. The local cursor and per-rule revision IDs survive restarts and suppress duplicate delivery. Pausing stops matching; resuming starts from the resume time. Status and failures appear in the event alert pane. Delivery is local to terminal, desktop and web sessions; mobile push delivery is not included. Closing the app stops delivery until it runs again.

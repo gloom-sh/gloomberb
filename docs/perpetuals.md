@@ -10,6 +10,8 @@ The full market board, rankings and comparison UI belong to the external perpetu
 
 `a` opens the existing event-alert form with the market prefilled. Choose funding per eight hours, 24h open-interest change, premium versus oracle, or closed-market premium, then an above/below threshold in percent. The alert uses the existing cloud rule synchronization, crossing, cooldown and delivery history. Delivery requires Pro. Delisted or stale contracts are excluded from rankings and alerts.
 
+History keeps the same figures for every series: the series itself, its change over the range, the mark and open interest. When every point of a series shares one observation basis, the legend names it and the table leaves the column out. Evidence groups the market, funding, open interest, the listed underlying (for stock perpetuals) and the contract terms.
+
 ## Coverage and interpretation
 
 The initial enabled venue is Hyperliquid: the default crypto perpetual universe plus every public HIP-3 dex returned by discovery, including stock, index, energy, metal and FX contracts. Classification is conservative; unclassified contracts retain their identity. Availability of a perpetual does not establish eligibility to trade it or ownership of its referenced asset. The venue name in Evidence identifies the contract's trading venue, not a routing data provider.
