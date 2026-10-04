@@ -60,6 +60,15 @@ Chart controls: select ranges and intervals above the plot; click a legend entry
 
 The latest month is a return to date until December closes the year: the Returns table shows it untinted and marks its year with `*`, and it stays out of the month's average, median and up share. Those statistics cover completed months in the lookback only; a month with few years of history has few observations, and the headless `count` says how many. The Overlay tab draws each year's return since its prior year-end at each month-end on one January-to-December axis. The average path is the mean of the completed years at each month-end every one of them reached; the running year is drawn but left out of it.
 
+## Earnings ripple
+
+`RIPL` lists the companies that report earnings in the next 30 days and that one of your holdings depends on as a customer. With no tickers it checks every US listing in your portfolios and watchlists (up to 60); `RIPL CRUS QRVO` checks the named ones.
+
+- **Where the link comes from.** Each holding's own filings, as `SPLC` shows them under *says*: a customer named with a share of the holding's **revenue**. US rules require a company to disclose any customer above 10% of revenue, so these are the dependencies that matter most. Shares of receivables or purchases measure something else and are left out. A share marked `*` covers a segment rather than the whole company.
+- **Which rows.** One row per holding and customer, from the latest filing period. Anonymous customers ("Customer A") and group concentrations have no ticker and cannot be matched to a report. Customers listed outside the US are left out because the earnings calendar covers US listings.
+- **The report.** Date and time (BMO before the open, AMC after the close) from the earnings calendar, with the customer's mean absolute move over its last reports. **Holding reports** shows the holding's own date when it falls in the window, so you can see whether it reports before or after its customer.
+- **Limits.** The share is as of the filing period shown, often a year old. Absence from the list does not mean a holding has no exposure: many companies do not name their customers. Free accounts see the top three customers per holding, the same preview as `SPLC`.
+
 ## Reverse DCF
 
 `RDCF <ticker>` turns a DCF around. A normal DCF assumes a growth rate and gets a value; a reverse DCF takes today's value and finds the growth rate. It answers "what does the price already assume?"
@@ -70,6 +79,16 @@ The latest month is a return to date until December closes the year: the Returns
 - **Past growth.** The yearly growth between the latest annual free cash flow and the one up to five years earlier, when both are positive. When the priced-in growth is above it, the figure is red: the price needs faster growth than the company has delivered.
 - **Sensitivity.** The table solves the same growth for each discount rate and for terminal growth of 2%, 2.5% and 3%. Selecting a row sets the discount rate.
 - **Not computed.** Negative trailing free cash flow has no growth rate that prices it. A listing whose cash flows are reported in another currency than its market value (many ADRs) is not converted, and shows why instead.
+
+## Macro-day reaction
+
+`MDAY <ticker>` compares how a US listing moves on the days of the main US releases with how it moves on any other day. It answers "does this name care about CPI day?"
+
+- **Release days.** CPI and the Employment Situation (payrolls) come from the BLS release archives, FOMC statement days (the last day of each scheduled meeting) from the Federal Reserve's meeting calendar. The dates are a published list kept in the app, from January 2021 to the date in its source notes, not a forecast schedule; sessions after that date are left out of every figure until the list is updated. Releases cancelled or moved, such as those of the 2025 government shutdown, are as published.
+- **Move.** Close to close on the release day: the previous session's close to the release day's close. CPI and payrolls come out at 8:30 ET, before the open, and the FOMC statement at 14:00 ET, before the close, so that close carries either. A release on a weekday the market was shut (payrolls on Good Friday) is read on the next session. A release whose close-to-close would span a gap of more than the release day in the price history is left out.
+- **Normal day.** Every other session in the lookback that is not a release day of the three kinds. PCE and GDP days are not in the list, so they count as normal days.
+- **Figures.** Average absolute move and its multiple of a normal day's, average signed move, and the share of release days that closed up. With All selected the figures compare the three releases; selecting one shows its own. When CPI and FOMC fall on the same day the move counts for both.
+- **History.** Five years of daily closes at most, so the lookback runs to five years.
 
 ## Price history corrections
 
@@ -330,6 +349,17 @@ The base-currency axis remains visible during horizontal scrolling; partially co
 Short interest is outstanding short positions at each settlement date, not daily short-sale trading volume. FINRA supplies settlement history, average daily volume and days to cover. The backend supplements missing settlement history with current and prior settlement shares; its supplied current days-to-cover ratio and percentage of float remain attached to the current record.
 
 An undated float cannot establish a historical settlement's denominator. Missing float percentages stay unavailable, including the prior settlement. Average daily volume is not reconstructed from the supplied ratio; FINRA's independently supplied volume remains available. Known zero values remain zero. The date column stays visible during horizontal scrolling, and exports retain every configured financial column.
+
+### Short squeeze watch (SIW)
+
+`SIW` lists every US-listed stock and fund in your portfolios and watchlists; `SIW GME, AMC, CVNA` lists those names instead (up to 60). Each row reads one name's latest FINRA settlement:
+
+- **% Float** is that settlement's shares short over the current float. The float is undated, so the percentage is the latest settlement's only; the `SI` pane keeps older settlements without one. A float smaller than the shares short is not used (some multi-class tickers report one class's float): the percentage stays blank and days to cover decides alone.
+- **Days** is FINRA's days to cover: shares short over average daily volume.
+- **SI Chg%** is the change in shares short from the settlement before. A split between the two settlements is not adjusted.
+- **1M%** is the latest daily close against the last close on or before the same day a month earlier (the month's last day when it is shorter), from daily closes, price only. A gap of more than four days before that day, or bars that are not daily, leave it blank.
+
+A name is **Crowded** when at least 10% of its float is short, or when it would take five or more days of average volume to cover and at least 5% of the float is short; days to cover alone flags thinly traded large caps whose shorts are a sliver of the float. With no float, days to cover decides alone. **Crowded, rising** adds a positive 1M%. The default order puts crowded names that are rising first, then other crowded names, then the rest, each from the highest percent of float down, and names with no settlement last. It is a fixed screen, not a squeeze forecast. The settlement and close dates sit in the query bar when every row shares them, and in columns when they differ. Enter opens the name's `SI` history.
 
 ## Credit spreads
 

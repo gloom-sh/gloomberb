@@ -283,11 +283,25 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: DAILY_CLOSES,
     bloomberg: ["SEAS"],
   },
+  RIPL: {
+    summary: "Which of my holdings live off a company that reports soon? Customers your holdings name in their own filings, with the share of revenue each makes up, by report date.",
+    usage: ["RIPL", "RIPL CRUS QRVO"],
+    keys: [key("Enter", " supply chain"), key("e", "arnings")],
+    data: ON_RELEASE,
+    bloomberg: [],
+  },
   RDCF: {
     summary: "What growth is the price assuming? The yearly free cash flow growth over ten years that makes a DCF equal today's enterprise value, next to the growth the company delivered.",
     usage: ["RDCF AAPL"],
     keys: [],
     data: ON_RELEASE,
+    bloomberg: [],
+  },
+  MDAY: {
+    summary: "Does this name care about CPI day? Its average move on CPI, jobs report and FOMC days against a normal day, the average signed move and share of up days, and the move on every release day.",
+    usage: ["MDAY SPY"],
+    keys: [],
+    data: DAILY_CLOSES,
     bloomberg: [],
   },
   VCA: {
@@ -360,6 +374,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [key("v", "iew"), STEP],
     data: same("Twice a month, as FINRA publishes"),
     bloomberg: ["SI"],
+  },
+  SIW: {
+    summary: "Which of your names are crowded shorts that are moving up? Short interest as a share of float, days to cover, the change since the prior settlement and the month's price move across your portfolios and watchlists, or the tickers you give.",
+    usage: ["SIW", "SIW GME, AMC, CVNA"],
+    keys: [OPEN],
+    data: same("Twice a month, as FINRA publishes; daily closes"),
+    bloomberg: [],
   },
   SIV: {
     summary: "FINRA daily off-exchange short volume as a share of volume, against its one-year range. Not short interest; SI has that.",

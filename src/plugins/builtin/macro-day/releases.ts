@@ -1,0 +1,58 @@
+// Published US release days, not a rule engine: the dates each release came
+// out, read from the publishers' own archives. A release cancelled or moved (the
+// 2025 shutdown) is as published. Dates are New York calendar days.
+export type MacroEventKind = "cpi" | "jobs" | "fomc";
+
+export const MACRO_EVENT_KINDS: readonly MacroEventKind[] = ["cpi", "jobs", "fomc"];
+
+export const MACRO_EVENT_LABELS: Record<MacroEventKind, string> = { cpi: "CPI", jobs: "Jobs", fomc: "FOMC" };
+
+const RELEASES: Record<MacroEventKind, Record<number, readonly string[]>> = {
+  // BLS Consumer Price Index, 8:30 ET.
+  cpi: {
+    2021: ["01-13", "02-10", "03-10", "04-13", "05-12", "06-10", "07-13", "08-11", "09-14", "10-13", "11-10", "12-10"],
+    2022: ["01-12", "02-10", "03-10", "04-12", "05-11", "06-10", "07-13", "08-10", "09-13", "10-13", "11-10", "12-13"],
+    2023: ["01-12", "02-14", "03-14", "04-12", "05-10", "06-13", "07-12", "08-10", "09-13", "10-12", "11-14", "12-12"],
+    2024: ["01-11", "02-13", "03-12", "04-10", "05-15", "06-12", "07-11", "08-14", "09-11", "10-10", "11-13", "12-11"],
+    2025: ["01-15", "02-12", "03-12", "04-10", "05-13", "06-11", "07-15", "08-12", "09-11", "10-24", "12-18"],
+    2026: ["01-13", "02-13", "03-11", "04-10", "05-12", "06-10", "07-14", "08-12", "09-11"],
+  },
+  // BLS Employment Situation (nonfarm payrolls), 8:30 ET.
+  jobs: {
+    2021: ["01-08", "02-05", "03-05", "04-02", "05-07", "06-04", "07-02", "08-06", "09-03", "10-08", "11-05", "12-03"],
+    2022: ["01-07", "02-04", "03-04", "04-01", "05-06", "06-03", "07-08", "08-05", "09-02", "10-07", "11-04", "12-02"],
+    2023: ["01-06", "02-03", "03-10", "04-07", "05-05", "06-02", "07-07", "08-04", "09-01", "10-06", "11-03", "12-08"],
+    2024: ["01-05", "02-02", "03-08", "04-05", "05-03", "06-07", "07-05", "08-02", "09-06", "10-04", "11-01", "12-06"],
+    2025: ["01-10", "02-07", "03-07", "04-04", "05-02", "06-06", "07-03", "08-01", "09-05", "11-20", "12-16"],
+    2026: ["01-09", "02-11", "03-06", "04-03", "05-08", "06-05", "07-02", "08-07", "09-04"],
+  },
+  // FOMC statement days (the meeting's last day), 14:00 ET. The August 2025 notation vote is not a meeting.
+  fomc: {
+    2021: ["01-27", "03-17", "04-28", "06-16", "07-28", "09-22", "11-03", "12-15"],
+    2022: ["01-26", "03-16", "05-04", "06-15", "07-27", "09-21", "11-02", "12-14"],
+    2023: ["02-01", "03-22", "05-03", "06-14", "07-26", "09-20", "11-01", "12-13"],
+    2024: ["01-31", "03-20", "05-01", "06-12", "07-31", "09-18", "11-07", "12-18"],
+    2025: ["01-29", "03-19", "05-07", "06-18", "07-30", "09-17", "10-29", "12-10"],
+    2026: ["01-28", "03-18", "04-29", "06-17", "07-29", "09-16"],
+  },
+};
+
+export const MACRO_RELEASE_BASIS = {
+  checkedAt: "2026-10-04",
+  /** The last day the lists are complete for: later sessions are left out, release day or not. */
+  coveredThrough: "2026-10-01",
+  sources: [
+    "https://www.bls.gov/bls/news-release/cpi.htm",
+    "https://www.bls.gov/bls/news-release/empsit.htm",
+    "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+  ],
+} as const;
+
+export interface MacroRelease { kind: MacroEventKind; date: string }
+
+/** Every published release day, oldest first. */
+export function macroReleases(): MacroRelease[] {
+  return MACRO_EVENT_KINDS.flatMap((kind) => Object.entries(RELEASES[kind]).flatMap(([year, days]) =>
+    days.map((day) => ({ kind, date: `${year}-${day}` }))))
+    .sort((left, right) => left.date.localeCompare(right.date) || left.kind.localeCompare(right.kind));
+}
