@@ -107,7 +107,7 @@ interface FilingEventsPaneProps {
 }
 
 export function FilingEventsPane(props: FilingEventsPaneProps) {
-  const { wall, guard } = useProFeatureWall(EK_WALL);
+  const { wall, guard } = useProFeatureWall(EK_WALL, props);
   return wall ?? <FilingEventsReader {...props} guard={guard} />;
 }
 

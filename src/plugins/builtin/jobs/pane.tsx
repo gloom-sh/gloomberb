@@ -79,10 +79,11 @@ const MOVERS_PAGE = 200;
 
 type DetailTab = "roles" | "locations" | "seniority" | "salary";
 
-function HiringProWall({ symbol }: { symbol: string | null }) {
+function HiringProWall({ symbol, width, height }: { symbol: string | null; width: number; height: number }) {
   return (
     <ProWall
       placement="jobs-wall"
+      symbol={symbol} width={width} height={height}
       title="Hiring data is part of Gloom Cloud Pro."
       message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges.${symbol ? ` Open ${symbol}'s hiring picture with Pro.` : ""}`}
     />
@@ -545,7 +546,7 @@ function CompanyPanel({
   }, [data, reload]);
 
   if (data?.kind === "denied") {
-    if (data.status === 402) return <HiringProWall symbol={symbol} />;
+    if (data.status === 402) return <HiringProWall symbol={symbol} width={width} height={height} />;
     return <SignInWall action="see who is hiring" needsVerification={data.status === 403} />;
   }
   if ((status === "idle" || status === "loading") && !data) {
@@ -742,7 +743,7 @@ function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps
 
   if (!access.signedIn) return <SignInWall action="see who is hiring" />;
   if (!access.emailVerified) return <SignInWall action="see who is hiring" needsVerification />;
-  if (!access.hasProAccess) return <HiringProWall symbol={symbol} />;
+  if (!access.hasProAccess) return <HiringProWall symbol={symbol} width={width} height={height} />;
 
   if (!symbol) {
     if (companyOnly) return <EmptyState title="No ticker selected." message="Select a ticker to see its hiring." />;

@@ -8,6 +8,7 @@ import type {
 import { Button } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Text, TextAttributes } from "../../../../ui";
+import { WallTeaser } from "../../shared/wall-teaser";
 import {
   canInviteToTeam,
   canManageTeam,
@@ -458,6 +459,7 @@ export function SettingsSection({
 export function CreateTeamForm({
   draft,
   width,
+  height,
   busy,
   hasPro,
   onChange,
@@ -467,6 +469,7 @@ export function CreateTeamForm({
 }: {
   draft: TeamDraft;
   width: number;
+  height: number;
   busy: boolean;
   hasPro: boolean;
   onChange: (draft: TeamDraft) => void;
@@ -475,7 +478,7 @@ export function CreateTeamForm({
   onUpgrade: () => void;
 }) {
   const problem = draftProblem(draft);
-  return (
+  const form = (
     <Box flexDirection="column" gap={1} width={width}>
       {/* The "New team" tab above already names this form. */}
       <Muted width={width}>
@@ -498,5 +501,11 @@ export function CreateTeamForm({
         {problem && draft.name ? <Text fg={colors.negative}>{problem}</Text> : null}
       </Box>
     </Box>
+  );
+  // Preserve room for the editable name, short name, accent and Upgrade action.
+  return hasPro ? form : (
+    <WallTeaser placement="team" width={width} height={Math.max(0, height - 10)}>
+      {form}
+    </WallTeaser>
   );
 }

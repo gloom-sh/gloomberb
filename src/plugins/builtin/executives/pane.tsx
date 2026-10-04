@@ -239,6 +239,7 @@ const EXEC_WALL: ProFeatureWallCopy = {
 export function ExecutivesPane({
   focused,
   width,
+  height,
   nested = false,
 }: {
   focused: boolean;
@@ -247,7 +248,7 @@ export function ExecutivesPane({
   /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
   nested?: boolean;
 }) {
-  const { wall, guard } = useProFeatureWall(EXEC_WALL);
+  const { wall, guard } = useProFeatureWall(EXEC_WALL, { width, height });
   const { symbol } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
   if (wall) return wall;

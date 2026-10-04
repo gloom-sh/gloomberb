@@ -2,6 +2,9 @@ import { apiClient } from "./index";
 import { getCurrentPluginTarget } from "../plugins/current-target";
 import type { DesktopDeepLinkBridge } from "../types/desktop-deeplink";
 import { exposeExperiment, storedExperimentAssignments } from "./web-experiments";
+import { createWallExperimentSession, type WallExperimentContext, type WallTeaserVariant } from "./wall-experiments";
+import { hasProAccess } from "./plan-rules";
+import { withDeadline } from "../utils/async-deadline";
 
 export type ResearchActivity =
   | "workspace_opened"
@@ -11,6 +14,7 @@ export type ResearchActivity =
   | "ticker_saved"
   | "pro_feature_used"
   | "upgrade_intent"
+  | "wall_viewed"
   // First-run funnel, one per step reached. Keep in sync with the server's list.
   | "onboarding_started"
   | "onboarding_position_added"
@@ -31,6 +35,8 @@ export type ResearchFeature =
 const sent = new Set<string>();
 let anonymousId: string | undefined;
 let attribution: Record<string, string> = {};
+const wallExperiment = createWallExperimentSession();
+const WALL_VIEWS_SESSION_KEY = "gloomberb.wall-teaser.views";
 
 const ATTRIBUTION_STORAGE_KEY = "gloomberb.web.attribution";
 const ANONYMOUS_ID_STORAGE_KEY = "gloomberb.web.anonymous-id";
@@ -311,9 +317,22 @@ export function observeDesktopDeepLinks(
 /** What the server stores against the account: stored touches plus the product marker. */
 function attributionPayload(): Record<string, string> | undefined {
   const target = getCurrentPluginTarget();
-  if (target === "web") return { product: "gloomberb", ...attribution, ...webExperimentAttribution() };
-  if (target === "desktop" && Object.keys(attribution).length > 0) return { product: "gloomberb", ...attribution };
-  return undefined;
+  const wallVariant = wallExperiment.variant(wallExperimentContext());
+  const base = target === "web"
+    ? { product: "gloomberb", ...attribution, ...webExperimentAttribution() }
+    : target === "desktop" && Object.keys(attribution).length > 0
+      ? { product: "gloomberb", ...attribution }
+      : undefined;
+  // A remembered browser arm is sent with the exposure request, but joins
+  // milestones only after this session has an accepted answer. Other live
+  // experiments keep their existing attribution unchanged.
+  const experiments = (base?.experiments ?? "").split(",").filter((part) => part && !part.startsWith("wall_teaser:"));
+  if (wallVariant) experiments.push(`wall_teaser:${wallVariant}`);
+  if (!base && experiments.length === 0) return undefined;
+  const next: Record<string, string> = { ...base };
+  delete next.experiments;
+  if (experiments.length > 0) next.experiments = experiments.join(",");
+  return next;
 }
 
 export interface ResearchActivityDetails {
@@ -324,40 +343,54 @@ export interface ResearchActivityDetails {
    * command bar), as a short id like a tab id. Never the prompt's text.
    */
   placement?: string;
+  /** Only ids describing what a teaser-arm wall rendered, never its content. */
+  teaser_kind?: "summary" | "sample" | "none";
 }
 
 /**
  * Counts milestones once per feature/tab/placement, session and account, never
- * their content. Native surfaces report anonymously only with an identifier
- * the website handed over; they still never mint one of their own.
+ * their content. Native surfaces never mint an identity: a signed-out wall
+ * without a website handoff contributes only an event-scoped baseline.
  */
 export function recordResearchActivity(
   event: ResearchActivity,
   feature?: ResearchFeature,
   tab?: string,
-  { desks, placement: rawPlacement }: ResearchActivityDetails = {},
+  { desks, placement: rawPlacement, teaser_kind }: ResearchActivityDetails = {},
 ): void {
   const target = getCurrentPluginTarget();
   const user = apiClient.getCurrentUser();
-  if (!user && !anonymousId) return;
-  if (!user && target !== "web" && target !== "desktop") return;
+  if (event === "wall_viewed" && wallPrivacyBlocked()) return;
+  const idlessNativeWall = event === "wall_viewed" && !user
+    && (target === "tui" || (target === "desktop" && !anonymousId));
+  if (!user && !anonymousId && !idlessNativeWall) return;
+  if (!user && target !== "web" && target !== "desktop" && !idlessNativeWall) return;
   // The server refuses the whole event over a malformed id, so one is dropped instead.
   const placement = rawPlacement && ACTIVITY_ID.test(rawPlacement) ? rawPlacement : undefined;
-  const key = `${user?.id ?? "guest"}:${event}:${feature ?? ""}:${tab ?? ""}:${placement ?? ""}`;
-  if (sent.has(key)) return;
+  if (event === "wall_viewed" && !placement) return;
+  const identity = user?.id ?? (!idlessNativeWall && event === "wall_viewed" ? anonymousId : undefined) ?? "guest";
+  const key = `${identity}:${event}:${feature ?? ""}:${tab ?? ""}:${placement ?? ""}`;
+  if (sent.has(key) || (!idlessNativeWall && event === "wall_viewed" && wallSessionViews().has(key))) return;
   sent.add(key);
-  if (event !== "workspace_opened") recordResearchActivity("workspace_opened");
+  if (event !== "workspace_opened" && !idlessNativeWall) recordResearchActivity("workspace_opened");
   void apiClient
     .recordResearchActivity({
       event,
       eventId: crypto.randomUUID(),
       surface: target === "desktop" ? "desktop" : target,
-      anonymousId: target === "web" || target === "desktop" ? anonymousId : undefined,
-      attribution: attributionPayload(),
+      anonymousId: !idlessNativeWall && (target === "web" || target === "desktop") ? anonymousId : undefined,
+      attribution: idlessNativeWall ? undefined : attributionPayload(),
       feature,
       tab,
       desks,
       placement,
+      ...(event === "wall_viewed" && teaser_kind ? { teaser_kind } : {}),
+    })
+    .then(() => {
+      if (event !== "wall_viewed" || idlessNativeWall) return;
+      const views = wallSessionViews();
+      views.add(key);
+      try { sessionStorage.setItem(WALL_VIEWS_SESSION_KEY, JSON.stringify([...views])); } catch { /* Native sessions use the in-memory set. */ }
     })
     .catch(() => {
       sent.delete(key);
@@ -426,6 +459,63 @@ export function exposeWebExperiment(experiment: string): Promise<string | null> 
   } catch {
     return Promise.resolve(null);
   }
+}
+
+function wallPrivacyBlocked(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return navigator.doNotTrack === "1"
+    || (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true
+    || navigator.webdriver === true;
+}
+
+function wallExperimentContext(): WallExperimentContext {
+  const user = apiClient.getCurrentUser();
+  const surface = getCurrentPluginTarget();
+  let local: StorageLike | undefined;
+  let session: StorageLike | undefined;
+  try {
+    if (surface === "web") local = localStorage;
+    if (surface === "web" || surface === "desktop") session = sessionStorage;
+  } catch { /* Native and private sessions keep their answer in memory. */ }
+  return {
+    surface,
+    accountId: user?.id,
+    pro: hasProAccess(user),
+    anonymousId,
+    optedOut: wallPrivacyBlocked(),
+    automated: typeof navigator !== "undefined" && navigator.webdriver === true,
+    local,
+    session,
+  };
+}
+
+function wallSessionViews(): Set<string> {
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(WALL_VIEWS_SESSION_KEY) ?? "[]");
+    if (Array.isArray(saved)) return new Set(saved.filter((value): value is string => typeof value === "string"));
+  } catch { /* Native sessions use the in-memory set. */ }
+  return new Set();
+}
+
+/** A wall's first render asks once per eligible account or web visitor per session. */
+export function exposeWallTeaser(): Promise<WallTeaserVariant | null> {
+  const context = wallExperimentContext();
+  return wallExperiment.expose(context, (variant) => {
+    const controller = new AbortController();
+    return withDeadline(apiClient.recordExperimentExposure({
+      eventId: crypto.randomUUID(),
+      surface: context.surface,
+      anonymousId: context.surface === "web" ? anonymousId : undefined,
+      attribution: attributionPayload(),
+      experiment: "wall_teaser",
+      variant,
+    }, controller.signal), 3_000, "Wall experiment request timed out", (error) => controller.abort(error));
+  });
+}
+
+/** Records the visible wall once per placement, including visitors outside the experiment. */
+export function recordWallViewed(placement: string, teaserKind?: "summary" | "sample" | "none"): void {
+  recordResearchActivity("wall_viewed", undefined, undefined, { placement, teaser_kind: teaserKind });
 }
 
 export function researchUpgradeUrl(returnTo?: string): string {

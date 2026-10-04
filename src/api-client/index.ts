@@ -360,7 +360,7 @@ class GloomApiClient {
     event: import("./research-activity").ResearchActivity; eventId: string;
     surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
-    tab?: string; desks?: readonly string[]; placement?: string;
+    tab?: string; desks?: readonly string[]; placement?: string; teaser_kind?: "summary" | "sample" | "none";
   }): Promise<void> {
     await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
   }
@@ -400,19 +400,19 @@ class GloomApiClient {
   }
 
   /**
-   * Asks which arm of a web terminal experiment this visitor is in, at the
+   * Asks which arm of an app experiment this account or web visitor is in, at the
    * moment it would show. The API counts the answer as the exposure.
    */
   async recordExperimentExposure(payload: {
-    eventId: string; surface: "web"; anonymousId?: string;
+    eventId: string; surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; experiment: string; variant?: string;
-  }): Promise<import("./web-experiments").ExperimentAnswer> {
+  }, signal?: AbortSignal): Promise<import("./web-experiments").ExperimentAnswer> {
     return this.request("/activity/research", {
       method: "POST",
       body: JSON.stringify({ event: "experiment_exposed", ...payload }),
+      ...(signal ? { signal } : {}),
     });
   }
-
   getAccountProfile = this.auth.getAccountProfile.bind(this.auth);
   getCloudPricing = this.auth.getCloudPricing.bind(this.auth);
   getCloudAccountPlan = this.auth.getCloudAccountPlan.bind(this.auth);

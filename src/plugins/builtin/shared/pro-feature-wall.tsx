@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ApiRequestError } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
+import { useBoundTicker } from "./ticker-request";
 
 export interface ProFeatureWallCopy {
   /** The upgrade intent's placement id, e.g. "risk-wall". */
@@ -23,11 +24,12 @@ export type ReadGuard = <T>(read: Promise<T>) => Promise<T>;
  * through `guard`, so a refusal from the server (a plan that ended while the
  * app was open, an expired session) shows the same wall, not an error.
  */
-export function useProFeatureWall(copy: ProFeatureWallCopy): {
+export function useProFeatureWall(copy: ProFeatureWallCopy, size: { width: number; height: number }): {
   wall: ReactNode;
   guard: ReadGuard;
 } {
   const access = usePlanAccess();
+  const { symbol, exchange } = useBoundTicker();
   const [refused, setRefused] = useState<number | null>(null);
   // A refusal is about the plan the account had then; a new plan asks again.
   useEffect(() => setRefused(null), [access.signedIn, access.emailVerified, access.hasProAccess]);
@@ -43,7 +45,7 @@ export function useProFeatureWall(copy: ProFeatureWallCopy): {
   } else if (!access.emailVerified || refused === 403) {
     wall = <SignInWall action={copy.action} needsVerification />;
   } else if (!access.hasProAccess || refused === 402) {
-    wall = <ProWall placement={copy.placement} title={copy.title} message={copy.message} />;
+    wall = <ProWall placement={copy.placement} title={copy.title} message={copy.message} {...size} symbol={symbol} exchange={exchange} />;
   }
   return { wall, guard };
 }

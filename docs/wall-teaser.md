@@ -1,0 +1,124 @@
+# Pro wall teaser experiment
+
+`wall_teaser` compares the existing Pro walls (`control`) with those same walls
+plus a small preview (`teaser`). The Upgrade and Manage account actions retain
+their placement ids and behavior. This changes neither access nor prices.
+
+The platform registry controls enrollment. Signed-in Free accounts use their
+account id on web, desktop and terminal; signed-out web visitors use the
+existing anonymous browser id. An account's saved first arm wins. Signed-out
+desktop and terminal users remain outside the experiment. Bots, Do Not Track
+and Global Privacy Control are excluded. The initial wall remains usable while
+the exposure answer arrives; refused or failed requests preserve the old wall.
+The platform registry starts with `running: false`; neither PR enables the test.
+That switch stops new-session enrollment without an app release. An accepted
+arm stays stable for the current browser/app session, as does its exposure.
+
+## Wall inventory and summary sources
+
+These are the 12 existing Pro-wall placements. Counts are preferred only when
+the wall has a ticker and the public route has data for that listing.
+
+| Placement | App location | Free summary |
+| --- | --- | --- |
+| `risk-wall` | `risk-factors/pane.tsx`, through `useProFeatureWall` | Risk count and filing date from the same SEC risk-report service as `/public/risks/*`. |
+| `exec-wall` | `executives/pane.tsx`, through `useProFeatureWall` | Number of available proxy statements and latest filing date, using the same service as `/public/proxies/*`. |
+| `ek-wall` | `filing-events/pane.tsx`, through `useProFeatureWall` | Count of available 8-K filings in the last 90 days and latest filing date from the filing-events index. |
+| `calls-wall` | `earnings-calls/pane.tsx`, list wall | Count of publicly listed calls and latest call date from the public transcript index. |
+| `calls-transcript-wall` | `earnings-calls/pane.tsx`, detail wall | The same public call count and date for the selected ticker. No transcript is returned. |
+| `jobs-wall` | `jobs/pane.tsx`, `HiringProWall` | Open role count and last successful read date from the company's own careers system, already collected by Gloom Cloud. |
+| `diag-wall` | `research/equity-diagnostic-pane.tsx` | Sample only. A count of generated findings would imply paid diagnostic coverage and is not an honest free source summary. |
+| `most-wall` | `market-movers/session-body.tsx` | Sample only; a market-wide wall has no selected issuer. |
+| `flow-wall` | `scanner/flow-pane.tsx`, through `ScannerDeniedState` | Sample only; no live options prints are requested. |
+| `hilo-wall` | `scanner/hilo-pane.tsx`, through `ScannerDeniedState` | Sample only; no live highs or lows are requested. |
+| `srch-wall` | `research-search/pane.tsx` | Sample only; neither search text nor results go to the summary route. |
+| `team` | `cloud/team/pane-sections.tsx`, `CreateTeamForm` | Sample only; no team, membership or account data is used. |
+
+Paths above are relative to `src/plugins/builtin/`. The team form keeps its
+existing `team` upgrade placement instead of introducing a separate denominator.
+Every ticker summary also has a frozen sample fallback for absent coverage,
+unsupported listings or an unavailable summary. A short pane omits the teaser
+so its existing actions remain visible.
+
+The unauthenticated `GET /public/wall-summary?wall=...&symbol=...&exchange=...`
+route returns only `kind: "counts"` and fixed label keys paired with counts or
+ISO dates. It is rate limited and cached for five minutes, including empty
+results. It reuses existing reads, does not start extraction or transcription,
+and never returns paid text, prices, compensation, job details or personal data.
+The app never requests a Pro endpoint to obtain a preview.
+
+## Frozen samples and provenance
+
+The small catalog lives beside the shared wall code in
+`src/plugins/builtin/shared/wall-teaser-catalog.ts`. "Sample" stays visible.
+Tables use a small subset of the pane's own headers; prose panes retain their
+section or feed shape. Financial fields with no historical source are empty
+masked shapes, never invented numbers. Terminal cells are dimmed or shaded;
+desktop and web use CSS blur on DOM content and shapes. Samples take no focus.
+
+| Walls | Frozen content | Source |
+| --- | --- | --- |
+| RISK | Apple 2024 10-K risk section heading and filing date | [Apple 10-K, filed November 1, 2024](https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm), accession `0000320193-24-000123`. Only a heading and document metadata are copied. |
+| EXEC | Tim Cook, CEO, and Luca Maestri, CFO, identified as FY 2024; totals absent | [Apple's October 31, 2024 earnings release](https://www.apple.com/newsroom/2024/10/apple-reports-fourth-quarter-results/) identifies both officers and roles. No compensation provider data is copied. |
+| EK | Apple results-of-operations filing and October 31, 2024 date | [Apple 8-K](https://www.sec.gov/Archives/edgar/data/320193/000032019324000120/aapl-20241031.htm), accession `0000320193-24-000120`. No filing summary is copied. |
+| CALLS, CALLS transcript | Apple Q4 2024 call date, October 31, 2024 | The same public Apple earnings release announces the call. No transcript, quote, tone score or generated analysis is copied. |
+| DIAG | Apple annual-report source and November 1, 2024 filing date | The same public SEC 10-K metadata, arranged as the diagnostic's coverage section. No diagnostic finding is invented. |
+| SRCH | Apple, form 10-K, November 1, 2024 | The same public SEC filing metadata. No query, match or snippet is copied. |
+| JOBS | AAPL identifier with open-role and new-role fields masked | Authored layout sample. No careers-system posting or provider payload is copied. |
+| MOST | AAPL and MSFT identifiers; change and relative volume masked | Authored layout sample. No market-data provider payload is copied. |
+| FLOW | AAPL and MSFT identifiers; print type and premium masked | Authored layout sample. No options-feed provider payload is copied. |
+| HILO | AAPL and MSFT identifiers; price and count masked | Authored layout sample. No scanner provider payload is copied. |
+| Team | "Research" and "Shared notes" | Authored workspace example, not a real team or customer record. |
+
+The public historical metadata was checked against Apple's release and the
+SEC submissions index when the catalog was created. It is intentionally frozen.
+The samples carry no third-party paid market-data payload for redistribution.
+
+## Measurement
+
+All events use `/activity/research`, with the existing `surface`,
+`authenticated`, `product_area: "gloomberb_terminal"` and event-id deduplication.
+The new wall measurement adds no query, ticker, label text or payload contents.
+The ticker is sent only to the data route needed to return its free summary.
+
+| Event | Properties | Frequency |
+| --- | --- | --- |
+| `experiment_exposed` | `experiment: "wall_teaser"`, `variant: "control"` or `"teaser"`; attribution property `exp_wall_teaser` | Once per eligible unit per app/browser session when a Pro wall is visible, in both arms. |
+| `wall_viewed` | `placement`; `teaser_kind: "summary"`, `"sample"` or `"none"` only for the teaser arm; `exp_wall_teaser` when assigned | Once per placement, account/visitor and session, including measurable users outside the experiment. `none` includes insufficient room. |
+| `upgrade_intent` | Existing `placement`; `exp_wall_teaser` when assigned | Existing upgrade-action behavior is retained. |
+| `workspace_opened` | Existing surface/account attribution, including `exp_wall_teaser` when assigned | Existing session milestone, used to read returning use. |
+
+Growth's primary metric is users with `upgrade_intent` divided by exposed wall
+viewers, compared by `exp_wall_teaser` and, where useful, matching `placement`.
+Read the returning-use guardrail from later `workspace_opened` sessions for the
+same exposed account or browser cohort. `wall_viewed` also supplies the placement
+baseline outside the experiment; it must not be mistaken for an exposure.
+
+Signed-out desktop/TUI baseline events have only an event-scoped distinct id
+and `$process_person_profile: false`. The app creates no tracking identity and
+deduplicates these views in memory. These events measure placement volume;
+they cannot identify returning users and are outside the experiment cohort.
+
+## Visual review
+
+These local fixtures render the production wall components and kit with
+controlled exposure answers. The RISK aggregate is the public AAPL response
+read on October 4, 2026: 31 factors, filed October 31, 2025. No fixture sends
+analytics or reads a Pro endpoint. Terminal captures use the existing screenshot
+tool's 2x pixel density at the stated viewport sizes.
+
+| Terminal control, 720 x 360 | Terminal teaser, 720 x 360 |
+| --- | --- |
+| ![Risk control](wall-teaser/risk-control.png) | ![Risk summary](wall-teaser/risk-summary.png) |
+| ![Movers control](wall-teaser/most-control.png) | ![Movers sample](wall-teaser/most-sample.png) |
+
+![Web sample at 480 x 540](wall-teaser/web-sample.png)
+
+## What remains outside this change
+
+The 33 `SignInWall` uses remain phase 2. Signed-out screens that already choose
+`SignInWall` retain that gate and do not become Pro walls. Thesis drafting and
+reviewing use an action-level Pro notification while manual thesis work remains
+free. They have no full-pane Pro wall, so turning them into one would change
+gating and is outside this experiment. Existing trial status-bar experiments,
+upgrade-dialog copy, Stripe copy and prices are unchanged.

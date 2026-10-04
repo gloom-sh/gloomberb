@@ -18,6 +18,7 @@ import { t, tf } from "../../../i18n";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { requestAuthDialog } from "./auth-dialog";
 import type { AccountMode } from "./auth-model";
+import { WallTeaser } from "../shared/wall-teaser";
 
 function openAuth(
   openCommandBar: (query?: string) => void,
@@ -107,6 +108,10 @@ export function SignInWall({ action, needsVerification = false, hint }: SignInWa
 }
 
 export interface ProWallProps {
+  width: number;
+  height: number;
+  symbol?: string | null;
+  exchange?: string;
   /** The upgrade intent's placement id, e.g. "jobs-wall"; see `CloudUpgradeOptions.placement`. */
   placement: string;
   /** The headline, e.g. "Hiring data is part of Gloom Cloud Pro." */
@@ -116,19 +121,21 @@ export interface ProWallProps {
 }
 
 /** The upgrade wall for a pane body that needs Pro; Manage account covers a plan the account already has. */
-export function ProWall({ placement, title, message }: ProWallProps) {
+export function ProWall({ placement, title, message, width, height, symbol, exchange }: ProWallProps) {
   const openUpgrade = useCloudUpgradeAction(placement);
   const openPlan = useCloudPlanAction();
   // The status body carries the pane inset that a bare EmptyState lacks.
   return (
-    <PaneStatusBody
-      empty
-      emptyTitle={title}
-      emptyMessage={message}
-      actions={<>
-        <Button label={t("Upgrade to Pro")} onPress={openUpgrade} />
-        <Button label={t("Manage account")} variant="secondary" onPress={openPlan} />
-      </>}
-    />
+    <WallTeaser placement={placement} title={title} message={message} width={width} height={height} symbol={symbol} exchange={exchange}>
+      <PaneStatusBody
+        empty
+        emptyTitle={title}
+        emptyMessage={message}
+        actions={<>
+          <Button label={t("Upgrade to Pro")} onPress={openUpgrade} />
+          <Button label={t("Manage account")} variant="secondary" onPress={openPlan} />
+        </>}
+      />
+    </WallTeaser>
   );
 }

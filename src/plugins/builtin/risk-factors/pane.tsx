@@ -90,7 +90,7 @@ export function RiskFactorsResearchTab(props: { focused: boolean; width: number;
 }
 
 export function RiskFactorsPane(props: RiskFactorsPaneProps) {
-  const { wall, guard } = useProFeatureWall(RISK_WALL);
+  const { wall, guard } = useProFeatureWall(RISK_WALL, props);
   return wall ?? <RiskFactorsReader {...props} guard={guard} />;
 }
 

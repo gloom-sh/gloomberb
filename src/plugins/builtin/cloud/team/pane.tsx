@@ -647,6 +647,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
               <CreateTeamForm
                 draft={createDraft}
                 width={contentWidth}
+                height={Math.max(1, bodyHeight - 1)}
                 busy={busy === "create"}
                 hasPro={plan.hasProAccess}
                 onChange={setCreateDraft}
