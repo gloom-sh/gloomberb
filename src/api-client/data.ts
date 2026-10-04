@@ -1,4 +1,6 @@
 import type { AttentionPayload, AttentionWindow } from "./attention";
+import type { HiringBoard, HiringPayload } from "./hiring";
+import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -393,6 +395,22 @@ export class CloudDataApi {
   /** Credit-document paths stay with their pane; keep the shared client small. */
   creditDocuments<T>(path: string): Promise<T> {
     return this.request<T>(`/cloud/credit-documents/${path}`);
+  }
+
+  async getCloudHiring(symbol?: string, query: { limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<HiringBoard | HiringPayload> {
+    const params = new URLSearchParams({ limit: String(query.limit ?? 100), offset: String(query.offset ?? 0) });
+    return this.request<HiringBoard | HiringPayload>(symbol ? `/cloud/hiring/${encodeURIComponent(symbol)}` : `/cloud/hiring?${params}`, { signal });
+  }
+
+  async getCloudAppRankHistory(store: "app-store" | "google-play", appId: string, query: AppAttentionFilter = {}, signal?: AbortSignal): Promise<AppRankPayload> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<AppRankPayload>(`/cloud/app-attention/app/${store}/${encodeURIComponent(appId)}?${params}`, { signal });
+  }
+
+  async getCloudAppAttention(query: AppAttentionFilter = {}, signal?: AbortSignal): Promise<AppAttentionPayload> {
+    const { symbol, ...filters } = query;
+    const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<AppAttentionPayload>(`/cloud/app-attention/${symbol ? encodeURIComponent(symbol) : "board"}?${params}`, { signal });
   }
 
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {

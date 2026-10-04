@@ -260,6 +260,7 @@
       "contributes": {
         "panes": [
           "analyst-research",
+          "apps",
           "backtest",
           "chart-composer",
           "corporate-actions",
@@ -273,6 +274,7 @@
           "executives",
           "filing-events",
           "financial-analysis",
+          "hiring",
           "historical-prices",
           "holders",
           "insider",

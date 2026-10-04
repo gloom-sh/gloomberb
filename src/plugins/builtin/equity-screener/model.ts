@@ -64,19 +64,27 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   analystUpsidePercent: "UPSIDE%",
   ivRank: "IV RANK",
   ivToHv: "IV/HV",
+  hiringOpenRoles: "OPEN ROLES",
+  hiringNetAddsWeek: "NET ROLES/WK",
+  hiringRemotePercent: "REMOTE%",
+  hiringZScore: "HIRING Z",
+  appAttentionScore: "APP SCORE",
+  appRankVelocity7d: "APP RANK/D",
+  appRatingDrift7d: "RATING 7D",
+  appRatingCountGrowth7d: "RATINGS 7D",
 };
 const COMPACT = new Set<NumericField>(["marketCap", "volume", "averageVolume20d", "shortInterestShares"]);
 /** Daily counts: whole numbers below a thousand, compact above. */
 const DAILY_COUNTS = new Set<NumericField>(["xPostsPerDay", "wikiViewsPerDay"]);
 const RATIOS = new Set<NumericField>(["xPostsVsMedian", "wikiViewsVsMedian", "priceToBook", "evToEbitda", "ivToHv"]);
 const RETURNS: NumericField[] = ["return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent", "return1YPercent"];
-const SIGNED = new Set<NumericField>([
+const SIGNED = new Set<NumericField>(["hiringNetAddsWeek", "hiringZScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
   "changePercent", "revenueGrowthPercent", "earningsGrowthPercent", "shortInterestChangePercent",
   ...RETURNS, "fromHigh52WPercent", "epsRevision30dPercent", "analystUpsidePercent",
 ]);
 /** Moves whose sign is the news: they take the sign colour. */
 export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent"]);
-const COUNTS = new Set<NumericField>(["attentionResearchUnits","insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank"]);
+const COUNTS = new Set<NumericField>(["appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank"]);
 const MONETARY = new Set<NumericField>(["price", "marketCap"]);
 /** Shown after the screen's own criteria when the pane has room. */
 const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "trailingPE", "revenueGrowthPercent", "operatingMarginPercent", "dividendYieldPercent"];
@@ -161,6 +169,14 @@ export const screenLabel = (field: string) =>
     analystUpsidePercent: "Analyst upside %",
     ivRank: "IV rank",
     ivToHv: "IV / HV",
+    hiringOpenRoles: "Hiring open roles",
+    hiringNetAddsWeek: "Net open roles per week",
+    hiringRemotePercent: "Remote roles %",
+    hiringZScore: "Hiring z-score",
+    appAttentionScore: "App attention score / 100",
+    appRankVelocity7d: "App rank places per day, 7D",
+    appRatingDrift7d: "App rating drift, 7D",
+    appRatingCountGrowth7d: "App ratings added, 7D",
   })[field] ??
   field
     .replace(/([A-Z])/g, " $1")
