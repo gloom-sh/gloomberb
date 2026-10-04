@@ -11,8 +11,8 @@ export const gpuTab = (value: unknown): GpuTab => GPU_TABS.find((tab) => tab.val
 export const GPU_MODELS = ["H100", "H200", "B200", "B300", "GB200", "GB300", "A100", "MI300X", "MI355X", "L40S", "RTX PRO 6000"];
 export const gpuArgument = (value: string | null | undefined) => (value ?? "").trim().toUpperCase().replace(/\s+/g, " ");
 export const gpuBasisLabel = (basis: GpuBasis, compact = false): string => compact
-  ? ({ list: "List", spot: "Spot", ask: "Ask", reserved: "Rsvd", index: "Locked" })[basis]
-  : ({ list: "List price", spot: "Provider-declared spot", ask: "Ask", reserved: "Reserved", index: "Index (licensed)" })[basis];
+  ? ({ list: "List", spot: "Spot", ask: "Ask", reserved: "Rsvd", index: "Locked", reference: "Reference" })[basis]
+  : ({ list: "List price", spot: "Provider-declared spot", ask: "Ask", reserved: "Reserved", index: "Index (licensed)", reference: "Reference" })[basis];
 export const gpuPrice = (value: number | null | undefined) => value == null ? "-" : value.toFixed(2);
 export function gpuChange(value: number | null | undefined): string {
   if (value == null) return "-";
@@ -75,7 +75,19 @@ export const gpuVariant = (row: Pick<GpuObservation, "formFactor" | "memoryGb">)
 
 /** Medians lead their section: provider-class medians and the marketplace offer medians. */
 export const gpuHeadline = (row: Pick<GpuObservation, "providerClass" | "source">) =>
-  row.providerClass === "aggregate" || row.source === "vast" || row.source === "vast-ai" || row.source === "akash";
+  !row.source.startsWith("ref-") && (row.providerClass === "aggregate" || row.source === "vast" || row.source === "vast-ai" || row.source === "akash");
+
+/** Reference list entries come only from published history, never from our price basket. */
+export function gpuReferenceRows(points: readonly GpuObservation[]): GpuBoardRow[] {
+  const latest = new Map<string, GpuObservation>();
+  for (const point of points) {
+    if (point.provenance !== "reference" || point.basis !== "reference") continue;
+    const id = `${point.source}:${point.skuKey}`;
+    if (!latest.has(id) || point.observedAt > latest.get(id)!.observedAt) latest.set(id, point);
+  }
+  return [...latest].map(([id, point]) => ({ ...point, id, label: point.provider, sourceLabel: "Reference index (third party), anonymised",
+    change1d: null, change7d: null, change30d: null, stale: false, lastError: null }));
+}
 
 export interface GpuBoardSection { id: string; label: string; basis: GpuBasis; gpuModel: string; rows: GpuBoardRow[] }
 
@@ -204,12 +216,15 @@ export function gpuHistoryChart(rows: readonly GpuBoardRow[], points: readonly G
   const markers: ResolvedSeries[] = [];
   const others = [0, 1, 3, 4, 5] as const;
   rows.forEach((row, index) => {
-    const color = index === 0 ? colors.selected : SERIES_COLORS[others[(index - 1) % others.length]!];
+    const reference = row.provenance === "reference";
+    const color = reference ? row.source === "ref-a" ? "#879da5" : row.skuKey.endsWith("-hs") ? "#9daa8d" : "#a39ab0" : index === 0 ? colors.selected : SERIES_COLORS[others[(index - 1) % others.length]!];
     const [line, ...observations] = gpuHistorySeries(row, points, color, colors.marker);
     if (!line) return;
     const ambiguous = rows.some((other) => other.id !== row.id && gpuShortSource(other) === gpuShortSource(row));
-    lines.push({ ...line, id: `rental-price:${row.id}`, label: ambiguous ? `${gpuShortSource(row)} ${gpuVariant(row).join(" ")}` : gpuShortSource(row) });
-    if (index === 0) markers.push(...observations);
+    const name = ambiguous ? `${gpuShortSource(row)} ${gpuVariant(row).join(" ")}` : gpuShortSource(row);
+    lines.push({ ...line, id: `rental-price:${row.id}`, label: reference ? `${name.replace("Reference index ", "")} (reference index, third party, anonymised)` : name });
+    if (index === 0) markers.push(...observations.map((entry) => reference
+      ? { ...entry, label: "Published readings", color } : entry));
   });
   return [...lines, ...markers];
 }
@@ -230,7 +245,8 @@ export function gpuHistoryViewport(series: readonly ResolvedSeries[]): { start: 
 }
 
 export const gpuProvenanceLabel = (point: Pick<GpuObservation, "provenance">, full = false) =>
-  point.provenance === "archive" ? full ? "archived page, reconstructed" : "Archived"
+  point.provenance === "reference" ? full ? "Reference index (third party), anonymised" : "Reference"
+    : point.provenance === "archive" ? full ? "archived page, reconstructed" : "Archived"
     : point.provenance === "official-history" ? full ? "official published history" : "Published" : full ? "live observation" : "Observed";
 
 export interface GpuPricePeriod { from: string; to: string; price: number; change: number | null; provenance: GpuObservation["provenance"] }

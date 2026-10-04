@@ -10,7 +10,7 @@ Rows are grouped by GPU model and basis, with the provider-class medians and the
 
 When a series has no observation within the comparison window, its change column reads `-`, even when older historical observations exist. Once any 1D, 7D or 30D figure exists, those columns appear, and the medians of the selected model gain a one-month sparkline. Only those few medians fetch history for the board.
 
-History lists the selected model's series grouped the same way. The chart draws the chosen series as a step line together with the medians of the same basis, starting at the first plotted observation with a small amount of trailing space. Markers identify actual observations in the selected series; amber Archived markers identify reconstructed rate cards. No synthetic daily observations are inserted; a series with fewer than three observations shows that history is still being collected. The table under the chart groups consecutive equal prices within the same record type and ends at the last observation, so hourly snapshots of an unchanged rate read as one row. Archived, Published and Observed records remain distinguishable.
+History lists the selected model\'s series, with a separate Reference group for anonymised third-party indices. The chart draws the chosen series as a step line together with list medians and available reference indices, starting at the first plotted observation with a small amount of trailing space. Markers identify actual observations in the selected series; amber Archived markers identify reconstructed rate cards. No synthetic daily observations are inserted; a series with fewer than three observations shows that history is still being collected. The table under the chart groups consecutive equal prices within the same record type and ends at the last observation, so hourly snapshots of an unchanged rate read as one row. Archived, Published and Observed records remain distinguishable.
 
 Changes groups price and availability moves by their evidence date, newest first, with the old and new price and the move coloured by its sign. Equities groups related shares into chip makers, hyperscalers, neoclouds, and hosts and builders, with each share's GPU price series, its seven-day move and a one-month price sparkline.
 
@@ -22,10 +22,11 @@ Changes groups price and availability moves by their evidence date, newest first
 | Provider-declared spot | A provider's published interruptible rate or spot meter. AWS's regional feed is a single-provider clearing proxy. |
 | Ask | A posted marketplace offer. It does not establish a completed rental; availability and offer counts reflect the returned offers. |
 | Reserved | A published rate requiring a commitment, kept separate from on-demand rates. |
+| Reference | Anonymised third-party reference index, not a provider offer or Gloom median. |
 
 Narrow panes abbreviate List price to List, Provider-declared spot to Spot, and Reserved to Rsvd.
 
-A licensed GPU price index is not available. It does not appear on the board; the `fn GPU` report lists it as locked. No Silicon Data or Ornn values are collected or displayed.
+Reference index (third party), anonymised: published values are stored unchanged in USD per GPU-hour and shown with distinct, muted chart colours. They do not enter Gloom\'s rental-price medians. Reference A supplies a rolling three-month daily window across five public GPU types; Reference B supplies seven-day anonymous chart cards across seven GPU series. Collection is disabled by default; older data requiring login is not accessed. Source hosts and fetch timestamps stay private on the server, with no vendor links in panes, exports or headless output. Full stored reference history requires Pro; free access previews latest values only.
 
 ## Normalization
 
@@ -45,6 +46,7 @@ GCP's **Price (USD)** header supplies list prices and **Current Spot pricing** s
 |---|---|
 | Azure retail API, AWS Linux on-demand maps, OCI price list, GCP accelerator pricing page | Every 24 hours |
 | Lambda, CoreWeave, Nebius, DigitalOcean, Together and Crusoe rate cards | Every six hours |
+| Public reference indices, when enabled | Daily |
 | AWS regional spot feed, Vast offers, RunPod secure/community offers, Akash GPU asks and Shadeform cloud offers | Hourly |
 
 Each source can be disabled separately. A failed request or parse keeps the last good observations and reports the failure. Observations become stale after 48 hours without a successful collection. Refreshing the pane does not trigger another collection.

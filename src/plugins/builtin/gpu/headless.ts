@@ -62,6 +62,6 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const rows = gpuRows(board.rows, model).map((row) => ({ ...observationRow(row), change1d: row.change1d, change7d: row.change7d,
       change30d: row.change30d, stale: row.stale, sample: row.stats ?? null }));
-    return { sections: [{ title: "GPU rental prices", columns, rows }, { title: "Index (licensed)", entries: [{ label: "Status", value: "Locked" }] }], complete: !board.access?.locked, metadata, errors: board.gaps };
+    return { sections: [{ title: "GPU rental prices", columns, rows }], complete: !board.access?.locked, metadata, errors: board.gaps };
   },
 };
