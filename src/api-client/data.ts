@@ -1,3 +1,4 @@
+import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -387,6 +388,26 @@ export class CloudDataApi {
 
   async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
+  }
+
+  async getCloudCatalysts(query: CatalystFilters = {}, signal?: AbortSignal): Promise<CatalystResponse> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    const route = query.litigation && query.symbol ? `/cloud/catalysts/litigation/${encodeURIComponent(query.symbol)}` : "/cloud/catalysts";
+    return this.request<CatalystResponse>(`${route}?${params}`, { signal });
+  }
+
+  async getCloudCatalystChanges(query: { since: string; cursor?: string; limit?: number }, signal?: AbortSignal): Promise<CatalystChanges> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<CatalystChanges>(`/cloud/catalysts/changes?${params}`, { signal });
+  }
+
+  async getCloudCatalystEvent(id: string, signal?: AbortSignal, query: { offset?: number; limit?: number } = {}): Promise<CatalystDetail> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<CatalystDetail>(`/cloud/catalysts/events/${encodeURIComponent(id)}?${params}`, { signal });
+  }
+
+  async getCloudCatalystStatus(): Promise<CatalystStatus> {
+    return this.request<CatalystStatus>("/cloud/catalysts/status");
   }
 
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {

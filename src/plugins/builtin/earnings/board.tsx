@@ -4,6 +4,7 @@ import {
   PaneStatusBody,
   QueryBar,
   usePaneFooter,
+  usePaneMenuItems,
   usePaneStatusFooter,
   type DataTableKeyEvent,
 } from "../../../components";
@@ -63,6 +64,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const dataProvider = useAssetData();
   const { navigateTicker } = usePluginTickerActions();
   const { createPaneFromTemplate } = usePluginAppActions();
+  usePaneMenuItems("earnings:catalysts", () => [{ id: "catalysts", label: "Catalyst calendar", onSelect: () => createPaneFromTemplate("catalysts-pane") }], [createPaneFromTemplate]);
   const tickers = useAppSelector((state) => state.tickers);
   // Ticker records change for many reasons; the board reloads only when the held and watched names do.
   const ownedKey = useMemo(
@@ -164,6 +166,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     order: 10,
     hints: symbol
       ? [
+          { id: "catalysts", key: "v", label: "iew catalysts", onPress: () => createPaneFromTemplate("catalysts-pane", { symbol }) },
           { id: "ticker", key: "t", label: "icker", onPress: () => navigateTicker(symbol) },
           { id: "estimates", key: "e", label: "stimates", onPress: () => createPaneFromTemplate("earnings-estimates-pane", { symbol }) },
           { id: "calls", key: "c", label: "alls", onPress: () => createPaneFromTemplate("earnings-calls-pane", { symbol }) },

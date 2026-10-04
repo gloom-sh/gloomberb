@@ -259,6 +259,7 @@
         "panes": [
           "analyst-research",
           "backtest",
+          "catalysts",
           "chart-composer",
           "corporate-actions",
           "data-catalog",
@@ -276,6 +277,7 @@
           "iv-history",
           "iv-screen",
           "jobs",
+          "litigation",
           "mna",
           "options",
           "options-calculator",
