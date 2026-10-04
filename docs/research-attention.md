@@ -2,7 +2,7 @@
 
 `ATTN` shows the tickers opted-in Gloom users are researching. `ATTN 6758:JPX` opens one listing's published history. The same dataset appears in Gloom Trending on Home and DES, and in EQS through **Research attention hours (Pro)** and **Abnormal research attention (Pro)**. Existing saved workspaces keep their layout; open **Gloom Trending** from the command bar to add the compact daily panel.
 
-This is a Pro dataset. A free account gets the same three leading published tickers across the board and ticker endpoints, three groups per section and the latest history point. Pro accounts get all published rows and stored history. A ticker outside the preview cannot be retrieved by changing the ticker argument.
+This is a Pro dataset. A free account gets the same three leading published tickers across the board and ticker endpoints, three groups per section and the latest history point. Pro accounts get all published rows and up to 29 days of hourly history. A ticker outside the preview cannot be retrieved by changing the ticker argument.
 
 ## Views and periods
 
@@ -20,7 +20,7 @@ Price change and relative volume retain independent observation times in Evidenc
 
 Coverage is global wherever the instrument registry can resolve a listing. Listing-qualified identifiers keep similarly named securities on different exchanges separate. Sector and country come from the listing registry; unknown metadata stays unknown. Counts reflect participating Gloom users and supported research actions, not all investors, ownership, trading volume or investment intent. Small and unpopular listings may have no published observations.
 
-Every hourly ticker bucket must meet the distinct-contributor threshold before publication (default 20, configurable upward). Groups, rolling windows and history use only released ticker buckets. Neither the app nor the API reveals suppressed counts or their contributor totals. Publication records include their period, source, units and methodology version. The app caches responses separately by signed-in account and entitlement and clears denied data after account changes.
+Every hourly ticker bucket must meet the distinct-contributor threshold before publication (default 20, configurable upward). Groups, rolling windows and history use only released ticker buckets. Neither the app nor the API reveals suppressed counts or their contributor totals. Hourly observations are retained for 35 days, covering the 28-day baseline and a calculation buffer; the API exposes the latest 29 days. Small permanent release records prevent an expired hour from being republished. Listing metadata is stored separately from compact hourly counts. Publication records include their period, source, units and methodology version. The app caches responses separately by signed-in account and entitlement and clears denied data after account changes.
 
 Collection ships disabled on the server. The separate **Research Attention** consent setting is off unless explicitly enabled; **Usage Counts** does not grant ticker consent. See the [privacy review](attention-privacy.md) for the proposed consent and retention wording. No historical activity or analytics events are backfilled. Until enough opted-in users produce qualified hours, the product shows a collecting state. The shipped code includes no collected dataset.
 
