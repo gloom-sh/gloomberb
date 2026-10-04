@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
+  ChartTableHeader,
   DetailScrollBody,
   KeyValueRow,
   Prose,
@@ -13,6 +14,7 @@ import {
   type DataTableColumn,
   type DataTableKeyEvent,
 } from "../../../components";
+import { fitChartTableColumns } from "../../../components/chart-table";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import type {
   AnalystResearchData,
@@ -150,12 +152,12 @@ function sharedMetricCurrency(rows: readonly EventRow[]): string | undefined {
   return currencies.size === 1 ? only : undefined;
 }
 
-function buildEventColumns(unit?: string): EventColumn[] {
+export function buildEventColumns(width: number, unit?: string, variant: "corporate-actions" | "earnings-estimates" = "corporate-actions"): EventColumn[] {
   const withUnit = (label: string) => unit ? `${label} ${unit}` : label;
-  return [
+  const columns: EventColumn[] = [
     { id: "date", label: "DATE", width: 10, align: "left" },
     { id: "status", label: "EVENT", width: 8, align: "left" },
-    { id: "period", label: "PERIOD", width: 9, align: "left" },
+    { id: "period", label: "PERIOD", width: variant === "corporate-actions" ? 12 : 9, align: "left" },
     { id: "qEps", label: withUnit("Q EPS"), width: 12, align: "right" },
     { id: "qRevenue", label: withUnit("Q REV"), width: 12, align: "right" },
     { id: "annualEps", label: withUnit("ANN EPS"), width: 12, align: "right" },
@@ -163,6 +165,9 @@ function buildEventColumns(unit?: string): EventColumn[] {
     { id: "value", label: "VALUE", width: 11, align: "right" },
     { id: "detail", label: "DETAIL", width: 9, align: "left", flexGrow: 1 },
   ];
+  // EE keeps its scrollable estimate columns; EVT prioritizes the event value.
+  return variant === "earnings-estimates" ? columns
+    : fitChartTableColumns(columns, width, ["annualRevenue", "annualEps", "qRevenue", "qEps", "detail"]);
 }
 
 function toneColor(tone: EventRow["tone"]): string {
@@ -451,7 +456,7 @@ export function CorporateActionsView({
       : allRows
   ), [allRows, variant]);
   const unit = useMemo(() => sharedMetricCurrency(rows), [rows]);
-  const columns = useMemo(() => buildEventColumns(unit), [unit]);
+  const columns = useMemo(() => buildEventColumns(width, unit, variant), [width, unit, variant]);
   const sourceNotice = useMemo(() => (
     actionsLoading || analystLoading
       ? null
@@ -626,6 +631,7 @@ export function CorporateActionsView({
       detailScrollRef={detailScrollRef}
       rootWidth={width}
       rootHeight={height}
+      rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} />}
       onRootKeyDown={handleKeyDown}
       columns={columns}
       items={rows}

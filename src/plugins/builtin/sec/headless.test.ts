@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { SecFilingItem } from "../../../types/data-provider";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createSecHeadless } from "./headless";
-import { buildSecFilingRows, secAcceptanceTimestamp } from "./model";
+import { buildSecFilingRows, getFilingColumnText, secAcceptanceTimestamp } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const filings: SecFilingItem[] = [
@@ -50,7 +50,7 @@ describe("SEC headless model", () => {
       acceptedAtRaw: null,
       acceptanceReported: null,
       form: "8-K",
-      filing: "8-K | Results of Operations | Current Report",
+      filing: "Results of Operations | Current Report",
       items: "2.02,9.01",
       accessionNumber: "0000320193-26-000100",
       primaryDocument: null,
@@ -63,6 +63,20 @@ describe("SEC headless model", () => {
     expect(both.rows).toHaveLength(2);
     expect(requestedLimits).toEqual([1, 2]);
   });
+});
+
+test.each([
+  ["144", "FORM 144", "Notice of proposed sale of securities"],
+  ["144/A", "144/A", "Notice of proposed sale of securities (Amended)"],
+  ["4", "FORM 4 — Insider Transaction", "Insider Transaction"],
+  ["4", "4 - Insider Transaction", "Insider Transaction"],
+  ["8-K", "FORM 8-K – Results of Operations", "Results of Operations | Current Report"],
+  ["S-4", "S-4: Merger terms", "Merger terms | Business Combination or Exchange Offer Registration"],
+  ["4", "4/A amendment document", "4/A amendment document | Insider Transaction"],
+])("FILING describes %s without repeating its FORM column (%s)", (form, description, expected) => {
+  const entry = { ...filings[0]!, form, primaryDocDescription: description };
+  expect(getFilingColumnText(entry)).toBe(expected);
+  expect(buildSecFilingRows([entry])[0]).toMatchObject({ form, filing: expected });
 });
 
 test("ticker reuse preserves the actual filing issuer rather than the requested ticker's former company", async () => {

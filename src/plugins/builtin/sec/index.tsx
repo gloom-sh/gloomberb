@@ -36,6 +36,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { secHeadless } from "./headless";
 import {
   getFilingDisplayTitle,
+  getFilingColumnText,
   getFormDescription,
   getMeaningfulPrimaryDescription,
   secFilingIssuers,
@@ -197,7 +198,7 @@ function toFeedItems(
     return {
       id: filing.accessionNumber,
       eyebrow: filing.form,
-      title: form4Preview ? `${displayTitle} | ${form4Preview}` : enrichedTitle,
+      title: form4Preview || getFilingColumnText(filing),
       timestamp: filing.filingDate,
       detailTitle: enrichedTitle,
       detailMeta: [

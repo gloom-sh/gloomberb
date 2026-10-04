@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { ConnectionHealthRegistry } from "../../../core/connection-health";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import {
   NASDAQ_HALTS_CONNECTION_ID,
@@ -13,6 +14,7 @@ import {
   etWallClockToUtcMs,
   filterHalts,
   formatEtResumption,
+  formatHaltAge,
   resolveHaltStatus,
   sortHalts,
 } from "./model";
@@ -150,16 +152,33 @@ describe("halt status", () => {
     expect(resolveHaltStatus(summer!, afterTrade)).toBe("resumed");
   });
 
-  test("stays halted forever without resumption times", () => {
-    expect(resolveHaltStatus(winter!, Date.now())).toBe("halted");
-  });
-
-  test("filters active against resumed at the same instant", () => {
+  test("separates unresolved long-term halts while retaining overnight resumption", () => {
     const now = summer!.tradeResumeAt! + 1_000;
 
-    expect(filterHalts(records, "active", now).map((row) => row.symbol)).toEqual(["WNTR"]);
+    expect(filterHalts(records, "active", now)).toEqual([]);
+    expect(filterHalts(records, "long-term", now).map((row) => row.symbol)).toEqual(["WNTR"]);
     expect(filterHalts(records, "resumed", now).map((row) => row.symbol)).toEqual(["ADXN", "OVER"]);
-    expect(filterHalts(records, "all", now)).toHaveLength(3);
+    expect(filterHalts(records, "all", now).map((row) => row.symbol)).toEqual(["ADXN", "OVER"]);
+  });
+
+  test("moves at exactly 30 elapsed days, includes quoting halts, and returns resuming rows to All", () => {
+    const boundary = winter!.haltedAt + 30 * 86_400_000;
+    const quote = { ...winter!, quoteResumeAt: boundary - 1, tradeResumeAt: boundary + 1 };
+    expect(filterHalts([quote], "active", boundary - 1)).toEqual([quote]);
+    expect(filterHalts([quote], "long-term", boundary - 1)).toEqual([]);
+    expect(filterHalts([quote], "active", boundary)).toEqual([]);
+    expect(filterHalts([quote], "all", boundary)).toEqual([]);
+    expect(filterHalts([quote], "long-term", boundary)).toEqual([quote]);
+    expect(filterHalts([quote], "long-term", boundary + 1)).toEqual([]);
+    expect(filterHalts([quote], "resumed", boundary + 1)).toEqual([quote]);
+    expect(filterHalts([quote], "all", boundary + 1)).toEqual([quote]);
+  });
+
+  test("age advances until trading resumes, not when quotes resume", () => {
+    expect(formatHaltAge(summer!, summer!.haltedAt - 1)).toBe("0m");
+    expect(formatHaltAge(overnight!, overnight!.quoteResumeAt!)).toBe("17h");
+    expect(formatHaltAge(summer!, summer!.tradeResumeAt! + 86_400_000)).toBe("4m");
+    expect(formatHaltAge(winter!, winter!.haltedAt + 30 * 86_400_000)).toBe("30d");
   });
 });
 
@@ -181,14 +200,11 @@ describe("halt table", () => {
   test("drops columns rather than push STATUS past a narrow pane's edge", () => {
     for (const width of [68, 88, 122]) {
       const columns = buildHaltColumns(width);
-      // As the table draws it: a header never narrower than its label plus the
-      // sort arrow, a gap after each column, and a pad cell at each edge.
-      const drawn = columns.reduce((total, column) => total + Math.max(column.width, column.label.length + 2) + 1, 2);
-      expect(drawn).toBeLessThanOrEqual(width);
+      expect(getTableWidth(columns)).toBeLessThanOrEqual(width - 1);
       expect(columns.at(-1)?.id).toBe("status");
     }
     expect(buildHaltColumns(88).map((column) => column.id)).not.toContain("market");
-    expect(buildHaltColumns(122)).toHaveLength(10);
+    expect(buildHaltColumns(68).map((column) => column.id)).toContain("age");
   });
 
   test("dates a resumption that lands on another session", () => {

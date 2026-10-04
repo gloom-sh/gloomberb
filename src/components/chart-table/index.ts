@@ -3,6 +3,7 @@ export type { ChartStripSpec, ChartTableChart, ChartTableHeaderProps } from "./h
 export {
   chartTableChromeRows,
   chartTableLayout,
+  fitChartTableColumns,
 } from "./layout";
 export type { ChartBandMode, ChartTableLayout } from "./layout";
 export { useChartTableSelection } from "./selection";
