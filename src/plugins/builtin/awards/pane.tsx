@@ -49,16 +49,17 @@ const EVENT_COLUMNS: DataTableColumn[] = [FEED_COLUMNS[0]!, FEED_COLUMNS[1]!, FE
   { id: "ratio", label: "% revenue", width: 11, align: "right" }, FEED_COLUMNS[3]!, { ...FEED_COLUMNS[4]!, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },
   { id: "revenuePeriod", label: "Revenue FY end", width: 15, align: "left" }, FEED_COLUMNS[7]!, FEED_COLUMNS[10]!];
+// The share leads the figures: concentration is what these views are for.
 const AGG_COLUMNS: DataTableColumn[] = [
-  { id: "label", label: "Agency", width: 36, flexGrow: 1, align: "left" }, { id: "currency", label: "CCY", width: 5, align: "left" },
-  { id: "obligated", label: "Obligated", width: 14, align: "right" }, { id: "value", label: "Value", width: 14, align: "right" },
-  { id: "ceiling", label: "Ceiling", width: 14, align: "right" }, { id: "share", label: "Share %", width: 26, align: "right" },
-  { id: "contracts", label: "Awards", width: 9, align: "right" },
+  { id: "label", label: "Agency", width: 30, flexGrow: 1, align: "left" }, { id: "currency", label: "CCY", width: 5, align: "left" },
+  { id: "share", label: "Share %", width: 24, align: "right" }, { id: "obligated", label: "Obligated", width: 12, align: "right" }, { id: "value", label: "Value", width: 12, align: "right" },
+  { id: "ceiling", label: "Ceiling", width: 12, align: "right" },
+  { id: "contracts", label: "Awards", width: 8, align: "right" },
   { id: "scope", label: "Scope", width: 27, align: "left" },
 ];
 const LEADER_COLUMNS: DataTableColumn[] = [{ id: "label", label: "Company", width: 28, flexGrow: 1, align: "left" }, { ...FEED_COLUMNS[2]!, width: 8 },
-  FEED_COLUMNS[3]!, FEED_COLUMNS[4]!, FEED_COLUMNS[5]!, AGG_COLUMNS[5]!, AGG_COLUMNS[6]!,
-  { id: "sector", label: "Sector", width: 25, align: "left" }, AGG_COLUMNS[4]!, AGG_COLUMNS[7]!];
+  FEED_COLUMNS[3]!, AGG_COLUMNS[2]!, FEED_COLUMNS[4]!, FEED_COLUMNS[5]!, AGG_COLUMNS[6]!,
+  { id: "sector", label: "Sector", width: 25, align: "left" }, AGG_COLUMNS[5]!, AGG_COLUMNS[7]!];
 
 export function AwardsPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();
@@ -238,7 +239,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
               if (column.id === "contracts") return { text: item.row.count.toLocaleString("en-US"), value: item.row.count, color: colors.textDim };
               if (column.id === "scope") return { text: awardScope(item.row.source), color: colors.textDim };
               return item.row.sharePercent === null ? missingCell(colors)
-                : { ...shareCell(`${item.row.sharePercent.toFixed(1)}%`, maxShare ? item.row.sharePercent / maxShare : null, column.width, colors, state.selected), value: item.row.sharePercent };
+                : { ...shareCell(`${item.row.sharePercent.toFixed(1)}%`, maxShare ? item.row.sharePercent / maxShare : null, column.width, colors, state.selected, desktop), value: item.row.sharePercent };
             }
             const award = item.row;
             if (column.id === "date") return { text: award.awardDate, value: award.awardDate };

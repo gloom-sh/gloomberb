@@ -172,7 +172,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
             const numeric = typeof value === "number";
             const decimals = DECIMALS[column.id] ?? 0;
             const text = numeric ? `${SIGNED_COLUMNS.has(column.id) && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}` : LABEL_COLUMNS.has(column.id) ? humanLabel(value) : column.id === "title" ? value.trim() : value;
-            if (column.id === "share" && numeric && tab === "mix") return { ...shareCell(text, maxShare ? value / maxShare : null, column.width, colors, state.selected), value };
+            if (column.id === "share" && numeric && tab === "mix") return { ...shareCell(text, maxShare ? value / maxShare : null, column.width, colors, state.selected, desktop), value };
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };
           }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${kind}:${symbol}:${tab}:${mix}:${country}:${chart}`}

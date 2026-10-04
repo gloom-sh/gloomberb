@@ -135,8 +135,8 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
     }
     return map;
   }, [kpis]);
-  const columns = useMemo(() => withoutQuietColumns(companyColumns(mode === "guidance", tab === "evidence", tab === "history", mode === "kpis" && tab === "table" && trends.size > 0),
-    rows, (row, id) => id === "basis" ? basisLabel(row.basis) : id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated" : "", QUIET_COLUMNS), [mode, tab, trends, rows]);
+  const columns = useMemo(() => withoutQuietColumns(companyColumns(mode === "guidance", tab === "evidence", tab === "history", mode === "kpis" && tab === "table" && trends.size > 0 && width >= 100),
+    rows, (row, id) => id === "basis" ? basisLabel(row.basis) : id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated" : "", QUIET_COLUMNS), [mode, tab, trends, rows, width]);
   const metricOptions = useMemo(() => [{ value: "all", label: "All metrics" }, ...[...new Map(allRows.map((row) => [row.metricId, { value: row.metricId, label: row.metric.name }])).values()]], [allRows]);
   const kpiChart = useMemo(() => observationChart(rows.filter((row): row is KpiObservation => !isGuidance(row)), colors.warning), [rows, colors.warning]);
   const series = useMemo(() => tab !== "chart" ? [] : mode === "kpis" ? kpiChart.series

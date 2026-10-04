@@ -159,7 +159,7 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
   const cell = (row: AttentionRow | AttentionGroup | Locked, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (isLocked(row)) return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === "name" ? "Additional research" : "Hidden"}</Text></Blurred> }
       : { text: column.id === columns[0]!.id && row.id === "locked:0" ? "Pro" : "░░░", color: colors.textDim };
-    if (column.id === "sharePct") return { ...shareCell(number(row.sharePct, 1), maxShare ? row.sharePct / maxShare : null, column.width, colors, state.selected), value: row.sharePct };
+    if (column.id === "sharePct") return { ...shareCell(number(row.sharePct, 1), maxShare ? row.sharePct / maxShare : null, column.width, colors, state.selected, desktop), value: row.sharePct };
     if ("symbol" in row) {
       const numeric = typeof row[column.id as keyof AttentionRow] === "number" ? row[column.id as keyof AttentionRow] as number : undefined;
       switch (column.id) {

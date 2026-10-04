@@ -42,7 +42,7 @@ export function catalystSection(event: CatalystEvent, field: CatalystFilters["da
   return /^\d{4}-\d{2}/.test(date) ? `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : date;
 }
 /** The first change in words, before and after: `Deadline 2027-03-01 → 2027-04-01`. */
-export function changeSummary(event: CatalystEvent): string {
+function changeSummary(event: CatalystEvent): string {
   const [first, ...rest] = event.changes;
   if (!first) return "First observed";
   return `${humanLabel(first.field.replace(/Date$/, ""))} ${changeValue(first.before)} → ${changeValue(first.after)}${rest.length ? ` +${rest.length}` : ""}`;
