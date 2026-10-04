@@ -32,7 +32,7 @@ function evidence(value: SupplyEvidenceItem): boolean {
     && (value.verificationStatus === undefined || ["verified", "lead"].includes(value.verificationStatus))
     && nullableText(value.valueKind) && (value.value === null || finite(value.value)) && nullableText(value.valueUnit) && nullableText(value.currency);
 }
-function entity(value: SupplyEntity): boolean {
+export function validSupplyEntity(value: SupplyEntity): boolean {
   return !!value && text(value.id) && text(value.name) && nullableText(value.ticker) && nullableText(value.exchange)
     && nullableText(value.country) && ["listed", "private", "government", "unknown"].includes(value.kind)
     && !!value.identifiers && typeof value.identifiers === "object" && !Array.isArray(value.identifiers)
@@ -40,7 +40,7 @@ function entity(value: SupplyEntity): boolean {
     && (value.aggregate === undefined || typeof value.aggregate === "boolean");
 }
 function row(value: SupplyRow): boolean {
-  return !!value && text(value.id) && entity(value.counterparty) && entity(value.reportingEntity)
+  return !!value && text(value.id) && validSupplyEntity(value.counterparty) && validSupplyEntity(value.reportingEntity)
     && SUPPLY_ROLES.includes(value.role) && ["in", "out", "mutual"].includes(value.direction)
     && nullableText(value.pctScope) && nullableNumber(value.pctOfRevenue) && (value.pctOfRevenue === null || value.pctOfRevenue <= 100)
     && [null, "revenue", "receivables", "cost", "purchases"].includes(value.pctBasis)
@@ -67,7 +67,7 @@ function row(value: SupplyRow): boolean {
     && (value.evidence === undefined || Array.isArray(value.evidence) && value.evidence.every(evidence));
 }
 export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayload {
-  const valid = !!data && text(data.symbol) && (data.entity === null || entity(data.entity))
+  const valid = !!data && text(data.symbol) && (data.entity === null || validSupplyEntity(data.entity))
     && (data.asOf === null || date(data.asOf)) && ["available", "unavailable"].includes(data.status)
     && ["says", "names"].every((view) => {
       const key = view as "says" | "names";

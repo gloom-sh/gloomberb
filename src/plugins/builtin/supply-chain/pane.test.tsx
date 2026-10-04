@@ -10,19 +10,21 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { supplyChainCache } from "./client";
+import { graphCache } from "./graph-client";
+import { graphPayload } from "./test-fixture-graph";
 import { SupplyChainPane } from "./pane";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 let commits = 0;
 const countCommit = () => { if (++commits > 100) throw new Error("Supply chain pane did not settle within 100 React commits"); };
-afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); });
-async function mount(width: number, height: number, tab = "table", view = "says", onNavigate: (id: string, symbol: string | undefined) => void = () => {}, tiers = "sec,company,call") {
+afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); graphCache.reset(); });
+async function mount(width: number, height: number, tab = "table", view = "says", onNavigate: (id: string, symbol: string | undefined) => void = () => {}, settings: Record<string, unknown> | string = {}) {
   commits = 0;
   supplyChainCache.attach(new MemoryPluginPersistence());
   const id = "supply-chain:test";
-  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/splc-layer2a/focused", {
-    paneId: "supply-chain", instanceId: id, binding: { kind: "fixed", symbol: "FOCUS" }, settings: { tab, view, tiers },
+  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/glo-224/focused-tests", {
+    paneId: "supply-chain", instanceId: id, binding: { kind: "fixed", symbol: "FOCUS" }, settings: { tab, view, ...(typeof settings === "string" ? { tiers: settings } : settings) },
   }));
   state.tickers.set("FOCUS", createTestTicker("FOCUS", "Focus Company"));
   function Harness() {
@@ -156,4 +158,68 @@ test("evidence preserves the reporting company and scope, then Enter drills into
   await tui.waitForFrameToContain("COUNTERPARTY");
   await tui.emitKeypress({ name: "return" });
   expect(opened).toEqual([["supply-chain-pane", "2330:TWSE"]]);
+});
+
+
+test("graph selection collapses a branch and recenters an unlisted company through its stable ID", async () => {
+  const requests: string[] = [];
+  setCloudApiFetchTransport(async (input) => { requests.push(String(input)); return Response.json(graphPayload()); });
+  await mount(120, 24, "graph");
+  await tui.waitForFrameToContain("Private supplier");
+  await tui.emitKeypress({ name: "j" });
+  await tui.emitKeypress({ name: "c" });
+  const collapsed = await tui.waitForFrameToContain("+ Private supplier");
+  expect(collapsed).not.toContain("2 HOPS");
+  await tui.emitKeypress({ name: "c" });
+  await tui.waitForFrameToContain("2 HOPS");
+  await tui.emitKeypress({ name: "return" });
+  await tui.renderFrames(3);
+  expect(requests.some(url => url.includes("id%3A2/graph"))).toBe(true);
+});
+
+test("path evidence preserves every hop and opens the filter form without losing the route", async () => {
+  const data = graphPayload(); data.paths = [data.upstream[1]!.bestPath]; data.target = data.nodes[2]!; data.upstream = [];
+  setCloudApiFetchTransport(async () => Response.json(data));
+  await mount(120, 27, "path", "says", () => {}, { to: "3" });
+  await tui.waitForFrameToContain("ROUTE");
+  await tui.emitKeypress({ name: "return" });
+  const frame = await tui.waitForFrameToContain("Estimated exposure");
+  expect(frame).toContain("20% est. of 1 revenue");
+  expect(frame).toContain("We depend on this supplier.");
+  await tui.emitKeypress({ name: "escape" });
+  await tui.waitForFrameToContain("ROUTE");
+  await tui.emitKeypress({ name: "i" });
+  expect(await tui.waitForFrameToContain("Minimum disclosed percentage")).toContain("Apply filters");
+  await tui.emitKeypress({ name: "escape" });
+  await tui.waitForFrameToContain("ROUTE");
+});
+
+test("graph paging keys reach companies outside the first layer page", async () => {
+  const data = graphPayload(), base = data.nodes[1]!, baseLink = data.links[0]!;
+  data.nodes = [data.nodes[0]!]; data.links = []; data.upstream = [];
+  for (let i = 0; i < 9; i++) {
+    const id = `supplier-${i}`;
+    data.nodes.push({ ...base, id, name: `Supplier ${i}` });
+    data.links.push({ ...baseLink, id, from: id });
+    const path = { id: `upstream|${id}`, nodeIds: ["1", id], linkIds: [id], hops: 1, score: 1 - i / 100, confidence: .9, exposure: null };
+    data.upstream.push({ entityId: id, direction: "upstream", hops: 1, bestPath: path, shortestPath: path });
+  }
+  setCloudApiFetchTransport(async () => Response.json(data));
+  await mount(100, 16, "graph");
+  await tui.waitForFrameToContain("Supplier 0");
+  await tui.emitKeypress({ name: "]", sequence: "]" });
+  const second = await tui.waitForFrameToContain("Supplier 3");
+  expect(second).not.toContain("Supplier 0");
+  await tui.emitKeypress({ name: "[", sequence: "[" });
+  await tui.waitForFrameToContain("Supplier 0");
+});
+
+test("a narrow graph reveals keyboard-selected nodes outside its initial horizontal viewport", async () => {
+  const data = graphPayload(); data.nodes[0]!.ticker = "FOCUS"; data.nodes[2]!.ticker = "LEFTMOST";
+  setCloudApiFetchTransport(async () => Response.json(data));
+  await mount(40, 20, "graph");
+  await tui.waitForFrameToContain("FOCUS");
+  await tui.emitKeypress({ name: "j" });
+  await tui.emitKeypress({ name: "k" });
+  expect(await tui.waitForFrameToContain("LEFTMOST")).toContain("2 HOPS");
 });

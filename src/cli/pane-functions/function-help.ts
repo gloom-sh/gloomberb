@@ -509,10 +509,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["PORT", "SPLC"],
   },
   SPLC: {
-    summary: "Pro global supply chain research with a free preview. Filter filings, company announcements, calls and reported evidence. Unconfirmed leads stay separate and out of the flow. Evidence carries publisher, date, corroboration, permitted original-language quotes or links, labelled English glosses and native disclosed units.",
+    summary: "Pro global supply chain research in Table, Flow, Graph and Path with a free preview. Filter filings, company announcements, calls and reported evidence. Follow up to four disclosed hops with ranked paths and estimated exposure. Unconfirmed leads stay separate and out of the flow. Evidence carries publisher, date, corroboration, permitted original-language quotes or links, labelled English glosses and native disclosed units.",
     usage: ["SPLC NVDA", "SUPPLY AAPL", "SPLC 005930.KS", "SPLC 8035.T"],
     keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph")],
-    data: { free: "Three relationships per role with source evidence", pro: "All stored relationships and evidence tiers" },
+    data: { free: "Three relationships per role with evidence and a one-hop graph preview", pro: "Full evidence tiers, one-to-four-hop graphs and ranked paths" },
     bloomberg: ["SPLC"],
   },
   AWARDS: {

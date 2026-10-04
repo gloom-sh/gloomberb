@@ -8,6 +8,7 @@ import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power
 import type { PerpBoardPayload, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery, PerpMarketPayload } from "./perps";
 import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
 import type { SupplyChainPayload, SupplyOptions } from "./supply-chain";
+import { supplyGraphQuery, type GraphOptions, type GraphPayload } from "./supply-chain-graph";
 import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -481,6 +482,14 @@ export class CloudDataApi {
   getCloudAward(id: string, signal?: AbortSignal, revisionsCursor?: string): Promise<AwardDetailPayload> {
     const query = revisionsCursor ? `?${new URLSearchParams({ revisionsCursor })}` : "";
     return this.request<AwardDetailPayload>(`/cloud/awards/detail/${encodeURIComponent(id)}${query}`, { signal });
+  }
+
+  async getCloudSupplyGraph(symbol: string, options: Partial<GraphOptions> = {}): Promise<GraphPayload> {
+    return this.request<GraphPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}/graph?${supplyGraphQuery(options)}`);
+  }
+
+  async getCloudSupplyPaths(from: string, to: string, options: Partial<GraphOptions> = {}): Promise<GraphPayload> {
+    return this.request<GraphPayload>(`/cloud/supply-chain/paths?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&${supplyGraphQuery(options)}`);
   }
 
   async getCloudDoeBoard(): Promise<DoeBoardPayload> {

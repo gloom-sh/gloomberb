@@ -917,7 +917,7 @@ licensed sources behind the platform cannot support them honestly:
   OAT-Bund spread.
 - ETF holdings and flows: issuers publish holdings in per-issuer files with no
   common format; creation and redemption flows are not published freely.
-- Supply chain: `SPLC` combines filing disclosures, company announcements, earnings calls and sourced news. Pro includes the full dataset; free accounts receive a preview. Evidence tiers, date, publisher, corroboration and permitted quotes or links accompany each relationship. Unconfirmed leads require an explicit filter and stay separate from disclosed concentrations and flow diagrams. Coverage follows available issuer and publisher evidence globally; US filings use EDGAR. See [Supply chain evidence](supply-chain.md).
+- Supply chain: `SPLC` combines filing disclosures, company announcements, earnings calls and sourced news. Pro includes the full dataset; free accounts receive a preview. Evidence tiers, date, publisher, corroboration and permitted quotes or links accompany each relationship. Unconfirmed leads require an explicit filter and stay separate from disclosed concentrations and flow diagrams. Coverage follows available issuer and publisher evidence globally; US filings use EDGAR. Graph and Path follow up to four disclosed hops with per-hop evidence, explicit search limits and denominator-labelled exposure estimates; they are not a complete commercial supplier register. See [Supply chain evidence](supply-chain.md).
 - M&A databases: no free structured source.
 - Level 2 order book: the market data plan supplies trades and NBBO only; `TAS`
   and `QR` show what is available.

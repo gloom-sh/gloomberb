@@ -24,6 +24,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { cachedSupplyChain, loadSupplyChain, SUPPLY_UNAVAILABLE, validateSupplyChain } from "./client";
 import { useSupplyEvidence } from "./evidence";
 import { SupplyFlow } from "./flow";
+import { SupplyGraphPane } from "./graph-pane";
 import {
   cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, nativeValue, percentage, ROLE_COLORS, roleLabel,
   shareParts, sortRows, type SupplySort,
@@ -111,22 +112,23 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const openUpgrade = useCloudUpgradeAction("splc");
   const [snapshotSetting] = usePaneSettingValue<SupplyChainPayload | null>("supplySnapshot", null);
   const snapshot = useMemo(() => { try { return snapshotSetting ? validateSupplyChain(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
+  const [openingTab] = usePaneSettingValue("tab", "table");
+  const [savedTab, setTab] = usePluginPaneState<string>("supply:tab", openingTab);
+  const graphTab = savedTab === "graph" || savedTab === "path";
   const [openingTiers] = usePaneSettingValue("tiers", "sec,company,call");
-  const initialTiers = useMemo(() => supplyOptions(openingTiers).tiers, [openingTiers]);
+  const initialTiers = useMemo(() => supplyOptions(openingTab === "graph" || openingTab === "path" ? undefined : openingTiers).tiers, [openingTiers, openingTab]);
   const [savedTiers, setTiers] = usePluginPaneState<SupplyTierFilter[]>("supply:tiers", initialTiers);
   const options = useMemo(() => supplyOptions(savedTiers), [savedTiers]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadSupplyChain(symbol!, accessKey, force, options), [symbol, accessKey, snapshot, options]);
-  const resource = useAsyncResource(symbol ? loader : null, {
+  const resource = useAsyncResource(symbol && !graphTab ? loader : null, {
     initialData: () => symbol ? cachedSupplyChain(symbol, accessKey, options) : null, clearOnError: isAccessDenied,
   });
   const data = resource.data?.payload ?? null;
-  const [openingTab] = usePaneSettingValue("tab", "table");
-  const [savedTab, setTab] = usePluginPaneState<string>("supply:tab", openingTab);
   const [openingView] = usePaneSettingValue("view", "says");
   const [savedView, setView] = usePluginPaneState<string>("supply:view", openingView);
   const view = savedView === "names" ? "names" : "says";
   const tooSmall = width < 70 || height < 13;
-  const tab = savedTab === "flow" && !tooSmall ? "flow" : "table";
+  const tab = graphTab ? savedTab : savedTab === "flow" && !tooSmall ? "flow" : "table";
   const [sort, setSort] = usePluginPaneState<SupplySort>("supply:sort", { column: "pct", direction: "desc" });
   const [selectedId, setSelected] = usePluginPaneState<string | null>(`supply:selected:${view}`, null);
   const [openingEvidence] = usePaneSettingValue("evidence", false);
@@ -138,16 +140,16 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const selected = tab === "flow" && selectedId?.startsWith("more:") ? null
     : selectionRows.find((row) => row.id === selectedId) ?? (tab === "flow" ? allRows.find((row) => row.id === flowIds[0]) : rows[0]) ?? null;
   const openRow = allRows.find((row) => row.id === openId) ?? (openingEvidence && openId === null ? rows[0] : null) ?? null;
-  useSupplyEvidence(data, tab, view, tab === "flow" ? flowIds : rows.map((row) => row.id), openRow?.id ?? null, options.tiers);
+  useSupplyEvidence(graphTab ? null : data, tab, view, tab === "flow" ? flowIds : rows.map((row) => row.id), openRow?.id ?? null, options.tiers);
   const locked = data?.truncated ? Math.max(0, Object.values(data.counts[view]).reduce((a, b) => a + b, 0) - data[view].length) : 0;
   const items = useMemo<SectionedRow<Item>[]>(() => buildSectionedRows<Item>([
     { label: "Relationships", items: rows.filter((row) => !isUnconfirmed(row)).map((row) => ({ kind: "edge", row })) },
     { label: "Unconfirmed", items: rows.filter(isUnconfirmed).map((row) => ({ kind: "edge", row })) },
     { label: "Pro", items: Array.from({ length: Math.min(3, locked) }, (_, i) => ({ kind: "locked", id: `locked:${i}` })) },
   ], itemId), [rows, locked]);
-  const { strip, rows: tabRows } = usePaneTabs(data ? { tabs: [{ value: "table", label: "Table" }, { value: "flow", label: "Flow", disabled: tooSmall }], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
+  const { strip, rows: tabRows } = usePaneTabs(symbol ? { tabs: [{ value: "table", label: "Table" }, { value: "flow", label: "Flow", disabled: tooSmall }, { value: "graph", label: "Graph" }, { value: "path", label: "Path" }], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => void resource.reload(), { focused: focused && !graphTab });
   const navigate = (row: SupplyRow, template = "supply-chain-pane") => {
     if (row.counterparty.ticker) createPaneFromTemplate(template, { symbol: publicTickerKey(row.counterparty.ticker, row.counterparty.exchange ?? undefined) });
     else setOpen(row.id);
@@ -168,9 +170,9 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     ] : []),
     ...(data?.truncated ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }] : []),
   ];
-  usePaneStatusFooter({ registrationId: "supply-chain", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale,
+  usePaneStatusFooter({ registrationId: "supply-chain", enabled: !graphTab, loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale,
     info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" as const }] }] : [], hints });
-  usePaneNoticeFooter({ registrationId: "supply-chain:notices", focused, notices: [
+  usePaneNoticeFooter({ registrationId: "supply-chain:notices", focused, enabled: !graphTab, notices: [
     ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ...(savedTab === "flow" && tooSmall ? ["Flow needs a wider pane. Showing the table."] : []),
   ] });
@@ -227,6 +229,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     }
   };
   if (!symbol) return <EmptyState title="Select a ticker." />;
+  if (graphTab) return <Box width={width} height={height} flexDirection="column">{strip}<SupplyGraphPane symbol={symbol} tab={savedTab as "graph" | "path"} width={width} height={Math.max(3, height - tabRows)} focused={focused} /></Box>;
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="supply-chain-signin" action="view supply chain disclosures" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
   const figures = data ? supplyFigures(data, tab === "flow" ? ["says", "names"] : [view], options, tab === "flow") : [];
