@@ -2,7 +2,7 @@ import { act, useReducer } from "react";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -48,10 +48,13 @@ test("project opens supported evidence in a stack and ticker action preserves it
   const frame = await tui.waitForFrameToContain("Primary Evidence");
   expect(frame).toContain("Sheet 1 row 3");
   expect(frame).toContain("Observed UTC");
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  for (let attempt = 0; attempt < 12 && evidenceOffsets.length < 2; attempt++) {
+    await settleFrame(tui.setup());
+  }
   expect(evidenceOffsets).toEqual([0, 1]);
   await tui.emitKeypress({ name: "escape" });
-  expect(await tui.waitForFrameToContain("Storage project")).toContain("PROJECT");
+  // The project name also appears in the detail title; wait for the table to paint.
+  expect(await tui.waitForFrameToContain("PROJECT")).toContain("Storage project");
 });
 test("preview keeps primary records and standard locks without treating preview totals as full statistics", async () => {
   setCloudApiFetchTransport(async () => Response.json(powerBoard({ access: "preview", total: 30, locked: { projects: 29, aggregates: 0, rates: 0, exposure: 0 } })));
