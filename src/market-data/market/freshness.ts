@@ -371,9 +371,6 @@ function isTimestampStaleForExchangeSessionUnsafe(
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
   if (!timestampDate || !currentDate || timestampDate === currentDate) return false;
-  // A cached CLOSED label cannot extend the last Chinese close beyond reopening.
-  if ((canonical === "SSE" || canonical === "SZSE") && hasPublishedCnCalendar(Number(currentDate.slice(0, 4)))
-    && isLocalTradingDay(canonical, currentDate) && !isBeforeKnownRegularOpen(canonical, now)) return true;
   if (marketState === "REGULAR" && !isBeforeKnownRegularOpen(canonical, now)) return true;
 
   if (isUsPriorSessionPremarketQuote(timestampMs, canonical, marketState, now)) return false;

@@ -78,11 +78,11 @@ describe("provider-router financial quote usability", () => {
           expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated }, exchange)).toBe(false);
         }
       }
-      // A cached CLOSED label cannot keep the prior close after trading resumes.
-      for (const now of ["2026-10-08T02:00:00Z", "2026-10-09T01:00:00Z"]) {
-        clock.mockReturnValue(Date.parse(now));
-        expect(isProviderQuoteUsableForCurrentSession(close, exchange)).toBe(false);
-      }
+      // Tuesday 09:35 Shanghai is still before the delayed feed's first session prints.
+      clock.mockReturnValue(Date.parse("2026-10-13T01:35:00Z"));
+      expect(isProviderQuoteUsableForCurrentSession({ ...close,
+        lastUpdated: Date.parse("2026-10-12T07:00:00Z"),
+      }, exchange)).toBe(true);
     }
   });
 
