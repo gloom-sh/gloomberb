@@ -11,8 +11,11 @@ import { useStaticChartBitmapSize } from "../../../components/chart/composite/bi
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
 import { counterpartyKind, counterpartyLabel, dollars, roleLabel, ROLE_COLORS, scopeWords, shareParts, type FlowBand } from "./model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
+import { evidenceDate, evidenceLabel, trustTier } from "./trust";
 
 const RIBBON_STEPS = 48;
+const reportedRow = (row: SupplyRow) => trustTier(row) === 4 || trustTier(row) === 5;
+const dashVisible = (t: number) => (Math.max(0, Math.min(1, t)) * RIBBON_STEPS) % 6 <= 4;
 const ROLE_PLURAL: Record<SupplyRole, string> = { supplier: "Suppliers", customer: "Customers", partner: "Partners", competitor: "Competitors", investee: "Investees" };
 
 /** A ribbon's outline in the overlay's 0..1 space: the upper edge out, the lower edge back. */
@@ -26,13 +29,14 @@ function ribbonPolygon(ribbon: FlowRibbon, width: number, height: number, thickn
 /** The disclosed figure a card shows under the name, in the reporting company's own terms. */
 function nodeMetric(node: PositionedNode, focusId?: string): string {
   const row = node.row!;
+  if (trustTier(row) !== 1) return `${evidenceLabel(row)} · ${evidenceDate(row)}`;
   if (node.weight !== null && node.weightBasis === "usd") return dollars(row);
   const share = shareParts(row, focusId);
   if (share) return `${share.value} ${share.basis}`;
   if (row.usd !== null) return dollars(row);
   // With no figure, the card says where the relationship is disclosed.
   const reporter = focusId && row.reportingEntity.id !== focusId ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
-  return `${reporter}${row.form ?? "filing"}${row.fiscalYear ? ` · FY${row.fiscalYear}` : ""}`;
+  return `${evidenceLabel(row)} · ${reporter}${row.form ?? "filing"}${row.fiscalYear ? ` · FY${row.fiscalYear}` : ""}`;
 }
 
 /**
@@ -58,6 +62,7 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
   const geometry = useMemo(() => flowGeometry(rows, { width, height, focusId, focusLabelWidth: Math.max(symbol.length, displayWidth(focusLabel)), pages, relatedPages }),
     [rows, width, height, focusId, symbol, focusLabel, pages, relatedPages]);
   const { nodes, ribbons, center } = geometry;
+  const reportedIds = useMemo(() => new Set(nodes.filter((node) => node.row && reportedRow(node.row)).map((node) => node.id)), [nodes]);
   const visibleIds = nodes.filter((node) => node.row).map((node) => node.id).join("\n");
   useEffect(() => { onVisible(visibleIds ? visibleIds.split("\n") : []); }, [visibleIds, onVisible]);
   const selectedIndex = Math.max(0, nodes.findIndex((node) => node.id === selectedId));
@@ -80,18 +85,24 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
   });
 
   const ribbonColors = (ribbon: FlowRibbon) => ribbon.band === "suppliers" ? [ROLE_COLORS[ribbon.role], focusTint] : [focusTint, ROLE_COLORS[ribbon.role]];
-  const vectors = useMemo<ChartVectorShape[]>(() => ribbons.map((ribbon) => {
+  const vectors = useMemo<ChartVectorShape[]>(() => ribbons.flatMap((ribbon): ChartVectorShape[] => {
     const lit = active === ribbon.id;
     const dim = hovered !== null && !lit;
     if (ribbon.thickness === null) {
-      return { id: ribbon.id, points: Array.from({ length: RIBBON_STEPS + 1 }, (_, i) => {
+      const vector: ChartVectorShape = { id: ribbon.id, points: Array.from({ length: RIBBON_STEPS + 1 }, (_, i) => {
         const x = ribbon.x0 + (ribbon.x1 - ribbon.x0) * i / RIBBON_STEPS;
         return { x: x / width, y: ribbonY(ribbon, x) / height };
       }), color: ROLE_COLORS[ribbon.role], gradient: ribbonColors(ribbon), strokeWidth: lit ? 2.4 : 1.4, opacity: dim ? 0.25 : lit ? 1 : 0.7 };
+      if (!reportedIds.has(ribbon.id)) return [vector];
+      // Use the same gaps in SVG, bitmap and braille; reported links are always hairlines.
+      const [from, to] = ribbonColors(ribbon);
+      return Array.from({ length: 8 }, (_, index) => ({ ...vector, id: `${ribbon.id}:dash:${index}`,
+        points: vector.points.slice(index * 6, index * 6 + 5),
+        gradient: [blendHex(from!, to!, index * 6 / RIBBON_STEPS), blendHex(from!, to!, (index * 6 + 4) / RIBBON_STEPS)] }));
     }
-    return { id: ribbon.id, points: ribbonPolygon(ribbon, width, height, ribbon.thickness), color: ROLE_COLORS[ribbon.role], fill: true,
-      gradient: ribbonColors(ribbon), fillOpacity: lit ? 0.9 : 0.6, opacity: dim ? 0.3 : 1 };
-  }), [ribbons, active, hovered, width, height, focusTint]);
+    return [{ id: ribbon.id, points: ribbonPolygon(ribbon, width, height, ribbon.thickness), color: ROLE_COLORS[ribbon.role], fill: true,
+      gradient: ribbonColors(ribbon), fillOpacity: lit ? 0.9 : 0.6, opacity: dim ? 0.3 : 1 }];
+  }), [ribbons, reportedIds, active, hovered, width, height, focusTint]);
 
   // The terminal's native graphics: the same ribbons filled column by column.
   const bitmap = useMemo(() => {
@@ -103,13 +114,14 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
       const [from, to] = ribbonColors(ribbon);
       for (let px = Math.round(ribbon.x0 * sx); px <= Math.round(ribbon.x1 * sx); px++) {
         const x = px / sx, t = (x - ribbon.x0) / Math.max(1e-6, ribbon.x1 - ribbon.x0);
+        if (reportedIds.has(ribbon.id) && !dashVisible(t)) continue;
         const half = ribbon.thickness === null ? 0.6 / sy : ribbon.thickness / 2;
         const y = ribbonY(ribbon, x);
         fillRect(pixels, w, h, px, (y - half) * sy, px, (y + half) * sy, parseHex(blendHex(from!, to!, t), active === ribbon.id ? 0.95 : 0.7));
       }
     }
     return { width: w, height: h, pixels };
-  }, [desktop, bitmapSize, ribbons, colors.bg, width, height, active, focusTint]);
+  }, [desktop, bitmapSize, ribbons, reportedIds, colors.bg, width, height, active, focusTint]);
 
   // Braille fallback: a filled band per ribbon, coloured along its length from the role to the focus company.
   const fallback = useMemo(() => {
@@ -121,6 +133,7 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
       const lit = active === ribbon.id;
       for (let dx = Math.ceil(ribbon.x0 * 2); dx < Math.floor(ribbon.x1 * 2); dx++) {
         const x = (dx + 0.5) / 2, t = (x - ribbon.x0) / Math.max(1e-6, ribbon.x1 - ribbon.x0);
+        if (reportedIds.has(ribbon.id) && !dashVisible(t)) continue;
         const y = ribbonY(ribbon, x);
         const half = ribbon.thickness === null ? 0 : ribbon.thickness / 2;
         const color = blendHex(from!, to!, t);
@@ -141,7 +154,7 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
       }
       return spans;
     });
-  }, [desktop, bitmap, width, height, ribbons, colors.textDim, colors.bg, active, focusTint]);
+  }, [desktop, bitmap, width, height, ribbons, reportedIds, colors.textDim, colors.bg, active, focusTint]);
 
   /** Hovering a ribbon brings it forward; the nearest one under the pointer wins. */
   const hoverAt = (event: { preciseX?: number; preciseY?: number; x: number; y: number }) => {
@@ -210,22 +223,24 @@ function tooltipAnchor(node: PositionedNode, ribbons: readonly FlowRibbon[], wid
   return { x: Math.max(1, Math.min(width - 40, Math.round(x - 19))), y: Math.round(y) + 1 };
 }
 
-function flowLegend(geometry: ReturnType<typeof flowGeometry>, symbol: string): { id: string; kind: "weighted" | "hairline"; label: string }[] | null {
-  const entries: { id: string; kind: "weighted" | "hairline"; label: string }[] = [];
+function flowLegend(geometry: ReturnType<typeof flowGeometry>, symbol: string): { id: string; kind: "weighted" | "hairline" | "reported"; label: string }[] | null {
+  const entries: { id: string; kind: "weighted" | "hairline" | "reported"; label: string }[] = [];
   const { suppliers, customers, scope } = geometry.scale;
   if (customers === "revenue") entries.push({ id: "customers", kind: "weighted", label: `customers: share of ${symbol}${scope ? ` ${scopeWords(scope)}` : ""} revenue` });
   else if (customers === "usd") entries.push({ id: "customers", kind: "weighted", label: "customers: disclosed USD" });
   if (suppliers === "usd") entries.push({ id: "suppliers", kind: "weighted", label: "suppliers: disclosed USD" });
   else if (suppliers === "revenue") entries.push({ id: "suppliers", kind: "weighted", label: `suppliers: share of ${symbol} revenue` });
-  if (geometry.ribbons.some((ribbon) => ribbon.thickness === null)) entries.push({ id: "hairline", kind: "hairline", label: "no comparable figure" });
+  const reported = new Set(geometry.nodes.filter((node) => node.row && reportedRow(node.row)).map((node) => node.id));
+  if (geometry.ribbons.some((ribbon) => ribbon.thickness === null && !reported.has(ribbon.id))) entries.push({ id: "hairline", kind: "hairline", label: "no comparable figure" });
+  if (reported.size) entries.push({ id: "reported", kind: "reported", label: "reported" });
   return entries.length ? entries : null;
 }
 
-function LegendSwatch({ kind, desktop }: { kind: "weighted" | "hairline"; desktop: boolean }) {
+function LegendSwatch({ kind, desktop }: { kind: "weighted" | "hairline" | "reported"; desktop: boolean }) {
   const colors = useThemeColors();
-  if (!desktop) return <Text fg={colors.textMuted}>{kind === "weighted" ? "━━" : "──"}</Text>;
+  if (!desktop) return <Text fg={colors.textMuted}>{kind === "weighted" ? "━━" : kind === "reported" ? "╌╌" : "──"}</Text>;
   return <Box width={2} height={1} justifyContent="center">
-    <Box style={{ height: kind === "weighted" ? "7px" : "1px", borderRadius: kind === "weighted" ? "2px" : 0,
+    <Box style={kind === "reported" ? { height: 0, borderTop: `1px dashed ${colors.textMuted}` } : { height: kind === "weighted" ? "7px" : "1px", borderRadius: kind === "weighted" ? "2px" : 0,
       background: `linear-gradient(90deg, ${colors.textMuted}, ${colors.textDim})` }} />
   </Box>;
 }
@@ -293,7 +308,9 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
   const lines = [
     share ? `${share.value} ${share.basis}` : row.usd !== null ? dollars(row) : "No figure disclosed",
     `${roleLabel(row.role)} · ${row.fiscalYear ? `FY ${row.fiscalYear}` : row.period}`,
-    `${row.reportingEntity.ticker ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`,
+    trustTier(row) === 1
+      ? `${evidenceLabel(row)} · ${row.reportingEntity.ticker ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
+      : `${evidenceLabel(row)} · ${evidenceDate(row)}`,
   ];
   const tooltipWidth = Math.min(width - 2, Math.max(28, ...lines.map((line) => displayWidth(line) + 4), displayWidth(counterpartyLabel(row)) + 4));
   return <Box position="absolute" left={Math.max(1, Math.min(width - tooltipWidth - 1, anchor.x))} top={anchor.y} width={tooltipWidth} height={lines.length + 1}

@@ -11,6 +11,6 @@ export const supplyChainModule: PluginModule = {
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 130, height: 30 },
     tickerFollower: true, tableExport: true, headless: supplyChainHeadless }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({ id: "supply-chain-pane", paneId: "supply-chain", label: "Supply Chain",
-    description: "Disclosed suppliers, customers, partners and competitors, with reverse filing links and a flow diagram.",
-    keywords: ["supply", "supply chain", "suppliers", "customers", "concentration", "filings"], shortcut: "SPLC", shortcutAliases: ["SUPPLY"] }), headless: supplyChainHeadless }],
+    description: "Pro supply chain evidence from filings, company announcements, calls and news, with trust tiers and a free preview.",
+    keywords: ["supply", "supply chain", "suppliers", "customers", "concentration", "filings", "earnings calls", "news", "evidence", "Pro"], shortcut: "SPLC", shortcutAliases: ["SUPPLY"] }), headless: supplyChainHeadless }],
 };

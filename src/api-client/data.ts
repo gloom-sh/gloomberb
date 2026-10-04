@@ -7,7 +7,7 @@ import { companyDisclosurePath } from "./company-kpis";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
 import type { PerpBoardPayload, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery, PerpMarketPayload } from "./perps";
 import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
-import type { SupplyChainPayload } from "./supply-chain";
+import type { SupplyChainPayload, SupplyOptions } from "./supply-chain";
 import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -466,8 +466,11 @@ export class CloudDataApi {
     return this.request<{ scenarios: ExposureScenario[] }>("/cloud/exposure/scenarios");
   }
 
-  async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {
-    return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}`);
+  async getCloudSupplyChain(symbol: string, options: SupplyOptions = {}): Promise<SupplyChainPayload> {
+    const query = new URLSearchParams();
+    if (options.tiers?.length) query.set("tiers", options.tiers.join(","));
+    if (options.includeLeads) query.set("includeLeads", "1");
+    return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}${query.size ? `?${query}` : ""}`);
   }
 
   getCloudAwards(query: AwardFilter = {}, signal?: AbortSignal): Promise<AwardsPayload> {

@@ -26,6 +26,21 @@ function thickness(polygon: Element): number {
   return points.at(-1)![1] - points[0]![1];
 }
 
+test("reported and trade links are dashed hairlines while unconfirmed leads cannot draw or inflate ribbons", async () => {
+  const rows = [supplyRow("disclosed"), supplyRow("reported", { tier: 4, pctOfRevenue: 95 }),
+    supplyRow("trade", { tier: 5, usd: 999_000_000_000 }), supplyRow("rumor", { tier: 6, pctOfRevenue: 99 })];
+  const container = await render(flow(rows));
+  expect(container.querySelectorAll("svg polygon")).toHaveLength(1);
+  const dashed = [...container.querySelectorAll("svg polyline")];
+  expect(dashed).toHaveLength(16);
+  expect(dashed.every((line) => Number(line.getAttribute("stroke-width")) <= 2.4)).toBe(true);
+  expect(container.textContent).not.toContain("rumor");
+  expect(container.textContent).toContain("Reported · 2026-02-25");
+  const card = [...container.querySelectorAll('[data-gloom-role="supply-flow-node"]')].find((node) => node.textContent?.startsWith("reported"))!;
+  await act(async () => { card.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }) as unknown as Event); });
+  expect(container.querySelector('[data-gloom-role="supply-flow-tooltip"]')?.textContent).toContain("Reported · 2026-02-25");
+});
+
 test("desktop ribbons keep known dollar and same-scope revenue ratios, unknown ones are hairlines, and groups never become nodes", async () => {
   const rows = [
     supplyRow("supplier-large", { role: "supplier", pctOfRevenue: null, pctBasis: null, usd: 149_000_000, usdBasis: "disclosed" }),

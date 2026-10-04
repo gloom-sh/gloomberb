@@ -1,4 +1,4 @@
-import { act, useReducer } from "react";
+import { act, Profiler, useReducer } from "react";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
@@ -13,19 +13,22 @@ import { SupplyChainPane } from "./pane";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
+let commits = 0;
+const countCommit = () => { if (++commits > 100) throw new Error("Supply chain pane did not settle within 100 React commits"); };
 afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); });
-async function mount(width: number, height: number, tab = "table", view = "says", onNavigate: (id: string, symbol: string | undefined) => void = () => {}) {
+async function mount(width: number, height: number, tab = "table", view = "says", onNavigate: (id: string, symbol: string | undefined) => void = () => {}, tiers = "sec,company,call") {
+  commits = 0;
   supplyChainCache.attach(new MemoryPluginPersistence());
   const id = "supply-chain:test";
-  const state = createInitialState(createTestPaneConfig("/tmp/supply-chain-test", {
-    paneId: "supply-chain", instanceId: id, binding: { kind: "fixed", symbol: "FOCUS" }, settings: { tab, view },
+  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/splc-layer2a/focused", {
+    paneId: "supply-chain", instanceId: id, binding: { kind: "fixed", symbol: "FOCUS" }, settings: { tab, view, tiers },
   }));
   state.tickers.set("FOCUS", createTestTicker("FOCUS", "Focus Company"));
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
     return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="ticker-research" runtime={createTestPluginRuntime({ createPaneFromTemplate: (template, options) => onNavigate(template, options?.symbol ?? undefined) })}>
     <PaneFooterProvider>{(footer) => <Box width={width} height={height} flexDirection="column">
-      <Box height={height - 1}><SupplyChainPane paneId={id} paneType="supply-chain" width={width} height={height - 1} focused /></Box>
+      <Box height={height - 1}><Profiler id="supply-pane" onRender={countCommit}><SupplyChainPane paneId={id} paneType="supply-chain" width={width} height={height - 1} focused /></Profiler></Box>
       <PaneFooterBar footer={footer} width={width} focused />
       <PaneFooterKeys paneId={id} footer={footer} focused />
     </Box>}</PaneFooterProvider>
@@ -33,6 +36,21 @@ async function mount(width: number, height: number, tab = "table", view = "says"
   }
   await act(async () => { await tui.render(<Harness />, { width, height }); });
 }
+
+test("initial tier fallback and changing the evidence filter settle without a cached loader render loop", async () => {
+  setCloudApiFetchTransport(async () => Response.json(supplyPayload()));
+  await mount(150, 26);
+  await tui.waitForFrameToContain("customer");
+  await tui.renderFrames(5);
+  expect(commits).toBeLessThan(30);
+  await act(async () => { await tui.clickFrameText("3 selected"); });
+  await tui.waitForFrameToContain("Reported");
+  await act(async () => { await tui.clickFrameText("Reported"); });
+  await tui.emitKeypress({ name: "escape" });
+  await tui.waitForFrameToContain("4 selected");
+  await tui.renderFrames(5);
+  expect(commits).toBeLessThan(60);
+});
 
 test("preview keeps evidence-bearing rows, shows the standard upgrade, and narrow flow falls back to table", async () => {
   const data = supplyPayload({ says: [supplyRow("Known company")], access: "preview", lockedRows: 5, truncated: true, previewRowsPerRole: 3, totalRows: 6 });
@@ -43,6 +61,22 @@ test("preview keeps evidence-bearing rows, shows the standard upgrade, and narro
   expect(frame).toContain("COUNTERPARTY");
   expect(frame).toContain("Upgrade to see every relationship");
   expect(frame).not.toContain("Suppliers");
+});
+
+test("Unconfirmed opt-in separates reported leads from confirmed rows and excludes them from flow", async () => {
+  const data = supplyPayload({ says: [supplyRow("Current buyer"), supplyRow("Pending buyer", { tier: 4, leadStatus: "lead", whyUnconfirmed: "Single source, in talks" })], totalRows: 2 });
+  data.counts.says.customer = 2;
+  setCloudApiFetchTransport(async () => Response.json(data));
+  await mount(150, 26);
+  expect(await tui.waitForFrameToContain("Current buyer")).not.toContain("Pending buyer");
+  await tui.destroy();
+  await mount(150, 26, "table", "says", undefined, "sec,unconfirmed");
+  const table = await tui.waitForFrameToContain("Pending buyer");
+  expect(table).toContain("Unconfirmed (1)");
+  expect(table.indexOf("Current buyer")).toBeLessThan(table.indexOf("Unconfirmed (1)"));
+  await tui.destroy();
+  await mount(150, 26, "flow", "says", undefined, "sec,unconfirmed");
+  expect(await tui.waitForFrameToContain("Current buyer")).not.toContain("Pending buyer");
 });
 
 test("reverse table labels the percentage denominator and diagram pages a crowded supplier band", async () => {

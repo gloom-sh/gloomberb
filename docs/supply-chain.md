@@ -1,41 +1,63 @@
-# Supply chain disclosures
+# Supply chain evidence (Pro)
 
-`SPLC NVDA` (or `SUPPLY NVDA`) opens the supply chain for a ticker. With no argument it uses the focused ticker. The pane follows linked tickers like other research functions.
+`SPLC NVDA` (or `SUPPLY NVDA`) opens the supply chain for a ticker. Without an argument it uses the focused ticker. The pane follows linked tickers like other research functions. Free accounts receive three rows per role in each direction, including evidence; Pro receives the full stored dataset.
 
-The **Table** has two views. **NVDA says** reads NVIDIA's filings. **Names NVDA** reads other companies' filings that name NVIDIA. Role and direction are relative to the company in the pane title: suppliers flow in, customers flow out. A reverse percentage belongs to the company making the disclosure. For example, Cirrus Logic reporting Apple as 91% of revenue means 91% of Cirrus Logic's revenue, not Apple's. The evidence detail names the reporting company.
+The **Table** has two directions. **NVDA says** reads statements attributed to NVIDIA. **Names NVDA** reads other companies' statements and other sources naming NVIDIA. Role and direction are relative to the company in the pane title: suppliers flow in, customers flow out. A reverse percentage belongs to the reporting company. Cirrus Logic reporting Apple as 91% of revenue means 91% of Cirrus Logic's revenue, not Apple's.
 
 A strip under the view switch names the company and counts the disclosed counterparties per role; a free account sees how many of them are shown.
 
-**Share** keeps the disclosed percentage and its denominator together, in words: `of FY revenue`, `of quarterly revenue`, `of receivables`, `of cost of sales`, or the segment it is scoped to (`of Compute & Networking revenue`). A reverse share names the reporting company (`of CRUS revenue`). The bar beside it draws the percentage on a 0 to 100% scale in the role's colour. A scoped percentage is not treated as a whole-company revenue percentage; the full scope is in evidence. **Value** appears when a row discloses dollars, with derived amounts marked **≈**. Period, filing and confidence accompany each relationship; a narrow pane leaves the filing to evidence. A missing number means it was not disclosed. Confidence describes extraction and entity resolution; it is not a probability of commercial success.
+**Share** keeps the disclosed percentage and its denominator together, in words: `of FY revenue`, `of quarterly revenue`, `of receivables`, `of cost of sales`, or the segment it is scoped to (`of Compute & Networking revenue`). A reverse share names the reporting company (`of CRUS revenue`). The bar beside it draws the percentage on a 0 to 100% scale in the role's colour. A scoped percentage is not treated as a whole-company revenue percentage; the full scope is in evidence. **Value** appears when a row discloses dollars, with derived amounts marked **≈**. Evidence tier and period accompany each relationship; a wide pane also shows publisher, publication date and independent origins. A narrow pane leaves the source detail to evidence. A missing number means it was not disclosed. Confidence describes extraction and entity resolution; it is not a probability of commercial success.
 
 Customers the filer does not name are labelled **undisclosed customer** (or supplier), and geographic, channel and customer cohorts **customer group**, both in muted text so they never read as a company.
 
-Select a row and press **Enter** to open the counterparty's SPLC. **E** shows its verbatim evidence and opens the filing. **D**, **F** and **G** open that counterparty's description, financial analysis and chart. Unresolved and anonymous entities open their evidence because they have no tradable ticker. **T** opens the existing TBO pane where that function is available; search there for the company. TBO has its own coverage and remains independent of SPLC.
+The **Evidence** filter defaults to SEC, Company and Call. Add Reported to see corroborated reporting. Add Unconfirmed to see rumors and single-source leads, including reported leads that still await verification. Unconfirmed rows occupy a separate section and do not enter flow diagrams or disclosed concentrations. A source's trust tier is distinct from the relationship role: a company announcement can describe an investment without establishing a supplier relationship.
+
+| Tier | Evidence | Meaning |
+| --- | --- | --- |
+| 1 | SEC | Filing disclosure, including financial statements and filed text |
+| 2 | Company | Issuer press release, newsroom or IR announcement, including press-release exhibits |
+| 3 | Call | Management statement in an earnings call; speech transcripts are identified in evidence |
+| 4 | Reported | Reputable publisher reporting |
+| 5 | Reported (trade) | Trade publication reporting |
+| 6 | Unconfirmed | Rumor, social claim or other unverified lead |
+
+Every relationship exposes the publisher, publication date and number of independent origins. A filing, press release and call from the same issuer share one origin; syndicated copies of an announcement do not establish independent corroboration. Unconfirmed details state why confirmation is missing. Expired and rejected leads are hidden. First seen, last seen and last confirmed dates describe discovery and verification, separately from publication and fiscal period. Superseded evidence remains visible in a relationship's source history.
+
+Select a row and press **Enter** to open the counterparty's SPLC. **E** opens its evidence in the pane; **O** opens the source. **D**, **F** and **G** open that counterparty's description, financial analysis and chart. Unresolved and anonymous entities open evidence because they have no tradable ticker. **T** opens the independent TBO pane where available. Source links also work by mouse.
+
+## Evidence and quoting
+
+The evidence detail opens with share, value, period, publication date and confidence figures above the source history and quoted excerpts. It preserves the original-language quotation, any labelled English gloss, source link, date, publisher and confidence. A quoted span must match fetched source text after Unicode NFKC and whitespace normalization. Legacy filing evidence also displays its recorded match mode. Confidence describes extraction and entity resolution; it is not a probability of commercial success.
+
+Publisher articles whose quotation rights require review are **link only**. Their headline, publisher, date and source link are visible; article quotes and translated excerpts are absent from the pane, cache, screenshots and CLI output. Snippet-only material remains a lead and has no verified public quotation. Clear company releases, filings and calls can show short literal quotes. Source-native values preserve units and currency; gigawatts, unit counts, dollars and revenue shares are not interchangeable.
+
+The table keeps a disclosed percentage and denominator together: revenue, receivables, cost or purchases. A scoped percentage spells out its denominator, with the full scope in evidence. Percentages are restricted to filing disclosures. Dollars are marked **disclosed** or **approximately derived**. Missing numbers mean the source did not disclose them. Source values from calls and announcements can appear in evidence but never set disclosed ribbon widths.
 
 ## Flow
 
-**Flow** places suppliers to the left, the focus company in the middle and customers to the right. Each company is a card with its name, ticker and disclosed figure, edged in its role's colour; ribbons run from each card's edge to the focus company's edge and shade from one colour into the other. Partners, competitors and investees sit in a band underneath as ticker chips, one row per role, with cohort **Groups** listed as text beside them. Hover a card or ribbon to bring it forward and see the figure, its denominator, the period and the filing; Up/Down move the same highlight, and the selected relationship's filing and figure appear above the flow. Click a company or press Enter to open its own supply chain; an unresolved company opens evidence. More than the available space allows is grouped under **+N more**. Activating that node pages through the band without squeezing labels together. A narrow pane falls back to the table.
+**Flow** places suppliers to the left, the focus company in the middle and customers to the right. Each company is a card with its name, ticker and disclosed figure, edged in its role's colour; ribbons run from each card's edge to the focus company's edge and shade from one colour into the other. Partners, competitors and investees sit in a band underneath as ticker chips, one row per role, with cohort **Groups** listed as text beside them. Hover a card or ribbon to bring it forward and see the figure, its denominator, the period and the filing; Up/Down move the same highlight, and the selected relationship's filing and figure appear above the flow. Click a company or press Enter to open its own supply chain; an unresolved company opens evidence. More than the available space allows is grouped under **+N more**. Activating that node pages through the band without squeezing labels together. A narrow pane falls back to the table. The same Evidence filter governs both views.
 
-Customer ribbon widths use revenue percentages disclosed by the focus company for the same fiscal period and scope. The largest compatible group sets the scale, preferring whole-company revenue on a tie. Otherwise a column uses disclosed or derived dollars. A legend under the flow says what sets each column's widths. Known positive values appear first in descending order and are proportional, with a fixed scale across pages. Relationships with no comparable figure are hairlines. Reverse percentages and percentages with a different period, scope or denominator remain hairlines when revenue percentages set the scale. The columns scale independently. They are not an accounting identity, and no percentages are summed. One most recent disclosure per counterparty and role is drawn; the table retains all underlying evidence. SVG draws the desktop/web diagram; the terminal uses braille, with native graphics when supported.
+Customer ribbon widths use tier-1 revenue percentages disclosed by the focus company for the same fiscal period and scope. The largest compatible group sets the scale, preferring whole-company revenue on a tie. Otherwise a column uses tier-1 disclosed or derived dollars. A legend under the flow says what sets each column's widths. Known positive values appear first in descending order and are proportional, with a fixed scale across pages. Relationships with no comparable figure and company/call relationships are hairlines. Reported links are dashed. Unconfirmed leads have no node or ribbon. Reverse percentages and percentages with a different period, scope or denominator remain hairlines when revenue percentages set the scale. The columns scale independently. They are not an accounting identity, and no percentages are summed. The strongest eligible evidence per counterparty and role is drawn, with the newest disclosure winning within a tier; the table retains all underlying evidence. SVG draws the desktop/web diagram; the terminal uses braille, with native graphics when supported.
 
-## Methodology and coverage
+## Coverage and limitations
 
-Phase 1 reads US filings. Counterparties can be listed or private companies anywhere, or government entities. Country, exchange and identifiers remain separate from names. Unresolved names are retained. Anonymous customer concentrations remain explicitly undisclosed and are never matched to a company. Geographic, channel and customer cohorts are labeled **customer group** in the table and identified as aggregate concentrations in evidence. These groups never become company nodes or ribbons in Flow. Individually anonymous customers can appear in Flow.
+The schema supports listed and private companies and government entities globally, with separate country, exchange, identifiers and multilingual aliases. Ingestion follows available filings, issuer announcements, news text and management calls. EDGAR exhibits are a US source; issuer pages, releases and calls can cover companies anywhere. This is source-dependent coverage, not a claim that every exchange or every issuer is complete. The collection status and the dated evidence determine what is available.
 
-Structured customer concentration disclosures and named relationships from filing text are separate source types. A text-extracted edge is accepted only when its evidence quote matches a literal substring of the filing after the requested text normalization. The validator records whether the original text matched exactly, matched with whitespace removed, or required Unicode NFKC normalization plus removal of all whitespace. The evidence detail shows that match mode and preserves the original quote. This validates evidence provenance; it does not alone prove that the relationship role was interpreted correctly. Item 1, risk factors, management discussion and concentration notes can have different reporting dates and scopes.
+Unresolved names remain unresolved. Anonymous customer concentrations are never matched to a named company. Geographic, channel and customer cohorts are labelled **customer group** and never become company nodes or ribbons. An individually anonymous customer may appear in Flow. Annual reporting, disclosure thresholds, source availability and extraction throughput leave gaps. Absence is not proof of no relationship.
 
-Reverse relationships are queries over the original disclosure, not additional stored facts. The direction can expose dependencies that the focus company does not name in its own filings. Annual reporting, concentration thresholds and varying disclosure practices leave substantial gaps. Disclosed in filings only. Absence is not proof of no relationship.
+Verification can promote a lead when stronger evidence arrives. Conflicting values supersede rather than average: an earlier rumor cannot override a later filed amount. Unverified leads expire after 90 days; company/call evidence generally ages after 12 months and reporting after six months. Filing revisions follow the newer disclosure. Cached results are separated by account, entitlement and evidence selection, refreshed hourly and marked stale when refresh fails.
 
-Free accounts receive the top three rows per role in each direction, including evidence. Pro receives all stored rows. This phase proposes that preview policy using the existing upgrade control. Public filings can be old; the pane shows the period and filing date rather than suggesting live coverage. Cached results are separated by account and entitlement, refreshed hourly, and marked stale when a refresh fails.
-
-The schema is ready for additional jurisdictions and source languages. This release does not ingest non-US filings, calls, news, customs records or TBO data.
-
-## CLI
+## CLI and REST
 
 ```sh
-gloomberb fn SPLC AAPL --json
+gloomberb fn SPLC NVDA --json
+gloomberb fn SPLC NVDA --tiers sec,company,call,reported --json
+gloomberb fn SPLC NVDA --tiers unconfirmed --json
 gloomberb shot SPLC NVDA --tab table --view names --width 1280 --height 540 --output supply-table.png
-gloomberb shot SPLC NVDA --tab flow --width 720 --height 360 --output supply-flow.png
+gloomberb shot SPLC NVDA --tab flow --tiers sec,company,call,reported --width 720 --height 360 --output supply-flow.png
+gloomberb shot SPLC NVDA --evidence --width 1280 --height 540 --output supply-evidence.png
 ```
 
-The report contains both directions, full precision values, evidence quotes and filing links. Screenshots freeze the same disclosure payload they verify and need no price feed.
+The report preserves both directions, separate Unconfirmed sections, full-precision values, claim type, corroboration, lifecycle dates, evidence history and source links. Restricted quotes and glosses are null. Screenshots freeze and verify the same filtered payload and need no price feed.
+
+The corresponding endpoint is `GET /cloud/supply-chain/:symbol?tiers=sec,company,call,reported`. Unconfirmed leads require `tiers=unconfirmed&includeLeads=1`; the app and CLI set the latter when Unconfirmed is selected. Omitting tiers defaults to SEC, Company and Call. Account preview limits remain enforced by the server.

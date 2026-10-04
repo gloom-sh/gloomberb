@@ -1,6 +1,7 @@
 import type { SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
 import { SERIES_COLORS } from "../../../time-series/resolve";
 import { revenueAmount } from "../revenue-breakdown/model";
+import { activeRelationship, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, trustTier } from "./trust";
 
 /** One colour per role from the shared series palette, the same in the table, the flow and the evidence. */
 export const ROLE_COLORS: Record<SupplyRole, string> = {
@@ -40,7 +41,7 @@ export function scopeWords(scope: string): string {
  * of its revenue reads "of CRUS revenue", never as the focus company's.
  */
 export function shareParts(row: SupplyRow, focusId?: string | null): { value: string; basis: string } | null {
-  if (row.pctOfRevenue === null || row.pctBasis === null) return null;
+  if (row.pctOfRevenue === null || row.pctBasis === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row)) return null;
   const reporter = focusId && row.reportingEntity.id !== focusId ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
   const scope = row.pctScope ? scopeWords(row.pctScope) : "";
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
@@ -59,26 +60,28 @@ export function counterpartyName(row: SupplyRow): string {
   return member ? `${member.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s*\(undisclosed\)/gi, "")} (undisclosed)` : name;
 }
 export const roleLabel = (role: SupplyRole) => role[0]!.toUpperCase() + role.slice(1);
-export const percentage = (row: SupplyRow) => row.pctOfRevenue === null ? "--" : `${Number(row.pctOfRevenue.toFixed(2))}% ${row.pctScope ? "scoped " : ""}${row.pctBasis ?? ""}`;
+export const percentage = (row: SupplyRow) => row.pctOfRevenue === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row) ? "--" : `${Number(row.pctOfRevenue.toFixed(2))}% ${row.pctScope ? "scoped " : ""}${row.pctBasis ?? ""}`;
 export const dollars = (row: SupplyRow) => row.usd === null ? "--" : `${row.usdBasis === "derived" ? "≈ " : ""}$${revenueAmount(row.usd)} ${row.usdBasis}`;
-export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "web" ? "Web" : "Disclosure";
+export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "press_release" ? "Release" : row.sourceKind === "web" ? "Web" : "Disclosure";
 export function cellText(row: SupplyRow, column: string): string {
   return column === "name" ? counterpartyName(row) : column === "ticker" ? row.counterparty.ticker ?? "--"
     : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
     : column === "pct" ? percentage(row) : column === "usd" ? dollars(row) : column === "fy" ? row.fiscalYear ?? row.period
-    : column === "source" ? sourceLabel(row) : column === "filed" ? row.filedDate ?? "--" : `${Math.round(row.confidence * 100)}%`;
+    : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name
+    : column === "corroboration" ? corroborationLabel(row)
+    : column === "evidence" ? evidenceLabel(row) : column === "source" ? sourceLabel(row) : column === "filed" ? evidenceDate(row) : `${Math.round(row.confidence * 100)}%`;
 }
 export type SupplySort = { column: string; direction: "asc" | "desc" };
 export function sortRows(rows: SupplyRow[], sort: SupplySort): SupplyRow[] {
   const value = (row: SupplyRow): string | number | null => sort.column === "pct" ? row.pctOfRevenue : sort.column === "usd" ? row.usd
-    : sort.column === "confidence" ? row.confidence : cellText(row, sort.column).toLowerCase();
+    : sort.column === "confidence" ? row.confidence : sort.column === "evidence" ? trustTier(row) : cellText(row, sort.column).toLowerCase();
   return [...rows].sort((a, b) => { const x = value(a), y = value(b); return x === null || y === null ? x === y ? 0 : x === null ? 1 : -1
     : x === y ? a.id.localeCompare(b.id) : (x < y ? -1 : 1) * (sort.direction === "asc" ? 1 : -1); });
 }
 /** Cohort concentrations beside the flow: never nodes or ribbons, one latest disclosure per group and role. */
 export function flowGroups(rows: readonly SupplyRow[]): SupplyRow[] {
   const seen = new Set<string>();
-  return [...rows].filter((row) => row.counterparty.aggregate).sort((a, b) => b.asOf.localeCompare(a.asOf) || (b.pctOfRevenue ?? -1) - (a.pctOfRevenue ?? -1))
+  return [...rows].filter((row) => row.counterparty.aggregate && !isUnconfirmed(row) && activeRelationship(row)).sort((a, b) => b.asOf.localeCompare(a.asOf) || (b.pctOfRevenue ?? -1) - (a.pctOfRevenue ?? -1))
     .filter((row) => { const key = `${row.counterparty.id}:${row.role}`; if (seen.has(key)) return false; seen.add(key); return true; })
     .sort((a, b) => (b.pctOfRevenue ?? -1) - (a.pctOfRevenue ?? -1));
 }
@@ -90,8 +93,8 @@ const revenueKey = (row: SupplyRow) => JSON.stringify([row.reportingEntity.id, r
 export function flowBands(rows: SupplyRow[], limit: number, pages: Partial<Record<FlowBand, number>> = {}, focusId?: string): Record<FlowBand, FlowNode[]> {
   const grouped: Record<FlowBand, SupplyRow[]> = { suppliers: [], customers: [], related: [] };
   const seen = new Set<string>();
-  for (const row of [...rows].sort((a, b) => b.asOf.localeCompare(a.asOf) || Number(b.pctOfRevenue !== null || b.usd !== null) - Number(a.pctOfRevenue !== null || a.usd !== null) || b.confidence - a.confidence)) {
-    if (row.counterparty.aggregate) continue;
+  for (const row of [...rows].sort((a, b) => trustTier(a) - trustTier(b) || b.asOf.localeCompare(a.asOf) || Number(b.pctOfRevenue !== null || b.usd !== null) - Number(a.pctOfRevenue !== null || a.usd !== null) || b.confidence - a.confidence)) {
+    if (row.counterparty.aggregate || isUnconfirmed(row) || !activeRelationship(row)) continue;
     const key = `${row.counterparty.id}:${row.role}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -102,13 +105,13 @@ export function flowBands(rows: SupplyRow[], limit: number, pages: Partial<Recor
     // One reporter, period and revenue scope form a compatible percentage scale.
     // Prefer the largest compatible group, then whole-company revenue on a tie.
     const revenueGroups = new Map<string, SupplyRow[]>();
-    for (const row of values) if (band === "customers" && row.pctBasis === "revenue" && (row.pctOfRevenue ?? 0) > 0 && (!focusId || row.reportingEntity.id === focusId)) {
+    for (const row of values) if (trustTier(row) === 1 && band === "customers" && row.pctBasis === "revenue" && (row.pctOfRevenue ?? 0) > 0 && (!focusId || row.reportingEntity.id === focusId)) {
       const key = revenueKey(row);
       revenueGroups.set(key, [...(revenueGroups.get(key) ?? []), row]);
     }
     const revenueGroup = [...revenueGroups.values()].sort((a, b) => b.length - a.length || Number(a[0]!.pctScope !== null) - Number(b[0]!.pctScope !== null))[0];
     const scaleKey = revenueGroup ? revenueKey(revenueGroup[0]!) : null;
-    const value = (row: SupplyRow) => scaleKey === null ? row.usd ?? 0
+    const value = (row: SupplyRow) => trustTier(row) !== 1 ? 0 : scaleKey === null ? row.usd ?? 0
       : row.pctBasis === "revenue" && revenueKey(row) === scaleKey ? row.pctOfRevenue ?? 0 : 0;
     // Use the entire band: paging must not change an existing ribbon's width.
     const max = Math.max(0, ...values.map(value));
