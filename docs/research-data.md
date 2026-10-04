@@ -884,3 +884,7 @@ licensed sources behind the platform cannot support them honestly:
 - Supply chain and M&A databases: no free structured source.
 - Level 2 order book: the market data plan supplies trades and NBBO only; `TAS`
   and `QR` show what is available.
+
+## Power and grid capacity (POWER, Pro)
+
+POWER combines public interconnection queue snapshots, completion and withdrawal cohorts, large-load requests and approvals, utility exposure, and generation context. Every record preserves units, source dates, observation time, raw evidence and primary links. Free accounts see a limited preview. Historical benchmarks are separate from current queues; rates exclude summary and capacity-segment rows. See [Power and grid capacity](power-grid.md) for regional coverage, history semantics, company links and CLI/REST examples.
