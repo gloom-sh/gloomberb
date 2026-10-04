@@ -62,20 +62,34 @@ export function counterpartyName(row: SupplyRow): string {
 export const roleLabel = (role: SupplyRole) => role[0]!.toUpperCase() + role.slice(1);
 export const percentage = (row: SupplyRow) => row.pctOfRevenue === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row) ? "--" : `${Number(row.pctOfRevenue.toFixed(2))}% ${row.pctScope ? "scoped " : ""}${row.pctBasis ?? ""}`;
 export const dollars = (row: SupplyRow) => row.usd === null ? "--" : `${row.usdBasis === "derived" ? "≈ " : ""}$${revenueAmount(row.usd)} ${row.usdBasis}`;
+const scaleLabel = (scale: number) => scale === 1 ? "" : scale === 1_000 ? " thousand" : scale === 1_000_000 ? " million" : scale === 1_000_000_000 ? " billion" : ` ×${scale.toLocaleString("en-US")}`;
+/** Retain the original currency and disclosed scale; never imply an FX conversion. */
+export const nativeValue = (row: SupplyRow) => row.nativeAmount == null || !row.nativeCurrency || !row.nativeScale ? null
+  : `${row.nativeAmount.toLocaleString("en-US", { maximumFractionDigits: 12 })} ${row.nativeCurrency}${scaleLabel(row.nativeScale)}`;
+export const disclosedValue = (row: SupplyRow) => nativeValue(row) ?? dollars(row);
+const QUOTE_LANGUAGES: Record<string, string> = { ko: "Korean", ja: "Japanese", zh: "Chinese", "zh-TW": "Chinese", "zh-Hant": "Chinese", "zh-Hans": "Chinese", en: "English" };
+export const quoteLanguageLabel = (row: Pick<SupplyRow, "quoteLanguage">) => QUOTE_LANGUAGES[row.quoteLanguage ?? ""] ?? row.quoteLanguage ?? "original language";
 export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "press_release" ? "Release" : row.sourceKind === "web" ? "Web" : "Disclosure";
 export function cellText(row: SupplyRow, column: string): string {
   return column === "name" ? counterpartyName(row) : column === "ticker" ? row.counterparty.ticker ?? "--"
     : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
-    : column === "pct" ? percentage(row) : column === "usd" ? dollars(row) : column === "fy" ? row.fiscalYear ?? row.period
+    : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? row.fiscalYear ?? row.period
     : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name
     : column === "corroboration" ? corroborationLabel(row)
     : column === "evidence" ? evidenceLabel(row) : column === "source" ? sourceLabel(row) : column === "filed" ? evidenceDate(row) : `${Math.round(row.confidence * 100)}%`;
 }
 export type SupplySort = { column: string; direction: "asc" | "desc" };
 export function sortRows(rows: SupplyRow[], sort: SupplySort): SupplyRow[] {
-  const value = (row: SupplyRow): string | number | null => sort.column === "pct" ? row.pctOfRevenue : sort.column === "usd" ? row.usd
+  const value = (row: SupplyRow): string | number | null => sort.column === "pct" ? row.pctOfRevenue : sort.column === "usd" ? row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd
     : sort.column === "confidence" ? row.confidence : sort.column === "evidence" ? trustTier(row) : cellText(row, sort.column).toLowerCase();
-  return [...rows].sort((a, b) => { const x = value(a), y = value(b); return x === null || y === null ? x === y ? 0 : x === null ? 1 : -1
+  return [...rows].sort((a, b) => { const x = value(a), y = value(b);
+    // Group currencies before comparing amounts. JPY and KRW have no common numeric scale.
+    if (sort.column === "usd" && x !== null && y !== null) {
+      const currency = (row: SupplyRow) => row.nativeAmount != null ? row.nativeCurrency! : "USD";
+      const difference = currency(a).localeCompare(currency(b));
+      if (difference) return difference;
+    }
+    return x === null || y === null ? x === y ? 0 : x === null ? 1 : -1
     : x === y ? a.id.localeCompare(b.id) : (x < y ? -1 : 1) * (sort.direction === "asc" ? 1 : -1); });
 }
 /** Cohort concentrations beside the flow: never nodes or ribbons, one latest disclosure per group and role. */

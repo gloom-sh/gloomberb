@@ -9,6 +9,7 @@ import {
   usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type SectionedRow, type StatItem,
 } from "../../../components";
 import { RatioBar } from "../../../components/ui/ratio-bar";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -24,7 +25,7 @@ import { cachedSupplyChain, loadSupplyChain, SUPPLY_UNAVAILABLE, validateSupplyC
 import { useSupplyEvidence } from "./evidence";
 import { SupplyFlow } from "./flow";
 import {
-  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, dollars, percentage, ROLE_COLORS, roleLabel,
+  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, nativeValue, percentage, ROLE_COLORS, roleLabel,
   shareParts, sortRows, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
@@ -39,17 +40,19 @@ const BAR_CELLS = 8;
 /**
  * A narrow pane folds the ticker into the name and leaves the filing to the
  * evidence view before anything scrolls sideways. Value shows only when some
- * row discloses dollars.
+ * row discloses a value, retaining its original currency and units.
  */
-function tableColumns(width: number, desktop: boolean, locked: boolean, hasValue: boolean): DataTableColumn[] {
+function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null): DataTableColumn[] {
   const wide = width >= 150, medium = width >= 110;
-  return [
-    { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" },
+  const name: DataTableColumn = { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" };
+  const share: DataTableColumn = { id: "pct", label: "Share", width: wide ? 34 : medium ? 30 : 26, align: "left" };
+  const columns: DataTableColumn[] = [
+    name,
     { id: "evidence", label: "Evidence", width: 12, align: "left" },
     ...(medium ? [{ id: "ticker", label: "Ticker", width: 8, align: "left" as const }] : []),
     { id: "role", label: "Role", width: 11, align: "left" },
-    { id: "pct", label: "Share", width: wide ? 34 : medium ? 30 : 26, align: "left" },
-    ...(hasValue ? [{ id: "usd", label: "Value", width: medium ? 10 : 8, align: "right" as const }] : []),
+    share,
+    ...(valueWidth !== null ? [{ id: "usd", label: "Value", width: Math.max(medium ? 10 : 8, valueWidth), align: "right" as const }] : []),
     { id: "fy", label: "Period", width: medium ? 9 : 7, align: "left" },
     ...(wide ? [
       { id: "filed", label: "Published", width: 10, align: "left" as const },
@@ -57,6 +60,13 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, hasValue
       { id: "corroboration", label: "Origins", width: 8, align: "right" as const },
     ] : []),
   ];
+  // Preserve trust labels, native units and final columns before expanding the share and name.
+  // The table ignores its last trailing gutter when deciding whether it fits.
+  if (valueWidth !== null) {
+    share.width = Math.max(16, share.width - Math.max(0, getTableWidth(columns) - width - 1));
+    name.width = Math.max(locked && !desktop ? 34 : 18, name.width - Math.max(0, getTableWidth(columns) - width - 1));
+  }
+  return columns;
 }
 
 /** Company, then disclosed counterparties per role: the strip that heads both tabs. */
@@ -164,7 +174,9 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     ...(savedTab === "flow" && tooSmall ? ["Flow needs a wider pane. Showing the table."] : []),
   ] });
   const focusId = data?.entity?.id;
-  const columns = tableColumns(width, desktop, locked > 0, rows.some((row) => row.usd !== null));
+  const values = rows.filter((row) => nativeValue(row) !== null || row.usd !== null);
+  const valueWidth = values.length ? Math.min(28, Math.max(...values.map((row) => displayWidth(disclosedValue(row).replace(/ (disclosed|derived)$/, ""))))) : null;
+  const columns = tableColumns(width, desktop, locked > 0, valueWidth);
   const renderCell = (entry: SectionedRow<Item>, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (!isSectionedItemRow(entry)) return { text: "" };
     const item = entry.item;
@@ -204,7 +216,8 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
       </Box> };
       case "pct": return { text: percentage(row) === "--" ? "" : `${shareParts(row, focusId)?.value ?? ""} ${shareParts(row, focusId)?.basis ?? ""}`.trim(), value: row.pctOfRevenue,
         content: <ShareCell row={row} focusId={focusId} width={column.width} selected={state.selected} /> };
-      case "usd": return row.usd === null ? { text: "", value: null } : { text: dollars(row).replace(/ (disclosed|derived)$/, ""), value: row.usd, color: colors.text };
+      case "usd": return nativeValue(row) === null && row.usd === null ? { text: "", value: null }
+        : { text: disclosedValue(row).replace(/ (disclosed|derived)$/, ""), value: row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd, color: colors.text };
       case "fy": return { text: row.fiscalYear ? `FY${row.fiscalYear}` : row.period, color: colors.textDim };
       default: return { text: cellText(row, column.id) };
     }
@@ -225,7 +238,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const flowFigures = bodyHeight < 26 ? figures.slice(0, flowFigureColumns) : figures;
   const selectedShare = selected ? shareParts(selected, focusId) : null;
   const flowMeta = selected ? `${selected.reportingEntity.ticker ?? selected.reportingEntity.name} ${evidenceLabel(selected)} · ${selectedShare ? `${selectedShare.value} ${selectedShare.basis}`
-    : selected.usd !== null ? dollars(selected) : `${roleLabel(selected.role)}, no figure disclosed`}` : undefined;
+    : nativeValue(selected) !== null || selected.usd !== null ? disclosedValue(selected) : `${roleLabel(selected.role)}, no figure disclosed`}` : undefined;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PaneStatusBody loading={!data && resource.loading} error={!data && resource.error !== SUPPLY_UNAVAILABLE ? resource.error : null}

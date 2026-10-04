@@ -897,6 +897,12 @@ needs 20 windows. The hit rate sits beside its closed-trade count; with fewer
 than ten closed trades it says little. Presets use states (`>`, `<`), so a test that begins inside a
 regime is invested from the first fill; `crosses` waits for a fresh signal.
 
+## Supply chain evidence (SPLC, Pro)
+
+SPLC shows suppliers, customers and related entities supported by filings, company announcements, earnings calls and sourced news in Table and Flow views, including reverse disclosures from other companies. Evidence tiers distinguish primary disclosures, reporting and opt-in unconfirmed leads; unconfirmed leads stay outside Flow and disclosed concentrations. Free accounts see three rows per role in each direction with evidence; Pro sees every stored relationship. Permitted original-language quotes, labelled English machine translations, native currency and scale, fiscal periods and source links remain attached to the evidence. Restricted publisher articles expose links without quotes or translated excerpts. See [supply chain methodology](supply-chain.md).
+
+Filing coverage is jurisdiction-dependent: US filings, an official Korean API adapter, a Japanese adapter disabled until an API key is available, and Taiwanese company identities from official open data. Taiwan annual-report ingestion remains disabled pending an allowed official API source. Global filing ingestion defaults off; issuer announcements, calls and news retain their separate source coverage. Anonymous customer concentrations stay anonymous; absence of a disclosed relationship does not establish its absence in commerce.
+
 ## Known coverage gaps
 
 These Bloomberg functions have no Gloomberb pane yet because the free or

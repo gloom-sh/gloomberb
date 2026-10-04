@@ -114,3 +114,54 @@ test("evidence preserves the reporting company and scope, then Enter drills into
   await tui.emitKeypress({ name: "return" });
   expect(opened).toEqual([["supply-chain-pane", "2330:TWSE"]]);
 });
+
+
+test("narrow evidence wraps original quotes and glosses and scrolls to their ends", async () => {
+  const row = supplyRow("Korean disclosure", { quoteLanguage: "ko", pctOfRevenue: null, pctBasis: null,
+    quote: "2025년 당사의 주요 매출처는 Alphabet, Apple, Deutsche Telekom, Hong Kong Techtronics, Supreme Electronics 등(알파벳순) 입니다. 당사의 주요 5대 매출처에 대한 매출비중은 전체 매출액 대비 약 15% 수준입니다.",
+    quoteGloss: "Samsung's principal customers include Alphabet, Apple, Deutsche Telekom, Hong Kong Techtronics and Supreme Electronics. Together they represented approximately 15% of total revenue." });
+  setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [row] })));
+  await mount(80, 20);
+  await tui.waitForFrameToContain("Korean disclosure");
+  await tui.emitKeypress({ name: "e" });
+  await tui.waitForFrameToContain("Original quote");
+  await tui.emitKeypress({ name: "end" });
+  const frame = await tui.waitForFrameToContain(`Open ${row.form}`);
+  expect(frame).toContain("15% 수준입니다.");
+  expect(frame).toContain("15% of total revenue.");
+  expect(frame).toContain("English gloss · machine translation");
+});
+
+
+test("evidence preserves the reporting company and scope, then Enter drills into the selected counterparty", async () => {
+  const row = supplyRow("counterparty", { counterparty: { ...entity("counterparty"), ticker: "2330", exchange: "TWSE" }, pctScope: "Business segments: Compute and networking",
+    nativeAmount: 315_813, nativeCurrency: "JPY", nativeScale: 1_000_000, quoteLanguage: "ja", quote: "販売高には、当該顧客と同一の企業集団に属する顧客に対する販売高を含めております。",
+    quoteGloss: "Sales include customers in the same corporate group.", entityScope: "group" });
+  setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [row] })));
+  const opened: Array<[string, string | undefined]> = [];
+  for (const width of [90, 160]) {
+    await mount(width, 24);
+    const table = await tui.waitForFrameToContain("315,813 JPY million");
+    expect(table).toContain("FY2026");
+    expect(table).toContain("22%");
+    if (width === 160) expect(table).toContain("ORIGINS");
+    await tui.destroy();
+  }
+  await mount(120, 30, "table", "says", (template, symbol) => opened.push([template, symbol]));
+  await tui.waitForFrameToContain("counterparty");
+  await tui.emitKeypress({ name: "e" });
+  const evidence = await tui.waitForFrameToContain("Percentage scope");
+  expect(evidence).toContain("Business segments: Compute and networking");
+  expect(evidence).toContain("Reporting company");
+  expect(evidence).toContain("Metric scope");
+  expect(evidence).toContain("Corporate group");
+  expect(evidence).toContain(row.quote);
+  expect(evidence).toContain("315,813 JPY million");
+  expect(evidence).toContain("Original quote · Japanese");
+  expect(evidence).toContain("English gloss · machine translation");
+  expect(evidence).toContain(row.quoteGloss!);
+  await tui.emitKeypress({ name: "escape" });
+  await tui.waitForFrameToContain("COUNTERPARTY");
+  await tui.emitKeypress({ name: "return" });
+  expect(opened).toEqual([["supply-chain-pane", "2330:TWSE"]]);
+});

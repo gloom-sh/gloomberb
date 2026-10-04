@@ -48,6 +48,12 @@ export interface SupplyRow {
   pctBasis: "revenue" | "receivables" | "cost" | "purchases" | null;
   usd: number | null;
   usdBasis: "disclosed" | "derived" | null;
+  /** Amount in the filing's disclosed units; multiply by nativeScale for currency units. */
+  nativeAmount?: number | null;
+  nativeCurrency?: string | null;
+  nativeScale?: number | null;
+  jurisdiction?: string | null;
+  entityScope?: "entity" | "group" | "anonymous" | "aggregate" | null;
   period: string;
   fiscalYear: string | null;
   sourceKind: "xbrl" | "filing_text" | "call" | "news" | "web" | "import" | "press_release";
@@ -57,6 +63,10 @@ export interface SupplyRow {
   confidence: number;
   quote: string;
   quoteLanguage: string | null;
+  /** English machine translation, separate from the validated original-language quote. */
+  quoteGloss?: string | null;
+  sectionRef?: string | null;
+  sourceAttribution?: string | null;
   quoteMatchMode: "exact" | "whitespace" | "nfkc_whitespace" | null;
   filingUrl: string;
   accession: string | null;

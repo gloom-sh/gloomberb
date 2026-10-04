@@ -9,7 +9,7 @@ import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
-import { counterpartyKind, counterpartyLabel, dollars, roleLabel, ROLE_COLORS, scopeWords, shareParts, type FlowBand } from "./model";
+import { counterpartyKind, counterpartyLabel, disclosedValue, dollars, nativeValue, roleLabel, ROLE_COLORS, scopeWords, shareParts, type FlowBand } from "./model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 import { evidenceDate, evidenceLabel, trustTier } from "./trust";
 
@@ -33,7 +33,7 @@ function nodeMetric(node: PositionedNode, focusId?: string): string {
   if (node.weight !== null && node.weightBasis === "usd") return dollars(row);
   const share = shareParts(row, focusId);
   if (share) return `${share.value} ${share.basis}`;
-  if (row.usd !== null) return dollars(row);
+  if (nativeValue(row) !== null || row.usd !== null) return disclosedValue(row);
   // With no figure, the card says where the relationship is disclosed.
   const reporter = focusId && row.reportingEntity.id !== focusId ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
   return `${evidenceLabel(row)} · ${reporter}${row.form ?? "filing"}${row.fiscalYear ? ` · FY${row.fiscalYear}` : ""}`;
@@ -306,7 +306,7 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
   const row = node.row!;
   const share = shareParts(row, focusId);
   const lines = [
-    share ? `${share.value} ${share.basis}` : row.usd !== null ? dollars(row) : "No figure disclosed",
+    share ? `${share.value} ${share.basis}` : nativeValue(row) !== null || row.usd !== null ? disclosedValue(row) : "No figure disclosed",
     `${roleLabel(row.role)} · ${row.fiscalYear ? `FY ${row.fiscalYear}` : row.period}`,
     trustTier(row) === 1
       ? `${evidenceLabel(row)} · ${row.reportingEntity.ticker ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`

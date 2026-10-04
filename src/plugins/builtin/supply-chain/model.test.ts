@@ -3,7 +3,7 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache, validateSupplyChain } from "./client";
-import { counterpartyLabel, counterpartyName, flowBands, percentage, shareParts, sortRows } from "./model";
+import { counterpartyLabel, counterpartyName, disclosedValue, flowBands, percentage, shareParts, sortRows } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 
 afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); });
@@ -33,6 +33,21 @@ test("cache partitions accounts and entitlements, preserves data on outage, refu
   code = 200;
   response = supplyPayload({ says: [], names: [], totalRows: 0, status: "unavailable" });
   expect((await loadSupplyChain("FOCUS", "alice:full", true)).payload.says).toHaveLength(0);
+});
+
+test("native amounts retain their disclosed currency and scale without cross-currency comparisons", () => {
+  const yen = supplyRow("yen", { nativeAmount: 368_079, nativeCurrency: "JPY", nativeScale: 1_000_000, jurisdiction: "JP", quoteLanguage: "ja", quoteGloss: "Samsung Electronics represented 15.1% of revenue." });
+  expect(disclosedValue(validateSupplyChain(supplyPayload({ says: [yen] })).says[0]!)).toBe("368,079 JPY million");
+  const plainYen = supplyRow("plain-yen", { nativeAmount: 400_000_000_000, nativeCurrency: "JPY", nativeScale: 1 });
+  const won = supplyRow("won", { nativeAmount: 1, nativeCurrency: "KRW", nativeScale: 1_000 });
+  const usd = supplyRow("usd", { usd: 5_000_000, usdBasis: "disclosed" });
+  expect(sortRows([won, yen, plainYen, usd], { column: "usd", direction: "desc" }).map((row) => row.id)).toEqual(["plain-yen", "yen", "won", "usd"]);
+  expect(disclosedValue(supplyRow("zero", { nativeAmount: 0, nativeCurrency: "TWD", nativeScale: 1_000 }))).toBe("0 TWD thousand");
+  expect(flowBands([supplyRow("native-supplier", { ...yen, role: "supplier", pctOfRevenue: null, pctBasis: null })], 6).suppliers[0]?.weight).toBeNull();
+  for (const fields of [{ nativeCurrency: null }, { nativeCurrency: "yen" }, { nativeScale: 0 }, { nativeScale: Number.POSITIVE_INFINITY }, { nativeAmount: -1 }, { nativeAmount: 1e308, nativeScale: 1e308 }, { jurisdiction: "Japan" }, { quoteGloss: 42 }, { entityScope: "invented" }]) {
+    expect(() => validateSupplyChain(supplyPayload({ says: [{ ...yen, ...fields } as typeof yen] }))).toThrow("unreadable");
+  }
+  expect(disclosedValue(validateSupplyChain(supplyPayload()).says[0]!)).toBe("--");
 });
 
 test("missing route has an unavailable state, other request errors stay actionable", async () => {

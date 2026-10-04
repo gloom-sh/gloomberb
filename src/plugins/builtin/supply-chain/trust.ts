@@ -1,7 +1,7 @@
 import type { SupplyEvidenceItem, SupplyOptions, SupplyRow, SupplyTier, SupplyTierFilter } from "../../../api-client/supply-chain";
 
 export const TIER_OPTIONS: { value: SupplyTierFilter; label: string }[] = [
-  { value: "sec", label: "SEC" }, { value: "company", label: "Company" }, { value: "call", label: "Call" },
+  { value: "sec", label: "Filings" }, { value: "company", label: "Company" }, { value: "call", label: "Call" },
   { value: "reported", label: "Reported" }, { value: "unconfirmed", label: "Unconfirmed" },
 ];
 const DEFAULT_TIERS: SupplyTierFilter[] = ["sec", "company", "call"];
@@ -17,7 +17,7 @@ export function supplyOptions(tiers: unknown = DEFAULT_TIERS): Required<SupplyOp
 export const trustTier = (row: SupplyRow): SupplyTier => row.tier ?? (row.sourceKind === "xbrl" || row.sourceKind === "filing_text" ? 1
   : row.sourceKind === "press_release" ? 2 : row.sourceKind === "call" ? 3 : row.sourceKind === "news" ? 4 : 6);
 export const isUnconfirmed = (row: SupplyRow) => row.leadStatus === "lead" || row.claimType === "rumored" || trustTier(row) === 6;
-export const tierLabel = (tier: SupplyTier) => tier === 1 ? "SEC" : tier === 2 ? "Company" : tier === 3 ? "Call" : tier === 5 ? "Reported (trade)" : tier === 4 ? "Reported" : "Unconfirmed";
+export const tierLabel = (tier: SupplyTier) => tier === 1 ? "Filing" : tier === 2 ? "Company" : tier === 3 ? "Call" : tier === 5 ? "Reported (trade)" : tier === 4 ? "Reported" : "Unconfirmed";
 export const evidenceLabel = (row: SupplyRow) => isUnconfirmed(row) ? "Unconfirmed" : tierLabel(trustTier(row));
 export const activeRelationship = (row: SupplyRow) => row.leadStatus !== "rejected" && row.leadStatus !== "stale";
 export function matchesSupplyOptions(row: SupplyRow, options: Required<SupplyOptions>): boolean {
