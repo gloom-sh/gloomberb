@@ -65,7 +65,7 @@ test("preview keeps evidence-bearing rows, shows the standard upgrade, and narro
   expect(frame).not.toContain("Suppliers");
   await tui.destroy();
   data.says[0] = supplyRow("Known company", { nativeAmount: 315_813, nativeCurrency: "JPY", nativeScale: 1_000_000 });
-  await mount(90, 20);
+  await mount(88, 20);
   const native = await tui.waitForFrameToContain("315,813 JPY million");
   expect(native).toContain("FY2026");
   expect(native).toContain("Upgrade to Pro");
@@ -131,7 +131,7 @@ test("evidence preserves the reporting company and scope, then Enter drills into
     quoteGloss: "Sales include customers in the same corporate group.", entityScope: "group" });
   setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [row] })));
   const opened: Array<[string, string | undefined]> = [];
-  for (const width of [90, 160]) {
+  for (const width of [88, 160]) {
     await mount(width, 24);
     const table = await tui.waitForFrameToContain("315,813 JPY million");
     expect(table).toContain("FY2026");

@@ -63,7 +63,7 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
   // Preserve trust labels, native units and final columns before expanding the share and name.
   // The table ignores its last trailing gutter when deciding whether it fits.
   if (valueWidth !== null) {
-    share.width = Math.max(16, share.width - Math.max(0, getTableWidth(columns) - width - 1));
+    share.width = Math.max(14, share.width - Math.max(0, getTableWidth(columns) - width - 1));
     name.width = Math.max(18, name.width - Math.max(0, getTableWidth(columns) - width - 1));
   }
   return columns;
@@ -88,10 +88,11 @@ function ShareCell({ row, focusId, width, selected }: { row: SupplyRow; focusId?
   const colors = useThemeColors();
   const share = shareParts(row, focusId);
   if (!share) return <Text fg={colors.textMuted}>{""}</Text>;
+  const barWidth = width >= 36 ? BAR_CELLS : Math.min(5, Math.max(3, width - 11));
   return <Box flexDirection="row" width={width} height={1} gap={1} overflow="hidden">
-    <RatioBar ratio={row.pctOfRevenue! / 100} width={width >= 36 ? BAR_CELLS : 5} color={ROLE_COLORS[row.role]} track />
+    <RatioBar ratio={row.pctOfRevenue! / 100} width={barWidth} color={ROLE_COLORS[row.role]} track />
     <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{share.value.padStart(5)}</Text>
-    <Text fg={selected ? colors.selectedText : colors.textDim}>{truncateToDisplayWidth(share.basis, Math.max(4, width - (width >= 36 ? BAR_CELLS : 5) - 7))}</Text>
+    <Text fg={selected ? colors.selectedText : colors.textDim}>{truncateToDisplayWidth(share.basis, Math.max(4, width - barWidth - 7))}</Text>
   </Box>;
 }
 
