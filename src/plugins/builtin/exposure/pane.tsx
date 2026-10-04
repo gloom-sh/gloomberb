@@ -2,15 +2,16 @@ import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { ExposureEvidence, ExposurePayload } from "../../../api-client/exposure";
-import { ActionRow, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, PaneStatusBody, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
+import { ActionRow, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, PaneStatusBody, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, useRendererHost } from "../../../ui";
+import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { UpgradeLabel } from "../shared/locked-rows";
+import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { humanLabel, listingCell, missingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { ExposurePathDiagram, ExposureRanges } from "./charts";
 import { fetchExposure, fetchScenarios, validateExposure } from "./client";
@@ -57,6 +58,7 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
 
 export function ExposurePane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
+  const desktop = !!useUiCapabilities().nativePaneChrome;
   const host = useRendererHost();
   const instance = usePaneInstance();
   const market = useMarketData();
@@ -151,12 +153,37 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const columns: DataTableColumn[] = [
     { id: "symbol", label: tab === "portfolio" ? "Holdings" : "Holding", width: tab === "portfolio" ? 18 : width < 115 ? 9 : 12, align: "left" },
     { id: "label", label: tab === "paths" ? "Evidence path" : tab === "table" ? "Shock" : "Target", width: tab === "paths" ? 32 : width < 115 ? 12 : 20, align: "left" },
-    { id: "basis", label: "Basis", width: width < 115 ? 14 : 17, align: "left" },
-    { id: "exposure", label: concentration ? "Gross exp. %" : "Exposure % / type", width: 23, align: "right" },
-    { id: "impact", label: concentration ? "Signed exp. %" : "Stress est. %", width: 20, align: "right" },
-    { id: "period", label: "Period", width: 13, align: "left" },
+    { id: "basis", label: "Basis", width: width < 115 ? 12 : 15, align: "left" },
+    { id: "exposure", label: concentration ? "Gross exp. %" : "Exposure %", width: 16, align: "right" },
+    // What the number rests on, in words: disclosed by the company, estimated by a chain, or not visible.
+    { id: "classification", label: "Evidence", width: 18, align: "left" },
+    { id: "impact", label: concentration ? "Signed exp. %" : "Stress est. %", width: 16, align: "right" },
+    { id: "period", label: "Period", width: 12, align: "left" },
     { id: "weight", label: tab === "portfolio" ? concentration ? "Gross wt. %" : "Covered wt. %" : "NAV wt. %", width: 13, align: "right" },
   ];
+  const renderCell = (row: ExposureRow, col: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
+    if (row.id.startsWith("locked:")) {
+      if (!desktop && col.id === "symbol" && row.id === "locked:0") return { text: "Pro: full holdings", content: <UpgradeLabel text="Pro: full holdings and deeper paths" onPress={upgrade} role="exposure-upgrade" />, onMouseDown: upgrade };
+      return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{col.id === "symbol" ? "Holding" : "Hidden"}</Text></Blurred> } : { text: "░░░░", color: colors.textDim };
+    }
+    const unknown = row.classification === "unknown";
+    switch (col.id) {
+      case "symbol": return row.symbol.includes(",") ? { text: row.symbol, color: colors.textBright } : listingCell(row.symbol, colors, state.selected);
+      case "label": return { text: row.label, color: unknown ? colors.textDim : colors.text };
+      case "basis": return row.basis ? { text: humanLabel(basisLabel(row.basis)), color: colors.textDim } : missingCell(colors);
+      case "exposure": return row.exposure ? { text: rangeText(row.exposure), value: row.exposure.high, color: colors.textBright } : { text: "Unknown", value: null, color: colors.textMuted };
+      // Disclosed figures stand out; estimates read plainly, and the word says which is which.
+      case "classification": return { text: `${humanLabel(row.classification)}${row.incomplete && !unknown ? " · partial" : ""}`,
+        color: row.classification === "disclosed" ? colors.borderFocused : unknown ? colors.textMuted : colors.textDim, keepColorWhenSelected: row.classification === "disclosed" };
+      case "impact": return !row.impact ? missingCell(colors) : { text: rangeText(row.impact), value: row.impact.low,
+        color: row.concentration ? colors.text : row.impact.high < 0 ? colors.negative : row.impact.low > 0 ? colors.positive : colors.text };
+      case "period": return row.period ? { text: row.period, color: colors.textDim } : missingCell(colors);
+      default: return { text: fraction(row.weight ?? 0), value: row.weight === null ? null : row.weight * 100, color: colors.text };
+    }
+  };
+  const lockedRows = data?.access === "preview" ? Math.min(3, data.lockedHoldings) : 0;
+  const items = useMemo(() => [...rows, ...Array.from({ length: lockedRows }, (_, index): ExposureRow => ({ id: `locked:${index}`, symbol: "", shockId: "", label: "", basis: null, period: null,
+    exposure: null, impact: null, weight: null, classification: "unknown", incomplete: false, components: [], unknowns: [] }))], [rows, lockedRows]);
   const figures: StatItem[] = data ? tab === "portfolio" ? [
     { label: "Gross holdings", value: fraction(data.portfolio.grossWeight) }, { label: "Net holdings", value: fraction(data.portfolio.netWeight) },
     { label: "Unknown gross", value: fraction(data.portfolio.unknownGrossWeight), tone: "warning" },
@@ -178,18 +205,16 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       detailTitle={editing ? "Scenario and holdings" : detail ? `${detail.symbol} · ${detail.label}` : "What we could not see"}
       detailContent={editing ? <ExposureEditor initial={{ ...inputs, scenario: scenario ?? inputs.scenario }} sources={sources} focused={focused} width={width} onCancel={() => setEditing(false)} onSave={value => { setInputs(value); setScenarioId("custom"); setEditing(false); setDetail(null); }} /> : data ? <ExposureDetail row={detail} data={data} width={width} /> : null}
       rootContent={<PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="exposure analysis">
-        {data ? <DataTableView<ExposureRow> columns={columns} items={rows} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
-          selection={{ kind: "id", selectedId: selected?.id ?? null, getId: r => r.id, onChange: setSelected }}
-          onActivate={row => setDetail(row.id)} selectedTextOverridesCellColor showHorizontalScrollbar
+        {data ? <DataTableView<ExposureRow> columns={columns} items={items} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
+          selection={{ kind: "id", selectedId: selected?.id ?? null, getId: r => r.id, onChange: (id) => { if (!id.startsWith("locked:")) setSelected(id); } }}
+          onActivate={row => row.id.startsWith("locked:") ? upgrade() : setDetail(row.id)} selectedTextOverridesCellColor showHorizontalScrollbar
           sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={column => setSort(old => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
-          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns} query={query} figures={figures}
-            chart={tab === "paths" ? { render: size => <ExposurePathDiagram component={selected?.components[0] ?? null} {...size} />, minRows: 5, maxRows: 5, strip: null }
-              : rows.some(r => r.exposure) ? { render: size => <ExposureRanges rows={rows} showTargets={tab === "portfolio" || data.scenario.shocks.length > 1} selectedId={selected?.id ?? null} onSelect={setSelected} onOpen={setDetail} {...size} />, minRows: 2, maxRows: Math.min(8, rows.filter(r => r.exposure && r.shockId === selected?.shockId && r.basis === selected?.basis && r.period === selected?.period).length + 1), strip: null } : null} />}
-          renderCell={(row, col) => ({ text: col.id === "symbol" ? row.symbol : col.id === "label" ? row.label : col.id === "exposure" ? rangeText(row.exposure) + (row.exposure ? row.classification === "disclosed" ? " dsc" : " est" : "") + (row.incomplete ? " *" : "") : col.id === "impact" ? rangeText(row.impact) : col.id === "basis" ? basisLabel(row.basis) : col.id === "period" ? row.period ?? "--" : col.id === "classification" ? row.classification : fraction(row.weight ?? 0),
-            color: col.id === "classification" ? row.classification === "disclosed" ? colors.borderFocused : colors.warning : col.id === "symbol" ? colors.textBright : colors.text,
-            ...(col.id === "weight" ? { value: row.weight === null ? null : row.weight * 100 } : {}) })}
+          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={query} figures={figures}
+            chart={tab === "paths" ? !selected?.components[0]?.path.length ? null : { render: size => <ExposurePathDiagram component={selected?.components[0] ?? null} {...size} />, minRows: 5, maxRows: 5, strip: null }
+              : rows.some(r => r.exposure) ? { render: size => <ExposureRanges rows={rows} showTargets={tab === "portfolio" || data.scenario.shocks.length > 1} selectedId={selected?.id ?? null} onSelect={setSelected} onOpen={setDetail} {...size} />, minRows: 1, maxRows: Math.max(1, Math.min(7, rows.filter(r => r.exposure && r.shockId === selected?.shockId && r.basis === selected?.basis && r.period === selected?.period).length)), strip: null } : null} />}
+          renderCell={renderCell}
           emptyStateTitle={tab === "paths" ? "No supported exposure paths for this scenario." : "No quantified exposure in this view."}
-          bodyAfter={data.access === "preview" ? <UpgradeLabel text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />
+          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />
           : !resource.loading && !resource.error ? <EmptyState title="Choose holdings and a scenario." actions={<ActionRow label="Configure exposure" onPress={() => setEditing(true)} />} /> : null}
       </PaneStatusBody>} />
   </Box>;

@@ -16,26 +16,28 @@ export function ExposureRanges({ rows, selectedId, width, height, onSelect, onOp
   const eligible = rows.filter(r => r.shockId === selected?.shockId && r.basis === selected?.basis && r.period === selected?.period && r.exposure);
   const shown = eligible.slice(0, Math.max(1, height - 1));
   const lower = Math.min(0, ...eligible.map(r => r.exposure!.low));
-  const upper = Math.max(1, ...eligible.map(r => r.exposure!.high));
+  // A fifth of headroom past the largest bound, so no interval or point sits on the edge of its track.
+  const upper = Math.max(1, ...eligible.map(r => r.exposure!.high)) * 1.2;
   const span = upper - lower;
   const labelWidth = Math.max(10, Math.min(showTargets ? 42 : 22, Math.floor(width * .32)));
   const plotWidth = Math.max(8, width - labelWidth - 24);
-  return <Box flexDirection="column" flexGrow={1} minHeight={0}>
-    <Box height={1} paddingX={1}><Text fg={colors.textDim}>{selected && !selected.concentration ? `${selected.label} · ` : ""}{basisLabel(selected?.basis ?? null)} exposure · {selected?.period ?? "period unknown"} · {lower.toFixed(0)} to {upper.toFixed(0)}%</Text></Box>
+  return <Box flexDirection="column" flexGrow={1} minHeight={0} data-gloom-role="exposure-ranges">
     {shown.map(row => {
       const low = (row.exposure!.low - lower) / span, high = (row.exposure!.high - lower) / span;
       const color = row.classification === "disclosed" ? colors.borderFocused : colors.warning;
+      // A disclosed point is a tick; an estimated interval is a band between two ticks.
       const vectors: ChartVectorShape[] = [
+        { id: "zero", points: [{ x: (0 - lower) / span, y: .2 }, { x: (0 - lower) / span, y: .8 }], color: colors.border, strokeWidth: 1 },
         { id: "track", points: [{ x: 0, y: .5 }, { x: 1, y: .5 }], color: colors.border, strokeWidth: 1 },
-        { id: "range", points: [{ x: low, y: .5 }, { x: high, y: .5 }], color, strokeWidth: 4 },
-        { id: "low", points: [{ x: low, y: .25 }, { x: low, y: .75 }], color, strokeWidth: 2 },
-        { id: "high", points: [{ x: high, y: .25 }, { x: high, y: .75 }], color, strokeWidth: 2 },
+        ...(high - low > 0.004 ? [{ id: "range", points: [{ x: low, y: .5 }, { x: high, y: .5 }], color, strokeWidth: 5 }] : []),
+        { id: "low", points: [{ x: low, y: .15 }, { x: low, y: .85 }], color, strokeWidth: 3 },
+        { id: "high", points: [{ x: high, y: .15 }, { x: high, y: .85 }], color, strokeWidth: 3 },
       ];
       const start = Math.floor(low * (plotWidth - 1)), end = Math.floor(high * (plotWidth - 1));
       return <Box key={row.id} flexDirection="row" height={1} minHeight={1} paddingX={1}>
         <Box width={labelWidth}><ActionRow label={truncateToDisplayWidth(showTargets ? `${row.label} · ${row.symbol}` : row.symbol || row.label, labelWidth - 1)} active={selectedId === row.id} onPress={() => { onSelect(row.id); onOpen(row.id); }} /></Box>
         {desktop ? <ChartSurface width={plotWidth} height={1} vectors={vectors} /> : <Text fg={color}>{" ".repeat(start)}{"─".repeat(Math.max(0, end - start))}│{" ".repeat(Math.max(0, plotWidth - end - 1))}</Text>}
-        <Box width={20} alignItems="flex-end"><Text fg={color}>{rangeText(row.exposure)}{row.incomplete ? " *" : ""}</Text></Box>
+        <Box width={20} alignItems="flex-end"><Text fg={color}>{rangeText(row.exposure)}</Text></Box>
       </Box>;
     })}
   </Box>;
