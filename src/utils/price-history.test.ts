@@ -204,9 +204,9 @@ describe("calendar history fetched copies", () => {
     // one refetch after each weekday close it cannot tell from a session.
     const krx = bars("2026-09-22T00:00:00Z", "2026-09-23T00:00:00Z");
     expect(polls(krx, "2026-09-23T08:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "KRX")).toBe(2);
-    // SSE Golden Week, Thursday 10-01 to Thursday 10-08.
+    // SSE Golden Week, Oct 1-7, is covered: no missing session before Oct 8 opens.
     const sse = bars("2026-09-29T00:00:00Z", "2026-09-30T00:00:00Z");
-    expect(polls(sse, "2026-09-30T08:00:00Z", "2026-10-01T00:00:00Z", "2026-10-08T00:00:00Z", "SSE")).toBe(5);
+    expect(polls(sse, "2026-09-30T08:00:00Z", "2026-10-01T00:00:00Z", "2026-10-08T00:00:00Z", "SSE")).toBe(0);
     const btc = bars("2026-09-26T00:00:00Z", "2026-09-27T00:00:00Z");
     expect(outdated(btc, "2026-09-27T10:00:00Z", "2026-09-27T10:45:00Z", { exchange: "CCC" })).toBe(false);
     expect(outdated(btc, "2026-09-27T10:00:00Z", "2026-09-27T11:05:00Z", { exchange: "CCC" })).toBe(true);

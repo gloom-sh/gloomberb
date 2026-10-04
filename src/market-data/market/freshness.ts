@@ -1,5 +1,6 @@
 import type { MarketState } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
+import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
 import { hasPublishedNseCalendar, isPublishedNseClosure } from "../published-nse-sessions";
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
@@ -157,6 +158,7 @@ function isoLocalDateToUtcDay(date: string): number | null {
 function isPublishedClosure(exchange: string, date: string): boolean {
   if (exchange === "JPX") return isPublishedJpxClosure(date);
   if (exchange === "NSE" || exchange === "BSE") return isPublishedNseClosure(date);
+  if (exchange === "SSE" || exchange === "SZSE") return isPublishedCnClosure(date);
   return getPublishedUsEquityCalendarDay(exchange, date) === "closed";
 }
 
@@ -205,7 +207,9 @@ export function latestRegularSessionClose(
   if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  for (let offset = 0; offset <= 10; offset++) {
+  // Spring Festival can put the previous session eleven calendar days back.
+  const lookback = (canonical === "SSE" || canonical === "SZSE") && hasPublishedCnCalendar(year) ? 14 : 10;
+  for (let offset = 0; offset <= lookback; offset++) {
     const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
     const published = getPublishedUsEquitySession(canonical, date);
     let close: number | null = null;
@@ -234,7 +238,8 @@ export function latestRegularSessionOpen(exchange: string | undefined, time: num
   const minutes = REGULAR_OPEN_MINUTES[canonical];
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  for (let offset = 0; offset <= 10; offset++) {
+  const lookback = (canonical === "SSE" || canonical === "SZSE") && hasPublishedCnCalendar(year) ? 14 : 10;
+  for (let offset = 0; offset <= lookback; offset++) {
     const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
     const published = getPublishedUsEquitySession(canonical, date);
     let open: number | null = null;
@@ -265,13 +270,14 @@ export function isRegularSessionTime(exchange: string | undefined, time: number)
 
 /**
  * True when the venue's full-day closures for the year of `date` are
- * published: US venues, JPX, NSE and BSE. Elsewhere a local holiday reads as a weekday.
+ * published: US venues, JPX, NSE, BSE, SSE and SZSE. Elsewhere a local holiday reads as a weekday.
  */
 export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
   const canonical = canonicalExchange(exchange);
   const year = Number(date.slice(0, 4));
   if (canonical === "JPX") return hasPublishedJpxCalendar(year);
   if (canonical === "NSE" || canonical === "BSE") return hasPublishedNseCalendar(year);
+  if (canonical === "SSE" || canonical === "SZSE") return hasPublishedCnCalendar(year);
   return !!getPublishedUsEquityCalendarYears(canonical)?.includes(year);
 }
 
@@ -365,6 +371,9 @@ function isTimestampStaleForExchangeSessionUnsafe(
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
   if (!timestampDate || !currentDate || timestampDate === currentDate) return false;
+  // A cached CLOSED label cannot extend the last Chinese close beyond reopening.
+  if ((canonical === "SSE" || canonical === "SZSE") && hasPublishedCnCalendar(Number(currentDate.slice(0, 4)))
+    && isLocalTradingDay(canonical, currentDate) && !isBeforeKnownRegularOpen(canonical, now)) return true;
   if (marketState === "REGULAR" && !isBeforeKnownRegularOpen(canonical, now)) return true;
 
   if (isUsPriorSessionPremarketQuote(timestampMs, canonical, marketState, now)) return false;
