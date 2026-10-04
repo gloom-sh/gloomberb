@@ -1,3 +1,4 @@
+import { attentionScreenshotEvidence } from "../../plugins/builtin/company-attention/evidence";
 import { supplyScreenshotEvidence } from "../../plugins/builtin/supply-chain/evidence";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import type { TickerFinancials } from "../../types/financials";
@@ -69,6 +70,8 @@ export interface PaneScreenshotEvidenceHook<E extends PaneScreenshotEvidence = P
 /** Built-in panes that certify their captures with their own evidence. */
 const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
   supplyScreenshotEvidence,
+  attentionScreenshotEvidence("hiring"),
+  attentionScreenshotEvidence("apps"),
   calculatorScreenshotEvidence,
   scenarioScreenshotEvidence,
   realizedVolScreenshotEvidence,

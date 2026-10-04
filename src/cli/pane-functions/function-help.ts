@@ -417,6 +417,20 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: pro("As calls, stories and filings arrive"),
     bloomberg: ["NSE"],
   },
+  HIRE: {
+    summary: "Pro hiring momentum: weekly observed open roles, additions and removals, role families, seniority, remote and location mix, peers and primary posting evidence. Observed requisitions are not headcount. No argument opens the covered-company board.",
+    usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX"],
+    keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph")],
+    data: { free: "Latest values and three rows per section", pro: "Weekly history, all stored observations and evidence" },
+    bloomberg: [],
+  },
+  APPS: {
+    summary: "Pro app attention: public app ranks by country, rank velocity, rating drift and country spreads, mapped through developers to listed parents. Evidence preserves capture and ownership revisions. Ranks are not downloads or revenue.",
+    usage: ["APPS", "APPS META", "APPS 0700:HKEX"],
+    keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph")],
+    data: { free: "Latest values and three rows per section", pro: "Daily observations, full history, countries and evidence" },
+    bloomberg: [],
+  },
   SPLC: {
     summary: "Explore disclosed suppliers, customers and other relationships, plus the filings that name this company. Table and flow views include verbatim evidence. Disclosed in filings only. Absence is not proof of no relationship.",
     usage: ["SPLC NVDA", "SUPPLY AAPL"],

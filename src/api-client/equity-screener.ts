@@ -40,7 +40,11 @@ export const NUMERIC_FIELDS = [
   "analystUpsidePercent",
   "ivRank",
   "ivToHv",
+  "hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore",
+  "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
 ] as const;
+/** Company attention is optional when connecting to an older server. */
+export const ATTENTION_FIELDS = ["hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore", "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d"] as const;
 /** Social attention; a server from before them omits these metrics. */
 export const SOCIAL_FIELDS = ["xPostsPerDay", "xPostsVsMedian", "wikiViewsPerDay", "wikiViewsVsMedian"] as const;
 /** Returns, valuation, estimates and options; a server from before them omits these metrics. */

@@ -1,0 +1,573 @@
+{
+  "name": "Adyen N.V.",
+  "peers": [
+    {
+      "name": "GitLab Inc.",
+      "latest": {
+        "kind": "observed",
+        "week": "Mon Sep 28",
+        "added": null,
+        "removed": null,
+        "changePct": null,
+        "netChange": null,
+        "openCount": 211,
+        "confidence": 0.9,
+        "observedAt": "2026-10-03T23:20:19.149Z",
+        "remoteKnown": 185,
+        "remoteShare": 1,
+        "sourceCount": 1,
+        "completeness": "complete",
+        "evergreenCount": 0
+      },
+      "sector": null,
+      "signal": null,
+      "status": "collecting",
+      "symbol": "GTLB",
+      "zScore": null,
+      "entityId": "symbol:GTLB",
+      "historyWeeks": 1,
+      "mappingSourceUrl": "https://boards-api.greenhouse.io/v1/boards/gitlab/jobs?content=false",
+      "mappingConfidence": 0.9
+    },
+    {
+      "name": "Reddit",
+      "latest": {
+        "kind": "observed",
+        "week": "Mon Sep 28",
+        "added": null,
+        "removed": null,
+        "changePct": null,
+        "netChange": null,
+        "openCount": 152,
+        "confidence": 0.98,
+        "observedAt": "2026-10-03T23:20:17.797Z",
+        "remoteKnown": 112,
+        "remoteShare": 1,
+        "sourceCount": 1,
+        "completeness": "complete",
+        "evergreenCount": 0
+      },
+      "sector": null,
+      "signal": null,
+      "status": "collecting",
+      "symbol": "RDDT",
+      "zScore": null,
+      "entityId": "symbol:RDDT",
+      "historyWeeks": 1,
+      "mappingSourceUrl": "https://investor.redditinc.com/",
+      "mappingConfidence": 0.98
+    },
+    {
+      "name": "Cloudflare, Inc.",
+      "latest": {
+        "kind": "observed",
+        "week": "Mon Sep 28",
+        "added": null,
+        "removed": null,
+        "changePct": null,
+        "netChange": null,
+        "openCount": 405,
+        "confidence": 0.9,
+        "observedAt": "2026-10-03T23:20:16.432Z",
+        "remoteKnown": 401,
+        "remoteShare": 0.16209476309226933,
+        "sourceCount": 1,
+        "completeness": "complete",
+        "evergreenCount": 0
+      },
+      "sector": null,
+      "signal": null,
+      "status": "collecting",
+      "symbol": "NET",
+      "zScore": null,
+      "entityId": "symbol:NET",
+      "historyWeeks": 1,
+      "mappingSourceUrl": "https://boards-api.greenhouse.io/v1/boards/cloudflare/jobs?content=false",
+      "mappingConfidence": 0.9
+    }
+  ],
+  "latest": {
+    "kind": "observed",
+    "week": "Mon Sep 28",
+    "added": null,
+    "removed": null,
+    "changePct": null,
+    "netChange": null,
+    "openCount": 220,
+    "confidence": 0.9,
+    "observedAt": "2026-10-03T23:24:26.530Z",
+    "remoteKnown": 0,
+    "remoteShare": null,
+    "sourceCount": 1,
+    "completeness": "complete",
+    "evergreenCount": 0
+  },
+  "locked": {
+    "mix": 0,
+    "peers": 0,
+    "history": 0,
+    "signals": 0,
+    "evidence": 0
+  },
+  "sector": null,
+  "series": [
+    {
+      "kind": "observed",
+      "week": "Mon Sep 28",
+      "added": null,
+      "removed": null,
+      "changePct": null,
+      "netChange": null,
+      "openCount": 220,
+      "confidence": 0.9,
+      "observedAt": "2026-10-03T23:24:26.530Z",
+      "remoteKnown": 0,
+      "remoteShare": null,
+      "sourceCount": 1,
+      "completeness": "complete",
+      "evergreenCount": 0
+    }
+  ],
+  "signal": null,
+  "status": "collecting",
+  "symbol": "ADYEN:AMS",
+  "zScore": null,
+  "preview": false,
+  "signals": [],
+  "coverage": {
+    "sourceUrls": [
+      "https://boards-api.greenhouse.io/v1/boards/adyen/jobs?content=false"
+    ],
+    "comparability": "Counts are observed requisitions, not employees or hires. Changes require consecutive complete weeks with unchanged source scope. Locations preserve source wording; new locations do not establish new offices. Remote share uses postings with known remote status. Legacy aggregates have no measured churn. Peers use shared role mix and size where sectors are unavailable.",
+    "sourceTickers": [
+      "ADYEN:AMS"
+    ],
+    "lastObservedAt": "2026-10-03T23:24:26.530Z",
+    "classifiedShare": 0.9090909090909091,
+    "firstObservedAt": "2026-10-03T23:24:26.530Z",
+    "remoteKnownShare": 0,
+    "knownCountryShare": 0.17727272727272728
+  },
+  "entityId": "symbol:ADYEN:AMS",
+  "evidence": [
+    {
+      "id": "7586281",
+      "url": "https://job-boards.greenhouse.io/adyen/jobs/7586281",
+      "tags": [],
+      "title": " Account Manager",
+      "remote": null,
+      "country": null,
+      "location": "Paris",
+      "revision": 2,
+      "evergreen": null,
+      "seniority": "manager",
+      "sourceUrl": "https://boards-api.greenhouse.io/v1/boards/adyen/jobs?content=false",
+      "confidence": 0.85,
+      "observedAt": "2026-10-03T23:24:26.530Z",
+      "snapshotId": "13",
+      "jobFunction": "sales",
+      "classifiedBy": "rules",
+      "sourceTicker": "ADYEN:AMS"
+    },
+    {
+      "id": "7938074",
+      "url": "https://job-boards.greenhouse.io/adyen/jobs/7938074",
+      "tags": [],
+      "title": "Account Manager",
+      "remote": null,
+      "country": null,
+      "location": "Kuala Lumpur",
+      "revision": 2,
+      "evergreen": null,
+      "seniority": "manager",
+      "sourceUrl": "https://boards-api.greenhouse.io/v1/boards/adyen/jobs?content=false",
+      "confidence": 0.85,
+      "observedAt": "2026-10-03T23:24:26.530Z",
+      "snapshotId": "13",
+      "jobFunction": "sales",
+      "classifiedBy": "rules",
+      "sourceTicker": "ADYEN:AMS"
+    },
+    {
+      "id": "8185712",
+      "url": "https://job-boards.greenhouse.io/adyen/jobs/8185712",
+      "tags": [],
+      "title": "Account Manager",
+      "remote": null,
+      "country": null,
+      "location": "Madrid",
+      "revision": 2,
+      "evergreen": null,
+      "seniority": "manager",
+      "sourceUrl": "https://boards-api.greenhouse.io/v1/boards/adyen/jobs?content=false",
+      "confidence": 0.85,
+      "observedAt": "2026-10-03T23:24:26.530Z",
+      "snapshotId": "13",
+      "jobFunction": "sales",
+      "classifiedBy": "rules",
+      "sourceTicker": "ADYEN:AMS"
+    },
+    {
+      "id": "8243147",
+      "url": "https://job-boards.greenhouse.io/adyen/jobs/8243147",
+      "tags": [],
+      "title": "Account Manager",
+      "remote": null,
+      "country": null,
+      "location": "Brussel",
+      "revision": 2,
+      "evergreen": null,
+      "seniority": "manager",
+      "sourceUrl": "https://boards-api.greenhouse.io/v1/boards/adyen/jobs?content=false",
+      "confidence": 0.85,
+      "observedAt": "2026-10-03T23:24:26.530Z",
+      "snapshotId": "13",
+      "jobFunction": "sales",
+      "classifiedBy": "rules",
+      "sourceTicker": "ADYEN:AMS"
+    }
+  ],
+  "countries": [
+    {
+      "id": "unknown",
+      "count": 181,
+      "label": "Unknown",
+      "share": 0.8227272727272728
+    },
+    {
+      "id": "US",
+      "count": 22,
+      "label": "US",
+      "share": 0.1
+    },
+    {
+      "id": "SG",
+      "count": 15,
+      "label": "SG",
+      "share": 0.06818181818181818
+    },
+    {
+      "id": "MX",
+      "count": 2,
+      "label": "MX",
+      "share": 0.00909090909090909
+    }
+  ],
+  "functions": [
+    {
+      "id": "engineering",
+      "count": 67,
+      "label": "engineering",
+      "share": 0.30454545454545456
+    },
+    {
+      "id": "sales",
+      "count": 39,
+      "label": "sales",
+      "share": 0.17727272727272728
+    },
+    {
+      "id": "unknown",
+      "count": 20,
+      "label": "Unknown",
+      "share": 0.09090909090909091
+    },
+    {
+      "id": "legal_compliance",
+      "count": 18,
+      "label": "legal compliance",
+      "share": 0.08181818181818182
+    },
+    {
+      "id": "finance",
+      "count": 13,
+      "label": "finance",
+      "share": 0.05909090909090909
+    },
+    {
+      "id": "data_ai",
+      "count": 11,
+      "label": "data ai",
+      "share": 0.05
+    },
+    {
+      "id": "marketing",
+      "count": 11,
+      "label": "marketing",
+      "share": 0.05
+    },
+    {
+      "id": "people",
+      "count": 10,
+      "label": "people",
+      "share": 0.045454545454545456
+    },
+    {
+      "id": "customer",
+      "count": 8,
+      "label": "customer",
+      "share": 0.03636363636363636
+    },
+    {
+      "id": "operations",
+      "count": 8,
+      "label": "operations",
+      "share": 0.03636363636363636
+    },
+    {
+      "id": "product",
+      "count": 8,
+      "label": "product",
+      "share": 0.03636363636363636
+    },
+    {
+      "id": "corporate",
+      "count": 4,
+      "label": "corporate",
+      "share": 0.01818181818181818
+    },
+    {
+      "id": "supply_chain",
+      "count": 2,
+      "label": "supply chain",
+      "share": 0.00909090909090909
+    },
+    {
+      "id": "retail",
+      "count": 1,
+      "label": "retail",
+      "share": 0.004545454545454545
+    }
+  ],
+  "locations": [
+    {
+      "id": "Amsterdam",
+      "count": 65,
+      "label": "Amsterdam",
+      "share": 0.29545454545454547
+    },
+    {
+      "id": "San Francisco",
+      "count": 37,
+      "label": "San Francisco",
+      "share": 0.16818181818181818
+    },
+    {
+      "id": "Chicago",
+      "count": 27,
+      "label": "Chicago",
+      "share": 0.12272727272727273
+    },
+    {
+      "id": "New York",
+      "count": 19,
+      "label": "New York",
+      "share": 0.08636363636363636
+    },
+    {
+      "id": "Singapore",
+      "count": 14,
+      "label": "Singapore",
+      "share": 0.06363636363636363
+    },
+    {
+      "id": "Tokyo",
+      "count": 6,
+      "label": "Tokyo",
+      "share": 0.02727272727272727
+    },
+    {
+      "id": "London",
+      "count": 4,
+      "label": "London",
+      "share": 0.01818181818181818
+    },
+    {
+      "id": "Madrid",
+      "count": 4,
+      "label": "Madrid",
+      "share": 0.01818181818181818
+    },
+    {
+      "id": "Sao Jose dos Campos",
+      "count": 4,
+      "label": "Sao Jose dos Campos",
+      "share": 0.01818181818181818
+    },
+    {
+      "id": "São Paulo",
+      "count": 4,
+      "label": "São Paulo",
+      "share": 0.01818181818181818
+    },
+    {
+      "id": "Bengaluru",
+      "count": 3,
+      "label": "Bengaluru",
+      "share": 0.013636363636363636
+    },
+    {
+      "id": "Berlin",
+      "count": 3,
+      "label": "Berlin",
+      "share": 0.013636363636363636
+    },
+    {
+      "id": "Chicago; San Francisco",
+      "count": 3,
+      "label": "Chicago; San Francisco",
+      "share": 0.013636363636363636
+    },
+    {
+      "id": "Paris",
+      "count": 3,
+      "label": "Paris",
+      "share": 0.013636363636363636
+    },
+    {
+      "id": "Shanghai",
+      "count": 3,
+      "label": "Shanghai",
+      "share": 0.013636363636363636
+    },
+    {
+      "id": "Stockholm",
+      "count": 3,
+      "label": "Stockholm",
+      "share": 0.013636363636363636
+    },
+    {
+      "id": "Berlin; Munich",
+      "count": 2,
+      "label": "Berlin; Munich",
+      "share": 0.00909090909090909
+    },
+    {
+      "id": "Mexico City",
+      "count": 2,
+      "label": "Mexico City",
+      "share": 0.00909090909090909
+    },
+    {
+      "id": "New York; San Francisco",
+      "count": 2,
+      "label": "New York; San Francisco",
+      "share": 0.00909090909090909
+    },
+    {
+      "id": "Toronto",
+      "count": 2,
+      "label": "Toronto",
+      "share": 0.00909090909090909
+    },
+    {
+      "id": "Amsterdam; Berlin",
+      "count": 1,
+      "label": "Amsterdam; Berlin",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Amsterdam; Chicago; New York",
+      "count": 1,
+      "label": "Amsterdam; Chicago; New York",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Amsterdam; London",
+      "count": 1,
+      "label": "Amsterdam; London",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Brussel",
+      "count": 1,
+      "label": "Brussel",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Kuala Lumpur",
+      "count": 1,
+      "label": "Kuala Lumpur",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Milan",
+      "count": 1,
+      "label": "Milan",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Mumbai",
+      "count": 1,
+      "label": "Mumbai",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Munich",
+      "count": 1,
+      "label": "Munich",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Singapore; Tokyo",
+      "count": 1,
+      "label": "Singapore; Tokyo",
+      "share": 0.004545454545454545
+    },
+    {
+      "id": "Warsaw",
+      "count": 1,
+      "label": "Warsaw",
+      "share": 0.004545454545454545
+    }
+  ],
+  "seniority": [
+    {
+      "id": "manager",
+      "count": 101,
+      "label": "manager",
+      "share": 0.4590909090909091
+    },
+    {
+      "id": "unknown",
+      "count": 46,
+      "label": "Unknown",
+      "share": 0.20909090909090908
+    },
+    {
+      "id": "senior",
+      "count": 33,
+      "label": "senior",
+      "share": 0.15
+    },
+    {
+      "id": "lead",
+      "count": 23,
+      "label": "lead",
+      "share": 0.10454545454545454
+    },
+    {
+      "id": "director",
+      "count": 10,
+      "label": "director",
+      "share": 0.045454545454545456
+    },
+    {
+      "id": "entry",
+      "count": 6,
+      "label": "entry",
+      "share": 0.02727272727272727
+    },
+    {
+      "id": "executive",
+      "count": 1,
+      "label": "executive",
+      "share": 0.004545454545454545
+    }
+  ],
+  "generatedAt": "2026-10-03T23:26:53.855Z",
+  "proRequired": true,
+  "historyWeeks": 1,
+  "mappingSourceUrl": "https://boards-api.greenhouse.io/v1/boards/adyen/jobs?content=false",
+  "mappingConfidence": 0.9
+}
