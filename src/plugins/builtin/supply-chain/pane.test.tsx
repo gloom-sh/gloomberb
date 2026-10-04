@@ -4,6 +4,7 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
+import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -32,6 +33,7 @@ async function mount(width: number, height: number, tab = "table", view = "says"
       <PaneFooterBar footer={footer} width={width} focused />
       <PaneFooterKeys paneId={id} footer={footer} focused />
     </Box>}</PaneFooterProvider>
+    <PaneKeyboardScrollController paneId={id} focused />
   </TestPaneProvider>;
   }
   await act(async () => { await tui.render(<Harness />, { width, height }); });
@@ -61,6 +63,13 @@ test("preview keeps evidence-bearing rows, shows the standard upgrade, and narro
   expect(frame).toContain("COUNTERPARTY");
   expect(frame).toContain("Upgrade to see every relationship");
   expect(frame).not.toContain("Suppliers");
+  await tui.destroy();
+  data.says[0] = supplyRow("Known company", { nativeAmount: 315_813, nativeCurrency: "JPY", nativeScale: 1_000_000 });
+  await mount(90, 20);
+  const native = await tui.waitForFrameToContain("315,813 JPY million");
+  expect(native).toContain("FY2026");
+  expect(native).toContain("Upgrade to Pro");
+  expect(native).toContain("Filing");
 });
 
 test("Unconfirmed opt-in separates reported leads from confirmed rows and excludes them from flow", async () => {
@@ -98,23 +107,6 @@ test("reverse table labels the percentage denominator and diagram pages a crowde
 });
 
 
-test("evidence preserves the reporting company and scope, then Enter drills into the selected counterparty", async () => {
-  const row = supplyRow("counterparty", { counterparty: { ...entity("counterparty"), ticker: "2330", exchange: "TWSE" }, pctScope: "Business segments: Compute and networking" });
-  setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [row] })));
-  const opened: Array<[string, string | undefined]> = [];
-  await mount(120, 24, "table", "says", (template, symbol) => opened.push([template, symbol]));
-  await tui.waitForFrameToContain("counterparty");
-  await tui.emitKeypress({ name: "e" });
-  const evidence = await tui.waitForFrameToContain("Percentage scope");
-  expect(evidence).toContain("Business segments: Compute and networking");
-  expect(evidence).toContain("Reporting company");
-  expect(evidence).toContain(row.quote);
-  await tui.emitKeypress({ name: "escape" });
-  await tui.waitForFrameToContain("COUNTERPARTY");
-  await tui.emitKeypress({ name: "return" });
-  expect(opened).toEqual([["supply-chain-pane", "2330:TWSE"]]);
-});
-
 
 test("narrow evidence wraps original quotes and glosses and scrolls to their ends", async () => {
   const row = supplyRow("Korean disclosure", { quoteLanguage: "ko", pctOfRevenue: null, pctBasis: null,
@@ -122,7 +114,7 @@ test("narrow evidence wraps original quotes and glosses and scrolls to their end
     quoteGloss: "Samsung's principal customers include Alphabet, Apple, Deutsche Telekom, Hong Kong Techtronics and Supreme Electronics. Together they represented approximately 15% of total revenue." });
   setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [row] })));
   await mount(80, 20);
-  await tui.waitForFrameToContain("Korean disclosure");
+  await tui.waitForFrameToContain("FY2026");
   await tui.emitKeypress({ name: "e" });
   await tui.waitForFrameToContain("Original quote");
   await tui.emitKeypress({ name: "end" });

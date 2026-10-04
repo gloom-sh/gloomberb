@@ -16,25 +16,35 @@ afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); });
 test("restricted and snippet evidence is stripped before storage, including row quote and gloss", async () => {
   supplyChainCache.attach(new MemoryPluginPersistence());
   for (const item of [evidence(), evidence({ quoteRights: "short", textOrigin: "snippet" })]) {
-    const data = supplyPayload({ says: [supplyRow("restricted", { tier: 4, quote: "Private source quote", evidence: [item] })] });
+    const data = supplyPayload({ says: [supplyRow("restricted", { tier: 4, quote: "Private source quote", quoteGloss: "Private row translation", evidence: [item] })] });
     setCloudApiFetchTransport(async () => Response.json(data));
     const loaded = await loadSupplyChain("FOCUS", "alice:full", true);
     expect(loaded.payload.says[0]?.quote).toBe("");
+    expect(loaded.payload.says[0]?.quoteGloss).toBeNull();
     expect(loaded.payload.says[0]?.pctOfRevenue).toBeNull();
     expect(JSON.stringify(cachedSupplyChain("FOCUS", "alice:full"))).not.toContain("Private");
     expect(loaded.payload.says[0]?.evidence?.[0]?.url).toBe(item.url);
   }
-  const filedLead = supplyRow("filed-lead", { tier: 1, leadStatus: "lead", usd: 42, usdBasis: "disclosed", lastConfirmedAt: "2026-09-28T10:00:00Z", evidence: [evidence({ tier: 1, quoteRights: "full", value: 42, valueKind: "investment", currency: "USD" })] });
-  setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [filedLead] })));
   const leadOptions = supplyOptions("unconfirmed");
-  await loadSupplyChain("FOCUS", "alice:full", true, leadOptions);
-  const cachedLead = cachedSupplyChain("FOCUS", "alice:full", leadOptions)?.payload.says[0];
-  expect(cachedLead).toMatchObject({ pctOfRevenue: null, pctBasis: null, pctScope: null, usd: null, usdBasis: null, lastConfirmedAt: null });
-  const leadReport = await supplyChainHeadless.load(createTestHeadlessArgs({ symbols: ["FOCUS"], options: { tiers: "unconfirmed" } }), createTestHeadlessContext({ apiClient }));
-  expect(leadReport.sections[0]?.rows?.[0]).toMatchObject({ pct: null, usd: null, lastConfirmedAt: null });
-  expect(cachedLead?.evidence?.[0]?.value).toBe(42);
-  const clear = validateSupplyChain(supplyPayload({ says: [supplyRow("clear", { evidence: [evidence({ tier: 1, quoteRights: "short", claimType: "disclosed" })] })] }));
-  expect(clear.says[0]?.quote).toBe("Private source quote");
+  for (const leadStatus of ["lead", "stale", "rejected"] as const) {
+    const filedLead = supplyRow("filed-lead", { tier: 1, leadStatus, usd: 42, usdBasis: "disclosed", nativeAmount: 5, nativeCurrency: "KRW", nativeScale: 1_000_000,
+      lastConfirmedAt: "2026-09-28T10:00:00Z", evidence: [evidence({ tier: 1, quoteRights: "full", value: 42, valueKind: "investment", currency: "USD" })] });
+    setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [filedLead] })));
+    await loadSupplyChain("FOCUS", "alice:full", true, leadOptions);
+    const cachedLead = cachedSupplyChain("FOCUS", "alice:full", leadOptions)?.payload.says[0];
+    expect(cachedLead).toMatchObject({ pctOfRevenue: null, pctBasis: null, pctScope: null, usd: null, usdBasis: null,
+      nativeAmount: null, nativeCurrency: null, nativeScale: null, lastConfirmedAt: null });
+    const leadReport = await supplyChainHeadless.load(createTestHeadlessArgs({ symbols: ["FOCUS"], options: { tiers: "unconfirmed" } }), createTestHeadlessContext({ apiClient }));
+    if (leadStatus === "lead") expect(leadReport.sections[0]?.rows?.[0]).toMatchObject({ pct: null, usd: null,
+      nativeAmount: null, nativeCurrency: null, nativeScale: null, lastConfirmedAt: null });
+    else expect(leadReport.sections).toEqual([]);
+    expect(cachedLead?.evidence?.[0]?.value).toBe(42);
+  }
+  const publicItem = evidence({ tier: 1, quoteRights: "short", claimType: "disclosed", quote: "公開來源原文", quoteLanguage: "zh",
+    englishGloss: "Public source translation" });
+  const clear = validateSupplyChain(supplyPayload({ says: [supplyRow("clear", { quoteLanguage: "ko", quoteGloss: "Previous row translation",
+    evidence: [evidence({ id: "old", status: "superseded" }), publicItem] })] }));
+  expect(clear.says[0]).toMatchObject({ quote: publicItem.quote, quoteLanguage: publicItem.quoteLanguage, quoteGloss: publicItem.englishGloss });
   const legacy = supplyPayload({ says: [supplyRow("legacy", { evidence: [] })] });
   expect(validateSupplyChain(validateSupplyChain(legacy))).toEqual(legacy);
 });
@@ -85,15 +95,19 @@ test("request and cache identity preserve tier selection without crossing accoun
 });
 
 test("headless and screenshot boundaries retain public provenance and separate opted-in leads", async () => {
-  const data = supplyPayload({ says: [supplyRow("confirmed"), supplyRow("lead", { tier: 4, leadStatus: "lead", evidence: [evidence()] })], totalRows: 2 });
+  const data = supplyPayload({ says: [supplyRow("confirmed"), supplyRow("lead", { tier: 4, leadStatus: "lead", quoteGloss: "Private row translation",
+    nativeAmount: 5, nativeCurrency: "KRW", nativeScale: 1_000_000, evidence: [evidence()] })], totalRows: 2 });
   data.counts.says.customer = 2;
   setCloudApiFetchTransport(async () => Response.json(data));
   const args = createTestHeadlessArgs({ symbols: ["FOCUS"], options: { tiers: "sec,unconfirmed" } });
   const result = await supplyChainHeadless.load(args, createTestHeadlessContext({ apiClient }));
   expect(result.sections.map((section) => section.title)).toEqual(["FOCUS says", "FOCUS says | Unconfirmed"]);
   expect(JSON.stringify(result)).not.toContain("Private");
+  expect(result.sections[1]?.rows?.[0]).toMatchObject({ quoteGloss: null, quoteGlossKind: null, nativeAmount: null, nativeCurrency: null, nativeScale: null });
   expect(result.sections[1]?.rows?.[0]?.evidence).toEqual([{ ...evidence(), quote: null, englishGloss: null }]);
   const rendered = { kind: "supply-chain", version: 1, complete: true, plottedValueCount: 2, payload: data, tab: "table", view: "says", rowIds: ["confirmed", "lead"], evidenceId: "lead", tiers: ["sec", "unconfirmed"] };
-  expect(JSON.stringify(supplyScreenshotEvidence.read(rendered))).not.toContain("Private");
+  const screenshot = supplyScreenshotEvidence.read(rendered);
+  expect(screenshot?.payload.says[1]).toMatchObject({ quoteGloss: null, nativeAmount: null, nativeCurrency: null, nativeScale: null });
+  expect(JSON.stringify(screenshot)).not.toContain("Private");
   expect(supplyScreenshotEvidence.read({ ...rendered, tab: "flow" })).toBeNull();
 });

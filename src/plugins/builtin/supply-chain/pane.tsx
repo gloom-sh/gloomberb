@@ -64,7 +64,7 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
   // The table ignores its last trailing gutter when deciding whether it fits.
   if (valueWidth !== null) {
     share.width = Math.max(16, share.width - Math.max(0, getTableWidth(columns) - width - 1));
-    name.width = Math.max(locked && !desktop ? 34 : 18, name.width - Math.max(0, getTableWidth(columns) - width - 1));
+    name.width = Math.max(18, name.width - Math.max(0, getTableWidth(columns) - width - 1));
   }
   return columns;
 }
@@ -181,7 +181,10 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     if (!isSectionedItemRow(entry)) return { text: "" };
     const item = entry.item;
     if (item.kind === "locked") {
-      if (!desktop && column.id === "name" && item.id === "locked:0") return { text: "Upgrade to see every relationship", content: <UpgradeLabel text="Upgrade to see every relationship" onPress={openUpgrade} role="supply-upgrade" />, onMouseDown: openUpgrade };
+      if (!desktop && column.id === "name" && item.id === "locked:0") {
+        const label = column.width >= 34 ? "Upgrade to see every relationship" : "Upgrade to Pro";
+        return { text: label, content: <UpgradeLabel text={label} onPress={openUpgrade} role="supply-upgrade" />, onMouseDown: openUpgrade };
+      }
       return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === "name" ? "Additional relationship" : "Hidden"}</Text></Blurred> }
         : { text: "░".repeat(Math.min(8, column.width - 1)), color: colors.textDim };
     }
