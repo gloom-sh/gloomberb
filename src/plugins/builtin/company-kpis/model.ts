@@ -116,7 +116,7 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
     { id: "basis", label: "Basis", width: 18, align: "left" },
     { id: "scope", label: "Scope", width: 24, align: "left" },
     ...(evidence ? [{ id: "published", label: "Published", width: 11, align: "left" as const }, { id: "confidence", label: "Confidence", width: 11, align: "right" as const },
-      { id: "revision", label: "Revision", width: 12, align: "left" as const }, { id: "quote", label: "Evidence", width: 65, align: "left" as const }] : []),
+      { id: "revision", label: "Revision", width: 12, align: "left" as const }, { id: "quote", label: "Evidence", width: 54, align: "left" as const }] : []),
   ];
   const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "basis", "scope", "issued", "change"]
     : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;
