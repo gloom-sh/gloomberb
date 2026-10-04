@@ -8,7 +8,7 @@ import { Box } from "../ui";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../components/layout/pane/footer";
 import type { PluginRegistry } from "../plugins/registry";
 import { LayoutMarketplaceGallery } from "./gallery";
-import { testPanes as panes } from "./test-fixture";
+import { testDockedLayout, testPanes as panes } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 
@@ -19,6 +19,7 @@ const registry = {
 
 async function renderGallery() {
   const config = createDefaultConfig("/tmp/gloomberb-layout-gallery-test");
+  config.layout = testDockedLayout();
   config.layouts = [
     { name: "Default", layout: cloneLayout(config.layout) },
     { name: "Research Desk", layout: cloneLayout(config.layout) },

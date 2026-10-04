@@ -1,4 +1,4 @@
-import { cloneLayout, createDefaultConfig, type LayoutConfig } from "../types/config";
+import type { LayoutConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 
 function paneDef(id: string, name: string, icon: string): PaneDef {
@@ -13,9 +13,35 @@ export const testPanes = new Map<string, PaneDef>([
   ["ticker-chart", paneDef("ticker-chart", "Chart", "C")],
 ]);
 
-/** The default layout plus a floating NVDA chart and a detached pane of an uninstalled type. */
+/** A stable gallery fixture, independent of the panes shipped in the default Home layout. */
+export function testDockedLayout(): LayoutConfig {
+  return {
+    dockRoot: {
+      kind: "split",
+      axis: "horizontal",
+      ratio: 0.34,
+      first: {
+        kind: "split",
+        axis: "vertical",
+        ratio: 0.6,
+        first: { kind: "pane", instanceId: "portfolio-list:main" },
+        second: { kind: "pane", instanceId: "chat:main" },
+      },
+      second: { kind: "pane", instanceId: "ticker-detail:main" },
+    },
+    instances: [
+      { instanceId: "portfolio-list:main", paneId: "portfolio-list" },
+      { instanceId: "ticker-detail:main", paneId: "ticker-research" },
+      { instanceId: "chat:main", paneId: "chat" },
+    ],
+    floating: [],
+    detached: [],
+  };
+}
+
+/** Three docked panes plus a floating NVDA chart and a detached pane of an uninstalled type. */
 export function testLayout(): LayoutConfig {
-  const layout = cloneLayout(createDefaultConfig("/tmp/gloomberb-layout-marketplace-test").layout);
+  const layout = testDockedLayout();
   layout.instances = [
     ...layout.instances,
     { instanceId: "ticker-chart:1", paneId: "ticker-chart", binding: { kind: "fixed", symbol: "NVDA" } },
