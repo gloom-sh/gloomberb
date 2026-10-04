@@ -27,12 +27,13 @@ const unique = (rows: readonly { id: string }[]) => new Set(rows.map((row) => ro
 function fact(row: CreditFact): boolean {
   return !!row && [row.id, row.instrumentId, row.documentId, row.field, row.instrumentName, row.factKey, row.form, row.language].every(text)
     && row.value !== undefined && day(row.asOf) && day(row.filedAt) && nullableDay(row.periodEnd)
+    && (row.effectiveDate === undefined || nullableDay(row.effectiveDate))
     && currency(row.currency) && (row.unit === null || text(row.unit))
     && finite(row.confidence) && row.confidence >= 0 && row.confidence <= 1
     && text(row.quote) && row.quote.trim().length > 0 && url(row.filingUrl)
     && Number.isInteger(row.quoteOffset) && row.quoteOffset >= 0 && Number.isInteger(row.quoteSourceLength) && row.quoteSourceLength > 0
     && ["exact", "whitespace", "nfkc_whitespace"].includes(row.quoteMatchMode)
-    && ["active", "superseded"].includes(row.status) && (row.supersedesId === null || text(row.supersedesId));
+    && ["active", "superseded", "pending"].includes(row.status) && (row.supersedesId === null || text(row.supersedesId));
 }
 export function validateCreditInstrument(row: CreditInstrument): CreditInstrument {
   if (!row || ![row.id, row.key, row.name].every(text) || !currency(row.currency)
@@ -54,20 +55,20 @@ export function validateCreditDocuments(data: CreditDocumentsPayload, symbol?: s
     || !strings(data.warnings) || !Array.isArray(data.instruments) || !unique(data.instruments)
     || !Array.isArray(data.covenants) || !Array.isArray(data.maturities) || !Array.isArray(data.changeOfControl)) return invalid();
   data.instruments.forEach(validateCreditInstrument);
-  const factIds = new Set(data.instruments.flatMap((row) => row.facts.map((entry) => entry.id)));
-  const supported = (ids: unknown) => strings(ids) && ids.length > 0 && ids.every((id) => factIds.has(id));
+  const factOwners = new Map(data.instruments.flatMap((row) => row.facts.map((entry) => [entry.id, row.id] as const)));
+  const supported = (ids: unknown, instrumentId: string) => strings(ids) && ids.length > 0 && ids.every((id) => factOwners.get(id) === instrumentId);
   for (const row of data.covenants) {
     if (!row || ![row.id, row.instrumentId, row.instrumentName, row.metric].every(text) || !finite(row.threshold)
       || !["maximum", "minimum"].includes(row.comparator) || (row.inclusive !== undefined && typeof row.inclusive !== "boolean") || ![row.current, row.headroomPercent].every(nullableNumber)
       || !nullableDay(row.testDate) || !day(row.asOf) || !["compliant", "breach", "uncomputable", "stale", "conditional"].includes(row.status)
-      || (row.reason !== null && !text(row.reason)) || !supported(row.evidenceIds)
+      || (row.reason !== null && !text(row.reason)) || !supported(row.evidenceIds, row.instrumentId)
       || (["uncomputable", "stale", "conditional"].includes(row.status) && row.headroomPercent !== null)) return invalid();
   }
   for (const row of data.maturities) if (!row || !Number.isInteger(row.year) || row.year < 1900 || row.year > 2300
     || !currency(row.currency) || row.currency === null || !finite(row.principal) || row.principal < 0
-    || !Array.isArray(row.instruments) || row.instruments.some((entry) => !entry || !text(entry.id) || !text(entry.name) || !finite(entry.principal) || entry.principal < 0 || !supported(entry.evidenceIds))) return invalid();
+    || !Array.isArray(row.instruments) || row.instruments.some((entry) => !entry || !text(entry.id) || !text(entry.name) || !finite(entry.principal) || entry.principal < 0 || !supported(entry.evidenceIds, entry.id))) return invalid();
   for (const row of data.changeOfControl) if (!row || !text(row.instrumentId) || !text(row.instrumentName) || !currency(row.currency)
-    || !amount(row.principal) || !text(row.trigger) || !amount(row.putPercent) || !supported(row.evidenceIds)) return invalid();
+    || !amount(row.principal) || !text(row.trigger) || !amount(row.putPercent) || !supported(row.evidenceIds, row.instrumentId)) return invalid();
   return data;
 }
 export function validateCreditScreen(data: CreditScreenPayload): CreditScreenPayload {
@@ -75,7 +76,7 @@ export function validateCreditScreen(data: CreditScreenPayload): CreditScreenPay
     || !text(data.asOf) || !Number.isFinite(Date.parse(data.asOf)) || typeof data.truncated !== "boolean" || !Array.isArray(data.rows) || data.rows.some((row) => !row
       || ![row.symbol, row.issuerName, row.instrumentId, row.instrumentName, row.reason].every(text)
       || !["headroom", "springing_maturity"].includes(row.kind) || !nullableNumber(row.value) || !nullableDay(row.date) || !currency(row.currency)
-      || !Array.isArray(row.evidence) || !row.evidence.length || !row.evidence.every(fact))) throw new Error("The server returned unreadable credit screening results");
+      || !Array.isArray(row.evidence) || !row.evidence.length || !row.evidence.every((entry) => fact(entry) && entry.status === "active" && entry.instrumentId === row.instrumentId))) throw new Error("The server returned unreadable credit screening results");
   return data;
 }
 export async function fetchCreditDocuments(symbol: string, client: Pick<typeof apiClient, "creditDocuments"> = apiClient) {

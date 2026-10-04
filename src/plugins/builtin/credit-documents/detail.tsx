@@ -20,7 +20,8 @@ function CreditFactEvidence({ fact, width, height, scrollRef }: { fact: CreditFa
     {typeof fact.value === "object" && fact.value !== null ? <Box flexDirection="column" paddingY={1}>{Object.entries(fact.value).filter(([,value]) => value !== null).map(([key,value]) => <Text key={key} width={Math.max(1,width-2)} wrapMode="word" wrapText fg={colors.textBright}>{`${fieldLabel(key)}: ${creditValue(value)}`}</Text>)}</Box> : <KeyValueRow label="Value" value={factValue(fact)} labelWidth={17} />}
     <KeyValueRow label="Period" value={fact.asOf} detail={fact.periodEnd && fact.periodEnd !== fact.asOf ? `period end ${fact.periodEnd}` : undefined} labelWidth={17} />
     <KeyValueRow label="Disclosure" value={`${fact.form} · ${fact.filedAt}`} detail={`${Math.round(fact.confidence * 100)}% confidence`} labelWidth={17} />
-    <KeyValueRow label="Revision" value={fieldLabel(fact.status)} detail={fact.supersedesId ? "Supersedes earlier disclosure" : "Original observation"} labelWidth={17} />
+    {fact.effectiveDate && fact.effectiveDate !== fact.asOf && fact.effectiveDate !== fact.filedAt ? <KeyValueRow label="Effective" value={fact.effectiveDate} labelWidth={17} /> : null}
+    <KeyValueRow label="Revision" value={fieldLabel(fact.status)} detail={fact.status === "pending" ? "Not yet in effect" : fact.supersedesId ? "Supersedes earlier disclosure" : "Original observation"} labelWidth={17} />
     <KeyValueRow label="Evidence span" value={`${fact.quoteOffset}–${fact.quoteOffset + fact.quoteSourceLength}`} detail={fact.language} labelWidth={17} />
     <KeyValueRow label="Text match" value={fact.quoteMatchMode === "exact" ? "Exact" : fact.quoteMatchMode === "whitespace" ? "Whitespace normalized" : "Unicode and whitespace normalized"} labelWidth={17} />
     <Box paddingY={1} width={Math.max(1,width-2)}><Text width={Math.max(1,width-2)} wrapMode="word" wrapText fg={colors.textBright}>{fact.quote}</Text></Box>
@@ -53,7 +54,7 @@ export function CreditInstrumentDetail({ symbol, instrument, width, height, focu
       </Box> : null}
     </Box>}
     getItemKey={(row) => row.id} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (row) => row.id, onChange: setSelected }}
-    renderCell={(row, column) => ({ text: column.id === "field" ? fieldLabel(row.field) : column.id === "value" ? factValue(row) : column.id === "asOf" ? row.asOf : column.id === "filed" ? row.filedAt : fieldLabel(row.status), color: row.status === "superseded" ? colors.textDim : column.id === "field" ? colors.textBright : colors.text })}
+    renderCell={(row, column) => ({ text: column.id === "field" ? fieldLabel(row.field) : column.id === "value" ? factValue(row) : column.id === "asOf" ? row.asOf : column.id === "filed" ? row.filedAt : fieldLabel(row.status), color: row.status === "superseded" ? colors.textDim : row.status === "pending" && column.id === "status" ? colors.warning : column.id === "field" ? colors.textBright : colors.text })}
     onActivate={(row) => setOpen(row.id)} detailOpen={!!open} onBack={() => setOpen(null)} detailTitle={open ? fieldLabel(open.field) : undefined}
     detailScrollRef={detailScrollRef} detailContent={open ? <CreditFactEvidence scrollRef={detailScrollRef} fact={open} width={width} height={height - 1} /> : null}
     emptyStateTitle={view === "history" ? pro ? "No earlier instrument revisions stored." : "Amendment history requires Gloom Pro." : "No supported terms in this disclosure."}

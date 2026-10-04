@@ -18,11 +18,12 @@ export interface CreditFact {
   form: string;
   filedAt: string;
   periodEnd: string | null;
+  effectiveDate?: string | null;
   language: string;
   quoteOffset: number;
   quoteSourceLength: number;
   quoteMatchMode: string;
-  status: "active" | "superseded";
+  status: "active" | "superseded" | "pending";
   supersedesId: string | null;
 }
 export interface CreditInstrument {

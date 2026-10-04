@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CreditDocumentsPayload } from "../../../api-client/credit-documents";
 import fixture from "./fico.fixture.json";
-import { creditIssuerSymbol, fetchCreditInstrument, validateCreditDocuments, validateCreditScreen } from "./client";
+import { creditIssuerSymbol, fetchCreditInstrument, validateCreditDocuments, validateCreditInstrument, validateCreditScreen } from "./client";
 import { creditMaturityRows, factValue, maturitySeries } from "./model";
 const payload = () => structuredClone(fixture) as CreditDocumentsPayload;
 
@@ -26,6 +26,22 @@ describe("credit evidence boundary", () => {
     const computed = payload();
     computed.covenants[0]!.headroomPercent = 25;
     expect(() => validateCreditDocuments(computed)).toThrow("unreadable credit documents");
+    const foreign = payload();
+    foreign.covenants[0]!.evidenceIds = [foreign.instruments.find((row) => row.id !== foreign.covenants[0]!.instrumentId)!.facts[0]!.id];
+    expect(() => validateCreditDocuments(foreign)).toThrow("unreadable credit documents");
+  });
+  test("future revisions remain in history and cannot support current balances or risk signals", () => {
+    const instrument = payload().instruments[0]!;
+    const pending = { ...instrument.facts[0]!, id: "future-revision", status: "pending" as const, effectiveDate: "2027-01-01" };
+    instrument.history = [...instrument.facts, pending];
+    expect(validateCreditInstrument(instrument).history?.at(-1)?.status).toBe("pending");
+    const screen = { rows: [{ symbol: "FICO", issuerName: "Fair Isaac", instrumentId: instrument.id, instrumentName: instrument.name, kind: "headroom" as const, value: 2, date: "2026-09-30", currency: "USD", reason: "Low headroom", evidence: [pending] }], access: "full" as const, lockedRows: 0, asOf: "2026-10-04T12:00:00Z", truncated: false };
+    expect(() => validateCreditScreen(screen)).toThrow("screening");
+    pending.effectiveDate = "2027-02-30";
+    expect(() => validateCreditInstrument(instrument)).toThrow("instrument evidence");
+    pending.effectiveDate = "2027-01-01";
+    instrument.facts.push(pending);
+    expect(() => validateCreditInstrument(instrument)).toThrow("instrument evidence");
   });
   test("rejects cross-instrument evidence, malformed dates and unsafe source links", async () => {
     const data = payload();
