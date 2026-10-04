@@ -144,4 +144,4 @@ Setting `GLOOMBERB_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` in the environment turns 
 
 [Adjacent](https://adjacent.markets/?ref=gloomberb) builds prediction-market indices, reference rates, and data. Thank you for backing Gloomberb's open-source work.
 
-To sponsor Gloomberb, email [hello@gloom.sh](mailto:hello@gloom.sh).
+To sponsor Gloomberb, see [gloom.sh/sponsor](https://gloom.sh/sponsor).
