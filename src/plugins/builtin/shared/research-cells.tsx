@@ -50,7 +50,7 @@ export function shareCell(text: string, ratio: number | null, width: number, col
   // since a track of block cells would join the rows above and below into one wall.
   const units = Math.max(1, Math.round(fill * barCells * 2));
   return { text, content: <Box flexDirection="row" height={1} width={width} overflow="hidden" alignItems="center">
-    <Box width={barCells} flexShrink={0} alignItems="center">
+    <Box width={barCells} flexShrink={0} flexDirection="row" alignItems="center">
       {desktop ? <SplitBar width={barCells} parts={[{ id: "share", value: fill, color: ink }, { id: "rest", value: 1 - fill, color: blendHex(colors.bg, color, 0.2) }]} />
         : <Text fg={ink}>{`${"█".repeat(Math.floor(units / 2))}${units % 2 ? "▌" : ""}`}</Text>}
     </Box>
