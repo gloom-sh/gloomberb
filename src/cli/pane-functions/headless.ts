@@ -170,6 +170,10 @@ export async function loadResolvedHeadlessPaneModel(
       const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(id));
       return { portfolio, tickers };
     },
+    async resolveWatchlist(id) {
+      if (!context.config.watchlists.some(row => row.id === id)) return null;
+      return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(id));
+    },
     async resolveInstrument(key) {
       const parsed = parsePublicTickerKey(key);
       const ticker = await context.store.loadTicker(key)

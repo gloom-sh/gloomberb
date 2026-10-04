@@ -884,3 +884,7 @@ licensed sources behind the platform cannot support them honestly:
 - Supply chain and M&A databases: no free structured source.
 - Level 2 order book: the market data plan supplies trades and NBBO only; `TAS`
   and `QR` show what is available.
+
+## Exposure engine (EXPO)
+
+EXPO is a Pro operating-exposure scenario engine with a one-holding, one-hop free preview. It combines available global company and counterparty disclosures, keeps source evidence and reporting denominators on every path, and reports signed portfolio stress and country/supplier/customer concentrations without predicting equity returns. Geography and supply-chain coverage varies by issuer; missing sensitivities and relationships remain unknown. See [Exposure analysis](exposure.md) for scenarios, signed NAV weights, methodology, source limitations and CLI examples.

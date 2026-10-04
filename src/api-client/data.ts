@@ -1,3 +1,4 @@
+import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -387,6 +388,14 @@ export class CloudDataApi {
 
   async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
+  }
+
+  async analyzeCloudExposure(request: ExposureRequest): Promise<ExposurePayload> {
+    return this.request<ExposurePayload>("/cloud/exposure/analyze", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  async getCloudExposureScenarios(): Promise<{ scenarios: ExposureScenario[] }> {
+    return this.request<{ scenarios: ExposureScenario[] }>("/cloud/exposure/scenarios");
   }
 
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {

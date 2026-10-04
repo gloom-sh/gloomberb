@@ -1,0 +1,1685 @@
+{
+  "version": 1,
+  "scenario": {
+    "label": "Taiwan disruption",
+    "shocks": [
+      {
+        "id": "taiwan",
+        "kind": "country",
+        "target": "TW",
+        "changePct": -100
+      }
+    ]
+  },
+  "evaluatedAt": "2026-10-04T00:00:00.000Z",
+  "access": "full",
+  "depth": 2,
+  "requestedHoldings": 5,
+  "lockedHoldings": 0,
+  "holdings": [
+    {
+      "symbol": "NVDA",
+      "name": "Nvidia",
+      "weight": 0.3,
+      "status": "partial",
+      "measures": [
+        {
+          "shockId": "taiwan",
+          "basis": "revenue",
+          "period": "2026-01-25",
+          "exposurePct": {
+            "low": 19.6097954,
+            "high": 19.6097954
+          },
+          "impactPct": {
+            "low": -19.6097954,
+            "high": -19.6097954
+          },
+          "classification": "estimated",
+          "componentIds": [
+            "taiwan:revenue:NVDA:Taiwan"
+          ],
+          "incomplete": true
+        }
+      ],
+      "components": [
+        {
+          "id": "taiwan:revenue:NVDA:Taiwan",
+          "shockId": "taiwan",
+          "label": "Taiwan",
+          "channel": "geography",
+          "order": 0,
+          "basis": "revenue",
+          "period": "2026-01-25",
+          "classification": "estimated",
+          "exposurePct": {
+            "low": 19.6097954042364,
+            "high": 19.6097954042364
+          },
+          "impactPct": {
+            "low": -19.6097954042364,
+            "high": -19.6097954042364
+          },
+          "evidence": [
+            {
+              "id": "nvda-geography",
+              "source": "SEC filing: 10-K",
+              "tier": "primary",
+              "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+              "quote": "Revenue by geographic area is based upon the location of the customers’ headquarters. The end customer and shipping location may be different from our customers' headquarters location.\nYear Ended\nJan 25, 2026 Jan 26, 2025 Jan 28, 2024\nGeographic Revenue based upon Customer Headquarters Location (1):\n(In millions)\nUnited States $ 149,617 $ 77,482 $ 31,533\nTaiwan (2)\n42,345 23,600 14,912\nChina (including Hong Kong) 19,677 25,048 12,330\nOther\n4,299 4,367 2,147\nTotal revenue $ 215,938 $ 130,497 $ 60,922\n(1)In the third quarter of fiscal year 2026, we changed to revenue based upon the location of our customers’ headquarters as we believe it provides a better representation of the geographic profile of our revenue. Prior period information has been recast to reflect this change.\n(2)In fiscal year 2026, we estimate 76% of Data Center revenue from Taiwan-headquartered customers was attributed to end customers based in the United States and Europe.",
+              "asOf": "2026-02-25",
+              "period": "2026-01-25",
+              "units": "percent of revenue",
+              "currency": "USD",
+              "confidence": 1,
+              "revision": "0001045810-26-000021"
+            }
+          ],
+          "path": [],
+          "unknowns": [
+            "This revenue share is calculated from filed amounts; it is not a literally disclosed percentage."
+          ],
+          "partition": "NVDA:FY2026:headquarters"
+        },
+        {
+          "id": "taiwan:path:commerce:8155:52",
+          "shockId": "taiwan",
+          "label": "Hon Hai Precision Industry (supplier, 1 hop)",
+          "channel": "supplier",
+          "order": 1,
+          "basis": null,
+          "period": "2026-01-25",
+          "classification": "unknown",
+          "exposurePct": null,
+          "proportionalEstimatePct": null,
+          "impactPct": null,
+          "evidence": [
+            {
+              "id": "audit:30801",
+              "source": "filing_text",
+              "tier": "primary",
+              "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+              "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+              "asOf": "2026-01-25",
+              "period": "2026-01-25",
+              "units": "relationship",
+              "currency": null,
+              "confidence": 0.99,
+              "revision": "0001045810-26-000021"
+            }
+          ],
+          "path": [
+            {
+              "from": {
+                "id": "52",
+                "name": "Nvidia",
+                "symbol": "NVDA",
+                "country": null
+              },
+              "to": {
+                "id": "8155",
+                "name": "Hon Hai Precision Industry",
+                "symbol": "2317",
+                "country": "TW"
+              },
+              "evidence": [
+                {
+                  "id": "audit:30801",
+                  "source": "filing_text",
+                  "tier": "primary",
+                  "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+                  "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+                  "asOf": "2026-01-25",
+                  "period": "2026-01-25",
+                  "units": "relationship",
+                  "currency": null,
+                  "confidence": 0.99,
+                  "revision": "0001045810-26-000021"
+                }
+              ],
+              "pct": null,
+              "basis": null,
+              "denominatorEntityId": "52"
+            }
+          ],
+          "unknowns": [
+            "A hop has a missing percentage, unsupported scope, incompatible period/basis or a denominator belonging to another entity; it cannot quantify this holding.",
+            "Counterparty domicile is a geographic association; the affected production sites, import origins and operating footprint are not disclosed by this relationship."
+          ]
+        },
+        {
+          "id": "taiwan:path:commerce:8157:52",
+          "shockId": "taiwan",
+          "label": "Wistron (supplier, 1 hop)",
+          "channel": "supplier",
+          "order": 1,
+          "basis": null,
+          "period": "2026-01-25",
+          "classification": "unknown",
+          "exposurePct": null,
+          "proportionalEstimatePct": null,
+          "impactPct": null,
+          "evidence": [
+            {
+              "id": "audit:30802",
+              "source": "filing_text",
+              "tier": "primary",
+              "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+              "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+              "asOf": "2026-01-25",
+              "period": "2026-01-25",
+              "units": "relationship",
+              "currency": null,
+              "confidence": 0.99,
+              "revision": "0001045810-26-000021"
+            }
+          ],
+          "path": [
+            {
+              "from": {
+                "id": "52",
+                "name": "Nvidia",
+                "symbol": "NVDA",
+                "country": null
+              },
+              "to": {
+                "id": "8157",
+                "name": "Wistron",
+                "symbol": "3231",
+                "country": "TW"
+              },
+              "evidence": [
+                {
+                  "id": "audit:30802",
+                  "source": "filing_text",
+                  "tier": "primary",
+                  "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+                  "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+                  "asOf": "2026-01-25",
+                  "period": "2026-01-25",
+                  "units": "relationship",
+                  "currency": null,
+                  "confidence": 0.99,
+                  "revision": "0001045810-26-000021"
+                }
+              ],
+              "pct": null,
+              "basis": null,
+              "denominatorEntityId": "52"
+            }
+          ],
+          "unknowns": [
+            "A hop has a missing percentage, unsupported scope, incompatible period/basis or a denominator belonging to another entity; it cannot quantify this holding.",
+            "Counterparty domicile is a geographic association; the affected production sites, import origins and operating footprint are not disclosed by this relationship."
+          ]
+        }
+      ],
+      "extensions": [],
+      "unknowns": [
+        "Frozen hand-reviewed filing sample, not current production coverage.",
+        "Geography is customer headquarters, not end demand or manufacturing location.",
+        "Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+        "This revenue share is calculated from filed amounts; it is not a literally disclosed percentage.",
+        "A hop has a missing percentage, unsupported scope, incompatible period/basis or a denominator belonging to another entity; it cannot quantify this holding.",
+        "Counterparty domicile is a geographic association; the affected production sites, import origins and operating footprint are not disclosed by this relationship."
+      ],
+      "coverage": {
+        "revenueRows": 3,
+        "graphNodes": 8,
+        "graphLinks": 7,
+        "matchedPaths": 2,
+        "quantifiedComponents": 1,
+        "unknownComponents": 2,
+        "graphComplete": true,
+        "oldestEvidenceAt": "2026-01-25",
+        "latestEvidenceAt": "2026-02-25"
+      }
+    },
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "weight": 0.25,
+      "status": "quantified",
+      "measures": [
+        {
+          "shockId": "taiwan",
+          "basis": "revenue",
+          "period": "2025-09-27",
+          "exposurePct": {
+            "low": 0,
+            "high": 15.46925349
+          },
+          "impactPct": {
+            "low": -15.46925349,
+            "high": 0
+          },
+          "classification": "estimated",
+          "componentIds": [
+            "taiwan:revenue:AAPL:Greater China"
+          ],
+          "incomplete": false
+        }
+      ],
+      "components": [
+        {
+          "id": "taiwan:revenue:AAPL:Greater China",
+          "shockId": "taiwan",
+          "label": "Greater China",
+          "channel": "geography",
+          "order": 0,
+          "basis": "revenue",
+          "period": "2025-09-27",
+          "classification": "estimated",
+          "exposurePct": {
+            "low": 0,
+            "high": 15.469253486030645
+          },
+          "impactPct": {
+            "low": -15.469253486030645,
+            "high": 0
+          },
+          "evidence": [
+            {
+              "id": "aapl-geography-countries",
+              "source": "SEC filing: 10-K",
+              "tier": "primary",
+              "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "quote": "The following tables show net sales for 2025, 2024 and 2023 and long-lived assets as of September 27, 2025 and September 28, 2024 for countries that individually accounted for 10% or more of the respective totals, as well as aggregate amounts for the remaining countries (in millions):\n2025 2024 2023\nNet sales:\nU.S. $ 151,790 $ 142,196 $ 138,573\nChina (1)\n64,377 66,952 72,559\nOther countries 199,994 181,887 172,153\nTotal net sales $ 416,161 $ 391,035 $ 383,285\n2025 2024\nLong-lived assets:\nU.S. $ 40,274 $ 35,664\nChina (1)\n3,617 4,797\nOther countries 5,943 5,219\nTotal long-lived assets $ 49,834 $ 45,680\n(1)China includes Hong Kong and Taiwan.",
+              "asOf": "2025-10-31",
+              "period": "2025-09-27",
+              "units": "percent of revenue",
+              "currency": "USD",
+              "confidence": 1,
+              "revision": "0000320193-25-000079"
+            }
+          ],
+          "path": [],
+          "unknowns": [
+            "The disclosure aggregates the target with other markets or products; its internal allocation is unknown.",
+            "This revenue share is calculated from filed amounts; it is not a literally disclosed percentage."
+          ],
+          "partition": "AAPL:FY2025:country"
+        }
+      ],
+      "extensions": [],
+      "unknowns": [
+        "Frozen hand-reviewed filing sample, not current production coverage.",
+        "Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+        "The disclosure aggregates the target with other markets or products; its internal allocation is unknown.",
+        "This revenue share is calculated from filed amounts; it is not a literally disclosed percentage."
+      ],
+      "coverage": {
+        "revenueRows": 3,
+        "graphNodes": 4,
+        "graphLinks": 3,
+        "matchedPaths": 0,
+        "quantifiedComponents": 1,
+        "unknownComponents": 0,
+        "graphComplete": true,
+        "oldestEvidenceAt": "2025-10-31",
+        "latestEvidenceAt": "2025-10-31"
+      }
+    },
+    {
+      "symbol": "AMD",
+      "name": "Advanced Micro Devices",
+      "weight": 0.15,
+      "status": "unknown",
+      "measures": [],
+      "components": [
+        {
+          "id": "taiwan:unknown:unquantifiedtw",
+          "shockId": "taiwan",
+          "label": "Unquantified TW",
+          "channel": "assumption",
+          "order": 0,
+          "basis": null,
+          "period": null,
+          "classification": "unknown",
+          "exposurePct": null,
+          "impactPct": null,
+          "evidence": [],
+          "path": [],
+          "unknowns": [
+            "No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure."
+          ]
+        }
+      ],
+      "extensions": [],
+      "unknowns": [
+        "Frozen hand-reviewed filing sample, not current production coverage.",
+        "No geographic or product revenue partition is available for this holding.",
+        "Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+        "No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure."
+      ],
+      "coverage": {
+        "revenueRows": 0,
+        "graphNodes": 5,
+        "graphLinks": 4,
+        "matchedPaths": 0,
+        "quantifiedComponents": 0,
+        "unknownComponents": 1,
+        "graphComplete": true,
+        "oldestEvidenceAt": null,
+        "latestEvidenceAt": null
+      }
+    },
+    {
+      "symbol": "LIN",
+      "name": "Linde plc",
+      "weight": 0.15,
+      "status": "unknown",
+      "measures": [],
+      "components": [
+        {
+          "id": "taiwan:unknown:unquantifiedtw",
+          "shockId": "taiwan",
+          "label": "Unquantified TW",
+          "channel": "assumption",
+          "order": 0,
+          "basis": null,
+          "period": null,
+          "classification": "unknown",
+          "exposurePct": null,
+          "impactPct": null,
+          "evidence": [],
+          "path": [],
+          "unknowns": [
+            "No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure."
+          ]
+        }
+      ],
+      "extensions": [],
+      "unknowns": [
+        "Frozen hand-reviewed filing sample, not current production coverage.",
+        "Geography is revenue country of origin, not customer destination.",
+        "No usable disclosed supply-chain relationships are available for this holding.",
+        "Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+        "No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure."
+      ],
+      "coverage": {
+        "revenueRows": 7,
+        "graphNodes": 1,
+        "graphLinks": 0,
+        "matchedPaths": 0,
+        "quantifiedComponents": 0,
+        "unknownComponents": 1,
+        "graphComplete": false,
+        "oldestEvidenceAt": null,
+        "latestEvidenceAt": null
+      }
+    },
+    {
+      "symbol": "FANG",
+      "name": "Diamondback Energy",
+      "weight": 0.1,
+      "status": "unknown",
+      "measures": [],
+      "components": [
+        {
+          "id": "taiwan:unknown:unquantifiedtw",
+          "shockId": "taiwan",
+          "label": "Unquantified TW",
+          "channel": "assumption",
+          "order": 0,
+          "basis": null,
+          "period": null,
+          "classification": "unknown",
+          "exposurePct": null,
+          "impactPct": null,
+          "evidence": [],
+          "path": [],
+          "unknowns": [
+            "No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure."
+          ]
+        }
+      ],
+      "extensions": [],
+      "unknowns": [
+        "Frozen hand-reviewed filing sample, not current production coverage.",
+        "No geographic or product revenue partition is available for this holding.",
+        "Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+        "No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure."
+      ],
+      "coverage": {
+        "revenueRows": 0,
+        "graphNodes": 5,
+        "graphLinks": 4,
+        "matchedPaths": 0,
+        "quantifiedComponents": 0,
+        "unknownComponents": 1,
+        "graphComplete": true,
+        "oldestEvidenceAt": null,
+        "latestEvidenceAt": null
+      }
+    }
+  ],
+  "portfolio": {
+    "grossWeight": 0.95,
+    "netWeight": 0.95,
+    "cashWeight": 0.05,
+    "residualWeight": 0,
+    "measures": [
+      {
+        "shockId": "taiwan",
+        "basis": "revenue",
+        "period": "2026-01-25",
+        "signedExposurePct": {
+          "low": 5.88293862,
+          "high": 5.88293862
+        },
+        "grossExposurePct": {
+          "low": 5.88293862,
+          "high": 5.88293862
+        },
+        "impactPct": {
+          "low": -5.88293862,
+          "high": -5.88293862
+        },
+        "coveredGrossWeight": 0.3,
+        "unknownGrossWeight": 0.65,
+        "symbols": [
+          "NVDA"
+        ]
+      },
+      {
+        "shockId": "taiwan",
+        "basis": "revenue",
+        "period": "2025-09-27",
+        "signedExposurePct": {
+          "low": 0,
+          "high": 3.86731337
+        },
+        "grossExposurePct": {
+          "low": 0,
+          "high": 3.86731337
+        },
+        "impactPct": {
+          "low": -3.86731337,
+          "high": 0
+        },
+        "coveredGrossWeight": 0.25,
+        "unknownGrossWeight": 0.7,
+        "symbols": [
+          "AAPL"
+        ]
+      }
+    ],
+    "concentrations": [
+      {
+        "kind": "country",
+        "key": "US",
+        "label": "United States",
+        "basis": "revenue",
+        "period": "2026-01-25",
+        "grossExposurePct": {
+          "low": 20.78610527,
+          "high": 20.78610527
+        },
+        "signedExposurePct": {
+          "low": 20.78610527,
+          "high": 20.78610527
+        },
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "nvda-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "Revenue by geographic area is based upon the location of the customers’ headquarters. The end customer and shipping location may be different from our customers' headquarters location.\nYear Ended\nJan 25, 2026 Jan 26, 2025 Jan 28, 2024\nGeographic Revenue based upon Customer Headquarters Location (1):\n(In millions)\nUnited States $ 149,617 $ 77,482 $ 31,533\nTaiwan (2)\n42,345 23,600 14,912\nChina (including Hong Kong) 19,677 25,048 12,330\nOther\n4,299 4,367 2,147\nTotal revenue $ 215,938 $ 130,497 $ 60,922\n(1)In the third quarter of fiscal year 2026, we changed to revenue based upon the location of our customers’ headquarters as we believe it provides a better representation of the geographic profile of our revenue. Prior period information has been recast to reflect this change.\n(2)In fiscal year 2026, we estimate 76% of Data Center revenue from Taiwan-headquartered customers was attributed to end customers based in the United States and Europe.",
+            "asOf": "2026-02-25",
+            "period": "2026-01-25",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "US",
+        "label": "United States",
+        "basis": "revenue",
+        "period": "2025-09-27",
+        "grossExposurePct": {
+          "low": 9.11846617,
+          "high": 9.11846617
+        },
+        "signedExposurePct": {
+          "low": 9.11846617,
+          "high": 9.11846617
+        },
+        "grossHoldingWeight": 0.25,
+        "symbols": [
+          "AAPL"
+        ],
+        "evidence": [
+          {
+            "id": "aapl-geography-countries",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+            "quote": "The following tables show net sales for 2025, 2024 and 2023 and long-lived assets as of September 27, 2025 and September 28, 2024 for countries that individually accounted for 10% or more of the respective totals, as well as aggregate amounts for the remaining countries (in millions):\n2025 2024 2023\nNet sales:\nU.S. $ 151,790 $ 142,196 $ 138,573\nChina (1)\n64,377 66,952 72,559\nOther countries 199,994 181,887 172,153\nTotal net sales $ 416,161 $ 391,035 $ 383,285\n2025 2024\nLong-lived assets:\nU.S. $ 40,274 $ 35,664\nChina (1)\n3,617 4,797\nOther countries 5,943 5,219\nTotal long-lived assets $ 49,834 $ 45,680\n(1)China includes Hong Kong and Taiwan.",
+            "asOf": "2025-10-31",
+            "period": "2025-09-27",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0000320193-25-000079"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "TW",
+        "label": "Taiwan",
+        "basis": "revenue",
+        "period": "2026-01-25",
+        "grossExposurePct": {
+          "low": 5.88293862,
+          "high": 5.88293862
+        },
+        "signedExposurePct": {
+          "low": 5.88293862,
+          "high": 5.88293862
+        },
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "nvda-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "Revenue by geographic area is based upon the location of the customers’ headquarters. The end customer and shipping location may be different from our customers' headquarters location.\nYear Ended\nJan 25, 2026 Jan 26, 2025 Jan 28, 2024\nGeographic Revenue based upon Customer Headquarters Location (1):\n(In millions)\nUnited States $ 149,617 $ 77,482 $ 31,533\nTaiwan (2)\n42,345 23,600 14,912\nChina (including Hong Kong) 19,677 25,048 12,330\nOther\n4,299 4,367 2,147\nTotal revenue $ 215,938 $ 130,497 $ 60,922\n(1)In the third quarter of fiscal year 2026, we changed to revenue based upon the location of our customers’ headquarters as we believe it provides a better representation of the geographic profile of our revenue. Prior period information has been recast to reflect this change.\n(2)In fiscal year 2026, we estimate 76% of Data Center revenue from Taiwan-headquartered customers was attributed to end customers based in the United States and Europe.",
+            "asOf": "2026-02-25",
+            "period": "2026-01-25",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "US",
+        "label": "United States",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 5.37662567,
+          "high": 5.37662567
+        },
+        "signedExposurePct": {
+          "low": 5.37662567,
+          "high": 5.37662567
+        },
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "LIN"
+        ],
+        "evidence": [
+          {
+            "id": "lin-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1707925/000162828026011430/lin-20251231.htm",
+            "quote": "The geographic information presented below is based on country of origin.\nSales by Major Country\n(Millions of dollars) 2025 2024 2023\nUnited States $ 12,182 $ 11,497 $ 10,566\nChina 2,600 2,649 2,585\nGermany (a) 2,432 2,509 2,827\nUnited Kingdom 1,510 1,540 1,507\nAustralia 1,287 1,354 1,303\nMexico 1,391 1,346 1,292\nBrazil 1,325 1,263 1,302\nOther – non-U.S. 11,259 10,847 11,472\nTotal Sales $ 33,986 $ 33,005 $ 32,854\n(a)Sales in Germany include Engineering sales to third parties, locally and internationally, which represent 25%, 28% and 35% of Germany sales in 2025, 2024 and 2023, respectively.",
+            "asOf": "2026-02-25",
+            "period": "2025-12-31",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001628280-26-011430"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "GREATER CHINA",
+        "label": "Greater China",
+        "basis": "revenue",
+        "period": "2025-09-27",
+        "grossExposurePct": {
+          "low": 3.86731337,
+          "high": 3.86731337
+        },
+        "signedExposurePct": {
+          "low": 3.86731337,
+          "high": 3.86731337
+        },
+        "grossHoldingWeight": 0.25,
+        "symbols": [
+          "AAPL"
+        ],
+        "evidence": [
+          {
+            "id": "aapl-geography-countries",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+            "quote": "The following tables show net sales for 2025, 2024 and 2023 and long-lived assets as of September 27, 2025 and September 28, 2024 for countries that individually accounted for 10% or more of the respective totals, as well as aggregate amounts for the remaining countries (in millions):\n2025 2024 2023\nNet sales:\nU.S. $ 151,790 $ 142,196 $ 138,573\nChina (1)\n64,377 66,952 72,559\nOther countries 199,994 181,887 172,153\nTotal net sales $ 416,161 $ 391,035 $ 383,285\n2025 2024\nLong-lived assets:\nU.S. $ 40,274 $ 35,664\nChina (1)\n3,617 4,797\nOther countries 5,943 5,219\nTotal long-lived assets $ 49,834 $ 45,680\n(1)China includes Hong Kong and Taiwan.",
+            "asOf": "2025-10-31",
+            "period": "2025-09-27",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0000320193-25-000079"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "CHINA INCLUDING HONG KONG",
+        "label": "China including Hong Kong",
+        "basis": "revenue",
+        "period": "2026-01-25",
+        "grossExposurePct": {
+          "low": 2.73370134,
+          "high": 2.73370134
+        },
+        "signedExposurePct": {
+          "low": 2.73370134,
+          "high": 2.73370134
+        },
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "nvda-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "Revenue by geographic area is based upon the location of the customers’ headquarters. The end customer and shipping location may be different from our customers' headquarters location.\nYear Ended\nJan 25, 2026 Jan 26, 2025 Jan 28, 2024\nGeographic Revenue based upon Customer Headquarters Location (1):\n(In millions)\nUnited States $ 149,617 $ 77,482 $ 31,533\nTaiwan (2)\n42,345 23,600 14,912\nChina (including Hong Kong) 19,677 25,048 12,330\nOther\n4,299 4,367 2,147\nTotal revenue $ 215,938 $ 130,497 $ 60,922\n(1)In the third quarter of fiscal year 2026, we changed to revenue based upon the location of our customers’ headquarters as we believe it provides a better representation of the geographic profile of our revenue. Prior period information has been recast to reflect this change.\n(2)In fiscal year 2026, we estimate 76% of Data Center revenue from Taiwan-headquartered customers was attributed to end customers based in the United States and Europe.",
+            "asOf": "2026-02-25",
+            "period": "2026-01-25",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "JP",
+        "label": "Japan",
+        "basis": "revenue",
+        "period": "2025-09-27",
+        "grossExposurePct": {
+          "low": 1.72427258,
+          "high": 1.72427258
+        },
+        "signedExposurePct": {
+          "low": 1.72427258,
+          "high": 1.72427258
+        },
+        "grossHoldingWeight": 0.25,
+        "symbols": [
+          "AAPL"
+        ],
+        "evidence": [
+          {
+            "id": "aapl-geography-segments",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+            "quote": "The following tables show information by reportable segment for 2025, 2024 and 2023 (in millions):\n2025\nAmericas Europe\nGreater\nChina\nJapan Rest of\nAsia Pacific Corporate Total\nNet sales $ 178,353 $ 111,032 $ 64,377 $ 28,703 $ 33,696 $ — $ 416,161",
+            "asOf": "2025-10-31",
+            "period": "2025-09-27",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0000320193-25-000079"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "CN",
+        "label": "China",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 1.14753134,
+          "high": 1.14753134
+        },
+        "signedExposurePct": {
+          "low": 1.14753134,
+          "high": 1.14753134
+        },
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "LIN"
+        ],
+        "evidence": [
+          {
+            "id": "lin-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1707925/000162828026011430/lin-20251231.htm",
+            "quote": "The geographic information presented below is based on country of origin.\nSales by Major Country\n(Millions of dollars) 2025 2024 2023\nUnited States $ 12,182 $ 11,497 $ 10,566\nChina 2,600 2,649 2,585\nGermany (a) 2,432 2,509 2,827\nUnited Kingdom 1,510 1,540 1,507\nAustralia 1,287 1,354 1,303\nMexico 1,391 1,346 1,292\nBrazil 1,325 1,263 1,302\nOther – non-U.S. 11,259 10,847 11,472\nTotal Sales $ 33,986 $ 33,005 $ 32,854\n(a)Sales in Germany include Engineering sales to third parties, locally and internationally, which represent 25%, 28% and 35% of Germany sales in 2025, 2024 and 2023, respectively.",
+            "asOf": "2026-02-25",
+            "period": "2025-12-31",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001628280-26-011430"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "DE",
+        "label": "Germany",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 1.07338316,
+          "high": 1.07338316
+        },
+        "signedExposurePct": {
+          "low": 1.07338316,
+          "high": 1.07338316
+        },
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "LIN"
+        ],
+        "evidence": [
+          {
+            "id": "lin-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1707925/000162828026011430/lin-20251231.htm",
+            "quote": "The geographic information presented below is based on country of origin.\nSales by Major Country\n(Millions of dollars) 2025 2024 2023\nUnited States $ 12,182 $ 11,497 $ 10,566\nChina 2,600 2,649 2,585\nGermany (a) 2,432 2,509 2,827\nUnited Kingdom 1,510 1,540 1,507\nAustralia 1,287 1,354 1,303\nMexico 1,391 1,346 1,292\nBrazil 1,325 1,263 1,302\nOther – non-U.S. 11,259 10,847 11,472\nTotal Sales $ 33,986 $ 33,005 $ 32,854\n(a)Sales in Germany include Engineering sales to third parties, locally and internationally, which represent 25%, 28% and 35% of Germany sales in 2025, 2024 and 2023, respectively.",
+            "asOf": "2026-02-25",
+            "period": "2025-12-31",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001628280-26-011430"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "GB",
+        "label": "United Kingdom",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 0.66645089,
+          "high": 0.66645089
+        },
+        "signedExposurePct": {
+          "low": 0.66645089,
+          "high": 0.66645089
+        },
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "LIN"
+        ],
+        "evidence": [
+          {
+            "id": "lin-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1707925/000162828026011430/lin-20251231.htm",
+            "quote": "The geographic information presented below is based on country of origin.\nSales by Major Country\n(Millions of dollars) 2025 2024 2023\nUnited States $ 12,182 $ 11,497 $ 10,566\nChina 2,600 2,649 2,585\nGermany (a) 2,432 2,509 2,827\nUnited Kingdom 1,510 1,540 1,507\nAustralia 1,287 1,354 1,303\nMexico 1,391 1,346 1,292\nBrazil 1,325 1,263 1,302\nOther – non-U.S. 11,259 10,847 11,472\nTotal Sales $ 33,986 $ 33,005 $ 32,854\n(a)Sales in Germany include Engineering sales to third parties, locally and internationally, which represent 25%, 28% and 35% of Germany sales in 2025, 2024 and 2023, respectively.",
+            "asOf": "2026-02-25",
+            "period": "2025-12-31",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001628280-26-011430"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "MX",
+        "label": "Mexico",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 0.61392926,
+          "high": 0.61392926
+        },
+        "signedExposurePct": {
+          "low": 0.61392926,
+          "high": 0.61392926
+        },
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "LIN"
+        ],
+        "evidence": [
+          {
+            "id": "lin-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1707925/000162828026011430/lin-20251231.htm",
+            "quote": "The geographic information presented below is based on country of origin.\nSales by Major Country\n(Millions of dollars) 2025 2024 2023\nUnited States $ 12,182 $ 11,497 $ 10,566\nChina 2,600 2,649 2,585\nGermany (a) 2,432 2,509 2,827\nUnited Kingdom 1,510 1,540 1,507\nAustralia 1,287 1,354 1,303\nMexico 1,391 1,346 1,292\nBrazil 1,325 1,263 1,302\nOther – non-U.S. 11,259 10,847 11,472\nTotal Sales $ 33,986 $ 33,005 $ 32,854\n(a)Sales in Germany include Engineering sales to third parties, locally and internationally, which represent 25%, 28% and 35% of Germany sales in 2025, 2024 and 2023, respectively.",
+            "asOf": "2026-02-25",
+            "period": "2025-12-31",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001628280-26-011430"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "BR",
+        "label": "Brazil",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 0.58479962,
+          "high": 0.58479962
+        },
+        "signedExposurePct": {
+          "low": 0.58479962,
+          "high": 0.58479962
+        },
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "LIN"
+        ],
+        "evidence": [
+          {
+            "id": "lin-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1707925/000162828026011430/lin-20251231.htm",
+            "quote": "The geographic information presented below is based on country of origin.\nSales by Major Country\n(Millions of dollars) 2025 2024 2023\nUnited States $ 12,182 $ 11,497 $ 10,566\nChina 2,600 2,649 2,585\nGermany (a) 2,432 2,509 2,827\nUnited Kingdom 1,510 1,540 1,507\nAustralia 1,287 1,354 1,303\nMexico 1,391 1,346 1,292\nBrazil 1,325 1,263 1,302\nOther – non-U.S. 11,259 10,847 11,472\nTotal Sales $ 33,986 $ 33,005 $ 32,854\n(a)Sales in Germany include Engineering sales to third parties, locally and internationally, which represent 25%, 28% and 35% of Germany sales in 2025, 2024 and 2023, respectively.",
+            "asOf": "2026-02-25",
+            "period": "2025-12-31",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001628280-26-011430"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "AU",
+        "label": "Australia",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 0.56802801,
+          "high": 0.56802801
+        },
+        "signedExposurePct": {
+          "low": 0.56802801,
+          "high": 0.56802801
+        },
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "LIN"
+        ],
+        "evidence": [
+          {
+            "id": "lin-geography",
+            "source": "SEC filing: 10-K",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1707925/000162828026011430/lin-20251231.htm",
+            "quote": "The geographic information presented below is based on country of origin.\nSales by Major Country\n(Millions of dollars) 2025 2024 2023\nUnited States $ 12,182 $ 11,497 $ 10,566\nChina 2,600 2,649 2,585\nGermany (a) 2,432 2,509 2,827\nUnited Kingdom 1,510 1,540 1,507\nAustralia 1,287 1,354 1,303\nMexico 1,391 1,346 1,292\nBrazil 1,325 1,263 1,302\nOther – non-U.S. 11,259 10,847 11,472\nTotal Sales $ 33,986 $ 33,005 $ 32,854\n(a)Sales in Germany include Engineering sales to third parties, locally and internationally, which represent 25%, 28% and 35% of Germany sales in 2025, 2024 and 2023, respectively.",
+            "asOf": "2026-02-25",
+            "period": "2025-12-31",
+            "units": "percent of revenue",
+            "currency": "USD",
+            "confidence": 1,
+            "revision": "0001628280-26-011430"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "country",
+        "key": "KR",
+        "label": "KR",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30798",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          },
+          {
+            "id": "audit:30800",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.97,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "country",
+        "key": "KR",
+        "label": "KR",
+        "basis": null,
+        "period": "2025-12-27",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "AMD"
+        ],
+        "evidence": [
+          {
+            "id": "audit:29552",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm",
+            "quote": "Additionally, we utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for the production of our ICs in the form of programmable logic devices.",
+            "asOf": "2025-12-27",
+            "period": "2025-12-27",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0000002488-26-000018"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "country",
+        "key": "TW",
+        "label": "TW",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30801",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          },
+          {
+            "id": "audit:30802",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "customer",
+        "key": "10230",
+        "label": "Medallion Midstream",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 1.6,
+          "high": 1.6
+        },
+        "signedExposurePct": {
+          "low": 1.6,
+          "high": 1.6
+        },
+        "grossHoldingWeight": 0.1,
+        "symbols": [
+          "FANG"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30199",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1539838/000153983826000010/fang-20251231.htm",
+            "quote": "For the year ended December 31, 2025, four purchasers each accounted for more than 10% of our revenue: Medallion Midstream (16%)",
+            "asOf": "2025-12-31",
+            "period": "2025-12-31",
+            "units": "% of revenue",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001539838-26-000010"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "customer",
+        "key": "10228",
+        "label": "Shell Trading USA Company",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 1.3,
+          "high": 1.3
+        },
+        "signedExposurePct": {
+          "low": 1.3,
+          "high": 1.3
+        },
+        "grossHoldingWeight": 0.1,
+        "symbols": [
+          "FANG"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30200",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1539838/000153983826000010/fang-20251231.htm",
+            "quote": "For the year ended December 31, 2025, four purchasers each accounted for more than 10% of our revenue: Medallion Midstream (16%), Shell Trading (USA) Company (“Shell”) (13%)",
+            "asOf": "2025-12-31",
+            "period": "2025-12-31",
+            "units": "% of revenue",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001539838-26-000010"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "customer",
+        "key": "10226",
+        "label": "Enterprise Crude Oil LLC",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 1.2,
+          "high": 1.2
+        },
+        "signedExposurePct": {
+          "low": 1.2,
+          "high": 1.2
+        },
+        "grossHoldingWeight": 0.1,
+        "symbols": [
+          "FANG"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30201",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1539838/000153983826000010/fang-20251231.htm",
+            "quote": "For the year ended December 31, 2025, four purchasers each accounted for more than 10% of our revenue: Medallion Midstream (16%), Shell Trading (USA) Company (“Shell”) (13%), Enterprise Crude Oil LLC (“Enterprise”) (12%)",
+            "asOf": "2025-12-31",
+            "period": "2025-12-31",
+            "units": "% of revenue",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001539838-26-000010"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "customer",
+        "key": "10223",
+        "label": "Vitol Inc.",
+        "basis": "revenue",
+        "period": "2025-12-31",
+        "grossExposurePct": {
+          "low": 1.1,
+          "high": 1.1
+        },
+        "signedExposurePct": {
+          "low": 1.1,
+          "high": 1.1
+        },
+        "grossHoldingWeight": 0.1,
+        "symbols": [
+          "FANG"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30202",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1539838/000153983826000010/fang-20251231.htm",
+            "quote": "For the year ended December 31, 2025, four purchasers each accounted for more than 10% of our revenue: Medallion Midstream (16%), Shell Trading (USA) Company (“Shell”) (13%), Enterprise Crude Oil LLC (“Enterprise”) (12%) and Vitol Inc. (“Vitol”) (11%).",
+            "asOf": "2025-12-31",
+            "period": "2025-12-31",
+            "units": "% of revenue",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001539838-26-000010"
+          }
+        ],
+        "incomplete": false
+      },
+      {
+        "kind": "supplier",
+        "key": "149",
+        "label": "Alphabet Inc.",
+        "basis": null,
+        "period": "2026-06-30",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.25,
+        "symbols": [
+          "AAPL"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30840",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1564708/000156470826000175/nws-20260630.htm",
+            "quote": "HarperCollins derives its revenue from the sale and licensing of print and digital books to a customer base that includes global technology companies, traditional brick and mortar booksellers, wholesale clubs and discount stores, including Amazon, Apple, Barnes & Noble and Tesco",
+            "asOf": "2026-06-30",
+            "period": "2026-06-30",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.98,
+            "revision": "0001564708-26-000175"
+          },
+          {
+            "id": "audit:30838",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1564708/000156470826000175/nws-20260630.htm",
+            "quote": "Google to provide workspace and other enterprise services",
+            "asOf": "2026-06-30",
+            "period": "2026-06-30",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001564708-26-000175"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "151",
+        "label": "AMAZON COM INC",
+        "basis": null,
+        "period": "2026-06-30",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.25,
+        "symbols": [
+          "AAPL"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30840",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1564708/000156470826000175/nws-20260630.htm",
+            "quote": "HarperCollins derives its revenue from the sale and licensing of print and digital books to a customer base that includes global technology companies, traditional brick and mortar booksellers, wholesale clubs and discount stores, including Amazon, Apple, Barnes & Noble and Tesco",
+            "asOf": "2026-06-30",
+            "period": "2026-06-30",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.98,
+            "revision": "0001564708-26-000175"
+          },
+          {
+            "id": "audit:30837",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1564708/000156470826000175/nws-20260630.htm",
+            "quote": "The Company relies on Amazon Web Services to supply cloud-based services used in many of the Company’s business activities",
+            "asOf": "2026-06-30",
+            "period": "2026-06-30",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001564708-26-000175"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "155",
+        "label": "MICRON TECHNOLOGY INC",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30799",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "53",
+        "label": "News Corp",
+        "basis": null,
+        "period": "2026-06-30",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.25,
+        "symbols": [
+          "AAPL"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30840",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1564708/000156470826000175/nws-20260630.htm",
+            "quote": "HarperCollins derives its revenue from the sale and licensing of print and digital books to a customer base that includes global technology companies, traditional brick and mortar booksellers, wholesale clubs and discount stores, including Amazon, Apple, Barnes & Noble and Tesco",
+            "asOf": "2026-06-30",
+            "period": "2026-06-30",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.98,
+            "revision": "0001564708-26-000175"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "653",
+        "label": "GLOBALFOUNDRIES Inc.",
+        "basis": null,
+        "period": "2025-12-27",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "AMD"
+        ],
+        "evidence": [
+          {
+            "id": "audit:29550",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm",
+            "quote": "GLOBALFOUNDRIES Inc. (GF), with respect to wafer purchases for our HPC products at the 12 nm and 14 nm technology nodes.",
+            "asOf": "2025-12-27",
+            "period": "2025-12-27",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0000002488-26-000018"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "7054",
+        "label": "TAIWAN SEMICONDUCTOR MANUFACTURING CO LTD",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30796",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We utilize foundries, such as Taiwan Semiconductor Manufacturing Company Limited, or TSMC, and Samsung Electronics Co., Ltd., or Samsung, to produce our semiconductor wafers.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "7054",
+        "label": "TAIWAN SEMICONDUCTOR MANUFACTURING CO LTD",
+        "basis": null,
+        "period": "2025-12-27",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "AMD"
+        ],
+        "evidence": [
+          {
+            "id": "audit:29549",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm",
+            "quote": "We utilize Taiwan Semiconductor Manufacturing Company Limited (TSMC) for the production of wafers for our HPC, FPGA and adaptive SoC products",
+            "asOf": "2025-12-27",
+            "period": "2025-12-27",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0000002488-26-000018"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "7514",
+        "label": "SK hynix Inc.",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30798",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "8155",
+        "label": "Hon Hai Precision Industry",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30801",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "8157",
+        "label": "Wistron",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30802",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "885",
+        "label": "Fabrinet",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30803",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "94",
+        "label": "United Microelectronics Corporation",
+        "basis": null,
+        "period": "2025-12-27",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "AMD"
+        ],
+        "evidence": [
+          {
+            "id": "audit:29551",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm",
+            "quote": "Additionally, we utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for the production of our ICs in the form of programmable logic devices.",
+            "asOf": "2025-12-27",
+            "period": "2025-12-27",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0000002488-26-000018"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "95",
+        "label": "Samsung Electronics Co., Ltd.",
+        "basis": null,
+        "period": "2026-01-25",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.3,
+        "symbols": [
+          "NVDA"
+        ],
+        "evidence": [
+          {
+            "id": "audit:30800",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+            "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+            "asOf": "2026-01-25",
+            "period": "2026-01-25",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.97,
+            "revision": "0001045810-26-000021"
+          }
+        ],
+        "incomplete": true
+      },
+      {
+        "kind": "supplier",
+        "key": "95",
+        "label": "Samsung Electronics Co., Ltd.",
+        "basis": null,
+        "period": "2025-12-27",
+        "grossExposurePct": null,
+        "signedExposurePct": null,
+        "grossHoldingWeight": 0.15,
+        "symbols": [
+          "AMD"
+        ],
+        "evidence": [
+          {
+            "id": "audit:29552",
+            "source": "filing_text",
+            "tier": "primary",
+            "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm",
+            "quote": "Additionally, we utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for the production of our ICs in the form of programmable logic devices.",
+            "asOf": "2025-12-27",
+            "period": "2025-12-27",
+            "units": "relationship",
+            "currency": null,
+            "confidence": 0.99,
+            "revision": "0000002488-26-000018"
+          }
+        ],
+        "incomplete": true
+      }
+    ],
+    "unknownGrossWeight": 0.4
+  },
+  "unknowns": [
+    "NVDA: Frozen hand-reviewed filing sample, not current production coverage.",
+    "NVDA: Geography is customer headquarters, not end demand or manufacturing location.",
+    "NVDA: Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+    "NVDA: This revenue share is calculated from filed amounts; it is not a literally disclosed percentage.",
+    "NVDA: A hop has a missing percentage, unsupported scope, incompatible period/basis or a denominator belonging to another entity; it cannot quantify this holding.",
+    "NVDA: Counterparty domicile is a geographic association; the affected production sites, import origins and operating footprint are not disclosed by this relationship.",
+    "AAPL: Frozen hand-reviewed filing sample, not current production coverage.",
+    "AAPL: Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+    "AAPL: The disclosure aggregates the target with other markets or products; its internal allocation is unknown.",
+    "AAPL: This revenue share is calculated from filed amounts; it is not a literally disclosed percentage.",
+    "AMD: Frozen hand-reviewed filing sample, not current production coverage.",
+    "AMD: No geographic or product revenue partition is available for this holding.",
+    "AMD: Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+    "AMD: No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure.",
+    "LIN: Frozen hand-reviewed filing sample, not current production coverage.",
+    "LIN: Geography is revenue country of origin, not customer destination.",
+    "LIN: No usable disclosed supply-chain relationships are available for this holding.",
+    "LIN: Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+    "LIN: No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure.",
+    "FANG: Frozen hand-reviewed filing sample, not current production coverage.",
+    "FANG: No geographic or product revenue partition is available for this holding.",
+    "FANG: Supply-chain analysis stops at depth 2; longer paths are outside this request.",
+    "FANG: No matched quantitative disclosure or sensitivity was available. Missing coverage is not zero exposure."
+  ],
+  "methodology": [
+    "Amounts are operating exposure percentages and holding-weighted operating stress contributions, never predicted stock returns or portfolio P&L. Holding weights are fractions of NAV, including shorts; they are never renormalized.",
+    "Disclosed applies only to sourced direct exposure. Every scenario impact, country/product intersection, aggregate-region allocation and multi-hop percentage is an estimate. Chained percentages assume proportional transmission; no calibrated market beta is used.",
+    "Each denominator basis and reporting period is kept separate. Disjoint validated SEG partitions add; otherwise overlap bounds use the largest lower bound and the capped sum of upper bounds. Different scenario shocks are reported separately and must not be added without an overlap model.",
+    "Country and counterparty shocks scale disclosed operating shares proportionally to the assumed shock. Commodity prices, tariffs, rates and FX need a sourced sensitivity or an explicit user transmission assumption to quantify an operating impact. Revenue geography is not import origin, invoicing currency or production location.",
+    "Profile domicile identifies a location association only. Missing percentages, anonymous entities, truncated graphs, outdated sources, unknown hedges, substitute suppliers and undisclosed relationships limit coverage. No relationship found never means zero exposure.",
+    "Latest available observations only. Source filing dates and periods accompany evidence; SEG may reflect a later restatement and does not support point-in-time backtesting. Ranges describe disclosure overlap and explicit assumptions, not statistical confidence intervals."
+  ]
+}
