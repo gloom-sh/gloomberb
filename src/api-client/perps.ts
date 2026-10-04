@@ -111,6 +111,7 @@ export interface PerpBoardPayload {
 export interface PerpHistoryPayload {
   status: string; marketId: string; rows: PerpHistoryPoint[]; funding: PerpFunding[]; candles: PerpCandle[];
   locked: boolean; access: "pro" | "preview"; asOf: string | null;
+  from?: string; to?: string; resolution?: "minute" | "hour" | "day"; truncated?: boolean;
 }
 export interface PerpRankingsPayload {
   status: string; asOf: string | null; access: "pro" | "preview"; locked: boolean;
@@ -121,6 +122,6 @@ export type PerpBoardQuery = { assetClass?: string; search?: string; sort?: stri
 export type PerpHistoryQuery = { marketId: string; from?: string; to?: string; resolution?: "auto" | "minute" | "hour" | "day"; limit?: number };
 
 export interface PerpMarketPayload extends PerpBoardPayload {
-  evidence: { kind: string; period_at: string; received_at: string; superseded_at: string | null; fingerprint: string; payload: PerpMarket | PerpFunding }[];
+  evidence: { kind: string; period_at: string; received_at: string; superseded_at: string | null; fingerprint: string; payload: PerpMarket | PerpFunding | PerpCandle }[];
   methodologyUrl: string;
 }

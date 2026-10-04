@@ -562,14 +562,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["FXC"],
   },
   PERP: {
-    summary: "Perpetual funding, open interest and premiums across crypto and stock, index, commodity and FX contracts. Board, History, Rankings, Compare and Evidence. Pro data with a free preview; analytics only.",
+    summary: "Perpetual funding, open interest and premiums across crypto and stock, index, commodity and FX contracts. Per-market History and Evidence. Pro history with a latest-value free preview.",
     usage: ["PERP", "PERP BTC", "PERP TSLA"],
-    keys: [TABS, SEARCH, OPEN, OPEN_SOURCE, key("e", "vidence"), key("d", "es"), key("f", "a"), key("g", "raph")],
-    data: { free: "Latest preview: three markets per asset class", pro: "Minute observations and stored history; source timestamps retained" },
+    keys: [TABS, SEARCH, OPEN_SOURCE, key("a", "lert"), key("e", "vidence"), key("d", "es"), key("f", "a"), key("g", "raph")],
+    data: { free: "Latest market values", pro: "Minute observations and stored history; source timestamps retained" },
     bloomberg: [],
   },
   CRYP: {
-    summary: "The top coins by market cap, stablecoins and perpetual analytics on their own tabs, with returns from a day to a year, a 30-day sparkline, volume and market cap.",
+    summary: "The top coins by market cap, with a separate stablecoins tab, with returns from a day to a year, a 30-day sparkline, volume and market cap.",
     usage: ["CRYP"],
     keys: [TABS, OPEN],
     data: same("Real-time where it streams, others every 15 seconds"),

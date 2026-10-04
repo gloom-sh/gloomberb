@@ -7,12 +7,12 @@ import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
-import { perpsCache, perpsHistoryCache } from "./client";
+import { perpsCache, perpsHistoryCache, perpsMarketCache } from "./client";
 import { PerpsPane } from "./pane";
 import { perpBoard, perpHistory } from "./test-fixture";
 const tui = createOpenTuiTestHarness();
-afterEach(() => { setCloudApiFetchTransport(null); perpsCache.reset(); perpsHistoryCache.reset(); });
-async function mount(tab = "board") {
+afterEach(() => { setCloudApiFetchTransport(null); perpsCache.reset(); perpsHistoryCache.reset(); perpsMarketCache.reset(); });
+async function mount(tab = "history") {
   const id = "perps:test";
   const state = createInitialState(createTestPaneConfig("/tmp/perps-pane-test", { paneId: "perps", instanceId: id, settings: { tab } }));
   function Harness() {
@@ -23,19 +23,21 @@ async function mount(tab = "board") {
   }
   await act(async () => { await tui.render(<Harness />, { width: 110, height: 25 }); });
 }
-test("preview retains dated board observations and Enter requests exactly the selected market's locked history", async () => {
+test("preview retains latest market values while its history is locked", async () => {
   const calls: string[] = [];
   const board = perpBoard({ locked: 5, access: "preview" });
   setCloudApiFetchTransport(async (url) => {
     calls.push(String(url));
-    return Response.json(String(url).includes("/history") ? perpHistory({ locked: true, access: "preview" }) : board);
+    return Response.json(String(url).includes("/history") ? perpHistory({ locked: true, access: "preview" }) : { ...board, evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals" });
   });
   await mount();
-  const frame = await tui.waitForFrameToContain("BTC");
-  expect(frame).toContain("Upgrade to see every market");
-  expect(frame).toContain("8H %");
-  await tui.emitKeypress({ name: "return" });
-  expect(await tui.waitForFrameToContain("Full history requires Gloom Pro.")).not.toContain("NaN");
+  const frame = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
+  expect(frame).toContain("Funding / 8h");
+  expect(frame).toContain("Open interest USD");
+  expect(frame).toContain("Upgrade for full history");
+  expect(frame).not.toContain("Rankings");
+  expect(frame).not.toContain("Compare");
+  expect(frame).not.toContain("NaN");
   expect(calls.some((url) => url.includes("marketId=hyperliquid%3Adefault%3ABTC"))).toBe(true);
 });
 test("evidence distinguishes source time, raw interval, reference price and retained revision", async () => {

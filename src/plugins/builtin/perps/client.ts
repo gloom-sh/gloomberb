@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { PerpBoardPayload, PerpBoardRow, PerpHistoryPayload, PerpHistoryQuery, PerpRankingsPayload } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardRow, PerpHistoryPayload, PerpHistoryQuery, PerpMarketPayload } from "../../../api-client/perps";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 
@@ -26,32 +26,41 @@ export function validatePerpsBoard(data: PerpBoardPayload): PerpBoardPayload {
     || new Set(data.rows.map((row) => row.marketId)).size !== data.rows.length) throw new Error("The server returned unreadable perpetual markets");
   return data;
 }
-export function validatePerpsHistory(data: PerpHistoryPayload): PerpHistoryPayload {
-  if (!envelope(data) || !Array.isArray(data.rows) || !Array.isArray(data.funding) || !Array.isArray(data.candles)
-    || !data.rows.every((row) => date(row.time) && [row.markPrice, row.oraclePrice, row.premium, row.fundingRate, row.fundingIntervalHours, row.openInterestBase, row.openInterestUsd].every(finiteOrNull))
-    || !data.funding.every((row) => date(row.time) && typeof row.rate === "number" && Number.isFinite(row.rate) && row.intervalHours > 0)
-    || !data.candles.every((row) => date(row.time) && [row.open, row.high, row.low, row.close].every((n) => typeof n === "number" && Number.isFinite(n)))) throw new Error("The server returned unreadable perpetual history");
+export function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?: string): PerpHistoryPayload {
+  if (!envelope(data) || typeof data.marketId !== "string" || expectedMarketId !== undefined && data.marketId !== expectedMarketId || !Array.isArray(data.rows) || !Array.isArray(data.funding) || !Array.isArray(data.candles)
+    || !data.rows.every((row) => date(row.time) && [row.markPrice, row.oraclePrice, row.premium, row.fundingRate, row.fundingIntervalHours, row.openInterestBase, row.openInterestUsd].every(finiteOrNull) && (row.fundingIntervalHours === null || row.fundingIntervalHours > 0))
+    || !data.funding.every((row) => date(row.time) && typeof row.rate === "number" && Number.isFinite(row.rate) && Number.isFinite(row.intervalHours) && row.intervalHours > 0 && row.marketId === data.marketId && date(row.observedAt) && typeof row.sourceUrl === "string")
+    || !data.candles.every((row) => date(row.time) && [row.open, row.high, row.low, row.close].every((n) => typeof n === "number" && Number.isFinite(n)) && row.marketId === data.marketId && date(row.observedAt) && typeof row.sourceUrl === "string")) throw new Error("The server returned unreadable perpetual history");
   return data;
 }
-export const RANKING_KEYS = ["fundingPositive", "fundingNegative", "oiSurges", "premiumDislocations", "closedMarketDislocations"] as const;
-function validatePerpsRankings(data: PerpRankingsPayload) {
-  if (!envelope(data) || !RANKING_KEYS.every((key) => Array.isArray(data[key]) && data[key].every(validRow))) throw new Error("The server returned unreadable perpetual rankings");
-  return data;
-}
-export const fetchPerpsBoard = async (client: Pick<typeof apiClient, "getCloudPerpsBoard"> = apiClient) => validatePerpsBoard(await client.getCloudPerpsBoard());
-export const fetchPerpsHistory = async (query: PerpHistoryQuery, client: Pick<typeof apiClient, "getCloudPerpsHistory"> = apiClient) => validatePerpsHistory(await client.getCloudPerpsHistory(query));
-export const fetchPerpsRankings = async (client: Pick<typeof apiClient, "getCloudPerpsRankings"> = apiClient) => validatePerpsRankings(await client.getCloudPerpsRankings());
-export const fetchPerpsCompare = async (base: string, client: Pick<typeof apiClient, "getCloudPerpsCompare"> = apiClient) => validatePerpsBoard(await client.getCloudPerpsCompare(base));
+export const fetchPerpsHistory = async (query: PerpHistoryQuery, client: Pick<typeof apiClient, "getCloudPerpsHistory"> = apiClient) => validatePerpsHistory(await client.getCloudPerpsHistory(query), query.marketId);
 const fetchPerpsEquity = async (symbol: string, client: Pick<typeof apiClient, "getCloudPerpsEquity"> = apiClient) => validatePerpsBoard(await client.getCloudPerpsEquity(symbol));
-export const cachedPerps = (access: string) => cachedCloudResource(perpsCache, `board:${access}`, validatePerpsBoard);
-export const loadPerps = (access: string, force = false) => loadCloudResource(perpsCache, `board:${access}`, () => fetchPerpsBoard(), { force, validate: validatePerpsBoard });
 export const loadPerpsEquity = (symbol: string, access: string, force = false) => loadCloudResource(perpsCache, `equity:${symbol}:${access}`, () => fetchPerpsEquity(symbol), { force, validate: validatePerpsBoard });
-export const loadPerpsCompare = (base: string, access: string, force = false) => loadCloudResource(perpsCache, `compare:${base}:${access}`, () => fetchPerpsCompare(base), { force, validate: validatePerpsBoard });
-export const loadPerpsHistory = (query: PerpHistoryQuery, access: string, force = false) => loadCloudResource(perpsHistoryCache, `${JSON.stringify(query)}:${access}`, () => fetchPerpsHistory(query), { force, validate: validatePerpsHistory });
 
-export async function fetchPerpsMarket(marketId: string, client: Pick<typeof apiClient, "getCloudPerpsMarket"> = apiClient) {
-  const data = await client.getCloudPerpsMarket(marketId);
+function validatePerpsMarket(data: PerpMarketPayload): PerpMarketPayload {
   validatePerpsBoard(data);
-  if (!Array.isArray(data.evidence) || !data.evidence.every((row) => date(row.period_at) && date(row.received_at) && typeof row.fingerprint === "string")) throw new Error("The server returned unreadable market evidence");
+  if (!Array.isArray(data.evidence) || !data.evidence.every((row) => date(row.period_at) && date(row.received_at) && typeof row.fingerprint === "string" && (row.superseded_at === null || date(row.superseded_at)))) throw new Error("The server returned unreadable market evidence");
   return data;
 }
+const fetchPerpsMarket = async (marketId: string, client: Pick<typeof apiClient, "getCloudPerpsMarket"> = apiClient) => validatePerpsMarket(await client.getCloudPerpsMarket(marketId));
+
+export async function fetchPerpSelection(input: string, client: Pick<typeof apiClient, "getCloudPerpsBoard" | "getCloudPerpsMarket"> = apiClient): Promise<PerpMarketPayload> {
+  const query = input.trim() || "BTC";
+  if (/^(hyperliquid|binance|bybit|okx|deribit|coinbase|kraken|dydx):/.test(query)) return fetchPerpsMarket(query, client);
+  const board = validatePerpsBoard(await client.getCloudPerpsBoard({ search: query }));
+  const exact = board.rows.filter((row) => !row.delisted && [row.baseAsset, row.symbol, row.underlyingSymbol].some((value) => value?.toUpperCase() === query.toUpperCase()));
+  const market = exact.find((row) => row.dex === "default") ?? exact.find((row) => row.dex === "xyz") ?? exact[0];
+  if (market) return fetchPerpsMarket(market.marketId, client);
+  // Individual latest-value previews are intentionally broader than the fixed board preview.
+  for (const dex of ["default", "xyz"]) {
+    const result = await fetchPerpsMarket(`hyperliquid:${dex}:${query.toUpperCase()}`, client);
+    if (result.rows.length) return result;
+  }
+  return { ...board, rows: [], evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals" };
+}
+export const perpsMarketCache = createPluginCache<PerpMarketPayload>({ kind: "perps-market", source: "gloom-cloud", schemaVersion: 1,
+  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
+export const cachedPerpSelection = (market: string, access: string) => cachedCloudResource(perpsMarketCache, `${market}:${access}`, validatePerpsMarket);
+export const loadPerpSelection = (market: string, access: string, force = false) => loadCloudResource(perpsMarketCache, `${market}:${access}`, () => fetchPerpSelection(market), { force, validate: validatePerpsMarket });
+export const loadPerpsHistoryForRange = (marketId: string, days: number, access: string, force = false) => loadCloudResource(perpsHistoryCache, `${marketId}:${days}:${access}`, () => fetchPerpsHistory({ marketId,
+  from: new Date(Date.now() - days * 86_400_000).toISOString(), resolution: "auto", limit: 5000 }), { force, validate: (data) => validatePerpsHistory(data, marketId) });
