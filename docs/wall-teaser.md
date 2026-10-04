@@ -7,7 +7,8 @@ their placement ids and behavior. This changes neither access nor prices.
 The platform registry controls enrollment. Signed-in Free accounts use their
 account id on web, desktop and terminal; signed-out web visitors use the
 existing anonymous browser id. An account's saved first arm wins. Signed-out
-desktop and terminal users remain outside the experiment. Bots, Do Not Track
+desktop and terminal users send no wall-view or exposure events, even with a
+website handoff id. They remain outside the experiment and its baseline. Bots, Do Not Track
 and Global Privacy Control are excluded. The initial wall remains usable while
 the exposure answer arrives; refused or failed requests preserve the old wall.
 The platform registry starts with `running: false`; neither PR enables the test.
@@ -47,32 +48,41 @@ results. It reuses existing reads, does not start extraction or transcription,
 and never returns paid text, prices, compensation, job details or personal data.
 The app never requests a Pro endpoint to obtain a preview.
 
-## Frozen samples and provenance
+## Samples and summary hooks
 
 The small catalog lives beside the shared wall code in
-`src/plugins/builtin/shared/wall-teaser-catalog.ts`. "Sample" stays visible.
-Tables use a small subset of the pane's own headers; prose panes retain their
-section or feed shape. Financial fields with no historical source are empty
-masked shapes, never invented numbers. Terminal cells are dimmed or shaded;
-desktop and web use CSS blur on DOM content and shapes. Samples take no focus.
+`src/plugins/builtin/shared/wall-teaser-catalog.ts`. Each summary adds one dim
+line naming what Pro adds: changes to risks, executive pay, filing items,
+transcripts and guidance, or roles by function and location. The hook uses the
+English i18n helper and makes no trial offer.
 
-| Walls | Frozen content | Source |
-| --- | --- | --- |
-| RISK | Apple 2024 10-K risk section heading and filing date | [Apple 10-K, filed November 1, 2024](https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm), accession `0000320193-24-000123`. Only a heading and document metadata are copied. |
-| EXEC | Tim Cook, CEO, and Luca Maestri, CFO, identified as FY 2024; totals absent | [Apple's October 31, 2024 earnings release](https://www.apple.com/newsroom/2024/10/apple-reports-fourth-quarter-results/) identifies both officers and roles. No compensation provider data is copied. |
-| EK | Apple results-of-operations filing and October 31, 2024 date | [Apple 8-K](https://www.sec.gov/Archives/edgar/data/320193/000032019324000120/aapl-20241031.htm), accession `0000320193-24-000120`. No filing summary is copied. |
-| CALLS, CALLS transcript | Apple Q4 2024 call date, October 31, 2024 | The same public Apple earnings release announces the call. No transcript, quote, tone score or generated analysis is copied. |
-| DIAG | Apple annual-report source and November 1, 2024 filing date | The same public SEC 10-K metadata, arranged as the diagnostic's coverage section. No diagnostic finding is invented. |
-| SRCH | Apple, form 10-K, November 1, 2024 | The same public SEC filing metadata. No query, match or snippet is copied. |
-| JOBS | AAPL identifier with open-role and new-role fields masked | Authored layout sample. No careers-system posting or provider payload is copied. |
-| MOST | AAPL and MSFT identifiers; change and relative volume masked | Authored layout sample. No market-data provider payload is copied. |
-| FLOW | AAPL and MSFT identifiers; print type and premium masked | Authored layout sample. No options-feed provider payload is copied. |
-| HILO | AAPL and MSFT identifiers; price and count masked | Authored layout sample. No scanner provider payload is copied. |
-| Team | "Research" and "Shared notes" | Authored workspace example, not a real team or customer record. |
+All samples are authored layouts with no provider payload, historical value,
+invented number, personal name or research text. The only readable row labels
+are AAPL, MSFT, NVDA, AMZN, TSLA, META, AMD and GOOGL where the real pane has a
+ticker column. Other fields are placeholders, including names, dates and titles.
+Prose samples retain their section shape with an issuer label and masked lines;
+Team uses masked workspace content. There is no third-party sample dataset to
+redistribute.
 
-The public historical metadata was checked against Apple's release and the
-SEC submissions index when the catalog was created. It is intentionally frozen.
-The samples carry no third-party paid market-data payload for redistribution.
+Tables fill the available height with at most eight rows. They preserve the
+real pane's column order and show the full set when it fits; less important
+columns give way at narrow widths. The catalog uses the actual labels, including
+MOST's EVENT, FLOW's EXP, SRCH's DATE and HILO's NEW HIGH / PRICE / COUNT.
+
+| Wall | Table columns, when all fit |
+| --- | --- |
+| MOST | #, TICKER, NAME, LAST, GAP%, CHG%, PRE VOL, RVOL, VWAP%, FLOAT, EVENT |
+| FLOW | TIME, TICKER, TYPE, STRIKE, EXP, SIDE, SIZE, PREM, V/OI |
+| HILO | NEW HIGH, PRICE, COUNT |
+| SRCH | TICKER, TYPE, DATE, TITLE, MATCH |
+| EXEC | NAME, TITLE, EQ%, TOTAL |
+| CALLS | TICKER, COMPANY, DATE, PERIOD, LENGTH, TONE |
+| JOBS | TICKER, COMPANY, OPEN, 30D, POSTED 30D, NEW 7D, TOP FUNCTION, TOP COUNTRY |
+
+The Sample badge and headers stay readable. Placeholder widths vary
+predictably by row and column, so rerenders do not move them. Terminal values
+are shade cells with no readable digits; desktop and web use real CSS-blurred
+bars. Samples are passive and leave the existing actions visible and focused.
 
 ## Measurement
 
@@ -84,7 +94,7 @@ The ticker is sent only to the data route needed to return its free summary.
 | Event | Properties | Frequency |
 | --- | --- | --- |
 | `experiment_exposed` | `experiment: "wall_teaser"`, `variant: "control"` or `"teaser"`; attribution property `exp_wall_teaser` | Once per eligible unit per app/browser session when a Pro wall is visible, in both arms. |
-| `wall_viewed` | `placement`; `teaser_kind: "summary"`, `"sample"` or `"none"` only for the teaser arm; `exp_wall_teaser` when assigned | Once per placement, account/visitor and session, including measurable users outside the experiment. `none` includes insufficient room. |
+| `wall_viewed` | `placement`; `teaser_kind: "summary"`, `"sample"` or `"none"` only for the teaser arm; `exp_wall_teaser` when assigned | Once per placement, account/visitor and session, including signed-in accounts and identified web visitors outside the experiment. `none` includes insufficient room. |
 | `upgrade_intent` | Existing `placement`; `exp_wall_teaser` when assigned | Existing upgrade-action behavior is retained. |
 | `workspace_opened` | Existing surface/account attribution, including `exp_wall_teaser` when assigned | Existing session milestone, used to read returning use. |
 
@@ -94,10 +104,10 @@ Read the returning-use guardrail from later `workspace_opened` sessions for the
 same exposed account or browser cohort. `wall_viewed` also supplies the placement
 baseline outside the experiment; it must not be mistaken for an exposure.
 
-Signed-out desktop/TUI baseline events have only an event-scoped distinct id
-and `$process_person_profile: false`. The app creates no tracking identity and
-deduplicates these views in memory. These events measure placement volume;
-they cannot identify returning users and are outside the experiment cohort.
+Wall-view counts cover signed-in accounts on any surface and web visitors with
+an anonymous id. Signed-out desktop/TUI users send nothing new and are not part
+of this baseline, including installations with a website handoff id. No native
+identifier is minted. Existing non-wall milestones keep their existing rules.
 
 ## Visual review
 
@@ -107,12 +117,17 @@ read on October 4, 2026: 31 factors, filed October 31, 2025. No fixture sends
 analytics or reads a Pro endpoint. Terminal captures use the existing screenshot
 tool's 2x pixel density at the stated viewport sizes.
 
-| Terminal control, 720 x 360 | Terminal teaser, 720 x 360 |
-| --- | --- |
-| ![Risk control](wall-teaser/risk-control.png) | ![Risk summary](wall-teaser/risk-summary.png) |
-| ![Movers control](wall-teaser/most-control.png) | ![Movers sample](wall-teaser/most-sample.png) |
+Screenshots are local review artifacts in
+`~/.local/state/gloom-pm/ab-inapp/shots-d/`; no PNGs or branch image links are
+published in this repository:
 
-![Web sample at 480 x 540](wall-teaser/web-sample.png)
+- `terminal-risk-summary-{control,teaser}-{1280x540,720x360}.png`
+- `terminal-most-sample-{control,teaser}-{1280x540,720x360}.png`
+- `terminal-flow-sample-{control,teaser}-{1280x540,720x360}.png`
+- `web-most-sample-{control,teaser}-480x540.png`
+- `web-flow-sample-teaser-480x540.png`
+- `desktop-most-sample-teaser-1280x540.png`
+- `desktop-flow-sample-teaser-1280x540.png`
 
 ## What remains outside this change
 

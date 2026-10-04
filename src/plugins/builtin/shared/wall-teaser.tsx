@@ -4,6 +4,7 @@ import { getWallSummary } from "../../../api-client/wall-summary";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { exposeWallTeaser, recordWallViewed } from "../../../api-client/research-activity";
 import { Badge, DataTableView, KeyValueRow, SectionHeading } from "../../../components";
+import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
 import { t } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { usePaneVisible } from "../../../state/app/activity";
@@ -47,15 +48,19 @@ export function WallTeaser({ children, placement, width, height, title = "", mes
   const access = usePlanAccess();
   const userId = apiClient.getCurrentUser()?.id;
   const native = useUiCapabilities().nativePaneChrome === true;
+  const colors = useThemeColors();
   const sample = WALL_TEASERS[placement];
-  const listing = sample?.summary ? listingIdentity(symbol, exchange) : null;
+  const listing = sample?.summaryHook ? listingIdentity(symbol, exchange) : null;
   const key = `${userId ?? "guest"}:${placement}:${listing?.symbol ?? ""}:${listing?.exchange ?? ""}`;
   const [resolved, setResolved] = useState<{ key: string; arm: string | null; teaser: Teaser } | null>(null);
-  // Includes padding, the original action row and a two-row sample. Wrapped
-  // wall copy must never push its buttons out of a short terminal pane.
+  // The original wall uses two inset rows and two action rows. The preview
+  // keeps its own bottom inset; a sample needs a badge, gap and table header.
   const copyRows = wrapTextLines(t(title), Math.max(1, width - 2)).length
-    + wrapTextLines(t(message), Math.max(1, width - 2)).length;
-  const fits = width >= 34 && height >= copyRows + 10;
+    + (message ? wrapTextLines(t(message), Math.max(1, width - 2)).length : 0);
+  const previewRows = Math.max(0, height - copyRows - 5);
+  const sampleRows = Math.min(8, Math.max(0, previewRows - 3));
+  const hookRows = sample?.summaryHook ? wrapTextLines(t(sample.summaryHook), Math.max(1, width - 2)).length : 0;
+  const fits = width >= 34 && sampleRows >= 2;
   const trackedView = useRef<ReturnType<typeof trackWallView> | null>(null);
 
   useEffect(() => {
@@ -94,7 +99,8 @@ export function WallTeaser({ children, placement, width, height, title = "", mes
   }, [visible, access.hasProAccess, key, fits, placement, listing?.symbol, listing?.exchange, sample]);
 
   const current = resolved?.key === key ? resolved : null;
-  const teaser = fits && current?.arm === "teaser" ? current.teaser : { kind: "none" as const };
+  const summaryFits = current?.teaser.kind !== "summary" || current.teaser.summary.items.length + hookRows <= previewRows;
+  const teaser = fits && summaryFits && current?.arm === "teaser" ? current.teaser : { kind: "none" as const };
   useEffect(() => {
     if (!visible || !current || access.hasProAccess) return;
     trackedView.current?.report(current.arm === "teaser" ? teaser.kind : undefined);
@@ -106,52 +112,73 @@ export function WallTeaser({ children, placement, width, height, title = "", mes
       flexDirection="column" paddingX={1} paddingBottom={1} flexShrink={0}
       data-gloom-ui="wall-teaser" data-teaser-kind={teaser.kind}
     >
-      {teaser.kind === "summary" ? teaser.summary.items.map((item) => (
-        <KeyValueRow key={item.label} label={t(SUMMARY_LABELS[item.label] ?? item.label)}
-          value={String(item.value)} width={width - 2} labelWidth={Math.min(25, width - 14)} />
-      )) : <FrozenWallSample placement={placement} width={width - 2} native={native} />}
+      {teaser.kind === "summary" ? <>
+        {teaser.summary.items.map((item) => (
+          <KeyValueRow key={item.label} label={t(SUMMARY_LABELS[item.label] ?? item.label)}
+            value={String(item.value)} width={width - 2} labelWidth={Math.min(25, width - 14)} />
+        ))}
+        {sample?.summaryHook && <Text fg={colors.textMuted} dim wrapText>{t(sample.summaryHook)}</Text>}
+      </> : <FrozenWallSample placement={placement} width={width - 2} rows={sampleRows} native={native} />}
     </Box>}
   </>;
 }
 
-function FrozenWallSample({ placement, width, native }: { placement: string; width: number; native: boolean }) {
+const SAMPLE_TICKERS = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "META", "AMD", "GOOGL"];
+
+/** Stable per cell, independent of viewport changes and renders. Never encodes data. */
+function placeholderFraction(row: number, column: number): number {
+  return (38 + ((row * 17 + column * 29) % 49)) / 100;
+}
+
+function Placeholder({ row, column, width, native }: { row: number; column: number; width: number; native: boolean }) {
+  const colors = useThemeColors();
+  const fraction = placeholderFraction(row, column);
+  return native
+    ? <Box style={{ background: colors.textMuted, opacity: 0.35, filter: "blur(3px)", width: `${fraction * 100}%`, height: "0.65em", marginTop: "0.2em", pointerEvents: "none", userSelect: "none" }} />
+    : <Text fg={colors.textMuted} dim>{"░".repeat(Math.max(2, Math.floor(width * fraction)))}</Text>;
+}
+
+function FrozenWallSample({ placement, width, rows, native }: { placement: string; width: number; rows: number; native: boolean }) {
   const colors = useThemeColors();
   const sample = WALL_TEASERS[placement]!;
-  const columns = sample.columns.map((label, index) => ({
-    id: String(index), label: t(label), width: Math.max(9, Math.floor((width - 2) / 3)), align: "left" as const,
-  }));
+  const columns = sample.layout === "table" ? sample.columns.map((column, index) => ({
+    ...column, id: String(index), label: t(column.label),
+  })) : [];
+  // Fit complete headers using the kit's own gap/header arithmetic. Preserve
+  // the real column order while dropping the least important fields first.
+  while (columns.length > 1 && getTableWidth(columns) > width) {
+    const priority = Math.max(...columns.map((column) => column.priority));
+    columns.splice(columns.findIndex((column) => column.priority === priority), 1);
+  }
+  const spare = Math.max(0, width - getTableWidth(columns));
+  columns.forEach((column, index) => {
+    column.width = tableColumnWidth(column) + Math.floor(spare / columns.length) + (index < spare % columns.length ? 1 : 0);
+  });
   return <>
     <Box flexDirection="row" marginBottom={1}><Badge label={t("Sample")} /></Box>
-    {sample.layout === "prose" ? sample.rows.map(([heading, meta, detail]) => (
-      <Box key={heading} flexDirection="column">
-        <SectionHeading title={t(heading)} />
-        <Box style={native ? { filter: "blur(3px)", opacity: 0.6, pointerEvents: "none", userSelect: "none" } : undefined}>
-          <Text fg={colors.textMuted} dim wrapText>{[t(meta), detail].filter(Boolean).join(" · ")}</Text>
-        </Box>
-      </Box>
-    )) :
-    <Box height={sample.rows.length + 1} style={native ? { pointerEvents: "none", userSelect: "none" } : undefined}>
+    {sample.layout === "prose" ? <Box flexDirection="column">
+      {sample.issuer && <SectionHeading title={sample.issuer} />}
+      {Array.from({ length: rows }, (_, row) => <Box key={row} height={1}>
+        <Placeholder row={row} column={0} width={width} native={native} />
+      </Box>)}
+    </Box> :
+    <Box height={rows + 1} style={native ? { pointerEvents: "none", userSelect: "none" } : undefined}>
       <DataTableView
-        columns={columns} items={[...sample.rows]} rootWidth={width} rootHeight={sample.rows.length + 1}
+        columns={columns} items={SAMPLE_TICKERS.slice(0, rows)} rootWidth={width} rootHeight={rows + 1}
         focused={false} keyboardNavigation={false} selection={{ kind: "none" }} sortable={false}
         sortColumnId={null} sortDirection="asc" getItemKey={(_row, index) => String(index)}
         isNavigable={() => false} emptyStateTitle="" showHorizontalScrollbar={false}
-        renderCell={(row, column) => {
-          const value = row[Number(column.id)] ?? "";
-          // Unknown market values are blank shapes, never invented prices or
-          // trades. DOM masking uses CSS; terminal masking uses shade cells.
-          const masked = Number(column.id) > 0;
+        renderCell={(ticker, column) => {
+          const sourceColumn = sample.columns[Number(column.id)]!;
+          const identifier = sourceColumn.label === "TICKER" || sourceColumn.label === "NEW HIGH";
+          const row = SAMPLE_TICKERS.indexOf(ticker);
           return {
-            text: value,
+            text: identifier ? ticker : native ? "" : "░".repeat(Math.max(2, Math.floor(column.width * placeholderFraction(row, Number(column.id))))),
             color: colors.textMuted,
-            content: native && masked
-              ? <Box style={value
-                ? { filter: "blur(3px)", opacity: 0.6 }
-                : { background: colors.textMuted, opacity: 0.25, filter: "blur(3px)", width: "65%", height: "0.65em", marginTop: "0.2em" }}>
-                {value && <Text fg={colors.textMuted}>{value}</Text>}
-              </Box>
+            content: native && !identifier
+              ? <Placeholder row={row} column={Number(column.id)} width={column.width} native />
               : undefined,
-            ...(!native && masked ? { text: value || "░░░░░░", attributes: 2 } : {}),
+            ...(!identifier ? { attributes: 2 } : {}),
           };
         }}
       />
