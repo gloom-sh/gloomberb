@@ -6,7 +6,7 @@ import { portfolioHoldings, watchlistHoldings } from "./holdings";
 
 export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "AAPL=60% NVDA=40%", description: "Tickers, signed NAV weights, PORT:<id>, or WATCH:<id>. Unweighted lists and watchlists use equal weights." },
-  discovery: { aliases: ["EXPO"], dataRequirements: ["Gloom Cloud geographic revenue and disclosed supply chains", "Portfolio NAV for local PORT weights"],
+  discovery: { aliases: ["EXPO"], dataRequirements: ["Gloom Cloud geographic revenue, disclosed supply chains, KPIs, guidance and credit disclosures", "Portfolio NAV for local PORT weights"],
     limitations: ["Pro: full holdings and up to four-hop paths; free: one holding, one hop", "Operating exposure estimates, never predicted stock returns", "Missing relationships and sensitivities remain unknown", "Basis and reporting period are kept separate"] },
   options: [
     { key: "scenario", type: "string", settingKey: "scenario", defaultValue: "taiwan-disruption", description: "Library scenario id, or use --custom." },
@@ -42,6 +42,7 @@ export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
       errors: [...data.unknowns, ...(data.access === "preview" ? ["Free preview: one holding, depth one. Full analysis requires Pro."] : [])],
       sections: [
         { title: "Holdings", rows: data.holdings.map(h => ({ symbol: h.symbol, weight: h.weight, status: h.status, measures: h.measures, coverage: h.coverage, unknowns: h.unknowns })) },
+        { title: "Company drivers", rows: data.holdings.flatMap(h => (h.extensions ?? []).map(row => ({ symbol: h.symbol, ...row }))) },
         { title: "Paths and evidence", rows: data.holdings.flatMap(h => h.components.map(c => ({ symbol: h.symbol, ...c }))) },
         { title: "Portfolio operating stress", rows: data.portfolio.measures.map(m => ({ ...m })) },
         { title: "Concentrations", rows: data.portfolio.concentrations.map(c => ({ ...c })) },

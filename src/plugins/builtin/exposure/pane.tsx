@@ -19,6 +19,7 @@ import { ExposureEditor, type ExposureInputs } from "./editor";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
 import { basisLabel, DEFAULT_SCENARIO, fraction, parseCustomScenario, parseHoldings, pathRows, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
 import { useExposureEvidence } from "./evidence";
+import { driverRows, driverUnits, driverValue } from "./drivers";
 
 function EvidenceItem({ item }: { item: ExposureEvidence }) {
   const colors = useThemeColors();
@@ -35,7 +36,16 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
   const colors = useThemeColors();
   const unknowns = row ? row.unknowns : [...data.unknowns, ...data.holdings.flatMap(h => h.unknowns.map(u => `${h.symbol}: ${u}`))];
   return <ScrollBox flexGrow={1} flexBasis={0} minHeight={0} scrollY contentOptions={{ paddingX: 1 }}>
-    {row ? <>
+    {row?.driver ? <>
+      <KeyValueRow labelWidth={20} label="Value / units" value={`${driverValue(row.driver)} ${driverUnits(row.driver)}`} />
+      <KeyValueRow labelWidth={20} label="Period" value={row.driver.period ?? "Unknown"} />
+      <KeyValueRow labelWidth={20} label="As of" value={row.driver.asOf?.slice(0, 10) ?? "Unknown"} />
+      {row.driver.valueText ? <KeyValueRow labelWidth={20} label="Reported wording" value={row.driver.valueText} /> : null}
+      {row.driver.status ? <KeyValueRow labelWidth={20} label="Status" value={humanLabel(row.driver.status)} /> : null}
+      {row.driver.basis ? <KeyValueRow labelWidth={20} label="Basis" value={humanLabel(row.driver.basis)} /> : null}
+      {Object.entries(row.driver.dimensions ?? {}).map(([key, value]) => <KeyValueRow key={key} labelWidth={20} label={humanLabel(key)} value={value} />)}
+      {row.driver.evidence.map(item => <EvidenceItem key={item.id} item={item} />)}
+    </> : row ? <>
       <KeyValueRow labelWidth={20} label="Basis / period" value={`${basisLabel(row.basis)} · ${row.period ?? "unknown"}`} />
       <KeyValueRow labelWidth={20} label={row.concentration ? "Gross exposure" : "Exposure"} value={rangeText(row.exposure)} detail={`${row.classification}${row.incomplete ? " · incomplete bound" : ""}`} />
       <KeyValueRow labelWidth={20} label={row.concentration ? "Signed exposure" : "Operating stress"} value={rangeText(row.impact)} detail={row.concentration ? "NAV-weighted operating exposure; not a scenario change" : "Estimated change in the stated denominator"} />
@@ -118,16 +128,17 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const data = resource.data;
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused: focused && !editing });
-  const rawRows = useMemo(() => !data ? [] : tab === "paths" ? pathRows(data) : tab === "portfolio" ? portfolioRows(data, view) : tableRows(data), [data, tab, view]);
+  const rawRows = useMemo(() => !data ? [] : tab === "drivers" ? driverRows(data) : tab === "paths" ? pathRows(data) : tab === "portfolio" ? portfolioRows(data, view) : tableRows(data), [data, tab, view]);
   const rows = useMemo(() => [...rawRows].sort((a, b) => {
-    const get = (r: ExposureRow) => sort.column === "exposure" ? r.exposure?.high ?? -Infinity : sort.column === "impact" ? r.impact?.low ?? -Infinity : sort.column === "weight" ? r.weight ?? -Infinity : sort.column === "basis" ? r.basis ?? "" : r.symbol;
+    const get = (r: ExposureRow) => sort.column === "value" ? r.driver?.value ?? r.driver?.range?.high ?? -Infinity : sort.column === "units" ? r.driver ? driverUnits(r.driver) : "" : sort.column === "scope" ? Object.values(r.driver?.dimensions ?? {}).join(" · ") : sort.column === "classification" ? r.classification : sort.column === "label" ? r.label : sort.column === "period" ? r.period ?? "" : sort.column === "exposure" ? r.exposure?.high ?? -Infinity : sort.column === "impact" ? r.impact?.low ?? -Infinity : sort.column === "weight" ? r.weight ?? -Infinity : sort.column === "basis" ? r.basis ?? "" : r.symbol;
     const av = get(a), bv = get(b); const delta = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
     return (sort.direction === "asc" ? delta : -delta) || a.id.localeCompare(b.id);
   }), [rawRows, sort]);
   const selected = rows.find(r => r.id === selectedId) ?? rows[0] ?? null;
   const detail = rows.find(r => r.id === detailId) ?? null;
-  const source = selected?.components.flatMap(c => [...c.evidence, ...c.path.flatMap(h => h.evidence)]).find(e => e.url)?.url;
-  const symbol = selected?.symbol.split(",")[0]?.trim();
+  const activeRow = detail ?? selected;
+  const source = activeRow?.components.flatMap(c => [...c.evidence, ...c.path.flatMap(h => h.evidence)]).find(e => e.url)?.url;
+  const symbol = activeRow?.symbol.split(",")[0]?.trim();
   const detailOpen = editing || !!detail || detailId === "unknowns";
   const { strip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: value => { setTab(value); setDetail(null); }, focused: focused && !editing, dense: true });
   useExposureEvidence(data, tab, view, rows.map(r => r.id));
@@ -137,6 +148,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     ...(selected ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setDetail(selected.id) }] : []),
     ...(source ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(source) }] : []),
     ...(symbol ? [
+      ...(activeRow?.driver ? [{ id: "dataset", key: "a", label: "ll disclosures", title: "Open company disclosures", onPress: () => createPaneFromTemplate(activeRow.driver!.kind === "kpi" ? "company-kpis-pane" : activeRow.driver!.kind === "guidance" ? "company-guidance-pane" : "credit-documents-pane", { symbol }) }] : []),
       { id: "supply", key: "c", label: "hain", title: "Supply chain", onPress: () => createPaneFromTemplate("supply-chain-pane", { symbol }) },
       { id: "des", key: "d", label: "es", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol }) },
       { id: "fa", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol }) },
@@ -150,7 +162,14 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const sources = [{ value: "typed", label: "Typed holdings" }, ...config.portfolios.map(p => ({ value: `PORT:${p.id}`, label: `PORT · ${p.name}` })), ...config.watchlists.map(w => ({ value: `WATCH:${w.id}`, label: `Watchlist · ${w.name}` }))];
   const bodyHeight = Math.max(3, height - tabRows);
   const concentration = tab === "portfolio" && view !== "stress";
-  const columns: DataTableColumn[] = [
+  const columns: DataTableColumn[] = tab === "drivers" ? [
+    { id: "symbol", label: "Holding", width: 10, align: "left" },
+    { id: "label", label: "Company driver", width: width < 115 ? 24 : 32, flexGrow: 1, align: "left" },
+    { id: "value", label: "Value", width: width < 115 ? 18 : 22, align: "right" },
+    { id: "units", label: "Units", width: 12, align: "left" },
+    { id: "period", label: "Period", width: width < 115 ? 14 : 24, align: "left" },
+    { id: "scope", label: "Scope", width: 24, align: "left" },
+  ] : [
     { id: "symbol", label: tab === "portfolio" ? "Holdings" : "Holding", width: tab === "portfolio" ? 18 : width < 115 ? 9 : 12, align: "left" },
     { id: "label", label: tab === "paths" ? "Evidence path" : tab === "table" ? "Shock" : "Target", width: tab === "paths" ? 32 : width < 115 ? 12 : 20, align: "left" },
     { id: "basis", label: "Basis", width: width < 115 ? 12 : 15, align: "left" },
@@ -169,6 +188,9 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     const unknown = row.classification === "unknown";
     switch (col.id) {
       case "symbol": return row.symbol.includes(",") ? { text: row.symbol, color: colors.textBright } : listingCell(row.symbol, colors, state.selected);
+      case "value": return { text: row.driver ? driverValue(row.driver) : "--", value: row.driver?.value ?? null, color: colors.textBright };
+      case "units": return { text: row.driver ? driverUnits(row.driver) : "", color: colors.textDim };
+      case "scope": return { text: Object.values(row.driver?.dimensions ?? {}).join(" · "), color: colors.textDim };
       case "label": return { text: row.label, color: unknown ? colors.textDim : colors.text };
       case "basis": return row.basis ? { text: humanLabel(basisLabel(row.basis)), color: colors.textDim } : missingCell(colors);
       case "exposure": return row.exposure ? { text: rangeText(row.exposure), value: row.exposure.high, color: colors.textBright } : { text: "Unknown", value: null, color: colors.textMuted };
@@ -184,7 +206,11 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const lockedRows = data?.access === "preview" ? Math.min(3, data.lockedHoldings) : 0;
   const items = useMemo(() => [...rows, ...Array.from({ length: lockedRows }, (_, index): ExposureRow => ({ id: `locked:${index}`, symbol: "", shockId: "", label: "", basis: null, period: null,
     exposure: null, impact: null, weight: null, classification: "unknown", incomplete: false, components: [], unknowns: [] }))], [rows, lockedRows]);
-  const figures: StatItem[] = data ? tab === "portfolio" ? [
+  const figures: StatItem[] = data ? tab === "drivers" ? [
+    { label: "Dataset", value: selected?.driver ? selected.driver.kind === "kpi" ? "KPI" : humanLabel(selected.driver.kind) : "--" },
+    { label: "As of", value: selected?.driver?.asOf?.slice(0, 10) ?? "--" },
+    { label: "Basis", value: selected?.driver?.basis ? humanLabel(selected.driver.basis) : "--" },
+  ] : tab === "portfolio" ? [
     { label: "Gross holdings", value: fraction(data.portfolio.grossWeight) }, { label: "Net holdings", value: fraction(data.portfolio.netWeight) },
     { label: "Unknown gross", value: fraction(data.portfolio.unknownGrossWeight), tone: "warning" },
     { label: "Cash / residual", value: `${data.portfolio.cashWeight === null ? "?" : fraction(data.portfolio.cashWeight)} / ${fraction(data.portfolio.residualWeight)}` },
@@ -197,7 +223,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const query = <QueryBar width={width} filters={[
     { id: "scenario", label: "Scenario", value: scenarioId, options: [...(library.data ?? [DEFAULT_SCENARIO]).map(s => ({ value: s.id ?? (snapshot ? "captured" : "custom"), label: s.label })), { value: "custom", label: "Custom" }].filter((s, i, all) => all.findIndex(v => v.value === s.value) === i), onChange: (value: string) => { if (value === "custom") setEditing(true); else setScenarioId(value); } },
     ...(tab === "portfolio" ? [{ id: "group", label: "View", value: view, options: [{ value: "stress", label: "Stress" }, { value: "country", label: "Country" }, { value: "supplier", label: "Supplier" }, { value: "customer", label: "Customer" }], onChange: setView }] : []),
-  ]} meta={tab === "portfolio" ? "NAV-weighted operating exposure" : `${data?.depth ?? inputs.depth} hops`} />;
+  ]} meta={tab === "drivers" ? "Company disclosures" : tab === "portfolio" ? "NAV-weighted operating exposure" : `${data?.depth ?? inputs.depth} hops`} />;
   if (!data && isCloudSessionRequired(resource.error) && !editing) return <SignInWall placement="exposure-signin" action="analyze exposures" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
@@ -213,7 +239,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
             chart={tab === "paths" ? !selected?.components[0]?.path.length ? null : { render: size => <ExposurePathDiagram component={selected?.components[0] ?? null} {...size} />, minRows: 5, maxRows: 5, strip: null }
               : rows.some(r => r.exposure) ? { render: size => <ExposureRanges rows={rows} showTargets={tab === "portfolio" || data.scenario.shocks.length > 1} selectedId={selected?.id ?? null} onSelect={setSelected} onOpen={setDetail} {...size} />, minRows: 1, maxRows: Math.max(1, Math.min(7, rows.filter(r => r.exposure && r.shockId === selected?.shockId && r.basis === selected?.basis && r.period === selected?.period).length)), strip: null } : null} />}
           renderCell={renderCell}
-          emptyStateTitle={tab === "paths" ? "No supported exposure paths for this scenario." : "No quantified exposure in this view."}
+          emptyStateTitle={tab === "drivers" ? "No supported company drivers are available for these holdings." : tab === "paths" ? "No supported exposure paths for this scenario." : "No quantified exposure in this view."}
           bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />
           : !resource.loading && !resource.error ? <EmptyState title="Choose holdings and a scenario." actions={<ActionRow label="Configure exposure" onPress={() => setEditing(true)} />} /> : null}
       </PaneStatusBody>} />

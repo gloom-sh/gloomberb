@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import type { ExposurePayload, ExposureScenario } from "../../../api-client/exposure";
 import { parseCustomScenario, parseHoldings, pathRows, portfolioRows, tableRows } from "./model";
 import { validateExposure } from "./client";
+import drivers from "./fixtures/drivers.fixture.json";
+import { driverValue, driverUnits, driverRows } from "./drivers";
+import type { ExposureExtensionObservation } from "../../../api-client/exposure";
 import audited from "./fixtures/taiwan.fixture.json";
 
 const payload = () => structuredClone(audited) as ExposurePayload;
@@ -67,4 +70,23 @@ test("quantified proportional chains are numeric estimates and concentration det
   const rows = portfolioRows(data, "country");
   expect(rows[0]!.concentration).toBe(true);
   expect(rows[0]!.impact).toEqual(data.portfolio.concentrations.find(c => c.kind === "country")!.signedExposurePct);
+});
+
+
+test("company drivers retain native scale, range qualifiers and unknown credit headroom", () => {
+  const data = payload();
+  data.holdings[0]!.extensions = drivers.AAPL as unknown as ExposureExtensionObservation[];
+  const row = driverRows(validateExposure(data)).find(row => row.driver?.value === 201183000000)!;
+  expect(driverValue(row.driver!)).toBe("201.18B");
+  expect(driverUnits(row.driver!)).toBe("USD");
+  expect(row.exposure).toBeNull();
+  expect(row.driver!.evidence[0]!.quote).toContain("iPhone");
+  expect(driverValue({ ...row.driver!, value: null, range: { low: 3, high: 4 }, qualifier: "approximately" })).toBe("≈ 3 to 4");
+  const missing = drivers.FICO.find(row => row.status === "uncomputable") as ExposureExtensionObservation;
+  expect(driverValue(missing)).toBe("Uncomputable");
+  for (const malformed of [{ asOf: 42 }, { dimensions: { product: 42 } }, { range: { low: 5, high: 2 } }, { notes: [42] }]) {
+    const bad = payload();
+    bad.holdings[0]!.extensions = [{ ...row.driver!, ...malformed }] as ExposureExtensionObservation[];
+    expect(() => validateExposure(bad)).toThrow("unreadable");
+  }
 });

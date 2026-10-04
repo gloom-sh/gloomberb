@@ -6,12 +6,14 @@ import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane"
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { ExposurePayload } from "../../../api-client/exposure";
 import { ExposurePane } from "./pane";
+import drivers from "./fixtures/drivers.fixture.json";
+import type { ExposureExtensionObservation } from "../../../api-client/exposure";
 import audited from "./fixtures/taiwan.fixture.json";
 
 const tui = createOpenTuiTestHarness();
 async function mount(width = 110, height = 25, tab = "table", view = "stress", snapshot = audited as ExposurePayload) {
   const id = "exposure:test";
-  const state = createInitialState(createTestPaneConfig("/tmp/exposure-pane-test", {
+  const state = createInitialState(createTestPaneConfig(`${process.env.HOME}/.cache/gloom-smoke/final-qa/exposure-pane-test`, {
     paneId: "exposure", instanceId: id, params: { input: "NVDA AAPL AMD FANG LIN" }, settings: { exposureSnapshot: snapshot, tab, view },
   }));
   function Harness() {
@@ -58,4 +60,19 @@ test("evidence displays a zero numeric chain estimate and concentrations keep th
   const frame = await tui.waitForFrameToContain("Signed exposure");
   expect(frame).toContain("Gross exposure");
   expect(frame).not.toContain("Operating stress");
+});
+
+
+test("driver tab opens original evidence without presenting an exposure or stress estimate", async () => {
+  const data = structuredClone(audited) as ExposurePayload;
+  data.holdings[0]!.symbol = "AAPL";
+  data.holdings[0]!.extensions = drivers.AAPL as unknown as ExposureExtensionObservation[];
+  await mount(110, 30, "drivers", "stress", data);
+  const frame = await tui.waitForFrameToContain("201.18B");
+  expect(frame).toContain("USD");
+  expect(frame).not.toContain("Operating stress");
+  await tui.emitKeypress({ name: "e" });
+  const evidence = await tui.waitForFrameToContain("Value / units");
+  expect(evidence).toContain("Fiscal year 2024");
+  expect(evidence).toContain("primary");
 });

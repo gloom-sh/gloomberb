@@ -67,13 +67,23 @@ export interface ExposureEvidence {
   /** Corrections must supersede explicitly; adapters return the current revision. */
   revision?: string | null
 }
-interface ExposureExtensionObservation {
+export interface ExposureExtensionObservation {
   id: string
   label: string
   kind: "kpi" | "credit" | "guidance"
   value: number | null
   units: string
   evidence: ExposureEvidence[]
+  currency?: string | null
+  period?: string | null
+  asOf?: string | null
+  basis?: string
+  dimensions?: Record<string, string>
+  qualifier?: string
+  range?: { low: number | null; high: number | null }
+  valueText?: string
+  status?: string
+  notes?: string[]
   sensitivity?: {
     kind: ExposureShockKind
     target: string

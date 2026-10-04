@@ -17,7 +17,7 @@ test("headless sends signed weights and exports complete per-hop evidence plus s
   const result = await exposureHeadless.load(createTestHeadlessArgs({ rawArgument: "AAPL=1.2 NVDA=-.4", options: { depth: 3, cash: "0.2" } }), context(requests));
   expect(requests[0]).toMatchObject({ holdings: [{ symbol: "AAPL", weight: 1.2 }, { symbol: "NVDA", weight: -.4 }], depth: 3, cashWeight: .2 });
   expect(result.complete).toBe(false);
-  expect(result.sections[1]!.rows!.some(r => Array.isArray(r.evidence) && r.evidence.some(e => e.quote && e.url))).toBe(true);
+  expect(result.sections.find(section => section.title === "Paths and evidence")!.rows!.some(r => Array.isArray(r.evidence) && r.evidence.some(e => e.quote && e.url))).toBe(true);
   expect(result.metadata?.payload).toMatchObject({ portfolio: { grossWeight: .95, cashWeight: .05 } });
 });
 test("headless watchlists resolve local membership before remote analysis and unknown watchlists fail closed", async () => {

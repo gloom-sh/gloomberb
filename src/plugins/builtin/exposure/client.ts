@@ -25,6 +25,14 @@ export function validateExposure(value: ExposurePayload): ExposurePayload {
   valid &&= data.holdings.every(h => typeof h.symbol === "string" && finite(h.weight) && Array.isArray(h.unknowns)
     && ["quantified", "partial", "unknown"].includes(h.status) && !!h.coverage
     && Array.isArray(h.measures) && h.measures.every(m => validRange(m.exposurePct) && nullableRange(m.impactPct) && strings(m.componentIds))
+    && Array.isArray(h.extensions) && h.extensions.every(row => isRecord(row) && typeof row.id === "string" && typeof row.label === "string"
+      && ["kpi", "guidance", "credit"].includes(row.kind) && (row.value === null || finite(row.value)) && typeof row.units === "string"
+      && (row.range === undefined || isRecord(row.range) && (row.range.low === null || finite(row.range.low)) && (row.range.high === null || finite(row.range.high))
+        && (row.range.low === null || row.range.high === null || row.range.low <= row.range.high))
+      && [row.currency, row.period, row.asOf, row.basis, row.qualifier, row.status].every(v => v == null || typeof v === "string")
+      && (row.valueText === undefined || typeof row.valueText === "string")
+      && (!row.dimensions || isRecord(row.dimensions) && Object.values(row.dimensions).every(v => typeof v === "string"))
+      && (!row.notes || strings(row.notes)) && Array.isArray(row.evidence) && row.evidence.every(evidence))
     && Array.isArray(h.components) && h.components.every(c => nullableRange(c.exposurePct) && nullableRange(c.impactPct)
       && (c.proportionalEstimatePct == null || finite(c.proportionalEstimatePct))
       && ["disclosed", "estimated", "unknown"].includes(c.classification) && Array.isArray(c.evidence) && c.evidence.every(evidence)

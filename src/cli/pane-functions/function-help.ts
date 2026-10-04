@@ -502,9 +502,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   EXPO: {
-    summary: "Pro scenario exposure engine. Trace country, supplier, customer, commodity, rate, FX and tariff shocks through holdings, disclosed revenue and supply chains. Table, Paths and Portfolio preserve evidence, unknowns, signed NAV weights and separate operating denominators.",
+    summary: "Pro scenario exposure engine. Trace country, supplier, customer, commodity, rate, FX and tariff shocks through holdings, disclosed revenue and supply chains. Table, Drivers, Paths and Portfolio preserve evidence, unknowns, signed NAV weights and separate operating denominators. Drivers adds sourced KPIs, guidance and credit disclosures.",
     usage: ["EXPO AAPL=60% NVDA=40%", "EXPO PORT:portfolio-id", "EXPO WATCH:watchlist-id"],
-    keys: [OPEN, key("s", "cenario and holdings"), key("e", "vidence"), key("v", "isibility"), key("o", "pen source")],
+    keys: [TABS, OPEN, key("s", "cenario and holdings"), key("e", "vidence"), key("a", "ll company disclosures"), key("v", "isibility"), key("o", "pen source")],
     data: { free: "One holding and one-hop evidence preview", pro: "Full holdings and up to four-hop paths, as filed" },
     bloomberg: ["PORT", "SPLC"],
   },

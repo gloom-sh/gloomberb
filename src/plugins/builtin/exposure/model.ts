@@ -1,6 +1,6 @@
-import type { ExposureBasis, ExposureComponent, ExposureHolding, ExposurePayload, ExposureRange, ExposureScenario } from "../../../api-client/exposure";
+import type { ExposureBasis, ExposureComponent, ExposureExtensionObservation, ExposureHolding, ExposurePayload, ExposureRange, ExposureScenario } from "../../../api-client/exposure";
 
-export const TABS = [{ value: "table", label: "Table" }, { value: "paths", label: "Paths" }, { value: "portfolio", label: "Portfolio" }];
+export const TABS = [{ value: "table", label: "Table" }, { value: "drivers", label: "Drivers" }, { value: "paths", label: "Paths" }, { value: "portfolio", label: "Portfolio" }];
 export const DEFAULT_SCENARIO: ExposureScenario = { id: "taiwan-disruption", label: "Taiwan disruption", shocks: [{ id: "taiwan", kind: "country", target: "TW", changePct: -100 }] };
 export const basisLabel = (basis: string | null) => basis?.replaceAll("_", " ") ?? "Unknown basis";
 const pct = (value: number) => `${value.toFixed(1)}%`;
@@ -56,6 +56,7 @@ export function validRange(value: unknown): value is ExposureRange {
   return !!r && Number.isFinite(r.low) && Number.isFinite(r.high) && r.low <= r.high;
 }
 export interface ExposureRow {
+  driver?: ExposureExtensionObservation;
   id: string; symbol: string; shockId: string; label: string; basis: ExposureBasis | null; period: string | null;
   exposure: ExposureRange | null; impact: ExposureRange | null; weight: number | null;
   classification: string; incomplete: boolean; concentration?: boolean; components: ExposureComponent[]; unknowns: string[];
