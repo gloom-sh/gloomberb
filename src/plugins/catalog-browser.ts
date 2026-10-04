@@ -4,6 +4,7 @@ import { companyAttentionModule } from "./builtin/company-attention";
 import { catalystsModule } from "./builtin/catalysts";
 import { companyKpisModule } from "./builtin/company-kpis";
 import { supplyChainModule } from "./builtin/supply-chain";
+import { awardsModule } from "./builtin/awards";
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
 import { revenueBreakdownModule } from "./builtin/revenue-breakdown";
 import { mnaModule } from "./builtin/mna";
@@ -126,6 +127,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     companyAttentionModule,
     catalystsModule,
     companyKpisModule,
+    awardsModule,
     mnaModule,
     browserDividendYieldModule,
     earningsCallsModule,

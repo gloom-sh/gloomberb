@@ -5,6 +5,7 @@ import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus,
 import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
 import { companyDisclosurePath } from "./company-kpis";
 import type { SupplyChainPayload } from "./supply-chain";
+import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
 import type { DebtMaturitiesPayload } from "./debt-maturities";
@@ -446,6 +447,16 @@ export class CloudDataApi {
 
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {
     return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}`);
+  }
+
+  getCloudAwards(query: AwardFilter = {}, signal?: AbortSignal): Promise<AwardsPayload> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value != null).map(([key, value]) => [key, `${value}`]));
+    return this.request<AwardsPayload>(`/cloud/awards?${params}`, { signal });
+  }
+
+  getCloudAward(id: string, signal?: AbortSignal, revisionsCursor?: string): Promise<AwardDetailPayload> {
+    const query = revisionsCursor ? `?${new URLSearchParams({ revisionsCursor })}` : "";
+    return this.request<AwardDetailPayload>(`/cloud/awards/detail/${encodeURIComponent(id)}${query}`, { signal });
   }
 
   async getCloudDoeBoard(): Promise<DoeBoardPayload> {

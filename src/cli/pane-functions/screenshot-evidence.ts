@@ -4,6 +4,7 @@ import { attentionScreenshotEvidence } from "../../plugins/builtin/company-atten
 import { catalystsScreenshotEvidence, litigationScreenshotEvidence } from "../../plugins/builtin/catalysts/evidence";
 import { companyKpisScreenshotEvidence, companyGuidanceScreenshotEvidence } from "../../plugins/builtin/company-kpis/screenshot-evidence";
 import { supplyScreenshotEvidence } from "../../plugins/builtin/supply-chain/evidence";
+import { awardsScreenshotEvidence } from "../../plugins/builtin/awards/evidence";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import type { TickerFinancials } from "../../types/financials";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
@@ -82,6 +83,7 @@ const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
   litigationScreenshotEvidence,
   companyKpisScreenshotEvidence,
   companyGuidanceScreenshotEvidence,
+  awardsScreenshotEvidence,
   calculatorScreenshotEvidence,
   scenarioScreenshotEvidence,
   realizedVolScreenshotEvidence,
