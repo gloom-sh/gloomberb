@@ -82,6 +82,27 @@ describe("share API client", () => {
     expect(calls[1]).toEqual([`${SHARE_API_ORIGIN}/shares/${shareId}`, expect.objectContaining({ method: "DELETE", credentials: "include" })]);
   });
 
+  test("share creation lazily uses the configured signed-in client without changing its credential", async () => {
+    const { apiClient, setCloudApiFetchTransport } = await import("../api-client");
+    const originalToken = apiClient.getSessionToken();
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    apiClient.setSessionToken("share-creation-credential");
+    setCloudApiFetchTransport(async (url, init) => {
+      calls.push({ url, init });
+      return Response.json({ id: shareId, expiresAt: "2026-09-20T00:00:00.000Z" });
+    });
+    try {
+      expect(await createShare(article)).toEqual({ id: shareId, expiresAt: "2026-09-20T00:00:00.000Z" });
+      expect(calls).toHaveLength(1);
+      expect(new URL(calls[0]!.url).pathname).toBe("/shares");
+      expect(new Headers(calls[0]!.init?.headers).get("Cookie")).toContain("share-creation-credential");
+      expect(JSON.parse(String(calls[0]!.init?.body))).toEqual(article);
+    } finally {
+      setCloudApiFetchTransport(null);
+      apiClient.setSessionToken(originalToken);
+    }
+  });
+
   test("explains when a Cloud account still needs email verification", async () => {
     const fetchImpl = (async () => Response.json(
       { error: "Email verification required" },
