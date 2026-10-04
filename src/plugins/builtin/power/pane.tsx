@@ -7,7 +7,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { getSharedRegistry } from "../../registry/shared";
 import { SignInWall } from "../cloud/auth-actions";
@@ -18,9 +18,17 @@ import { loadPowerBoard, loadPowerHistory, validatePowerBoard, validatePowerHist
 import { usePowerEvidence } from "./evidence";
 import { POWER_SORT_COLUMNS, powerQuery } from "./query";
 import { PowerDetailView } from "./detail";
+import { SplitBar } from "../../../components/ui/split-bar";
+import { blendHex } from "../../../theme/colors";
+import { missingCell, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
 import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, projectRows, titleCase, type PowerRow } from "./model";
 
 const rowId = (r: PowerRow) => r.id;
+const isRecord = (r: PowerRow) => !r.section;
+/** One tone per state across queue, outcomes and coverage: done is green, gone is quiet, late is amber. */
+const STATUS_TONES: Record<string, StateTone> = { Active: "text", Completed: "positive", Operating: "positive", Withdrawn: "muted", Suspended: "warning", Current: "positive", Stale: "warning", Disabled: "muted", Failed: "negative" };
+/** Columns that only repeat a default on every row. */
+const QUIET_COLUMNS: Record<string, readonly string[]> = { scope: ["Project"], unknownCapacity: ["0"], unknown: ["0"], fuel: ["Load"], role: ["Direct"], kind: ["Queue"] };
 const rowDate = (r: PowerRow) => r.history ? historyDate(r.history) : null;
 const EMPTY_HISTORY: PowerHistory["points"] = [];
 const DEFAULT_SORT: { column: PowerFilter["sort"]; direction: "asc" | "desc" } = { column: "capacityMw", direction: "desc" };
@@ -99,7 +107,7 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   usePowerEvidence(board, historyData?.payload, tab, rows.map((row) => row.id), pages.loading || historyPages.loading || historyPages.hasMore);
   const locked = board ? tab === "history" ? historyData?.payload.locked ?? 0 : tab === "outcomes" ? board.locked.rates : tab === "utilities" ? board.locked.exposure : projectTab ? board.locked.projects : 0 : 0;
   const items = useMemo(() => [...rows, ...Array.from({ length: Math.min(3, locked) }, (_, i): PowerRow => ({ id: `locked:${i}`, label: "Pro", cells: {}, locked: true }))], [rows, locked]);
-  const selected = rows.find((r) => r.id === selectedId) ?? rows[0];
+  const selected = rows.find((r) => r.id === selectedId && isRecord(r)) ?? rows.find(isRecord);
   const openRow = rows.find((r) => r.id === openId);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
@@ -131,7 +139,9 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
     ...(board?.coverage.filter((c) => c.status !== "current").map((c) => `${powerRegion(c.region)} ${titleCase(c.kind)}: ${c.status}${c.reason ? ` · ${c.reason}` : ""}`) ?? [])].filter((v): v is string => !!v);
   usePaneNoticeFooter({ registrationId: "power:notices", focused, notices: [...new Set(notices)], enabled: !openRow });
   const { strip, rows: tabRows } = usePaneTabs(board ? { tabs: [...POWER_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
-  const columns = tab === "capacity" && context === "generation" ? GENERATION_COLUMNS : tab === "capacity" && context === "utility" ? UTILITY_COLUMNS : projectTab ? PROJECT_COLUMNS : tab === "history" ? HISTORY_COLUMNS : tab === "outcomes" ? RATE_COLUMNS : tab === "utilities" ? EXPOSURE_COLUMNS : COVERAGE_COLUMNS;
+  const baseColumns = tab === "capacity" && context === "generation" ? GENERATION_COLUMNS : tab === "capacity" && context === "utility" ? UTILITY_COLUMNS : projectTab ? PROJECT_COLUMNS : tab === "history" ? HISTORY_COLUMNS : tab === "outcomes" ? RATE_COLUMNS : tab === "utilities" ? EXPOSURE_COLUMNS : COVERAGE_COLUMNS;
+  const records = useMemo(() => rows.filter(isRecord), [rows]);
+  const columns = useMemo(() => withoutQuietColumns(baseColumns, records, (r, id) => r.cells[id] ?? "", QUIET_COLUMNS), [baseColumns, records]);
   const chartLink = useChartTableSelection({ rows, getId: rowId, getDate: rowDate, selectedId: selected?.id ?? null, onSelect: setSelectedId, focused: focused && !openRow });
   const series = useMemo(() => historySeries(historyPages.hasMore ? EMPTY_HISTORY : historyData?.payload.points ?? EMPTY_HISTORY, selected?.history, colors.warning), [historyPages.hasMore, historyData, selected?.history, colors.warning]);
   const choices = (values: string[] | undefined) => [{ value: "", label: "All" }, ...[...new Set(values ?? [])].map((value) => ({ value, label: titleCase(value) }))];
@@ -145,15 +155,35 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
     ...(["queue", "history", "outcomes"].includes(tab) ? [{ id: "historical", label: "Benchmark", kind: "toggle" as const, value: historical, defaultValue: false, onChange: setHistorical }] : []),
     ...(tab === "capacity" ? [{ id: "context", label: "Context", value: context, options: [{ value: "capacity", label: "Capacity" }, { value: "generation", label: "Generation" }, { value: "utility", label: "Utilities" }], onChange: setContext }] : []),
   ];
+  // The selected project's region in figures, its whole queue as one bar: active, completed, withdrawn.
+  const regionAggregates = board?.aggregates.filter((a) => a.sourceId === selected?.project?.sourceId && a.region === selected?.project?.region) ?? [];
+  const mwBy = (status: string) => regionAggregates.filter((a) => a.status === status).reduce((n, a) => n + a.capacityMw, 0);
+  const queueFigures = powerFigures(regionAggregates).map((figure, i) => i === 0 ? { ...figure, label: `${selected?.project ? powerRegion(selected.project.region, selected.project.sourceId) : "Reported"} MW`,
+    split: [{ id: "active", value: mwBy("active"), color: blendHex(colors.bg, colors.borderFocused, 0.55) }, { id: "completed", value: mwBy("completed"), color: colors.positive },
+      { id: "withdrawn", value: mwBy("withdrawn"), color: blendHex(colors.bg, colors.textDim, 0.45) }] } : figure);
   const query = <QueryBar width={width} search={{ value: search, onChange: setSearch, placeholder: "Project, developer, utility", focused: focused && !openRow, ...searchFocus.searchProps }} filters={filters} />;
   const bodyHeight = Math.max(3, height - tabRows);
-  const cell = (row: PowerRow, column: typeof columns[number]): DataTableCell => {
+  const cell = (row: PowerRow, column: typeof columns[number], _index: number, state: { selected: boolean }): DataTableCell => {
+    if (row.section) return { text: "" };
     if (row.locked) return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === columns[0]!.id ? "Additional records" : "Hidden"}</Text></Blurred> }
       : column.id === columns[0]!.id && row.id === "locked:0" ? { text: "Unlock with Pro", content: <UpgradeLabel text="Unlock with Pro" onPress={upgrade} role="power-upgrade" />, onMouseDown: upgrade } : { text: "░░░░", color: colors.textDim };
+    // How a cohort ended and how far a utility's large loads got, as parts of one bar.
+    if (column.id === "outcome" && row.rate) return { text: "", content: <Box width={column.width} height={1} alignItems="center"><SplitBar width={column.width} parts={[
+      { id: "completed", value: row.rate.completed, color: colors.positive }, { id: "active", value: row.rate.active, color: blendHex(colors.bg, colors.borderFocused, 0.55) },
+      { id: "withdrawn", value: row.rate.withdrawn, color: blendHex(colors.bg, colors.textDim, 0.45) }, { id: "other", value: row.rate.unknown, color: blendHex(colors.bg, colors.textDim, 0.25) }]} /></Box> };
+    if (column.id === "pipeline" && row.exposure) { const e = row.exposure; return { text: "", content: <Box width={column.width} height={1} alignItems="center"><SplitBar width={column.width} parts={[
+      { id: "operating", value: e.operatingMw, color: colors.positive }, { id: "approved", value: Math.max(0, e.approvedMw - e.operatingMw), color: blendHex(colors.bg, colors.borderFocused, 0.55) },
+      { id: "requested", value: Math.max(0, e.requestedMw - Math.max(e.approvedMw, e.operatingMw)), color: blendHex(colors.bg, colors.textDim, 0.4) }]} /></Box> }; }
     const value = row.cells[column.id];
-    const text = value == null ? "--" : typeof value === "number" ? /Rate$/.test(column.id) ? powerPercent(value) : powerNumber(value) : String(value);
-    return { text, value: typeof value === "number" && /Rate$/.test(column.id) ? value * 100 : value ?? undefined,
-      color: column.id === "name" || column.id === "utility" ? colors.textBright : colors.text };
+    if (value == null || value === "") return missingCell(colors);
+    const text = typeof value === "number" ? /Rate$/.test(column.id) ? powerPercent(value) : powerNumber(value) : String(value);
+    const numeric = typeof value === "number" && /Rate$/.test(column.id) ? value * 100 : value;
+    if (column.id === "status") return { text, color: toneColor(STATUS_TONES[text] ?? "text", colors) };
+    if (column.id === "changeMw" && typeof value === "number") return { text: `${value > 0 ? "+" : ""}${text}`, value, color: signedColor(value, colors) };
+    if (column.id === "ticker") return { text, color: colors.textBright, attributes: state.selected ? 0 : TextAttributes.BOLD };
+    return { text, value: numeric,
+      color: column.id === "name" || column.id === "utility" || column.id === "capacityMw" || column.id === "requestedMw" ? colors.textBright
+        : ["location", "asOf", "observedAt", "scope", "proposedDate", "region", "country", "kind", "role", "period"].includes(column.id) ? colors.textDim : colors.text };
   };
   if (!board && isCloudSessionRequired(error)) return <SignInWall action="view power and interconnection data" needsVerification={needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">{strip}
@@ -164,11 +194,12 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
         onActivate={(row) => row.locked ? upgrade() : setOpenId(row.id)} detailOpen={!!openRow} onBack={() => setOpenId(null)} detailTitle={openRow?.label}
         detailScrollRef={detailScrollRef} detailContent={openRow ? <PowerDetailView row={openRow} scope={scope} scrollRef={detailScrollRef} snapshot={!!snapshot} focused={focused} width={width} height={bodyHeight - 1} /> : null}
         renderCell={cell} freezeFirstColumn showHorizontalScrollbar selectedTextOverridesCellColor
+        isNavigable={isRecord} renderSectionHeader={(row) => row.section ? { text: `${row.label} (${row.section.count})` } : null}
         sortColumnId={projectTab ? sort.column ?? null : null} sortDirection={sort.direction}
         isColumnSortable={(column) => projectTab && POWER_SORT_COLUMNS.includes(column.id)}
         onHeaderClick={projectTab ? (column) => { if (POWER_SORT_COLUMNS.includes(column)) setSort((old) => ({ column: column as PowerFilter["sort"], direction: old.column === column && old.direction === "desc" ? "asc" : "desc" })); } : undefined}
         rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={query}
-          figures={projectTab && tab === "queue" && board.access === "full" ? powerFigures(board.aggregates.filter((a) => a.sourceId === selected?.project?.sourceId && a.region === selected?.project?.region)).map((figure, i) => i === 0 ? { ...figure, label: `${selected?.project ? powerRegion(selected.project.region, selected.project.sourceId) : "Reported"} MW` } : figure) : undefined}
+          figures={projectTab && tab === "queue" && board.access === "full" ? queueFigures : undefined}
           chart={tab === "history" ? { series, ...chartLink, formatValue: (n) => `${powerNumber(n)} MW`, loading: historyPages.loading || historyPages.hasMore && !historyPages.moreError,
             empty: series.length ? undefined : historyPages.moreError ? "Full history could not load. Refresh to retry." : historyData?.payload.access === "preview" ? "Full history is available with Pro." : "History is accumulating from recorded snapshots.", remoteKind: "power-history" } : null} />}
         emptyStateTitle={tab === "history" ? historyPages.error?.message ?? "No recorded history for these filters." : "No reported records match these filters."}
