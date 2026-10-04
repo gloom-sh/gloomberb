@@ -1,6 +1,6 @@
-export type GpuBasis = "list" | "spot" | "ask" | "reserved" | "index";
+export type GpuBasis = "list" | "spot" | "ask" | "reserved" | "index" | "reference";
 
-type GpuProvenance = "archive" | "official-history" | "live";
+type GpuProvenance = "archive" | "official-history" | "live" | "reference";
 interface GpuAccess { tier: "pro" | "preview"; preview: boolean; locked: boolean }
 
 export interface GpuObservation {

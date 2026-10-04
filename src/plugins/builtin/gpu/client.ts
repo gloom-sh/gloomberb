@@ -7,7 +7,7 @@ import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../
 import { equityFiveDayReturn, GPU_EQUITIES } from "./model";
 
 export const GPU_NOT_AVAILABLE = "GPU rental prices are not available yet.";
-const cacheOptions = { source: "gloom-cloud", schemaVersion: 2, policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 } };
+const cacheOptions = { source: "gloom-cloud", schemaVersion: 3, policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 } };
 export const gpuBoardCache = createPluginCache<GpuBoardPayload>({ ...cacheOptions, kind: "gpu-board" });
 export const gpuHistoryCache = createPluginCache<GpuHistoryPayload>({ ...cacheOptions, kind: "gpu-history" });
 export const gpuEventsCache = createPluginCache<GpuEventsPayload>({ ...cacheOptions, kind: "gpu-events" });
@@ -19,9 +19,9 @@ const instant = (value: unknown): value is string => typeof value === "string" &
 const nullableInstant = (value: unknown) => value === null || instant(value);
 const nullableText = (value: unknown) => value === null || typeof value === "string";
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
-const basis = (value: unknown) => ["list", "spot", "ask", "reserved", "index"].includes(String(value));
+const basis = (value: unknown) => ["list", "spot", "ask", "reserved", "index", "reference"].includes(String(value));
 
-const provenance = (value: unknown) => value === undefined || ["archive", "official-history", "live"].includes(String(value));
+const provenance = (value: unknown) => value === undefined || ["archive", "official-history", "live", "reference"].includes(String(value));
 const optionalText = (value: unknown) => value === undefined || nullableText(value);
 const validAccess = (value: unknown) => value === undefined || record(value) && ["pro", "preview"].includes(value.tier)
   && typeof value.preview === "boolean" && typeof value.locked === "boolean";
@@ -39,6 +39,10 @@ const scopedKey = (key: string) => `${gpuCacheScope()}:${key}`;
 function validObservation(row: unknown): row is GpuObservation {
   if (!record(row)) return false;
   const stats = row.stats;
+  const reference = row.basis === "reference" || row.provenance === "reference";
+  if (reference && (row.basis !== "reference" || row.provenance !== "reference" || !/^ref-[ab]$/.test(row.source)
+    || !/^[a-z0-9-]+$/.test(row.skuKey) || !/^Reference index [AB], [A-Z0-9][A-Za-z0-9 -]{0,50}$/.test(row.provider)
+    || row.sourceUrl != null || row.evidenceUrl != null)) return false;
   return validEvidence(row) && [row.source, row.skuKey, row.provider, row.region, row.gpuModel].every((value) => typeof value === "string" && value.length > 0)
     && ["hyperscaler", "neocloud", "marketplace", "aggregate"].includes(row.providerClass)
     && Number.isInteger(row.gpuCount) && row.gpuCount > 0 && nullableText(row.formFactor)
@@ -110,6 +114,8 @@ export const getCachedGpuBoard = () => cachedCloudResource(gpuBoardCache, scoped
 export const loadGpuBoard = (force = false) => loadCloudResource(gpuBoardCache, scopedKey("board"), () => fetchGpuBoard(), { force, validate: validateBoard });
 export const loadGpuHistory = (seriesId: string, force = false) => loadCloudResource(gpuHistoryCache, scopedKey(seriesId),
   () => fetchGpuHistory({ seriesId, limit: 10_000 }), { force, validate: validateHistory });
+export const loadGpuReferences = (force = false) => loadCloudResource(gpuHistoryCache, scopedKey("reference-catalog"),
+  () => fetchGpuHistory({ basis: "reference", limit: 10_000 }), { force, validate: validateHistory });
 export const loadGpuEvents = (gpuModel?: string, force = false) => loadCloudResource(gpuEventsCache, scopedKey(gpuModel ?? "all"),
   () => fetchGpuEvents(gpuModel), { force, validate: validateEvents });
 

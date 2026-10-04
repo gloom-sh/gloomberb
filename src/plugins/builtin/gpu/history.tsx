@@ -9,14 +9,14 @@ import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
-import { loadGpuHistory } from "./client";
+import { loadGpuHistory, loadGpuReferences } from "./client";
 import {
-  GPU_MODELS, gpuBasisLabel, gpuBoardSections, gpuChange, gpuChangeColor, gpuHeadline, gpuHistoryChart, gpuHistoryViewport, gpuProvenanceLabel, gpuMatches, gpuPricePeriods, gpuPrice, gpuShortSource,
+  GPU_MODELS, gpuBasisLabel, gpuBoardSections, gpuChange, gpuChangeColor, gpuHeadline, gpuHistoryChart, gpuHistoryViewport, gpuProvenanceLabel, gpuMatches, gpuPricePeriods, gpuPrice, gpuReferenceRows, gpuShortSource,
   gpuTime, gpuVariant, type GpuPricePeriod,
 } from "./model";
 
 const BASES = [{ value: "all", label: "All bases" }, { value: "list", label: "List price" }, { value: "spot", label: "Provider-declared spot" },
-  { value: "ask", label: "Ask" }, { value: "reserved", label: "Reserved" }];
+  { value: "ask", label: "Ask" }, { value: "reserved", label: "Reserved" }, { value: "reference", label: "Reference" }];
 type ListRow = SectionedRow<GpuBoardRow>;
 const listRowId = (row: ListRow) => row.key;
 const listColumns = (width: number): DataTableColumn[] => [
@@ -36,7 +36,11 @@ function HistoryDetail({ row, peers, width, height, refreshVersion }: {
   row: GpuBoardRow; peers: readonly GpuBoardRow[]; width: number; height: number; refreshVersion: number;
 }) {
   const colors = useThemeColors();
-  const plotted = useMemo(() => [row, ...peers.filter((peer) => peer.id !== row.id && peer.basis === row.basis && gpuHeadline(peer))].slice(0, MAX_PLOTTED), [row, peers]);
+  const plotted = useMemo(() => [row,
+    ...peers.filter((peer) => peer.id !== row.id && peer.basis === "list" && gpuHeadline(peer)),
+    ...peers.filter((peer) => peer.id !== row.id && peer.basis === "reference"),
+    ...peers.filter((peer) => peer.id !== row.id && peer.basis === row.basis && gpuHeadline(peer) && peer.basis !== "list"),
+  ].slice(0, MAX_PLOTTED), [row, peers]);
   const ids = plotted.map((entry) => entry.id).join("\n");
   const loader = useCallback(async (force: boolean) => {
     const refresh = force || refreshVersion > 0;
@@ -77,7 +81,10 @@ function HistoryDetail({ row, peers, width, height, refreshVersion }: {
   return <PaneStatusBody loading={resource.loading && !resource.data} error={!resource.data ? resource.error : null} subject="GPU price history">
     <DataTableView columns={PERIOD_COLUMNS} items={periods} rootWidth={width} rootHeight={height} focused={false}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={periods.length} tableColumns={PERIOD_COLUMNS} figures={figures}
-        chart={resource.error && !resource.data ? null : { series: chart, viewport, formatValue: (value) => `$${gpuPrice(value)}`, remoteKind: "gpu-rental-history",
+        chart={resource.error && !resource.data ? null : { series: chart, viewport,
+          ...(width >= 80 && plotted.some(entry => entry.basis === "reference") ? {
+            legendAccessory: <Text fg={colors.textDim}>Reference index (third party), anonymised</Text>, legendAccessoryWidth: 41,
+          } : {}), formatValue: (value) => `$${gpuPrice(value)}`, remoteKind: "gpu-rental-history",
           loading: resource.loading && !resource.data,
           empty: resource.data?.histories.some((history) => history.payload.access?.locked) ? "Full history is available with Pro." : chart.length ? undefined : first ? `Collecting history since ${gpuTime(first.observedAt, true)} UTC` : "Collecting history" }} />}
       selection={{ kind: "none" }} getItemKey={(period) => period.from} sortColumnId={null} sortDirection="desc"
@@ -92,12 +99,18 @@ export function GpuHistory({ rows, model, setModel, selectedId, onSelect, reload
   const colors = useThemeColors();
   const [basis, setBasis] = usePluginPaneState<string>("historyBasis", "all");
   const [refreshVersion, setRefreshVersion] = usePluginPaneState<number>("historyRefresh", 0);
-  // History always reads one model: the one picked on the board, else the selected series' model.
-  const models = useMemo(() => [...new Set(rows.map((row) => row.gpuModel))].sort(), [rows]);
-  const activeModel = model || rows.find((row) => row.id === selectedId)?.gpuModel || (models.includes("H100") ? "H100" : models[0] ?? GPU_MODELS[0]!);
-  const sections = useMemo(() => gpuBoardSections(rows, activeModel).filter((section) => basis === "all" || section.basis === basis), [rows, activeModel, basis]);
+  const referenceLoader = useCallback((force: boolean) => loadGpuReferences(force || refreshVersion > 0), [refreshVersion]);
+  const references = useAsyncResource(referenceLoader, { keepPreviousData: true });
+  useAutoRefresh(references.updatedAt, references.load);
+  usePaneNoticeFooter({ registrationId: "gpu:reference-notice", focused,
+    notices: [references.error, references.data?.refreshError].filter((value): value is string => !!value) });
+  const allRows = useMemo(() => [...rows, ...gpuReferenceRows(references.data?.payload.points ?? [])], [rows, references.data]);
+  // History always reads one model: the one picked on the board, else the selected series\' model.
+  const models = useMemo(() => [...new Set(allRows.map((row) => row.gpuModel))].sort(), [allRows]);
+  const activeModel = model || allRows.find((row) => row.id === selectedId)?.gpuModel || (models.includes("H100") ? "H100" : models[0] ?? GPU_MODELS[0]!);
+  const sections = useMemo(() => gpuBoardSections(allRows, activeModel).filter((section) => basis === "all" || section.basis === basis), [allRows, activeModel, basis]);
   const ordered = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
-  const modelRows = useMemo(() => rows.filter((row) => row.gpuModel === activeModel), [rows, activeModel]);
+  const modelRows = useMemo(() => allRows.filter((row) => row.gpuModel === activeModel), [allRows, activeModel]);
   const refresh = useCallback(() => { reloadBoard(); setRefreshVersion(refreshVersion + 1); }, [reloadBoard, refreshVersion, setRefreshVersion]);
   const list = useSeriesList({ focused, items: ordered, getId: (row) => row.id, matchesQuery: gpuMatches,
     selectedId, onSelect, reload: refresh, range: { value: basis, options: BASES, onChange: setBasis } });
@@ -110,9 +123,10 @@ export function GpuHistory({ rows, model, setModel, selectedId, onSelect, reload
     const headline = gpuHeadline(row);
     if (column.id === "price") return { text: gpuPrice(row.pricePerGpuHr), value: row.pricePerGpuHr, color: headline ? colors.textBright : colors.text };
     const name = gpuShortSource(row);
-    return { text: `${name} ${gpuVariant(row).join(" ")}`, content: <Box flexDirection="row" height={1} overflow="hidden">
+    const variant = row.basis === "reference" ? "" : gpuVariant(row).join(" ");
+    return { text: `${name} ${variant}`, content: <Box flexDirection="row" height={1} overflow="hidden">
       <Text fg={state.selected ? colors.selectedText : headline ? colors.textBright : colors.text} attributes={headline ? TextAttributes.BOLD : 0}>{name}</Text>
-      <Text fg={state.selected ? colors.selectedText : colors.textDim}>{`  ${gpuVariant(row).join(" ")}`}</Text>
+      <Text fg={state.selected ? colors.selectedText : colors.textDim}>{variant ? `  ${variant}` : ""}</Text>
     </Box> };
   };
   return <SeriesListDetail list={list} width={width} height={height} focused={focused} listWidth={52}
