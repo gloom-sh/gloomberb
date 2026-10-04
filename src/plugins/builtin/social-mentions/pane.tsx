@@ -119,7 +119,7 @@ export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "
       ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
     ] : [],
   });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view social mentions" needsVerification={session.needsVerification} />;
+  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="social-mentions-signin" action="view social mentions" needsVerification={session.needsVerification} />;
   if (!listing?.symbol) return <EmptyState title="No ticker selected." message="Select a ticker to view social mentions." />;
   if (!symbol) return <EmptyState title="This ticker cannot be searched as a cashtag." message="Use a symbol of up to six letters and digits, starting with a letter." />;
   const latest = summary?.latest ?? null;

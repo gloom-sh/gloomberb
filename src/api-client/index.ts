@@ -377,6 +377,7 @@ class GloomApiClient {
     surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
     tab?: string; desks?: readonly string[]; placement?: string; teaser_kind?: "summary" | "sample" | "none";
+    cta?: "login" | "signup";
   }): Promise<void> {
     await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
   }

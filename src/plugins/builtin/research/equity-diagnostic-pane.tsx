@@ -561,7 +561,7 @@ export function EquityDiagnosticView({ focused, width, height }: {
     return <PaneStatusBody empty emptyTitle="No ticker selected." emptyMessage="Move the cursor in a list pane to populate this view." />;
   }
   if (signInRequired || verificationRequired) {
-    return <SignInWall action="run the Equity Diagnostic" needsVerification={verificationRequired} />;
+    return <SignInWall placement="diag-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="run the Equity Diagnostic" needsVerification={verificationRequired} />;
   }
   // Buttons in an empty state's actions answer Enter and are in the pane menu.
   if (proRequired) {

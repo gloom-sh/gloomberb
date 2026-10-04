@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { apiClient } from "../../../api-client";
+import type { WallExperiment } from "../../../api-client/wall-experiments";
 import { getWallSummary } from "../../../api-client/wall-summary";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { exposeWallTeaser, recordWallViewed } from "../../../api-client/research-activity";
@@ -12,10 +13,11 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { listingIdentity } from "./ticker-request";
-import { WALL_TEASERS } from "./wall-teaser-catalog";
+import { SIGNIN_WALL_TEASERS, WALL_TEASERS } from "./wall-teaser-catalog";
 import { trackWallView } from "./wall-view-lifecycle";
 
 export interface WallTeaserProps {
+  experiment?: WallExperiment;
   placement: string;
   width: number;
   height: number;
@@ -42,16 +44,19 @@ type Summary = { kind: "counts"; items: { label: string; value: number | string 
 type Teaser = { kind: "summary"; summary: Summary } | { kind: "sample" } | { kind: "none" };
 
 /** No layout reservation or focus changes: the original wall remains usable while asking. */
-export function WallTeaser({ children, placement, width, height, title = "", message = "", symbol, exchange }: WallTeaserProps) {
+export function WallTeaser({ children, placement, width, height, title = "", message = "", symbol, exchange, experiment = "wall_teaser" }: WallTeaserProps) {
   useAppLanguage();
   const visible = usePaneVisible();
   const access = usePlanAccess();
   const userId = apiClient.getCurrentUser()?.id;
   const native = useUiCapabilities().nativePaneChrome === true;
   const colors = useThemeColors();
-  const sample = WALL_TEASERS[placement];
+  const catalogPlacement = experiment === "wall_teaser_signin" ? SIGNIN_WALL_TEASERS[placement] : placement;
+  const sample = catalogPlacement ? WALL_TEASERS[catalogPlacement] : undefined;
+  const blocked = experiment === "wall_teaser" && access.hasProAccess;
+  const enroll = experiment === "wall_teaser" || !!sample;
   const listing = sample?.summaryHook ? listingIdentity(symbol, exchange) : null;
-  const key = `${userId ?? "guest"}:${placement}:${listing?.symbol ?? ""}:${listing?.exchange ?? ""}`;
+  const key = `${experiment}:${userId ?? "guest"}:${placement}:${listing?.symbol ?? ""}:${listing?.exchange ?? ""}`;
   const [resolved, setResolved] = useState<{ key: string; arm: string | null; teaser: Teaser } | null>(null);
   // The original wall uses two inset rows and two action rows. The preview
   // keeps its own bottom inset; a sample needs a badge, gap and table header.
@@ -64,11 +69,11 @@ export function WallTeaser({ children, placement, width, height, title = "", mes
   const trackedView = useRef<ReturnType<typeof trackWallView> | null>(null);
 
   useEffect(() => {
-    if (!visible || access.hasProAccess) return;
+    if (!visible || blocked) return;
     const view = trackWallView({
       identity: userId ?? "guest",
       placement,
-      exposure: exposeWallTeaser(),
+      exposure: enroll ? exposeWallTeaser(experiment) : Promise.resolve(null),
       currentIdentity: () => apiClient.getCurrentUser()?.id ?? "guest",
       record: recordWallViewed,
     });
@@ -77,18 +82,18 @@ export function WallTeaser({ children, placement, width, height, title = "", mes
       if (trackedView.current === view) trackedView.current = null;
       view.release();
     };
-  }, [visible, access.hasProAccess, userId, placement]);
+  }, [visible, blocked, userId, placement, experiment, enroll]);
 
   useEffect(() => {
-    if (!visible || access.hasProAccess) return;
+    if (!visible || blocked) return;
     let cancelled = false;
     void (async () => {
-      const arm = await (trackedView.current?.exposure ?? exposeWallTeaser());
+      const arm = await (trackedView.current?.exposure ?? (enroll ? exposeWallTeaser(experiment) : Promise.resolve(null)));
       if (cancelled) return;
       let teaser: Teaser = { kind: "none" };
       if (arm === "teaser" && fits && sample) {
         const summary = listing
-          ? await getWallSummary(placement, listing.symbol, listing.exchange)
+          ? await getWallSummary(catalogPlacement!, listing.symbol, listing.exchange)
           : null;
         teaser = summary?.items.length ? { kind: "summary", summary } : { kind: "sample" };
       }
@@ -96,15 +101,15 @@ export function WallTeaser({ children, placement, width, height, title = "", mes
       setResolved({ key, arm, teaser });
     })();
     return () => { cancelled = true; };
-  }, [visible, access.hasProAccess, key, fits, placement, listing?.symbol, listing?.exchange, sample]);
+  }, [visible, blocked, key, fits, catalogPlacement, listing?.symbol, listing?.exchange, sample, experiment, enroll]);
 
   const current = resolved?.key === key ? resolved : null;
   const summaryFits = current?.teaser.kind !== "summary" || current.teaser.summary.items.length + hookRows <= previewRows;
   const teaser = fits && summaryFits && current?.arm === "teaser" ? current.teaser : { kind: "none" as const };
   useEffect(() => {
-    if (!visible || !current || access.hasProAccess) return;
+    if (!visible || !current || blocked) return;
     trackedView.current?.report(current.arm === "teaser" ? teaser.kind : undefined);
-  }, [visible, current, access.hasProAccess, placement, teaser.kind]);
+  }, [visible, current, blocked, placement, teaser.kind]);
 
   return <>
     {children}
@@ -118,7 +123,7 @@ export function WallTeaser({ children, placement, width, height, title = "", mes
             value={String(item.value)} width={width - 2} labelWidth={Math.min(25, width - 14)} />
         ))}
         {sample?.summaryHook && <Text fg={colors.textMuted} dim wrapText>{t(sample.summaryHook)}</Text>}
-      </> : <FrozenWallSample placement={placement} width={width - 2} rows={sampleRows} native={native} />}
+      </> : <FrozenWallSample placement={catalogPlacement!} width={width - 2} rows={sampleRows} native={native} />}
     </Box>}
   </>;
 }

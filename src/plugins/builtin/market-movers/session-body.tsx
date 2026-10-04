@@ -67,8 +67,8 @@ export function SessionMoversBody(props: {
     entitled ? null : { info: summaryFooterSegments(props.summaryQuotes) }
   ), [entitled, props.summaryQuotes]);
 
-  if (!access.signedIn) return <SignInWall action="see pre-market, after-hours and gap movers" />;
-  if (!access.emailVerified) return <SignInWall action="see pre-market, after-hours and gap movers" needsVerification />;
+  if (!access.signedIn) return <SignInWall placement="most-signin" width={props.width} height={props.height} action="see pre-market, after-hours and gap movers" />;
+  if (!access.emailVerified) return <SignInWall placement="most-signin" width={props.width} height={props.height} action="see pre-market, after-hours and gap movers" needsVerification />;
   if (!entitled) {
     return (
       <ProWall

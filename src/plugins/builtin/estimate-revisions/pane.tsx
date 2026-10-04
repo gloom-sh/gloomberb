@@ -388,6 +388,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   if (signInWall)
     return (
       <SignInWall
+        placement="estimate-revisions-signin"
         action="view estimate revisions"
         needsVerification={session.needsVerification}
       />

@@ -90,7 +90,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
   const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !detail, dense: true });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view time and sales" needsVerification={session.needsVerification} />;
+  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="time-sales-signin" action="view time and sales" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {tabStrip}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!data && !rows.length} subject={tab === "quotes" ? "NBBO observations" : "trade observations"}>

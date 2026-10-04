@@ -745,7 +745,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   );
 
   if (!hasSession && !apiClient.isSignedIn()) {
-    return <SignInWall action="manage your Gloom Cloud account" />;
+    return <SignInWall placement="account-signin" action="manage your Gloom Cloud account" />;
   }
 
   return (

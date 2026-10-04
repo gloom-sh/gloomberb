@@ -96,7 +96,7 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
 
   if (!ticker) return <EmptyState title="No ticker selected." hint="Select a ticker to see its thesis." />;
   if (!signedIn) {
-    return <SignInWall action="keep a thesis on this ticker" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
+    return <SignInWall placement="thesis-ticker-signin" action="keep a thesis on this ticker" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
   }
   if (!active) {
     return (

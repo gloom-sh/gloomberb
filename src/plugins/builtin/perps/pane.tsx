@@ -168,7 +168,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
     info: active && (tab === "evidence" || data?.access === "preview") ? [{ id: "asof", parts: [{ text: time(active.observedAt), tone: "muted" }] }] : [], hints });
   usePaneNoticeFooter({ registrationId: "perps:notices", focused, notices: [resource.data?.refreshError,
     ...(active?.qualityFlags.map((flag) => flag.replaceAll("_", " ").replaceAll("-", " ")) ?? [])].filter((s): s is string => !!s) });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view perpetual history" needsVerification={session.needsVerification} />;
+  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="view perpetual history" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows - 1);
   return <Box width={width} height={height} flexDirection="column">
     {strip}

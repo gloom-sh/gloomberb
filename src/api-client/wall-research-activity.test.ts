@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "./index";
 import { getCurrentPluginTarget, setCurrentPluginTarget } from "../plugins/current-target";
-import { adoptDesktopHandoff, exposeWallTeaser, initializeDesktopResearchActivity, recordResearchActivity, recordWallViewed } from "./research-activity";
+import { adoptDesktopHandoff, exposeWallTeaser, initializeDesktopResearchActivity, recordResearchActivity, recordWallCtaClicked, recordWallViewed } from "./research-activity";
 
 const originalRecord = apiClient.recordResearchActivity;
 const originalExposure = apiClient.recordExperimentExposure;
@@ -77,7 +77,9 @@ describe("wall milestone boundary", () => {
       browserGlobals(privacy);
       signIn(`privacy-${JSON.stringify(privacy)}`);
       expect(await exposeWallTeaser()).toBeNull();
+      expect(await exposeWallTeaser("wall_teaser_signin")).toBeNull();
       recordWallViewed("risk-wall", "summary");
+      recordWallCtaClicked("risk-signin", "signup");
     }
     expect(exposures).toBe(0);
     expect(views).toBe(0);
@@ -143,6 +145,10 @@ describe("wall milestone boundary", () => {
         for (const surface of ["desktop", "tui", "cli"] as const) {
           setCurrentPluginTarget(surface);
           expect(await exposeWallTeaser()).toBeNull();
+          expect(await exposeWallTeaser("wall_teaser_signin")).toBeNull();
+          recordWallCtaClicked("risk-signin", "login");
+          recordWallCtaClicked("risk-signin", "signup");
+          recordWallViewed("risk-signin");
           recordWallViewed("risk-wall");
           recordWallViewed("risk-wall", "summary");
           recordWallViewed("most-wall", "sample");
@@ -178,4 +184,65 @@ describe("wall milestone boundary", () => {
     ]);
   });
 
+});
+
+test("identified web sign-in walls count each CTA once and keep accepted visitor attribution through signup", async () => {
+  browserGlobals();
+  setCurrentPluginTarget("web");
+  adoptDesktopHandoff(`gloomberb://cloud/success?_gloom=${crypto.randomUUID()}`);
+  const asks: Array<Parameters<typeof apiClient.recordExperimentExposure>[0]> = [];
+  const events: Array<Parameters<typeof apiClient.recordResearchActivity>[0]> = [];
+  apiClient.recordExperimentExposure = async (payload) => { asks.push(payload); return { accepted: true, variant: "teaser" }; };
+  apiClient.recordResearchActivity = async (payload) => { events.push(payload); };
+  expect(await exposeWallTeaser("wall_teaser_signin")).toBe("teaser");
+  expect(await exposeWallTeaser("wall_teaser_signin")).toBe("teaser");
+  recordWallViewed("risk-signin", "summary");
+  recordWallViewed("risk-signin", "summary");
+  for (let i = 0; i < 2; i++) {
+    recordWallCtaClicked("risk-signin", "login");
+    recordWallCtaClicked("risk-signin", "signup");
+    recordWallCtaClicked("most-signin", "signup");
+    recordWallCtaClicked("AAPL personal query", "signup");
+  }
+  recordResearchActivity("wall_cta_clicked", undefined, undefined, { placement: "no-cta-signin" });
+  await Promise.resolve();
+  const clicks = events.filter(({ event }) => event === "wall_cta_clicked");
+  expect(clicks.map(({ placement, cta }) => ({ placement, cta }))).toEqual([
+    { placement: "risk-signin", cta: "login" },
+    { placement: "risk-signin", cta: "signup" },
+    { placement: "most-signin", cta: "signup" },
+  ]);
+  expect(clicks.every((event) => !event.feature && !event.tab && !event.desks && !event.teaser_kind)).toBe(true);
+  expect(events.filter(({ event }) => event === "wall_viewed")).toHaveLength(1);
+  expect(clicks[0]?.attribution?.experiments).toBe("wall_teaser_signin:teaser");
+  expect(JSON.parse(sessionStorage.getItem("gloomberb.wall-teaser.views") ?? "[]")).toHaveLength(4);
+  signIn("new-signup-account");
+  expect(await exposeWallTeaser("wall_teaser_signin")).toBeNull();
+  recordResearchActivity("onboarding_signed_in");
+  expect(asks).toHaveLength(1);
+  expect(asks[0]).toMatchObject({ experiment: "wall_teaser_signin", surface: "web" });
+  expect(events.find(({ event }) => event === "onboarding_signed_in")?.attribution?.experiments).toBe("wall_teaser_signin:teaser");
+});
+
+test("unverified accounts get baseline wall counts on every surface without entering the visitor experiment", async () => {
+  browserGlobals();
+  initializeDesktopResearchActivity(localStorage);
+  const events: Array<Parameters<typeof apiClient.recordResearchActivity>[0]> = [];
+  let asks = 0;
+  apiClient.recordExperimentExposure = async () => { asks++; return { accepted: true, variant: "teaser" }; };
+  apiClient.recordResearchActivity = async (payload) => { events.push(payload); };
+  for (const surface of ["web", "desktop", "tui", "cli"] as const) {
+    setCurrentPluginTarget(surface);
+    apiClient.setSessionToken("unverified-session");
+    apiClient.restoreCachedUser({ id: `unverified-${surface}`, email: "unverified@example.com", emailVerified: false, plan: "free" });
+    expect(await exposeWallTeaser("wall_teaser_signin")).toBeNull();
+    recordWallViewed("risk-signin");
+    recordWallViewed("risk-signin");
+    recordWallCtaClicked("risk-signin", "login");
+    recordWallCtaClicked("risk-signin", "login");
+  }
+  expect(asks).toBe(0);
+  expect(events.filter(({ event }) => event === "wall_viewed")).toHaveLength(4);
+  expect(events.filter(({ event }) => event === "wall_cta_clicked")).toHaveLength(4);
+  expect(events.every((event) => !event.attribution?.experiments)).toBe(true);
 });

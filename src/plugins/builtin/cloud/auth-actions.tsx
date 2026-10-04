@@ -18,6 +18,7 @@ import { t, tf } from "../../../i18n";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { requestAuthDialog } from "./auth-dialog";
 import type { AccountMode } from "./auth-model";
+import { recordWallCtaClicked } from "../../../api-client/research-activity";
 import { WallTeaser } from "../shared/wall-teaser";
 
 function openAuth(
@@ -69,6 +70,12 @@ export function InlineAuthActions({ showSignup = true, variant = "buttons" }: In
 }
 
 export interface SignInWallProps {
+  /** A fixed, content-free id for this wall, ending in -signin. */
+  placement: string;
+  width?: number;
+  height?: number;
+  symbol?: string | null;
+  exchange?: string;
   /**
    * Finishes the headline: "Sign in to {action}." / "Verify your email to
    * {action}.". A lowercase verb phrase, no trailing period.
@@ -81,29 +88,37 @@ export interface SignInWallProps {
 }
 
 /** The account wall for a pane body that cannot render until the account is right. */
-export function SignInWall({ action, needsVerification = false, hint }: SignInWallProps) {
+export function SignInWall({ placement, action, needsVerification = false, hint, width = 0, height = 0, symbol, exchange }: SignInWallProps) {
   const { openCommandBar } = usePluginAppActions();
+  const title = needsVerification
+    ? tf("Verify your email to {action}.", { action: t(action) })
+    : tf("Sign in to {action}.", { action: t(action) });
+  const authenticate = (mode: "login" | "signup") => {
+    recordWallCtaClicked(placement, mode);
+    openAuth(openCommandBar, mode);
+  };
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall">
-      <EmptyState
-        title={needsVerification
-          ? tf("Verify your email to {action}.", { action: t(action) })
-          : tf("Sign in to {action}.", { action: t(action) })}
-        hint={hint}
-        actions={needsVerification ? (
-          <Button
-            label={t("Resend Verification Email")}
-            onPress={() => openCommandBar("Resend Verification Email")}
-          />
-        ) : (
-          <>
-            <Button label={t("Log in")} variant="primary" onPress={() => openAuth(openCommandBar, "login")} />
-            <Button label={t("Sign up free")} variant="secondary" onPress={() => openAuth(openCommandBar, "signup")} />
-          </>
-        )}
-      />
-    </Box>
+    <WallTeaser experiment="wall_teaser_signin" placement={placement} title={title} message={hint}
+      width={width} height={height} symbol={symbol} exchange={exchange}>
+      <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall">
+        <EmptyState
+          title={title}
+          hint={hint}
+          actions={needsVerification ? (
+            <Button
+              label={t("Resend Verification Email")}
+              onPress={() => openCommandBar("Resend Verification Email")}
+            />
+          ) : (
+            <>
+              <Button label={t("Log in")} variant="primary" onPress={() => authenticate("login")} />
+              <Button label={t("Sign up free")} variant="secondary" onPress={() => authenticate("signup")} />
+            </>
+          )}
+        />
+      </Box>
+    </WallTeaser>
   );
 }
 

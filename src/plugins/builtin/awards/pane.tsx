@@ -197,7 +197,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   const chart = tab === "company" && ticker ? { series, formatValue: (value: number) => `${chartCurrency} ${money(value)}`, formatAxisValue: formatCompactAxis, ...chartSelection,
     remoteKind: "award-obligations", empty: series.length ? undefined : data?.locked ? "Full award history requires Pro." : "History is accumulating for this company." } : null;
   useAwardsEvidence(data, tab, tab === "company" && !ticker ? 0 : items.filter((item) => item.kind !== "locked").length);
-  if (denied || !data && isCloudSessionRequired(failed?.message)) return <SignInWall action="view government awards" needsVerification={session.needsVerification} />;
+  if (denied || !data && isCloudSessionRequired(failed?.message)) return <SignInWall placement="awards-signin" action="view government awards" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PaneStatusBody loading={paged.loading && !data} error={!data && failed?.message !== AWARDS_UNAVAILABLE ? failed?.message : null}

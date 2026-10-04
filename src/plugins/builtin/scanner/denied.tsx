@@ -6,7 +6,7 @@ import { ProWall, SignInWall } from "../cloud/auth-actions";
  */
 export function ScannerDeniedState({ reason, placement, width, height }: { reason: string | null; placement: string; width: number; height: number }) {
   if (reason === "auth_required") {
-    return <SignInWall action="stream the market scanners" />;
+    return <SignInWall placement={`${placement.replace(/-wall$/, "")}-signin`} width={width} height={height} action="stream the market scanners" />;
   }
 
   return (

@@ -588,7 +588,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   } : null);
 
   if (!signedIn) {
-    return <SignInWall action="use teams" />;
+    return <SignInWall placement="team-signin" width={width} height={height} action="use teams" />;
   }
 
   const contentWidth = Math.max(24, width - 2);

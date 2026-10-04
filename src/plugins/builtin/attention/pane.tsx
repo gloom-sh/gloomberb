@@ -140,7 +140,7 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
   usePaneNoticeFooter({ registrationId: "attention:notices", focused, notices: [resource.data?.refreshError, detailMode ? detail.data?.refreshError : null,
     data?.status === "ready" && selected?.zScore === null ? "The selected ticker has insufficient qualified history for an abnormal-attention score." : null,
   ].filter((value): value is string => !!value) });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view research attention" needsVerification={session.needsVerification} />;
+  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="attention-signin" action="view research attention" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
   const queryBar = <QueryBar width={width} filters={[{ id: "window", label: "Period", inline: true, value: window, options: WINDOWS,
     onChange: (value: string) => setWindow(value) }, ...(detailMode && data?.rows.length ? [{ id: "ticker", label: "Ticker", value: selectedSymbol,

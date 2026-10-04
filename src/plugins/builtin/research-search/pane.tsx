@@ -477,6 +477,8 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   if (signInRequired || verificationRequired) {
     return (
       <SignInWall
+        placement="srch-signin"
+        width={width} height={height}
         action="search transcripts, news, and filings"
         needsVerification={verificationRequired}
       />

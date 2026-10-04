@@ -167,7 +167,7 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
     data?.truncated && data.access === "full" ? "The response reached its stored-record limit. Narrow the metric or date range in a CLI or REST query." : null,
     data?.coverage.conflicts ? "Conflicting disclosures are retained in Evidence and excluded from comparable trends." : null].filter((value): value is string => !!value) });
   if (!symbol) return <EmptyState title="Select a ticker." />;
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view company KPIs and guidance" needsVerification={session.needsVerification} />;
+  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="company-kpis-signin" action="view company KPIs and guidance" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
   const query = <QueryBar width={width} filters={[{ id: "metric", label: "Metric", value: metric, defaultValue: "all", options: metricOptions,
     onChange: (value: string) => { setMetric(value); setSelected(null); setOpen(null); } }, ...(tab === "chart" && plotOptions.length ? [{ id: "series", label: "Series", value: activePlot,

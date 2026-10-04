@@ -550,7 +550,7 @@ function CompanyPanel({
 
   if (data?.kind === "denied") {
     if (data.status === 402) return <HiringProWall symbol={symbol} exchange={exchange} width={width} height={height} />;
-    return <SignInWall action="see who is hiring" needsVerification={data.status === 403} />;
+    return <SignInWall placement="jobs-detail-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="see who is hiring" needsVerification={data.status === 403} />;
   }
   if ((status === "idle" || status === "loading") && !data) {
     return <PaneStatusBody loading align="center" loadingLabel={`Loading ${symbol} hiring...`} />;
@@ -745,8 +745,8 @@ function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps
   const access = usePlanAccess();
   const registrationId = JOBS_PANE_ID;
 
-  if (!access.signedIn) return <SignInWall action="see who is hiring" />;
-  if (!access.emailVerified) return <SignInWall action="see who is hiring" needsVerification />;
+  if (!access.signedIn) return <SignInWall placement="jobs-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="see who is hiring" />;
+  if (!access.emailVerified) return <SignInWall placement="jobs-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="see who is hiring" needsVerification />;
   if (!access.hasProAccess) return <HiringProWall symbol={symbol} exchange={exchange} width={width} height={height} />;
 
   if (!symbol) {

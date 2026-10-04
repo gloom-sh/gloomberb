@@ -106,3 +106,58 @@ describe("wall experiment sessions", () => {
     expect(await session.expose(ctx, async () => ({ accepted: true, variant: "teaser" }))).toBe("teaser");
   });
 });
+
+describe("sign-in wall experiment sessions", () => {
+  test("keeps its first arm and session exposure separate from the Pro wall experiment", async () => {
+    const ctx = context();
+    const signin = createWallExperimentSession("wall_teaser_signin");
+    const answer = Promise.withResolvers<ExperimentAnswer>();
+    const received: Array<string | undefined> = [];
+    const ask = async (variant: string | undefined) => { received.push(variant); return answer.promise; };
+    const first = signin.expose(ctx, ask);
+    const concurrent = signin.expose(ctx, ask);
+    answer.resolve({ accepted: true, variant: "teaser" });
+    expect(await Promise.all([first, concurrent])).toEqual(["teaser", "teaser"]);
+    expect(await createWallExperimentSession("wall_teaser_signin").expose(ctx, ask)).toBe("teaser");
+    expect(received).toEqual([undefined]);
+    await createWallExperimentSession().expose(ctx, async () => ({ accepted: true, variant: "control" }));
+    expect(ctx.local?.getItem(EXPERIMENTS_STORAGE_KEY)).toBe("wall_teaser_signin:teaser,wall_teaser:control");
+    expect(await createWallExperimentSession("wall_teaser_signin").expose({ ...ctx, session: storage() }, async (variant) => {
+      expect(variant).toBe("teaser");
+      return { accepted: true, variant: "teaser" };
+    })).toBe("teaser");
+  });
+
+  test("signed-in accounts, native visitors, opt-outs and automation never enroll even with a saved arm", async () => {
+    const signin = createWallExperimentSession("wall_teaser_signin");
+    const ctx = context();
+    await signin.expose(ctx, async () => ({ accepted: true, variant: "teaser" }));
+    for (const overrides of [
+      { accountId: "unverified-free" }, { accountId: "verified-free" }, { accountId: "pro", pro: true },
+      { surface: "desktop" as const }, { surface: "tui" as const }, { surface: "cli" as const },
+      { anonymousId: undefined }, { optedOut: true }, { automated: true },
+    ]) {
+      let asked = false;
+      expect(await signin.expose({ ...ctx, ...overrides }, async () => {
+        asked = true;
+        return { accepted: true, variant: "teaser" };
+      })).toBeNull();
+      expect(asked).toBe(false);
+      expect(signin.variant({ ...ctx, ...overrides })).toBeUndefined();
+    }
+  });
+
+  test("a stale teaser never renders on an unavailable or stopped experiment", async () => {
+    const ctx = context({ local: storage({ [EXPERIMENTS_STORAGE_KEY]: "wall_teaser_signin:teaser" }) });
+    const signin = createWallExperimentSession("wall_teaser_signin");
+    expect(await signin.expose(ctx, async () => { throw new Error("422"); })).toBeNull();
+    expect(signin.variant(ctx)).toBeUndefined();
+    expect(await signin.expose(ctx, async () => ({ accepted: false }))).toBeNull();
+    let asked = false;
+    expect(await createWallExperimentSession("wall_teaser_signin").expose(ctx, async () => {
+      asked = true;
+      return { accepted: true, variant: "teaser" };
+    })).toBeNull();
+    expect(asked).toBe(false);
+  });
+});

@@ -47,7 +47,7 @@ export function TrendingPane({ width, height, focused }: PaneProps) {
   usePaneStatusFooter({ registrationId: "attention:trending", loading: resource.loading, error: data ? resource.error : null, stale: data?.stale || resource.data?.stale,
     info: data?.asOf ? [{ id: "asof", parts: [{ text: `published ${date(data.asOf)}`, tone: "muted" }] }] : [],
     hints: [{ id: "attention", key: "a", label: "ttention", onPress: open }] });
-  if (!access.signedIn || !data && isCloudSessionRequired(resource.error)) return <SignInWall action="view research attention" needsVerification={session.needsVerification} />;
+  if (!access.signedIn || !data && isCloudSessionRequired(resource.error)) return <SignInWall placement="attention-trending-signin" action="view research attention" needsVerification={session.needsVerification} />;
   return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} empty={!!data && !data.rows.length} emptyTitle={emptyAttention(data)} subject="research attention">
     {data ? <DataTableView columns={[{ id: "symbol", label: "Ticker", width: 16, flexGrow: 1, align: "left" }, { id: "research", label: "Research hrs", width: 12, align: "right" }, { id: "z", label: "1H Z", width: 8, align: "right" }]}
       items={data.rows.slice(0, 5)} emptyStateTitle="No published research hours." rootWidth={width} rootHeight={height} focused={focused} getItemKey={(row) => row.symbol} selection={{ kind: "index", selectedIndex, onChange: setSelectedIndex }}

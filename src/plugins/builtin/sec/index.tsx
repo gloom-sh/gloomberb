@@ -356,7 +356,7 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
     return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
   }
   if (!eligibleTicker) return renderFilingNotice("SEC filings are only shown for US equities.", width);
-  if (authWall) return <SignInWall action="view SEC filings" needsVerification={cloudSession.needsVerification} />;
+  if (authWall) return <SignInWall placement="sec-signin" action="view SEC filings" needsVerification={cloudSession.needsVerification} />;
   if (loading && filings.length === 0) return <Spinner label="Loading SEC filings..." />;
   if (error && filings.length === 0) return <EmptyState title="SEC filings unavailable." message={error} />;
   if (filings.length === 0) return renderFilingNotice(`No recent SEC filings for ${ticker.metadata.ticker}.`, width);

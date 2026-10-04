@@ -1,4 +1,4 @@
-# Pro wall teaser experiment
+# Wall teaser experiments
 
 `wall_teaser` compares the existing Pro walls (`control`) with those same walls
 plus a small preview (`teaser`). The Upgrade and Manage account actions retain
@@ -111,9 +111,61 @@ identifier is minted. Existing non-wall milestones keep their existing rules.
 
 ## What remains outside this change
 
-The 33 `SignInWall` uses remain phase 2. Signed-out screens that already choose
-`SignInWall` retain that gate and do not become Pro walls. Thesis drafting and
+Signed-out screens retain their sign-in gate and do not become Pro walls. Thesis drafting and
 reviewing use an action-level Pro notification while manual thesis work remains
 free. They have no full-pane Pro wall, so turning them into one would change
 gating and is outside this experiment. Existing trial status-bar experiments,
 upgrade-dialog copy, Stripe copy and prices are unchanged.
+
+
+## Sign-in walls: phase 2
+
+`wall_teaser_signin` is a separate, staged experiment with `control` and `teaser`
+arms and `running: false`. Only signed-out web terminal visitors with an existing
+anonymous id enroll, hashed with this experiment's key. Signed-in accounts,
+including unverified accounts, never enroll. DNT, GPC, browser automation and
+server-classified bots receive no exposure or wall events. Signed-out desktop,
+TUI and CLI clients send nothing new, including clients with a website handoff id.
+
+Every sign-in wall has a required fixed `placement` ending in `-signin`. These
+ids are independent of the wall copy, ticker and query. The shared `WallTeaser`
+uses `SIGNIN_WALL_TEASERS` to map eligible placements onto the existing catalog
+and public-summary ids. There is no second copy of the content or new data route.
+Control, pending, stopped and failed exposures retain the original wall and
+buttons. Short panes retain the original wall in either arm. Accepted arms and
+exposures remain stable within the session; the stop switch applies to new
+sessions, just as in phase 1.
+
+Summary-capable placements are `risk-signin`, `exec-signin`, `ek-signin`,
+`calls-signin`, `calls-transcript-signin`, `jobs-signin` and `jobs-detail-signin`.
+They reuse the public counts and dates listed above, with the same labelled
+sample fallback. `diag-signin`, `most-signin`, `flow-signin`, `hilo-signin`,
+`srch-signin` and `team-signin` use the existing labelled samples. Other
+placements receive counting only, without an exposure request. A saved CALLS
+detail uses `calls-transcript-signin`; JOBS company-detail refusals use
+`jobs-detail-signin`, separate from its main wall. Signed-out and unverified
+branches of the same wall share a placement.
+
+All sign-in walls count `wall_viewed` for identified web visitors and signed-in
+accounts on every surface, including baseline traffic outside the test. Existing
+verification walls keep their Resend Verification Email action. Only the Log in
+and Sign up free actions count `wall_cta_clicked`; InlineAuthActions elsewhere
+are unchanged.
+
+| Event | Properties | Frequency |
+| --- | --- | --- |
+| `experiment_exposed` | `experiment: "wall_teaser_signin"`, `variant: "control"` or `"teaser"`, `exp_wall_teaser_signin` | Once per eligible visitor/session on a visible catalog-backed wall, in both arms. |
+| `wall_viewed` | `placement`; `teaser_kind: "summary"`, `"sample"` or `"none"` in the teaser arm; `exp_wall_teaser_signin` when assigned | Once per placement and account/visitor/session, including the baseline. |
+| `wall_cta_clicked` | `placement`, `cta: "login"` or `"signup"`; `exp_wall_teaser_signin` when assigned | Once per placement, CTA and account/visitor/session. |
+
+The events use the existing `/activity/research` route and carry the existing
+`surface`, `authenticated`, `product_area: "gloomberb_terminal"` and event-id
+fields. No tickers, queries, UI text or dataset values enter measurement. The
+accepted visitor arm follows the existing anonymous-id/account identification
+when the visitor signs up, without enrolling the new account again.
+
+Growth reads `account_created` per exposed visitor, joined by `person_id` to the
+`experiment_exposed` cohort. Secondary: `wall_cta_clicked` per exposed viewer.
+Guardrail: returning `workspace_opened` for that cohort. Use the exposure cohort
+for joins, including clicks before an exposure answer arrives and returns after
+the experiment has stopped. `wall_viewed` remains the baseline, not an exposure.

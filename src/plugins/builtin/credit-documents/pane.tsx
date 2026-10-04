@@ -133,7 +133,7 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   usePaneNoticeFooter({ registrationId: "credit:notices", focused, notices });
   useCreditEvidence(data, screenData ?? null, instrumentSnapshot, tab, view, rows.map(rowId), openInstrument?.id ?? null, openFactId);
   if (!symbol) return <EmptyState title="Select an issuer ticker." />;
-  if (!available && isCloudSessionRequired(currentError)) return <SignInWall action="view credit documents" needsVerification={needsVerification} />;
+  if (!available && isCloudSessionRequired(currentError)) return <SignInWall placement="credit-documents-signin" action="view credit documents" needsVerification={needsVerification} />;
   const query = tab === "screen" ? <QueryBar width={width} filters={[
     { id: "headroom", label: "Headroom below", value: String(headroom), options: [0, 10, 20, 30, 50, 100].map((value) => ({ value: String(value), label: `${value}%` })), onChange: (value) => setHeadroom(Number(value)) },
     { id: "springing", label: "Springing within", value: String(months), options: [3, 6, 12, 24, 36].map((value) => ({ value: String(value), label: `${value} months` })), onChange: (value) => setMonths(Number(value)) },

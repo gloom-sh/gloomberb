@@ -611,6 +611,7 @@ export function CorporateActionsView({
   });
 
   if (authWall) return <SignInWall
+    placement={variant === "earnings-estimates" ? "earnings-estimates-signin" : "corporate-actions-signin"}
     action={variant === "earnings-estimates" ? "view earnings estimates" : "view corporate actions"}
     needsVerification={cloudSession.needsVerification}
   />;

@@ -488,6 +488,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   if (!data && isCloudSessionRequired(resource.error))
     return (
       <SignInWall
+        placement="debt-maturities-signin"
         action="view debt maturities"
         needsVerification={session.needsVerification}
       />

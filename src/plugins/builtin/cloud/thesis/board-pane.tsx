@@ -377,7 +377,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
   const handleDetailKeyDown = useCallback((_event: DataTableKeyEvent) => false, []);
 
   if (!signedIn) {
-    return <SignInWall action="keep investment theses" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
+    return <SignInWall placement="thesis-board-signin" action="keep investment theses" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
   }
   if (!snapshot.loaded && snapshot.theses.length === 0) {
     return <PaneStatusBody loading={snapshot.loading} error={snapshot.error} subject="Theses" />;

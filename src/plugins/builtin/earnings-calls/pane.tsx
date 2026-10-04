@@ -738,6 +738,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   if (signInRequired || verificationRequired) {
     return (
       <SignInWall
+        placement={detailOpen ? "calls-transcript-signin" : "calls-signin"}
+        width={width} height={height} symbol={detailOpen ? selected?.ticker ?? symbol : symbol} exchange={exchange}
         action="browse earnings call transcripts"
         needsVerification={verificationRequired}
       />

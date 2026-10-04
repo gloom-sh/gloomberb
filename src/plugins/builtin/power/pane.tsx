@@ -184,7 +184,7 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
       color: column.id === "name" || column.id === "utility" || column.id === "capacityMw" || column.id === "requestedMw" ? colors.textBright
         : ["location", "asOf", "observedAt", "scope", "proposedDate", "region", "country", "kind", "role", "period"].includes(column.id) ? colors.textDim : colors.text };
   };
-  if (!board && isCloudSessionRequired(error)) return <SignInWall action="view power and interconnection data" needsVerification={needsVerification} />;
+  if (!board && isCloudSessionRequired(error)) return <SignInWall placement="power-signin" action="view power and interconnection data" needsVerification={needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">{strip}
     <PaneStatusBody loading={!board && pages.loading} error={!board ? error : null} subject="power and interconnection data">
       {board ? <DataTableStackView<PowerRow> columns={columns} items={items} getItemKey={rowId} focused={focused && !searchFocus.active}

@@ -141,7 +141,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   usePaneStatusFooter({ registrationId: `${kind}:status`, enabled: !openCompany && !app, loading: resource.loading || paged.loadingMore, error: data ? resource.error ?? paged.moreError?.message ?? paged.error?.message : null, stale: resource.data?.stale,
     info: [...(model?.asOf ? [{ id: "observed", parts: [{ text: `as of ${model.asOf.slice(0, 10)}`, tone: "muted" as const }] }] : []), ...(model?.preview ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : [])], hints });
   usePaneNoticeFooter({ registrationId: `${kind}:notices`, enabled: !openCompany && !app, focused, notices: [...(model?.notices ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action={kind === "hiring" ? "view hiring momentum" : "view app attention"} needsVerification={session.needsVerification} />;
+  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement={kind === "hiring" ? "hiring-momentum-signin" : "app-attention-signin"} action={kind === "hiring" ? "view hiring momentum" : "view app attention"} needsVerification={session.needsVerification} />;
   const countryOptions = data && kind === "apps" ? (data as AppAttentionPayload).coverage.configuredCountries : [];
   const query = kind === "hiring" && tab !== "mix" ? undefined : <QueryBar width={width} filters={kind === "apps" ? [
     { id: "country", label: "Country", value: country, defaultValue: "", options: [{ value: "", label: "All countries" }, ...countryOptions.map((value) => ({ value, label: value }))], onChange: setCountry },

@@ -138,7 +138,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     return { text, color: column.id === "title" ? colors.textBright : column.id === "date" ? colors.text
       : column.id === "status" && tab === "changes" ? colors.text : colors.textDim };
   };
-  if (isCloudSessionRequired(error?.message)) return <SignInWall action="view catalysts" needsVerification={session.needsVerification} />;
+  if (isCloudSessionRequired(error?.message)) return <SignInWall placement="catalysts-signin" action="view catalysts" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PaneStatusBody loading={!openId && !data && resource.loading} error={!openId && (!data || denied) ? error?.message : null} subject={litigation ? "company litigation" : "catalysts"}>

@@ -120,7 +120,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     return { text: cellText(item.row, column.id), color: column.id === "role" ? ROLE_COLORS[item.row.role] : column.id === "name" ? colors.textBright : colors.text };
   };
   if (!symbol) return <EmptyState title="Select a ticker." />;
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view supply chain disclosures" needsVerification={session.needsVerification} />;
+  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="supply-chain-signin" action="view supply chain disclosures" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
   const query = <QueryBar width={width} filters={[{ id: "direction", label: "Filings", inline: true, value: view,
     options: [{ value: "says", label: `${symbol} says` }, { value: "names", label: `Names ${symbol}` }], onChange: (value: string) => { setView(value); setSelected(null); setOpen(null); } }]}

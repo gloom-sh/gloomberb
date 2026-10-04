@@ -61,3 +61,20 @@ export const WALL_TEASERS: Readonly<Record<string, WallSample>> = {
   },
   "team": { layout: "prose" },
 };
+
+/** Sign-in placements reuse the existing previews and public summary allowlist. */
+export const SIGNIN_WALL_TEASERS: Readonly<Record<string, string>> = {
+  "risk-signin": "risk-wall",
+  "exec-signin": "exec-wall",
+  "ek-signin": "ek-wall",
+  "calls-signin": "calls-wall",
+  "calls-transcript-signin": "calls-transcript-wall",
+  "diag-signin": "diag-wall",
+  "jobs-signin": "jobs-wall",
+  "jobs-detail-signin": "jobs-wall",
+  "most-signin": "most-wall",
+  "flow-signin": "flow-wall",
+  "hilo-signin": "hilo-wall",
+  "srch-signin": "srch-wall",
+  "team-signin": "team",
+};

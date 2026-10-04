@@ -66,7 +66,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
     [data, loadingMore],
   );
   if (!access.signedIn)
-    return <SignInWall action="see delivered alerts" needsVerification={session.needsVerification} />;
+    return <SignInWall placement="alerts-history-signin" action="see delivered alerts" needsVerification={session.needsVerification} />;
   return (
     <PaneStatusBody
       loading={history.loading && !data}

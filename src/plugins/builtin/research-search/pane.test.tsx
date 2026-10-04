@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
@@ -124,7 +126,7 @@ function signIn(plan: "free" | "pro" = "free"): void {
 }
 
 function Harness({ mode = "results" }: { mode?: "results" | "saved" }) {
-  const initialState = createInitialState(createDefaultConfig("/tmp/gloomberb-research-search-test"));
+  const initialState = createInitialState(createDefaultConfig(join(homedir(), ".cache/gloom-smoke/glo239/research-search-test")));
   initialState.focusedPaneId = PANE_ID;
   initialState.paneState[PANE_ID] = {
     pluginState: { "research-search": { query: "gross margin", mode } },
@@ -145,16 +147,14 @@ function Harness({ mode = "results" }: { mode?: "results" | "saved" }) {
 }
 
 async function pressKey(name: string, shift = false) {
-  await tui.emitKeypress({ name, shift });
+  await tui.emitKeypress({ name, shift }, { frames: 0, trackPropagation: true });
+  await tui.setup().renderOnce();
 }
 
-async function renderFrames(count = 6) {
-  for (let index = 0; index < count; index += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      await tui.setup().renderOnce();
-    });
-  }
+async function renderPane(mode: "results" | "saved" = "results") {
+  const { root, setup } = await tui.createRoot({ width: 110, height: 20 });
+  await act(async () => root.render(<Harness mode={mode} />));
+  await setup.renderOnce();
 }
 
 afterEach(() => {
@@ -169,13 +169,12 @@ describe("ResearchSearchPane", () => {
     installTransport();
     signIn();
 
-    await tui.render(<Harness />, { width: 110, height: 20 });
-    await renderFrames();
+    await renderPane();
+    await tui.waitForFrameToContain("Apple FQ2 2026 Earnings Call");
 
     await pressKey("return");
-    await renderFrames();
 
-    const frame = tui.frame();
+    const frame = await tui.waitForFrameToContain("Tim Cook");
     expect(frame).toContain("Tim Cook");
     expect(frame).toContain("to expand next quarter");
   });
@@ -186,34 +185,31 @@ describe("ResearchSearchPane", () => {
     installTransport();
     signIn();
 
-    await tui.render(<Harness />, { width: 110, height: 20 });
-    await renderFrames();
+    await renderPane();
+    await tui.waitForFrameToContain("Apple FQ2 2026 Earnings Call");
 
     // Esc clears whichever field is active, which shows where Tab landed.
     await pressKey("/");
     await pressKey("tab");
     await pressKey("escape");
-    await renderFrames();
     expect(tui.frame()).toContain("Apple FQ2 2026 Earnings Call");
 
     await pressKey("/");
     await pressKey("tab");
     await pressKey("tab", true);
     await pressKey("escape");
-    await renderFrames();
-    expect(tui.frame()).toContain("Type a query to search");
+    await tui.waitForFrameToContain("Type a query to search");
   });
 
   test("flips a saved-search alert and persists it", async () => {
     const { requests } = installTransport();
     signIn("pro");
 
-    await tui.render(<Harness mode="saved" />, { width: 110, height: 20 });
-    await renderFrames();
-    expect(tui.frame()).toContain("[ ]");
+    await renderPane("saved");
+    await tui.waitForFrameToContain("[ ]");
 
     await pressKey("a");
-    await renderFrames();
+    await tui.waitForFrameToContain("[\u2713]");
 
     const write = requests.find((request) => request.method === "PATCH");
     expect(write?.path).toBe("/cloud/search/saved/saved-1");
