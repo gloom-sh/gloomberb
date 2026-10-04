@@ -349,8 +349,8 @@ export interface ResearchActivityDetails {
 
 /**
  * Counts milestones once per feature/tab/placement, session and account, never
- * their content. Native surfaces never mint an identity: a signed-out wall
- * without a website handoff contributes only an event-scoped baseline.
+ * their content. Wall views require an account or an identified web visitor;
+ * other native milestones can retain an identifier handed over by the website.
  */
 export function recordResearchActivity(
   event: ResearchActivity,
@@ -360,26 +360,24 @@ export function recordResearchActivity(
 ): void {
   const target = getCurrentPluginTarget();
   const user = apiClient.getCurrentUser();
-  if (event === "wall_viewed" && wallPrivacyBlocked()) return;
-  const idlessNativeWall = event === "wall_viewed" && !user
-    && (target === "tui" || (target === "desktop" && !anonymousId));
-  if (!user && !anonymousId && !idlessNativeWall) return;
-  if (!user && target !== "web" && target !== "desktop" && !idlessNativeWall) return;
+  if (event === "wall_viewed" && (wallPrivacyBlocked() || (!user && target !== "web"))) return;
+  if (!user && !anonymousId) return;
+  if (!user && target !== "web" && target !== "desktop") return;
   // The server refuses the whole event over a malformed id, so one is dropped instead.
   const placement = rawPlacement && ACTIVITY_ID.test(rawPlacement) ? rawPlacement : undefined;
   if (event === "wall_viewed" && !placement) return;
-  const identity = user?.id ?? (!idlessNativeWall && event === "wall_viewed" ? anonymousId : undefined) ?? "guest";
+  const identity = user?.id ?? (event === "wall_viewed" ? anonymousId : "guest");
   const key = `${identity}:${event}:${feature ?? ""}:${tab ?? ""}:${placement ?? ""}`;
-  if (sent.has(key) || (!idlessNativeWall && event === "wall_viewed" && wallSessionViews().has(key))) return;
+  if (sent.has(key) || (event === "wall_viewed" && wallSessionViews().has(key))) return;
   sent.add(key);
-  if (event !== "workspace_opened" && !idlessNativeWall) recordResearchActivity("workspace_opened");
+  if (event !== "workspace_opened") recordResearchActivity("workspace_opened");
   void apiClient
     .recordResearchActivity({
       event,
       eventId: crypto.randomUUID(),
       surface: target === "desktop" ? "desktop" : target,
-      anonymousId: !idlessNativeWall && (target === "web" || target === "desktop") ? anonymousId : undefined,
-      attribution: idlessNativeWall ? undefined : attributionPayload(),
+      anonymousId: target === "web" || target === "desktop" ? anonymousId : undefined,
+      attribution: attributionPayload(),
       feature,
       tab,
       desks,
@@ -387,7 +385,7 @@ export function recordResearchActivity(
       ...(event === "wall_viewed" && teaser_kind ? { teaser_kind } : {}),
     })
     .then(() => {
-      if (event !== "wall_viewed" || idlessNativeWall) return;
+      if (event !== "wall_viewed") return;
       const views = wallSessionViews();
       views.add(key);
       try { sessionStorage.setItem(WALL_VIEWS_SESSION_KEY, JSON.stringify([...views])); } catch { /* Native sessions use the in-memory set. */ }

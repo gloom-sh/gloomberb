@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "./index";
 import { getCurrentPluginTarget, setCurrentPluginTarget } from "../plugins/current-target";
-import { adoptDesktopHandoff, exposeWallTeaser, initializeDesktopResearchActivity, recordWallViewed } from "./research-activity";
+import { adoptDesktopHandoff, exposeWallTeaser, initializeDesktopResearchActivity, recordResearchActivity, recordWallViewed } from "./research-activity";
 
 const originalRecord = apiClient.recordResearchActivity;
 const originalExposure = apiClient.recordExperimentExposure;
@@ -129,30 +129,53 @@ describe("wall milestone boundary", () => {
     expect(calls.find((event) => event.event === "wall_viewed")?.attribution?.experiments).toBe("web_terminal_trial_offer:offer");
   });
 
-  test("signed-out native walls contribute a placement baseline without creating an identity or workspace event", async () => {
+  test("signed-out native walls send nothing and mint no identifier, even with a desktop handoff", async () => {
+    const calls: Array<Parameters<typeof apiClient.recordResearchActivity>[0]> = [];
+    const exposures: Array<Parameters<typeof apiClient.recordExperimentExposure>[0]> = [];
+    apiClient.recordResearchActivity = async (payload) => { calls.push(payload); };
+    apiClient.recordExperimentExposure = async (payload) => { exposures.push(payload); return { accepted: false }; };
+    const generatedIds = spyOn(crypto, "randomUUID");
+    try {
+      for (const handedOverId of [undefined, "0f1e2d3c-4b5a-4968-8776-655443322110"]) {
+        browserGlobals();
+        initializeDesktopResearchActivity(localStorage);
+        if (handedOverId) adoptDesktopHandoff(`gloomberb://cloud/success?_gloom=${handedOverId}`);
+        for (const surface of ["desktop", "tui", "cli"] as const) {
+          setCurrentPluginTarget(surface);
+          expect(await exposeWallTeaser()).toBeNull();
+          recordWallViewed("risk-wall");
+          recordWallViewed("risk-wall", "summary");
+          recordWallViewed("most-wall", "sample");
+        }
+        await Promise.resolve();
+        expect(calls).toHaveLength(0);
+        expect(exposures).toHaveLength(0);
+        expect(generatedIds).not.toHaveBeenCalled();
+        expect(sessionStorage.getItem("gloomberb.wall-teaser.views")).toBeNull();
+        expect(localStorage.getItem("gloomberb.web.anonymous-id")).toBe(handedOverId ?? null);
+      }
+    } finally {
+      generatedIds.mockRestore();
+    }
+  });
+
+  test("excluding native wall views preserves desktop handoff milestones and identified web wall views", async () => {
     browserGlobals();
-    initializeDesktopResearchActivity(memoryStorage());
+    initializeDesktopResearchActivity(localStorage);
+    const handedOverId = "0f1e2d3c-4b5a-4968-8776-655443322119";
+    adoptDesktopHandoff(`gloomberb://cloud/success?_gloom=${handedOverId}`);
     const calls: Array<Parameters<typeof apiClient.recordResearchActivity>[0]> = [];
     apiClient.recordResearchActivity = async (payload) => { calls.push(payload); };
-    apiClient.recordExperimentExposure = async () => { throw new Error("No-id native visitors must not enroll"); };
-    for (const surface of ["desktop", "tui"] as const) {
-      setCurrentPluginTarget(surface);
-      expect(await exposeWallTeaser()).toBeNull();
-      recordWallViewed(`${surface}-wall`);
-      recordWallViewed(`${surface}-wall`);
-    }
-    setCurrentPluginTarget("cli");
-    recordWallViewed("cli-wall");
+    setCurrentPluginTarget("desktop");
+    recordWallViewed("risk-wall");
+    recordResearchActivity("onboarding_started");
     setCurrentPluginTarget("web");
-    recordWallViewed("web-wall");
-    await Promise.resolve();
-    expect(calls.map(({ event, surface, placement, anonymousId, attribution, teaser_kind }) => ({ event, surface, placement, anonymousId, attribution, teaser_kind }))).toEqual([
-      { event: "wall_viewed", surface: "desktop", placement: "desktop-wall", anonymousId: undefined, attribution: undefined, teaser_kind: undefined },
-      { event: "wall_viewed", surface: "tui", placement: "tui-wall", anonymousId: undefined, attribution: undefined, teaser_kind: undefined },
+    recordWallViewed("risk-wall");
+    expect(calls.map(({ event, surface, anonymousId }) => ({ event, surface, anonymousId }))).toEqual([
+      { event: "workspace_opened", surface: "desktop", anonymousId: handedOverId },
+      { event: "onboarding_started", surface: "desktop", anonymousId: handedOverId },
+      { event: "wall_viewed", surface: "web", anonymousId: handedOverId },
     ]);
-    expect(calls.every((call) => /^[a-f0-9-]{36}$/.test(call.eventId))).toBe(true);
-    expect(sessionStorage.getItem("gloomberb.wall-teaser.views")).toBeNull();
-    expect(localStorage.getItem("gloomberb.web.anonymous-id")).toBeNull();
   });
 
 });
