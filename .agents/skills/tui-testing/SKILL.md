@@ -20,11 +20,13 @@ This skill is for terminal TUI and OpenTUI test workflows. For Electrobun/deskto
 **Never touch the real `~/.gloomberb`.** Every tmux smoke, and any CLI command that writes (plugins, config, notes, alerts, portfolios), runs against a throwaway profile: point `GLOOMBERB_HOME` at a temp dir whose `config.json` sets `"onboardingComplete": true`.
 
 ```bash
-SMOKE_HOME=/tmp/gloomberb-smoke-my-change   # a literal path, unique to this task
+SMOKE_HOME=$HOME/.cache/gloom-smoke/my-change   # a literal path, unique to this task, on disk
 mkdir -p "$SMOKE_HOME"
 printf '{ "dataDir": "%s", "onboardingComplete": true }\n' "$SMOKE_HOME" > "$SMOKE_HOME/config.json"
 grep '"dataDir"' "$SMOKE_HOME/config.json"   # must name $SMOKE_HOME, never ~/.gloomberb
 ```
+
+Keep the profile on disk, not under `/tmp`: on many Linux machines `/tmp` is RAM-backed with a fixed inode limit, and one profile is about 29,000 files once the first launch has installed the plugins, so a handful of leftover profiles can fill it and make every shell command fail.
 
 An empty `GLOOMBERB_HOME` falls back to the real profile: `~/.gloomberb`, or the XDG folders (`~/.config/gloomberb`, `~/.local/share/gloomberb`) on a Linux machine without one. Shell variables do not carry over between separate shells, so set `SMOKE_HOME` again in every shell that launches the app, and write it as `${SMOKE_HOME:?}` in launch commands so an unset value aborts instead of opening the real profile.
 
