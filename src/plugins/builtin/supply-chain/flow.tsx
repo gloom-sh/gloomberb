@@ -1,54 +1,72 @@
 import type { ChartVectorShape } from "../../../ui/host";
-import { useEffect, useMemo, useState } from "react";
-import { ActionRow } from "../../../components";
-import { Box, ChartSurface, Text, Span, useUiCapabilities } from "../../../ui";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
+import { Box, ChartSurface, Span, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
-import { truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
-import { drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
-import type { SupplyRow } from "../../../api-client/supply-chain";
-import { dollars, flowBands, percentage, ROLE_COLORS, type FlowBand, type FlowNode } from "./model";
+import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
+import { counterpartyKind, counterpartyLabel, dollars, roleLabel, ROLE_COLORS, scopeWords, shareParts, type FlowBand } from "./model";
+import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 
-interface PositionedNode extends FlowNode { x: number; y: number; width: number; }
-function curve(x0: number, y0: number, x1: number, y1: number) {
-  return Array.from({ length: 49 }, (_, i) => { const t = i / 48, s = t * t * (3 - 2 * t); return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * s }; });
+const RIBBON_STEPS = 48;
+const ROLE_PLURAL: Record<SupplyRole, string> = { supplier: "Suppliers", customer: "Customers", partner: "Partners", competitor: "Competitors", investee: "Investees" };
+
+/** A ribbon's outline in the overlay's 0..1 space: the upper edge out, the lower edge back. */
+function ribbonPolygon(ribbon: FlowRibbon, width: number, height: number, thickness: number) {
+  const xs = Array.from({ length: RIBBON_STEPS + 1 }, (_, i) => ribbon.x0 + (ribbon.x1 - ribbon.x0) * i / RIBBON_STEPS);
+  const upper = xs.map((x) => ({ x: x / width, y: (ribbonY(ribbon, x) - thickness / 2) / height }));
+  const lower = xs.map((x) => ({ x: x / width, y: (ribbonY(ribbon, x) + thickness / 2) / height })).reverse();
+  return [...upper, ...lower];
 }
-/** The terminal and SVG consume the same geometry and selection. Labels remain native controls. */
-export function SupplyFlow({ rows, symbol, focusId, width, height, focused, selectedId, onSelect, onOpen, onVisible }: {
-  rows: SupplyRow[]; symbol: string; focusId?: string; width: number; height: number; focused: boolean;
+
+/** The disclosed figure a card shows under the name, in the reporting company's own terms. */
+function nodeMetric(node: PositionedNode, focusId?: string): string {
+  const row = node.row!;
+  if (node.weight !== null && node.weightBasis === "usd") return dollars(row);
+  const share = shareParts(row, focusId);
+  if (share) return `${share.value} ${share.basis}`;
+  if (row.usd !== null) return dollars(row);
+  // With no figure, the card says where the relationship is disclosed.
+  const reporter = focusId && row.reportingEntity.id !== focusId ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
+  return `${reporter}${row.form ?? "filing"}${row.fiscalYear ? ` · FY${row.fiscalYear}` : ""}`;
+}
+
+/**
+ * Suppliers flow in from the left and customers out to the right of the
+ * focus company. Ribbon width follows a disclosed share or dollar figure on
+ * one comparable scale per column; a relationship without one is a hairline.
+ * Hover or select a ribbon or card to bring it forward; click to open the
+ * counterparty. The desktop draws SVG ribbons and real cards; the terminal
+ * draws the same geometry in braille with aligned text.
+ */
+export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, focused, selectedId, onSelect, onOpen, onVisible }: {
+  rows: SupplyRow[]; symbol: string; focusName?: string | null; focusId?: string; width: number; height: number; focused: boolean;
   selectedId: string | null; onSelect: (id: string) => void; onOpen: (row: SupplyRow) => void; onVisible: (ids: string[]) => void;
 }) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const bitmapSize = useStaticChartBitmapSize(width, height);
   const [pages, setPages] = useState<Partial<Record<FlowBand, number>>>({});
-  const hasRelated = rows.some((row) => !row.counterparty.aggregate && row.role !== "supplier" && row.role !== "customer");
-  const plotRows = Math.max(4, height - (hasRelated ? 8 : 4));
-  const limit = Math.max(2, Math.min(8, Math.floor(plotRows / 2)));
-  const bands = useMemo(() => ({ ...flowBands(rows, limit, pages, focusId), related: flowBands(rows, 3, pages, focusId).related }), [rows, limit, pages, focusId]);
-  const customerScope = bands.customers.find((node) => node.weightScope)?.weightScope?.replace(/\s+And\s+/gi, " & ").replace(/\s+Segment$/i, "");
-  const related = bands.related.length > 0;
-  const labelWidth = Math.max(16, Math.min(27, Math.floor(width * 0.27)));
-  const centerWidth = Math.max(9, Math.min(15, symbol.length + 5));
-  const centerX = Math.floor((width - centerWidth) / 2), centerY = Math.max(3, Math.floor((height - (related ? 6 : 2)) / 2));
-  const nodes: PositionedNode[] = [];
-  for (const band of ["suppliers", "customers"] as const) {
-    const entries = bands[band];
-    const usable = plotRows;
-    entries.forEach((node, index) => nodes.push({ ...node, x: band === "suppliers" ? 1 : width - labelWidth - 1,
-      y: 2 + Math.floor(index * usable / Math.max(entries.length, 1)), width: labelWidth }));
-  }
-  // Relationships without a trade direction get their own band, never a fabricated supplier/customer arrow.
-  const relatedLimit = Math.min(3, bands.related.length);
-  const relatedNodes = bands.related.slice(0, relatedLimit);
-  relatedNodes.forEach((node, index) => nodes.push({ ...node, x: 1 + Math.floor(index * (width - 2) / relatedLimit), y: height - 3, width: Math.floor((width - 3) / relatedLimit) - 1 }));
+  const [relatedPages, setRelatedPages] = useState<Partial<Record<SupplyRole, number>>>({});
+  const [hovered, setHovered] = useState<string | null>(null);
+  const surfaceRef = useRef<{ x: number; y: number; absoluteX?: number; absoluteY?: number } | null>(null);
+  const focusLabel = focusName && displayWidth(focusName) <= 22 ? focusName : symbol;
+  const geometry = useMemo(() => flowGeometry(rows, { width, height, focusId, focusLabelWidth: Math.max(symbol.length, displayWidth(focusLabel)), pages, relatedPages }),
+    [rows, width, height, focusId, symbol, focusLabel, pages, relatedPages]);
+  const { nodes, ribbons, center } = geometry;
   const visibleIds = nodes.filter((node) => node.row).map((node) => node.id).join("\n");
   useEffect(() => { onVisible(visibleIds ? visibleIds.split("\n") : []); }, [visibleIds, onVisible]);
   const selectedIndex = Math.max(0, nodes.findIndex((node) => node.id === selectedId));
+  const selected = nodes[selectedIndex]?.id ?? null;
+  const active = hovered ?? selected;
+  const focusTint = blendHex(colors.bg, colors.textBright, 0.55);
   const selectNode = (node: PositionedNode) => {
-    if (node.more) setPages((old) => ({ ...old, [node.band]: (old[node.band] ?? 0) + 1 }));
+    if (node.more && node.band === "related" && node.role) setRelatedPages((old) => ({ ...old, [node.role!]: (old[node.role!] ?? 0) + 1 }));
+    else if (node.more) setPages((old) => ({ ...old, [node.band]: (old[node.band] ?? 0) + 1 }));
     else if (node.row) { onSelect(node.id); onOpen(node.row); }
   };
   useShortcut((event) => {
@@ -60,38 +78,57 @@ export function SupplyFlow({ rows, symbol, focusId, width, height, focused, sele
     else return;
     event.preventDefault(); event.stopPropagation();
   });
-  const vectors: ChartVectorShape[] = nodes.filter((node) => node.row && node.band !== "related").map((node) => {
-    const left = node.band === "suppliers";
-    const startX = left ? node.x + node.width + 2 : centerX + centerWidth;
-    const endX = left ? centerX : node.x - 2;
-    return { id: node.id, points: curve(startX / width, (left ? node.y + 0.5 : centerY + 0.5) / height,
-      endX / width, (left ? centerY + 0.5 : node.y + 0.5) / height),
-      color: ROLE_COLORS[node.row!.role], strokeWidth: node.weight === null ? 1.5 : node.weight * 16 };
-  });
+
+  const ribbonColors = (ribbon: FlowRibbon) => ribbon.band === "suppliers" ? [ROLE_COLORS[ribbon.role], focusTint] : [focusTint, ROLE_COLORS[ribbon.role]];
+  const vectors = useMemo<ChartVectorShape[]>(() => ribbons.map((ribbon) => {
+    const lit = active === ribbon.id;
+    const dim = hovered !== null && !lit;
+    if (ribbon.thickness === null) {
+      return { id: ribbon.id, points: Array.from({ length: RIBBON_STEPS + 1 }, (_, i) => {
+        const x = ribbon.x0 + (ribbon.x1 - ribbon.x0) * i / RIBBON_STEPS;
+        return { x: x / width, y: ribbonY(ribbon, x) / height };
+      }), color: ROLE_COLORS[ribbon.role], gradient: ribbonColors(ribbon), strokeWidth: lit ? 2.4 : 1.4, opacity: dim ? 0.25 : lit ? 1 : 0.7 };
+    }
+    return { id: ribbon.id, points: ribbonPolygon(ribbon, width, height, ribbon.thickness), color: ROLE_COLORS[ribbon.role], fill: true,
+      gradient: ribbonColors(ribbon), fillOpacity: lit ? 0.9 : 0.6, opacity: dim ? 0.3 : 1 };
+  }), [ribbons, active, hovered, width, height, focusTint]);
+
+  // The terminal's native graphics: the same ribbons filled column by column.
   const bitmap = useMemo(() => {
     if (desktop || !bitmapSize) return null;
     const { pixelWidth: w, pixelHeight: h } = bitmapSize;
+    const sx = w / width, sy = h / height;
     const pixels = new Uint8Array(w * h * 4); fillOpaque(pixels, parseHex(colors.bg));
-    for (const vector of vectors) for (let i = 1; i < vector.points.length; i++) {
-      const a = vector.points[i - 1]!, b = vector.points[i]!;
-      drawLine(pixels, w, h, a.x * w, a.y * h, b.x * w, b.y * h, parseHex(vector.color, 0.7), (vector.strokeWidth ?? 2) * w / (width * 8));
+    for (const ribbon of ribbons) {
+      const [from, to] = ribbonColors(ribbon);
+      for (let px = Math.round(ribbon.x0 * sx); px <= Math.round(ribbon.x1 * sx); px++) {
+        const x = px / sx, t = (x - ribbon.x0) / Math.max(1e-6, ribbon.x1 - ribbon.x0);
+        const half = ribbon.thickness === null ? 0.6 / sy : ribbon.thickness / 2;
+        const y = ribbonY(ribbon, x);
+        fillRect(pixels, w, h, px, (y - half) * sy, px, (y + half) * sy, parseHex(blendHex(from!, to!, t), active === ribbon.id ? 0.95 : 0.7));
+      }
     }
     return { width: w, height: h, pixels };
-  }, [desktop, bitmapSize, JSON.stringify(vectors), colors.bg, width]);
+  }, [desktop, bitmapSize, ribbons, colors.bg, width, height, active, focusTint]);
+
+  // Braille fallback: a filled band per ribbon, coloured along its length from the role to the focus company.
   const fallback = useMemo(() => {
+    if (desktop || bitmap) return null;
     const grid = Array.from({ length: height }, () => Array.from({ length: width }, () => ({ mask: 0, color: colors.textDim })));
     const bits = [[1, 8], [2, 16], [4, 32], [64, 128]];
-    for (const vector of vectors) for (let p = 1; p < vector.points.length; p++) {
-      const a = vector.points[p - 1]!, b = vector.points[p]!;
-      const steps = Math.ceil(Math.max(Math.abs(b.x - a.x) * width * 2, Math.abs(b.y - a.y) * height * 4)) + 1;
-      for (let i = 0; i <= steps; i++) {
-        const px = Math.floor((a.x + (b.x - a.x) * i / steps) * width * 2);
-        const py = Math.floor((a.y + (b.y - a.y) * i / steps) * height * 4);
-        const radius = Math.floor((vector.strokeWidth ?? 1) / 7);
-        for (let dy = -radius; dy <= radius; dy++) {
-          const y = py + dy; if (y < 0 || px < 0) continue;
-          const cell = grid[Math.floor(y / 4)]?.[Math.floor(px / 2)];
-          if (cell) { cell.mask |= bits[y % 4]![px % 2]!; cell.color = vector.color; }
+    for (const ribbon of ribbons) {
+      const [from, to] = ribbonColors(ribbon);
+      const lit = active === ribbon.id;
+      for (let dx = Math.ceil(ribbon.x0 * 2); dx < Math.floor(ribbon.x1 * 2); dx++) {
+        const x = (dx + 0.5) / 2, t = (x - ribbon.x0) / Math.max(1e-6, ribbon.x1 - ribbon.x0);
+        const y = ribbonY(ribbon, x);
+        const half = ribbon.thickness === null ? 0 : ribbon.thickness / 2;
+        const color = blendHex(from!, to!, t);
+        for (let dy = Math.round((y - half) * 4 - 0.5); dy <= Math.round((y + half) * 4 - 0.5); dy++) {
+          const cell = grid[Math.floor(dy / 4)]?.[Math.floor(dx / 2)];
+          if (!cell || dy < 0) continue;
+          cell.mask |= bits[dy % 4]![dx % 2]!;
+          cell.color = ribbon.thickness === null && !lit ? blendHex(colors.bg, color, 0.75) : color;
         }
       }
     }
@@ -104,33 +141,166 @@ export function SupplyFlow({ rows, symbol, focusId, width, height, focused, sele
       }
       return spans;
     });
-  }, [width, height, JSON.stringify(vectors), colors.textDim]);
-  const nodeMetric = (node: FlowNode) => {
-    const row = node.row!;
-    if (node.weight !== null && node.weightBasis === "usd") return dollars(row);
-    if (row.pctOfRevenue !== null) {
-      if (row.reportingEntity.id !== focusId) return `${Number(row.pctOfRevenue.toFixed(1))}% of ${row.reportingEntity.ticker ?? row.reportingEntity.name}${row.pctBasis === "revenue" ? " rev" : ` ${row.pctBasis}`}`;
-      return percentage(row);
+  }, [desktop, bitmap, width, height, ribbons, colors.textDim, colors.bg, active, focusTint]);
+
+  /** Hovering a ribbon brings it forward; the nearest one under the pointer wins. */
+  const hoverAt = (event: { preciseX?: number; preciseY?: number; x: number; y: number }) => {
+    const origin = surfaceRef.current;
+    if (!origin) return;
+    const x = (event.preciseX ?? event.x) - (origin.absoluteX ?? origin.x), y = (event.preciseY ?? event.y) - (origin.absoluteY ?? origin.y);
+    let best: { id: string; distance: number } | null = null;
+    for (const ribbon of ribbons) {
+      if (x < ribbon.x0 || x > ribbon.x1) continue;
+      const distance = Math.abs(ribbonY(ribbon, x) - y) - (ribbon.thickness ?? 0) / 2;
+      if (distance < 0.6 && (!best || distance < best.distance)) best = { id: ribbon.id, distance };
     }
-    return [row.counterparty.ticker, row.usd !== null ? dollars(row) : row.role].filter(Boolean).join(" · ");
+    const next = best?.id ?? null;
+    if (next !== hovered) setHovered(next);
   };
+
+  const hoveredNode = hovered ? nodes.find((node) => node.id === hovered && node.row) : null;
+  const legend = flowLegend(geometry, symbol);
+  const header = (band: "suppliers" | "customers", x: number) => {
+    const role: SupplyRole = band === "suppliers" ? "supplier" : "customer";
+    return <Box position="absolute" top={geometry.headerRow} left={x} width={geometry.cardWidth}>
+      <Text fg={ROLE_COLORS[role]} attributes={TextAttributes.BOLD}>{band === "suppliers" ? "Suppliers" : "Customers"}</Text>
+    </Box>;
+  };
+  const hasBand = (band: "suppliers" | "customers") => nodes.some((node) => node.band === band);
   return <Box width={width} height={height} flexGrow={1} flexBasis={0} minHeight={0} position="relative" overflow="hidden">
-    <ChartSurface width={width} height={height} position="absolute" left={0} top={0} vectors={desktop ? vectors : undefined} bitmap={bitmap} flexDirection="column" aria-label="Supply chain flow">
-      {!desktop ? fallback.map((spans, y) => <Text key={y}>{spans.map((span, i) => <Span key={i} fg={span.color}>{span.text}</Span>)}</Text>) : null}
+    <ChartSurface ref={surfaceRef} width={width} height={height} position="absolute" left={0} top={0}
+      vectors={desktop ? vectors : undefined} bitmap={bitmap} flexDirection="column" aria-label="Supply chain flow"
+      onMouseMove={hoverAt} onMouseOut={() => setHovered(null)}
+      onMouseDown={() => { const node = hovered ? nodes.find((entry) => entry.id === hovered) : null; if (node) selectNode(node); }}>
+      {fallback ? fallback.map((spans, y) => <Text key={y}>{spans.map((span, i) => <Span key={i} fg={span.color}>{span.text}</Span>)}</Text>) : null}
     </ChartSurface>
-    <Box position="absolute" top={0} left={1}><Text fg={ROLE_COLORS.supplier}>SUPPLIERS</Text></Box>
-    {bands.suppliers.some((node) => node.weightBasis === "usd") ? <Box position="absolute" top={1} left={1}><Text fg={colors.textDim}>Scale: USD</Text></Box> : null}
-    <Box position="absolute" top={0} left={width - labelWidth - 1}><Text fg={ROLE_COLORS.customer}>CUSTOMERS</Text></Box>
-    {customerScope ? <Box position="absolute" top={1} left={width - Math.max(labelWidth, 30) - 1} width={Math.max(labelWidth, 30)}><Text fg={colors.textDim}>{truncateToDisplayWidth(`Scale: ${customerScope}`, Math.max(labelWidth, 30))}</Text></Box> : null}
-    {!customerScope && bands.customers.some((node) => node.weightBasis === "usd") ? <Box position="absolute" top={1} left={width - labelWidth - 1}><Text fg={colors.textDim}>Scale: USD</Text></Box> : null}
-    <Box position="absolute" left={centerX} top={centerY} width={centerWidth} height={2} backgroundColor={colors.selected} alignItems="center" justifyContent="center"><Text fg={colors.textBright}>{symbol}</Text></Box>
-    {bands.suppliers.length === 0 ? <Box position="absolute" top={3} left={1}><Text fg={colors.textDim}>None disclosed</Text></Box> : null}
-    {bands.customers.length === 0 ? <Box position="absolute" top={3} left={width - labelWidth - 1}><Text fg={colors.textDim}>None disclosed</Text></Box> : null}
-    {related ? <Box position="absolute" left={1} top={height - 5}><Text fg={colors.textDim}>PARTNERS · COMPETITORS · INVESTEES</Text></Box> : null}
-    {nodes.map((node) => <Box key={node.id} position="absolute" left={node.x} top={node.y} width={node.width} height={2} flexDirection="column" backgroundColor={colors.bg}>
-      <ActionRow width={node.width} height={1} label={truncateToDisplayWidth(node.label, node.width - 1)} fg={node.row ? ROLE_COLORS[node.row.role] : colors.textMuted}
-        active={nodes[selectedIndex]?.id === node.id} onPress={() => selectNode(node)} />
-      {node.row ? <Text fg={colors.textDim}>{truncateToDisplayWidth(nodeMetric(node), node.width - 1)}</Text> : null}
+    {header("suppliers", 1)}
+    {header("customers", width - geometry.cardWidth - 1)}
+    {!hasBand("suppliers") ? <Box position="absolute" top={center.y + 1} left={1}><Text fg={colors.textMuted}>None disclosed</Text></Box> : null}
+    {!hasBand("customers") ? <Box position="absolute" top={center.y + 1} left={width - geometry.cardWidth - 1}><Text fg={colors.textMuted}>None disclosed</Text></Box> : null}
+    <FocusCard symbol={symbol} name={focusName ?? null} {...center} desktop={desktop} />
+    {nodes.filter((node) => node.band !== "related").map((node) => <FlowCard key={node.id} node={node} focusId={focusId} desktop={desktop}
+      active={active === node.id} onPress={() => selectNode(node)} onHover={(on) => setHovered(on ? node.id : null)} />)}
+    {geometry.related.map((row) => <Box key={row.role} position="absolute" top={row.y} left={1} width={RELATED_LABEL_CELLS}>
+      <Text fg={ROLE_COLORS[row.role]}>{ROLE_PLURAL[row.role]}</Text>
     </Box>)}
+    {geometry.related.flatMap((row) => row.chips).map((node) => <FlowChip key={node.id} node={node} desktop={desktop} active={active === node.id}
+      onPress={() => selectNode(node)} onHover={(on) => setHovered(on ? node.id : null)} />)}
+    {geometry.groupRow !== null ? <Box position="absolute" top={geometry.groupRow} left={1} width={width - 2} flexDirection="row" overflow="hidden">
+      <Box width={RELATED_LABEL_CELLS} flexShrink={0}><Text fg={colors.textDim}>Groups</Text></Box>
+      <Text fg={colors.textDim}>{truncateToDisplayWidth(geometry.groups.map((row) => {
+        const share = shareParts(row, focusId);
+        return `${counterpartyLabel(row)}${share ? ` ${share.value} ${share.basis}` : ""}`;
+      }).join("  ·  "), width - RELATED_LABEL_CELLS - 3)}</Text>
+    </Box> : null}
+    {legend ? <Box position="absolute" top={geometry.legendRow} left={1} width={width - 2} flexDirection="row" gap={2} overflow="hidden">
+      {legend.map((entry) => <Box key={entry.id} flexDirection="row" gap={1} flexShrink={0}>
+        <LegendSwatch kind={entry.kind} desktop={desktop} />
+        <Text fg={colors.textDim}>{entry.label}</Text>
+      </Box>)}
+    </Box> : null}
+    {hoveredNode && hoveredNode.band !== "related" ? <FlowTooltip node={hoveredNode} focusId={focusId} width={width} desktop={desktop} anchor={tooltipAnchor(hoveredNode, ribbons, width)} /> : null}
+  </Box>;
+}
+
+function tooltipAnchor(node: PositionedNode, ribbons: readonly FlowRibbon[], width: number) {
+  const ribbon = ribbons.find((entry) => entry.id === node.id);
+  const x = ribbon ? (ribbon.x0 + ribbon.x1) / 2 : node.x + node.width / 2;
+  const y = ribbon ? ribbonY(ribbon, x) : node.y;
+  return { x: Math.max(1, Math.min(width - 40, Math.round(x - 19))), y: Math.round(y) + 1 };
+}
+
+function flowLegend(geometry: ReturnType<typeof flowGeometry>, symbol: string): { id: string; kind: "weighted" | "hairline"; label: string }[] | null {
+  const entries: { id: string; kind: "weighted" | "hairline"; label: string }[] = [];
+  const { suppliers, customers, scope } = geometry.scale;
+  if (customers === "revenue") entries.push({ id: "customers", kind: "weighted", label: `customers: share of ${symbol}${scope ? ` ${scopeWords(scope)}` : ""} revenue` });
+  else if (customers === "usd") entries.push({ id: "customers", kind: "weighted", label: "customers: disclosed USD" });
+  if (suppliers === "usd") entries.push({ id: "suppliers", kind: "weighted", label: "suppliers: disclosed USD" });
+  else if (suppliers === "revenue") entries.push({ id: "suppliers", kind: "weighted", label: `suppliers: share of ${symbol} revenue` });
+  if (geometry.ribbons.some((ribbon) => ribbon.thickness === null)) entries.push({ id: "hairline", kind: "hairline", label: "no comparable figure" });
+  return entries.length ? entries : null;
+}
+
+function LegendSwatch({ kind, desktop }: { kind: "weighted" | "hairline"; desktop: boolean }) {
+  const colors = useThemeColors();
+  if (!desktop) return <Text fg={colors.textMuted}>{kind === "weighted" ? "━━" : "──"}</Text>;
+  return <Box width={2} height={1} justifyContent="center">
+    <Box style={{ height: kind === "weighted" ? "7px" : "1px", borderRadius: kind === "weighted" ? "2px" : 0,
+      background: `linear-gradient(90deg, ${colors.textMuted}, ${colors.textDim})` }} />
+  </Box>;
+}
+
+function FocusCard({ symbol, name, x, y, width, height, desktop }: { symbol: string; name: string | null; x: number; y: number; width: number; height: number; desktop: boolean }) {
+  const colors = useThemeColors();
+  // The terminal's border takes two rows; the name shows only when the symbol keeps its own.
+  const showName = !!name && name.toUpperCase() !== symbol.toUpperCase() && height >= (desktop ? 3 : 4);
+  return <Box position="absolute" left={x} top={y} width={width} height={height} flexDirection="column" alignItems="center" justifyContent="center"
+    backgroundColor={desktop ? colors.panel : undefined} border={!desktop} borderStyle="rounded" borderColor={colors.textMuted}
+    style={desktop ? { border: `1px solid ${blendHex(colors.bg, colors.textBright, 0.35)}`, borderRadius: 6, boxShadow: `0 0 0 3px ${blendHex(colors.bg, colors.textBright, 0.06)}` } : undefined}>
+    <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{symbol}</Text>
+    {showName ? <Text fg={colors.textDim}>{truncateToDisplayWidth(name!, width - 4)}</Text> : null}
+  </Box>;
+}
+
+function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
+  node: PositionedNode; focusId?: string; desktop: boolean; active: boolean; onPress: () => void; onHover: (on: boolean) => void;
+}) {
+  const colors = useThemeColors();
+  const role = node.role;
+  const accent = role ? ROLE_COLORS[role] : colors.textMuted;
+  const company = node.row ? counterpartyKind(node.row) === "company" : false;
+  const name = node.more ? `+${node.more} more` : node.row ? counterpartyLabel(node.row) : node.label;
+  const metric = node.row ? nodeMetric(node, focusId) : "";
+  const ticker = node.row?.counterparty.ticker ?? null;
+  const inner = Math.max(4, node.width - (desktop ? 2 : 2));
+  const nameWidth = Math.max(4, inner - (ticker ? displayWidth(ticker) + 1 : 0));
+  const titleColor = node.more ? colors.textDim : company ? colors.textBright : colors.text;
+  return <Box position="absolute" left={node.x} top={node.y} width={node.width} height={node.more ? 1 : node.height} flexDirection="column"
+    backgroundColor={node.more ? undefined : active ? desktop ? blendHex(colors.bg, accent, 0.2) : colors.selected : blendHex(colors.bg, accent, desktop ? 0.09 : 0.12)}
+    style={desktop ? { borderLeft: `3px ${node.more ? "dotted" : "solid"} ${node.more ? blendHex(colors.bg, accent, 0.5) : accent}`, borderRadius: 3, paddingLeft: 6, cursor: "pointer",
+      boxShadow: active ? `inset 0 0 0 1px ${blendHex(colors.bg, accent, 0.6)}` : undefined } : undefined}
+    onMouseDown={onPress} onMouseOver={() => onHover(true)} onMouseOut={() => onHover(false)} data-gloom-role="supply-flow-node">
+    <Box flexDirection="row" height={1} overflow="hidden">
+      {!desktop ? <Text fg={node.more ? colors.textMuted : accent}>▍</Text> : null}
+      <Text fg={active && !desktop ? colors.selectedText : titleColor} attributes={company ? TextAttributes.BOLD : 0}>{truncateToDisplayWidth(name, nameWidth)}</Text>
+      {ticker && displayWidth(name) + displayWidth(ticker) + 1 <= inner ? <Text fg={colors.textDim}>{` ${ticker}`}</Text> : null}
+    </Box>
+    {metric ? <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden">
+      <Text fg={active && !desktop ? colors.selectedText : colors.textDim}>{truncateToDisplayWidth(metric, inner - (desktop ? 0 : 1))}</Text>
+    </Box> : null}
+  </Box>;
+}
+
+function FlowChip({ node, desktop, active, onPress, onHover }: { node: PositionedNode; desktop: boolean; active: boolean; onPress: () => void; onHover: (on: boolean) => void }) {
+  const colors = useThemeColors();
+  const accent = node.role ? ROLE_COLORS[node.role] : colors.textMuted;
+  const label = truncateToDisplayWidth(flowChipLabel(node), node.width - 2);
+  const background = active ? blendHex(colors.bg, accent, desktop ? 0.32 : 0.45) : node.more ? undefined : blendHex(colors.bg, accent, 0.14);
+  const text = <Text fg={node.more ? colors.textDim : active ? colors.textBright : accent}>{label}</Text>;
+  return <Box position="absolute" left={node.x} top={node.y} width={node.width} height={1} justifyContent={desktop ? "center" : undefined}
+    onMouseDown={onPress} onMouseOver={() => onHover(true)} onMouseOut={() => onHover(false)} data-gloom-role="supply-flow-chip">
+    {/* The desktop chip leaves a hairline of row above and below, like ticker chips. */}
+    {desktop ? <Box paddingX={1} backgroundColor={background} justifyContent="center" style={{ height: "calc(100% - 4px)", borderRadius: 3, cursor: "pointer" }}>{text}</Box>
+      : <Box paddingX={1} height={1} backgroundColor={background}>{text}</Box>}
+  </Box>;
+}
+
+/** What the hovered relationship is: the figure and its denominator, the period and the filing. */
+function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: PositionedNode; focusId?: string; width: number; desktop: boolean; anchor: { x: number; y: number } }) {
+  const colors = useThemeColors();
+  const row = node.row!;
+  const share = shareParts(row, focusId);
+  const lines = [
+    share ? `${share.value} ${share.basis}` : row.usd !== null ? dollars(row) : "No figure disclosed",
+    `${roleLabel(row.role)} · ${row.fiscalYear ? `FY ${row.fiscalYear}` : row.period}`,
+    `${row.reportingEntity.ticker ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`,
+  ];
+  const tooltipWidth = Math.min(width - 2, Math.max(28, ...lines.map((line) => displayWidth(line) + 4), displayWidth(counterpartyLabel(row)) + 4));
+  return <Box position="absolute" left={Math.max(1, Math.min(width - tooltipWidth - 1, anchor.x))} top={anchor.y} width={tooltipWidth} height={lines.length + 1}
+    flexDirection="column" paddingX={1} backgroundColor={colors.panel} border={!desktop} borderColor={ROLE_COLORS[row.role]}
+    style={desktop ? { border: `1px solid ${blendHex(colors.bg, ROLE_COLORS[row.role], 0.7)}`, borderRadius: 4, boxShadow: "0 6px 18px rgba(0,0,0,0.45)", zIndex: 20, pointerEvents: "none" } : undefined}
+    data-gloom-role="supply-flow-tooltip">
+    <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{truncateToDisplayWidth(counterpartyLabel(row), tooltipWidth - 2)}</Text>
+    {lines.map((line, index) => <Text key={index} fg={index === 0 ? colors.text : colors.textDim}>{truncateToDisplayWidth(line, tooltipWidth - 2)}</Text>)}
   </Box>;
 }

@@ -42,7 +42,7 @@ test("preview keeps evidence-bearing rows, shows the standard upgrade, and narro
   const frame = await tui.waitForFrameToContain("Known company");
   expect(frame).toContain("COUNTERPARTY");
   expect(frame).toContain("Upgrade to see every relationship");
-  expect(frame).not.toContain("SUPPLIERS");
+  expect(frame).not.toContain("Suppliers");
 });
 
 test("reverse table labels the percentage denominator and diagram pages a crowded supplier band", async () => {
@@ -54,11 +54,12 @@ test("reverse table labels the percentage denominator and diagram pages a crowde
   expect(await tui.waitForFrameToContain("Supplier 00")).toContain("% of reporting company's basis");
   await tui.destroy();
   await mount(120, 28, "flow", "names");
-  const frame = await tui.waitForFrameToContain("SUPPLIERS");
-  expect(frame).toContain("+63 more");
+  const frame = await tui.waitForFrameToContain("Suppliers");
+  const more = frame.match(/\+\d+ more/)?.[0];
+  expect(more).toBeDefined();
   expect(frame).toContain("Supplier 00");
-  await act(async () => { await tui.clickFrameText("+63 more"); });
-  const next = await tui.waitForFrameToContain("Supplier 07");
+  await act(async () => { await tui.clickFrameText(more!); });
+  const next = await tui.waitForFrameToContain(`Supplier ${String(70 - Number(more!.match(/\d+/)![0])).padStart(2, "0")}`);
   expect(next).not.toContain("Supplier 00");
 });
 

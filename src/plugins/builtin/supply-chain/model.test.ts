@@ -3,7 +3,7 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache, validateSupplyChain } from "./client";
-import { counterpartyName, flowBands, percentage, sortRows } from "./model";
+import { counterpartyLabel, counterpartyName, flowBands, percentage, shareParts, sortRows } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 
 afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); });
@@ -98,4 +98,15 @@ test("revenue ribbons share exact scope and period while dollar scales remain st
   expect(flowBands(dollars, 2, { suppliers: 0 }).suppliers[0]?.id).toBe("dollar-0");
   expect(flowBands(dollars, 2, { suppliers: 0 }).suppliers[0]?.weight).toBe(1);
   expect(flowBands(dollars, 2, { suppliers: 1 }).suppliers[0]?.weight).toBe(3_320_000 / 149_000_000);
+});
+
+test("a share always names its denominator: the reporting company's revenue in reverse, the scope, or receivables", () => {
+  const reverse = supplyRow("crus", { role: "supplier", direction: "in", reportingEntity: entity("CRUS"), pctOfRevenue: 91 });
+  expect(shareParts(reverse, "AAPL")).toEqual({ value: "91%", basis: "of CRUS revenue" });
+  expect(shareParts(supplyRow("own", { pctOfRevenue: 22.04 }), "FOCUS")).toEqual({ value: "22%", basis: "of FY revenue" });
+  expect(shareParts(supplyRow("seg", { pctOfRevenue: 14, pctScope: "Compute And Networking Segment" }), "FOCUS")?.basis).toBe("of Compute & Networking revenue");
+  expect(shareParts(supplyRow("ar", { pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")?.basis).toBe("of vendor non-trade receivables");
+  expect(shareParts(supplyRow("none", { pctOfRevenue: null, pctBasis: null }), "FOCUS")).toBeNull();
+  const group = supplyRow("group", { counterparty: { ...entity("group", "United States And Europe Based End Customers"), aggregate: true, ticker: null } });
+  expect(counterpartyLabel(group)).toBe("United States and Europe based end customers");
 });

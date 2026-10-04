@@ -73,9 +73,15 @@ export interface ChartVectorShape {
   color: string;
   /** Closes the shape into a filled box, for range and area selections. */
   box?: boolean;
+  /** Closes the points into a filled polygon, such as a flow ribbon, with no outline. */
+  fill?: boolean;
   fillOpacity?: number;
   strokeWidth?: number;
   handles?: boolean;
+  /** Paints the fill or line left to right through these colours instead of `color`. */
+  gradient?: readonly string[];
+  /** Opacity of the whole shape, so others can recede behind a highlighted one. */
+  opacity?: number;
 }
 
 interface TextEditBuffer {

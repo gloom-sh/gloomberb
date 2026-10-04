@@ -3,6 +3,7 @@ import {
   forwardRef,
   memo,
   useEffect,
+  useId,
   useRef,
   type CSSProperties,
   type ReactNode,
@@ -59,8 +60,23 @@ const BoxLayer = memo(function BoxLayer({ bitmap, index }: { bitmap: BitmapSurfa
   );
 });
 
+/** A left-to-right gradient in the overlay's 0..1 user space, so a flat line keeps its colours too. */
+function VectorGradient({ id, shape }: { id: string; shape: ChartVectorShape }) {
+  const stops = shape.gradient ?? [];
+  const xs = shape.points.map((point) => point.x);
+  return (
+    <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={Math.min(...xs)} x2={Math.max(...xs)} y1={0} y2={0}>
+      {stops.map((color, index) => (
+        <stop key={index} offset={stops.length > 1 ? index / (stops.length - 1) : 0} stopColor={color} />
+      ))}
+    </linearGradient>
+  );
+}
+
 const ChartVectors = memo(function ChartVectors({ vectors }: { vectors: readonly ChartVectorShape[] }) {
+  const gradientPrefix = useId().replace(/:/g, "");
   if (vectors.length === 0) return null;
+  const paint = (shape: ChartVectorShape, index: number) => (shape.gradient?.length ? `url(#${gradientPrefix}-${index})` : shape.color);
   return (
     <>
       <svg
@@ -77,9 +93,26 @@ const ChartVectors = memo(function ChartVectors({ vectors }: { vectors: readonly
           zIndex: 9,
         }}
       >
-        {vectors.map((shape) => {
+        <defs>
+          {vectors.map((shape, index) => (shape.gradient?.length && shape.points.length
+            ? <VectorGradient key={shape.id} id={`${gradientPrefix}-${index}`} shape={shape} />
+            : null))}
+        </defs>
+        {vectors.map((shape, index) => {
           const strokeWidth = shape.strokeWidth ?? 1.4;
           const [first, second] = shape.points;
+          if (shape.fill) {
+            return (
+              <polygon
+                key={shape.id}
+                points={shape.points.map((point) => `${point.x},${point.y}`).join(" ")}
+                fill={paint(shape, index)}
+                fillOpacity={shape.fillOpacity ?? 1}
+                stroke="none"
+                opacity={shape.opacity}
+              />
+            );
+          }
           if (shape.box && first && second) {
             return (
               <rect
@@ -101,7 +134,8 @@ const ChartVectors = memo(function ChartVectors({ vectors }: { vectors: readonly
               key={shape.id}
               points={shape.points.map((point) => `${point.x},${point.y}`).join(" ")}
               fill="none"
-              stroke={shape.color}
+              stroke={paint(shape, index)}
+              opacity={shape.opacity}
               strokeWidth={strokeWidth}
               strokeLinecap="round"
               strokeLinejoin="round"

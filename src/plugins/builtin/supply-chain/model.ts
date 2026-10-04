@@ -1,8 +1,54 @@
 import type { SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
-import type { DataTableColumn } from "../../../components";
+import { SERIES_COLORS } from "../../../time-series/resolve";
 import { revenueAmount } from "../revenue-breakdown/model";
 
-export const ROLE_COLORS: Record<SupplyRole, string> = { supplier: "#6ca9df", customer: "#68cbb0", partner: "#b49bd7", competitor: "#e0a66b", investee: "#dc91b0" };
+/** One colour per role from the shared series palette, the same in the table, the flow and the evidence. */
+export const ROLE_COLORS: Record<SupplyRole, string> = {
+  supplier: SERIES_COLORS[0], customer: SERIES_COLORS[1], partner: SERIES_COLORS[3], competitor: SERIES_COLORS[5], investee: SERIES_COLORS[7],
+};
+
+/** A company, a customer the filer does not name, or a geographic or channel cohort that is not one company. */
+export type CounterpartyKind = "company" | "undisclosed" | "group";
+export const counterpartyKind = (row: SupplyRow): CounterpartyKind =>
+  row.counterparty.aggregate ? "group" : row.counterparty.anonymous ? "undisclosed" : "company";
+
+const GENERIC_WORDS = /\b(And|Of|The|Based|End|Customers?|Suppliers?|Vendors?|Channel|Partners?|Undisclosed|Other|Carriers?|Networks?|Cellular|Distributors?|Retailers?)\b/g;
+
+/** The counterparty's name without the kind spelled into it; the kind travels as its own label. */
+export function counterpartyLabel(row: SupplyRow): string {
+  const kind = counterpartyKind(row);
+  if (kind === "company") return row.counterparty.name;
+  const name = counterpartyName(row).replace(/^Group: /, "").replace(/\s*\(undisclosed\)$/i, "");
+  // Cohort labels arrive in title case from XBRL member names; generic words read lower case, names keep theirs.
+  return name.replace(GENERIC_WORDS, (word) => word.toLowerCase()).replace(/^./, (first) => first.toUpperCase());
+}
+export const counterpartyKindLabel = (row: SupplyRow, short = false) => {
+  const kind = counterpartyKind(row);
+  if (short) return kind === "group" ? "group" : kind === "undisclosed" ? "undisclosed" : null;
+  return kind === "group" ? `${row.role} group` : kind === "undisclosed" ? `undisclosed ${row.role}` : null;
+};
+
+/** A filer's segment or product scope in plain words: "Compute And Networking Segment" reads "Compute & Networking". */
+export function scopeWords(scope: string): string {
+  return scope.replace(/^Business segments?:\s*/i, "").replace(/\s+segment$/i, "").replace(/\s+and\s+/gi, " & ")
+    .replace(/^non[\s-]?us$/i, "non-US").trim();
+}
+
+/**
+ * A disclosed share and what it is a share of, in words. The denominator is
+ * always the reporting company's: a supplier saying the focus company is 91%
+ * of its revenue reads "of CRUS revenue", never as the focus company's.
+ */
+export function shareParts(row: SupplyRow, focusId?: string | null): { value: string; basis: string } | null {
+  if (row.pctOfRevenue === null || row.pctBasis === null) return null;
+  const reporter = focusId && row.reportingEntity.id !== focusId ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
+  const scope = row.pctScope ? scopeWords(row.pctScope) : "";
+  const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
+  // A scope that names its own denominator ("Vendor non-trade receivables") is a description, read in lower case.
+  const scoped = scope && scope.toLowerCase().includes(basis) ? scope.replace(/^[A-Z](?=[a-z])/, (first) => first.toLowerCase()) : `${scope ? `${scope} ` : ""}${basis}`;
+  const period = !reporter && !scope && row.pctBasis === "revenue" ? row.form === "10-Q" ? "quarterly " : row.form === "10-K" || row.form === "20-F" ? "FY " : "" : "";
+  return { value: `${Number(row.pctOfRevenue.toFixed(1))}%`, basis: `of ${reporter}${period}${scoped}` };
+}
 export function counterpartyName(row: SupplyRow): string {
   if (row.counterparty.aggregate) return `Group: ${row.counterparty.name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
   if (!row.counterparty.anonymous) return row.counterparty.name;
@@ -16,18 +62,6 @@ export const roleLabel = (role: SupplyRole) => role[0]!.toUpperCase() + role.sli
 export const percentage = (row: SupplyRow) => row.pctOfRevenue === null ? "--" : `${Number(row.pctOfRevenue.toFixed(2))}% ${row.pctScope ? "scoped " : ""}${row.pctBasis ?? ""}`;
 export const dollars = (row: SupplyRow) => row.usd === null ? "--" : `${row.usdBasis === "derived" ? "≈ " : ""}$${revenueAmount(row.usd)} ${row.usdBasis}`;
 export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "web" ? "Web" : "Disclosure";
-export const COLUMNS: DataTableColumn[] = [
-  { id: "name", label: "Counterparty", width: 27, flexGrow: 1, align: "left" },
-  { id: "ticker", label: "Ticker", width: 9, align: "left" },
-  { id: "role", label: "Role", width: 11, align: "left" },
-  { id: "direction", label: "Dir", width: 5, align: "left" },
-  { id: "pct", label: "% (basis)", width: 19, align: "right" },
-  { id: "usd", label: "$ (basis)", width: 20, align: "right" },
-  { id: "fy", label: "FY", width: 11, align: "left" },
-  { id: "source", label: "Source", width: 7, align: "left" },
-  { id: "filed", label: "Filed", width: 11, align: "left" },
-  { id: "confidence", label: "Confidence", width: 11, align: "right" },
-];
 export function cellText(row: SupplyRow, column: string): string {
   return column === "name" ? counterpartyName(row) : column === "ticker" ? row.counterparty.ticker ?? "--"
     : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
@@ -41,6 +75,14 @@ export function sortRows(rows: SupplyRow[], sort: SupplySort): SupplyRow[] {
   return [...rows].sort((a, b) => { const x = value(a), y = value(b); return x === null || y === null ? x === y ? 0 : x === null ? 1 : -1
     : x === y ? a.id.localeCompare(b.id) : (x < y ? -1 : 1) * (sort.direction === "asc" ? 1 : -1); });
 }
+/** Cohort concentrations beside the flow: never nodes or ribbons, one latest disclosure per group and role. */
+export function flowGroups(rows: readonly SupplyRow[]): SupplyRow[] {
+  const seen = new Set<string>();
+  return [...rows].filter((row) => row.counterparty.aggregate).sort((a, b) => b.asOf.localeCompare(a.asOf) || (b.pctOfRevenue ?? -1) - (a.pctOfRevenue ?? -1))
+    .filter((row) => { const key = `${row.counterparty.id}:${row.role}`; if (seen.has(key)) return false; seen.add(key); return true; })
+    .sort((a, b) => (b.pctOfRevenue ?? -1) - (a.pctOfRevenue ?? -1));
+}
+
 export type FlowBand = "suppliers" | "customers" | "related";
 export interface FlowNode { id: string; label: string; row: SupplyRow | null; band: FlowBand; more: number; weight: number | null; weightScope: string | null; weightBasis: "revenue" | "usd" | null; }
 const revenueKey = (row: SupplyRow) => JSON.stringify([row.reportingEntity.id, row.period, row.pctScope]);
