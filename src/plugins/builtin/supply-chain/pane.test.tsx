@@ -164,7 +164,7 @@ test("evidence preserves the reporting company and scope, then Enter drills into
 test("graph selection collapses a branch and recenters an unlisted company through its stable ID", async () => {
   const requests: string[] = [];
   setCloudApiFetchTransport(async (input) => { requests.push(String(input)); return Response.json(graphPayload()); });
-  await mount(120, 24, "graph");
+  await mount(120, 24, "graph", "says", () => {}, { tiers: "primary" });
   await tui.waitForFrameToContain("Private supplier");
   await tui.emitKeypress({ name: "j" });
   await tui.emitKeypress({ name: "c" });
@@ -175,6 +175,7 @@ test("graph selection collapses a branch and recenters an unlisted company throu
   await tui.emitKeypress({ name: "return" });
   await tui.renderFrames(3);
   expect(requests.some(url => url.includes("id%3A2/graph"))).toBe(true);
+  expect(requests.every(url => url.includes("/graph?") && url.includes("tiers=primary"))).toBe(true);
 });
 
 test("path evidence preserves every hop and opens the filter form without losing the route", async () => {

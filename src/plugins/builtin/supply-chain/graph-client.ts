@@ -2,12 +2,13 @@ import { apiClient } from "../../../api-client";
 import { DEFAULT_GRAPH_OPTIONS, supplyGraphQuery, type GraphOptions, type GraphPayload, type GraphPath } from "../../../api-client/supply-chain-graph";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import { validSupplyEntity } from "./client";
+import { normalizeSupplyRow, validSupplyEntity, validSupplyRow } from "./client";
+import { graphEvidenceRow } from "./graph-evidence";
+import { activeRelationship, isUnconfirmed } from "./trust";
 
-export const graphCache = createPluginCache<GraphPayload>({ kind: "supply-graph", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 300_000, expireMs: 86_400_000 } });
+export const graphCache = createPluginCache<GraphPayload>({ kind: "supply-graph", source: "gloom-cloud", schemaVersion: 2, policy: { staleMs: 300_000, expireMs: 86_400_000 } });
 const unit = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 1;
 const id = (x: unknown): x is string => typeof x === "string" && x.length > 0;
-const http = (x: string) => { try { return ["https:", "http:"].includes(new URL(x).protocol); } catch { return false; } };
 export function validateGraph(data: GraphPayload): GraphPayload {
   try {
     if (!data || !id(data.symbol) || !["available", "unavailable"].includes(data.status) || !["full", "preview"].includes(data.access)
@@ -22,10 +23,12 @@ export function validateGraph(data: GraphPayload): GraphPayload {
       if (!id(link.id) || !nodes.has(link.from) || !nodes.has(link.to) || !unit(link.confidence) || !unit(link.weight)
         || !["commerce", "partner", "competitor", "investee"].includes(link.relationship) || !Array.isArray(link.evidence)
         || !link.evidence.some(item => item.id === link.primaryEvidenceId)) throw 0;
-      for (const item of link.evidence) if (!id(item.quote) || !http(item.filingUrl) || !unit(item.confidence)
-        || !validSupplyEntity(item.from) || !validSupplyEntity(item.to) || !validSupplyEntity(item.reporter)
-        || !["structured", "primary", "secondary", "imported"].includes(item.tier)
-        || !["xbrl", "filing_text", "call", "news", "web", "import"].includes(item.sourceKind)) throw 0;
+      for (const item of link.evidence) {
+        const row = graphEvidenceRow(item);
+        if (!validSupplyRow(row) || !activeRelationship(row) || isUnconfirmed(row)
+          || !validSupplyEntity(item.from) || !validSupplyEntity(item.to)
+          || !["structured", "primary", "secondary", "imported"].includes(item.tier)) throw 0;
+      }
     }
     const path = (entry: GraphPath) => {
       if (!id(entry.id) || !Number.isInteger(entry.hops) || entry.hops < 1 || entry.hops > 4 || !unit(entry.score) || !unit(entry.confidence)
@@ -35,7 +38,7 @@ export function validateGraph(data: GraphPayload): GraphPayload {
         const link = links.get(key), a = entry.nodeIds[index], b = entry.nodeIds[index + 1];
         if (!link || !(link.from === a && link.to === b || link.to === a && link.from === b)) throw 0;
       });
-      if (entry.exposure && (entry.exposure.estimated !== true || !Number.isFinite(entry.exposure.pct) || entry.exposure.pct < 0 || entry.exposure.pct > 100
+      if (entry.exposure && (entry.linkIds.some(id => graphEvidenceRow(links.get(id)!.evidence.find(item => item.id === links.get(id)!.primaryEvidenceId)!).tier !== 1) || entry.exposure.estimated !== true || !Number.isFinite(entry.exposure.pct) || entry.exposure.pct < 0 || entry.exposure.pct > 100
         || !entry.nodeIds.includes(entry.exposure.denominatorEntityId) || !["revenue", "receivables", "cost", "purchases"].includes(entry.exposure.basis))) throw 0;
     };
     data.paths.forEach(path);
@@ -47,7 +50,11 @@ export function validateGraph(data: GraphPayload): GraphPayload {
     if (!Number.isInteger(o.depth) || o.depth < 1 || o.depth > 4 || !["both", "upstream", "downstream"].includes(o.direction)
       || !unit(o.minConfidence) || !Number.isFinite(o.minPct) || o.minPct < 0 || o.minPct > 100 || !Number.isInteger(o.limit) || o.limit < 1 || o.limit > 50
       || !["score", "shortest"].includes(o.ranking) || ![o.roles, o.sources, o.tiers].every(Array.isArray)) throw 0;
-    return data;
+    return { ...data, links: data.links.map(link => ({ ...link, evidence: link.evidence.map(item => {
+      const row = normalizeSupplyRow(graphEvidenceRow(item));
+      return { ...item, trustTier: row.tier, quote: row.quote, pctOfRevenue: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope,
+        usd: row.usd, usdBasis: row.usdBasis, lastConfirmedAt: row.lastConfirmedAt, evidence: row.evidence };
+    }) })) };
   } catch { throw new Error("The server returned an unreadable supply chain graph"); }
 }
 export async function fetchSupplyGraph(symbol: string, options: Partial<GraphOptions> = {}, target = "", client: Pick<typeof apiClient, "getCloudSupplyGraph" | "getCloudSupplyPaths"> = apiClient) {
@@ -67,7 +74,7 @@ export function graphOptions(input: Record<string, unknown>): GraphOptions {
     || !Number.isInteger(options.limit) || options.limit < 1 || options.limit > 50 || !["score", "shortest"].includes(options.ranking)
     || !unit(options.minConfidence) || !Number.isFinite(options.minPct) || options.minPct < 0 || options.minPct > 100
     || options.roles.some(value => !["customer", "supplier", "partner", "competitor", "investee"].includes(value))
-    || options.sources.some(value => !["xbrl", "filing_text", "call", "news", "web", "import"].includes(value))
+    || options.sources.some(value => !["xbrl", "filing_text", "call", "news", "web", "import", "press_release"].includes(value))
     || options.tiers.some(value => !["structured", "primary", "secondary", "imported"].includes(value))
     || options.asOf && (!/^\d{4}-\d{2}-\d{2}$/.test(options.asOf) || !Number.isFinite(Date.parse(options.asOf)) || new Date(options.asOf).toISOString().slice(0, 10) !== options.asOf)) throw new Error("Invalid supply chain graph filters");
   return options;

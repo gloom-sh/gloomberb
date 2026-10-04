@@ -16,15 +16,17 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { cachedGraph, graphOptions, loadGraph, validateGraph } from "./graph-client";
 import { entityKey, entityLabel, exposureLabel, pathLabel } from "./graph-model";
 import { SupplyGraph } from "./graph";
-import { DisclosureQuote } from "./disclosure-quote";
+import { graphEvidenceRow } from "./graph-evidence";
 import { ROLE_COLORS, roleLabel, shareParts } from "./model";
+import { SupplySources, SupplyVerification } from "./row-evidence";
+import { evidenceDate, evidenceLabel, isUnconfirmed, trustTier } from "./trust";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 import { displayWidth } from "../../../utils/format";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
 const PATH_COLUMNS: DataTableColumn[] = [{ id: "route", label: "Route", width: 40, align: "left" }, { id: "relationships", label: "Relationships", width: 22, align: "left" }, { id: "hops", label: "Hops", width: 6, align: "right" }, { id: "score", label: "Score", width: 9, align: "right" }, { id: "confidence", label: "Confidence", width: 12, align: "right" }, { id: "exposure", label: "Estimated exposure", width: 35, align: "left" }];
-const SOURCE_LABELS = { xbrl: "Structured filing", filing_text: "Filing text", call: "Earnings call", news: "News", web: "Website", import: "Imported record" };
+const SOURCE_LABELS = { xbrl: "Structured filing", filing_text: "Filing text", press_release: "Company release", call: "Earnings call", news: "News", web: "Website", import: "Imported record" };
 const TIER_LABELS = { structured: "Structured", primary: "Primary", secondary: "Secondary", imported: "Imported" };
 
 function GraphInputs({ options, focused, width, onSave, onCancel }: { options: GraphOptions; focused: boolean; width: number; onSave: (options: GraphOptions) => void; onCancel: () => void }) {
@@ -77,21 +79,24 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
           {company(from)}<Text fg={colors.textMuted}>→</Text>{company(to)}
         </Box>
         {link.evidence.map(evidence => {
-          const share = shareParts({ ...evidence, reportingEntity: evidence.reporter }, undefined, { includeReporter: true });
+          const row = graphEvidenceRow(evidence);
+          const share = shareParts(row, undefined, { includeReporter: true });
           return <Box key={evidence.id} flexDirection="column" paddingBottom={1}>
+            <Box flexDirection="row" gap={1}><Badge tone={isUnconfirmed(row) ? "neutral" : "accent"} label={evidenceLabel(row)} />
+              {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
             <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${roleLabel(evidence.role)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
-            <KeyValueRow label="Evidence" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
-            <KeyValueRow label="Period" value={evidence.period} detail={`filed ${evidence.filedDate ?? "--"}`} labelWidth={20} />
+            <KeyValueRow label="Evidence class" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
+            <KeyValueRow label="Period" value={evidence.period} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? "--"}` : `published ${evidenceDate(row)}`} labelWidth={20} />
+            <SupplyVerification row={row} />
             {share ? <>
               <Box flexDirection="row" gap={1}>
                 <KeyValueRow label="Disclosed share" value={share.value} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
-                <RatioBar ratio={evidence.pctOfRevenue! / 100} width={8} color={ROLE_COLORS[evidence.role]} track />
+                <RatioBar ratio={row.pctOfRevenue! / 100} width={8} color={ROLE_COLORS[evidence.role]} track />
               </Box>
               <KeyValueRow label="Share basis" value={share.basis} labelWidth={20} />
             </> : null}
             {evidence.nativeAmount != null ? <KeyValueRow label="Disclosed value" value={`${evidence.nativeAmount.toLocaleString()} ${evidence.nativeCurrency ?? ""}`} labelWidth={20} /> : null}
-            <DisclosureQuote role={evidence.role} quote={evidence.quote} />
-            <Box flexDirection="row"><Button variant="plain" compact flush label={`Open ${evidence.form ?? "source"} filing`} onPress={() => void host.openExternal(evidence.filingUrl)} /></Box>
+            <SupplySources row={row} width={width} onOpenSource={url => void host.openExternal(url)} />
           </Box>;
         })}
         <ActionRow label={`Recenter on ${entityLabel(to)}`} onPress={() => onRecenter(to)} />
@@ -161,7 +166,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     { id: "depth", label: "Hops", value: String(options.depth), options: [1, 2, 3, 4].map(value => ({ value: String(value), label: String(value) })), onChange: value => setOptions(old => ({ ...old, depth: Number(value) })) },
     { id: "direction", label: "Direction", value: options.direction, options: [{ value: "both", label: "Both" }, { value: "upstream", label: "Upstream" }, { value: "downstream", label: "Downstream" }], onChange: value => setOptions(old => ({ ...old, direction: value })) },
     { id: "roles", kind: "multi", label: "Roles", values: options.roles, options: ["supplier", "customer", "partner", "competitor", "investee"].map(value => ({ value, label: value[0]!.toUpperCase() + value.slice(1) })), onChange: values => setOptions(old => ({ ...old, roles: values as GraphOptions["roles"] })) },
-    { id: "tiers", kind: "multi", label: "Tier", values: options.tiers, options: Object.entries(TIER_LABELS).map(([value, label]) => ({ value, label })), onChange: values => setOptions(old => ({ ...old, tiers: values as GraphOptions["tiers"] })) },
+    { id: "tiers", kind: "multi", label: "Evidence class", values: options.tiers, options: Object.entries(TIER_LABELS).map(([value, label]) => ({ value, label })), onChange: values => setOptions(old => ({ ...old, tiers: values as GraphOptions["tiers"] })) },
     { id: "sources", kind: "multi", label: "Evidence", values: options.sources, options: Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label })), onChange: values => setOptions(old => ({ ...old, sources: values as GraphOptions["sources"] })) },
   ];
   const query = <QueryBar width={width} filters={filters} view={{ value: options.ranking, options: [{ value: "score", label: "Top score" }, { value: "shortest", label: "Shortest" }], onChange: value => setOptions(old => ({ ...old, ranking: value })) }} />;

@@ -1,4 +1,4 @@
-import type { SupplyEntity, SupplyRole, SupplyRow } from "./supply-chain";
+import type { SupplyEntity, SupplyRole, SupplyRow, SupplyTier } from "./supply-chain";
 
 type GraphTier = "structured" | "primary" | "secondary" | "imported";
 export interface GraphOptions {
@@ -7,7 +7,9 @@ export interface GraphOptions {
   minPct: number; minConfidence: number; limit: number; ranking: "score" | "shortest"; asOf?: string;
 }
 export const DEFAULT_GRAPH_OPTIONS: GraphOptions = { depth: 2, direction: "both", roles: [], sources: [], tiers: [], minPct: 0, minConfidence: 0, limit: 50, ranking: "score" };
-export interface GraphEvidence {
+export interface GraphEvidence extends Pick<SupplyRow, "claimType" | "corroboration" | "leadStatus" | "firstSeenAt" | "lastSeenAt" | "lastConfirmedAt" | "whyUnconfirmed" | "evidence"> {
+  /** Source trust tier, distinct from the graph evidence class in tier. */
+  trustTier?: SupplyTier;
   id: string; fromEntity: string; toEntity: string; reportingEntity: string;
   from: SupplyEntity; to: SupplyEntity; reporter: SupplyEntity;
   role: SupplyRole; sourceKind: SupplyRow["sourceKind"]; tier: GraphTier;

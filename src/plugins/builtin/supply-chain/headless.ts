@@ -65,7 +65,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "depth", type: "integer", settingKey: "depth", minimum: 1, maximum: 4, defaultValue: 2, description: "Maximum graph depth in hops (Pro)." },
     { key: "direction", type: "enum", settingKey: "direction", defaultValue: "both", values: ["upstream", "downstream", "both"].map(value => ({ value })), description: "Follow upstream suppliers, downstream customers, or both." },
     { key: "roles", type: "string", settingKey: "roles", description: "Comma-separated customer,supplier,partner,competitor,investee roles." },
-    { key: "sources", type: "string", settingKey: "sources", description: "Comma-separated xbrl,filing_text,call,news,web,import source kinds." },
+    { key: "sources", type: "string", settingKey: "sources", description: "Comma-separated xbrl,filing_text,press_release,call,news,web,import source kinds." },
     { key: "tiers", type: "string", settingKey: "tiers", description: "Table/Flow: sec (regulatory filings),company,call,reported,unconfirmed (default sec,company,call; unconfirmed opts into leads). Graph/Path: structured,primary,secondary,imported (default all)." },
     { key: "min-pct", type: "string", settingKey: "minPct", defaultValue: "0", description: "Minimum disclosed percentage, 0 to 100; positive thresholds exclude unknown percentages." },
     { key: "min-confidence", type: "string", settingKey: "minConfidence", defaultValue: "0", description: "Minimum edge confidence, 0 to 1." },

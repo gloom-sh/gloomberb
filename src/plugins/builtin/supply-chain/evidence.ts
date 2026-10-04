@@ -56,6 +56,7 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
         if (value.rowIds.some(id => !eligible.has(id))) return null;
         const paths = [...payload.paths, ...[...payload.upstream, ...payload.downstream, ...payload.related].flatMap(row => [row.bestPath, row.shortestPath])];
         if (value.evidenceOpen && !paths.some(path => path.id === value.evidenceId)) return null;
+        return { ...value, payload } as unknown as SupplyEvidence;
       } else {
         if (!["says", "names"].includes(String(value.view))) return null;
         const payload = validateSupplyChain(value.payload as unknown as SupplyChainPayload);
@@ -67,7 +68,6 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
         // Return the validated payload: restricted quotes and glosses have been removed.
         return { ...value, payload } as unknown as SupplyEvidence;
       }
-      return value as unknown as SupplyEvidence;
     } catch { return null; }
   },
   mismatches(evidence, { resolved, payload }) {

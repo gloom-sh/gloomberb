@@ -39,7 +39,7 @@ export function validSupplyEntity(value: SupplyEntity): boolean {
     && typeof value.anonymous === "boolean" && (!value.anonymous || value.ticker === null)
     && (value.aggregate === undefined || typeof value.aggregate === "boolean");
 }
-function row(value: SupplyRow): boolean {
+export function validSupplyRow(value: SupplyRow): boolean {
   return !!value && text(value.id) && validSupplyEntity(value.counterparty) && validSupplyEntity(value.reportingEntity)
     && SUPPLY_ROLES.includes(value.role) && ["in", "out", "mutual"].includes(value.direction)
     && nullableText(value.pctScope) && nullableNumber(value.pctOfRevenue) && (value.pctOfRevenue === null || value.pctOfRevenue <= 100)
@@ -66,13 +66,24 @@ function row(value: SupplyRow): boolean {
     && (value.whyUnconfirmed === undefined || nullableText(value.whyUnconfirmed))
     && (value.evidence === undefined || Array.isArray(value.evidence) && value.evidence.every(evidence));
 }
+export function normalizeSupplyRow(value: SupplyRow): SupplyRow {
+  const items = value.evidence?.map(publicEvidence);
+  const unconfirmed = isUnconfirmed(value) || !activeRelationship(value);
+  // Restrict again before cache, exports or screenshot metadata, even if a server regresses.
+  const selected = items?.find((item) => item.status === "active" && item.tier === trustTier(value)) ?? items?.find((item) => item.status === "active");
+  return { ...value, counterparty: { ...value.counterparty, aggregate: value.counterparty.aggregate ?? false }, reportingEntity: { ...value.reportingEntity, aggregate: value.reportingEntity.aggregate ?? false },
+    ...(trustTier(value) !== 1 || unconfirmed ? { pctOfRevenue: null, pctBasis: null, pctScope: null } : {}),
+    ...(unconfirmed ? { usd: null, usdBasis: null, nativeAmount: null, nativeCurrency: null, nativeScale: null, lastConfirmedAt: null } : {}),
+    ...(items?.length ? { evidence: items, quote: selected && canShowQuote(selected) ? selected.quote ?? "" : "",
+      quoteLanguage: selected?.quoteLanguage ?? null, quoteGloss: selected && canShowQuote(selected) ? selected.englishGloss : null } : {}) };
+}
 export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayload {
   const valid = !!data && text(data.symbol) && (data.entity === null || validSupplyEntity(data.entity))
     && (data.asOf === null || date(data.asOf)) && ["available", "unavailable"].includes(data.status)
     && ["says", "names"].every((view) => {
       const key = view as "says" | "names";
       const rows = data[key];
-      return Array.isArray(rows) && rows.every(row) && new Set(rows.map((entry) => entry.id)).size === rows.length
+      return Array.isArray(rows) && rows.every(validSupplyRow) && new Set(rows.map((entry) => entry.id)).size === rows.length
         && SUPPLY_ROLES.every((role) => Number.isInteger(data.counts?.[key]?.[role])
           && data.counts[key][role] >= rows.filter((entry) => entry.role === role).length);
     }) && Number.isInteger(data.totalRows) && data.totalRows >= data.says.length + data.names.length
@@ -81,18 +92,7 @@ export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayloa
     && text(data.disclaimer) && (data.tierCounts === undefined || TIER_OPTIONS.every(({ value }) => Number.isInteger(data.tierCounts?.[value]) && data.tierCounts![value] >= 0));
   if (!valid) throw new Error("The server returned unreadable supply chain disclosures");
   const normalizeEntity = (value: SupplyEntity): SupplyEntity => ({ ...value, aggregate: value.aggregate ?? false });
-  const normalizeRow = (value: SupplyRow): SupplyRow => {
-    const items = value.evidence?.map(publicEvidence);
-    const unconfirmed = isUnconfirmed(value) || !activeRelationship(value);
-    // Restrict again before cache, exports or screenshot metadata, even if a server regresses.
-    const selected = items?.find((item) => item.status === "active" && item.tier === trustTier(value)) ?? items?.find((item) => item.status === "active");
-    return { ...value, counterparty: normalizeEntity(value.counterparty), reportingEntity: normalizeEntity(value.reportingEntity),
-      ...(trustTier(value) !== 1 || unconfirmed ? { pctOfRevenue: null, pctBasis: null, pctScope: null } : {}),
-      ...(unconfirmed ? { usd: null, usdBasis: null, nativeAmount: null, nativeCurrency: null, nativeScale: null, lastConfirmedAt: null } : {}),
-      ...(items?.length ? { evidence: items, quote: selected && canShowQuote(selected) ? selected.quote ?? "" : "",
-        quoteLanguage: selected?.quoteLanguage ?? null, quoteGloss: selected && canShowQuote(selected) ? selected.englishGloss : null } : {}) };
-  };
-  return { ...data, entity: data.entity ? normalizeEntity(data.entity) : null, says: data.says.map(normalizeRow), names: data.names.map(normalizeRow) };
+  return { ...data, entity: data.entity ? normalizeEntity(data.entity) : null, says: data.says.map(normalizeSupplyRow), names: data.names.map(normalizeSupplyRow) };
 }
 export async function fetchSupplyChain(symbol: string, client: Pick<typeof apiClient, "getCloudSupplyChain"> = apiClient, options: SupplyOptions = {}) {
   try { return validateSupplyChain(await client.getCloudSupplyChain(symbol, options)); }

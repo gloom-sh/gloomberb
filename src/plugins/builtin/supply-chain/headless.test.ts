@@ -4,7 +4,7 @@ import { DEFAULT_GRAPH_OPTIONS, type GraphEvidence, type GraphPayload } from "..
 import { capabilityPaneSettings, getPaneFunctionCapability, normalizeCapabilityOptions } from "../../../cli/pane-functions/capabilities";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { HeadlessPaneContext, PaneDef } from "../../../types/plugin";
-import { graphOptions } from "./graph-client";
+import { graphOptions, validateGraph } from "./graph-client";
 import { supplyScreenshotEvidence } from "./evidence";
 import { supplyChainHeadless } from "./headless";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
@@ -69,7 +69,7 @@ describe("supply chain graph headless integration", () => {
       { hop: 2, primaryEvidenceId: "e2", disclosures: [{ filingUrl: "https://www.sec.gov/Archives/e2.htm" }] },
     ]);
     expect(report.sections[3]!.rows).toHaveLength(2);
-    expect(report.metadata?.graph).toEqual(payload);
+    expect(report.metadata?.graph).toEqual(validateGraph(payload));
     expect(row.score).toBe(payload.downstream[0]!.bestPath.score);
   });
 
