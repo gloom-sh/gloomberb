@@ -156,6 +156,8 @@
       "toggleable": true,
       "contributes": {
         "panes": [
+          "attention",
+          "attention-trending",
           "correlation",
           "cot",
           "crypto-board",

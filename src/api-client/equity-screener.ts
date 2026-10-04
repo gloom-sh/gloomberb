@@ -26,6 +26,8 @@ export const NUMERIC_FIELDS = [
   "xPostsVsMedian",
   "wikiViewsPerDay",
   "wikiViewsVsMedian",
+  "attentionResearchUnits",
+  "attentionZScore",
   "return1WPercent",
   "return1MPercent",
   "return3MPercent",
@@ -43,6 +45,7 @@ export const NUMERIC_FIELDS = [
 ] as const;
 /** Social attention; a server from before them omits these metrics. */
 export const SOCIAL_FIELDS = ["xPostsPerDay", "xPostsVsMedian", "wikiViewsPerDay", "wikiViewsVsMedian"] as const;
+export const ATTENTION_FIELDS = ["attentionResearchUnits", "attentionZScore"] as const;
 /** Returns, valuation, estimates and options; a server from before them omits these metrics. */
 export const RESEARCH_FIELDS = [
   "return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent", "return1YPercent", "fromHigh52WPercent",

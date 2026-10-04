@@ -1,3 +1,4 @@
+import { attentionModule } from "./attention";
 import { supplyChainModule } from "./supply-chain";
 import { cryptoBoardModule } from "./crypto-board";
 import { portfolioAnalyticsModule } from "./analytics";
@@ -155,6 +156,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     cotModule,
     doeModule,
     gpuModule,
+    attentionModule,
     cryptoBoardModule,
   ],
 });
