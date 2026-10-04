@@ -6,6 +6,7 @@ import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kp
 import { companyDisclosurePath } from "./company-kpis";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
 import type { PerpBoardPayload, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery, PerpMarketPayload } from "./perps";
+import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
 import type { EarningsEvent } from "../types/data-provider";
@@ -456,6 +457,14 @@ export class CloudDataApi {
   async getCloudPerpsCompare(baseAsset: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/compare?${new URLSearchParams({ baseAsset })}`); }
   async getCloudPerpsEquity(symbol: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/equity/${encodeURIComponent(symbol)}`); }
   async getCloudPerpsMarket(marketId: string): Promise<PerpMarketPayload> { return this.request(`/cloud/perps/market?${new URLSearchParams({ marketId })}`); }
+
+  async analyzeCloudExposure(request: ExposureRequest): Promise<ExposurePayload> {
+    return this.request<ExposurePayload>("/cloud/exposure/analyze", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  async getCloudExposureScenarios(): Promise<{ scenarios: ExposureScenario[] }> {
+    return this.request<{ scenarios: ExposureScenario[] }>("/cloud/exposure/scenarios");
+  }
 
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {
     return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}`);

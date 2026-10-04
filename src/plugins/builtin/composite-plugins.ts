@@ -5,6 +5,7 @@ import { catalystsModule } from "./catalysts";
 import { companyKpisModule } from "./company-kpis";
 import { powerModule } from "./power";
 import { perpsModule } from "./perps";
+import { exposureModule } from "./exposure";
 import { supplyChainModule } from "./supply-chain";
 import { awardsModule } from "./awards";
 import { cryptoBoardModule } from "./crypto-board";
@@ -126,6 +127,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     catalystsModule,
     companyKpisModule,
     awardsModule,
+    exposureModule,
     mnaModule,
     dividendYieldModule,
     holdersModule,

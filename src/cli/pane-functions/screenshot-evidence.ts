@@ -4,6 +4,7 @@ import { attentionScreenshotEvidence } from "../../plugins/builtin/company-atten
 import { catalystsScreenshotEvidence, litigationScreenshotEvidence } from "../../plugins/builtin/catalysts/evidence";
 import { companyKpisScreenshotEvidence, companyGuidanceScreenshotEvidence } from "../../plugins/builtin/company-kpis/screenshot-evidence";
 import { powerScreenshotEvidence } from "../../plugins/builtin/power/evidence";
+import { exposureScreenshotEvidence } from "../../plugins/builtin/exposure/evidence";
 import { supplyScreenshotEvidence } from "../../plugins/builtin/supply-chain/evidence";
 import { awardsScreenshotEvidence } from "../../plugins/builtin/awards/evidence";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
@@ -75,6 +76,7 @@ export interface PaneScreenshotEvidenceHook<E extends PaneScreenshotEvidence = P
 
 /** Built-in panes that certify their captures with their own evidence. */
 const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
+  exposureScreenshotEvidence,
   supplyScreenshotEvidence,
   creditScreenshotEvidence,
   attentionScreenshotEvidence,
