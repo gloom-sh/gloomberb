@@ -26,18 +26,18 @@ function Evidence({ event, width, height }: { event: CatalystEvent; width: numbe
     <KeyValueRow label="Observed (UTC)" value={catalystDate(event, "observed")} labelWidth={18} />
     <KeyValueRow label="Confidence" value={`${Math.round(event.confidence * 100)}%`} labelWidth={18} />
     {facts.map((fact) => <KeyValueRow key={fact.label} label={fact.label} value={fact.value} labelWidth={18} />)}
-    {event.summary && event.summary !== event.title ? <Box paddingY={1}><Text fg={colors.text}>{event.summary}</Text></Box> : null}
+    {event.summary && event.summary !== event.title && event.summary !== event.quote ? <Box paddingY={1}><Text fg={colors.text} wrapText width="100%">{event.summary}</Text></Box> : null}
     {event.parties.length ? <Section title="Parties" width={Math.max(20, width - 2)}>{event.parties.map((party, i) => <KeyValueRow key={`${party.name}:${i}`} label={party.role ?? "Party"} value={party.name} detail={party.ticker ? `${party.ticker} · ${party.exchange ?? ""} · ${Math.round(party.confidence * 100)}% match` : "Unlinked"} labelWidth={18} />)}</Section> : null}
     <Section title="Evidence" width={Math.max(20, width - 2)}>
-      <Text fg={colors.textBright}>{event.quote ?? "No quoted passage. Open the primary document."}</Text>
+      <Text fg={colors.textBright} wrapText width="100%">{event.quote ?? "No quoted passage. Open the primary document."}</Text>
       {event.quoteMatchMode ? <KeyValueRow label="Quote support" value={event.quoteMatchMode === "exact" ? "Exact passage" : "Normalized passage"} labelWidth={18} /> : null}
-      <Text fg={colors.textDim}>{event.sourceUrl}</Text>
+      <Text fg={colors.textDim} wrapText width="100%">{event.sourceUrl}</Text>
     </Section>
-    {procedures.length ? <Section title="Procedure" width={Math.max(20, width - 2)}>{procedures.map((statement, i) => <Box key={i} paddingBottom={1}><Text fg={colors.text}>{statement}</Text></Box>)}</Section> : null}
+    {procedures.length ? <Section title="Procedure" width={Math.max(20, width - 2)}>{procedures.map((statement, i) => <Box key={i} paddingBottom={1}><Text fg={colors.text} wrapText width="100%">{statement}</Text></Box>)}</Section> : null}
     {documents.length ? <Section title="Documents" width={Math.max(20, width - 2)}>{documents.map((document) => <ActionRow key={document.url} label={document.title ?? document.label ?? "Primary document"} onPress={() => void host.openExternal(document.url)} />)}</Section> : null}
     {event.opinion ? <Section title={event.opinion.label} width={Math.max(20, width - 2)}>
       <KeyValueRow label="Expected impact" value={catalystLabel(event.opinion.direction)} detail={`${Math.round(event.opinion.confidence * 100)}% confidence`} labelWidth={18} />
-      <Text fg={colors.text}>{event.opinion.rationale}</Text><Text fg={colors.textDim}>{event.opinion.quote}</Text>
+      <Text fg={colors.text} wrapText width="100%">{event.opinion.rationale}</Text><Text fg={colors.textDim} wrapText width="100%">{event.opinion.quote}</Text>
     </Section> : null}
     {event.changes.length ? <Section title="Revision changes" width={Math.max(20, width - 2)}>{event.changes.map((change, i) => <KeyValueRow key={`${change.field}:${i}`} label={catalystLabel(change.field)} value={`${changeValue(change.before)} → ${changeValue(change.after)}`} labelWidth={18} />)}</Section> : null}
   </ScrollBox>;
