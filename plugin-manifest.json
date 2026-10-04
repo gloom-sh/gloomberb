@@ -168,6 +168,7 @@
           "fx-matrix",
           "gpu",
           "market-movers",
+          "power",
           "relationship-graph",
           "relative-rotation",
           "scanner-flow",

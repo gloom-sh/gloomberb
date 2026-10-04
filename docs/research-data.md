@@ -892,3 +892,7 @@ Contract terms and revisions retain literal filing quotes, character spans, conf
 ## Company operating metrics and guidance (KPIS, GUIDE)
 
 [Company KPIs and management guidance](company-kpis.md) covers the canonical dictionary, native currencies and fiscal periods, evidence, immutable revisions, range semantics and actual matching. These Pro functions provide a fixed latest preview on Free and complete stored history on Pro. `GUID`, `EM`, `EE` and `ERN` link to them from their pane menus.
+
+## Power and grid capacity (POWER, Pro)
+
+POWER combines public interconnection queue snapshots, completion and withdrawal cohorts, large-load requests and approvals, utility exposure, and generation context. Every record preserves units, source dates, observation time, raw evidence and primary links. Free accounts see a limited preview. Historical benchmarks are separate from current queues; rates exclude summary and capacity-segment rows. See [Power and grid capacity](power-grid.md) for regional coverage, history semantics, company links and CLI/REST examples.

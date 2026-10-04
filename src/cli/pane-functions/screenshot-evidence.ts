@@ -3,6 +3,7 @@ import { attentionScreenshotEvidence } from "../../plugins/builtin/attention/evi
 import { attentionScreenshotEvidence } from "../../plugins/builtin/company-attention/evidence";
 import { catalystsScreenshotEvidence, litigationScreenshotEvidence } from "../../plugins/builtin/catalysts/evidence";
 import { companyKpisScreenshotEvidence, companyGuidanceScreenshotEvidence } from "../../plugins/builtin/company-kpis/screenshot-evidence";
+import { powerScreenshotEvidence } from "../../plugins/builtin/power/evidence";
 import { supplyScreenshotEvidence } from "../../plugins/builtin/supply-chain/evidence";
 import { awardsScreenshotEvidence } from "../../plugins/builtin/awards/evidence";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
@@ -84,6 +85,7 @@ const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
   companyKpisScreenshotEvidence,
   companyGuidanceScreenshotEvidence,
   awardsScreenshotEvidence,
+  powerScreenshotEvidence,
   calculatorScreenshotEvidence,
   scenarioScreenshotEvidence,
   realizedVolScreenshotEvidence,

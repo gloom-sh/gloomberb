@@ -673,6 +673,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: same("Weekly, on release"),
     bloomberg: ["DOE"],
   },
+  POWER: {
+    summary: "Pro: global power interconnection queues, recorded MW history, completion and withdrawal cohorts, large-load requests and approvals, utility exposure and generation capacity. Open a project for primary evidence and revisions; mapped companies link to DES, FA, G and SPLC.",
+    usage: ["POWER", "POWER NEE"],
+    keys: [SEARCH, key("o", "pen source"), key("d", "es"), key("f", "a"), key("g", "raph"), key("s", "plc"), key("c", "ompute"), key("t", "BO")],
+    data: { free: "Three rows per section; limited history", pro: "Snapshots as public registers update; coverage by region" },
+    bloomberg: [],
+  },
   GPU: {
     summary: "GPU rental list prices, provider-declared spot rates and marketplace asks in USD per GPU-hour. Compare clouds and hardware variants, inspect observations and dated price changes, and open related equities or TheBuildout.",
     usage: ["GPU", "GPU H100", "GPU B200"],

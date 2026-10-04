@@ -3,6 +3,7 @@ import { attentionModule } from "./builtin/attention";
 import { companyAttentionModule } from "./builtin/company-attention";
 import { catalystsModule } from "./builtin/catalysts";
 import { companyKpisModule } from "./builtin/company-kpis";
+import { powerModule } from "./builtin/power";
 import { supplyChainModule } from "./builtin/supply-chain";
 import { awardsModule } from "./builtin/awards";
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
@@ -165,6 +166,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
     doeModule,
     gpuModule,
     attentionModule,
+    powerModule,
     cryptoBoardModule,
   ],
 });

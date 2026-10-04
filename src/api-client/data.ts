@@ -4,6 +4,7 @@ import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./
 import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
 import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
 import { companyDisclosurePath } from "./company-kpis";
+import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
 import type { EarningsEvent } from "../types/data-provider";
@@ -466,6 +467,21 @@ export class CloudDataApi {
   async getCloudAttention(window: AttentionWindow = "now", symbol?: string): Promise<AttentionPayload> {
     const path = symbol ? `/cloud/attention/${encodeURIComponent(symbol)}` : "/cloud/attention";
     return this.request<AttentionPayload>(`${path}?window=${window}`);
+  }
+
+  async getCloudPowerBoard(query: PowerFilter = {}, signal?: AbortSignal): Promise<PowerBoard> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<PowerBoard>(`/cloud/power/board?${params}`, { signal });
+  }
+
+  async getCloudPowerHistory(query: PowerFilter = {}): Promise<PowerHistory> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<PowerHistory>(`/cloud/power/history?${params}`);
+  }
+
+  async getCloudPowerProject(id: string, query: Pick<PowerFilter, "offset" | "limit"> = {}, signal?: AbortSignal): Promise<PowerDetail> {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<PowerDetail>(`/cloud/power/projects/${encodeURIComponent(id)}?${params}`, { signal });
   }
 
   async getCloudGpuBoard(): Promise<GpuBoardPayload> {
