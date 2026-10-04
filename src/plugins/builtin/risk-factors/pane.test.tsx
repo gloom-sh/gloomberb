@@ -261,12 +261,14 @@ test("in-memory report survives transient refresh with its source dates but clea
   expect(denied).not.toContain("[o]pen filing");
 });
 
-test("a free account gets the upgrade wall and reads nothing", async () => {
+test("a free account gets the upgrade wall without reading risk data", async () => {
   currentUser.mockReturnValue({ ...PRO_USER, plan: "free" } as never);
-  transport(() => Response.json(list([2026])));
+  transport((path) => path === "/activity/research"
+    ? Response.json({ accepted: false })
+    : Response.json(list([2026])));
 
   await mount();
   expect(frame()).toContain("Risk factors are part of Gloom Cloud Pro.");
   expect(frame()).toContain("Upgrade to Pro");
-  expect(requests).toEqual([]);
+  expect(requests.filter((path) => path !== "/activity/research")).toEqual([]);
 });
