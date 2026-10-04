@@ -6,7 +6,7 @@ import { useAsyncResource, useAutoRefresh, usePluginAppActions } from "../../../
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { listingIdentity } from "../shared/ticker-request";
 import { loadPerpsEquity } from "./client";
-import { compact, fundingInterval, marketLabel, percent, price } from "./model";
+import { compact, marketLabel, percent, price } from "./model";
 
 /** A failed optional market comparison never blocks a stock's quote. */
 export function PerpEquityRow({ symbol, instrumentType, maxRows = 3 }: { symbol: string; instrumentType?: string; maxRows?: number }) {
@@ -22,6 +22,7 @@ export function PerpEquityRow({ symbol, instrumentType, maxRows = 3 }: { symbol:
   const rows = resource.data?.payload.rows.filter((row) => !row.delisted) ?? [];
   if (!enabled || !rows.length) return null;
   return <>{rows.slice(0, maxRows).map((row) => <ActionRow key={row.marketId} height={2}
-    label={`Perp ${marketLabel(row)} · ${price(row.markPrice)} ${row.quoteCurrency} · ${percent(row.underlyingPremium, 2)} vs last${row.stale || resource.data?.stale ? " · stale" : ""}\n${percent(row.fundingRate, 5)} / ${fundingInterval(row)} · OI ${compact(row.openInterestUsd)} USD · ${percent(row.premium, 2)} oracle`}
+    // Funding reads per 8h here as it does in PERP, whatever interval the venue pays on.
+    label={`${marketLabel(row)} perp  ${price(row.markPrice)} ${row.quoteCurrency}  ${percent(row.underlyingPremium, 2)} vs last${row.stale || resource.data?.stale ? " · stale" : ""}\nFunding ${percent(row.fundingRate8h, 4)} / 8h · OI ${compact(row.openInterestUsd)} USD · oracle ${percent(row.premium, 2)}`}
     onPress={() => createPaneFromTemplate("perps-pane", { arg: row.marketId })} />)}</>;
 }

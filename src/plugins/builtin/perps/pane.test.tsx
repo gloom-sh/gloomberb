@@ -45,7 +45,7 @@ test("evidence distinguishes source time, raw interval, reference price and reta
   setCloudApiFetchTransport(async (url) => Response.json(String(url).includes("/market?") ? { ...board, evidence: [{ kind: "funding", period_at: board.asOf, received_at: board.asOf, superseded_at: null, fingerprint: "revision-one", payload: {} }], methodologyUrl: "https://gloom.sh/docs/perpetuals" } : board));
   await mount("evidence");
   const frame = await tui.waitForFrameToContain("Funding 8h / APR");
-  expect(frame).toContain("Underlying last");
-  expect(frame).toContain("Unavailable");
+  // A crypto perp has no listed underlying, so the reference-price rows are left out rather than shown as unavailable.
+  expect(frame).not.toContain("Underlying last");
   expect(frame).toContain("Source as of");
 });

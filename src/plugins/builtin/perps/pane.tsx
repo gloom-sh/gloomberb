@@ -3,7 +3,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { PerpBoardRow, PerpMarketPayload } from "../../../api-client/perps";
 import { ChartTableHeader, DataTableView, EmptyState, KeyValueRow, SectionHeading, PaneStatusBody, QueryBar, StatGrid, useChartTableSelection,
-  usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, type PaneHint } from "../../../components";
+  usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, type PaneHint, type StatItem } from "../../../components";
 import { openFormModal } from "../../../components/form-modal";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePaneTitle, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -22,25 +22,27 @@ import { compact, fundingInterval, historyCaption, historyCell, historyChange, h
 function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data: PerpMarketPayload; width: number; height: number }) {
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const upgrade = useCloudUpgradeAction("perp");
-  const fields: [string, string, string?][] = [
-    ["Venue", venueLabel(row)], ["Contract symbol", row.symbol],
-    ["Observed", time(row.observedAt)], ["Source as of", time(row.sourceAsOf)],
-    ["Mark", `${price(row.markPrice)} ${row.quoteCurrency}`], ["Oracle", `${price(row.oraclePrice)} ${row.quoteCurrency}`],
-    ["Premium vs oracle", percent(row.premium)], ["Funding", `${percent(row.fundingRate, 5)} / ${fundingInterval(row)}`, row.fundingKind === "last-paid" ? "Last paid" : row.fundingKind === "continuous" ? "Continuous rate" : "Current rate"],
-    ["Funding 8h / APR", `${percent(row.fundingRate8h, 4)} / ${percent(row.fundingApr, 2)}`],
-    ["Predicted funding", row.predictedFundingRate == null ? "Unavailable" : `${percent(row.predictedFundingRate)} / ${row.predictedFundingIntervalHours ?? "--"}h`],
-    ["Next funding", time(row.nextFundingAt)], ["Open interest", `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`],
-    ["OI change 1h / 24h", `${percent(row.oiChange1h, 2)} / ${percent(row.oiChange24h, 2)}`, "Own snapshots"],
-    ["Underlying last", row.underlying ? `${price(row.underlying.price)} ${row.underlying.currency}` : "Unavailable", row.underlying ? time(row.underlying.asOf) : undefined],
-    ["Underlying session", row.underlying?.marketState ?? "Unknown"], ["Premium vs underlying", percent(row.underlyingPremium)],
-    ["Closed-market premium", percent(row.closedMarketPremium)], ["Contract", `${label(row.contractType)} · ${row.priceMultiplier}× price`],
-    ["Margin", row.marginCurrency], ["Max leverage", row.maxLeverage == null ? "--" : `${row.maxLeverage}×`],
-    ["Margin mode", row.isolatedOnly === null ? "Unspecified" : row.isolatedOnly ? "Isolated only" : "Cross / isolated"],
-    ["Listing", row.delisted ? "Delisted" : "Active"], ["Confidence", label(row.confidence)],
+  // Grouped as a trader reads a contract; a stock reference only for a market that has one.
+  const groups: Array<[string, Array<[string, string, string?]>]> = [
+    ["Market", [["Venue", venueLabel(row)], ["Contract symbol", row.symbol], ["Observed", time(row.observedAt)], ["Source as of", time(row.sourceAsOf)],
+      ["Mark", `${price(row.markPrice)} ${row.quoteCurrency}`], ["Oracle", `${price(row.oraclePrice)} ${row.quoteCurrency}`], ["Premium vs oracle", percent(row.premium)]]],
+    ["Funding", [["Funding", `${percent(row.fundingRate, 5)} / ${fundingInterval(row)}`, row.fundingKind === "last-paid" ? "Last paid" : row.fundingKind === "continuous" ? "Continuous rate" : "Current rate"],
+      ["Funding 8h / APR", `${percent(row.fundingRate8h, 4)} / ${percent(row.fundingApr, 2)}`],
+      ...(row.predictedFundingRate != null ? [["Predicted funding", `${percent(row.predictedFundingRate)} / ${row.predictedFundingIntervalHours ?? "--"}h`] as [string, string]] : []),
+      ...(row.nextFundingAt ? [["Next funding", time(row.nextFundingAt)] as [string, string]] : [])]],
+    ["Open Interest", [["Open interest", `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`],
+      ["OI change 1h / 24h", row.oiChange1h == null && row.oiChange24h == null ? "Collecting" : `${percent(row.oiChange1h, 2)} / ${percent(row.oiChange24h, 2)}`, "own snapshots"]]],
+    ...(row.underlying ? [["Underlying", [["Underlying last", `${price(row.underlying.price)} ${row.underlying.currency}`, time(row.underlying.asOf)], ["Underlying session", row.underlying.marketState ?? "Unknown"],
+      ["Premium vs underlying", percent(row.underlyingPremium)], ["Closed-market premium", percent(row.closedMarketPremium)]]] as [string, Array<[string, string, string?]>]] : []),
+    ["Contract", [["Contract", `${label(row.contractType)} · ${row.priceMultiplier}× price`], ["Margin", row.marginCurrency], ["Max leverage", row.maxLeverage == null ? "--" : `${row.maxLeverage}×`],
+      ["Margin mode", row.isolatedOnly === null ? "Unspecified" : row.isolatedOnly ? "Isolated only" : "Cross / isolated"], ["Listing", row.delisted ? "Delisted" : "Active"], ["Confidence", label(row.confidence)]]],
   ];
   return <ScrollBox width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} minHeight={0} contentOptions={{ paddingX: 1 }}>
-    {fields.map(([name, value, detail]) => <KeyValueRow key={name} labelWidth={25} label={name} value={value} detail={detail} />)}
-    {data.evidence.length ? <SectionHeading title="Observation revisions" /> : null}
+    {groups.map(([title, fields]) => <Fragment key={title}>
+      <SectionHeading title={title} />
+      {fields.map(([name, value, detail]) => <KeyValueRow key={name} labelWidth={25} label={name} value={value} detail={detail} />)}
+    </Fragment>)}
+    {data.evidence.length ? <SectionHeading title="Observation Revisions" /> : null}
     {data.evidence.map((entry) => {
       const saved = entry.payload;
       return <Fragment key={`${entry.kind}:${entry.period_at}:${entry.received_at}:${entry.fingerprint}`}>
@@ -82,32 +84,41 @@ function History({ market, accessKey, width, height, focused, range, metric, ref
   usePaneNoticeFooter({ registrationId: "perps:history-notice", focused, notices: [resource.data?.refreshError,
     data?.truncated ? "History reached the 5,000-observation limit. Narrow the range for all observations." : null].filter((value): value is string => !!value) });
   const periodChange = rows.length > 1 && rows[0]!.value != null && rows.at(-1)!.value != null ? rows.at(-1)!.value! - rows[0]!.value! : null;
-  const figures = [{ id: "latest", label: metric === "funding" ? "Funding / 8h" : metric === "oi" ? "Open interest USD" : metric === "premium" ? "Oracle premium" : `Price ${market.quoteCurrency}`, value: historyValue(rows.at(-1)?.value, metric) },
-    { id: "change", label: "Period change", value: historyChange(periodChange, metric) }];
+  // The same four figures on every series: the series itself, its move over the range, and the market around it.
+  const figures: StatItem[] = [
+    { id: "latest", label: metric === "funding" ? "Funding / 8h" : metric === "oi" ? "Open interest USD" : metric === "premium" ? "Oracle premium" : `Price ${market.quoteCurrency}`,
+      value: rows.length ? historyValue(rows.at(-1)?.value, metric) : metric === "funding" ? percent(market.fundingRate8h, 4) : metric === "oi" ? compact(market.openInterestUsd) : metric === "premium" ? percent(market.premium) : price(market.markPrice),
+      // Annualised from the shown 8h rate, so the detail always agrees with the value beside it.
+      ...(metric === "funding" && rows.at(-1)?.value != null ? { detail: `${percent(rows.at(-1)!.value! * 3 * 365, 1)} APR` } : {}) },
+    ...(periodChange !== null ? [{ id: "change", label: `${range}D change`, value: historyChange(periodChange, metric), color: periodChange === 0 ? colors.textMuted : periodChange > 0 ? colors.positive : colors.negative }] : []),
+    ...(metric !== "price" ? [{ id: "mark", label: `Mark ${market.quoteCurrency}`, value: price(market.markPrice) }] : []),
+    ...(metric !== "oi" ? [{ id: "oi", label: "Open interest USD", value: compact(market.openInterestUsd) }] : []),
+  ].slice(0, 4);
+  // A series with one basis says it in the legend; the column only appears when the basis changes along the range.
+  const oneBasis = rows.every((row) => row.basis === rows[0]?.basis);
+  const shownColumns = oneBasis ? columns.filter((column) => column.id !== "basis") : columns;
   if (data?.locked) return <Box flexDirection="column" flexGrow={1}>
-    <StatGrid width={width} items={[
-      { label: `Mark ${market.quoteCurrency}`, value: price(market.markPrice) }, { label: "Funding / 8h", value: percent(market.fundingRate8h, 4) },
-      { label: "Open interest USD", value: compact(market.openInterestUsd) }, { label: "Oracle premium", value: percent(market.premium) },
-    ]} />
-    <EmptyState title="Full history requires Gloom Pro." />
-    <UpgradeLabel text="Upgrade for full history" onPress={upgrade} role="perps-history-upgrade" />
+    <StatGrid width={width} items={figures} />
+    <Box paddingX={1} paddingTop={1}><EmptyState title="Full history requires Gloom Pro." actions={<UpgradeLabel text="Upgrade for full history" onPress={upgrade} role="perps-history-upgrade" />} /></Box>
   </Box>;
-  return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual history" empty={!!data && !rows.length}
-    emptyTitle="History is accumulating from the first observation.">
-    <DataTableView columns={columns} items={rows} focused={focused} rootWidth={width} rootHeight={height} getItemKey={(row) => row.time} sortColumnId="time" sortDirection="asc"
-      selection={{ kind: "id", selectedId: selected?.time ?? null, getId: (row) => row.time, onChange: setSelected }}
-      rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} figures={figures}
-        chart={{ series, formatValue: (n) => historyValue(n, metric), remoteKind: "perpetual-history", ...link,
+  return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual history">
+    <DataTableView columns={shownColumns} items={rows} focused={focused} rootWidth={width} rootHeight={height} getItemKey={(row) => row.time} sortColumnId="time" sortDirection="asc"
+      selection={{ kind: "id", selectedId: selected?.time ?? null, getId: (row) => row.time, onChange: setSelected }} selectedTextOverridesCellColor
+      rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={shownColumns} figures={figures}
+        chart={{ series: rows.length ? series : [], formatValue: (n) => historyValue(n, metric), remoteKind: "perpetual-history", ...link,
           viewport: rows.length > 1 ? { start: new Date(rows[0]!.time), end: new Date(rows.at(-1)!.time) } : undefined,
           formatAxisValue: (n, domain) => metric === "funding" || metric === "premium" ? `${(n * 100).toFixed(Math.max(2, Math.min(6, Math.ceil(-Math.log10(Math.abs(domain.max - domain.min) * 100 / 4)))))}%` : historyValue(n, metric),
-          loading: !data && resource.loading, empty: rows.length < 3 ? "History is accumulating from the first observation." : undefined }} />}
-      renderCell={(row, column) => historyCell(row, column.id, metric)}
+          loading: !data && resource.loading, empty: rows.length < 3 ? COLLECTING[metric] : undefined }} />}
+      renderCell={(row, column) => historyCell(row, column.id, metric, colors)}
       getExportMetadata={() => [["As of", lastTime ?? ""], ["Market", market.marketId], ["Series", historyCaption(data, metric)], ["Source", market.sourceUrl],
         ["Retrieved", data?.asOf ?? ""], ["Funding basis", `${fundingInterval(market)}; every history point uses its own recorded interval`],
         ["Units", metric === "funding" || metric === "premium" ? "percent; changes in percentage points" : metric === "oi" ? "USD" : market.quoteCurrency]]}
       emptyStateTitle="History is accumulating from the first observation." />
   </PaneStatusBody>;
 }
+
+const COLLECTING: Record<HistoryMetric, string> = { funding: "Collecting funding history", oi: "Collecting open interest from our own snapshots",
+  premium: "Collecting oracle premium from our own snapshots", price: "Collecting price history" };
 
 // Optional host action boundary: no external plugin or trading dependency is registered here.
 interface PerpMarketAction {

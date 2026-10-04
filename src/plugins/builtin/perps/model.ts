@@ -2,6 +2,7 @@ import type { PerpBoardRow, PerpHistoryPayload } from "../../../api-client/perps
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { formatCompact } from "../../../utils/format";
+import type { ThemeColors } from "../../../theme/colors";
 export const PERP_TABS = ["history", "evidence"] as const;
 export type PerpTab = typeof PERP_TABS[number];
 export const label = (s: string) => s === "fx" ? "FX" : s.charAt(0).toUpperCase() + s.slice(1);
@@ -46,10 +47,12 @@ export function historyCaption(data: PerpHistoryPayload | null | undefined, metr
     : metric === "price" && data?.candles.length ? "Hourly trade closes" : metric === "oi" ? "Collected open interest" : metric === "premium" ? "Collected oracle premium" : "Collected mark";
 }
 
-export function historyCell(row: ReturnType<typeof historyRows>[number], column: string, metric: HistoryMetric): DataTableCell {
-  if (column === "time") return { text: time(row.time), value: row.time };
-  if (column === "basis") return { text: row.basis };
+export function historyCell(row: ReturnType<typeof historyRows>[number], column: string, metric: HistoryMetric, colors?: Pick<ThemeColors, "positive" | "negative" | "textMuted" | "textDim" | "textBright">): DataTableCell {
+  // The header says UTC; each row only needs the day and the hour.
+  if (column === "time") return { text: row.time.slice(0, 16).replace("T", " "), value: row.time };
+  if (column === "basis") return { text: row.basis, color: colors?.textDim };
   const value = column === "change" ? row.change : row.value;
   return { text: column === "change" ? historyChange(value, metric) : historyValue(value, metric),
-    value: value === null ? null : value * (metric === "funding" || metric === "premium" ? 100 : 1) };
+    value: value === null ? null : value * (metric === "funding" || metric === "premium" ? 100 : 1),
+    color: !colors ? undefined : column === "change" ? value == null || value === 0 ? colors.textMuted : value > 0 ? colors.positive : colors.negative : colors.textBright };
 }
