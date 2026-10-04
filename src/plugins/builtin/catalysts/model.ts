@@ -32,7 +32,44 @@ export function catalystColumns(width: number, changes: boolean, litigation: boo
     ...(width >= 145 ? [{ id: "agency", label: "Agency", width: 12, align: "left" as const }, { id: "country", label: "Country", width: 8, align: "left" as const }] : []),
   ];
 }
-export const changeValue = (value: unknown): string => value == null ? "--" : typeof value === "string" ? value : JSON.stringify(value);
+function changeValue(value: unknown): string {
+  if (value == null) return "--";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.map(changeValue).join(", ") || "None";
+  if (typeof value === "object") return Object.entries(value).map(([key, part]) => `${humanLabel(key)}: ${changeValue(part)}`).join("; ") || "None";
+  return String(value);
+}
+type Party = CatalystEvent["parties"][number];
+function partyList(value: unknown): Party[] | null {
+  return Array.isArray(value) && value.every((item) => item && typeof item === "object" && typeof item.name === "string"
+    && (item.ticker === null || typeof item.ticker === "string")) ? value as Party[] : null;
+}
+const partyKey = (party: Party) => JSON.stringify([party.name, party.role ?? ""]);
+const partyLink = (party: Party) => party.ticker
+  ? `${publicTickerKey(party.ticker, party.exchange ?? undefined)}${Number.isFinite(party.confidence) ? ` (${Math.round(party.confidence * 100)}%)` : ""}` : "Unlinked";
+/** Compare named parties before rendering so unchanged collaborators do not hide a new issuer link. */
+export function catalystChangeText(change: CatalystEvent["changes"][number]): string {
+  if (change.field === "parties") {
+    const before = partyList(change.before), after = partyList(change.after);
+    if (before && after) {
+      const old = new Map(before.map((party) => [partyKey(party), party]));
+      const next = new Map(after.map((party) => [partyKey(party), party]));
+      const changes = [...new Set([...old.keys(), ...next.keys()])].flatMap((key) => {
+        const from = old.get(key), to = next.get(key), party = to ?? from!;
+        const label = `${party.name}${party.role ? ` (${party.role})` : ""}`;
+        if (!from) return [`${label}: added, ${partyLink(to!)}`];
+        if (!to) return [`${label}: removed, ${partyLink(from)}`];
+        if (partyLink(from) !== partyLink(to)) return [`${partyLink(from)} → ${partyLink(to)}: ${label}`];
+        if (JSON.stringify(from) !== JSON.stringify(to)) return [`Link evidence updated: ${label}`];
+        return [];
+      });
+      return changes.join("; ") || "Parties reordered";
+    }
+    return "Parties updated";
+  }
+  const field = humanLabel(change.field.replace(/^metadata\./, "").replace(/Date$/, ""));
+  return `${field}: ${changeValue(change.before)} → ${changeValue(change.after)}`;
+}
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 /** The calendar groups by the month of the date it shows; the change feed by the day a change was observed. */
 export function catalystSection(event: CatalystEvent, field: CatalystFilters["dateField"], changes: boolean): string {
@@ -45,7 +82,7 @@ export function catalystSection(event: CatalystEvent, field: CatalystFilters["da
 function changeSummary(event: CatalystEvent): string {
   const [first, ...rest] = event.changes;
   if (!first) return "First observed";
-  return `${humanLabel(first.field.replace(/Date$/, ""))} ${changeValue(first.before)} → ${changeValue(first.after)}${rest.length ? ` +${rest.length}` : ""}`;
+  return `${catalystChangeText(first)}${rest.length ? ` +${rest.length}` : ""}`;
 }
 export const catalystCell = (event: CatalystEvent, column: string, field: CatalystFilters["dateField"], changes: boolean): string => {
   switch (column) {

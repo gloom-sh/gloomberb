@@ -34,3 +34,9 @@ gloomberb fn CATL --event EVENT_ID --json
 ```
 
 Structured output preserves event IDs, revision IDs, primary URLs, evidence, all three source dates, observed timestamps, parties, confidence, coverage and preview access metadata. `limit` and `offset` page through the server dataset; `complete` is false for previews and partial pages.
+
+The Changes view shows the before and after values of an observed revision. Party
+link changes name the company and its old and new ticker match, including match
+confidence. A link update is a resolution change, not a new clinical or regulatory
+event. The headless Changes view uses the same summary and retains the structured
+revision fields in JSON output.

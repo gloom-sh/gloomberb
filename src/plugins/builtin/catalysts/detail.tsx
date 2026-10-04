@@ -6,7 +6,7 @@ import { usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { UpgradeLabel } from "../shared/locked-rows";
-import { catalystAgency, catalystDate, catalystDateBasis, catalystFacts, catalystLabel, changeValue } from "./model";
+import { catalystAgency, catalystChangeText, catalystDate, catalystDateBasis, catalystFacts, catalystLabel } from "./model";
 import { humanLabel } from "../shared/research-cells";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { loadCatalystDetail } from "./client";
@@ -40,7 +40,7 @@ function Evidence({ event, width, height }: { event: CatalystEvent; width: numbe
       <KeyValueRow label="Expected impact" value={catalystLabel(event.opinion.direction)} detail={`${Math.round(event.opinion.confidence * 100)}% confidence`} labelWidth={18} />
       <Text fg={colors.text} wrapText width="100%">{event.opinion.rationale}</Text><Text fg={colors.textDim} wrapText width="100%">{event.opinion.quote}</Text>
     </Section> : null}
-    {event.changes.length ? <Section title="Revision changes" width={Math.max(20, width - 2)}>{event.changes.map((change, i) => <KeyValueRow key={`${change.field}:${i}`} label={humanLabel(change.field)} value={`${changeValue(change.before)} → ${changeValue(change.after)}`} labelWidth={18} />)}</Section> : null}
+    {event.changes.length ? <Section title="Revision changes" width={Math.max(20, width - 2)}>{event.changes.map((change, i) => <Text key={`${change.field}:${i}`} fg={colors.textBright} wrapText width="100%">{catalystChangeText(change)}</Text>)}</Section> : null}
   </ScrollBox>;
 }
 export function CatalystEventDetail({ event, accessKey, snapshot, width, height, focused, initialTab = "evidence", openUpgrade }: {
@@ -80,7 +80,7 @@ export function CatalystEventDetail({ event, accessKey, snapshot, width, height,
       rootWidth={width} rootHeight={Math.max(3, height - tabRows)} focused={focused} getItemKey={(row) => row.revisionId}
       selection={{ kind: "id", selectedId: revision.revisionId, getId: (row) => row.revisionId, onChange: setRevisionId }}
       onActivate={(row) => { setRevisionId(row.revisionId); setTab("evidence"); }}
-      renderCell={(row, column) => ({ text: column.id === "revision" ? String(row.revision) : column.id === "observed" ? catalystDate(row, "observed") : column.id === "status" ? humanLabel(row.status) : column.id === "enrollment" ? enrollmentValue(row) === null ? "--" : `${enrollmentValue(row)?.toLocaleString("en-US")} ${enrollmentBasis(row)}` : row.changes.map((change) => `${humanLabel(change.field)}: ${changeValue(change.before)} → ${changeValue(change.after)}`).join("; ") || "First observed" })}
+      renderCell={(row, column) => ({ text: column.id === "revision" ? String(row.revision) : column.id === "observed" ? catalystDate(row, "observed") : column.id === "status" ? humanLabel(row.status) : column.id === "enrollment" ? enrollmentValue(row) === null ? "--" : `${enrollmentValue(row)?.toLocaleString("en-US")} ${enrollmentBasis(row)}` : row.changes.map(catalystChangeText).join("; ") || "First observed" })}
       bodyAfter={data?.access && data.access.lockedRows > 0 ? <UpgradeLabel text="Upgrade for complete event history" onPress={openUpgrade} role="catalyst-history-upgrade" /> : undefined}
       emptyStateTitle="History is collecting." /></PaneStatusBody>
       : <Evidence event={revision} width={width} height={Math.max(3, height - tabRows)} />}

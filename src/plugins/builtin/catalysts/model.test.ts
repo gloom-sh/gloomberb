@@ -1,12 +1,26 @@
 import { enrollmentSeries } from "./history";
 import { describe, expect, test } from "bun:test";
 import { catalystFixture } from "./test-fixture";
-import { catalystDate, catalystQuery } from "./model";
+import { catalystChangeText, catalystDate, catalystQuery } from "./model";
 import { validateCatalystDetail, validateCatalysts } from "./client";
 import { catalystMatches } from "../alerts/catalysts";
 import { createEventAlert, readEventAlerts } from "../alerts/events";
 
 const event = catalystFixture;
+
+test("party revision summaries expose changed links and preserve additions, removals and nonnumeric values", () => {
+  const unchanged = { name: "Research hospital", role: "collaborator", ticker: null, exchange: null, entityId: null, confidence: 0, resolution: "unresolved" };
+  const old = { ...unchanged, name: "AstraZeneca", role: "lead sponsor" };
+  const linked = { ...old, ticker: "AZN", exchange: "NYSE", entityId: "56", confidence: 0.95, resolution: "alias" };
+  const text = catalystChangeText({ field: "parties", before: [unchanged, old], after: [unchanged, linked] });
+  expect(text).toBe("Unlinked → AZN:XNYS (95%): AstraZeneca (lead sponsor)");
+  expect(catalystChangeText({ field: "parties", before: [linked], after: [] })).toContain("removed, AZN:XNYS (95%)");
+  expect(catalystChangeText({ field: "parties", before: [], after: [old] })).toContain("added, Unlinked");
+  expect(catalystChangeText({ field: "parties", before: [linked], after: [{ ...linked, entityId: "57" }] })).toContain("Link evidence updated");
+  expect(catalystChangeText({ field: "metadata.enrollment", before: null, after: 0 })).toBe("Enrollment: -- → 0");
+  expect(catalystChangeText({ field: "metadata.hasResults", before: false, after: true })).toBe("Has results: No → Yes");
+  expect(catalystChangeText({ field: "metadata.phases", before: [], after: ["PHASE1", "PHASE2"] })).toBe("Phases: None → PHASE1, PHASE2");
+});
 
 describe("catalyst provenance and dates", () => {
   test("preserves month precision without inventing a day and distinguishes observed time", () => {

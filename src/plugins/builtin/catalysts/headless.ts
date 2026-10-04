@@ -1,7 +1,7 @@
 import { CATALYST_TYPES } from "../../../api-client/catalysts";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCatalystDetail, fetchCatalysts } from "./client";
-import { catalystDate, catalystQuery, catalystTickers } from "./model";
+import { catalystCell, catalystChangeText, catalystDate, catalystQuery, catalystTickers } from "./model";
 
 function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
   return {
@@ -23,7 +23,7 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       if (typeof args.options.event === "string" && args.options.event) {
         const data = await fetchCatalystDetail(args.options.event, ctx.apiClient, undefined, { offset: Math.max(0, Number(args.options.offset) || 0), limit: Math.min(200, Math.max(1, Number(args.options.limit) || 100)) });
         return { sections: [{ title: "Event evidence", entries: Object.entries(data.event).map(([label, value]) => ({ label, value: typeof value === "object" ? JSON.stringify(value) : String(value ?? "") })) },
-          { title: "Revision history", columns: [{ key: "revision", header: "Revision" }, { key: "observedAt", header: "Observed (UTC)" }, { key: "status", header: "Status" }, { key: "changes", header: "Changes" }], rows: data.history.map((event) => ({ ...event, changes: JSON.stringify(event.changes) })) }],
+          { title: "Revision history", columns: [{ key: "revision", header: "Revision" }, { key: "observedAt", header: "Observed (UTC)" }, { key: "status", header: "Status" }, { key: "changeSummary", header: "Changes" }], rows: data.history.map((event) => ({ ...event, changeSummary: event.changes.map(catalystChangeText).join("; ") || "First observed" })) }],
           metadata: { asOf: data.asOf, access: data.access, historyTotal: data.historyTotal, historyOffset: data.historyOffset, historyHasMore: data.historyHasMore, historyTruncated: data.historyTruncated, complete: data.access?.pro !== false && !data.historyTruncated } };
       }
       const symbol = Array.isArray(args.argument) ? args.argument[0] : args.argument;
@@ -31,8 +31,9 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       const data = await fetchCatalysts({ ...query, limit: Math.max(1, Math.min(500, Number(args.options.limit) || 100)), offset: Math.max(0, Number(args.options.offset) || 0) }, ctx.apiClient);
       return { sections: [{ title: litigation ? "Company dockets" : "Catalyst events", columns: [
         { key: "date", header: "Date" }, { key: "tickers", header: "Tickers" }, { key: "title", header: "Event" }, { key: "type", header: "Type" },
-        { key: "status", header: "Status" }, { key: "agency", header: "Agency" }, { key: "country", header: "Country" }, { key: "sourceUrl", header: "Primary source" },
-      ], rows: data.events.map((event) => ({ ...event, date: catalystDate(event, query.dateField), tickers: catalystTickers(event) })) }],
+        ...(args.options.tab === "changes" ? [{ key: "changeSummary", header: "Changes" }] : [{ key: "status", header: "Status" }]),
+        { key: "agency", header: "Agency" }, { key: "country", header: "Country" }, { key: "sourceUrl", header: "Primary source" },
+      ], rows: data.events.map((event) => ({ ...event, date: catalystDate(event, query.dateField), tickers: catalystTickers(event), ...(args.options.tab === "changes" ? { changeSummary: catalystCell(event, "status", query.dateField, true) } : {}) })) }],
       metadata: { asOf: data.asOf, total: data.total, offset: data.offset, limit: data.limit, access: data.access, coverage: data.coverage, complete: data.access?.pro !== false && data.offset + data.events.length >= data.total } };
     },
   };
