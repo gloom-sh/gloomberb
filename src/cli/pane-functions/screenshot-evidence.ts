@@ -1,4 +1,5 @@
 import { supplyScreenshotEvidence } from "../../plugins/builtin/supply-chain/evidence";
+import { awardsScreenshotEvidence } from "../../plugins/builtin/awards/evidence";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import type { TickerFinancials } from "../../types/financials";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
@@ -69,6 +70,7 @@ export interface PaneScreenshotEvidenceHook<E extends PaneScreenshotEvidence = P
 /** Built-in panes that certify their captures with their own evidence. */
 const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
   supplyScreenshotEvidence,
+  awardsScreenshotEvidence,
   calculatorScreenshotEvidence,
   scenarioScreenshotEvidence,
   realizedVolScreenshotEvidence,

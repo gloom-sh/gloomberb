@@ -258,6 +258,7 @@
       "contributes": {
         "panes": [
           "analyst-research",
+          "awards",
           "backtest",
           "chart-composer",
           "corporate-actions",

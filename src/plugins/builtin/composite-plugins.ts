@@ -1,4 +1,5 @@
 import { supplyChainModule } from "./supply-chain";
+import { awardsModule } from "./awards";
 import { cryptoBoardModule } from "./crypto-board";
 import { portfolioAnalyticsModule } from "./analytics";
 import { brokerManagerModule } from "./broker-manager";
@@ -113,6 +114,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     debtMaturitiesModule,
     revenueBreakdownModule,
     supplyChainModule,
+    awardsModule,
     mnaModule,
     dividendYieldModule,
     holdersModule,

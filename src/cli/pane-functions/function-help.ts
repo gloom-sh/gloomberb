@@ -424,6 +424,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: { free: "As filed; top three rows per role with evidence", pro: "As filed; all stored relationships" },
     bloomberg: ["SPLC"],
   },
+  AWARDS: {
+    summary: "Government contracts mapped to verified listed parents, with a dated feed, company award history, agency concentration, sector leaders and awards relative to annual revenue. Inspect original evidence, revisions, subawards and modifications. Coverage varies by jurisdiction.",
+    usage: ["AWARDS", "AWARDS LMT", "AWARDS BA.:LSE"],
+    keys: [TABS, OPEN, SEARCH, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("f", "a"), key("g", "raph"), key("s", "plc"), key("c", "alendar")],
+    data: { free: "Pro preview: three rows per section", pro: "All collected awards, history, revisions and relationships" },
+    bloomberg: [],
+  },
   SEG: {
     summary: "Quarterly revenue by product, segment or region from the company's 10-Q and 10-K filings.",
     usage: ["SEG AAPL"],

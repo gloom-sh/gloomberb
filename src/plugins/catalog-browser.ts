@@ -1,4 +1,5 @@
 import { supplyChainModule } from "./builtin/supply-chain";
+import { awardsModule } from "./builtin/awards";
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
 import { revenueBreakdownModule } from "./builtin/revenue-breakdown";
 import { mnaModule } from "./builtin/mna";
@@ -117,6 +118,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     debtMaturitiesModule,
     revenueBreakdownModule,
     supplyChainModule,
+    awardsModule,
     mnaModule,
     browserDividendYieldModule,
     earningsCallsModule,
