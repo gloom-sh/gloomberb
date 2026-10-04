@@ -1,10 +1,10 @@
 # Government awards
 
-`AWARDS` opens the procurement feed. `AWARDS LMT` opens a verified parent's company history. The function is a **Pro dataset**: free verified accounts receive a small preview of each section and evidence; Pro accounts receive the collected history and additional records.
+`AWARDS` opens the procurement feed. `AWARDS LMT` opens a verified company's history. The function is a **Pro dataset**: free verified accounts receive a small preview of each section and evidence; Pro accounts receive the collected history and additional records.
 
 Feed shows date, legal recipient, verified ticker, currency, face value, obligated amount, ceiling, agency, performance period and jurisdiction. Search contracts or filter by ticker, jurisdiction, currency, record type and range in the query bar. Long feeds load additional records as you scroll. Company adds monthly award cohorts and cumulative awarded obligations. Agencies ranks contracting authorities. Sectors ranks recipient companies within published industry classifications, with a Sectors view for sector totals. Opening a verified company drills into its company history; unresolved recipients remain named entities in the feed. Events shows awards relative to the listed company's annual revenue when a comparable annual filing exists.
 
-Enter or **E** opens contract evidence, the legal-entity match, revenue denominator, preserved revisions, subawards, modifications and government/customer relationships. **O** opens the primary record. **D**, **F**, **G** and **S** open the verified parent's DES, FA, chart and SPLC; **C** opens the earnings calendar. Recipients without verified matches retain their names and do not receive invented ticker links. Standard refresh, pane export, keyboard and mouse navigation work across terminal, desktop and web.
+Enter or **E** opens contract evidence, the legal-entity match, revenue denominator, preserved revisions, subawards, modifications and government/customer relationships. **O** opens the primary record. **D**, **F**, **G** and **S** open the verified company's DES, FA, chart and SPLC; **C** opens the earnings calendar. Recipients without verified matches retain their names and do not receive invented ticker links. Standard refresh, pane export, keyboard and mouse navigation work across terminal, desktop and web.
 
 ## Amounts and history
 
@@ -21,6 +21,8 @@ Enable **New awards above 1% of annual revenue** in pane settings or quick setti
 ## Coverage and evidence
 
 The common schema supports US federal prime awards and subawards, award transactions, European public procurement, UK notices and other national open portals. Actual availability depends on successful collection and published fields. The server exposes source status and dated backfill ranges in REST/JSON metadata. Incomplete scopes produce a warning in the pane footer. The presence of an adapter is not a claim of complete country coverage, and a missing award or subcontractor is not proof that no contract exists. Source accounts, keys, transport restrictions and access policies can leave an adapter disabled or blocked; the backend status command is authoritative.
+
+Retained history is bounded to 120,000 current records and 180,000 revisions. Listed-company prime awards and subawards are kept for up to 1,095 days; unlisted awards for 365 days, modifications for 90 days and notices for 30 days, measured from the last material observation. Superseded revisions are kept for up to 365 days, with at most 12 revisions per award. Capacity limits take precedence over these windows, removing the oldest unlisted records first. Collection gaps and retention removals leave coverage partial; charts and aggregates describe only retained records.
 
 Structured official records carry a primary-source link and observed timestamp. Text-derived evidence, when enabled, must match the captured source. A listed-parent mapping carries its method, confidence and separate supporting URL. Corrections append preserved revisions linked to their predecessor; records are not silently replaced. Government/customer and subcontractor links are award evidence and remain separate from filing-derived SPLC relationships.
 
