@@ -40,9 +40,9 @@ export function scopeWords(scope: string): string {
  * always the reporting company's: a supplier saying the focus company is 91%
  * of its revenue reads "of CRUS revenue", never as the focus company's.
  */
-export function shareParts(row: SupplyRow, focusId?: string | null): { value: string; basis: string } | null {
+export function shareParts(row: SupplyRow, focusId?: string | null, { includeReporter = false }: { includeReporter?: boolean } = {}): { value: string; basis: string } | null {
   if (row.pctOfRevenue === null || row.pctBasis === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row)) return null;
-  const reporter = focusId && row.reportingEntity.id !== focusId ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
+  const reporter = includeReporter || (focusId && row.reportingEntity.id !== focusId) ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
   const scope = row.pctScope ? scopeWords(row.pctScope) : "";
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
   // A scope that names its own denominator ("Vendor non-trade receivables") is a description, read in lower case.

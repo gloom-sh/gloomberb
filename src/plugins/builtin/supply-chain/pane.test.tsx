@@ -179,12 +179,14 @@ test("graph selection collapses a branch and recenters an unlisted company throu
 
 test("path evidence preserves every hop and opens the filter form without losing the route", async () => {
   const data = graphPayload(); data.paths = [data.upstream[1]!.bestPath]; data.target = data.nodes[2]!; data.upstream = [];
+  Object.assign(data.links[0]!.evidence[0]!, { pctOfRevenue: 22, pctBasis: "revenue", pctScope: "Compute And Networking Segment" });
   setCloudApiFetchTransport(async () => Response.json(data));
   await mount(120, 27, "path", "says", () => {}, { to: "3" });
   await tui.waitForFrameToContain("ROUTE");
   await tui.emitKeypress({ name: "return" });
   const frame = await tui.waitForFrameToContain("Estimated exposure");
   expect(frame).toContain("20% est. of 1 revenue");
+  expect(frame).toContain("of 1 Compute & Networking revenue");
   expect(frame).toContain("We depend on this supplier.");
   await tui.emitKeypress({ name: "escape" });
   await tui.waitForFrameToContain("ROUTE");

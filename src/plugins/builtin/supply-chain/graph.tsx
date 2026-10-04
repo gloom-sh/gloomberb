@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActionRow, usePaneStatusFooter } from "../../../components";
-import { Box, ChartSurface, ScrollBox, Span, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { ActionRow, Badge, Button, usePaneStatusFooter } from "../../../components";
+import { Box, ChartSurface, ScrollBox, Span, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import type { ChartVectorShape } from "../../../ui/host";
 import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
-import type { SupplyEntity } from "../../../api-client/supply-chain";
+import type { SupplyEntity, SupplyRole } from "../../../api-client/supply-chain";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useShortcut } from "../../../react/input";
+import { useScrollBoxLayout } from "../../../components/use-scrollbox-layout";
 import { isPlainKey } from "../../../utils/keyboard";
-import { truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
 import { entityLabel, graphNodes } from "./graph-model";
+import { ROLE_COLORS } from "./model";
+import { blendHex } from "../../../theme/colors";
 
-const TONES = { upstream: "#60a5fa", downstream: "#fbbf24", related: "#a78bfa" };
-function blend(foreground: string, background: string, opacity: number): string {
-  const f = parseHex(foreground), b = parseHex(background);
-  return `#${(["r", "g", "b"] as const).map(i => Math.round(f[i] * opacity + b[i] * (1 - opacity)).toString(16).padStart(2, "0")).join("")}`;
-}
 export function SupplyGraph({ data, width, height, focused, selectedId, selectedPath, collapsed, onSelect, onRecenter, onVisible }: {
   data: GraphPayload; width: number; height: number; focused: boolean; selectedId: string | null; selectedPath: GraphPath | null;
   collapsed: string[]; onSelect: (id: string) => void; onRecenter: (entity: SupplyEntity) => void; onVisible: (ids: string[]) => void;
@@ -27,7 +25,7 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
   const [pages, setPages] = useState<Record<number, number>>({});
   useEffect(() => setPages({}), [data]);
   const columns = [...new Set(nodes.map(node => node.column))].sort((a, b) => a - b);
-  const cellWidth = Math.max(16, Math.floor(width / Math.max(columns.length, 1)));
+  const cellWidth = Math.max(24, Math.floor(width / Math.max(columns.length, 1)));
   const plotWidth = Math.max(width, columns.length * cellWidth);
   const plotHeight = Math.max(6, height - 1);
   const capacity = Math.max(1, Math.floor((plotHeight - 3) / 3));
@@ -43,25 +41,27 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
     return { ...node, x: columns.indexOf(node.column) * cellWidth + 1, y: 2 + (peers.length === 1 ? Math.floor((plotHeight - 5) / 2) : index * 3) };
   });
   const positions = new Map(positioned.map(node => [node.entity.id, node]));
-  useEffect(() => {
+  const revealSelected = () => {
     const scroll = scrollRef.current, selected = positions.get(selectedId ?? data.entity?.id ?? "");
     if (!scroll || !selected) return;
     const viewportWidth = scroll.viewport?.width ?? width;
     const left = scroll.scrollLeft ?? 0;
     if (selected.x < left) scroll.scrollLeft = Math.max(0, selected.x - 1);
     else if (selected.x + cellWidth > left + viewportWidth) scroll.scrollLeft = selected.x + cellWidth - viewportWidth;
-  }, [selectedId, data, cellWidth, width]);
+  };
+  useEffect(revealSelected, [selectedId, data, cellWidth, width]);
+  useScrollBoxLayout(scrollRef, revealSelected);
   const pathLinks = new Set(selectedPath?.linkIds ?? []);
   const vectors: ChartVectorShape[] = data.links.flatMap(link => {
     const from = positions.get(link.from), to = positions.get(link.to);
     if (!from || !to) return [];
     const left = from.x <= to.x ? from : to, right = from.x <= to.x ? to : from;
     const highlighted = pathLinks.has(link.id);
-    const tone = link.relationship === "commerce" ? (left.column < 0 ? TONES.upstream : TONES.downstream) : TONES.related;
+    const tone = ROLE_COLORS[link.relationship === "commerce" ? (left.column < 0 ? "supplier" : "customer") : link.relationship];
     const opacity = selectedPath && !highlighted ? .15 : Math.max(.28, link.confidence);
-    const start = left.x + cellWidth - 3, end = right.x - 1;
-    return [{ id: link.id, color: blend(tone, colors.bg, opacity), strokeWidth: highlighted ? 3 : 1.2,
-      points: Array.from({ length: 33 }, (_, i) => { const t = i / 32, smooth = t * t * (3 - 2 * t); return { x: (start + (end - start) * t) / plotWidth, y: (left.y + .5 + (right.y - left.y) * smooth) / plotHeight }; }) }];
+    const start = left.x + cellWidth - 3, end = right.x;
+    return [{ id: link.id, color: blendHex(colors.bg, tone, opacity), strokeWidth: highlighted ? 3 : 1.2,
+      points: Array.from({ length: 33 }, (_, i) => { const t = i / 32, smooth = t * t * (3 - 2 * t); return { x: (start + (end - start) * t) / plotWidth, y: (left.y + 1 + (right.y - left.y) * smooth) / plotHeight }; }) }];
   });
   const visibleIds = vectors.map(vector => vector.id).join("\n");
   useEffect(() => { onVisible(visibleIds ? visibleIds.split("\n") : []); }, [visibleIds, onVisible]);
@@ -122,15 +122,42 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
       <ChartSurface width={plotWidth} height={plotHeight} position="absolute" top={0} left={0} vectors={desktop ? vectors : undefined} bitmap={bitmap} aria-label="Supply chain multi-hop graph">
         {!desktop ? fallback.map((spans, y) => <Text key={y}>{spans.map((span, i) => <Span key={i} fg={span.color}>{span.text}</Span>)}</Text>) : null}
       </ChartSurface>
-      {columns.map((column, index) => <Box key={column} position="absolute" top={0} left={index * cellWidth + 1} width={cellWidth - 2}><Text fg={column < 0 ? TONES.upstream : column > 0 ? TONES.downstream : colors.textMuted}>{column < 0 ? `${-column} HOP${column === -1 ? "" : "S"}` : column > 0 ? `${column} HOP${column === 1 ? "" : "S"}` : "FOCUS"}</Text></Box>)}
+      {columns.map((column, index) => <Box key={column} position="absolute" top={0} left={index * cellWidth + 1} width={cellWidth - 2}><Text fg={column < 0 ? ROLE_COLORS.supplier : column > 0 ? ROLE_COLORS.customer : colors.textMuted}>{column < 0 ? `${-column} HOP${column === -1 ? "" : "S"}` : column > 0 ? `${column} HOP${column === 1 ? "" : "S"}` : "FOCUS"}</Text></Box>)}
       {columns.map((column, index) => {
         const count = nodes.filter(node => node.column === column).length;
         return count > capacity ? <Box key={`page:${column}`} position="absolute" top={plotHeight - 1} left={index * cellWidth + 1} width={cellWidth - 2}><ActionRow label="Next companies" onPress={() => advancePage(column, 1)} /></Box> : null;
       })}
-      {positioned.map(node => <Box key={node.entity.id} position="absolute" left={node.x} top={node.y} width={cellWidth - 3} height={2} zIndex={10} flexDirection="column" backgroundColor={colors.bg} onMouseOver={() => onSelect(node.entity.id)}>
-        <ActionRow label={truncateToDisplayWidth(`${collapsed.includes(node.entity.id) ? "+ " : ""}${entityLabel(node.entity)}`, cellWidth - 4)} active={node.entity.id === selectedId} fg={node.related ? TONES.related : node.column < 0 ? TONES.upstream : node.column > 0 ? TONES.downstream : colors.textBright} onPress={() => onRecenter(node.entity)}  />
-        <Text fg={colors.textDim}>{truncateToDisplayWidth(node.hops ? `${node.hops}H · ${Math.round((node.path?.confidence ?? 0) * 100)}% · ${node.related ? (node.hops > 1 ? "via " : "") + (data.links.find(link => node.path?.linkIds.includes(link.id) && link.relationship !== "commerce")?.relationship ?? "related") : node.column < 0 ? "supplier" : "customer"}` : node.entity.name, cellWidth - 3)}</Text>
-      </Box>)}
+      {positioned.map(node => {
+        const relationship = data.links.find(link => node.path?.linkIds.includes(link.id) && link.relationship !== "commerce")?.relationship;
+        const role: SupplyRole | null = !node.hops ? null : node.related && relationship && relationship !== "commerce" ? relationship : node.column < 0 ? "supplier" : "customer";
+        const accent = role ? ROLE_COLORS[role] : colors.textMuted;
+        const active = node.entity.id === selectedId, company = !node.entity.aggregate && !node.entity.anonymous;
+        const kind = node.entity.aggregate ? "group" : node.entity.anonymous ? "undisclosed" : null;
+        const inner = cellWidth - 5;
+        const tickerWidth = node.entity.ticker ? displayWidth(node.entity.ticker) + 3 : 0;
+        const showTicker = company && tickerWidth > 0 && inner >= tickerWidth + 5;
+        const prefix = collapsed.includes(node.entity.id) ? "+ " : "";
+        const name = truncateToDisplayWidth(prefix + (showTicker ? node.entity.name : entityLabel(node.entity)), inner - (showTicker ? tickerWidth : 0));
+        const relation = kind ?? (node.related ? `${node.hops > 1 ? "via " : ""}${role}` : role);
+        const confidence = `${Math.round((node.path?.confidence ?? 0) * 100)}%`;
+        const detail = node.hops ? `${node.hops}H · ${relation}${inner >= displayWidth(relation ?? "") + 12 ? ` · ${confidence}` : ""}` : showTicker ? "Focus company" : node.entity.name;
+        return <Box key={node.entity.id} position="absolute" left={node.x} top={node.y} width={cellWidth - 3} height={2} zIndex={10} flexDirection="column" overflow="hidden"
+          backgroundColor={active ? desktop ? blendHex(colors.bg, accent, 0.2) : colors.selected : node.hops ? blendHex(colors.bg, accent, desktop ? 0.09 : 0.12) : colors.panel}
+          style={desktop ? { borderLeft: role ? `3px solid ${accent}` : undefined, border: role ? undefined : `1px solid ${blendHex(colors.bg, colors.textBright, 0.35)}`,
+            borderRadius: role ? 3 : 6, paddingLeft: 6, cursor: "pointer", boxShadow: active ? `inset 0 0 0 1px ${blendHex(colors.bg, accent, 0.6)}` : undefined } : undefined}
+          onMouseOver={() => onSelect(node.entity.id)} data-gloom-role="supply-graph-node">
+          <Button label={`${prefix}${entityLabel(node.entity)}`} title={node.entity.name} variant="plain" compact flush stopPropagation height={2} width={cellWidth - (desktop ? 5 : 3)} onPress={() => onRecenter(node.entity)}>
+            <Box flexDirection="column" width="100%">
+              <Box flexDirection="row" height={1} gap={desktop ? 1 : 0} overflow="hidden">
+                {!desktop ? <Text fg={accent}>▍</Text> : null}
+                <Text fg={active && !desktop ? colors.selectedText : company ? colors.textBright : colors.textDim} attributes={company ? TextAttributes.BOLD : 0}>{name}</Text>
+                {showTicker ? desktop ? <Badge label={node.entity.ticker!} tone="accent" /> : <Text fg={active ? colors.selectedText : colors.textDim}>{` ${node.entity.ticker}`}</Text> : null}
+              </Box>
+              <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden"><Text fg={active && !desktop ? colors.selectedText : colors.textDim}>{truncateToDisplayWidth(detail, inner)}</Text></Box>
+            </Box>
+          </Button>
+        </Box>;
+      })}
     </Box>
   </ScrollBox>;
 }

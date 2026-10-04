@@ -22,7 +22,7 @@ test("desktop graph keeps real SVG connections, dims lower confidence and mouse-
   expect(links).toHaveLength(2);
   expect(links[0]!.getAttribute("stroke")).not.toBe(links[1]!.getAttribute("stroke"));
   expect(container.textContent).not.toMatch(/[\u2800-\u28ff]/);
-  const privateNode = [...container.querySelectorAll("button")].find(button => button.textContent === "Private supplier")!;
+  const privateNode = [...container.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Private supplier")!;
   await act(async () => privateNode.click());
   expect(centered).toEqual(["2"]);
   expect(visible.at(-1)).toEqual(["a", "b"]);

@@ -122,6 +122,11 @@ test("a share always names its denominator: the reporting company's revenue in r
   expect(shareParts(supplyRow("seg", { pctOfRevenue: 14, pctScope: "Compute And Networking Segment" }), "FOCUS")?.basis).toBe("of Compute & Networking revenue");
   expect(shareParts(supplyRow("ar", { pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")?.basis).toBe("of vendor non-trade receivables");
   expect(shareParts(supplyRow("none", { pctOfRevenue: null, pctBasis: null }), "FOCUS")).toBeNull();
+  // A multi-hop disclosure always names its reporter, even when it is the focus company.
+  expect(shareParts({ reportingEntity: entity("FOCUS"), pctOfRevenue: 22.04, pctBasis: "revenue" }, "FOCUS", { includeReporter: true }))
+    .toEqual({ value: "22%", basis: "of FOCUS revenue" });
+  expect(shareParts({ reportingEntity: entity("FOCUS"), pctOfRevenue: 22 }, undefined, { includeReporter: true })).toBeNull();
+  expect(shareParts({ reportingEntity: entity("FOCUS"), pctBasis: "revenue" }, undefined, { includeReporter: true })).toBeNull();
   const group = supplyRow("group", { counterparty: { ...entity("group", "United States And Europe Based End Customers"), aggregate: true, ticker: null } });
   expect(counterpartyLabel(group)).toBe("United States and Europe based end customers");
 });

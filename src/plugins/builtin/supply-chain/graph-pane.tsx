@@ -3,11 +3,12 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { DEFAULT_GRAPH_OPTIONS, type GraphOptions, type GraphPath, type GraphPayload } from "../../../api-client/supply-chain-graph";
 import type { SupplyEntity } from "../../../api-client/supply-chain";
-import { ActionRow, Button, ButtonActionScope, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, Notice, NumberField, PageStackView, PaneStatusBody, QueryBar, TextField, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type PaneHint, type QueryBarFilter } from "../../../components";
+import { ActionRow, Badge, Button, ButtonActionScope, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, Notice, NumberField, PageStackView, PaneStatusBody, QueryBar, StatGrid, TextField, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type PaneHint, type QueryBarFilter, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { RatioBar } from "../../../components/ui/ratio-bar";
 import { useAsyncResource, useAutoRefresh, useInputCapture, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState, useShortcut } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
-import { Box, ScrollBox, Text, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { UpgradeLabel } from "../shared/locked-rows";
@@ -15,8 +16,11 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { cachedGraph, graphOptions, loadGraph, validateGraph } from "./graph-client";
 import { entityKey, entityLabel, exposureLabel, pathLabel } from "./graph-model";
 import { SupplyGraph } from "./graph";
+import { DisclosureQuote } from "./disclosure-quote";
+import { ROLE_COLORS, roleLabel, shareParts } from "./model";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
+import { displayWidth } from "../../../utils/format";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
 const PATH_COLUMNS: DataTableColumn[] = [{ id: "route", label: "Route", width: 40, align: "left" }, { id: "relationships", label: "Relationships", width: 22, align: "left" }, { id: "hops", label: "Hops", width: 6, align: "right" }, { id: "score", label: "Score", width: 9, align: "right" }, { id: "confidence", label: "Confidence", width: 12, align: "right" }, { id: "exposure", label: "Estimated exposure", width: 35, align: "left" }];
@@ -47,38 +51,56 @@ function GraphInputs({ options, focused, width, onSave, onCancel }: { options: G
     <Box flexDirection="row" gap={2}><Button label="Apply filters" variant="primary" onPress={submit} /><Button label="Cancel" variant="secondary" onPress={onCancel} /></Box>
   </Box></ScrollBox>;
 }
-function PathEvidence({ data, path, focused, onRecenter }: { data: GraphPayload; path: GraphPath; focused: boolean; onRecenter: (entity: SupplyEntity) => void }) {
+function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphPayload; path: GraphPath; width: number; focused: boolean; onRecenter: (entity: SupplyEntity) => void }) {
   const colors = useThemeColors(), host = useRendererHost();
+  const desktop = !!useUiCapabilities().nativePaneChrome;
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   useShortcut(event => {
     const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
     if (focused && delta && scrollRef.current) { event.preventDefault(); event.stopPropagation(); scrollByLines(scrollRef.current, delta); }
   });
+  const figures: StatItem[] = [
+    { id: "score", label: "Path score", value: path.score.toFixed(4) },
+    { id: "confidence", label: "Confidence", value: `${Math.round(path.confidence * 100)}%` },
+    { id: "exposure", label: "Estimated exposure", value: exposureLabel(path, data), detail: path.exposure?.period, wide: true },
+  ];
+  const company = (entity: SupplyEntity) => desktop && entity.ticker ? <Badge label={entity.ticker} tone="accent" />
+    : <Text fg={entity.aggregate || entity.anonymous ? colors.textDim : colors.textBright} attributes={TextAttributes.BOLD}>{entityLabel(entity)}</Text>;
   return <DetailScrollBody ref={scrollRef} resetScrollKey={path.id}><ButtonActionScope>
-    <KeyValueRow label="Path score" value={path.score.toFixed(4)} labelWidth={20} />
-    <KeyValueRow label="Confidence" value={`${Math.round(path.confidence * 100)}%`} labelWidth={20} />
-    <KeyValueRow label="Estimated exposure" value={exposureLabel(path, data)} labelWidth={20} />
-    {path.exposure ? <KeyValueRow label="Exposure period" value={path.exposure.period} labelWidth={20} /> : null}
+    <StatGrid items={figures} width={Math.max(1, width - 2)} />
     {path.linkIds.map((id, index) => {
       const link = data.links.find(item => item.id === id)!;
       const from = data.nodes.find(node => node.id === path.nodeIds[index])!, to = data.nodes.find(node => node.id === path.nodeIds[index + 1])!;
       return <Box key={id} flexDirection="column" paddingTop={1}>
-        <Text fg={colors.textBright}>{`${index + 1}H · ${entityLabel(from)} → ${entityLabel(to)}`}</Text>
-        {link.evidence.map(evidence => <Box key={evidence.id} flexDirection="column" paddingBottom={1}>
-          <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${evidence.role}`} labelWidth={20} />
-          <KeyValueRow label="Evidence" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
-          <KeyValueRow label="Period" value={evidence.period} detail={`filed ${evidence.filedDate ?? "--"}`} labelWidth={20} />
-          {evidence.pctOfRevenue != null ? <KeyValueRow label="Disclosed share" value={`${evidence.pctOfRevenue}% of ${evidence.reporter.name} ${evidence.pctBasis ?? ""}`} detail={evidence.pctScope ?? undefined} labelWidth={20} /> : null}
-          {evidence.nativeAmount != null ? <KeyValueRow label="Disclosed value" value={`${evidence.nativeAmount.toLocaleString()} ${evidence.nativeCurrency ?? ""}`} labelWidth={20} /> : null}
-          <Text fg={colors.textBright} wrapText width="100%">{evidence.quote}</Text>
-          <Box flexDirection="row"><Button variant="plain" compact flush label={`Open ${evidence.form ?? "source"} filing`} onPress={() => void host.openExternal(evidence.filingUrl)} /></Box>
-        </Box>)}
+        <Box flexDirection="row" height={1} gap={1} overflow="hidden">
+          <Text fg={colors.textDim}>{`${index + 1}H`}</Text>
+          {company(from)}<Text fg={colors.textMuted}>→</Text>{company(to)}
+        </Box>
+        {link.evidence.map(evidence => {
+          const share = shareParts({ ...evidence, reportingEntity: evidence.reporter }, undefined, { includeReporter: true });
+          return <Box key={evidence.id} flexDirection="column" paddingBottom={1}>
+            <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${roleLabel(evidence.role)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
+            <KeyValueRow label="Evidence" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
+            <KeyValueRow label="Period" value={evidence.period} detail={`filed ${evidence.filedDate ?? "--"}`} labelWidth={20} />
+            {share ? <>
+              <Box flexDirection="row" gap={1}>
+                <KeyValueRow label="Disclosed share" value={share.value} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
+                <RatioBar ratio={evidence.pctOfRevenue! / 100} width={8} color={ROLE_COLORS[evidence.role]} track />
+              </Box>
+              <KeyValueRow label="Share basis" value={share.basis} labelWidth={20} />
+            </> : null}
+            {evidence.nativeAmount != null ? <KeyValueRow label="Disclosed value" value={`${evidence.nativeAmount.toLocaleString()} ${evidence.nativeCurrency ?? ""}`} labelWidth={20} /> : null}
+            <DisclosureQuote role={evidence.role} quote={evidence.quote} />
+            <Box flexDirection="row"><Button variant="plain" compact flush label={`Open ${evidence.form ?? "source"} filing`} onPress={() => void host.openExternal(evidence.filingUrl)} /></Box>
+          </Box>;
+        })}
         <ActionRow label={`Recenter on ${entityLabel(to)}`} onPress={() => onRecenter(to)} />
       </Box>;
     })}
   </ButtonActionScope></DetailScrollBody>;
 }
 export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbol: string; tab: "graph" | "path"; width: number; height: number; focused: boolean }) {
+  const colors = useThemeColors(), desktop = !!useUiCapabilities().nativePaneChrome;
   const instance = usePaneInstance(), session = useResearchCloudSession(), access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
   const initialOptions = useMemo(() => { try { return graphOptions(instance?.settings ?? {}); } catch { return DEFAULT_GRAPH_OPTIONS; } }, []);
@@ -143,16 +165,45 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     { id: "sources", kind: "multi", label: "Evidence", values: options.sources, options: Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label })), onChange: values => setOptions(old => ({ ...old, sources: values as GraphOptions["sources"] })) },
   ];
   const query = <QueryBar width={width} filters={filters} view={{ value: options.ranking, options: [{ value: "score", label: "Top score" }, { value: "shortest", label: "Shortest" }], onChange: value => setOptions(old => ({ ...old, ranking: value })) }} />;
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="explore supply chain paths" needsVerification={session.needsVerification} />;
+  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="supply-chain-signin" action="explore supply chain paths" needsVerification={session.needsVerification} />;
   const detailOpen = inputsOpen || !!openPath;
   return <PageStackView focused={focused && !targetActive} detailOpen={detailOpen} onBack={() => { setOpen("closed"); setInputsOpen(false); }} detailTitle={inputsOpen ? "Graph filters" : openPath && data ? pathLabel(openPath, data) : undefined}
-    detailContent={inputsOpen ? <GraphInputs options={options} focused={focused} width={width} onSave={value => { setOptions(value); setInputsOpen(false); }} onCancel={() => setInputsOpen(false)} /> : openPath && data ? <PathEvidence data={data} path={openPath} focused={focused} onRecenter={recenter} /> : null}
+    detailContent={inputsOpen ? <GraphInputs options={options} focused={focused} width={width} onSave={value => { setOptions(value); setInputsOpen(false); }} onCancel={() => setInputsOpen(false)} /> : openPath && data ? <PathEvidence data={data} path={openPath} width={width} focused={focused} onRecenter={recenter} /> : null}
     rootContent={<Box width={width} height={height} flexDirection="column">{query}
       {tab === "path" && !target ? <EmptyState title="Choose a target company." hint="Enter a ticker or entity ID in To." /> : <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} empty={!!data && !data.links.length} emptyTitle={target ? "No disclosed route within these filters." : "No disclosed relationships within these filters."} subject="supply chain graph">
         {data ? tab === "graph" ? <SupplyGraph data={data} width={width} height={Math.max(4, height - 1 - (data.access === "preview" ? 1 : 0))} focused={focused && !targetActive && !detailOpen} selectedId={selectedId} selectedPath={selectedPath} collapsed={collapsed} onSelect={selectNode} onRecenter={recenter} onVisible={setVisibleLinks} />
           : <DataTableView<GraphPath> columns={PATH_COLUMNS} items={sortedPaths} sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={column => setSort(old => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))} emptyStateTitle="No disclosed route within these filters." getItemKey={path => path.id} focused={focused && !targetActive && !detailOpen} rootWidth={width} rootHeight={height - 1 - (data.access === "preview" ? 1 : 0)}
             selection={{ kind: "id", selectedId: selectedPath?.id ?? paths[0]?.id ?? null, getId: path => path.id, onChange: id => setSelectedPath(id) }} onActivate={path => setOpen(path.id)}
-            renderCell={(path, column) => ({ text: column.id === "route" ? pathLabel(path, data) : column.id === "relationships" ? [...new Set(path.linkIds.map(id => { const link = data.links.find(link => link.id === id)!; return link.relationship === "commerce" ? "Trade" : link.relationship[0]!.toUpperCase() + link.relationship.slice(1); }))].join(" / ") : column.id === "hops" ? String(path.hops) : column.id === "score" ? path.score.toFixed(4) : column.id === "confidence" ? `${Math.round(path.confidence * 100)}%` : exposureLabel(path, data) })} showHorizontalScrollbar selectedTextOverridesCellColor resetScrollKey={`${focus}:${target}:${JSON.stringify(options)}`} /> : null}
+            renderCell={(path, column, _index, state) => {
+              const ink = state.selected ? colors.selectedText : colors.textBright;
+              if (column.id === "route") {
+                const text = pathLabel(path, data);
+                const route = path.nodeIds.map(id => data.nodes.find(node => node.id === id)).filter((node): node is SupplyEntity => !!node);
+                const cells = route.reduce((total, node) => total + displayWidth(entityLabel(node)) + (node.ticker ? 2 : 0), 0) + Math.max(0, route.length - 1) * 3;
+                return { text, content: desktop && route.length === path.nodeIds.length && cells <= column.width ? <Box flexDirection="row" height={1} gap={1} overflow="hidden">
+                  {route.flatMap((node, index) => [
+                    index ? <Text key={`arrow:${index}`} fg={state.selected ? colors.selectedText : colors.textMuted}>→</Text> : null,
+                    node.ticker ? <Badge key={node.id} label={node.ticker} tone="accent" color={state.selected ? colors.selectedText : undefined} />
+                      : <Text key={node.id} fg={state.selected ? colors.selectedText : node.aggregate || node.anonymous ? colors.textDim : ink}>{node.name}</Text>,
+                  ])}
+                </Box> : undefined };
+              }
+              if (column.id === "relationships") {
+                const relationships = [...new Set(path.linkIds.map(id => data.links.find(link => link.id === id)!.relationship))];
+                const label = (relationship: typeof relationships[number]) => relationship === "commerce" ? "Trade" : roleLabel(relationship);
+                return { text: relationships.map(label).join(" / "), content: <Box flexDirection="row" height={1} gap={1} overflow="hidden">
+                  {relationships.map(relationship => {
+                    const color = relationship === "commerce" ? colors.textMuted : ROLE_COLORS[relationship];
+                    return <Box key={relationship} flexDirection="row" gap={1} flexShrink={0}>
+                      {desktop ? <Box width={1} height={1} alignItems="center" justifyContent="center"><Box style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} /></Box>
+                        : <Text fg={color}>●</Text>}
+                      <Text fg={state.selected ? colors.selectedText : color}>{label(relationship)}</Text>
+                    </Box>;
+                  })}
+                </Box> };
+              }
+              return { text: column.id === "hops" ? String(path.hops) : column.id === "score" ? path.score.toFixed(4) : column.id === "confidence" ? `${Math.round(path.confidence * 100)}%` : exposureLabel(path, data) };
+            }} showHorizontalScrollbar selectedTextOverridesCellColor resetScrollKey={`${focus}:${target}:${JSON.stringify(options)}`} /> : null}
       </PaneStatusBody>}
       {data?.access === "preview" ? <UpgradeLabel text="Upgrade for four hops and every relationship" onPress={openUpgrade} role="supply-upgrade" /> : null}
     </Box>} />;
