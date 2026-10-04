@@ -11,7 +11,10 @@ export function graphEvidenceRow(evidence: GraphEvidence): SupplyRow {
     fiscalYear: evidence.fiscalYear ?? null, form: evidence.form ?? null, filedDate: evidence.filedDate ?? null,
     pctOfRevenue: evidence.pctOfRevenue ?? null, pctBasis: evidence.pctBasis ?? null, pctScope: evidence.pctScope ?? null,
     usd: evidence.usd ?? null, usdBasis: evidence.usdBasis ?? null,
+    nativeAmount: evidence.nativeAmount ?? null, nativeCurrency: evidence.nativeCurrency ?? null, nativeScale: evidence.nativeScale ?? null,
+    jurisdiction: evidence.jurisdiction, entityScope: evidence.entityScope,
     confidence: evidence.confidence, quote: evidence.quote, quoteLanguage: evidence.quoteLanguage ?? null,
+    quoteGloss: evidence.quoteGloss, sectionRef: evidence.sectionRef, sourceAttribution: evidence.sourceAttribution,
     quoteMatchMode: evidence.quoteMatchMode ?? null, filingUrl: evidence.filingUrl, accession: evidence.accession ?? null,
     tier: evidence.trustTier ?? (evidence.sourceKind === "xbrl" || evidence.sourceKind === "filing_text" ? 1
       : evidence.sourceKind === "press_release" ? 2 : evidence.sourceKind === "call" ? 3 : 4),

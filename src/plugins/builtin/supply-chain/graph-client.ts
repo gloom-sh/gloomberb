@@ -52,8 +52,10 @@ export function validateGraph(data: GraphPayload): GraphPayload {
       || !["score", "shortest"].includes(o.ranking) || ![o.roles, o.sources, o.tiers].every(Array.isArray)) throw 0;
     return { ...data, links: data.links.map(link => ({ ...link, evidence: link.evidence.map(item => {
       const row = normalizeSupplyRow(graphEvidenceRow(item));
-      return { ...item, trustTier: row.tier, quote: row.quote, pctOfRevenue: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope,
-        usd: row.usd, usdBasis: row.usdBasis, lastConfirmedAt: row.lastConfirmedAt, evidence: row.evidence };
+      return { ...item, trustTier: row.tier, quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss,
+        pctOfRevenue: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope,
+        usd: row.usd, usdBasis: row.usdBasis, nativeAmount: row.nativeAmount, nativeCurrency: row.nativeCurrency, nativeScale: row.nativeScale,
+        lastConfirmedAt: row.lastConfirmedAt, evidence: row.evidence };
     }) })) };
   } catch { throw new Error("The server returned an unreadable supply chain graph"); }
 }

@@ -35,7 +35,11 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
     reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, pct: item.pctOfRevenue ?? null,
     denominator: item.pctBasis ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
     pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, filed: item.filedDate, asOf: item.asOf,
-    confidence: item.confidence, quote: item.quote, filingUrl: item.filingUrl, evidence: item,
+    confidence: item.confidence, quote: item.quote, quoteLanguage: item.quoteLanguage, quoteGloss: item.quoteGloss ?? null,
+    quoteGlossKind: item.quoteGloss ? "machine_translation" : null, nativeAmount: item.nativeAmount ?? null,
+    nativeCurrency: item.nativeCurrency ?? null, nativeScale: item.nativeScale ?? null, jurisdiction: item.jurisdiction,
+    entityScope: item.entityScope ?? null, sectionRef: item.sectionRef ?? null, sourceAttribution: item.sourceAttribution ?? null,
+    filingUrl: item.filingUrl, evidence: item,
   }))) });
   const errors = data.search.reasons.map(reason => `Graph search incomplete: ${reason.replaceAll("_", " ")}`);
   if (data.access === "preview") errors.push("Gloom Pro is required for full graph depth and results");
@@ -53,7 +57,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
   argument: { kind: "ticker", description: "Company ticker, exchange-qualified ticker, or id:<entity-id>.", placeholder: "ticker" },
   discovery: { aliases: ["SPLC", "SUPPLY"], dataRequirements: ["Gloom Cloud relationship evidence (Pro with free preview)"],
     limitations: ["Filings, company announcements, earnings calls and news where evidence is available globally", "Japan filings await an API key and Taiwan report ingestion is disabled", "English glosses are machine translations, separate from original evidence", "Absence is not proof of no relationship",
-      "Pro: up to four hops; free preview: one hop and three results per section", "Reverse percentages belong to the reporting company",
+      "Table/Flow free preview: three relationships per role in each direction", "Pro: up to four hops; free graph preview: one hop and three results per section", "Reverse percentages belong to the reporting company",
       "Path rank scores are not probabilities; chained percentages are estimates", "Search limits and incomplete reasons accompany every graph report",
       "Unconfirmed leads are opt-in and excluded from flow and disclosed values", "Restricted publisher articles expose links only",
       "Table and Flow evidence tiers differ from Graph and Path evidence tiers"] },

@@ -169,9 +169,9 @@ test("graph selection collapses a branch and recenters an unlisted company throu
   await tui.emitKeypress({ name: "j" });
   await tui.emitKeypress({ name: "c" });
   const collapsed = await tui.waitForFrameToContain("+ Private supplier");
-  expect(collapsed).not.toContain("2 HOPS");
+  expect(collapsed).not.toContain("Tier two");
   await tui.emitKeypress({ name: "c" });
-  await tui.waitForFrameToContain("2 HOPS");
+  await tui.waitForFrameToContain("Tier two");
   await tui.emitKeypress({ name: "return" });
   await tui.renderFrames(3);
   expect(requests.some(url => url.includes("id%3A2/graph"))).toBe(true);
@@ -195,6 +195,30 @@ test("path evidence preserves every hop and opens the filter form without losing
   expect(await tui.waitForFrameToContain("Minimum disclosed percentage")).toContain("Apply filters");
   await tui.emitKeypress({ name: "escape" });
   await tui.waitForFrameToContain("ROUTE");
+});
+
+test("narrow path evidence retains native scale and scrolls through CJK quotes, glosses and attribution", async () => {
+  const data = graphPayload(); data.paths = [data.upstream[0]!.bestPath]; data.target = data.nodes[1]!; data.upstream = [];
+  // Synthetic contract fixture; the real global corpus determines which routes exist.
+  Object.assign(data.links[0]!.evidence[0]!, { nativeAmount: 315_813, nativeCurrency: "JPY", nativeScale: 1_000_000,
+    entityScope: "group", jurisdiction: "JP", sectionRef: "販売実績", quoteLanguage: "ja",
+    quote: "販売高には当該顧客と同一の企業集団に属する顧客に対する販売高を含めております。販売高には当該顧客と同一の企業集団に属する顧客に対する販売高を含めております。原文末尾。",
+    quoteGloss: "Sales include customers in the same corporate group. This translation is separate from the original quotation. End of translation.",
+    sourceAttribution: "EDINET PDL1.0; extracted data edited by Gloom." });
+  setCloudApiFetchTransport(async () => Response.json(data));
+  await mount(80, 26, "path", "says", undefined, { to: "2" });
+  await tui.waitForFrameToContain("ROUTE");
+  await tui.emitKeypress({ name: "return" });
+  const initial = await tui.waitForFrameToContain("315,813 JPY million");
+  expect(initial).toContain("Corporate group");
+  expect(initial).toContain("販売実績");
+  expect(initial).not.toContain("$315,813");
+  await tui.emitKeypress({ name: "end" });
+  const end = await tui.waitForFrameToContain("EDINET PDL1.0");
+  expect(end).toContain("原文末尾。");
+  expect(end).toContain("End of translation.");
+  expect(end).toContain("English gloss · machine translation");
+  expect(end).toContain("Open source filing");
 });
 
 test("graph paging keys reach companies outside the first layer page", async () => {
@@ -224,5 +248,5 @@ test("a narrow graph reveals keyboard-selected nodes outside its initial horizon
   await tui.waitForFrameToContain("FOCUS");
   await tui.emitKeypress({ name: "j" });
   await tui.emitKeypress({ name: "k" });
-  expect(await tui.waitForFrameToContain("LEFTMOST")).toContain("2 HOPS");
+  expect(await tui.waitForFrameToContain("LEFTMOST")).toContain("2H · supplier");
 });

@@ -7,7 +7,7 @@ export interface GraphOptions {
   minPct: number; minConfidence: number; limit: number; ranking: "score" | "shortest"; asOf?: string;
 }
 export const DEFAULT_GRAPH_OPTIONS: GraphOptions = { depth: 2, direction: "both", roles: [], sources: [], tiers: [], minPct: 0, minConfidence: 0, limit: 50, ranking: "score" };
-export interface GraphEvidence extends Pick<SupplyRow, "claimType" | "corroboration" | "leadStatus" | "firstSeenAt" | "lastSeenAt" | "lastConfirmedAt" | "whyUnconfirmed" | "evidence"> {
+export interface GraphEvidence extends Pick<SupplyRow, "claimType" | "corroboration" | "leadStatus" | "firstSeenAt" | "lastSeenAt" | "lastConfirmedAt" | "whyUnconfirmed" | "evidence" | "nativeAmount" | "nativeCurrency" | "nativeScale" | "entityScope" | "quoteGloss" | "sectionRef" | "sourceAttribution"> {
   /** Source trust tier, distinct from the graph evidence class in tier. */
   trustTier?: SupplyTier;
   id: string; fromEntity: string; toEntity: string; reportingEntity: string;
@@ -16,7 +16,7 @@ export interface GraphEvidence extends Pick<SupplyRow, "claimType" | "corroborat
   jurisdiction: string; filingUrl: string; accession?: string | null; documentId?: string | null;
   form?: string | null; filedDate?: string | null; period: string; fiscalYear?: string | null; asOf: string;
   pctOfRevenue?: number | null; pctBasis?: SupplyRow["pctBasis"]; pctScope?: string | null;
-  usd?: number | null; usdBasis?: SupplyRow["usdBasis"]; nativeAmount?: number | null; nativeCurrency?: string | null;
+  usd?: number | null; usdBasis?: SupplyRow["usdBasis"];
   confidence: number; quote: string; quoteLanguage?: string | null; quoteMatchMode?: SupplyRow["quoteMatchMode"];
 }
 interface GraphLink {

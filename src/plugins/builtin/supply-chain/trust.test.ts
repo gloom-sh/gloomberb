@@ -110,7 +110,7 @@ test("headless and screenshot boundaries retain public provenance and separate o
   expect(result.sections[1]?.rows?.[0]?.evidence).toEqual([{ ...evidence(), quote: null, englishGloss: null }]);
   const rendered = { kind: "supply-chain", version: 1, complete: true, plottedValueCount: 2, payload: data, tab: "table", view: "says", rowIds: ["confirmed", "lead"], evidenceId: "lead", tiers: ["sec", "unconfirmed"] };
   const screenshot = supplyScreenshotEvidence.read(rendered);
-  expect(screenshot?.payload.says[1]).toMatchObject({ quoteGloss: null, nativeAmount: null, nativeCurrency: null, nativeScale: null });
+  expect(screenshot && "says" in screenshot.payload ? screenshot.payload.says[1] : undefined).toMatchObject({ quoteGloss: null, nativeAmount: null, nativeCurrency: null, nativeScale: null });
   expect(JSON.stringify(screenshot)).not.toContain("Private");
   expect(supplyScreenshotEvidence.read({ ...rendered, tab: "flow" })).toBeNull();
 });
@@ -123,14 +123,14 @@ test("graph trust stays separate from evidence class and restricted sources cann
     const data = graphPayload();
     const disclosure = data.links[0]!.evidence[0]!;
     Object.assign(disclosure, { sourceKind: "press_release", trustTier: 2, leadStatus: "verified", claimType: "company_confirmed",
-      quote: "Private source quote", pctOfRevenue: 95, pctBasis: "revenue", evidence: [item] });
+      quote: "Private source quote", quoteGloss: "Private row translation", pctOfRevenue: 95, pctBasis: "revenue", evidence: [item] });
     // A company statement cannot contribute a disclosed filing percentage to an exposure chain.
     expect(() => validateGraph(data)).toThrow("unreadable");
     for (const reach of data.upstream) { reach.bestPath.exposure = null; reach.shortestPath.exposure = null; }
     setCloudApiFetchTransport(async () => Response.json(data));
     const options = graphOptions({ sources: "press_release", tiers: "primary" });
     const loaded = await loadGraph("FOCUS", "", options, "alice:full", true);
-    expect(loaded.payload.links[0]!.evidence[0]).toMatchObject({ tier: "primary", trustTier: 2, quote: "", pctOfRevenue: null,
+    expect(loaded.payload.links[0]!.evidence[0]).toMatchObject({ tier: "primary", trustTier: 2, quote: "", quoteGloss: null, pctOfRevenue: null,
       evidence: [{ ...item, quote: null, englishGloss: null }] });
     expect(shareParts(graphEvidenceRow(loaded.payload.links[0]!.evidence[0]!))).toBeNull();
     const screenshot = supplyScreenshotEvidence.read({ kind: "supply-chain", version: 1, complete: true, payload: data,
@@ -140,6 +140,7 @@ test("graph trust stays separate from evidence class and restricted sources cann
       expect(boundary).not.toBeNull();
       expect(JSON.stringify(boundary)).not.toContain("Private source quote");
       expect(JSON.stringify(boundary)).not.toContain("Private translated quote");
+      expect(JSON.stringify(boundary)).not.toContain("Private row translation");
     }
     expect(loaded.payload.links[0]!.evidence[0]!.evidence?.[0]?.value).toBe(item.value);
     const emptyQuote = structuredClone(data); emptyQuote.links[0]!.evidence[0]!.quote = "";

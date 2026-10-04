@@ -17,7 +17,7 @@ import { cachedGraph, graphOptions, loadGraph, validateGraph } from "./graph-cli
 import { entityKey, entityLabel, exposureLabel, pathLabel } from "./graph-model";
 import { SupplyGraph } from "./graph";
 import { graphEvidenceRow } from "./graph-evidence";
-import { ROLE_COLORS, roleLabel, shareParts } from "./model";
+import { disclosedValue, dollars, nativeValue, ROLE_COLORS, roleLabel, shareParts } from "./model";
 import { SupplySources, SupplyVerification } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, trustTier } from "./trust";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
@@ -81,12 +81,14 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
         {link.evidence.map(evidence => {
           const row = graphEvidenceRow(evidence);
           const share = shareParts(row, undefined, { includeReporter: true });
+          const native = nativeValue(row);
           return <Box key={evidence.id} flexDirection="column" paddingBottom={1}>
             <Box flexDirection="row" gap={1}><Badge tone={isUnconfirmed(row) ? "neutral" : "accent"} label={evidenceLabel(row)} />
               {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
             <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${roleLabel(evidence.role)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
             <KeyValueRow label="Evidence class" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
             <KeyValueRow label="Period" value={evidence.period} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? "--"}` : `published ${evidenceDate(row)}`} labelWidth={20} />
+            {row.entityScope === "group" && !row.counterparty.aggregate ? <KeyValueRow label="Metric scope" value="Corporate group" labelWidth={20} /> : null}
             <SupplyVerification row={row} />
             {share ? <>
               <Box flexDirection="row" gap={1}>
@@ -95,7 +97,8 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
               </Box>
               <KeyValueRow label="Share basis" value={share.basis} labelWidth={20} />
             </> : null}
-            {evidence.nativeAmount != null ? <KeyValueRow label="Disclosed value" value={`${evidence.nativeAmount.toLocaleString()} ${evidence.nativeCurrency ?? ""}`} labelWidth={20} /> : null}
+            {native || row.usd !== null ? <KeyValueRow label="Disclosed value" value={disclosedValue(row)} labelWidth={20} /> : null}
+            {native && row.usd !== null ? <KeyValueRow label="USD amount" value={dollars(row)} labelWidth={20} /> : null}
             <SupplySources row={row} width={width} onOpenSource={url => void host.openExternal(url)} />
           </Box>;
         })}

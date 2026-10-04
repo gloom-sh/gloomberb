@@ -5,6 +5,7 @@ import { capabilityPaneSettings, getPaneFunctionCapability, normalizeCapabilityO
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { HeadlessPaneContext, PaneDef } from "../../../types/plugin";
 import { graphOptions, validateGraph } from "./graph-client";
+import { graphEvidenceRow } from "./graph-evidence";
 import { supplyScreenshotEvidence } from "./evidence";
 import { supplyChainHeadless } from "./headless";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
@@ -147,4 +148,31 @@ test("headless reports keep original evidence and unconverted native units with 
   const result = await supplyChainHeadless.load(createTestHeadlessArgs({ symbols: ["6857.T"] }), context);
   expect(result.sections[0]?.rows?.[0]).toMatchObject({ nativeAmount: 228_273, nativeCurrency: "JPY", nativeScale: 1_000_000, usd: null,
     quote: row.quote, quoteLanguage: "ja", quoteGloss: row.quoteGloss, quoteGlossKind: "machine_translation", jurisdiction: "JP", entityScope: "entity", sectionRef: "販売実績", filingUrl: row.filingUrl });
+});
+
+test("graph boundaries preserve global filing scale and provenance and reject uninterpretable native amounts", async () => {
+  const payload = graphPayload();
+  // Synthetic contract fixture: these amounts are not a claim about a real route.
+  const global = { nativeAmount: 315_813, nativeCurrency: "JPY", nativeScale: 1_000_000,
+    quote: "販売高には企業集団に属する顧客に対する販売高を含めております。", quoteLanguage: "ja",
+    quoteGloss: "Sales include customers in the same corporate group.", jurisdiction: "JP", entityScope: "group" as const,
+    sectionRef: "販売実績", sourceAttribution: "EDINET PDL1.0; extracted data edited by Gloom." };
+  const disclosure = payload.links[0]!.evidence[0]!;
+  Object.assign(disclosure, global);
+  disclosure.reporter.identifiers = { edinet: "E00001", tickers: [{ ticker: "8035", exchange: "TSE" }] };
+  expect(graphEvidenceRow(disclosure)).toMatchObject(global);
+  const normalized = validateGraph(payload);
+  expect(normalized.links[0]!.evidence[0]).toMatchObject(global);
+  expect(normalized.links[0]!.evidence[0]!.reporter.identifiers).toEqual(disclosure.reporter.identifiers);
+  expect(validateGraph(normalized)).toEqual(normalized);
+  const report = await supplyChainHeadless.load(args({ tab: "graph" }), context(payload, []));
+  expect(report.sections[3]!.rows![0]).toMatchObject({ ...global, quoteGlossKind: "machine_translation" });
+  const screenshot = supplyScreenshotEvidence.read({ kind: "supply-chain", version: 1, complete: true, payload,
+    tab: "graph", plottedValueCount: 2, rowIds: payload.links.map(link => link.id) });
+  expect(screenshot?.payload).toEqual(normalized);
+  for (const invalid of [{ nativeScale: null }, { nativeScale: 0 }, { nativeScale: Infinity }, { nativeAmount: -1 },
+    { nativeAmount: Number.MAX_VALUE, nativeScale: 2 }, { nativeCurrency: "yen" }, { jurisdiction: "Japan" }, { entityScope: "parent" }]) {
+    const malformed = structuredClone(payload); Object.assign(malformed.links[0]!.evidence[0]!, invalid);
+    expect(() => validateGraph(malformed)).toThrow("unreadable");
+  }
 });
