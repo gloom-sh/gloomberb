@@ -34,7 +34,7 @@ Allowed actions are `des`, `chart`, `quote`, `option_chain` and `watchlist_add`.
 
 There is no persistent ticker event log. At most 100 distinct ticker/action pairs wait in memory, with duplicates collapsed. The app attempts one batch after 60 seconds. A batch older than two minutes or belonging to an earlier UTC hour is dropped; offline failures and server refusals are never retried. The client does not use unload beacons or a keepalive request to prolong collection after closing.
 
-Turning consent off synchronously erases the queue, invalidates pending asynchronous ticker opens and aborts an in-flight request where the transport supports it. An already transmitted request cannot be recalled. In particular, the desktop's existing RPC transport cannot withdraw a request already handed to its native process; that request has a five-second deadline. Published anonymous totals cannot be attributed back to an account for subtraction.
+Turning consent off synchronously erases the queue, invalidates pending asynchronous ticker opens and aborts an in-flight request where the transport supports it. An already transmitted request cannot be recalled. In particular, the desktop's existing RPC transport cannot withdraw a request already handed to its native process; that request has a five-second deadline. Published aggregate totals cannot be attributed back to an account for subtraction.
 
 ## Server controls and publication
 
@@ -44,7 +44,7 @@ The server counts at most one contribution per account, ticker and UTC hour, cap
 
 Staging expires after six hours by default, with a maximum of 24 hours. Finalization deletes its staging rows atomically, including suppressed buckets; expiry cleanup continues even when collection or publication is disabled. Staging must be excluded from logical backups. Unlogged staging is excluded from PostgreSQL WAL replication.
 
-The public dataset contains no contributor identifier or digest. A ticker/hour is only released at least one hour after the bucket closes, with at least 20 distinct contributors. Both the lag and threshold can be raised. Counts are rounded down to multiples of five, without random noise. Published hourly releases are immutable. Action-level breakdowns and small buckets are not released. Published totals are research attention among contributors, not all Gloom users, holdings, orders or investment intent.
+The public dataset contains no contributor identifier or digest. A ticker/hour is only released at least one hour after the bucket closes, with at least 20 distinct contributors. Both the lag and threshold can be raised. Counts are rounded down to multiples of five, without random noise. Published hourly releases are immutable. Hourly counts are retained for 35 days while the cleanup worker operates; a small permanent finalization record prevents an expired hour from being republished. Unreferenced listing metadata versions are removed with retention cleanup. Action-level breakdowns and small buckets are not released. Published totals are research attention among contributors, not all Gloom users, holdings, orders or investment intent.
 
 See the platform PR's privacy review for the exact ephemeral deduplication scheme, retention and operational switches. The accompanying policy wording is a separate reviewed diff; collection remains disabled pending owner review and rollout.
 
