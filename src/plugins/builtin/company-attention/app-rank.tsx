@@ -27,7 +27,8 @@ export function AppRankView({ focus, accessKey, width, height, focused }: { focu
   const host = useRendererHost();
   const upgrade = useCloudUpgradeAction("apps-history");
   const key = `${focus.store}:${focus.appId}:${focus.country}:${focus.chart}`;
-  const [days, setDays] = usePluginPaneState<string>(`apps-rank:${key}:days`, "90");
+  const [openingDays] = usePaneSettingValue<string>("days", "90");
+  const [days, setDays] = usePluginPaneState<string>(`apps-rank:${key}:days`, String(openingDays));
   const [openingTab] = usePaneSettingValue<string>("tab", "chart");
   const [tab, setTab] = usePluginPaneState<string>(`apps-rank:${key}:tab`, openingTab === "evidence" ? "evidence" : "chart");
   const [selectedId, setSelected] = usePluginPaneState<string | null>(`apps-rank:${key}:selected`, null);
@@ -49,7 +50,7 @@ export function AppRankView({ focus, accessKey, width, height, focused }: { focu
   const series = useMemo(() => attentionSeries({ chart: { label: `${focus.name} rank`, unit: "rank", points: points.map((point) => ({ date: point.date, value: point.rank })) } }, colors.textBright), [points, focus.name, colors.textBright]);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: [{ value: "chart", label: "Chart" }, { value: "evidence", label: "Evidence" }], activeValue: tab, onSelect: setTab, focused, dense: true, queryBarWidth: width });
   usePaneRefreshKey(() => { void resource.reload(); pages.reload(); }, { focused });
-  usePaneStatusFooter({ registrationId: `apps-rank:${key}`, loading: resource.loading || pages.loadingMore, error: resource.error ?? pages.moreError?.message, stale: resource.data?.stale,
+  usePaneStatusFooter({ registrationId: `apps-rank:${key}`, loading: resource.loading || pages.loadingMore, error: resource.error ?? resource.data?.refreshError ?? pages.moreError?.message ?? pages.error?.message, stale: resource.data?.stale,
     info: [...(points[0] ? [{ id: "observed", parts: [{ text: `as of ${points[0].observedAt.slice(0, 10)}`, tone: "muted" as const }] }] : []), ...(data?.access === "preview" ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : [])],
     hints: [...(selected ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(selected.sourceUrl) }] : []), ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : [])] });
   const tableColumns = tab === "evidence" ? [...columns, { id: "present", label: "In chart", width: 10, align: "left" as const }, { id: "sourceUpdatedAt", label: "Published (UTC)", width: 22, align: "left" as const }, { id: "revisionId", label: "Revision", width: 30, align: "left" as const }] : columns;
@@ -62,7 +63,7 @@ export function AppRankView({ focus, accessKey, width, height, focused }: { focu
         rootBefore={<ChartTableHeader width={width} height={height - tabRows} tableRows={points.length} tableColumns={tableColumns}
           query={<QueryBar width={width} meta={`${focus.country} · ${focus.chart}`} filters={[{ id: "days", label: "Window", value: days, options: ["30", "90", "365", "730"].map((value) => ({ value, label: `${value}D` })), onChange: setDays }]} />}
           figures={points[0] ? [{ label: "Rank", value: count(points[0].rank) }, { label: "Rating", value: points[0].rating?.toFixed(2) ?? "--", detail: "/ 5" }, { label: "Ratings", value: count(points[0].ratingCount) }] : []}
-          chart={tab === "chart" ? { series, ...selection, formatValue: (value) => `#${count(value)}`, empty: series.length ? undefined : "Collecting rank history", remoteKind: "app-rank-history" } : null} />}
+          chart={tab === "chart" ? { series, ...selection, formatValue: (value) => `#${count(value)}`, empty: series.length ? undefined : focus.chart === "unranked" ? "Rank unavailable for this source" : "Collecting rank history", remoteKind: "app-rank-history" } : null} />}
         renderCell={(point, column) => { const value = point[column.id as keyof Point]; return { text: value == null ? "--" : column.id === "rating" ? Number(value).toFixed(2) : typeof value === "number" ? count(value) : String(value), value: typeof value === "boolean" ? String(value) : value }; }}
         emptyStateTitle="No observations for this app and chart yet." selectedTextOverridesCellColor showHorizontalScrollbar />
     </PaneStatusBody>

@@ -2,7 +2,7 @@
 
 `HIRE` opens the covered-company hiring board; `HIRE NET` opens a company. `APPS` opens public app rankings; `APPS META` narrows them to a listed parent. Non-US tickers retain the exchange, for example `APPS 0700:HKEX`. Both functions also appear in the company research pane. They are Pro datasets, with latest values and three rows per section available as a free preview.
 
-Enter opens a company or an individual app’s rank history for the exact store, country and chart. Within APPS, **C** opens the listed parent. **E** opens evidence, **O** opens the primary source, and **D**, **F** and **G** open description, financials and the price chart. **A** switches between hiring and app attention for the selected company. Every table supports sorting and CSV export. The screen `EQS` includes hiring open roles, weekly net adds, remote percentage and z-score, plus app attention score, rank velocity, rating drift and rating-count growth.
+Enter opens a company or an individual app’s rank history for the exact store, country and chart. Within APPS, **C** opens the listed parent. **E** opens evidence, **O** opens the primary source, and **D**, **F** and **G** open description, financials and the price chart. **A** switches between hiring and app attention for the selected company. Research tables support sorting and CSV export; individual app histories retain reverse date order. The screen `EQS` includes hiring open roles, weekly net adds, remote percentage and z-score, plus app attention score, rank velocity, rating drift and rating-count growth.
 
 ## Hiring
 

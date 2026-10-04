@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import type { HiringPayload } from "../../../api-client/hiring";
-import type { AppAttentionPayload } from "../../../api-client/app-attention";
+import type { AppAttentionPayload, AppRankPayload } from "../../../api-client/app-attention";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -98,16 +98,24 @@ test("app rank history rejects a different country/chart and retains missing wri
 
 test("individual-app headless forwards the exact cohort, window and continuation with provenance", async () => {
   const calls: unknown[][] = [];
-  const payload = structuredClone(realAppRank);
+  const payload = structuredClone(realAppRank) as AppRankPayload;
   payload.page = { offset: 20, limit: 20, total: 80, nextOffset: 40 };
   const api = { getCloudAppRankHistory: async (...args: unknown[]) => { calls.push(args); return payload; } };
   const context = createTestHeadlessContext({ apiClient: api as never });
   const definition = attentionHeadless("apps");
   expect(definition.options?.find((option) => option.key === "appId")?.aliases).toContain("app-id");
-  const report = await definition.load(createTestHeadlessArgs({ options: { appId: "6446901002", store: "app-store", country: "US", chart: "free", days: "365", limit: "20", offset: "20" } }), context);
+  const report = await definition.load(createTestHeadlessArgs({ options: { appId: "6446901002", store: "app-store", country: "us", chart: "free", days: "365", limit: "20", offset: "20" } }), context);
   expect(calls).toEqual([["app-store", "6446901002", { country: "US", chart: "free", days: 365, offset: 20, limit: 20 }, context.signal]]);
   expect(report.complete).toBe(false);
   expect(report.sections[0]!.rows).toEqual(payload.rankHistory);
   expect(report.metadata?.nextOffset).toBe(40);
   expect(report.metadata?.provenance).toEqual(payload);
+});
+
+test("individual Play app history defaults to its unranked global source", async () => {
+  const calls: unknown[][] = [];
+  const payload: AppRankPayload = { ...structuredClone(realAppRank) as AppRankPayload, store: "google-play", appId: "com.instagram.barcelona", rankHistory: [] };
+  const context = createTestHeadlessContext({ apiClient: { getCloudAppRankHistory: async (...args: unknown[]) => { calls.push(args); return payload; } } as never });
+  await attentionHeadless("apps").load(createTestHeadlessArgs({ options: { appId: "com.instagram.barcelona", store: "google-play" } }), context);
+  expect(calls).toEqual([["google-play", "com.instagram.barcelona", { country: "GLOBAL", chart: "unranked", days: 90, offset: 0, limit: 100 }, context.signal]]);
 });

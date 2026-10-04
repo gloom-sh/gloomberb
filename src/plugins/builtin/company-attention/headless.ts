@@ -26,7 +26,8 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
     describe: (args) => `${kind === "hiring" ? "Hiring momentum" : "App attention"}${args.symbols[0] ? ` | ${args.symbols[0]}` : ""}`,
     async load(args, ctx) {
       if (kind === "apps" && typeof args.options.appId === "string" && args.options.appId) {
-        const rank = await fetchAppRank({ store: args.options.store === "google-play" ? "google-play" : "app-store", appId: args.options.appId, name: args.options.appId, country: String(args.options.country || "US"), chart: (args.options.chart || "free") as AppChart }, Number(args.options.days) || 90, Number(args.options.offset) || 0, ctx.signal, ctx.apiClient, Number(args.options.limit) || 100);
+        const store = args.options.store === "google-play" ? "google-play" : "app-store";
+        const rank = await fetchAppRank({ store, appId: args.options.appId, name: args.options.appId, country: String(args.options.country || (store === "google-play" ? "GLOBAL" : "US")).toUpperCase(), chart: (args.options.chart || (store === "google-play" ? "unranked" : "free")) as AppChart }, Number(args.options.days) || 90, Number(args.options.offset) || 0, ctx.signal, ctx.apiClient, Number(args.options.limit) || 100);
         return { complete: rank.access === "pro" && rank.page.nextOffset === null, sections: [{ title: "App rank history", rows: rank.rankHistory }], metadata: { nextOffset: rank.page.nextOffset, preview: rank.access === "preview", lockedRows: rank.locked, provenance: rank } };
       }
       const data = await fetchAttention(kind, args.symbols[0], { limit: Number(args.options.limit) || 100, offset: Number(args.options.offset) || 0, ...(typeof args.options.country === "string" ? { country: args.options.country } : {}), ...(typeof args.options.chart === "string" ? { chart: args.options.chart as AppChart } : {}), days: Number(args.options.days) || 90 }, ctx.apiClient);

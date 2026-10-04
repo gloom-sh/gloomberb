@@ -9,7 +9,9 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { attentionCache } from "./client";
 import { HiringPane } from "./pane";
+import { AppRankView } from "./app-rank";
 import realHiring from "./fixtures/hiring.json";
+import realAppRank from "./fixtures/app-rank.json";
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => { setCloudApiFetchTransport(null); attentionCache.reset(); });
@@ -37,4 +39,18 @@ test("evidence opens in the stack, keeps original title, and DES preserves the n
   await tui.waitForFrameToContain("SENIORITY");
   await tui.emitKeypress({ name: "d" });
   expect(navigations).toEqual([["new-ticker-detail-pane", "ADYEN:AMS"]]);
+});
+
+test("individual app history opens with the requested window", async () => {
+  const id = "apps:window:test";
+  const state = createInitialState(createTestPaneConfig("/tmp/apps-window-test", { paneId: "apps", instanceId: id, settings: { days: "365", appRankSnapshot: realAppRank } }));
+  const focus = { store: "app-store" as const, appId: "6446901002", name: "Threads", country: "US", chart: "free" as const };
+  function Harness() {
+    const [current, dispatch] = useReducer(appReducer, state);
+    return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+      <AppRankView focus={focus} accessKey="window-test" width={100} height={22} focused />
+    </TestPaneProvider>;
+  }
+  await act(async () => { await tui.render(<Harness />, { width: 100, height: 22 }); });
+  expect(await tui.waitForFrameToContain("365D")).toContain("US");
 });

@@ -41,12 +41,12 @@ export function AppsPane(props: Size) {
   const { symbol } = usePaneTickerIdentity();
   const [appId] = usePaneSettingValue<string>("appId", "");
   const [store] = usePaneSettingValue<string>("store", "app-store");
-  const [country] = usePaneSettingValue<string>("country", "US");
-  const [chart] = usePaneSettingValue<string>("chart", "free");
+  const [country] = usePaneSettingValue<string>("country", "");
+  const [chart] = usePaneSettingValue<string>("chart", "");
   const [name] = usePaneSettingValue<string>("appRankName", appId);
   const session = useResearchCloudSession();
   const access = usePlanAccess();
-  const focus = useMemo(() => ({ appId, name, country: country || "US", chart: (chart || "free") as AppChart, store: store === "google-play" ? "google-play" as const : "app-store" as const }), [appId, name, country, chart, store]);
+  const focus = useMemo(() => ({ appId, name, country: (country || (store === "google-play" ? "GLOBAL" : "US")).toUpperCase(), chart: (chart || (store === "google-play" ? "unranked" : "free")) as AppChart, store: store === "google-play" ? "google-play" as const : "app-store" as const }), [appId, name, country, chart, store]);
   if (appId) return <AppRankView {...props} focus={focus} accessKey={`${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`} />;
   return <AttentionView key={symbol ?? "board"} {...props} kind="apps" symbol={symbol ?? undefined} />;
 }
