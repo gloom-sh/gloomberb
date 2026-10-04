@@ -1,3 +1,4 @@
+import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, ScrollBox, type ScrollBoxRenderable } from "../../../ui";
 import {
@@ -242,6 +243,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     colors = useThemeColors();
   const identity = listingIdentity(boundSymbol, ticker?.metadata.exchange ?? "");
   const symbol = identity?.symbol ?? null;
+  useCompanyDisclosureLinks(boundSymbol);
   const exchange = canonicalExchange(identity?.exchange ?? "");
   const loader = useCallback(
     (force: boolean) => loadEstimates(symbol!, exchange, force),

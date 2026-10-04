@@ -2,6 +2,8 @@ import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringPayload } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
 import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
+import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
+import { companyDisclosurePath } from "./company-kpis";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -432,6 +434,14 @@ export class CloudDataApi {
 
   async getCloudCatalystStatus(): Promise<CatalystStatus> {
     return this.request<CatalystStatus>("/cloud/catalysts/status");
+  }
+
+  async getCloudCompanyKpis(symbol: string, options: KpiQueryOptions = {}): Promise<KpisPayload> {
+    return this.request<KpisPayload>(companyDisclosurePath("kpis", symbol, options));
+  }
+
+  async getCloudCompanyGuidance(symbol: string, options: KpiQueryOptions = {}): Promise<GuidancePayload> {
+    return this.request<GuidancePayload>(companyDisclosurePath("guidance", symbol, options));
   }
 
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {

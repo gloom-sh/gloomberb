@@ -888,3 +888,7 @@ licensed sources behind the platform cannot support them honestly:
 ## Credit documents (CRDOC / COVN)
 
 Contract terms and revisions retain literal filing quotes, character spans, confidence and reporting dates. Headroom requires matching financial definitions and borrower scope; absent adjustments or stale financials withhold it. Contractual calendar-year maturities retain their native currencies, separate from DDIS fiscal buckets. This is a Pro dataset with evidence-bearing previews. See [credit documents](credit-documents.md) for methodology, coverage and screening limitations.
+
+## Company operating metrics and guidance (KPIS, GUIDE)
+
+[Company KPIs and management guidance](company-kpis.md) covers the canonical dictionary, native currencies and fiscal periods, evidence, immutable revisions, range semantics and actual matching. These Pro functions provide a fixed latest preview on Free and complete stored history on Pro. `GUID`, `EM`, `EE` and `ERN` link to them from their pane menus.
