@@ -156,7 +156,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     { id: "basis", label: "Basis", width: width < 115 ? 12 : 15, align: "left" },
     { id: "exposure", label: concentration ? "Gross exp. %" : "Exposure %", width: 16, align: "right" },
     // What the number rests on, in words: disclosed by the company, estimated by a chain, or not visible.
-    { id: "classification", label: "Evidence", width: 18, align: "left" },
+    { id: "classification", label: "Evidence", width: 20, align: "left" },
     { id: "impact", label: concentration ? "Signed exp. %" : "Stress est. %", width: 16, align: "right" },
     { id: "period", label: "Period", width: 12, align: "left" },
     { id: "weight", label: tab === "portfolio" ? concentration ? "Gross wt. %" : "Covered wt. %" : "NAV wt. %", width: 13, align: "right" },

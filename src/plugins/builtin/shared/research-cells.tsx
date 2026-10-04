@@ -58,6 +58,26 @@ export function shareCell(text: string, ratio: number | null, width: number, col
   </Box> };
 }
 
+/**
+ * Parts of a whole as one bar, strongest part first. The desktop uses the kit
+ * bar; terminal cells step down from solid to light shade, so neighbouring
+ * rows read as separate bars rather than one block.
+ */
+export function PartsBar({ parts, width, desktop }: { parts: Array<{ id: string; value: number; color: string }>; width: number; desktop: boolean }) {
+  if (desktop) return <Box width={width} height={1} alignItems="center"><SplitBar width={width} parts={parts} /></Box>;
+  const total = parts.reduce((sum, part) => sum + Math.max(0, part.value), 0);
+  if (!(total > 0) || width <= 0) return <Text>{""}</Text>;
+  const glyphs = ["█", "▓", "▒", "░"];
+  let used = 0;
+  return <Box flexDirection="row" width={width} height={1} overflow="hidden">
+    {parts.map((part, index) => {
+      const cells = index === parts.length - 1 ? Math.max(0, width - used) : Math.round(Math.max(0, part.value) / total * width);
+      used += cells;
+      return part.value > 0 && cells > 0 ? <Text key={part.id} fg={part.color}>{(glyphs[index] ?? "░").repeat(cells)}</Text> : null;
+    })}
+  </Box>;
+}
+
 /** A state word in its tone: the same status reads the same in every pane. */
 export type StateTone = "positive" | "negative" | "warning" | "accent" | "muted" | "text";
 export function toneColor(tone: StateTone, colors: ThemeColors): string {

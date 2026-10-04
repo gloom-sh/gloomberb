@@ -18,9 +18,8 @@ import { loadPowerBoard, loadPowerHistory, validatePowerBoard, validatePowerHist
 import { usePowerEvidence } from "./evidence";
 import { POWER_SORT_COLUMNS, powerQuery } from "./query";
 import { PowerDetailView } from "./detail";
-import { SplitBar } from "../../../components/ui/split-bar";
 import { blendHex } from "../../../theme/colors";
-import { missingCell, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
+import { missingCell, PartsBar, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
 import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, projectRows, titleCase, type PowerRow } from "./model";
 
 const rowId = (r: PowerRow) => r.id;
@@ -168,12 +167,12 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
     if (row.locked) return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === columns[0]!.id ? "Additional records" : "Hidden"}</Text></Blurred> }
       : column.id === columns[0]!.id && row.id === "locked:0" ? { text: "Unlock with Pro", content: <UpgradeLabel text="Unlock with Pro" onPress={upgrade} role="power-upgrade" />, onMouseDown: upgrade } : { text: "░░░░", color: colors.textDim };
     // How a cohort ended and how far a utility's large loads got, as parts of one bar.
-    if (column.id === "outcome" && row.rate) return { text: "", content: <Box width={column.width} height={1} alignItems="center"><SplitBar width={column.width} parts={[
+    if (column.id === "outcome" && row.rate) return { text: "", content: <PartsBar width={column.width} desktop={desktop} parts={[
       { id: "completed", value: row.rate.completed, color: colors.positive }, { id: "active", value: row.rate.active, color: blendHex(colors.bg, colors.borderFocused, 0.55) },
-      { id: "withdrawn", value: row.rate.withdrawn, color: blendHex(colors.bg, colors.textDim, 0.45) }, { id: "other", value: row.rate.unknown, color: blendHex(colors.bg, colors.textDim, 0.25) }]} /></Box> };
-    if (column.id === "pipeline" && row.exposure) { const e = row.exposure; return { text: "", content: <Box width={column.width} height={1} alignItems="center"><SplitBar width={column.width} parts={[
+      { id: "withdrawn", value: row.rate.withdrawn, color: blendHex(colors.bg, colors.textDim, 0.45) }, { id: "other", value: row.rate.unknown, color: blendHex(colors.bg, colors.textDim, 0.25) }]} /> };
+    if (column.id === "pipeline" && row.exposure) { const e = row.exposure; return { text: "", content: <PartsBar width={column.width} desktop={desktop} parts={[
       { id: "operating", value: e.operatingMw, color: colors.positive }, { id: "approved", value: Math.max(0, e.approvedMw - e.operatingMw), color: blendHex(colors.bg, colors.borderFocused, 0.55) },
-      { id: "requested", value: Math.max(0, e.requestedMw - Math.max(e.approvedMw, e.operatingMw)), color: blendHex(colors.bg, colors.textDim, 0.4) }]} /></Box> }; }
+      { id: "requested", value: Math.max(0, e.requestedMw - Math.max(e.approvedMw, e.operatingMw)), color: blendHex(colors.bg, colors.textDim, 0.4) }]} /> }; }
     const value = row.cells[column.id];
     if (value == null || value === "") return missingCell(colors);
     const text = typeof value === "number" ? /Rate$/.test(column.id) ? powerPercent(value) : powerNumber(value) : String(value);
