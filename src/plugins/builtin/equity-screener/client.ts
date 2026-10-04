@@ -19,7 +19,7 @@ const savedPath = (id: string) => `saved/${encodeURIComponent(id)}`;
 export const screenerApi = {
   query: (query: ScreenQuery, signal?: AbortSignal, client: ScreenerClient = apiClient) =>
     client.equityScreener<ScreenPayload>("query", json("POST", query, { signal })),
-  fields: (signal?: AbortSignal) => apiClient.equityScreener<ScreenFieldsResponse>("fields?include=social,research,attention", { signal }),
+  fields: (signal?: AbortSignal) => apiClient.equityScreener<ScreenFieldsResponse>("fields?include=social,research,hiring-apps", { signal }),
   export: (definition: ScreenDefinition, snapshotId: string) =>
     apiClient.equityScreener<ScreenExportResponse>("export", json("POST", { ...definition, snapshotId }, { headers: { Accept: "application/json" } })),
   saved: async () => (await apiClient.equityScreener<{ screens: SavedScreen[] }>("saved")).screens,
