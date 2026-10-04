@@ -2,7 +2,8 @@ import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { CreditDocumentsPayload, CreditHeadroom, CreditInstrument, CreditScreenPayload, CreditScreenRow } from "../../../api-client/credit-documents";
-import { ChartTableHeader, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type PaneHint } from "../../../components";
+import { ChartTableHeader, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
+import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -16,10 +17,14 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { cachedCredit, creditIssuerSymbol, CREDIT_UNAVAILABLE, fetchCreditScreen, loadCredit, validateCreditDocuments } from "./client";
 import { CreditInstrumentDetail } from "./detail";
 import { useCreditEvidence } from "./evidence";
-import { CAPITAL_COLUMNS, capitalCell, COVENANT_COLUMNS, CREDIT_TABS, creditAmount, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, MATURITY_COLUMNS, maturityAxis, maturitySeries, SCREEN_COLUMNS, screenRowId } from "./model";
+import { HeadroomGauge } from "./gauge";
+import { capitalCell, capitalColumns, capitalFigures, comparatorSymbol, covenantColumns, covenantUsage, CREDIT_TABS, creditAmount, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, headroomTone, instrumentOutstanding, isClosed, maturityAxis, maturityColumns, maturitySeries, maturityShares, NO_VALUE, screenColumns, screenRowId, sentence } from "./model";
 
-type Row = { numbers?: Record<string, number | null>; id: string; values: Record<string, string>; instrumentId?: string; covenant?: CreditHeadroom; screen?: CreditScreenRow; year?: number; locked?: boolean };
+type Row = { numbers?: Record<string, number | null>; id: string; values: Record<string, string>; instrumentId?: string; covenant?: CreditHeadroom; screen?: CreditScreenRow; year?: number; locked?: boolean; closed?: boolean };
 const rowId = (row: Row) => row.id;
+/** Cells a footer hint takes: `[k]label` and the space before it. */
+const hintCells = (hint: PaneHint) => hint.key.length + hint.label.length + 3;
+
 export function CreditDocumentsPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();
   const session = useResearchCloudSession(), access = usePlanAccess();
@@ -58,14 +63,18 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const selectedCurrency = currencies.includes(currency) ? currency : currencies[0] ?? "";
   const maturityRows = useMemo(() => data ? creditMaturityRows(data, selectedCurrency) : [], [data, selectedCurrency]);
   const series = useMemo(() => maturitySeries(maturityRows, selectedCurrency, colors.warning), [maturityRows, selectedCurrency, colors.warning]);
-  const columns = tab === "capital" ? CAPITAL_COLUMNS : tab === "covenants" ? COVENANT_COLUMNS : tab === "maturities" ? MATURITY_COLUMNS : SCREEN_COLUMNS;
+  const preview = data?.access === "preview";
+  const columns = useMemo<DataTableColumn[]>(() => tab === "capital" ? data ? capitalColumns(data, width) : [] : tab === "covenants" ? covenantColumns(width)
+    : tab === "maturities" ? maturityColumns(width, preview) : screenColumns(width), [tab, data, width, preview]);
+  const figures = useMemo(() => tab === "capital" && data ? capitalFigures(data) : [], [tab, data]);
   const unsortedRows = useMemo<Row[]>(() => {
-    if (tab === "screen") return (screenData?.rows ?? []).map((row) => ({ id: screenRowId(row), instrumentId: row.instrumentId, screen: row, numbers: {value:row.value}, values: { symbol: row.symbol, kind: row.kind === "headroom" ? "Low headroom" : "Springing maturity", value: creditPercent(row.value), date: row.date ?? "--", instrument: row.instrumentName, reason: row.reason } }));
+    if (tab === "screen") return (screenData?.rows ?? []).map((row) => ({ id: screenRowId(row), instrumentId: row.instrumentId, screen: row, numbers: {value:row.value}, values: { symbol: row.symbol, kind: row.kind === "springing_maturity" ? "Springing maturity" : row.value != null && row.value < 0 ? "Breach" : "Low headroom", value: creditPercent(row.value), date: row.date ?? NO_VALUE, instrument: row.instrumentName, reason: sentence(row.reason) } }));
     if (!data) return [];
-    if (tab === "capital") return data.instruments.map((row) => ({ id: row.id, instrumentId: row.id, numbers: {principal:row.drawn ?? row.principal,commitment:row.commitment,drawn:row.drawn}, values: Object.fromEntries(CAPITAL_COLUMNS.map((column) => [column.id, capitalCell(row, column.id, data)])) }));
-    if (tab === "covenants") return data.covenants.map((row) => { const fact=data.instruments.find((item) => item.id === row.instrumentId)?.facts.find((item) => item.id === row.id); return ({ id: row.id, instrumentId: row.instrumentId, covenant: row, numbers: {headroom:row.headroomPercent,threshold:row.threshold,current:row.current}, values: { metric: row.metric, headroom: creditPercent(row.headroomPercent), threshold: `${row.comparator === "maximum" ? row.inclusive === false ? "<" : "≤" : row.inclusive === false ? ">" : "≥"} ${covenantNumber(row.threshold,fact)}`, current: covenantNumber(row.current,fact), status: fieldLabel(row.status), date: row.testDate ?? row.asOf, instrument: row.instrumentName } }); });
-    return maturityRows.flatMap((row) => row.instruments.map((instrument) => ({ id: `${row.year}:${instrument.id}`, instrumentId: instrument.id, year: row.year, numbers: {year:row.year,principal:instrument.principal}, values: { year: String(row.year), principal: creditAmount(instrument.principal), currency: row.currency, instruments: instrument.name } })));
-  }, [data, screenData, tab, maturityRows]);
+    if (tab === "capital") return data.instruments.map((row) => ({ id: row.id, instrumentId: row.id, closed: isClosed(row), numbers: {principal:instrumentOutstanding(row)}, values: Object.fromEntries(["name", "facility", "coupon", "maturity", "principal", "currency", "ranking", "control"].map((id) => [id, capitalCell(row, id, data)])) }));
+    if (tab === "covenants") return data.covenants.map((row) => { const fact=data.instruments.find((item) => item.id === row.instrumentId)?.facts.find((item) => item.id === row.id); return ({ id: row.id, instrumentId: row.instrumentId, covenant: row, numbers: {headroom:row.headroomPercent,usage:covenantUsage(row),threshold:row.threshold,current:row.current}, values: { metric: sentence(row.metric), headroom: creditPercent(row.headroomPercent), usage: "", threshold: `${comparatorSymbol(row.comparator, row.inclusive)} ${covenantNumber(row.threshold,fact)}`, current: covenantNumber(row.current,fact), status: fieldLabel(row.status), date: row.asOf, instrument: row.instrumentName } }); });
+    const shares = preview ? new Map() : maturityShares(maturityRows);
+    return maturityRows.flatMap((row) => row.instruments.map((instrument) => { const id = `${row.year}:${instrument.id}`, share = shares.get(id); return { id, instrumentId: instrument.id, year: row.year, numbers: {year:row.year,principal:instrument.principal,share:share?.share ?? null,cumulative:share?.cumulative ?? null}, values: { year: String(row.year), principal: creditAmount(instrument.principal), share: creditPercent(share?.share), cumulative: creditPercent(share?.cumulative), instruments: instrument.name } }; }));
+  }, [data, screenData, tab, maturityRows, preview]);
   const rows = useMemo(() => !sort.column ? unsortedRows : [...unsortedRows].sort((a,b) => {
     const column=sort.column!;
     const left=a.numbers && column in a.numbers ? a.numbers[column] : a.values[column]?.toLowerCase();
@@ -79,7 +88,7 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const [initialFact] = usePaneSettingValue<string | null>("fact", null);
   const [openFactId, setOpenFact] = usePluginPaneState<string | null>(`credit:fact:open:${openInstrument?.id ?? "none"}`, initialFact);
   const activeSymbol = screenOpen?.symbol ?? symbol;
-  const activeCovenant = data?.covenants.find((row) => row.id === selectedId && row.instrumentId === openInstrument?.id) ?? null;
+  const activeCovenant = tab === "covenants" ? data?.covenants.find((row) => row.id === selected?.id && row.instrumentId === openInstrument?.id) ?? null : null;
   const locked = tab === "screen" ? screenData?.lockedRows ?? 0 : data?.lockedRows ?? 0;
   const items = useMemo<Row[]>(() => [...rows, ...Array.from({ length: Math.min(3, locked) }, (_, index) => ({ id: `locked:${index}`, values: {}, locked: true }))], [rows, locked]);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: [...CREDIT_TABS], activeValue: tab, onSelect: (value) => { setTab(value); setOpen(null); }, focused: focused && !openInstrument, dense: true });
@@ -91,20 +100,37 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const currentError = tab === "screen" ? screen.error : resource.error;
   const available = tab === "screen" ? !!screenData : !!data;
   const loading = tab === "screen" ? screen.loading : resource.loading;
-  const hints: PaneHint[] = [
+  const target = activeSymbol ?? symbol ?? "";
+  const allHints: PaneHint[] = [
     ...(symbol ? [
-      { id: "credit:des", key: "d", label: "es", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol: activeSymbol ?? symbol }) },
-      { id: "credit:fa", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: activeSymbol ?? symbol }) },
-      { id: "credit:graph", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: activeSymbol ?? symbol }) },
-      { id: "credit:ddis", key: "m", label: "aturities", title: "DDIS maturity schedule", onPress: () => createPaneFromTemplate("debt-maturities-pane", { symbol: activeSymbol ?? symbol }) },
-      { id: "credit:cds", key: "c", label: "ds", title: "CDS trades", onPress: () => createPaneFromTemplate("cds-pane", { symbol: activeSymbol ?? symbol }) },
+      { id: "credit:des", key: "d", label: "es", title: "Description (DES)", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol: target }) },
+      { id: "credit:fa", key: "f", label: "a", title: "Financial analysis (FA)", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: target }) },
+      { id: "credit:graph", key: "g", label: "raph", title: "Price chart (G)", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: target }) },
+      { id: "credit:ddis", key: "m", label: "aturities", title: "DDIS maturity schedule", onPress: () => createPaneFromTemplate("debt-maturities-pane", { symbol: target }) },
+      { id: "credit:cds", key: "c", label: "ds", title: "CDS trades", onPress: () => createPaneFromTemplate("cds-pane", { symbol: target }) },
     ] : []),
-    ...(locked || data?.access === "preview" ? [{ id: "credit:upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }] : []),
+    ...(locked || preview ? [{ id: "credit:upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }] : []),
   ];
   const asOf = tab === "screen" ? screenData?.asOf : data?.asOf;
+  const notices = [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : []), ...(screenData?.truncated ? ["Screen results reached the result limit; narrow the thresholds."] : [])];
+  // A narrow footer keeps the upgrade and the first links; the rest stay bound
+  // and move to the pane menu, so the status on the left never gets cut.
+  const footerBudget = width - 2 - (asOf ? 17 : 0) - (notices.length ? 5 : 0) - (openInstrument ? 14 : 0);
+  const { shown: hints, folded } = useMemo(() => {
+    const keep = new Set(allHints.map((hint) => hint.id));
+    let used = allHints.reduce((total, hint) => total + hintCells(hint), 0);
+    for (const hint of [...allHints].reverse()) {
+      if (used <= footerBudget) break;
+      if (hint.id === "credit:upgrade") continue;
+      keep.delete(hint.id);
+      used -= hintCells(hint);
+    }
+    return { shown: allHints.filter((hint) => keep.has(hint.id)), folded: allHints.filter((hint) => !keep.has(hint.id)) };
+  }, [allHints.map((hint) => hint.id).join(), footerBudget, target, openUpgrade, createPaneFromTemplate]);
   usePaneStatusFooter({ registrationId: "credit-documents", loading, error: available ? currentError : null, stale: resource.data?.stale,
     info: asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf.slice(0, 10)}`, tone: "muted" as const }] }] : [], hints });
-  usePaneNoticeFooter({ registrationId: "credit:notices", focused, notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : []), ...(screenData?.truncated ? ["Screen results reached the result limit; narrow the thresholds."] : [])] });
+  usePaneFooter("credit:folded", () => folded.length ? { keys: folded, menu: folded.map((hint) => ({ id: `credit:menu:${hint.id}`, label: hint.title ?? hint.label, accelerator: hint.key, onSelect: () => hint.onPress?.() })) } : null, [folded]);
+  usePaneNoticeFooter({ registrationId: "credit:notices", focused, notices });
   useCreditEvidence(data, screenData ?? null, instrumentSnapshot, tab, view, rows.map(rowId), openInstrument?.id ?? null, openFactId);
   if (!symbol) return <EmptyState title="Select an issuer ticker." />;
   if (!available && isCloudSessionRequired(currentError)) return <SignInWall action="view credit documents" needsVerification={needsVerification} />;
@@ -113,21 +139,47 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
     { id: "springing", label: "Springing within", value: String(months), options: [3, 6, 12, 24, 36].map((value) => ({ value: String(value), label: `${value} months` })), onChange: (value) => setMonths(Number(value)) },
   ]} /> : tab === "maturities" ? <QueryBar width={width} filters={currencies.length ? [{ id: "currency", label: "Currency", value: selectedCurrency, options: currencies.map((value) => ({ value, label: value })), onChange: setCurrency }] : []} /> : undefined;
   const rootBefore = tab === "maturities" ? <ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns} query={query}
-    chart={series.length ? { series, formatValue: creditAmount, formatAxisValue: creditAmount, cursorDate: link.cursorDate, onCursorDateChange: link.onCursorDateChange, remoteKind: "credit-maturity-wall", xAxis: maturityAxis(maturityRows), onActivate: link.onActivate } : null} /> : query;
+    chart={series.length ? { series, formatValue: creditAmount, formatAxisValue: formatCompactAxis, cursorDate: link.cursorDate, onCursorDateChange: link.onCursorDateChange, remoteKind: "credit-maturity-wall", xAxis: maturityAxis(maturityRows), onActivate: link.onActivate } : null} />
+    : tab === "capital" && figures.length ? <ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} figures={figures} /> : query;
+  const lockedText = tab === "screen" ? "Upgrade to see every signal" : "Upgrade to see all terms";
+  // The terminal prompt sits in the widest column so it is never cut.
+  const lockedColumn = columns.find((column) => column.flexGrow)?.id ?? columns[0]?.id;
+  const renderCell = (row: Row, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
+    if (row.locked) return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === lockedColumn ? tab === "screen" ? "Additional signal" : "Additional credit document" : "Hidden"}</Text></Blurred> }
+      : { text: column.id === lockedColumn && row.id === "locked:0" ? lockedText : "░░░░", color: colors.textDim, ...(column.id === lockedColumn && row.id === "locked:0" ? { content: <UpgradeLabel text={lockedText} onPress={openUpgrade} /> } : {}) };
+    if (column.id === "usage" && row.covenant) return { text: "", content: <HeadroomGauge covenant={row.covenant} width={column.width} selected={state.selected} /> };
+    const text = row.values[column.id] ?? "";
+    const number = row.numbers?.[column.id];
+    const value = column.align === "right" && row.numbers && column.id in row.numbers ? number ?? null : undefined;
+    if (text === NO_VALUE) return { text, value, color: colors.textMuted };
+    if (row.closed) return { text, value, color: colors.textDim };
+    if (column.id === "headroom" && row.covenant) {
+      const tone = headroomTone(row.covenant);
+      return { text, value, color: tone ? colors[tone] : colors.textBright, keepColorWhenSelected: !!tone };
+    }
+    if (column.id === "value" && row.screen?.kind === "headroom") {
+      const tone = row.screen.value == null ? undefined : headroomTone({ headroomPercent: row.screen.value, status: row.screen.value < 0 ? "breach" : "compliant" });
+      return { text, value, color: tone ? colors[tone] : colors.text, keepColorWhenSelected: !!tone };
+    }
+    if (column.id === "status" && row.covenant) {
+      const breach = row.covenant.status === "breach";
+      return { text, color: breach ? colors.negative : colors.textDim, keepColorWhenSelected: breach };
+    }
+    return { text, value, color: column.id === columns[0]!.id ? colors.textBright : colors.text };
+  };
   return <Box width={width} height={height} flexDirection="column">{strip}
     <PaneStatusBody loading={!available && loading} error={!available && currentError !== CREDIT_UNAVAILABLE ? currentError : null}
       empty={!available && currentError === CREDIT_UNAVAILABLE} emptyTitle={CREDIT_UNAVAILABLE} subject="credit documents">
       {available ? <PageStackView focused={focused && !openFactId} detailOpen={!!openInstrument} onBack={() => setOpen(null)} detailTitle={openInstrument?.name}
-        detailContent={openInstrument && activeSymbol ? <CreditInstrumentDetail key={`${activeSymbol}:${openInstrument.id}`} symbol={activeSymbol} instrument={openInstrument} width={width} height={bodyHeight - 1} focused={focused} accessKey={accessKey} view={view} setView={setView} covenant={activeCovenant} openId={openFactId} setOpen={setOpenFact} captured={instrumentSnapshot?.id === openInstrument.id ? instrumentSnapshot : null} pro={data?.access === "full"} /> : null}
+        detailContent={openInstrument && activeSymbol ? <CreditInstrumentDetail key={`${activeSymbol}:${openInstrument.id}`} symbol={activeSymbol} instrument={openInstrument} width={width} height={bodyHeight - 1} focused={focused} accessKey={accessKey} view={view} setView={setView} covenant={activeCovenant} openId={openFactId} setOpen={setOpenFact} captured={instrumentSnapshot?.id === openInstrument.id ? instrumentSnapshot : null} pro={data?.access === "full"} onUpgrade={openUpgrade} /> : null}
         rootContent={<DataTableView<Row> columns={columns} items={items} sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((current) => ({column,direction:current.column === column && current.direction === "asc" ? "desc" : "asc"}))} focused={focused && !openInstrument} rootWidth={width} rootHeight={bodyHeight} rootBefore={rootBefore}
           getItemKey={rowId} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }}
           onActivate={(row) => row.locked ? openUpgrade() : setOpen(row.screen ? row.id : row.instrumentId ?? null)}
-          renderCell={(row, column) => row.locked ? desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === columns[0]!.id ? "Additional credit document" : "Hidden"}</Text></Blurred> }
-            : { text: column.id === columns[0]!.id && row.id === "locked:0" ? "Upgrade to see all terms" : "░░░░", color: colors.textDim, ...(column.id === columns[0]!.id && row.id === "locked:0" ? { content: <UpgradeLabel text="Upgrade to see all terms" onPress={openUpgrade} /> } : {}) }
-            : { text: row.values[column.id] ?? "", color: column.id === "headroom" && row.covenant?.headroomPercent !== null && row.covenant?.headroomPercent !== undefined ? row.covenant.status === "breach" ? colors.negative : row.covenant.headroomPercent < 20 ? colors.warning : colors.positive : column.id === columns[0]!.id ? colors.textBright : colors.text }}
+          renderCell={renderCell}
           emptyStateTitle={tab === "screen" ? "No supported credit signals match these thresholds." : tab === "covenants" ? "No financial maintenance covenants documented." : tab === "maturities" ? "No supported instrument maturity amounts." : CREDIT_UNAVAILABLE}
+          emptyStateHint={tab === "screen" && (headroom < 100 || months < 36) ? "Raise either threshold to widen the screen." : undefined}
           selectedTextOverridesCellColor showHorizontalScrollbar freezeFirstColumn resetScrollKey={`${symbol}:${tab}:${selectedCurrency}`}
-          bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text="Upgrade to see all terms" onPress={openUpgrade} /> : undefined} />} /> : null}
+          bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text={lockedText} onPress={openUpgrade} /> : undefined} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }

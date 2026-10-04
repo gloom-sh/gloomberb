@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { CreditDocumentsPayload } from "../../../api-client/credit-documents";
 import fixture from "./fico.fixture.json";
 import { creditIssuerSymbol, fetchCreditInstrument, validateCreditDocuments, validateCreditInstrument, validateCreditScreen } from "./client";
-import { creditMaturityRows, factValue, maturitySeries } from "./model";
+import { getTableWidth } from "../../../components/ui/table-layout";
+import { capitalColumns, capitalFigures, covenantColumns, creditMaturityRows, factValue, maturitySeries } from "./model";
 const payload = () => structuredClone(fixture) as CreditDocumentsPayload;
 
 describe("credit evidence boundary", () => {
@@ -65,5 +66,24 @@ describe("credit evidence boundary", () => {
     const series = maturitySeries(rows, "USD", "#fff")[0]!;
     expect(series.points.filter((point) => point.value !== null).map((point) => point.date.getUTCFullYear())).toEqual(rows.map((row) => row.year));
     expect(factValue(data.instruments.flatMap((row) => row.facts).find((row) => row.field === "principal")!)).toContain("USD");
+  });
+  test("capital figures add amounts within one currency and leave out what the evidence cannot support", () => {
+    const data = payload();
+    const figures = () => Object.fromEntries(capitalFigures(data).map((item) => [item.id, item]));
+    expect(figures().outstanding?.value).toBe("3.08B USD");
+    expect(figures().undrawn?.value).toBe("725M");
+    expect(figures().secured).toBeUndefined();
+    const notes = structuredClone(data.instruments[1]!);
+    data.instruments.push({ ...notes, id: "eur-notes", currency: "EUR", principal: 600_000_000, facts: notes.facts.map((fact) => ({ ...fact, id: `eur-${fact.id}`, instrumentId: "eur-notes" })) });
+    expect(figures().outstanding?.value).toBe("3.08B USD");
+    expect(figures().outstanding?.detail).toBe("+600M EUR");
+    data.access = "preview";
+    expect(capitalFigures(data)).toEqual([]);
+  });
+  test("narrow panes drop columns instead of scrolling sideways", () => {
+    for (const width of [72, 128]) {
+      for (const columns of [capitalColumns(payload(), width), covenantColumns(width)]) expect(getTableWidth(columns) + 1).toBeLessThanOrEqual(width);
+    }
+    expect(capitalColumns(payload(), 72).map((column) => column.id)).toEqual(expect.arrayContaining(["name", "principal"]));
   });
 });

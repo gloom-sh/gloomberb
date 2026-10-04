@@ -44,7 +44,7 @@ test("keyboard opens current terms and literal evidence, then returns through bo
   await tui.emitKeypress({ name: "return" });
   await tui.waitForFrameToContain("DISCLOSED VALUE");
   await tui.emitKeypress({ name: "return" });
-  const evidence = await tui.waitForFrameToContain("Evidence span");
+  const evidence = await tui.waitForFrameToContain("Text match");
   expect(evidence).toContain("Open filing");
   expect(evidence).toContain("On May 13, 2025");
   await tui.emitKeypress({ name: "escape" });
