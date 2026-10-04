@@ -57,6 +57,69 @@ function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
 }
 
 describe("correlationModule", () => {
+  test("keys and cell clicks open the selected pair while diagonal and hovered symbols retain ticker navigation", async () => {
+    const opened: unknown[] = [];
+    const runtime = createTestPluginRuntime({
+      createPaneFromTemplate: (id, options) => {
+        // The app's ticker-list template workflow resolves arg before symbols;
+        // symbols alone opens its wizard instead of the pair view.
+        expect(options?.arg).toBe(options?.symbols?.join(", "));
+        opened.push([id, options?.symbols]);
+      },
+      pinTicker: (symbol) => opened.push(symbol),
+    });
+    await tui.render(<CorrelationHarness runtime={runtime} />, { width: 60, height: 8 });
+    await tui.waitForFrameToContain("MSFT");
+    const key = (name: string) => tui.emitKeypress({ name }, { trackPropagation: true, afterCommit: true });
+    await key("return"); // Default off-diagonal pair.
+    await key("left");
+    await key("return"); // AAPL diagonal.
+    await key("j");
+    await key("return"); // MSFT/AAPL.
+    await key("l");
+    await key("return"); // MSFT diagonal.
+    await key("up");
+    await key("h");
+    await key("h"); // Symbol column.
+    await key("down");
+    await key("return"); // MSFT row symbol.
+    await key("k");
+    await key("right");
+    await key("return"); // AAPL diagonal again.
+
+    const lines = tui.frame().split("\n");
+    const header = lines.findIndex((line) => line.includes("AAPL") && line.includes("MSFT") && !line.includes(","));
+    const msftColumn = lines[header]!.indexOf("MSFT");
+    await act(async () => {
+      await tui.setup().mockMouse.click(msftColumn, header + 1);
+      await tui.setup().renderOnce();
+    });
+    await key("return"); // Click selected AAPL/MSFT, without opening it on the click.
+    await act(async () => {
+      await tui.setup().mockMouse.moveTo(2, header + 2);
+      await tui.setup().renderOnce();
+    });
+    await key("return"); // Hovered MSFT header overrides the pair for Enter.
+    await key("k");
+    await key("return"); // Row keys continue from that hovered symbol.
+    expect(opened).toEqual([
+      ["relationship-graph-pane", ["AAPL", "MSFT"]], "AAPL",
+      ["relationship-graph-pane", ["MSFT", "AAPL"]], "MSFT", "MSFT", "AAPL",
+      ["relationship-graph-pane", ["AAPL", "MSFT"]], "MSFT", "AAPL",
+    ]);
+  });
+
+  test("a batch of cursor keys accumulates every move before React commits", async () => {
+    const pairs: unknown[] = [];
+    await tui.render(<CorrelationHarness runtime={createTestPluginRuntime({
+      createPaneFromTemplate: (_id, options) => pairs.push(options?.symbols),
+    })} />, { width: 60, height: 8 });
+    await tui.waitForFrameToContain("MSFT");
+    await tui.emitKeypress([{ name: "left" }, { name: "down" }], { trackPropagation: true, afterCommit: true });
+    await tui.emitKeypress({ name: "return" }, { trackPropagation: true, afterCommit: true });
+    expect(pairs).toEqual([["MSFT", "AAPL"]]);
+  });
+
   test("opens tickers from row and column labels", async () => {
     const opened: Array<{ symbol: string; options: { floating?: boolean; paneType?: string } | undefined }> = [];
     const runtime = createTestPluginRuntime({

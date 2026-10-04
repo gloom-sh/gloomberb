@@ -1,12 +1,13 @@
-import { Box, ScrollBox, Text, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Box, ScrollBox, Text, TextAttributes, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { afterLayout } from "../../../components/ui/reveal-in-scroll-box";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { colors } from "../../../theme/colors";
-import { usePluginTickerActions } from "../../runtime";
+import { usePluginAppActions, usePluginTickerActions } from "../../runtime";
 import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
 import { useChartQueries } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -46,12 +47,20 @@ import {
 import { SymbolLabelCell } from "./matrix/symbol-cell";
 import { correlationHeadless, relationshipHeadless } from "./headless";
 import { CORRELATION_HISTORY_RESOLUTION } from "./history";
+import { buildMatrixPairHistory, clampMatrixCursor, matrixChartRows, matrixSelection, moveMatrixCursor, type MatrixCursor } from "./matrix/selection";
+import { MatrixPairChart } from "./matrix/pair-chart";
 
 function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
   const { navigateTicker, pinTicker } = usePluginTickerActions();
+  const { createPaneFromTemplate } = usePluginAppActions();
   const tickers = useAppSelector((state) => state.tickers);
-  const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
+  const [{ cursor: cellCursor, hoveredSymbol }, setCursorState] = useState<{ cursor: MatrixCursor; hoveredSymbol: string | null }>({
+    cursor: { row: 0, column: 1 }, hoveredSymbol: null,
+  });
+  const hoverSymbol = useCallback((symbol: string) => {
+    setCursorState((current) => ({ ...current, hoveredSymbol: symbol }));
+  }, []);
   const settings = useMemo(() => getCorrelationPaneSettings(pane?.settings), [pane?.settings]);
   const [rangePreset, setRangePreset] = usePaneSettingValue<CorrelationRangePreset>("rangePreset", settings.rangePreset);
   const [symbolsText, setSymbolsText] = usePaneSettingValue<string>("symbolsText", settings.symbolsText);
@@ -64,6 +73,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   // Remounts the query bar so the field drops the draft Esc threw away.
   const [queryBarRevision, setQueryBarRevision] = useState(0);
   const matrixScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const horizontalScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const instruments = useMemo(() => {
     if (settings.symbolsError) return [];
@@ -107,6 +117,15 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
 
   const symbols = instruments.map((instrument) => instrument.symbol);
   const symbolsKey = symbols.join(",");
+  const cursor = clampMatrixCursor(cellCursor, symbols.length);
+  const selection = matrixSelection(symbols, cursor);
+  const pair = selection && selection[0] !== selection[1] ? selection : null;
+  useEffect(() => {
+    setCursorState((current) => ({ ...current, cursor: clampMatrixCursor(current.cursor, symbols.length) }));
+  }, [symbolsKey]);
+  const pairHistory = useMemo(() => pair ? buildMatrixPairHistory(
+    seriesBySymbol.get(pair[0]), seriesBySymbol.get(pair[1]), settings.rangePreset,
+  ) : null, [pair?.[0], pair?.[1], seriesBySymbol, settings.rangePreset]);
 
   const matrix = useMemo(() => {
     return buildCorrelationMatrix(symbols, seriesBySymbol);
@@ -130,34 +149,31 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
     navigateTicker(symbol);
   }, [navigateTicker, pinTicker, tickers]);
 
-  /** The row cursor shares the hover highlight, so mouse and keys point at one symbol. */
-  const moveSymbolCursor = useCallback((offset: -1 | 1) => {
+  /** Hovered symbols remain a keyboard starting point; Left reaches their row cursor. */
+  const moveCursor = (key: string) => {
     if (symbols.length === 0) return;
-    const index = hoveredSymbol ? symbols.indexOf(hoveredSymbol) : -1;
-    const next = index < 0
-      ? (offset > 0 ? 0 : symbols.length - 1)
-      : Math.max(0, Math.min(symbols.length - 1, index + offset));
-    setHoveredSymbol(symbols[next]!);
-    const scroll = matrixScrollRef.current;
-    if (!scroll) return;
-    const viewportHeight = Math.max(1, scroll.viewport?.height ?? 1);
-    if (next < scroll.scrollTop) scroll.scrollTo(next);
-    else if (next + 1 > scroll.scrollTop + viewportHeight) scroll.scrollTo(next + 1 - viewportHeight);
-  }, [hoveredSymbol, symbolsKey]);
+    setCursorState((current) => {
+      const hoveredRow = current.hoveredSymbol ? symbols.indexOf(current.hoveredSymbol) : -1;
+      const start = hoveredRow >= 0 ? { row: hoveredRow, column: -1 } : current.cursor;
+      return { cursor: moveMatrixCursor(start, key, symbols.length), hoveredSymbol: null };
+    });
+  };
 
   useShortcut((event) => {
     if (!focused || symbolsEditing || event.defaultPrevented) return;
     if (handleRefreshKey(event, refresh, { stopPropagation: true })) return;
-    if (isPlainKey(event, "j", "down", "k", "up")) {
+    if (isPlainKey(event, "j", "down", "k", "up", "h", "left", "l", "right")) {
       event.preventDefault();
       event.stopPropagation();
-      moveSymbolCursor(event.name === "j" || event.name === "down" ? 1 : -1);
-    } else if (isPlainKey(event, "return", "enter") && hoveredSymbol && symbols.includes(hoveredSymbol)) {
+      moveCursor(event.name ?? event.key ?? "");
+    } else if (isPlainKey(event, "return", "enter") && selection) {
       event.preventDefault();
       event.stopPropagation();
-      openSymbol(hoveredSymbol);
+      if (hoveredSymbol && symbols.includes(hoveredSymbol)) openSymbol(hoveredSymbol);
+      else if (pair) createPaneFromTemplate("relationship-graph-pane", { symbols: pair, arg: formatTickerListInput(pair) });
+      else openSymbol(selection[0]);
     }
-  });
+  }, { phase: "before", scope: "correlation:matrix" });
 
   // Esc cancels an edit of the list instead of clearing it: the field's own
   // Esc empties the draft, which would fall back to the default tickers.
@@ -178,7 +194,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
     registrationId: "correlation-warnings", focused,
     notices: [...seriesBySymbol.values()].flatMap((series) => series.refreshError
       ? [`${series.symbol}: ${series.refreshError}${series.fetchedAt ? ` Retained history retrieved ${new Date(series.fetchedAt).toISOString()}.` : ""}`]
-      : []),
+      : []).concat(pair && pairHistory?.unavailable ? [`${pair.join("/")}: ${pairHistory.unavailable}`] : []),
   });
 
   // The ticker set and range are visible in-pane and an invalid list shows in
@@ -190,7 +206,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   }), [settings.symbolsError, statusSummary, symbols.length]);
 
   const clearHoveredSymbol = useCallback((symbol: string) => {
-    setHoveredSymbol((current) => (current === symbol ? null : current));
+    setCursorState((current) => current.hoveredSymbol === symbol ? { ...current, hoveredSymbol: null } : current);
   }, []);
 
   const headerBg = colors.panel;
@@ -204,6 +220,27 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   // Rows are exactly as wide as the matrix (after the one-cell inset), so the
   // zebra and hover bands stop at the last column instead of running on.
   const matrixRowWidth = 1 + rowHeaderWidth + symbols.length * cellWidth;
+  const chartRows = pair ? matrixChartRows(width, height, symbols.length, matrixRowWidth) : 0;
+  const matrixHeight = Math.max(1, height - 1 - (chartRows > 0 ? chartRows + 1 : 0));
+  const horizontalBarRows = matrixRowWidth > width - 1 ? 1 : 0;
+
+  // Scroll after React commits a movement, including several keys in one input batch.
+  useEffect(() => afterLayout(() => {
+    const scroll = matrixScrollRef.current;
+    if (scroll) {
+      const viewportHeight = Math.max(1, scroll.viewport?.height ?? 1);
+      if (cursor.row < scroll.scrollTop) scroll.scrollTo(cursor.row);
+      else if (cursor.row + 1 > scroll.scrollTop + viewportHeight) scroll.scrollTo(cursor.row + 1 - viewportHeight);
+    }
+    const horizontal = horizontalScrollRef.current;
+    if (!horizontal) return;
+    const left = cursor.column < 0 ? 0 : 1 + rowHeaderWidth + cursor.column * cellWidth;
+    const right = left + (cursor.column < 0 ? rowHeaderWidth : cellWidth);
+    const scrollLeft = horizontal.scrollLeft ?? 0;
+    const viewportWidth = horizontal.viewport?.width || width;
+    if (left < scrollLeft) horizontal.scrollTo({ x: left, y: 0 });
+    else if (right > scrollLeft + viewportWidth) horizontal.scrollTo({ x: right - viewportWidth, y: 0 });
+  }), [cursor.row, cursor.column, matrixHeight, rowHeaderWidth, cellWidth, width]);
   const bodyStatus = settings.symbolsError
     ? <PaneStatusBody error={settings.symbolsError} />
     : symbols.length < 2
@@ -211,7 +248,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       : null;
 
   return (
-    <Box flexDirection="column" width={width} height={height}>
+    <Box flexDirection="column" width={width} height={height} overflow="hidden">
       <QueryBar
         key={queryBarRevision}
         width={width}
@@ -244,67 +281,88 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       />
       {bodyStatus ?? (
         <>
-          {/* Column header row */}
-          <Box flexDirection="row" paddingLeft={1} height={1} width={matrixRowWidth} backgroundColor={headerBg}>
-            <Box width={rowHeaderWidth} flexShrink={0} />
-            {symbols.map((sym) => (
-              <SymbolLabelCell
-                key={sym}
-                symbol={sym}
-                width={cellWidth}
-                align="flex-end"
-                color={colors.textDim}
-                hovered={hoveredSymbol === sym}
-                onHover={setHoveredSymbol}
-                onLeave={clearHoveredSymbol}
-                onOpen={openSymbol}
-              />
-            ))}
-          </Box>
+          <ScrollBox ref={horizontalScrollRef} height={matrixHeight} flexShrink={1} minHeight={Math.min(matrixHeight, symbols.length + 1, 5)} scrollX scrollY={false} focusable={false}>
+            <Box flexDirection="column" width={Math.max(width - 1, matrixRowWidth)} height={matrixHeight - horizontalBarRows}>
+              {/* Column header row */}
+              <Box flexDirection="row" paddingLeft={1} height={1} flexShrink={0} width={matrixRowWidth} backgroundColor={headerBg}>
+                <Box width={rowHeaderWidth} flexShrink={0} />
+                {symbols.map((sym) => (
+                  <SymbolLabelCell
+                    key={sym}
+                    symbol={sym}
+                    width={cellWidth}
+                    align="flex-end"
+                    color={colors.textDim}
+                    hovered={hoveredSymbol === sym || selection?.[1] === sym}
+                    onHover={hoverSymbol}
+                    onLeave={clearHoveredSymbol}
+                    onOpen={openSymbol}
+                  />
+                ))}
+              </Box>
 
-          {/* Matrix rows */}
-          <ScrollBox ref={matrixScrollRef} flexGrow={1} scrollY scrollX focusable={false}>
-            <Box flexDirection="column">
-              {symbols.map((rowSym, rowIndex) => (
-                <Box key={rowSym} flexDirection="row" paddingLeft={1} width={matrixRowWidth} backgroundColor={rowIndex % 2 === 0 ? colors.bg : undefined}>
-                  {/* Row header */}
-                  <Box
-                    width={rowHeaderWidth}
-                    flexShrink={0}
-                    overflow="hidden"
-                  >
-                    <SymbolLabelCell
-                      symbol={rowSym}
-                      width={rowHeaderWidth}
-                      color={rowHeaderColor(seriesBySymbol.get(rowSym)?.status ?? "loading")}
-                      hovered={hoveredSymbol === rowSym}
-                      onHover={setHoveredSymbol}
-                      onLeave={clearHoveredSymbol}
-                      onOpen={openSymbol}
-                    />
-                  </Box>
-                  {/* Cells */}
-                  {symbols.map((colSym) => {
-                    const r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
-                    const cellColors = resolveHeatCellColors(r, { quiet: rowSym === colSym });
-                    const text = formatCorrelation(r);
-                    return (
+              {/* Matrix rows */}
+              <ScrollBox ref={matrixScrollRef} flexGrow={1} flexBasis={0} minHeight={0} scrollY scrollX={false} focusable={false}>
+                <Box flexDirection="column">
+                  {symbols.map((rowSym, rowIndex) => (
+                    <Box key={rowSym} flexDirection="row" paddingLeft={1} width={matrixRowWidth} backgroundColor={rowIndex % 2 === 0 ? colors.bg : undefined}>
+                      {/* Row header */}
                       <Box
-                        key={colSym}
-                        width={cellWidth}
-                        flexDirection="row"
-                        justifyContent="flex-end"
-                        paddingRight={1}
-                        backgroundColor={cellColors.background}
+                        width={rowHeaderWidth}
+                        flexShrink={0}
+                        overflow="hidden"
                       >
-                        <Text fg={cellColors.foreground}>{text}</Text>
+                        <SymbolLabelCell
+                          symbol={rowSym}
+                          width={rowHeaderWidth}
+                          color={rowHeaderColor(seriesBySymbol.get(rowSym)?.status ?? "loading")}
+                          hovered={hoveredSymbol === rowSym || selection?.[0] === rowSym}
+                          onHover={hoverSymbol}
+                          onLeave={clearHoveredSymbol}
+                          onOpen={openSymbol}
+                        />
                       </Box>
-                    );
-                  })}
+                      {/* Cells */}
+                      {symbols.map((colSym, colIndex) => {
+                        const r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
+                        const cellColors = resolveHeatCellColors(r, { quiet: rowSym === colSym });
+                        const text = formatCorrelation(r);
+                        const selected = cursor.row === rowIndex && cursor.column === colIndex;
+                        return (
+                          <Box
+                            key={colSym}
+                            width={cellWidth}
+                            flexShrink={0}
+                            flexDirection="row"
+                            justifyContent="flex-end"
+                            paddingRight={1}
+                            backgroundColor={cellColors.background}
+                            style={{ cursor: "pointer" }}
+                            onMouseDown={(event: any) => {
+                              event.preventDefault?.();
+                              event.stopPropagation?.();
+                              setCursorState({ cursor: { row: rowIndex, column: colIndex }, hoveredSymbol: null });
+                            }}
+                          >
+                            <Text fg={cellColors.foreground} attributes={selected ? TextAttributes.BOLD | TextAttributes.UNDERLINE : TextAttributes.NONE}>{text}</Text>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  ))}
                 </Box>
-              ))}
+              </ScrollBox>
             </Box>
           </ScrollBox>
+          {chartRows > 0 && pair && pairHistory ? (
+            <MatrixPairChart
+              pair={pair}
+              history={pairHistory}
+              fullPeriod={matrix.results.get(pairKey(...pair))?.correlation ?? null}
+              width={width}
+              height={chartRows}
+            />
+          ) : null}
         </>
       )}
     </Box>
