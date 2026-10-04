@@ -87,7 +87,7 @@ export function GpuEquities({ board, model, setModel, reloadBoard, width, height
       case "gpuChange": {
         if (!reference) return { text: "" };
         const value = reference.change7d;
-        return value == null ? { text: "new", value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
+        return value == null ? { text: "-", value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
       }
       case "five": {
         const value = dataRef.current.historyMap.get(row.symbol)?.value;
