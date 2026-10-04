@@ -96,10 +96,12 @@ export const loadGpuHistory = (seriesId: string, force = false) => loadCloudReso
 export const loadGpuEvents = (gpuModel?: string, force = false) => loadCloudResource(gpuEventsCache, gpuModel ?? "all",
   () => fetchGpuEvents(gpuModel), { force, validate: validateEvents });
 
-/** Six daily closes, independently dated from the current quote. Missing data stays unavailable. */
+/** Six daily closes, independently dated from the current quote, and the month they come from. Missing data stays unavailable. */
 export async function loadGpuEquityHistory(provider: Pick<DataProvider, "getPriceHistory">) {
   return Promise.all(GPU_EQUITIES.map(async ({ symbol }) => {
-    try { return { symbol, ...equityFiveDayReturn(await provider.getPriceHistory(symbol, "", "1M")), error: null }; }
-    catch { return { symbol, value: null, asOf: null, error: `${symbol}: daily closes unavailable` }; }
+    try {
+      const history = await provider.getPriceHistory(symbol, "", "1M");
+      return { symbol, ...equityFiveDayReturn(history), history, error: null };
+    } catch { return { symbol, value: null, asOf: null, history: [], error: `${symbol}: daily closes unavailable` }; }
   }));
 }

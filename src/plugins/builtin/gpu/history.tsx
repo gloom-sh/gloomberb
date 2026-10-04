@@ -1,70 +1,122 @@
 import { useCallback, useMemo } from "react";
-import type { GpuBoardRow, GpuObservation } from "../../../api-client/gpu";
-import { ChartTableHeader, DataTableView, PaneStatusBody, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn } from "../../../components";
+import type { GpuBasis, GpuBoardRow } from "../../../api-client/gpu";
+import {
+  buildSectionedRows, ChartTableHeader, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, PaneStatusBody, renderSectionedRowHeader,
+  usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type SectionedRow, type StatItem,
+} from "../../../components";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../public/react";
+import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
+import { Box, Text, TextAttributes } from "../../../ui";
 import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
 import { loadGpuEvents, loadGpuHistory } from "./client";
-import { gpuBasisLabel, gpuChange, gpuHistorySeries, gpuMatches, gpuPrice, gpuRowId, gpuRows, gpuSeriesLabel, gpuTime } from "./model";
+import {
+  GPU_MODELS, gpuBasisLabel, gpuBoardSections, gpuChange, gpuChangeColor, gpuHeadline, gpuHistoryChart, gpuMatches, gpuPricePeriods, gpuPrice, gpuShortSource,
+  gpuTime, gpuVariant, type GpuPricePeriod,
+} from "./model";
 
 const BASES = [{ value: "all", label: "All bases" }, { value: "list", label: "List price" }, { value: "spot", label: "Provider-declared spot" },
   { value: "ask", label: "Ask" }, { value: "reserved", label: "Reserved" }];
-const listColumns = (): DataTableColumn[] => [{ id: "series", label: "Series", width: 25, flexGrow: 1, align: "left" }, { id: "price", label: "$/GPU-hr", width: 10, align: "right" }];
-const HISTORY_COLUMNS: DataTableColumn[] = [{ id: "date", label: "Observed (UTC)", width: 18, flexGrow: 1, align: "left" },
-  { id: "price", label: "$/GPU-hr", width: 10, align: "right" }, { id: "change", label: "Change", width: 9, align: "right" }];
+type ListRow = SectionedRow<GpuBoardRow>;
+const listRowId = (row: ListRow) => row.key;
+const listColumns = (width: number): DataTableColumn[] => [
+  // Gutters and the scrollbar take four cells beside the two columns.
+  { id: "series", label: "Series", width: Math.max(16, width - 9 - 5), flexGrow: 1, align: "left" },
+  { id: "price", label: "$/GPU-hr", width: 9, align: "right" },
+];
+const PERIOD_COLUMNS: DataTableColumn[] = [
+  { id: "from", label: "From (UTC)", width: 14, align: "left" }, { id: "to", label: "To", width: 14, flexGrow: 1, align: "left" },
+  { id: "price", label: "$/GPU-hr", width: 10, align: "right" }, { id: "change", label: "Change", width: 9, align: "right" },
+];
+/** The selected series and the medians it is read against; never the whole board. */
+const MAX_PLOTTED = 5;
 
-function HistoryDetail({ row, width, height, focused, refreshVersion }: { row: GpuBoardRow; width: number; height: number; focused: boolean; refreshVersion: number }) {
+function HistoryDetail({ row, peers, width, height, refreshVersion }: {
+  row: GpuBoardRow; peers: readonly GpuBoardRow[]; width: number; height: number; refreshVersion: number;
+}) {
   const colors = useThemeColors();
+  const plotted = useMemo(() => [row, ...peers.filter((peer) => peer.id !== row.id && peer.basis === row.basis && gpuHeadline(peer))].slice(0, MAX_PLOTTED), [row, peers]);
+  const ids = plotted.map((entry) => entry.id).join("\n");
   const loader = useCallback(async (force: boolean) => {
-    const [history, events] = await Promise.all([loadGpuHistory(row.id, force || refreshVersion > 0), loadGpuEvents(row.gpuModel, force || refreshVersion > 0)]);
-    return { history, events };
-  }, [row.id, row.gpuModel, refreshVersion]);
+    const refresh = force || refreshVersion > 0;
+    const [histories, events] = await Promise.all([Promise.all(ids.split("\n").map((id) => loadGpuHistory(id, refresh))), loadGpuEvents(row.gpuModel, refresh)]);
+    return { histories, events };
+  }, [ids, row.gpuModel, refreshVersion]);
   const resource = useAsyncResource(loader, { keepPreviousData: true });
   useAutoRefresh(resource.updatedAt, resource.load);
-  const points = resource.data?.history.payload.points ?? [];
+  const points = useMemo(() => resource.data?.histories.flatMap((history) => history.payload.points) ?? [], [resource.data]);
   const events = resource.data?.events.payload.events ?? [];
-  const series = useMemo(() => gpuHistorySeries(row, points, events, colors.textBright, colors.warning), [row, points, events, colors]);
-  const records = useMemo(() => [...points].sort((a, b) => a.observedAt.localeCompare(b.observedAt)).map((point, index, all) => ({
-    ...point, change: index ? (point.pricePerGpuHr / all[index - 1]!.pricePerGpuHr - 1) * 100 : null,
-  })).reverse(), [points]);
-  usePaneStatusFooter({ registrationId: "gpu:history", loading: resource.loading, stale: resource.data?.history.stale,
-    error: resource.error, info: points.length ? [{ id: "start", parts: [{ text: `history since ${points[0]!.observedAt.slice(0, 10)}`, tone: "muted" }] }] : [] });
-  usePaneNoticeFooter({ registrationId: "gpu:history-notice", focused, notices: [resource.data?.history.refreshError, resource.data?.events.refreshError].filter((value): value is string => !!value) });
+  const chart = useMemo(() => gpuHistoryChart(plotted, points, events, { selected: colors.textBright, marker: colors.warning }), [plotted, points, events, colors]);
+  const own = useMemo(() => points.filter((point) => `${point.source}:${point.skuKey}` === row.id).sort((a, b) => a.observedAt.localeCompare(b.observedAt)), [points, row.id]);
+  const periods = useMemo(() => gpuPricePeriods(own), [own]);
+  const refreshErrors = [resource.data?.events.refreshError, ...(resource.data?.histories.map((history) => history.refreshError) ?? [])];
+  usePaneStatusFooter({ registrationId: "gpu:history", loading: resource.loading, stale: resource.data?.histories.some((history) => history.stale),
+    error: resource.error, info: own.length ? [{ id: "start", parts: [{ text: `history since ${gpuTime(own[0]!.observedAt, true)} UTC`, tone: "muted" }] }] : [] });
+  usePaneNoticeFooter({ registrationId: "gpu:history-notice", focused: true, notices: refreshErrors.filter((value): value is string => !!value) });
+  const first = own[0], last = own.at(-1);
   const stats = row.stats;
-  const figures = stats ? [
-    { id: "providers", label: "Sample", value: String(stats.n), detail: row.providerClass === "aggregate" ? "providers" : "offers / regions" },
-    { id: "min", label: "Raw low $/GPU-hr", value: gpuPrice(stats.min) },
-    { id: "max", label: "Raw high $/GPU-hr", value: gpuPrice(stats.max) },
-    ...(stats.p25 !== undefined ? [{ id: "p25", label: "Ask p25", value: gpuPrice(stats.p25) }, { id: "p75", label: "Ask p75", value: gpuPrice(stats.p75) }] : []),
-  ] : [];
+  const figures: StatItem[] = [
+    { id: "latest", label: "$/GPU-hr", value: gpuPrice(row.pricePerGpuHr), detail: gpuTime(row.observedAt, true) },
+    // A change needs the same three observations a line does; before that the history is still being collected.
+    ...(first && last && own.length >= 3 ? [{ id: "change", label: "Change", value: gpuChange((last.pricePerGpuHr / first.pricePerGpuHr - 1) * 100),
+      color: priceColor(last.pricePerGpuHr - first.pricePerGpuHr), detail: `since ${gpuTime(first.observedAt, true)}` }] : []),
+    ...(stats && stats.p25 !== undefined && stats.p75 !== undefined ? [{ id: "iqr", label: "Middle half", value: `${gpuPrice(stats.p25)}–${gpuPrice(stats.p75)}`, detail: `${stats.n} offers` }]
+      : stats && stats.min !== stats.max ? [{ id: "range", label: "Range", value: `${gpuPrice(stats.min)}–${gpuPrice(stats.max)}`,
+        detail: `${stats.n} ${row.providerClass === "aggregate" ? "providers" : "samples"}` }] : []),
+  ];
+  const renderCell = (period: GpuPricePeriod, column: DataTableColumn): DataTableCell => {
+    if (column.id === "from") return { text: gpuTime(period.from, true), value: period.from };
+    if (column.id === "to") return period.to ? { text: gpuTime(period.to, true), value: period.to, color: colors.textDim } : { text: "now", value: null, color: colors.textDim };
+    if (column.id === "price") return { text: gpuPrice(period.price), value: period.price, color: colors.textBright };
+    return period.change == null ? { text: "", value: null } : { text: gpuChange(period.change), value: period.change, color: gpuChangeColor(period.change, colors) };
+  };
   return <PaneStatusBody loading={resource.loading && !resource.data} error={!resource.data ? resource.error : null} subject="GPU price history">
-    <DataTableView columns={HISTORY_COLUMNS} items={records} rootWidth={width} rootHeight={height} focused={false}
-      rootBefore={<ChartTableHeader width={width} height={height} tableRows={records.length} tableColumns={HISTORY_COLUMNS} figures={figures}
-        chart={resource.error ? null : { series, formatValue: (value) => `$${gpuPrice(value)}`, remoteKind: "gpu-rental-history",
-          loading: resource.loading && !resource.data, empty: series.length ? undefined : "History is accumulating from the first observation." }} />}
-      selection={{ kind: "none" }} getItemKey={(point) => point.observedAt} sortColumnId={null} sortDirection="desc"
-      renderCell={(point, column) => column.id === "date" ? { text: gpuTime(point.observedAt, true), value: point.observedAt }
-        : column.id === "price" ? { text: gpuPrice(point.pricePerGpuHr), value: point.pricePerGpuHr }
-          : { text: gpuChange(point.change), value: point.change }} emptyStateTitle="No observations for this series yet." />
+    <DataTableView columns={PERIOD_COLUMNS} items={periods} rootWidth={width} rootHeight={height} focused={false}
+      rootBefore={<ChartTableHeader width={width} height={height} tableRows={periods.length} tableColumns={PERIOD_COLUMNS} figures={figures}
+        chart={resource.error && !resource.data ? null : { series: chart, formatValue: (value) => `$${gpuPrice(value)}`, remoteKind: "gpu-rental-history",
+          loading: resource.loading && !resource.data,
+          empty: chart.length ? undefined : first ? `Collecting history since ${gpuTime(first.observedAt, true)} UTC` : "Collecting history" }} />}
+      selection={{ kind: "none" }} getItemKey={(period) => period.from} sortColumnId={null} sortDirection="desc"
+      renderCell={renderCell} emptyStateTitle="No observations for this series yet." />
   </PaneStatusBody>;
 }
 
-export function GpuHistory({ rows, selectedId, onSelect, initialModel, reloadBoard, width, height, focused }: {
-  rows: GpuBoardRow[]; selectedId: string; onSelect: (id: string) => void; initialModel: string;
+export function GpuHistory({ rows, model, setModel, selectedId, onSelect, reloadBoard, width, height, focused }: {
+  rows: GpuBoardRow[]; model: string; setModel: (value: string) => void; selectedId: string; onSelect: (id: string) => void;
   reloadBoard: () => void; width: number; height: number; focused: boolean;
 }) {
+  const colors = useThemeColors();
   const [basis, setBasis] = usePluginPaneState<string>("historyBasis", "all");
   const [refreshVersion, setRefreshVersion] = usePluginPaneState<number>("historyRefresh", 0);
-  const ordered = useMemo(() => gpuRows(rows, "", basis), [rows, basis]);
-  const initial = ordered.find((row) => row.gpuModel === initialModel && row.providerClass === "aggregate") ?? ordered[0];
+  // History always reads one model: the one picked on the board, else the selected series' model.
+  const models = useMemo(() => [...new Set(rows.map((row) => row.gpuModel))].sort(), [rows]);
+  const activeModel = model || rows.find((row) => row.id === selectedId)?.gpuModel || (models.includes("H100") ? "H100" : models[0] ?? GPU_MODELS[0]!);
+  const sections = useMemo(() => gpuBoardSections(rows, activeModel).filter((section) => basis === "all" || section.basis === basis), [rows, activeModel, basis]);
+  const ordered = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
+  const modelRows = useMemo(() => rows.filter((row) => row.gpuModel === activeModel), [rows, activeModel]);
   const refresh = useCallback(() => { reloadBoard(); setRefreshVersion(refreshVersion + 1); }, [reloadBoard, refreshVersion, setRefreshVersion]);
-  const list = useSeriesList({ focused, items: ordered, getId: gpuRowId, matchesQuery: gpuMatches,
-    selectedId: selectedId || initial?.id || "", onSelect, reload: refresh,
-    range: { value: basis, options: BASES, onChange: setBasis } });
-  return <SeriesListDetail list={list} width={width} height={height} focused={focused} listWidth={64}
-    searchPlaceholder="GPU, cloud or aggregate" columns={listColumns} rows={list.visible} getRowId={gpuRowId}
-    renderCell={(row, column) => column.id === "price" ? { text: gpuPrice(row.pricePerGpuHr), value: row.pricePerGpuHr }
-      : { text: gpuSeriesLabel(row, true) }} emptyStateTitle="No series match."
-    renderDetail={(size) => list.selected ? <HistoryDetail key={list.selected.id} row={list.selected} refreshVersion={refreshVersion} {...size} />
-      : <PaneStatusBody empty emptyTitle={`No ${gpuBasisLabel(basis === "all" ? "list" : basis as GpuObservation["basis"])} series yet.`} />} />;
+  const list = useSeriesList({ focused, items: ordered, getId: (row) => row.id, matchesQuery: gpuMatches,
+    selectedId, onSelect, reload: refresh, range: { value: basis, options: BASES, onChange: setBasis } });
+  const visibleIds = useMemo(() => new Set(list.visible.map((row) => row.id)), [list.visible]);
+  const listRows = useMemo(() => buildSectionedRows(sections.map((section) => ({ label: section.label, items: section.rows.filter((row) => visibleIds.has(row.id)) })),
+    (row) => row.id), [sections, visibleIds]);
+  const renderCell = (item: ListRow, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
+    if (!isSectionedItemRow(item)) return EMPTY_TABLE_CELL;
+    const row = item.item;
+    const headline = gpuHeadline(row);
+    if (column.id === "price") return { text: gpuPrice(row.pricePerGpuHr), value: row.pricePerGpuHr, color: headline ? colors.textBright : colors.text };
+    const name = gpuShortSource(row);
+    return { text: `${name} ${gpuVariant(row).join(" ")}`, content: <Box flexDirection="row" height={1} overflow="hidden">
+      <Text fg={state.selected ? colors.selectedText : headline ? colors.textBright : colors.text} attributes={headline ? TextAttributes.BOLD : 0}>{name}</Text>
+      <Text fg={state.selected ? colors.selectedText : colors.textDim}>{`  ${gpuVariant(row).join(" ")}`}</Text>
+    </Box> };
+  };
+  return <SeriesListDetail list={list} width={width} height={height} focused={focused} listWidth={52}
+    searchPlaceholder="Provider or variant" columns={listColumns} rows={listRows} getRowId={listRowId}
+    filters={[{ id: "gpu", label: "GPU", value: activeModel, options: models.map((value) => ({ value, label: value })), onChange: setModel }]}
+    isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}
+    renderCell={renderCell} emptyStateTitle="No series match."
+    renderDetail={(size) => list.selected ? <HistoryDetail key={list.selected.id} row={list.selected} peers={modelRows} refreshVersion={refreshVersion} {...size} />
+      : <PaneStatusBody empty emptyTitle={`No ${gpuBasisLabel(basis === "all" ? "list" : basis as GpuBasis)} series yet.`} />} />;
 }
+

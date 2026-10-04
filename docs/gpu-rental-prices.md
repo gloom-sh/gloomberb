@@ -2,6 +2,18 @@
 
 `GPU` opens GPU Rental Prices. `GPU H100` or `GPU B200` selects a GPU model. Board shows published rental rates, History charts Gloom's stored observations, Changes records price and list-median membership changes, and Equities shows related shares. The proof of concept is free. The standard pane refresh reads the latest stored data; the footer shows its observation time, stale status and current failures.
 
+## Reading the board
+
+With one GPU model selected, the band above the board places every basis on one dollar axis: the thin line spans the lowest to the highest quote, the thick band holds the middle half, the white tick marks the median, and a ring marks the selected row's price. The count beside each basis is the number of quotes; provider-class medians are left out of the band because their constituents already appear in it. Choosing All GPUs hides the band.
+
+Rows are grouped by GPU model and basis, with the provider-class medians and the marketplace offer medians leading each section in bold, followed by their sample size. Form factor and memory appear as chips, and availability as a dot: green when offers are reported available, amber when a pooled supply is low, grey when the provider reports none. Range shows the interquartile range for marketplace medians and the lowest to highest constituent for list medians.
+
+Until a series has an earlier observation to compare against, its change column reads `new`. Once any 1D, 7D or 30D figure exists, those columns appear, and the medians of the selected model gain a one-month sparkline. Only those few medians fetch history for the board.
+
+History lists the selected model's series grouped the same way. The chart draws the chosen series as a step line together with the medians of the same basis, with list-price changes as markers; a series with fewer than three observations shows that history is still being collected. The table under the chart lists the spans a price held, so hourly snapshots of an unchanged rate read as one row.
+
+Changes groups moves by day, newest first, with the old and new price and the move coloured by its sign. Equities groups related shares into chip makers, hyperscalers, neoclouds, and hosts and builders, with each share's GPU price series, its seven-day move and a one-month price sparkline.
+
 ## Price basis
 
 | Basis | Meaning |
@@ -13,7 +25,7 @@
 
 Narrow panes abbreviate List price to List, Provider-declared spot to Spot, and Reserved to Rsvd.
 
-The `Index (licensed)` row is locked. No Silicon Data or Ornn values are collected or displayed.
+A licensed GPU price index is not available. It does not appear on the board; the `fn GPU` report lists it as locked. No Silicon Data or Ornn values are collected or displayed.
 
 ## Normalization
 

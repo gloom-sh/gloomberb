@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { equityFiveDayReturn, gpuEquityRows, gpuHistorySeries, gpuSource } from "./model";
+import { equityFiveDayReturn, gpuBoardSections, gpuChangeWindows, gpuEquityRows, gpuHistorySeries, gpuPricePeriods, gpuPriceLadder, gpuSource, gpuSparklineSeries } from "./model";
 import { gpuEvent, gpuRow } from "./test-fixture";
 
 describe("GPU observation charts", () => {
@@ -124,4 +124,52 @@ test("equities use the representative neocloud SXM series while cloud and AMD re
   const selectedAmd = gpuEquityRows(rows, "MI355X");
   expect(selectedAmd.find((row) => row.symbol === "AMD")?.reference?.id).toBe(amdNew.id);
   expect(selectedAmd.find((row) => row.symbol === "NVDA")?.reference?.id).toBe(flagship.id);
+});
+
+describe("GPU board layout", () => {
+  test("sections run by model then basis, medians lead each section, and the licensed index never reaches the board", () => {
+    const rows = [
+      gpuRow({ source: "shadeform", provider: "lambda", providerClass: "marketplace", basis: "ask", skuKey: "lambda-ask" }),
+      gpuRow({ source: "vast", provider: "Marketplace asks", providerClass: "marketplace", basis: "ask", skuKey: "vast-ask" }),
+      gpuRow({ source: "aws-list", provider: "AWS", skuKey: "aws" }),
+      gpuRow({ source: "aggregate", provider: "Neocloud list median", providerClass: "aggregate", skuKey: "neo" }),
+      gpuRow({ source: "aws-spot", provider: "AWS", basis: "spot", skuKey: "aws-spot" }),
+      gpuRow({ source: "licensed", provider: "Index", basis: "index", skuKey: "index" }),
+      gpuRow({ gpuModel: "B200", source: "aws-list", provider: "AWS", skuKey: "b200" }),
+    ];
+    const one = gpuBoardSections(rows, "H100");
+    expect(one.map((section) => [section.label, section.rows.map((row) => row.skuKey)])).toEqual([
+      ["List price", ["neo", "aws"]], ["Provider-declared spot", ["aws-spot"]], ["Ask", ["vast-ask", "lambda-ask"]],
+    ]);
+    expect(gpuBoardSections(rows).map((section) => section.label)).toEqual(["H100 List price", "H100 Provider-declared spot", "H100 Ask", "B200 List price"]);
+  });
+
+  test("change windows appear only once a figure exists, so a young history reads as new instead of columns of dashes", () => {
+    expect(gpuChangeWindows([gpuRow(), gpuRow({ skuKey: "other" })])).toEqual([]);
+    expect(gpuChangeWindows([gpuRow({ change1d: 0 }), gpuRow({ skuKey: "other", change30d: -2 })])).toEqual(["change1d", "change30d"]);
+  });
+
+  test("sparklines fetch only one model's medians, and nothing before a change figure exists", () => {
+    const median = gpuRow({ skuKey: "median", providerClass: "aggregate" });
+    const rows = [median, ...Array.from({ length: 40 }, (_, index) => gpuRow({ skuKey: `p${index}` }))];
+    expect(gpuSparklineSeries(rows, "H100")).toEqual([]);
+    const moved = rows.map((row, index) => index === 3 ? { ...row, change1d: 1 } : row);
+    expect(gpuSparklineSeries(moved, "H100")).toEqual([median.id]);
+    expect(gpuSparklineSeries(moved, "")).toEqual([]);
+  });
+
+  test("the price ladder leaves provider medians out, so their constituents are not counted twice", () => {
+    const list = [3, 4, 5, 10].map((price, index) => gpuRow({ skuKey: `p${index}`, pricePerGpuHr: price }));
+    const median = gpuRow({ skuKey: "median", providerClass: "aggregate", pricePerGpuHr: 4.5 });
+    const [ladder] = gpuPriceLadder([...list, median, gpuRow({ skuKey: "b", gpuModel: "B200", pricePerGpuHr: 99 })], "H100");
+    expect(ladder).toEqual({ basis: "list", n: 4, min: 3, max: 10, p25: 3.75, median: 4.5, p75: 6.25 });
+  });
+
+  test("history periods fold unchanged hourly snapshots and measure each move against the previous price", () => {
+    const at = (hour: number, price: number) => ({ observedAt: `2026-10-0${1 + Math.floor(hour / 24)}T${String(hour % 24).padStart(2, "0")}:00:00.000Z`, pricePerGpuHr: price });
+    const periods = gpuPricePeriods([at(5, 5), at(1, 4), at(2, 4), at(3, 5), at(4, 5)]);
+    expect(periods.map((period) => [period.from.slice(11, 13), period.to?.slice(11, 13) ?? null, period.price])).toEqual([["03", null, 5], ["01", "03", 4]]);
+    expect(periods[0]!.change).toBeCloseTo(25);
+    expect(periods[1]!.change).toBeNull();
+  });
 });
