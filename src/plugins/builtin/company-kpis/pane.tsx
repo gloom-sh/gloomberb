@@ -16,8 +16,14 @@ import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, companyColumns, dimensionLabel, directionLabel, guideGroupKey, guidanceSeries, fiscalLabel,
-  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, rangeText, seriesLabel, unitLabel, valueText, type CompanyRow } from "./model";
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyColumns, dimensionLabel, directionLabel, directionTone, guideGroupKey, guidanceSeries, fiscalLabel,
+  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, rangeText, seriesLabel, unitLabel, unitSuffix, valueText, type CompanyRow } from "./model";
+import { PriceSparkline } from "../../../components/price-sparkline/view";
+import type { PricePoint } from "../../../types/financials";
+import { toneColor, withoutQuietColumns } from "../shared/research-cells";
+
+/** Columns that say nothing while every row is the company's consolidated, as-reported figure. */
+const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
 
 type Item = { id: string; row: CompanyRow } | { id: string; row: null };
 const getId = (item: Item) => item.id;
@@ -119,7 +125,18 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
   const preview = data?.access === "preview" && data.lockedRows > 0;
   const lockedCount = preview ? Math.min(3, data.lockedRows) : 0;
   const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })), ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount]);
-  const columns = useMemo(() => companyColumns(mode === "guidance", tab === "evidence", tab === "history"), [mode, tab]);
+  // One trend per series beside its latest value, once a series has three comparable points.
+  const trends = useMemo(() => {
+    const map = new Map<string, PricePoint[]>();
+    for (const series of kpis?.series ?? []) {
+      const points = series.observations.filter((row) => row.current && !row.conflict && !row.contested && exactObservation(row) && row.period.end && row.period.kind === series.latest.period.kind)
+        .sort((a, b) => periodOrder(a).localeCompare(periodOrder(b))).map((row) => ({ date: new Date(row.period.end!), close: row.value }));
+      if (points.length >= 3) map.set(series.latest.id, points);
+    }
+    return map;
+  }, [kpis]);
+  const columns = useMemo(() => withoutQuietColumns(companyColumns(mode === "guidance", tab === "evidence", tab === "history", mode === "kpis" && tab === "table" && trends.size > 0),
+    rows, (row, id) => id === "basis" ? basisLabel(row.basis) : id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated" : "", QUIET_COLUMNS), [mode, tab, trends, rows]);
   const metricOptions = useMemo(() => [{ value: "all", label: "All metrics" }, ...[...new Map(allRows.map((row) => [row.metricId, { value: row.metricId, label: row.metric.name }])).values()]], [allRows]);
   const kpiChart = useMemo(() => observationChart(rows.filter((row): row is KpiObservation => !isGuidance(row)), colors.warning), [rows, colors.warning]);
   const series = useMemo(() => tab !== "chart" ? [] : mode === "kpis" ? kpiChart.series
@@ -162,14 +179,29 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
       return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === "metric" ? "Additional disclosure" : "Hidden"}</Text></Blurred> } : { text: "░░░░░", color: colors.textDim };
     }
     const guide = isGuidance(row) ? row : null;
-    const text = column.id === "metric" ? row.metric.name : column.id === "period" ? fiscalLabel(row) : column.id === "value" ? guide ? rangeText(guide, false) : observationValue(row as KpiObservation, false)
-      : column.id === "unit" ? unitLabel(row) : column.id === "change" ? guide ? directionLabel(guide.direction) : changeText(observationChange(row as KpiObservation, observations))
+    if (column.id === "trend") {
+      const points = trends.get(row.id);
+      if (!points) return { text: "" };
+      const change = observationChange(row as KpiObservation, observations).value;
+      const tone = changeTone(row as KpiObservation, change);
+      return { text: "", content: <PriceSparkline priceHistory={points} width={column.width} period="all" trend={tone === "muted" ? "neutral" : tone} /> };
+    }
+    if (column.id === "change") {
+      if (guide) return { text: directionLabel(guide.direction), color: toneColor(directionTone(guide.direction), colors), keepColorWhenSelected: guide.direction === "raised" || guide.direction === "cut" };
+      const change = observationChange(row as KpiObservation, observations);
+      return { text: changeText(change), value: change.value, color: toneColor(changeTone(row as KpiObservation, change.value), colors) };
+    }
+    const text = column.id === "metric" ? row.metric.name : column.id === "period" ? fiscalLabel(row) : column.id === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
+      : column.id === "unit" ? unitLabel(row)
       : column.id === "basis" ? basisLabel(row.basis) : column.id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
-      : column.id === "issued" ? guide?.issuedDate ?? "--" : column.id === "actual" ? guide?.actual ? valueText(row, guide.actual.value, false) : "--"
+      : column.id === "issued" ? guide?.issuedDate ?? "--" : column.id === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : "--"
       : column.id === "outcome" ? guide ? outcomeLabel(guide) : "--" : column.id === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
       : column.id === "confidence" ? `${Math.round(row.confidence * 100)}%` : column.id === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
     return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : {}),
-      color: column.id === "metric" ? colors.textBright : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text : colors.text };
+      color: column.id === "metric" ? colors.textBright : column.id === "value" || column.id === "actual" ? colors.textBright
+        : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text
+        : column.id === "period" || column.id === "basis" || column.id === "scope" || column.id === "issued" || column.id === "published" || column.id === "revision" || column.id === "confidence" ? colors.textDim : colors.text,
+      keepColorWhenSelected: column.id === "outcome" && (guide?.actual?.favorable === "beat" || guide?.actual?.favorable === "miss") };
   };
   return <Box width={width} height={height} flexDirection="column">
     {strip}

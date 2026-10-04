@@ -28,6 +28,19 @@ export const rangeText = (row: KpiGuidance, withUnit = true) => row.status === "
   : row.low !== null && row.high !== null ? `${row.hedge === "approximately" ? "≈ " : ""}${valueText(row, row.low, withUnit)} – ${valueText(row, row.high, withUnit)}`
   : row.low !== null ? `${row.hedge === "greater_than" ? ">" : "≥"} ${valueText(row, row.low, withUnit)}`
   : row.high !== null ? `${row.hedge === "less_than" ? "<" : "≤"} ${valueText(row, row.high, withUnit)}` : row.rangeText;
+/** The unit a value cell carries after its number; percent, bp and x are already in the number. */
+export function unitSuffix(row: Pick<CompanyRow, "unit" | "currency" | "dimensions">): string {
+  if (row.unit === "currency") return row.currency ? ` ${row.currency}` : "";
+  if (row.unit === "currency_per_share") return ` ${row.currency ?? ""}/sh`.replace(" /", " ");
+  if (row.unit === "currency_per_unit" || row.unit === "volume") return ` ${unitLabel(row)}`;
+  return "";
+}
+/** Raised reads as good news, a cut as bad, a reiteration as no news. */
+export const directionTone = (direction: KpiGuidance["direction"]) => direction === "raised" ? "positive" as const : direction === "cut" ? "negative" as const
+  : direction === "withdrawn" ? "warning" as const : direction === "initiated" ? "text" as const : "muted" as const;
+/** A change is good when it moves the way the metric's owner wants it to. */
+export const changeTone = (row: KpiObservation, value: number | null) => value === null || value === 0 || row.metric.favorable === "neutral" ? "muted" as const
+  : (value > 0) === (row.metric.favorable === "higher") ? "positive" as const : "negative" as const;
 export const directionLabel = (direction: KpiGuidance["direction"]) => direction === "not_comparable" ? "Not comparable" : direction.charAt(0).toUpperCase() + direction.slice(1);
 export const outcomeLabel = (row: KpiGuidance) => !row.actual ? "Pending" : row.actual.favorable === "in_line" ? "In range"
   : row.actual.favorable === "neutral" ? row.actual.outcome === "above" ? "Above" : row.actual.outcome === "below" ? "Below" : "In range"
@@ -91,21 +104,21 @@ export function guidanceSeries(rows: KpiGuidance[], selected: KpiGuidance | unde
   if (actual && series.length) series.push(staticSeries(timeline.map((row) => scalarPoint(new Date(row.issuedDate), actual.value)), { id: "actual", label: "Later actual", color: colors.actual, calendarSpaced: true }));
   return series;
 }
-export function companyColumns(guidance: boolean, evidence: boolean, history: boolean): DataTableColumn[] {
+export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false): DataTableColumn[] {
   const columns: DataTableColumn[] = [
     { id: "metric", label: "Metric", width: 27, flexGrow: 1, align: "left" },
     { id: "period", label: "Fiscal period", width: 14, align: "left" },
-    { id: "value", label: guidance ? "Guide" : "Value", width: guidance ? 24 : 14, align: "right" },
-    { id: "unit", label: "Unit", width: 11, align: "right" },
-    { id: "change", label: guidance ? "Action" : "Prior change", width: 15, align: "right" },
+    { id: "value", label: guidance ? "Guide" : "Value", width: guidance ? 26 : 16, align: "right" },
+    ...(trend ? [{ id: "trend", label: "Trend", width: 14, align: "left" as const }] : []),
+    { id: "change", label: guidance ? "Action" : "Prior change", width: 13, align: "right" },
     ...(guidance ? [{ id: "issued", label: "Issued", width: 11, align: "left" as const },
-      ...(history ? [{ id: "actual", label: "Actual", width: 14, align: "right" as const }, { id: "outcome", label: "Outcome", width: 10, align: "left" as const }] : [])] : []),
+      ...(history ? [{ id: "actual", label: "Actual", width: 16, align: "right" as const }, { id: "outcome", label: "Outcome", width: 10, align: "left" as const }] : [])] : []),
     { id: "basis", label: "Basis", width: 18, align: "left" },
     { id: "scope", label: "Scope", width: 24, align: "left" },
     ...(evidence ? [{ id: "published", label: "Published", width: 11, align: "left" as const }, { id: "confidence", label: "Confidence", width: 11, align: "right" as const },
       { id: "revision", label: "Revision", width: 12, align: "left" as const }, { id: "quote", label: "Evidence", width: 65, align: "left" as const }] : []),
   ];
-  const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "unit", "basis", "scope", "issued", "change"]
-    : history ? ["metric", "period", "actual", "outcome", "value", "unit", "issued", "change", "basis", "scope"] : null;
+  const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "basis", "scope", "issued", "change"]
+    : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;
   return order ? columns.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : columns;
 }
