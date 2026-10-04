@@ -169,6 +169,7 @@
           "gpu",
           "market-movers",
           "power",
+          "perps",
           "relationship-graph",
           "relative-rotation",
           "scanner-flow",

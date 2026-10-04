@@ -896,3 +896,7 @@ Contract terms and revisions retain literal filing quotes, character spans, conf
 ## Power and grid capacity (POWER, Pro)
 
 POWER combines public interconnection queue snapshots, completion and withdrawal cohorts, large-load requests and approvals, utility exposure, and generation context. Every record preserves units, source dates, observation time, raw evidence and primary links. Free accounts see a limited preview. Historical benchmarks are separate from current queues; rates exclude summary and capacity-segment rows. See [Power and grid capacity](power-grid.md) for regional coverage, history semantics, company links and CLI/REST examples.
+
+## Perpetual markets (Pro)
+
+`PERP` provides per-market History and Evidence across enabled stock, index, commodity, FX and crypto perpetual contracts. Free accounts receive a latest-value preview; Pro unlocks retained history. The full board belongs to the external perpetuals plugin. Raw, eight-hour and annualized funding retain their intervals. Own history is sampled every 5, 15 or 60 minutes by each venue's USD open-interest ranking; new markets are recorded immediately. A separate five-minute baseline cache supports OI changes. Closed-market stock premiums retain a dated underlying reference. See [perpetual methodology and coverage](perpetuals.md) for venue scope, disabled adapters, correction handling, currencies, nulls and exact formulas.

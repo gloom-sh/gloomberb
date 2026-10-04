@@ -80,3 +80,12 @@ test("a flow rule's state shows its latest matching print", () => {
   expect(ruleStateText({ ...base, asOf: null, value: null, unit: null, warning: "Watching 12 NVDA contracts; no qualifying print yet." }))
     .toBe("Watching 12 NVDA contracts; no qualifying print yet.");
 });
+
+test("perpetual wizard percentages normalize to fractions, preserve global identity and round-trip sync", () => {
+  const rule = createResearchAlert("perps_threshold", { "perps_threshold:marketId": "hyperliquid:xyz:TSLA", "perps_threshold:metric": "funding8h", "perps_threshold:direction": "below", "perps_threshold:threshold": "-0.25" });
+  expect(JSON.parse(rule.value)).toEqual({ version: 1, marketId: "hyperliquid:xyz:TSLA", metric: "funding8h", threshold: -0.0025, direction: "below" });
+  expect(readEventAlerts(JSON.stringify([rule])).error).toBeNull();
+  expect(eventAlertTarget(rule)).toContain("-0.250%");
+  expect(() => createResearchAlert("perps_threshold", { "perps_threshold:marketId": "TSLA", "perps_threshold:metric": "funding8h" })).toThrow();
+  expect(() => createResearchAlert("perps_threshold", { "perps_threshold:marketId": "hyperliquid:xyz:TSLA", "perps_threshold:metric": "premium", "perps_threshold:threshold": "NaN" })).toThrow();
+});

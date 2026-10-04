@@ -10,6 +10,7 @@ const RESEARCH_ALERT_KINDS = [
   "insider_trade",
   "iv_spike",
   "options_flow",
+  "perps_threshold",
 ] as const
 export type ResearchAlertKind = (typeof RESEARCH_ALERT_KINDS)[number]
 export interface ResearchAlertConfig {
@@ -23,6 +24,8 @@ export interface ResearchAlertConfig {
   leadDays?: number
   contract?: string
   /** Options flow: which prints count (any, sweep or block). */
+  marketId?: string
+  metric?: "funding8h" | "oiChange24h" | "premium" | "closedMarketPremium"
   print?: string
 }
 export const RESEARCH_ALERT_FORMS = [
@@ -80,7 +83,14 @@ export function normalizeResearchRule(
     const input: unknown = typeof raw === "string" ? JSON.parse(raw) : raw
     if (!object(input) || input.version !== 1) return null
     const result: ResearchAlertConfig = { version: 1 }
-    if (kind === "iv_spike") {
+    if (kind === "perps_threshold") {
+      const marketId = typeof input.marketId === "string" ? input.marketId.trim() : "";
+      const metric = input.metric;
+      if (!/^[a-z][a-z0-9-]*:[^\s:]*:[^\s]+$/.test(marketId) || marketId.length > 180
+        || typeof metric !== "string" || !["funding8h", "oiChange24h", "premium", "closedMarketPremium"].includes(metric)) return null;
+      result.marketId = marketId;
+      result.metric = metric as ResearchAlertConfig["metric"];
+    } else if (kind === "iv_spike") {
       const identity = optionIdentity(
         typeof input.contract === "string" ? input.contract : "",
       )
@@ -133,6 +143,10 @@ export function normalizeResearchRule(
       result.direction = value
     }
     switch (kind) {
+      case "perps_threshold":
+        numeric("threshold", 0.001, -100, 100);
+        direction(["above", "below"], "above");
+        break;
       case "earnings_date":
         numeric("leadDays", 1, 0, 14, true)
         break

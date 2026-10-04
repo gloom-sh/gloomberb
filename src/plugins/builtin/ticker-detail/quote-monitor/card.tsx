@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
 import type { PricePoint, Quote, TickerFinancials } from "../../../../types/financials";
@@ -62,7 +63,9 @@ export function QuoteMonitorCard({
   selected = false,
   onSelect,
   onOpen,
+  perpetuals,
 }: {
+  perpetuals?: ReactNode;
   symbol: string;
   ticker: TickerRecord | null;
   cachedFinancials: TickerFinancials | null;
@@ -184,7 +187,7 @@ export function QuoteMonitorCard({
             display: "grid",
             // The name gives way first; the price keeps its natural width.
             gridTemplateColumns: "minmax(0, 1fr) auto",
-            gridTemplateRows: "auto 1fr auto",
+            gridTemplateRows: "auto 1fr auto auto",
             columnGap: 12,
             width: "100%",
             height: "100%",
@@ -246,6 +249,7 @@ export function QuoteMonitorCard({
             </Box>
           </Box>
 
+          {perpetuals && <Box style={{ gridColumn: "1 / -1", gridRow: "4", alignSelf: "end" }}>{perpetuals}</Box>}
           {rangeLabel && (
             <Text
               fg={colors.textDim}
@@ -323,6 +327,7 @@ export function QuoteMonitorCard({
           {quoteFailed && !compactQuoteFailure && (
             <Box height={1} overflow="hidden"><Text fg={colors.negative}>{quoteStatus.text}</Text></Box>
           )}
+          {perpetuals}
           {showTerminalSparkline && <Box height={terminalSparklineHeight} flexDirection="row" alignItems="center" gap={1}>
             <PriceSparkline
               priceHistory={priceHistory}

@@ -4,6 +4,7 @@ import { companyAttentionModule } from "./builtin/company-attention";
 import { catalystsModule } from "./builtin/catalysts";
 import { companyKpisModule } from "./builtin/company-kpis";
 import { powerModule } from "./builtin/power";
+import { perpsModule } from "./builtin/perps";
 import { supplyChainModule } from "./builtin/supply-chain";
 import { awardsModule } from "./builtin/awards";
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
@@ -168,6 +169,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
     attentionModule,
     powerModule,
     cryptoBoardModule,
+    perpsModule,
   ],
 });
 
