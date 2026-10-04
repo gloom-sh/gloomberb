@@ -89,6 +89,7 @@ function ShareCell({ row, focusId, width, selected }: { row: SupplyRow; focusId?
   const colors = useThemeColors();
   const share = shareParts(row, focusId);
   if (!share) return <Text fg={colors.textMuted}>{""}</Text>;
+  if (width < 14) return <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{share.value}</Text>;
   const barWidth = width >= 36 ? BAR_CELLS : Math.min(5, Math.max(3, width - 11));
   return <Box flexDirection="row" width={width} height={1} gap={1} overflow="hidden">
     <RatioBar ratio={row.pctOfRevenue! / 100} width={barWidth} color={ROLE_COLORS[row.role]} track />
