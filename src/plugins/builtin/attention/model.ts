@@ -9,15 +9,17 @@ export const WINDOWS = [{ value: "now", label: "Now" }, { value: "today", label:
 export const number = (value: number | null | undefined, digits = 0) => value == null ? "--" : value.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits });
 export const signed = (value: number | null | undefined, suffix = "") => value == null ? "--" : `${value > 0 ? "+" : ""}${number(value, 2)}${suffix}`;
 export const date = (value: string | null | undefined) => value ? value.slice(0, 16).replace("T", " ") + " UTC" : "--";
+/** A time in a column whose header already says UTC. */
+export const hour = (value: string) => value.slice(0, 16).replace("T", " ");
 export const COLUMNS: DataTableColumn[] = [
   { id: "rank", label: "Rank", width: 5, align: "right" }, { id: "symbol", label: "Ticker", width: 15, align: "left" },
   { id: "name", label: "Name", width: 23, flexGrow: 1, align: "left" }, { id: "researchUnits", label: "Research hrs", width: 12, align: "right" },
-  { id: "sharePct", label: "Share %", width: 8, align: "right" }, { id: "zScore", label: "1H Z-score", width: 10, align: "right" },
+  { id: "sharePct", label: "Share %", width: 16, align: "right" }, { id: "zScore", label: "1H Z-score", width: 10, align: "right" },
   { id: "priceChangePct", label: "Price %", width: 9, align: "right" }, { id: "relativeVolume", label: "Rel vol", width: 8, align: "right" },
   { id: "sector", label: "Sector", width: 20, align: "left" }, { id: "country", label: "Country", width: 9, align: "left" },
 ];
 export const GROUP_COLUMNS: DataTableColumn[] = [{ id: "name", label: "Group", width: 25, flexGrow: 1, align: "left" },
-  { id: "researchUnits", label: "Research hrs", width: 13, align: "right" }, { id: "sharePct", label: "Share %", width: 10, align: "right" },
+  { id: "researchUnits", label: "Research hrs", width: 13, align: "right" }, { id: "sharePct", label: "Share %", width: 30, align: "right" },
   { id: "tickers", label: "Tickers", width: 9, align: "right" }];
 export const HISTORY_COLUMNS: DataTableColumn[] = [{ id: "bucketStart", label: "Hour (UTC)", width: 22, flexGrow: 1, align: "left" },
   { id: "researchUnits", label: "Research hrs", width: 14, align: "right" }, { id: "change", label: "Change", width: 11, align: "right" }];

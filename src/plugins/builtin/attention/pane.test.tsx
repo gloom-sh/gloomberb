@@ -38,7 +38,7 @@ test("a bare ticker opens canonical history, with current values and independent
   const frame = await tui.waitForFrameToContain("NVDA:NASDAQ research hours");
   expect(frame).toContain("285");
   await tui.emitKeypress({ name: "e" });
-  const evidence = await tui.waitForFrameToContain("Volume observation");
+  const evidence = await tui.waitForFrameToContain("Relative volume");
   expect(evidence).toContain("2026-10-02 14:00 UTC");
   expect(evidence).toContain("2026-10-02 15:00 UTC");
 });
@@ -50,7 +50,7 @@ test("qualified historical hours remain reachable when every current ticker is s
   await mount(empty, { symbol: prior.symbol, tab: "history" }, (url) => new URL(url).pathname.endsWith("/attention") ? empty : detail);
   const frame = await tui.waitForFrameToContain("6758:JPX research hours");
   expect(frame).not.toContain("Waiting for privacy-qualified research activity.");
-  expect(frame).toContain("2026-10-02 17:00 UTC");
+  expect(frame).toContain("2026-10-02 17:00");
 });
 test("preview displays retained rows and makes history gating explicit", async () => {
   await mount(attentionPreview());
@@ -58,7 +58,7 @@ test("preview displays retained rows and makes history gating explicit", async (
   expect(frame).not.toContain("Taiwan Semiconductor");
   await tui.emitKeypress({ name: "return" });
   const history = await tui.waitForFrameToContain("Pro unlocks published history.");
-  expect(history).toContain("2026-10-02 17:00 UTC");
+  expect(history).toContain("2026-10-02 17:00");
 });
 
 test("group selection opens its exact country and does not expose unrelated ticker actions", async () => {

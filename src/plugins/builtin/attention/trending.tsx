@@ -10,6 +10,8 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { SignInWall } from "../cloud/auth-actions";
 import { cachedAttention, loadAttention } from "./client";
 import { date, emptyAttention, number, signed } from "./model";
+import { useThemeColors } from "../../../theme/theme-context";
+import { listingCell, missingCell } from "../shared/research-cells";
 function useTrending(symbol?: string) {
   const session = useResearchCloudSession();
   const access = usePlanAccess();
@@ -35,6 +37,7 @@ export function TrendingSummary({ symbol, onOpen }: { symbol: string; onOpen?: (
   </Box>;
 }
 export function TrendingPane({ width, height, focused }: PaneProps) {
+  const colors = useThemeColors();
   const { resource, session, access } = useTrending();
   const data = resource.data?.payload;
   const { createPaneFromTemplate } = usePluginAppActions();
@@ -49,6 +52,8 @@ export function TrendingPane({ width, height, focused }: PaneProps) {
     {data ? <DataTableView columns={[{ id: "symbol", label: "Ticker", width: 16, flexGrow: 1, align: "left" }, { id: "research", label: "Research hrs", width: 12, align: "right" }, { id: "z", label: "1H Z", width: 8, align: "right" }]}
       items={data.rows.slice(0, 5)} emptyStateTitle="No published research hours." rootWidth={width} rootHeight={height} focused={focused} getItemKey={(row) => row.symbol} selection={{ kind: "index", selectedIndex, onChange: setSelectedIndex }}
       sortColumnId={null} sortDirection="desc" onActivate={(row) => createPaneFromTemplate("attention-pane", { arg: row.symbol, values: { window: "today" } })}
-      renderCell={(row, column) => column.id === "symbol" ? { text: row.symbol } : column.id === "research" ? { text: number(row.researchUnits), value: row.researchUnits } : { text: signed(row.zScore), value: row.zScore }} /> : <EmptyState title="Sign in to view research attention." />}
+      selectedTextOverridesCellColor renderCell={(row, column, _index, state) => column.id === "symbol" ? listingCell(row.symbol, colors, state.selected)
+        : column.id === "research" ? { text: number(row.researchUnits), value: row.researchUnits, color: colors.textBright }
+        : row.zScore == null ? missingCell(colors) : { text: signed(row.zScore), value: row.zScore, color: row.zScore >= 2 ? colors.warning : colors.text, keepColorWhenSelected: row.zScore >= 2 }} /> : <EmptyState title="Sign in to view research attention." />}
   </PaneStatusBody>;
 }
