@@ -56,6 +56,18 @@ test("agency drilldown retains source and currency scope instead of mixing overl
   expect(requests.some((request) => request.includes("agency=defense") && request.includes("currency=USD") && request.includes("source=usaspending"))).toBe(true);
 });
 
+test("empty company selection cannot open an unrelated feed award or issuer", async () => {
+  setCloudApiFetchTransport(async () => Response.json(awardsPayload()));
+  const navigation: string[] = [];
+  await mount("company", 120, 26, (id) => navigation.push(id));
+  const frame = await tui.waitForFrameToContain("Enter a company ticker.");
+  expect(frame).not.toContain("[o]pen source");
+  await tui.emitKeypress({ name: "e" });
+  await tui.emitKeypress({ name: "d" });
+  expect(navigation).toEqual([]);
+  expect(tui.frame()).toContain("Enter a company ticker.");
+});
+
 test("sector company leaders drill into the verified company's history within the selected sector", async () => {
   const requests: string[] = [];
   setCloudApiFetchTransport(async (request) => { requests.push(String(request)); return Response.json(awardsPayload()); });

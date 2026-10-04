@@ -135,7 +135,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     ...(showLeaders ? groupedAggregates(data?.leaders ?? [], (row): Item => ({ kind: "leader", row })) : aggregated ? groupedAggregates(aggregates, (row): Item => ({ kind: "aggregate", row })) : rows.map((row): Item => ({ kind: "award", row }))),
     ...(data?.locked ? Array.from({ length: 3 }, (_, i): Item => ({ kind: "locked", id: `locked:${i}` })) : []),
   ], [showLeaders, aggregated, aggregates, rows, data?.leaders, data?.locked]);
-  const selected = items.find((item) => itemId(item) === selectedId && isRowItem(item)) ?? items.find(isRowItem) ?? null;
+  const selected = tab === "company" && !ticker ? null
+    : items.find((item) => itemId(item) === selectedId && isRowItem(item)) ?? items.find(isRowItem) ?? null;
   const current = openRow ?? (selected?.kind === "award" ? selected.row : null);
   const selectedEntity = current?.entity ?? (selected?.kind === "leader" && selected.row.ticker ? { ticker: selected.row.ticker, exchange: selected.row.exchange } : null);
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
