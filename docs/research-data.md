@@ -884,3 +884,7 @@ licensed sources behind the platform cannot support them honestly:
 - Supply chain and M&A databases: no free structured source.
 - Level 2 order book: the market data plan supplies trades and NBBO only; `TAS`
   and `QR` show what is available.
+
+## Company operating metrics and guidance (KPIS, GUIDE)
+
+[Company KPIs and management guidance](company-kpis.md) covers the canonical dictionary, native currencies and fiscal periods, evidence, immutable revisions, range semantics and actual matching. These Pro functions provide a fixed latest preview on Free and complete stored history on Pro. `GUID`, `EM`, `EE` and `ERN` link to them from their pane menus.

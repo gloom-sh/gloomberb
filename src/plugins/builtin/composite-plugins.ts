@@ -1,3 +1,4 @@
+import { companyKpisModule } from "./company-kpis";
 import { supplyChainModule } from "./supply-chain";
 import { cryptoBoardModule } from "./crypto-board";
 import { portfolioAnalyticsModule } from "./analytics";
@@ -113,6 +114,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     debtMaturitiesModule,
     revenueBreakdownModule,
     supplyChainModule,
+    companyKpisModule,
     mnaModule,
     dividendYieldModule,
     holdersModule,

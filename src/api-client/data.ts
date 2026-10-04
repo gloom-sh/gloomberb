@@ -1,3 +1,5 @@
+import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
+import { companyDisclosurePath } from "./company-kpis";
 import type { SupplyChainPayload } from "./supply-chain";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
@@ -387,6 +389,14 @@ export class CloudDataApi {
 
   async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
+  }
+
+  async getCloudCompanyKpis(symbol: string, options: KpiQueryOptions = {}): Promise<KpisPayload> {
+    return this.request<KpisPayload>(companyDisclosurePath("kpis", symbol, options));
+  }
+
+  async getCloudCompanyGuidance(symbol: string, options: KpiQueryOptions = {}): Promise<GuidancePayload> {
+    return this.request<GuidancePayload>(companyDisclosurePath("guidance", symbol, options));
   }
 
   async getCloudSupplyChain(symbol: string): Promise<SupplyChainPayload> {

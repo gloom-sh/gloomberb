@@ -417,6 +417,20 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: pro("As calls, stories and filings arrive"),
     bloomberg: ["NSE"],
   },
+  KPIS: {
+    summary: "Company operating KPIs, fiscal history and revisions with source quotes.",
+    usage: ["KPIS CRM", "KPIS 005930:KRX"],
+    keys: [TABS, OPEN, key("e", "vidence"), OPEN_SOURCE],
+    data: { free: "Pro dataset; fixed latest preview with evidence", pro: "As disclosed; all stored observations and history" },
+    bloomberg: [],
+  },
+  GUIDE: {
+    summary: "Management guidance ranges, raises, cuts and later actuals, with source quotes.",
+    usage: ["GUIDE DAL", "GUIDE CRM"],
+    keys: [TABS, OPEN, key("e", "vidence"), OPEN_SOURCE],
+    data: { free: "Pro dataset; fixed latest preview with evidence", pro: "As issued; full guidance history and actual matches" },
+    bloomberg: [],
+  },
   SPLC: {
     summary: "Explore disclosed suppliers, customers and other relationships, plus the filings that name this company. Table and flow views include verbatim evidence. Disclosed in filings only. Absence is not proof of no relationship.",
     usage: ["SPLC NVDA", "SUPPLY AAPL"],

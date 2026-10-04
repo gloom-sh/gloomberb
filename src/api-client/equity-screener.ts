@@ -1,4 +1,7 @@
+/** Cited company disclosures; Pro, omitted by older servers. */
+export const KPI_FIELDS = ["kpiArr", "kpiNrrPercent", "kpiRpo", "kpiCrpo", "kpiSubscribers", "kpiDau", "kpiMau", "kpiGmv", "kpiTakeRatePercent", "kpiSameStoreSalesPercent", "kpiStores", "kpiBacklog", "kpiBookToBill", "kpiNimPercent", "kpiCet1Percent", "kpiCombinedRatioPercent", "kpiOccupancyPercent", "kpiLoadFactorPercent", "guideRevenueChangePercent", "guideEpsChangePercent"] as const;
 export const NUMERIC_FIELDS = [
+  ...KPI_FIELDS,
   "price",
   "changePercent",
   "volume",
@@ -147,6 +150,7 @@ export interface SavedScreen {
   updatedAt: string;
 }
 export interface ScreenFieldDefinition {
+  access?: "pro";
   id: ScreenField;
   label: string;
   kind: "number" | "category";

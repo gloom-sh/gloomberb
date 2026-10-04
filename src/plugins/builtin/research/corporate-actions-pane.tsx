@@ -1,3 +1,4 @@
+import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
@@ -410,6 +411,7 @@ export function CorporateActionsView({
   const dataProvider = useAssetData();
   const cloudSession = useResearchCloudSession();
   const { symbol, ticker, exchange, currency } = useSymbolBinding();
+  useCompanyDisclosureLinks(symbol);
   // The shared ticker snapshot already subscribes to financials for this pane.
   // Only the statements are read, so the rows do not rebuild on price ticks.
   const { financials: tickerFinancials } = usePaneTicker();

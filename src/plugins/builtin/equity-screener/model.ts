@@ -2,6 +2,7 @@ import {
   CATEGORY_FIELDS,
   NUMERIC_FIELDS,
   RESEARCH_FIELDS,
+  KPI_FIELDS,
   SOCIAL_FIELDS,
   type NumericField,
   type ScreenMetric,
@@ -20,6 +21,27 @@ import { formatCompact, formatNumber } from "../../../utils/format";
  * Growth and margins come from the latest fiscal-year statement, so they say FY.
  */
 export const SHORT_LABELS: Record<NumericField, string> = {
+  kpiArr: "ARR",
+  kpiNrrPercent: "NRR%",
+  kpiRpo: "RPO",
+  kpiCrpo: "CRPO",
+  kpiSubscribers: "SUBSCRIBERS",
+  kpiDau: "DAU",
+  kpiMau: "MAU",
+  kpiGmv: "GMV",
+  kpiTakeRatePercent: "TAKE RATE%",
+  kpiSameStoreSalesPercent: "SAME STORE%",
+  kpiStores: "STORES",
+  kpiBacklog: "BACKLOG",
+  kpiBookToBill: "BOOK/BILL",
+  kpiNimPercent: "NIM%",
+  kpiCet1Percent: "CET1%",
+  kpiCombinedRatioPercent: "COMBINED%",
+  kpiOccupancyPercent: "OCCUPANCY%",
+  kpiLoadFactorPercent: "LOAD FACTOR%",
+  guideRevenueChangePercent: "REV GUIDE CHG%",
+  guideEpsChangePercent: "EPS GUIDE CHG%",
+
   price: "PRICE",
   changePercent: "CHG%",
   volume: "VOLUME",
@@ -62,19 +84,20 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   ivRank: "IV RANK",
   ivToHv: "IV/HV",
 };
-const COMPACT = new Set<NumericField>(["marketCap", "volume", "averageVolume20d", "shortInterestShares"]);
+const COMPACT = new Set<NumericField>(["kpiArr", "kpiRpo", "kpiCrpo", "kpiSubscribers", "kpiDau", "kpiMau", "kpiGmv", "kpiStores", "kpiBacklog", "marketCap", "volume", "averageVolume20d", "shortInterestShares"]);
 /** Daily counts: whole numbers below a thousand, compact above. */
 const DAILY_COUNTS = new Set<NumericField>(["xPostsPerDay", "wikiViewsPerDay"]);
-const RATIOS = new Set<NumericField>(["xPostsVsMedian", "wikiViewsVsMedian", "priceToBook", "evToEbitda", "ivToHv"]);
+const RATIOS = new Set<NumericField>(["kpiBookToBill", "xPostsVsMedian", "wikiViewsVsMedian", "priceToBook", "evToEbitda", "ivToHv"]);
 const RETURNS: NumericField[] = ["return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent", "return1YPercent"];
 const SIGNED = new Set<NumericField>([
+  "guideRevenueChangePercent", "guideEpsChangePercent", "kpiSameStoreSalesPercent",
   "changePercent", "revenueGrowthPercent", "earningsGrowthPercent", "shortInterestChangePercent",
   ...RETURNS, "fromHigh52WPercent", "epsRevision30dPercent", "analystUpsidePercent",
 ]);
 /** Moves whose sign is the news: they take the sign colour. */
 export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent"]);
 const COUNTS = new Set<NumericField>(["insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank"]);
-const MONETARY = new Set<NumericField>(["price", "marketCap"]);
+const MONETARY = new Set<NumericField>(["price", "marketCap", "kpiArr", "kpiRpo", "kpiCrpo", "kpiGmv", "kpiBacklog"]);
 /** Shown after the screen's own criteria when the pane has room. */
 const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "trailingPE", "revenueGrowthPercent", "operatingMarginPercent", "dividendYieldPercent"];
 
@@ -117,6 +140,26 @@ export const screenRowId = (row: Pick<ScreenRow, "symbol" | "exchange">) =>
   `${canonicalExchange(row.exchange)}:${row.symbol}`;
 export const screenLabel = (field: string) =>
   ({
+    kpiArr: "Annual recurring revenue",
+    kpiNrrPercent: "Net revenue retention %",
+    kpiRpo: "Remaining performance obligations",
+    kpiCrpo: "Current RPO",
+    kpiSubscribers: "Subscribers",
+    kpiDau: "Daily active users",
+    kpiMau: "Monthly active users",
+    kpiGmv: "Gross merchandise value",
+    kpiTakeRatePercent: "Take rate %",
+    kpiSameStoreSalesPercent: "Same-store sales growth %",
+    kpiStores: "Stores",
+    kpiBacklog: "Backlog",
+    kpiBookToBill: "Book-to-bill",
+    kpiNimPercent: "Net interest margin %",
+    kpiCet1Percent: "CET1 ratio %",
+    kpiCombinedRatioPercent: "Combined ratio %",
+    kpiOccupancyPercent: "Occupancy %",
+    kpiLoadFactorPercent: "Load factor %",
+    guideRevenueChangePercent: "Revenue guide change %",
+    guideEpsChangePercent: "EPS guide change %",
     trailingPE: "Trailing P/E",
     forwardPE: "Forward P/E",
     enterpriseToRevenue: "EV / revenue",
@@ -300,14 +343,14 @@ export function parseScreenDefinition(value: unknown): ScreenDefinition {
   });
   if (
     !item.currency &&
-    (["price", "marketCap"].includes(item.sort.field) ||
+    (MONETARY.has(item.sort.field as NumericField) ||
       item.criteria.some(
         (criterion) =>
-          ["price", "marketCap"].includes(criterion.field) &&
+          MONETARY.has(criterion.field as NumericField) &&
           !["present", "missing"].includes(criterion.op),
       ))
   )
-    throw new Error("Select one currency for price or market-cap comparisons.");
+    throw new Error("Select one currency for monetary comparisons.");
   return { version: 1, currency: item.currency, criteria,
     sort: { field: item.sort.field, direction: item.sort.direction } };
 }
@@ -363,7 +406,7 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
       // A server from before social or research fields omits them; they read as unavailable.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS] as readonly string[]).includes(field))
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...KPI_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = unavailableMetric();
       const metric = row.metrics[field];
       if (
