@@ -2,6 +2,7 @@ import type { DataTableColumn, StatItem } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import type { HiringBoard, HiringPayload, HiringSummary } from "../../../api-client/hiring";
 import type { AppAttentionPayload, AppCompany } from "../../../api-client/app-attention";
+import { humanLabel } from "../shared/research-cells";
 
 export type AttentionKind = "hiring" | "apps";
 export type AttentionTab = "table" | "chart" | "mix" | "peers" | "evidence";
@@ -33,10 +34,10 @@ export const count = (value: number | null | undefined) => value == null ? "--" 
 const signed = (value: number | null | undefined, decimals = 0) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: decimals })}`;
 const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(1)}%`;
 const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
-const roleFamily = (value: string | null) => value === "data_ai" ? "Data / AI" : value?.replace(/_/g, " ") ?? null;
+const roleFamily = (value: string | null) => value === "data_ai" || value === "data ai" ? "Data / AI" : value ? humanLabel(value) : null;
 const COMPANY_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("open", "Open roles", 12, true), column("net", "Net / week", 12, true), column("remote", "Remote %", 10, true), column("z", "Z-score", 10, true), column("signal", "Signal", 12), column("date", "As of", 12)];
 const HISTORY_COLUMNS = [column("date", "Week", 12), column("open", "Open roles", 12, true), column("added", "Added", 9, true), column("removed", "Removed", 9, true), column("net", "Net", 9, true), column("change", "Change %", 11, true), column("remote", "Remote %", 10, true), column("coverage", "Capture", 13, false, true)];
-const companyRow = (row: HiringSummary): AttentionRow => ({ id: row.symbol, symbol: row.symbol, values: { symbol: row.symbol, name: row.name, open: row.latest?.openCount ?? null, net: row.latest?.netChange ?? null, remote: row.latest?.remoteShare == null ? null : row.latest.remoteShare * 100, z: row.zScore, signal: row.signal ?? row.status, date: row.latest?.observedAt.slice(0, 10) ?? null } });
+const companyRow = (row: HiringSummary): AttentionRow => ({ id: row.symbol, symbol: row.symbol, values: { symbol: row.symbol, name: row.name, open: row.latest?.openCount ?? null, net: row.latest?.netChange ?? null, remote: row.latest?.remoteShare == null ? null : row.latest.remoteShare * 100, z: row.zScore, signal: humanLabel(row.signal ?? row.status), date: row.latest?.observedAt.slice(0, 10) ?? null } });
 
 export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"): AttentionModel {
   const detail = "series" in data ? data : null;
@@ -45,24 +46,27 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
   const latest = detail?.latest;
   const mixKey = ["functions", "seniority", "countries", "locations", "signals"].includes(mix) ? mix as "functions" | "seniority" | "countries" | "locations" | "signals" : "functions";
   const rows = mixKey === "signals" ? (detail?.signals ?? []).map((row, i): AttentionRow => ({ id: `${row.type}:${i}`, url: row.evidenceUrls[0], values: { label: row.label, count: row.value, share: row.confidence * 100, date: row.asOf.slice(0, 10) }, details: [{ label: "Observed", value: row.asOf }, { label: "Confidence", value: percent(row.confidence) }, { label: "Location", value: row.location ?? "--" }] }))
-    : (detail?.[mixKey] ?? []).map((row): AttentionRow => ({ id: row.id, values: { label: row.label, count: row.count, share: row.share * 100 } }));
+    : (detail?.[mixKey] ?? []).map((row): AttentionRow => ({ id: row.id, values: { label: mixKey === "functions" ? roleFamily(row.label) : mixKey === "seniority" ? humanLabel(row.label) : row.label, count: row.count, share: row.share * 100 } }));
   const model: AttentionModel = {
     asOf: latest?.observedAt ?? data.generatedAt,
     preview: data.preview,
     locked: typeof data.locked === "number" ? data.locked : Object.values(data.locked).reduce((a, b) => a + b, 0),
-    notices: detail ? [detail.coverage.comparability, ...(latest?.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])].filter(Boolean) : [],
+    // How counts compare is methodology (docs/hiring-app-attention.md); the footer keeps only what is wrong with this capture.
+    notices: detail ? [...(latest?.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])] : [],
+    // A figure the first capture cannot give yet (a weekly change, a z-score) is left out, not shown as a dash.
     figures: latest ? [
       { label: "Open roles", value: count(latest.openCount) },
-      { label: "Net / week", value: signed(latest.netChange), tone: latest.netChange == null ? "muted" : latest.netChange >= 0 ? "positive" : "negative" },
-      { label: "Remote", value: percent(latest.remoteShare), detail: "known work modes" },
-      { label: "Z-score", value: detail?.zScore?.toFixed(2) ?? "--", detail: detail?.signal ?? undefined },
+      ...(latest.netChange != null ? [{ label: "Net / week", value: signed(latest.netChange), tone: latest.netChange === 0 ? "muted" as const : latest.netChange > 0 ? "positive" as const : "negative" as const }] : []),
+      ...(latest.remoteShare != null ? [{ label: "Remote", value: percent(latest.remoteShare), detail: "known work modes" }] : []),
+      ...(detail?.zScore != null ? [{ label: "Z-score", value: detail.zScore.toFixed(2), detail: detail.signal ? `hiring ${detail.signal}` : undefined,
+        tone: detail.signal === "surge" ? "positive" as const : detail.signal === "freeze" ? "negative" as const : undefined }] : []),
     ] : [],
     sections: {
       table: { columns: COMPANY_COLUMNS, rows: companies.map(companyRow), empty: "Hiring observations are not available yet." },
       chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, coverage: row.completeness }, details: [{ label: "Observed", value: row.observedAt }, { label: "Confidence", value: percent(row.confidence) }, { label: "Capture", value: row.kind }, { label: "Evergreen roles", value: count(row.evergreenCount) }] })), empty: data.preview ? "Full hiring history requires Pro." : "History is accumulating from the first capture." },
-      mix: { columns: [column("label", mixKey === "signals" ? "Signal" : "Group", 28, false, true), column("count", mixKey === "signals" ? "Value" : "Roles", 12, true), column("share", mixKey === "signals" ? "Confidence %" : "Share %", 14, true), ...(mixKey === "signals" ? [column("date", "Observed", 12)] : [])], rows, empty: "No classified observations for this group yet." },
+      mix: { columns: [column("label", mixKey === "signals" ? "Signal" : "Group", 28, false, true), column("count", mixKey === "signals" ? "Value" : "Roles", 12, true), column("share", mixKey === "signals" ? "Confidence %" : "Share %", mixKey === "signals" ? 14 : 30, true), ...(mixKey === "signals" ? [column("date", "Observed", 12)] : [])], rows, empty: "No classified observations for this group yet." },
       peers: { columns: COMPANY_COLUMNS, rows: (detail?.peers ?? []).map(companyRow), empty: "No comparable mapped peers yet." },
-      evidence: { columns: [column("title", "Role", 32, false, true), column("location", "Location", 24), column("function", "Function", 18), column("seniority", "Seniority", 13), column("date", "Observed", 12), column("confidence", "Confidence %", 13, true)], rows: (detail?.evidence ?? []).map((row): AttentionRow => ({ id: `${row.snapshotId}:${row.id}`, url: row.url ?? row.sourceUrl, values: { title: row.title, location: row.location, function: roleFamily(row.jobFunction), seniority: row.seniority, date: row.observedAt.slice(0, 10), confidence: row.confidence * 100 }, details: [{ label: "Posting title", value: row.title }, { label: "Location", value: row.location ?? "--" }, { label: "Country", value: row.country ?? "Unknown" }, { label: "Function", value: row.jobFunction ?? "Unclassified" }, { label: "Seniority", value: row.seniority ?? "Unclassified" }, { label: "Remote", value: row.remote === null ? "Unknown" : row.remote ? "Yes" : "No" }, { label: "Observed", value: row.observedAt }, { label: "Revision", value: String(row.revision) }, { label: "Confidence", value: percent(row.confidence) }, { label: "Reporting ticker", value: row.sourceTicker }] })), empty: "No primary posting evidence is available yet." },
+      evidence: { columns: [column("title", "Role", 32, false, true), column("location", "Location", 24), column("function", "Function", 18), column("seniority", "Seniority", 13), column("date", "Observed", 12), column("confidence", "Confidence %", 13, true)], rows: (detail?.evidence ?? []).map((row): AttentionRow => ({ id: `${row.snapshotId}:${row.id}`, url: row.url ?? row.sourceUrl, values: { title: row.title, location: row.location, function: roleFamily(row.jobFunction), seniority: row.seniority ? humanLabel(row.seniority) : null, date: row.observedAt.slice(0, 10), confidence: row.confidence * 100 }, details: [{ label: "Posting title", value: row.title }, { label: "Location", value: row.location ?? "--" }, { label: "Country", value: row.country ?? "Unknown" }, { label: "Function", value: row.jobFunction ?? "Unclassified" }, { label: "Seniority", value: row.seniority ?? "Unclassified" }, { label: "Remote", value: row.remote === null ? "Unknown" : row.remote ? "Yes" : "No" }, { label: "Observed", value: row.observedAt }, { label: "Revision", value: String(row.revision) }, { label: "Confidence", value: percent(row.confidence) }, { label: "Reporting ticker", value: row.sourceTicker }] })), empty: "No primary posting evidence is available yet." },
     },
     chart: { label: "Open roles", unit: "roles", points: history.map((point) => ({ date: point.week, value: point.openCount })) },
   };
@@ -104,11 +108,13 @@ export function appsModel(data: AppAttentionPayload, mix = "countries"): Attenti
     preview: data.access === "preview",
     locked: Object.values(data.locked).reduce((a, b) => a + b, 0),
     notices: [...data.coverage.limitations, ...(data.apps.some((row) => row.stale) ? ["Some app observations are stale."] : [])],
+    // Seven-day figures appear once a week of captures can give them.
     figures: [
       { label: "Attention score", value: data.summary.attentionScore?.toFixed(1) ?? "--", detail: "/ 100" },
-      { label: "Rank velocity", value: signed(data.summary.rankVelocity7d, 2), detail: "places / day" },
-      { label: "Rating drift", value: signed(data.summary.ratingChange7d, 2), detail: "7D / 5" },
-      { label: "Ratings added", value: signed(data.summary.ratingCountGrowth7d), detail: "7D" },
+      ...(data.summary.rankVelocity7d != null ? [{ label: "Rank velocity", value: signed(data.summary.rankVelocity7d, 2), detail: "places / day" }]
+        : [{ label: "Apps", value: count(data.summary.appCount), detail: `${count(data.summary.countryCount)} countries` }]),
+      ...(data.summary.ratingChange7d != null ? [{ label: "Rating drift", value: signed(data.summary.ratingChange7d, 2), detail: "7D / 5" }] : []),
+      ...(data.summary.ratingCountGrowth7d != null ? [{ label: "Ratings added", value: signed(data.summary.ratingCountGrowth7d), detail: "7D" }] : []),
     ],
     sections: {
       table: { columns: APP_COLUMNS, rows: data.apps.map((row): AttentionRow => ({ id: `${row.sourceId}:${row.appId}`, app: { store: row.store, appId: row.appId, name: row.name, country: row.country, chart: row.chart }, symbol: row.symbol ?? undefined, url: row.appUrl, values: { name: row.name, symbol: row.symbol, country: row.country, chart: row.chart, rank: row.rank, change: row.rankChange7d, rating: row.rating, ratings: row.ratingCount, drift: row.ratingChange7d, growth: row.ratingCountGrowth7d }, details: [{ label: "App", value: row.name }, { label: "Developer", value: row.developer }, { label: "Parent ticker", value: row.symbol ?? "Unmapped" }, { label: "Genres", value: row.genres.join(", ") || "--" }, { label: "Observed", value: row.observedAt }, { label: "Ratings observed", value: row.ratingObservedAt ?? "Unavailable" }, { label: "Mapping confidence", value: percent(row.confidence) }, { label: "Mapping revision", value: row.mappingRevisionId ?? "Unmapped" }, { label: "Capture revision", value: row.revisionId }] })), empty: "No app observations match these filters yet." },

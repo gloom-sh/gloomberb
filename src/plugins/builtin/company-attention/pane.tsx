@@ -14,6 +14,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
+import { humanLabel, listingCell, missingCell, shareCell, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
 import { AppRankView } from "./app-rank";
 import { useAttentionEvidence } from "./evidence";
 import { cachedAttention, fetchAttention, loadAttention, validateAttention, type AttentionPayload } from "./client";
@@ -22,8 +23,13 @@ import { appsModel, attentionSeries, count, hiringModel, sortAttentionRows, type
 type Size = Pick<PaneProps, "width" | "height" | "focused">;
 const rowId = (row: AttentionRow) => row.id;
 const rowDate = (row: AttentionRow) => row.date ? new Date(row.date) : null;
-const FRACTION_COLUMNS = new Set(["score", "velocity", "rating", "drift", "remote", "z", "share", "confidence"]);
+/** Decimals per column: percentages and scores to one place, ratings and z-scores to two, counts whole. */
+const DECIMALS: Record<string, number> = { score: 1, remote: 1, share: 1, confidence: 0, velocity: 2, rating: 2, drift: 2, z: 2, change: 1 };
 const SIGNED_COLUMNS = new Set(["net", "change", "velocity", "drift", "growth"]);
+const SIGNAL_TONES: Record<string, StateTone> = { Surge: "positive", Freeze: "negative", Stale: "warning", Collecting: "muted", Uncovered: "muted", Ok: "text" };
+/** Columns left out while every row reads the same default: a first capture has no weekly change yet. */
+const QUIET_COLUMNS: Record<string, readonly string[]> = { net: [""], z: [""], change: [""], velocity: [""], drift: [""], growth: [""], added: [""], removed: [""], coverage: ["complete"], spread: [""] };
+const LABEL_COLUMNS = new Set(["chart"]);
 function Evidence({ row, width, height }: Size & { row: AttentionRow }) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
@@ -102,6 +108,11 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   const lockedRows = Math.min(3, lockedCount);
   const rows = useMemo(() => [...sortAttentionRows(sectionRows, sort.column, sort.direction), ...Array.from({ length: lockedRows }, (_, index): AttentionRow => ({ id: `locked:${index}`, values: {} }))], [sectionRows, sort, lockedRows]);
   useAttentionEvidence(kind, data ?? null, tab, rows.filter((row) => !row.id.startsWith("locked:")).map(rowId));
+  const dataRows = useMemo(() => rows.filter((row) => !row.id.startsWith("locked:")), [rows]);
+  // A company's own apps all carry its ticker; the column only earns its room on the board.
+  const columns = useMemo(() => !section ? [] : withoutQuietColumns(section.columns.filter((column) => !(column.id === "symbol" && kind === "apps" && symbol && tab !== "peers")),
+    dataRows, (row, id) => row.values[id] ?? "", QUIET_COLUMNS), [section, dataRows, kind, symbol, tab]);
+  const maxShare = Math.max(0, ...dataRows.map((row) => typeof row.values.share === "number" ? row.values.share : 0));
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   const evidence = rows.find((row) => row.id === openEvidence) ?? null;
   const app = rows.find((row) => row.id === openAppId)?.app ?? null;
@@ -143,22 +154,27 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
     <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject={kind === "hiring" ? "hiring momentum" : "app attention"}>
       {model && section ? <PageStackView focused={focused} detailOpen={detailOpen} onBack={() => { setOpenCompany(null); setOpenEvidence(null); setOpenApp(null); }} detailTitle={openCompany ?? app?.name ?? (evidence ? String(evidence.values.title ?? evidence.values.name ?? evidence.id) : undefined)}
         detailContent={openCompany ? <PaneFooterScope active><AttentionView key={openCompany} kind={kind} symbol={openCompany} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : app ? <AppRankView focus={app} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} /> : evidence ? <Evidence row={evidence} width={width} height={bodyHeight - 1} focused={focused} /> : null}
-        rootContent={<DataTableView columns={section.columns} items={rows} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
-          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={section.columns} query={query} figures={model.figures}
+        rootContent={<DataTableView columns={columns} items={rows} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
+          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns} query={query} figures={model.figures}
             chart={tab === "chart" ? { series, ...chartSelection, formatValue: (value) => kind === "hiring" ? count(value) : value.toFixed(1), empty: series.length ? undefined : model.preview ? "Full history requires Pro." : "Collecting history", remoteKind: `${kind}-history` } : null} />}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }} getItemKey={rowId}
           sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((old) => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
           onActivate={(row) => row.id.startsWith("locked:") ? void upgrade() : row.app ? setOpenApp(row.id) : row.symbol && row.symbol !== symbol && (tab === "peers" || !symbol) ? setOpenCompany(row.symbol) : row.details ? setOpenEvidence(row.id) : row.url ? void host.openExternal(row.url) : undefined}
-          renderCell={(row, column) => {
+          renderCell={(row, column, _index, state) => {
             if (row.id.startsWith("locked:")) {
-              if (!desktop && column.id === section.columns[0]?.id && row.id === "locked:0") return { text: "Upgrade for all observations", content: <UpgradeLabel text="Upgrade for all observations" onPress={upgrade} role="attention-upgrade" /> };
+              if (!desktop && column.id === columns[0]?.id && row.id === "locked:0") return { text: "Upgrade for all observations", content: <UpgradeLabel text="Upgrade for all observations" onPress={upgrade} role="attention-upgrade" /> };
               return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>Hidden</Text></Blurred> } : { text: "░░░░", color: colors.textDim };
             }
             const value = row.values[column.id];
+            if (value == null || value === "") return missingCell(colors);
+            if (column.id === "symbol" && typeof value === "string") return listingCell(value, colors, state.selected);
+            if (column.id === "signal" && typeof value === "string") return { text: value, color: toneColor(SIGNAL_TONES[value] ?? "text", colors), keepColorWhenSelected: value === "Surge" || value === "Freeze" };
             const numeric = typeof value === "number";
-            const decimals = FRACTION_COLUMNS.has(column.id) ? 2 : 0;
-            const text = value == null ? "--" : numeric ? `${SIGNED_COLUMNS.has(column.id) && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: decimals })}` : value;
-            return { text, value: value ?? undefined, color: numeric && SIGNED_COLUMNS.has(column.id) && value !== 0 ? value > 0 ? colors.positive : colors.negative : column.id === "name" || column.id === "title" || column.id === "symbol" ? colors.textBright : colors.text };
+            const decimals = DECIMALS[column.id] ?? 0;
+            const text = numeric ? `${SIGNED_COLUMNS.has(column.id) && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}` : LABEL_COLUMNS.has(column.id) ? humanLabel(value) : column.id === "title" ? value.trim() : value;
+            if (column.id === "share" && numeric && tab === "mix") return { ...shareCell(text, maxShare ? value / maxShare : null, column.width, colors, state.selected), value };
+            return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
+              : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };
           }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${kind}:${symbol}:${tab}:${mix}:${country}:${chart}`}
           emptyStateTitle={section.empty} bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Upgrade for all observations" onPress={upgrade} role="attention-upgrade" /> : undefined} />}
       /> : <EmptyState title="Observations are not available yet." />}
