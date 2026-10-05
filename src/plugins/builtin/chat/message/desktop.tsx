@@ -112,7 +112,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         position={state.grouped ? "relative" : undefined}
         style={{ minWidth: 0, alignItems: "flex-start" }}
       >
-        <Box flexGrow={1} style={{ minWidth: 0 }}>
+        <Box flexGrow={1} data-gloom-role="chat-message-body" style={{ minWidth: 0 }}>
           <ResponsiveTickerBadgeText
             text={msg.content}
             catalog={catalog}

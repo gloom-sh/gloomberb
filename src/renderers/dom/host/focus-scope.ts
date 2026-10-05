@@ -60,7 +60,7 @@ export function installFocusScopeRelease(): () => void {
     const active = doc.activeElement;
     if (!active || active === doc.body || isEditableTarget(active)) return;
     const control = asFocusable(event.target)?.closest?.(POINTER_CONTROL_SELECTOR);
-    if (control !== active) return;
+    if (control !== active || holdsTextSelection(doc, control)) return;
     const detail = event.detail;
     queueMicrotask(() => {
       if (doc.activeElement === active) releasePointerFocus(active, detail);
@@ -72,6 +72,16 @@ export function installFocusScopeRelease(): () => void {
     doc.removeEventListener("mousedown", handleMouseDown, true);
     doc.removeEventListener("click", handleClick, true);
   };
+}
+
+/**
+ * Dragging across text ends in a click too, on whatever holds the focus behind
+ * it: usually the app root, which matches `[tabindex]`. That was no press of a
+ * control, and WebKit drops the selection with the blur, so it is left alone.
+ */
+function holdsTextSelection(doc: Document, control: Pick<FocusableLike, "contains"> | null): boolean {
+  const selection = doc.getSelection?.();
+  return !!selection && !selection.isCollapsed && !!control?.contains?.(selection.anchorNode);
 }
 
 /**

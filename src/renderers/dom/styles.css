@@ -172,6 +172,11 @@ body.gloom-dragging {
   opacity: 1;
   pointer-events: auto;
 }
+/* Message text can be selected and copied, like any chat. */
+[data-gloom-role="chat-message-body"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
 [data-gloom-role="status-bar"] {
   flex: 0 0 var(--cell-h);
   height: var(--cell-h);
