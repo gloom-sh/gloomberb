@@ -278,11 +278,23 @@ function compare(a: unknown, b: unknown): number {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
 }
 
+function isEmptyValue(value: unknown): boolean {
+  return value === null || value === undefined || value === "";
+}
+
+/** Rows without a value sort last in either direction, so a descending sort leads with real values. */
+function compareForSort(a: unknown, b: unknown, direction: 1 | -1): number {
+  const aEmpty = isEmptyValue(a);
+  const bEmpty = isEmptyValue(b);
+  if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1;
+  return compare(a, b) * direction;
+}
+
 function matches(row: ViewRow, filter: ViewFilter): boolean {
   const value = row[filter.key];
   switch (filter.op) {
     case "exists":
-      return value !== null && value !== undefined && value !== "";
+      return !isEmptyValue(value);
     case "eq":
       return compare(value, filter.value) === 0;
     case "neq":
@@ -311,7 +323,7 @@ export function applyViewProjection(rows: readonly ViewRow[], projection: ViewPr
   const sort = sortOverride === undefined ? projection.sort : sortOverride ?? undefined;
   if (sort) {
     const direction = sort.direction === "asc" ? 1 : -1;
-    result = [...result].sort((a, b) => compare(a[sort.by], b[sort.by]) * direction);
+    result = [...result].sort((a, b) => compareForSort(a[sort.by], b[sort.by], direction));
   }
   if (projection.limit !== undefined) result = result.slice(0, projection.limit);
   return result;
