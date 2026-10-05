@@ -7,6 +7,7 @@ import {
   checkForUpdateDetailed,
   performUpdate,
   type ReleaseInfo,
+  type UpdateCheckResult,
 } from "../../updater";
 import { VERSION } from "../../version";
 import { runAutomated } from "../../telemetry/usage-counts";
@@ -48,7 +49,13 @@ export function useAppUpdateRuntime({
       dispatch({ type: "SET_UPDATE_NOTICE", notice: null });
     }
 
-    const result = await checkForUpdateDetailed(VERSION);
+    // The desktop host can reject (its RPC request timed out). That is a
+    // failed check like any other: the hourly one must not end as an
+    // unhandled rejection, and a manual one must clear its progress state.
+    const result = await checkForUpdateDetailed(VERSION).catch((error: unknown): UpdateCheckResult => ({
+      kind: "error",
+      error: error instanceof Error ? error.message : "Update check failed",
+    }));
 
     if (!manual) {
       if (result.kind === "available") {
