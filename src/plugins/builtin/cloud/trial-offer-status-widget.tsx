@@ -41,7 +41,7 @@ export const TRIAL_OFFER_EXPERIMENT = "web_terminal_trial_offer";
  * On-screen time before the offer would show. Short enough that most
  * visitors reach it, which the test needs to read in weeks rather than months.
  */
-const TRIAL_OFFER_DELAY_MS = 15_000;
+const TRIAL_OFFER_DELAY_MS = 6_000;
 const TRIAL_OFFER_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_TRIAL_DAYS = 7;
 /** The hide button and the gap after the line. */
