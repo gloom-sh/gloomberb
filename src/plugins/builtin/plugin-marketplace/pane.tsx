@@ -159,7 +159,6 @@ function EntryDetail({ entry, width, host }: { entry: MarketplaceEntry; width: n
         <Text fg={colors.textDim}>{entry.tier}</Text>
         {entry.categories.length > 0 ? <Text fg={colors.textDim}>{entry.categories.join(", ")}</Text> : null}
         {versionLabel(entry) ? <Text fg={hasUpdate(entry) ? colors.textBright : colors.textDim}>{versionLabel(entry)}</Text> : null}
-        {!entry.bundled && entry.stars > 0 ? <Text fg={colors.textDim}>{`${entry.stars} star${entry.stars === 1 ? "" : "s"}`}</Text> : null}
         {status.text ? <Text fg={STATUS_COLORS[status.kind]}>{status.text}</Text> : null}
       </Box>
 
