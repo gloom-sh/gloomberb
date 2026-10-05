@@ -4,7 +4,7 @@ import { errorMessage } from "../../../utils/errors";
 import { addDays, newYorkToday } from "../earnings/board-model";
 import { loadEarningsBoard } from "../earnings/client";
 import { loadSupplyChain } from "../supply-chain/client";
-import { projectRipple, rippleCustomerTickers, RIPPLE_DAYS, type RippleRow } from "./model";
+import { projectRipple, rippleCompanyTickers, RIPPLE_DAYS, type RippleRow } from "./model";
 
 export interface RippleSources {
   supplyChain(symbol: string): Promise<SupplyChainPayload>;
@@ -15,6 +15,8 @@ export interface RippleSnapshot {
   rows: RippleRow[];
   /** Holdings whose disclosures could not be read, with the reason. */
   failures: { symbol: string; error: string }[];
+  /** Holdings whose disclosures the free preview cut short, so a missing link may only be hidden. */
+  truncated: string[];
   stale: boolean;
   from: string;
   to: string;
@@ -44,14 +46,15 @@ export async function loadRipple(holdings: readonly string[], sources: RippleSou
       catch (error) { failures.push({ symbol, error: errorMessage(error) }); }
     }
   }));
-  const customers = rippleCustomerTickers(chains);
+  const companies = rippleCompanyTickers(chains);
   const reports: EarningsCalendarPayload["reports"] = [];
-  if (customers.length) {
-    const symbols = [...new Set([...customers, ...holdings.map((symbol) => symbol.toUpperCase())])].sort();
+  if (companies.length) {
+    const symbols = [...new Set([...companies, ...holdings.map((symbol) => symbol.toUpperCase())])].sort();
     for (let offset = 0; offset < symbols.length; offset += 200) {
       const payload = await sources.calendar({ from, to, perDay: 0, symbols: symbols.slice(offset, offset + 200) });
       reports.push(...payload.reports);
     }
   }
-  return { rows: projectRipple(chains, reports), failures, stale: !!sources.staleFlags?.some(Boolean), from, to };
+  const truncated = [...chains].filter(([, chain]) => chain.truncated).map(([symbol]) => symbol).sort();
+  return { rows: projectRipple(chains, reports), failures, truncated, stale: !!sources.staleFlags?.some(Boolean), from, to };
 }

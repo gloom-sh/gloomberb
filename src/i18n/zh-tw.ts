@@ -124,6 +124,7 @@ export const zhTW: Record<string, string> = {
   "Saved": "已儲存",
   "Search Results": "搜尋結果",
   "Search": "搜尋",
+  "Suggested": "推薦",
   "Themes": "主題",
   "Tickers": "股票",
   "Core Panes": "核心面板",

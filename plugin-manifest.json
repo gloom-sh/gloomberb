@@ -68,6 +68,22 @@
       }
     },
     {
+      "id": "comment-letters",
+      "name": "SEC Comment Letters",
+      "description": "SEC staff comment letters and company responses (CORRESP and UPLOAD). Search their text or list a company's letters by ticker.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "comment-letters"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "custom-view",
       "name": "Custom Views",
       "description": "Tables built from any data function: columns, a filter, a sort. Made by the agent, shared with a team.",
@@ -212,6 +228,7 @@
           "news-breaking",
           "news-feed",
           "news-industry",
+          "news-story",
           "news-top",
           "ticker-news"
         ],

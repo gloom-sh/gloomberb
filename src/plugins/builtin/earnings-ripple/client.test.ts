@@ -3,10 +3,12 @@ import type { EarningsCalendarQuery, EarningsCalendarReport } from "../../../api
 import type { SupplyChainPayload } from "../../../api-client/supply-chain";
 import { loadRipple } from "./client";
 
-const chain = (symbol: string, customers: string[]): SupplyChainPayload => ({ symbol, says: customers.map((ticker) => ({
-  role: "customer", counterparty: { ticker, name: ticker, exchange: "NASDAQ", aggregate: false },
+const link = (role: "customer" | "supplier") => (ticker: string) => ({
+  role, counterparty: { ticker, name: ticker, exchange: "NASDAQ", aggregate: false },
   pctBasis: "revenue", pctOfRevenue: 10, pctScope: null, period: "2026-03-31",
-})) } as SupplyChainPayload);
+});
+const chain = (symbol: string, customers: string[], suppliers: string[] = [], truncated = false): SupplyChainPayload =>
+  ({ symbol, says: customers.map(link("customer")), names: suppliers.map(link("supplier")), truncated } as SupplyChainPayload);
 const report = (symbol: string, date = "2026-11-15"): EarningsCalendarReport =>
   ({ symbol, name: symbol, date, timing: "amc", averageMove: 0.025, averageReports: 8 } as EarningsCalendarReport);
 
@@ -39,7 +41,7 @@ describe("loadRipple", () => {
     }, new Date("2026-11-02T04:30:00Z")); // Still Nov 1 in New York, after the fall DST change.
     expect(queries).toEqual([{ from: "2026-11-01", to: "2026-12-01", perDay: 0, symbols: ["AAPL", "CRUS", "QRVO", "SMALL"] }]);
     expect([snapshot.from, snapshot.to]).toEqual(["2026-11-01", "2026-12-01"]);
-    expect(snapshot.rows.map((row) => [row.holding, row.customer, row.holdingDate])).toEqual([
+    expect(snapshot.rows.map((row) => [row.holding, row.company, row.holdingDate])).toEqual([
       ["CRUS", "AAPL", "2026-11-20"], ["CRUS", "SMALL", "2026-11-20"], ["QRVO", "AAPL", "2026-11-21"],
     ]);
   });
@@ -61,7 +63,7 @@ describe("loadRipple", () => {
     expect(queries.map((query) => [query.perDay, query.symbols?.length])).toEqual([[0, 200], [0, 51]]);
     expect(queries.flatMap((query) => query.symbols ?? [])).toEqual([...customers, "HOLDING"]);
     expect(snapshot.rows).toHaveLength(250);
-    expect(snapshot.rows.find((row) => row.customer === "C249")?.holdingDate).toBe("2026-11-20");
+    expect(snapshot.rows.find((row) => row.company === "C249")?.holdingDate).toBe("2026-11-20");
     expect(snapshot.stale).toBe(true);
   });
 
@@ -80,5 +82,20 @@ describe("loadRipple", () => {
     expect(calendarCalls).toBe(0);
     expect(snapshot.rows).toEqual([]);
     expect(snapshot.failures).toEqual([{ symbol: "FAILED", error: "disclosures unavailable" }]);
+  });
+  test("asks the calendar for suppliers too, keeps both links, and names the holdings the preview cut", async () => {
+    const queries: EarningsCalendarQuery[] = [];
+    const reports = [report("AAPL", "2026-10-29"), report("CRUS", "2026-11-03")];
+    const snapshot = await loadRipple(["AAPL", "CRUS"], {
+      // CRUS names AAPL as a customer; AAPL's names view carries CRUS as its supplier.
+      supplyChain: async (symbol) => symbol === "CRUS" ? chain("CRUS", ["AAPL"]) : chain("AAPL", [], ["CRUS"], true),
+      calendar: async (query) => {
+        queries.push(query);
+        return { asOf: "2026-10-05", from: query.from, to: query.to, reports: reports.filter((row) => query.symbols?.includes(row.symbol)) };
+      },
+    }, new Date("2026-10-05T12:00:00Z"));
+    expect(queries.map((query) => query.symbols)).toEqual([["AAPL", "CRUS"]]);
+    expect(snapshot.rows.map((row) => [row.holding, row.link, row.company])).toEqual([["CRUS", "customer", "AAPL"], ["AAPL", "supplier", "CRUS"]]);
+    expect(snapshot.truncated).toEqual(["AAPL"]);
   });
 });

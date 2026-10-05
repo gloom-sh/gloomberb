@@ -180,6 +180,36 @@ describe("ticker-search utilities", () => {
     expect(findExactTickerSearchMatch([{ label: "ES=F:CME" }], "ES=F:NYMEX")).toBeNull();
   });
 
+  test("a trailing class code keeps that class and also asks for its market spelling", async () => {
+    const asked: string[] = [];
+    const dataProvider = createTestDataProvider({
+      search: async (query) => {
+        asked.push(query);
+        if (query === "ES=F") return [makeSearchResult("ES=F", "E-Mini S&P 500 Dec 26", { exchange: "CME", type: "FUTURE" })];
+        return [
+          makeSearchResult("ES", "Eversource Energy", { exchange: "NYSE", type: "Common Stock" }),
+          makeSearchResult("ESR=F", "Euro Short-Term Rate Futures", { exchange: "CME", type: "FUTURE" }),
+        ];
+      },
+    });
+    const candidates = await searchTickerCandidates({ query: "ES FUT", tickers: new Map(), dataProvider, includeOptionContracts: false });
+    expect(asked).toContain("ES=F");
+    expect(asked).not.toContain("ES FUT");
+    expect(candidates.map((item) => item.symbol).sort()).toEqual(["ES=F", "ESR=F"]);
+
+    // The word ranking alone puts coins named "... BTC USD" ahead of BTC-USD.
+    const coins = buildTickerSearchCandidates({
+      query: "BTC CUR",
+      tickers: new Map(),
+      providerResults: [
+        makeSearchResult("PBTC-USD", "pTokens BTC USD", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
+        makeSearchResult("BTC", "Grayscale Bitcoin Mini Trust ETF", { exchange: "ARCA", type: "ETF" }),
+        makeSearchResult("BTC-USD", "Bitcoin USD", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
+      ],
+    });
+    expect(coins.map((item) => item.symbol)).toEqual(["BTC-USD", "PBTC-USD"]);
+  });
+
   test("resolves catalogue omissions through a quote for the exact market symbol only", async () => {
     const lookalike = makeSearchResult("ESF", "Eurotech", { exchange: "MTA" });
     const quoteCalls: string[] = [];
@@ -411,6 +441,24 @@ describe("ticker-search utilities", () => {
       expect(foreign.result?.currency).toBe("CAD");
     });
   }
+
+  test("a saved second listing keeps its venue's place among the issuer's listings", () => {
+    const venues = ["NYSE", "XETRA", "XSTU", "FWB2", "VIE", "SWX", "MUNICH", "HANOVER", "BUD"];
+    const results = buildTickerSearchCandidates({
+      query: "SAP",
+      tickers: new Map([
+        ["SAP", createTestTicker("SAP", "SAP SE", { exchange: "NYSE", assetCategory: "EQUITY" })],
+        ["SAP:XETR", createTestTicker("SAP:XETR", "SAP SE", { exchange: "XETRA", assetCategory: "Common Stock" })],
+      ]),
+      providerResults: venues.map((exchange) => makeSearchResult("SAP", "SAP SE", { exchange, type: "Common Stock" })),
+    });
+
+    expect(results.slice(0, 3).map((item) => [item.label, item.exchangeLabel, item.kind])).toEqual([
+      ["SAP", "NYSE", "ticker"],
+      ["SAP:XETR", "XETRA", "ticker"],
+      ["SAP", "XSTU", "search"],
+    ]);
+  });
 
   test("uses provider ordering to prefer the canonical saved listing for company-name queries", () => {
     const tickers = new Map<string, TickerRecord>([

@@ -7,6 +7,7 @@ import { AppContext, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import type { AppNotificationRequest } from "../../types/plugin";
+import { subscribeFormModalRequests } from "../form-modal/request";
 import { StatusBar } from "./status-bar";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
 
@@ -154,6 +155,40 @@ describe("StatusBar", () => {
     });
 
     expect(actions).toContainEqual({ type: "REORDER_LAYOUT", fromIndex: 0, toIndex: 2 });
+  });
+
+  test("keeps New Layout and Feedback on screen when the layout tabs overflow, and opens the new-layout form", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-status-bar-new-layout");
+    config.layouts = ["Default", "Research", "Macro Rates", "Earnings Desk", "Crypto", "Options Flow", "Europe Open", "Asia Close"]
+      .map((name) => ({ name, layout: cloneLayout(config.layout) }));
+    const opened: string[] = [];
+    const unsubscribe = subscribeFormModalRequests((request) => {
+      if (request.kind === "builtin") opened.push(request.actionId);
+      return true;
+    });
+    try {
+      await tui.render(
+        <AppContext value={createStaticAppStore({ ...createInitialState(config), statusBarVisible: true }, () => {})}>
+          <StatusBar />
+        </AppContext>,
+        { width: 80, height: 1 },
+      );
+      await tui.setup().renderOnce();
+
+      const line = tui.frame().split("\n")[0] ?? "";
+      const plusAt = line.indexOf(" + ");
+      expect(line).toContain("^1 Default");
+      expect(plusAt).toBeGreaterThan(line.indexOf("^1 Default"));
+      expect(line).toContain("Feedback");
+
+      await act(async () => {
+        await tui.setup().mockMouse.click(plusAt + 1, 0);
+        await tui.setup().renderOnce();
+      });
+      expect(opened).toEqual(["new-layout"]);
+    } finally {
+      unsubscribe();
+    }
   });
 
   /** Float three chat windows at `rect(index)`, then click Tidy Windows. */

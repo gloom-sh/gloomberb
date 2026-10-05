@@ -27,6 +27,17 @@ export function getPaneTemplateArgKind(template: PaneTemplateDef): string | unde
   return template.shortcut?.argKind ?? template.shortcut?.argPlaceholder;
 }
 
+/**
+ * The argument a recent pane run keeps: a ticker or ticker list only. Free
+ * text (an Ask Gloom question, EXPO weights, a portfolio id, a search) would
+ * otherwise land in config.json, its exports and cloud sync.
+ */
+export function recentPaneTemplateArg(template: PaneTemplateDef, arg: string | undefined): string | undefined {
+  const argKind = getPaneTemplateArgKind(template);
+  if (argKind !== "ticker" && argKind !== "ticker-list" && argKind !== "tickers") return undefined;
+  return arg?.trim().toUpperCase() || undefined;
+}
+
 export function canPromptForPaneTemplateArg(template: PaneTemplateDef): boolean {
   const argKind = getPaneTemplateArgKind(template);
   return argKind === "ticker"

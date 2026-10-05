@@ -772,8 +772,8 @@ export class CloudDataApi {
   }
 
   /**
-   * Cross-document full-text search. Pro-gated: unentitled accounts get a 402,
-   * which the caller turns into the access gate rather than an empty result.
+   * Cross-document full-text search, open to every signed-in account; signed
+   * out it answers 401. Only alerts on a saved search need Pro.
    */
   async searchCloudDocuments(
     params: CloudSearchParams,

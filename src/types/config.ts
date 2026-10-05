@@ -203,6 +203,16 @@ export interface TelemetryConfig {
   attention?: boolean;
 }
 
+/**
+ * One recent command-bar run: `id` is `pane-template:<templateId>`, `label`
+ * its name when it ran, and `arg` a ticker it ran with (never free text).
+ */
+export interface RecentCommand {
+  id: string;
+  label: string;
+  arg?: string;
+}
+
 export interface AppConfig {
   dataDir: string;
   configVersion: number;
@@ -234,6 +244,8 @@ export interface AppConfig {
   valueFlashingEnabled: boolean;
   fontSize: number;
   recentTickers: string[];
+  /** Pane templates recently run from the command bar, newest first. */
+  recentCommands: RecentCommand[];
   language?: LanguagePreference;
   onboardingComplete?: boolean;
   /** App version at the last launch, used to show release notes after an update. */
@@ -888,6 +900,7 @@ export function createDefaultConfig(dataDir: string): AppConfig {
     valueFlashingEnabled: true,
     fontSize: 12,
     recentTickers: [],
+    recentCommands: [],
   };
 }
 

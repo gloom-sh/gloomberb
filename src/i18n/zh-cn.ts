@@ -124,6 +124,7 @@ export const zhCN: Record<string, string> = {
   "Saved": "已保存",
   "Search Results": "搜索结果",
   "Search": "搜索",
+  "Suggested": "推荐",
   "Themes": "主题",
   "Tickers": "股票",
   "Core Panes": "核心面板",

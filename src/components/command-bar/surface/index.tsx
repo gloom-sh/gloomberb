@@ -17,6 +17,7 @@ import {
 } from "../routes/root/search-providers";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
+import { createQuickLookTickerCandidates } from "../routes/ticker-search/results";
 import { useCommandSearchReport } from "../routes/root/search-report";
 import { useAppStateRef } from "../../../state/app/context";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
@@ -168,6 +169,7 @@ export function CommandBar({
     getAvailablePaneTemplates,
     getAvailablePluginCommands,
     localTickerSearchResultItems,
+    mapTickerSearchCandidateToResultItem,
     nonShortcutPaneTemplateItems,
     openInlineConfirm,
     openModeRoute,
@@ -209,6 +211,17 @@ export function CommandBar({
 
   const getTickerSearchTickers = useCallback(() => stateRef.current.tickers, []);
   const hasPaneSettings = useCallback((paneId: string) => pluginRegistry.hasPaneSettings(paneId), [pluginRegistry]);
+  const buildRecentTickerItem = useCallback((symbol: string) => {
+    const ticker = state.tickers.get(symbol);
+    if (!ticker) return null;
+    const candidate = createQuickLookTickerCandidates([ticker])[0];
+    return candidate ? mapTickerSearchCandidateToResultItem(candidate) : null;
+  }, [mapTickerSearchCandidateToResultItem, state.tickers]);
+  const getRecentPaneTemplate = useCallback(
+    (id: string, arg?: string) => getAvailablePaneTemplates(arg ? { arg } : undefined, { includePromptableTickerTemplates: true })
+      .find((template) => template.id === id),
+    [getAvailablePaneTemplates],
+  );
 
   const rootShortcutIntent = useMemo(() => parseRootShortcutIntent({
     query: rootQuery,
@@ -389,6 +402,7 @@ export function CommandBar({
     bindKey,
     buildLayoutItems,
     buildPaneSettingItems,
+    buildRecentTickerItem,
     buildTickerSearchResultItems,
     buildWindowModeItems,
     createPaneTemplateItem,
@@ -397,6 +411,7 @@ export function CommandBar({
     dataProvider,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
+    getRecentPaneTemplate,
     getTickers: getTickerSearchTickers,
     hasPaneSettings,
     localTickerSearchResultItems,

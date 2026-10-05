@@ -4,6 +4,7 @@ import type {
 } from "./types";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
+import { assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
 
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
 const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
@@ -163,12 +164,23 @@ function getTickerSearchListingKey(item: Pick<TickerSearchRankableItem, "label">
 
 export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "id" | "label" | "detail" | "kind" | "category" | "right"> & Partial<TickerSearchRankableItem>>(
   items: T[],
-  query: string,
+  rawQuery: string,
 ): T[] {
+  // A trailing class code ("ES FUT") keeps only rows of that class and ranks
+  // the words before it.
+  const assetClass = parseAssetClassQuery(rawQuery);
+  const query = assetClass?.symbolQuery ?? rawQuery;
   const intent = analyzeSearchQuery(query);
   if (!intent.normalizedQuery) return items;
 
-  const ranked = items
+  const ranked = (assetClass
+    ? items.filter((item) => instrumentClassCode({
+      instrumentClass: item.instrumentClass,
+      instrumentType: item.instrumentType,
+      symbol: item.symbol || item.label,
+      exchange: item.exchangeLabel || item.right,
+    }) === assetClass.code)
+    : items)
     .map((item, index) => {
       // A saved public key replaces its provider row during deduplication.
       // Score its exact bare symbol like that row, retaining the saved identity
@@ -357,6 +369,13 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
     seen.add(key);
     deduped.push(entry.item);
   }
+  // "BTC CUR" means BTC-USD, which the word ranking puts behind wrapped coins
+  // whose names contain "BTC".
+  const marketSymbol = assetClass ? assetClassMarketSymbol(assetClass) : null;
+  const marketIndex = marketSymbol
+    ? deduped.findIndex((item) => parsePublicTickerKey(item.symbol || item.label).symbol === marketSymbol)
+    : -1;
+  if (marketIndex > 0) deduped.unshift(...deduped.splice(marketIndex, 1));
   return deduped;
 }
 
@@ -630,7 +649,7 @@ function getCompanyNameKey(detail: string): string {
   return normalizeCompanyName(detail.split("|")[0] || "");
 }
 
-function getIssuerGroupKey(detail: string): string {
+export function getIssuerGroupKey(detail: string): string {
   // Listing descriptions do not create a different issuer. Strip only these
   // recognized tails for grouping, preserving full names and query relevance.
   const issuer = normalizeSearchText(detail.split("|")[0] || "")

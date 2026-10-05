@@ -79,6 +79,7 @@ const TABS = key("h/l", " tabs");
 const OPEN = key("Enter", " open");
 const SEARCH = key("/", "search");
 const OPEN_SOURCE = key("o", "pen source");
+const POP_OUT = key("p", "op out");
 const STEP = key("←/→", " step");
 const CHART_KEYS = [key("s", "eries"), key("i", "ndicators"), key("t", "imeframe"), key("f", "ormulas")];
 
@@ -291,7 +292,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["SEAS"],
   },
   RIPL: {
-    summary: "Which of my holdings live off a company that reports soon? Customers your holdings name in their own filings, with the share of revenue each makes up, by report date.",
+    summary: "Which of my holdings are tied to a company that reports soon? Customers your holdings name in their filings, and suppliers whose filings name your holdings, with the disclosed revenue share, by report date.",
     usage: ["RIPL", "RIPL CRUS QRVO"],
     keys: [key("Enter", " supply chain"), key("e", "arnings")],
     data: ON_RELEASE,
@@ -583,35 +584,35 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   TOP: {
     summary: "Curated stories ranked by importance across wires, publishers and X, with tickers and category. The pane to keep open when you only want what matters.",
     usage: ["TOP"],
-    keys: [OPEN, key("t", "icker")],
+    keys: [OPEN, SEARCH, POP_OUT, key("t", "icker")],
     data: NEWS,
     bloomberg: ["TOP"],
   },
   N: {
     summary: "Every story as it arrives, newest first, with source, tickers, sentiment and importance; filter by sentiment or minimum score.",
     usage: ["N"],
-    keys: [OPEN, key("t", "icker"), key("y", " share")],
+    keys: [OPEN, SEARCH, POP_OUT, key("t", "icker"), key("y", " share")],
     data: NEWS,
     bloomberg: ["N"],
   },
   CN: {
     summary: "Stories linked to the ticker, newest first.",
     usage: ["CN NVDA"],
-    keys: [OPEN, key("t", "icker")],
+    keys: [OPEN, SEARCH, POP_OUT, key("t", "icker")],
     data: NEWS,
     bloomberg: ["CN"],
   },
   NI: {
     summary: "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector.",
     usage: ["NI ENERGY"],
-    keys: [OPEN, key("t", "icker")],
+    keys: [OPEN, SEARCH, POP_OUT, key("t", "icker")],
     data: NEWS,
     bloomberg: ["NI"],
   },
   FIRST: {
     summary: "Stories flagged as breaking or urgent. Turn on Notifications in its pane settings to hear about new ones while the pane is closed.",
     usage: ["FIRST"],
-    keys: [OPEN, key("t", "icker")],
+    keys: [OPEN, SEARCH, POP_OUT, key("t", "icker")],
     data: NEWS,
     bloomberg: ["FIRST"],
   },
@@ -914,6 +915,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["TRIAL", "TRIAL semaglutide"],
     keys: [SEARCH, OPEN],
     data: same("As studies are posted"),
+    bloomberg: [],
+  },
+  CLTR: {
+    summary: "SEC staff comment letters and company responses, newest first. Search their text, or type a ticker for one company's letters, and open a letter to read it.",
+    usage: ["CLTR", "CLTR revenue recognition", "CLTR AAPL"],
+    keys: [SEARCH, OPEN],
+    data: AS_FILED,
     bloomberg: [],
   },
   HDS: {

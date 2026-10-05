@@ -123,6 +123,7 @@ export const es: Record<string, string> = {
   "Saved": "Guardados",
   "Search Results": "Resultados de búsqueda",
   "Search": "Buscar",
+  "Suggested": "Sugeridos",
   "Themes": "Temas",
   "Tickers": "Tickers",
   "Core Panes": "Paneles principales",

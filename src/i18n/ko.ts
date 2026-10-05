@@ -122,6 +122,7 @@ export const ko: Record<string, string> = {
   "Saved": "저장됨",
   "Search Results": "검색결과",
   "Search": "검색",
+  "Suggested": "추천",
   "Themes": "테마",
   "Tickers": "종목",
   "Core Panes": "핵심 패널",

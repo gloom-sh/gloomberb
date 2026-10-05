@@ -11,6 +11,7 @@ import { marketHaltsPlugin } from "./builtin/market-halts";
 import { fearGreedPlugin } from "./builtin/fear-greed";
 import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
 import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
+import { commentLettersPlugin } from "./builtin/comment-letters";
 import {
   applicationPlugin,
   brokerPlugin,
@@ -35,6 +36,7 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   fearGreedPlugin,
   ipoCalendarPlugin,
   clinicalTrialsPlugin,
+  commentLettersPlugin,
   macroPlugin,
   alertsPlugin,
   researchSearchPlugin,

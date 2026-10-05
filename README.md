@@ -77,7 +77,7 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `SEAS AAPL` | Seasonality: monthly returns by year and year overlays |
 | `RDCF AAPL` | Reverse DCF: the cash flow growth the price assumes |
 | `SIW` | Short squeeze watch: crowded shorts in your portfolios and watchlists that are moving up |
-| `RIPL` | Earnings Ripple: customers of your holdings that report soon |
+| `RIPL` | Earnings Ripple: customers and suppliers of your holdings that report soon |
 | `MDAY SPY` | Macro-day reaction: how a name moves on CPI, jobs and FOMC days against a normal day |
 | `COT [code or root]` | CFTC positioning and cross-market extremes |
 | `DOE` / `NGS` | EIA weekly oil stocks and gas storage, with builds, draws and five-year ranges |

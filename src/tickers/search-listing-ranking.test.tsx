@@ -67,8 +67,10 @@ test("restored qualified Shopify stays in the five root results and retargets th
   const items = search.buildTickerSearchResultItems(candidates, "SHOP");
   const rootAction = { id: "root-action", label: "Open research", detail: "", category: "Panes", kind: "action" as const, action() {} };
   const visible = mergePlainRootTickerResults("SHOP", mergeTickerSearchResultItems("SHOP", items, []), [rootAction]);
+  // Redcare Pharmacy's SHOP on Vienna is another company, so it takes the
+  // place of Shopify's fourth venue (IEX).
   expect(visible.filter(row => row.kind === "ticker" || row.kind === "search").map(row => row.right))
-    .toEqual(["NASDAQ", "TSX", "NEO", "IEX", "BYMA"]);
+    .toEqual(["NASDAQ", "TSX", "NEO", "BYMA", "VIE"]);
   expect(visible[0]).toMatchObject({ id: "goto:SHOP:XNAS", label: "SHOP:XNAS", category: "Exact Match", kind: "ticker" });
   expect(candidates.filter(row => row.exchangeLabel === "NASDAQ")).toHaveLength(1);
   expect(candidates[0]?.ticker).toBe(saved);

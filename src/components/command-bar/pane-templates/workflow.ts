@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import type { AppState } from "../../../state/app/context";
+import { useCallback, type Dispatch } from "react";
+import type { AppAction, AppState } from "../../../state/app/context";
 import type { TickerRecord } from "../../../types/ticker";
 import type {
   PaneTemplateCreateOptions,
@@ -20,6 +20,7 @@ import {
   getAvailablePaneShortcutTemplatesForQuery,
   getAvailablePaneTemplatesForState,
   getPaneTemplateDisplayLabel,
+  recentPaneTemplateArg,
 } from "./items";
 import type { FormModalRequest } from "../../form-modal";
 import {
@@ -50,6 +51,7 @@ interface UseCommandBarPaneTemplateActionsOptions {
   buildWorkflowDeps: () => SharedWorkflowDeps;
   closeAll: CloseAllFn;
   config: AppState["config"];
+  dispatch: Dispatch<AppAction>;
   executeCollectionCommand: ExecuteCollectionCommandFn;
   focusedPaneId: string | null;
   notify: NotifyFn;
@@ -66,6 +68,7 @@ export function useCommandBarPaneTemplateActions({
   buildWorkflowDeps,
   closeAll,
   config,
+  dispatch,
   executeCollectionCommand,
   focusedPaneId,
   notify,
@@ -80,14 +83,26 @@ export function useCommandBarPaneTemplateActions({
     focusedPaneId,
   }), [activeCollectionId, activeTickerSymbol, config, focusedPaneId]);
 
+  const recordPaneTemplate = useCallback((template: PaneTemplateDef, arg?: string) => {
+    const tickerArg = recentPaneTemplateArg(template, arg);
+    dispatch({
+      type: "RECORD_COMMAND",
+      id: `pane-template:${template.id}`,
+      label: getPaneTemplateDisplayLabel(template),
+      ...(tickerArg ? { arg: tickerArg } : {}),
+    });
+  }, [dispatch]);
+
   const openPaneTemplateWorkflow = useCallback((template: PaneTemplateDef, options?: { arg?: string }) => {
+    recordPaneTemplate(template, options?.arg);
     openForm({ kind: "pane-template", templateId: template.id, arg: options?.arg });
-  }, [openForm]);
+  }, [openForm, recordPaneTemplate]);
 
   const openPaneTemplateDirect = useCallback(async (
     template: PaneTemplateDef,
     createOptions?: PaneTemplateCreateOptions,
   ) => {
+    recordPaneTemplate(template, createOptions?.arg);
     try {
       await pluginRegistry.createPaneFromTemplateAsync(template.id, createOptions);
       closeAll({ revertThemePreview: false });
@@ -98,7 +113,7 @@ export function useCommandBarPaneTemplateActions({
         { type: "error" },
       );
     }
-  }, [closeAll, notify, pluginRegistry]);
+  }, [closeAll, notify, pluginRegistry, recordPaneTemplate]);
 
   const runPaneTemplateShortcut = useCallback(async (
     template: PaneTemplateDef,

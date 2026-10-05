@@ -8,9 +8,13 @@ import {
   normalizePaneLayout,
   removePaneInstances,
   TICKER_RESEARCH_PANE_ID,
+  type AppConfig,
   type LayoutConfig,
+  type PaneBinding,
+  type PaneInstanceConfig,
+  type RecentCommand,
+  type SavedLayout,
 } from "../../../types/config";
-import type { AppConfig, PaneBinding, PaneInstanceConfig, SavedLayout } from "../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { BrokerAccount } from "../../../types/trading";
 import { isBrokerPortfolioId } from "../../../utils/broker-instances";
@@ -278,6 +282,36 @@ export function nextRecentTickers(current: string[], symbol: string | null): str
   const next = [symbol, ...current.filter((entry) => entry !== symbol)].slice(0, 50);
   if (next.length === current.length && next.every((entry, index) => entry === current[index])) {
     return current;
+  }
+  return next;
+}
+
+/** Cap for the recently run pane templates. */
+export const RECENT_COMMANDS_LIMIT = 10;
+
+function sameRecentCommandEntry(left: RecentCommand, right: RecentCommand | undefined): boolean {
+  return !!right
+    && left.id === right.id
+    && left.label === right.label
+    && left.arg === right.arg;
+}
+
+/**
+ * Newest first. The same id with the same argument is promoted instead of
+ * duplicated, so two tickers opened in one pane both stay in the ring.
+ */
+export function nextRecentCommands(
+  current: readonly RecentCommand[],
+  entry: RecentCommand | null,
+): RecentCommand[] {
+  if (!entry?.id || !entry.label) return current as RecentCommand[];
+  const next = [entry, ...current.filter((existing) => (
+    existing.id !== entry.id || existing.arg !== entry.arg
+  ))].slice(0, RECENT_COMMANDS_LIMIT);
+  if (next.length === current.length && next.every((candidate, index) => (
+    sameRecentCommandEntry(candidate, current[index])
+  ))) {
+    return current as RecentCommand[];
   }
   return next;
 }

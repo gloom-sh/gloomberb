@@ -124,6 +124,7 @@ export const ja: Record<string, string> = {
   "Saved": "保存済み",
   "Search Results": "検索結果",
   "Search": "検索",
+  "Suggested": "候補",
   "Themes": "テーマ",
   "Tickers": "銘柄",
   "Core Panes": "主要ペイン",

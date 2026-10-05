@@ -3,8 +3,13 @@ import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
 import { newsPluginMeta } from "../builtin-plugin-meta";
 import { useArticleSummary, useResolvedEntryValue } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
+import { useCallback } from "react";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
-import { EmptyState, PaneStatusBody } from "../../../components";
+import { EmptyState, PaneStatusBody, QueryBar } from "../../../components";
+import { newsMuteSettingsDef, newsMutesApplyToFeed, useNewsMuteFilter } from "./wire/mutes";
+import { newsListEmptyCopy } from "./wire/filter-articles";
+import { NEWS_LIST_SEARCH_PLACEHOLDER, useNewsListSearch, useNewsListSearchHint } from "./wire/news/list-search";
+import { usePopOutNewsArticle } from "./wire/news/pop-out";
 import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../news/hooks";
 import { newsWireModule } from "./wire";
 import { NewsDetailView, useNewsArticleDetail } from "./wire/news/detail-view";
@@ -42,23 +47,30 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
     limit: NEWS_ITEM_LIMIT,
   } : null;
   const newsState = useNewsArticles(newsQuery);
-  const news = usePersistedNewsArticles(
+  const loaded = usePersistedNewsArticles(
     `articles:${instrument?.symbol ?? "none"}:${instrument?.exchange ?? ""}`,
     newsState.articles,
     { keyFamily: "articles:" },
   );
+  const news = useNewsMuteFilter(loaded, newsMutesApplyToFeed(newsQuery?.feed));
+  const search = useNewsListSearch(news);
+  const visibleArticles = search.filteredArticles;
   const { readArticleIds, markArticleRead } = useNewsReadState();
   const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(newsQuery, newsState);
   const loadNewsStory = useLoadNewsStory();
   const { detailArticle, detailLoading, detailError, openArticle, closeDetail } = useNewsArticleDetail(
-    news,
+    visibleArticles,
     loadNewsStory,
     `openArticleId:${symbol}`,
   );
+  const popOutArticle = usePopOutNewsArticle(closeDetail);
+  const openListedArticle = useCallback((article: typeof visibleArticles[number]) => {
+    search.blurSearch();
+    openArticle(article);
+  }, [openArticle, search.blurSearch]);
   const loading = newsState.phase === "loading"
-    || (newsState.phase === "refreshing" && news.length === 0);
+    || (newsState.phase === "refreshing" && loaded.length === 0);
   const error = newsState.error;
-
   const articleSummaryEntry = useArticleSummary(
     detailArticle && !detailArticle.summary ? detailArticle.url : null,
   );
@@ -68,18 +80,29 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
   const detailWithSummary = detailArticle && !detailArticle.summary && fetchedSummary
     ? { ...detailArticle, summary: fetchedSummary }
     : detailArticle;
+  const detailOpen = !!detailWithSummary;
+  const listFocused = focused && !search.searchFocused;
+  const selectedArticle = visibleArticles.find((article) => article.id === selectedArticleId) ?? null;
+  const readableArticle = detailWithSummary ?? selectedArticle;
+  const popOutReadable = useCallback(() => {
+    if (!readableArticle) return;
+    markArticleRead(readableArticle.id);
+    popOutArticle(readableArticle);
+  }, [markArticleRead, popOutArticle, readableArticle]);
 
+  useNewsListSearchHint("ticker-news", focused && !detailOpen, search.focusSearch);
   useNewsArticleFooter({
     registrationId: "news",
-    focused,
+    focused: listFocused,
     article: detailArticle,
     // Stale rows stay on screen during a refresh or a failure, so the pane says
     // so in the footer instead of replacing them.
-    loading: detailLoading || (loading && news.length > 0),
+    loading: detailLoading || (loading && loaded.length > 0),
     error: [error, detailError].filter(Boolean).join(" ") || null,
     info: loadingSummary
       ? [{ id: "summary", parts: [{ text: "summary loading", tone: "muted" as const }] }]
       : undefined,
+    onPopOut: readableArticle ? popOutReadable : undefined,
   });
 
   if (!ticker) {
@@ -90,10 +113,20 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
     );
   }
 
+  const emptyCopy = newsListEmptyCopy({
+    query: search.searchQuery,
+    loadedCount: loaded.length,
+    unmutedCount: news.length,
+    fallback: {
+      title: `No news for ${ticker.metadata.ticker}`,
+      hint: "Stories appear as sources publish them.",
+    },
+  });
+
   return (
     <NewsArticleStackView
-      articles={news}
-      focused={focused}
+      articles={visibleArticles}
+      focused={listFocused}
       width={width}
       rootHeight={height}
       readArticleIds={readArticleIds}
@@ -101,14 +134,14 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
       setSelectedArticleId={setSelectedArticleId}
       sortPreference={sortPreference}
       setSortPreference={setSortPreference}
-      onOpenArticle={openArticle}
+      onOpenArticle={openListedArticle}
       onArticleRead={markArticleRead}
-      detailOpen={!!detailWithSummary}
+      detailOpen={detailOpen}
       onBack={closeDetail}
       detailContent={detailWithSummary ? (
         <NewsDetailView
           item={detailWithSummary}
-          focused={focused}
+          focused={listFocused}
           width={width}
           showTitle={false}
         />
@@ -117,18 +150,30 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
       )}
       detailTitle={detailWithSummary?.title}
       columns={["time", "source", "title", "categories", "sentiment"]}
+      rootBefore={(
+        <QueryBar
+          width={width}
+          search={{
+            value: search.searchQuery,
+            onChange: search.setSearchQuery,
+            placeholder: NEWS_LIST_SEARCH_PLACEHOLDER,
+            focused: focused && !detailOpen,
+            ...search.searchProps,
+          }}
+        />
+      )}
       emptyContent={(
         <PaneStatusBody
           loading={loading}
           error={error}
           empty
           subject="News"
-          emptyTitle={`No news for ${ticker.metadata.ticker}`}
-          emptyMessage="Stories appear as sources publish them."
+          emptyTitle={emptyCopy.title}
+          emptyMessage={emptyCopy.hint}
         />
       )}
-      emptyStateTitle={`No news for ${ticker.metadata.ticker}`}
-      emptyStateHint="Stories appear as sources publish them."
+      emptyStateTitle={emptyCopy.title}
+      emptyStateHint={emptyCopy.hint}
       scrollRef={scrollRef}
       onBodyScrollActivity={onBodyScrollActivity}
     />
@@ -146,6 +191,7 @@ export const tickerNewsModule: PluginModule = {
       tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 32 },
+      settings: (context) => newsMuteSettingsDef(context, "Ticker News Settings"),
     },
   ],
 

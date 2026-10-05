@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { EarningsCalendarReport } from "../../../api-client/earnings";
 import type { SupplyChainPayload, SupplyEntity, SupplyRow } from "../../../api-client/supply-chain";
-import { projectRipple, rippleCustomerTickers } from "./model";
+import { projectRipple, rippleCompanyTickers } from "./model";
 
 const entity = (ticker: string | null, exchange: string | null, aggregate = false): SupplyEntity =>
   ({ id: ticker ?? "anon", name: ticker ?? "Customer A", ticker, exchange, country: null, kind: "listed", identifiers: {}, anonymous: !ticker, aggregate });
@@ -11,9 +11,9 @@ const customer = (ticker: string | null, exchange: string | null, pct: number, e
   fiscalYear: "2026", sourceKind: "xbrl", form: "10-K", filedDate: "2026-05-21", asOf: "2026-05-21", confidence: 1, quote: "q",
   quoteLanguage: null, quoteMatchMode: null, filingUrl: "https://www.sec.gov/x", accession: null, ...extra,
 });
-const chain = (symbol: string, says: SupplyRow[]): SupplyChainPayload => ({ symbol, entity: null, asOf: null, status: "available", says, names: [],
-  counts: { says: { customer: says.length, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 } },
-  access: "preview", lockedRows: 0, totalRows: says.length, truncated: false, previewRowsPerRole: 3, disclaimer: "d" });
+const chain = (symbol: string, says: SupplyRow[], names: SupplyRow[] = []): SupplyChainPayload => ({ symbol, entity: null, asOf: null, status: "available", says, names,
+  counts: { says: { customer: says.length, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: names.length, partner: 0, competitor: 0, investee: 0 } },
+  access: "preview", lockedRows: 0, totalRows: says.length + names.length, truncated: false, previewRowsPerRole: 3, disclaimer: "d" });
 const report = (symbol: string, date: string): EarningsCalendarReport => ({ symbol, name: symbol, date, timing: "amc", averageMove: 0.025, averageReports: 8 } as EarningsCalendarReport);
 
 describe("earnings ripple", () => {
@@ -28,16 +28,16 @@ describe("earnings ripple", () => {
       ])],
       ["qrvo", chain("QRVO", [customer("AAPL", "XNAS", 50), customer("arm", "NASDAQ", 12), customer("QRVO", "NASDAQ", 10)])],
     ]);
-    expect(rippleCustomerTickers(chains).sort()).toEqual(["AAPL", "ARM"]);
+    expect(rippleCompanyTickers(chains).sort()).toEqual(["AAPL", "ARM"]);
   });
 
   test("shows a customer's average move only once ERN would, with enough reports behind it", () => {
     const rows = projectRipple(new Map([["CRUS", chain("CRUS", [customer("AAPL", "NASDAQ", 91), customer("ARM", "NASDAQ", 12)])]]),
       [report("AAPL", "2026-10-29"), { ...report("ARM", "2026-10-30"), averageReports: 2 }]);
-    expect(rows.map((row) => [row.customer, row.averageMove])).toEqual([["AAPL", 0.025], ["ARM", null]]);
+    expect(rows.map((row) => [row.company, row.averageMove])).toEqual([["AAPL", 0.025], ["ARM", null]]);
   });
 
-  test("keeps listed US revenue customers that report, one per customer, with the holding's own report date", () => {
+  test("keeps listed US revenue customers and suppliers that report, one per company, with the holding's own report date", () => {
     const rows = projectRipple(new Map([
       ["CRUS", chain("CRUS", [
         customer("AAPL", "NASDAQ", 83, { period: "2025-03-31" }), customer("AAPL", "NASDAQ", 91),
@@ -45,9 +45,14 @@ describe("earnings ripple", () => {
         customer(null, null, 96), { ...customer("WMT", "NYSE", 12), counterparty: entity("WMT", "NYSE", true) },
       ])],
       ["QRVO", chain("QRVO", [customer("AAPL", "XNAS", 50)])],
+      // Suppliers come from their own filings naming the holding; the share is of the supplier's revenue.
+      ["AAPL", chain("AAPL", [], [customer("CRUS", "NASDAQ", 91, { role: "supplier", direction: "in" }),
+        customer("PLTK", "NASDAQ", 56, { role: "supplier", direction: "in", pctBasis: "receivables" })])],
     ]), [report("AAPL", "2026-10-29"), report("AAPL", "2027-01-28"), report("CRUS", "2026-11-03"), report("2317", "2026-10-20"),
-      report("MSFT", "2026-11-04"), report("WMT", "2026-11-19")]);
-    expect(rows.map((row) => [row.holding, row.customer, row.pctOfRevenue, row.date, row.holdingDate]))
-      .toEqual([["CRUS", "AAPL", 91, "2026-10-29", "2026-11-03"], ["QRVO", "AAPL", 50, "2026-10-29", null]]);
+      report("MSFT", "2026-11-04"), report("WMT", "2026-11-19"), report("PLTK", "2026-11-05")]);
+    expect(rows.map((row) => [row.holding, row.link, row.company, row.pctOfRevenue, row.date, row.holdingDate])).toEqual([
+      ["CRUS", "customer", "AAPL", 91, "2026-10-29", "2026-11-03"], ["QRVO", "customer", "AAPL", 50, "2026-10-29", null],
+      ["AAPL", "supplier", "CRUS", 91, "2026-11-03", "2026-10-29"],
+    ]);
   });
 });

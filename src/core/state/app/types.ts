@@ -117,6 +117,7 @@ export type AppAction =
       launch?: CommandBarLaunch | null;
     }
   | { type: "SET_COMMAND_BAR_QUERY"; query: string }
+  | { type: "RECORD_COMMAND"; id: string; label: string; arg?: string }
   | { type: "SET_REFRESHING"; symbol: string; refreshing: boolean }
   | { type: "SET_BROKER_ACCOUNTS"; instanceId: string; accounts: BrokerAccount[] }
   | { type: "SET_INITIALIZED" }

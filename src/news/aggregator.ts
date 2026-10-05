@@ -195,6 +195,10 @@ export class NewsService {
     return this.version;
   }
 
+  listArticles(): readonly NewsArticle[] {
+    return this.articles;
+  }
+
   private notify(): void {
     this.version++;
     for (const listener of this.listeners) {
