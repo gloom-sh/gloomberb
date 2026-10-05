@@ -635,7 +635,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "Major indices grouped by region with last, change and session status: which markets are open and how they closed.",
     usage: ["WEI"],
     keys: [OPEN],
-    data: same("Delayed up to 15 minutes"),
+    data: same(DELAYED),
     bloomberg: ["WEI"],
   },
   BI: {
@@ -684,7 +684,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "Front-month futures across equity index, rates, energy, metals, agriculture, livestock and FX with last price and session change, grouped by sector.",
     usage: ["FUT"],
     keys: [SEARCH, OPEN],
-    data: same("Delayed, usually 10 minutes"),
+    data: same(DELAYED),
     bloomberg: ["GLCO"],
   },
   CTM: {
