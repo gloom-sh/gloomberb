@@ -1,4 +1,5 @@
 import { afterEach, expect, jest, test } from "bun:test";
+import { getCloudApiBaseUrl } from "../../../api-client/request";
 import type { DesktopBackendRequestMethod } from "../shared/protocol";
 import { encodeRpcValue } from "../shared/rpc-codec";
 import { createRpcLoopback } from "../../../test-support/rpc-loopback";
@@ -18,13 +19,15 @@ test("Electrobun's request timeout names the request without its payload", async
   const failures = [
     request("update.check", { currentVersion: "0.15.8" }),
     request("capability.invoke", { capabilityId: "asset-data.cloud", operationId: "getQuote", payload: { ticker: "AAPL" } }),
-    request("http.fetch", { url: "https://user:secret@api.example.com:8443/market/quote/AAPL?token=abc", init: { headers: { authorization: "Bearer abc" } } }),
+    request("http.fetch", { url: "https://user:secret@192.168.1.20:5000/v1/portfolio/U123?token=abc", init: { headers: { authorization: "Bearer abc" } } }),
+    request("http.stream.open", { streamId: "s1", url: `${getCloudApiBaseUrl()}/cloud/chat/AAPL?draft=1` }),
   ];
   jest.advanceTimersByTime(120_000);
-  const [update, capability, http] = await Promise.all(failures);
+  const [update, capability, external, gloom] = await Promise.all(failures);
 
   expect(update!.message).toBe("RPC request timed out: update.check after ~120s");
   expect((update!.cause as Error).message).toBe("RPC request timed out.");
   expect(capability!.message).toBe("RPC request timed out: capability.invoke asset-data.cloud.getQuote after ~120s");
-  expect(http!.message).toBe("RPC request timed out: http.fetch api.example.com:8443 after ~120s");
+  expect(external!.message).toBe("RPC request timed out: http.fetch external after ~120s");
+  expect(gloom!.message).toBe(`RPC request timed out: http.stream.open ${new URL(getCloudApiBaseUrl()).host}/cloud after ~120s`);
 });
