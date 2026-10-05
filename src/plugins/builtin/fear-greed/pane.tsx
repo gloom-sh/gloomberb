@@ -8,8 +8,8 @@ import {
   usePaneStatusFooter,
   type StatItem,
 } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, useUiHost } from "../../../ui";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
@@ -51,14 +51,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   const updatedAgo = useUpdatedAgo(lastRefreshed);
   useAutoRefresh(stale ? null : lastRefreshed, refresh);
 
-  useShortcut((event) => {
-    if (!focused) return;
-    if (event.name === "r") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-    }
-  });
+  usePaneRefreshKey(refresh, { focused });
 
   const footerInfo = useMemo(() => [
     ...(data ? [{

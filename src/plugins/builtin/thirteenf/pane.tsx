@@ -230,13 +230,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
       focusSearch();
       return true;
     }
-    if (event.name === "r") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return true;
-    }
-    return false;
+    return handleRefreshKey(event, refresh, { stopPropagation: true });
   }, [focusSearch, refresh]);
 
   const handleTickerRootKeyDown = useCallback((
@@ -567,7 +561,7 @@ export function FundDetailView({
           }}
           onActivate={(row) => openFilingInPane(row)}
           onDetailKeyDown={(event) => {
-            if (event.name !== "o" || !openFiling?.url) return false;
+            if (!isPlainKey(event, "o") || !openFiling?.url) return false;
             event.preventDefault?.();
             event.stopPropagation?.();
             void rendererHost.openExternal(openFiling.url);
@@ -670,13 +664,10 @@ function FilingDetailView({
     pinTicker(row.ticker, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
   }, [pinTicker]);
 
-  const handlePositionKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name !== "r") return false;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    refresh();
-    return true;
-  }, [refresh]);
+  const handlePositionKeyDown = useCallback(
+    (event: DataTableKeyEvent) => handleRefreshKey(event, refresh, { stopPropagation: true }),
+    [refresh],
+  );
 
   usePaneNoticeFooter({ registrationId: "thirteenf-filing-notices", notices: [...new Set([...sourceWarnings, ...warnings])], focused });
 

@@ -12,6 +12,7 @@ import { TICKER_RESEARCH_BUILTIN_TABS } from "../ticker-detail/research-tabs";
 import { ThirteenFPane } from "./pane";
 import { ThirteenFTickerPane } from "./signals-pane";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
 
 const PANE_ID = "thirteenf-pane-test";
 
@@ -216,6 +217,36 @@ describe("ThirteenFPane", () => {
     expect(
       latestState?.paneState[PANE_ID]?.pluginState?.thirteenf?.selectedId,
     ).toBeUndefined();
+  });
+
+  test("leaves Cmd/Ctrl+Shift+R to window resize mode, and r still refreshes", async () => {
+    const urls: string[] = [];
+    installAlpha13FTransport(urls);
+    const modes: Array<string | undefined> = [];
+
+    await act(async () => {
+      await tui.render(
+        <>
+          <Harness />
+          <TestShellPaneKeys focusedPaneId={PANE_ID} startWindowMode={(_paneId, mode) => { modes.push(mode); }} />
+        </>,
+        { width: 100, height: 20 },
+      );
+    });
+    await renderFrames();
+    expect(tui.frame()).toContain("Alpha Capital");
+
+    urls.length = 0;
+    await emitKeypress({ name: "r", sequence: "R", ctrl: true, shift: true });
+    await emitKeypress({ name: "r", sequence: "R", super: true, shift: true });
+    await renderFrames(4);
+    expect(modes).toEqual(["resize", "resize"]);
+    expect(urls).toEqual([]);
+
+    await emitKeypress({ name: "r", sequence: "r" });
+    await renderFrames(4);
+    expect(modes).toHaveLength(2);
+    expect(urls.map((url) => new URL(url).pathname)).toContainEqual(expect.stringMatching(/\/topfunds$/));
   });
 
   test("filing shortcut on a holding opens filing detail inside the pane", async () => {

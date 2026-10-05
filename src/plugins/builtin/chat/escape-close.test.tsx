@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { act } from "react";
-import { useShellPaneManagementShortcuts } from "../../../components/layout/shell/pane/management-shortcuts";
+import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
 import {
   createChatTestHarness,
   createController,
@@ -12,35 +12,6 @@ const tui = createChatTestHarness();
 const { emitKeypress, flushFrame } = tui;
 const ESC = { name: "escape", sequence: "\u001b" };
 
-/** The shell's pane keys around the chat, counting the double-Esc closes. */
-function ShellPaneKeys({ onClose }: { onClose: () => void }) {
-  const none = () => false;
-  useShellPaneManagementShortcuts({
-    cancelActiveDrag: () => {},
-    closeAllFloatingPanes: none,
-    closeFocusedPane: () => {
-      onClose();
-      return true;
-    },
-    copyFocusedPaneScreenshot: none,
-    exportFocusedPaneCsv: none,
-    focusedPaneId: "chat:main",
-    gridlockVisiblePanes: none,
-    hasActiveDrag: none,
-    inputCaptured: false,
-    openFocusedPaneMenu: none,
-    openFocusedPaneSettings: none,
-    openLayoutGallery: () => {},
-    overlayOpen: false,
-    popOutFocusedPane: none,
-    shareFocusedPane: none,
-    startWindowMode: () => {},
-    toggleFocusedPaneFullscreen: none,
-    toggleFocusedPaneFloating: none,
-  });
-  return null;
-}
-
 async function mountChatPane(options: Parameters<typeof createController>[0] = {}) {
   const controller = createController({ messages: [makeMessage(1), makeMessage(2)], ...options });
   const closes = { count: 0 };
@@ -48,7 +19,13 @@ async function mountChatPane(options: Parameters<typeof createController>[0] = {
     await tui.render(
       <>
         {createHarness(controller, { width: 72, height: 12 })}
-        <ShellPaneKeys onClose={() => { closes.count += 1; }} />
+        <TestShellPaneKeys
+          focusedPaneId="chat:main"
+          closeFocusedPane={() => {
+            closes.count += 1;
+            return true;
+          }}
+        />
       </>,
       { width: 72, height: 12 },
     );
