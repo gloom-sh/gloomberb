@@ -10,6 +10,7 @@ import {
   type UpdateCheckResult,
 } from "../../updater";
 import { VERSION } from "../../version";
+import { reportCrash } from "../../telemetry/crash-reports";
 import { runAutomated } from "../../telemetry/usage-counts";
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60_000; // hourly
@@ -52,10 +53,14 @@ export function useAppUpdateRuntime({
     // The desktop host can reject (its RPC request timed out). That is a
     // failed check like any other: the hourly one must not end as an
     // unhandled rejection, and a manual one must clear its progress state.
-    const result = await checkForUpdateDetailed(VERSION).catch((error: unknown): UpdateCheckResult => ({
-      kind: "error",
-      error: error instanceof Error ? error.message : "Update check failed",
-    }));
+    // The timeout is still reported, as it was when it went unhandled.
+    const result = await checkForUpdateDetailed(VERSION).catch((error: unknown): UpdateCheckResult => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.startsWith("RPC request timed out")) {
+        reportCrash(error, { kind: "unhandled-rejection" });
+      }
+      return { kind: "error", error: message || "Update check failed" };
+    });
 
     if (!manual) {
       if (result.kind === "available") {
