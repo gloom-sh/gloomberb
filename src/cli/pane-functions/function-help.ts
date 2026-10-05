@@ -645,6 +645,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: QUOTES,
     bloomberg: ["IMAP"],
   },
+  THEM: {
+    summary: "Curated thematic baskets with equal-weight returns and breadth. Open a theme to see its members, leaders and laggards.",
+    usage: ["THEM", "THEM nuclear"],
+    keys: [OPEN, key("Esc", "back")],
+    data: same("Updated every 15 minutes"),
+    bloomberg: ["IMAP", "custom baskets"],
+  },
   RRG: {
     summary: "Each name's strength against SPY or another benchmark, plotted against its momentum with weekly trails through the four quadrants. Sector ETFs by default, or your tickers.",
     usage: ["RRG", "RRG NVDA, AAPL, MSFT"],

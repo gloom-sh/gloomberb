@@ -41,6 +41,7 @@ import { composeBuiltinPlugin } from "./plugin-module";
 import { portfolioListModule } from "./portfolio-list";
 import { scannerModule } from "./scanner";
 import { sectorsModule } from "./sectors";
+import { themesModule } from "./themes";
 import { treasuryAuctionsModule } from "./treasury-auctions";
 import { worldIndicesModule } from "./world-indices";
 import { worldVenueMapModule } from "./world-venue-map";
@@ -168,6 +169,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     marketMoversModule,
     scannerModule,
     sectorsModule,
+    themesModule,
     fxMatrixModule,
     futuresModule,
     futuresCurveModule,

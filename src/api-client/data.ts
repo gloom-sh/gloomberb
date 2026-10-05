@@ -172,6 +172,14 @@ export class CloudDataApi {
     return this.request<T>(`/cloud/equity-screener/${path}`, init);
   }
 
+  getCloudThemes() {
+    return this.request<import("./themes").ThemesPayload>("/cloud/themes");
+  }
+
+  getCloudThemeMembers(id: string) {
+    return this.request<import("./themes").ThemeMembersPayload>(`/cloud/themes/${encodeURIComponent(id)}`);
+  }
+
   /** Stored implied volatility (HIVG, VCA, OVDV dates); one prefix-scoped method, like EQS. */
   impliedVolatility<T>(path: string, init?: RequestInit) {
     return this.request<T>(`/cloud/iv/${path}`, init);
