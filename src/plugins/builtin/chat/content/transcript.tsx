@@ -40,6 +40,10 @@ interface ChatTranscriptProps {
   selectedIdx: number;
   setHoveredIdx: Dispatch<SetStateAction<number | null>>;
   showProfilePopover: (user: ChatUserSummary) => void;
+  /** A click on a name: pins its card, or closes the one it pinned. */
+  toggleProfilePopover: (user: ChatUserSummary) => void;
+  /** Closes the card at once, pinned or not (a click outside it on the desktop). */
+  dismissProfilePopover: () => void;
   onSetUpProfile: () => void;
   stickyTranscript: boolean;
   user: { id: string; username: string; emailVerified: boolean } | null;
@@ -74,6 +78,8 @@ export function ChatTranscript({
   selectedIdx,
   setHoveredIdx,
   showProfilePopover,
+  toggleProfilePopover,
+  dismissProfilePopover,
   stickyTranscript,
   user,
   userByUsername,
@@ -126,6 +132,7 @@ export function ChatTranscript({
               openTicker={openTicker}
               onUserHover={showProfilePopover}
               onUserHoverEnd={scheduleProfilePopoverClose}
+              onUserActivate={toggleProfilePopover}
               beginReplyTo={beginReplyTo}
               beginEditMessage={beginEditMessage}
               jumpToMessage={jumpToMessage}
@@ -148,6 +155,7 @@ export function ChatTranscript({
               openTicker={openTicker}
               onUserHover={showProfilePopover}
               onUserHoverEnd={scheduleProfilePopoverClose}
+              onUserActivate={toggleProfilePopover}
               beginReplyTo={beginReplyTo}
               beginEditMessage={beginEditMessage}
               jumpToMessage={jumpToMessage}
@@ -163,6 +171,7 @@ export function ChatTranscript({
           user={profilePopoverUser}
           width={chatWidth}
           onClose={scheduleProfilePopoverClose}
+          onDismiss={dismissProfilePopover}
           onKeepOpen={cancelProfilePopoverClose}
           isOwnProfile={profilePopoverUser.id === user?.id}
           onSetUpProfile={onSetUpProfile}

@@ -217,6 +217,23 @@ export function addTickerToWatchlist(
   };
 }
 
+export function removeTickerFromWatchlist(
+  ticker: TickerRecord,
+  watchlistId: string,
+): { changed: boolean; ticker: TickerRecord } {
+  if (!ticker.metadata.watchlists.includes(watchlistId)) {
+    return { changed: false, ticker };
+  }
+
+  return {
+    changed: true,
+    ticker: replaceTickerMetadata(ticker, {
+      ...ticker.metadata,
+      watchlists: ticker.metadata.watchlists.filter((entry) => entry !== watchlistId),
+    }),
+  };
+}
+
 /**
  * The ticker without the ids of watchlists missing from `watchlistIds`, or
  * the same record when it lists none. Team watchlist ids stay: the team sync

@@ -9,6 +9,7 @@ import {
   getPaneSidebarWidthRange,
   PaneSidebar,
   PaneSidebarAction,
+  PaneSidebarList,
   PaneSidebarRow,
   shouldShowPaneSidebar,
 } from "./sidebar";
@@ -176,5 +177,24 @@ describe("desktop pane sidebar", () => {
 
     expect(widths.at(-1)).toBe(24);
     expect(committed).toEqual([24]);
+  });
+
+  test("the list scrolls inside the sidebar instead of clipping", async () => {
+    const container = await render(
+      <PaneSidebar width={20} height={6} focused>
+        <PaneSidebarList>
+          {Array.from({ length: 20 }, (_, index) => (
+            <PaneSidebarRow key={index} active={false} ariaLabel={`Channel ${index}`}>
+              {({ foregroundColor }) => <Text fg={foregroundColor}>{` Channel ${index}`}</Text>}
+            </PaneSidebarRow>
+          ))}
+        </PaneSidebarList>
+      </PaneSidebar>,
+    );
+
+    const list = container.querySelector('[data-gloom-role="pane-sidebar-list"]') as HTMLElement | null;
+    expect(list).toBeTruthy();
+    expect(list?.style.overflowY).toBe("auto");
+    expect(list?.parentElement?.style.overflow).toBe("hidden");
   });
 });

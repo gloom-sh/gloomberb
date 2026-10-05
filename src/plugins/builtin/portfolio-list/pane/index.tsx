@@ -1,7 +1,8 @@
 import { Box } from "../../../../ui";
 import { describeFundamentalMarketCap } from "../../../../utils/market-capitalization";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  confirmDialog,
   usePaneFooter,
   usePaneNoticeFooter,
   usePaneTabs,
@@ -12,8 +13,12 @@ import { useTickerSourceActivate } from "../../../../react/ticker-source";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-financials";
 import { useAppVisible } from "../../../../state/app/activity";
+import { tf } from "../../../../i18n";
+import { useDialog } from "../../../../ui/dialog";
 import {
+  useAppDispatch,
   useAppSelector,
+  useAppStateRef,
   usePaneCollection,
   usePaneInstance,
   usePaneSettingValue,
@@ -59,7 +64,15 @@ import { PortfolioTickerTable } from "../table";
 import { PortfolioGrid } from "../grid";
 import { useThrottledCursorSymbol } from "../use-throttled-cursor-symbol";
 import { useCursorNeighborPrefetch } from "../use-cursor-neighbor-prefetch";
+import { getSharedRegistry } from "../../../registry";
+import { usePluginAppActions } from "../../../runtime";
 import { isManualPortfolio } from "../mutations";
+import {
+  cursorAfterRemoval,
+  removableCollection,
+  removeTickerFromCollection,
+  tickerRemovalSummary,
+} from "./remove-ticker";
 import { QuickAddTickerInput, type QuickAddCollectionKind } from "../quick-add";
 import {
   buildTrackedCurrencies,
@@ -365,8 +378,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     openTickerFloating(ticker.metadata.ticker, { newPane: true });
   }, [flushCursorSymbol, openTickerFloating]);
 
-  // `c` (cash) and `s` (table or grid) are footer hints, which bind their own
-  // keys in both views; the table only adds Shift+Enter.
+  // `c` (cash), `d` (delete), and `s` (table or grid) are footer hints, which
+  // bind their own keys in both views; the table only adds Shift+Enter.
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (!focused) return;
 
@@ -455,11 +468,69 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     })
     : fxWarning ? [`FX ${fxStatusText}`] : [];
 
+  const dispatch = useAppDispatch();
+  const dialog = useDialog();
+  const appStateRef = useAppStateRef();
+  const { notify } = usePluginAppActions();
+  const removalCollection = useMemo(
+    () => removableCollection(config, activeCollectionId),
+    [activeCollectionId, config],
+  );
+  const selectedTicker = cursorSymbol ? tickerBySymbol.get(cursorSymbol) : undefined;
+  const sortedTickersRef = useRef(sortedTickers);
+  sortedTickersRef.current = sortedTickers;
+  const removingRef = useRef(false);
+  // Asks first: a manual portfolio's position goes with the row, and a stray
+  // key should not take either.
+  const removeSelectedTicker = useCallback(async () => {
+    if (!removalCollection || !selectedTicker || removingRef.current) return;
+    const symbol = selectedTicker.metadata.ticker;
+    const collection = removalCollection;
+    removingRef.current = true;
+    try {
+      const confirmed = await confirmDialog(dialog, {
+        title: tf("Remove {symbol} from {collection}?", { symbol, collection: collection.name }),
+        body: tickerRemovalSummary(selectedTicker, collection),
+        confirmLabel: "Remove",
+      });
+      if (!confirmed) return;
+
+      // The record as it is now, in case a sync touched it while the dialog was open.
+      const current = appStateRef.current.tickers.get(symbol) ?? selectedTicker;
+      const result = removeTickerFromCollection(current, collection);
+      if (!result.changed) {
+        notify({ type: "info", body: tf("{symbol} is not in {collection}.", { symbol, collection: collection.name }) });
+        return;
+      }
+      const registry = getSharedRegistry();
+      if (!registry) throw new Error("No ticker repository");
+      await registry.tickerRepository.saveTicker(result.ticker);
+      const symbols = sortedTickersRef.current.map((ticker) => ticker.metadata.ticker);
+      setCursorSymbol(cursorAfterRemoval(symbols, symbol), { immediate: true });
+      dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
+      notify({ type: "success", body: tf("Removed {symbol} from {collection}.", { symbol, collection: collection.name }) });
+    } catch {
+      notify({ type: "error", body: tf("Failed to remove {symbol}.", { symbol }) });
+    } finally {
+      removingRef.current = false;
+    }
+  }, [appStateRef, dialog, dispatch, notify, removalCollection, selectedTicker, setCursorSymbol]);
+
   usePaneFooter("portfolio-list", () => ({
     info: fxStatusText && !fxWarning
       ? [...summaryFooterInfo, { id: "fx", parts: [{ text: `FX ${fxStatusText}`, tone: "muted" as const }] }]
       : summaryFooterInfo,
     hints: [
+      ...(removalCollection
+        ? [{
+            id: "delete",
+            key: "d",
+            label: "elete",
+            title: tf("Remove from {collection}", { collection: removalCollection.name }),
+            onPress: () => { void removeSelectedTicker(); },
+            disabled: !selectedTicker,
+          }]
+        : []),
       ...(showCashDrawer
         ? [{
             id: "cash",
@@ -479,7 +550,20 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           }]
         : []),
     ],
-  }), [cashDrawerExpanded, fxStatusText, fxWarning, isPortfolioTab, setCashDrawerExpanded, showCashDrawer, summaryFooterInfo, toggleViewMode, viewMode]);
+  }), [
+    cashDrawerExpanded,
+    fxStatusText,
+    fxWarning,
+    isPortfolioTab,
+    removalCollection,
+    removeSelectedTicker,
+    selectedTicker,
+    setCashDrawerExpanded,
+    showCashDrawer,
+    summaryFooterInfo,
+    toggleViewMode,
+    viewMode,
+  ]);
 
   const quickAddCollectionKind = useMemo<QuickAddCollectionKind | null>(() => {
     if (!activeCollectionId) return null;
@@ -498,7 +582,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const capNotice = viewMode === "table" && columns.some((column) => column.id === "market_cap")
     && selectedCap?.provenance.kind === "fundamentals" && !selectedCap.live
     ? `${cursorSymbol} market cap: ${describeFundamentalMarketCap(selectedCap.provenance)}.` : undefined;
-  const selectedTicker = cursorSymbol ? tickerBySymbol.get(cursorSymbol) : undefined;
   const multiplierNotice = isPortfolioTab && selectedTicker && hasUnknownOptionMultiplier(selectedTicker, activeCollectionId)
     ? `${cursorSymbol} has no contract multiplier; its value assumes 1x.` : undefined;
   usePaneNoticeFooter({

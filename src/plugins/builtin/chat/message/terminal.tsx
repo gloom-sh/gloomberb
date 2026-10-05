@@ -26,6 +26,7 @@ export function TerminalChatMessage({
   openTicker,
   onUserHover,
   onUserHoverEnd,
+  onUserActivate,
   beginReplyTo,
   beginEditMessage,
   jumpToMessage,
@@ -82,6 +83,7 @@ export function TerminalChatMessage({
           fitAuthorWidth
           onUserHover={onUserHover}
           onUserHoverEnd={onUserHoverEnd}
+          onUserActivate={onUserActivate}
           {...actionProps}
         />
       )}
@@ -104,6 +106,7 @@ export function TerminalChatMessage({
               userByUsername={userByUsername}
               onUserHover={onUserHover}
               onUserHoverEnd={onUserHoverEnd}
+              onUserActivate={onUserActivate}
             />
           </Box>
           {lineIndex === 0 && state.grouped && <ChatMessageActions floating {...actionProps} />}

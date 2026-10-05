@@ -172,7 +172,8 @@ export function PaneSidebar({
           height={sidebarLayoutHeight}
           flexDirection="column"
           backgroundColor={backgroundColor}
-          style={nativeFillStyle}
+          overflow={nativePaneChrome ? "hidden" : undefined}
+          style={nativePaneChrome ? { minHeight: 0, overflow: "hidden" } : undefined}
         >
           {typeof children === "function" ? children(renderState) : children}
         </Box>
@@ -225,6 +226,23 @@ export function PaneSidebar({
         )}
       </Box>
     </PaneSidebarContext.Provider>
+  );
+}
+
+export function PaneSidebarList({ children }: { children: ReactNode }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  return (
+    <Box
+      flexGrow={1}
+      flexShrink={1}
+      flexBasis={0}
+      minHeight={0}
+      overflow={nativePaneChrome ? undefined : "hidden"}
+      data-gloom-role="pane-sidebar-list"
+      style={nativePaneChrome ? { minHeight: 0, overflowX: "hidden", overflowY: "auto" } : undefined}
+    >
+      {children}
+    </Box>
   );
 }
 

@@ -24,6 +24,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   openTicker,
   onUserHover,
   onUserHoverEnd,
+  onUserActivate,
   beginReplyTo,
   beginEditMessage,
   jumpToMessage,
@@ -100,6 +101,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           rowProps={rowProps}
           onUserHover={onUserHover}
           onUserHoverEnd={onUserHoverEnd}
+          onUserActivate={onUserActivate}
           {...actionProps}
         />
       )}
@@ -119,6 +121,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
             userByUsername={userByUsername}
             onUserHover={onUserHover}
             onUserHoverEnd={onUserHoverEnd}
+            onUserActivate={onUserActivate}
           />
         </Box>
         {state.grouped && <ChatMessageActions floating {...actionProps} />}

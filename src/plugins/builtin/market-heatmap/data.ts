@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type { MarketHeatmapResult, MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
-export type { MarketHeatmapAsset, MarketHeatmapResult, MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
+export type { MarketHeatmapResult, MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
 
 export const MARKET_HEATMAP_UNIVERSES = [
   { id: "us-equity", label: "US Stocks" },

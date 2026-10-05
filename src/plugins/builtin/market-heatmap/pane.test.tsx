@@ -3,7 +3,7 @@ import { act } from "react";
 import { apiClient } from "../../../api-client";
 import type { MarketHeatmapResult } from "../../../api-client/market-discovery";
 import { createInitialState } from "../../../state/app/context";
-import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { marketHeatmapPlugin } from "./index";
@@ -39,4 +39,45 @@ test("retained heatmap rows stay visible with a stale footer until a fresh snaps
   await settleFrame(tui.setup(), 6);
   expect(tui.frame()).toContain("ACME");
   expect(JSON.stringify(footer)).not.toContain('"text":"stale"');
+});
+
+test("portfolio tab draws the list selected in the portfolio pane", async () => {
+  const api = spyOn(apiClient, "getMarketHeatmap");
+  restore = () => api.mockRestore();
+  const id = "market-heatmap";
+  const Pane = marketHeatmapPlugin.panes![0]!.component;
+  const config = createTestPaneConfig(":memory:", {
+    instanceId: id,
+    paneId: id,
+    settings: { universe: "portfolio", liveStreaming: false },
+  });
+  config.layout.instances.push({
+    instanceId: "portfolio-list:main",
+    paneId: "portfolio-list",
+    params: { collectionId: "main" },
+    binding: { kind: "none" },
+  });
+  const state = createInitialState(config);
+  state.paneState["portfolio-list:main"] = { collectionId: "watchlist" };
+  state.tickers.set("NVDA", createTestTicker("NVDA", "NVIDIA", { watchlists: ["watchlist"] }));
+  state.tickers.set("AAPL", createTestTicker("AAPL", "Apple", {
+    portfolios: ["main"],
+    positions: [{ portfolio: "main", shares: 1, marketValue: 100, broker: "manual" }],
+  }));
+  state.focusedPaneId = id;
+  await act(async () => {
+    await tui.render(
+      <TestPaneFrame state={state} dispatch={() => {}} paneId={id} pluginId={id}
+        runtime={createTestPluginRuntime({ getMarketData: () => null })} width={100} height={16}>
+        {(body) => <Pane paneId={id} paneType={id} focused {...body} />}
+      </TestPaneFrame>,
+      { width: 100, height: 16 },
+    );
+  });
+  await settleFrame(tui.setup(), 8);
+  const frame = tui.frame();
+  expect(frame).toContain("NVDA");
+  expect(frame).toContain("Watchlist");
+  expect(frame).not.toContain("AAPL");
+  expect(api).not.toHaveBeenCalled();
 });

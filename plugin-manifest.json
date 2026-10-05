@@ -133,7 +133,8 @@
           "chat",
           "congress-trades",
           "team",
-          "thesis-board"
+          "thesis-board",
+          "unread-inbox"
         ],
         "capabilities": [
           "asset-data.gloomberb-cloud",

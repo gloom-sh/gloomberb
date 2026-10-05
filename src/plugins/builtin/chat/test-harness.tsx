@@ -161,6 +161,8 @@ export function createHarness(
     runtime?: PluginRuntimeAccess;
     targetMessageId?: string;
     onTargetMessageHandled?: () => void;
+    /** Lets the view switch channels, which a pane with a channel list needs. */
+    onChannelChange?: (channelId: string) => void;
   },
 ) {
   const width = options?.width ?? 60;
@@ -179,6 +181,7 @@ export function createHarness(
             focused
             targetMessageId={options?.targetMessageId}
             onTargetMessageHandled={options?.onTargetMessageHandled}
+            onChannelChange={options?.onChannelChange}
           />
           <PaneFooterBar footer={footer} focused width={width} />
         </Box>
@@ -192,6 +195,7 @@ export function createHarness(
       focused
       targetMessageId={options?.targetMessageId}
       onTargetMessageHandled={options?.onTargetMessageHandled}
+      onChannelChange={options?.onChannelChange}
     />
   );
 

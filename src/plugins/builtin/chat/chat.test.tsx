@@ -1083,17 +1083,23 @@ describe("ChatContent", () => {
     expect(frame).toContain("[1]");
 
     const line = frame.split("\n")[0] ?? "";
+    const nameCol = line.indexOf("ada");
     const badgeCol = line.indexOf("[1]");
 
+    expect(nameCol).toBeGreaterThanOrEqual(0);
     expect(badgeCol).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await tui.setup().mockMouse.click(badgeCol + 1, 0);
+      await tui.setup().mockMouse.click(nameCol, 0);
       await tui.setup().renderOnce();
+      await tui.setup().mockMouse.click(badgeCol + 1, 0);
       await tui.setup().renderOnce();
     });
 
-    expect(openedTemplates).toEqual([{ templateId: "new-chat-pane", options: { arg: "everyone" } }]);
+    expect(openedTemplates).toEqual([
+      { templateId: "new-chat-pane", options: { arg: "everyone" } },
+      { templateId: "unread-inbox-pane", options: undefined },
+    ]);
   });
 
   test("opens an unread direct-message channel from the status widget", async () => {
@@ -1152,17 +1158,23 @@ describe("ChatContent", () => {
     expect(frame).toContain("[1]");
 
     const line = frame.split("\n")[0] ?? "";
+    const nameCol = line.indexOf("ada");
     const badgeCol = line.indexOf("[1]");
 
+    expect(nameCol).toBeGreaterThanOrEqual(0);
     expect(badgeCol).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await tui.setup().mockMouse.click(badgeCol + 1, 0);
+      await tui.setup().mockMouse.click(nameCol, 0);
       await tui.setup().renderOnce();
+      await tui.setup().mockMouse.click(badgeCol + 1, 0);
       await tui.setup().renderOnce();
     });
 
-    expect(openedTemplates).toEqual([{ templateId: "new-chat-pane", options: { arg: dmChannelId } }]);
+    expect(openedTemplates).toEqual([
+      { templateId: "new-chat-pane", options: { arg: dmChannelId } },
+      { templateId: "unread-inbox-pane", options: undefined },
+    ]);
   });
 
 });

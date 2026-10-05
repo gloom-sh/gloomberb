@@ -14,6 +14,8 @@ import { chatController } from "./controller";
 import { ChatPane } from "./pane";
 import { chatSidebarStore } from "./sidebar-store";
 import { ChatStatusWidget } from "./status-widget";
+import { UnreadInboxPane } from "./unread-inbox-pane";
+import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
 
 export const chatModule: PluginModule = {
   panes: [{
@@ -27,6 +29,14 @@ export const chatModule: PluginModule = {
     portableShare: {
       private: { title: true, params: true, settings: true, state: true },
     },
+  }, {
+    id: UNREAD_INBOX_PANE_ID,
+    name: "Unread",
+    icon: "U",
+    component: UnreadInboxPane,
+    defaultPosition: "right",
+    defaultMode: "floating",
+    defaultFloatingSize: { width: 60, height: 16 },
   }],
   paneTemplates: [{
     id: "new-chat-pane",
@@ -66,6 +76,17 @@ export const chatModule: PluginModule = {
         },
       };
     },
+  }, {
+    id: UNREAD_INBOX_TEMPLATE_ID,
+    paneId: UNREAD_INBOX_PANE_ID,
+    label: "Unread Chat",
+    description: "Open unread chat messages",
+    keywords: ["unread", "chat", "inbox", "mentions"],
+    createInstance: () => ({
+      placement: "floating",
+      instanceId: "unread-inbox",
+      title: "Unread",
+    }),
   }],
   slots: {
     "status:widget": () => <ChatStatusWidget />,

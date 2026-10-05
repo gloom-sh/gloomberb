@@ -53,8 +53,9 @@ export function ChatMessageHeader({
   fitAuthorWidth = false,
   onUserHover,
   onUserHoverEnd,
+  onUserActivate,
   ...actionProps
-}: ChatMessageActionProps & Pick<ChatMessageBaseProps, "msg" | "onUserHover" | "onUserHoverEnd"> & {
+}: ChatMessageActionProps & Pick<ChatMessageBaseProps, "msg" | "onUserHover" | "onUserHoverEnd" | "onUserActivate"> & {
   /** Host row props: width, background and hover or selection hooks. */
   rowProps: Record<string, unknown>;
   /** The terminal sizes the author cell to its label. */
@@ -69,6 +70,11 @@ export function ChatMessageHeader({
         onMouseOver={() => onUserHover(msg.user)}
         onMouseMove={() => onUserHover(msg.user)}
         onMouseOut={onUserHoverEnd}
+        onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+          event.preventDefault?.();
+          event.stopPropagation?.();
+          onUserActivate?.(msg.user);
+        }}
         style={{ cursor: "pointer" }}
       >
         <Text fg={state.authorColor} attributes={state.authorAttributes}>

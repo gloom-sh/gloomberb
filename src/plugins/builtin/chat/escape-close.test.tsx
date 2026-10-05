@@ -5,6 +5,7 @@ import {
   createChatTestHarness,
   createController,
   createHarness,
+  installServerChannels,
   makeMessage,
 } from "./test-harness";
 
@@ -12,13 +13,19 @@ const tui = createChatTestHarness();
 const { emitKeypress, flushFrame } = tui;
 const ESC = { name: "escape", sequence: "\u001b" };
 
-async function mountChatPane(options: Parameters<typeof createController>[0] = {}) {
+async function mountChatPane(
+  options: Parameters<typeof createController>[0] = {},
+  { stacked = false }: { stacked?: boolean } = {},
+) {
   const controller = createController({ messages: [makeMessage(1), makeMessage(2)], ...options });
+  // Too narrow for the sidebar, a channel list makes the pane a stack.
+  if (stacked) installServerChannels(controller);
+  const width = stacked ? 60 : 72;
   const closes = { count: 0 };
   await act(async () => {
     await tui.render(
       <>
-        {createHarness(controller, { width: 72, height: 12 })}
+        {createHarness(controller, { width, height: 12, ...(stacked ? { onChannelChange: () => {} } : {}) })}
         <TestShellPaneKeys
           focusedPaneId="chat:main"
           closeFocusedPane={() => {
@@ -27,7 +34,7 @@ async function mountChatPane(options: Parameters<typeof createController>[0] = {
           }}
         />
       </>,
-      { width: 72, height: 12 },
+      { width, height: 12 },
     );
   });
   await flushFrame();
@@ -82,5 +89,27 @@ describe("double Esc in the chat", () => {
     await emitKeypress(ESC);
     expect(closes.count).toBe(1);
     expect(tui.frame()).toContain("> draft");
+  });
+
+  test("in a narrow pane, Esc backs out to the channel list before Esc Esc closes", async () => {
+    const closes = await mountChatPane({}, { stacked: true });
+    expect(tui.frame()).toContain("← Back");
+
+    // A selected message is dropped first, and the channel stays open.
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    const clearSelection = await emitKeypress(ESC);
+    expect(clearSelection.propagationStopped).toBe(true);
+    await flushFrame();
+    expect(tui.frame()).toContain("← Back");
+
+    const backToList = await emitKeypress(ESC);
+    expect(backToList.propagationStopped).toBe(true);
+    await flushFrame();
+    expect(tui.frame()).not.toContain("← Back");
+    expect(closes.count).toBe(0);
+
+    await emitKeypress(ESC);
+    await emitKeypress(ESC);
+    expect(closes.count).toBe(1);
   });
 });

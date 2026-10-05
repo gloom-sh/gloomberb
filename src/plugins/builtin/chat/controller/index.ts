@@ -57,6 +57,7 @@ import { ChatControllerChannels } from "./channels";
 import { ChatControllerView } from "./view";
 import { ChatControllerMessageLoading } from "./message-loading";
 import { ChatControllerStorage } from "./storage";
+import { listUnreadInboxItems } from "../unread-inbox";
 import {
   applySignedOutChatControllerSession,
   createChatControllerSessionState,
@@ -156,6 +157,20 @@ export class ChatController {
 
   getSnapshot(channelId = DEFAULT_CHAT_CHANNEL_ID): ChatControllerSnapshot {
     return this.view.getSnapshot(channelId);
+  }
+
+  /** Channels with unread messages, from the counts and messages already held; no request. */
+  listUnreadInbox() {
+    return listUnreadInboxItems({
+      channels: this.channelCatalog.getChannels(),
+      user: this.session.user,
+      states: [...this.storage.channelStates.entries()].map(([channelId, channel]) => ({
+        channelId,
+        unreadCount: channel.unreadCount,
+        lastViewedMessageId: channel.lastViewedMessageId,
+        messages: channel.messages,
+      })),
+    });
   }
 
   getChannels(): ChatChannel[] {
