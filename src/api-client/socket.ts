@@ -638,8 +638,14 @@ export class CloudApiSocket {
     this.sendSocketMessage({ type: "client.features", features });
   }
 
-  private getWebSocketBaseUrl(): string {
+  /**
+   * The ws(s) form of the API base URL, or null when the base is not an
+   * http(s) URL. The web build derives it from `location.origin`, which is the
+   * string "null" on an opaque page, and `null/api` must not become a socket URL.
+   */
+  private getWebSocketBaseUrl(): string | null {
     const baseUrl = this.delegate.getBaseUrl();
+    if (!/^https?:\/\//.test(baseUrl)) return null;
     const wsProtocol = baseUrl.startsWith("https") ? "wss" : "ws";
     return baseUrl.replace(/^https?/, wsProtocol);
   }
@@ -669,11 +675,17 @@ export class CloudApiSocket {
   private ensureSocket(): void {
     if (!this.shouldKeepSocketOpen() || this.ws || this.reconnectTimer) return;
 
+    const socketBaseUrl = this.getWebSocketBaseUrl();
+    if (!socketBaseUrl) {
+      this.failSocketOpen(`Not a usable Gloom Cloud URL: ${this.delegate.getBaseUrl()}`);
+      return;
+    }
+
     const socketToken = this.delegate.getSocketAuthToken();
     const usingWebSocketToken = this.delegate.isUsingWebSocketToken();
     const url = socketToken
-      ? `${this.getWebSocketBaseUrl()}/cloud/ws?token=${encodeURIComponent(socketToken)}`
-      : `${this.getWebSocketBaseUrl()}/cloud/ws`;
+      ? `${socketBaseUrl}/cloud/ws?token=${encodeURIComponent(socketToken)}`
+      : `${socketBaseUrl}/cloud/ws`;
     cloudApiLog.info("open websocket", {
       hasToken: !!socketToken,
       tokenSource: usingWebSocketToken ? "websocket" : "session",
@@ -683,18 +695,14 @@ export class CloudApiSocket {
     this.health.reportSocketState(
       GLOOM_CLOUD_SOCKET_CONNECTION_ID,
       "connecting",
-      this.getWebSocketBaseUrl(),
+      socketBaseUrl,
     );
     let ws: WebSocket;
     try {
       ws = new WebSocket(url);
     } catch (error) {
-      this.health.reportSocketState(
-        GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-        "error",
-        error instanceof Error ? error.message : String(error),
-      );
-      throw error;
+      this.failSocketOpen(error instanceof Error ? error.message : String(error));
+      return;
     }
     this.ws = ws;
 
@@ -704,7 +712,7 @@ export class CloudApiSocket {
       this.health.reportSocketState(
         GLOOM_CLOUD_SOCKET_CONNECTION_ID,
         "open",
-        this.getWebSocketBaseUrl(),
+        socketBaseUrl,
       );
       this.reconnectDelayMs = 1000;
       // The full set goes out now; queued diffs from before the open are part of it.
@@ -761,6 +769,18 @@ export class CloudApiSocket {
       );
       // Reconnect is handled by onclose.
     };
+  }
+
+  /**
+   * A socket that could not be constructed is an error to show, not to throw:
+   * ensureSocket runs from effects and timers nobody awaits. The reconnect
+   * backoff retries it, so a URL that never works settles at the slowest delay.
+   */
+  private failSocketOpen(reason: string): void {
+    // The reason can carry the socket URL with its token, so only the health detail keeps it.
+    cloudApiLog.warn("websocket could not be opened");
+    this.health.reportSocketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID, "error", reason);
+    this.scheduleReconnect();
   }
 
   private scheduleReconnect(): void {
