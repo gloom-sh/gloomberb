@@ -16,8 +16,10 @@ function useSnapshotFooter(id: string, resource: { loading: boolean; error: stri
   const data = resource.data;
   const age = useUpdatedAgo(data ? Date.parse(data.payload.asOf) : null);
   const info = useMemo(() => age ? [{ id: "snapshot", parts: [{ text: `15m delayed · snapshot ${age}`, tone: "muted" as const }] }] : [], [age]);
+  // The server flag includes retained historical returns; it does not mean the daily board is old.
+  const snapshotStale = !!data && Date.now() - Date.parse(data.payload.asOf) > 30 * 60_000;
   usePaneStatusFooter({ registrationId: id, enabled, loading: resource.loading && !!data,
-    error: data ? null : resource.error, stale: !!data && (data.stale || data.payload.stale || !!resource.error), info });
+    error: data ? null : resource.error, stale: !!data && (data.stale || snapshotStale || !!resource.error), info });
   usePaneNoticeFooter({ registrationId: `${id}:notices`, focused, enabled,
     notices: data?.refreshError ? [data.refreshError] : [] });
 }
