@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { THEME_PERIODS, type ThemeMember, type ThemeSummary } from "../../../api-client/themes";
-import { aggregateText, DEFAULT_SORT, matchTheme, memberColumns, percent, sortMembers, sortThemes, themeColumns } from "./model";
+import { fitTableCellText, tableColumnWidth } from "../../../components/ui/table-layout";
+import { aggregateText, coverageWidth, DEFAULT_SORT, matchTheme, memberColumns, percent, sortMembers, sortThemes, themeColumns } from "./model";
 
 const theme = (id: string, day: number | null, covered = 10): ThemeSummary => ({
   id, name: id, description: "", keywords: [], memberCount: 10, present: 10, stale: false,
@@ -48,4 +49,26 @@ test("command arguments resolve server names and keywords before fuzzy subsequen
   expect(matchTheme(rows, "nclr")?.id).toBe("nuclear");
   expect(matchTheme(rows, "electrification")?.id).toBe("grid");
   expect(matchTheme(rows, "totally absent word")).toBeNull();
+});
+
+test("right-aligned headers end over numbers with and without a partial-coverage row", () => {
+  for (const width of [90, 250]) {
+    for (const covered of [10, 9]) {
+      const rows = [theme("Full", 1.23), theme("Partial", -0.27, covered)];
+      for (const column of themeColumns(width, rows)) {
+        if (!THEME_PERIODS.includes(column.id as typeof THEME_PERIODS[number]) && column.id !== "breadth") continue;
+        const metrics = rows.map((row) => column.id === "breadth" ? row.breadth : row.returns[column.id as typeof THEME_PERIODS[number]]);
+        const noteWidth = coverageWidth(metrics);
+        const renderedWidth = tableColumnWidth(column);
+        const header = fitTableCellText(column.label, renderedWidth, "right");
+        const headerEnd = header.trimEnd().length;
+        for (const metric of metrics) {
+          const value = column.id === "breadth" ? `${Math.round(metric.value!)}%` : percent(metric.value);
+          const note = metric.covered < metric.total ? `${metric.covered}/${metric.total}` : "";
+          const cell = fitTableCellText(value + note.padStart(noteWidth), renderedWidth, "right");
+          expect(cell.indexOf("%") + 1).toBe(headerEnd);
+        }
+      }
+    }
+  }
 });

@@ -84,7 +84,7 @@ export function ThemesPane({ width, height, focused }: PaneProps) {
     const valueText = breadth && metric.value !== null ? `${Math.round(metric.value)}%` : percent(metric.value);
     const suffix = metric.covered < metric.total ? `${metric.covered}/${metric.total}` : "";
     return { text: aggregateText(metric, breadth), value: metric.value,
-      color, content: suffixWidth ? <Box flexDirection="row" width="100%" justifyContent="flex-end">
+      color, content: suffixWidth ? <Box flexDirection="row" width={column.width} justifyContent="flex-end">
         <Text fg={color}>{valueText}</Text><Text fg={colors.textMuted}>{suffix.padStart(suffixWidth)}</Text>
       </Box> : undefined };
   }, [colors, data]);

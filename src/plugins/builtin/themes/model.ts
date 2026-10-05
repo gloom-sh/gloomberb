@@ -53,10 +53,13 @@ export function matchTheme(rows: readonly ThemeSummary[], input: string): ThemeS
 const column = (id: string, label: string, width: number, align: "left" | "right" = "right"): DataTableColumn => ({ id, label, width, align });
 /** Drop leaders/laggards first, then longer windows; keep the day's move and breadth. */
 export function themeColumns(width: number, rows: readonly ThemeSummary[]): DataTableColumn[] {
-  const metricWidth = (period: ThemePeriod) => Math.max(8, ...rows.map((row) => percent(row.returns[period].value).length)) + coverageWidth(rows.map((row) => row.returns[period]));
+  const suffixWidth = (period: ThemePeriod) => coverageWidth(rows.map((row) => row.returns[period]));
+  const metricWidth = (period: ThemePeriod) => Math.max(8, ...rows.map((row) => percent(row.returns[period].value).length)) + suffixWidth(period);
   const columns = [column("name", "Theme", 26, "left"), column("memberCount", "N", 3),
-    ...THEME_PERIODS.map((period) => column(period, PERIOD_LABELS[period], metricWidth(period))),
-    column("breadth", "Breadth", Math.max(7, ...rows.map((row) => aggregateText(row.breadth, true).length))),
+    // The same trailing space is reserved in every cell and its header. A note
+    // occupies that space without moving the number away from its label.
+    ...THEME_PERIODS.map((period) => column(period, PERIOD_LABELS[period] + " ".repeat(suffixWidth(period)), metricWidth(period))),
+    column("breadth", "Breadth" + " ".repeat(coverageWidth(rows.map((row) => row.breadth))), 7 + coverageWidth(rows.map((row) => row.breadth))),
     column("best", "Best 1D", 15), column("worst", "Worst 1D", 15)];
   return fitColumns(columns, width, ["worst", "best", "return3MPercent", "returnYtdPercent", "return1MPercent", "return1WPercent", "memberCount"]);
 }
