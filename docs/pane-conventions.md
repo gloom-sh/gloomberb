@@ -377,6 +377,11 @@ header, with the detail's height.
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
   global shortcuts through `registerShortcut` so Help lists them.
+- Esc Esc closes the focused pane, and only an Esc nobody consumed counts
+  as the first press. Consume Esc only when it backs out of something (a
+  detail, a menu, a selection, a draft); with nothing to back out of, let it
+  through. An Esc that only leaves an empty text field still counts: call
+  `countEscapeTowardClose(event)` and consume it.
 - The pane menu (`.`, Shift+F10, the `...` button) is where the keyboard
   finds everything: it lists the footer hints with their keys, what kit
   controls add (table sort, query-bar filters, tab add/close/move, empty-state

@@ -22,6 +22,7 @@ import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-control
 import {
   armDoubleEscapeClose,
   createDoubleEscapeCloseState,
+  offerEscapeTowardClose,
   resetDoubleEscapeClose,
   takeDoubleEscapeClose,
 } from "../../utils/double-escape-close";
@@ -149,9 +150,19 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     resetDoubleEscapeClose(doubleEscapeState);
   }, { phase: "before" });
 
+  const armDoubleEscape = () => {
+    armDoubleEscapeClose(doubleEscapeCloseRef.current, desktopWindowBridge.paneId, Date.now());
+  };
+
+  // A pane that uses an Esc to leave an empty field may still count it.
   useShortcut((event) => {
     if (event.name !== "escape" && event.name !== "esc") return;
-    armDoubleEscapeClose(doubleEscapeCloseRef.current, desktopWindowBridge.paneId, Date.now());
+    offerEscapeTowardClose(event, armDoubleEscape);
+  }, { phase: "before", allowEditable: true });
+
+  useShortcut((event) => {
+    if (event.name !== "escape" && event.name !== "esc") return;
+    armDoubleEscape();
   }, { phase: "idle" });
 
   const closePane = useCallback(() => {

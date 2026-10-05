@@ -2,6 +2,7 @@ import type { MutableRefObject } from "react";
 import { useShortcut } from "../../../../react/input";
 import type { ScrollBoxRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
+import { countEscapeTowardClose } from "../../../../utils/double-escape-close";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { scrollToBottom } from "../layout";
 import type { ChatSidebarRow } from "../sidebar-rows";
@@ -190,6 +191,9 @@ export function useChatContentShortcuts({
         } else if (replyTo) {
           clearReplyTarget();
         } else {
+          // Leaving an empty composer is the first half of a double-Esc close;
+          // leaving a draft is not, so a quick Esc Esc never closes over it.
+          if (inputValueRef.current.trim().length === 0) countEscapeTowardClose(event);
           blurInput();
         }
         return;
@@ -245,17 +249,16 @@ export function useChatContentShortcuts({
       return;
     }
 
-    if (event.name === "escape") {
+    // An Esc with nothing to back out of is left to the pane's double-Esc close.
+    if (event.name === "escape" && (profilePopoverOpen || selectedIdx >= 0)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       if (profilePopoverOpen) {
         closeProfilePopover();
         return;
       }
-      if (selectedIdx >= 0) {
-        setSelectedIdx(-1);
-        setFollowMessages(true);
-      }
+      setSelectedIdx(-1);
+      setFollowMessages(true);
       return;
     }
 
