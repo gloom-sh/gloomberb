@@ -29,6 +29,7 @@ export function getChatMessageRenderState({
   hoveredIdx,
   canSend,
   canEdit,
+  slowSend,
   host,
 }: {
   msg: ChatMessage;
@@ -38,13 +39,15 @@ export function getChatMessageRenderState({
   hoveredIdx: number | null;
   canSend: boolean;
   canEdit: boolean;
+  /** A pending send that has waited past the threshold; a fresh one is drawn like a sent message. */
+  slowSend: boolean;
   /** The desktop reveals actions on hover with CSS, so it renders them on every row. */
   host: "desktop" | "terminal";
 }): ChatMessageRenderState {
   const isSelected = index === selectedIdx;
   const isHovered = index === hoveredIdx && !isSelected;
   const grouped = isGroupedWithPrevious(messages, index);
-  const isSending = msg.clientStatus === "sending";
+  const isSending = msg.clientStatus === "sending" && slowSend;
   const hasFailed = msg.clientStatus === "failed";
   const selectedTextColor = hasFailed ? colors.negative : colors.selectedText;
   const headerStatus = isSending

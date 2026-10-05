@@ -7,6 +7,7 @@ import { useAppLanguage } from "../../../../i18n/react";
 import { normalizeInlinePreview } from "../layout";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
+import { useSlowPendingSend } from "./pending-send";
 import { getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
@@ -35,6 +36,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
 }) {
   useAppLanguage();
   const themeColors = useThemeColors();
+  const slowSend = useSlowPendingSend(msg);
   const state = getChatMessageRenderState({
     msg,
     index,
@@ -43,6 +45,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
     hoveredIdx,
     canSend,
     canEdit: msg.id === latestEditableMessageId,
+    slowSend,
     host: "desktop",
   });
   const actionProps = { state, index, beginReplyTo, beginEditMessage };

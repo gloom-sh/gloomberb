@@ -3,6 +3,7 @@ import { t } from "../../../../i18n";
 import { formatInlinePreview, getMessageBodyTokenLines } from "../layout";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
+import { useSlowPendingSend } from "./pending-send";
 import { getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
@@ -33,6 +34,7 @@ export function TerminalChatMessage({
   latestEditableMessageId,
   setHoveredIdx,
 }: TerminalChatMessageProps) {
+  const slowSend = useSlowPendingSend(msg);
   const state = getChatMessageRenderState({
     msg,
     index,
@@ -41,6 +43,7 @@ export function TerminalChatMessage({
     hoveredIdx,
     canSend,
     canEdit: msg.id === latestEditableMessageId,
+    slowSend,
     host: "terminal",
   });
   const actionProps = { state, index, beginReplyTo, beginEditMessage };

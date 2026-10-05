@@ -10,6 +10,7 @@ import { apiClient } from "../../../api-client";
 import { PluginRenderProvider } from "../../runtime";
 import { setSharedRegistryForTests } from "../../registry";
 import { ChatContent } from "./content";
+import { SLOW_SEND_THRESHOLD_MS } from "./message/pending-send";
 import { ChatStatusWidget } from "./status-widget";
 import {
   createChatTestHarness,
@@ -722,25 +723,76 @@ describe("ChatContent", () => {
     expect(frameAfterType).not.toContain("message 1 ");
   });
 
-  test("renders optimistic sends with a sending status", async () => {
-    const controller = createController({
-      messages: [{
-        id: "local:1",
-        channelId: "everyone",
-        content: "hello",
-        replyToId: null,
-        createdAt: "2026-03-28T00:00:00.000Z",
-        user: { id: "u0", username: "ada", displayName: "Ada" },
-        clientStatus: "sending",
-        clientError: null,
-      }],
+  describe("pending sends", () => {
+    const makePending = (
+      createdAt: string,
+      clientStatus: ChatMessage["clientStatus"] = "sending",
+    ): ChatMessage => ({
+      id: "local:1",
+      channelId: "everyone",
+      content: "hello pending",
+      replyToId: null,
+      createdAt,
+      user: { id: "u0", username: "ada", displayName: "Ada" },
+      clientStatus,
+      clientError: clientStatus === "failed" ? "Failed to send message." : null,
     });
 
-    await mountChat(controller);
+    function bodyColor(text: string): string | undefined {
+      const line = tui.setup().captureSpans().lines.find((entry) => lineText(entry).includes(text));
+      return line?.spans.find((span) => span.text.includes(text))?.fg.toInts().join(",");
+    }
 
-    const frameAfterSubmit = tui.frame();
-    expect(frameAfterSubmit).toContain("hello");
-    expect(frameAfterSubmit).toContain("sending...");
+    test("draws a fresh pending send like a sent message", async () => {
+      const controller = createController({ messages: [makePending(recentChatTimestamp(0))] });
+
+      await mountChat(controller);
+
+      const frame = tui.frame();
+      expect(frame).toContain("hello pending");
+      expect(frame).toContain("just now");
+      expect(frame).not.toContain("sending...");
+      expect(bodyColor("hello pending")).toBe(hexToRgbaInts(colors.text));
+    });
+
+    test("falls back to the dim sending state once a send is slow", async () => {
+      const controller = createController({
+        messages: [makePending(recentChatTimestamp(SLOW_SEND_THRESHOLD_MS + 1_000))],
+      });
+
+      await mountChat(controller);
+
+      expect(tui.frame()).toContain("sending...");
+      expect(bodyColor("hello pending")).toBe(hexToRgbaInts(colors.textDim));
+    });
+
+    test("turns a fresh pending send dim when it is still pending after the threshold", async () => {
+      const controller = createController({
+        messages: [makePending(recentChatTimestamp(SLOW_SEND_THRESHOLD_MS - 250))],
+      });
+
+      await mountChat(controller);
+      expect(tui.frame()).not.toContain("sending...");
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      });
+      await flushFrame();
+
+      expect(tui.frame()).toContain("sending...");
+      expect(bodyColor("hello pending")).toBe(hexToRgbaInts(colors.textDim));
+    });
+
+    test("keeps a failed send red and marked as failed", async () => {
+      const controller = createController({ messages: [makePending(recentChatTimestamp(0), "failed")] });
+
+      await mountChat(controller);
+
+      const frame = tui.frame();
+      expect(frame).toContain("failed");
+      expect(frame).not.toContain("sending...");
+      expect(bodyColor("hello pending")).toBe(hexToRgbaInts(colors.negative));
+    });
   });
 
   test("auto-scrolls to newly appended messages while following the latest transcript", async () => {
