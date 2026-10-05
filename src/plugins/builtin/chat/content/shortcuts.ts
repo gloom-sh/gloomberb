@@ -292,7 +292,7 @@ export function useChatContentShortcuts({
       queueMicrotask(requestOlderMessagesIfNeeded);
       return;
     }
-    if (event.name === "g" && event.shift) {
+    if (event.name === "g" && event.shift && !event.ctrl && !event.meta && !event.super && !event.alt) {
       event.preventDefault?.();
       event.stopPropagation?.();
       setSelectedIdx(messages.length - 1);
