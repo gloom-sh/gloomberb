@@ -57,6 +57,7 @@ const EDITORIAL: Record<
   "market-overview": { categories: ["markets"] },
   news: { categories: ["news"] },
   notes: { categories: ["productivity"] },
+  openfda: { categories: ["research"] },
   portfolio: { categories: ["portfolio"] },
   "research-search": { categories: ["research", "news"] },
   "ticker-research": { categories: ["research"] },

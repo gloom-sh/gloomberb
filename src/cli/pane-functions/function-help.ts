@@ -924,6 +924,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: AS_FILED,
     bloomberg: [],
   },
+  FDA: {
+    summary: "FDA drug and device adverse event reports and drug recalls, by drug, device or firm name. A report is what someone observed, not proof the product caused it.",
+    usage: ["FDA", "FDA metformin", "FDA insulin pump"],
+    keys: [SEARCH, OPEN],
+    data: same("As FDA updates each dataset; drug reports quarterly"),
+    bloomberg: [],
+  },
   HDS: {
     summary: "Institutional holders as a table (value, shares, change, percent held) or as an ownership treemap.",
     usage: ["HDS NVDA"],

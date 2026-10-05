@@ -251,6 +251,22 @@
       }
     },
     {
+      "id": "openfda",
+      "name": "FDA Reports and Recalls",
+      "description": "FDA adverse event reports for drugs and devices, and drug recalls, from openFDA. Search by drug, device, or firm name.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "adverse-events"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "portfolio",
       "name": "Portfolio",
       "description": "Portfolio and watchlist management, analytics, and position sizing.",

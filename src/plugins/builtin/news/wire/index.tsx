@@ -133,7 +133,8 @@ const newsWirePanes: PluginModule["panes"] = [
 
 const newsWirePaneTemplates: PluginModule["paneTemplates"] = [
   { id: "news-top-pane", paneId: "news-top", label: "Top News", description: "Curated top market stories ranked by importance", keywords: ["top", "news", "headlines", "stories"], shortcut: { prefix: "TOP" } },
-  { id: "news-feed-pane", paneId: "news-feed", label: "News Feed", description: "Chronological market news firehose", keywords: ["news", "feed", "firehose", "wire", "stream"], shortcut: { prefix: "N" }, headless: newsFeedHeadless },
+  // FH is the same combined latest feed, Gloom Cloud with your RSS feeds, so it opens this pane.
+  { id: "news-feed-pane", paneId: "news-feed", label: "News Feed", description: "Chronological market news firehose", keywords: ["news", "feed", "firehose", "wire", "stream", "latest"], shortcut: { prefix: "N", aliases: ["FH"] }, headless: newsFeedHeadless },
   {
     id: "news-industry-pane",
     paneId: "news-industry",
