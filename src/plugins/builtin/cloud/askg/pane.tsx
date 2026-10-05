@@ -48,6 +48,7 @@ import { useRemoteControlHandler } from "../../../../remote/app-host";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
 import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
+import { countEscapeTowardClose } from "../../../../utils/double-escape-close";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
@@ -904,6 +905,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (inputFocused) {
       if (isPlainKey(event, "escape")) {
         consume();
+        // Leaving an empty composer counts toward a double-Esc close; a draft does not.
+        const value = inputRef.current?.editBuffer.getText() ?? inputValue;
+        if (!value.trim()) countEscapeTowardClose(event);
         blurInput();
       }
       return;
