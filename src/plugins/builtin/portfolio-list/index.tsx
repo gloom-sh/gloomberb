@@ -8,6 +8,7 @@ import {
 } from "./settings";
 import { portfolioCliCommand } from "./cli/portfolio-command";
 import { watchlistCliCommand } from "./cli/watchlist-command";
+import { collectionHoldingsHeadless } from "./headless";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
@@ -76,6 +77,7 @@ export const portfolioListModule: PluginModule = {
       description: "Open another pane for the current portfolio or watchlist",
       keywords: ["portfolio", "watchlist", "collection", "pane", "list"],
       shortcut: { prefix: "PF" },
+      headless: collectionHoldingsHeadless,
       canCreate: (context) => resolveCollectionPaneId(context) !== null,
       createInstance: (context) => createCollectionPaneInstance(context),
     },
