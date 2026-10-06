@@ -71,6 +71,7 @@ import { useDialog, type PromptContext } from "../../../../ui/dialog";
 import { subscribeASKGQuestions } from "./pending-question";
 import { buildASKGUserData } from "./user-data";
 import { ASKGConversationSidebar } from "./sidebar";
+import { ASKGUndoManager } from "./undo";
 import {
   activeTurn,
   canRetryASKGError,
@@ -516,6 +517,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const getAppStateRef = useRef(getAppState);
   getAppStateRef.current = getAppState;
 
+  // Each call and each undo gets a fresh executor, so the tokens live here:
+  // an executor's own manager would forget them as soon as its call returned.
+  const undoManager = useMemo(() => new ASKGUndoManager((request) => {
+    const handler = remoteHandlerRef.current;
+    if (!handler) return Promise.reject(new Error("This window cannot undo tool calls."));
+    return handler(request);
+  }), []);
+
   const controller = useMemo(() => new ASKGSessionController({
     transport: apiClient.askg,
     loadManifest: () => loadASKGClientManifest(),
@@ -530,6 +539,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
           manifestHash: manifest.manifestHash,
           skipped: [],
         },
+        undoManager,
       });
     },
     client: { kind: clientKind(), version: CLIENT_VERSION },
@@ -546,7 +556,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         ...(userData ? { userData } : {}),
       };
     },
-  }), []);
+  }), [undoManager]);
 
   useEffect(() => () => controller.dispose(), [controller]);
 
