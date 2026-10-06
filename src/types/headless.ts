@@ -177,6 +177,12 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
     limitations?: string[];
     screenshotReadiness?: "ready" | "partial" | "live-dom" | "unsupported";
   };
+  /**
+   * What a report returns, in a sentence, for readers that only ever see the
+   * function as a data source, such as Ask Gloom. The template's description
+   * says what opening the pane does and is used when this is absent.
+   */
+  description?: string;
   argument: HeadlessPaneArgumentDef;
   options: HeadlessPaneOptionDef[];
   columns?: HeadlessPaneColumn[];

@@ -195,6 +195,7 @@ function securityTemplate({
   aliases,
   label,
   description,
+  returns,
   argKind,
   minimumSymbols,
   build,
@@ -204,6 +205,8 @@ function securityTemplate({
   aliases?: readonly string[];
   label: string;
   description: string;
+  /** What the report returns, when the description is about drawing the chart. */
+  returns?: string;
   argKind: "ticker" | "ticker-list";
   minimumSymbols: number;
   build: (symbols: string[]) => ChartSpec;
@@ -211,7 +214,7 @@ function securityTemplate({
   return {
     id,
     paneId: CHART_COMPOSER_PANE_ID,
-    headless: chartHeadless(id),
+    headless: { ...chartHeadless(id), ...(returns ? { description: returns } : {}) },
     label,
     description,
     keywords: ["chart", "graph", prefix.toLowerCase(), ...label.toLowerCase().split(" ")],
@@ -353,6 +356,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     prefix: "GP",
     label: "Graph Price",
     description: "Open a price chart for a ticker.",
+    returns: "Daily price history for one ticker over a range, 5Y by default. Returns the data; it does not open or show a chart.",
     argKind: "ticker",
     minimumSymbols: 1,
     build: (symbols) => buildPriceChartPreset(symbols[0]!),
@@ -362,6 +366,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     prefix: "GIP",
     label: "Intraday Price Graph",
     description: "Open an intraday price chart for one or five sessions.",
+    returns: "Intraday price bars for one ticker over the last one or five sessions. Returns the data; it does not open or show a chart.",
     argKind: "ticker",
     minimumSymbols: 1,
     build: (symbols) => buildIntradayPriceChartPreset(symbols[0]!),
@@ -381,6 +386,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     prefix: "GF",
     label: "Fundamental Graph",
     description: "Graph quarterly revenue for one or more tickers, then choose any available field in Series.",
+    returns: "Annual or quarterly fundamental history for one or more tickers: revenue by default, or the field named by metric.",
     argKind: "ticker-list",
     minimumSymbols: 1,
     build: buildFundamentalChartPreset,
@@ -390,6 +396,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     prefix: "GE",
     label: "Valuation Graph",
     description: "Graph trailing P/E for one or more tickers, then choose any available field in Series.",
+    returns: "Annual or quarterly valuation multiple history for one or more tickers: trailing P/E by default, or the multiple named by metric.",
     argKind: "ticker-list",
     minimumSymbols: 1,
     build: buildValuationChartPreset,

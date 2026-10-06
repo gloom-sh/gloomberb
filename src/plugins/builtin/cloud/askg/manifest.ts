@@ -124,7 +124,9 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
     candidates.push({
       token,
       identity: `template:${template.id}`,
-      manifest: headlessManifest(token, template.label, template.description, definition),
+      // Tools return data, so a description that says "Open a chart" would
+      // have Gloom report opening one.
+      manifest: headlessManifest(token, template.label, definition.description ?? template.description, definition),
     });
   }
 
@@ -138,7 +140,7 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
       manifest: headlessManifest(
         pane.id,
         pane.name,
-        `Read data from the ${pane.name} pane.`,
+        pane.headless.description ?? `Read data from the ${pane.name} pane.`,
         pane.headless,
       ),
     });

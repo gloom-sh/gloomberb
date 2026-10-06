@@ -6,6 +6,7 @@ import type {
   PaneDef,
   PaneTemplateDef,
 } from "../../../../types/plugin";
+import { getLoadablePlugins } from "../../../catalog";
 import {
   buildASKGToolManifests,
   hashASKGToolManifests,
@@ -95,6 +96,29 @@ describe("ASKG client manifest", () => {
     });
     expect(tools[0]?.columns).toEqual([{ key: "value", header: "Value" }]);
     expect(tools.every(({ writeTier, confirm }) => writeTier === "read" && confirm === "never")).toBe(true);
+  });
+
+  test("describes a tool by what its report returns, not by opening the pane", () => {
+    const chart = template("price", "pane-price", "GP", { kind: "ticker" });
+    chart.description = "Open a price chart for a ticker.";
+    chart.headless = { ...chart.headless!, description: "Daily price history for one ticker." };
+    const [tool] = headlessTools(registry([chart]));
+
+    expect(tool?.description).toBe("Daily price history for one ticker.");
+  });
+
+  test("no built-in read tool is described as opening something", () => {
+    const panes = new Map<string, PaneDef>();
+    const paneTemplates = new Map<string, PaneTemplateDef>();
+    for (const plugin of getLoadablePlugins()) {
+      for (const entry of plugin.panes ?? []) panes.set(entry.id, entry);
+      for (const entry of plugin.paneTemplates ?? []) paneTemplates.set(entry.id, entry);
+    }
+    const openers = headlessTools({ panes, paneTemplates, destroy() {} })
+      .filter(({ description }) => /^(open|launch|show)\b/i.test(description))
+      .map(({ name }) => name);
+
+    expect(openers).toEqual([]);
   });
 
   test("projects remote operation schemas and confirmation tiers", () => {

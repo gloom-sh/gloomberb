@@ -14,6 +14,8 @@ const withDefault = (context: PaneTemplateContext): PaneTemplateContext =>
 function positioningTemplate(
   options: Pick<TickerSurfacePaneTemplateOptions, "id" | "label" | "description" | "keywords" | "shortcut" | "shortcutAliases">,
   initialTab: PositioningTab,
+  /** What the report returns, when the description reads like an action. */
+  returns?: string,
 ): PaneTemplateDef {
   const template = createTickerSurfacePaneTemplate({
     ...options,
@@ -34,7 +36,7 @@ function positioningTemplate(
     ...template,
     canCreate: (context, createOptions) => template.canCreate?.(withDefault(context), createOptions) ?? true,
     createInstance: (context, createOptions) => template.createInstance?.(withDefault(context), createOptions) ?? null,
-    headless: optionsPositioningHeadless(initialTab),
+    headless: { ...optionsPositioningHeadless(initialTab), ...(returns ? { description: returns } : {}) },
   };
 }
 
@@ -58,7 +60,7 @@ export const optionsPositioningModule: PluginModule = {
       keywords: ["opx", "open interest", "max pain", "put call", "expiry", "options"],
       shortcut: "OPX",
       shortcutAliases: ["MAXPAIN"],
-    }, "strikes"),
+    }, "strikes", "Options open interest by strike and expiry, max pain, and dealer gamma (GEX) for a US underlying."),
     positioningTemplate({
       id: "options-positioning-gex",
       label: "Dealer Gamma",
