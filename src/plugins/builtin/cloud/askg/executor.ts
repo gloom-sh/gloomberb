@@ -5,7 +5,6 @@ import {
   serializeHeadlessPaneResult,
 } from "../../../../cli/pane-functions/headless";
 import { resolvePaneFunction } from "../../../../cli/pane-functions/resolver";
-import { stableStringify } from "../../../../utils/hash";
 import type {
   HeadlessBundleResult,
   HeadlessPaneDefinition,
@@ -22,6 +21,7 @@ import {
   type ToolResultStatus,
 } from "./protocol";
 import { normalizeJson, shortReason } from "./json";
+import { describeTrimmedLists, fitResultToBytes } from "./result-budget";
 import {
   remoteRequestForTool,
   resolveRemoteToolBinding,
@@ -94,41 +94,37 @@ function encodedSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
+/** Room left for the note that says what was trimmed. */
+const TRIM_NOTE_RESERVE_BYTES = 1_024;
+
+/**
+ * Keeps the posted payload under the server's byte cap. An oversized result
+ * loses rows, not characters, so what reaches Gloom is still whole records
+ * and the note says which lists were shortened.
+ */
 function withBoundedPayload(payload: ToolResultPayload): ToolResultPayload {
   if (encodedSize(payload) <= MAX_TOOL_RESULT_BYTES) return payload;
 
-  const resultText = stableStringify(payload.result ?? null);
-  const originalBytes = encodedSize(payload.result ?? null);
-  const note = appendNote(
-    payload.note,
-    `Result exceeded ${MAX_TOOL_RESULT_BYTES} bytes. result.jsonPreview contains a canonical JSON prefix.`,
-  );
   const status = payload.status === "ok" ? "partial" : payload.status;
-  let low = 0;
-  let high = resultText.length;
-  let best: ToolResultPayload = {
-    ...payload,
-    status,
-    result: { jsonPreview: "", originalBytes },
-    truncated: true,
-    note,
-  };
-
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const candidate: ToolResultPayload = {
-      ...best,
-      result: { jsonPreview: resultText.slice(0, middle), originalBytes },
+  const overhead = encodedSize({ ...payload, result: null }) + TRIM_NOTE_RESERVE_BYTES;
+  const fitted = payload.result === undefined
+    ? null
+    : fitResultToBytes(payload.result, MAX_TOOL_RESULT_BYTES - overhead);
+  if (fitted) {
+    const trimmed = describeTrimmedLists(fitted.trimmed);
+    const bounded: ToolResultPayload = {
+      ...payload,
+      status,
+      result: fitted.result,
+      truncated: true,
+      note: appendNote(
+        payload.note,
+        shortReason(`Trimmed to fit the size limit${trimmed ? `: ${trimmed}` : ""}.`, REASON_MAX_LENGTH),
+      ),
     };
-    if (encodedSize(candidate) <= MAX_TOOL_RESULT_BYTES) {
-      best = candidate;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
+    if (encodedSize(bounded) <= MAX_TOOL_RESULT_BYTES) return bounded;
   }
 
-  if (encodedSize(best) <= MAX_TOOL_RESULT_BYTES) return best;
   const withoutResult: ToolResultPayload = {
     turnId: payload.turnId,
     toolCallId: payload.toolCallId,

@@ -120,7 +120,7 @@ describe("ASKG delegated tool executor", () => {
     expect(result.status).toBe("cancelled");
   });
 
-  test("truncates the complete wire payload under the byte cap", async () => {
+  test("cuts one oversized text value under the byte cap and marks it", async () => {
     const tools = executor({
       manifests: [resourceManifest],
       remoteHandler: async () => ({ ok: true, data: { rows: [{ text: "x".repeat(MAX_TOOL_RESULT_BYTES * 2) }] } }),
@@ -134,7 +134,44 @@ describe("ASKG delegated tool executor", () => {
     expect(result.truncated).toBe(true);
     expect(result.rowCount).toBe(1);
     expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThanOrEqual(MAX_TOOL_RESULT_BYTES);
-    expect(result.result).toMatchObject({ originalBytes: expect.any(Number) });
+    const text = (result.result as { rows: Array<{ text: string }> }).rows[0]!.text;
+    expect(text.endsWith(" [cut]")).toBe(true);
+    expect(result.note).toContain("characters");
+  });
+
+  test("an oversized bundle loses rows from its biggest section, never its sections", async () => {
+    const holdings = Array.from({ length: 90 }, (_, index) => ({ label: `H${index}`, value: `${index}.00 % gross` }));
+    const pairs = Array.from({ length: 4_000 }, (_, index) => ({
+      label: `H${index % 90} / H${(index + 1) % 90}`,
+      value: "0.42 correlation",
+      detail: "60 matched daily returns",
+    }));
+    const tools = executor({
+      headlessExecutor: async () => ({
+        result: {
+          errors: ["ASML: Current USD listing identity unavailable"],
+          metadata: { model: { padding: "m".repeat(40_000) } },
+          sections: [
+            { title: "holdings", columns: [], rows: holdings },
+            { title: "correlation", columns: [], rows: pairs },
+          ],
+        },
+        rowCount: holdings.length + pairs.length,
+        errors: ["ASML: Current USD listing identity unavailable"],
+      }),
+    });
+
+    const result = await tools.execute(call(headlessManifest));
+    const bundle = result.result as { sections: Array<{ title: string; rows: unknown[] }>; jsonPreview?: string };
+
+    expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThanOrEqual(MAX_TOOL_RESULT_BYTES);
+    expect(bundle.jsonPreview).toBeUndefined();
+    expect(bundle.sections.map((section) => section.title)).toEqual(["holdings", "correlation"]);
+    expect(bundle.sections[0]!.rows).toHaveLength(90);
+    expect(bundle.sections[1]!.rows.length).toBeGreaterThan(100);
+    expect(bundle.sections[1]!.rows.length).toBeLessThan(4_000);
+    expect(result.status).toBe("partial");
+    expect(result.note).toContain("of 4000 rows");
   });
 
   test("returns remote failures as error values", async () => {
