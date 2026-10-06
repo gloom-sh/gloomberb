@@ -121,6 +121,24 @@ describe("ASKG client manifest", () => {
     expect(openers).toEqual([]);
   });
 
+  test("every built-in option default fits its own schema, which the platform requires", () => {
+    const panes = new Map<string, PaneDef>();
+    const paneTemplates = new Map<string, PaneTemplateDef>();
+    for (const plugin of getLoadablePlugins()) {
+      for (const entry of plugin.panes ?? []) panes.set(entry.id, entry);
+      for (const entry of plugin.paneTemplates ?? []) paneTemplates.set(entry.id, entry);
+    }
+    const invalid = headlessTools({ panes, paneTemplates, destroy() {} }).flatMap(({ name, options }) => (
+      (options ?? []).filter((option) => option.type === "enum"
+        && option.defaultValue !== undefined
+        && !option.values?.some(({ value }) => value === option.defaultValue))
+        .map((option) => `${name} --${option.key}`)
+    ));
+
+    // `calls --section` defaults to "" (no section), and the platform dropped CALLS for it.
+    expect(invalid).toEqual([]);
+  });
+
   test("projects remote operation schemas and confirmation tiers", () => {
     const { tools } = buildASKGToolManifests(registry([]));
     const notify = tools.find(({ name }) => name === "app.notify");

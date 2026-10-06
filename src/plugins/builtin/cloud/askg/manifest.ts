@@ -58,15 +58,30 @@ function projectArgument(argument: HeadlessPaneDefinition["argument"]): ToolMani
   return { ...argument };
 }
 
+/**
+ * An enum whose default is not one of its values ("" for "no section") is a
+ * schema the platform cannot build, and it drops the whole tool. Without the
+ * default the option is simply optional, and the CLI applies its default.
+ */
+function hasInvalidEnumDefault(option: HeadlessPaneDefinition["options"][number]): boolean {
+  return option.type === "enum"
+    && option.defaultValue !== undefined
+    && !option.values?.some(({ value }) => value === option.defaultValue);
+}
+
 function projectOptions(options: HeadlessPaneDefinition["options"]): ToolManifestOption[] {
   return options.map(({
     settingKey: _settingKey,
     pluginState: _pluginState,
     values,
     aliases,
+    defaultValue,
     ...option
   }) => ({
     ...option,
+    ...(defaultValue !== undefined && !hasInvalidEnumDefault({ ...option, values, defaultValue })
+      ? { defaultValue }
+      : {}),
     ...(aliases ? { aliases: [...aliases] } : {}),
     ...(values ? {
       values: values.map((value) => ({
