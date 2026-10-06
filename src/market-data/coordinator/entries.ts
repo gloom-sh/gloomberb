@@ -8,6 +8,8 @@ import { resolveEntryData } from "../selectors";
 const EMPTY_MESSAGE = "No data available";
 export const EXPECTED_EMPTY = /no data|not found|delisted|unavailable|unsupported/i;
 export const SNAPSHOT_CACHE_TTL_MS = 5 * 60_000;
+/** How long a failed or empty snapshot answer stands before an unforced load asks again. */
+export const SNAPSHOT_FAILURE_RETRY_MS = 2 * 60_000;
 export const CHART_CACHE_TTL_MS = 10 * 60_000;
 export const OPTIONS_CACHE_TTL_MS = 10 * 60_000;
 export const SEC_FILINGS_CACHE_TTL_MS = 10 * 60_000;
@@ -27,6 +29,17 @@ export function classifyError(error: unknown): { reasonCode: ProviderReasonCode;
 export function hasFreshEntryData<T>(entry: QueryEntry<T>, ttlMs: number, now = Date.now()): boolean {
   if (resolveEntryData(entry) == null) return false;
   return entry.fetchedAt != null && now - entry.fetchedAt < ttlMs;
+}
+
+/**
+ * The last request for this entry failed or came back empty a moment ago.
+ * A symbol with no financials (an index, a crypto pair) fails every time;
+ * without this, each pane, cursor move or warm-up asks again.
+ */
+export function hasRecentFailedAttempt<T>(entry: QueryEntry<T>, retryAfterMs: number, now = Date.now()): boolean {
+  const attempt = entry.attempts.at(-1);
+  return !!attempt && attempt.status !== "success" && attempt.status !== "partial"
+    && now - attempt.finishedAt < retryAfterMs;
 }
 
 export function hasFreshReadyEntry<T>(entry: QueryEntry<T>, ttlMs: number, now = Date.now()): boolean {

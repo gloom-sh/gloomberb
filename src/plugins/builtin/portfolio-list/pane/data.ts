@@ -75,6 +75,23 @@ export function needsVisibleQuoteWatchdogRefresh(
   return quoteTimestamp == null || now - quoteTimestamp >= maxAgeMs;
 }
 
+/**
+ * How a row whose quote needs warming is refreshed now, or null while it waits.
+ * A quote sort warms with the snapshot, which carries the change baseline, but
+ * a quote can stay missing or stale for good (an index without a feed, a
+ * listing that has not traded this session). Such a row gets one snapshot per
+ * snapshot cooldown and quote refreshes in between, never its full financials
+ * every quote cooldown.
+ */
+export function selectQuoteWarmupRoute(
+  attempts: { quoteAt?: number; snapshotAt?: number },
+  withSnapshot: boolean,
+  now = Date.now(),
+): "snapshot" | "quote" | null {
+  if (withSnapshot && now - (attempts.snapshotAt ?? 0) >= VISIBLE_SNAPSHOT_REFRESH_COOLDOWN_MS) return "snapshot";
+  return now - (attempts.quoteAt ?? 0) >= VISIBLE_QUOTE_REFRESH_COOLDOWN_MS ? "quote" : null;
+}
+
 export function needsVisibleSnapshotWarmup(
   ticker: TickerRecord,
   financials: TickerFinancials | undefined,

@@ -4,6 +4,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import {
   needsVisibleQuoteWarmup,
   needsVisibleQuoteWatchdogRefresh,
+  selectQuoteWarmupRoute,
   selectQuoteWarmupTickers,
   selectStreamTickers,
   VISIBLE_QUOTE_STREAM_MAX_AGE_MS,
@@ -54,6 +55,26 @@ describe("portfolio visible quote warmup", () => {
 
     expect(needsVisibleQuoteWarmup(data, now)).toBe(true);
     expect(needsVisibleQuoteWatchdogRefresh(data, now)).toBe(true);
+  });
+});
+
+describe("selectQuoteWarmupRoute", () => {
+  test("a quote-sorted row whose quote never arrives reloads its snapshot once per five minutes, not every quote cooldown", () => {
+    const start = 1_700_000_000_000;
+    const attempts: { quoteAt?: number; snapshotAt?: number } = {};
+    const routes: string[] = [];
+    // The warm-up re-checks on every tick; the row's quote stays missing.
+    for (let now = start; now < start + 10 * 60_000; now += 5_000) {
+      const route = selectQuoteWarmupRoute(attempts, true, now);
+      if (!route) continue;
+      routes.push(route);
+      attempts.quoteAt = now;
+      if (route === "snapshot") attempts.snapshotAt = now;
+    }
+
+    expect(routes.filter((route) => route === "snapshot")).toHaveLength(2);
+    expect(routes.filter((route) => route === "quote").length).toBeGreaterThan(30);
+    expect(selectQuoteWarmupRoute({ quoteAt: start }, false, start + 5 * 60_000)).toBe("quote");
   });
 });
 
