@@ -160,10 +160,12 @@ export class CloudDataApi {
     path: string,
     targets: CloudMarketBatchTarget[],
     mode: "cache-first" | "refresh",
+    signal?: AbortSignal,
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<T>>> {
     return this.request<CloudMarketResponse<CloudMarketBatchPayload<T>>>(path, {
       method: "POST",
       body: JSON.stringify({ targets, mode }),
+      ...(signal ? { signal } : {}),
     });
   }
 
@@ -226,8 +228,9 @@ export class CloudDataApi {
   async getCloudQuotesBatch(
     targets: CloudMarketBatchTarget[],
     mode: "cache-first" | "refresh" = "cache-first",
+    options: { signal?: AbortSignal } = {},
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>> {
-    return this.postMarketBatch("/market/quotes/batch", targets, mode);
+    return this.postMarketBatch("/market/quotes/batch", targets, mode, options.signal);
   }
 
   async getCloudWorldVenues(): Promise<
@@ -346,9 +349,11 @@ export class CloudDataApi {
     symbol: string,
     exchange: string,
     params: CloudHistoryParams = {},
+    options: { signal?: AbortSignal } = {},
   ): Promise<CloudMarketResponse<CloudPricePointPayload[]>> {
     return this.request<CloudMarketResponse<CloudPricePointPayload[]>>(
       cloudHistoryPath(symbol, exchange, params),
+      options.signal ? { signal: options.signal } : undefined,
     );
   }
 
@@ -390,9 +395,11 @@ export class CloudDataApi {
   async getCloudFredSeries(
     seriesId: string,
     params: CloudFredSeriesParams = {},
+    options: { signal?: AbortSignal } = {},
   ): Promise<CloudFredSeriesPayload> {
     return this.request<CloudFredSeriesPayload>(
       cloudFredSeriesPath(seriesId, params),
+      options.signal ? { signal: options.signal } : undefined,
     );
   }
 

@@ -115,6 +115,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
                 exchange: row.metadata.exchange,
               })),
             ctx.apiClient,
+            new Date(),
+            ctx.signal,
           ),
       localOnly
         ? Promise.resolve(undefined)

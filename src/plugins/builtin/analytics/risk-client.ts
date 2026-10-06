@@ -229,11 +229,18 @@ function validateFred(
   return data;
 }
 
+/**
+ * The signal stops the fetch: no request starts once it aborts, the ones in
+ * flight are cancelled, and the call rejects instead of returning a partial
+ * snapshot nobody is waiting for.
+ */
 export async function fetchPortfolioRiskMarket(
   instruments: readonly RiskInstrument[],
   client: RiskCloudClient = apiClient,
   now = new Date(),
+  signal?: AbortSignal,
 ): Promise<RiskMarketSnapshot> {
+  signal?.throwIfAborted();
   const unique = [
     ...new Map(
       [...instruments, ...RISK_FACTOR_INSTRUMENTS].map((row) => [
@@ -252,11 +259,13 @@ export async function fetchPortfolioRiskMarket(
   const quotes = new Map<string, CloudQuotePayload>();
   const warnings: string[] = [];
   for (let start = 0; start < unique.length; start += 50) {
+    signal?.throwIfAborted();
     const requested = unique.slice(start, start + 50);
     try {
       const response = await client.getCloudQuotesBatch(
         requested,
         "cache-first",
+        signal ? { signal } : undefined,
       );
       for (const item of response.data?.items ?? []) {
         const target = requested.find(
@@ -280,7 +289,7 @@ export async function fetchPortfolioRiskMarket(
         }
       }
     } catch (error) {
-      if (isAccessDenied(error)) throw error;
+      if (isAccessDenied(error) || signal?.aborted) throw error;
       warnings.push(`Holding marks: ${message(error)}`);
     }
   }
@@ -297,6 +306,7 @@ export async function fetchPortfolioRiskMarket(
   const historyWork = Promise.all(
     Array.from({ length: Math.min(4, unique.length) }, async () => {
       while (next < unique.length) {
+        signal?.throwIfAborted();
         const index = next++,
           instrument = unique[index]!,
           quote = quotes.get(riskInstrumentId(instrument)) ?? null;
@@ -313,6 +323,7 @@ export async function fetchPortfolioRiskMarket(
               outputsize: 1000,
               rangeKey: "2Y",
             },
+            signal ? { signal } : undefined,
           );
           const resolved = validateRiskHistory(
             response,
@@ -328,7 +339,7 @@ export async function fetchPortfolioRiskMarket(
             error: null,
           };
         } catch (error) {
-          if (isAccessDenied(error)) throw error;
+          if (isAccessDenied(error) || signal?.aborted) throw error;
           histories[index] = {
             instrument,
             quote,
@@ -352,12 +363,13 @@ export async function fetchPortfolioRiskMarket(
             endDate,
             limit: 1000,
             sortOrder: "asc",
-          }),
+          }, signal ? { signal } : undefined),
           id,
         ),
       ),
     ),
   ]);
+  signal?.throwIfAborted();
   for (const [index, result] of fred.entries()) {
     if (result.status === "rejected") {
       if (isAccessDenied(result.reason)) throw result.reason;
