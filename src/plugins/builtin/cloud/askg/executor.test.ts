@@ -220,6 +220,33 @@ describe("ASKG delegated tool executor", () => {
     expect(result.result).toEqual({ columns: [{ key: "value", header: "value" }], rows: [{ value: 0 }, { value: 1 }, { value: 2 }] });
   });
 
+  test("a long warning list becomes one short note grouped by message", async () => {
+    // The warnings a 94-position broker portfolio produced in PORT.
+    const foreign = ["1211", "2337", "700", "7203", "ASML", "SHEL", "SAP", "NESN"];
+    const history = ["SNOW", "SOFI", "SQ", "TLT", "TMO", "TSLA", "TXN", "UBER", "UNH", "V", "WMT", "XLE", "XOM"];
+    const errors = [
+      ...foreign.map((symbol) => `${symbol}: Current USD listing identity unavailable`),
+      "Treasury yield: Internal server error",
+      "2 holdings had no current quote; weighted at the latest completed close.",
+      ...foreign.map((symbol) => `${symbol}: Foreign holdings: historical FX returns required`),
+      ...history.map((symbol) => `${symbol}: Daily history unavailable`),
+      "Basket risk supports at most 80 holdings",
+      "Basket estimates require complete, positive USD equity marks and matched daily history for every holding.",
+      `Volatility: Request failed {"type":"validation","found":{"note":"${"x".repeat(300)}"}}`,
+    ];
+    const tools = executor({
+      headlessExecutor: async () => ({ result: { rows: [{ value: 1 }] }, rowCount: 1, errors }),
+    });
+
+    const result = await tools.execute(call(headlessManifest));
+
+    expect(result.status).toBe("partial");
+    expect(result.note!.length).toBeLessThanOrEqual(400);
+    expect(result.note).toContain("Current USD listing identity unavailable (1211, 2337, 700, 7203 and 4 more)");
+    expect(result.note).toMatch(/and \d+ more$/);
+    expect(result.note).not.toContain("{");
+  });
+
   test("returns remote failures as error values", async () => {
     const tools = executor({
       manifests: [resourceManifest],

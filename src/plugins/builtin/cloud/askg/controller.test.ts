@@ -89,6 +89,7 @@ function createHarness(options: {
   script: ASKGSseEvent[];
   executor?: ASKGToolExecutor;
   toolResultOutcome?: ASKGToolResultOutcome;
+  toolResultError?: Error;
 } ): Harness {
   const posted: ToolResultPayload[] = [];
   const sessionRequests: ASKGSessionStartRequest[] = [];
@@ -112,6 +113,7 @@ function createHarness(options: {
     },
     async postToolResult(_sessionId: string, payload: ToolResultPayload) {
       posted.push(payload);
+      if (options.toolResultError) throw options.toolResultError;
       return options.toolResultOutcome ?? "accepted";
     },
     async cancelTurn() {},
@@ -273,6 +275,33 @@ describe("ASKGSessionController", () => {
     const row = harness.controller.getState().turns[0]?.tools[0];
     expect(row?.status).toBe("timeout");
     expect(row?.note).toContain("Gloom answered without it");
+
+    harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
+  test("a result the server could not take reads as not sent, without the response body", async () => {
+    const { executor } = executorReturning({ rowCount: 2038, status: "partial", note: "1211: Current USD listing identity unavailable" });
+    const body = JSON.stringify({
+      type: "validation",
+      on: "body",
+      property: "/note",
+      message: "Expected string length less or equal to 500",
+      found: { note: "x".repeat(2_000) },
+    });
+    const harness = createHarness({
+      script: [],
+      executor,
+      toolResultError: new ASKGTransportError("internal", body, { status: 422 }),
+    });
+    await settle();
+
+    harness.emit(toolCallEvent(1, READ_TOOL));
+    await settle();
+
+    const row = harness.controller.getState().turns[0]?.tools[0];
+    expect(row?.status).toBe("error");
+    expect(row?.note).toBe("Could not send this result to Gloom, so it answered without it.");
 
     harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
     await harness.streamed;

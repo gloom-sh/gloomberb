@@ -21,7 +21,13 @@ import {
   type ToolResultPayload,
   type ToolResultStatus,
 } from "./protocol";
-import { normalizeJson, shortReason } from "./json";
+import { normalizeJson } from "./json";
+import {
+  capToolNote,
+  joinToolNotes,
+  summarizeToolWarnings,
+  toolErrorNote,
+} from "./notes";
 import { describeTrimmedLists, fitResultToBytes } from "./result-budget";
 import {
   remoteRequestForTool,
@@ -82,14 +88,11 @@ interface ExecutionValue {
 }
 
 const ARGUMENT_KEYS = new Set(["symbol", "symbols", "text"]);
-const REASON_MAX_LENGTH = 320;
+/** The list of shortened values gets this much of the note; the rest is the tool's own. */
+const TRIM_DESCRIPTION_LENGTH = 160;
 
 class ToolTimeoutError extends Error {}
 class ToolCancelledError extends Error {}
-
-function appendNote(current: string | undefined, next: string): string {
-  return current ? `${current} ${next}` : next;
-}
 
 function encodedSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -100,8 +103,8 @@ const TRIM_NOTE_RESERVE_BYTES = 1_024;
 
 /**
  * Keeps the posted payload under the server's byte cap. An oversized result
- * loses rows, not characters, so what reaches Gloom is still whole records
- * and the note says which lists were shortened.
+ * loses rows (one text value is cut only when no list can shrink), so what
+ * reaches Gloom is still whole records and the note says what was shortened.
  */
 function withBoundedPayload(payload: ToolResultPayload): ToolResultPayload {
   if (encodedSize(payload) <= MAX_TOOL_RESULT_BYTES) return payload;
@@ -118,9 +121,9 @@ function withBoundedPayload(payload: ToolResultPayload): ToolResultPayload {
       status,
       result: fitted.result,
       truncated: true,
-      note: appendNote(
+      note: joinToolNotes(
         payload.note,
-        shortReason(`Trimmed to fit the size limit${trimmed ? `: ${trimmed}` : ""}.`, REASON_MAX_LENGTH),
+        `Trimmed to fit the size limit${trimmed ? `: ${capToolNote(trimmed, TRIM_DESCRIPTION_LENGTH)}` : ""}.`,
       ),
     };
     if (encodedSize(bounded) <= MAX_TOOL_RESULT_BYTES) return bounded;
@@ -323,7 +326,7 @@ export function createASKGToolExecutor(
       ...(value.rowCount !== undefined ? { rowCount: value.rowCount } : {}),
       truncated: value.truncated ?? false,
       elapsedMs: Math.max(0, now() - startedAt),
-      ...(value.note ? { note: value.note } : {}),
+      ...(value.note ? { note: capToolNote(value.note) } : {}),
       ...(value.rev ? { rev: value.rev } : {}),
       ...(value.undoToken ? { undoToken: value.undoToken } : {}),
     });
@@ -354,7 +357,7 @@ export function createASKGToolExecutor(
             rowCount: loaded.rowCount,
             ...(errors.length > 0 ? {
               truncated: loaded.rowCount > 0,
-              note: errors.map((error) => shortReason(error, REASON_MAX_LENGTH)).join(" "),
+              note: summarizeToolWarnings(errors),
             } : {}),
           };
         }
@@ -367,7 +370,7 @@ export function createASKGToolExecutor(
           try {
             preparedUndo = await undoManager.prepare(binding.operation, call.args, signal);
           } catch (error) {
-            undoNote = `Undo is unavailable: ${shortReason(error, REASON_MAX_LENGTH)}`;
+            undoNote = capToolNote(`Undo is unavailable: ${toolErrorNote(error)}`);
           }
         }
 
@@ -376,7 +379,7 @@ export function createASKGToolExecutor(
           return {
             status: "error",
             result: { code: response.error.code, ...(response.error.details !== undefined ? { details: response.error.details } : {}) },
-            note: shortReason(response.error.message, REASON_MAX_LENGTH),
+            note: toolErrorNote(response.error.message),
           };
         }
 
@@ -385,7 +388,7 @@ export function createASKGToolExecutor(
           try {
             undoToken = await undoManager.commit(preparedUndo, signal) ?? undefined;
           } catch (error) {
-            undoNote = `Undo is unavailable: ${shortReason(error, REASON_MAX_LENGTH)}`;
+            undoNote = capToolNote(`Undo is unavailable: ${toolErrorNote(error)}`);
           }
         }
         return {
@@ -405,7 +408,7 @@ export function createASKGToolExecutor(
       if (error instanceof ToolCancelledError || options.signal?.aborted) {
         return base({ status: "cancelled", note: "Tool call was cancelled." });
       }
-      return base({ status: "error", note: shortReason(error, REASON_MAX_LENGTH) });
+      return base({ status: "error", note: toolErrorNote(error) });
     }
   };
 

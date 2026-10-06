@@ -8,7 +8,6 @@ import type { ASKGToolExecutor } from "./executor";
 import {
   activeTurn,
   askgReducer,
-  describeASKGError,
   EMPTY_ASKG_CONVERSATION,
   isTurnRunning,
   requiresLocalConfirmation,
@@ -27,6 +26,7 @@ import {
   type ClientToolManifest,
   type ToolResultPayload,
 } from "./protocol";
+import { toolErrorNote } from "./notes";
 
 /** Turns kept as context for the next question. */
 const MAX_HISTORY_TURNS = 8;
@@ -76,6 +76,20 @@ function refusedResult(
     case "unknown-call":
       return { ...payload, status: "error", note: "Gloom no longer has this tool call." };
   }
+}
+
+/**
+ * A result whose post failed never reached the turn, which continues without
+ * it once the call times out. The row says so in its own words: the
+ * transport's message can carry the server's response body, and that echoes
+ * the whole payload back.
+ */
+function undeliveredResult(payload: ToolResultPayload): ToolResultPayload {
+  return {
+    ...payload,
+    status: "error",
+    note: "Could not send this result to Gloom, so it answered without it.",
+  };
 }
 
 function errorState(error: unknown): ASKGErrorState {
@@ -317,7 +331,7 @@ export class ASKGSessionController {
       status: "error",
       truncated: false,
       elapsedMs: Math.max(0, this.now() - startedAt),
-      note,
+      note: toolErrorNote(note),
     });
 
     const accepted = this.state.acceptedTools;
@@ -381,15 +395,17 @@ export class ASKGSessionController {
     this.dispatch({ type: "tool-result", payload });
     const sessionId = this.session?.sessionId;
     if (!sessionId) return;
+    const signal = this.turnAbort?.signal;
     try {
       const outcome = await this.options.transport.postToolResult(sessionId, payload, {
-        ...(this.turnAbort ? { signal: this.turnAbort.signal } : {}),
+        ...(signal ? { signal } : {}),
       });
       const refused = refusedResult(payload, outcome);
       if (refused) this.dispatch({ type: "tool-result", payload: refused });
-    } catch (error) {
-      const note = `${payload.note ? `${payload.note} ` : ""}Result could not be delivered: ${describeASKGError(errorState(error))}`;
-      this.dispatch({ type: "tool-result", payload: { ...payload, note } });
+    } catch {
+      // A cancelled turn already marked its rows; nothing was lost.
+      if (signal?.aborted) return;
+      this.dispatch({ type: "tool-result", payload: undeliveredResult(payload) });
     }
   }
 

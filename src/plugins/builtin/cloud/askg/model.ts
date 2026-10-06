@@ -13,6 +13,7 @@ import type {
   ToolResultStatus,
   WriteTier,
 } from "./protocol";
+import { capToolNote } from "./notes";
 
 /** Lifecycle of one row in the tool timeline. */
 type ASKGToolRowStatus =
@@ -265,7 +266,7 @@ function applyEvent(
           ...(event.summary.rowCount !== undefined ? { rowCount: event.summary.rowCount } : {}),
           elapsedMs: event.summary.elapsedMs,
           truncated: event.summary.truncated,
-          ...(event.summary.note ? { note: event.summary.note } : {}),
+          ...(event.summary.note ? { note: capToolNote(event.summary.note) } : {}),
           ...(event.summary.sample !== undefined ? { result: event.summary.sample } : {}),
           expanded: false,
         }));
@@ -368,7 +369,7 @@ export function askgReducer(
         ...(action.payload.rowCount !== undefined ? { rowCount: action.payload.rowCount } : {}),
         elapsedMs: action.payload.elapsedMs,
         truncated: action.payload.truncated,
-        ...(action.payload.note ? { note: action.payload.note } : {}),
+        ...(action.payload.note ? { note: capToolNote(action.payload.note) } : {}),
         ...(action.payload.result !== undefined ? { result: action.payload.result } : {}),
         ...(action.payload.undoToken
           ? { undoToken: action.payload.undoToken, undo: { status: "available" as const } }
@@ -445,7 +446,7 @@ function rowFromStoredTool(tool: ASKGConversationTool): ASKGToolRow {
     requiresConfirmation: false,
     ...(tool.rowCount === undefined ? {} : { rowCount: tool.rowCount }),
     ...(tool.elapsedMs === undefined ? {} : { elapsedMs: tool.elapsedMs }),
-    ...(tool.note ? { note: tool.note } : {}),
+    ...(tool.note ? { note: capToolNote(tool.note) } : {}),
     expanded: false,
   };
 }
