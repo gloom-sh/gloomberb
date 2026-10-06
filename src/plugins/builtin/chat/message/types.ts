@@ -1,5 +1,5 @@
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
-import type { ChatMessage, ChatUserSummary } from "../../../../api-client";
+import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 
 export interface ChatMessageBaseProps {
   msg: ChatMessage;
@@ -18,4 +18,8 @@ export interface ChatMessageBaseProps {
   beginEditMessage: (index: number, options?: { deferFocus?: boolean }) => boolean;
   jumpToMessage: (messageId: string) => void;
   latestEditableMessageId: string | null;
+  /** Sends a failed message of yours again. */
+  retryMessage?: (index: number) => void;
+  /** An image did not load, perhaps because its signed link expired. */
+  onImageLoadError?: (attachment: ChatAttachment) => void;
 }

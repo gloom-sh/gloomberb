@@ -982,6 +982,46 @@ describe("ChatContent", () => {
     expect(frame).not.toContain("therquery=parametersfgot");
   });
 
+  test("draws a row per image in the terminal, with no blank text row for an image-only message", async () => {
+    const image = (id: string, width: number, height: number, size: number) => ({
+      id, mime: "image/png", width, height, size, url: `https://api.example/chat/attachments/${id}`,
+    });
+    const controller = createController({
+      messages: [
+        {
+          id: "m1",
+          channelId: "everyone",
+          content: "",
+          replyToId: null,
+          createdAt: "2026-03-28T00:00:00.000Z",
+          user: { id: "u1", username: "bob", displayName: "Bob" },
+          attachments: [image("img_a", 1280, 720, 183_422)],
+        },
+        {
+          id: "m2",
+          channelId: "everyone",
+          content: "my chart",
+          replyToId: "m1",
+          replyTo: { content: "", user: { username: "bob" }, attachmentCount: 1 },
+          createdAt: "2026-03-28T00:10:00.000Z",
+          user: { id: "u0", username: "ada", displayName: "Ada" },
+          attachments: [image("img_b", 800, 600, 1_258_291)],
+          attachmentReview: "pending",
+        },
+      ],
+    });
+
+    await mountChat(controller, { width: 60, height: 16 });
+
+    const rows = tui.frame().split("\n").map((row) => row.trimEnd());
+    const header = rows.findIndex((row) => row.startsWith(" bob "));
+    expect(rows[header + 1]).toContain("[image 1280x720 179 KB]");
+    expect(tui.frame()).toContain("reply bob: [image]");
+    const caption = rows.findIndex((row) => row.includes("my chart"));
+    expect(rows[caption + 1]).toContain("[image 800x600 1.2 MB]");
+    expect(rows[caption + 2]).toContain("Checking image...");
+  });
+
   test("shows a saved-login read-only footer when a session token is cached", async () => {
     const controller = createController({
       sessionToken: "token-123",

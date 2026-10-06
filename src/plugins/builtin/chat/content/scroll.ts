@@ -51,6 +51,11 @@ interface ChatScrollRuntimeArgs {
   setSelectedIdx: (selectedIdx: number) => void;
   stickyTranscript: boolean;
   useDefaultControllerChannel: boolean;
+  /**
+   * Changes when something below the transcript grows or shrinks without
+   * changing its row count, such as the desktop's waiting images.
+   */
+  composerLayoutKey?: string;
 }
 
 export function useChatScrollRuntime({
@@ -75,6 +80,7 @@ export function useChatScrollRuntime({
   setSelectedIdx,
   stickyTranscript,
   useDefaultControllerChannel,
+  composerLayoutKey,
 }: ChatScrollRuntimeArgs) {
   const pendingJumpMessageIdRef = useRef<string | null>(null);
 
@@ -195,7 +201,7 @@ export function useChatScrollRuntime({
   useEffect(() => {
     if (!stickyTranscript) return;
     queueMicrotask(() => scrollToBottom(scrollRef.current, nativePaneChrome));
-  }, [channelId, contentWidth, height, latestMessageId, messageAreaHeight, nativePaneChrome, scrollRef, stickyTranscript]);
+  }, [channelId, composerLayoutKey, contentWidth, height, latestMessageId, messageAreaHeight, nativePaneChrome, scrollRef, stickyTranscript]);
 
   useEffect(() => {
     const anchor = prependAnchorRef.current;

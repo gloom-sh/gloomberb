@@ -22,6 +22,21 @@ export interface ChatUserSummary {
   portfolioAnalytics?: PublicPortfolioAnalytics | null;
 }
 
+/**
+ * An image in a chat message, as the server stored it: `width`, `height`,
+ * `size` and `mime` describe the stored copy, not the upload. `url` opens in an
+ * <img> without headers; signed links last one to two hours, and a fresh copy
+ * of the message carries a fresh one.
+ */
+export interface ChatAttachment {
+  id: string;
+  mime: string;
+  width: number;
+  height: number;
+  size: number;
+  url: string;
+}
+
 export interface ChatMessage {
   id: string;
   channelId: string;
@@ -30,9 +45,24 @@ export interface ChatMessage {
   createdAt: string;
   editedAt?: string | null;
   user: ChatUserSummary;
-  replyTo?: { content: string; user: { id?: string; username: string } } | null;
+  replyTo?: {
+    content: string;
+    user: { id?: string; username: string };
+    /** Images on the quoted message. */
+    attachmentCount?: number;
+  } | null;
+  /** Images in display order. A server that predates them leaves this out. */
+  attachments?: ChatAttachment[];
+  /**
+   * Only on the author's copy of a public message whose images are still being
+   * checked ("pending") or could not be checked ("failed"). Nobody else has the
+   * message yet.
+   */
+  attachmentReview?: "pending" | "failed";
   clientStatus?: "sending" | "failed";
   clientError?: string | null;
+  /** The idempotency key a local send went out with, so a retry repeats it. */
+  clientMessageId?: string;
 }
 
 export interface ChatChannel {

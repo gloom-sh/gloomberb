@@ -9,6 +9,8 @@ import { parseChatComposerCommand } from "../composer-commands";
 import { t, tf } from "../../../../i18n";
 import type { ChatContentController } from "./types";
 import { getComposerCursorOffset, moveComposerCursorToOffset } from "./composer-cursor";
+import { insertedText, pastedImagePaths } from "../attachments/transfer";
+import { chatTextWithImages } from "../attachments/model";
 
 interface MutableRef<T> {
   current: T;
@@ -40,6 +42,8 @@ export function useChatComposerRuntime({
   setSelectedIdx,
   updateComposerRows,
   useDefaultControllerChannel,
+  draftAttachmentCount = 0,
+  onPastedImagePaths,
 }: {
   applyingExternalDraftRef: MutableRef<boolean>;
   blurInput: () => void;
@@ -66,8 +70,14 @@ export function useChatComposerRuntime({
   setSelectedIdx: Dispatch<SetStateAction<number>>;
   updateComposerRows: (draft: string) => void;
   useDefaultControllerChannel: boolean;
+  /** Images waiting in the composer: with any, a message may go without text. */
+  draftAttachmentCount?: number;
+  /** Set where pasted file paths can attach (the terminal): the paths, and the text that named them. */
+  onPastedImagePaths?: (paths: string[], pasted: string) => void;
 }) {
   const replyToRef = useRef(replyTo);
+  const draftAttachmentCountRef = useRef(draftAttachmentCount);
+  draftAttachmentCountRef.current = draftAttachmentCount;
   replyToRef.current = replyTo;
   const editingMessageRef = useRef(editingMessage);
   editingMessageRef.current = editingMessage;
@@ -213,8 +223,12 @@ export function useChatComposerRuntime({
 
   const sendMessage = useCallback(() => {
     const content = inputValueRef.current.trim();
-    if (!content) return;
     const editing = editingMessageRef.current;
+    // Images let a message, or an edit of one that has them, go without text.
+    const imagesAllowEmpty = editing
+      ? (editing.attachments?.length ?? 0) > 0
+      : draftAttachmentCountRef.current > 0;
+    if (!content && !imagesAllowEmpty) return;
     if (editing) {
       if (editSubmittingRef.current) return;
       const sendChannelId = useDefaultControllerChannel ? channelId : channelIdRef.current;
@@ -232,7 +246,7 @@ export function useChatComposerRuntime({
       });
       return;
     }
-    const composerCommand = parseChatComposerCommand(content);
+    const composerCommand = content ? parseChatComposerCommand(content) : null;
     if (composerCommand?.kind === "direct") {
       void controller.openDirectChannel({ username: composerCommand.username }).then((channel) => {
         expandDirectSection();
@@ -294,6 +308,12 @@ export function useChatComposerRuntime({
       ? draft.length
       : rawCursorOffset;
     onComposerStateChange?.(draft, cursorOffset);
+    if (onPastedImagePaths && !editingMessageRef.current) {
+      // A file dropped on a terminal arrives as its path, typed in one go.
+      const inserted = insertedText(previousDraft, draft);
+      const paths = inserted && inserted.text.length > 4 ? pastedImagePaths(inserted.text) : null;
+      if (paths) onPastedImagePaths(paths, inserted!.text);
+    }
   }, [
     applyingExternalDraftRef,
     channelId,
@@ -301,6 +321,7 @@ export function useChatComposerRuntime({
     inputRef,
     inputValueRef,
     onComposerStateChange,
+    onPastedImagePaths,
     persistDraft,
     updateComposerRows,
     useDefaultControllerChannel,
@@ -351,13 +372,13 @@ export function useChatComposerRuntime({
 
   const replyPreview = replyTo
     ? formatInlinePreview(
-      replyTo.content,
+      chatTextWithImages(replyTo.content, replyTo.attachments?.length ?? 0),
       Math.max(contentWidth - ` replying to @${replyTo.user.username}: `.length - COMPOSER_ACTION_WIDTH - 1, 0),
     )
     : "";
   const editingPreview = editingMessage
     ? formatInlinePreview(
-      editingMessage.content,
+      chatTextWithImages(editingMessage.content, editingMessage.attachments?.length ?? 0),
       Math.max(contentWidth - " editing: ".length - COMPOSER_ACTION_WIDTH - 1, 0),
     )
     : "";

@@ -31,7 +31,9 @@ const QUOTE_SUBSCRIPTION_FLUSH_MS = 25;
  * sees a request it does not understand.
  */
 const MARKET_BATCH_FEATURE = "market.batch";
-const CLIENT_SOCKET_FEATURES = [MARKET_BATCH_FEATURE] as const;
+/** Chat frames carry `attachments`; without it the server writes images into the text. */
+export const CHAT_ATTACHMENTS_FEATURE = "chat.attachments";
+const CLIENT_SOCKET_FEATURES = [MARKET_BATCH_FEATURE, CHAT_ATTACHMENTS_FEATURE] as const;
 const cloudApiLog = debugLog.createLogger("cloud-api");
 
 type ChannelListener = (message: ChatMessage) => void;
@@ -73,12 +75,15 @@ type CloudApiSocketDelegate = {
   updateCurrentUserFromSocket: (user: Partial<AuthUser>) => void;
 };
 
+type ChatSendMessage = (
+  content: string,
+  replyToId?: string,
+  clientMessageId?: string,
+  attachmentIds?: string[],
+) => Promise<ChatMessage>;
+
 type ChatChannelConnection = {
-  send: (
-    content: string,
-    replyToId?: string,
-    clientMessageId?: string,
-  ) => Promise<ChatMessage>;
+  send: ChatSendMessage;
   close: () => void;
 };
 
@@ -123,6 +128,9 @@ export class CloudApiSocket {
     null;
   /** The connection that already opted into server features; a reconnect negotiates again. */
   private featuresRequestedFor: WebSocket | null = null;
+  /** What the last "ready" frame offered; kept across reconnects so a blip does not hide features. */
+  private offeredFeatures: ReadonlySet<string> = new Set();
+  private readonly offeredFeatureListeners = new Set<() => void>();
   private readonly tapeListeners = new Map<string, { symbol: string; exchange: string; listeners: Set<(event: TapeFeedEvent) => void> }>();
   private readonly scannerListeners = new Map<
     ScannerKind,
@@ -174,11 +182,7 @@ export class CloudApiSocket {
     channelId: string,
     onMessage: (msg: ChatMessage) => void,
     onError: ((err: string) => void) | undefined,
-    sendMessage: (
-      content: string,
-      replyToId?: string,
-      clientMessageId?: string,
-    ) => Promise<ChatMessage>,
+    sendMessage: ChatSendMessage,
   ): ChatChannelConnection {
     if (!channelId) {
       return {
@@ -200,16 +204,13 @@ export class CloudApiSocket {
     }
 
     return {
-      send: async (
-        content: string,
-        replyToId?: string,
-        clientMessageId?: string,
-      ) => {
+      send: async (content, replyToId, clientMessageId, attachmentIds) => {
         try {
           const message = await sendMessage(
             content,
             replyToId,
             clientMessageId,
+            attachmentIds,
           );
           onMessage(message);
           return message;
@@ -244,6 +245,18 @@ export class CloudApiSocket {
     this.chatPresenceListeners.add(listener);
     return () => {
       this.chatPresenceListeners.delete(listener);
+    };
+  }
+
+  /** Whether the server's last "ready" frame offered this protocol feature. */
+  serverOffers(feature: string): boolean {
+    return this.offeredFeatures.has(feature);
+  }
+
+  subscribeServerFeatures(listener: () => void): () => void {
+    this.offeredFeatureListeners.add(listener);
+    return () => {
+      this.offeredFeatureListeners.delete(listener);
     };
   }
 
@@ -456,6 +469,7 @@ export class CloudApiSocket {
       channelTargets: this.channelListeners.size,
     });
     this.channelListeners.clear();
+    this.offeredFeatureListeners.clear();
     this.chatNotificationListeners.clear();
     this.chatPresenceListeners.clear();
     this.teamNotificationListeners.clear();
@@ -631,11 +645,25 @@ export class CloudApiSocket {
   }
 
   private negotiateSocketFeatures(offered: unknown): void {
+    this.recordOfferedFeatures(offered);
     if (!Array.isArray(offered) || this.featuresRequestedFor === this.ws) return;
     const features = CLIENT_SOCKET_FEATURES.filter((feature) => offered.includes(feature));
     if (features.length === 0) return;
     this.featuresRequestedFor = this.ws;
     this.sendSocketMessage({ type: "client.features", features });
+  }
+
+  private recordOfferedFeatures(offered: unknown): void {
+    const next = new Set(
+      Array.isArray(offered)
+        ? offered.filter((feature): feature is string => typeof feature === "string")
+        : [],
+    );
+    const changed = next.size !== this.offeredFeatures.size
+      || [...next].some((feature) => !this.offeredFeatures.has(feature));
+    this.offeredFeatures = next;
+    if (!changed) return;
+    for (const listener of this.offeredFeatureListeners) listener();
   }
 
   /**

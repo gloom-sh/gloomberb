@@ -10,6 +10,10 @@ export interface ChatMessageRenderState {
   grouped: boolean;
   showReplyAction: boolean;
   showEditAction: boolean;
+  /** A failed send of yours offers Retry in place of Reply and Edit. */
+  showRetryAction: boolean;
+  /** Still pending past the slow threshold: drawn dim. */
+  isSending: boolean;
   bgColor: string | undefined;
   selectedTextColor: string;
   replyMetaColor: string;
@@ -55,7 +59,8 @@ export function getChatMessageRenderState({
     : hasFailed
       ? "failed"
       : `${formatTimeAgo(msg.createdAt)}${msg.editedAt ? " edited" : ""}`;
-  const showReplyAction = canSend && (host === "desktop" || isSelected || hoveredIdx === index);
+  const showActions = canSend && (host === "desktop" || isSelected || hoveredIdx === index);
+  const showReplyAction = showActions && !hasFailed;
 
   return {
     isSelected,
@@ -63,6 +68,8 @@ export function getChatMessageRenderState({
     grouped,
     showReplyAction,
     showEditAction: showReplyAction && canEdit,
+    showRetryAction: showActions && hasFailed,
+    isSending,
     bgColor: isSelected ? colors.selected : isHovered ? hoverBg() : undefined,
     selectedTextColor,
     replyMetaColor: isSelected ? selectedTextColor : colors.textMuted,

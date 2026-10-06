@@ -177,6 +177,29 @@ body.gloom-dragging {
   -webkit-user-select: text;
   user-select: text;
 }
+[data-gloom-role="chat-message-image"]:focus-visible {
+  outline: 2px solid var(--gloom-border-focused, currentColor);
+  outline-offset: 1px;
+}
+/* An upload whose progress the transport cannot report. */
+.gloom-chat-upload-indeterminate {
+  animation: gloom-chat-upload-slide 1.2s ease-in-out infinite;
+}
+@keyframes gloom-chat-upload-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gloom-chat-upload-indeterminate {
+    animation: none;
+    width: 100% !important;
+    opacity: 0.5;
+  }
+}
+/* The image viewer may use the whole window, not a dialog's usual width. */
+.gloom-dialog:has([data-gloom-role="chat-image-lightbox"]) {
+  max-width: calc(100vw - 48px);
+}
 [data-gloom-role="status-bar"] {
   flex: 0 0 var(--cell-h);
   height: var(--cell-h);

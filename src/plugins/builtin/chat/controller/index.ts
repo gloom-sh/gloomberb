@@ -6,6 +6,7 @@ import type {
 } from "../../../../types/plugin";
 import {
   apiClient,
+  type ChatAttachmentUpload,
   type ChatChannel,
   type ChatChannelState,
   type ChatMessage,
@@ -31,7 +32,13 @@ import {
   updateChatChannelDraft,
   updateChatChannelNotifications,
 } from "./channel-actions";
-import { sendChatMessageToChannel } from "./send";
+import { retryChatMessageInChannel, sendChatMessageToChannel } from "./send";
+import {
+  addDraftAttachments,
+  discardDraftAttachments,
+  retryDraftAttachment,
+  type ChatAttachmentUploader,
+} from "./attachments";
 import {
   clearChatControllerSessionState,
   disposeChatControllerRuntime,
@@ -66,6 +73,7 @@ import {
 } from "./session-runtime";
 
 const chatLog = debugLog.createLogger("chat-controller");
+const IMAGE_LINK_REFRESH_INTERVAL_MS = 60_000;
 
 export type { ChatControllerSnapshot } from "./state";
 
@@ -73,6 +81,11 @@ export class ChatController {
   private appActive = true;
   private readonly session = createChatControllerSessionState();
   private pendingMessageSeq = 0;
+  private draftAttachmentSeq = 0;
+  /** How images go up; a test can stand in for the server here. */
+  uploadAttachment: ChatAttachmentUploader = (channelId, upload, options) => (
+    apiClient.uploadChatAttachment(channelId, upload, options)
+  );
   private notifyFn: (notification: AppNotificationRequest) => AppNotificationDelivery | void = () => {};
   private openMessageFn: ((channelId: string, messageId: string) => void) | undefined;
   private notifiedMessageIds = new Set<string>();
@@ -266,6 +279,23 @@ export class ChatController {
     return this.messageLoading.refreshChannelMessages(channelId);
   }
 
+  /**
+   * Fetches the latest page again in full after an image failed to load.
+   * Private images come with links signed for an hour or two, and a fresh
+   * copy of the message carries a fresh link. At most once a minute a channel.
+   */
+  refreshChannelImageLinks(channelId: string): void {
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const now = Date.now();
+    if (now - (this.imageLinkRefreshAt.get(normalizedChannelId) ?? 0) < IMAGE_LINK_REFRESH_INTERVAL_MS) return;
+    this.imageLinkRefreshAt.set(normalizedChannelId, now);
+    const channel = this.ensureChannelState(normalizedChannelId);
+    channel.backfilled = false;
+    void this.messageLoading.runMessagesRefresh(normalizedChannelId, { showLoading: false }).catch(() => {});
+  }
+
+  private readonly imageLinkRefreshAt = new Map<string, number>();
+
   async loadOlderMessages(): Promise<void> {
     return this.messageLoading.loadOlderMessages();
   }
@@ -444,11 +474,76 @@ export class ChatController {
     });
   }
 
+  /**
+   * Whether the server takes images, so the composer offers them. Until it
+   * says so, chat stays text only and an older server never sees an upload.
+   */
+  attachmentsSupported(): boolean {
+    return apiClient.chatAttachmentsSupported();
+  }
+
+  subscribeAttachmentSupport(listener: () => void): () => void {
+    return apiClient.subscribeChatAttachmentSupport(listener);
+  }
+
+  /** Adds images to the channel's next message and starts uploading them; returns how many were taken. */
+  attachToChannel(channelId: string, uploads: ChatAttachmentUpload[]): number {
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const channel = this.ensureChannelState(normalizedChannelId);
+    if (!this.session.user?.emailVerified || uploads.length === 0) return 0;
+    return addDraftAttachments(
+      () => channel.draftAttachments,
+      (entries) => { channel.draftAttachments = entries; },
+      uploads,
+      this.draftAttachmentDeps(normalizedChannelId),
+    );
+  }
+
+  removeChannelAttachment(channelId: string, localId: string): void {
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const channel = this.ensureChannelState(normalizedChannelId);
+    const removed = channel.draftAttachments.filter((entry) => entry.localId === localId);
+    if (removed.length === 0) return;
+    discardDraftAttachments(removed);
+    channel.draftAttachments = channel.draftAttachments.filter((entry) => entry.localId !== localId);
+    this.emit(normalizedChannelId);
+  }
+
+  retryChannelAttachment(channelId: string, localId: string): boolean {
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const channel = this.ensureChannelState(normalizedChannelId);
+    return retryDraftAttachment(() => channel.draftAttachments, localId, this.draftAttachmentDeps(normalizedChannelId));
+  }
+
+  private draftAttachmentDeps(channelId: string) {
+    return {
+      channelId,
+      upload: this.uploadAttachment,
+      emit: () => this.emit(channelId),
+      notify: (notification: AppNotificationRequest) => this.notifyFn(notification),
+      nextLocalId: () => `draft-image:${this.draftAttachmentSeq += 1}`,
+    };
+  }
+
+  /** Sends a failed message again with the same images and idempotency key. */
+  retryChannelMessage(channelId: string, messageId: string): boolean {
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const channel = this.ensureChannelState(normalizedChannelId);
+    if (!this.session.user?.emailVerified) return false;
+    return retryChatMessageInChannel({
+      channel,
+      messageId,
+      ensureConnection: () => this.ensureConnection(normalizedChannelId),
+      emit: () => this.emit(normalizedChannelId),
+      mergeMessages: (messages) => this.mergeMessages(normalizedChannelId, messages),
+      notify: this.notifyFn,
+    });
+  }
+
   async editChannelMessage(channelId: string, messageId: string, content: string): Promise<boolean> {
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     const messageContent = content.trim();
-    if (!messageContent) return false;
     if (!this.session.user?.emailVerified) return false;
 
     const latestOwnMessage = [...getVisibleMessages(channel)]
@@ -457,6 +552,8 @@ export class ChatController {
         message.user.id === this.session.user?.id
         && !message.clientStatus
       ));
+    // The images stay with an edit, so a message that has them may lose its text.
+    if (!messageContent && !(latestOwnMessage?.id === messageId && latestOwnMessage.attachments?.length)) return false;
     if (!latestOwnMessage || latestOwnMessage.id !== messageId) {
       this.notifyFn({ body: "Only your latest sent message can be edited.", type: "error" });
       return false;

@@ -5,6 +5,7 @@ import type {
   PersistedAuthUser,
 } from "../../../../api-client";
 import { createClientMessageId, getLatestMessageId } from "./utils";
+import type { ChatDraftAttachment, DraftAttachmentEntry } from "./attachments";
 
 export const SESSION_STATE_KEY = "session";
 export const DEFAULT_CHAT_CHANNEL_ID = "everyone";
@@ -58,12 +59,19 @@ export interface ChatControllerSnapshot {
   user: { id: string; username: string; emailVerified: boolean } | null;
   messages: ChatMessage[];
   draft: string;
+  /** Images waiting in the composer for the next message. */
+  draftAttachments: ChatDraftAttachment[];
   replyToId: string | null;
   unreadMentionCount: number;
 }
 
 type ChatConnection = {
-  send: (content: string, replyToId?: string, clientMessageId?: string) => Promise<ChatMessage>;
+  send: (
+    content: string,
+    replyToId?: string,
+    clientMessageId?: string,
+    attachmentIds?: string[],
+  ) => Promise<ChatMessage>;
   close: () => void;
 };
 
@@ -88,6 +96,8 @@ export interface ChannelRuntimeState {
   pendingMessages: ChatMessage[];
   draft: string;
   draftClientMessageId: string | null;
+  /** Uploads for the next message. Not persisted: a restart starts the draft without them. */
+  draftAttachments: DraftAttachmentEntry[];
   replyToId: string | null;
   lastCursor: string | null;
   lastViewedMessageId: string | null;
@@ -123,6 +133,7 @@ export function createEmptyChannelState(): ChannelRuntimeState {
     pendingMessages: [],
     draft: "",
     draftClientMessageId: null,
+    draftAttachments: [],
     replyToId: null,
     lastCursor: null,
     lastViewedMessageId: null,

@@ -79,6 +79,14 @@ const ICONS: Record<IconName, ReactNode> = {
       <circle cx="7.6" cy="9" r="0.9" fill="currentColor" />
     </>
   ),
+  // A framed picture: a sun over hills.
+  image: (
+    <>
+      <rect x="1.5" y="2.25" width="9" height="7.5" rx="1.2" stroke="currentColor" strokeWidth="1.1" />
+      <circle cx="4.4" cy="4.9" r="0.85" fill="currentColor" />
+      <path d="M2 9.1 4.7 6.6l1.6 1.5 1.8-2 2.4 2.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />

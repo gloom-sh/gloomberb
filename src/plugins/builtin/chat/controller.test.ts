@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import {
   apiClient,
+  type ChatAttachment,
   type ChatChannel,
   type ChatMessage,
   type ChatNotification,
@@ -1280,6 +1281,144 @@ describe("ChatController", () => {
       clientError: "server offline",
     });
     expect(notifications).toEqual([{ body: "server offline", type: "error" }]);
+  });
+
+  test("retries a failed image send with the same uploads and idempotency key, uploading nothing again", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    persistSession(persistence, { emailVerified: true });
+    controller.attachPersistence(persistence);
+    controller.setNotifier(() => {});
+
+    let uploads = 0;
+    controller.uploadAttachment = async (_channelId, upload) => {
+      uploads += 1;
+      return { id: `img_${uploads}`, mime: upload.type, width: 1280, height: 720, size: 2048, url: `https://api.example/chat/attachments/img_${uploads}?exp=1&sig=x` };
+    };
+    const sends: Array<{ content: string; clientMessageId?: string; attachmentIds?: string[] }> = [];
+    const stored = chatMessage({
+      id: "m9",
+      content: "",
+      createdAt: new Date().toISOString(),
+      attachments: [{ id: "img_1", mime: "image/png", width: 1280, height: 720, size: 2048, url: "https://api.example/chat/attachments/img_1" }],
+    });
+    apiClient.connectChannel = () => ({
+      send: async (content, _replyToId, clientMessageId, attachmentIds) => {
+        sends.push({ content, clientMessageId, attachmentIds });
+        if (sends.length === 1) throw new Error("server offline");
+        return stored;
+      },
+      close: () => {},
+    });
+
+    expect(controller.attachToChannel("everyone", [{ name: "chart.png", type: "image/png", data: new Uint8Array(2048) }])).toBe(1);
+    // Text is optional once an image is up; nothing goes out before.
+    expect(controller.sendToChannel("everyone", "")).toBe(false);
+    await flushMicrotasks();
+    expect(controller.getSnapshot().draftAttachments.map((attachment) => attachment.status)).toEqual(["ready"]);
+
+    expect(controller.sendToChannel("everyone", "")).toBe(true);
+    await flushMicrotasks();
+    const failed = controller.getSnapshot().messages.at(-1)!;
+    expect(failed).toMatchObject({ clientStatus: "failed", content: "" });
+    expect(controller.getSnapshot().draftAttachments).toEqual([]);
+
+    expect(controller.retryChannelMessage("everyone", failed.id)).toBe(true);
+    expect(controller.getSnapshot().messages.at(-1)).toMatchObject({ id: failed.id, clientStatus: "sending" });
+    await flushMicrotasks();
+
+    expect(uploads).toBe(1);
+    expect(sends).toHaveLength(2);
+    expect(sends[0]!.attachmentIds).toEqual(["img_1"]);
+    expect(sends[1]).toEqual(sends[0]!);
+    expect(sends[0]!.clientMessageId).toBeTruthy();
+    expect(controller.getSnapshot().messages).toEqual([stored]);
+  });
+
+  test("holds a send while images upload, takes four, and reports the server's refusal on the image", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    const notifications: AppNotificationRequest[] = [];
+    persistSession(persistence, { emailVerified: true });
+    controller.attachPersistence(persistence);
+    controller.setNotifier((notification) => { notifications.push(notification); });
+
+    const pending: Array<PromiseWithResolvers<ChatAttachment>> = [];
+    controller.uploadAttachment = () => {
+      const upload = Promise.withResolvers<ChatAttachment>();
+      pending.push(upload);
+      return upload.promise;
+    };
+    const sends: Array<string[] | undefined> = [];
+    apiClient.connectChannel = () => ({
+      send: (_content, _replyToId, _clientMessageId, attachmentIds) => {
+        sends.push(attachmentIds);
+        return new Promise<ChatMessage>(() => {});
+      },
+      close: () => {},
+    });
+
+    const image = (name: string) => ({ name, type: "image/png", data: new Uint8Array(16) });
+    expect(controller.attachToChannel("everyone", [
+      image("a.png"), image("b.png"), { name: "notes.txt", type: "text/plain", data: new Uint8Array(4) },
+      image("c.png"), image("d.png"), image("e.png"),
+    ])).toBe(4);
+    expect(notifications.map((notification) => notification.body)).toEqual([
+      "Images must be PNG, JPEG, WebP or GIF. A message can carry up to 4 images.",
+    ]);
+
+    expect(controller.sendToChannel("everyone", "look")).toBe(false);
+    pending.forEach((upload, index) => {
+      if (index === 1) {
+        upload.reject(new ApiRequestError("You've reached today's image limit. Try again tomorrow. upload_daily_limit", 429, undefined, "upload_daily_limit"));
+      } else {
+        upload.resolve({ id: `img_${index}`, mime: "image/png", width: 10, height: 10, size: 16, url: `https://api.example/img_${index}` });
+      }
+    });
+    await flushMicrotasks();
+    const failed = controller.getSnapshot().draftAttachments[1]!;
+    expect(failed).toMatchObject({ status: "failed", error: "You've reached today's image limit. Try again tomorrow." });
+
+    expect(controller.sendToChannel("everyone", "look")).toBe(false);
+    expect(notifications.at(-1)?.body).toBe("Retry or remove the image that did not upload.");
+    expect(controller.retryChannelAttachment("everyone", failed.localId)).toBe(true);
+    pending.at(-1)!.resolve({ id: "img_retry", mime: "image/png", width: 10, height: 10, size: 16, url: "https://api.example/img_retry" });
+    await flushMicrotasks();
+
+    expect(controller.sendToChannel("everyone", "look")).toBe(true);
+    expect(sends).toEqual([["img_0", "img_retry", "img_2", "img_3"]]);
+  });
+
+  test("shows a live copy of a message it already has when the copy changed", () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    persistSession(persistence, { emailVerified: true });
+    controller.attachPersistence(persistence);
+
+    let deliver: (message: ChatMessage) => void = () => {};
+    apiClient.getMessages = async () => [];
+    apiClient.connectChannel = (_channelId, onMessage) => {
+      deliver = onMessage;
+      return { send: () => new Promise<ChatMessage>(() => {}), close: () => {} };
+    };
+    controller.ensureConnection();
+
+    const held = chatMessage({
+      id: "m1",
+      content: "my chart",
+      createdAt: "2026-10-05T00:00:00.000Z",
+      attachments: [{ id: "img_1", mime: "image/png", width: 10, height: 10, size: 16, url: "https://api.example/img_1?exp=1&sig=x" }],
+      attachmentReview: "pending",
+    });
+    deliver(held);
+    expect(controller.getSnapshot().messages[0]?.attachmentReview).toBe("pending");
+
+    // Cleared after review: the image now has its public link and the note goes.
+    const { attachmentReview: _review, ...cleared } = held;
+    deliver({ ...cleared, attachments: [{ ...held.attachments![0]!, url: "https://api.example/img_1" }] });
+    expect(controller.getSnapshot().messages).toHaveLength(1);
+    expect(controller.getSnapshot().messages[0]?.attachmentReview).toBeUndefined();
+    expect(controller.getSnapshot().messages[0]?.attachments?.[0]?.url).toBe("https://api.example/img_1");
   });
 
   test("tracks unread mentions from fetched messages without issuing local notifications", () => {

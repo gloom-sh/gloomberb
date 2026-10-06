@@ -38,7 +38,8 @@ import type {
   PersistedAuthUser
 } from "./types";
 
-export { setCloudApiFetchTransport } from "./request";
+export { setCloudApiFetchTransport, setCloudApiUploadTransport } from "./request";
+export type { ChatAttachmentUpload } from "./chat";
 export { NoteConflictError } from "./notes";
 export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
@@ -131,6 +132,7 @@ class GloomApiClient {
   });
   private readonly chat: CloudChatApi = new CloudChatApi({
     request: (path, options) => this.request(path, options),
+    upload: (path, body, options) => this.transport.upload(path, body, options),
     socket: this.socket,
   });
   private readonly teams: CloudTeamsApi = new CloudTeamsApi({
@@ -634,6 +636,9 @@ class GloomApiClient {
   openGroupChannel = this.chat.openGroupChannel.bind(this.chat);
   getMessages = this.chat.getMessages.bind(this.chat);
   sendMessage = this.chat.sendMessage.bind(this.chat);
+  uploadChatAttachment = this.chat.uploadAttachment.bind(this.chat);
+  chatAttachmentsSupported = this.chat.attachmentsSupported.bind(this.chat);
+  subscribeChatAttachmentSupport = this.chat.subscribeAttachmentSupport.bind(this.chat);
   editMessage = this.chat.editMessage.bind(this.chat);
   connectChannel = this.chat.connectChannel.bind(this.chat);
   subscribeChatNotifications = this.chat.subscribeNotifications.bind(this.chat);

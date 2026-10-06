@@ -40,6 +40,8 @@ export function useChatContentShortcuts({
   requestOlderMessages,
   requestOlderMessagesIfNeeded,
   returnToComposer,
+  retryMessage,
+  removeLastDraftAttachment,
   scrollRef,
   selectedIdx,
   setFollowMessages,
@@ -82,6 +84,10 @@ export function useChatContentShortcuts({
   requestOlderMessages: () => void;
   requestOlderMessagesIfNeeded: () => void;
   returnToComposer: () => void;
+  /** Sends a failed message again. */
+  retryMessage: (index: number) => void;
+  /** Drops the last image waiting in the composer; false when there is none. */
+  removeLastDraftAttachment: () => boolean;
   scrollRef: MutableRefObject<ScrollBoxRenderable | null>;
   selectedIdx: number;
   setFollowMessages: (followMessages: boolean) => void;
@@ -200,6 +206,19 @@ export function useChatContentShortcuts({
         return;
       }
 
+      // The terminal's image rows have no focus of their own: Backspace in an
+      // empty composer takes the last one back out.
+      if (
+        !nativePaneChrome
+        && isPlainKey(event, "backspace")
+        && inputValueRef.current.length === 0
+        && removeLastDraftAttachment()
+      ) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        return;
+      }
+
       const verticalDirection = event.name === "up" || event.name === "down" ? event.name : null;
       if (
         verticalDirection === "up"
@@ -239,7 +258,9 @@ export function useChatContentShortcuts({
     if (canSend && isEnterKey && selectedIdx >= 0 && selectedIdx < messages.length) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      beginReplyTo(selectedIdx, { deferFocus: true });
+      // A failed send of yours is sent again; any other message gets a reply.
+      if (messages[selectedIdx]?.clientStatus === "failed") retryMessage(selectedIdx);
+      else beginReplyTo(selectedIdx, { deferFocus: true });
       return;
     }
 

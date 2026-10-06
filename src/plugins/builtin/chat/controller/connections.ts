@@ -1,5 +1,6 @@
 import { DEFAULT_CHAT_CHANNEL_ID, type ChannelRuntimeState } from "./state";
 import type { ChatMessage } from "../../../../api-client";
+import { isSameMessageRevision } from "./messages";
 
 export function countOpenConnections(channelStates: Iterable<ChannelRuntimeState>): number {
   return [...channelStates].filter((channel) => !!channel.wsConnection).length;
@@ -80,7 +81,8 @@ export function ensureChatChannelConnection({
   channel.wsConnection = connectChannel(
     channelId,
     (message) => {
-      if (channel.messages.some((entry) => entry.id === message.id)) return;
+      const known = channel.messages.find((entry) => entry.id === message.id);
+      if (known && isSameMessageRevision(known, message)) return;
       mergeMessages([message]);
     },
     () => {

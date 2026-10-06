@@ -20,6 +20,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { chatController, type ChatController } from "./controller";
 import { applyUnreadInboxItemToConfig } from "./pane-state";
 import type { UnreadInboxItem } from "./unread-inbox";
+import { chatTextWithImages } from "./attachments/model";
 
 interface UnreadInboxPaneProps extends PaneProps {
   controller?: Pick<ChatController, "getSnapshot" | "listUnreadInbox" | "subscribe">;
@@ -44,7 +45,8 @@ function renderCell(item: UnreadInboxItem, column: DataTableColumn): DataTableCe
       const preview = item.preview;
       if (!preview) return { text: "" };
       const author = preview.user.username ? `@${preview.user.username}: ` : "";
-      return { text: `${author}${preview.content.replace(/\s+/g, " ").trim()}` };
+      const text = chatTextWithImages(preview.content, preview.attachments?.length ?? 0);
+      return { text: `${author}${text.replace(/\s+/g, " ").trim()}` };
     }
   }
 }

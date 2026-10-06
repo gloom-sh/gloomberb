@@ -48,6 +48,7 @@ export function resolveChatContentHeightMetrics({
   nativePaneChrome,
   replyTo,
   stackHeader = false,
+  draftAttachmentCount = 0,
 }: {
   canSend: boolean;
   composerRows: number;
@@ -58,6 +59,7 @@ export function resolveChatContentHeightMetrics({
   replyTo: ChatMessage | null;
   /** The narrow stack's Back row is drawn above the transcript. */
   stackHeader?: boolean;
+  draftAttachmentCount?: number;
 }) {
   const composerHeight = canSend
     ? nativePaneChrome
@@ -71,6 +73,7 @@ export function resolveChatContentHeightMetrics({
     mentionSuggestionCount,
     nativePaneChrome,
     replyTo,
+    draftAttachmentCount,
   });
   // In the terminal the Back row replaces the top rule.
   const topSeparatorHeight = nativePaneChrome || stackHeader ? 0 : 1;

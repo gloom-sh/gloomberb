@@ -53,7 +53,22 @@ export interface CloudApiFetchTransportOptions {
   streamFetch?: CloudApiStreamFetch;
 }
 
+/**
+ * One upload with its bytes and the headers the client built. A transport that
+ * can watch the body go out (a browser XMLHttpRequest) reports `onProgress`
+ * with the fraction sent; others never call it.
+ */
+export interface CloudApiUploadRequest {
+  url: string;
+  body: Blob | Uint8Array;
+  headers: Headers;
+  signal?: AbortSignal;
+  onProgress?: (fraction: number) => void;
+}
+type CloudApiUploadTransport = (request: CloudApiUploadRequest) => Promise<CloudApiResponse>;
+
 let cloudApiFetchTransport: CloudApiFetchTransport = httpFetch;
+let cloudApiUploadTransport: CloudApiUploadTransport | null = null;
 let cloudApiTransportInstalled = false;
 let cloudApiFetchStreaming = true;
 let cloudApiStreamFetch: CloudApiStreamFetch | null = null;
@@ -66,6 +81,11 @@ export function setCloudApiFetchTransport(
   cloudApiTransportInstalled = !!transport;
   cloudApiFetchStreaming = transport ? (options.streaming ?? false) : true;
   cloudApiStreamFetch = transport ? options.streamFetch ?? null : null;
+}
+
+/** Installs the transport uploads go through; without one they use the fetch transport. */
+export function setCloudApiUploadTransport(transport: CloudApiUploadTransport | null): void {
+  cloudApiUploadTransport = transport;
 }
 
 /**
@@ -292,10 +312,47 @@ export class CloudApiRequestTransport {
     }
   }
 
+  /**
+   * POSTs raw bytes, such as an image, and parses the JSON answer like
+   * `request`. Progress is reported where the installed upload transport can
+   * see the body go out.
+   */
+  async upload<T>(
+    path: string,
+    body: Blob | Uint8Array,
+    options: {
+      contentType: string;
+      headers?: HeadersInit;
+      signal?: AbortSignal;
+      onProgress?: (fraction: number) => void;
+    },
+  ): Promise<T> {
+    const headers = new Headers(options.headers);
+    headers.set("Content-Type", options.contentType);
+    const uploadTransport = this.fetchTransport ? null : cloudApiUploadTransport;
+    const send: CloudApiFetchTransport | undefined = uploadTransport
+      ? (url, init) => uploadTransport({
+        url,
+        body,
+        headers: new Headers(init?.headers),
+        signal: options.signal,
+        onProgress: options.onProgress,
+      })
+      : undefined;
+    return this.performRequest<T>(path, {
+      method: "POST",
+      headers,
+      // Typed arrays are valid fetch bodies; RequestInit's DOM typing lags behind.
+      body: body as BodyInit,
+      signal: options.signal,
+    }, () => true, send);
+  }
+
   private async performRequest<T>(
     path: string,
     options: RequestInit | undefined,
     canApplySession: () => boolean,
+    send?: CloudApiFetchTransport,
   ): Promise<T> {
     throwIfRequestAborted(options?.signal);
     const headers = new Headers(options?.headers);
@@ -312,7 +369,7 @@ export class CloudApiRequestTransport {
 
     const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
     const request = async () => {
-      const res = await (this.fetchTransport ?? cloudApiFetchTransport)(
+      const res = await (send ?? this.fetchTransport ?? cloudApiFetchTransport)(
         `${this.baseUrl}${path}`,
         {
           ...options,

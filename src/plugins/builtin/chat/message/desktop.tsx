@@ -5,6 +5,8 @@ import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
 import { normalizeInlinePreview } from "../layout";
+import { DesktopChatMessageImages } from "../attachments/desktop";
+import { chatReplyQuoteText } from "../attachments/model";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { useSlowPendingSend } from "./pending-send";
@@ -30,6 +32,8 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   beginEditMessage,
   jumpToMessage,
   latestEditableMessageId,
+  retryMessage,
+  onImageLoadError,
   registerMessageElement,
 }: ChatMessageBaseProps & {
   registerMessageElement: (messageId: string, node: unknown | null) => void;
@@ -48,7 +52,11 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
     slowSend,
     host: "desktop",
   });
-  const actionProps = { state, index, beginReplyTo, beginEditMessage };
+  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage };
+  const attachments = msg.attachments ?? [];
+  // An image-only message has no text row; its images start where the text would.
+  const showBody = msg.content.length > 0 || attachments.length === 0;
+  const showImages = attachments.length > 0 || !!msg.attachmentReview;
   const rowProps = {
     width: "100%",
     paddingRight: DESKTOP_MESSAGE_RIGHT_PADDING,
@@ -94,7 +102,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
               whiteSpace: "nowrap",
             }}
           >
-            {normalizeInlinePreview(msg.replyTo.content)}
+            {normalizeInlinePreview(chatReplyQuoteText(msg.replyTo))}
           </Text>
         </Box>
       )}
@@ -108,27 +116,48 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           {...actionProps}
         />
       )}
-      <Box
-        {...rowProps}
-        paddingLeft={3}
-        flexDirection="row"
-        position={state.grouped ? "relative" : undefined}
-        style={{ minWidth: 0, alignItems: "flex-start" }}
-      >
-        <Box flexGrow={1} data-gloom-role="chat-message-body" style={{ minWidth: 0 }}>
-          <ResponsiveTickerBadgeText
-            text={msg.content}
-            catalog={catalog}
-            textColor={state.bodyColor}
-            openTicker={openTicker}
-            userByUsername={userByUsername}
-            onUserHover={onUserHover}
-            onUserHoverEnd={onUserHoverEnd}
-            onUserActivate={onUserActivate}
-          />
+      {showBody && (
+        <Box
+          {...rowProps}
+          paddingLeft={3}
+          flexDirection="row"
+          position={state.grouped ? "relative" : undefined}
+          style={{ minWidth: 0, alignItems: "flex-start" }}
+        >
+          <Box flexGrow={1} data-gloom-role="chat-message-body" style={{ minWidth: 0 }}>
+            <ResponsiveTickerBadgeText
+              text={msg.content}
+              catalog={catalog}
+              textColor={state.bodyColor}
+              openTicker={openTicker}
+              userByUsername={userByUsername}
+              onUserHover={onUserHover}
+              onUserHoverEnd={onUserHoverEnd}
+              onUserActivate={onUserActivate}
+            />
+          </Box>
+          {state.grouped && <ChatMessageActions floating {...actionProps} />}
         </Box>
-        {state.grouped && <ChatMessageActions floating {...actionProps} />}
-      </Box>
+      )}
+      {showImages && (
+        <Box
+          {...rowProps}
+          paddingLeft={3}
+          flexDirection="row"
+          position={state.grouped && !showBody ? "relative" : undefined}
+          style={{ minWidth: 0, alignItems: "flex-start" }}
+        >
+          <DesktopChatMessageImages
+            attachments={attachments}
+            caption={msg.content}
+            author={msg.user.username ?? "anon"}
+            review={msg.attachmentReview}
+            dimmed={state.isSending || msg.clientStatus === "failed"}
+            onLoadError={onImageLoadError}
+          />
+          {state.grouped && !showBody && <ChatMessageActions floating {...actionProps} />}
+        </Box>
+      )}
     </Box>
   );
 });

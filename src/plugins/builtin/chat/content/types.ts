@@ -24,4 +24,11 @@ export type ChatContentController = Pick<
   | "setReplyToId"
   | "setChannelReplyToId"
   | "subscribe"
+  | "attachmentsSupported"
+  | "subscribeAttachmentSupport"
+  | "attachToChannel"
+  | "removeChannelAttachment"
+  | "retryChannelAttachment"
+  | "retryChannelMessage"
+  | "refreshChannelImageLinks"
 >;

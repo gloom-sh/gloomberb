@@ -34,7 +34,10 @@ import {
 import { buildChatUserByUsername } from "./user-map";
 import { useChatComposerRuntime } from "./composer-runtime";
 import { useChatMessageSelection } from "./selection-runtime";
-import type { ChatMessage } from "../../../../api-client";
+import type { ChatAttachment, ChatMessage } from "../../../../api-client";
+import { DesktopChatDropOverlay, DesktopChatDropTarget } from "../attachments/desktop";
+import { uploadFromTransferFile, type TransferFile } from "../attachments/transfer";
+import { readChatImageFiles } from "../attachments/files";
 import { NewDmDialog } from "./new-dm-dialog";
 import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../cloud/team/pane-request";
@@ -76,7 +79,7 @@ export function ChatContent({
   onTargetMessageHandled,
 }: ChatContentProps) {
   const dispatch = useAppDispatch();
-  const { showPane, createPaneFromTemplate } = usePluginAppActions();
+  const { showPane, createPaneFromTemplate, notify } = usePluginAppActions();
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const channelId = normalizeChannelId(rawChannelId);
   const channelIdRef = useRef(channelId);
@@ -132,10 +135,18 @@ export function ChatContent({
   const retryMessages = useCallback(() => {
     void controller.refreshChannelMessages(channelId).catch(() => {});
   }, [channelId, controller]);
+  const attachmentsSupported = useSyncExternalStore(
+    useCallback((onChange: () => void) => controller.subscribeAttachmentSupport(onChange), [controller]),
+    () => controller.attachmentsSupported(),
+  );
+  const [dropActive, setDropActive] = useState(false);
+  const attachPickerRef = useRef<(() => void) | null>(null);
+  const replaceComposerDraftRef = useRef<((draft: string, cursorOffset?: number) => void) | null>(null);
   const {
     channels,
     channelsLoading,
     channelStates,
+    draftAttachments,
     hasOlderMessages,
     hasSavedSession,
     loading,
@@ -186,6 +197,9 @@ export function ChatContent({
   }, [stackedNav]);
   composerTextWidthRef.current = composerTextWidth;
   const canSend = !!user?.emailVerified;
+  // Images go only to a server that said it takes them, and never into an edit.
+  const imagesAvailable = canSend && attachmentsSupported;
+  const canAttach = imagesAvailable && !editingMessage;
   const selectionActive = selectedIdx >= 0 && selectedIdx < messages.length;
   const stickyTranscript = followMessages && !selectionActive;
   const latestMessageId = messages[messages.length - 1]?.id ?? null;
@@ -259,6 +273,7 @@ export function ChatContent({
     nativePaneChrome,
     replyTo,
     stackHeader: stackedNav && !channelListOpen,
+    draftAttachmentCount: draftAttachments.length,
   });
   const {
     cancelProfilePopoverClose,
@@ -435,6 +450,49 @@ export function ChatContent({
     }
   }, [closeNewDmDialog, focused, newDmOpen]);
 
+  const attachFiles = useCallback((files: TransferFile[]) => {
+    if (!canAttach) {
+      if (imagesAvailable) notify({ body: "Images can't be added to an edit.", type: "info" });
+      return;
+    }
+    if (controller.attachToChannel(channelIdRef.current, files.map(uploadFromTransferFile)) > 0) focusInput();
+  }, [canAttach, controller, focusInput, imagesAvailable, notify]);
+
+  // The terminal: a pasted or dropped path to an image file attaches the file
+  // and leaves the composer. A path that is no file stays as typed.
+  const handlePastedImagePaths = useCallback((paths: string[], pasted: string) => {
+    const targetChannelId = channelIdRef.current;
+    void readChatImageFiles(paths).then((uploads) => {
+      if (uploads.length === 0 || channelIdRef.current !== targetChannelId) return;
+      const draft = inputValueRef.current;
+      const at = draft.indexOf(pasted);
+      if (at >= 0) replaceComposerDraftRef.current?.(`${draft.slice(0, at)}${draft.slice(at + pasted.length)}`, at);
+      controller.attachToChannel(targetChannelId, uploads);
+    }).catch(() => {});
+  }, [controller]);
+
+  const removeDraftAttachment = useCallback((localId: string) => {
+    controller.removeChannelAttachment(channelIdRef.current, localId);
+  }, [controller]);
+  const retryDraftAttachment = useCallback((localId: string) => {
+    controller.retryChannelAttachment(channelIdRef.current, localId);
+  }, [controller]);
+  const removeLastDraftAttachment = useCallback(() => {
+    const last = draftAttachments[draftAttachments.length - 1];
+    if (!last) return false;
+    removeDraftAttachment(last.localId);
+    return true;
+  }, [draftAttachments, removeDraftAttachment]);
+  const retryMessage = useCallback((index: number) => {
+    const message = messages[index];
+    if (message?.clientStatus === "failed") controller.retryChannelMessage(channelIdRef.current, message.id);
+  }, [controller, messages]);
+  const refreshImageLinks = useCallback((attachment: ChatAttachment) => {
+    // Only a signed link expires; a stable one that fails is gone for good.
+    if (!/[?&]sig=/.test(attachment.url)) return;
+    controller.refreshChannelImageLinks(channelIdRef.current);
+  }, [controller]);
+
   const {
     beginEditLatestMessage,
     beginEditMessage,
@@ -475,7 +533,10 @@ export function ChatContent({
     setSelectedIdx,
     updateComposerRows,
     useDefaultControllerChannel,
+    draftAttachmentCount: draftAttachments.length,
+    onPastedImagePaths: !nativePaneChrome && canAttach ? handlePastedImagePaths : undefined,
   });
+  replaceComposerDraftRef.current = replaceComposerDraft;
 
   const moveMentionSelection = useCallback((direction: "up" | "down") => {
     if (mentionSuggestions.length === 0) return false;
@@ -543,6 +604,7 @@ export function ChatContent({
     setSelectedIdx,
     stickyTranscript,
     useDefaultControllerChannel,
+    composerLayoutKey: editingMessage ? "" : draftAttachments.map((attachment) => attachment.status).join(","),
   });
 
   // A jump to a message (a notification, the unread list) shows the channel.
@@ -600,6 +662,8 @@ export function ChatContent({
     requestOlderMessages,
     requestOlderMessagesIfNeeded,
     returnToComposer,
+    retryMessage,
+    removeLastDraftAttachment,
     scrollRef,
     selectedIdx,
     setFollowMessages,
@@ -635,9 +699,11 @@ export function ChatContent({
     latestEditableMessageId,
     beginEditMessage,
     beginReplyTo,
+    retryMessage,
     focusComposer,
     catalog,
     openTicker,
+    openAttachPicker: canAttach && nativePaneChrome ? () => attachPickerRef.current?.() : null,
     currentUserId: user?.id,
     profilePopoverUser,
     showProfilePopover: showUserProfilePopover,
@@ -734,6 +800,8 @@ export function ChatContent({
         loadingOlderMessages={loadingOlderMessages}
         messagesError={messagesError}
         onRetryMessages={retryMessages}
+        retryMessage={retryMessage}
+        onImageLoadError={refreshImageLinks}
         messageAreaHeight={messageAreaHeight}
         messageBodyWidth={messageBodyWidth}
         messages={messages}
@@ -789,9 +857,26 @@ export function ChatContent({
         onMentionCursorChange={syncComposerCursor}
         onMentionSelect={commitMentionSelection}
         user={user}
+        draftAttachments={draftAttachments}
+        canAttach={canAttach}
+        onAttachFiles={attachFiles}
+        onRemoveAttachment={removeDraftAttachment}
+        onRetryAttachment={retryDraftAttachment}
+        attachPickerRef={attachPickerRef}
       />
+      {nativePaneChrome && dropActive && <DesktopChatDropOverlay />}
     </Box>
   );
+  // Files dropped anywhere on the thread, or pasted into its composer, attach.
+  const thread = nativePaneChrome ? (
+    <DesktopChatDropTarget
+      enabled={imagesAvailable}
+      onFiles={attachFiles}
+      onDragActiveChange={setDropActive}
+    >
+      {threadPane}
+    </DesktopChatDropTarget>
+  ) : threadPane;
 
   if (stackedNav) {
     return (
@@ -809,7 +894,7 @@ export function ChatContent({
           detailOpen={!channelListOpen}
           onBack={openChannelList}
           rootContent={channelSidebar}
-          detailContent={threadPane}
+          detailContent={thread}
         />
         {newDmDialog}
       </Box>
@@ -825,7 +910,7 @@ export function ChatContent({
       style={nativeFillStyle}
     >
       {showChannelSidebar && channelSidebar}
-      {threadPane}
+      {thread}
     </Box>
   );
 }

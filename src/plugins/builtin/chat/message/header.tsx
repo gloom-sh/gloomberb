@@ -5,20 +5,39 @@ import { MESSAGE_ACTION_WIDTH } from "../layout";
 import type { ChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
-type ChatMessageActionProps = Pick<ChatMessageBaseProps, "index" | "beginReplyTo" | "beginEditMessage"> & {
+type ChatMessageActionProps = Pick<ChatMessageBaseProps, "index" | "beginReplyTo" | "beginEditMessage" | "retryMessage"> & {
   state: ChatMessageRenderState;
 };
 
-/** Reply and Edit for one message: after the header, or floated over the first body line of a grouped message. */
+/** Reply and Edit for one message, or Retry for a failed send: after the header, or floated over the first body line of a grouped message. */
 export function ChatMessageActions({
   state,
   index,
   floating = false,
   beginReplyTo,
   beginEditMessage,
+  retryMessage,
 }: ChatMessageActionProps & { floating?: boolean }) {
-  if (!state.showReplyAction) return null;
   const variant = state.isSelected ? "primary" : "secondary";
+  if (state.showRetryAction && retryMessage) {
+    return (
+      <Box
+        {...(floating ? { position: "absolute", top: 0, right: 0 } : {})}
+        width={MESSAGE_ACTION_WIDTH}
+        height={1}
+        flexDirection="row"
+        data-gloom-role="chat-message-retry-action"
+      >
+        <Button stopPropagation
+          label={t("Retry")}
+          width={MESSAGE_ACTION_WIDTH}
+          variant={variant}
+          onPress={() => retryMessage(index)}
+        />
+      </Box>
+    );
+  }
+  if (!state.showReplyAction) return null;
   return (
     <Box
       {...(floating ? { position: "absolute", top: 0, right: 0 } : {})}
@@ -82,7 +101,7 @@ export function ChatMessageHeader({
         </Text>
       </Box>
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
-      {state.showReplyAction && <Text fg={state.headerStatusColor}> </Text>}
+      {(state.showReplyAction || (state.showRetryAction && actionProps.retryMessage)) && <Text fg={state.headerStatusColor}> </Text>}
       <ChatMessageActions state={state} {...actionProps} />
     </Box>
   );

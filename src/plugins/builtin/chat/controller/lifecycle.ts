@@ -1,7 +1,14 @@
 import type { ChannelRuntimeState } from "./state";
 import { createClientMessageId } from "./utils";
+import { discardDraftAttachments } from "./attachments";
+
+function clearDraftAttachments(channel: ChannelRuntimeState): void {
+  discardDraftAttachments(channel.draftAttachments);
+  channel.draftAttachments = [];
+}
 
 export function clearSignedOutChannelState(channel: ChannelRuntimeState): void {
+  clearDraftAttachments(channel);
   channel.pendingMessages = [];
   channel.lastViewedMessageId = null;
   channel.unreadCount = 0;
@@ -16,6 +23,7 @@ function clearSessionChannelState(channel: ChannelRuntimeState): void {
 }
 
 function resetChannelRuntimeState(channel: ChannelRuntimeState): void {
+  clearDraftAttachments(channel);
   channel.messages = [];
   channel.pendingMessages = [];
   channel.draft = "";
@@ -31,6 +39,7 @@ function resetChannelRuntimeState(channel: ChannelRuntimeState): void {
 }
 
 function disposeChannelRuntimeState(channel: ChannelRuntimeState): void {
+  clearDraftAttachments(channel);
   channel.messagesLoading = false;
   channel.messagesError = null;
   channel.olderMessagesLoading = false;

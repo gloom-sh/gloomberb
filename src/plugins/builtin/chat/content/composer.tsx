@@ -8,6 +8,10 @@ import { InlineAuthActions } from "../../cloud/auth-actions";
 import { Button, ListView } from "../../../../components/ui";
 import { COMPOSER_ACTION_WIDTH } from "../layout";
 import type { ChatMentionSuggestion } from "./mentions";
+import type { ChatDraftAttachment } from "../controller/attachments";
+import { DesktopChatAttachButton, DesktopChatAttachmentStrip } from "../attachments/desktop";
+import { TerminalChatAttachmentRows } from "../attachments/terminal";
+import type { TransferFile } from "../attachments/transfer";
 
 const DESKTOP_CHAT_INPUT_TOP_MARGIN_PX = 6;
 
@@ -41,6 +45,15 @@ interface ChatComposerAreaProps {
   onMentionCursorChange: () => void;
   onMentionSelect: (index?: number) => boolean;
   user: { id: string; username: string; emailVerified: boolean } | null;
+  /** Images waiting for the next message. */
+  draftAttachments: ChatDraftAttachment[];
+  /** The server takes images and nothing (an edit) rules them out. */
+  canAttach: boolean;
+  onAttachFiles: (files: TransferFile[]) => void;
+  onRemoveAttachment: (localId: string) => void;
+  onRetryAttachment: (localId: string) => void;
+  /** Filled by the desktop attach button, so the pane menu can open its picker. */
+  attachPickerRef: { current: (() => void) | null };
 }
 
 function ChatMentionSuggestions({
@@ -97,6 +110,12 @@ export function ChatComposerArea({
   onMentionCursorChange,
   onMentionSelect,
   user,
+  draftAttachments,
+  canAttach,
+  onAttachFiles,
+  onRemoveAttachment,
+  onRetryAttachment,
+  attachPickerRef,
 }: ChatComposerAreaProps) {
   const commandBarShortcut = useCommandBarShortcut();
   if (!canSend) {
@@ -174,6 +193,21 @@ export function ChatComposerArea({
         suggestions={mentionSuggestions}
       />
 
+      {!editingMessage && draftAttachments.length > 0 && (nativePaneChrome ? (
+        <DesktopChatAttachmentStrip
+          attachments={draftAttachments}
+          onRemove={onRemoveAttachment}
+          onRetry={onRetryAttachment}
+        />
+      ) : (
+        <TerminalChatAttachmentRows
+          attachments={draftAttachments}
+          width={contentWidth}
+          onRemove={onRemoveAttachment}
+          onRetry={onRetryAttachment}
+        />
+      ))}
+
       <MessageComposer
         inputRef={inputRef}
         initialValue={inputValueRef.current}
@@ -195,11 +229,15 @@ export function ChatComposerArea({
         ]}
         onSubmit={() => {
           if (onMentionSelect()) return;
-          if (inputValueRef.current.trim()) {
-            sendMessage();
-          }
+          sendMessage();
         }}
         wrapText
+        accessory={nativePaneChrome && canAttach ? (
+          <DesktopChatAttachButton
+            onFiles={onAttachFiles}
+            pickerRef={attachPickerRef}
+          />
+        ) : undefined}
       />
     </>
   );
@@ -212,6 +250,7 @@ export function getChatComposerAreaHeight({
   nativePaneChrome,
   replyTo,
   mentionSuggestionCount,
+  draftAttachmentCount = 0,
 }: {
   canSend: boolean;
   composerHeight: number;
@@ -219,9 +258,12 @@ export function getChatComposerAreaHeight({
   nativePaneChrome: boolean | undefined;
   replyTo: ChatMessage | null;
   mentionSuggestionCount?: number;
+  /** The terminal draws a row per waiting image; the desktop strip sizes itself. */
+  draftAttachmentCount?: number;
 }) {
   if (!canSend) return 2;
   return getMessageComposerBlockHeight({ height: composerHeight, nativePaneChrome })
     + (editingMessage || replyTo ? 1 : 0)
-    + Math.max(0, mentionSuggestionCount ?? 0);
+    + Math.max(0, mentionSuggestionCount ?? 0)
+    + (!nativePaneChrome && !editingMessage ? draftAttachmentCount : 0);
 }

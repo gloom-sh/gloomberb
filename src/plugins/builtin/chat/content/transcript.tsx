@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
-import type { ChatMessage, ChatUserSummary } from "../../../../api-client";
+import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 import { DesktopChatMessage } from "../message/desktop";
 import { UserProfilePopover } from "../message/profile-popover";
 import { TerminalChatMessage } from "../message/terminal";
@@ -27,6 +27,8 @@ interface ChatTranscriptProps {
   loadingOlderMessages: boolean;
   messagesError: string | null;
   onRetryMessages: () => void;
+  retryMessage: (index: number) => void;
+  onImageLoadError: (attachment: ChatAttachment) => void;
   messageAreaHeight: number;
   messageBodyWidth: number;
   messages: ChatMessage[];
@@ -65,6 +67,8 @@ export function ChatTranscript({
   loadingOlderMessages,
   messagesError,
   onRetryMessages,
+  retryMessage,
+  onImageLoadError,
   messageAreaHeight,
   messageBodyWidth,
   messages,
@@ -137,6 +141,8 @@ export function ChatTranscript({
               beginEditMessage={beginEditMessage}
               jumpToMessage={jumpToMessage}
               latestEditableMessageId={latestEditableMessageId}
+              retryMessage={retryMessage}
+              onImageLoadError={onImageLoadError}
               registerMessageElement={registerMessageElement}
             />
           ) : (
@@ -160,6 +166,7 @@ export function ChatTranscript({
               beginEditMessage={beginEditMessage}
               jumpToMessage={jumpToMessage}
               latestEditableMessageId={latestEditableMessageId}
+              retryMessage={retryMessage}
               setHoveredIdx={setHoveredIdx}
             />
           )

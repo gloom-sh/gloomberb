@@ -3,6 +3,7 @@ import type {
   ChatChannelState,
   ChatMessage,
 } from "../../../../api-client";
+import { publicDraftAttachment } from "./attachments";
 import {
   DEFAULT_CHAT_CHANNEL_ID,
   normalizeChannelId,
@@ -74,6 +75,7 @@ export class ChatControllerView {
       user: this.options.getUser(),
       messages: this.options.getVisibleMessages(normalizedChannelId),
       draft: channel.draft,
+      draftAttachments: channel.draftAttachments.map(publicDraftAttachment),
       replyToId: channel.replyToId,
       unreadMentionCount: this.options.getUnreadMentionCount(normalizedChannelId),
     };

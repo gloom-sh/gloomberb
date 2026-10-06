@@ -267,10 +267,15 @@ export function estimateMessageHeight(
 ) {
   const headerHeight = grouped ? 0 : 1;
   const contentLineWidth = Math.max(width - 4, 1);
-  const bodyLineCount = catalog
-    ? getMessageBodyTokenLines(message.content, contentLineWidth, catalog).length
-    : getMessageBodyLines(message, width, catalog).length;
-  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount;
+  const imageCount = message.attachments?.length ?? 0;
+  // The terminal draws a row per image and one for a review note; an image-only message has no text row.
+  const bodyLineCount = message.content.length === 0 && imageCount > 0
+    ? 0
+    : catalog
+      ? getMessageBodyTokenLines(message.content, contentLineWidth, catalog).length
+      : getMessageBodyLines(message, width, catalog).length;
+  const reviewNoteHeight = message.attachmentReview ? 1 : 0;
+  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + imageCount + reviewNoteHeight;
 }
 
 export function estimateComposerHeight(text: string, width: number) {

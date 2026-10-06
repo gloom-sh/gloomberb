@@ -387,6 +387,7 @@ export function WebMessageComposer({
   onSubmit,
   keyBindings,
   wrapText = false,
+  accessory,
 }: MessageComposerProps) {
   const colors = useThemeColors();
   const borderColor = focused
@@ -414,31 +415,43 @@ export function WebMessageComposer({
         overflow: "hidden",
       }}
     >
-      <Textarea
-        ref={inputRef}
-        initialValue={initialValue}
-        width="100%"
-        height={height}
-        focused={focused}
-        placeholder={placeholder}
-        placeholderColor={colors.textMuted}
-        textColor={colors.text}
-        backgroundColor="transparent"
-        focusedBackgroundColor="transparent"
-        cursorColor={colors.textBright}
-        style={{
-          padding: "6px 12px",
-          lineHeight: "20px",
-          fontSize: "13px",
-        }}
-        onMouseDown={requestFocus}
-        onFocus={requestFocus}
-        onInput={handleInput}
-        onCursorChange={onCursorChange}
-        keyBindings={keyBindings}
-        onSubmit={onSubmit}
-        wrapText={wrapText}
-      />
+      {/* The field takes what the accessory leaves. */}
+      <Box flexGrow={1} height={height} style={{ minWidth: 0 }}>
+        <Textarea
+          ref={inputRef}
+          initialValue={initialValue}
+          width="100%"
+          height={height}
+          focused={focused}
+          placeholder={placeholder}
+          placeholderColor={colors.textMuted}
+          textColor={colors.text}
+          backgroundColor="transparent"
+          focusedBackgroundColor="transparent"
+          cursorColor={colors.textBright}
+          style={{
+            padding: "6px 12px",
+            lineHeight: "20px",
+            fontSize: "13px",
+          }}
+          onMouseDown={requestFocus}
+          onFocus={requestFocus}
+          onInput={handleInput}
+          onCursorChange={onCursorChange}
+          keyBindings={keyBindings}
+          onSubmit={onSubmit}
+          wrapText={wrapText}
+        />
+      </Box>
+      {accessory != null && (
+        <Box
+          flexDirection="row"
+          data-gloom-role="desktop-message-composer-accessory"
+          style={{ flex: "none", alignItems: "flex-start", padding: "4px 6px 0 0" }}
+        >
+          {accessory}
+        </Box>
+      )}
     </Box>
   );
 }
