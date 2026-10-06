@@ -41,6 +41,41 @@ function isRiskView(value: unknown): value is RiskView {
   return typeof value === "string" && (RISK_VIEWS as readonly string[]).includes(value);
 }
 
+/** Why a holding that does not list in USD drops out of the basket, once per message. */
+const FOREIGN_LISTING_WARNINGS = new Set([
+  "Current USD listing identity unavailable",
+  "Foreign holdings: historical FX returns required",
+]);
+const LISTED_FOREIGN_SYMBOLS = 12;
+
+/**
+ * "6 foreign listings skipped: 1211, 2337, 700, 7203, ASML, SHEL" in place of
+ * two warnings per holding, at the position of the first one.
+ */
+function groupForeignListingWarnings(warnings: readonly string[]): string[] {
+  const symbols: string[] = [];
+  const rest: string[] = [];
+  let position = -1;
+  for (const warning of warnings) {
+    const match = /^(\S{1,24}):\s+(.+)$/.exec(warning);
+    if (!match || !FOREIGN_LISTING_WARNINGS.has(match[2]!)) {
+      rest.push(warning);
+      continue;
+    }
+    if (position < 0) position = rest.length;
+    if (!symbols.includes(match[1]!)) symbols.push(match[1]!);
+  }
+  if (symbols.length === 0) return [...warnings];
+  const listed = symbols.slice(0, LISTED_FOREIGN_SYMBOLS).join(", ");
+  const more = symbols.length - LISTED_FOREIGN_SYMBOLS;
+  rest.splice(
+    position,
+    0,
+    `${symbols.length} foreign listing${symbols.length === 1 ? "" : "s"} skipped: ${listed}${more > 0 ? ` and ${more} more` : ""}`,
+  );
+  return rest;
+}
+
 /** One view, its strongest or first rows, and the portfolio's totals instead of the model. */
 function compactRiskRows(model: PortfolioRiskModel, view: RiskView): { rows: RiskDisplayRow[]; notices: string[] } {
   const all = model.rows[view];
@@ -219,7 +254,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     const valued = model.holdings.filter((holding) => holding.value != null).length;
     return {
       complete: result.complete,
-      ...(result.errors?.length ? { errors: result.errors } : {}),
+      ...(result.errors?.length ? { errors: groupForeignListingWarnings(result.errors) } : {}),
       sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow) }],
       metadata: {
         portfolio: {

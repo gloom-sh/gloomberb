@@ -79,3 +79,35 @@ test("the compact result is the requested view, without the model, with the stro
   expect(full.sections).toHaveLength(8);
   expect(full.metadata.model).toBe(model);
 });
+
+test("the compact result names skipped foreign listings once", () => {
+  const model = {
+    portfolio: { id: "broker:ibkr:U1", name: "Interactive Brokers", currency: "USD" },
+    holdings: [],
+    book: null,
+    fetchedAt: "2026-10-01T12:00:00.000Z",
+    rows: { risk: [], factors: [], holdings: [], correlation: [], stress: [], performance: [], attribution: [], greeks: [] },
+  };
+  const foreign = ["1211", "2337", "700", "7203", "ASML", "SHEL"];
+  const full = {
+    complete: false,
+    errors: [
+      "Treasury yield: Internal server error",
+      ...foreign.map((symbol) => `${symbol}: Current USD listing identity unavailable`),
+      "ARKK: Quote listing differs from the requested holding",
+      ...foreign.map((symbol) => `${symbol}: Foreign holdings: historical FX returns required`),
+      "SNOW: Daily history unavailable",
+    ],
+    sections: [],
+    metadata: { model },
+  };
+
+  const compact = portfolioRiskHeadless.compact!(full as never, { rawArgument: "", argument: null, symbols: [], options: { view: "holdings" } });
+
+  expect(compact.errors).toEqual([
+    "Treasury yield: Internal server error",
+    "6 foreign listings skipped: 1211, 2337, 700, 7203, ASML, SHEL",
+    "ARKK: Quote listing differs from the requested holding",
+    "SNOW: Daily history unavailable",
+  ]);
+});
