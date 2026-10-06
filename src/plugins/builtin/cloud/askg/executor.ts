@@ -3,6 +3,7 @@ import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog
 import {
   loadResolvedHeadlessPaneModel,
   serializeHeadlessPaneResult,
+  type LoadedHeadlessPaneModel,
 } from "../../../../cli/pane-functions/headless";
 import { resolvePaneFunction } from "../../../../cli/pane-functions/resolver";
 import type {
@@ -277,12 +278,27 @@ function defaultHeadlessExecutor(
       requireBotSafe: false,
     }, { strictHeadlessOptions: true });
     const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument, signal);
+    const result = compactHeadlessResult(loaded);
     return {
-      result: serializeHeadlessPaneResult(loaded.definition, loaded.result),
-      rowCount: headlessRowCount(loaded.definition, loaded.result),
-      ...(loaded.result.errors?.length ? { errors: loaded.result.errors } : {}),
+      result: serializeHeadlessPaneResult(loaded.definition, result),
+      rowCount: headlessRowCount(loaded.definition, result),
+      ...(result.errors?.length ? { errors: result.errors } : {}),
     };
   };
+}
+
+/**
+ * What Gloom reads is the function's compact form when it has one: the view
+ * that was asked for rather than every view and the full model. `fn` and the
+ * pane keep the full result.
+ */
+function compactHeadlessResult({ definition, result, args }: LoadedHeadlessPaneModel): HeadlessPaneResult {
+  if (!definition.compact) return result;
+  try {
+    return definition.compact(result, args);
+  } catch {
+    return result;
+  }
 }
 
 export function createASKGToolExecutor(

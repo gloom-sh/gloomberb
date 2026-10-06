@@ -185,6 +185,15 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): HeadlessPaneResultByShape[Shape] | Promise<HeadlessPaneResultByShape[Shape]>;
+  /**
+   * A smaller form of a loaded result for readers with a tight size budget,
+   * such as Ask Gloom: only what `args` asked for, without full-precision
+   * metadata. Reports, screenshots and panes always use the full result.
+   */
+  compact?(
+    result: HeadlessPaneResultByShape[Shape],
+    args: HeadlessPaneLoadArgs,
+  ): HeadlessPaneResultByShape[Shape];
 }
 
 export type HeadlessPaneResult = HeadlessPaneResultByShape[HeadlessPaneShape];

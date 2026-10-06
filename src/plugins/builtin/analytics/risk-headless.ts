@@ -8,7 +8,60 @@ import {
   RISK_VIEWS,
   riskPercentile,
   riskValue,
+  type PortfolioRiskModel,
+  type RiskDisplayRow,
+  type RiskView,
 } from "./risk-model";
+
+const RISK_COLUMNS = [
+  { key: "label", header: "Metric" },
+  { key: "value", header: "Value", align: "right" as const },
+  { key: "percentile", header: "Pctl 1Y", align: "right" as const },
+  { key: "asOf", header: "As of" },
+  { key: "detail", header: "Evidence" },
+];
+
+/** Rows of one view in the compact result; the pane and reports keep every row. */
+const COMPACT_ROW_LIMIT = 100;
+/** The correlation view is every pair of holdings; the compact result keeps the strongest. */
+const COMPACT_PAIR_LIMIT = 25;
+
+/** Formatted like the pane; metadata.model keeps full precision. */
+function displayRow(row: RiskDisplayRow) {
+  return {
+    label: row.label,
+    value: riskValue(row),
+    percentile: riskPercentile(row),
+    asOf: row.asOf?.slice(0, 10) ?? null,
+    detail: row.detail,
+  };
+}
+
+function isRiskView(value: unknown): value is RiskView {
+  return typeof value === "string" && (RISK_VIEWS as readonly string[]).includes(value);
+}
+
+/** One view, its strongest or first rows, and the portfolio's totals instead of the model. */
+function compactRiskRows(model: PortfolioRiskModel, view: RiskView): { rows: RiskDisplayRow[]; notices: string[] } {
+  const all = model.rows[view];
+  if (view === "correlation") {
+    const rows = all
+      .filter((row) => row.value != null && Number.isFinite(row.value))
+      .sort((left, right) => Math.abs(right.value!) - Math.abs(left.value!))
+      .slice(0, COMPACT_PAIR_LIMIT);
+    return {
+      rows,
+      notices: all.length > rows.length
+        ? [`Strongest ${rows.length} of ${all.length} pairs by absolute correlation.`]
+        : [],
+    };
+  }
+  if (all.length <= COMPACT_ROW_LIMIT) return { rows: all, notices: [] };
+  return {
+    rows: all.slice(0, COMPACT_ROW_LIMIT),
+    notices: [`${all.length - COMPACT_ROW_LIMIT} more ${view} rows not shown.`],
+  };
+}
 
 export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
@@ -152,23 +205,35 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       errors: model.warnings,
       sections: RISK_VIEWS.map((view) => ({
         title: view,
-        columns: [
-          { key: "label", header: "Metric" },
-          { key: "value", header: "Value", align: "right" as const },
-          { key: "percentile", header: "Pctl 1Y", align: "right" as const },
-          { key: "asOf", header: "As of" },
-          { key: "detail", header: "Evidence" },
-        ],
-        // Formatted like the pane; metadata.model keeps full precision.
-        rows: model.rows[view].map((row) => ({
-          label: row.label,
-          value: riskValue(row),
-          percentile: riskPercentile(row),
-          asOf: row.asOf?.slice(0, 10) ?? null,
-          detail: row.detail,
-        })),
+        columns: RISK_COLUMNS,
+        rows: model.rows[view].map(displayRow),
       })),
       metadata: { model },
+    };
+  },
+  compact(result, args) {
+    const model = result.metadata?.model as PortfolioRiskModel | undefined;
+    if (!model?.rows) return result;
+    const view = isRiskView(args.options.view) ? args.options.view : "risk";
+    const { rows, notices } = compactRiskRows(model, view);
+    const valued = model.holdings.filter((holding) => holding.value != null).length;
+    return {
+      complete: result.complete,
+      ...(result.errors?.length ? { errors: result.errors } : {}),
+      sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow) }],
+      metadata: {
+        portfolio: {
+          id: model.portfolio.id,
+          name: model.portfolio.name,
+          currency: model.portfolio.currency,
+        },
+        view,
+        holdings: model.holdings.length,
+        valuedHoldings: valued,
+        ...(model.book ? { grossValue: model.book.gross, netValue: model.book.net } : {}),
+        asOf: model.fetchedAt,
+        ...(notices.length ? { notices } : {}),
+      },
     };
   },
 };

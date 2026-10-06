@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { MarketContext } from "../../../../cli/types";
 import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
 import type { RemoteControlResponse } from "../../../../remote/types";
+import { createDefaultConfig } from "../../../../types/config";
+import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../../../types/plugin";
 import {
   MAX_TOOL_RESULT_BYTES,
   type ASKGToolCallEvent,
@@ -172,6 +174,50 @@ describe("ASKG delegated tool executor", () => {
     expect(bundle.sections[1]!.rows.length).toBeLessThan(4_000);
     expect(result.status).toBe("partial");
     expect(result.note).toContain("of 4000 rows");
+  });
+
+  test("sends Gloom the function's compact result", async () => {
+    const definition: HeadlessPaneDefinition<"rows"> = {
+      shape: "rows",
+      argument: { kind: "none" },
+      options: [],
+      load: () => ({
+        rows: Array.from({ length: 500 }, (_, index) => ({ value: index })),
+        metadata: { model: { precise: 0.123456789 } },
+      }),
+      compact: (result) => ({ rows: result.rows.slice(0, 3) }),
+    };
+    const pane: PaneDef = { id: "values", name: "Values", component: () => null, defaultPosition: "left" };
+    const template: PaneTemplateDef = {
+      id: "values-pane",
+      paneId: pane.id,
+      label: "Values",
+      description: "Read values.",
+      shortcut: { prefix: "VAL" },
+      headless: definition,
+    };
+    const registry: PaneFunctionCatalog = {
+      panes: new Map([[pane.id, pane]]),
+      paneTemplates: new Map([[template.id, template]]),
+      destroy() {},
+    };
+    const context = {
+      config: createDefaultConfig("/unused/askg-executor"),
+      store: { loadAllTickers: async () => [] },
+      dataProvider: {},
+    } as unknown as MarketContext;
+    const tools = createASKGToolExecutor({
+      manifests: [headlessManifest],
+      registry,
+      context,
+      remoteHandler: async () => ({ ok: true, data: {} }),
+    });
+
+    const result = await tools.execute(call(headlessManifest));
+
+    expect(result.status).toBe("ok");
+    expect(result.rowCount).toBe(3);
+    expect(result.result).toEqual({ columns: [{ key: "value", header: "value" }], rows: [{ value: 0 }, { value: 1 }, { value: 2 }] });
   });
 
   test("returns remote failures as error values", async () => {
