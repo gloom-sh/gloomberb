@@ -19,15 +19,6 @@ export function getCurrentPluginTarget(): PluginTarget {
 }
 
 /**
- * Whether this renderer can install plugins itself. Installing means cloning a
- * repository and running `bun install`, so only the Bun-hosted renderers can;
- * elsewhere the marketplace shows the command to run instead.
- */
-export function canInstallPlugins(): boolean {
-  return currentTarget === "cli" || currentTarget === "tui";
-}
-
-/**
  * Whether this renderer loads plugins that are not part of its build.
  *
  * term.gloom.sh does not: it runs the built-ins in `catalog-browser.ts` plus the
