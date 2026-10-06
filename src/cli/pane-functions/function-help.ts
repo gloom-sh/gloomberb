@@ -579,6 +579,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: { free: "7 days delayed", pro: "As announced, spreads live" },
     bloomberg: ["MA"],
   },
+  DIST: {
+    summary: "Dated public records about companies in difficulty: 8-K bankruptcy, obligation and listing filings, SEC going-concern disclosures, Taiwan exchange listing designations, and French and UK insolvency notices. The Distress tab of MA.",
+    usage: ["DIST"],
+    keys: [key("←/→", " source"), OPEN, key("t", "icker"), key("o", "pen")],
+    data: same("As published: 8-K filings through the day, going-concern disclosures from monthly SEC data sets, listings and notices daily"),
+    bloomberg: [],
+  },
   ASKG: {
     summary: "Ask a question about what is on screen and watch the tools Gloom runs to answer it.",
     usage: ["ASKG why is NVDA down today"],

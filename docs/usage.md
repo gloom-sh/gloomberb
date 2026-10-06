@@ -246,6 +246,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `EVTS` | The market's earnings days, implied against past moves |
 | `IPO` | Upcoming and recent IPOs worldwide |
 | `HALT` | US trading halts with reason and resumption times |
+| `DIST` | Distress records: 8-K bankruptcy, obligation and listing filings, going-concern disclosures, Taiwan listing designations, French and UK insolvency notices (the M&A pane on its Distress tab; [details](distress-monitor.md)) |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |
 | `BI` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |

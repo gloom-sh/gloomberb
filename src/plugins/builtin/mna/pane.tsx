@@ -6,6 +6,7 @@ import {
   QueryBar,
   useTableLoadMore,
   usePaneFooter,
+  usePaneTabs,
   type DataTableCell,
   type DataTableColumn,
   type PaneHint,
@@ -23,6 +24,7 @@ import type {
 } from "../../../api-client/mna";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
+import { usePaneInstance } from "../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -36,6 +38,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { appendMnaDeals, fetchMnaDeals, loadMnaDeals } from "./client";
 import { MnaDealDetail, mnaDealTitle } from "./detail";
+import { DistressBoard } from "./distress/pane";
 import {
   dealSpread,
   expectedCloseDate,
@@ -120,11 +123,48 @@ type Item = { kind: "deal"; deal: MnaDeal } | { kind: "locked"; index: number };
 
 const itemKey = (item: Item) => (item.kind === "deal" ? item.deal.id : `locked:${item.index}`);
 
+type MnaTab = "deals" | "distress";
+
+const MNA_TABS: { label: string; value: MnaTab }[] = [
+  { label: "Deals", value: "deals" },
+  { label: "Distress", value: "distress" },
+];
+
 /** `MA`, or `MA ACVA` with the ticker kept in pane settings. */
 export function MnaPane(props: PaneProps) {
   const [ticker] = usePaneSettingValue("ticker", "");
   const symbol = typeof ticker === "string" ? ticker.trim().toUpperCase() : "";
-  return <MnaDealsView key={symbol} focused={props.focused} width={props.width} height={props.height} symbol={symbol || null} />;
+  // One company's deals have no market-wide distress tab beside them.
+  if (symbol) return <MnaDealsView key={symbol} focused={props.focused} width={props.width} height={props.height} symbol={symbol} />;
+  return <MnaBoard focused={props.focused} width={props.width} height={props.height} />;
+}
+
+/**
+ * The market-wide pane: deals, and companies in difficulty, the other side of
+ * special situations. `DIST` opens it on the Distress tab. Only the active tab
+ * is mounted, so the pane always has one table to export and the hidden deal
+ * list keeps no quotes streaming.
+ */
+function MnaBoard({ focused, width, height }: { focused: boolean; width: number; height: number }) {
+  const opensOnDistress = usePaneInstance()?.params?.tab === "distress";
+  const [storedTab, setTab] = usePluginPaneState<string>("tab", opensOnDistress ? "distress" : "deals");
+  const tab: MnaTab = storedTab === "distress" ? "distress" : "deals";
+  const { strip, rows } = usePaneTabs({
+    tabs: MNA_TABS,
+    activeValue: tab,
+    onSelect: setTab,
+    focused,
+    compact: true,
+    variant: "bare",
+  });
+  // The terminal draws the strip; Distress puts its source picker on the same row.
+  if (tab === "distress") return <DistressBoard focused={focused} width={width} height={height} tabStrip={strip} />;
+  return (
+    <Box width={width} height={height} flexDirection="column">
+      {strip ? <Box height={1} flexShrink={0} paddingX={1} flexDirection="column">{strip}</Box> : null}
+      <MnaDealsView focused={focused} width={width} height={Math.max(1, height - rows)} symbol={null} />
+    </Box>
+  );
 }
 
 export function MnaTickerTab({ focused, width, height }: TickerResearchTabProps) {

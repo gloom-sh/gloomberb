@@ -15,6 +15,13 @@ import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverse
 import type { DebtMaturitiesPayload } from "./debt-maturities";
 import type { RevenueBreakdownPayload, RevenueBreakdownView } from "./revenue-breakdown";
 import type { MnaDealPayload, MnaDealsParams, MnaDealsPayload } from "./mna";
+import {
+  distressQuery,
+  type DistressDesignationsParams,
+  type DistressFilingsParams,
+  type GoingConcernParams,
+  type InsolvencyNoticesParams,
+} from "./distress";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
@@ -611,6 +618,24 @@ export class CloudDataApi {
 
   async getCloudMnaDeal(id: string, options?: { signal?: AbortSignal }): Promise<MnaDealPayload> {
     return this.request<MnaDealPayload>(`/cloud/mna/deals/${encodeURIComponent(id)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+  }
+
+  // Public records about companies in difficulty. The answers are unchecked
+  // JSON: the distress tab's parsers validate them before anything is drawn.
+  async getPublicDistressFilings(params: DistressFilingsParams, options?: { signal?: AbortSignal }): Promise<unknown> {
+    return this.request<unknown>(`/public/events${distressQuery(params)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+  }
+
+  async getPublicGoingConcern(params: GoingConcernParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
+    return this.request<unknown>(`/public/going-concern${distressQuery(params)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+  }
+
+  async getPublicDistressDesignations(params: DistressDesignationsParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
+    return this.request<unknown>(`/public/distress-designations${distressQuery(params)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+  }
+
+  async getPublicInsolvencyNotices(params: InsolvencyNoticesParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
+    return this.request<unknown>(`/public/insolvency-notices${distressQuery(params)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
   }
 
   async getCloudIpoCalendar(params: IpoCalendarParams = {}, options?: { signal?: AbortSignal }): Promise<IpoCalendarPayload> {
