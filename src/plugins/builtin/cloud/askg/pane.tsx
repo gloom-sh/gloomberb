@@ -81,6 +81,7 @@ import {
   pendingConfirmation,
   rowSymbol,
   toolResultTables,
+  toolRowHeadline,
   type ASKGConversationState,
   type ASKGResultTable,
   type ASKGToolRow,
@@ -165,6 +166,7 @@ export function ToolTimelineRow({
   const marker = hasRows ? (expanded ? "▾" : "▸") : "·";
   const tier = tierLabel(row);
   const status = describeToolStatus(row);
+  const { label, summary } = toolRowHeadline(row);
   const undoLabel = row.undo?.status === "running"
     ? "undoing…"
     : row.undo?.status === "done"
@@ -177,21 +179,21 @@ export function ToolTimelineRow({
   // The row lays its parts out with a one-cell gap between each: marker, name,
   // "  " + summary, spacer, tier, status, server mark. A summary that leaves no
   // room for them pushes the row onto two lines, over the note below it.
-  const parts = [marker, row.name, "  ", "", ...(tier ? [`${tier}  `] : []), status, ...(row.origin === "server" ? [" · Gloom"] : [])];
+  const parts = [marker, label, "  ", "", ...(tier ? [`${tier}  `] : []), status, ...(row.origin === "server" ? [" · Gloom"] : [])];
   const fixedWidth = parts.reduce((total, part) => total + part.length, 0) + parts.length;
   const summaryWidth = Math.max(6, width - fixedWidth);
 
   return (
     <Box ref={selected ? selectedRowRef : undefined} flexDirection="column">
       <ActionRow
-        label={row.name}
+        label={label}
         expanded={hasRows ? expanded : undefined}
         active={selected}
         width={width}
         onPress={() => { onSelect(); onToggle(); }}
       >
-        {row.argumentSummary ? (
-          <Text fg={colors.textDim}>{`  ${truncateWithEllipsis(row.argumentSummary, summaryWidth)}`}</Text>
+        {summary ? (
+          <Text fg={colors.textDim}>{`  ${truncateWithEllipsis(summary, summaryWidth)}`}</Text>
         ) : null}
         <Box flexGrow={1} />
         {tier ? <Text fg={row.writeTier === "ui-write" ? colors.textMuted : colors.warning}>{`${tier}  `}</Text> : null}

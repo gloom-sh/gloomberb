@@ -16,7 +16,9 @@ import {
   type ASKGErrorState,
 } from "./model";
 import {
+  ASKG_CLIENT_CAPABILITIES,
   ASKG_PROTOCOL_VERSION,
+  type ASKGCapabilities,
   type ASKGClientDescriptor,
   type ASKGSessionContext,
   type ASKGSessionStartResponse,
@@ -90,6 +92,16 @@ function undeliveredResult(payload: ToolResultPayload): ToolResultPayload {
     status: "error",
     note: "Could not send this result to Gloom, so it answered without it.",
   };
+}
+
+/**
+ * The features a turn on this session asks for: exactly the ones the session
+ * response accepted, read from the session the turn runs on, so a renegotiated
+ * session never inherits what an earlier one allowed. An older server sends
+ * none, and its turns go out as they always have.
+ */
+function turnCapabilities(session: ASKGSessionStartResponse): ASKGCapabilities | null {
+  return session.capabilities?.scripts === 1 ? { scripts: 1 } : null;
 }
 
 function errorState(error: unknown): ASKGErrorState {
@@ -167,6 +179,7 @@ export class ASKGSessionController {
         context: this.options.getContext?.() ?? {},
         tools: manifest.tools,
         manifestHash: manifest.manifestHash,
+        capabilities: { ...ASKG_CLIENT_CAPABILITIES },
       }, { signal });
       this.session = session;
       this.dispatch({
@@ -220,6 +233,7 @@ export class ASKGSessionController {
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
       const session = await this.ensureSession(abort.signal);
+      const capabilities = turnCapabilities(session);
       // A stalled stream must fail visibly rather than spin forever.
       const wallClockMs = session.limits.turnWallClockMs > 0
         ? session.limits.turnWallClockMs
@@ -247,6 +261,7 @@ export class ASKGSessionController {
         input: trimmed,
         ...(this.options.getContext ? { context: this.options.getContext() } : {}),
         ...(history && history.length > 0 ? { history } : {}),
+        ...(capabilities ? { capabilities } : {}),
       }, {
         signal: abort.signal,
         onEvent: (event) => this.handleEvent(event),

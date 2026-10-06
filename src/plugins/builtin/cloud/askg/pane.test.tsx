@@ -231,7 +231,7 @@ describe("ASKGPane failures", () => {
 });
 
 describe("ASKGPane tool rows", () => {
-  test("a row with long arguments stays on one line and its note sits below it", async () => {
+  test("a row stays on one line with its note below it, and a script says how it ended once", async () => {
     const row = (name: string, argumentSummary: string, rowCount: number, note: string): ASKGToolRow => ({
       toolCallId: name,
       name,
@@ -245,21 +245,35 @@ describe("ASKGPane tool rows", () => {
       result: { rows: [] },
       expanded: false,
     });
+    const script = (status: ASKGToolRow["status"], note: string): ASKGToolRow => ({
+      toolCallId: `script-${status}`,
+      name: "run_script",
+      argumentSummary: note,
+      writeTier: "read",
+      origin: "server",
+      status,
+      requiresConfirmation: false,
+      rowCount: 3,
+      note,
+      expanded: false,
+    });
     const rows = [
       row("pf", "broker:ibkr-main:U1234567 · limit=50", 50, "No market value for 1211; totals leave it out"),
       row("port", "broker:ibkr-main:U1234567 · equity-shift=-10 · rate-shift=100 · view=holdings · vol-shift=10", 94, "6 foreign listings skipped"),
+      script("ok", "3 calls, 1.2 s"),
+      script("timeout", "Script timed out after 2 calls, 20.0 s"),
     ];
     await act(async () => {
       await tui.render(
         <TestDialogProvider>
-          <Box flexDirection="column" width={70} height={6}>
+          <Box flexDirection="column" width={70} height={8}>
             {rows.map((entry) => (
               <ToolTimelineRow key={entry.toolCallId} row={entry} width={70} selected={false} expanded={false}
                 selectedRowRef={() => {}} onSelect={() => {}} onToggle={() => {}} onUndo={() => {}} />
             ))}
           </Box>
         </TestDialogProvider>,
-        { width: 70, height: 6 },
+        { width: 70, height: 8 },
       );
     });
     await flush();
@@ -269,6 +283,10 @@ describe("ASKGPane tool rows", () => {
     expect(lines[1]?.trim()).toBe("No market value for 1211; totals leave it out");
     expect(lines[2]).toMatch(/^▸ port .* 94 rows · partial\s*$/);
     expect(lines[3]?.trim()).toBe("6 foreign listings skipped");
+    // A script says how it went once: on its line when clean, below it when not.
+    expect(lines[4]).toMatch(/^Script +3 calls, 1\.2 s +done +· Gloom\s*$/);
+    expect(lines[5]).toMatch(/^Script +timed out +· Gloom\s*$/);
+    expect(lines[6]?.trim()).toBe("Script timed out after 2 calls, 20.0 s");
   });
 });
 

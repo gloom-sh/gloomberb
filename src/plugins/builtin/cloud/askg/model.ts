@@ -3,15 +3,16 @@ import type {
   ASKGConversationDetail,
   ASKGConversationTool,
 } from "../../../../api-client/askg";
-import type {
-  ASKGLimits,
-  ASKGSseEvent,
-  ASKGToolCallEvent,
-  JsonValue,
-  ToolManifestSource,
-  ToolResultPayload,
-  ToolResultStatus,
-  WriteTier,
+import {
+  SCRIPT_TOOL_NAME,
+  type ASKGLimits,
+  type ASKGSseEvent,
+  type ASKGToolCallEvent,
+  type JsonValue,
+  type ToolManifestSource,
+  type ToolResultPayload,
+  type ToolResultStatus,
+  type WriteTier,
 } from "./protocol";
 import { capToolNote } from "./notes";
 
@@ -215,6 +216,12 @@ function patchToolRow(
   return { ...state, turns };
 }
 
+function hasClientRow(state: ASKGConversationState, toolCallId: string): boolean {
+  return state.turns.some((turn) => turn.tools.some((row) => (
+    row.toolCallId === toolCallId && row.origin === "client"
+  )));
+}
+
 function appendToolRow(turn: ASKGTurn, row: ASKGToolRow): ASKGTurn {
   const existing = turn.tools.findIndex((entry) => entry.toolCallId === row.toolCallId);
   if (existing < 0) return { ...turn, tools: [...turn.tools, row] };
@@ -253,7 +260,9 @@ function applyEvent(
     case "tool-call":
       return patchTurn(next, event.turnId, (turn) => appendToolRow(turn, rowFromToolCall(event)));
     case "tool-executed": {
-      if (event.source === "server") {
+      // A call this client ran keeps its own row whatever the echo says it
+      // was: replacing it would drop its write tier, result and undo.
+      if (event.source === "server" && !hasClientRow(next, event.toolCallId)) {
         return patchTurn(next, event.turnId, (turn) => appendToolRow(turn, {
           toolCallId: event.toolCallId,
           name: event.name,
@@ -716,8 +725,32 @@ export function describeASKGError(error: ASKGErrorState): string {
     : `${title}.${retry}`;
 }
 
+/**
+ * The server running a script of tool calls in one step. Each call it made
+ * has its own row above it, so this row only reports how the script ended.
+ */
+function isScriptRow(row: Pick<ASKGToolRow, "name" | "origin">): boolean {
+  return row.origin === "server" && row.name === SCRIPT_TOOL_NAME;
+}
+
+/**
+ * The label and one-line summary a timeline row leads with. A script has no
+ * arguments worth showing: a clean run puts its note ("3 calls, 1.2 s") on
+ * the line, and any other outcome leaves the note to the line below, which
+ * wraps, so it is said once and in full.
+ */
+export function toolRowHeadline(row: ASKGToolRow): { label: string; summary: string } {
+  if (!isScriptRow(row)) return { label: row.name, summary: row.argumentSummary };
+  return { label: "Script", summary: row.status === "ok" ? row.note ?? "" : "" };
+}
+
 /** Wording for the tool row status column. */
 export function describeToolStatus(row: ASKGToolRow): string {
+  // A script counts calls, not rows, and its note already says how many.
+  if (isScriptRow(row)) {
+    if (row.status === "ok") return "done";
+    if (row.status === "partial") return "partial";
+  }
   switch (row.status) {
     case "pending":
       return "queued";

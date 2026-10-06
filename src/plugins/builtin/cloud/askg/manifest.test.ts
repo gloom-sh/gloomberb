@@ -172,7 +172,7 @@ describe("ASKG client manifest", () => {
     expect(await hashASKGToolManifests(changed)).not.toBe(await hashASKGToolManifests(tools));
   });
 
-  test("skips illegal and ambiguous names instead of rewriting them", () => {
+  test("skips illegal, reserved and ambiguous names instead of rewriting them", () => {
     const catalog = registry([
       // Short and digit leading tokens are legal: the terminal's own shortcuts
       // include N, SI and 13F, and a tool the model cannot name is a tool the
@@ -180,6 +180,8 @@ describe("ASKG client manifest", () => {
       template("short", "pane-short", "N", { kind: "none" }),
       template("numeric", "pane-numeric", "13F", { kind: "none" }),
       template("bad", "pane-bad", "BAD/TOKEN", { kind: "none" }),
+      // The platform's own script tool; advertising it gets the client refused.
+      template("script", "pane-script", "RUN_SCRIPT", { kind: "none" }),
       template("first", "pane-first", "VAL", { kind: "none" }),
       template("second", "pane-second", "val", { kind: "none" }),
     ]);
@@ -187,7 +189,7 @@ describe("ASKG client manifest", () => {
 
     expect(tools.filter(({ source }) => source === "headless").map(({ name }) => name))
       .toEqual(["13f", "n"]);
-    expect(skipped.map(({ token }) => token)).toEqual(["BAD/TOKEN", "VAL", "val"]);
+    expect(skipped.map(({ token }) => token)).toEqual(["BAD/TOKEN", "RUN_SCRIPT", "VAL", "val"]);
     expect(skipped.filter(({ token }) => token.toLowerCase() === "val").every(({ reason }) => (
       reason.includes("Duplicate tool name")
     ))).toBe(true);

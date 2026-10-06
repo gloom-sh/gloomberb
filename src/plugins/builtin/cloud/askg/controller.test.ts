@@ -172,6 +172,60 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
+/**
+ * A controller on a server that answers each new session with the next
+ * capabilities in `accepted`, and ends every turn straight away.
+ */
+function negotiationHarness(accepted: unknown[]) {
+  const sessionRequests: ASKGSessionStartRequest[] = [];
+  const turnRequests: ASKGTurnRequest[] = [];
+  let clock = Date.parse("2026-10-01T12:00:00.000Z");
+  let sessions = 0;
+  let turns = 0;
+  const transport: ASKGTransport = {
+    isStreamingSupported: () => true,
+    async startSession(request) {
+      sessionRequests.push(request);
+      const capabilities = accepted[sessions];
+      sessions += 1;
+      return {
+        ...sessionResponse(),
+        sessionId: `s${sessions}`,
+        expiresAt: new Date(clock + 60_000).toISOString(),
+        ...(capabilities === undefined
+          ? {}
+          : { capabilities: capabilities as ASKGSessionStartResponse["capabilities"] }),
+      };
+    },
+    async streamTurn(_sessionId, request, streamOptions) {
+      turnRequests.push(request);
+      streamOptions.onEvent({ seq: 1, type: "done", turnId: request.turnId, reason: "complete" });
+      return "complete";
+    },
+    async postToolResult() {
+      return "accepted";
+    },
+    async cancelTurn() {},
+    ...noConversations,
+  };
+  const controller = new ASKGSessionController({
+    transport,
+    loadManifest: async () => MANIFEST,
+    getExecutor: () => null,
+    client: { kind: "tui", version: "1" },
+    now: () => clock,
+    createId: () => `turn-${(turns += 1)}`,
+  });
+  return {
+    controller,
+    sessionRequests,
+    turnRequests,
+    advance(ms: number) {
+      clock += ms;
+    },
+  };
+}
+
 /** The conversation surface a turn-focused double never exercises. */
 const noConversations = {
   async listConversations() {
@@ -222,6 +276,39 @@ describe("ASKGSessionController", () => {
     expect(harness.turnRequests[0]).toMatchObject({ turnId: "turn-1", input: "what is open" });
     harness.emit({ seq: 1, type: "done", turnId: "turn-1", reason: "complete" });
     await harness.streamed;
+  });
+
+  test("offers scripts at session start and asks for them on every turn the session accepted them for", async () => {
+    const harness = negotiationHarness([{ scripts: 1 }, undefined]);
+    await harness.controller.ask("first");
+    await harness.controller.ask("second");
+
+    expect(harness.sessionRequests).toHaveLength(1);
+    expect(harness.sessionRequests[0]?.capabilities).toEqual({ scripts: 1 });
+    // Each turn decides alone, so each one repeats what the session accepted.
+    expect(harness.turnRequests.map((request) => request.capabilities)).toEqual([
+      { scripts: 1 },
+      { scripts: 1 },
+    ]);
+
+    // The session expires, and the server that renews it no longer runs them.
+    harness.advance(120_000);
+    await harness.controller.ask("third");
+
+    expect(harness.sessionRequests).toHaveLength(2);
+    expect(harness.sessionRequests[1]?.capabilities).toEqual({ scripts: 1 });
+    expect(harness.turnRequests[2]).not.toHaveProperty("capabilities");
+  });
+
+  test("a server that does not answer with scripts gets the turns it always got", async () => {
+    // Absent from an older server; anything but scripts: 1 is not an acceptance.
+    for (const accepted of [undefined, {}, { scripts: 2 }, { scripts: true }]) {
+      const harness = negotiationHarness([accepted]);
+      await harness.controller.ask("what is open");
+
+      expect(harness.turnRequests[0]).not.toHaveProperty("capabilities");
+      expect(harness.controller.getState().turns[0]?.status).toBe("complete");
+    }
   });
 
   test("holds a user-data tool until it is approved, and declines without running it", async () => {

@@ -19,6 +19,26 @@ export const MAX_TOOL_RESULT_BYTES = 262_144;
 /** Source form for valid tool names advertised to ASKG. */
 export const TOOL_NAME_PATTERN = "^[a-z0-9][a-z0-9_.]{0,47}$";
 
+/**
+ * The server tool that runs a script of tool calls in one step. The platform
+ * owns the name: a client that advertises a tool called this is refused.
+ */
+export const SCRIPT_TOOL_NAME = "run_script";
+
+/**
+ * Optional protocol features. A client offers them at session start, the
+ * server answers with the ones it will use, and the client repeats the
+ * accepted set on every turn of that session. A missing key, or a server that
+ * sends nothing, means the feature is off; unknown keys are ignored.
+ */
+export interface ASKGCapabilities {
+  /** 1: the turn may answer by running scripts of tool calls. */
+  scripts?: 1;
+}
+
+/** What this build offers at session start. */
+export const ASKG_CLIENT_CAPABILITIES: ASKGCapabilities = { scripts: 1 };
+
 /** JSON value accepted on the ASKG wire. */
 export type JsonValue =
   | string
@@ -115,6 +135,7 @@ export interface ASKGSessionStartRequest {
   /** A client may only advertise tools it executes itself. */
   tools: ClientToolManifest[];
   manifestHash: string;
+  capabilities?: ASKGCapabilities;
 }
 
 /** Per-user and per-turn limits returned by the platform. */
@@ -146,6 +167,8 @@ export interface ASKGSessionStartResponse {
   model: string;
   promptVersion: string;
   expiresAt: string;
+  /** Absent from a server that predates them or has them switched off. */
+  capabilities?: ASKGCapabilities;
 }
 
 /** Request body for one turn on an open session. */
@@ -163,6 +186,8 @@ export interface ASKGTurnRequest {
    * conversation cannot disagree about what was said.
    */
   history?: Array<{ role: "user" | "assistant"; text: string }>;
+  /** The features the session accepted, repeated because each turn decides alone. */
+  capabilities?: ASKGCapabilities;
 }
 
 /** Shared fields carried by every turn stream event. */

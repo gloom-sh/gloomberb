@@ -13,6 +13,7 @@ import type {
   PaneTemplateDef,
 } from "../../../../types/plugin";
 import {
+  SCRIPT_TOOL_NAME,
   TOOL_NAME_PATTERN,
   type ClientToolManifest,
   type ClientToolManifestSource,
@@ -235,6 +236,15 @@ function filterCandidates(candidates: ManifestCandidate[]): {
         source: candidate.manifest.source,
         token: candidate.token,
         reason: `Lowercased token "${candidate.manifest.name}" does not match ${TOOL_NAME_PATTERN}.`,
+      });
+      continue;
+    }
+    // The platform refuses a client that advertises its own script tool.
+    if (candidate.manifest.name === SCRIPT_TOOL_NAME) {
+      skipped.push({
+        source: candidate.manifest.source,
+        token: candidate.token,
+        reason: `Tool name "${SCRIPT_TOOL_NAME}" is reserved for Gloom.`,
       });
       continue;
     }
