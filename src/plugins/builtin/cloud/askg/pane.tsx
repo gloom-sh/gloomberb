@@ -141,7 +141,7 @@ function canUndo(row: ASKGToolRow): boolean {
   return !!row.undoToken && (!row.undo || row.undo.status === "available");
 }
 
-function ToolTimelineRow({
+export function ToolTimelineRow({
   row,
   width,
   selected,
@@ -174,11 +174,12 @@ function ToolTimelineRow({
         : row.undoToken
           ? "undo"
           : null;
-  const trailing = ` ${status}${row.origin === "server" ? " · Gloom" : ""}`;
-  const summaryWidth = Math.max(
-    6,
-    width - marker.length - row.name.length - trailing.length - (tier ? tier.length + 3 : 0) - 4,
-  );
+  // The row lays its parts out with a one-cell gap between each: marker, name,
+  // "  " + summary, spacer, tier, status, server mark. A summary that leaves no
+  // room for them pushes the row onto two lines, over the note below it.
+  const parts = [marker, row.name, "  ", "", ...(tier ? [`${tier}  `] : []), status, ...(row.origin === "server" ? [" · Gloom"] : [])];
+  const fixedWidth = parts.reduce((total, part) => total + part.length, 0) + parts.length;
+  const summaryWidth = Math.max(6, width - fixedWidth);
 
   return (
     <Box ref={selected ? selectedRowRef : undefined} flexDirection="column">
