@@ -266,6 +266,9 @@ export function normalizePaneId(paneId: string): string {
   if (paneId === "comparison-chart" || paneId === "ticker-chart" || paneId === "fundamental-graph") {
     return CHART_COMPOSER_PANE_ID;
   }
+  // Thematic baskets became the Themes tab of Sector Performance; the saved
+  // theme param and pane state open that tab where the pane left off.
+  if (paneId === "themes") return "sectors";
   return paneId;
 }
 

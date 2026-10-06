@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import type { ThemeMember, ThemePeriod, ThemeSummary } from "../../../api-client/themes";
 import { DataTableStackView, DataTableView, PaneStatusBody, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -6,7 +6,6 @@ import { useAsyncResource, useAutoRefresh, usePluginPaneState, usePluginTickerAc
 import { usePaneInstance } from "../../../state/app/context";
 import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
-import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { cachedMembers, cachedThemes, loadMembers, loadThemes } from "./client";
@@ -56,11 +55,29 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
   </PaneStatusBody>;
 }
 
-export function ThemesPane({ width, height, focused }: PaneProps) {
+/**
+ * The open theme: the `THEM nuclear` argument until the user moves, then what
+ * they opened. Null means "use fallback" in pane persistence; an empty string
+ * explicitly returns to the list.
+ */
+export function useOpenTheme() {
+  return usePluginPaneState("openTheme", usePaneInstance()?.params?.theme ?? "");
+}
+
+interface ThemesBoardProps {
+  width: number;
+  height: number;
+  focused: boolean;
+  /** The pane's tab strip, kept above the list and an open theme alike. */
+  tabStrip?: ReactNode;
+  tabRows?: number;
+}
+
+/** The Themes tab of the Sector Performance pane (`THEM`). */
+export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: ThemesBoardProps) {
   const colors = useThemeColors();
-  const initialTheme = usePaneInstance()?.params?.theme ?? "";
-  // Null means "use fallback" in pane persistence; an empty string explicitly returns to the list.
-  const [opened, setOpened] = usePluginPaneState("openTheme", initialTheme);
+  const [opened, setOpened] = useOpenTheme();
+  const bodyHeight = Math.max(1, height - tabRows);
   const [selected, setSelected] = usePluginPaneState<string | null>("theme", null);
   const [sort, setSort] = usePluginPaneState<ThemeSort>("sort", DEFAULT_SORT);
   const resource = useAsyncResource(loadThemes, { initialData: cachedThemes });
@@ -91,12 +108,13 @@ export function ThemesPane({ width, height, focused }: PaneProps) {
       </Box> : undefined };
   }, [colors, data]);
   return <Box width={width} height={height} flexDirection="column">
+    {tabStrip}
     <PaneStatusBody subject="thematic baskets" loading={!data && resource.loading} error={!data ? resource.error : null}>
-      {data ? <DataTableStackView<ThemeSummary> columns={columns} items={rows} rootWidth={width} rootHeight={height} focused={focused}
+      {data ? <DataTableStackView<ThemeSummary> columns={columns} items={rows} rootWidth={width} rootHeight={bodyHeight} focused={focused}
         selection={{ kind: "id", selectedId: selected, getId: (row) => row.id, onChange: setSelected }}
         getItemKey={(row) => row.id} onActivate={(row) => setOpened(row.id)}
         detailOpen={!!opened} onBack={() => setOpened("")} detailTitle={theme?.name ?? opened}
-        detailContent={theme ? <Members key={theme.id} id={theme.id} width={width} height={Math.max(1, height - 1)} focused={focused} />
+        detailContent={theme ? <Members key={theme.id} id={theme.id} width={width} height={Math.max(1, bodyHeight - 1)} focused={focused} />
           : <PaneStatusBody subject="theme" error="No matching theme. Return to the list to choose a basket." />}
         renderCell={renderCell} sortColumnId={sort.columnId} sortDirection={sort.direction}
         onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId, { firstDirection: columnId === "name" ? "asc" : "desc" }))}

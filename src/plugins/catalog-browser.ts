@@ -79,7 +79,6 @@ import { portfolioListModule } from "./builtin/portfolio-list";
 import { researchModule } from "./builtin/research";
 import { scannerModule } from "./builtin/scanner";
 import { sectorsModule } from "./builtin/sectors";
-import { themesModule } from "./builtin/themes";
 import { tickerDetailModule } from "./builtin/ticker-detail";
 import { treasuryAuctionsModule } from "./builtin/treasury-auctions";
 import { volatilityModule } from "./builtin/volatility";
@@ -170,7 +169,6 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
     worldVenueMapModule,
     scannerModule,
     sectorsModule,
-    themesModule,
     fxMatrixModule,
     futuresModule,
     futuresCurveModule,
