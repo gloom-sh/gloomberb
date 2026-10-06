@@ -9,6 +9,8 @@ import {
   type PluginManager,
 } from "../../plugins/builtin/plugin-marketplace/store";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
+import { WebDialogHostProvider } from "../../renderers/dom/dialog-host";
+import { WebInputHostProvider } from "../../renderers/dom/input-host";
 import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
@@ -64,7 +66,9 @@ function Placeholder(props: { paneType: string; origin?: LayoutOrigin }) {
   const Component = missingPanePlaceholderDef(props.paneType).component;
   return (
     <AppContext value={createStaticAppStore(createInitialState(config))}>
-      <Component {...({ paneType: props.paneType, width: 60 } as PaneProps)} />
+      <WebInputHostProvider><WebDialogHostProvider>
+        <Component {...({ paneType: props.paneType, width: 60 } as PaneProps)} />
+      </WebDialogHostProvider></WebInputHostProvider>
     </AppContext>
   );
 }
@@ -72,24 +76,56 @@ function Placeholder(props: { paneType: string; origin?: LayoutOrigin }) {
 const teamOrigin: LayoutOrigin = { kind: "team", teamId: "t1", layoutId: "layout-missing-pane", revision: 1, contentHash: "h", syncedAt: "2026-10-06T00:00:00.000Z" };
 
 describe("missing pane placeholder", () => {
-  test.each(["desktop", "tui"] as const)("%s installs through the registered manager and activates the plugin in the session", async (target) => {
+  function desktopSetup(target: "desktop" | "tui") {
     setCurrentPluginTarget(target);
     rememberLayoutRequirements("layout-missing-pane", [requirement]);
     const install = mock(async () => ({ ok: true as const, directory: "gloom-heatmap" }));
     const load = mock(async () => null);
     setPluginManager({ install, load } as unknown as PluginManager);
     setMarketplaceHost({ activate: mock(async () => {}) } as unknown as MarketplaceHost);
+    return { install, load };
+  }
+
+  const findButton = (root: ParentNode, text: string) => (
+    [...root.querySelectorAll("button")].find((node) => node.textContent?.includes(text))
+  );
+  const click = (node: Element | undefined) => act(async () => {
+    node!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+
+  test.each(["desktop", "tui"] as const)("%s asks first, then installs through the manager and activates the plugin in the session", async (target) => {
+    const { install, load } = desktopSetup(target);
 
     const container = await render(<Placeholder paneType="gloom-heatmap:world" origin={teamOrigin} />);
     expect(container.textContent).toContain("A teammate's pane from gloom-heatmap.");
-    const button = [...container.querySelectorAll("button")].find((node) => node.textContent?.includes("Install gloom-heatmap"));
-    expect(button).toBeDefined();
+    await click(findButton(container, "Install gloom-heatmap"));
 
-    await act(async () => { button!.dispatchEvent(new window.MouseEvent("click", { bubbles: true })); });
+    // A layout names the repo, so nothing runs until the person agrees.
+    expect(install).not.toHaveBeenCalled();
+    const dialog = document.querySelector(".gloom-dialog")!;
+    expect(dialog.textContent).toContain("Install gloom-heatmap?");
+    expect(dialog.textContent).toContain("github.com/gloom-sh/gloom-heatmap");
+    expect(dialog.textContent).toContain("Community plugin, not reviewed.");
+
+    await click(findButton(dialog, "Install"));
     expect(install).toHaveBeenCalledWith("gloom-sh/gloom-heatmap");
     expect(load).toHaveBeenCalledWith("gloom-heatmap");
     // The plugin could not be loaded: the pane says so instead of staying silent.
     expect(container.textContent).toContain("Installed but did not load: The plugin has no entry file.");
+  });
+
+  test("cancelling the confirmation leaves the placeholder alone and installs nothing", async () => {
+    const { install, load } = desktopSetup("desktop");
+
+    const container = await render(<Placeholder paneType="gloom-heatmap:world" origin={teamOrigin} />);
+    await click(findButton(container, "Install gloom-heatmap"));
+    await click(findButton(document.querySelector(".gloom-dialog")!, "Cancel"));
+
+    expect(document.querySelector(".gloom-dialog")).toBeNull();
+    expect(install).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
+    expect(findButton(container, "Install gloom-heatmap")?.textContent).toContain("Install gloom-heatmap");
+    expect(container.textContent).toContain("Publishing from here keeps this pane for the rest of the team.");
   });
 
   test("the web terminal has no manager: no button, and it says plugins are unavailable", async () => {

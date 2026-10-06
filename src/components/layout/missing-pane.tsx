@@ -1,11 +1,14 @@
 import { useCallback, useState } from "react";
 import { Button } from "../ui/button";
+import { confirmDialog } from "../ui/confirm-dialog";
 import { EmptyState } from "../ui/status";
 import { runsExternalPlugins } from "../../plugins/current-target";
 import { activateInstalledPlugin } from "../../plugins/builtin/plugin-marketplace/activation";
+import { installConsent } from "../../plugins/builtin/plugin-marketplace/model";
 import { getMarketplaceHost, getPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
 import type { PaneDef, PaneProps } from "../../types/plugin";
 import { Box } from "../../ui";
+import { useOptionalDialog } from "../../ui/dialog";
 import { useAppSelector } from "../../state/app/context";
 import type { LayoutRequirement } from "../../layout-marketplace/cloud";
 
@@ -44,7 +47,7 @@ export function describeMissingPane({ paneType, requirement, fromTeam, canInstal
   requirement: LayoutRequirement | null;
   /** The pane arrived with a published team layout. */
   fromTeam: boolean;
-  /** This renderer has a plugin manager registered. */
+  /** This renderer has a plugin manager registered and a dialog to confirm the install in. */
   canInstall: boolean;
   /** This renderer loads plugins that are not part of its build. The web terminal does not. */
   runsPlugins: boolean;
@@ -72,22 +75,38 @@ function MissingPanePlaceholder({ paneType, width }: PaneProps) {
   // terminal itself, and the desktop view through its Bun process. The web
   // terminal leaves it unset.
   const installer = getPluginManager();
+  // An install runs the plugin with full permissions, so it is never started
+  // without asking; where no dialog can be shown it is not offered at all.
+  const dialog = useOptionalDialog();
   const { pluginLabel, title, message, installable } = describeMissingPane({
     paneType,
     requirement,
     fromTeam: !!requirement || !!layouts[activeIndex]?.origin,
-    canInstall: !!installer,
+    canInstall: !!installer && !!dialog,
     runsPlugins: runsExternalPlugins(),
   });
   const [installing, setInstalling] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
 
+  // The terminal's default dialog is 60 columns, 54 inside its border and
+  // padding; a wider body runs over the border.
+  const confirmWidth = Math.min(54, Math.max(44, width - 8));
   const repo = requirement?.repo;
-  const install = useCallback(() => {
-    if (!installer || !repo || installing) return;
+  const install = useCallback(async () => {
+    if (!installer || !dialog || !repo || installing) return;
+    // The repo comes from a team layout, not from a catalog Gloom reviewed.
+    const consent = installConsent({ name: pluginLabel, tier: "community", hosts: [], repo }, undefined);
+    const confirmed = await confirmDialog(dialog, {
+      title: consent.title,
+      body: consent.body,
+      confirmLabel: "Install",
+      confirmVariant: "primary",
+      width: confirmWidth,
+    });
+    if (!confirmed) return;
     setInstalling(true);
     setNotice(null);
-    void (async () => {
+    try {
       const result = await installer.install(repo);
       if (!result.ok) {
         setNotice({ text: result.error, error: true });
@@ -99,8 +118,10 @@ function MissingPanePlaceholder({ paneType, width }: PaneProps) {
       const activated = host ? await activateInstalledPlugin(result.directory, host, installer) : null;
       if (activated && !activated.ok) setNotice({ text: `Installed but did not load: ${activated.error}`, error: true });
       else if (!activated || activated.restart) setNotice({ text: "Installed. Restart to finish.", error: false });
-    })().finally(() => setInstalling(false));
-  }, [installer, installing, repo]);
+    } finally {
+      setInstalling(false);
+    }
+  }, [confirmWidth, dialog, installer, installing, pluginLabel, repo]);
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1} width={width}>
@@ -114,7 +135,7 @@ function MissingPanePlaceholder({ paneType, width }: PaneProps) {
             label={installing ? "Installing..." : `Install ${pluginLabel}`}
             variant="primary"
             compact
-            onPress={install}
+            onPress={() => { void install(); }}
             disabled={installing}
           />
         ) : undefined}
