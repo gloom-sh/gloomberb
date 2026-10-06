@@ -86,12 +86,25 @@ export interface ASKGClientDescriptor {
   version: string;
 }
 
-/** Terminal context supplied to the model at session start. */
+/**
+ * The user's portfolios, watchlists and broker accounts by id and display
+ * name, so Gloom passes real ids to tools instead of guessing them. Never
+ * positions, quantities or balances. Each list is optional and bounded.
+ */
+export interface ASKGUserData {
+  portfolios?: Array<{ id: string; name: string; kind: "manual" | "broker" }>;
+  watchlists?: Array<{ id: string; name: string; count?: number }>;
+  brokerAccounts?: Array<{ id: string; name: string; portfolioId?: string }>;
+}
+
+/** Terminal context supplied to the model at session start and with each turn. */
 export interface ASKGSessionContext {
   query?: string;
   symbol?: string;
   paneId?: string;
   layout?: JsonValue;
+  /** Optional: a server that does not know it ignores it. */
+  userData?: ASKGUserData;
 }
 
 /** Request used to negotiate tools and limits for an ASKG session. */

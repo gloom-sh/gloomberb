@@ -22,7 +22,8 @@ test("local evidence reports keep account identity and work without market netwo
   expect(rows.find(row => row.id === "twr")!.value).toBe(25);
   expect(rows.find(row => row.id === "mwr")!.value).toBeCloseTo(25, 8);
   expect(result.sections.find(row => row.title === "performance")!.rows![0]).toMatchObject({ value: expect.stringMatching(/%$/) });
-  await expect(portfolioRiskHeadless.load({ ...args, rawArgument: "someone-else" }, context)).rejects.toThrow("Unknown local portfolio");
+  // The error names the ids that exist, so a guessed id ("default") is fixed in one more call.
+  await expect(portfolioRiskHeadless.load({ ...args, rawArgument: "default" }, context)).rejects.toThrow("Unknown local portfolio: default. Portfolio IDs: local.");
   await expect(portfolioRiskHeadless.load({ ...args, options: { ...args.options, evidence: JSON.stringify({ ...evidence, currency: "EUR" }) } }, context)).rejects.toThrow("different portfolio or currency");
 });
 

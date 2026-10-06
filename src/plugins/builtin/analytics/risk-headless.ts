@@ -104,8 +104,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     kind: "free-text",
     optional: true,
     placeholder: "portfolio-id",
-    description:
-      "Local portfolio ID. Defaults to the first configured portfolio.",
+    // Not "Defaults to the first portfolio": Gloom read that as an id and sent "default".
+    description: "Portfolio ID exactly as configured. Leave it out to use the first portfolio.",
   },
   discovery: {
     aliases: ["PORT", "MARS"],
@@ -169,7 +169,10 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     if (!id || !ctx.resolvePortfolio)
       throw new Error("A local portfolio is required");
     const local = await ctx.resolvePortfolio(id);
-    if (!local) throw new Error(`Unknown local portfolio: ${id}`);
+    if (!local) {
+      const ids = ctx.config.portfolios.map((portfolio) => portfolio.id);
+      throw new Error(`Unknown local portfolio: ${id}.${ids.length ? ` Portfolio IDs: ${ids.slice(0, 12).join(", ")}${ids.length > 12 ? ` and ${ids.length - 12} more` : ""}.` : ""}`);
+    }
     const tickers = portfolioRiskTickers(local.tickers, id);
     const evidence = parsePortfolioRiskEvidence(
       String(args.options.evidence ?? ctx.settings?.riskEvidence ?? ""),

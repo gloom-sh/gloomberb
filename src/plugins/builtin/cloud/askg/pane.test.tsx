@@ -21,6 +21,8 @@ const PANE_WIDTH = 64;
 const WIDE_PANE_WIDTH = 96;
 
 const requests: string[] = [];
+const sessionBodies: Array<Record<string, unknown>> = [];
+let configPortfolios: Array<{ id: string; name: string; currency: string; brokerInstanceId?: string }> = [];
 let sessionStatus = 200;
 let storedConversations: Array<Record<string, unknown>> = [];
 let storedTranscripts: Record<string, Record<string, unknown>> = {};
@@ -32,6 +34,7 @@ function Harness({ paneWidth = PANE_WIDTH }: { paneWidth?: number }) {
       paneId: "askg",
     }));
     initial.focusedPaneId = PANE_ID;
+    initial.config = { ...initial.config, portfolios: configPortfolios };
     return initial;
   });
   return (
@@ -85,6 +88,8 @@ function transcript(id: string, question: string, answer: string) {
 
 beforeEach(() => {
   requests.length = 0;
+  sessionBodies.length = 0;
+  configPortfolios = [];
   sessionStatus = 200;
   storedConversations = [];
   storedTranscripts = {};
@@ -95,6 +100,7 @@ beforeEach(() => {
     const parsed = new URL(url);
     requests.push(`${init?.method ?? "GET"} ${parsed.pathname}`);
     if (parsed.pathname === "/askg/session") {
+      if (typeof init?.body === "string") sessionBodies.push(JSON.parse(init.body));
       if (sessionStatus !== 200) {
         return new Response(JSON.stringify({ message: "Ask Gloom is unavailable." }), {
           status: sessionStatus,
@@ -220,6 +226,23 @@ describe("ASKGPane failures", () => {
     // The failed attempt is replaced, not stacked above the retry.
     const retried = tui.frame();
     expect(retried.split("what does a 5y bond return").length - 1).toBe(1);
+  });
+});
+
+describe("ASKGPane context", () => {
+  test("a question carries the user's portfolio ids, so Gloom does not guess them", async () => {
+    sessionStatus = 503;
+    configPortfolios = [
+      { id: "main", name: "Main Portfolio", currency: "USD" },
+      { id: "broker:ibkr-main:U1234567", name: "U1234567", currency: "USD", brokerInstanceId: "ibkr-main" },
+    ];
+    await ask("what do i have open");
+
+    const context = sessionBodies[0]?.context as { userData?: { portfolios?: unknown[] } } | undefined;
+    expect(context?.userData?.portfolios).toEqual([
+      { id: "main", name: "Main Portfolio", kind: "manual" },
+      { id: "broker:ibkr-main:U1234567", name: "U1234567", kind: "broker" },
+    ]);
   });
 });
 

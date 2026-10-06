@@ -40,6 +40,7 @@ import { MarkdownText } from "../../../../components/markdown-text";
 import { useShortcut } from "../../../../react/input";
 import {
   useAppDispatch,
+  useAppGetState,
   useAppSelector,
   usePaneAppConfig,
 } from "../../../../state/app/context";
@@ -68,6 +69,7 @@ import {
 import { confirmDialog } from "../../../../components/ui/confirm-dialog";
 import { useDialog, type PromptContext } from "../../../../ui/dialog";
 import { subscribeASKGQuestions } from "./pending-question";
+import { buildASKGUserData } from "./user-data";
 import { ASKGConversationSidebar } from "./sidebar";
 import {
   activeTurn,
@@ -506,6 +508,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   remoteHandlerRef.current = remoteHandler;
   const contextRef = useRef({ symbol: activeSymbol, paneId });
   contextRef.current = { symbol: activeSymbol, paneId };
+  // Read when a question is sent, so portfolio and ticker changes do not re-render the pane.
+  const getAppState = useAppGetState();
+  const getAppStateRef = useRef(getAppState);
+  getAppStateRef.current = getAppState;
 
   const controller = useMemo(() => new ASKGSessionController({
     transport: apiClient.askg,
@@ -524,10 +530,19 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       });
     },
     client: { kind: clientKind(), version: CLIENT_VERSION },
-    getContext: () => ({
-      ...(contextRef.current.symbol ? { symbol: contextRef.current.symbol } : {}),
-      paneId: contextRef.current.paneId,
-    }),
+    getContext: () => {
+      const state = getAppStateRef.current();
+      const userData = buildASKGUserData({
+        config: state.config,
+        brokerAccounts: state.brokerAccounts,
+        tickers: state.tickers.values(),
+      });
+      return {
+        ...(contextRef.current.symbol ? { symbol: contextRef.current.symbol } : {}),
+        paneId: contextRef.current.paneId,
+        ...(userData ? { userData } : {}),
+      };
+    },
   }), []);
 
   useEffect(() => () => controller.dispose(), [controller]);
