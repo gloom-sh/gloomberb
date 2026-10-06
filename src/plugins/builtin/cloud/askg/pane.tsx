@@ -1130,6 +1130,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         width={nativePaneChrome ? undefined : bodyWidth}
         height={nativePaneChrome ? "100%" : height}
         flexGrow={nativePaneChrome ? 1 : undefined}
+        // Without shrink the column takes the width of its longest line, so a
+        // tool note ran past the pane's edge on desktop instead of wrapping.
+        flexShrink={nativePaneChrome ? 1 : undefined}
         minWidth={0}
         overflow="hidden"
         onMouseDown={() => setSidebarFocused(false)}
