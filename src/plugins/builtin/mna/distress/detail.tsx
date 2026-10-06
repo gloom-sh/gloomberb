@@ -195,7 +195,7 @@ export function DesignationDetail({ row, width, attributions }: { row: DistressD
       <Field label="Status" value={designationKindLabel(row.kind)} width={bodyWidth} bright />
       <Field
         label={DATE_BASIS_LABELS[row.date_basis]}
-        value={official ? designationDate(row) : `${designationDate(row)}, the exchange does not publish the designation date`}
+        value={official ? designationDate(row) : `${designationDate(row)}, the exchange's list gives no designation date`}
         width={bodyWidth}
       />
       <Field label="Exchange" value={exchangeLabel(row.exchange)} width={bodyWidth} />
