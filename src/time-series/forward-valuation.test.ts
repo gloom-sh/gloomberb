@@ -72,13 +72,13 @@ describe("forward P/E history", () => {
   test("daily observations continue the series after the last full report window and never repeat earlier dates", () => {
     const data = financials({ epsEstimates: estimates({ snapshots: [
       // Same day as a report-date point: the report-date point stands.
-      { observedOn: "2025-04-30", period: "current year", periodEnd: "2025-12-31", epsAverage: 4.0, source: "yahoo" },
-      { observedOn: "2025-04-30", period: "next year", periodEnd: "2026-12-31", epsAverage: 5.0, source: "yahoo" },
+      { observedOn: "2025-04-30", period: "current year", periodEnd: "2025-12-31", epsAverage: 4.0, source: "gloom" },
+      { observedOn: "2025-04-30", period: "next year", periodEnd: "2026-12-31", epsAverage: 5.0, source: "gloom" },
       // Two thirds of 2026 ahead on 2026-05-01 with a Dec year end: 6 * 0.667 + 8 * 0.333.
-      { observedOn: "2026-08-01", period: "current year", periodEnd: "2026-12-31", epsAverage: 6.0, source: "yahoo-eps-trend" },
-      { observedOn: "2026-08-01", period: "next year", periodEnd: "2027-12-31", epsAverage: 8.0, source: "yahoo-eps-trend" },
+      { observedOn: "2026-08-01", period: "current year", periodEnd: "2026-12-31", epsAverage: 6.0, source: "gloom-eps-trend" },
+      { observedOn: "2026-08-01", period: "next year", periodEnd: "2027-12-31", epsAverage: 8.0, source: "gloom-eps-trend" },
       // Only a next-year value: used on its own.
-      { observedOn: "2026-09-01", period: "next year", periodEnd: "2027-12-31", epsAverage: 8.0, source: "yahoo" },
+      { observedOn: "2026-09-01", period: "next year", periodEnd: "2027-12-31", epsAverage: 8.0, source: "gloom" },
     ] }) });
     const points = extractFundamentalSeries(data, source("forwardPE"));
     expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.value])).toEqual([

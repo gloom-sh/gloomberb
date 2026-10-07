@@ -1,10 +1,10 @@
+import { useCallback } from "react";
 import { Box } from "../../../../../ui";
-import type { NewsQuery } from "../../../../../news/types";
+import type { NewsArticle, NewsQuery } from "../../../../../news/types";
 import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../../../news/hooks";
-import type { MarketNewsItem } from "../../../../../types/news-source";
 import type { PaneProps } from "../../../../../types/plugin";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../../runtime";
-import { PaneStatusBody } from "../../../../../components";
+import { PaneStatusBody, QueryBar, type QueryBarSearch } from "../../../../../components";
 import { NewsDetailView, useNewsArticleDetail } from "./detail-view";
 import {
   NewsArticleStackView,
@@ -14,11 +14,15 @@ import {
 import { useNewsArticleFooter } from "./footer";
 import { useNewsReadState } from "../read-state";
 import { usePersistedNewsArticles } from "../persisted-articles";
+import { newsListEmptyCopy } from "../filter-articles";
+import { NEWS_LIST_SEARCH_PLACEHOLDER, useNewsListSearch, useNewsListSearchHint } from "./list-search";
+import { newsMutesApplyToFeed, useNewsMuteFilter } from "../mutes";
+import { usePopOutNewsArticle } from "./pop-out";
 
 interface NewsArticleStackOptions {
   /** Prefix of every key the pane persists, and of its footer registration. */
   paneKey: string;
-  articles: MarketNewsItem[];
+  articles: NewsArticle[];
   focused: boolean;
   width: number;
   columns: NewsColumnId[];
@@ -50,25 +54,51 @@ export function useNewsArticleStack({
     `${paneKey}:sort`,
     defaultSort,
   );
+  const search = useNewsListSearch(articles);
+  const visibleArticles = search.filteredArticles;
   const loadNewsStory = useLoadNewsStory();
   const { detailArticle, detailLoading, detailError, openArticle, closeDetail } = useNewsArticleDetail(
-    articles,
+    visibleArticles,
     loadNewsStory,
     `${paneKey}:openArticleId`,
   );
   const { readArticleIds, markArticleRead } = useNewsReadState();
+  const detailOpen = !!detailArticle;
+  const listFocused = focused && !search.searchFocused;
+  const readableArticle = detailArticle
+    ?? visibleArticles.find((article) => article.id === selectedArticleId)
+    ?? null;
+  const popOutArticle = usePopOutNewsArticle(closeDetail);
+  const popOutReadable = useCallback(() => {
+    if (!readableArticle) return;
+    markArticleRead(readableArticle.id);
+    popOutArticle(readableArticle);
+  }, [markArticleRead, popOutArticle, readableArticle]);
+  const openListedArticle = useCallback((article: NewsArticle) => {
+    search.blurSearch();
+    openArticle(article);
+  }, [openArticle, search.blurSearch]);
+  const searchBar: QueryBarSearch = {
+    value: search.searchQuery,
+    onChange: search.setSearchQuery,
+    placeholder: NEWS_LIST_SEARCH_PLACEHOLDER,
+    focused: focused && !detailOpen,
+    ...search.searchProps,
+  };
 
+  useNewsListSearchHint(`news-wire:${paneKey}`, focused && !detailOpen, search.focusSearch);
   useNewsArticleFooter({
     registrationId: `news-wire:${paneKey}`,
-    focused,
+    focused: listFocused,
     article: detailArticle,
     loading: detailLoading || refreshing,
     error: [error, detailError].filter(Boolean).join(" ") || null,
+    onPopOut: readableArticle ? popOutReadable : undefined,
   });
 
   return {
-    articles,
-    focused,
+    articles: visibleArticles,
+    focused: listFocused,
     width,
     columns,
     readArticleIds,
@@ -76,14 +106,14 @@ export function useNewsArticleStack({
     setSelectedArticleId,
     sortPreference: columns.includes(sortPreference.columnId) ? sortPreference : defaultSort,
     setSortPreference,
-    onOpenArticle: openArticle,
+    onOpenArticle: openListedArticle,
     onArticleRead: markArticleRead,
-    detailOpen: !!detailArticle,
+    detailOpen,
     onBack: closeDetail,
     detailContent: detailArticle ? (
       <NewsDetailView
         item={detailArticle}
-        focused={focused}
+        focused={listFocused}
         width={width}
         showTitle={false}
       />
@@ -91,6 +121,8 @@ export function useNewsArticleStack({
       <Box flexGrow={1} />
     ),
     detailTitle: detailArticle?.title,
+    search: searchBar,
+    searchQuery: search.searchQuery,
   };
 }
 
@@ -117,40 +149,53 @@ export function NewsPresetPane({
   emptyStateHint,
 }: PaneProps & NewsPresetPaneConfig) {
   const newsState = useNewsArticles(query);
-  const articles = usePersistedNewsArticles(`${paneKey}:articles`, newsState.articles);
+  const persisted = usePersistedNewsArticles(`${paneKey}:articles`, newsState.articles);
+  const articles = useNewsMuteFilter(persisted, newsMutesApplyToFeed(query.feed));
   const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(query, newsState);
   // The aggregator opens a query in "loading", so the first paint is a loading
   // body rather than a definitive empty wire.
   const loading = newsState.phase === "loading"
-    || (newsState.phase === "refreshing" && articles.length === 0);
+    || (newsState.phase === "refreshing" && persisted.length === 0);
   const error = newsState.error;
-  const stack = useNewsArticleStack({
+  const { search, searchQuery, ...stack } = useNewsArticleStack({
     paneKey,
     articles,
     focused,
     width,
     columns,
     defaultSort,
-    refreshing: loading && articles.length > 0,
+    refreshing: loading && persisted.length > 0,
     error,
+  });
+  const emptyCopy = newsListEmptyCopy({
+    query: searchQuery,
+    loadedCount: persisted.length,
+    unmutedCount: articles.length,
+    fallback: { title: emptyStateTitle, hint: emptyStateHint },
   });
 
   return (
     <NewsArticleStackView
       {...stack}
       rootHeight={height}
+      rootBefore={(
+        <QueryBar
+          width={width}
+          search={search}
+        />
+      )}
       emptyContent={(
         <PaneStatusBody
           loading={loading}
           error={error}
           empty
           subject={title}
-          emptyTitle={emptyStateTitle}
-          emptyMessage={emptyStateHint}
+          emptyTitle={emptyCopy.title}
+          emptyMessage={emptyCopy.hint}
         />
       )}
-      emptyStateTitle={emptyStateTitle}
-      emptyStateHint={emptyStateHint}
+      emptyStateTitle={emptyCopy.title}
+      emptyStateHint={emptyCopy.hint}
       scrollRef={scrollRef}
       onBodyScrollActivity={onBodyScrollActivity}
     />

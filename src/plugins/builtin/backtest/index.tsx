@@ -7,7 +7,7 @@ import { BACKTEST_PRESETS, LOOKBACK_OPTIONS } from "./presets";
 export const backtestModule: PluginModule = {
   panes: [{
     id: "backtest", name: "Backtest", icon: "B", component: BacktestPane,
-    defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 120, height: 34 },
+    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 120, height: 34 },
     tableExport: true,
     settings: { title: "Backtest Rules", fields: [
       { key: "preset", label: "Strategy", type: "select",

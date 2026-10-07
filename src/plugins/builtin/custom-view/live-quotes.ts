@@ -10,7 +10,7 @@ import type { ViewRow } from "./view-spec";
 export type LiveViewField = "price" | "changePercent" | "volume";
 
 /** Symbols a view streams at most, nearest the screen first. */
-export const LIVE_VIEW_ROW_LIMIT = 100;
+const LIVE_VIEW_ROW_LIMIT = 100;
 
 export interface ViewRowRange {
   start: number;

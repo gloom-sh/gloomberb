@@ -6,7 +6,7 @@ import {
   insertAtRootEdge,
   removeFloatingPanes,
   tidyWindows,
-} from "../plugins/pane-manager";
+} from "../layout/pane-manager";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
 import { PANE_LOCK_SETTING_KEY, setPaneSettings, updatePaneInstance } from "../pane-settings";
@@ -47,6 +47,8 @@ import {
   requirePaneInstance,
 } from "./layout-helpers";
 import { createRemoteResources } from "./resources";
+import { dismissTopmostDialog, isDialogOpen as isAnyDialogOpen } from "../ui/dialog-stack";
+import { findFormNode } from "./form";
 import { asRecord } from "../utils/guards";
 import { runAutomated } from "../telemetry/usage-counts";
 
@@ -57,9 +59,14 @@ interface AppRemoteControllerOptions {
   uiRegistry: RemoteUiRegistry | null;
   desktopWindowBridge?: DesktopWindowBridge;
   afterMutation?: () => Promise<void> | void;
+  /** Whether a dialog (a form, a confirm, pane settings) is open now. */
+  isDialogOpen?: () => boolean;
+  /** Closes the dialog on top as Esc would; false when none is open. */
+  closeTopmostDialog?: () => boolean;
 }
 
-const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar"];
+// A command with a wizard closes the bar and opens its form, so every call says whether one is open.
+const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar", "form"];
 const MAX_MARKET_DATA_SEARCH_RESULTS = 20;
 const MAX_MARKET_DATA_FILINGS = 20;
 const MAX_MARKET_DATA_EARNINGS_SYMBOLS = 25;
@@ -88,12 +95,15 @@ export function createAppRemoteController({
   uiRegistry,
   desktopWindowBridge,
   afterMutation = () => {},
+  isDialogOpen = isAnyDialogOpen,
+  closeTopmostDialog = dismissTopmostDialog,
 }: AppRemoteControllerOptions) {
   const { buildIncludedState, getResource, patchTarget } = createRemoteResources({
     dispatch,
     getState,
     pluginRegistry,
     uiRegistry,
+    isDialogOpen,
   });
 
   const getAfterMutationSummary = async (extra?: Record<string, unknown>): Promise<unknown> => {
@@ -206,6 +216,8 @@ export function createAppRemoteController({
   const openCommandBar = async (input: Record<string, unknown>): Promise<unknown> => {
     const mode = optionalString(input, "mode") ?? "command";
     const query = optionalString(input, "query") ?? "";
+    // The bar would open over the dialog without its keys.
+    if (isDialogOpen()) throw new Error("A dialog is open. Close it first with app.closeDialog.");
     if (getState().commandBarOpen) {
       dispatch({ type: "SET_COMMAND_BAR", open: false });
       await afterMutation();
@@ -264,7 +276,12 @@ export function createAppRemoteController({
     const index = optionalNumber(input, "index");
     const action = optionalString(input, "action") ?? "press";
     const metadataFilter = asRecord(input.metadata);
-    const candidates = (uiRegistry?.snapshot() ?? []).filter((node) => {
+    const nodes = uiRegistry?.snapshot() ?? [];
+    // A dialog over the form (a listing picker, a sign-in) keeps its controls
+    // out of reach, as it does from the mouse.
+    const formCovered = findFormNode(nodes)?.metadata?.covered === true;
+    const candidates = nodes.filter((node) => {
+      if (formCovered && node.metadata?.scope === "form") return false;
       if (role && node.role !== role) return false;
       if (label && node.label !== label && node.metadata?.item && typeof node.metadata.item === "object") {
         const item = node.metadata.item as Record<string, unknown>;
@@ -287,7 +304,11 @@ export function createAppRemoteController({
       if (node.disabled) return false;
       return true;
     });
-    const node = typeof index === "number" ? candidates[index] : candidates[0];
+    // An open form or confirm covers every pane, so its own controls come
+    // first: its Cancel, not a pane's Cancel behind it.
+    const inForm = candidates.filter((node) => node.metadata?.scope === "form");
+    const matches = inForm.length > 0 ? inForm : candidates;
+    const node = typeof index === "number" ? matches[index] : matches[0];
     if (!node) throw new Error("No matching semantic UI node is visible.");
     const result = await uiRegistry?.invoke(node.id, action, input.input);
     return getAfterMutationSummary({ invokedNode: node, result });
@@ -308,6 +329,9 @@ export function createAppRemoteController({
         return openCommandBar(input);
       case "app.closeCommandBar":
         dispatch({ type: "SET_COMMAND_BAR", open: false });
+        return getAfterMutationSummary();
+      case "app.closeDialog":
+        if (!closeTopmostDialog()) throw new Error("No dialog is open.");
         return getAfterMutationSummary();
       case "app.setCommandBarQuery":
         await setVisibleCommandBarQuery(stringInput(input, "query"));
@@ -334,7 +358,7 @@ export function createAppRemoteController({
         return getAfterMutationSummary({ affectedPaneIds: [paneId] });
       }
       case "pane.createFromTemplate":
-        await pluginRegistry.createPaneFromTemplateAsyncFn(
+        await pluginRegistry.createPaneFromTemplateAsync(
           stringInput(input, "templateId"),
           asRecord(input.options),
         );
@@ -343,7 +367,7 @@ export function createAppRemoteController({
         // ASKG and the local agent both land here, so one validator decides.
         const parsed = parseViewSpecOr(input.spec);
         if ("error" in parsed) throw new Error(parsed.error);
-        await pluginRegistry.createPaneFromTemplateAsyncFn(
+        await pluginRegistry.createPaneFromTemplateAsync(
           CUSTOM_VIEW_TEMPLATE_ID,
           customViewCreateOptions(parsed.spec, optionalString(input, "name")),
         );
@@ -365,7 +389,7 @@ export function createAppRemoteController({
         });
         const name = optionalString(input, "name");
         if (name) layout = updatePaneInstance(layout, instanceId, (entry: PaneInstanceConfig) => ({ ...entry, title: name }));
-        pluginRegistry.updateLayoutFn(layout);
+        pluginRegistry.updateLayout(layout);
         return getAfterMutationSummary({ affectedPaneIds: [instanceId] });
       }
       case "pane.setState":
@@ -381,13 +405,13 @@ export function createAppRemoteController({
         const descriptor = pluginRegistry.resolvePaneSettings(paneId);
         const field = descriptor?.settingsDef.fields.find((entry) => entry.key === key);
         if (field) {
-          await pluginRegistry.applyPaneSettingValueFn(descriptor!.paneId, field, input.value);
+          await pluginRegistry.applyPaneSettingValue(descriptor!.paneId, field, input.value);
         } else {
           const instanceId = descriptor?.paneId ?? paneId;
           const current = pluginRegistry.resolvePaneSettings(instanceId)?.context.settings ?? {};
           // The lock is resolved into the settings view but lives on the instance.
           const { [PANE_LOCK_SETTING_KEY]: _locked, ...currentSettings } = current;
-          pluginRegistry.updateLayoutFn(setPaneSettings(getState().config.layout, instanceId, {
+          pluginRegistry.updateLayout(setPaneSettings(getState().config.layout, instanceId, {
             ...currentSettings,
             [key]: input.value,
           }));
@@ -434,20 +458,20 @@ export function createAppRemoteController({
       case "layout.gridlock":
         tidyWindows({
           layout: getState().config.layout,
-          size: pluginRegistry.getTermSizeFn(),
+          size: pluginRegistry.getTermSize(),
           paneTypes: pluginRegistry.panes,
-          apply: pluginRegistry.updateLayoutFn,
+          apply: pluginRegistry.updateLayout,
         });
         return getAfterMutationSummary();
       case "layout.closeFloating": {
         const floatingPaneIds = getState().config.layout.floating.map((entry) => entry.instanceId);
-        pluginRegistry.updateLayoutFn(removeFloatingPanes(getState().config.layout));
+        pluginRegistry.updateLayout(removeFloatingPanes(getState().config.layout));
         return getAfterMutationSummary({ affectedPaneIds: floatingPaneIds });
       }
       case "layout.placePane": {
         const pane = requirePaneInstance(getState().config.layout, stringInput(input, "paneId"));
         const region = stringInput(input, "region");
-        const { width, height } = pluginRegistry.getTermSizeFn();
+        const { width, height } = pluginRegistry.getTermSize();
         const def = pluginRegistry.panes.get(pane.paneId);
         const nextLayout = region === "floating"
           ? floatPane(getState().config.layout, pane.instanceId, width, height, def)
@@ -457,12 +481,12 @@ export function createAppRemoteController({
               position: regionToDockPosition(region),
             })
             : insertAtRootEdge(getState().config.layout, pane.instanceId, regionToRootEdge(region));
-        pluginRegistry.updateLayoutFn(nextLayout);
+        pluginRegistry.updateLayout(nextLayout);
         return getAfterMutationSummary({ affectedPaneIds: [pane.instanceId] });
       }
       case "layout.focusRegion": {
         const region = stringInput(input, "region");
-        const { width, height } = pluginRegistry.getTermSizeFn();
+        const { width, height } = pluginRegistry.getTermSize();
         const leaves = getDockLeafLayouts(getState().config.layout, { x: 0, y: 0, width, height });
         if (leaves.length === 0) throw new Error("No docked panes are visible.");
         const target = leaves
@@ -489,7 +513,7 @@ export function createAppRemoteController({
           floating: getState().config.layout.floating.filter((entry) => !paneIds.includes(entry.instanceId)),
           detached: (getState().config.layout.detached ?? []).filter((entry) => !paneIds.includes(entry.instanceId)),
         };
-        pluginRegistry.updateLayoutFn(nextLayout);
+        pluginRegistry.updateLayout(nextLayout);
         return getAfterMutationSummary({ affectedPaneIds: paneIds });
       }
       case "desktop.popOutPane":

@@ -5,9 +5,10 @@ import { useShortcut } from "../../react/input";
 import { isPlainKey } from "../../utils/keyboard";
 
 export function loadingErrorFooterInfo(loading: boolean, error: string | null | undefined): PaneFooterSegment[] {
+  const message = error?.trim() ?? "";
   return [
     ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-    ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
+    ...(message ? [{ id: "error", parts: [{ text: message, tone: "warning" as const }] }] : []),
   ];
 }
 

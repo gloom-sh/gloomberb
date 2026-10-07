@@ -1,8 +1,8 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useEffect, useMemo, useState } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { blockExternalNetwork } from "../../../test-support/network-guard";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -15,8 +15,12 @@ import { list, report } from "./test-fixtures";
 
 blockExternalNetwork();
 
+const PRO_USER = { id: "pro", emailVerified: true, plan: "pro" };
+const currentUser = spyOn(apiClient, "getCurrentUser").mockReturnValue(PRO_USER as never);
+afterAll(() => currentUser.mockRestore());
+
 const PANE_ID = "risk-factors:test";
-let setup: Awaited<ReturnType<typeof testRender>> | null = null;
+const tui = createOpenTuiTestHarness();
 let requests: string[] = [];
 let opened: string[] = [];
 let selectTicker: (symbol: string) => void;
@@ -66,19 +70,17 @@ async function settle() {
   for (let i = 0; i < 8; i++) {
     await act(async () => {
       await Bun.sleep(5);
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
 
 async function mount() {
-  await act(async () => { setup = await testRender(<Harness />, { width: 100, height: 24 }); });
+  await act(async () => { await tui.render(<Harness />, { width: 100, height: 24 }); });
   await settle();
 }
 
-function frame() {
-  return setup!.captureCharFrame();
-}
+const frame = tui.frame;
 
 function transport(respond: (path: string) => Promise<Response> | Response) {
   setCloudApiFetchTransport((async (input: RequestInfo | URL) => {
@@ -94,18 +96,17 @@ async function click(label: string) {
   const rows = frame().split("\n");
   const y = rows.findIndex((row) => row.includes(label));
   expect(y).toBeGreaterThanOrEqual(0);
-  await act(async () => setup!.mockMouse.click(rows[y]!.indexOf(label) + 2, y));
+  await act(async () => tui.setup().mockMouse.click(rows[y]!.indexOf(label) + 2, y));
   await settle();
 }
 
 async function key(value: string) {
-  await act(async () => setup!.mockInput.pressKey(value));
+  await act(async () => tui.setup().mockInput.pressKey(value));
   await settle();
 }
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = null;
+afterEach(() => {
+  currentUser.mockReturnValue(PRO_USER as never);
   resetRiskFactorsPersistence();
   setCloudApiFetchTransport(null);
   apiClient.dispose();
@@ -201,7 +202,7 @@ test("a ticker without a 10-K report shows the empty state, not a load error", a
   expect(empty).toContain("No 10-K risk factors on file for ACME.");
   expect(empty).not.toContain("Report list:");
   expect(empty).not.toContain("Could not load risk reports");
-  expect(requests).toEqual(["/public/risks/ACME"]);
+  expect(requests).toEqual(["/cloud/risks/ACME"]);
 });
 
 test("changing ticker while a historical report is pending cannot adopt the old security or year", async () => {
@@ -225,7 +226,7 @@ test("changing ticker while a historical report is pending cannot adopt the old 
   await act(async () => selectTicker("OTHER"));
   await settle();
   expect(frame()).toContain("Only OTHER 2024 risk analysis");
-  expect(requests).not.toContain("/public/risks/OTHER/2025");
+  expect(requests).not.toContain("/cloud/risks/OTHER/2025");
 
   pending.resolve(Response.json(report(2025)));
   await settle();
@@ -252,10 +253,22 @@ test("in-memory report survives transient refresh with its source dates but clea
   expect(failed).toContain("Temporary report outage");
   expect(failed).toContain("Filed 2026-02-03");
 
-  status = 403;
+  status = 402;
   await key("r");
   const denied = frame();
   expect(denied).not.toContain("Only 2026 risk analysis");
-  expect(denied).toContain("Access denied");
+  expect(denied).toContain("Risk factors are part of Gloom Cloud Pro.");
   expect(denied).not.toContain("[o]pen filing");
+});
+
+test("a free account gets the upgrade wall without reading risk data", async () => {
+  currentUser.mockReturnValue({ ...PRO_USER, plan: "free" } as never);
+  transport((path) => path === "/activity/research"
+    ? Response.json({ accepted: false })
+    : Response.json(list([2026])));
+
+  await mount();
+  expect(frame()).toContain("Risk factors are part of Gloom Cloud Pro.");
+  expect(frame()).toContain("Upgrade to Pro");
+  expect(requests.filter((path) => path !== "/activity/research")).toEqual([]);
 });

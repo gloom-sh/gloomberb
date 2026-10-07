@@ -1,10 +1,12 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 
+/** @public */
 export interface ToastAction {
   label: string;
   onClick(): void;
 }
 
+/** @public */
 export interface ToastOptions {
   title?: string;
   subtitle?: string;

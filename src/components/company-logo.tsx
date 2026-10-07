@@ -1,4 +1,4 @@
-import { ImageSurface, Text, useUiCapabilities } from "../ui";
+import { Box, ImageSurface, Text, TextAttributes, useUiCapabilities } from "../ui";
 import { cloudLogoPath, type CloudLogoKind } from "../api-client/paths";
 import { getCloudApiBaseUrl } from "../api-client/request";
 import { resolveAssetDisplayKind } from "../market-data/market/format";
@@ -20,12 +20,15 @@ export function CompanyLogo({
   name,
   width = 5,
   height = 2,
+  style,
 }: {
   symbol: string;
   assetCategory?: string;
   name?: string;
   width?: number;
   height?: number;
+  /** Desktop placement in px, such as the gap to the text beside it. */
+  style?: { marginTop?: number; marginRight?: number };
 }) {
   const { nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18 } = useUiCapabilities();
   const src = nativePaneChrome === true ? resolveCompanyLogoSrc({ symbol, assetCategory }) : null;
@@ -46,9 +49,19 @@ export function CompanyLogo({
         width: cellWidthPx * width,
         height: cellHeightPx * height,
         flexShrink: 0,
+        ...style,
       }}
     >
-      <Text fg={colors.textDim}>{symbol.trim().charAt(0).toUpperCase() || "?"}</Text>
+      {/* Without a logo the initial fills the same tile, so the header keeps its shape. */}
+      <Box width="100%" height="100%" bg={colors.border} alignItems="center" justifyContent="center">
+        <Text
+          fg={colors.text}
+          attributes={TextAttributes.BOLD}
+          style={{ fontSize: Math.round(cellHeightPx * height * 0.4) }}
+        >
+          {symbol.trim().charAt(0).toUpperCase() || "?"}
+        </Text>
+      </Box>
     </ImageSurface>
   );
 }

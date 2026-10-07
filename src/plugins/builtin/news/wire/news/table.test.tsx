@@ -1,8 +1,8 @@
 import { TextAttributes } from "@opentui/core";
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import { Box } from "../../../../../ui";
-import { testRender } from "../../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -14,7 +14,7 @@ import type { MarketNewsItem } from "../../../../../types/news-source";
 import { createTestArticle } from "../../../../../test-support/news";
 import { NewsArticleStackView, buildColumns, type NewsSortPreference } from "./table";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 const sortPreference: NewsSortPreference = {
   columnId: "time",
@@ -66,25 +66,16 @@ function Harness() {
   );
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
-});
-
 describe("NewsArticleStackView", () => {
   test("renders unopened stories bold and opened stories normal weight", async () => {
-    testSetup = await testRender(<Harness />, { width: 90, height: 10 });
+    await tui.render(<Harness />, { width: 90, height: 10 });
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const boldText = testSetup.captureSpans().lines
+    const boldText = tui.setup().captureSpans().lines
       .flatMap((line) => line.spans)
       .filter((span) => (span.attributes & TextAttributes.BOLD) !== 0)
       .map((span) => span.text)
@@ -99,7 +90,7 @@ describe("NewsArticleStackView", () => {
       createDefaultConfig("/tmp/gloomberb-news-table-layout-test"),
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="news-top:main">
           <NewsArticleStackView
@@ -132,11 +123,11 @@ describe("NewsArticleStackView", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const lines = testSetup.captureCharFrame().split("\n");
+    const lines = tui.frame().split("\n");
     // The sorted column and its indicator must survive the layout arithmetic.
     expect(lines[0]).toContain("SCORE");
     expect(lines[0]).toContain("\u25bc");
@@ -165,7 +156,7 @@ describe("NewsArticleStackView", () => {
       createDefaultConfig("/tmp/gloomberb-news-table-ticker-dedupe-test"),
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="news-feed:main">
           <NewsArticleStackView
@@ -196,11 +187,11 @@ describe("NewsArticleStackView", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("NFLX");
     expect(frame).toContain("PARA");
     expect(frame).not.toContain("NFLX:XNAS");

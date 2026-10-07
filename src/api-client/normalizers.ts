@@ -1,4 +1,5 @@
 import type {
+  ChatAttachment,
   ChatChannel,
   ChatMessage,
   ChatNotification,
@@ -38,7 +39,7 @@ export function normalizeSavedSearchResponse(
  * join it into search text, and hand it to a badge, and a null reaches each of
  * those as an empty chip, the literal "null", or a crash.
  */
-export function normalizeSearchHit(hit: CloudSearchHit): CloudSearchHit {
+function normalizeSearchHit(hit: CloudSearchHit): CloudSearchHit {
   return hit.ticker ? hit : { ...hit, ticker: "" };
 }
 
@@ -50,14 +51,43 @@ export function normalizeSearchResponse(
   return { ...response, hits: hits.map(normalizeSearchHit) };
 }
 
+function finiteNumber(value: unknown): number {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+/** The images a message can show: entries without an id or a link are dropped. */
+export function normalizeChatAttachments(value: unknown): ChatAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): ChatAttachment[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const raw = entry as Record<string, unknown>;
+    if (typeof raw.id !== "string" || !raw.id || typeof raw.url !== "string" || !raw.url) return [];
+    return [{
+      id: raw.id,
+      mime: typeof raw.mime === "string" ? raw.mime : "",
+      width: finiteNumber(raw.width),
+      height: finiteNumber(raw.height),
+      size: finiteNumber(raw.size),
+      url: raw.url,
+    }];
+  });
+}
+
 export function normalizeChatMessage(message: ChatMessage): ChatMessage {
-  return {
+  const normalized: ChatMessage = {
     ...message,
+    content: typeof message.content === "string" ? message.content : "",
     createdAt: normalizeTimestamp(message.createdAt),
     ...(message.editedAt
       ? { editedAt: normalizeTimestamp(message.editedAt) }
       : {}),
   };
+  if ("attachments" in message) normalized.attachments = normalizeChatAttachments(message.attachments);
+  if (message.attachmentReview !== "pending" && message.attachmentReview !== "failed") {
+    delete normalized.attachmentReview;
+  }
+  return normalized;
 }
 
 export function normalizeChatMessages(messages: ChatMessage[]): ChatMessage[] {

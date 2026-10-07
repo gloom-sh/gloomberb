@@ -98,7 +98,7 @@ function useDealHistory(deal: MnaDeal | null) {
  * What the terms were worth each day since the announcement: flat for cash,
  * the ratio times the paying listing's close for stock.
  */
-export function offerSeries(deal: MnaDeal, ratioCloses: readonly PricePoint[], days: readonly string[]): Array<{ day: string; value: number }> {
+function offerSeries(deal: MnaDeal, ratioCloses: readonly PricePoint[], days: readonly string[]): Array<{ day: string; value: number }> {
   const { cashPerShare, exchangeRatio, currency } = deal.terms;
   if (cashPerShare == null && exchangeRatio == null) return [];
   const pence = currency === "GBp" || currency === "GBX";

@@ -1,7 +1,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useEffect, useReducer } from "react";
 import { apiClient } from "../../../api-client";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
@@ -9,7 +9,7 @@ import { RemoteUiRegistryProvider, useRemoteUiRegistry, type RemoteUiRegistry } 
 import { BondCalculatorPane } from "./pane";
 
 const id = "bond-calculator:test";
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let loader: ReturnType<typeof spyOn> | undefined;
 let registry: RemoteUiRegistry | null = null;
 function Probe() { const value = useRemoteUiRegistry(); useEffect(() => { registry = value; }, [value]); return null; }
@@ -23,21 +23,21 @@ function Harness() {
     </TestPaneFrame>
   </RemoteUiRegistryProvider>;
 }
-async function frame() { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await setup!.renderOnce(); }); }
-async function mount() { await act(async () => { setup = await testRender(<Harness />, { width: 80, height: 34 }); }); await frame(); await frame(); }
-afterEach(async () => { if (setup) await act(async () => { setup!.renderer.destroy(); }); setup = undefined; registry = null; loader?.mockRestore(); });
+async function frame() { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce(); }); }
+async function mount() { await act(async () => { await tui.render(<Harness />, { width: 80, height: 34 }); }); await frame(); await frame(); }
+afterEach(async () => { registry = null; loader?.mockRestore(); });
 
 test("unavailable benchmark preserves calculator and invalid edits remove the previous valuation", async () => {
   loader = spyOn(apiClient, "getCloudYieldCurve").mockRejectedValue(new Error("HTTP 404"));
   await mount();
-  expect(setup!.captureCharFrame()).toContain("103.3339");
-  expect(setup!.captureCharFrame()).toContain("HTTP 404");
+  expect(tui.frame()).toContain("103.3339");
+  expect(tui.frame()).toContain("HTTP 404");
   const editCoupon = registry!.snapshot().find((node) => node.role === "button" && node.label === "Edit Coupon %")!;
   await act(async () => { await registry!.invoke(editCoupon.id, "press"); }); await frame();
   const coupon = registry!.snapshot().find((node) => node.role === "text-field" && node.metadata?.focused === true)!;
   await act(async () => { await registry!.invoke(coupon.id, "setValue", ""); await registry!.invoke(coupon.id, "submit", ""); }); await frame();
-  expect(setup!.captureCharFrame()).not.toContain("103.3339");
-  expect(setup!.captureCharFrame()).toContain("Coupon must be a number");
+  expect(tui.frame()).not.toContain("103.3339");
+  expect(tui.frame()).toContain("Coupon must be a number");
 });
 
 test("switching input mode keeps the valuation and a failed refresh keeps dated benchmark", async () => {
@@ -48,23 +48,23 @@ test("switching input mode keeps the valuation and a failed refresh keeps dated 
   await mount();
   const mode = registry!.snapshot().find((node) => node.role === "select" && node.label === "Segmented control")!;
   await act(async () => { await registry!.invoke(mode.id, "select", "price"); }); await frame();
-  expect(setup!.captureCharFrame()).toContain("103.3339");
-  expect(setup!.captureCharFrame()).toContain("4.2500%");
+  expect(tui.frame()).toContain("103.3339");
+  expect(tui.frame()).toContain("4.2500%");
   loader.mockRejectedValue(new Error("Offline"));
-  await emitKeypress(setup!, { name: "r" }); await frame(); await frame();
-  expect(setup!.captureCharFrame()).toContain("2026-09-18");
-  expect(setup!.captureCharFrame()).toContain("Offline");
+  await tui.emitKeypress({ name: "r" }); await frame(); await frame();
+  expect(tui.frame()).toContain("2026-09-18");
+  expect(tui.frame()).toContain("Offline");
 });
 
 test("Tab walks the fields only while one is being edited, then leaves them", async () => {
   loader = spyOn(apiClient, "getCloudYieldCurve").mockRejectedValue(new Error("HTTP 404"));
   await mount();
   const editing = () => registry!.snapshot().some((node) => node.role === "text-field" && node.metadata?.focused === true);
-  const tab = async () => (await emitKeypress(setup!, { name: "tab" }, { trackPropagation: true })).defaultPrevented;
+  const tab = async () => (await tui.emitKeypress({ name: "tab" }, { trackPropagation: true })).defaultPrevented;
   // With no field active, Tab is left for moving to the next pane.
   expect(await tab()).toBe(false);
   expect(editing()).toBe(false);
-  await emitKeypress(setup!, { name: "e" }); await frame();
+  await tui.emitKeypress({ name: "e" }); await frame();
   expect(editing()).toBe(true);
   for (let field = 0; field < 3; field++) expect(await tab()).toBe(true);
   await frame();

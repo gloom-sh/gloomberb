@@ -22,6 +22,7 @@ import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-control
 import {
   armDoubleEscapeClose,
   createDoubleEscapeCloseState,
+  offerEscapeTowardClose,
   resetDoubleEscapeClose,
   takeDoubleEscapeClose,
 } from "../../utils/double-escape-close";
@@ -149,9 +150,19 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     resetDoubleEscapeClose(doubleEscapeState);
   }, { phase: "before" });
 
+  const armDoubleEscape = () => {
+    armDoubleEscapeClose(doubleEscapeCloseRef.current, desktopWindowBridge.paneId, Date.now());
+  };
+
+  // A pane that uses an Esc to leave an empty field may still count it.
   useShortcut((event) => {
     if (event.name !== "escape" && event.name !== "esc") return;
-    armDoubleEscapeClose(doubleEscapeCloseRef.current, desktopWindowBridge.paneId, Date.now());
+    offerEscapeTowardClose(event, armDoubleEscape);
+  }, { phase: "before", allowEditable: true });
+
+  useShortcut((event) => {
+    if (event.name !== "escape" && event.name !== "esc") return;
+    armDoubleEscape();
   }, { phase: "idle" });
 
   const closePane = useCallback(() => {
@@ -174,17 +185,11 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       notify: (notification) => { pluginRegistry.notify(notification); },
     });
   }, [pluginRegistry, rendererHost, sharePayload]);
-  useEffect(() => {
-    const share = () => { void sharePane(); };
-    pluginRegistry.sharePaneFn = share;
-    return () => {
-      if (pluginRegistry.sharePaneFn === share) pluginRegistry.sharePaneFn = () => {};
-    };
-  }, [pluginRegistry, sharePane]);
+  useEffect(() => pluginRegistry.bindHost({ sharePane: () => { void sharePane(); } }), [pluginRegistry, sharePane]);
 
 
   const togglePaneLock = useCallback(() => {
-    void pluginRegistry.applyPaneSettingValueFn(
+    void pluginRegistry.applyPaneSettingValue(
       desktopWindowBridge.paneId,
       { key: PANE_LOCK_SETTING_KEY, label: "Lock Pane", type: "toggle" },
       !locked,
@@ -228,7 +233,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         id: "settings",
         label: "Settings",
         accelerator: accelerators.settings,
-        onSelect: () => pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId),
+        onSelect: () => pluginRegistry.openPaneSettings(desktopWindowBridge.paneId),
       });
     }
     if (sharePayload) {
@@ -326,7 +331,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     let handled = true;
     switch (shortcut) {
       case "settings":
-        if (hasPaneSettings) pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
+        if (hasPaneSettings) pluginRegistry.openPaneSettings(desktopWindowBridge.paneId);
         else handled = false;
         break;
       case "share":

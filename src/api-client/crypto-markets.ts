@@ -1,5 +1,5 @@
 /** Completed UTC daily closes, oldest first, one slot per calendar day. */
-export interface CryptoDailyCloses {
+interface CryptoDailyCloses {
   start: string;
   closes: Array<number | null>;
 }

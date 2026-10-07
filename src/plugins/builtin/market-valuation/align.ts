@@ -48,7 +48,7 @@ function withoutUnreportedTail<T extends { value: unknown }>(observations: reado
   return end === observations.length ? observations : observations.slice(0, end);
 }
 
-export function scaleObservations(def: SeriesDef, data: DatedSeries): ScaledObs[] {
+function scaleObservations(def: SeriesDef, data: DatedSeries): ScaledObs[] {
   if (def.unavailableReason) throw new Error(def.unavailableReason);
   validateObservationDates(data.observations);
   const points: ScaledObs[] = [];

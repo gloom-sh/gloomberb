@@ -6,6 +6,7 @@ import type {
   LayoutConfig,
   OnboardingProgress,
   LayoutOrigin,
+  RecentCommand,
   SavedLayout,
   TelemetryConfig,
 } from "../../../types/config";
@@ -62,6 +63,7 @@ export function normalizeLoadedConfig(
     brokerInstances: sanitizeBrokerInstances(candidate.brokerInstances),
     disabledPlugins,
     seededPlugins: sanitizeUniqueStringList(candidate.seededPlugins),
+    ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
     theme: typeof candidate.theme === "string" ? candidate.theme : defaults.theme,
@@ -69,6 +71,7 @@ export function normalizeLoadedConfig(
     valueFlashingEnabled: typeof candidate.valueFlashingEnabled === "boolean" ? candidate.valueFlashingEnabled : defaults.valueFlashingEnabled,
     fontSize: sanitizeFontSize(candidate.fontSize, defaults.fontSize),
     recentTickers: sanitizeStringArray(candidate.recentTickers, defaults.recentTickers),
+    recentCommands: sanitizeRecentCommands(candidate.recentCommands, defaults.recentCommands),
     language: isLanguagePreference(candidate.language) ? candidate.language : undefined,
     onboardingComplete,
     onboardingProgress,
@@ -127,6 +130,7 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
     valueFlashingEnabled: config.valueFlashingEnabled !== false,
     fontSize: sanitizeFontSize(config.fontSize, defaults.fontSize),
     recentTickers: sanitizeStringArray(config.recentTickers, []),
+    recentCommands: sanitizeRecentCommands(config.recentCommands, []),
     onboardingComplete: onboardingProgress ? false : config.onboardingComplete,
     onboardingProgress,
   };
@@ -152,6 +156,7 @@ function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
   const telemetry: TelemetryConfig = {
     ...(typeof value.crashReports === "boolean" ? { crashReports: value.crashReports } : {}),
     ...(typeof value.usage === "boolean" ? { usage: value.usage } : {}),
+    ...(typeof value.attention === "boolean" ? { attention: value.attention } : {}),
   };
   return Object.keys(telemetry).length > 0 ? telemetry : undefined;
 }
@@ -198,6 +203,7 @@ const ONBOARDING_STAGES = new Set<OnboardingProgress["stage"]>([
   "welcome",
   "portfolio",
   "add-ticker",
+  "desks",
   "research",
   "verify",
   "account",
@@ -228,6 +234,7 @@ function sanitizeOnboardingProgress(value: unknown): OnboardingProgress | undefi
       : undefined,
     accountStatus,
     checkoutOpenedAt: typeof value.checkoutOpenedAt === "string" ? value.checkoutOpenedAt : undefined,
+    desks: Array.isArray(value.desks) ? sanitizeUniqueStringList(value.desks) : undefined,
   };
 }
 
@@ -235,6 +242,26 @@ function sanitizeStringArray(value: unknown, fallback: string[]): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : fallback;
+}
+
+function sanitizeRecentCommands(value: unknown, fallback: RecentCommand[]): RecentCommand[] {
+  if (!Array.isArray(value)) return fallback;
+  return value
+    .filter((entry): entry is RecentCommand => (
+      !!entry
+      && typeof entry === "object"
+      && typeof (entry as RecentCommand).id === "string"
+      && (entry as RecentCommand).id.length > 0
+      && typeof (entry as RecentCommand).label === "string"
+    ))
+    .map((entry) => {
+      const arg = typeof entry.arg === "string" && entry.arg.length > 0 ? entry.arg : undefined;
+      return {
+        id: entry.id,
+        label: entry.label,
+        ...(arg ? { arg } : {}),
+      };
+    });
 }
 
 function sanitizeUniqueStringList(value: unknown): string[] {

@@ -1,4 +1,4 @@
-export interface PercentileStatistics {
+interface PercentileStatistics {
   percentile: number | null;
   rank: number | null;
   samples: number;
@@ -6,8 +6,8 @@ export interface PercentileStatistics {
   max: number | null;
   mean: number | null;
 }
-export type EstimateStatus = "available" | "partial" | "unavailable";
-export interface EstimateSourceState {
+type EstimateStatus = "available" | "partial" | "unavailable";
+interface EstimateSourceState {
   status: EstimateStatus;
   fetchedAt: string | null;
   stale: boolean;
@@ -22,9 +22,9 @@ export interface EstimateObservation {
   analysts: number | null;
   range: number | null;
   relativeRange: number | null;
-  source: "yahoo" | "yahoo-eps-trend";
+  source: "gloom" | "gloom-eps-trend";
 }
-export interface RevisionBreadth {
+interface RevisionBreadth {
   days: 7 | 30;
   up: number | null;
   down: number | null;
@@ -76,7 +76,7 @@ export interface EstimateSurprise {
   samples: number;
   source: string;
 }
-export interface EstimateGuidance {
+interface EstimateGuidance {
   callDate: string | null;
   fiscalYear: number;
   fiscalQuarter: number;

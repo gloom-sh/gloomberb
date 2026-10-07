@@ -1,14 +1,12 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { useAsyncResource } from "./async-resource";
 
 type Loader = ((force: boolean) => Promise<string>) | null;
-let setup: Awaited<ReturnType<typeof testRender>>;
+const tui = createOpenTuiTestHarness({ width: 20, height: 5 });
 let resource: ReturnType<typeof useAsyncResource<string>>;
 let changeLoader: (next: Loader) => void;
-
-afterEach(() => setup?.renderer.destroy());
 
 async function mount(
   loader: Loader,
@@ -21,8 +19,8 @@ async function mount(
     resource = useAsyncResource(request, { clearOnError, keepPreviousData });
     return null;
   }
-  setup = await testRender(<Probe />, { width: 20, height: 5 });
-  await act(async () => { await setup.renderOnce(); });
+  await tui.render(<Probe />);
+  await act(async () => { await tui.setup().renderOnce(); });
 }
 
 test("only the newest request may publish data or an error", async () => {
@@ -55,7 +53,7 @@ test("changing, disabling, and unmounting a resource invalidate pending work", a
   const third = Promise.withResolvers<string>();
   await act(async () => { changeLoader(() => third.promise); });
   const beforeUnmount = resource;
-  setup.renderer.destroy();
+  await tui.destroy();
   await act(async () => { third.resolve("unmounted"); });
   expect(resource).toBe(beforeUnmount);
 });
@@ -131,10 +129,10 @@ test("an inline error predicate neither reloads nor loops across renders", async
     resource = useAsyncResource(request, { clearOnError: (error) => error instanceof Error });
     return null;
   }
-  setup = await testRender(<Probe />, { width: 20, height: 5 });
-  await act(async () => { await setup.renderOnce(); });
-  await act(async () => { rerender(); await setup.renderOnce(); });
-  await act(async () => { rerender(); await setup.renderOnce(); });
+  await tui.render(<Probe />);
+  await act(async () => { await tui.setup().renderOnce(); });
+  await act(async () => { rerender(); await tui.setup().renderOnce(); });
+  await act(async () => { rerender(); await tui.setup().renderOnce(); });
   expect(calls).toBe(1);
   expect(resource.data).toBe("loaded");
 });

@@ -1,28 +1,35 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, jest, spyOn, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { apiClient } from "../../../api-client";
+import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { applyViewProjection, normalizeViewSpec } from "../custom-view/view-spec";
 import { createMarketMoversHeadless } from "./headless";
 import { loadMarketMoverTab } from "./client";
 import { createRows, sortRows } from "./model";
 import { attachMarketMoversPersistence, fetchPreferredMarketMovers, fetchScreenerResult, parseScreenerResponse, resetMarketMoversPersistence } from "./screener";
 
-const payload = (quotes: unknown[]) => ({ finance: { result: [{ quotes }], error: null } });
-const raw = (symbol: string, fields = {}) => ({ symbol, regularMarketPrice: 10, currency: "USD", ...fields });
-afterEach(resetMarketMoversPersistence);
+const payload = (quotes: unknown[]) => ({ quotes });
+const raw = (symbol: string, fields = {}) => ({ symbol, price: 10, currency: "USD", ...fields });
+const noSessionMovers = async (): Promise<never> => { throw new Error("Session movers are not requested"); };
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+  resetMarketMoversPersistence();
+});
 
 test("source fields, sorted rows and headless text preserve missing versus reported zero", async () => {
   const rows = parseScreenerResponse(payload([
-    raw("MISSING", { regularMarketVolume: "100", regularMarketChangePercent: null, currency: undefined }),
-    raw("ZERO", { regularMarketVolume: 0, averageDailyVolume3Month: 100, regularMarketChangePercent: 0 }),
-    raw("NEGATIVE", { regularMarketVolume: -1, regularMarketChangePercent: -5 }),
+    raw("MISSING", { volume: "100", changePercent: null, currency: undefined }),
+    raw("ZERO", { volume: 0, avgVolume: 100, changePercent: 0 }),
+    raw("NEGATIVE", { volume: -1, changePercent: -5 }),
   ]));
   expect(rows[0]).toMatchObject({ volume: null, changePercent: null, avgVolume: null, volumeRatio: null, currency: "" });
   expect(rows[1]).toMatchObject({ volume: 0, changePercent: 0, volumeRatio: 0 });
   expect(rows[2]).toMatchObject({ volume: null, changePercent: -5 });
   expect(sortRows(createRows(rows), { columnId: "changePercent", direction: "asc" }).map(row => row.symbol)).toEqual(["NEGATIVE", "ZERO", "MISSING"]);
   expect(sortRows(createRows(rows), { columnId: "changePercent", direction: "desc" }).map(row => row.symbol)).toEqual(["ZERO", "NEGATIVE", "MISSING"]);
-  const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ tab, quotes: rows, source: "yahoo", stale: false }) });
+  const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ tab, quotes: rows, source: "gloom", stale: false }), loadSession: noSessionMovers });
   const args = { rawArgument: "", argument: null, symbols: [], options: { list: "gainers" } };
   const result = await definition.load(args, { marketData: createTestDataProvider() } as any);
   const text = renderHeadlessPaneText(definition, result, args, "MOST");
@@ -36,13 +43,13 @@ test("malformed refresh retains cache with failure until valid recovery; empty a
   const persistence = new MemoryPluginPersistence();
   attachMarketMoversPersistence(persistence);
   let answer: unknown = payload([raw("VALID")]);
-  const api = { fetchJson: async <T>() => answer as T };
+  const api = { getMarketMovers: async () => ({ status: "success", data: answer } as any) };
   const first = await fetchScreenerResult("day_gainers", 25, api, { cache: true });
-  const record = persistence.getResource("yahoo-screener", "screener:day_gainers:count=25", { sourceKey: "yahoo-finance", schemaVersion: 2 })!;
+  const record = persistence.getResource("market-screener", "screener:day_gainers:count=25", { sourceKey: "gloom", schemaVersion: 3 })!;
   answer = { finance: { result: null, error: { code: "Unavailable" } } };
   expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true, forceRefresh: true })).toEqual({ data: first.data, stale: true });
   expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true })).toEqual({ data: first.data, stale: true });
-  expect(persistence.getResource("yahoo-screener", "screener:day_gainers:count=25", { sourceKey: "yahoo-finance", schemaVersion: 2 })?.fetchedAt).toBe(record.fetchedAt);
+  expect(persistence.getResource("market-screener", "screener:day_gainers:count=25", { sourceKey: "gloom", schemaVersion: 3 })?.fetchedAt).toBe(record.fetchedAt);
   await expect(fetchScreenerResult("day_losers", 25, api, { cache: true })).rejects.toThrow("Invalid market movers");
   answer = payload([]);
   expect(await fetchScreenerResult("day_losers", 25, api, { cache: true })).toEqual({ data: [], stale: false });
@@ -54,10 +61,10 @@ test("malformed refresh retains cache with failure until valid recovery; empty a
 test("old persisted fabricated zeros are discarded; newly validated hydrated rows remain readable", async () => {
   const persistence = new MemoryPluginPersistence();
   attachMarketMoversPersistence(persistence);
-  const old = parseScreenerResponse(payload([raw("OLD", { regularMarketVolume: 0 })]));
-  persistence.seedResource("yahoo-screener", "screener:day_gainers:count=25", old, { sourceKey: "yahoo-finance", schemaVersion: 1 });
+  const old = parseScreenerResponse(payload([raw("OLD", { volume: 0 })]));
+  persistence.seedResource("market-screener", "screener:day_gainers:count=25", old, { sourceKey: "gloom", schemaVersion: 1 });
   let calls = 0;
-  const api = { fetchJson: async <T>() => { calls++; return payload([raw("CURRENT")]) as T; } };
+  const api = { getMarketMovers: async () => { calls++; return { status: "success", data: payload([raw("CURRENT")]) } as any; } };
   const result = await fetchScreenerResult("day_gainers", 25, api, { cache: true });
   expect(result.data[0]).toMatchObject({ symbol: "CURRENT", volume: null });
   resetMarketMoversPersistence(); attachMarketMoversPersistence(persistence);
@@ -78,8 +85,8 @@ test("trending has no average-volume source, and missing quotes do not invent ze
 });
 
 test("declared minor currencies normalize only display, without changing raw rows or assuming venue units", async () => {
-  const rows = parseScreenerResponse(payload(["GBp", "GBX", "ILA", "ZAc", "GBP", ""].map((currency, index) => raw(`UNIT${index}`, { regularMarketPrice: 125, currency, fullExchangeName: "LSE" }))));
-  const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ tab, quotes: rows, source: "yahoo", stale: false }) });
+  const rows = parseScreenerResponse(payload(["GBp", "GBX", "ILA", "ZAc", "GBP", ""].map((currency, index) => raw(`UNIT${index}`, { price: 125, currency, exchange: "LSE" }))));
+  const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ tab, quotes: rows, source: "gloom", stale: false }), loadSession: noSessionMovers });
   const args = { rawArgument: "", argument: null, symbols: [], options: { list: "gainers" } };
   const result = await definition.load(args, { marketData: createTestDataProvider() } as any);
   expect(result.rows.map(row => [row.price, row.currency])).toEqual([[125, "GBp"], [125, "GBX"], [125, "ILA"], [125, "ZAc"], [125, "GBP"], [125, ""]]);
@@ -93,15 +100,15 @@ test("declared minor currencies normalize only display, without changing raw row
 });
 
 
-test("preferred Cloud prices qualify Yahoo range units before default headless projection", async () => {
-  const metadata = parseScreenerResponse(payload([raw("UNIT", { regularMarketPrice: 125, currency: "GBp", fiftyTwoWeekLow: 100, fiftyTwoWeekHigh: 200, regularMarketDayLow: 110, regularMarketDayHigh: 150 })]));
+test("preferred Cloud prices qualify backend range units before default headless projection", async () => {
+  const metadata = parseScreenerResponse(payload([raw("UNIT", { price: 125, currency: "GBp", fiftyTwoWeekLow: 100, fiftyTwoWeekHigh: 200, dayLow: 110, dayHigh: 150 })]));
   const load = async (currency: string, ownBounds = false) => {
     const result = await fetchPreferredMarketMovers("day_gainers", 25, undefined, {
       isCloudEligible: () => true,
       fetchCloud: async () => ({ status: "success", data: { items: [{ symbol: "UNIT", price: 1.25, change: 0, changePercent: 0, volume: 0, currency, exchange: "LSE", ...(ownBounds ? { low52w: 1, high52w: 2 } : {}) }] } } as any),
-      fetchYahoo: async () => ({ data: metadata, stale: false }),
+      fetchMarket: async () => ({ data: metadata, stale: false }),
     });
-    const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ ...result, tab }) });
+    const definition = createMarketMoversHeadless({ load: async (_args, tab) => ({ ...result, tab }), loadSession: noSessionMovers });
     const args = { rawArgument: "", argument: null, symbols: [], options: { list: "gainers" } };
     const model = await definition.load(args, { marketData: createTestDataProvider() } as any);
     return { model, text: renderHeadlessPaneText(definition, model, args, "MOST") };
@@ -116,4 +123,29 @@ test("preferred Cloud prices qualify Yahoo range units before default headless p
     expect(unknown.model.rows[0]!.fiftyTwoWeekLow).toBeUndefined();
     expect(unknown.text).not.toContain("£");
   }
+});
+
+test("a view over a Pro list keeps direct averages, waits for slow fallback metadata, and sorts missing ratios last", async () => {
+  jest.useFakeTimers();
+  const item = (symbol: string, volume: number, avgVolume?: number) => ({ symbol, name: symbol, price: 2, change: 0, changePercent: 0, volume, avgVolume, currency: "USD", exchange: "NASDAQ", lastUpdated: 1, dataSource: "live" as const });
+  const metadata = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getMarketMovers>>>();
+  spyOn(apiClient, "isVerified").mockReturnValue(true);
+  spyOn(apiClient, "getCurrentUser").mockReturnValue({ emailVerified: true, plan: "pro" } as ReturnType<typeof apiClient.getCurrentUser>);
+  // NEW has no average; NVDA is outside the public snapshot but carries its own.
+  spyOn(apiClient, "getCloudMarketScreener").mockResolvedValue({ status: "success", data: { providerId: "gloomberb-cloud", category: "most-active", asOf: "2026-10-07T09:30:00.000Z", items: [item("NEW", 700e6), item("BIG", 60e6), item("NVDA", 60e6, 20e6), item("OLOX", 80e6, 4e6)] } } as never);
+  spyOn(apiClient, "getMarketMovers").mockReturnValue(metadata.promise);
+  const definition = createMarketMoversHeadless();
+  const loading = definition.load({ rawArgument: "", argument: null, symbols: [], options: { list: "actives" } }, { marketData: createTestDataProvider() } as any);
+  for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+  // Past the pane's own cutoff for slow metadata.
+  jest.advanceTimersByTime(2_000);
+  metadata.resolve({ status: "success", data: { source: "gloom", stale: false, asOf: "2026-10-06", quotes: parseScreenerResponse(payload([
+    raw("OLOX", { name: "OLENOX INDUSTRIES INC.", volume: 1, avgVolume: 2e6, marketCap: 1.46e6 }),
+    raw("BIG", { volume: 1, avgVolume: 40e6 }),
+  ])) } });
+  const spec = normalizeViewSpec({ source: { pane: "MOST" }, projection: { columns: ["symbol", "volumeRatio"], sort: { by: "volumeRatio", direction: "desc" } } });
+  const { rows } = serializeHeadlessPaneResult(definition, await loading) as { rows: Array<Record<string, unknown>> };
+  expect(rows.find(row => row.symbol === "NVDA")).toMatchObject({ avgVolume: 20e6, volumeRatio: 3 });
+  expect(rows.find(row => row.symbol === "OLOX")).toMatchObject({ avgVolume: 4e6, volumeRatio: 20 });
+  expect(applyViewProjection(rows, spec.projection).map(row => [row.symbol, row.volumeRatio])).toEqual([["OLOX", 20], ["NVDA", 3], ["BIG", 1.5], ["NEW", null]]);
 });

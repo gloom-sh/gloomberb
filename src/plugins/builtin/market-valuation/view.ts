@@ -12,7 +12,7 @@ import { fitTrend, sigmaVsTrend, trendAt, type TrendFit } from "../shared/trend"
 
 const MS_PER_DAY = 86_400_000;
 
-export interface Extreme {
+interface Extreme {
   ratio: number;
   date: string;
 }

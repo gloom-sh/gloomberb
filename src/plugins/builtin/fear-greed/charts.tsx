@@ -58,7 +58,7 @@ function SentimentChart({
   return (
     <Box flexDirection="column" marginTop={isDesktopWeb ? 1 : 2} paddingX={1}>
       <Box flexDirection="row" height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title.toUpperCase()}</Text>
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text>
         <Box flexGrow={1} />
         <Badge label={ratingLabel(rating)} color={ratingColor(rating)} />
       </Box>

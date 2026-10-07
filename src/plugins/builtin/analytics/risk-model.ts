@@ -25,7 +25,7 @@ import {
   type RiskMarketSnapshot,
 } from "./risk-client";
 
-export interface PortfolioRiskHolding {
+interface PortfolioRiskHolding {
   id: string;
   symbol: string;
   exchange: string;
@@ -72,7 +72,7 @@ export interface RiskShifts {
   rates: number;
   volatility: number;
 }
-export const DEFAULT_RISK_SHIFTS: RiskShifts = {
+const DEFAULT_RISK_SHIFTS: RiskShifts = {
   equity: -10,
   rates: 100,
   volatility: 10,

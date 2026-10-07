@@ -1,0 +1,1086 @@
+@keyframes gloom-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+html, body, #root { width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: var(--gloom-bg, #272a34); }
+#root:focus { outline: none; }
+body {
+  --cell-w: 8px;
+  --cell-h: 18px;
+  --chrome-h: 20px;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: var(--cell-h);
+  color: var(--gloom-text, #f2f2f2);
+  cursor: default;
+  user-select: none;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+* { box-sizing: border-box; }
+#root > * { height: 100%; min-height: 100%; }
+input, textarea, button { font: inherit; }
+input, textarea { cursor: text; user-select: text; }
+button, [data-gloom-interactive="true"] { cursor: pointer; }
+/* `plain` buttons drop the border, so hover is the only thing left that says
+   the row or chip is clickable. A translucent wash reads the same on the
+   sidebar, a pane body and the status bar. */
+[data-gloom-role="desktop-button"][data-gloom-variant="plain"]:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
+}
+[data-gloom-hover-bg="true"]:hover {
+  background-color: var(--gloom-box-hover-bg) !important;
+}
+[data-gloom-role="data-table-row"]:not([data-selected="true"]):hover,
+[data-gloom-role="data-table-row"]:not([data-selected="true"]):hover > [data-gloom-role="data-table-cell"] {
+  background-color: var(--gloom-hover-bg) !important;
+}
+[data-gloom-role="pane-window"] {
+  background-clip: padding-box;
+  isolation: isolate;
+}
+[data-gloom-role="detached-pane-window"] {
+  border: 0;
+  box-shadow: none;
+  background-clip: padding-box;
+}
+[data-gloom-role="app-header"][data-titlebar-overlay="true"],
+.electrobun-webkit-app-region-drag {
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+[data-titlebar-overlay="true"] {
+  min-height: __TITLEBAR_OVERLAY_HEIGHT_PX__px;
+  max-height: __TITLEBAR_OVERLAY_HEIGHT_PX__px;
+  align-items: center;
+}
+[data-titlebar-overlay="true"] * {
+  cursor: inherit;
+}
+[data-titlebar-overlay="true"] button,
+[data-titlebar-overlay="true"] input,
+[data-titlebar-overlay="true"] textarea,
+[data-titlebar-overlay="true"] a,
+[data-titlebar-overlay="true"] .electrobun-webkit-app-region-no-drag,
+[data-titlebar-overlay="true"] [data-gloom-interactive="true"] {
+  cursor: pointer;
+}
+[data-gloom-role="window-controls"] {
+  height: 100%;
+  color: var(--gloom-header-text, #f2f2f2);
+}
+[data-gloom-role="window-control"] {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--gloom-header-text, #f2f2f2) 86%, transparent);
+  cursor: pointer;
+  transition: background-color 90ms linear, color 90ms linear;
+}
+[data-gloom-role="window-control"] svg {
+  display: block;
+  pointer-events: none;
+}
+[data-gloom-role="window-control"]:hover {
+  background: color-mix(in srgb, var(--gloom-header-text, #f2f2f2) 13%, transparent);
+  color: var(--gloom-header-text, #f2f2f2);
+}
+[data-gloom-role="window-control"][data-window-control-action="close"]:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+[data-gloom-role="pane-window"][data-floating="true"] {
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 18px 38px color-mix(in srgb, var(--gloom-bg) 46%, transparent);
+}
+[data-gloom-role="pane-window"][data-floating="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--pane-border-color, var(--gloom-border));
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 100;
+}
+[data-gloom-role="pane-window"][data-floating="true"][data-focused="true"] {
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--gloom-bg) 50%, transparent);
+}
+[data-gloom-role="pane-window"][data-floating="true"][data-window-mode-selected="true"] {
+  box-shadow:
+    0 18px 40px color-mix(in srgb, var(--gloom-bg) 50%, transparent),
+    0 0 0 2px var(--gloom-border-focused),
+    0 0 0 5px color-mix(in srgb, var(--gloom-border-focused) 28%, transparent);
+}
+[data-gloom-role="pane-window"][data-floating="true"][data-window-mode-selected="true"]::after {
+  border-color: var(--gloom-border-focused);
+  border-width: 2px;
+}
+[data-gloom-role="pane-window"][data-floating="false"] {
+  border: 0;
+  border-radius: 0;
+}
+[data-gloom-role="pane-window"][data-floating="false"][data-focused="true"] {
+  box-shadow: inset 0 0 0 1px var(--pane-border-color, var(--gloom-border-focused));
+}
+[data-gloom-role="pane-window"][data-floating="false"][data-window-mode-selected="true"] {
+  box-shadow:
+    inset 0 0 0 3px var(--gloom-border-focused),
+    inset 0 0 0 6px color-mix(in srgb, var(--gloom-border-focused) 22%, transparent);
+}
+[data-gloom-role="pane-header"] {
+  align-items: center;
+  padding-inline: 7px;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+[data-gloom-role="pane-grip"],
+[data-gloom-role="pane-header-chrome"] {
+  cursor: grab;
+}
+[data-gloom-role="pane-header"] [data-gloom-role="tab-button"],
+[data-gloom-role="pane-header"] button,
+[data-gloom-role="pane-header"] [data-gloom-interactive="true"] {
+  cursor: pointer;
+}
+[data-gloom-role="pane-header"][data-window-mode-selected="true"] {
+  background: color-mix(in srgb, var(--gloom-border-focused) 24%, var(--gloom-panel)) !important;
+}
+[data-gloom-role="pane-action"],
+[data-gloom-role="pane-close"],
+[data-gloom-role="pane-restore"] {
+  cursor: pointer;
+}
+body.gloom-dragging [data-gloom-role="pane-grip"],
+body.gloom-dragging [data-gloom-role="pane-header-chrome"] {
+  cursor: grabbing;
+}
+body.gloom-dragging {
+  cursor: grabbing;
+}
+[data-gloom-role="pane-title"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-gloom-role="chat-message"]:hover [data-gloom-role="chat-message-row"][data-selected="false"] {
+  background-color: var(--chat-hover-bg);
+}
+[data-gloom-role="chat-message-reply-action"] {
+  opacity: 0;
+  pointer-events: none;
+}
+[data-gloom-role="chat-message"]:hover [data-gloom-role="chat-message-reply-action"],
+[data-gloom-role="chat-message"][data-selected="true"] [data-gloom-role="chat-message-reply-action"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Message text can be selected and copied, like any chat. */
+[data-gloom-role="chat-message-body"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+[data-gloom-role="chat-message-image"]:focus-visible {
+  outline: 2px solid var(--gloom-border-focused, currentColor);
+  outline-offset: 1px;
+}
+/* An upload whose progress the transport cannot report. */
+.gloom-chat-upload-indeterminate {
+  animation: gloom-chat-upload-slide 1.2s ease-in-out infinite;
+}
+@keyframes gloom-chat-upload-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gloom-chat-upload-indeterminate {
+    animation: none;
+    width: 100% !important;
+    opacity: 0.5;
+  }
+}
+/* The image viewer may use the whole window, not a dialog's usual width. */
+.gloom-dialog:has([data-gloom-role="chat-image-lightbox"]) {
+  max-width: calc(100vw - 48px);
+}
+[data-gloom-role="status-bar"] {
+  flex: 0 0 var(--cell-h);
+  height: var(--cell-h);
+  min-height: var(--cell-h);
+  max-height: var(--cell-h);
+  align-items: center;
+  border-top: 1px solid color-mix(in srgb, var(--gloom-border) 72%, transparent);
+  font-size: 11.5px;
+}
+[data-gloom-role="status-bar"] span {
+  line-height: var(--cell-h);
+}
+[data-gloom-role="pane-body"] {
+  overflow: hidden;
+}
+[data-gloom-role="pane-content"] {
+  overflow: hidden;
+}
+[data-gloom-role="pane-content"] > * {
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+}
+/* The same chrome row as the pane header, query bar and table header. */
+[data-gloom-role="pane-footer"] {
+  flex: 0 0 var(--chrome-h);
+  height: var(--chrome-h);
+  min-height: var(--chrome-h);
+  max-height: var(--chrome-h);
+  align-items: center;
+  border-top: 1px solid color-mix(in srgb, var(--pane-footer-border-color, var(--gloom-border)) 72%, transparent);
+  font-size: 11.5px;
+  overflow: hidden;
+}
+[data-gloom-role="pane-footer"][data-empty="true"] {
+  border-top-color: transparent;
+}
+[data-gloom-role="pane-footer"] span,
+[data-gloom-role="pane-hint"] span {
+  line-height: var(--cell-h);
+}
+[data-gloom-role="pane-hint"] {
+  cursor: pointer;
+  border-radius: 4px;
+}
+[data-gloom-role="pane-hint"]:hover {
+  background: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
+}
+[data-gloom-role="resize-handle"] {
+  cursor: nwse-resize;
+}
+[data-gloom-role="window-mode-status"] {
+  border: 1px solid color-mix(in srgb, var(--gloom-border-focused) 76%, transparent);
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--gloom-border-focused) 95%, var(--gloom-bg) 5%),
+      color-mix(in srgb, var(--gloom-border-focused) 82%, var(--gloom-bg) 18%)
+    ) !important;
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--gloom-bg) 55%, transparent);
+  overflow: hidden;
+}
+[data-gloom-role="window-mode-status"] span {
+  line-height: var(--cell-h);
+}
+[data-gloom-role="window-mode-corner"] {
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px var(--gloom-bg),
+    0 0 0 4px color-mix(in srgb, var(--gloom-border-focused) 28%, transparent);
+  pointer-events: none;
+}
+[data-gloom-role="chart-surface"] {
+  cursor: crosshair;
+}
+body.gloom-dragging [data-gloom-role="chart-surface"] {
+  cursor: grabbing;
+}
+[data-gloom-role="tab-list"] {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+[data-gloom-role="tab-list"]::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+[data-gloom-role="tab-button"] {
+  all: unset;
+  box-sizing: border-box;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-gloom-role="tab-button"] {
+    --tab-reorder-duration: 0ms;
+  }
+}
+[data-gloom-role="tab-button"]:focus-visible {
+  outline: 1px solid var(--tab-hover-underline);
+  outline-offset: -1px;
+}
+/* Title-bar tabs open into the pane body, so a ring would draw a line under the
+   active tab's label. Keyboard focus shows as the hover fill instead. */
+[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-button"]:focus-visible {
+  outline: none;
+}
+[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-button"]:not([data-active="true"]):focus-visible {
+  background: var(--pane-tab-hover-bg) !important;
+  color: var(--tab-hover-fg) !important;
+}
+[data-gloom-role="tab-close"] {
+  cursor: pointer;
+}
+[data-gloom-role="tab-close"]:hover {
+  background: color-mix(in srgb, var(--gloom-text-bright) 10%, transparent);
+}
+[data-gloom-scrollbar-x],
+[data-gloom-scrollbar-y] {
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+[data-gloom-scrollbar-active="true"] {
+  scrollbar-color: color-mix(in srgb, var(--gloom-text) 26%, transparent) transparent;
+}
+[data-gloom-scrollbar-x]::-webkit-scrollbar,
+[data-gloom-scrollbar-y]::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+[data-gloom-scrollbar-x]::-webkit-scrollbar-track,
+[data-gloom-scrollbar-y]::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-gloom-scrollbar-x]::-webkit-scrollbar-thumb,
+[data-gloom-scrollbar-y]::-webkit-scrollbar-thumb {
+  min-width: 24px;
+  min-height: 24px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: content-box;
+}
+[data-gloom-scrollbar-x]::-webkit-scrollbar-thumb:hover,
+[data-gloom-scrollbar-y]::-webkit-scrollbar-thumb:hover {
+  background: transparent;
+  background-clip: content-box;
+}
+[data-gloom-scrollbar-active="true"]::-webkit-scrollbar-thumb,
+[data-gloom-scrollbar-active="true"]::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--gloom-text) 24%, transparent);
+  background-clip: content-box;
+}
+[data-gloom-scrollbar-x]::-webkit-scrollbar-corner,
+[data-gloom-scrollbar-y]::-webkit-scrollbar-corner {
+  background: transparent;
+}
+[data-gloom-scrollbar-x="hidden"]:not([data-gloom-scrollbar-y="visible"]),
+[data-gloom-scrollbar-y="hidden"]:not([data-gloom-scrollbar-x="visible"]) {
+  scrollbar-width: none;
+}
+[data-gloom-scrollbar-x="hidden"]::-webkit-scrollbar:horizontal {
+  height: 0;
+  display: none;
+}
+[data-gloom-scrollbar-y="hidden"]::-webkit-scrollbar:vertical {
+  width: 0;
+  display: none;
+}
+[data-gloom-role="resize-handle"]::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  opacity: .7;
+}
+[data-gloom-role="dock-divider"] {
+  background: transparent !important;
+}
+[data-gloom-role="dock-divider"]::before {
+  content: "";
+  position: absolute;
+  background: var(--divider-color);
+  opacity: .9;
+}
+[data-gloom-role="dock-divider"][data-axis="horizontal"] {
+  cursor: col-resize;
+}
+[data-gloom-role="dock-divider"][data-axis="horizontal"]::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+[data-gloom-role="dock-divider"][data-axis="vertical"] {
+  cursor: row-resize;
+}
+[data-gloom-role="dock-divider"][data-axis="vertical"]::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+}
+.gloom-loading, .gloom-fatal {
+  padding: 24px;
+  color: var(--gloom-text, #f2f2f2);
+  background: var(--gloom-bg, #272a34);
+}
+.gloom-fatal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+}
+.gloom-fatal h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  line-height: 1.25;
+}
+.gloom-fatal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gloom-fatal button {
+  border: 1px solid var(--gloom-border, #5b6070);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--gloom-text, #f2f2f2);
+  background: var(--gloom-panel, #1f222b);
+}
+.gloom-fatal button:hover {
+  background: color-mix(in srgb, var(--gloom-text-bright, #fff) 10%, var(--gloom-panel, #1f222b));
+}
+.gloom-fatal button[data-variant="primary"] {
+  border-color: var(--gloom-border-focused, #8cb4ff);
+  color: var(--gloom-bg, #111318);
+  background: var(--gloom-border-focused, #8cb4ff);
+}
+.gloom-fatal-status {
+  min-height: var(--cell-h);
+  color: var(--gloom-text-dim, #a7acba);
+}
+.gloom-fatal pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--gloom-negative, #ff5f5f);
+  user-select: text;
+}
+.gloom-toast-viewport {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  width: min(380px, calc(100vw - 32px));
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 10000;
+}
+.gloom-toast {
+  --gloom-toast-accent: var(--gloom-border-focused);
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  align-items: start;
+  width: 100%;
+  padding: 11px 10px 11px 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--gloom-toast-accent) 54%, var(--gloom-border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--gloom-panel) 94%, var(--gloom-bg));
+  color: var(--gloom-text);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--gloom-bg) 42%, transparent);
+  pointer-events: auto;
+}
+.gloom-toast[data-type="success"] { --gloom-toast-accent: var(--gloom-positive); }
+.gloom-toast[data-type="error"] { --gloom-toast-accent: var(--gloom-negative); }
+.gloom-toast[data-actionable="true"] {
+  cursor: pointer;
+  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1), border-color 120ms ease, background-color 120ms ease;
+}
+.gloom-toast[data-actionable="true"]:active { transform: scale(0.985); }
+.gloom-toast-indicator {
+  grid-area: 1 / 1;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--gloom-toast-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gloom-toast-accent) 14%, transparent);
+}
+.gloom-toast-heading {
+  grid-area: 1 / 2;
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+}
+.gloom-toast-title {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--gloom-text-bright);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gloom-toast-subtitle {
+  overflow: hidden;
+  color: var(--gloom-text-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gloom-toast-body {
+  grid-column: 2;
+  min-width: 0;
+  color: var(--gloom-text);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+/* With a heading, the controls share its row and the body runs under them. */
+.gloom-toast-heading + .gloom-toast-body { grid-column: 2 / -1; }
+.gloom-toast-controls {
+  grid-area: 1 / 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .gloom-toast[data-actionable="true"]:hover {
+    border-color: var(--gloom-toast-accent);
+    background: color-mix(in srgb, var(--gloom-panel) 88%, var(--gloom-toast-accent));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gloom-toast[data-actionable="true"] { transition: none; }
+  .gloom-toast[data-actionable="true"]:active { transform: none; }
+}
+/* The dialog takes focus only so its content can; its controls show their own rings. */
+.gloom-dialog:focus {
+  outline: none;
+}
+.gloom-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--gloom-bg) 64%, transparent);
+  z-index: 9999;
+}
+.gloom-dialog {
+  max-width: min(920px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--gloom-border);
+  border-radius: 6px;
+  background: var(--gloom-panel);
+  color: var(--gloom-text);
+  padding: 0;
+  box-shadow:
+    0 18px 48px color-mix(in srgb, var(--gloom-bg) 46%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--gloom-text-bright) 5%, transparent);
+}
+.gloom-popover-anchor {
+  display: inline-flex;
+  min-width: 0;
+  outline: none;
+}
+.gloom-popover {
+  position: fixed;
+  z-index: 10001;
+  max-height: min(420px, calc(100vh - 20px));
+  overflow: auto;
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 8px;
+  outline: none;
+  box-shadow:
+    0 14px 34px color-mix(in srgb, var(--gloom-bg) 42%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--gloom-text-bright) 5%, transparent);
+}
+/* Chart screenshot watermark: mounted by every chart, revealed together by
+   html[data-gloom-screenshot] (pane capture, OS screenshot chords, CLI shots). */
+[data-gloom-role="chart-watermark"] {
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0.1;
+}
+html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
+  visibility: visible;
+}
+
+/* Query bar: search, filters and a view switch above a list. One faint band;
+   controls sit flush, split by hairlines, and a filter that narrows the list is
+   tinted with an accent base line. The row scrolls sideways when the pane is
+   narrower than its controls. */
+.gloom-qb {
+  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
+  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  --qb-accent-fill: color-mix(in srgb, var(--gloom-border-focused) 18%, transparent);
+  --qb-label: color-mix(in srgb, var(--gloom-text) 58%, transparent);
+  /* 20px at the default font size, whole pixels at every size. The bottom
+     padding keeps the controls clear of the hairline, so they centre between
+     the header rule above and the hairline below. */
+  height: var(--chrome-h);
+  padding-bottom: 1px;
+  flex-shrink: 0;
+  min-width: 0;
+  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  box-shadow: inset 0 -1px 0 var(--qb-hairline);
+  font-size: 12px;
+}
+.gloom-qb button { font: inherit; border: 0; margin: 0; }
+.gloom-qb-scroll {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.gloom-qb-scroll::-webkit-scrollbar { display: none; }
+.gloom-qb-search,
+.gloom-qb-chip,
+.gloom-qb-inline,
+.gloom-qb-clear {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--gloom-text);
+  white-space: nowrap;
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-qb-search {
+  flex: 0 1 260px;
+  min-width: 150px;
+  color: var(--gloom-text-muted);
+  cursor: text;
+}
+.gloom-qb-search:hover { background: var(--qb-fill); }
+.gloom-qb-search[data-active="true"] {
+  background: var(--qb-fill);
+  color: var(--gloom-text);
+  box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+.gloom-qb-search-icon { width: 11px; height: 11px; flex: none; }
+.gloom-qb-search[data-active="true"] .gloom-qb-search-icon { color: var(--gloom-border-focused); }
+.gloom-qb-search-input { flex: 1; min-width: 0; display: flex; align-items: center; }
+.gloom-qb-search-input input::placeholder { color: var(--gloom-text-muted); }
+.gloom-qb-kbd {
+  flex: none;
+  min-width: 15px;
+  height: 15px;
+  line-height: 15px;
+  text-align: center;
+  font-size: 10px;
+  border-radius: 3px;
+  background: var(--qb-fill);
+  color: var(--gloom-text-muted);
+}
+.gloom-qb-filters { display: flex; align-items: stretch; flex: none; }
+.gloom-qb-filters .gloom-popover-anchor { display: flex; align-items: stretch; }
+.gloom-qb-chip { cursor: pointer; }
+.gloom-qb-chip:hover, .gloom-qb-chip[data-open="true"] { background: var(--qb-fill); }
+.gloom-qb-label { color: var(--qb-label); }
+.gloom-qb-chevron { width: 9px; height: 9px; color: var(--gloom-text-muted); margin-right: -2px; }
+.gloom-qb-chip[data-narrowing="true"],
+.gloom-qb-chip[data-narrowing="true"]:hover {
+  background: var(--qb-accent-fill);
+  box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+.gloom-qb-chip[data-narrowing="true"] .gloom-qb-label { color: color-mix(in srgb, var(--gloom-border-focused) 80%, var(--gloom-text)); }
+.gloom-qb-chip[data-narrowing="true"] .gloom-qb-value { color: var(--gloom-text-bright); font-weight: 600; }
+.gloom-qb-reset {
+  width: 14px;
+  height: 14px;
+  margin-right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: var(--gloom-text-muted);
+  cursor: pointer;
+}
+.gloom-qb-reset svg { width: 10px; height: 10px; }
+.gloom-qb-reset:hover { background: var(--qb-fill); color: var(--gloom-text-bright); }
+.gloom-qb-clear { color: var(--gloom-text-muted); cursor: pointer; box-shadow: none; }
+.gloom-qb-clear:hover { color: var(--gloom-text); background: var(--qb-fill); }
+.gloom-qb-inline { gap: 2px; padding-right: 0; }
+.gloom-qb-inline .gloom-qb-label { padding-right: 4px; color: var(--gloom-text-muted); }
+.gloom-qb-view {
+  margin-left: auto;
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  box-shadow: inset 1px 0 0 var(--qb-hairline);
+}
+.gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
+.gloom-qb-view button {
+  height: 100%;
+  padding: 0 8px;
+  border-radius: 0;
+  background: transparent;
+  /* Options read as values (like a chip's value); the label beside an inline
+     group stays the muted one. */
+  color: color-mix(in srgb, var(--gloom-text) 82%, transparent);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-qb-view button:hover { color: var(--gloom-text); }
+.gloom-qb-view button[data-active="true"] {
+  background: var(--qb-fill);
+  color: var(--gloom-text-bright);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--gloom-border-focused);
+}
+/* Context gives way first when the pane is narrow. */
+.gloom-qb-meta {
+  margin-left: auto;
+  align-self: center;
+  flex: 0 1000 auto;
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--gloom-text-muted);
+}
+.gloom-qb-meta + .gloom-qb-view { margin-left: 0; }
+
+
+/* Detail header of a list/detail stack: the same band as the query bar, so
+   Back and the item title read as the pane's toolbar. Grows when a long title
+   wraps rather than hiding it. */
+.gloom-stack-bar {
+  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
+  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  display: flex;
+  align-items: stretch;
+  min-height: var(--chrome-h);
+  padding-bottom: 1px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  box-shadow: inset 0 -1px 0 var(--qb-hairline);
+  font-size: 12px;
+}
+.gloom-stack-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  margin: 0;
+  font: inherit;
+  background: transparent;
+  color: var(--gloom-text);
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-stack-back:hover { background: var(--qb-fill); color: var(--gloom-text-bright); }
+.gloom-stack-back svg { width: 11px; height: 11px; color: var(--gloom-text-muted); }
+.gloom-stack-back:hover svg { color: var(--gloom-text-bright); }
+.gloom-stack-title {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  padding: 5px 10px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--gloom-text-bright);
+  overflow-wrap: break-word;
+}
+.gloom-stack-hint { flex: none; align-self: center; padding: 0 10px; color: var(--gloom-text-muted); white-space: nowrap; }
+/* Back and the title when a detail's query bar has taken the stack header. */
+.gloom-qb .gloom-stack-back { height: 100%; }
+.gloom-qb-title {
+  flex: 0 1 auto;
+  max-width: 40ch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--gloom-text-bright);
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+}
+
+/* Optical centring for one-line chrome text: size the text by its capitals and
+   baseline, so flex centring puts the letters in the middle whatever the font's
+   ascent and descent are (SF Mono and Menlo differ from the Linux fallbacks).
+   Equal padding and negative margin keep ascenders and descenders inside any
+   overflow clip without changing the layout size. */
+[data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
+[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
+.gloom-qb-label,
+.gloom-qb-value,
+.gloom-qb-text,
+.gloom-qb-title,
+.gloom-qb-meta,
+.gloom-stack-title {
+  text-box: trim-both cap alphabetic;
+}
+[data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
+[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
+.gloom-qb-title,
+.gloom-qb-meta {
+  padding-block: 4px;
+  margin-block: -4px;
+}
+.gloom-qb-view button { display: inline-flex; align-items: center; }
+
+/* A stack detail fills everything under its header, down to the pane footer.
+   Details are often given a height worked out in terminal rows (pane height
+   minus the rows the terminal spends on chrome); on the desktop that chrome is
+   a different size, and a fixed height left a band of empty pane above the
+   footer. The detail's own layout still flexes inside the filled box. */
+.gloom-stack-detail > * {
+  flex: 1 1 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* Popovers take focus so their keys work; the focus ring is noise on a
+   surface that is plainly the active one. */
+.gloom-popover:focus, .gloom-popover:focus-visible { outline: none; }
+.gloom-popover[data-density="menu"] { padding: 4px; border-radius: 7px; }
+
+/* Menu: the one list of choices every popover menu renders (filter menus,
+   selects, multi-selects, the pane menu). */
+.gloom-menu { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 12px; }
+.gloom-menu-title {
+  padding: 4px 8px 3px;
+  color: var(--gloom-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.gloom-menu-divider { height: 1px; margin: 3px 4px; background: color-mix(in srgb, var(--gloom-text) 12%, transparent); }
+.gloom-menu-item {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--gloom-text);
+  white-space: nowrap;
+}
+.gloom-menu-item[aria-disabled="true"] { color: var(--gloom-text-muted); cursor: default; }
+.gloom-menu-item[data-highlighted="true"] { background: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent); color: var(--gloom-text-bright); }
+.gloom-menu-item[data-selected="true"] { font-weight: 600; }
+.gloom-menu-label { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.gloom-menu-text { overflow: hidden; text-overflow: ellipsis; }
+.gloom-menu-description { color: var(--gloom-text-muted); font-weight: 400; font-size: 11px; white-space: normal; }
+.gloom-menu-hint { flex: none; padding-left: 16px; color: var(--gloom-text-muted); font-weight: 400; }
+.gloom-menu-check { flex: none; color: var(--gloom-border-focused); display: inline-flex; }
+.gloom-menu-check svg { width: 11px; height: 11px; }
+
+/* A labelled text filter beside the search (e.g. tickers). Its width is the
+   input's, as in the terminal; the segment grows to fit the label. */
+.gloom-qb-textfield { flex: none; min-width: 0; }
+.gloom-qb-textfield .gloom-qb-search-input { flex: 0 0 var(--qb-input-w); width: var(--qb-input-w); }
+
+/* Field grid: a calculator's inputs as one sheet under the query bar. Same
+   band surface and hairlines; each cell is label, value, unit. The cell being
+   edited takes the accent base line the active search field uses. */
+[data-gloom-role="field-grid"] {
+  --fg-hairline: color-mix(in srgb, var(--gloom-text) 12%, transparent);
+  --fg-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  background: color-mix(in srgb, var(--gloom-text-bright) 2%, transparent);
+  box-shadow: inset 0 -1px 0 var(--fg-hairline);
+}
+/* Every row is the same column grid, so a short last row stays aligned. */
+[data-gloom-role="field-grid-row"] {
+  display: grid !important;
+  grid-template-columns: repeat(var(--field-columns, 3), minmax(0, 1fr));
+}
+[data-gloom-role="field-grid-row"] + [data-gloom-role="field-grid-row"] {
+  box-shadow: inset 0 1px 0 var(--fg-hairline);
+}
+[data-gloom-role="field-grid-cell"] {
+  /* Cells share the row, so the sheet spans the pane; the value keeps its
+     own width beside the label, so a unit never drifts from its number. */
+  width: auto !important;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  box-shadow: inset -1px 0 0 var(--fg-hairline);
+  cursor: text;
+  transition: background-color 120ms ease;
+}
+[data-gloom-role="field-grid-cell"][data-wide="true"] { grid-column: 1 / -1; box-shadow: none; }
+[data-gloom-role="field-grid-cell"][data-kind="action"] { cursor: pointer; padding: 0; }
+[data-gloom-role="field-grid-cell"]:hover { background: var(--fg-fill); }
+[data-gloom-role="field-grid-cell"][data-active="true"] {
+  background: var(--fg-fill);
+  box-shadow: inset -1px 0 0 var(--fg-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+[data-gloom-role="field-grid-label"] {
+  flex: 0 0 var(--field-label-w, 9ch);
+  width: var(--field-label-w, 9ch);
+  display: block !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-gloom-role="field-grid-cell"][data-active="true"] [data-gloom-role="field-grid-label"] { color: var(--gloom-text); }
+/* Values keep one column position whether they are shown or being edited, so
+   the unit sits in the same place while typing. */
+[data-gloom-role="field-grid-value"] { flex: 0 0 auto; width: 12ch !important; justify-content: flex-end; min-width: 0; }
+[data-gloom-role="field-grid-value"] > * { width: 100% !important; }
+[data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] { flex: 1 1 auto; width: auto !important; justify-content: flex-start; }
+[data-gloom-role="field-grid-value"] button { justify-content: flex-end; color: var(--gloom-text-bright) !important; font-weight: 600; }
+[data-gloom-role="field-grid-value"] input { text-align: right; color: var(--gloom-text-bright); font-weight: 600; }
+[data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] input { text-align: left; font-weight: 400; }
+[data-gloom-role="field-grid-unit"] { flex: none; color: var(--gloom-text-muted); }
+
+/* Stat grid: the read-only sibling of the field grid. A pane's summary figures
+   sit in the same band of hairline-split cells, so the header zone (title-bar
+   tab, query bar, figures) reads as one surface. Cells are not editable: no
+   hover, no text cursor. Each cell is label, value, muted context. */
+[data-gloom-role="stat-grid"] {
+  --sg-hairline: color-mix(in srgb, var(--gloom-text) 12%, transparent);
+  background: color-mix(in srgb, var(--gloom-text-bright) 2%, transparent);
+  box-shadow: inset 0 -1px 0 var(--sg-hairline);
+}
+[data-gloom-role="stat-grid-row"] {
+  display: grid !important;
+  grid-template-columns: repeat(var(--stat-columns, 3), minmax(0, 1fr));
+}
+[data-gloom-role="stat-grid-row"] + [data-gloom-role="stat-grid-row"] {
+  box-shadow: inset 0 1px 0 var(--sg-hairline);
+}
+[data-gloom-role="stat-grid-cell"] {
+  width: auto !important;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--cell-w);
+  box-sizing: border-box;
+  box-shadow: inset -1px 0 0 var(--sg-hairline);
+}
+[data-gloom-role="stat-grid-cell"][data-wide="true"] { grid-column: 1 / -1; box-shadow: none; }
+[data-gloom-role="stat-grid-label"] {
+  flex: 0 0 var(--stat-label-w, 10ch);
+  width: var(--stat-label-w, 10ch);
+  display: block !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-gloom-role="stat-grid-value"] { flex: none; white-space: nowrap; font-weight: 600; }
+[data-gloom-role="stat-grid-detail"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Icon-only button: pane header, footer, dialog close, window controls. */
+.gloom-icon-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--gloom-text-dim);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-icon-button:disabled { cursor: default; }
+.gloom-icon-button:not(:disabled):hover { background: color-mix(in srgb, var(--gloom-text-bright) 9%, transparent); color: var(--gloom-text-bright); }
+.gloom-icon-button[aria-pressed="true"] { color: var(--gloom-warning); }
+.gloom-qb-view button:disabled { color: var(--gloom-text-muted); opacity: 0.55; cursor: default; }
+[data-gloom-role="field-grid-value"] button,
+[data-gloom-role="field-grid-value"] button > span { justify-content: flex-end !important; text-align: right; padding-inline: 0 !important; }
+[data-gloom-role="field-grid-value"] input { padding: 0 !important; }
+[data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] { width: auto !important; }
+
+/* ===== Chrome: title-bar tab overflow, query bar edges, quick-add band ===== */
+
+/* Title-bar tabs that do not fit: a chevron after the strip lists them all.
+   The strip hangs over the header's rules; the padding puts the chevron back
+   on the header's centre line. */
+.gloom-tab-overflow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: var(--pane-tab-top-inset, 0px) 0 1px 2px;
+}
+
+/* A search with nothing beside it takes the room filters would have used. */
+.gloom-qb[data-search-only="true"] .gloom-qb-search { flex: 1 1 260px; max-width: 480px; }
+
+/* Band text starts one cell in, on the same edge as the table columns and
+   body text below it; segments after the first keep their 10px. */
+.gloom-qb-scroll > :is(.gloom-stack-back, .gloom-qb-search):first-child,
+.gloom-qb-scroll > .gloom-qb-filters:first-child > :first-child:not(.gloom-popover-anchor),
+.gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-popover-anchor:first-child > *,
+.gloom-stack-bar > .gloom-stack-back,
+[data-gloom-role="field-grid-cell"]:first-child:not([data-kind="action"]) {
+  padding-left: var(--cell-w);
+}
+
+/* Inline quick add across a pane (a watchlist's ticker field): the query bar's
+   band at the foot of the list, the field as its leading segment. */
+[data-gloom-role="inline-quick-add"][data-band="true"] {
+  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
+  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  height: var(--chrome-h);
+  padding-top: 1px;
+  align-items: stretch;
+  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  box-shadow: inset 0 1px 0 var(--qb-hairline);
+  font-size: 12px;
+  cursor: text;
+}
+[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-field"] {
+  gap: 6px;
+  padding: 0 10px 0 var(--cell-w);
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+  transition: background-color 120ms ease;
+}
+[data-gloom-role="inline-quick-add"][data-band="true"]:hover [data-gloom-role="inline-quick-add-field"] { background: var(--qb-fill); }
+[data-gloom-role="inline-quick-add"][data-band="true"][data-active="true"] [data-gloom-role="inline-quick-add-field"] {
+  background: var(--qb-fill);
+  box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-field"] input::placeholder { color: var(--gloom-text-muted); }
+[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-preview"] { padding: 0 10px; }
+
+/* ===== Data table: sortable headers ===== */
+
+/* A header that sorts brightens under the pointer; plain headers (no
+   onHeaderClick) are not interactive and stay put. Tinted headers keep
+   their colour. */
+[data-gloom-role="data-table-header-cell"][data-gloom-interactive="true"]:not([data-gloom-tinted="true"]):hover > * {
+  color: var(--gloom-text) !important;
+}
+
+/* Keyboard focus. Tab walks the controls of an open dialog, and a focused
+   control shows where Enter and Space will land. Pointer focus draws nothing. */
+:where(button, a[href], summary, [role="button"], [role="radio"], [role="option"], input[type="checkbox"]):focus-visible {
+  outline: 2px solid var(--gloom-border-focused);
+  outline-offset: 1px;
+}

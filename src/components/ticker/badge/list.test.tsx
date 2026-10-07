@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../../plugins/registry";
 import { resetInlineTickerFailures } from "../../../state/hooks/inline-ticker-failures";
@@ -10,7 +10,7 @@ import { createDefaultConfig } from "../../../types/config";
 import { TickerBadgeList } from "./list";
 import { createTestTicker } from "../../../test-support/ticker";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 function createState() {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-badge-list-test"));
@@ -35,7 +35,7 @@ async function renderList(width: number) {
   const state = createState();
   setSharedRegistryForTests({ pinTicker: () => {} } as unknown as PluginRegistry);
   await act(async () => {
-    testSetup = await testRender(
+    await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <TickerBadgeList symbols={["NFLX"]} width={width} />
       </AppContext>,
@@ -43,18 +43,12 @@ async function renderList(width: number) {
     );
   });
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  return testSetup!.captureCharFrame();
+  return tui.frame();
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-  }
-  testSetup = undefined;
+afterEach(() => {
   resetInlineTickerFailures();
   setSharedMarketDataCoordinator(null);
   setSharedRegistryForTests(undefined);

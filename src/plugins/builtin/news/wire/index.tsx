@@ -17,7 +17,10 @@ import {
   saveNewsFeedSettings,
 } from "./feed-config";
 import { IndustryPane, TOPIC_NEWS_TITLE } from "./industry-pane";
+import { newsMuteSettingsDef } from "./mutes";
 import { createNewsPresetPane } from "./news/preset-pane";
+import { createNewsStoryPaneTemplate, NEWS_STORY_PANE_ID, NewsStoryPane } from "./news/pop-out";
+import { createLoadedStorySearchProvider } from "./news/command-bar-search";
 import { NEWS_INDUSTRY_CODES, NEWS_QUERY_PRESETS, parseNewsIndustryCode } from "./news/query-presets";
 import { createRssNewsCapability } from "./rss/source";
 import { rssCliCommand } from "./rss/cli";
@@ -60,8 +63,35 @@ let disposeBreakingNewsNotifications: (() => void) | null = null;
 
 const newsWirePanes: PluginModule["panes"] = [
     { id: "news-top", name: "Top News", icon: "T", component: TopPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 } },
-    { id: "news-feed", name: "News Feed", icon: "N", component: FeedPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 100, height: 35 } },
-    { id: "news-industry", name: TOPIC_NEWS_TITLE, icon: "S", component: IndustryPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 100, height: 35 } },
+    {
+      id: "news-feed",
+      name: "News Feed",
+      icon: "N",
+      component: FeedPane,
+      defaultPosition: "right",
+      defaultMode: "floating",
+      defaultFloatingSize: { width: 100, height: 35 },
+      settings: (context) => newsMuteSettingsDef(context, "News Feed Settings"),
+    },
+    {
+      id: "news-industry",
+      name: TOPIC_NEWS_TITLE,
+      icon: "S",
+      component: IndustryPane,
+      defaultPosition: "right",
+      defaultMode: "floating",
+      defaultFloatingSize: { width: 100, height: 35 },
+      settings: (context) => newsMuteSettingsDef(context, "Topic News Settings"),
+    },
+    {
+      id: NEWS_STORY_PANE_ID,
+      name: "Story",
+      icon: "A",
+      component: NewsStoryPane,
+      defaultPosition: "right",
+      defaultMode: "floating",
+      defaultFloatingSize: { width: 80, height: 24 },
+    },
     {
       id: "news-breaking",
       name: "Breaking News",
@@ -103,7 +133,8 @@ const newsWirePanes: PluginModule["panes"] = [
 
 const newsWirePaneTemplates: PluginModule["paneTemplates"] = [
   { id: "news-top-pane", paneId: "news-top", label: "Top News", description: "Curated top market stories ranked by importance", keywords: ["top", "news", "headlines", "stories"], shortcut: { prefix: "TOP" } },
-  { id: "news-feed-pane", paneId: "news-feed", label: "News Feed", description: "Chronological market news firehose", keywords: ["news", "feed", "firehose", "wire", "stream"], shortcut: { prefix: "N" }, headless: newsFeedHeadless },
+  // FH is the same combined latest feed, Gloom Cloud with your RSS feeds, so it opens this pane.
+  { id: "news-feed-pane", paneId: "news-feed", label: "News Feed", description: "Chronological market news firehose", keywords: ["news", "feed", "firehose", "wire", "stream", "latest"], shortcut: { prefix: "N", aliases: ["FH"] }, headless: newsFeedHeadless },
   {
     id: "news-industry-pane",
     paneId: "news-industry",
@@ -128,6 +159,7 @@ const newsWirePaneTemplates: PluginModule["paneTemplates"] = [
     },
   },
   { id: "news-breaking-pane", paneId: "news-breaking", label: "Breaking News", description: "Breaking and urgent market news", keywords: ["first", "breaking", "urgent", "alert", "flash"], shortcut: { prefix: "FIRST" } },
+  createNewsStoryPaneTemplate(),
 ];
 
 /**
@@ -140,6 +172,7 @@ export const browserNewsWireModule: PluginModule = {
   paneTemplates: newsWirePaneTemplates,
   setup(ctx) {
     ctx.registerCommand(breakingNewsSnoozeCommand(ctx));
+    ctx.registerCommandBarSearchProvider(createLoadedStorySearchProvider(ctx));
     disposeBreakingNewsNotifications = setupBreakingNewsNotifications(ctx);
   },
   dispose() {
@@ -196,6 +229,7 @@ export const newsWireModule: PluginModule = {
     });
 
     ctx.registerCommand(breakingNewsSnoozeCommand(ctx));
+    ctx.registerCommandBarSearchProvider(createLoadedStorySearchProvider(ctx));
     disposeBreakingNewsNotifications = setupBreakingNewsNotifications(ctx);
   },
   dispose() {

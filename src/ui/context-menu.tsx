@@ -42,6 +42,7 @@ const MENU_SURFACE_SELECTOR = [
   "[data-gloom-role='pane-header']",
   "[data-gloom-role='pane-action']",
   "[data-gloom-role='pane-close']",
+  "[data-gloom-role='pane-restore']",
   "[data-gloom-role='status-bar']",
   "[data-gloom-role='tab-button']",
 ].join(", ");
@@ -122,7 +123,7 @@ function clearBrowserSelection(): void {
 
 function selectedTextMenuItems(text: string, registry: PluginRegistry | null, copyText: (text: string) => Promise<void>): ContextMenuItem[] {
   const symbol = selectedTextTickerSymbol(text);
-  const ticker = symbol ? registry?.getTickerFn(symbol) ?? null : null;
+  const ticker = symbol ? registry?.getTicker(symbol) ?? null : null;
   const items: ContextMenuItem[] = [
     { type: "role", role: "copy", label: "Copy" },
   ];

@@ -1,7 +1,7 @@
 import {
   removeFloatingPanes,
   tidyWindows,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import {
   DEFAULT_LAYOUT,
   cloneLayout,
@@ -28,6 +28,7 @@ export function buildCurrentLayoutItems({
   confirmDangerousActions,
   currentLayout,
   dispatch,
+  getState,
   openBuiltInWorkflow,
   openInlineConfirm,
   persistLayoutChange,
@@ -125,7 +126,7 @@ export function buildCurrentLayoutItems({
       action: () => {
         tidyWindows({
           layout: currentLayout,
-          size: pluginRegistry.getTermSizeFn(),
+          size: pluginRegistry.getTermSize(),
           paneTypes: pluginRegistry.panes,
           apply: persistLayoutChange,
           notify: pluginRegistry.notify,
@@ -154,7 +155,7 @@ export function buildCurrentLayoutItems({
             cancelLabel: "Back",
             tone: "danger",
             onConfirm: () => {
-              persistLayoutChange(removeFloatingPanes(currentLayout));
+              persistLayoutChange(removeFloatingPanes(getState().config.layout));
             },
           });
         }
@@ -194,6 +195,16 @@ export function buildCurrentLayoutItems({
       category: "Current Layout",
       kind: "action",
       action: () => openBuiltInWorkflow("new-layout"),
+    },
+    {
+      id: "layout-add-desk",
+      label: "Add a Desk",
+      detail: "A ready-made layout for equities, options, futures, rates, FX or trading",
+      searchText: "desk add workspace template starter",
+      category: "Current Layout",
+      kind: "action",
+      right: "DESK",
+      action: () => dispatch({ type: "SET_COMMAND_BAR", open: true, query: "DESK " }),
     },
   ];
 }

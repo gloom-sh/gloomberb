@@ -13,12 +13,14 @@ import {
 } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import { isCollectionCommand } from "../../helpers";
+import { recentPaneTemplateArg } from "../../pane-templates/items";
 import { dedupeById } from "../../view-model";
 import type { ResultItem } from "../../list/model";
 import type { parseRootShortcutIntent } from "./shortcuts";
 import type { CommandBarRoute } from "../../workflow/types";
 import { createRootCommandItemBuilder } from "./command-items";
 import { buildRootShortcutItem } from "./shortcut-items";
+import { buildHelpArgumentItems } from "./help-items";
 
 type RootShortcutIntent = ReturnType<typeof parseRootShortcutIntent>;
 
@@ -47,6 +49,8 @@ export interface RootResultModelOptions {
   /** Natural-language fallback rows; omit to build the list without an AI section. */
   assist?: AssistRowHandlers | null;
   availableCommands: Command[];
+  /** Builds one select/pin ticker row for a recent symbol. */
+  buildRecentTickerItem?: (symbol: string) => ResultItem | null;
   /** Offers to bind a key to the typed text once it resolves to a command; omit to hide the row. */
   bindKey?: (query: string) => void;
   buildLayoutItems: (query: string, options?: { confirmDangerousActions?: boolean }) => ResultItem[];
@@ -60,6 +64,8 @@ export interface RootResultModelOptions {
     rawInput?: string,
   ) => void | Promise<void>;
   getAvailablePaneShortcutTemplates: (query: string) => PaneTemplateDef[];
+  /** Looks a recorded `pane-template:<id>` entry back up among the templates the bar offers now. */
+  getRecentPaneTemplate?: (id: string, arg?: string) => PaneTemplateDef | undefined;
   hasPaneSettings: (paneId: string) => boolean;
   localTickerSearchResultItems: (query?: string, options?: { category?: string; limit?: number }) => ResultItem[];
   nonShortcutPaneTemplateItems: (filterQuery?: string) => ResultItem[];
@@ -128,6 +134,54 @@ function buildBindKeyItem(
   };
 }
 
+/** Kept short: the empty bar is still a browse list of everything below. */
+const MAX_RECENT_TICKER_ROWS = 4;
+const MAX_RECENT_PANE_ROWS = 4;
+
+function buildRecentResultItems(options: {
+  buildRecentTickerItem?: (symbol: string) => ResultItem | null;
+  createPaneTemplateItem: (template: PaneTemplateDef, options?: PaneTemplateItemOptions) => ResultItem;
+  getRecentPaneTemplate?: (id: string, arg?: string) => PaneTemplateDef | undefined;
+  recentCommands: AppState["config"]["recentCommands"];
+  recentTickers: string[];
+}): ResultItem[] {
+  const {
+    buildRecentTickerItem = () => null,
+    createPaneTemplateItem,
+    getRecentPaneTemplate = () => undefined,
+    recentCommands,
+    recentTickers,
+  } = options;
+  const items: ResultItem[] = [];
+  for (const symbol of recentTickers) {
+    if (items.length >= MAX_RECENT_TICKER_ROWS) break;
+    const item = buildRecentTickerItem(symbol);
+    if (item) items.push({ ...item, category: "Suggested" });
+  }
+  let paneRows = 0;
+  for (const recent of recentCommands) {
+    if (paneRows >= MAX_RECENT_PANE_ROWS) break;
+    if (!recent.id.startsWith("pane-template:")) continue;
+    // Only a template the bar would offer now: its plugin enabled, and able
+    // to open for that argument.
+    const template = getRecentPaneTemplate(recent.id.slice("pane-template:".length), recent.arg);
+    if (!template) continue;
+    const arg = recentPaneTemplateArg(template, recent.arg);
+    const item = createPaneTemplateItem(template, {
+      showShortcut: true,
+      ...(arg ? { createOptions: { arg } } : {}),
+    });
+    items.push({
+      ...item,
+      id: arg ? `recent:${recent.id}:${arg}` : `recent:${recent.id}`,
+      label: arg ? `${item.label} ${arg}` : item.label,
+      category: "Suggested",
+    });
+    paneRows += 1;
+  }
+  return items;
+}
+
 export function buildRootResultModel(options: RootResultModelOptions): RootResultModel {
   const {
     activeCollectionId,
@@ -137,6 +191,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     availableCommands,
     bindKey,
     buildLayoutItems,
+    buildRecentTickerItem,
     buildPaneSettingItems,
     buildWindowModeItems,
     createPaneTemplateItem,
@@ -144,6 +199,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     currentRoute,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
+    getRecentPaneTemplate,
     hasPaneSettings,
     localTickerSearchResultItems,
     nonShortcutPaneTemplateItems,
@@ -239,10 +295,27 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     }
   } else if (match && isCollectionCommand(match.command.id)) {
     if (shortcutItem) items.push(shortcutItem);
+  } else if (match && match.command.id === "help") {
+    // HELP alone is the Help pane; HELP <fn> leads with the function's card.
+    const helpItems = buildHelpArgumentItems(match.arg);
+    items.push(...helpItems);
+    if (!match.arg || helpItems.every((item) => item.disabled)) {
+      const item = commandToItem(match.command);
+      if (item) items.push(item);
+    }
   } else if (match && !match.command.hasArg) {
     const item = commandToItem(match.command);
     if (item) items.push(item);
   } else if (!rootQuery) {
+    if (rootShortcutIntent.kind === "none") {
+      items.push(...buildRecentResultItems({
+        buildRecentTickerItem,
+        createPaneTemplateItem,
+        getRecentPaneTemplate,
+        recentCommands: state.config.recentCommands ?? [],
+        recentTickers: state.recentTickers ?? [],
+      }));
+    }
     items.push(...paneShortcutItems());
     for (const command of availableCommands) {
       const item = commandToItem(command);

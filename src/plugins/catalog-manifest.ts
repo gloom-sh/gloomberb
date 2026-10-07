@@ -11,7 +11,7 @@ import { getPluginCatalog } from "./catalog";
  * checked against a committed snapshot in CI.
  */
 
-export interface BuiltinPluginManifestEntry {
+interface BuiltinPluginManifestEntry {
   id: string;
   name: string;
   description: string;
@@ -45,6 +45,8 @@ const EDITORIAL: Record<
   alerts: { categories: ["alerts"] },
   application: { categories: ["core"] },
   broker: { categories: ["broker"] },
+  "clinical-trials": { categories: ["research"] },
+  "comment-letters": { categories: ["research"] },
   "custom-view": { categories: ["data", "productivity"] },
   debug: { categories: ["developer"] },
   "fear-greed": { categories: ["markets", "sentiment"], icon: "plugin-icons/fear-greed.webp" },
@@ -55,10 +57,10 @@ const EDITORIAL: Record<
   "market-overview": { categories: ["markets"] },
   news: { categories: ["news"] },
   notes: { categories: ["productivity"] },
+  openfda: { categories: ["research"] },
   portfolio: { categories: ["portfolio"] },
   "research-search": { categories: ["research", "news"] },
   "ticker-research": { categories: ["research"] },
-  yahoo: { categories: ["data"] },
 };
 
 export interface BuiltinManifest {

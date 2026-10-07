@@ -3,7 +3,6 @@ import type { DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
 import { createTestDataProvider } from "../../test-support/data-provider";
-import { loadYahooQuote } from "../../sources/yahoo-finance/snapshots";
 import {
   AmbiguousTickerError,
   buildTickerSearchCandidates,
@@ -16,6 +15,7 @@ import {
   upsertTickerFromSearchResult,
 } from "./index";
 import { createTestTicker } from "../../test-support/ticker";
+import { resolveManualPositionCurrency } from "../../plugins/builtin/portfolio-list/mutations";
 
 function makeSearchResult(
   symbol: string,
@@ -138,20 +138,6 @@ describe("ticker-search utilities", () => {
       .toMatchObject({ symbol: "BRK.B" });
   });
 
-  test("native Yahoo chart instrument type verifies an omitted crypto catalogue entry", async () => {
-    const dataProvider = createTestDataProvider({
-      search: async () => [makeSearchResult("SHIB/USD", "Shiba Inu", { exchange: "COINBASE PRO", type: "Digital Currency" })],
-      getQuote: async (symbol) => loadYahooQuote(symbol, {
-        providerId: "yahoo-finance",
-        fetchChart: async () => ({ meta: { instrumentType: "CRYPTOCURRENCY", currency: "USD", exchangeName: "CCC",
-          regularMarketPrice: 0.00000509, regularMarketTime: 1789077420 }, history: [{ date: new Date("2026-09-10"), close: 0.00000509 }] }),
-        fetchQuoteSupplement: async () => ({}), fetchExtendedHoursData: async () => ({}),
-      }),
-    });
-    expect(await resolveTickerSearch({ query: "SHIB-USD", activeTicker: null, tickers: new Map(), dataProvider }))
-      .toMatchObject({ symbol: "SHIB-USD", result: { type: "CRYPTOCURRENCY", exchange: "CCC" } });
-  });
-
   test("preserves futures, FX and index identity across saved and provider search matches", async () => {
     for (const symbol of ["ES=F", "6J=F", "JPY=X", "EURUSD=X", "EUR/USD", "^GSPC"]) {
       const lookalike = symbol.replace(/[^A-Z0-9]/g, "");
@@ -192,6 +178,65 @@ describe("ticker-search utilities", () => {
       })).toMatchObject({ kind: "local", symbol: "ES=F:CME" });
     }
     expect(findExactTickerSearchMatch([{ label: "ES=F:CME" }], "ES=F:NYMEX")).toBeNull();
+  });
+
+  test("a trailing class code keeps that class and also asks for its market spelling", async () => {
+    const asked: string[] = [];
+    const dataProvider = createTestDataProvider({
+      search: async (query) => {
+        asked.push(query);
+        if (query === "ES=F") return [makeSearchResult("ES=F", "E-Mini S&P 500 Dec 26", { exchange: "CME", type: "FUTURE" })];
+        return [
+          makeSearchResult("ES", "Eversource Energy", { exchange: "NYSE", type: "Common Stock" }),
+          makeSearchResult("ESR=F", "Euro Short-Term Rate Futures", { exchange: "CME", type: "FUTURE" }),
+        ];
+      },
+    });
+    const candidates = await searchTickerCandidates({ query: "ES FUT", tickers: new Map(), dataProvider, includeOptionContracts: false });
+    expect(asked).toContain("ES=F");
+    expect(asked).not.toContain("ES FUT");
+    expect(candidates.map((item) => item.symbol).sort()).toEqual(["ES=F", "ESR=F"]);
+
+    // The word ranking alone puts coins named "... BTC USD" ahead of BTC-USD.
+    // CRYP keeps coins, and CUR keeps them too.
+    const coinResults = [
+      makeSearchResult("PBTC-USD", "pTokens BTC USD", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
+      makeSearchResult("BTC", "Grayscale Bitcoin Mini Trust ETF", { exchange: "ARCA", type: "ETF" }),
+      makeSearchResult("BTC-USD", "Bitcoin USD", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
+    ];
+    for (const query of ["BTC CRYP", "BTC CUR"]) {
+      expect(buildTickerSearchCandidates({ query, tickers: new Map(), providerResults: coinResults })
+        .map((item) => item.symbol)).toEqual(["BTC-USD", "PBTC-USD"]);
+    }
+    expect(buildTickerSearchCandidates({
+      query: "EUR CRYP",
+      tickers: new Map(),
+      providerResults: [makeSearchResult("EURUSD=X", "EUR/USD", { type: "CURRENCY" })],
+    })).toEqual([]);
+
+    asked.length = 0;
+    await searchTickerCandidates({
+      query: "BTC CRYP",
+      tickers: new Map(),
+      dataProvider: createTestDataProvider({ search: async (query) => { asked.push(query); return []; } }),
+    });
+    expect(asked).toContain("BTC-USD");
+    expect(asked).not.toContain("BTC CRYP");
+  });
+
+  test("a name ending in Fund keeps every fund, and ETF only exchange-traded ones", () => {
+    // Full fund names end in "Fund" whether or not they trade on an exchange.
+    const providerResults = [
+      makeSearchResult("XLK", "Technology Select Sector SPDR Fund", { exchange: "ARCA", type: "ETF" }),
+      makeSearchResult("VWELX", "Vanguard Wellington Fund Investor Shares", { exchange: "NASDAQ", type: "Mutual Fund" }),
+      makeSearchResult("PDI", "PIMCO Dynamic Income Fund", { exchange: "NYSE", type: "Closed-end Fund" }),
+      makeSearchResult("FUNDX", "Fund Holdings Inc", { exchange: "NYSE", type: "Common Stock" }),
+    ];
+    const symbols = (query: string) => buildTickerSearchCandidates({ query, tickers: new Map(), providerResults })
+      .map((item) => item.symbol).sort();
+    expect(symbols("Technology Select Sector SPDR Fund")).toEqual(["XLK"]);
+    expect(symbols("Fund FUND")).toEqual(["PDI", "VWELX", "XLK"]);
+    expect(symbols("Fund ETF")).toEqual(["XLK"]);
   });
 
   test("resolves catalogue omissions through a quote for the exact market symbol only", async () => {
@@ -280,6 +325,28 @@ describe("ticker-search utilities", () => {
       kind: "provider",
       symbol: "MSFT",
     });
+  });
+
+  test("a venue code after the dot resolves like the listing suffix once the literal symbol finds nothing", async () => {
+    const queried: string[] = [];
+    const dataProvider = createTestDataProvider({
+      id: "test",
+      search: async (query: string) => {
+        queried.push(query);
+        if (query === "TTALO.HE") return [makeSearchResult("TTALO", "Terveystalo Oyj", { exchange: "HEL", currency: "EUR" })];
+        if (query === "ABC.LON") return [makeSearchResult("ABC.LON", "Literal Co")];
+        return [];
+      },
+    });
+    const resolve = (query: string) => resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider });
+
+    for (const query of ["TTALO.HEL", "TTALO.XHEL"]) {
+      expect(await resolve(query)).toMatchObject({ kind: "provider", symbol: "TTALO", result: { exchange: "HEL", currency: "EUR" } });
+    }
+    // A literal match wins; the rewrite is only a fallback.
+    queried.length = 0;
+    expect(await resolve("ABC.LON")).toMatchObject({ symbol: "ABC.LON" });
+    expect(queried.filter((query) => query === "ABC.L" || query === "ABC:LON")).toEqual([]);
   });
 
   test("combines local and provider candidates without duplicate saved symbols", async () => {
@@ -403,6 +470,24 @@ describe("ticker-search utilities", () => {
       expect(foreign.result?.currency).toBe("CAD");
     });
   }
+
+  test("a saved second listing keeps its venue's place among the issuer's listings", () => {
+    const venues = ["NYSE", "XETRA", "XSTU", "FWB2", "VIE", "SWX", "MUNICH", "HANOVER", "BUD"];
+    const results = buildTickerSearchCandidates({
+      query: "SAP",
+      tickers: new Map([
+        ["SAP", createTestTicker("SAP", "SAP SE", { exchange: "NYSE", assetCategory: "EQUITY" })],
+        ["SAP:XETR", createTestTicker("SAP:XETR", "SAP SE", { exchange: "XETRA", assetCategory: "Common Stock" })],
+      ]),
+      providerResults: venues.map((exchange) => makeSearchResult("SAP", "SAP SE", { exchange, type: "Common Stock" })),
+    });
+
+    expect(results.slice(0, 3).map((item) => [item.label, item.exchangeLabel, item.kind])).toEqual([
+      ["SAP", "NYSE", "ticker"],
+      ["SAP:XETR", "XETRA", "ticker"],
+      ["SAP", "XSTU", "search"],
+    ]);
+  });
 
   test("uses provider ordering to prefer the canonical saved listing for company-name queries", () => {
     const tickers = new Map<string, TickerRecord>([
@@ -546,7 +631,7 @@ describe("ticker-search utilities", () => {
   });
 
   describe("provider popularity", () => {
-    // Cloud responses captured from Yahoo's search scores on 2026-09-23.
+    // Cloud responses with recorded search scores on 2026-09-23.
     const listing = (symbol: string, name: string, exchange: string, popularity?: number, type = "EQUITY") =>
       makeSearchResult(symbol, name, { exchange, type, ...(popularity == null ? {} : { popularity }) });
     const build = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
@@ -611,7 +696,7 @@ describe("ticker-search utilities", () => {
         listing("8015", "Toyota Tsusho Corporation", "JPX", 20033),
         listing("TOM", "Toyota Motor Corp.", "XHAN"),
       ];
-      // Yahoo files TM as plain NYSE equity, exactly like a second home line.
+      // The catalogue files TM as plain NYSE equity, exactly like a second home line.
       expect(symbols("Toyota", toyota)).toEqual(["TM", "7203", "TOYOF", "TOM", "8015"]);
       const typed = toyota.map((result) => result.symbol === "TM" ? { ...result, type: "Depositary Receipt" } : result);
       expect(symbols("Toyota", typed)).toEqual(["7203", "TOYOF", "TOM", "TM", "8015"]);
@@ -849,6 +934,19 @@ describe("ticker-search utilities", () => {
     expect(created).toBe(true);
     expect(ticker.metadata.ticker).toBe("NVDA");
     expect(saved).toHaveLength(0);
+  });
+
+  test("a listing searched without a currency is saved without one, so its position takes the portfolio's", async () => {
+    const repository = {
+      loadTicker: async () => null,
+      createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }),
+      saveTicker: async () => {},
+    };
+    const { ticker } = await upsertTickerFromSearchResult(repository as any, makeSearchResult("SAP", "SAP SE", { exchange: "XETRA" }));
+
+    expect(ticker.metadata.currency).toBe("");
+    const portfolio = { id: "main", name: "Main", currency: "EUR" };
+    expect(resolveManualPositionCurrency(undefined, ticker, portfolio, "USD")).toBe("EUR");
   });
 
   test("refreshes low-quality saved metadata when opening a provider-backed result", async () => {

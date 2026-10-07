@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { createDomTestHarness } from "../../renderers/electrobun/view/test-utils";
+import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import type { ContextMenuItem } from "../../types/context-menu";
 import { PaneFooterProvider } from "../layout/pane/footer";
 import { ExternalLinkText, PaneLinkMenu } from "./external-link";

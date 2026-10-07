@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../../../../api-client";
+import type { ChatAttachment, ChatMessage } from "../../../../api-client";
 import { toTimestampMillis } from "../../../../utils/timestamp";
 import type { ChannelRuntimeState, MergeMessagesOptions } from "./state";
 import { PENDING_RECONCILE_WINDOW_MS } from "./state";
@@ -6,13 +6,37 @@ import { chatMessageMentionsUsername, compareMessages, normalizeChatUsername } f
 
 type CurrentChatUser = { id: string; username: string } | null | undefined;
 
-export function hasPendingSend(channel: ChannelRuntimeState, content: string, replyToId?: string): boolean {
+/** The images a message carries, by id in display order, for comparing two copies of it. */
+function attachmentKey(message: Pick<ChatMessage, "attachments">): string {
+  return (message.attachments ?? []).map((attachment) => attachment.id).join(",");
+}
+
+export function hasPendingSend(
+  channel: ChannelRuntimeState,
+  content: string,
+  replyToId?: string,
+  attachmentIds: readonly string[] = [],
+): boolean {
   const replyToKey = replyToId ?? null;
+  const imagesKey = attachmentIds.join(",");
   return channel.pendingMessages.some((message) => (
     message.clientStatus === "sending"
     && message.content === content
     && message.replyToId === replyToKey
+    && attachmentKey(message) === imagesKey
   ));
+}
+
+/**
+ * Whether a live copy of a message says nothing new. A message can come again
+ * with its text edited, its images cleared or turned down after review, or
+ * taken down; any of those replaces the copy on screen.
+ */
+export function isSameMessageRevision(current: ChatMessage, incoming: ChatMessage): boolean {
+  return current.content === incoming.content
+    && (current.editedAt ?? null) === (incoming.editedAt ?? null)
+    && (current.attachmentReview ?? null) === (incoming.attachmentReview ?? null)
+    && attachmentKey(current) === attachmentKey(incoming);
 }
 
 export function getVisibleMessages(channel: ChannelRuntimeState): ChatMessage[] {
@@ -61,6 +85,8 @@ export function createPendingMessage({
   pendingId,
   user,
   visibleMessages,
+  attachments = [],
+  clientMessageId,
 }: {
   channelId: string;
   content: string;
@@ -68,6 +94,9 @@ export function createPendingMessage({
   pendingId: string;
   user: CurrentChatUser;
   visibleMessages: ChatMessage[];
+  /** The uploaded images, shown from their local copies until the server answers. */
+  attachments?: ChatAttachment[];
+  clientMessageId?: string;
 }): ChatMessage {
   const replyToMessage = replyToId
     ? visibleMessages.find((message) => message.id === replyToId) ?? null
@@ -87,10 +116,13 @@ export function createPendingMessage({
       ? {
         content: replyToMessage.content,
         user: { id: replyToMessage.user.id, username: replyToMessage.user.username ?? "unknown" },
+        ...(replyToMessage.attachments?.length ? { attachmentCount: replyToMessage.attachments.length } : {}),
       }
       : null,
+    ...(attachments.length > 0 ? { attachments } : {}),
     clientStatus: "sending",
     clientError: null,
+    ...(clientMessageId ? { clientMessageId } : {}),
   };
 }
 
@@ -104,6 +136,7 @@ function reconcilePendingMessages(channel: ChannelRuntimeState, messages: ChatMe
       pending.user.id === incoming.user.id
       && pending.content === incoming.content
       && pending.replyToId === incoming.replyToId
+      && attachmentKey(pending) === attachmentKey(incoming)
       && Math.abs(toTimestampMillis(pending.createdAt) - incomingMs) <= PENDING_RECONCILE_WINDOW_MS
     ));
     if (pendingIndex >= 0) {

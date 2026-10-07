@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
-import { createDomTestHarness } from "../../../renderers/electrobun/view/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { Text } from "../../../ui";
 import {
@@ -9,18 +9,12 @@ import {
   getPaneSidebarWidthRange,
   PaneSidebar,
   PaneSidebarAction,
+  PaneSidebarList,
   PaneSidebarRow,
   shouldShowPaneSidebar,
 } from "./sidebar";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  await act(async () => {
-    testSetup?.renderer.destroy();
-    testSetup = undefined;
-  });
-});
+const tui = createOpenTuiTestHarness();
 
 describe("pane sidebar metrics", () => {
   test("uses the shared responsive breakpoint and host-specific widths", () => {
@@ -53,7 +47,7 @@ test("renders a terminal divider and keeps nested actions from selecting their r
   let actions = 0;
 
   await act(async () => {
-    testSetup = await testRender(
+    await tui.render(
       <PaneSidebar width={20} height={4} focused keyboardFocused>
         <PaneSidebarRow
           active={false}
@@ -84,10 +78,10 @@ test("renders a terminal divider and keeps nested actions from selecting their r
     );
   });
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 
-  const frame = testSetup!.captureCharFrame();
+  const frame = tui.frame();
   const lines = frame.split("\n");
   const row = lines.findIndex((line) => line.includes("Alpha"));
   const labelColumn = lines[row]?.indexOf("Alpha") ?? -1;
@@ -98,15 +92,15 @@ test("renders a terminal divider and keeps nested actions from selecting their r
   expect(lines.slice(0, 4).every((line) => line[19] === "│")).toBe(true);
 
   await act(async () => {
-    await testSetup!.mockMouse.click(labelColumn, row);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.click(labelColumn, row);
+    await tui.setup().renderOnce();
   });
   expect(selections).toBe(1);
   expect(actions).toBe(0);
 
   await act(async () => {
-    await testSetup!.mockMouse.click(actionColumn, row);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.click(actionColumn, row);
+    await tui.setup().renderOnce();
   });
   expect(actions).toBe(1);
   expect(selections).toBe(1);
@@ -117,7 +111,7 @@ test("dragging the terminal divider reports a clamped width and commits once", a
   const committed: number[] = [];
 
   await act(async () => {
-    testSetup = await testRender(
+    await tui.render(
       <PaneSidebar
         width={20}
         height={4}
@@ -132,19 +126,19 @@ test("dragging the terminal divider reports a clamped width and commits once", a
     );
   });
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 
   await act(async () => {
-    await testSetup!.mockMouse.drag(19, 1, 25, 1);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.drag(19, 1, 25, 1);
+    await tui.setup().renderOnce();
   });
   expect(widths.at(-1)).toBe(26);
   expect(committed).toEqual([26]);
 
   await act(async () => {
-    await testSetup!.mockMouse.drag(19, 1, 2, 1);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.drag(19, 1, 2, 1);
+    await tui.setup().renderOnce();
   });
   expect(committed).toEqual([26, 12]);
 });
@@ -172,7 +166,13 @@ describe("desktop pane sidebar", () => {
     expect(handle).toBeTruthy();
 
     const mouse = (type: string, target: { dispatchEvent: (event: unknown) => unknown }, cells: number) => {
-      target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: cells * WEB_CELL_WIDTH, clientY: 40 }));
+      target.dispatchEvent(new MouseEvent(type, {
+        bubbles: true,
+        button: 0,
+        buttons: type === "mouseup" ? 0 : 1,
+        clientX: cells * WEB_CELL_WIDTH,
+        clientY: 40,
+      }));
     };
     await act(async () => mouse("mousedown", handle, 20));
     await act(async () => {
@@ -183,5 +183,24 @@ describe("desktop pane sidebar", () => {
 
     expect(widths.at(-1)).toBe(24);
     expect(committed).toEqual([24]);
+  });
+
+  test("the list scrolls inside the sidebar instead of clipping", async () => {
+    const container = await render(
+      <PaneSidebar width={20} height={6} focused>
+        <PaneSidebarList>
+          {Array.from({ length: 20 }, (_, index) => (
+            <PaneSidebarRow key={index} active={false} ariaLabel={`Channel ${index}`}>
+              {({ foregroundColor }) => <Text fg={foregroundColor}>{` Channel ${index}`}</Text>}
+            </PaneSidebarRow>
+          ))}
+        </PaneSidebarList>
+      </PaneSidebar>,
+    );
+
+    const list = container.querySelector('[data-gloom-role="pane-sidebar-list"]') as HTMLElement | null;
+    expect(list).toBeTruthy();
+    expect(list?.style.overflowY).toBe("auto");
+    expect(list?.parentElement?.style.overflow).toBe("hidden");
   });
 });

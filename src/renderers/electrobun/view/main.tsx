@@ -13,7 +13,7 @@ import {
   setElectrobunRemoteRequestHandler,
 } from "./backend-rpc";
 import { installElectrobunCapabilityStreamClient } from "./capability-stream-client";
-import { installFocusScopeRelease } from "./host/focus-scope";
+import { installFocusScopeRelease } from "../../dom/host/focus-scope";
 import { installElectrobunBrokerRemoteClient } from "./broker-remote-client";
 import { installElectrobunConfigStoreHost } from "./config-host";
 import {
@@ -23,9 +23,10 @@ import {
 import { installElectrobunUpdateHost } from "./update-host";
 import { installScreenshotWatermark } from "./screenshot-watermark";
 import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
-import { installDomMarketDataFrames } from "./data-frames";
-import { DomErrorBoundary, DomHostProviders } from "./dom-host-providers";
+import { installDomMarketDataFrames } from "../../dom/data-frames";
+import { DomErrorBoundary, DomHostProviders } from "../../dom/dom-host-providers";
 import { DesktopFatalScreen } from "./fatal-screen";
+import { resolveRendererWindowError } from "./renderer-window-error";
 import { createWebUiHost, webRendererHost } from "./ui-host";
 import {
   initializeDesktopResearchActivity,
@@ -43,8 +44,9 @@ import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/no
 import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
 import { loadOfficialPluginIds } from "../../../plugins/builtin/plugin-marketplace/feed";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
-import { installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
+import { browserDoNotTrack, installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
 import { currentTelemetryConfig } from "../../../telemetry/live-config";
+import { attentionCountsEnabled, installAttentionCounter } from "../../../telemetry/attention-counts";
 import { installUsageCounter, usageCountsEnabled } from "../../../telemetry/usage-counts";
 import { installWindowUsageFlush } from "../../../telemetry/usage-counts-dom";
 
@@ -82,7 +84,12 @@ function renderFatalError(error: unknown, details?: string, title = "Gloomberb f
 }
 
 window.__gloomRenderFatalError = (error, details, source) => {
-  if (appMounted && source === "unhandledrejection") {
+  if (resolveRendererWindowError({
+    error,
+    details,
+    source,
+    appMounted,
+  }) === "ignore") {
     return;
   }
   renderFatalError(error, details, "Gloomberb crashed");
@@ -135,6 +142,7 @@ async function boot() {
     getInstallId: () => init.telemetry.installId,
     officialPluginIds: loadOfficialPluginIds,
   });
+  installAttentionCounter(() => !init.telemetry.optedOut && !browserDoNotTrack() && attentionCountsEnabled(currentTelemetryConfig(init.config)));
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
   installElectrobunWindowFullscreenTracking();

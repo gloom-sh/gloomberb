@@ -89,7 +89,7 @@ export function createShortInterestHeadless(
       const { records, source, cloudSessionRequired } = Array.isArray(loaded)
         ? { records: loaded, source: undefined, cloudSessionRequired: false }
         : loaded;
-      const yahooFallback = source === "yahoo" && records.length > 0;
+      const latestSettlements = source === "gloom" && records.length > 0;
       const preference: SortPreference = {
         columnId: "settlementDate",
         direction: args.options.order === "oldest" ? "asc" : "desc",
@@ -106,7 +106,7 @@ export function createShortInterestHeadless(
         }));
       return {
         rows,
-        ...(yahooFallback ? {
+        ...(latestSettlements ? {
           complete: false,
           errors: [cloudSessionRequired
             ? "Full history needs a Gloom Cloud sign-in; showing the latest two settlements."

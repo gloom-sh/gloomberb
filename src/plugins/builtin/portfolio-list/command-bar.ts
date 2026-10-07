@@ -1,7 +1,7 @@
 import type { CommandBarFieldValue, CommandBarWorkflowField } from "../../../components/command-bar/workflow/types";
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
-import { getManualPortfolioPosition, isManualPortfolio } from "./mutations";
+import { getManualPortfolioPosition, isManualPortfolio, resolveManualPositionCurrency } from "./mutations";
 
 export interface SetPortfolioPositionWorkflowState {
   fields: CommandBarWorkflowField[];
@@ -68,7 +68,11 @@ function buildManualPortfolioPositionWorkflow(
       id: "currency",
       label: "Currency",
       type: "text",
-      placeholder: preferredPortfolio.currency,
+      // What a blank field saves: the ticker's own currency before the
+      // portfolio's. Without a ticker yet there is nothing true to show.
+      placeholder: options.ticker
+        ? resolveManualPositionCurrency(undefined, options.ticker, preferredPortfolio, config.baseCurrency)
+        : undefined,
       required: false,
     },
   ];

@@ -1,3 +1,4 @@
+import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useCallback, useMemo } from "react";
 import { usePaneFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
@@ -21,6 +22,7 @@ import { scopedSymbolsFromSettings } from "./model";
 /** `ERN <ticker>`: that company's reports, with the footer's ways into its other panes. */
 function TickerEarnings({ symbol, focused, width, height }: { symbol: string; focused: boolean; width: number; height: number }) {
   const { navigateTicker } = usePluginTickerActions();
+  useCompanyDisclosureLinks(symbol);
   const { createPaneFromTemplate } = usePluginAppActions();
   const open = useCallback((templateId: string) => createPaneFromTemplate(templateId, { symbol }), [createPaneFromTemplate, symbol]);
   // t, e, c and a are footer hints, which bind their own keys.

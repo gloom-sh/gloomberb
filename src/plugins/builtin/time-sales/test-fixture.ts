@@ -1,7 +1,7 @@
 import type { TapeSnapshot } from "../../../api-client/tape";
 
 export function tapeFixture(): TapeSnapshot {
-  return { source: "Alpaca", symbol: "AAPL", exchange: "NASDAQ", access: "realtime", feed: "sip", delaySeconds: 0,
+  return { source: "Gloom Cloud", symbol: "AAPL", exchange: "NASDAQ", access: "realtime", feed: "sip", delaySeconds: 0,
     status: "partial", generatedAt: "2026-09-22T16:00:00.000Z", asOf: "2026-09-22T15:59:59.000000009Z", observedFrom: "2026-09-22T15:59:59.000000001Z",
     trades: [1, 9].map((ns, index) => ({ id: `900719925474099${index + 2}`, timestamp: `2026-09-22T15:59:59.00000000${ns}Z`, price: index ? 102 : 100,
       size: index ? 30 : 10, exchange: "D", conditions: ["@", "I"], tape: "C" })),

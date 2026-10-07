@@ -4,6 +4,7 @@ import type { DataProvider } from "../../../../types/data-provider";
 import type { TickerSearchCandidate } from "../../../../tickers/search";
 import { searchTickerCandidates } from "../../../../tickers/search";
 import {
+  COMMAND_BAR_TICKER_SEARCH_LIMIT,
   mergeTickerSearchResultItems,
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
 } from "./results";
@@ -99,6 +100,7 @@ export function useTickerSearchRouteResults(options: {
             brokerId: brokerId ?? undefined,
             brokerInstanceId: brokerInstanceId ?? undefined,
           },
+          totalLimit: COMMAND_BAR_TICKER_SEARCH_LIMIT,
           ...QUICK_LOOK_TICKER_SEARCH_OPTIONS,
         });
         if (requestId !== searchRequestIdRef.current) return;

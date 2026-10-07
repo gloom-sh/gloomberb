@@ -159,7 +159,6 @@ function EntryDetail({ entry, width, host }: { entry: MarketplaceEntry; width: n
         <Text fg={colors.textDim}>{entry.tier}</Text>
         {entry.categories.length > 0 ? <Text fg={colors.textDim}>{entry.categories.join(", ")}</Text> : null}
         {versionLabel(entry) ? <Text fg={hasUpdate(entry) ? colors.textBright : colors.textDim}>{versionLabel(entry)}</Text> : null}
-        {!entry.bundled && entry.stars > 0 ? <Text fg={colors.textDim}>{`${entry.stars} star${entry.stars === 1 ? "" : "s"}`}</Text> : null}
         {status.text ? <Text fg={STATUS_COLORS[status.kind]}>{status.text}</Text> : null}
       </Box>
 
@@ -305,7 +304,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   const bump = useCallback(() => setLocalRevision((value) => value + 1), []);
 
-  const confirmWidth = Math.min(64, Math.max(44, width - 8));
+  // The terminal's default dialog is 60 columns, 54 inside its border and
+  // padding; a wider body runs over the border.
+  const confirmWidth = Math.min(54, Math.max(44, width - 8));
 
   const announceAdded = useCallback((pluginId: string, name: string, verb: string, activeHost: MarketplaceHost) => {
     const added = activeHost.contributions(pluginId);
@@ -422,7 +423,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       title: `Remove ${entry.name}?`,
       body: entry.linked
         ? ["Removes the link. Your local checkout is left alone."]
-        : [`Deletes ~/.gloomberb/plugins/${entry.directory}.`, "Its panes close now. Settings it saved are kept."],
+        : [`Deletes ${entry.path ?? `the ${entry.directory} plugin folder`}.`, "Its panes close now. Settings it saved are kept."],
       confirmLabel: "Remove",
       width: confirmWidth,
     });

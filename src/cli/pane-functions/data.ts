@@ -9,6 +9,14 @@ import { cleanTickerInput } from "./options";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import type { ResolvedPaneFunction } from "./resolver";
 import { toMarketDataContext } from "../../market-data/selectors";
+import { loadSeasonalityHistory, SEASONALITY_HISTORY_RESOLUTION } from "../../plugins/builtin/seasonality/client";
+import type { InstrumentRef } from "../../market-data/request-types";
+import { CORRELATION_HISTORY_RESOLUTION, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
+import type { TimeRange } from "../../time-series/range";
+import { loadPeriodEndHistory, PERIOD_END_HISTORY_RESOLUTION } from "../../plugins/builtin/ticker-detail/financials/period-end-history";
+import { latestFinancialPeriodEnd } from "../../plugins/builtin/ticker-detail/financials/model";
+import { oldestRatioPeriodEnd, periodEndClose, ratioStatements } from "../../plugins/builtin/ticker-detail/financials/ratios";
+import { shotFinancialPeriod } from "./financial-ratio-shot";
 
 const SHOT_PRICE_HISTORY_RANGE = "5Y" as const;
 const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
@@ -55,6 +63,76 @@ export async function withShotPriceHistory(
   } catch {
     return financials;
   }
+}
+
+/**
+ * SEAS reads monthly closes. Captured history answers every request, so the
+ * weekly seed would stand in for them and price each month at a week's close.
+ * The pane's own load fetches them, tagged so no other cadence is answered.
+ */
+export async function withShotSeasonalityHistory(
+  context: MarketContext,
+  instrument: InstrumentRef,
+  financials: TickerFinancials,
+): Promise<TickerFinancials> {
+  const monthly = await loadSeasonalityHistory({ instrument, forceRefresh: context.refresh }, context.dataProvider);
+  if (monthly.error || monthly.stale) {
+    throw new Error(`${instrument.symbol}: ${monthly.error ?? "monthly price history is stale"}`);
+  }
+  return { ...financials, priceHistory: monthly.history, priceHistoryResolution: SEASONALITY_HISTORY_RESOLUTION };
+}
+
+/** Correlation and relationship panes read daily returns at every range. */
+export function readsDailyReturns(resolved: ResolvedPaneFunction): boolean {
+  return resolved.capability.id === "return-correlation" || resolved.capability.id === "security-relationship";
+}
+
+/**
+ * A range capture is weekly at 5Y and monthly at ALL. Captured history answers
+ * the panes' daily request, so it would turn their daily returns into weekly or
+ * monthly ones.
+ */
+export async function withShotDailyReturns(
+  context: MarketContext,
+  instrument: InstrumentRef,
+  exchange: string,
+  range: TimeRange,
+  financials: TickerFinancials,
+): Promise<TickerFinancials> {
+  const priceHistory = await loadCorrelationHistory(context.dataProvider, instrument.symbol, exchange, range,
+    { ...toMarketDataContext(instrument), ...(context.refresh ? { cacheMode: "refresh" as const } : {}) });
+  return { ...financials, priceHistory, priceHistoryResolution: CORRELATION_HISTORY_RESOLUTION };
+}
+
+/**
+ * Valuation prices each column at its period-end close and accepts only daily
+ * bars. Captured history answers every request, so the weekly seed stood in
+ * for them and every cell read "no price". The pane's own load fetches daily
+ * closes back to its oldest column, tagged so no other cadence is answered.
+ */
+export async function withShotPeriodEndHistory(
+  context: MarketContext,
+  instrument: InstrumentRef,
+  exchange: string,
+  resolved: ResolvedPaneFunction,
+  financials: TickerFinancials,
+): Promise<TickerFinancials> {
+  const statements = ratioStatements(financials, shotFinancialPeriod(resolved, financials));
+  const oldest = oldestRatioPeriodEnd(statements);
+  // Without statements the pane shows its empty state, which the shot reports.
+  if (!oldest) return financials;
+  const fail = (reason: string) => new Error(`${instrument.symbol}: ${reason}`);
+  const priceHistory = await loadPeriodEndHistory(context.dataProvider, instrument.symbol, exchange, oldest,
+    { ...toMarketDataContext(instrument), ...(context.refresh ? { cacheMode: "refresh" as const } : {}) })
+    .catch((error: unknown) => { throw fail(error instanceof Error ? error.message : String(error)); });
+  const last = priceHistory.reduce((latest, point) => Math.max(latest, new Date(point.date).getTime() || -Infinity), -Infinity);
+  if (!Number.isFinite(last)) throw fail("daily price history is unavailable");
+  const lastClose = new Date(last).toISOString().slice(0, 10);
+  const newest = latestFinancialPeriodEnd(statements)!;
+  if (lastClose < newest && periodEndClose(priceHistory, newest) === undefined) {
+    throw fail(`daily price history is stale: the last close is ${lastClose}, before the ${newest} period end`);
+  }
+  return { ...financials, priceHistory, priceHistoryResolution: PERIOD_END_HISTORY_RESOLUTION };
 }
 
 export function isFinancialAnalysisFunction(resolved: ResolvedPaneFunction): boolean {

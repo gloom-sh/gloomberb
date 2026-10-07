@@ -10,8 +10,8 @@ import {
   findPaneInstance,
   type AppConfig,
 } from "../../../types/config";
-import { getDockedPaneIds } from "../../../plugins/pane-manager";
-import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "../../../plugins/seed";
+import { getDockedPaneIds } from "../../../layout/pane-manager";
+import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "../../../plugins/extracted-plugins";
 
 const tempDirs: string[] = [];
 const originalGloomberbHome = process.env.GLOOMBERB_HOME;
@@ -58,6 +58,25 @@ function createSavedConfig(overrides: Record<string, unknown> = {}): Record<stri
 async function writeConfigJson(dataDir: string, config: Record<string, unknown>): Promise<void> {
   await writeFile(join(dataDir, "config.json"), JSON.stringify(config), "utf-8");
 }
+
+test("recent panes survive a save and reload", async () => {
+  const dataDir = await createTempConfigDir();
+  const loaded = await loadConfig(dataDir);
+  await saveConfig({
+    ...loaded,
+    recentCommands: [
+      { id: "pane-template:ticker-news-pane", label: "Ticker News", arg: "AAPL" },
+      { id: "pane-template:chart", label: "Chart" },
+      { id: "blank-arg", label: "Blank", arg: "" },
+      { id: "", label: "drop" },
+    ],
+  });
+  expect((await loadConfig(dataDir)).recentCommands).toEqual([
+    { id: "pane-template:ticker-news-pane", label: "Ticker News", arg: "AAPL" },
+    { id: "pane-template:chart", label: "Chart" },
+    { id: "blank-arg", label: "Blank" },
+  ]);
+});
 
 test("fresh installs skip plugin restoration across config reloads", async () => {
   const dataDir = await createTempConfigDir();

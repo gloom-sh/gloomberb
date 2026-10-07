@@ -13,7 +13,7 @@ import type {
 import { clamp } from "../../../utils/math";
 
 /** Pointer tools that take the drag away from panning while one is picked. */
-export type ChartToolKind = "measure" | "zoom" | "line" | "pencil";
+export type ChartToolKind = "measure" | "zoom" | "line" | "pencil" | "level";
 
 export interface ChartDrawingPoint {
   time: number;
@@ -387,7 +387,7 @@ export function summarizeZoomSelection(
 
 /** The same preview for two times, in either order. */
 export function summarizeZoomRange(
-  scene: Pick<CompositeChartScene, "startTime" | "endTime">,
+  scene: Pick<CompositeChartScene, "startTime" | "endTime" | "timeZone">,
   first: number,
   second: number,
 ): string | null {
@@ -398,6 +398,7 @@ export function summarizeZoomRange(
     new Date(timestamp),
     scene.startTime,
     scene.endTime,
+    scene.timeZone,
   );
   return `${label(start)} → ${label(end)} · ${formatMeasureSpan(end - start)}`;
 }

@@ -45,6 +45,7 @@ import {
   FINANCIAL_SECTIONS,
   RATIO_TABS,
   buildRatioTableModel,
+  oldestRatioPeriodEnd,
   periodEndClose,
   ratioOpenings,
   ratioPeriodEnd,
@@ -411,7 +412,7 @@ export function ResolvedFinancialsTab({
 
   // Ratio tabs share the statement columns: Income's periods, with TTM.
   const isValuation = ratioTab?.key === "valuation";
-  const oldestPeriodEnd = displayStatements.length ? ratioPeriodEnd(displayStatements.at(-1)!) : undefined;
+  const oldestPeriodEnd = oldestRatioPeriodEnd(displayStatements);
   const [loadedHistory, setHistory] = useState<PeriodEndHistoryState | null>(null);
   const history: PeriodEndHistoryState = isValuation && loadedHistory ? loadedHistory : { data: undefined, loading: isValuation, error: null };
   const currencies = useMemo(() => financials ? createValuationCurrencyContext(financials) : null, [financials]);

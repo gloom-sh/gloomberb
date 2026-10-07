@@ -84,8 +84,19 @@ import {
   createFallbackTicker,
   fetchTickerFinancials,
   isFinancialAnalysisFunction,
+  readsDailyReturns,
+  withShotDailyReturns,
+  withShotPeriodEndHistory,
   withShotPriceHistory,
+  withShotSeasonalityHistory,
 } from "./data";
+import {
+  financialRatioRenderMismatches,
+  financialRatioShotEvidence,
+  financialRatioShotGap,
+  shotRatioTab,
+  type PaneScreenshotFinancialRatioEvidence,
+} from "./financial-ratio-shot";
 
 const DESKTOP_CELL_WIDTH_PX = 8;
 const DESKTOP_CELL_HEIGHT_PX = 18;
@@ -270,12 +281,12 @@ async function collectShotValuationSeries(
 }
 
 export interface PaneScreenshotExpectedSelection {
-  control: "metric" | "statement" | "period";
+  control: "metric" | "statement" | "ratio" | "period";
   value?: string;
   label?: string;
 }
 
-export interface PaneScreenshotChartPointEvidence {
+interface PaneScreenshotChartPointEvidence {
   date: string;
   close: number;
 }
@@ -314,7 +325,7 @@ export interface PaneScreenshotExpectedChartEvidence {
   }>;
 }
 
-export interface PaneScreenshotPriceComparisonEvidence {
+interface PaneScreenshotPriceComparisonEvidence {
   kind: "price-comparison";
   symbols: string[];
   range: string;
@@ -326,7 +337,7 @@ export interface PaneScreenshotPriceComparisonEvidence {
   }>;
 }
 
-export interface PaneScreenshotPriceSeriesEvidence {
+interface PaneScreenshotPriceSeriesEvidence {
   kind: "price-series";
   symbol: string;
   range: string;
@@ -337,7 +348,7 @@ export interface PaneScreenshotPriceSeriesEvidence {
   sessionDates?: string[];
 }
 
-export interface PaneScreenshotFundamentalSeriesEvidence {
+interface PaneScreenshotFundamentalSeriesEvidence {
   kind: "fundamental-series";
   metric: string;
   period: FundamentalPeriod;
@@ -347,7 +358,7 @@ export interface PaneScreenshotFundamentalSeriesEvidence {
   }>;
 }
 
-export interface PaneScreenshotFinancialStatementEvidence {
+interface PaneScreenshotFinancialStatementEvidence {
   kind: "financial-statement";
   symbol: string;
   statement: string;
@@ -368,6 +379,7 @@ export type PaneScreenshotDataEvidence =
   | PaneScreenshotPriceComparisonEvidence
   | PaneScreenshotFundamentalSeriesEvidence
   | PaneScreenshotFinancialStatementEvidence
+  | PaneScreenshotFinancialRatioEvidence
   | PaneScreenshotEvidence;
 
 export interface PaneScreenshotReadinessSignals {
@@ -550,7 +562,8 @@ export async function buildDesktopShotPayload(
       ?? data.quote?.listingExchangeName
       ?? data.quote?.exchangeName
       ?? "";
-    if (resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "iv-screen"
+    const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day";
+    if (fiveYearsDaily || resolved.pane.id === "iv-screen" || resolved.pane.id === "short-watch"
       || resolved.pane.id === "backtest" || resolved.pane.id === OPTIONS_PANE_ID) {
       // Generic 5Y snapshots can contain weekly bars. The snapshot provider
       // treats captured history as authoritative, even for a later 1d request.
@@ -560,10 +573,16 @@ export async function buildDesktopShotPayload(
       }
       const priceHistory = await context.dataProvider.getPriceHistoryForResolution(
         entry.instrument.symbol, exchange,
-        resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" ? "5Y" : resolved.pane.id === "backtest" ? "ALL" : "1Y",
+        fiveYearsDaily ? "5Y" : resolved.pane.id === "backtest" ? "ALL" : "1Y",
         "1d", toMarketDataContext(entry.instrument),
       );
       data = { ...data, priceHistory };
+    } else if (shotRatioTab(resolved)?.key === "valuation") {
+      data = await withShotPeriodEndHistory(context, entry.instrument, exchange, resolved, data);
+    } else if (resolved.pane.id === "seasonality") {
+      data = await withShotSeasonalityHistory(context, entry.instrument, data);
+    } else if (requestedRange && readsDailyReturns(resolved)) {
+      data = await withShotDailyReturns(context, entry.instrument, exchange, requestedRange, data);
     } else if (requestedRange) {
       try {
         const priceHistory = await context.dataProvider.getPriceHistory(entry.instrument.symbol, exchange, requestedRange);
@@ -717,6 +736,17 @@ export async function renderDesktopShot({
   }
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
+  return assessPaneScreenshot(resolved, payload, render, rawArg, outputPath);
+}
+
+/** What a rendered capture shows, and whether it is fit to use. */
+export function assessPaneScreenshot(
+  resolved: ResolvedPaneFunction,
+  payload: DesktopPaneShotPayload,
+  render: DesktopPaneShotRenderResult,
+  rawArg: string,
+  outputPath: string,
+): PaneScreenshotResult {
   const evidenceHook = paneScreenshotEvidenceHook(resolved);
   // The sizer carries portfolio members to value holdings and the earnings board
   // to mark them, but each shows only what its argument asks for.
@@ -747,6 +777,7 @@ export async function renderDesktopShot({
     ...(expectedChart ? chartEvidenceMismatchesFor(render.semanticUi, expectedChart) : []),
     ...intradayChartEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...paneEvidenceMismatches(resolved, payload, render),
+    ...financialRatioRenderMismatches(resolved, payload, render),
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
@@ -843,6 +874,8 @@ export function shotUnusableReasonFor(
   if (render.errorStateDetected) return "The pane rendered an error state.";
   if (render.emptyStateDetected) return "The pane rendered an empty state.";
   if (unavailableSymbols.length > 0) return `Data is unavailable for ${unavailableSymbols.join(", ")}.`;
+  const ratioGap = financialRatioShotGap(resolved, payload);
+  if (ratioGap) return ratioGap;
   if (semanticMismatch) return "The rendered content did not match the requested capability.";
   return "The pane did not produce verifiable screenshot evidence.";
 }
@@ -975,6 +1008,7 @@ export function shotDataEvidenceFor(
     return { kind: "fundamental-series", metric, period, series };
   }
 
+  if (shotRatioTab(resolved)) return financialRatioShotEvidence(resolved, payload);
   if (resolved.capability.id === "financial-statements") {
     const [symbol, financials] = payload.financials[0] ?? [];
     if (!symbol || !financials) return null;
@@ -1552,7 +1586,9 @@ export function shotExpectedText(
       balance: "Balance",
       cashflow: "Cash Flow",
     };
-    expected.push(statementLabels[String(resolved.options.statement)] ?? "");
+    // A ratio tab names itself in the query bar and leads with its first ratio.
+    const ratioTab = shotRatioTab(resolved);
+    expected.push(ratioTab?.name ?? statementLabels[String(resolved.options.statement)] ?? "");
     expected.push(resolved.options.period === "annual" ? "Annual" : "Quarterly");
     const financials = payload.financials[0]?.[1];
     if (financials) {
@@ -1576,7 +1612,8 @@ export function shotExpectedText(
           latestStatement.aggregation?.periodEnd,
         ).trim());
       }
-      if (firstMetric) expected.push(firstMetric.unitLabel);
+      const firstLabel = ratioTab ? ratioTab.ratios[0]?.label : firstMetric?.unitLabel;
+      if (firstLabel) expected.push(firstLabel);
     }
   }
   return expected.filter(Boolean);
@@ -1593,6 +1630,13 @@ function shotExpectedSelections(
     }];
   }
   if (resolved.capability.id !== "financial-statements") return [];
+  const ratioTab = shotRatioTab(resolved);
+  if (ratioTab) {
+    return [
+      { control: "ratio", value: ratioTab.key, label: ratioTab.name },
+      { control: "period", value: String(resolved.options.period) },
+    ];
+  }
   const labels: Record<string, string> = {
     income: "Income",
     cashflow: "Cash Flow",

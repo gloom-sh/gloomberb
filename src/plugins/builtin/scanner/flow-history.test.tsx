@@ -1,14 +1,10 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import type { ScannerFlowEvent, ScannerFlowHistoryPage, ScannerFlowHistoryQuery } from "../../../api-client";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { nextFlowCursor, useFlowHistory, type FlowHistoryLoader } from "./flow-history";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(() => {
-  setup?.renderer.destroy();
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 function print(id: string, at: number): ScannerFlowEvent {
   return {
@@ -34,22 +30,22 @@ async function mount(
     ref.current = useFlowHistory(current.query, current.oldestLive, true, load);
     return <text>{String(ref.current.events.length)}</text>;
   }
-  setup = await testRender(<Harness />, { width: 20, height: 3 });
+  await tui.render(<Harness />, { width: 20, height: 3 });
   await act(async () => {
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
   return {
     ref,
     rerender: async (next: typeof props) => {
       await act(async () => {
         ref.setProps!(next);
-        await setup!.renderOnce();
+        await tui.setup().renderOnce();
       });
     },
     flush: async () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
-        await setup!.renderOnce();
+        await tui.setup().renderOnce();
       });
     },
   };

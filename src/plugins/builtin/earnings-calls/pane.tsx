@@ -177,7 +177,7 @@ interface EarningsCallsViewProps {
 }
 
 export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewProps) {
-  const { symbol } = useSymbolBinding();
+  const { symbol, exchange } = useSymbolBinding();
   const access = usePlanAccess();
 
   const [calls, setCalls] = useState<CloudEarningsCallPayload[]>([]);
@@ -738,6 +738,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   if (signInRequired || verificationRequired) {
     return (
       <SignInWall
+        placement={detailOpen ? "calls-transcript-signin" : "calls-signin"}
+        width={width} height={height} symbol={detailOpen ? selected?.ticker ?? symbol : symbol} exchange={exchange}
         action="browse earnings call transcripts"
         needsVerification={verificationRequired}
       />
@@ -747,6 +749,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   if (proRequired) {
     return (
       <ProWall
+        placement="calls-wall"
+        width={width} height={height} symbol={symbol} exchange={exchange}
         title="Earnings call transcripts are part of Gloom Cloud Pro."
         message="Gloomberb transcribes the calls itself: full transcripts with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
       />
@@ -780,6 +784,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
 
   const detailContent = transcriptProRequired ? (
     <ProWall
+      placement="calls-transcript-wall"
+      width={width} height={height - 1} symbol={selected?.ticker ?? symbol} exchange={exchange}
       title="Earnings call transcripts are part of Gloom Cloud Pro."
       message="Full transcripts with speaker attribution, analyst Q&A, guidance and risk extraction, transcribed from the call itself."
     />

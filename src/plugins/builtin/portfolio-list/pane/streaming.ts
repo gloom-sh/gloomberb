@@ -15,6 +15,7 @@ import {
   needsVisibleQuoteWarmup,
   needsVisibleQuoteWatchdogRefresh,
   needsVisibleSnapshotWarmup,
+  selectQuoteWarmupRoute,
   selectQuoteWarmupTickers,
   selectStreamTickers,
   sortPreferenceUsesQuote,
@@ -158,19 +159,22 @@ export function usePortfolioPaneStreaming({
       for (const ticker of quoteWarmupTickers) {
         const financials = financialsMap.get(ticker.metadata.ticker);
         const quoteKey = visibleWarmupKey("quote", ticker);
-        const warmupWithSnapshot = useSnapshotForQuoteWarmup && ticker.metadata.assetCategory !== "OPT";
-        const warmupKey = warmupWithSnapshot ? visibleWarmupKey("snapshot", ticker) : quoteKey;
+        const snapshotKey = visibleWarmupKey("snapshot", ticker);
         if (
-          needsVisibleQuoteWarmup(financials, nowTimestamp)
-          && !warmupInFlightRef.current.has(warmupKey)
-          && nowTimestamp - (warmupAttemptRef.current.get(warmupKey) ?? 0) >= VISIBLE_QUOTE_REFRESH_COOLDOWN_MS
-        ) {
-          if (warmupWithSnapshot) {
-            quoteSnapshotQueue.push(ticker);
-            snapshotQueueSymbols.add(ticker.metadata.ticker);
-          } else {
-            quoteQueue.push(ticker);
-          }
+          !needsVisibleQuoteWarmup(financials, nowTimestamp)
+          || warmupInFlightRef.current.has(quoteKey)
+          || warmupInFlightRef.current.has(snapshotKey)
+        ) continue;
+        const route = selectQuoteWarmupRoute(
+          { quoteAt: warmupAttemptRef.current.get(quoteKey), snapshotAt: warmupAttemptRef.current.get(snapshotKey) },
+          useSnapshotForQuoteWarmup && ticker.metadata.assetCategory !== "OPT",
+          nowTimestamp,
+        );
+        if (route === "snapshot") {
+          quoteSnapshotQueue.push(ticker);
+          snapshotQueueSymbols.add(ticker.metadata.ticker);
+        } else if (route === "quote") {
+          quoteQueue.push(ticker);
         }
       }
 
@@ -220,6 +224,8 @@ export function usePortfolioPaneStreaming({
           const key = visibleWarmupKey("snapshot", ticker);
           warmupInFlightRef.current.add(key);
           warmupAttemptRef.current.set(key, nowTimestamp);
+          // The snapshot asks for the quote too.
+          warmupAttemptRef.current.set(visibleWarmupKey("quote", ticker), nowTimestamp);
           return [{ key, instrument }];
         });
         const normalSnapshotEntries = limitedSnapshotQueue.filter((ticker) => (

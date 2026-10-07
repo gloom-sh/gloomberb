@@ -53,7 +53,7 @@ describe("editAlert", () => {
       lastCheckError: "boom",
       lastQuoteUpdatedAt: 125,
       lastQuoteSource: "live" as const,
-      lastQuoteProviderId: "yahoo",
+      lastQuoteProviderId: "gloom",
     };
 
     const edited = editAlert(alert, "aapl", "crosses", 180);
@@ -65,6 +65,7 @@ describe("editAlert", () => {
       condition: "crosses",
       targetPrice: 180,
       createdAt: alert.createdAt,
+      armedAt: expect.any(Number),
       status: "active",
       message: "watch this",
     });
@@ -75,6 +76,7 @@ describe("editAlert", () => {
   test("rearming a crosses alert drops the old quote baseline", () => {
     const alert = {
       ...createAlert("AAPL", "crosses", 180),
+      armedAt: 1,
       status: "triggered" as const,
       triggeredAt: 123,
       lastCheckedPrice: 185,
@@ -85,6 +87,9 @@ describe("editAlert", () => {
     expect(rearmed.status).toBe("active");
     expect(rearmed.lastCheckedPrice).toBeUndefined();
     expect(evaluateAlert(rearmed, 175)).toBe(false);
+    // Same id, new arming: the cloud emails a trigger once per id and armedAt.
+    expect(rearmed.id).toBe(alert.id);
+    expect(rearmed.armedAt!).toBeGreaterThan(alert.armedAt);
   });
 
   test("drops the exchange when the symbol changes", () => {

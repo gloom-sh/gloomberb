@@ -10,6 +10,9 @@ import { marketHeatmapPlugin } from "./builtin/market-heatmap";
 import { marketHaltsPlugin } from "./builtin/market-halts";
 import { fearGreedPlugin } from "./builtin/fear-greed";
 import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
+import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
+import { commentLettersPlugin } from "./builtin/comment-letters";
+import { openFdaPlugin } from "./builtin/openfda";
 import {
   applicationPlugin,
   brokerPlugin,
@@ -33,6 +36,9 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   marketHaltsPlugin,
   fearGreedPlugin,
   ipoCalendarPlugin,
+  clinicalTrialsPlugin,
+  commentLettersPlugin,
+  openFdaPlugin,
   macroPlugin,
   alertsPlugin,
   researchSearchPlugin,
@@ -43,7 +49,7 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
  * external plugins that loaded and support this renderer.
  *
  * Deliberately not `getLoadablePlugins`, which is the CLI catalog and also
- * carries the Yahoo fallback provider and the debug plugin. Routing the desktop
+ * carries the debug plugin. Routing the desktop
  * through it would quietly change which plugins the app runs.
  */
 export function getRendererPlugins(externalPlugins: readonly LoadedExternalPlugin[] = []): GloomPlugin[] {

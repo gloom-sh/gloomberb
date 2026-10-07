@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { ExternalLinkText, type StatItem } from "../../../components/ui";
-import { fredSeriesUrl } from "../../../data/fred-series";
+import { fredSeriesUrl } from "../../../sources/gloomberb-cloud/fred-series";
 import { colors } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
 import { scalarLine, SeriesDetailChart, type SeriesAxis } from "../shared/series-detail-chart";

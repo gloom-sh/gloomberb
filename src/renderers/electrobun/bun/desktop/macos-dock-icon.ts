@@ -1,5 +1,5 @@
 import { dlopen, FFIType, type Pointer } from "bun:ffi";
-import { appIconColors, appIconSvg } from "../../../../theme/app-icon";
+import { appIconColors, appIconSvg } from "./app-icon";
 import { getTheme } from "../../../../theme/themes";
 
 const LIBOBJC = "/usr/lib/libobjc.A.dylib";

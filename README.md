@@ -38,7 +38,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 On **macOS (Apple Silicon)**:
 
 ```bash
-brew install --cask vincelwt/tap/gloomberb
+brew install --cask gloomberb
 ```
 
 On **Windows 11**, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe). It supports x64, and ARM64 through x64 emulation.
@@ -72,8 +72,17 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `DES AAPL` | Company details |
 | `GP NVDA` | Price chart |
 | `OVDV AAPL` | Implied-volatility surface and options term structure |
+| `OPX SPY` / `GEX SPY` | Open interest by strike and expiry, max pain and dealer gamma ([method](docs/options-positioning.md)) |
 | `HVG AAPL` / `HVT AAPL` | Realized volatility and volatility cones |
+| `SEAS AAPL` | Seasonality: monthly returns by year and year overlays |
+| `RDCF AAPL` | Reverse DCF: the cash flow growth the price assumes |
+| `PEB AAPL` | P/E band: price against multiples of trailing EPS, and today's P/E in its own history |
+| `SIW` | Short squeeze watch: crowded shorts in your portfolios and watchlists that are moving up |
+| `RIPL` | Earnings Ripple: customers and suppliers of your holdings that report soon |
+| `MDAY SPY` | Macro-day reaction: how a name moves on CPI, jobs and FOMC days against a normal day |
 | `COT [code or root]` | CFTC positioning and cross-market extremes |
+| `DOE` / `NGS` | EIA weekly oil stocks and gas storage, with builds, draws and five-year ranges |
+| `CPI [component]` / `ECAN` | US consumer prices by component, with weights, contributions to the headline and the next release |
 | `TOP` | Market stories |
 | `WIRP` / `FFIP` | US rate path and conditional FOMC probabilities |
 | `BTMM` | Funding rates, bill curves and Federal Reserve liquidity |
@@ -81,7 +90,7 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `PF` | Portfolios and watchlists |
 | `HELP` | Commands and keyboard shortcuts |
 
-Use `Tab` to switch panes and `j` / `k` to navigate lists. The [user guide](docs/usage.md) covers charts, broker setup, keyboard shortcuts, and the full command reference. See [research data conventions](docs/research-data.md) for return definitions, financial sources, and model assumptions.
+Use `Tab` to switch panes and `j` / `k` to navigate lists. The [user guide](docs/usage.md) covers charts, broker setup, keyboard shortcuts, and the full command reference. See [research data conventions](docs/research-data.md) for return definitions, financial sources, and model assumptions. [Supply chain evidence](docs/supply-chain.md) explains Pro SPLC trust tiers, source evidence, reverse relationships, flow diagrams and multi-hop graphs and path searches. [Credit documents](docs/credit-documents.md) covers CRDOC/COVN capital structure, covenant headroom and amendment evidence. [Research attention](docs/research-attention.md) covers the Pro ATTN dataset, privacy-qualified counts and Gloom Trending. [Hiring and app attention](docs/hiring-app-attention.md) covers HIRE/APPS observations, evidence and Pro previews.  [Government awards](docs/government-awards.md) covers AWARDS, procurement history and source coverage. [Distress records](docs/distress-monitor.md) covers DIST: 8-K filings, going-concern disclosures, listing designations and insolvency notices, with their dates and licences. [Power and grid capacity](docs/power-grid.md) covers POWER queues, large loads, utility exposure and source history. [Perpetual markets](docs/perpetuals.md) covers funding, open interest, premiums and Pro access.  [Exposure analysis](docs/exposure.md) covers EXPO scenario estimates, portfolio weights and evidence paths.
 
 ## CLI
 
@@ -115,7 +124,7 @@ When the app hits an uncaught error, a render crash, or a plugin that fails to l
 
 The app also counts how often you open each function, from the command bar, a menu or a link in another pane, and which functions are on screen when a workspace is restored at launch. It sends each function's mnemonic (such as `DES` or `GP`) with those two counts, the surface, the app version and the operating system, a minute after the first count, then every 15 minutes, and when you quit. Functions from plugins other than the official gloom-sh ones are sent as `plugin`, so their names never leave your machine. The server adds your plan (signed out, Free or Pro); the counts are never tied to your account.
 
-Neither contains anything from your workspace: no tickers, arguments, portfolios, watchlists, layouts, settings or queries. Both carry a random install id stored in `~/.gloomberb/install-id` (in the browser, in local storage).
+Neither contains anything from your workspace: no tickers, arguments, portfolios, watchlists, layouts, settings or queries. Both carry a random install id stored in `install-id` in the data folder, `~/.gloomberb` by default (in the browser, in local storage).
 
 The usage setting also covers command bar searches. When you are signed in, a search you finish in the command bar (you pause typing or run something, never each keystroke) is stored with your account to improve search: its text, the AI suggestions it got and the result you picked. Searches are deleted with your account.
 
@@ -128,10 +137,12 @@ gloomberb config set telemetry.usage false
 
 Setting `GLOOMBERB_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` in the environment turns all of it off. The browser app also honours Do Not Track and Global Privacy Control.
 
+**Attention Counts are separate and off by default.** Run `Attention Counts` in the command bar and review the consent dialog to share ticker research counts for Gloom Trending. This sends ticker symbols and the kind of explicit research action only while signed in with a verified account. It does not send holdings, watchlist names, queries or an install id. Consent stays on this device; cloud sync cannot enable it elsewhere. Turn the setting off to discard unsent counts, or run `gloomberb config set telemetry.attention false`. The environment and browser opt-outs above also disable Attention Counts. See the [attention privacy review](docs/attention-privacy.md) for the authenticated collection boundary, retention, aggregation and remaining risks.
+
 ## Sponsors
 
 <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="Adjacent" width="56" /></a>
 
 [Adjacent](https://adjacent.markets/?ref=gloomberb) builds prediction-market indices, reference rates, and data. Thank you for backing Gloomberb's open-source work.
 
-To sponsor Gloomberb, email [hello@gloom.sh](mailto:hello@gloom.sh).
+To sponsor Gloomberb, see [gloom.sh/sponsor](https://gloom.sh/sponsor).

@@ -1,6 +1,6 @@
 export type SocialMentionsRange = "1y" | "5y" | "max";
 
-export interface SocialMentionDay {
+interface SocialMentionDay {
   /** UTC day. */
   day: string;
   mentions: number;

@@ -2,7 +2,7 @@ import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client"
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve, sep } from "path";
-import { encodeRpcValue } from "../renderers/electrobun/view/rpc-codec";
+import { encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
 import type { AppConfig } from "../types/config";
 import type { ChartResolutionResult } from "../time-series/types";
 import type { PricePoint, TickerFinancials } from "../types/financials";
@@ -21,7 +21,7 @@ import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import {
   electrobunViewPath,
   writeElectrobunViewPage,
-} from "../renderers/electrobun/view/build-assets";
+} from "../renderers/dom/build-assets";
 import { errorMessage } from "../utils/errors";
 
 export interface DesktopPaneShotIntradayHistory {
@@ -65,7 +65,7 @@ export interface DesktopPaneShotPayload {
   paneState: Record<string, PaneRuntimeState>;
   /**
    * Installed plugins compiled for the browser, the same way the desktop view
-   * receives them. Without these a pane from `~/.gloomberb/plugins` resolves in
+   * receives them. Without these a pane from the plugins folder resolves in
    * the CLI but is unknown to the page that renders it.
    */
   externalPlugins?: DesktopExternalPluginBundle[];
@@ -80,7 +80,7 @@ export interface DesktopPaneShotApiProxy {
 /**
  * The page renders panes that fetch their own data. Left alone it can only
  * reach the cloud API, so a pane whose values come from a provider the router
- * merges in (analyst price targets, Yahoo dividends) rendered thinner than the
+ * merges in (analyst price targets, cash dividends) rendered thinner than the
  * same pane in the terminal. The bridge lets the page ask the Bun process to
  * run those requests through the real provider router instead.
  */
@@ -89,7 +89,7 @@ export interface DesktopPaneShotBridge {
   httpFetch(request: HttpProxyRequestEnvelope): Promise<HttpProxyResponseEnvelope>;
 }
 
-export interface DesktopPaneShotRenderedCell {
+interface DesktopPaneShotRenderedCell {
   columnId?: string;
   columnLabel: string;
   text: string;
@@ -546,7 +546,6 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         .forEach((table, tableIndex) => {
           const tableMetadata = semanticTables[tableIndex] && semanticTables[tableIndex].metadata || {};
           const semanticColumns = Array.isArray(tableMetadata.columns) ? tableMetadata.columns : [];
-          const semanticRows = Array.isArray(tableMetadata.rows) ? tableMetadata.rows : [];
           const headers = [...table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')]
             .map((cell) => normalize(cell.innerText || cell.textContent));
           const rowElements = [...table.querySelectorAll(
@@ -555,7 +554,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
           rowElements.forEach((row, rowIndex) => {
             const cellElements = [...row.querySelectorAll('[data-gloom-role="data-table-cell"]')];
             const values = cellElements.length > 0 ? cellElements : [row];
-            const semanticRow = semanticRows[rowIndex] || {};
+            const rowKey = row.getAttribute("data-gloom-row-key");
             const cells = values.map((cell, cellIndex) => {
               const semanticColumn = semanticColumns[cellIndex] || {};
               const text = normalize(cell.innerText || cell.textContent);
@@ -582,8 +581,8 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
             rows.push({
               tableIndex,
               rowIndex,
-              ...(typeof semanticRow.key === "string" ? { key: semanticRow.key } : {}),
-              selected: row.getAttribute("data-selected") === "true" || semanticRow.selected === true,
+              ...(rowKey ? { key: rowKey } : {}),
+              selected: row.getAttribute("data-selected") === "true",
               cells,
             });
           });

@@ -99,6 +99,32 @@ describe("normalizePriceHistory", () => {
     ).toBe(false);
   });
 
+  test("keeps a non-US venue's session current after its close, until the next open", () => {
+    // Tokyo's last bar before the 15:30 closing auction, read that evening in Europe and the next morning.
+    const tokyo = [{ date: new Date("2026-10-02T06:24:00Z"), close: 2856.5 }];
+    expect(isPriceHistoryStaleForCurrentWindow(tokyo, Date.parse("2026-10-02T18:50:00Z"), { exchange: "JPX", intervalMs: 60_000 })).toBe(false);
+    // A copy taken during the session is behind once it has closed.
+    expect(isPriceHistoryStaleForCurrentWindow([{ date: new Date("2026-10-02T05:00:00Z"), close: 2860 }],
+      Date.parse("2026-10-02T18:50:00Z"), { exchange: "JPX", intervalMs: 60_000 })).toBe(true);
+    // In session, an hour without a bar is still behind.
+    expect(isPriceHistoryStaleForCurrentWindow([{ date: new Date("2026-10-02T04:00:00Z"), close: 2860 }],
+      Date.parse("2026-10-02T05:30:00Z"), { exchange: "JPX", intervalMs: 60_000 })).toBe(true);
+    const london = [{ date: new Date("2026-10-02T15:29:00Z"), close: 100 }];
+    expect(isPriceHistoryStaleForCurrentWindow(london, Date.parse("2026-10-02T19:00:00Z"), { exchange: "LSE", intervalMs: 60_000 })).toBe(false);
+  });
+
+  test("keeps the last session current after the next open until its first delayed bar is due", () => {
+    const stale = (date: string, at: string, interval: string) => isPriceHistoryStaleForCurrentWindow(
+      [{ date: new Date(date), close: 100 }], Date.parse(at), { exchange: "LSE", intervalMs: priceHistoryIntervalMs(interval) });
+    // London opens Friday at 08:00 BST (07:00Z); Thursday's last minute bar was 15:29Z.
+    expect(stale("2026-10-01T15:29:00Z", "2026-10-02T07:20:00Z", "1m")).toBe(false);
+    expect(stale("2026-10-01T15:29:00Z", "2026-10-02T07:40:00Z", "1m")).toBe(true);
+    // The first hourly bar closes at 08:00Z and arrives delayed after it.
+    expect(stale("2026-10-01T15:00:00Z", "2026-10-02T08:10:00Z", "1h")).toBe(false);
+    // A copy taken earlier in Thursday's session stays behind.
+    expect(stale("2026-10-01T10:00:00Z", "2026-10-02T07:20:00Z", "1m")).toBe(true);
+  });
+
   test("still treats old always-open market history as stale", () => {
     expect(
       isPriceHistoryStaleForCurrentWindow(
@@ -172,15 +198,15 @@ describe("calendar history fetched copies", () => {
     const fx = bars("2026-09-20T23:00:00Z", "2026-09-21T23:00:00Z");
     expect(outdated(fx, "2026-09-22T21:00:00Z", "2026-09-23T02:00:00Z", { exchange: "" })).toBe(false);
     expect(outdated(bars("2026-09-17T00:00:00Z", "2026-09-18T00:00:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T12:00:00Z", { exchange: "" })).toBe(false);
-    // Yahoo labels BSE bars at the 09:15 IST open, the previous New York date.
+    // The feed labels BSE bars at the 09:15 IST open, the previous New York date.
     expect(outdated(bars("2026-09-21T03:45:00Z", "2026-09-22T03:45:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T02:00:00Z", { exchange: "" })).toBe(false);
     // KRX is closed for Chuseok 09-24 to 09-26 and publishes no calendar here:
     // one refetch after each weekday close it cannot tell from a session.
     const krx = bars("2026-09-22T00:00:00Z", "2026-09-23T00:00:00Z");
     expect(polls(krx, "2026-09-23T08:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "KRX")).toBe(2);
-    // SSE Golden Week, Thursday 10-01 to Thursday 10-08.
+    // SSE Golden Week, Oct 1-7, is covered: no missing session before Oct 8 opens.
     const sse = bars("2026-09-29T00:00:00Z", "2026-09-30T00:00:00Z");
-    expect(polls(sse, "2026-09-30T08:00:00Z", "2026-10-01T00:00:00Z", "2026-10-08T00:00:00Z", "SSE")).toBe(5);
+    expect(polls(sse, "2026-09-30T08:00:00Z", "2026-10-01T00:00:00Z", "2026-10-08T00:00:00Z", "SSE")).toBe(0);
     const btc = bars("2026-09-26T00:00:00Z", "2026-09-27T00:00:00Z");
     expect(outdated(btc, "2026-09-27T10:00:00Z", "2026-09-27T10:45:00Z", { exchange: "CCC" })).toBe(false);
     expect(outdated(btc, "2026-09-27T10:00:00Z", "2026-09-27T11:05:00Z", { exchange: "CCC" })).toBe(true);
@@ -221,7 +247,7 @@ describe("calendar history fetched copies", () => {
   });
 
   test("the latest bar is dated in the venue's zone, as the fetch state reads it", () => {
-    // Yahoo stamps a JPX daily bar at 00:00 JST, Cloud at UTC midnight.
+    // The feed stamps a JPX daily bar at 00:00 JST, Cloud at UTC midnight.
     expect(calendarHistoryLastBarDate(bars("2026-09-16T15:00:00Z", "2026-09-17T15:00:00Z"), "JPX")).toBe("2026-09-18");
     expect(calendarHistoryLastBarDate(bars("2026-09-17T00:00:00Z", "2026-09-18T00:00:00Z"), "JPX")).toBe("2026-09-18");
     expect(calendarHistoryLastBarDate(bars("2026-09-21T04:00:00Z", "2026-09-22T04:00:00Z"), "")).toBe("2026-09-22");

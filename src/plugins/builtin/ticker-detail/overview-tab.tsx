@@ -1,6 +1,9 @@
+import { TrendingSummary } from "../attention/trending";
+import type { ReactNode } from "react";
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
-import { CompanyLogo } from "../../../components/company-logo";
+import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
+import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
 import { useFxRatesMap } from "../../../market-data/hooks";
@@ -13,17 +16,33 @@ import { colors, priceColor } from "../../../theme/colors";
 import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "../../../time-series/chart-data";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
-import { resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
+import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
-import { CompactRangeBar, FundamentalsGrid, PositionTable, QuoteBook, textGridColumns } from "./overview/components";
+import {
+  CompactRangeBar,
+  FundamentalsGrid,
+  PositionTable,
+  QuoteBook,
+  rangeEndpointWidth,
+  rangeRowChrome,
+  textGridColumns,
+} from "./overview/components";
 import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./overview/model";
 import type { OverviewFunctionLink } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-list/live-valuation";
 
+/** Cells between the Day and 52W ranges when they share a row. */
+const RANGE_PAIR_GAP = 4;
+/** Shortest track that still reads as a range; below it the two ranges stack. */
+const RANGE_INLINE_MIN_TRACK = 10;
+/** Desktop px between the logo and the name and price beside it. */
+const LOGO_GAP_PX = 6;
+
 interface OverviewTabProps {
+  perpetuals?: ReactNode;
   width?: number;
   focused?: boolean;
   ticker: TickerRecord | null;
@@ -39,10 +58,11 @@ export function OverviewTab(props: OverviewTabProps) {
   return <ResolvedOverviewTab {...props} ticker={props.ticker} />;
 }
 
-function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
-  const { fractionalViewport = false, nativePaneChrome } = useUiCapabilities();
+  const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
+  const figureCells = useFigureCells();
 
   const quote = financials?.quote;
   const fundamentals = financials?.fundamentals;
@@ -58,7 +78,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
     capitalization?.currency,
     ...ticker.metadata.positions.map((position) => position.currency),
   ]);
-  const quoteCurrency = quote?.currency ?? ticker.metadata.currency ?? baseCurrency;
+  const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
   const toBase = (value: number, fromCurrency: string) =>
     convertCurrency(value, fromCurrency, baseCurrency, exchangeRates);
   const sector = ticker.metadata.sector ?? profile?.sector;
@@ -114,23 +134,48 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const quotePriceText = quote ? formatMarketPriceWithCurrency(quote.price, quote.currency, moneyOptions) : "";
   const quoteChangeText = quote ? formatSignedMarketPrice(quote.change, moneyOptions) : "";
   const quotePercentText = quote ? `(${formatPercentRaw(quote.changePercent)})` : "";
-  const quoteTextWidth = Math.max(1, quoteSummaryWidth - (nativePaneChrome ? 6 : 0));
-  const stackQuoteChange = displayWidth(quoteChangeText) + 1 + displayWidth(quotePercentText) > quoteTextWidth;
-  const stackQuoteSummary = displayWidth(quotePriceText) + 3 + displayWidth(quoteChangeText) + displayWidth(quotePercentText) > quoteTextWidth;
-  // The pane title already names the ticker, so the line leads with the company.
-  const companyName = ticker.metadata.name || quote?.name || ticker.metadata.ticker;
+  // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
+  const companyName = [ticker.metadata.name, quote?.name].find((name) => name && name !== ticker.metadata.ticker) ?? "";
+  const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
   const marketStateText = quote?.marketState ? t(marketStateLabel(quote.marketState)) : "";
-  const companyNameWidth = Math.max(8, quoteSummaryWidth - (nativePaneChrome ? 6 : 0)
-    - (listingVenue ? listingVenue.length + 3 : 0)
-    - (marketStateText ? marketStateText.length + 1 : 0));
+  const hasIdentityLine = Boolean(companyName || venueText || marketStateText);
+  // The desktop logo is a square from the top of the company name's capitals down to the
+  // price's baseline, so its edges meet the text's and the three read as one block. The
+  // extended-hours line hangs below, as it comes and goes with the session. Without a
+  // price the logo keeps two rows.
+  const hasLogo = nativePaneChrome === true
+    && resolveCompanyLogoSrc({ symbol: ticker.metadata.ticker, assetCategory: ticker.metadata.assetCategory }) != null;
+  const priceInk = figureLineInk();
+  // The top snaps up to a whole px so it never starts below the capitals; the bottom lands
+  // on the device pixel nearest the baseline.
+  const logoTopPx = quote ? Math.floor(hasIdentityLine ? bodyLineInk(cellHeightPx).capTop : priceInk.capTop) : 0;
+  const logoBottomPx = Math.round(((hasIdentityLine ? cellHeightPx : 0) + priceInk.baseline) * pixelRatio) / pixelRatio;
+  const logoPx = quote ? logoBottomPx - logoTopPx : cellHeightPx * 2;
+  const logoCells = hasLogo ? Math.ceil((logoPx + LOGO_GAP_PX) / cellWidthPx) : 0;
+  const quoteTextWidth = Math.max(1, quoteSummaryWidth - logoCells);
+  const quoteChangeCells = figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");
+  const stackQuoteChange = quoteChangeCells > quoteTextWidth;
+  const stackQuoteSummary = figureCells(quotePriceText) + 2 + quoteChangeCells > quoteTextWidth;
+  const companyNameWidth = Math.max(8, quoteTextWidth
+    - displayWidth(venueText)
+    - (marketStateText ? displayWidth(marketStateText) + 1 : 0));
   const hasDayRange = quote?.low != null && quote?.high != null && quote.high > quote.low;
   const yearRange = liveFiftyTwoWeekRange(quote);
-  const hasYearRange = yearRange != null;
-  const rangeInline = contentWidth >= 70 && hasDayRange && hasYearRange;
-  const rangeWidth = rangeInline
-    ? Math.floor((contentWidth - 2) / 2)
-    : contentWidth;
-  const rangeMarkerColor = quote ? priceColor(quote.change) : colors.textDim;
+  const dayRangeLabel = t("Day Range");
+  const yearRangeLabel = t("52W Range");
+  const rangeLabelWidth = Math.max(
+    hasDayRange ? displayWidth(dayRangeLabel) : 0,
+    yearRange ? displayWidth(yearRangeLabel) : 0,
+  );
+  // Both ranges share one endpoint width, so stacked tracks start and end in the same column.
+  const rangeEndpointCells = rangeEndpointWidth([
+    ...(hasDayRange ? [quote.low!, quote.high!] : []),
+    ...(yearRange ? [yearRange.low, yearRange.high] : []),
+  ], quoteCurrency, moneyOptions);
+  const rangeHalfWidth = Math.floor((contentWidth - RANGE_PAIR_GAP) / 2);
+  const rangeInline = hasDayRange && yearRange != null
+    && rangeHalfWidth - rangeRowChrome(rangeLabelWidth, rangeEndpointCells) >= RANGE_INLINE_MIN_TRACK;
+  const rangeWidth = rangeInline ? rangeHalfWidth : contentWidth;
   const stats = buildOverviewStats({
     quote,
     fundamentals,
@@ -163,37 +208,49 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
 
   return (
     <ScrollBox flexGrow={1} flexBasis={0} scrollY focusable={false}>
-      <Box flexDirection="column" paddingX={1} paddingBottom={1} gap={1}>
+      <Box
+        flexDirection="column"
+        paddingX={1}
+        paddingBottom={1}
+        gap={1}
+        // On the desktop the header keeps half a row clear of the tab bar's edge.
+        style={nativePaneChrome ? { paddingTop: Math.round(cellHeightPx / 2) } : undefined}
+      >
         <Box flexDirection={quoteBookInline ? "row" : "column"} gap={quoteBookInline ? 2 : 0} width={contentWidth}>
           <Box flexDirection="row" width={quoteSummaryWidth} flexShrink={0} minWidth={0} overflow="hidden">
             <CompanyLogo
               symbol={ticker.metadata.ticker}
               assetCategory={ticker.metadata.assetCategory}
               name={ticker.metadata.name || quote?.name}
+              width={logoPx / cellWidthPx}
+              height={logoPx / cellHeightPx}
+              style={{ marginTop: logoTopPx, marginRight: LOGO_GAP_PX }}
             />
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-            <Box flexDirection="row" minWidth={0} overflow="hidden">
-              <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>
-                {truncateToDisplayWidth(companyName, companyNameWidth)}
-              </Text>
-              {listingVenue && (
-                <Text flexShrink={0} fg={colors.textDim}>{" "}({listingVenue})</Text>
-              )}
-              {quote?.marketState && (
-                <Text flexShrink={0} fg={marketStateColor(quote.marketState)}>
-                  {" "}{t(marketStateLabel(quote.marketState))}
-                </Text>
-              )}
-            </Box>
+            {hasIdentityLine && (
+              <Box flexDirection="row" minWidth={0} overflow="hidden">
+                {companyName && (
+                  <Text fg={colors.textDim}>{truncateToDisplayWidth(companyName, companyNameWidth)}</Text>
+                )}
+                {venueText && <Text flexShrink={0} fg={colors.textDim}>{venueText}</Text>}
+                {quote?.marketState && (
+                  <Text flexShrink={0} fg={marketStateColor(quote.marketState)}>
+                    {companyName || venueText ? " " : ""}{marketStateText}
+                  </Text>
+                )}
+              </Box>
+            )}
 
             {quote && (
-              <Box flexDirection={stackQuoteSummary ? "column" : "row"} gap={stackQuoteSummary ? 0 : 2}>
-                <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>
-                  {quotePriceText}
-                </Text>
+              <Box
+                flexDirection={stackQuoteSummary ? "column" : "row"}
+                gap={stackQuoteSummary ? 0 : 2}
+                alignItems={stackQuoteSummary ? undefined : "baseline"}
+              >
+                <FigureText>{quotePriceText}</FigureText>
                 <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}>
-                  <Text fg={priceColor(quote.change)}>{quoteChangeText}</Text>
-                  <Text fg={priceColor(quote.change)}>{quotePercentText}</Text>
+                  <FigureText part="sub" change={quote.change}>{quoteChangeText}</FigureText>
+                  <FigureText part="sub" change={quote.change}>{quotePercentText}</FigureText>
                 </Box>
               </Box>
             )}
@@ -230,18 +287,22 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
           )}
         </Box>
 
-        {(hasDayRange || hasYearRange) && quote && (
-          <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? 2 : 0} width={contentWidth}>
+        {perpetuals}
+
+        {(hasDayRange || yearRange) && quote && (
+          <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={contentWidth}>
             {hasDayRange && (
               <CompactRangeBar
                 current={quote.price}
                 low={quote.low!}
                 high={quote.high!}
-                label="Day Range"
+                label={dayRangeLabel}
+                shortLabel={t("Day")}
+                labelWidth={rangeLabelWidth}
+                endpointWidth={rangeEndpointCells}
                 width={rangeWidth}
                 currency={quoteCurrency}
                 priceOptions={moneyOptions}
-                markerColor={rangeMarkerColor}
               />
             )}
             {yearRange && (
@@ -249,11 +310,13 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
                 current={quote.price}
                 low={yearRange.low}
                 high={yearRange.high}
-                label="52W Range"
+                label={yearRangeLabel}
+                shortLabel={t("52W")}
+                labelWidth={rangeLabelWidth}
+                endpointWidth={rangeEndpointCells}
                 width={rangeWidth}
                 currency={quoteCurrency}
                 priceOptions={moneyOptions}
-                markerColor={rangeMarkerColor}
               />
             )}
           </Box>
@@ -315,6 +378,8 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
             </PaneLinkMenu>
           </Box>
         )}
+
+        <TrendingSummary symbol={publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)} onOpen={onOpenFunction ? () => onOpenFunction({ name: "Research attention", templateId: "attention-pane" }) : undefined} />
 
         {/* Description — last, collapsed */}
         {description && (

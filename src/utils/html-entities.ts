@@ -5,6 +5,21 @@ const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   lt: "<",
   nbsp: " ",
   quot: "\"",
+  // Typography SEC filings and letters are full of.
+  lsquo: "\u2018",
+  rsquo: "\u2019",
+  ldquo: "\u201C",
+  rdquo: "\u201D",
+  ndash: "\u2013",
+  mdash: "\u2014",
+  hellip: "\u2026",
+  bull: "\u2022",
+  middot: "\u00B7",
+  sect: "\u00A7",
+  para: "\u00B6",
+  copy: "\u00A9",
+  reg: "\u00AE",
+  trade: "\u2122",
 };
 
 function decodeCodePoint(codePoint: number, fallback: string): string {

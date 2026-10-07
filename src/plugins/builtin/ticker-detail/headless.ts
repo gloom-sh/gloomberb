@@ -14,7 +14,9 @@ import {
   findRatioTab,
   formatRatioInput,
   formatRatioValue,
+  oldestRatioPeriodEnd,
   ratioPeriodEnd,
+  ratioStatements,
   ratioTableForFinancials,
   resolveFinancialSectionKey,
   type RatioAmount,
@@ -27,6 +29,7 @@ import {
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["financial-analysis-pane"],
   shape: "rows",
+  description: "Annual or quarterly financial statement rows for one ticker: the income statement, balance sheet, cash flow, or a ratio table.",
   describe: ({ symbols, options }) => `Financial Statements | ${symbols[0]} | ${options.period} | ${options.statement}`,
   async load({ symbols, options }, ctx) {
     const symbol = symbols[0]!;
@@ -105,10 +108,10 @@ async function loadRatioReport(
   period: "annual" | "quarterly",
   hasRequestedStatements: boolean,
 ) {
-  const oldest = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period).periods.at(-1) : undefined;
+  const oldest = hasRequestedStatements ? oldestRatioPeriodEnd(ratioStatements(financials, period)) : undefined;
   const history = oldest && tab.key === "valuation"
     ? await resolveHeadlessInstrument(ctx, symbol)
-      .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", ratioPeriodEnd(oldest.statement)))
+      .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", oldest))
       .catch(() => null)
     : null;
   const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history) : null;
@@ -176,6 +179,7 @@ function quoteAmount(value: unknown, row: Record<string, unknown>, signed = fals
 export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["quote-monitor-pane"],
   shape: "rows",
+  description: "Current quotes for one or more tickers: name, last price, change and percent change.",
   describe: ({ symbols }) => `Quote Monitor | ${symbols.join(", ")}`,
   columns: [
     { key: "symbol", header: "Ticker" },
@@ -212,6 +216,7 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["historical-prices-pane"],
   shape: "rows",
+  description: "Daily OHLCV rows (date, open, high, low, close, volume) for one ticker over a range.",
   describe: ({ symbols, options }) => `Historical Prices | ${symbols[0]} | ${options.range ?? "ALL"}`,
   columns: [
     { key: "date", header: "Date", format: (value) => String(value).slice(0, 10) },

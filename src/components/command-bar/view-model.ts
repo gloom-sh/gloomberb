@@ -194,6 +194,8 @@ const EXACT_MATCH_SECTION_PRIORITY = -150;
  * shifting the list.
  */
 const ASSIST_SECTION_PRIORITY = -100;
+/** Empty-bar recents lead the browse list, under an exact symbol or the AI. */
+const SUGGESTED_SECTION_PRIORITY = -90;
 /**
  * The other async sections sit below the local matches in arrival order, so
  * each answer only ever pushes rows below itself: instruments at 100, then news
@@ -211,6 +213,7 @@ function getCategoryPriority(category: string, options?: CommandBarSectionOption
   if (normalized === "exact match") return EXACT_MATCH_SECTION_PRIORITY;
   if (category === PLUGIN_INSTALL_CATEGORY) return PLUGIN_INSTALL_SECTION_PRIORITY;
   if (normalized === "instruments") return INSTRUMENTS_SECTION_PRIORITY;
+  if (normalized === "suggested") return SUGGESTED_SECTION_PRIORITY;
   if (sectionOrder === "app-first") {
     if (normalized === "saved") return 100;
     if (normalized === "primary listing") return 110;

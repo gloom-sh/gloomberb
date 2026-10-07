@@ -87,7 +87,7 @@ function availabilityMatches(call: CloudEarningsCallPayload, availability: strin
   return availability === "transcribed" ? call.hasTranscript : !call.hasTranscript;
 }
 
-export function projectEarningsCallsHeadless(
+function projectEarningsCallsHeadless(
   result: EarningsCallsResult,
   args: HeadlessPaneLoadArgs,
 ): HeadlessRowsResult {

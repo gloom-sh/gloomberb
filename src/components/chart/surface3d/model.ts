@@ -8,7 +8,7 @@ import { clamp } from "../../../utils/math";
 
 export interface Surface3DCamera { azimuth: number; elevation: number; zoom: number }
 export interface Surface3DCell { row: number; column: number }
-export interface Surface3DTick { position: number; label: string }
+interface Surface3DTick { position: number; label: string }
 export interface Surface3DColor { r: number; g: number; b: number }
 
 export interface Surface3DInput {
@@ -31,12 +31,12 @@ export interface Surface3DInput {
   formatValue?: (value: number) => string;
 }
 
-export const X_EXTENT = 1.35;
-export const Y_EXTENT = 1.1;
+const X_EXTENT = 1.35;
+const Y_EXTENT = 1.1;
 export const FLOOR = -0.65;
 /** The colour shadow on the floor: a depth cue under the sheet, faint enough not to read as a second chart. */
 export const FLOOR_PROJECTION_ALPHA = 0.16;
-export const CEILING = 1;
+const CEILING = 1;
 export const DEFAULT_SURFACE3D_CAMERA: Readonly<Surface3DCamera> = { azimuth: -0.72, elevation: 0.6, zoom: 1 };
 
 export function clampSurface3DCamera(camera: Surface3DCamera): Surface3DCamera {

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Box } from "../../../ui";
 import { colors } from "../../../theme/colors";
+import { PaneSurfaceContext } from "./surface";
 
 export function getPaneWindowAttributes({
   enabled = true,
@@ -49,7 +50,7 @@ export function PaneBodyFrame({
 }) {
   return (
     <Box {...layoutProps} overflow="hidden" backgroundColor={backgroundColor} data-gloom-role="pane-body">
-      {children}
+      <PaneSurfaceContext.Provider value={backgroundColor}>{children}</PaneSurfaceContext.Provider>
     </Box>
   );
 }

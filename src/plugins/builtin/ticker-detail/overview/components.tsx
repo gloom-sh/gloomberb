@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { ExternalLinkText, usePaneLinkMenuEntry } from "../../../../components";
-import { RangeTrack } from "../../../../components/ui/range-track";
+import { ExternalLinkText, RangeTrack, usePaneLinkMenuEntry } from "../../../../components";
 import { t, tf } from "../../../../i18n";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
@@ -15,6 +14,8 @@ const STAT_LABEL_WIDTH = 12;
 const FUNDAMENTALS_MAX_COLUMN_WIDTH = 40;
 const BOOK_LABEL_WIDTH = 4;
 const RANGE_ENDPOINT_WIDTH = 11;
+/** Shortest track worth drawing; below it the label shortens. */
+const RANGE_MIN_TRACK_WIDTH = 6;
 const POSITION_COLUMN_GAP = 1;
 
 interface PositionColumn {
@@ -27,56 +28,78 @@ interface PositionColumn {
   minPaneWidth?: number;
 }
 
+/** Cells a range row needs around its track: label, endpoints and the gaps between them. */
+export function rangeRowChrome(labelWidth: number, endpointWidth: number): number {
+  return labelWidth + 1 + endpointWidth * 2 + 2;
+}
+
+/** The longest endpoint among ranges drawn together, so stacked tracks start and end in one column. */
+export function rangeEndpointWidth(
+  values: readonly number[],
+  currency: string,
+  priceOptions: MarketFormatOptions,
+): number {
+  const widths = values.map((value) => displayWidth(formatMarketPriceWithCurrency(value, currency, priceOptions)));
+  return Math.min(RANGE_ENDPOINT_WIDTH, Math.max(1, ...widths));
+}
+
+/**
+ * Where the price sits in a range, on one row: the label, the low, a track
+ * with a neutral marker and the high. The marker is the position, so no
+ * percentage repeats it.
+ */
 export function CompactRangeBar({
   current,
   low,
   high,
   label,
+  shortLabel,
+  labelWidth,
+  endpointWidth,
   width,
   currency,
   priceOptions,
-  markerColor,
 }: {
   current: number;
   low: number;
   high: number;
+  /** Translated, like `shortLabel`; `labelWidth` is measured from them. */
   label: string;
+  /** Used when the full label would leave the track too short. */
+  shortLabel?: string;
+  /** Shared by ranges drawn together, so their values line up. */
+  labelWidth: number;
+  endpointWidth: number;
   width: number;
   currency: string;
   /** The quote's live price options, so the endpoints keep the price's decimals. */
   priceOptions: MarketFormatOptions;
-  markerColor: string;
 }) {
   const range = high - low;
   if (range <= 0) return null;
   const position = Math.max(0, Math.min(1, (current - low) / range));
-  const pctLabel = `${Math.round(position * 100)}%`;
-  const endpointWidth = Math.min(
-    RANGE_ENDPOINT_WIDTH,
-    Math.max(7, Math.floor((width - 8) / 3)),
-  );
+  const useShortLabel = shortLabel != null && width - rangeRowChrome(labelWidth, endpointWidth) < RANGE_MIN_TRACK_WIDTH;
+  const shownLabel = useShortLabel ? shortLabel : label;
+  const shownLabelWidth = useShortLabel ? displayWidth(shortLabel) : labelWidth;
   const endpointOptions = { ...priceOptions, maxWidth: endpointWidth };
   const lowText = formatMarketPriceWithCurrency(low, currency, endpointOptions);
   const highText = formatMarketPriceWithCurrency(high, currency, endpointOptions);
-  const barWidth = Math.max(5, width - endpointWidth * 2 - 2);
-  const labelWidth = Math.max(0, width - displayWidth(pctLabel));
+  const barWidth = Math.max(1, width - rangeRowChrome(shownLabelWidth, endpointWidth));
 
   return (
-    <Box flexDirection="column" width={width} flexShrink={0}>
-      <Box flexDirection="row" height={1}>
-        <Box width={labelWidth} overflow="hidden">
-          <Text fg={colors.textDim}>{label}</Text>
-        </Box>
-        <Text fg={markerColor}>{pctLabel}</Text>
+    <Box flexDirection="row" height={1} width={width} flexShrink={0} overflow="hidden">
+      <Box width={shownLabelWidth + 1} flexShrink={0} overflow="hidden">
+        <Text fg={colors.textDim}>{shownLabel}</Text>
       </Box>
-      <Box flexDirection="row" height={1} gap={1}>
-        <Box width={endpointWidth} overflow="hidden">
-          <Text fg={colors.textDim}>{lowText}</Text>
-        </Box>
-        <RangeTrack position={position} width={barWidth} markerColor={markerColor} />
-        <Box flexDirection="row" width={endpointWidth} justifyContent="flex-end" overflow="hidden">
-          <Text fg={colors.textDim}>{highText}</Text>
-        </Box>
+      {/* The low sits against the track and the high starts after it, so stacked tracks align. */}
+      <Box flexDirection="row" width={endpointWidth} flexShrink={0} justifyContent="flex-end" overflow="hidden">
+        <Text fg={colors.text}>{lowText}</Text>
+      </Box>
+      <Box marginLeft={1} marginRight={1} flexShrink={0}>
+        <RangeTrack width={barWidth} position={position} markerColor={colors.textBright} />
+      </Box>
+      <Box width={endpointWidth} flexShrink={0} overflow="hidden">
+        <Text fg={colors.text}>{highText}</Text>
       </Box>
     </Box>
   );
@@ -119,8 +142,9 @@ export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; asset
 
   return (
     <Box flexDirection="column" width={width} flexShrink={0}>
-      <BookRow label={t("Bid")} value={bidText} width={width} valueColor={colors.borderFocused} />
-      <BookRow label={t("Ask")} value={askText} width={width} valueColor={colors.negative} />
+      {/* Neutral: a red ask would read as a loss. */}
+      <BookRow label={t("Bid")} value={bidText} width={width} valueColor={colors.textBright} />
+      <BookRow label={t("Ask")} value={askText} width={width} valueColor={colors.textBright} />
       <BookRow label={t("Spr")} value={spreadText} width={width} valueColor={colors.textDim} />
     </Box>
   );
@@ -131,7 +155,7 @@ export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; asset
  * capped at FUNDAMENTALS_MAX_COLUMN_WIDTH so a wide pane gets more of them
  * instead of pushing each value half a pane away from its label.
  */
-export function fundamentalsGridColumns(width: number): number {
+function fundamentalsGridColumns(width: number): number {
   if (width < 58) return 1;
   return Math.max(2, Math.min(4, Math.ceil((width + STAT_COLUMN_GAP) / (FUNDAMENTALS_MAX_COLUMN_WIDTH + STAT_COLUMN_GAP))));
 }

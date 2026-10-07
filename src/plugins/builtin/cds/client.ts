@@ -47,7 +47,7 @@ function isPrimaryUsCommonStock(result: InstrumentSearchResult): boolean {
  * is the only reliable expansion. A search outage falls back to the raw input
  * rather than taking the CDS request down with it.
  */
-export async function resolveIssuerName(
+async function resolveIssuerName(
   issuer: string,
   searchInstruments: InstrumentSearch,
 ): Promise<string> {

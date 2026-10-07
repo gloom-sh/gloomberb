@@ -818,4 +818,37 @@ describe("composite chart renderers", () => {
       ));
     expect(hasGreenSeriesPixel).toBe(true);
   });
+
+  test("a band shades its points' low-to-high range under the line through their values", () => {
+    const band: ResolvedSeries = {
+      ...series("band", "band", [], "left"),
+      points: [1, 2, 3].map((day) => ({ ...point(`2025-01-0${day}`, 10), low: 5, high: 15 })),
+    };
+    const scene = buildCompositeChartScene([band], [{ id: "main" }], { width: 21, height: 11 })!;
+    const panel = scene.panels[0]!;
+    // The axis reaches the range, not only the line at 10.
+    expect(panel.axes.left!.min).toBeLessThanOrEqual(5);
+    expect(panel.axes.left!.max).toBeGreaterThanOrEqual(15);
+
+    const rows = renderCompositePanelText(panel, scene.width, null, null);
+    const shaded = rows.map((row) => row.includes("░"));
+    const line = rows.findIndex((row) => row.includes("•"));
+    // Shade above and below the line, none outside the range's rows.
+    expect(shaded.slice(0, line).some(Boolean)).toBe(true);
+    expect(shaded.slice(line + 1).some(Boolean)).toBe(true);
+    expect(shaded[0] && shaded.at(-1)).toBe(false);
+
+    const bitmap = renderCompositePanelBitmap(panel, {
+      pixelWidth: 61, pixelHeight: 41,
+      colors: { background: "#000000", grid: "#000000", crosshair: "#ffffff", text: "#eeeeee", textDim: "#999999", negative: "#ff0000" },
+    });
+    const greenAt = (x: number, y: number) => bitmap.pixels[(y * bitmap.width + x) * 4 + 1]!;
+    const column = 30;
+    const top = Math.round(projectCompositeValue(15, panel.axes.left!)! * 40);
+    const bottom = Math.round(projectCompositeValue(5, panel.axes.left!)! * 40);
+    // Tinted inside the range, untouched beyond it.
+    expect(greenAt(column, Math.round((top + bottom) / 2) - 4)).toBeGreaterThan(0);
+    expect(greenAt(column, top - 2)).toBe(0);
+    expect(greenAt(column, bottom + 2)).toBe(0);
+  });
 });

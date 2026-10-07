@@ -75,7 +75,7 @@ test("query boundary rejects valid rows from different criteria", async () => {
   const response = payload();
   response.definition.criteria = [];
   await expect(fetchScreen(DEFAULT_SCREEN, null, undefined, {
-    equityScreener: async () => response,
+    equityScreener: async <T>() => response as T,
   })).rejects.toThrow("requested criteria");
 });
 

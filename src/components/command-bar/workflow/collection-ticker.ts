@@ -1,7 +1,7 @@
 import type { TickerRecord } from "../../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { tickerHasYahooSuffix, yahooSuffixConflictsWithExchange, yahooSuffixExchange } from "../../../sources/yahoo-finance/symbols";
+import { tickerHasListingSuffix, listingSuffixConflictsWithExchange, listingSuffixExchange } from "../../../sources/listing-symbols";
 import { classifyInstrumentKind } from "../../../tickers/search/ranking";
 import { searchContractKey } from "../../../tickers/search/identity";
 import type { CollectionKind } from "./tickers";
@@ -27,9 +27,9 @@ function listingIdentity(ticker: TickerRecord): string | null {
     exchange = [...venues][0]!;
   }
   let symbol = parsed.symbol;
-  if (tickerHasYahooSuffix(symbol)) {
-    if (exchange && yahooSuffixConflictsWithExchange(symbol, exchange)) return null;
-    exchange ||= yahooSuffixExchange(symbol) ?? "";
+  if (tickerHasListingSuffix(symbol)) {
+    if (exchange && listingSuffixConflictsWithExchange(symbol, exchange)) return null;
+    exchange ||= listingSuffixExchange(symbol) ?? "";
     symbol = symbol.slice(0, symbol.lastIndexOf("."));
   }
   const currency = resolveCurrencyUnit(metadata.currency).currency;

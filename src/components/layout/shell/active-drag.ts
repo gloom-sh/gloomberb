@@ -9,7 +9,7 @@ import {
   type DropTarget,
   type LayoutBounds,
   type ResolvedPane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import type { LayoutConfig } from "../../../types/config";
 import {
   finalizePaneDragRelease,

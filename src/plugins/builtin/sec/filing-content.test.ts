@@ -10,7 +10,8 @@ import {
 function filing(accessionNumber: string): SecFilingItem {
   return {
     accessionNumber,
-    filingDate: "2026-01-01",
+    filingDate: new Date("2026-01-01T00:00:00Z"),
+    cik: "999",
     filingUrl: `https://example.com/${accessionNumber}`,
     form: "8-K",
     primaryDocument: "filing.htm",

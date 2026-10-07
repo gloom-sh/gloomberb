@@ -73,7 +73,7 @@ if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SU
 if (slower) process.exitCode = 1;
 
 async function runBenchmark(root: string, label: string): Promise<NavigationReport> {
-  // One retry: a failed launch is a broken run, not a slowdown.
+  // Two retries: a failed launch is a broken run, not a slowdown.
   for (let attempt = 1; ; attempt += 1) {
     const child = Bun.spawn(["bun", "run", benchmark, "--root", root, "--count", "30", "--interval", "25"], {
       stdout: "pipe",
@@ -89,7 +89,7 @@ async function runBenchmark(root: string, label: string): Promise<NavigationRepo
       console.error(`${label}: p50 ${report.summary.p50Ms} ms, p95 ${report.summary.p95Ms} ms`);
       return report;
     }
-    if (attempt === 2) throw new Error(`The benchmark could not run (${label}):\n${stderr.trim()}`);
+    if (attempt === 3) throw new Error(`The benchmark could not run (${label}):\n${stderr.trim()}`);
     console.error(`${label}: benchmark failed to run, retrying`);
   }
 }

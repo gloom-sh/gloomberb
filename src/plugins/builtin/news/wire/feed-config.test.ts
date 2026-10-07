@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PluginConfigState } from "../../../../types/plugin";
+import { MANAGED_NEWS_FEED } from "./rss/managed-feed";
 import {
   addUserNewsFeed,
   createUserFeed,
@@ -58,6 +59,21 @@ describe("news feed config", () => {
       url: "https://example.com/feed",
       name: "Example",
     });
+    expect(loadNewsFeedSettings(config).needsMigration).toBe(false);
+  });
+
+  test("migrates retired default opt-outs and managed labels while preserving custom feed settings", async () => {
+    const config = new MemoryConfigState();
+    const custom = createUserFeed({ url: "https://publisher.example/rss", name: "My publisher", enabled: false, authority: 73 });
+    const managed = { ...createUserFeed({ url: `${MANAGED_NEWS_FEED.url}/?edition=markets`, name: "Old delivery service", enabled: false, authority: 42 }), name: "Old delivery service" };
+    config.values.set("feeds", [custom, managed]);
+    config.values.set("disabledDefaultFeedIds", ["default-retired-market", "default-cnbc-top", "unknown"]);
+    const settings = loadNewsFeedSettings(config);
+    expect(settings.needsMigration).toBe(true);
+    expect(settings.userFeeds).toEqual([custom, { ...managed, name: MANAGED_NEWS_FEED.name }]);
+    expect(settings.disabledDefaultFeedIds).toEqual([MANAGED_NEWS_FEED.id, "default-cnbc-top"]);
+    expect(getEnabledNewsFeeds(settings).some((feed) => feed.id === MANAGED_NEWS_FEED.id)).toBe(false);
+    await saveNewsFeedSettings(config, settings);
     expect(loadNewsFeedSettings(config).needsMigration).toBe(false);
   });
 

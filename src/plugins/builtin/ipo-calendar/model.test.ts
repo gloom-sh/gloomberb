@@ -15,6 +15,7 @@ import {
   marketsBehindText,
   MISSING,
   sortIpoDeals,
+  type IpoColumnId,
 } from "./model";
 import { ipoDeal } from "./test-fixture";
 
@@ -90,7 +91,7 @@ describe("IPO calendar order", () => {
 describe("IPO calendar columns", () => {
   test("a narrowing pane drops SIZE, STATUS, PRICE, MKT, DATE, then TICKER, keeping COMPANY and RETURN", () => {
     const columnIds = (width: number) => buildIpoColumns(width).map((column) => column.id);
-    const full = ["ticker", "company", "market", "date", "status", "price", "size", "return"];
+    const full: IpoColumnId[] = ["ticker", "company", "market", "date", "status", "price", "size", "return"];
     const fullWidth = ipoTableWidth(buildIpoColumns(1000));
     expect(columnIds(fullWidth)).toEqual(full);
     expect(columnIds(fullWidth - 1)).toEqual(["ticker", "company", "market", "date", "status", "price", "return"]);

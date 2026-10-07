@@ -147,7 +147,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
   const dialog = useDialog();
   const { notify } = usePluginAppActions();
   const plan = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("thesis-detail");
   const [signals, setSignals] = useState<ThesisSignal[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

@@ -4,7 +4,7 @@ import { PLUGIN_HOST_RESOLVER_IMPORTERS } from "./host-modules";
  * Serves `gloomberb/*` and `react` to external plugins from inside the
  * process when there is no Gloomberb package on disk to symlink.
  *
- * The terminal imports a plugin straight from `~/.gloomberb/plugins`, and the
+ * The terminal imports a plugin straight from the plugins folder, and the
  * plugin's `import { Box } from "gloomberb/ui"` has to resolve to the running
  * host. A source install (npm, a checkout) has a package directory, and
  * host-link.ts points `node_modules/gloomberb` at it. The compiled terminal
@@ -91,7 +91,10 @@ export function installPluginHostResolver(): boolean {
   return true;
 }
 
-/** Whether the resolver is serving host modules in this process. */
+/**
+ * Whether the resolver is serving host modules in this process.
+ * @knipignore Imported by the script host-resolver.test.ts compiles and runs.
+ */
 export function isPluginHostResolverInstalled(): boolean {
   return installed;
 }

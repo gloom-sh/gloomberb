@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createTestRenderer } from "@opentui/core/testing";
-import { TestDialogProvider, createOpenTuiTestRoot as createRoot } from "../../../renderers/opentui/test-utils";
+import { TestDialogProvider, createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { act, useReducer, type ReactElement } from "react";
 import { appReducer, createInitialState, type AppAction } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID, type AppConfig } from "../../../types/config";
@@ -25,10 +24,8 @@ const DetailPane = tickerDetailModule.panes![0]!.component as (props: {
   height: number;
 }) => ReactElement;
 
-let testSetup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;
-let root: ReturnType<typeof createRoot> | undefined;
+const tui = createOpenTuiTestHarness({ width: 120, height: 36 });
 let harnessDispatch: ((action: AppAction) => void) | null = null;
-const actEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 
 const chartProvider = createTestDataProvider({
   getTickerFinancials: async () => makeFinancials(48),
@@ -122,9 +119,23 @@ async function flushFrames(count = 3) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
+}
+
+type SurfaceManager = { surfaces: Map<string, { snapshot: { paneId: string; visibleRect: unknown } }> };
+
+/** Mounts the detail pane on a renderer that reports kitty graphics, and returns its surfaces. */
+async function renderKittyDetail(node: ReactElement): Promise<SurfaceManager> {
+  const { setup, root } = await tui.createRoot();
+  (setup.renderer as unknown as { _capabilities: unknown })._capabilities = { kitty_graphics: true };
+  (setup.renderer as unknown as { _resolution: unknown })._resolution = { width: 1200, height: 960 };
+  act(() => {
+    root.render(node);
+  });
+  await flushFrames();
+  return getNativeSurfaceManager(setup.renderer as never) as unknown as SurfaceManager;
 }
 
 function hasCompositeSurface(
@@ -149,18 +160,7 @@ function hasVisibleCompositeSurface(
 
 afterEach(() => {
   harnessDispatch = null;
-  if (root) {
-    act(() => {
-      root!.unmount();
-    });
-    root = undefined;
-  }
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
   setSharedRegistryForTests(undefined);
-  actEnvironment.IS_REACT_ACT_ENVIRONMENT = false;
 });
 
 describe("Ticker detail chart tab switching", () => {
@@ -169,28 +169,14 @@ describe("Ticker detail chart tab switching", () => {
     const config = makeDetailConfig(symbol);
     setSharedRegistryForTests(makeRegistry());
 
-    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
-    testSetup = await createTestRenderer({ width: 120, height: 36 });
-    (testSetup.renderer as unknown as { _capabilities: unknown })._capabilities = { kitty_graphics: true };
-    (testSetup.renderer as unknown as { _resolution: unknown })._resolution = { width: 1200, height: 960 };
-
-    root = createRoot(testSetup.renderer);
-    act(() => {
-      root!.render(
-        <DetailHarness
-          config={config}
-          ticker={makeTicker(symbol)}
-          financials={makeFinancials(48)}
-        />,
-      );
-    });
-
-    await flushFrames();
-    const initialOverview = testSetup.captureCharFrame();
-    expect(initialOverview).toContain("AAPL");
-    const manager = getNativeSurfaceManager(testSetup.renderer as never) as unknown as {
-      surfaces: Map<string, { snapshot: { paneId: string; visibleRect: unknown } }>;
-    };
+    const manager = await renderKittyDetail(
+      <DetailHarness
+        config={config}
+        ticker={makeTicker(symbol, "Apple Inc.")}
+        financials={makeFinancials(48)}
+      />,
+    );
+    expect(tui.frame()).toContain("Apple Inc.");
     expect(hasCompositeSurface(manager, TEST_PANE_ID)).toBe(true);
 
     act(() => {
@@ -202,7 +188,7 @@ describe("Ticker detail chart tab switching", () => {
     });
 
     await flushFrames();
-    const chartTabFrame = testSetup.captureCharFrame();
+    const chartTabFrame = tui.frame();
     expect(chartTabFrame).toContain("AAPL:XNAS Price");
     expect(chartTabFrame).toContain("5Y");
     expect(chartTabFrame.toUpperCase()).toContain("AUTO");
@@ -218,8 +204,8 @@ describe("Ticker detail chart tab switching", () => {
     });
 
     await flushFrames();
-    const returnedOverview = testSetup.captureCharFrame();
-    expect(returnedOverview).toContain("AAPL");
+    const returnedOverview = tui.frame();
+    expect(returnedOverview).toContain("Apple Inc.");
     expect(hasCompositeSurface(manager, TEST_PANE_ID)).toBe(true);
   });
 
@@ -228,26 +214,13 @@ describe("Ticker detail chart tab switching", () => {
     const config = makeDetailConfig(symbol);
     setSharedRegistryForTests(makeRegistry());
 
-    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
-    testSetup = await createTestRenderer({ width: 120, height: 36 });
-    (testSetup.renderer as unknown as { _capabilities: unknown })._capabilities = { kitty_graphics: true };
-    (testSetup.renderer as unknown as { _resolution: unknown })._resolution = { width: 1200, height: 960 };
-
-    root = createRoot(testSetup.renderer);
-    act(() => {
-      root!.render(
-        <DetailHarness
-          config={config}
-          ticker={makeTicker(symbol)}
-          financials={makeFinancialsWithStatements(48)}
-        />,
-      );
-    });
-
-    await flushFrames();
-    const manager = getNativeSurfaceManager(testSetup.renderer as never) as unknown as {
-      surfaces: Map<string, { snapshot: { paneId: string; visibleRect: unknown } }>;
-    };
+    const manager = await renderKittyDetail(
+      <DetailHarness
+        config={config}
+        ticker={makeTicker(symbol)}
+        financials={makeFinancialsWithStatements(48)}
+      />,
+    );
 
     act(() => {
       harnessDispatch!({
@@ -269,7 +242,7 @@ describe("Ticker detail chart tab switching", () => {
     });
 
     await flushFrames();
-    expect(testSetup.captureCharFrame()).toContain("Income");
+    expect(tui.frame()).toContain("Income");
     expect(hasVisibleCompositeSurface(manager, TEST_PANE_ID)).toBe(false);
   });
 });

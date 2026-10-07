@@ -1,7 +1,7 @@
 import type { SecFilingItem } from "../../../types/data-provider";
 import { secFilingItemCodes } from "../../../utils/sec";
 
-export function getDisplayFormLabel(form: string): string {
+function getDisplayFormLabel(form: string): string {
   const trimmed = form.trim();
   return /^\d+(?:\/[A-Z])?$/i.test(trimmed)
     ? `FORM ${trimmed}`
@@ -23,7 +23,7 @@ function stripRedundantFormPrefix(form: string, description: string): string {
   const pattern = escapeRegExp(form.trim()).replace(/\s+/g, "\\s+");
   return description
     .trim()
-    .replace(new RegExp(`^(?:FORM\\s+)?${pattern}(?:\\s*[:|-]\\s*|\\s+)`, "i"), "")
+    .replace(new RegExp(`^(?:FORM\\s+)?${pattern}(?:\\s*[:|–—-]\\s*|\\s+)`, "i"), "")
     .trim();
 }
 
@@ -31,6 +31,8 @@ export function getMeaningfulPrimaryDescription(filing: SecFilingItem): string |
   const description = filing.primaryDocDescription?.trim();
   if (!description) return undefined;
   if (normalizeComparableText(description) === normalizeComparableText(filing.form)) return undefined;
+  // Fund filers often describe every document with their own name.
+  if (filing.companyName && normalizeComparableText(description) === normalizeComparableText(filing.companyName)) return undefined;
 
   const stripped = stripRedundantFormPrefix(filing.form, description);
   if (!stripped) return undefined;
@@ -42,6 +44,16 @@ export function getFilingDisplayTitle(filing: SecFilingItem): string {
   const description = getMeaningfulPrimaryDescription(filing);
   const formLabel = getDisplayFormLabel(filing.form);
   return description ? `${formLabel} | ${description}` : formLabel;
+}
+
+/** The adjacent FORM column already identifies the form. Keep its meaning here. */
+export function getFilingColumnText(filing: SecFilingItem): string {
+  const description = getMeaningfulPrimaryDescription(filing);
+  const meaning = getFormDescription(filing.form);
+  if (!description) return meaning || "Filing";
+  return meaning && normalizeComparableText(description) !== normalizeComparableText(meaning)
+    ? `${description} | ${meaning}`
+    : description;
 }
 
 export function getFormDescription(form: string): string {
@@ -59,6 +71,8 @@ export function getFormDescription(form: string): string {
     case "4": return "Insider Transaction";
     case "3": return "Initial Insider Ownership";
     case "5": return "Annual Insider Ownership";
+    case "144": return "Notice of proposed sale of securities";
+    case "144/A": return "Notice of proposed sale of securities (Amended)";
     case "SC 13G":
     case "SCHEDULE 13G": return "Beneficial Ownership (Passive)";
     case "SC 13G/A":
@@ -70,14 +84,30 @@ export function getFormDescription(form: string): string {
     case "DEF 14A": return "Proxy Statement";
     case "S-1": return "Registration Statement";
     case "20-F": return "Annual Report (Foreign)";
-    default: return "";
+    case "N-1A": return "Fund Registration Statement";
+    case "N-2": return "Closed-End Fund Registration Statement";
+    case "485APOS":
+    case "485BPOS": return "Post-Effective Amendment";
+    case "485BXT": return "Effective Date Extension";
+    case "497": return "Prospectus Supplement";
+    case "497J": return "Prospectus Certification";
+    case "497K": return "Summary Prospectus";
+    case "N-CSR": return "Certified Shareholder Report";
+    case "N-CSRS": return "Certified Shareholder Report (Semiannual)";
+    case "N-30D": return "Shareholder Report";
+    case "N-CEN": return "Annual Report for Registered Investment Companies";
+    case "NPORT-P": return "Monthly Portfolio Holdings Report";
+    case "NPORT-EX": return "Portfolio Holdings Exhibit";
+    case "24F-2NT": return "Annual Notice of Securities Sold";
+    default: {
+      const base = normalized.endsWith("/A") ? getFormDescription(normalized.slice(0, -2)) : "";
+      return base ? `${base} (Amended)` : "";
+    }
   }
 }
 
 export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
   return filings.map((filing) => {
-    const displayTitle = getFilingDisplayTitle(filing);
-    const formDescription = getFormDescription(filing.form);
     return {
       filedAt: filing.filingDate instanceof Date
         ? filing.filingDate.toISOString()
@@ -86,7 +116,7 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       acceptedAtRaw: filing.acceptedAtRaw ?? null,
       acceptanceReported: secReportedAcceptance(filing),
       form: filing.form,
-      filing: formDescription ? `${displayTitle} | ${formDescription}` : displayTitle,
+      filing: getFilingColumnText(filing),
       items: secFilingItemCodes(filing.items),
       accessionNumber: filing.accessionNumber,
       primaryDocument: filing.primaryDocument ?? null,

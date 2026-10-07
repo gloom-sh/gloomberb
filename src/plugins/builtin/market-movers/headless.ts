@@ -64,8 +64,15 @@ export interface MarketMoversHeadlessDependencies {
   ): Promise<CloudSessionMoversPayload>;
 }
 
+/**
+ * Headless reads, including VIEW sources, wait for average volumes rather
+ * than returning a partial first paint. Keep that wait bounded by the usual
+ * market request timeout; interactive MOST retains its shorter cutoff.
+ */
+const ONE_SHOT_METADATA_WAIT_MS = 10_000;
+
 const defaultDependencies: MarketMoversHeadlessDependencies = {
-  load: (_args, tab, provider) => loadMarketMoverTab(tab, provider),
+  load: (_args, tab, provider) => loadMarketMoverTab(tab, provider, { metadataWaitMs: ONE_SHOT_METADATA_WAIT_MS }),
   loadSession: (view, side) => loadSessionMovers(view, side),
 };
 

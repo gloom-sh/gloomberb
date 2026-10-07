@@ -107,7 +107,7 @@ export function newestQuote(contracts: readonly { asOf: string | null }[]): stri
  * a sliver while contracts quoted years ago shape the curve. The table keeps
  * every contract.
  */
-export function charted<T extends { expiration: string }>(rows: readonly T[], horizon: string, now: number): T[] {
+function charted<T extends { expiration: string }>(rows: readonly T[], horizon: string, now: number): T[] {
   const months = Number(horizon);
   if (!Number.isFinite(months) || months <= 0) return [...rows];
   const end = new Date(now);
@@ -132,7 +132,7 @@ export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePal
   })];
 }
 
-export type CurveLookback = "1W" | "1M";
+type CurveLookback = "1W" | "1M";
 export type CurveContractChanges = ReadonlyMap<string, Readonly<Record<CurveLookback, number | null>>>;
 
 /**
@@ -229,7 +229,7 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
   const days = front && next ? (Date.parse(next.expiration) - Date.parse(front.expiration)) / DAY_MS : 0;
   const roll = front && next && front.price! > 0 && next.price! > 0 && days > 0 ? (front.price! / next.price! - 1) * 365 / days * 100 : null;
   return {
-    root, name: curve.name, source: root === "VX" ? "cboe" : "yahoo", currency: curve.currency, quoteUnit: curve.quoteUnit,
+    root, name: curve.name, source: root === "VX" ? "cboe" : "gloom", currency: curve.currency, quoteUnit: curve.quoteUnit,
     asOf: curve.asOf, fetchedAt, status: !contracts.length ? "unavailable" : curve.gaps.length ? "partial" : "available", stale: false,
     catalogue: { method: "provider", complete: true, horizonEnd: null }, contracts, ghosts,
     slope: { frontSymbol: front?.symbol ?? null, nextSymbol: next?.symbol ?? null, value, annualizedRollYield: roll, percentile: null,

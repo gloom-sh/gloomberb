@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { buildDividendMetrics, dividendReferencePrice, extractDividendFields, fetchDividendData, repriceDividendMetrics, toDividendPayment } from "./client";
+import { buildDividendMetrics, dividendReferencePrice, fetchDividendData, repriceDividendMetrics, toDividendPayment } from "./client";
 import type { DividendPayment } from "./types";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { createDividendYieldHeadless } from "./headless";
-import { chartResponse, yahooTransport } from "./test-fixture";
+import { chartResponse, marketTransport, summaryFields } from "./test-fixture";
 
 afterEach(() => setHttpFetchTransport(null));
 
@@ -13,53 +13,10 @@ function payment(date: string, amount = 0.5, currency = "USD"): DividendPayment 
   return toDividendPayment(date, amount, currency)!;
 }
 
-describe("extractDividendFields", () => {
-  test("prefers the forward rate and financialData payout ratio over summaryDetail fallbacks", () => {
-    const fields = extractDividendFields({
-      summaryDetail: {
-        trailingAnnualDividendRate: { raw: 1.02 },
-        trailingAnnualDividendYield: { raw: 0.0045 },
-        forwardAnnualDividendRate: { raw: 1.04 },
-        dividendRate: { raw: 9.99 },
-        payoutRatio: { raw: 0.99 },
-        exDividendDate: { raw: 1719792000 },
-        dividendDate: { raw: 1720396800 },
-        currency: "USD",
-      },
-      financialData: {
-        payoutRatio: { raw: 0.14 },
-      },
-    });
-
-    expect(fields).toEqual({
-      trailingAnnualDividendRate: 1.02,
-      trailingAnnualDividendYield: 0.0045,
-      forwardAnnualDividendRate: 1.04,
-      payoutRatio: 0.14,
-      exDividendDate: 1719792000,
-      dividendDate: 1720396800,
-      currency: "USD",
-    });
-  });
-
-  test("falls back to Yahoo's current summaryDetail field names", () => {
-    const fields = extractDividendFields({
-      summaryDetail: {
-        dividendRate: { raw: 1.08 },
-        payoutRatio: { raw: 0.1204 },
-        currency: "USD",
-      },
-    });
-
-    expect(fields.forwardAnnualDividendRate).toBe(1.08);
-    expect(fields.payoutRatio).toBe(0.1204);
-  });
-});
-
 describe("cash distribution calculations", () => {
   test("native income keeps the listing's ex-date when its session starts on the previous UTC date", async () => {
     const timestamp = Date.parse("2026-01-01T23:00:00Z") / 1000;
-    setHttpFetchTransport(yahooTransport(async (url) => {
+    setHttpFetchTransport(marketTransport(async (url) => {
       if (url.includes("/chart/")) return chartResponse({
         meta: { currency: "AUD", exchangeTimezoneName: "Australia/Sydney", regularMarketPrice: 100, dataGranularity: "1mo" },
         time: timestamp, dividends: { one: { date: timestamp, amount: 0.25 } },
@@ -85,52 +42,17 @@ describe("cash distribution calculations", () => {
     expect(buildDividendMetrics([payment("2023-08-01")], null, 100, { now: afterSuspension }).growth1Y).toBeNull();
   });
 
-  test.each([
-    ["SHY:XNAS", "", "SHY", "USD", 0.244],
-    ["LQD:ARCX", "NASDAQ", "LQD", "USD", 0.444],
-    ["VOD:XLON", "NASDAQ", "VOD.L", "GBp", 2.03],
-    ["SHOP:XTSE", "NASDAQ", "SHOP.TO", "CAD", 0.1],
-    ["SAP:XFRA", "", "SAP.F", "EUR", 2.35],
-    ["BRK.B:XNYS", "", "BRK-B", "USD", 0.1],
-    ["SHY", "", "SHY", "USD", 0.244],
-    ["VOD.L", "", "VOD.L", "GBp", 2.03],
-  ] as const)("loads the selected dividend listing %s with separate exchange %s", async (symbol, exchange, expected, currency, amount) => {
+  test("sends the selected listing unchanged to the backend", async () => {
     const requested: string[] = [];
-    const timestamp = Math.floor((Date.now() - 86_400_000) / 1000);
-    setHttpFetchTransport(yahooTransport(async (url) => {
-      const sourceSymbol = decodeURIComponent(new URL(url).pathname.split("/").at(-1)!);
-      requested.push(sourceSymbol);
-      if (sourceSymbol !== expected) return Response.json({ chart: { result: [] }, quoteSummary: { result: [] } });
-      if (url.includes("/chart/")) return chartResponse({
-        meta: { symbol: expected, currency, regularMarketPrice: 100, dataGranularity: "1mo" },
-        time: timestamp, dividends: { [timestamp]: { date: timestamp, amount } },
-      });
-      return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency } }] } });
-    }));
-
-    const data = await fetchDividendData(symbol, null, exchange);
-    expect(requested).toEqual([expected, expected]);
-    expect(data.historyAvailable).toBe(true);
-    expect(data.payments).toHaveLength(1);
-    expect(data.payments[0]?.amount).toBeCloseTo(amount / (currency === "GBp" ? 100 : 1), 12);
-    expect(data.currency).toBe(currency === "GBp" ? "GBP" : currency);
-  });
-
-  test("an unavailable explicitly selected foreign listing does not fall back to another venue", async () => {
-    const requested: string[] = [];
-    setHttpFetchTransport(yahooTransport(async (url) => {
-      requested.push(decodeURIComponent(new URL(url).pathname.split("/").at(-1)!));
-      return Response.json({ chart: { result: [] }, quoteSummary: { result: [] } });
-    }));
-    await expect(fetchDividendData("SAP:XFRA", null)).rejects.toThrow("No dividend data found");
-    expect(requested).toEqual(["SAP.F", "SAP.F"]);
-  });
-
-  test.each(["SHY:UNKNOWN", "VOD.L:XNAS"])("rejects unmapped or contradictory listing %s without a US fallback", async (symbol) => {
-    const requested: string[] = [];
-    setHttpFetchTransport(async (url) => { requested.push(url); throw new Error("Unexpected source request"); });
-    await expect(fetchDividendData(symbol, null)).rejects.toThrow("selected listing");
-    expect(requested).toEqual([]);
+    setHttpFetchTransport(async (url) => {
+      requested.push(url);
+      return Response.json({ status: "unavailable", data: null });
+    });
+    await expect(fetchDividendData("SAP:XFRA", null, "NASDAQ")).rejects.toThrow("No dividend data found");
+    const url = new URL(requested[0]!);
+    expect(url.pathname).toBe("/market/dividends");
+    expect(url.searchParams.get("symbol")).toBe("SAP:XFRA");
+    expect(url.searchParams.get("exchange")).toBe("NASDAQ");
   });
 
   test("uses recent payment cadence and does not imply suspended dividends still pay quarterly", () => {
@@ -151,7 +73,7 @@ describe("cash distribution calculations", () => {
 
   test("initial loading and headless yields only use external prices with matching explicit currency", async () => {
     const timestamp = Math.floor((Date.now() - 86_400_000) / 1000);
-    setHttpFetchTransport(yahooTransport(async (url) => {
+    setHttpFetchTransport(marketTransport(async (url) => {
       if (url.includes("/chart/")) return chartResponse({
         meta: { currency: "EUR", regularMarketPrice: 80, dataGranularity: "1mo" },
         time: timestamp, close: 80, dividends: { [timestamp]: { date: timestamp, amount: 4 } },
@@ -191,7 +113,7 @@ describe("cash distribution calculations", () => {
   test("uses reported cash history over zero ETF summary fields, with calendar cutoffs and no future cash", () => {
     const payments = Array.from({ length: 12 }, (_, month) => payment(new Date(Date.UTC(2025, 9 + month, 1)).toISOString().slice(0, 10)));
     payments.push(payment("2026-10-01", 10), payment("2025-09-10", 20));
-    const fields = extractDividendFields({ summaryDetail: {
+    const fields = summaryFields({ summaryDetail: {
       trailingAnnualDividendRate: { raw: 0 }, trailingAnnualDividendYield: { raw: 0 },
     } });
     const metrics = buildDividendMetrics(payments, fields, 60, { now });
@@ -203,7 +125,7 @@ describe("cash distribution calculations", () => {
 
   test("normalizes pence cash into pounds and suppresses unverifiable summary rate units", () => {
     const payments = [payment("2026-06-04", 2.0301435, "GBp"), payment("2025-11-20", 1.9512, "GBp")];
-    const fields = extractDividendFields({ summaryDetail: {
+    const fields = summaryFields({ summaryDetail: {
       currency: "GBp", trailingAnnualDividendRate: { raw: 0.046 }, forwardAnnualDividendRate: { raw: 0.04 },
     } });
     const metrics = buildDividendMetrics(payments, fields, 1.28725, { now, summaryRatesComparable: false });
@@ -215,7 +137,7 @@ describe("cash distribution calculations", () => {
   });
 
   test("distinguishes no reported cash from unavailable history and does not advertise past payment dates", () => {
-    const fields = extractDividendFields({ summaryDetail: {
+    const fields = summaryFields({ summaryDetail: {
       dividendDate: { raw: Date.parse("2026-08-31") / 1000 },
     } });
     expect(buildDividendMetrics([], fields, 100, { now }).trailingYield).toBe(0);

@@ -488,7 +488,7 @@ export function TweetSearchTable({
   // header over "sign in" would read as a live, empty feed. A feed's search
   // bar stays above it so the query and the `/` hint still have a field.
   if (rows.length === 0 && error && isAuthError(error)) {
-    const wall = <SignInWall action="search X" needsVerification={/verification/i.test(error)} />;
+    const wall = <SignInWall placement="x-search-signin" action="search X" needsVerification={/verification/i.test(error)} />;
     if (!rootBefore) return wall;
     return (
       <Box flexDirection="column" width={width} height={height}>

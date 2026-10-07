@@ -12,7 +12,7 @@ import {
   type DockGeometryOptions,
   type LayoutBounds,
   type ResolvedPane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
 import { contextMenuDivider } from "../../../types/context-menu";
@@ -63,6 +63,9 @@ import { AuthDialogHost } from "../../../plugins/builtin/cloud/auth-dialog";
 import { DeviceSignInDialogHost } from "../../../plugins/builtin/cloud/device-signin-dialog";
 import { BrokerSignInDialogHost } from "../../../brokers/signed-in/sign-in-dialog";
 import { FeedbackDialogHost } from "../../feedback-dialog";
+import { FormModalHost } from "../../form-modal";
+import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
+import type { DataProvider } from "../../../types/data-provider";
 import { useShellPaneActions } from "./pane/actions";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import { useTransientLayout } from "../transient-layout";
@@ -80,6 +83,9 @@ export { resolvePaneManagementShortcut } from "./shortcuts";
 
 interface ShellProps {
   pluginRegistry: PluginRegistry;
+  /** What forms submit through; without them the shell opens no forms. */
+  dataProvider?: DataProvider;
+  tickerRepository?: AppTickerRepositoryPort;
   desktopWindowBridge?: DesktopWindowBridge;
   desktopDockPreview?: DesktopDockPreviewState | null;
   commandBarNativeOccluder?: LayoutBounds | null;
@@ -94,6 +100,8 @@ interface TransientFocusLayoutState {
 
 export function Shell({
   pluginRegistry,
+  dataProvider,
+  tickerRepository,
   desktopWindowBridge,
   desktopDockPreview,
   commandBarNativeOccluder = null,
@@ -121,7 +129,7 @@ export function Shell({
 
   const appHeaderHeight = resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx });
   const contentHeight = Math.max(1, height - appHeaderHeight - (statusBarVisible ? 1 : 0));
-  pluginRegistry.getTermSizeFn = () => ({ width, height: contentHeight });
+  pluginRegistry.bindHost({ getTermSize: () => ({ width, height: contentHeight }) });
 
   const layout = useAppSelector((state) => state.config.layout);
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
@@ -369,12 +377,7 @@ export function Shell({
     () => togglePaneFullscreen(focusedPaneId),
     [focusedPaneId, togglePaneFullscreen],
   );
-  useEffect(() => {
-    pluginRegistry.togglePaneFullscreenFn = togglePaneFullscreen;
-    return () => {
-      if (pluginRegistry.togglePaneFullscreenFn === togglePaneFullscreen) pluginRegistry.togglePaneFullscreenFn = () => false;
-    };
-  }, [pluginRegistry, togglePaneFullscreen]);
+  useEffect(() => pluginRegistry.bindHost({ togglePaneFullscreen }), [pluginRegistry, togglePaneFullscreen]);
   const activateTransientFocusLayout = useCallback(() => {
     const current = transientFocusLayoutStateRef.current;
     if (!current) return;
@@ -427,6 +430,31 @@ export function Shell({
 
   const dockLeafLayouts = useMemo(() => getDockLeafLayouts(activeLayout, bounds, dockGeometryOptions), [activeLayout, bounds, dockGeometryOptions]);
   const dockDividerLayouts = useMemo(() => getDockDividerLayouts(activeLayout, bounds, dockGeometryOptions), [activeLayout, bounds, dockGeometryOptions]);
+  // What is on screen. In fullscreen that is one pane filling the content
+  // area, while the layout above still holds the tiled and floating rects it
+  // returns to. Everything drawn, hit tested or cut out over the panes (the
+  // focus border, the pointer, kitty image occluders) reads these, or it lands
+  // on cells the fullscreen pane now owns.
+  const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
+  const screenDockLeafLayouts = useMemo(() => (
+    transientFocusActive
+      ? dockLeafLayouts.filter((leaf) => leaf.instanceId === transientFocusPaneId).map((leaf) => ({ ...leaf, rect: fullscreenRect }))
+      : dockLeafLayouts
+  ), [dockLeafLayouts, fullscreenRect, transientFocusActive, transientFocusPaneId]);
+  const screenFloatingPanes = useMemo(() => (
+    transientFocusActive
+      ? visibleFloatingPanes.filter(({ pane }) => pane.instance.instanceId === transientFocusPaneId).map((entry) => ({ ...entry, rect: fullscreenRect }))
+      : visibleFloatingPanes
+  ), [fullscreenRect, transientFocusActive, transientFocusPaneId, visibleFloatingPanes]);
+  const screenDockedPanes = useMemo(() => (
+    transientFocusActive
+      ? dockedPanes.filter((pane) => pane.instance.instanceId === transientFocusPaneId)
+      : dockedPanes
+  ), [dockedPanes, transientFocusActive, transientFocusPaneId]);
+  const screenDividerLayouts = useMemo(
+    () => (transientFocusActive ? [] : dockDividerLayouts),
+    [dockDividerLayouts, transientFocusActive],
+  );
   const snapGuides = useMemo(() => makeSnapGuides(width, contentHeight), [contentHeight, width]);
   const externalDockPreview = useMemo(
     () => resolveExternalDockPreview(desktopDockPreview, bounds),
@@ -445,13 +473,13 @@ export function Shell({
     contentHeight,
     dialogOpen,
     dividerPreview,
-    dockDividerLayouts,
-    dockedPanes,
+    dockDividerLayouts: screenDividerLayouts,
+    dockedPanes: screenDockedPanes,
     dragFloatingRect,
     effectiveDockPreview,
     menuState,
     nativeWindowModePanelRect,
-    visibleFloatingPanes,
+    visibleFloatingPanes: screenFloatingPanes,
     width,
     windowModeDockMovePreview,
   });
@@ -515,28 +543,22 @@ export function Shell({
   ), [focusedPaneId, sharePaneById]);
   // Pane-level share hints (chart, news) go through the same live hand-off as
   // the shell shortcut and the pane menu.
-  useEffect(() => {
-    const share = (paneId?: string) => {
+  useEffect(() => pluginRegistry.bindHost({
+    sharePane: (paneId) => {
       const target = paneId ?? stateRef.current.focusedPaneId;
       if (target) sharePaneById(target);
-    };
-    pluginRegistry.sharePaneFn = share;
-    return () => {
-      if (pluginRegistry.sharePaneFn === share) pluginRegistry.sharePaneFn = () => {};
-    };
-  }, [pluginRegistry, sharePaneById, stateRef]);
+    },
+  }), [pluginRegistry, sharePaneById, stateRef]);
 
   const openPaneMenuRef = useRef<((paneId: string, rect: LayoutBounds, event?: undefined, options?: { keyboard?: boolean }) => void) | null>(null);
   const openFocusedPaneMenu = useCallback(() => {
     if (!focusedPaneId || windowMode) return false;
-    const rect = transientFocusActive && transientFocusPaneId === focusedPaneId
-      ? { x: 0, y: 0, width, height: contentHeight }
-      : dockLeafLayouts.find((leaf) => leaf.instanceId === focusedPaneId)?.rect
-        ?? visibleFloatingPanes.find(({ pane }) => pane.instance.instanceId === focusedPaneId)?.rect;
+    const rect = screenDockLeafLayouts.find((leaf) => leaf.instanceId === focusedPaneId)?.rect
+      ?? screenFloatingPanes.find(({ pane }) => pane.instance.instanceId === focusedPaneId)?.rect;
     if (!rect || !openPaneMenuRef.current) return false;
     openPaneMenuRef.current(focusedPaneId, rect, undefined, { keyboard: true });
     return true;
-  }, [contentHeight, dockLeafLayouts, focusedPaneId, transientFocusActive, transientFocusPaneId, visibleFloatingPanes, width, windowMode]);
+  }, [focusedPaneId, screenDockLeafLayouts, screenFloatingPanes, windowMode]);
 
   useShellPaneManagementShortcuts({
     cancelActiveDrag,
@@ -607,7 +629,7 @@ export function Shell({
         instance: pane.instance,
         layout: visibleLayout,
         panes: pluginRegistry.panes,
-        state: titleState,
+        state: { ...titleState, tickers: stateRef.current.tickers },
         persistLayout,
       }),
       canExportPaneCsv(paneId) ? exportPaneCsv : undefined,
@@ -707,21 +729,6 @@ export function Shell({
     if (menuState && !paneMap.has(menuState.paneId)) closePaneMenu();
   }, [closePaneMenu, menuState, paneMap]);
 
-  // In fullscreen the pointer only ever meets the one pane on screen: hit
-  // testing the tiled rects behind it would focus a pane nobody can see.
-  const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
-  const pointerDockLeafLayouts = useMemo(() => (
-    transientFocusActive
-      ? dockLeafLayouts.filter((leaf) => leaf.instanceId === transientFocusPaneId).map((leaf) => ({ ...leaf, rect: fullscreenRect }))
-      : dockLeafLayouts
-  ), [dockLeafLayouts, fullscreenRect, transientFocusActive, transientFocusPaneId]);
-  const pointerFloatingPanes = useMemo(() => (
-    transientFocusActive
-      ? visibleFloatingPanes.filter(({ pane }) => pane.instance.instanceId === transientFocusPaneId).map((entry) => ({ ...entry, rect: fullscreenRect }))
-      : visibleFloatingPanes
-  ), [fullscreenRect, transientFocusActive, transientFocusPaneId, visibleFloatingPanes]);
-  const pointerDividerLayouts = transientFocusActive ? [] : dockDividerLayouts;
-
   const {
     handleFloatingCloseMouseDown,
     handleMouse,
@@ -739,12 +746,15 @@ export function Shell({
     closePaneMenu,
     contentHeight,
     dockGeometryOptions,
-    dockDividerLayouts: pointerDividerLayouts,
-    dockLeafLayouts: pointerDockLeafLayouts,
+    // In fullscreen the pointer only ever meets the one pane on screen: hit
+    // testing the tiled rects behind it would focus a pane nobody can see.
+    dockDividerLayouts: screenDividerLayouts,
+    dockLeafLayouts: screenDockLeafLayouts,
     dragRuntime,
     focusPane,
     focusedPaneId,
     handleFloatingClose,
+    restoreFullscreen: exitTransientFocusLayout,
     menuState,
     nativePaneChrome,
     openPaneMenu,
@@ -757,7 +767,7 @@ export function Shell({
     snapGuides,
     transientFocusActive,
     updateWindowModePreviewLayout,
-    visibleFloatingPanes: pointerFloatingPanes,
+    visibleFloatingPanes: screenFloatingPanes,
     visibleLayout,
     width,
     windowMode,
@@ -793,6 +803,9 @@ export function Shell({
       <BrokerSignInDialogHost />
       <AuthDialogHost />
       <FeedbackDialogHost />
+      {dataProvider && tickerRepository && (
+        <FormModalHost dataProvider={dataProvider} pluginRegistry={pluginRegistry} tickerRepository={tickerRepository} />
+      )}
       <Box
         position="absolute"
         left={0}
@@ -822,6 +835,11 @@ export function Shell({
         getPaneQuickSettings={getPaneQuickSettings}
         handleFloatingClose={handleFloatingClose}
         handleFloatingCloseMouseDown={handleFloatingCloseMouseDown}
+        handleRestoreFullscreen={(event) => {
+          event?.preventDefault?.();
+          event?.stopPropagation?.();
+          exitTransientFocusLayout();
+        }}
         handleNativeDrag={handleNativeDrag}
         handleNativePaneContextMenu={handleNativePaneContextMenu}
         handleNativePaneMouseDown={handleNativePaneMouseDown}
@@ -849,7 +867,7 @@ export function Shell({
         bounds={bounds}
         contentHeight={contentHeight}
         dockGeometryOptions={dockGeometryOptions}
-        dockLeafLayouts={dockLeafLayouts}
+        dockLeafLayouts={screenDockLeafLayouts}
         dragFloatingRect={dragFloatingRect}
         focusedPaneId={focusedPaneId}
         getPaneTitle={getPaneTitle}
@@ -858,7 +876,7 @@ export function Shell({
         nativeWindowModePanelRect={nativeWindowModePanelRect}
         overlayOpen={overlayOpen}
         paneMap={paneMap}
-        visibleFloatingPanes={visibleFloatingPanes}
+        visibleFloatingPanes={screenFloatingPanes}
         width={width}
         windowMode={windowMode}
         windowModeDockMovePreview={windowModeDockMovePreview}

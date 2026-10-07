@@ -12,8 +12,9 @@ import {
   type RemoteControlRequestMessage,
   type ElectrobunDesktopRpcSchema,
 } from "../shared/protocol";
-import { decodeRpcResponse, decodeRpcValue, encodeRpcValue } from "./rpc-codec";
+import { decodeRpcResponse, decodeRpcValue, encodeRpcValue } from "../shared/rpc-codec";
 import { subscribeCapability, type CapabilitySubscriptionOptions } from "./capability-subscription";
+import { nameRpcTimeout } from "./rpc-timeout";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 
 type BackendMessages = ElectrobunDesktopRpcSchema["webview"]["messages"];
@@ -130,10 +131,10 @@ export async function backendRequest(
   payload: unknown = null,
 ): Promise<unknown> {
   await waitForBridgeReady();
-  const result = await rpc.request["backend.request"]({
+  const result = await nameRpcTimeout(method, payload, () => rpc.request["backend.request"]({
     method,
     payload: encodeRpcValue(payload),
-  });
+  }));
   return decodeRpcResponse(result);
 }
 

@@ -345,7 +345,7 @@ function CoverageSection({ coverage, width }: {
 
   return (
     <Box flexDirection="column" width={width}>
-      <SectionHeading title="COVERAGE" />
+      <SectionHeading title="Coverage" />
       {coverage.map((entry) => {
         const detail = [
           coverageLabel(entry.status),
@@ -405,13 +405,13 @@ function ReportView({ report, width }: {
           ? <EmptyState title="Not enough coverage to review this company yet." message={report.summary} />
           : <Paragraph text={report.summary} width={width} color={colors.text} />}
 
-        <FindingSection heading="RED FLAGS" findings={byKind("red_flag")} evidenceById={evidenceById} width={width} />
-        <FindingSection heading="ANOMALIES" findings={byKind("anomaly")} evidenceById={evidenceById} width={width} />
-        <FindingSection heading="GREEN FLAGS" findings={byKind("green_flag")} evidenceById={evidenceById} width={width} />
+        <FindingSection heading="Red Flags" findings={byKind("red_flag")} evidenceById={evidenceById} width={width} />
+        <FindingSection heading="Anomalies" findings={byKind("anomaly")} evidenceById={evidenceById} width={width} />
+        <FindingSection heading="Green Flags" findings={byKind("green_flag")} evidenceById={evidenceById} width={width} />
 
         {report.watchItems.length > 0 && (
           <Box flexDirection="column" width={width}>
-            <SectionHeading title="WATCH ITEMS" />
+            <SectionHeading title="Watch Items" />
             {report.watchItems.map((item, index) => (
               <Box key={`${index}:${item.slice(0, 24)}`} flexDirection="row" width={width}>
                 <Box width={2} flexShrink={0}><Text fg={colors.textMuted}>{"· "}</Text></Box>
@@ -452,7 +452,7 @@ function PreviewReportView({ report, width, onUpgrade, onPlan }: {
         ? <FindingView finding={finding} evidenceById={evidenceById} width={width} />
         : <EmptyState title="No preview finding is available for this company yet." />}
       <Box flexDirection="column" width={width}>
-        <SectionHeading title="UNLOCK THE FULL DIAGNOSTIC" />
+        <SectionHeading title="Unlock the Full Diagnostic" />
         <Paragraph
           text={t("See the overall verdict, every red flag, anomaly, green flag, and watch item.")}
           width={width}
@@ -468,14 +468,14 @@ function PreviewReportView({ report, width, onUpgrade, onPlan }: {
   );
 }
 
-export function EquityDiagnosticView({ focused, width }: {
+export function EquityDiagnosticView({ focused, width, height }: {
   focused: boolean;
   width: number;
   height: number;
 }) {
   const { symbol, exchange } = useBoundTicker();
   const access = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("diag-preview");
   const openPlan = useCloudPlanAction();
   const { nativePaneChrome } = useUiCapabilities();
 
@@ -561,12 +561,14 @@ export function EquityDiagnosticView({ focused, width }: {
     return <PaneStatusBody empty emptyTitle="No ticker selected." emptyMessage="Move the cursor in a list pane to populate this view." />;
   }
   if (signInRequired || verificationRequired) {
-    return <SignInWall action="run the Equity Diagnostic" needsVerification={verificationRequired} />;
+    return <SignInWall placement="diag-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="run the Equity Diagnostic" needsVerification={verificationRequired} />;
   }
   // Buttons in an empty state's actions answer Enter and are in the pane menu.
   if (proRequired) {
     return (
       <ProWall
+        placement="diag-wall"
+        width={width} height={height} symbol={symbol} exchange={exchange}
         title="The Equity Diagnostic is part of Gloom Cloud Pro."
         message="An on-demand review of one company's filings, financials, ownership, and news, with red flags, anomalies, and green flags cited back to their source."
       />

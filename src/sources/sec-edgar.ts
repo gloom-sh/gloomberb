@@ -11,6 +11,7 @@ import {
   isPdfDocument,
 } from "./sec-edgar/content";
 import { parseSecAcceptanceTime } from "./sec-edgar/acceptance-time";
+import { DEFAULT_SEC_FROM, DEFAULT_SEC_USER_AGENT } from "./sec-edgar/identity";
 import { secFourthQuarters, withGuardedFourthQuarters, type SecFourthQuarter } from "./sec-edgar/fourth-quarter";
 
 export { extractFilingContent } from "./sec-edgar/content";
@@ -19,40 +20,6 @@ const LOOKUP_URL = "https://www.sec.gov/files/company_tickers_exchange.json";
 const SUBMISSIONS_URL = "https://data.sec.gov/submissions";
 const COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts";
 const FETCH_TIMEOUT_MS = 15_000;
-
-function sanitizeIdentityPart(value: string, fallback: string): string {
-  const sanitized = value.trim().toLowerCase().replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "");
-  return sanitized || fallback;
-}
-
-function extractEmail(value: string | undefined): string | null {
-  if (!value) return null;
-  const match = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-  return match?.[0] ?? null;
-}
-
-function getEnv(name: string): string | undefined {
-  return typeof process !== "undefined" ? process.env[name] : undefined;
-}
-
-function getRuntimeHostName(): string {
-  const maybeLocation = (globalThis as { location?: { hostname?: string } }).location;
-  if (maybeLocation?.hostname) {
-    return maybeLocation.hostname;
-  }
-  return "localhost";
-}
-
-const runtimeHostName = getRuntimeHostName();
-
-const DEFAULT_SEC_FROM =
-  getEnv("SEC_FROM_EMAIL")?.trim()
-  || extractEmail(getEnv("SEC_USER_AGENT"))
-  || `${sanitizeIdentityPart(getEnv("USER") ?? "gloomberb", "gloomberb")}@${sanitizeIdentityPart(`${runtimeHostName}.local`, "localhost.localdomain")}`;
-
-const DEFAULT_SEC_USER_AGENT =
-  getEnv("SEC_USER_AGENT")?.trim()
-  || `Gloomberb/0.1 (${sanitizeIdentityPart(runtimeHostName, "localhost")}; contact=${DEFAULT_SEC_FROM})`;
 
 type LookupEntry = {
   cik: string;

@@ -57,7 +57,7 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
           gap={1}
         >
           <text fg={toneColor(toast.tone)}>{toneIcon(toast.tone)}</text>
-          <text fg={colors.text} flexGrow={1} wrapMode="word">{toast.body}</text>
+          <text fg={colors.text} flexGrow={1} flexShrink={1} flexBasis={0} wrapMode="word">{toast.body}</text>
           {toast.options?.action && (
             <text
               fg={colors.textBright}

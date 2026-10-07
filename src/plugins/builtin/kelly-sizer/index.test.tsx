@@ -1,23 +1,23 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { createTestControls, emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { KellySizerHarness, createFinancials, createSizerConfig, createTicker } from "./test-support";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 async function renderPane(props?: Parameters<typeof KellySizerHarness>[0]) {
   await act(async () => {
-    testSetup = await testRender(<KellySizerHarness {...props} />, { width: 100, height: 30 });
+    await tui.render(<KellySizerHarness {...props} />, { width: 100, height: 30 });
     await Promise.resolve();
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
 async function flushFrame() {
   await act(async () => {
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
@@ -25,13 +25,7 @@ beforeEach(() => {
   setSharedMarketDataCoordinator(null);
 });
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
 });
 
@@ -53,7 +47,7 @@ describe("KellySizerPane", () => {
     await renderPane({ config, paneState: { mode: "scenario" } });
     await flushFrame();
 
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Scenario");
     expect(frame).toMatch(/Kelly\s+50\.0\s+%/);
     expect(frame).toMatch(/Loss cap\s+2\.00\s+%/);
@@ -87,7 +81,7 @@ describe("KellySizerPane", () => {
     });
     await flushFrame();
 
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Scenario");
     expect(frame).toMatch(/Kelly\s+30\.0\s+%/);
     expect(frame).toMatch(/Loss cap\s+1\.50\s+%/);
@@ -119,7 +113,7 @@ describe("KellySizerPane", () => {
     await renderPane({ config: createSizerConfig("SIVE"), ticker, financials });
     await flushFrame();
 
-    const frame = await createTestControls(() => testSetup!).waitForFrameToContain("Current  1000");
+    const frame = await tui.waitForFrameToContain("Current  1000");
     expect(frame).toContain("SIVE");
     expect(frame).toContain("Main Portfolio");
     expect(frame).toMatch(/Current\s+1000\s+USD/);
@@ -130,19 +124,10 @@ describe("KellySizerPane", () => {
     await renderPane();
     await flushFrame();
 
-    await act(async () => {
-      (testSetup!.renderer.keyInput as any).emit("keypress", {
-        name: "s",
-        sequence: "s",
-        ctrl: false,
-        meta: false,
-        shift: false,
-      });
-      await testSetup!.renderOnce();
-    });
+    await tui.emitKeypress({ name: "s", sequence: "s" });
     await flushFrame();
 
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toMatch(/WIN P\s+UPSIDE 18\.0%\s+UPSIDE 24\.0%\s+UPSIDE 30\.0%/);
     expect(frame).toMatch(/57\.0%\s+8\.00%/);
     expect(frame).not.toContain("Expected log growth");
@@ -152,23 +137,23 @@ describe("KellySizerPane", () => {
     await renderPane();
     await flushFrame();
     const press = (event: { name: string; sequence: string; shift?: boolean }) =>
-      emitKeypress(testSetup!, event, { trackPropagation: true, afterCommit: true });
+      tui.emitKeypress(event, { trackPropagation: true, afterCommit: true });
     const settleFocus = () => act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     // e starts at Bankroll, which is not a sizing assumption and was out of reach.
     await press({ name: "e", sequence: "e" });
     await settleFocus();
     await act(async () => {
-      await testSetup!.mockInput.typeText("5000");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("5000");
+      await tui.setup().renderOnce();
     });
     await press({ name: "tab", sequence: "\t" });
     await settleFocus();
     await press({ name: "escape", sequence: "\u001B" });
-    expect(testSetup!.captureCharFrame()).toMatch(/Bankroll\s+5000\s+USD/);
+    expect(tui.frame()).toMatch(/Bankroll\s+5000\s+USD/);
 
     // e resumes at Current; Shift+Tab walks back and then out of the cells.
     await press({ name: "e", sequence: "e" });
@@ -176,26 +161,17 @@ describe("KellySizerPane", () => {
     await press({ name: "tab", sequence: "\t", shift: true });
     await press({ name: "tab", sequence: "\t", shift: true });
     await press({ name: "s", sequence: "s" });
-    expect(testSetup!.captureCharFrame()).toContain("Sensitivity");
+    expect(tui.frame()).toContain("Sensitivity");
   });
 
   test("focuses ticker search with slash", async () => {
     await renderPane();
     await flushFrame();
 
-    await act(async () => {
-      (testSetup!.renderer.keyInput as any).emit("keypress", {
-        name: "/",
-        sequence: "/",
-        ctrl: false,
-        meta: false,
-        shift: false,
-      });
-      await testSetup!.renderOnce();
-    });
+    await tui.emitKeypress({ name: "/", sequence: "/" });
     await flushFrame();
 
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("/ AAPL");
   });
 });

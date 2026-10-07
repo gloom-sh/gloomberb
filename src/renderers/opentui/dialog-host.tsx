@@ -11,6 +11,12 @@ import {
   type DialogStyle,
   type PromptContext,
 } from "../../ui/dialog";
+import {
+  bridgeDialogContent,
+  DialogBridgeRegistrationProvider,
+  useDialogBridgeSlot,
+  type DialogContentBridge,
+} from "../../ui/dialog-bridge";
 import { useDialogStack, type DialogKind } from "../../ui/dialog-stack";
 
 interface DialogRecord {
@@ -48,6 +54,7 @@ function backdrop(): RGBA {
 
 function DialogLayer({
   api,
+  bridge,
   close,
   dialog,
   dimensions,
@@ -55,6 +62,7 @@ function DialogLayer({
   isTopmost,
 }: {
   api: DialogApi;
+  bridge: DialogContentBridge | null;
   close(id: string, value?: unknown): void;
   dialog: DialogRecord;
   dimensions: { width: number; height: number };
@@ -138,7 +146,7 @@ function DialogLayer({
             dialogId={dialog.id}
             keyboardEnabled={isTopmost}
           >
-            {renderDialogContent(dialog.content, context)}
+            {bridgeDialogContent(bridge, renderDialogContent(dialog.content, context))}
           </DialogHostProvider>
         </box>
       </box>
@@ -154,6 +162,7 @@ export function OpenTuiDialogHostProvider({ children }: { children: ReactNode })
   }));
   // Focus is saved once when the stack opens and restored when it empties.
   const savedFocusRef = useRef<Renderable | null>(null);
+  const { bridge, register } = useDialogBridgeSlot();
   const { dialogs, close, api } = useDialogStack<DialogRecord>({
     idPrefix: "gloom-dialog",
     commit: (update) => flushSync(update),
@@ -199,11 +208,14 @@ export function OpenTuiDialogHostProvider({ children }: { children: ReactNode })
   return (
     <DialogHostProvider dialog={api} isOpen={dialogs.length > 0}>
       <box position="relative" width={dimensions.width} height={dimensions.height}>
-        {children}
+        <DialogBridgeRegistrationProvider register={register}>
+          {children}
+        </DialogBridgeRegistrationProvider>
         {dialogs.map((dialog, index) => (
           <DialogLayer
             key={dialog.id}
             api={api}
+            bridge={bridge}
             close={close}
             dialog={dialog}
             dimensions={dimensions}

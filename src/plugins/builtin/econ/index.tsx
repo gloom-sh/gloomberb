@@ -1,4 +1,4 @@
-import { Box, Text } from "../../../ui";
+import { Box } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {

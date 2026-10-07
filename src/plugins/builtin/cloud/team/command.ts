@@ -59,7 +59,7 @@ async function inviteFromCommand(ctx: GloomPluginContext, teamId: string, target
   open(ctx, { teamId: team.id, section: "invites" });
 }
 
-export function buildTeamCommandResults(ctx: GloomPluginContext, arg: string): CommandResultDef[] {
+function buildTeamCommandResults(ctx: GloomPluginContext, arg: string): CommandResultDef[] {
   const snapshot = teamStore.getSnapshot();
   const trimmed = arg.trim();
   const sub = TEAM_SUBCOMMAND.exec(trimmed);
@@ -209,7 +209,7 @@ export function buildTeamCommandResults(ctx: GloomPluginContext, arg: string): C
 }
 
 /** FOCUS lens: collapse other groups' tabs and mute their channels. */
-export function buildFocusResults(ctx: GloomPluginContext, arg: string): CommandResultDef[] {
+function buildFocusResults(ctx: GloomPluginContext, arg: string): CommandResultDef[] {
   const snapshot = teamStore.getSnapshot();
   const current = snapshot.focus;
   const trimmed = arg.trim().toLowerCase();

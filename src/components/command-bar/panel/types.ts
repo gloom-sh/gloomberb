@@ -1,28 +1,16 @@
 import type { RefObject } from "react";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
-import type {
-  InputRenderable,
-  ScrollBoxRenderable,
-  TextareaRenderable,
-} from "../../../ui";
-import type { SelectFieldHandle } from "../../ui/select-field";
+import type { LayoutBounds } from "../../../layout/pane-manager";
+import type { ScrollBoxRenderable } from "../../../ui";
 import type { CommandBarListRow, ListScreenState, ResultItem } from "../list/model";
 import type { CommandBarListScrollEvent } from "../list/view";
 import type { ThemePickerHandle } from "../theme-picker";
-import type {
-  CommandBarFieldValue,
-  CommandBarRoute,
-  CommandBarWorkflowField,
-  CommandBarWorkflowRoute,
-} from "../workflow/types";
+import type { CommandBarRoute } from "../workflow/types";
 
 export interface CommandBarPanelProps {
-  bodyHeight: number;
   bodySlotKey: string;
   committedThemeId: string;
   contentPadding: number;
   currentRoute: CommandBarRoute | null;
-  getWorkflowInputRef: (fieldId: string) => RefObject<InputRenderable | TextareaRenderable | null>;
   /** The sheet height already reserves the chrome row, so the body must render it whenever this is set. */
   hasChromeRow: boolean;
   labelWidth: number;
@@ -32,25 +20,14 @@ export interface CommandBarPanelProps {
   nativeOccluderRect: LayoutBounds;
   nativePaneChrome: boolean;
   onBack: () => void;
-  onConfirmRoute: () => void;
-  onFieldFocus: (fieldId: string) => void;
-  onFieldPickerOpen: (route: CommandBarWorkflowRoute, field: CommandBarWorkflowField) => void;
-  onFieldValueChange: (fieldId: string, value: CommandBarFieldValue) => void;
   onListHoverIndex: (index: number | null) => void;
   onListRowMouseDown: (event: any, item: ResultItem, globalIdx: number) => void;
   onListScroll: (event: CommandBarListScrollEvent) => void;
-  onMoveFieldFocus: (delta: number) => void;
-  onMultiSelectCommit: () => void;
-  onMultiSelectSelect: (index: number) => void;
-  onMultiSelectToggle: (id: string) => void;
   onNativeOccluderChange?: (rect: LayoutBounds | null) => void;
-  onSelectFieldRef: (fieldId: string, element: SelectFieldHandle | null) => void;
   onOverlayClose: () => void;
   onQueryChange: (query: string) => void;
   onThemeCommit: (themeId: string) => void;
   onThemePreview: (themeId: string | null) => void;
-  onWorkflowActiveTextareaSync: (route: CommandBarWorkflowRoute) => void;
-  onWorkflowSubmit: (route: CommandBarWorkflowRoute) => void | Promise<void>;
   panelBounds: LayoutBounds;
   queryDisplayWidth: number;
   rootGhostSuffix: string | null;
@@ -68,5 +45,4 @@ export interface CommandBarPanelProps {
   themePickerRef: RefObject<ThemePickerHandle | null>;
   trailingWidth: number;
   visibleListState: ListScreenState | null;
-  workflowScrollRef: RefObject<ScrollBoxRenderable | null>;
 }

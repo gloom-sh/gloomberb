@@ -6,13 +6,13 @@ import type { OptionTableRow } from "./types";
 import { isFiniteNumber } from "../../../utils/guards";
 
 export const OPTIONS_QUOTE_EXCHANGE = "OPTIONS";
-export const OPTIONS_CHAIN_REFRESH_INTERVAL_MS = 10 * 60_000;
+const OPTIONS_CHAIN_REFRESH_INTERVAL_MS = 10 * 60_000;
 /**
  * Real-time chains are cached for about ten seconds upstream, so a visible
  * chain in the regular session refetches its whole snapshot at this cadence.
  * Visible strikes stream on top of it.
  */
-export const OPTIONS_LIVE_CHAIN_REFRESH_INTERVAL_MS = 15_000;
+const OPTIONS_LIVE_CHAIN_REFRESH_INTERVAL_MS = 15_000;
 
 /** Minutes come from the pane setting; anything unparseable keeps the default. */
 export function resolveChainRefreshIntervalMs(minutes: string | number | undefined, liveSession = false): number {
@@ -27,8 +27,8 @@ export function resolveChainRefreshIntervalMs(minutes: string | number | undefin
 export function isRealtimeOptionsChain(chain: Pick<OptionsChain, "dataSource" | "realtimeEligible"> | null | undefined): boolean {
   return chain?.realtimeEligible === true || chain?.dataSource === "live";
 }
-export const OPTIONS_STREAM_FRESHNESS_MS = 2 * 60_000;
-export const OPTIONS_STREAM_CONNECTING_GRACE_MS = 15_000;
+const OPTIONS_STREAM_FRESHNESS_MS = 2 * 60_000;
+const OPTIONS_STREAM_CONNECTING_GRACE_MS = 15_000;
 
 const OPTIONS_STREAM_OVERSCAN_ROWS = 4;
 

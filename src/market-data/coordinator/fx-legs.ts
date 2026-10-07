@@ -6,7 +6,7 @@ import { getServerClockOffsetMs } from "../quotes/clock";
  * Converted totals use one USD rate per currency (USD per unit). Each rate is
  * streamed as the USD pair in its market convention: EUR, GBP, AUD and NZD
  * quote as XXX/USD, everything else as USD/XXX and is inverted. The symbols
- * use the Yahoo spelling the server already understands for FX pairs.
+ * use the Gloom spelling the server already understands for FX pairs.
  */
 const USD_QUOTED_CURRENCIES = new Set(["EUR", "GBP", "AUD", "NZD"]);
 const STREAMABLE_CURRENCIES = new Set([

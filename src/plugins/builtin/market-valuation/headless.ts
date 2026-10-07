@@ -54,7 +54,7 @@ function detailEntries(view: IndicatorViewModel): HeadlessPaneEntry[] {
   ];
 }
 
-export function projectValuationHeadlessBundle(
+function projectValuationHeadlessBundle(
   bundle: ValuationBundle,
   range: ValuationRangeId,
   selectedId: string,

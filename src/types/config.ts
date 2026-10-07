@@ -144,6 +144,7 @@ export type OnboardingStage =
   | "welcome"
   | "portfolio"
   | "add-ticker"
+  | "desks"
   | "research"
   | "verify"
   | "account"
@@ -160,6 +161,8 @@ export interface OnboardingProgress {
   positionsImported?: number;
   accountStatus?: "signed-in" | "skipped";
   checkoutOpenedAt?: string;
+  /** Desks picked at "What do you trade?", in the order picked; empty when skipped. */
+  desks?: string[];
 }
 
 /**
@@ -196,6 +199,18 @@ export interface TelemetryConfig {
    * both off; absent means on.
    */
   usage?: boolean;
+  /** Ticker-level research counts. Only an explicit true opts in; absent is OFF. */
+  attention?: boolean;
+}
+
+/**
+ * One recent command-bar run: `id` is `pane-template:<templateId>`, `label`
+ * its name when it ran, and `arg` a ticker it ran with (never free text).
+ */
+export interface RecentCommand {
+  id: string;
+  label: string;
+  arg?: string;
 }
 
 export interface AppConfig {
@@ -217,6 +232,11 @@ export interface AppConfig {
    * not fought with.
    */
   seededPlugins?: string[];
+  /**
+   * Manual portfolios have taken the one currency their positions share. Runs
+   * once per install, so later holdings never move a portfolio's currency.
+   */
+  portfolioCurrenciesAdopted?: boolean;
   disabledSources: string[];
   pluginConfig: Record<string, Record<string, unknown>>;
   theme: string;
@@ -224,6 +244,8 @@ export interface AppConfig {
   valueFlashingEnabled: boolean;
   fontSize: number;
   recentTickers: string[];
+  /** Pane templates recently run from the command bar, newest first. */
+  recentCommands: RecentCommand[];
   language?: LanguagePreference;
   onboardingComplete?: boolean;
   /** App version at the last launch, used to show release notes after an update. */
@@ -244,6 +266,9 @@ export function normalizePaneId(paneId: string): string {
   if (paneId === "comparison-chart" || paneId === "ticker-chart" || paneId === "fundamental-graph") {
     return CHART_COMPOSER_PANE_ID;
   }
+  // Thematic baskets became the Themes tab of Sector Performance; the saved
+  // theme param and pane state open that tab where the pane left off.
+  if (paneId === "themes") return "sectors";
   return paneId;
 }
 
@@ -262,6 +287,7 @@ const TICKER_PANE_IDS = new Set([
   "corporate-actions",
   "earnings-estimates",
   "historical-prices",
+  "returns",
   "ibkr-trading",
 ]);
 
@@ -299,9 +325,12 @@ const DEFAULT_HOME_LAYOUT: LayoutConfig = {
       first: { kind: "pane", instanceId: "portfolio-list:main" },
       second: { kind: "pane", instanceId: "chat:main" },
     },
-    second: { kind: "pane", instanceId: "ticker-detail:main" },
+    second: { kind: "split", axis: "vertical", ratio: 0.76,
+      first: { kind: "pane", instanceId: "ticker-detail:main" },
+      second: { kind: "pane", instanceId: "attention-trending:home" } },
   },
   instances: [
+    { instanceId: "attention-trending:home", paneId: "attention-trending", binding: { kind: "none" } },
     {
       instanceId: "portfolio-list:main",
       paneId: "portfolio-list",
@@ -692,6 +721,8 @@ export function normalizePaneLayout(
     defaultFollowSourceInstanceId?: string | null;
     /** Last resolved symbol used to pin an orphaned follower; otherwise it remains safely unlinked. */
     resolveOrphanSymbol?: (instanceId: string) => string | null;
+    /** Pins an orphaned follower on its last symbol; by default only its binding changes. */
+    pinOrphan?: (instance: PaneInstanceConfig, symbol: string | null) => PaneInstanceConfig;
   },
 ): LayoutConfig {
   const fallbackSourceId = options?.defaultFollowSourceInstanceId ?? null;
@@ -718,18 +749,18 @@ export function normalizePaneLayout(
   for (;;) {
     const validInstanceIds = new Set(nextLayout.instances.map((instance) => instance.instanceId));
     const removedIds = new Set<string>();
-    const orphanBindings = new Map<string, PaneBinding>();
+    const orphanPins = new Map<string, PaneInstanceConfig>();
 
     for (const instance of nextLayout.instances) {
       if (instance.binding?.kind === "follow" && !validInstanceIds.has(instance.binding.sourceInstanceId)) {
         // Structural helpers remove the source before the app can resolve its last ticker. Preserve
         // the dangling binding until the runtime normalizes again with a resolver.
         if (!options?.resolveOrphanSymbol) continue;
-        const orphanSymbol = options.resolveOrphanSymbol(instance.instanceId)?.trim();
-        orphanBindings.set(
-          instance.instanceId,
-          orphanSymbol ? { kind: "fixed", symbol: orphanSymbol } : { kind: "none" },
-        );
+        const orphanSymbol = options.resolveOrphanSymbol(instance.instanceId)?.trim() || null;
+        orphanPins.set(instance.instanceId, options.pinOrphan?.(instance, orphanSymbol) ?? {
+          ...instance,
+          binding: orphanSymbol ? { kind: "fixed", symbol: orphanSymbol } : { kind: "none" },
+        });
         continue;
       }
 
@@ -748,13 +779,10 @@ export function normalizePaneLayout(
       }
     }
 
-    if (orphanBindings.size > 0) {
+    if (orphanPins.size > 0) {
       nextLayout = {
         ...nextLayout,
-        instances: nextLayout.instances.map((instance) => {
-          const binding = orphanBindings.get(instance.instanceId);
-          return binding ? { ...instance, binding } : instance;
-        }),
+        instances: nextLayout.instances.map((instance) => orphanPins.get(instance.instanceId) ?? instance),
       };
     }
 
@@ -762,7 +790,7 @@ export function normalizePaneLayout(
       nextLayout = removePaneInstances(nextLayout, removedIds);
       continue;
     }
-    if (orphanBindings.size === 0) break;
+    if (orphanPins.size === 0) break;
   }
 
   const validInstanceIds = new Set(nextLayout.instances.map((instance) => instance.instanceId));
@@ -875,6 +903,7 @@ export function createDefaultConfig(dataDir: string): AppConfig {
     valueFlashingEnabled: true,
     fontSize: 12,
     recentTickers: [],
+    recentCommands: [],
   };
 }
 

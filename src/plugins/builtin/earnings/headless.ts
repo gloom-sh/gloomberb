@@ -44,7 +44,7 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "move", header: "Move", align: right, format: (value) => signedPercent(num(value)) },
 ];
 
-export interface EarningsHeadlessDependencies {
+interface EarningsHeadlessDependencies {
   calendar(query: { from: string; to: string; perDay: number; symbols: string[] }, context: HeadlessPaneContext): Promise<EarningsCalendarPayload>;
   history(symbol: string, context: HeadlessPaneContext): Promise<EarningsHistoryPayload>;
   upcoming(symbols: string[], context: HeadlessPaneContext): Promise<EarningsEvent[]>;
@@ -137,7 +137,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
 }
 
 /** EVTS: the market board, whatever ticker is given. */
-export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     argument: { kind: "ticker", placeholder: "ticker", description: "Optional; the board is the same.", minimum: 0, maximum: 1 },
@@ -152,7 +152,7 @@ export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies =
   };
 }
 
-export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     argument: {

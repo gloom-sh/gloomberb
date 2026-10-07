@@ -5,7 +5,7 @@ import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { setSharedMarketDataCoordinator, type MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { ChartRequest } from "../../../market-data/request-types";
 import { createIdleEntry, type QueryEntry } from "../../../market-data/result-types";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -35,7 +35,7 @@ function ready(data: PricePoint[]): QueryEntry<PricePoint[]> {
   return { phase: "ready", data, lastGoodData: data, source: "test", fetchedAt: 1, staleAt: null, error: null, attempts: [] };
 }
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let spies: Array<{ mockRestore(): void }> = [];
 
 beforeEach(() => {
@@ -55,9 +55,7 @@ beforeEach(() => {
   ];
 });
 
-afterEach(async () => {
-  if (setup) await act(async () => setup?.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
   for (const spy of spies) spy.mockRestore();
 });
@@ -65,7 +63,7 @@ afterEach(async () => {
 /** Long enough for the table to commit a keyboard move, which it holds back 150ms. */
 async function settle() {
   for (let index = 0; index < 8; index += 1) {
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); await setup!.renderOnce(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); await tui.setup().renderOnce(); });
   }
 }
 
@@ -83,17 +81,17 @@ async function renderPane(width: number, height: number) {
       <PaneFooterProvider>{() => <VolatilityPane paneId={paneId} paneType="volatility-term-structure" width={width} height={height} focused />}</PaneFooterProvider>
     </TestPaneProvider>;
   }
-  await act(async () => { setup = await testRender(<Harness />, { width, height }); });
+  await act(async () => { await tui.render(<Harness />, { width, height }); });
   await settle();
 }
 
-const lines = () => setup!.captureCharFrame().replace(/\n+$/, "").split("\n");
+const lines = () => tui.frame().replace(/\n+$/, "").split("\n");
 const readout = () => lines().find((line) => /^ \d+[DMY] \d+\.\d\d/.test(line))?.trim() ?? "";
 const tenorRows = () => lines().filter((line) => /^ (9D|30D|3M|6M|1Y) +\d+\.\d\d/.test(line));
 
 test("the curve names IV and its look-backs, and the tenors show how far each moved", async () => {
   await renderPane(108, 32);
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toMatch(/IV % by tenor {3}● IV {3}● 1W ago {3}● 1M ago/);
   expect(frame).toMatch(/\n9D +30D +3M +6M +1Y +\n/);
   expect(frame).toMatch(/TENOR +IV +1W CHG +1M CHG/);
@@ -107,16 +105,16 @@ test("the curve names IV and its look-backs, and the tenors show how far each mo
 
 test("the selected tenor is the curve's point", async () => {
   await renderPane(108, 32);
-  await emitKeypress(setup!, { name: "down" });
+  await tui.emitKeypress({ name: "down" });
   await settle();
   expect(readout()).toBe("3M 17.93  1W ago -0.31  1M ago -0.28");
-  await emitKeypress(setup!, { name: "up" });
+  await tui.emitKeypress({ name: "up" });
   await settle();
-  await emitKeypress(setup!, { name: "up" });
+  await tui.emitKeypress({ name: "up" });
   await settle();
   expect(readout()).toBe("9D 12.76  1W ago +0.49  1M ago -0.69");
   // The tab strip keeps Left and Right, as in any pane with tabs.
-  await emitKeypress(setup!, { name: "right" });
+  await tui.emitKeypress({ name: "right" });
   await settle();
   expect(readout()).toBe("");
 });
@@ -126,7 +124,6 @@ test("a short pane keeps every tenor and turns the curve into a strip, then drop
   let rows = lines();
   expect(rows.some((line) => /^ ● IV % .*30D 14\.87/.test(line))).toBe(true);
   expect(tenorRows()).toHaveLength(5);
-  await act(async () => setup?.renderer.destroy());
   await renderPane(40, 7);
   rows = lines();
   expect(rows.some((line) => line.includes("●"))).toBe(false);

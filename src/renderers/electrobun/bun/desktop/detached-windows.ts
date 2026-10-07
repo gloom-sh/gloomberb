@@ -1,6 +1,6 @@
 import type { BrowserWindow } from "electrobun/bun";
 import { findPaneInstance } from "../../../../types/config";
-import { isPaneDetached } from "../../../../plugins/pane-manager";
+import { isPaneDetached } from "../../../../layout/pane-manager";
 import {
   DEFAULT_WINDOW_FRAME,
   DETACHED_WINDOW_MIN_SIZE,

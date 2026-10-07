@@ -5,6 +5,7 @@ import { normalizeTickerInput } from "../../../tickers/search";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { FinancialAnalysisPane } from "./financials/pane";
 import { HistoricalPricesPane } from "./data-panes/historical-prices";
+import { ReturnsPane } from "./data-panes/returns-pane";
 import { TickerResearchPane } from "./pane";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
@@ -35,6 +36,7 @@ export const tickerDetailModule: PluginModule = {
       icon: "D",
       component: TickerResearchPane,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(
@@ -49,6 +51,7 @@ export const tickerDetailModule: PluginModule = {
       component: FinancialAnalysisPane,
       headless: financialStatementsHeadless,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 98, height: 30 },
       tableExport: true,
@@ -75,8 +78,20 @@ export const tickerDetailModule: PluginModule = {
       component: HistoricalPricesPane,
       headless: historicalPricesHeadless,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 26 },
+      tableExport: true,
+    },
+    {
+      id: "returns",
+      name: "Returns",
+      icon: "R",
+      component: ReturnsPane,
+      defaultPosition: "right",
+      tickerFollower: true,
+      defaultMode: "floating",
+      defaultFloatingSize: { width: 100, height: 28 },
       tableExport: true,
     },
   ],
@@ -146,6 +161,16 @@ export const tickerDetailModule: PluginModule = {
           : null;
       },
     },
+    createTickerSurfacePaneTemplate({
+      id: "returns-pane",
+      paneId: "returns",
+      label: "Returns",
+      description: "Inspect interval and cumulative price returns over a selectable range and granularity.",
+      keywords: ["returns", "return", "performance", "change", "interval", "granularity"],
+      shortcut: "RETURN",
+      publicShare: true,
+      titlePrefix: "RETURN",
+    }),
     {
       ...createTickerSurfacePaneTemplate({
         id: "historical-prices-pane",

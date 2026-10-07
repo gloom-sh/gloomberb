@@ -59,7 +59,7 @@ the pane's own name; fixed labels; generic key hints (`j/k`, `Enter to open`,
 
 **The data provider is invisible.** Never show which vendor or internal
 route served the data: no `provider:gloomberb-cloud`, `gloomberb-cloud`,
-Gloom Cloud, Yahoo, Alpaca, Twelve Data, OPRA, SIP or `entry.source` values
+raw feed names or `entry.source` values
 in a footer, status line, header meta, table column, legend, tooltip or
 headless report column. Say what the data is instead: `real-time`,
 `15m delayed`, `settlement`, `daily closes`, `trade closes since …`, `as of`
@@ -120,8 +120,10 @@ the origin of a number. The one count the kit draws is the
 
 ## 5. Lists and tables
 
-Header labels and section headings are uppercased by the kit; write them in
-any case. Pass `onHeaderClick` only when the table sorts (without it headers
+Table header labels are uppercased by the kit; write them in any case.
+Section headings read in title case, bright and bold: the kit capitalises
+lower-case words, so write acronyms in capitals and never a whole heading in
+capitals. Pass `onHeaderClick` only when the table sorts (without it headers
 are not interactive), and `selection={{ kind: "none" }}` for a static table.
 Never build a table from padded `Text` rows: the kit gives the header band,
 gutters and fill to the footer.
@@ -370,17 +372,27 @@ header, with the detail's height.
   `preventDefault()` when it acts). Reserved: `j`/`k`/arrows move, Enter
   opens, Esc/Backspace back, `r` refresh, `Shift+R` refresh all, `!`
   warnings, `o` open source, `/` search, `.` pane menu, Tab/Shift+Tab next
-  pane or field, `h`/`l` tabs, `?` help, `` ` `` ticker search, `q` quit (terminal),
+  pane or field, `h`/`l` tabs, `?` help, F1 the pane's help card, `` ` `` ticker search, `q` quit (terminal),
   `u` install update, `$` Pro upgrade, Ctrl+P command bar. `q`, `u`, `r`,
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
   global shortcuts through `registerShortcut` so Help lists them.
+- Esc Esc closes the focused pane, and only an Esc nobody consumed counts
+  as the first press. Consume Esc only when it backs out of something (a
+  detail, a menu, a selection, a draft); with nothing to back out of, let it
+  through. An Esc that only leaves an empty text field still counts: call
+  `countEscapeTowardClose(event)` and consume it.
 - The pane menu (`.`, Shift+F10, the `...` button) is where the keyboard
   finds everything: it lists the footer hints with their keys, what kit
   controls add (table sort, query-bar filters, tab add/close/move, empty-state
   actions), quick settings and the pane actions. An action with no key of its
   own goes there with `usePaneMenuItems`, never in a body button row. Set a
-  hint's `title` when its key is not the action's first letter.
+  hint's `title` when its key is not the action's first letter. A pane that
+  shows one ticker sets `tickerFollower` on its `PaneDef`, and the menu gains
+  "Link to" each visible list, scanner, or other single-ticker pane and "Unlink from" the one it follows;
+  the title then reads `OPX NVDA  ⧉ Linked to Watchlist`. Such a pane changes
+  ticker while mounted, so it keys its view by symbol and keeps saved
+  per-ticker choices (expiry, strike) per symbol.
 - One component renders in the terminal, the desktop app and the web. Import
   only `gloomberb/ui`, `gloomberb/components`, `gloomberb/react`; detect the
   target with `getCurrentPluginTarget()`, not `window` or `location`. Never

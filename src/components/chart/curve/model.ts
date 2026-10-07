@@ -31,8 +31,11 @@ export interface CurveSeries {
   color?: string;
   /** Keep dated table/cursor context without changing chart axes. */
   chartVisible?: boolean;
-  /** "step" holds each value until the next point, for a rate set at discrete dates. */
-  style?: "line" | "points" | "step";
+  /** "step" holds each value until the next point, for a rate set at discrete dates;
+   * "columns" draws each point as a bar from zero, for a change by tenor. */
+  style?: "line" | "points" | "step" | "columns";
+  /** Columns below zero in this colour, so a fall reads apart from a rise. */
+  negativeColor?: string;
   /** Defaults to primary for the primary series and ghost for the rest. */
   role?: CurveSeriesRole;
   points: readonly CurvePoint[];
@@ -235,7 +238,7 @@ export function buildCurveChart(series: readonly CurveSeries[], width: number, c
       value: point.value != null && Number.isFinite(point.value) ? point.value : null,
     })),
     { id: entry.id, label: entry.label, color: entry.color ?? colors[index % Math.max(1, colors.length)] ?? "#ffffff",
-      style: entry.role === "marker" ? "points" : entry.style, calendarSpaced: true },
+      style: entry.role === "marker" ? "points" : entry.style, calendarSpaced: true, negativeColor: entry.negativeColor },
   ));
   // References and markers are not maturities of the curve, so they never label the axis.
   const candidates = [...new Map((rowSeries.length ? rowSeries : plotted).flatMap((entry) => entry.points)
@@ -310,7 +313,7 @@ export function curveLegendLayout(series: readonly CurveSeries[], width: number)
 }
 
 /** Legend rows a curve surface spends at this width: one with a caption, else its wrapped series labels. */
-export function curveLegendRows(series: readonly CurveSeries[], width: number, caption?: string): number {
+function curveLegendRows(series: readonly CurveSeries[], width: number, caption?: string): number {
   return caption ? 1 : curveLegendLayout(series, width).length;
 }
 

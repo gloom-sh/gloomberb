@@ -1,20 +1,39 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender, emitKeypress } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { CorporateActionsData } from "../../../types/financials";
 import { Box } from "../../../ui";
-import { buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
+import { buildEventColumns, buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildEventRows } from "./event-model";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
+
+test("EVT drops annual estimates before quarterly values and keeps VALUE and the complete period visible", () => {
+  for (const unit of [undefined, "USD"]) {
+    for (const width of [68, 88, 90, 120, 160]) {
+      const columns = buildEventColumns(width, unit);
+      expect(getTableWidth(columns)).toBeLessThanOrEqual(width - 1);
+      expect(columns.some(({ id }) => id === "value")).toBe(true);
+      expect(columns.find(({ id }) => id === "period")!.width).toBeGreaterThanOrEqual("After Hours".length);
+    }
+    const narrow = buildEventColumns(90, unit).map(({ id }) => id);
+    expect(narrow).toContain("qEps");
+    expect(narrow).toContain("qRevenue");
+    expect(narrow).toContain("detail");
+    expect(narrow).not.toContain("annualEps");
+    expect(narrow).not.toContain("annualRevenue");
+    expect(buildEventColumns(160, unit).map(({ id }) => id)).toContain("annualRevenue");
+  }
+});
 
 async function frame() {
   await act(async () => { await Bun.sleep(1); });
-  await act(async () => { await setup!.renderOnce(); });
+  await act(async () => { await tui.setup().renderOnce(); });
 }
 
 async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80) {
@@ -44,26 +63,21 @@ async function render(actions: CorporateActionsData, variant: "corporate-actions
     );
   }
   await act(async () => {
-    setup = await testRender(<Harness />, { width, height: 24 });
+    await tui.render(<Harness />, { width, height: 24 });
   });
   for (let index = 0; index < 4; index++) await frame();
 }
-
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
-});
 
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {
   await render({ symbol: "TEST", dividends: [], splits: [], earnings: [
     { date: "2026-09-30", dateType: "announcement", epsEstimate: 2.2 },
     { date: "2026-09-30", dateType: "fiscal-period-end", epsActual: 2, epsEstimate: 1.8, currency: "USD" },
   ] }, "earnings-estimates", 120);
-  await emitKeypress(setup!, { name: "down" });
+  await tui.emitKeypress({ name: "down" });
   await frame();
-  await emitKeypress(setup!, { name: "return" });
+  await tui.emitKeypress({ name: "return" });
   await frame();
-  const detail = setup!.captureCharFrame();
+  const detail = tui.frame();
   expect(detail).toMatch(/Actual\s+2 USD/);
   expect(detail).toMatch(/Consensus\s+1\.8 USD/);
   expect(detail).not.toMatch(/Consensus\s+2\.2/);
@@ -74,7 +88,7 @@ test.each(["corporate-actions", "earnings-estimates"] as const)("%s preserves un
     dividends: variant === "earnings-estimates" ? [{ exDate: "2026-09-30", amount: 0.1 }] : [],
     coverage: { dividends: "available", splits: "unavailable", earnings: "unavailable" },
   }, variant);
-  expect(setup!.captureCharFrame()).toContain(variant === "earnings-estimates" ? "Unavailable: earnings" : "Unavailable: splits, earnings");
+  expect(tui.frame()).toContain(variant === "earnings-estimates" ? "Unavailable: earnings" : "Unavailable: splits, earnings");
 });
 
 /** The detail as text, one line per heading, labelled figure or note. */
@@ -89,10 +103,10 @@ describe("event detail", () => {
   test("estimate drilldown and JSON retain distinct EPS/revenue inputs, currencies and attribution", () => {
     const eps = { date: "2026-09-30", period: "current quarter", currency: "USD", average: 4.4, low: 4, high: 5, yearAgo: 0, growth: 0, analysts: 12 };
     const revenue = { date: eps.date, period: eps.period, currency: "TWD", average: 1.45e12, low: 1.4e12, high: 1.5e12, yearAgo: 1e12, growth: .45, analysts: 20 };
-    const rows = buildEventRows(null, { symbol: "TSM", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z",
+    const rows = buildEventRows(null, { symbol: "TSM", providerId: "gloom", fetchedAt: "2026-09-11T12:00:00Z",
       recommendations: [], ratings: [], earningsEstimates: [eps], revenueEstimates: [revenue] }, null, "USD");
     const row = JSON.parse(JSON.stringify(rows[0]));
-    expect(row).toMatchObject({ estimateInputs: { eps, revenue }, estimateGrowthMetric: "eps", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z" });
+    expect(row).toMatchObject({ estimateInputs: { eps, revenue }, estimateGrowthMetric: "eps", providerId: "gloom", fetchedAt: "2026-09-11T12:00:00Z" });
     const detail = detailText(buildEventDetail({ row, secFilingsLoading: false, filing: null, documents: [], documentsLoading: false,
       inlineContent: new Map(), primaryContent: null, primaryContentLoading: false }));
     expect(detail).toContain("EPS consensus\nAverage: 4.4 USD\nLow: 4 USD\nHigh: 5 USD\nPrior year: 0 USD\nGrowth: 0.00%");
@@ -100,7 +114,7 @@ describe("event detail", () => {
     expect(detail).toContain("Growth: +45.00%");
     expect(detail).toContain("As of: 2026-09-11T12:00:00Z");
     // The pane says what the figures are, never which feed served them.
-    expect(detail).not.toContain("yahoo");
+    expect(detail).not.toContain("gloom");
   });
 
   test("matches reported earnings to nearby SEC earnings-release filings", () => {

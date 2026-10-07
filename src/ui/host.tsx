@@ -73,9 +73,15 @@ export interface ChartVectorShape {
   color: string;
   /** Closes the shape into a filled box, for range and area selections. */
   box?: boolean;
+  /** Closes the points into a filled polygon, such as a flow ribbon, with no outline. */
+  fill?: boolean;
   fillOpacity?: number;
   strokeWidth?: number;
   handles?: boolean;
+  /** Paints the fill or line left to right through these colours instead of `color`. */
+  gradient?: readonly string[];
+  /** Opacity of the whole shape, so others can recede behind a highlighted one. */
+  opacity?: number;
 }
 
 interface TextEditBuffer {
@@ -116,6 +122,8 @@ export interface BoxRenderable {
 
 interface ScrollBarRenderable {
   visible: boolean;
+  /** Terminal only: whether a click on the bar moves the keyboard focus to it. */
+  focusable?: boolean;
   on?(event: "change", handler: () => void): void;
   off?(event: "change", handler: () => void): void;
 }
@@ -130,7 +138,8 @@ export interface ScrollBoxRenderable {
   scrollLeftPx?: number;
   scrollHeightPx?: number;
   scrollWidthPx?: number;
-  viewport?: { width: number; height: number };
+  /** In the terminal, `y` is the viewport's top row on screen, as laid out last. */
+  viewport?: { y?: number; width: number; height: number };
   viewportPx?: { width: number; height: number };
   visible?: boolean;
   parent?: unknown;
@@ -139,6 +148,8 @@ export interface ScrollBoxRenderable {
   verticalScrollBar?: ScrollBarRenderable;
   scrollTo(target: number | { x?: number; y?: number }, y?: number): void;
   scrollToPixels?(target: number | { x?: number; y?: number }, y?: number): void;
+  /** Terminal only: the scrolled content, whose descendants carry their screen rows as laid out last. */
+  content?: { findDescendantById?(id: string): { y: number; height: number } | undefined };
 }
 
 export interface InputRenderable {
@@ -174,7 +185,10 @@ export interface NativeCursorState {
 
 export type NativePostProcessFn = (buffer: unknown, deltaTime: number) => void;
 
-/** One styled run of a rendered terminal row; colours are 0-255 RGBA. */
+/**
+ * One styled run of a rendered terminal row; colours are 0-255 RGBA.
+ * @public
+ */
 export interface NativeFrameSpan {
   text: string;
   fg: readonly [number, number, number, number];
@@ -361,6 +375,8 @@ export interface HostTabsProps {
   addLabel?: string;
   onAdd?: () => void;
   onReorder?: (fromValue: string, toValue: string) => void;
+  /** A press that moves, on a tab that is not reordered. */
+  onDrag?: () => void;
   focused?: boolean;
   palette: HostTabsPalette;
 }
@@ -546,6 +562,7 @@ export interface UiHost {
   colorFromHex?(hex: string): unknown;
 }
 
+/** @public */
 export interface SaveTextFileRequest {
   name: string;
   text: string;

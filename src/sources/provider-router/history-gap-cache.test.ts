@@ -8,7 +8,7 @@ import { AssetDataRouter } from "./index";
 const points = (dates: string[], value: number) => dates.map((date, index) => ({ date: new Date(date), close: value + index }));
 function record(symbol: string, range: string, value: PricePoint[], source = "cache-test", resolution = "") {
   return { namespace: "market", kind: "price-history", entityKey: symbol,
-    variantKey: `exchange=NYSE;range=${range};${resolution ? `resolution=${resolution};` : ""}version=6`,
+    variantKey: `exchange=NYSE;range=${range};${resolution ? `resolution=${resolution};` : ""}version=7`,
     sourceKey: `provider:${source}`, value: { points: value, resolution: resolution || null }, schemaVersion: 1, fetchedAt: Date.now(), stale: false, expired: false };
 }
 function memoryResources(initial: ReturnType<typeof record>[]) {

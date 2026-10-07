@@ -4,7 +4,7 @@ import type {
   FloatingRect,
   LayoutBounds,
   ResolvedPane,
-} from "../../../../plugins/pane-manager";
+} from "../../../../layout/pane-manager";
 import { useNativeRenderer } from "../../../../ui";
 import type { DragPreview } from "../drag";
 import {

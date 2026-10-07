@@ -23,6 +23,7 @@ export type RemoteStateInclude =
   | "panes"
   | "commandBar"
   | "commandBar.results"
+  | "form"
   | "ui"
   | "schema"
   | "help"
@@ -68,12 +69,13 @@ export interface RemoteIncludedState {
   layout?: unknown;
   panes?: unknown;
   commandBar?: unknown;
+  form?: unknown;
   ui?: RemoteUiNodeSnapshot[];
   schema?: RemoteControlSchema;
   help?: unknown;
 }
 
-export interface RemoteControlSuccess<T = unknown> {
+interface RemoteControlSuccess<T = unknown> {
   ok: true;
   data: T;
   rev?: string;
@@ -81,7 +83,7 @@ export interface RemoteControlSuccess<T = unknown> {
   warnings?: string[];
 }
 
-export interface RemoteControlFailure {
+interface RemoteControlFailure {
   ok: false;
   error: {
     code: string;
@@ -109,7 +111,7 @@ export type RemoteSideEffectLevel =
 
 export type RemoteWriteTier = "read" | "ui-write" | "user-data" | "broker";
 
-export type RemoteJsonSchemaType =
+type RemoteJsonSchemaType =
   | "object"
   | "array"
   | "string"

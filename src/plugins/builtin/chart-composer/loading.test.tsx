@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
@@ -12,11 +12,7 @@ import type { PricePoint } from "../../../types/financials";
 import { ChartComposerPane } from "./pane";
 import { buildComparisonChartPreset } from "./presets";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 const history: PricePoint[] = [
   { date: new Date("2025-01-02"), open: 100, high: 100, low: 100, close: 100, volume: 100 },
@@ -25,9 +21,9 @@ const history: PricePoint[] = [
 
 async function waitFor(predicate: () => boolean) {
   for (let i = 0; i < 100; i++) {
-    await act(async () => { await Bun.sleep(1); await setup!.renderOnce(); });
+    await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
     if (predicate()) {
-      await act(async () => setup!.renderOnce());
+      await act(async () => tui.setup().renderOnce());
       return;
     }
   }
@@ -71,27 +67,27 @@ for (const outcome of ["success", "disjoint", "empty", "failed"] as const) {
       latest = useChartResolution(spec, sources, { liveRefreshIntervalMs: 0 });
       return <TestPaneProvider state={state} paneId={paneId} pluginId="charts" runtime={runtime}>
         <ChartSnapshotContext value={latest}>
-          <ChartComposerPane paneId={paneId} focused width={120} height={24} />
+          <ChartComposerPane paneId={paneId} paneType="chart-composer" focused width={120} height={24} />
         </ChartSnapshotContext>
       </TestPaneProvider>;
     }
-    setup = await testRender(<Harness />, { width: 120, height: 24 });
+    await tui.render(<Harness />, { width: 120, height: 24 });
     await waitFor(() => requested.size === 2);
     expect(latest?.loading).toBe(true);
     expect(latest?.priceComparison?.start).toBeNull();
-    expect(setup.captureCharFrame()).toContain("Loading chart data");
-    expect(setup.captureCharFrame()).not.toContain("Comparison unavailable");
+    expect(tui.frame()).toContain("Loading chart data");
+    expect(tui.frame()).not.toContain("Comparison unavailable");
 
     await act(async () => { first.resolve(history); await Bun.sleep(2); });
     expect(latest?.loading).toBe(true);
-    expect(setup.captureCharFrame()).not.toContain("Comparison unavailable");
+    expect(tui.frame()).not.toContain("Comparison unavailable");
 
     await act(async () => {
       if (outcome === "failed") second.reject(new Error("Controlled history failure"));
       else second.resolve(secondHistory);
     });
     await waitFor(() => latest?.loading === false);
-    const settled = setup.captureCharFrame();
+    const settled = tui.frame();
     expect(settled).not.toContain("Loading chart data");
     if (outcome === "success") {
       expect(latest?.series.map((series) => series.points.length)).toEqual([2, 2]);
@@ -115,13 +111,13 @@ for (const outcome of ["success", "disjoint", "empty", "failed"] as const) {
       await act(async () => latest!.reload());
       await waitFor(() => requested.size === 2);
       expect(latest?.loading).toBe(true);
-      const refreshing = setup.captureCharFrame();
+      const refreshing = tui.frame();
       expect(refreshing).toContain("Loading chart data");
       expect(refreshing).not.toContain("Comparison unavailable");
       expect(refreshing).not.toContain("no observations in the selected date range");
       await act(async () => { first.resolve(history); second.resolve(secondHistory); });
       await waitFor(() => latest?.loading === false);
-      expect(setup.captureCharFrame()).toContain("Comparison unavailable");
+      expect(tui.frame()).toContain("Comparison unavailable");
     }
   });
 }

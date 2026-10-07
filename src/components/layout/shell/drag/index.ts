@@ -7,10 +7,10 @@ import {
   type DropTarget,
   type FloatingRect,
   type LayoutBounds,
-} from "../../../../plugins/pane-manager";
+} from "../../../../layout/pane-manager";
 import type { DesktopDockPreviewState } from "../../../../types/desktop-window";
 import type { LayoutConfig } from "../../../../types/config";
-import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE } from "../../pane/header";
+import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE, PANE_HEADER_RESTORE } from "../../pane/header";
 
 export interface HoverOverlay {
   targetId: string;
@@ -355,18 +355,19 @@ export function resolveSnapGuide(x: number, y: number, guides: SnapGuide[]): Sna
 
 export function resolveHeaderHitAreas(
   width: number,
-  options: { floating: boolean; focused: boolean },
+  options: { floating: boolean; focused: boolean; fullscreen?: boolean },
 ): {
   actionStart: number | null;
   closeStart: number | null;
 } {
   // Focused panes and all floating panes render corner chrome around the header.
-  let rightEdge = options.focused || options.floating ? width - 2 : width;
+  let rightEdge = options.focused || options.floating || options.fullscreen ? width - 2 : width;
   let closeStart: number | null = null;
   let actionStart: number | null = null;
 
-  if (options.floating) {
-    closeStart = Math.max(0, rightEdge - PANE_HEADER_CLOSE.length);
+  if (options.floating || options.fullscreen) {
+    const corner = options.fullscreen ? PANE_HEADER_RESTORE : PANE_HEADER_CLOSE;
+    closeStart = Math.max(0, rightEdge - corner.length);
     rightEdge = closeStart;
   }
 

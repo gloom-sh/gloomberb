@@ -4,7 +4,6 @@ import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { blendHex, colors, hoverBg } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { usePaneFooter } from "./footer/registration";
-import { getPaneSidebarWidthRange } from "./sidebar-metrics";
 
 // The width and visibility maths live in a module with no React in it, so a
 // store can read them without importing a component tree.
@@ -173,7 +172,8 @@ export function PaneSidebar({
           height={sidebarLayoutHeight}
           flexDirection="column"
           backgroundColor={backgroundColor}
-          style={nativeFillStyle}
+          overflow={nativePaneChrome ? "hidden" : undefined}
+          style={nativePaneChrome ? { minHeight: 0, overflow: "hidden" } : undefined}
         >
           {typeof children === "function" ? children(renderState) : children}
         </Box>
@@ -226,6 +226,23 @@ export function PaneSidebar({
         )}
       </Box>
     </PaneSidebarContext.Provider>
+  );
+}
+
+export function PaneSidebarList({ children }: { children: ReactNode }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  return (
+    <Box
+      flexGrow={1}
+      flexShrink={1}
+      flexBasis={0}
+      minHeight={0}
+      overflow={nativePaneChrome ? undefined : "hidden"}
+      data-gloom-role="pane-sidebar-list"
+      style={nativePaneChrome ? { minHeight: 0, overflowX: "hidden", overflowY: "auto" } : undefined}
+    >
+      {children}
+    </Box>
   );
 }
 

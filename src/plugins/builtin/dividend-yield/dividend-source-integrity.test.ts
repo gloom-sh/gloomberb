@@ -1,25 +1,26 @@
 import { afterEach, expect, test } from "bun:test";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
-import { loadYahooCorporateActions } from "../../../sources/yahoo-finance/quote-summary";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { HeadlessBundleResult, HeadlessPaneContext } from "../../../types/plugin";
-import type { ChartResult } from "../../../sources/yahoo-finance/types";
 import { createDividendYieldHeadless } from "./headless";
 import { fetchDividendData, INCOMPLETE_DIVIDEND_HISTORY, MISSING_DIVIDEND_CURRENCY, INVALID_DIVIDEND_SUMMARY_DATE, UNAVAILABLE_DIVIDEND_SUMMARY } from "./client";
 import { fetchProviderDividendData } from "./provider-client";
-import { chartResponse, yahooTransport } from "./test-fixture";
+import { chartResponse, marketTransport } from "./test-fixture";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 
 const day = new Date(new Date().toISOString().slice(0, 10)).getTime() / 1000;
 const recent = day - 10 * 86400 + 14 * 3600;
 const cash = { date: recent, amount: 4 };
-const request = { argument: "CASHFUND", symbols: ["CASHFUND"], options: {} };
-const context = { marketData: { getQuote: async () => ({ symbol: "CASHFUND", price: 100, currency: "USD", lastUpdated: day * 1000 }) } } as HeadlessPaneContext;
+const request = { rawArgument: "CASHFUND", argument: "CASHFUND", symbols: ["CASHFUND"], options: {} };
+const context = createTestHeadlessContext({ marketData: createTestDataProvider({
+  getQuote: async () => createTestQuote({ symbol: "CASHFUND", price: 100, currency: "USD", lastUpdated: day * 1000 }),
+}) });
 
 afterEach(() => setHttpFetchTransport(null));
 
 function nativeSource(currency: string | undefined, dividends: Record<string, unknown>, summaryDetail: Record<string, unknown> = {}, chartFails = false) {
-  setHttpFetchTransport(yahooTransport(async (url) => {
+  setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) {
       if (chartFails) throw new Error("Controlled history unavailable");
       return chartResponse({
@@ -34,7 +35,7 @@ function nativeSource(currency: string | undefined, dividends: Record<string, un
 
 function metric(result: HeadlessBundleResult, label: string) {
   const section = result.sections[0]!;
-  return "entries" in section ? section.entries.find((entry) => entry.label === label)?.value : undefined;
+  return section.entries?.find((entry) => entry.label === label)?.value;
 }
 
 test("invalid summary dates cannot break reports or invalidate independent cash and forward rates", async () => {
@@ -65,7 +66,7 @@ test("invalid summary dates cannot break reports or invalidate independent cash 
 
 test("independent summary transport and provider-body failures keep known cash and mark the report incomplete", async () => {
   let failure: "transport" | "provider-body" = "transport";
-  setHttpFetchTransport(yahooTransport(async (url) => {
+  setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) return chartResponse({
       meta: { currency: "USD", regularMarketPrice: 100, regularMarketTime: day, dataGranularity: "1mo" },
       time: day, dividends: { cash },
@@ -123,7 +124,7 @@ test("native partial history retains valid rows and indicated forward cash witho
     const result = await definition.load(request, context);
     expect(result.metadata).toMatchObject({ historyAvailable: false, historyError: INCOMPLETE_DIVIDEND_HISTORY });
     const history = result.sections[1]!;
-    expect("rows" in history ? history.rows.map((row) => row.amount) : []).toEqual([4, 1]);
+    expect(history.rows?.map((row) => row.amount)).toEqual([4, 1]);
     expect(["Trailing rate", "Trailing yield", "1Y Cash Growth", "3Y Cash CAGR", "Frequency"].map((label) => metric(result, label))).toEqual([null, null, null, null, null]);
     expect(metric(result, "Forward rate")).toBe(20);
     expect(metric(result, "Forward yield")).toBe(0.2);
@@ -138,33 +139,9 @@ test("native partial history retains valid rows and indicated forward cash witho
   }
   nativeSource("USD", {});
   const empty = await definition.load(request, context);
-  expect(empty.metadata.historyAvailable).toBe(true);
+  expect(empty.metadata?.historyAvailable).toBe(true);
   expect(metric(empty, "Trailing rate")).toBe(0);
   expect(metric(empty, "Trailing yield")).toBe(0);
-});
-
-test("Yahoo corporate-action coverage survives the actual provider dividend projection without losing valid cash rows", async () => {
-  for (const events of [{ cash, invalid: { date: recent } }, { invalid: { date: recent } }, {}]) {
-    const actions = await loadYahooCorporateActions({ ticker: "CASHFUND", providerId: "yahoo-fixture",
-      fetchChart: async () => ({ meta: { currency: "USD", exchangeTimezoneName: "America/New_York" }, events: { dividends: events as NonNullable<ChartResult["events"]>["dividends"] } }),
-      fetchJsonWithCrumb: async () => { throw new Error("Independent earnings unavailable"); },
-    });
-    const hasInvalid = "invalid" in events;
-    expect(actions.coverage?.dividends).toBe(hasInvalid ? "unavailable" : "available");
-    const definition = createDividendYieldHeadless({ loadData: () => fetchProviderDividendData(createTestDataProvider({
-      getCorporateActions: async () => actions,
-      getQuote: context.marketData.getQuote,
-    }), "CASHFUND", null) });
-    if (hasInvalid && !("cash" in events)) {
-      expect(await definition.load(request, context)).toMatchObject({ complete: false, errors: [expect.stringContaining("Dividend history is unavailable")], metadata: { historyAvailable: false } });
-    } else {
-      const result = await definition.load(request, context);
-      expect(result.metadata.historyAvailable).toBe(!hasInvalid);
-      expect(metric(result, "Trailing rate")).toBe(hasInvalid ? null : 0);
-      const section = result.sections[1]!;
-      expect("rows" in section ? section.rows : []).toHaveLength(hasInvalid ? 1 : 0);
-    }
-  }
 });
 
 test("provider partial rows do not acquire complete totals or a missing cash currency from the quote", async () => {
@@ -226,5 +203,5 @@ test("an independently qualified forward rate survives unusable chart history wi
   expect(metric(noIndependentQuote, "Forward rate")).toBe(20);
   expect(metric(noIndependentQuote, "Forward yield")).toBeNull();
   expect(metric(noIndependentQuote, "Price")).toBeNull();
-  expect(noIndependentQuote.metadata.priceAsOf).toBeNull();
+  expect(noIndependentQuote.metadata?.priceAsOf).toBeNull();
 });

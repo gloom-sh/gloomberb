@@ -5,8 +5,8 @@ import type { IvHistoryPayload, IvMethod, IvPoint, IvScreenRow, IvStats } from "
 export const HV_WINDOWS = [20, 30] as const;
 export type HvWindow = (typeof HV_WINDOWS)[number];
 export type IvLookback = "1Y" | "2Y" | "ALL";
-export const RICH_PERCENTILE = 80;
-export const CHEAP_PERCENTILE = 20;
+const RICH_PERCENTILE = 80;
+const CHEAP_PERCENTILE = 20;
 
 export interface DatedValue { date: Date; value: number | null }
 export type IvStatUnit = "vol" | "points" | "ratio";
@@ -25,7 +25,7 @@ export interface IvStatRow {
   samples: number;
 }
 /** Rank and percentile need this many prior sessions, matching the server. */
-export const MIN_RANK_SAMPLES = 120;
+const MIN_RANK_SAMPLES = 120;
 export interface IvHistoryModel {
   symbol: string;
   status: IvHistoryPayload["status"];
@@ -63,7 +63,7 @@ function lookbackStart(asOf: string, lookback: IvLookback): string | null {
 }
 
 /** The latest value against the 52 weeks before it, with the same rules as the server's IV rank. */
-export function seriesStat(id: string, label: string, unit: IvStatUnit, points: readonly DatedValue[], method: IvStatRow["method"]): IvStatRow {
+function seriesStat(id: string, label: string, unit: IvStatUnit, points: readonly DatedValue[], method: IvStatRow["method"]): IvStatRow {
   const latest = [...points].reverse().find((point) => point.value != null);
   if (!latest) return { id, label, unit, value: null, date: null, method, low: null, high: null, rank: null, percentile: null, samples: 0 };
   const start = lookbackStart(day(latest.date), "1Y")!;

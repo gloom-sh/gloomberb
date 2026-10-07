@@ -1,7 +1,7 @@
 import {
   removeUnavailablePaneTypes,
   type PaneTypeAvailability,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import type { LayoutConfig } from "../../../types/config";
 
 export function resolveShellVisibleLayout(

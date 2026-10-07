@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import type { RendererHost, UiHost } from "../../ui/host";
 import { safeExternalUrl } from "../../utils/external-url";
-import { createDomUiHost } from "../electrobun/view/dom-ui-host";
+import { createDomUiHost } from "../dom/dom-ui-host";
 
 export const browserUiHost: UiHost = createDomUiHost("browser", {
   nativePaneChrome: true,

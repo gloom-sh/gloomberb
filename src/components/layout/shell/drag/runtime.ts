@@ -14,7 +14,7 @@ import {
   type FloatingRect,
   type LayoutBounds,
   type ResolvedPane,
-} from "../../../../plugins/pane-manager";
+} from "../../../../layout/pane-manager";
 import type { LayoutConfig } from "../../../../types/config";
 import {
   constrainFloatingRectToBounds,
@@ -171,6 +171,7 @@ interface UseShellPointerRuntimeOptions {
   focusPane: (paneId: string) => void;
   focusedPaneId: string | null;
   handleFloatingClose: (paneId: string) => void;
+  restoreFullscreen: () => void;
   menuState: ActionMenuState | null;
   nativePaneChrome: boolean;
   openPaneMenu: (
@@ -206,6 +207,7 @@ export function useShellPointerRuntime({
   focusPane,
   focusedPaneId,
   handleFloatingClose,
+  restoreFullscreen,
   menuState,
   nativePaneChrome,
   openPaneMenu,
@@ -254,6 +256,7 @@ export function useShellPointerRuntime({
     focusedPaneId,
     handleActiveDrag,
     handleFloatingClose,
+    restoreFullscreen,
     menuState,
     openPaneMenu,
     paneMap,

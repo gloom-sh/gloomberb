@@ -1,3 +1,12 @@
+import { creditScreenshotEvidence } from "../../plugins/builtin/credit-documents/evidence";
+import { attentionScreenshotEvidence } from "../../plugins/builtin/attention/evidence";
+import { attentionScreenshotEvidence as companyAttentionScreenshotEvidence } from "../../plugins/builtin/company-attention/evidence";
+import { catalystsScreenshotEvidence, litigationScreenshotEvidence } from "../../plugins/builtin/catalysts/evidence";
+import { companyKpisScreenshotEvidence, companyGuidanceScreenshotEvidence } from "../../plugins/builtin/company-kpis/screenshot-evidence";
+import { powerScreenshotEvidence } from "../../plugins/builtin/power/evidence";
+import { exposureScreenshotEvidence } from "../../plugins/builtin/exposure/evidence";
+import { supplyScreenshotEvidence } from "../../plugins/builtin/supply-chain/evidence";
+import { awardsScreenshotEvidence } from "../../plugins/builtin/awards/evidence";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import type { TickerFinancials } from "../../types/financials";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
@@ -18,12 +27,12 @@ export interface PaneScreenshotEvidence {
   plottedValueCount: number;
 }
 
-export interface PaneScreenshotEvidenceRequest {
+interface PaneScreenshotEvidenceRequest {
   resolved: ResolvedPaneFunction;
   payload: DesktopPaneShotPayload;
 }
 
-export interface PaneScreenshotPrepareInput {
+interface PaneScreenshotPrepareInput {
   resolved: ResolvedPaneFunction;
   context: MarketContext;
   /** The captured instance settings, already stripped of credentials. */
@@ -31,7 +40,7 @@ export interface PaneScreenshotPrepareInput {
   loadModel(): Promise<LoadedHeadlessPaneModel>;
 }
 
-export interface PaneScreenshotPrepared {
+interface PaneScreenshotPrepared {
   /** Merged into the captured instance settings. */
   settings: Record<string, unknown>;
   /** Market data the page treats as captured, one entry per symbol. */
@@ -67,6 +76,18 @@ export interface PaneScreenshotEvidenceHook<E extends PaneScreenshotEvidence = P
 
 /** Built-in panes that certify their captures with their own evidence. */
 const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
+  exposureScreenshotEvidence,
+  supplyScreenshotEvidence,
+  creditScreenshotEvidence,
+  attentionScreenshotEvidence,
+  companyAttentionScreenshotEvidence("hiring"),
+  companyAttentionScreenshotEvidence("apps"),
+  catalystsScreenshotEvidence,
+  litigationScreenshotEvidence,
+  companyKpisScreenshotEvidence,
+  companyGuidanceScreenshotEvidence,
+  awardsScreenshotEvidence,
+  powerScreenshotEvidence,
   calculatorScreenshotEvidence,
   scenarioScreenshotEvidence,
   realizedVolScreenshotEvidence,

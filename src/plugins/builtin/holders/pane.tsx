@@ -67,7 +67,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   // refresh keeps the last holders; the failure goes to the footer.
   const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, { keepPreviousData: true });
 
-  const currency = data?.currency ?? ticker?.metadata.currency ?? "USD";
+  const currency = data?.currency || ticker?.metadata.currency || "USD";
   // A stake without a reported percentage is the holding's value over the
   // market cap. The stream keeps the cap current, about once a second; the
   // stakes follow it at most every few seconds so ticks do not re-sort them.
@@ -152,20 +152,16 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     void reload();
   }, [reload]);
 
+  // Plain keys only: Cmd/Ctrl+Shift+R, S and O resize, share and pop out the pane.
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name === "r") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return true;
-    }
-    if (event.name === "s") {
+    if (handleRefreshKey(event, refresh, { stopPropagation: true })) return true;
+    if (isPlainKey(event, "s")) {
       event.preventDefault?.();
       event.stopPropagation?.();
       toggleView();
       return true;
     }
-    if ((event.name === "o" || event.name === "enter" || event.name === "return") && selectedFundMatch) {
+    if (isPlainKey(event, "o", "enter", "return") && selectedFundMatch) {
       event.preventDefault?.();
       event.stopPropagation?.();
       openFundDetail(selectedRow);

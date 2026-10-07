@@ -3,7 +3,7 @@ import { act, useState } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { MnaDeal, MnaDealsPayload } from "../../../api-client/mna";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
@@ -57,10 +57,8 @@ const delayed: MnaDealsPayload = {
   asOf: "2026-09-27T12:00:00Z",
 };
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+const tui = createOpenTuiTestHarness();
+afterEach(() => {
   setCloudApiFetchTransport(null);
   mnaDealsCache.reset();
   mnaDealCache.reset();
@@ -91,12 +89,12 @@ async function mount(width = 130, height = 10) {
       </TestPaneProvider>
     );
   }
-  setup = await testRender(<Harness />, { width, height });
+  await tui.render(<Harness />, { width, height });
   for (let i = 0; i < 6; i++) await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  return setup.captureCharFrame();
+  return tui.frame();
 }
 
 test("a delayed list shows locked rows for the newest deals, terms, private targets and the upgrade key", async () => {
@@ -136,12 +134,12 @@ test("Enter opens a deal's timeline under its two names", async () => {
     return Response.json({ ...delayed, access: "full", delayDays: 0, lockedDeals: 0 });
   });
   await mount(130, 16);
-  await act(async () => setup!.mockInput.pressEnter());
+  await act(async () => tui.setup().mockInput.pressEnter());
   for (let i = 0; i < 6; i++) await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("ACV Auctions Inc. ← Copart, Inc.");
   expect(frame).toContain("Tender offer launched");
   expect(frame).toContain("SC TO-T");

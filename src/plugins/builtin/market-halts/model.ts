@@ -1,4 +1,6 @@
 import type { DataTableColumn } from "../../../components";
+import { fitChartTableColumns } from "../../../components/chart-table";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
@@ -172,12 +174,25 @@ export function haltStatusColor(status: HaltStatus): string {
   }
 }
 
-export type HaltFilter = "all" | "active" | "resumed";
+export type HaltFilter = "all" | "active" | "resumed" | "long-term";
+
+const DAY_MS = 86_400_000;
+/** Unresolved halts move out of the recent views at 30 elapsed days. */
+const LONG_TERM_MS = 30 * DAY_MS;
+
+export function formatHaltAge(record: HaltRecord, now: number): string {
+  const end = record.tradeResumeAt == null ? now : Math.min(now, record.tradeResumeAt);
+  const elapsed = Math.max(0, end - record.haltedAt);
+  if (elapsed >= DAY_MS) return `${Math.floor(elapsed / DAY_MS)}d`;
+  if (elapsed >= 3_600_000) return `${Math.floor(elapsed / 3_600_000)}h`;
+  return `${Math.floor(elapsed / 60_000)}m`;
+}
 
 export const HALT_FILTERS: ReadonlyArray<{ label: string; value: HaltFilter }> = [
   { label: "All", value: "all" },
   { label: "Active", value: "active" },
   { label: "Resumed", value: "resumed" },
+  { label: "Long-term", value: "long-term" },
 ];
 
 export function nextHaltFilter(current: HaltFilter): HaltFilter {
@@ -186,10 +201,12 @@ export function nextHaltFilter(current: HaltFilter): HaltFilter {
 }
 
 export function filterHalts(records: HaltRecord[], filter: HaltFilter, now: number): HaltRecord[] {
-  if (filter === "all") return records;
   return records.filter((record) => {
     const status = resolveHaltStatus(record, now);
-    return filter === "resumed" ? status === "resumed" : status !== "resumed";
+    const longTerm = status !== "resumed" && now - record.haltedAt >= LONG_TERM_MS;
+    if (filter === "long-term") return longTerm;
+    if (filter === "resumed") return status === "resumed";
+    return !longTerm && (filter === "all" || status !== "resumed");
   });
 }
 
@@ -200,6 +217,7 @@ export type HaltColumnId =
   | "code"
   | "reason"
   | "date"
+  | "age"
   | "halted"
   | "quote"
   | "trade"
@@ -213,6 +231,7 @@ export const HALT_SORT_COLUMN_IDS: readonly HaltColumnId[] = [
   "company",
   "code",
   "reason",
+  "age",
   "halted",
   "quote",
   "trade",
@@ -239,6 +258,7 @@ const HALT_COLUMNS: readonly HaltColumn[] = [
   { id: "code", label: "CODE", width: 6, align: "left" },
   { id: "reason", label: "REASON", width: REASON_MIN_WIDTH, align: "left", flexGrow: 1 },
   { id: "date", label: "DATE ET", width: 9, align: "left" },
+  { id: "age", label: "AGE", width: 6, align: "right" },
   { id: "halted", label: "HALT ET", width: 9, align: "left" },
   { id: "quote", label: "QUOTE ET", width: 11, align: "left" },
   { id: "trade", label: "TRADE ET", width: 11, align: "left" },
@@ -248,24 +268,15 @@ const HALT_COLUMNS: readonly HaltColumn[] = [
 /**
  * What a narrow pane gives up first, so STATUS never scrolls out of view. MKT
  * is only the venue, STATUS already reads QUOTE once quoting resumes, and
- * REASON spells out CODE. Symbol, reason, halt date and time, trade
- * resumption and status always stay.
+ * REASON spells out CODE. Trade resumption and halt time give way only in
+ * the narrowest panes; symbol, reason, halt date, age and status always stay.
  */
-const NARROW_DROP_ORDER: readonly HaltColumnId[] = ["market", "quote", "code", "company"];
-
-/** One gap after every column, a pad cell at each edge, and a cell for the scrollbar. */
-function haltTableWidth(columns: readonly HaltColumn[]): number {
-  return columns.reduce((total, column) => total + column.width + 1, 3);
-}
+const NARROW_DROP_ORDER: readonly HaltColumnId[] = ["market", "quote", "code", "company", "trade", "halted"];
 
 export function buildHaltColumns(width: number): HaltColumn[] {
-  let columns = HALT_COLUMNS;
-  for (const id of NARROW_DROP_ORDER) {
-    if (haltTableWidth(columns) <= width) break;
-    columns = columns.filter((column) => column.id !== id);
-  }
+  const columns = fitChartTableColumns(HALT_COLUMNS, width, NARROW_DROP_ORDER);
   // The two text columns share what is left, the company a little under half.
-  const spare = Math.max(0, width - haltTableWidth(columns));
+  const spare = Math.max(0, width - 1 - getTableWidth(columns));
   const hasCompany = columns.some((column) => column.id === "company");
   const text = (hasCompany ? COMPANY_MIN_WIDTH : 0) + REASON_MIN_WIDTH + spare;
   const companyWidth = hasCompany ? Math.max(COMPANY_MIN_WIDTH, Math.floor(text * 0.45)) : 0;
@@ -292,6 +303,8 @@ function haltSortValue(columnId: HaltColumnId, record: HaltRecord, now: number):
     case "date":
     case "halted":
       return record.haltedAt;
+    case "age":
+      return Math.max(0, Math.min(now, record.tradeResumeAt ?? now) - record.haltedAt);
     case "quote":
       return record.quoteResumeAt;
     case "trade":

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { UsageCountsPayload } from "../api-client";
-import { seedExternalPlugins } from "../plugins/external-runtime";
+import { setExternalPlugins } from "../plugins/external-runtime";
 import type { GloomPlugin } from "../types/plugin";
 import {
   describeUsageFunction,
@@ -223,7 +223,7 @@ describe("describeUsageFunction", () => {
     // A failed external plugin that claims a built-in id is not that built-in.
     const impostor = plugin("portfolio");
     rememberBuiltinPlugins([portfolio]);
-    seedExternalPlugins([
+    setExternalPlugins([
       { plugin: official, path: "/plugins/gloom-fear-greed", directory: "gloom-fear-greed", repo: "gloom-sh/gloom-fear-greed" },
       { plugin: bundled, path: "/plugins/polls.js" },
       { plugin: fork, path: "/plugins/halts", directory: "halts", repo: "acme-co/gloom-market-halts" },
@@ -254,7 +254,7 @@ describe("describeUsageFunction", () => {
     const twitter = plugin("gloomberb-cloud");
     const acme = plugin("acme");
     rememberBuiltinPlugins([twitter]);
-    seedExternalPlugins([{ plugin: acme, path: "/plugins/acme", directory: "acme", repo: "gloom-sh/acme" }]);
+    setExternalPlugins([{ plugin: acme, path: "/plugins/acme", directory: "acme", repo: "gloom-sh/acme" }]);
     const owners = new Map([["twitter-feed-pane", "gloomberb-cloud"], ["acme-feed", "acme"]]);
     const registry = {
       allPlugins: new Map<string, GloomPlugin>([["gloomberb-cloud", twitter], ["acme", acme]]),

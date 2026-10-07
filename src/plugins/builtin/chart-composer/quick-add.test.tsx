@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import {
   UiHostProvider,
   useNativeRenderer,
@@ -23,7 +23,7 @@ import type { ChartSpec } from "../../../time-series/types";
 import { buildPriceChartPreset } from "./presets";
 import { ChartSeriesQuickAdd, isChartQuickAddMouseTarget } from "./quick-add";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let capturedInputProps: Record<string, any> | null = null;
 
 function CaptureInputProvider({ children }: { children: ReactNode }) {
@@ -45,63 +45,10 @@ function CaptureInputProvider({ children }: { children: ReactNode }) {
   );
 }
 
-async function emitKey(name: string, sequence: string) {
-  await act(async () => {
-    (testSetup!.renderer as any).keyInput.emit("keypress", {
-      name,
-      sequence,
-      ctrl: false,
-      meta: false,
-      super: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      defaultPrevented: false,
-      propagationStopped: false,
-      preventDefault() {
-        this.defaultPrevented = true;
-      },
-      stopPropagation() {
-        this.propagationStopped = true;
-      },
-    });
-    await testSetup!.renderOnce();
-  });
-}
+const emitKey = (name: string, sequence: string) => tui.emitKeypress({ name, sequence }, { trackPropagation: true });
+const { waitForFrameToContain, waitForFrameToExclude } = tui;
 
-async function waitForFrameToContain(text: string, attempts = 12): Promise<string> {
-  let frame = "";
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await act(async () => {
-      await Bun.sleep(10);
-      await testSetup!.renderOnce();
-    });
-    frame = testSetup!.captureCharFrame();
-    if (frame.includes(text)) return frame;
-  }
-  return frame;
-}
-
-async function waitForFrameToExclude(text: string, attempts = 12): Promise<string> {
-  let frame = testSetup!.captureCharFrame();
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (!frame.includes(text)) return frame;
-    await act(async () => {
-      await Bun.sleep(10);
-      await testSetup!.renderOnce();
-    });
-    frame = testSetup!.captureCharFrame();
-  }
-  return frame;
-}
-
-afterEach(async () => {
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
+afterEach(() => {
   capturedInputProps = null;
 });
 
@@ -125,7 +72,7 @@ describe("chart series inline quick add", () => {
     let updatedSpec: ChartSpec | undefined;
     let renderedWidth = 0;
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext.Provider value={createStaticAppStore(initial)}>
         <ChartSeriesQuickAdd
           spec={startingSpec}
@@ -147,23 +94,23 @@ describe("chart series inline quick add", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("add series");
+    expect(tui.frame()).toContain("add series");
     expect(renderedWidth).toBe(14);
 
     await emitKey("n", "n");
     await act(async () => {
-      await testSetup!.mockInput.typeText("MSFT revenue");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("MSFT revenue");
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("MSFT revenue");
-    expect(await waitForFrameToContain("MSFT · Revenue")).toContain("MSFT · Revenue");
+    expect(tui.frame()).toContain("MSFT revenue");
+    await waitForFrameToContain("MSFT · Revenue");
     expect(renderedWidth).toBe(36);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(2, 1);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, 1);
+      await tui.setup().renderOnce();
     });
     expect(updatedSpec?.series).toHaveLength(2);
     expect(updatedSpec?.series[1]?.source).toMatchObject({
@@ -218,7 +165,7 @@ describe("chart series inline quick add", () => {
       );
     }
 
-    testSetup = await testRender(
+    await tui.render(
       <AppContext.Provider value={createStaticAppStore(initial)}>
         <CaptureInputProvider>
           <Harness />
@@ -228,7 +175,7 @@ describe("chart series inline quick add", () => {
     );
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await emitKey("n", "n");
     expect(activeStates.at(-1)).toBe(true);
@@ -236,7 +183,7 @@ describe("chart series inline quick add", () => {
     await act(async () => {
       capturedInputProps?.onBlur?.();
       await Bun.sleep(10);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     expect(activeStates.at(-1)).toBe(false);
 

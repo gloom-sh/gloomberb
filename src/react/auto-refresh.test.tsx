@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useCallback, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { PaneInViewProvider, setAppVisible } from "../state/app/activity";
 import { AppContext, createInitialState } from "../state/app/context";
 import { createStaticAppStore } from "../test-support/app-store";
@@ -37,25 +37,23 @@ function Harness(props: { intervalMs: number; loadMs: number; succeeds?: boolean
   );
 }
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
+afterEach(() => {
   refreshCalls = [];
   setAppVisible(true);
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
 });
 
 async function mount(props: { intervalMs: number; loadMs: number; succeeds?: boolean }) {
   await act(async () => {
-    setup = await testRender(<Harness {...props} />, { width: 20, height: 1 });
+    await tui.render(<Harness {...props} />, { width: 20, height: 1 });
   });
 }
 
 async function wait(ms: number) {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, ms));
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 

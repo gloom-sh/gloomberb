@@ -27,7 +27,7 @@ function formatLegendValue(value: number, series: ResolvedSeries): string {
   return series.id === "spread" ? `${formatPoints(value / 100)} pts` : formatCompositeSeriesValue(value, series);
 }
 
-export function ivHistorySeries(model: IvHistoryModel, colors: { iv30: string; iv90: string; hv: string; quote: string; spread: string },
+function ivHistorySeries(model: IvHistoryModel, colors: { iv30: string; iv90: string; hv: string; quote: string; spread: string },
   hvLabel: string): ResolvedSeries[] {
   return [
     volSeries("iv30", "IV 30d", colors.iv30, model.iv30, "vol"),

@@ -1,18 +1,14 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { Box, Text } from "../../ui";
 import { KeyValueRow } from "./display";
 import { EmptyState } from "./status";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 test("metric rows use available width and narrow status messages keep their final line", async () => {
-  setup = await testRender(
+  await tui.render(
     <Box flexDirection="column" width={30}>
       <KeyValueRow width={30} labelWidth={8} label="Margin" value="100,000 -> 200,000" />
       <Box flexDirection="row">
@@ -26,10 +22,10 @@ test("metric rows use available width and narrow status messages keep their fina
     { width: 40, height: 12 },
   );
   await act(async () => {
-    await setup!.renderOnce();
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
-  const lines = setup.captureCharFrame().split("\n");
+  const lines = tui.frame().split("\n");
   expect(lines[0]).toContain("100,000 -> 200,000");
   expect(lines[1]?.indexOf("| next")).toBe(5);
   expect(lines.map((line) => line.trim()).join(" ")).toContain("retry shortly.");

@@ -5,7 +5,7 @@ const CACHE_KIND = "calendar";
 const CACHE_SOURCE = "earnings";
 const CACHE_SCHEMA_VERSION = 3;
 
-export const EARNINGS_CALENDAR_CACHE_POLICY = {
+const EARNINGS_CALENDAR_CACHE_POLICY = {
   staleMs: 30 * 60 * 1000,
   expireMs: 7 * 24 * 60 * 60 * 1000,
 } as const;

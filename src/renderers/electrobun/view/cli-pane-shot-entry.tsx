@@ -7,7 +7,7 @@ import type { TapeSnapshot } from "../../../api-client/tape";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";
 import { ChartSnapshotContext } from "../../../time-series/hooks";
-import { decodeRpcValue } from "./rpc-codec";
+import { decodeRpcValue } from "../shared/rpc-codec";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
 import { createAppRuntime } from "../../../core/app-runtime";
 import { JsonPersistence } from "../../../data/json-persistence";
@@ -20,7 +20,7 @@ import {
 } from "../../../cli/desktop-pane-shot-routes";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import type { RendererHost } from "../../../ui/host";
-import { DomHostProviders } from "./dom-host-providers";
+import { DomHostProviders } from "../../dom/dom-host-providers";
 import { webUiHost } from "./ui-host";
 import { getLoadablePlugins } from "../../../plugins/catalog";
 import { setCurrentPluginTarget } from "../../../plugins/current-target";
@@ -159,12 +159,9 @@ function installShotCloudApiTransport(): void {
 }
 
 /**
- * Panes such as DVD and SI call a third-party API through httpFetch. A browser
- * cannot do that cross-origin, so those requests died in CORS and the panes
- * reported the ticker as having no data. The desktop renderer proxies the same
- * calls through its native half; here the Bun process that serves this page
- * runs them and returns the response, cookies included so the Yahoo crumb
- * handshake still works.
+ * External plugins can request third-party data through httpFetch. The preview
+ * page sends those requests through its local Bun server, matching the desktop
+ * renderer's native HTTP bridge and preserving upstream response cookies.
  */
 function installShotHttpFetchTransport(): void {
   setHttpFetchTransport(async (url, init) => {
@@ -360,7 +357,7 @@ function createShotAppServices(payload: DesktopPaneShotPayload, externalPlugins:
       connectionHealth: createCliPaneShotConnectionHealth(),
     },
     configure({ pluginRegistry, marketData, newsService }) {
-      pluginRegistry.getPaneRuntimeStateFn = (paneId) => payload.paneState[paneId] ?? null;
+      pluginRegistry.bindHost({ getPaneRuntimeState: (paneId) => payload.paneState[paneId] ?? null });
       // Capability handlers are off, so nothing registers a news source and
       // every news pane rendered its empty state. The desktop view registers
       // the cloud feed by hand for the same reason; the proxied session makes
@@ -440,7 +437,7 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
   const width = payload.widthCells;
   const height = payload.heightCells;
   return (
-    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} preserveStatus={pane.id === "time-sales"}>
+    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} preserveStatus={["time-sales", "gpu", "hiring", "apps", "catalysts", "litigation", "perps"].includes(pane.id)}>
       {(bodyFrame) => <PaneContent
         component={pane.component}
         paneId={instance.instanceId}

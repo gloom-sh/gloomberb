@@ -23,7 +23,7 @@ export interface AccountOutcome {
   email: string;
 }
 
-export type AccountErrorKind = "retry" | "switch-to-login";
+type AccountErrorKind = "retry" | "switch-to-login";
 
 export interface AccountSubmitError {
   message: string;

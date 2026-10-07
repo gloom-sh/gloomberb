@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiClient, type ScannerFlowEvent } from "../../../api-client";
+import type { ScannerFlowEvent } from "../../../api-client";
 import {
   DataTableView,
   PaneStatusBody,
@@ -16,6 +16,7 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useFlowFeed, useScannerStatusFooter } from "./feed";
@@ -179,7 +180,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
   const columns = useMemo(() => buildColumns(width, dated), [dated, width]);
 
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name !== "r" || !history.error) return false;
+    if (!isPlainKey(event, "r") || !history.error) return false;
     event.preventDefault?.();
     event.stopPropagation?.();
     history.retry();
@@ -192,7 +193,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
   }, [setCursorSymbol]);
 
   if (feed.denied) {
-    return <ScannerDeniedState reason={feed.deniedReason} />;
+    return <ScannerDeniedState reason={feed.deniedReason} placement="flow-wall" width={width} height={height} />;
   }
 
   return (

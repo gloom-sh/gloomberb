@@ -37,5 +37,5 @@ get plugin code installed or loaded without that choice is. A vulnerability in
 a plugin that lives in its own repository belongs to that repository.
 
 Gloomberb keeps broker connections and settings on your device, in
-`~/.gloomberb` (or `GLOOMBERB_HOME`). Anything that exposes that data to another
+`~/.gloomberb` (or `GLOOMBERB_HOME`, or the XDG folders on Linux). Anything that exposes that data to another
 user of the machine, a web page, or the network is in scope.

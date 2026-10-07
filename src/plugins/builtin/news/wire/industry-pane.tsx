@@ -6,6 +6,8 @@ import { useNewsArticles, useNewsTableLoadMore } from "../../../../news/hooks";
 import { usePluginPaneState } from "../../../runtime";
 import { PaneStatusBody, QueryBar, type SelectButtonOption } from "../../../../components";
 import { usePaneInstance, usePaneTitle } from "../../../../state/app/context";
+import { newsListEmptyCopy } from "./filter-articles";
+import { newsMutesApplyToFeed, useNewsMuteFilter } from "./mutes";
 import { useNewsArticleStack } from "./news/preset-pane";
 import {
   NewsArticleStackView,
@@ -86,17 +88,18 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
   const code = entry?.code ?? savedCode.trim().toUpperCase();
   usePaneTitle(code === "ALL" ? TOPIC_NEWS_TITLE : `NI ${code}`);
 
-  const { articles, loading, error, query, newsState } = useIndustryArticles(entry);
-  const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(query, newsState);
-  const stack = useNewsArticleStack({
+  const loaded = useIndustryArticles(entry);
+  const articles = useNewsMuteFilter(loaded.articles, newsMutesApplyToFeed(loaded.query?.feed));
+  const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(loaded.query, loaded.newsState);
+  const { search, searchQuery, ...stack } = useNewsArticleStack({
     paneKey: "industry",
     articles,
     focused,
     width,
     columns: COLUMNS,
     defaultSort: DEFAULT_SORT,
-    refreshing: loading && articles.length > 0,
-    error,
+    refreshing: loaded.loading && loaded.articles.length > 0,
+    error: loaded.error,
   });
   const { setSelectedArticleId } = stack;
 
@@ -107,9 +110,22 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
   const options = entry
     ? CODE_OPTIONS
     : [...CODE_OPTIONS, { value: code, label: code, description: "Unknown code", disabled: true }];
+  const fallbackCopy = {
+    title: entry ? `No ${entry.label} news yet` : `${code} is not an NI code`,
+    hint: entry ? "Stories appear here as the wires publish them." : `Codes: ${VALID_CODES}`,
+  };
+  const emptyCopy = entry
+    ? newsListEmptyCopy({
+      query: searchQuery,
+      loadedCount: loaded.articles.length,
+      unmutedCount: articles.length,
+      fallback: fallbackCopy,
+    })
+    : fallbackCopy;
   const rootBefore = (
     <QueryBar
       width={width}
+      search={search}
       filters={[{
         id: "code",
         label: "Topic",
@@ -129,23 +145,23 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
       rootBefore={rootBefore}
       emptyContent={entry ? (
         <PaneStatusBody
-          loading={loading}
-          error={error}
+          loading={loaded.loading}
+          error={loaded.error}
           empty
           subject="Topic news"
-          emptyTitle={`No ${entry.label} news yet`}
-          emptyMessage="Stories appear here as the wires publish them."
+          emptyTitle={emptyCopy.title}
+          emptyMessage={emptyCopy.hint}
         />
       ) : (
         <PaneStatusBody
           empty
           subject="Topic news"
-          emptyTitle={`${code} is not an NI code`}
-          emptyMessage={`Codes: ${VALID_CODES}`}
+          emptyTitle={emptyCopy.title}
+          emptyMessage={emptyCopy.hint}
         />
       )}
-      emptyStateTitle={entry ? `No ${entry.label} news yet` : `${code} is not an NI code`}
-      emptyStateHint={entry ? undefined : `Codes: ${VALID_CODES}`}
+      emptyStateTitle={emptyCopy.title}
+      emptyStateHint={emptyCopy.hint}
       scrollRef={scrollRef}
       onBodyScrollActivity={onBodyScrollActivity}
     />

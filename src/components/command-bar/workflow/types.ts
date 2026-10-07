@@ -46,7 +46,7 @@ interface CommandBarModeRoute extends CommandBarRouteBase {
   payload?: Record<string, unknown>;
 }
 
-export interface CommandBarPickerOption {
+interface CommandBarPickerOption {
   id: string;
   label: string;
   detail?: string;
@@ -62,9 +62,7 @@ export interface CommandBarPickerRoute extends CommandBarRouteBase {
     | "delete-portfolio"
     | "disconnect-broker"
     | "collection-target"
-    | "broker-type"
-    | "field-select"
-    | "field-multi-select";
+    | "broker-type";
   title: string;
   query: string;
   selectedIdx: number;
@@ -73,22 +71,12 @@ export interface CommandBarPickerRoute extends CommandBarRouteBase {
   payload?: Record<string, unknown>;
 }
 
-export interface CommandBarConfirmRoute extends CommandBarRouteBase {
-  kind: "confirm";
-  confirmId: string;
-  title: string;
-  body: string[];
-  confirmLabel: string;
-  cancelLabel?: string;
-  tone: "default" | "danger";
-  onConfirm: () => void | Promise<void>;
-  onSuccess?: () => void;
-  pending: boolean;
-  error: string | null;
-  successBehavior?: "close" | "back" | "stay";
-}
-
-export interface CommandBarWorkflowRoute extends CommandBarRouteBase {
+/**
+ * A form: fields, values and what submitting does. It opens in the form modal
+ * (`components/form-modal`), never as a screen of the bar, so it is not a
+ * `CommandBarRoute`. Confirms open there too (`openConfirmModal`).
+ */
+export interface CommandBarWorkflowRoute {
   kind: "workflow";
   workflowId: string;
   title: string;
@@ -107,25 +95,12 @@ export interface CommandBarWorkflowRoute extends CommandBarRouteBase {
   error: string | null;
   successBehavior?: "close" | "back";
   payload: {
-    kind: "builtin" | "plugin-command" | "pane-template" | "pane-setting";
+    kind: "builtin" | "plugin-command" | "pane-template";
     actionId: string;
   };
   payloadMeta?: Record<string, unknown>;
 }
 
-interface CommandBarPaneSettingsRoute extends CommandBarRouteBase {
-  kind: "pane-settings";
-  paneId: string;
-  query: string;
-  selectedIdx: number;
-  hoveredIdx: number | null;
-  error: string | null;
-  pendingFieldKey: string | null;
-}
-
 export type CommandBarRoute =
   | CommandBarModeRoute
-  | CommandBarPickerRoute
-  | CommandBarConfirmRoute
-  | CommandBarWorkflowRoute
-  | CommandBarPaneSettingsRoute;
+  | CommandBarPickerRoute;

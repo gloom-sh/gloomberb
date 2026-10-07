@@ -6,7 +6,7 @@ import { appendDomReportFooter, buildDomFunctionReport } from "./dom";
 
 export type PaneFunctionReportSource = "headless" | "dom";
 
-export interface PaneFunctionReportData {
+interface PaneFunctionReportData {
   kind: string;
   /** Added by buildFunctionReport after the selected loader completes. */
   source?: PaneFunctionReportSource;

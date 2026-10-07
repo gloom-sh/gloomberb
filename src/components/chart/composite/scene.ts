@@ -21,8 +21,11 @@ import {
   unprojectCompositeTimestamp,
 } from "./time-scale";
 import { compositeAxisMaxTicks, seriesPriceReference } from "./format";
-import type { CompositeLastPriceMarker, CompositeTimeScale } from "./types";
+import type { CompositeTimeScale } from "./types";
 import { isFiniteNumber } from "../../../utils/guards";
+import { volumeProfile } from "../../../time-series/trader-studies";
+import { extendedHoursSpans, isIntradaySeries } from "./session-shading";
+import { listingTimeZone } from "../../../market-data/market/trading-sessions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -245,6 +248,10 @@ function seriesDomainValues(series: ResolvedSeries): number[] {
       for (const candidate of [point.open, point.high, point.low, point.close]) {
         if (isFiniteNumber(candidate)) values.push(candidate);
       }
+    } else if (series.style === "band") {
+      for (const candidate of [point.high, point.low]) {
+        if (isFiniteNumber(candidate)) values.push(candidate);
+      }
     }
   }
   if (series.style === "columns") values.push(0);
@@ -298,6 +305,24 @@ function axisPriceReferences(axisSeries: ResolvedSeries[]): Record<string, numbe
   return references;
 }
 
+/**
+ * A one-day chart's previous close joins the axis when it lies within one
+ * session range of the bars, so a quiet session still shows where it opened
+ * from; a far gap leaves the bars their full height.
+ */
+function priorCloseInReach(series: readonly ResolvedSeries[], values: readonly number[]): number[] {
+  const reference = series.find((entry) => isFiniteNumber(entry.priorClose) && entry.points.length > 0)?.priorClose;
+  if (reference === undefined || values.length === 0) return [];
+  let low = Number.POSITIVE_INFINITY;
+  let high = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (value < low) low = value;
+    if (value > high) high = value;
+  }
+  const span = high - low;
+  return reference >= low - span && reference <= high + span ? [reference] : [];
+}
+
 function buildAxisDomain(
   side: CompositeAxisSide,
   series: ResolvedSeries[],
@@ -306,7 +331,8 @@ function buildAxisDomain(
 ): CompositeAxisDomain | undefined {
   const axisSeries = series.filter((entry) => entry.axis === side);
   if (axisSeries.length === 0) return undefined;
-  const { min, max } = paddedDomain(axisSeries.flatMap(seriesDomainValues), scale);
+  const values = axisSeries.flatMap(seriesDomainValues);
+  const { min, max } = paddedDomain([...values, ...priorCloseInReach(axisSeries, values)], scale);
   const first = axisSeries[0]!;
   return {
     side,
@@ -494,6 +520,70 @@ function attachLastPriceMarker(
   };
 }
 
+/** Marks the previous session's close a one-day chart carries on its price series. */
+function attachPriorClose(panels: CompositePanelScene[], series: readonly ResolvedSeries[]): void {
+  const entry = series.find((candidate) => isFiniteNumber(candidate.priorClose));
+  const panel = entry ? panels.find((candidate) => candidate.id === entry.panelId) : undefined;
+  const domain = entry ? panel?.axes[entry.axis] : undefined;
+  if (!entry || !panel || !domain || !panel.series.some((candidate) => candidate.source.id === entry.id)) return;
+  const yRatio = projectCompositeValue(entry.priorClose!, domain);
+  // Off the axis it marks nothing; the axis follows the session's own bars.
+  if (yRatio === null || yRatio < 0 || yRatio > 1) return;
+  panel.priorClose = { axis: entry.axis, value: entry.priorClose!, yRatio };
+}
+
+/**
+ * The zone intraday market bars read in: the venue's own clock, as the tape
+ * does. Daily and longer bars carry dates, which stay in UTC.
+ */
+function sceneTimeZone(anchor: ResolvedSeries | undefined, series: readonly ResolvedSeries[]): string | undefined {
+  const market = anchor ?? series.find((entry) => entry.observationKind === "market");
+  if (!market || !isIntradaySeries(market)) return undefined;
+  const zone = market.timeBasis?.timeZone
+    ?? (market.listing ? listingTimeZone(market.listing.symbol, market.listing.exchange) : null);
+  return zone && zone !== "UTC" ? zone : undefined;
+}
+
+/**
+ * Profiles a volume-profile study over its bars in view and takes its points
+ * off the panel, so it draws as a histogram rather than a line or cursor dots.
+ */
+function attachVolumeProfile(panel: CompositePanelScene): void {
+  const entry = panel.series.find((series) => series.source.profile);
+  const domain = entry ? panel.axes[entry.source.axis] : undefined;
+  if (!entry || !domain) return;
+  const bars = entry.points.flatMap(({ point, value }) => {
+    const close = isFiniteNumber(point.close) ? point.close : value;
+    const volume = point.volume;
+    if (!isFiniteNumber(volume)) return [];
+    return [{
+      time: point.date.getTime(),
+      high: isFiniteNumber(point.high) ? point.high : close,
+      low: isFiniteNumber(point.low) ? point.low : close,
+      close,
+      volume,
+    }];
+  });
+  entry.points = [];
+  const profile = volumeProfile(bars, entry.source.profile!.rows);
+  const pocRatio = profile ? projectCompositeValue(profile.poc, domain) : null;
+  if (!profile || pocRatio === null) return;
+  panel.volumeProfile = {
+    seriesId: entry.source.id,
+    color: entry.source.color,
+    rows: profile.rows.flatMap((row) => {
+      const lowRatio = projectCompositeValue(row.low, domain);
+      const highRatio = projectCompositeValue(row.high, domain);
+      return lowRatio === null || highRatio === null
+        ? []
+        : [{ lowRatio, highRatio, volume: row.volume, valueArea: row.valueArea }];
+    }),
+    maxVolume: profile.maxVolume,
+    poc: profile.poc,
+    pocRatio,
+  };
+}
+
 function nearestDate(dates: Date[], requested: Date): Date | null {
   const target = requested.getTime();
   if (!Number.isFinite(target) || dates.length === 0) return null;
@@ -535,6 +625,17 @@ function buildCursorValues(
 ): CompositeCursorValue[] {
   const cursorTime = cursorDate?.getTime() ?? viewport.endTime;
   return panels.flatMap((panel) => panel.series.map((entry) => {
+    // A profile reads the same wherever the cursor is: its point of control.
+    if (entry.source.profile) {
+      return {
+        seriesId: entry.source.id,
+        label: entry.source.label,
+        color: entry.source.color,
+        unit: entry.source.unit,
+        value: panel.volumeProfile?.seriesId === entry.source.id ? panel.volumeProfile.poc : null,
+        point: null,
+      };
+    }
     let projected = cursorPointForSeries(entry, cursorTime);
     // Sparse observations can carry forward, but an explicitly unavailable
     // observation ends that value at its date, including the idle legend.
@@ -662,6 +763,10 @@ export function buildCompositeChartScene(
   // Panels belong to the authored series, not to whichever of them happen to
   // hold observations right now. A panel that disappears while its data loads
   // reflows every other panel, and the chart jumps again when it comes back.
+  const anchor = timeScale.kind === "market"
+    ? timelineSeries.find((entry) => entry.id === timeScale.anchorSeriesId)
+    : timelineSeries.find((entry) => entry.timeBasis?.kind === "market");
+  const extendedHours = extendedHoursSpans(anchor, dates, dateRatios);
   const orderedPanels = panelSpecsForSeries(series, panels);
   const panelHeights = allocateCompositePanelHeights(orderedPanels, options.height);
 
@@ -683,6 +788,7 @@ export function buildCompositeChartScene(
       height: panelHeights.get(panel.id) ?? 1,
       scale,
       axes,
+      ...(extendedHours.length > 0 ? { extendedHours } : {}),
       series: panelSeries.flatMap((entry) => {
         const domain = axes[entry.axis];
         return domain
@@ -694,7 +800,10 @@ export function buildCompositeChartScene(
       }),
     };
   });
+  panelScenes.forEach(attachVolumeProfile);
   attachLastPriceMarker(panelScenes, usableSeries);
+  attachPriorClose(panelScenes, usableSeries);
+  const timeZone = sceneTimeZone(anchor, timelineSeries);
 
   return {
     width: Math.max(1, Math.floor(options.width)),
@@ -708,6 +817,7 @@ export function buildCompositeChartScene(
     cursorDate,
     cursorXRatio,
     cursorValues: buildCursorValues(panelScenes, cursorDate, { startTime, endTime, timeScale }),
+    ...(timeZone ? { timeZone } : {}),
   };
 }
 

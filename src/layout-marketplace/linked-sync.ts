@@ -5,7 +5,7 @@ import type { PluginRegistry } from "../plugins/registry";
 import { teamStore } from "../plugins/builtin/cloud/team/store";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
 import { decideLinkedAction, linkedLayoutStatus, linkedLayoutUpdates, originFromEntry } from "./linked";
-import { materializeMarketplaceLayout } from "./payload";
+import { materializeMarketplaceLayout } from "../shares/portable-layout";
 
 /**
  * Keeps linked tabs current, following the plan's rule: a clean tab with a

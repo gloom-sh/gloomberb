@@ -28,6 +28,7 @@ export const WORLD_INDICES: IndexEntry[] = [
   { symbol: "000001.SS", name: "Shanghai Composite", shortName: "SHCOMP", region: "asia-pacific" },
   { symbol: "^KS11", name: "KOSPI", shortName: "KOSPI", region: "asia-pacific" },
   { symbol: "^AXJO", name: "ASX 200", shortName: "ASX", region: "asia-pacific" },
+  { symbol: "^NSEI", name: "Nifty 50", shortName: "NIFTY", region: "asia-pacific" },
   { symbol: "^BSESN", name: "BSE Sensex", shortName: "SENSEX", region: "asia-pacific" },
 
   // Other

@@ -441,3 +441,56 @@ test("pulls remote changes on later syncs instead of only once per session", asy
   expect(pulls).toBe(2);
   expect(applied).toEqual([{ value: 1 }, { value: 2 }]);
 });
+
+test("a broker profile removed on one device stays removed after another device that synced it since syncs", async () => {
+  // One cloud document, written whole by each device after it pulls.
+  let cloud: { snapshot: SyncSnapshot | null; revision: number } = { snapshot: null, revision: 0 };
+  const transport: SyncTransport = {
+    id: "shared-cloud",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot: cloud.snapshot, revision: cloud.snapshot ? cloud.revision : null, updatedAt: null }),
+    pushSnapshot: async (snapshot) => {
+      cloud = { snapshot, revision: cloud.revision + 1 };
+      return { revision: cloud.revision, updatedAt: "2026-09-29T00:00:00.000Z" };
+    },
+  };
+  const flex = { id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", config: { token: "secret" }, lastSyncedAt: 100 };
+  const signedIn = { id: "signed-in-ibkr", brokerType: "signed-in", label: "Interactive Brokers", connectionMode: "ibkr", config: {}, lastSyncedAt: 100 };
+  const device = () => {
+    let state = createInitialState({
+      ...createDefaultConfig("/tmp/gloomberb-sync-broker-removal-test"),
+      brokerInstances: [flex, signedIn],
+    });
+    const stored: Record<string, unknown> = {};
+    const controller = startController({
+      transport,
+      contributors: [coreConfigSyncContributor],
+      getState: () => state,
+      dispatch: (action) => { state = appReducer(state, action); },
+      baselineStore: { load: () => stored, save: (payloads) => Object.assign(stored, payloads) },
+    });
+    const setBrokerInstances = (brokerInstances: AppState["config"]["brokerInstances"]) => {
+      state = appReducer(state, { type: "SET_CONFIG", config: { ...state.config, brokerInstances } });
+    };
+    return { controller, profileIds: () => state.config.brokerInstances.map((instance) => instance.id), setBrokerInstances };
+  };
+  const laptop = device();
+  const desktop = device();
+  await laptop.controller.requestSync({ reason: "startup" });
+  await desktop.controller.requestSync({ reason: "startup" });
+
+  laptop.setBrokerInstances([flex]);
+  await laptop.controller.requestSync({ reason: "state-change" });
+  // The desktop's own broker sync moved the profile before it saw the removal.
+  desktop.setBrokerInstances([flex, { ...signedIn, lastSyncedAt: 200 }]);
+  await desktop.controller.requestSync({ reason: "state-change" });
+  await laptop.controller.requestSync({ reason: "poll" });
+
+  const cloudProfiles = (cloud.snapshot?.contributors["core.config"]?.payload as { brokerInstances: Array<{ id: string }> })
+    .brokerInstances.map((instance) => instance.id);
+  expect({ laptop: laptop.profileIds(), desktop: desktop.profileIds(), cloud: cloudProfiles }).toEqual({
+    laptop: ["ibkr-flex"],
+    desktop: ["ibkr-flex"],
+    cloud: ["ibkr-flex"],
+  });
+});

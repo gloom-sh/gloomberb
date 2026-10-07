@@ -3,27 +3,29 @@ import type {
   ASKGConversationDetail,
   ASKGConversationTool,
 } from "../../../../api-client/askg";
-import type {
-  ASKGLimits,
-  ASKGSseEvent,
-  ASKGToolCallEvent,
-  JsonValue,
-  ToolManifestSource,
-  ToolResultPayload,
-  ToolResultStatus,
-  WriteTier,
+import {
+  SCRIPT_TOOL_NAME,
+  type ASKGLimits,
+  type ASKGSseEvent,
+  type ASKGToolCallEvent,
+  type JsonValue,
+  type ToolManifestSource,
+  type ToolResultPayload,
+  type ToolResultStatus,
+  type WriteTier,
 } from "./protocol";
+import { capToolNote } from "./notes";
 
 /** Lifecycle of one row in the tool timeline. */
-export type ASKGToolRowStatus =
+type ASKGToolRowStatus =
   | ToolResultStatus
   | "pending"
   | "awaiting-confirmation"
   | "running";
 
-export type ASKGUndoStatus = "available" | "running" | "done" | "failed";
+type ASKGUndoStatus = "available" | "running" | "done" | "failed";
 
-export interface ASKGUndoState {
+interface ASKGUndoState {
   status: ASKGUndoStatus;
   note?: string;
 }
@@ -52,7 +54,7 @@ export interface ASKGToolRow {
   expanded: boolean;
 }
 
-export type ASKGTurnStatus =
+type ASKGTurnStatus =
   | "streaming"
   | "complete"
   | "cancelled"
@@ -214,6 +216,12 @@ function patchToolRow(
   return { ...state, turns };
 }
 
+function hasClientRow(state: ASKGConversationState, toolCallId: string): boolean {
+  return state.turns.some((turn) => turn.tools.some((row) => (
+    row.toolCallId === toolCallId && row.origin === "client"
+  )));
+}
+
 function appendToolRow(turn: ASKGTurn, row: ASKGToolRow): ASKGTurn {
   const existing = turn.tools.findIndex((entry) => entry.toolCallId === row.toolCallId);
   if (existing < 0) return { ...turn, tools: [...turn.tools, row] };
@@ -252,7 +260,9 @@ function applyEvent(
     case "tool-call":
       return patchTurn(next, event.turnId, (turn) => appendToolRow(turn, rowFromToolCall(event)));
     case "tool-executed": {
-      if (event.source === "server") {
+      // A call this client ran keeps its own row whatever the echo says it
+      // was: replacing it would drop its write tier, result and undo.
+      if (event.source === "server" && !hasClientRow(next, event.toolCallId)) {
         return patchTurn(next, event.turnId, (turn) => appendToolRow(turn, {
           toolCallId: event.toolCallId,
           name: event.name,
@@ -265,7 +275,7 @@ function applyEvent(
           ...(event.summary.rowCount !== undefined ? { rowCount: event.summary.rowCount } : {}),
           elapsedMs: event.summary.elapsedMs,
           truncated: event.summary.truncated,
-          ...(event.summary.note ? { note: event.summary.note } : {}),
+          ...(event.summary.note ? { note: capToolNote(event.summary.note) } : {}),
           ...(event.summary.sample !== undefined ? { result: event.summary.sample } : {}),
           expanded: false,
         }));
@@ -368,7 +378,7 @@ export function askgReducer(
         ...(action.payload.rowCount !== undefined ? { rowCount: action.payload.rowCount } : {}),
         elapsedMs: action.payload.elapsedMs,
         truncated: action.payload.truncated,
-        ...(action.payload.note ? { note: action.payload.note } : {}),
+        ...(action.payload.note ? { note: capToolNote(action.payload.note) } : {}),
         ...(action.payload.result !== undefined ? { result: action.payload.result } : {}),
         ...(action.payload.undoToken
           ? { undoToken: action.payload.undoToken, undo: { status: "available" as const } }
@@ -445,7 +455,7 @@ function rowFromStoredTool(tool: ASKGConversationTool): ASKGToolRow {
     requiresConfirmation: false,
     ...(tool.rowCount === undefined ? {} : { rowCount: tool.rowCount }),
     ...(tool.elapsedMs === undefined ? {} : { elapsedMs: tool.elapsedMs }),
-    ...(tool.note ? { note: tool.note } : {}),
+    ...(tool.note ? { note: capToolNote(tool.note) } : {}),
     expanded: false,
   };
 }
@@ -516,7 +526,7 @@ export function isTurnRunning(state: ASKGConversationState): boolean {
   return activeTurn(state)?.status === "streaming";
 }
 
-export interface ASKGResultColumn {
+interface ASKGResultColumn {
   key: string;
   header: string;
   align?: "left" | "right" | "center";
@@ -715,8 +725,32 @@ export function describeASKGError(error: ASKGErrorState): string {
     : `${title}.${retry}`;
 }
 
+/**
+ * The server running a script of tool calls in one step. Each call it made
+ * has its own row above it, so this row only reports how the script ended.
+ */
+function isScriptRow(row: Pick<ASKGToolRow, "name" | "origin">): boolean {
+  return row.origin === "server" && row.name === SCRIPT_TOOL_NAME;
+}
+
+/**
+ * The label and one-line summary a timeline row leads with. A script has no
+ * arguments worth showing: a clean run puts its note ("3 calls, 1.2 s") on
+ * the line, and any other outcome leaves the note to the line below, which
+ * wraps, so it is said once and in full.
+ */
+export function toolRowHeadline(row: ASKGToolRow): { label: string; summary: string } {
+  if (!isScriptRow(row)) return { label: row.name, summary: row.argumentSummary };
+  return { label: "Script", summary: row.status === "ok" ? row.note ?? "" : "" };
+}
+
 /** Wording for the tool row status column. */
 export function describeToolStatus(row: ASKGToolRow): string {
+  // A script counts calls, not rows, and its note already says how many.
+  if (isScriptRow(row)) {
+    if (row.status === "ok") return "done";
+    if (row.status === "partial") return "partial";
+  }
   switch (row.status) {
     case "pending":
       return "queued";

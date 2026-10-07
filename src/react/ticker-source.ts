@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useAppStateRef, usePaneInstanceId } from "../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../types/config";
-import { resolveTickerActivation } from "../plugins/ticker-navigation";
+import { resolveTickerActivation } from "../layout/ticker-navigation";
 import { usePluginAppActions, usePluginTickerActions } from "../plugins/runtime";
 
 /**

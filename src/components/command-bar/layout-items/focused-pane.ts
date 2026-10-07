@@ -3,7 +3,7 @@ import {
   floatPane,
   getDockedPaneIds,
   removePane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import { findPaneInstance } from "../../../types/config";
 import type { ResultItem } from "../list/model";
 import type { LayoutItemsContext } from "./types";
@@ -15,6 +15,7 @@ export function buildFocusedPaneLayoutItems({
   currentLayout,
   duplicatePane,
   focusedPaneId,
+  getState,
   openInlineConfirm,
   persistLayoutChange,
   pluginRegistry,
@@ -45,7 +46,7 @@ export function buildFocusedPaneLayoutItems({
       category: "Focused Pane",
       kind: "action",
       action: () => {
-        const { width, height } = pluginRegistry.getTermSizeFn();
+        const { width, height } = pluginRegistry.getTermSize();
         const nextLayout = focusedFloating
           ? dockPane(currentLayout, focusedPane.instanceId)
           : floatPane(currentLayout, focusedPane.instanceId, width, height, focusedPaneDef);
@@ -61,7 +62,7 @@ export function buildFocusedPaneLayoutItems({
       kind: "action",
       action: () => {
         closeAll({ revertThemePreview: false });
-        pluginRegistry.togglePaneFullscreenFn(focusedPane.instanceId);
+        pluginRegistry.togglePaneFullscreen(focusedPane.instanceId);
       },
     },
     ...WINDOW_MODE_COMMAND_OPTIONS.map((option) => ({
@@ -141,7 +142,7 @@ export function buildFocusedPaneLayoutItems({
             cancelLabel: "Back",
             tone: "danger",
             onConfirm: () => {
-              persistLayoutChange(removePane(currentLayout, focusedPane.instanceId));
+              persistLayoutChange(removePane(getState().config.layout, focusedPane.instanceId));
             },
           });
         }

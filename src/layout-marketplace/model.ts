@@ -5,14 +5,14 @@ import {
   type LayoutOrigin,
   type PaneInstanceConfig,
 } from "../types/config";
-import { getDockedPaneIds } from "../plugins/pane-manager";
+import { getDockedPaneIds } from "../layout/pane-manager";
 import type { PaneDef } from "../types/plugin";
 import type { PaneRuntimeState } from "../core/state/app/types";
 import { fuzzyFilter } from "../utils/fuzzy-search";
 import type { TeamAccentColor, TeamSummary } from "../api-client";
 import type { CloudLayoutEntry } from "./cloud";
 import { linkedLayoutStatus, type LinkedLayoutStatus } from "./linked";
-import type { LayoutMarketplaceEntry } from "./payload";
+import type { LayoutMarketplaceEntry } from "../shares/portable-layout";
 import { paneImagery, type PaneImagery } from "./pane-imagery";
 
 type PanePlacement = "docked" | "floating" | "detached";

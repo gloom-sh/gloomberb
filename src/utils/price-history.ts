@@ -1,6 +1,6 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import { canonicalExchange, resolveExchangeTimeZone } from "./exchanges";
-import { hasPublishedSessionCalendar, isTimestampStaleForExchangeSession, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { hasPublishedSessionCalendar, isRegularSessionTime, isTimestampStaleForExchangeSession, latestRegularSessionClose, latestRegularSessionOpen, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
@@ -177,6 +177,19 @@ export function isPriceHistoryStaleForCurrentWindow(
   ) {
     return true;
   }
+  // Bars that reach the close of the venue's latest session stay current
+  // once it has closed, so a closed market keeps its last session until the
+  // next one opens. A copy taken earlier in that session is still behind.
+  const regularSession = isRegularSessionTime(exchange, now);
+  if (regularSession !== null) {
+    const open = latestRegularSessionOpen(exchange, now);
+    const close = latestRegularSessionClose(exchange, now)?.close;
+    if (open !== null && close !== undefined && latestTime >= close - allowedLag) {
+      if (!regularSession && close > open && latestTime >= open) return false;
+      // After the next open they answer until its first delayed bar is due.
+      if (regularSession && close < open && latestTime < open && now - open <= allowedLag) return false;
+    }
+  }
   const hasExchangeSession = Boolean(resolveExchangeTimeZone(exchange));
   if (age <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) return hasExchangeSession;
   return !hasExchangeSession;
@@ -286,6 +299,27 @@ export function calendarHistoryFetchState(
   const lastCheck = options.checkedAt ?? fetchedAt;
   const pace = Math.max(BEHIND_RECHECK_MS, (now - session.close) / BEHIND_RECHECK_BACKOFF);
   return now - lastCheck >= pace ? "recheck" : "behind";
+}
+
+/**
+ * True when the latest bar is from the venue's latest settled session or a
+ * later one, read on the calendar calendarHistoryFetchState uses. A venue
+ * whose sessions are unknown, round-the-clock ones included, proves nothing.
+ */
+export function reachesLatestSettledSession(
+  points: PricePoint[],
+  now = Date.now(),
+  options: Pick<PriceHistoryFreshnessOptions, "exchange" | "intervalMs"> = {},
+): boolean {
+  const normalized = normalizePriceHistory(points);
+  const latest = normalized.findLast(hasFiniteClose);
+  const latestTime = latest ? getPricePointTimestamp(latest) : Number.NaN;
+  if (!Number.isFinite(latestTime)) return false;
+  // Bare symbols resolve to their US listing at the sources.
+  const session = latestRegularSessionClose(canonicalExchange(options.exchange) || "NYSE", now - SESSION_BAR_SETTLE_MS);
+  if (!session) return false;
+  const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalized) ?? DAY_MS;
+  return !isBarBeforeSession(latestTime, session.date, Math.max(intervalMs, DAY_MS), session.timeZone);
 }
 
 function isPlaceholderBar(point: PricePoint): boolean {

@@ -4,6 +4,7 @@ import type { DataProvider } from "../../../../types/data-provider";
 import type { TickerSearchCandidate } from "../../../../tickers/search";
 import { searchTickerCandidates } from "../../../../tickers/search";
 import {
+  COMMAND_BAR_TICKER_SEARCH_LIMIT,
   mergePlainRootTickerResults,
   mergeTickerSearchResultItems,
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
@@ -134,6 +135,7 @@ export function useRootProviderSearch(options: {
             if (requestId !== rootSearchRequestIdRef.current) return;
             publish(candidates);
           },
+          totalLimit: COMMAND_BAR_TICKER_SEARCH_LIMIT,
           ...QUICK_LOOK_TICKER_SEARCH_OPTIONS,
         });
         if (requestId !== rootSearchRequestIdRef.current) return;

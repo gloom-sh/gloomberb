@@ -51,6 +51,7 @@ import { isFiniteNumber } from "../../../utils/guards";
 
 export interface ColumnContext {
   activeTab?: string;
+  /** Money columns convert into this: a portfolio's totals currency, else the base currency. */
   baseCurrency: string;
   exchangeRates: Map<string, number>;
   /** Clock for quote age (per second while shown) and day-based columns. */

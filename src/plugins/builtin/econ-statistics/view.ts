@@ -7,7 +7,7 @@ export type StatRangeId = "5Y" | "20Y" | "ALL";
 
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 
-export const STAT_RANGE_WINDOWS_MS: { readonly [K in StatRangeId]: number | null } = {
+const STAT_RANGE_WINDOWS_MS: { readonly [K in StatRangeId]: number | null } = {
   "5Y": 5 * MS_PER_YEAR,
   "20Y": 20 * MS_PER_YEAR,
   ALL: null,
@@ -37,7 +37,7 @@ export interface StatViewModel {
   refreshError: string | null;
 }
 
-export function sliceByRange(
+function sliceByRange(
   points: readonly StatPoint[],
   range: StatRangeId,
 ): StatPoint[] {
@@ -51,7 +51,7 @@ export function sliceByRange(
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Rows mix daily, weekly, monthly and quarterly prints, so each names its own period. */
-export function formatStatPeriod(date: string, perYear: number): string {
+function formatStatPeriod(date: string, perYear: number): string {
   const month = Number(date.slice(5, 7));
   const name = MONTHS[month - 1];
   if (!name) return date;

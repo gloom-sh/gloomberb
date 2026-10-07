@@ -19,6 +19,7 @@ import type { ContextMenuItem } from "../../../types/context-menu";
 import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
+import { chartSurfaceBackground, usePaneSurface } from "../../layout/pane/surface";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
 import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -46,8 +47,6 @@ import {
 import { PriceAxisLabels } from "./price-axis-labels";
 import {
   compositeAxisTicks,
-  formatCompositeAxisValue,
-  formatCompositeCursorDate,
   formatCompositeCursorValue,
   formatCompositePointDetails,
   formatCompositeSeriesValue,
@@ -74,6 +73,20 @@ import {
 } from "./interactions";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { renderCompositePanelBitmap } from "./rasterizer";
+import {
+  fitAxisLabels,
+  hitTestLevel,
+  levelGrabRatio,
+  levelPanel,
+  levelVectors,
+  paintLevels,
+  projectLevels,
+  roundLevelValue,
+  writeLevelText,
+  type CompositeChartLevel,
+  type CompositeChartLevels,
+  type ProjectedLevel,
+} from "./levels";
 import {
   buildChartToolVectors,
   CHART_DRAWING_COLORS,
@@ -409,6 +422,7 @@ const HAND_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><
 const RULER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="1.4" y="4.6" width="13.2" height="6.8" rx="1.4" fill="none" stroke="#000" stroke-width="1.4"/><path d="M5 4.6v2.6M8 4.6v3.6M11 4.6v2.6" stroke="#000" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.4 13.6 4 9.9 10.6 3.3a1.6 1.6 0 0 1 2.3 0l0 0a1.6 1.6 0 0 1 0 2.3L6.2 12 2.4 13.6Z" fill="none" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 const LINE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3.2 12.8 12.8 3.2" stroke="#000" stroke-width="1.6" stroke-linecap="round"/><circle cx="3.2" cy="12.8" r="2" fill="none" stroke="#000" stroke-width="1.4"/><circle cx="12.8" cy="3.2" r="2" fill="none" stroke="#000" stroke-width="1.4"/></svg>`;
+const LEVEL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M1.6 8h4.2M10.2 8h4.2" stroke="#000" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="8" r="2.2" fill="none" stroke="#000" stroke-width="1.4"/></svg>`;
 const MARQUEE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.2 6V3.4a1.2 1.2 0 0 1 1.2-1.2H6M10 2.2h2.6a1.2 1.2 0 0 1 1.2 1.2V6M13.8 10v2.6a1.2 1.2 0 0 1-1.2 1.2H10M6 13.8H3.4a1.2 1.2 0 0 1-1.2-1.2V10" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
 const CHART_TOOLS: ReadonlyArray<{
@@ -460,6 +474,14 @@ const CHART_TOOLS: ReadonlyArray<{
     glyph: "\u223f",
     icon: PEN_ICON,
   },
+  {
+    kind: "level",
+    label: "Price level",
+    shortcut: "Shift+H",
+    hint: "Click to add a level every chart of this ticker shows, drag one to move it, Backspace deletes",
+    glyph: "\u2550",
+    icon: LEVEL_ICON,
+  },
 ];
 
 interface ChartToolSpan {
@@ -476,6 +498,7 @@ const CHART_TOOL_MENU: ReadonlyArray<{ kind: ChartToolKind; label: string; accel
   { kind: "zoom", label: "Zoom to Range", accelerator: "Shift+Z" },
   { kind: "line", label: "Trend Line", accelerator: "Shift+D" },
   { kind: "pencil", label: "Freehand", accelerator: "Shift+P" },
+  { kind: "level", label: "Price Level", accelerator: "Shift+H" },
 ];
 
 /** What Enter does next with a tool in hand, for the footer and the pane menu. */
@@ -489,6 +512,7 @@ const KEYBOARD_TOOL_HINTS: Record<ChartToolKind, {
   zoom: { start: "select", startTitle: "Select Range", finish: "zoom", finishTitle: "Zoom to Range" },
   line: { start: "draw", startTitle: "Draw Line", finish: "place", finishTitle: "Place Line" },
   pencil: { start: "draw", startTitle: "Draw Freehand", finish: "place", finishTitle: "Place Drawing" },
+  level: { start: "add level", startTitle: "Add Level", finish: "add level", finishTitle: "Add Level" },
 };
 
 /**
@@ -520,6 +544,7 @@ const ARMED_TOOL_BY_INTERACTION = {
   "arm-zoom": "zoom",
   "arm-line": "line",
   "arm-pencil": "pencil",
+  "arm-level": "level",
 } as const satisfies Record<string, ChartToolKind>;
 
 const COMPOSITE_PANEL_ROLE = "composite-chart-panel";
@@ -533,7 +558,7 @@ const WATERMARK_BASE_HEIGHT_PX = 48;
  * stays a mark rather than a poster. Plots too small for a legible mark get
  * none: a clipped wordmark reads as a glitch.
  */
-export function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number | null {
+function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number | null {
   const scale = Math.min(
     (plotWidthPx * 0.5) / WATERMARK_BASE_WIDTH_PX,
     (plotHeightPx * 0.4) / WATERMARK_BASE_HEIGHT_PX,
@@ -546,6 +571,19 @@ let nextDrawingSequence = 1;
 
 function nextDrawingId(): string {
   return `drawing:${nextDrawingSequence++}`;
+}
+
+/** Levels are stored with the account, so their ids must not repeat across sessions. */
+function nextLevelId(): string {
+  return `${Date.now().toString(36)}-${(nextDrawingSequence++).toString(36)}`;
+}
+
+const NO_LEVELS: readonly ProjectedLevel[] = [];
+
+/** Shift and a letter, whether or not the terminal reports the shift itself. */
+function isShiftedLetter(event: { name?: string; shift?: boolean; ctrl?: boolean; meta?: boolean; alt?: boolean }, letter: string): boolean {
+  if (event.ctrl || event.meta || event.alt) return false;
+  return event.name === letter.toUpperCase() || (event.shift === true && event.name === letter);
 }
 
 /** Icon cells plus the gap between chips. */
@@ -679,6 +717,7 @@ function ChartToolbar({
   top,
   drawColor,
   showColors,
+  levelTool,
   onArmTool,
   onPickColor,
 }: {
@@ -688,6 +727,8 @@ function ChartToolbar({
   top: number;
   drawColor: string;
   showColors: boolean;
+  /** The chart's levels can be edited here. */
+  levelTool: boolean;
   onArmTool: (tool: ChartToolKind | null) => void;
   onPickColor: (color: string) => void;
 }) {
@@ -714,7 +755,7 @@ function ChartToolbar({
         : undefined}
       data-gloom-role="composite-chart-toolbar"
     >
-      {CHART_TOOLS.map((tool) => (
+      {CHART_TOOLS.filter((tool) => levelTool || tool.kind !== "level").map((tool) => (
         <ChartToolChip
           key={tool.kind ?? "pan"}
           tool={tool}
@@ -790,6 +831,12 @@ interface CompositePanelSurfaceProps {
   /** A press on the plot: the pointer takes over from a keyboard placement. */
   onPointerPress: () => void;
   showTextFallback: boolean;
+  /** Set while the owner is picking a bar: a press picks instead of panning. */
+  onPickTime?: (date: Date) => void;
+  /** The chart's levels when they draw on this panel. */
+  levels: CompositeChartLevels | null;
+  selectedLevelId: string | null;
+  onSelectLevel: (id: string | null) => void;
 }
 
 function CompositePanelSurface({
@@ -822,9 +869,13 @@ function CompositePanelSurface({
   keyboardToolDrag,
   onPointerPress,
   showTextFallback,
+  onPickTime,
+  levels,
+  selectedLevelId,
+  onSelectLevel,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
-  const { cellHeightPx = 18, cellWidthPx = 8 } = useUiCapabilities();
+  const { cellHeightPx = 18, cellWidthPx = 8, fractionalViewport = false } = useUiCapabilities();
   const renderer = useNativeRenderer();
   const plotRef = useRef<BoxRenderable | null>(null);
   const [cursorYRatio, setCursorYRatio] = useState<number | null>(null);
@@ -852,6 +903,7 @@ function CompositePanelSurface({
       lastXRatio: number;
       lastYRatio: number;
     }
+    | { kind: "level-move"; id: string }
     | ChartToolDrag
     | null
   >(null);
@@ -939,13 +991,25 @@ function CompositePanelSurface({
     () => drawings.filter((drawing) => drawing.panelId === panel.id),
     [drawings, panel.id],
   );
+  // A dragged level moves here and is saved once, when the pointer lets go.
+  const [levelDraft, setLevelDraft] = useState<{ id: string; value: number } | null>(null);
+  const levelDraftRef = useRef(levelDraft);
+  levelDraftRef.current = levelDraft;
+  const levelDomain = useMemo(() => {
+    const series = levels ? panel.series.find((entry) => entry.source.id === levels.seriesId) : undefined;
+    return series ? panel.axes[series.source.axis] ?? null : null;
+  }, [levels, panel]);
+  const projectedLevels = useMemo(
+    () => levels && levelDomain ? projectLevels(levels.items, levelDomain, levelDraft) : NO_LEVELS,
+    [levelDomain, levelDraft, levels],
+  );
   const bitmapLayers = useMemo(() => {
     if (!bitmap) return null;
     // The desktop composites overlays as vectors, so the plot raster stays put
     // while a tool drags. Copying and reblending it per frame is what made the
     // ruler feel heavy.
-    if (isDesktopWeb || (!activeDrag && panelDrawings.length === 0)) return [bitmap];
-    return [drawChartToolOverlay(
+    if (isDesktopWeb) return [bitmap];
+    const base = !activeDrag && panelDrawings.length === 0 ? bitmap : drawChartToolOverlay(
       bitmap,
       activeDrag,
       {
@@ -956,7 +1020,8 @@ function CompositePanelSurface({
       },
       toolReadout?.direction ?? "up",
       { scene, panel, items: panelDrawings, selectedId: selectedDrawingId },
-    )];
+    );
+    return [projectedLevels.length > 0 ? paintLevels(base, projectedLevels, selectedLevelId) : base];
   }, [
     activeDrag,
     bitmap,
@@ -966,13 +1031,15 @@ function CompositePanelSurface({
     isDesktopWeb,
     panel,
     panelDrawings,
+    projectedLevels,
     scene,
     selectedDrawingId,
+    selectedLevelId,
     toolReadout?.direction,
   ]);
   const vectors = useMemo<ChartSurfaceProps["vectors"]>(() => {
     if (!isDesktopWeb) return null;
-    const shapes = buildChartToolVectors({
+    const shapes = [...levelVectors(projectedLevels, selectedLevelId), ...buildChartToolVectors({
       scene,
       panel,
       drawings: panelDrawings,
@@ -985,7 +1052,7 @@ function CompositePanelSurface({
         draw: drawColor,
       },
       direction: toolReadout?.direction ?? "up",
-    });
+    })];
     return shapes.length > 0 ? shapes : null;
   }, [
     activeDrag,
@@ -995,15 +1062,21 @@ function CompositePanelSurface({
     isDesktopWeb,
     panel,
     panelDrawings,
+    projectedLevels,
     scene,
     selectedDrawingId,
+    selectedLevelId,
     toolReadout?.direction,
   ]);
   const textLines = useMemo(
     () => isDesktopWeb || !showTextFallback
       ? []
-      : renderCompositePanelText(panel, plotWidth, scene.cursorXRatio, pointerCursorYRatio),
-    [isDesktopWeb, panel, plotWidth, pointerCursorYRatio, scene.cursorXRatio, showTextFallback],
+      : writeLevelText(
+        renderCompositePanelText(panel, plotWidth, scene.cursorXRatio, pointerCursorYRatio),
+        projectedLevels,
+        selectedLevelId,
+      ),
+    [isDesktopWeb, panel, plotWidth, pointerCursorYRatio, projectedLevels, scene.cursorXRatio, selectedLevelId, showTextFallback],
   );
   const leftAxisLabels = useMemo(
     () => axisLabelRows(
@@ -1086,18 +1159,49 @@ function CompositePanelSurface({
       color: marker.color,
     };
   }, [formatAxisValue, panel]);
+  const priorCloseMarker = useMemo(() => {
+    const marker = panel.priorClose;
+    const domain = marker ? panel.axes[marker.axis] : undefined;
+    if (!marker || !domain) return null;
+    return {
+      side: marker.axis,
+      yRatio: marker.yRatio,
+      label: formatAxisValue ? formatAxisValue(marker.value, domain) : formatCompositeCursorValue(marker.value, domain),
+      color: colors.textDim,
+    };
+  }, [colors.textDim, formatAxisValue, panel]);
+  const levelMarkers = useMemo(() => levelDomain ? [...projectedLevels]
+    // The picked level's label first, then alerts', when they compete for room.
+    .sort((left, right) => Number(right.level.id === selectedLevelId) - Number(left.level.id === selectedLevelId)
+      || Number(left.level.editable) - Number(right.level.editable))
+    .map(({ level, yRatio }) => ({
+      side: levelDomain.side,
+      yRatio,
+      label: formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain),
+      color: level.color,
+    })) : [], [formatAxisValue, levelDomain, projectedLevels, selectedLevelId]);
   const buildAxisMarkers = (side: "left" | "right") => {
     if (!panel.axes[side]) return undefined;
-    const markers = [lastPriceMarker, axisMarkers].flatMap((marker) => (
-      marker && (marker.side === null || marker.side === side) ? [marker] : []
-    ));
-    if (markers.length === 0) return undefined;
-    return markers.map((marker) => ({
+    const toAxisMarker = (marker: { yRatio: number; label: string; color: string }) => ({
       row: Math.round(marker.yRatio * Math.max(panel.height - 1, 0)),
       pixelY: marker.yRatio * Math.max(panel.height * cellHeightPx - 1, 0),
       label: marker.label,
       color: marker.color,
-    }));
+    });
+    const onSide = <T extends { side: string | null }>(marker: T | null): marker is T => (
+      !!marker && (marker.side === null || marker.side === side)
+    );
+    const fixed = [lastPriceMarker, axisMarkers].filter(onSide).map(toAxisMarker);
+    // The prior close's label yields to every level's.
+    const levelLabels = [...levelMarkers, priorCloseMarker].filter(onSide).map(toAxisMarker);
+    // A label is a row tall, so close levels would stack into an unreadable
+    // pile and hide the last price: each keeps its line, and only the labels
+    // with a row to themselves show. Desktop badges sit between rows.
+    const markers = [
+      ...fitAxisLabels(levelLabels, fixed, (marker) => fractionalViewport ? marker.pixelY / cellHeightPx : marker.row),
+      ...fixed,
+    ];
+    return markers.length > 0 ? markers : undefined;
   };
   const leftAxisMarkers = buildAxisMarkers("left");
   const rightAxisMarkers = buildAxisMarkers("right");
@@ -1137,8 +1241,32 @@ function CompositePanelSurface({
     // a dialog over the plot must keep the focus it just took.
     if (isDesktopWeb) releaseEditableFocus(event);
     consumeChartMouseEvent(event);
+    if (onPickTime) {
+      const pointer = getLocalPlotPointer(event, plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1], renderer);
+      const date = pointer ? resolveCompositeCursorDate(scene, pointer.cellX) : null;
+      if (date) onPickTime(date);
+      return;
+    }
     // A keyboard-armed tool covers terminals that never forward modifier drags.
     const tool = resolveChartToolKind(event.modifiers) ?? armedTool;
+    if (tool === "level" && levels?.onEdit && levelDomain) {
+      const ratios = pointerRatios(event);
+      if (!ratios) return;
+      const hit = hitTestLevel(projectedLevels, ratios.yRatio, levelGrabRatio(panel.height));
+      if (hit) {
+        onSelectLevel(hit.id);
+        if (hit.editable) dragRef.current = { kind: "level-move", id: hit.id };
+      } else {
+        const value = unprojectCompositeValue(ratios.yRatio, levelDomain);
+        if (value !== null) {
+          const id = nextLevelId();
+          levels.onEdit({ kind: "add", id, value: roundLevelValue(value, levelDomain) });
+          onSelectLevel(id);
+        }
+      }
+      updateCursor(event);
+      return;
+    }
     if (tool) {
       const ratios = pointerRatios(event);
       if (!ratios) return;
@@ -1185,11 +1313,16 @@ function CompositePanelSurface({
     armedTool,
     drawings,
     frame,
+    levelDomain,
+    levels,
     onActivate,
+    onPickTime,
     onPointerPress,
     onSelectDrawing,
+    onSelectLevel,
     panel,
     plotAspect,
+    projectedLevels,
     plotSpanFactor,
     plotWidth,
     pointerRatios,
@@ -1207,6 +1340,12 @@ function CompositePanelSurface({
     if (!drag) return;
     consumeChartMouseEvent(event);
     updateCursor(event);
+    if (drag.kind === "level-move") {
+      const ratios = pointerRatios(event);
+      const value = ratios && levelDomain ? unprojectCompositeValue(ratios.yRatio, levelDomain) : null;
+      if (value !== null && levelDomain) setLevelDraft({ id: drag.id, value: roundLevelValue(value, levelDomain) });
+      return;
+    }
     if (drag.kind === "edit") {
       const ratios = pointerRatios(event);
       if (!ratios) return;
@@ -1244,6 +1383,7 @@ function CompositePanelSurface({
     );
   }, [
     frame,
+    levelDomain,
     onEditDrawing,
     onPanViewport,
     panel,
@@ -1260,6 +1400,12 @@ function CompositePanelSurface({
     if (!drag || drag.kind === "pan") return;
     dragRef.current = null;
     if (drag.kind === "edit") return;
+    if (drag.kind === "level-move") {
+      const draft = levelDraftRef.current;
+      setLevelDraft(null);
+      if (draft) levels?.onEdit?.({ kind: "move", id: draft.id, value: draft.value });
+      return;
+    }
     setToolDrag(null);
     if (isDrawingTool(drag.kind)) {
       const drawing = resolveDrawingFromDrag(scene, panel, drag, drawColor, nextDrawingId());
@@ -1269,7 +1415,7 @@ function CompositePanelSurface({
     if (drag.kind !== "zoom") return;
     const range = resolveZoomBoxRange(scene, drag, frame.minimumSpanMs);
     if (range) onSetViewport(range);
-  }, [drawColor, frame.minimumSpanMs, onDraw, onSetViewport, panel, scene]);
+  }, [drawColor, frame.minimumSpanMs, levels, onDraw, onSetViewport, panel, scene]);
   const resetDrag = useCallback(() => {
     if (dragRef.current?.kind === "pan") {
       dragRef.current = null;
@@ -1414,7 +1560,7 @@ function CompositePanelSurface({
         onMouseDragEnd={interactive && navigable ? resetDrag : undefined}
         onMouseScroll={interactive && navigable ? panFromWheel : undefined}
         onMouseOut={interactive ? clearCursor : undefined}
-        cursor={interactive ? toolDrag || !navigable ? "crosshair" : "grab" : undefined}
+        cursor={interactive ? toolDrag || !navigable || onPickTime ? "crosshair" : "grab" : undefined}
         data-gloom-interactive={interactive ? "true" : undefined}
         data-gloom-role={COMPOSITE_PANEL_ROLE}
         data-gloom-remote-kind={remoteKind}
@@ -1832,6 +1978,8 @@ export function CompositeChart({
   onActivate,
   onToggleSeries,
   isSeriesToggleable,
+  timePick,
+  levels,
 }: CompositeChartProps) {
   const activeThemeColors = useThemeColors();
   const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1, fractionalViewport = false } = useUiCapabilities();
@@ -1847,6 +1995,7 @@ export function CompositeChart({
   const [drawings, setDrawings] = useState<readonly ChartDrawing[]>(NO_DRAWINGS);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [drawColor, setDrawColor] = useState<string>(CHART_DRAWING_COLORS[0]);
+  const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
   const addDrawing = useCallback((drawing: ChartDrawing) => {
     setDrawings((current) => [...current, drawing]);
     setSelectedDrawingId(drawing.id);
@@ -2018,6 +2167,7 @@ export function CompositeChart({
     setArmedTool((current) => current === tool ? null : tool);
     setKeyboardPlacement(null);
     if (tool === null) setSelectedDrawingId(null);
+    if (tool !== "level") setSelectedLevelId(null);
   }, []);
   const cancelKeyboardPlacement = useCallback(() => setKeyboardPlacement(null), []);
   const legendRows = showLegend && (visibleSeries.length > 0 || legendAccessory)
@@ -2034,14 +2184,15 @@ export function CompositeChart({
     return `${entry.id}:${last.date.getTime()}:${last.close ?? ""}:${last.value ?? ""}:${last.high ?? ""}:${last.low ?? ""}:${last.volume ?? ""}:${entry.latestChangePercent ?? ""}`;
   }).join("|");
   const plotHeight = Math.max(panelCount, totalHeight - legendRows - timeAxisRows - xMarkerRows);
+  const paneSurface = usePaneSurface();
   const resolvedColors = useMemo<CompositeChartColors>(() => ({
-    background: colors?.background ?? activeThemeColors.bg,
+    background: chartSurfaceBackground(colors?.background, activeThemeColors.bg, paneSurface),
     grid: colors?.grid ?? activeThemeColors.border,
     crosshair: colors?.crosshair ?? activeThemeColors.borderFocused,
     text: colors?.text ?? activeThemeColors.text,
     textDim: colors?.textDim ?? activeThemeColors.textDim,
     negative: colors?.negative ?? activeThemeColors.negative,
-  }), [activeThemeColors, colors]);
+  }), [activeThemeColors, colors, paneSurface]);
   // A custom x axis means x is not time: a tenor, a fraction, a return. Its
   // last observation belongs at the right edge, under its own label.
   const rightOffsetRatio = xAxis ? 0 : COMPOSITE_RIGHT_OFFSET_RATIO;
@@ -2170,6 +2321,16 @@ export function CompositeChart({
     resetViewport,
     zoomViewport,
   ]);
+  const levelHost = useMemo(
+    () => scene && levels ? levelPanel(scene, levels.seriesId) : null,
+    [levels, scene],
+  );
+  const levelItems = levels?.items ?? [];
+  const levelsEditable = !!levels?.onEdit && !!levelHost;
+  const selectedLevel = levelItems.find((level) => level.id === selectedLevelId) ?? null;
+  useEffect(() => {
+    if (selectedLevelId && !selectedLevel) setSelectedLevelId(null);
+  }, [selectedLevel, selectedLevelId]);
   const keyboardCursorDateRef = useRef<Date | null>(scene?.cursorDate ?? null);
   keyboardCursorDateRef.current = scene?.cursorDate ?? null;
   const lastCursorTimestampRef = useRef<number | null>(normalizedCursorTimestamp);
@@ -2283,6 +2444,57 @@ export function CompositeChart({
     onActivate?.();
     onToggleSeries?.(legendEntry.id);
   };
+  /** A level at the keyboard cursor's price, or the last price without a cursor. */
+  const addLevelAtCursor = () => {
+    if (!levels?.onEdit || !levelHost || !scene) return;
+    const { panel, domain } = levelHost;
+    const date = keyboardCursorDateRef.current ?? scene.dates.at(-1) ?? null;
+    // The levels' own series, not whichever one the panel lists first.
+    const pricePanel = { ...panel, series: panel.series.filter((entry) => entry.source.id === levels.seriesId) };
+    const value = (date ? resolveMeasureValueAt(pricePanel, date.getTime()) : null)
+      ?? (panel.lastPrice?.seriesId === levels.seriesId ? panel.lastPrice.value : null)
+      ?? unprojectCompositeValue(0.5, domain);
+    if (value === null) return;
+    const rounded = roundLevelValue(value, domain);
+    onActivate?.();
+    // Enter again at the same cursor picks the level already there.
+    const existing = levelItems.find((level) => level.editable && level.value === rounded);
+    if (existing) {
+      setSelectedLevelId(existing.id);
+      return;
+    }
+    const id = nextLevelId();
+    levels.onEdit({ kind: "add", id, value: rounded });
+    setSelectedLevelId(id);
+  };
+  /** Half a row per press, like a keyboard-placed tool's end. */
+  const nudgeLevel = (level: CompositeChartLevel, direction: 1 | -1) => {
+    if (!levels?.onEdit || !levelHost) return;
+    const { panel, domain } = levelHost;
+    const ratio = projectCompositeValue(level.value, domain);
+    if (ratio === null) return;
+    const step = 1 / (2 * Math.max(panel.height - 1, 1));
+    const value = unprojectCompositeValue(Math.max(0, Math.min(1, ratio - direction * step)), domain);
+    if (value !== null) levels.onEdit({ kind: "move", id: level.id, value: roundLevelValue(value, domain) });
+  };
+  const stepLevel = (direction: -1 | 1) => {
+    // Top to bottom, the order they read in on the plot.
+    const ordered = [...levelItems].sort((left, right) => right.value - left.value);
+    if (ordered.length === 0) return;
+    const index = ordered.findIndex((level) => level.id === selectedLevelId);
+    const next = index < 0
+      ? direction > 0 ? 0 : ordered.length - 1
+      : (index + direction + ordered.length) % ordered.length;
+    setSelectedLevelId(ordered[next]!.id);
+  };
+  const removeSelectedLevel = () => {
+    if (!selectedLevel?.editable) return;
+    levels?.onEdit?.({ kind: "remove", id: selectedLevel.id });
+    setSelectedLevelId(null);
+  };
+  const runLevelAction = () => {
+    if (selectedLevel?.actionable) levels?.action?.run(selectedLevel);
+  };
   const stepDrawing = (direction: -1 | 1) => {
     if (drawings.length === 0) return;
     const index = drawings.findIndex((drawing) => drawing.id === selectedDrawingId);
@@ -2331,6 +2543,40 @@ export function CompositeChart({
       event.preventDefault();
       event.stopPropagation();
     };
+    if (timePick && scene && isPlainKey(event, "return", "enter", "escape")) {
+      consume();
+      if (event.name === "escape") timePick.onCancel();
+      else chartActionsRef.current.pick();
+      return;
+    }
+    const levelKeys = toolsActive && armedTool === "level" && levelsEditable && !keyboardPlacement;
+    if (levelKeys && isPlainKey(event, "return", "enter")) {
+      consume();
+      addLevelAtCursor();
+      return;
+    }
+    if (levelKeys && selectedLevel?.editable && isPlainKey(event, "up", "down")) {
+      consume();
+      nudgeLevel(selectedLevel, event.name === "up" ? 1 : -1);
+      return;
+    }
+    if (levelKeys && levelItems.length > 0 && isPlainKey(event, "[", "]")) {
+      consume();
+      stepLevel(event.name === "[" ? -1 : 1);
+      return;
+    }
+    if (toolsActive && selectedLevel?.editable && levelsEditable && isPlainKey(event, "backspace")) {
+      consume();
+      removeSelectedLevel();
+      return;
+    }
+    // Taken even once the level has its alert, which then says so, so a quick
+    // second press never falls through to the plain `a` pan.
+    if (toolsActive && selectedLevel && levels?.action && isShiftedLetter(event, "a")) {
+      consume();
+      levels.action.run(selectedLevel);
+      return;
+    }
     if (toolsActive && armedTool && isPlainKey(event, "return", "enter") && scene) {
       consume();
       if (keyboardPlacement) finishKeyboardPlacement();
@@ -2360,10 +2606,11 @@ export function CompositeChart({
       toggleLegendEntry();
       return;
     }
-    if (isPlainKey(event, "escape") && toolsActive && (armedTool || selectedDrawingId)) {
+    if (isPlainKey(event, "escape") && toolsActive && (armedTool || selectedDrawingId || selectedLevelId)) {
       consume();
       setArmedTool(null);
       setSelectedDrawingId(null);
+      setSelectedLevelId(null);
       return;
     }
     if (isPlainKey(event, "escape") && legendKeysActive && legendKeyboardIndex !== null && !clearableCursor) {
@@ -2383,6 +2630,7 @@ export function CompositeChart({
         || interaction === "arm-zoom"
         || interaction === "arm-line"
         || interaction === "arm-pencil") && !scene)
+      || (interaction === "arm-level" && !levelsEditable)
       || (interaction === "delete-drawing" && !canDeleteDrawing)
       || (interaction === "cycle-colour" && !isDrawingTool(armedTool) && !selectedDrawingId)
       // A read-only chart leaves the arrows to a focused tab strip in its pane;
@@ -2401,6 +2649,7 @@ export function CompositeChart({
       case "arm-zoom":
       case "arm-line":
       case "arm-pencil":
+      case "arm-level":
         onActivate?.();
         armTool(ARMED_TOOL_BY_INTERACTION[interaction]);
         return;
@@ -2451,8 +2700,15 @@ export function CompositeChart({
   // Footer and menu entries outlive the render that registered them, so they
   // call through to this render's actions.
   const chartActions = {
-    start: startKeyboardPlacement,
+    pick: () => {
+      const date = keyboardCursorDateRef.current ?? scene?.dates.at(-1) ?? null;
+      if (date) timePick?.onPick(date);
+    },
+    start: armedTool === "level" ? addLevelAtCursor : startKeyboardPlacement,
     finish: finishKeyboardPlacement,
+    stepLevel,
+    removeLevel: removeSelectedLevel,
+    levelAction: runLevelAction,
     toggleLegend: toggleLegendEntry,
     stepLegend,
     stepDrawing,
@@ -2470,13 +2726,28 @@ export function CompositeChart({
   const placing = !!keyboardPlacement;
   const legendEntryVisible = !!legendEntry && visibleSeriesIds.has(legendEntry.id);
   const resettable = !!activeUserViewport;
+  const timePickLabel = timePick?.label ?? null;
+  const levelActionHint = selectedLevel?.actionable && levels?.action ? levels.action : null;
+  const levelToolKeys = toolsActive && armedTool === "level" && levelsEditable;
+  const canDeleteLevel = toolsActive && levelsEditable && !!selectedLevel?.editable;
   usePaneFooter(keyboardId, () => {
     if (!keyboardActive || !scene) return null;
     const hints: PaneHint[] = [];
-    if (toolsActive && armedHints) {
+    if (timePickLabel) {
+      hints.push({ id: "chart-pick", key: "Enter", label: timePickLabel, onPress: () => chartActionsRef.current.pick() });
+    } else if (toolsActive && armedHints) {
       hints.push(placing
         ? { id: "chart-tool", key: "Enter", label: armedHints.finish, title: armedHints.finishTitle, onPress: () => chartActionsRef.current.finish() }
         : { id: "chart-tool", key: "Enter", label: armedHints.start, title: armedHints.startTitle, onPress: () => chartActionsRef.current.start() });
+    }
+    if (toolsActive && levelActionHint) {
+      hints.push({
+        id: "chart-level-action",
+        key: "Shift+A",
+        label: levelActionHint.label,
+        title: levelActionHint.title,
+        onPress: () => chartActionsRef.current.levelAction(),
+      });
     }
     if (legendKeysActive && legendEntryToggleable) {
       hints.push({
@@ -2489,7 +2760,7 @@ export function CompositeChart({
     }
     const menu: ContextMenuItem[] = [];
     if (toolsActive) {
-      for (const tool of CHART_TOOL_MENU) {
+      for (const tool of CHART_TOOL_MENU.filter((entry) => entry.kind !== "level" || levelsEditable)) {
         menu.push({
           id: `chart-tool-${tool.kind}`,
           label: tool.label,
@@ -2503,6 +2774,12 @@ export function CompositeChart({
       }
       if (canDeleteDrawing) {
         menu.push({ id: "chart-drawing-delete", label: "Delete Drawing", accelerator: "Backspace", onSelect: () => chartActionsRef.current.removeDrawing() });
+      }
+      if (levelToolKeys && levelItems.length > 0) {
+        menu.push({ id: "chart-level-next", label: "Next Level", accelerator: "]", onSelect: () => chartActionsRef.current.stepLevel(1) });
+      }
+      if (canDeleteLevel) {
+        menu.push({ id: "chart-level-delete", label: "Delete Level", accelerator: "Backspace", onSelect: () => chartActionsRef.current.removeLevel() });
       }
       if (isDrawingTool(armedTool) || selectedDrawingId) {
         menu.push({
@@ -2532,6 +2809,12 @@ export function CompositeChart({
     resettable,
     !!scene,
     selectedDrawingId,
+    timePickLabel,
+    levelActionHint,
+    levelToolKeys,
+    levelItems.length,
+    canDeleteLevel,
+    levelsEditable,
     toolsActive,
   ]);
 
@@ -2614,7 +2897,7 @@ export function CompositeChart({
   const timeAxisCursorLabel = xAxis?.formatCursor && scene.cursorXRatio !== null
     ? xAxis.formatCursor(scene.cursorXRatio)
     : scene.cursorDate
-      ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime)
+      ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime, scene.timeZone)
       : null;
   // The crosshair labels the moving end, so the axis only adds the anchor.
   const timeAxisMarkers = toolSpan
@@ -2624,6 +2907,7 @@ export function CompositeChart({
         new Date(toolSpan.startTime),
         scene.startTime,
         scene.endTime,
+        scene.timeZone,
       ),
       color: toolSpan.color,
     }]
@@ -2662,6 +2946,7 @@ export function CompositeChart({
           top={legendRows}
           drawColor={drawColor}
           showColors={isDrawingTool(armedTool) || !!selectedDrawingId}
+          levelTool={levelsEditable}
           onArmTool={(tool) => {
             onActivate?.();
             armTool(tool);
@@ -2711,6 +2996,10 @@ export function CompositeChart({
           keyboardToolDrag={keyboardToolDrag?.panelId === panel.id ? keyboardToolDrag : null}
           onPointerPress={cancelKeyboardPlacement}
           showTextFallback={showTextFallback}
+          onPickTime={timePick?.onPick}
+          levels={levelHost?.panel.id === panel.id ? levels ?? null : null}
+          selectedLevelId={selectedLevelId}
+          onSelectLevel={setSelectedLevelId}
         />
       ))}
       {watermarkScale ? (

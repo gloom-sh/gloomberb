@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { appReducer, createInitialState, resolveCollectionForPane, resolveTickerForPane, type AppState } from "./state";
 import { cloneLayout, createBlankLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../types/config";
+import { RECENT_COMMANDS_LIMIT } from "./layout";
 import type { AppSessionSnapshot } from "../session-persistence";
-import { removePane } from "../../../plugins/pane-manager";
+import { removePane } from "../../../layout/pane-manager";
 import { buildBrokerPortfolioId } from "../../../utils/broker-instances";
 import { createTestFinancials } from "../../../test-support/data-provider";
 
@@ -468,7 +469,7 @@ describe("quote merging", () => {
     initial.financials.set("IQE", createTestFinancials({
       quote: {
         symbol: "IQE.L",
-        providerId: "yahoo",
+        providerId: "gloom",
         price: 0.245,
         currency: "GBP",
         change: -0.021,
@@ -917,5 +918,40 @@ describe("update checks", () => {
 
     expect(next.updateAvailable?.version).toBe("0.3.2");
     expect(next.updateNotice).toBeNull();
+  });
+});
+
+describe("recent commands ring", () => {
+  // The ring lives in config: a pane run is followed by a layout save that
+  // writes the config as it stands, and a list kept beside it was lost.
+  test("records into config newest first, caps the ring, and promotes a repeat instead of duplicating it", () => {
+    let next = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
+    for (let index = 0; index < RECENT_COMMANDS_LIMIT + 2; index += 1) {
+      next = appReducer(next, { type: "RECORD_COMMAND", id: `cmd-${index}`, label: `Command ${index}` });
+    }
+    expect(next.config.recentCommands).toHaveLength(RECENT_COMMANDS_LIMIT);
+    expect(next.config.recentCommands[0]?.id).toBe(`cmd-${RECENT_COMMANDS_LIMIT + 1}`);
+    expect(next.config.recentCommands.at(-1)?.id).toBe("cmd-2");
+
+    next = appReducer(next, { type: "RECORD_COMMAND", id: "cmd-2", label: "Command 2" });
+    expect(next.config.recentCommands[0]?.id).toBe("cmd-2");
+    expect(next.config.recentCommands.filter((entry) => entry.id === "cmd-2")).toHaveLength(1);
+  });
+
+  test("keeps separate arguments for the same pane", () => {
+    let next = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
+    next = appReducer(next, {
+      type: "RECORD_COMMAND",
+      id: "pane-template:ticker-news-pane",
+      label: "Ticker News",
+      arg: "AAPL",
+    });
+    next = appReducer(next, {
+      type: "RECORD_COMMAND",
+      id: "pane-template:ticker-news-pane",
+      label: "Ticker News",
+      arg: "  MSFT  ",
+    });
+    expect(next.config.recentCommands.map((entry) => entry.arg)).toEqual(["MSFT", "AAPL"]);
   });
 });

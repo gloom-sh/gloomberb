@@ -1,4 +1,5 @@
 import type { StorageLike } from "../data/json-storage";
+import { isBenignWindowError } from "./benign-window-error";
 import { flushCrashReports, reportCrash } from "./crash-reports";
 
 /** The desktop view and the web terminal: window-level errors and the browser's install id. */
@@ -55,6 +56,7 @@ export function describeBrowserOs(): string {
  */
 export function installWindowCrashListeners(target: Window = window): () => void {
   const onError = (event: ErrorEvent) => {
+    if (isBenignWindowError(event.error) || isBenignWindowError(event.message)) return;
     reportCrash(event.error ?? event.message, { kind: "uncaught" });
   };
   const onRejection = (event: PromiseRejectionEvent) => {

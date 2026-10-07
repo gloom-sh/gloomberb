@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
 import type { PricePoint, Quote, TickerFinancials } from "../../../../types/financials";
@@ -5,11 +6,13 @@ import type { TickerRecord } from "../../../../types/ticker";
 import type { QueryEntry } from "../../../../market-data/result-types";
 import { resolveEntryData } from "../../../../market-data/selectors";
 import { useDoubleClickActivation } from "../../../../components/use-double-click-activation";
+import { FigureText } from "../../../../components/ui/figure";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatPercentRaw } from "../../../../utils/format";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
+import { formatQuoteNavAsOf } from "../../../../market-data/quotes/time";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
 import { appendLiveQuotePoint } from "../../../../time-series/chart-data";
 import {
@@ -61,7 +64,9 @@ export function QuoteMonitorCard({
   selected = false,
   onSelect,
   onOpen,
+  perpetuals,
 }: {
+  perpetuals?: ReactNode;
   symbol: string;
   ticker: TickerRecord | null;
   cachedFinancials: TickerFinancials | null;
@@ -96,12 +101,13 @@ export function QuoteMonitorCard({
   const display = getActiveQuoteDisplay(quote);
   const quoteStatus = resolveQuoteStatus(quoteEntry, symbol, quote);
   const quoteFailed = quoteStatus.failed && !!display;
+  const navAsOf = formatQuoteNavAsOf(quote);
   const changeColor = quoteFailed ? colors.textDim : priceColor(display?.change ?? 0);
-  const priceAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.BOLD;
-  const changeAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.NONE;
-  const currency = quote?.currency ?? ticker?.metadata.currency ?? "USD";
+  const flashing = !!flashDirection;
+  const currency = quote?.currency || ticker?.metadata.currency || "USD";
   const stacked = width < 31;
   const compactQuoteFailure = quoteFailed && stacked && height <= 3;
+  const compactNavAsOf = navAsOf && stacked && height <= 3;
   // One decimal count per instrument, so streamed ticks never narrow or widen the price column.
   const priceOptions = liveQuoteFormatOptions(quote, currency, assetCategory, cachedFinancials?.quoteMetadata?.instrumentType);
   const priceText = display ? formatMarketPriceWithCurrency(display.price, currency, priceOptions) : "";
@@ -118,23 +124,11 @@ export function QuoteMonitorCard({
   const sparklineWidth = Math.max(8, width - (nativePaneChrome ? rangeLabel.length + 5 : 2));
   const trend = quoteTrend(display?.change);
   const terminalSparklineHeight = !nativePaneChrome && !stacked && height >= 4 ? 2 : 1;
-  const showTerminalSparkline = !quoteFailed || height >= (stacked ? 3 : 2) + 1 + terminalSparklineHeight;
-  const desktopPriceStyle = nativePaneChrome
-    ? {
-        fontSize: "22px",
-        lineHeight: "1.05",
-        fontWeight: 720,
-        textShadow: `0 1px 2px ${colors.bg}`,
-      }
-    : undefined;
-  const desktopChangeStyle = nativePaneChrome
-    ? {
-        fontSize: "12px",
-        lineHeight: "1.1",
-        fontWeight: 540,
-        textShadow: `0 1px 2px ${colors.bg}`,
-      }
-    : undefined;
+  const statusRows = (quoteFailed && !compactQuoteFailure ? 1 : 0) + (navAsOf && !compactNavAsOf ? 1 : 0);
+  const showTerminalSparkline = (!quoteFailed && !navAsOf)
+    || height >= (stacked ? 3 : 2) + statusRows + terminalSparklineHeight;
+  // Figures sit over the sparkline, so the desktop rings them in the card colour.
+  const figureHalo = { textShadow: `0 1px 2px ${colors.bg}` };
   const desktopSymbolStyle = nativePaneChrome
     ? {
         fontSize: "15px",
@@ -198,7 +192,7 @@ export function QuoteMonitorCard({
             display: "grid",
             // The name gives way first; the price keeps its natural width.
             gridTemplateColumns: "minmax(0, 1fr) auto",
-            gridTemplateRows: "auto 1fr auto",
+            gridTemplateRows: "auto 1fr auto auto",
             columnGap: 12,
             width: "100%",
             height: "100%",
@@ -237,6 +231,11 @@ export function QuoteMonitorCard({
                 {ticker.metadata.name}
               </Text>
             )}
+            {navAsOf && (
+              <Text fg={colors.textDim} style={{ fontSize: "12px", lineHeight: "14px" }}>
+                {navAsOf}
+              </Text>
+            )}
           </Box>
 
           <Box
@@ -253,19 +252,14 @@ export function QuoteMonitorCard({
               paddingBottom: 1,
             }}
           >
-            <Text
-              attributes={priceAttributes}
-              fg={changeColor}
-              style={desktopPriceStyle}
-            >
-              {priceText}
-            </Text>
+            <FigureText fg={changeColor} dim={flashing} style={figureHalo}>{priceText}</FigureText>
             <Box flexDirection="row" gap={1} justifyContent="flex-end">
-              <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changePercentText}</Text>
-              <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changeValueText}</Text>
+              <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
+              <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
             </Box>
           </Box>
 
+          {perpetuals && <Box style={{ gridColumn: "1 / -1", gridRow: "4", alignSelf: "end" }}>{perpetuals}</Box>}
           {rangeLabel && (
             <Text
               fg={colors.textDim}
@@ -290,16 +284,19 @@ export function QuoteMonitorCard({
         <Box flexDirection="column" flexGrow={1} justifyContent="flex-start">
           {stacked ? (
             <Box flexDirection="column">
-              <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
-                {symbol}
-              </Text>
-              <Box flexDirection="column">
-                <Text attributes={priceAttributes} fg={changeColor} style={desktopPriceStyle}>
-                  {compactQuoteFailure ? `${priceText} · ${quoteStatus.stale ? "STALE" : "ERROR"}` : priceText}
+              <Box flexDirection="row" gap={1} height={1} overflow="hidden">
+                <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
+                  {symbol}
                 </Text>
+                {compactNavAsOf && <Text fg={colors.textDim}>{navAsOf}</Text>}
+              </Box>
+              <Box flexDirection="column">
+                <FigureText fg={changeColor} dim={flashing} style={figureHalo}>
+                  {compactQuoteFailure ? `${priceText} · ${quoteStatus.stale ? "STALE" : "ERROR"}` : priceText}
+                </FigureText>
                 <Box flexDirection="row" gap={1}>
-                  <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changePercentText}</Text>
-                  <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changeValueText}</Text>
+                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
+                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
                 </Box>
               </Box>
             </Box>
@@ -331,16 +328,10 @@ export function QuoteMonitorCard({
                 )}
               </Box>
               <Box flexDirection="column" alignItems="flex-end">
-                <Text
-                  attributes={priceAttributes}
-                  fg={changeColor}
-                  style={desktopPriceStyle}
-                >
-                  {priceText}
-                </Text>
+                <FigureText fg={changeColor} dim={flashing} style={figureHalo}>{priceText}</FigureText>
                 <Box flexDirection="row" gap={1} justifyContent="flex-end">
-                  <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changePercentText}</Text>
-                  <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changeValueText}</Text>
+                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
+                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
                 </Box>
               </Box>
             </Box>
@@ -349,6 +340,10 @@ export function QuoteMonitorCard({
           {quoteFailed && !compactQuoteFailure && (
             <Box height={1} overflow="hidden"><Text fg={colors.negative}>{quoteStatus.text}</Text></Box>
           )}
+          {navAsOf && !compactNavAsOf && (
+            <Box height={1} overflow="hidden"><Text fg={colors.textDim}>{navAsOf}</Text></Box>
+          )}
+          {perpetuals}
           {showTerminalSparkline && <Box height={terminalSparklineHeight} flexDirection="row" alignItems="center" gap={1}>
             <PriceSparkline
               priceHistory={priceHistory}

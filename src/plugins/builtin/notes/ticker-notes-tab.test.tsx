@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useReducer, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { TestDialogProvider, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, TestDialogProvider } from "../../../renderers/opentui/test-utils";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { Box, Text } from "../../../ui";
@@ -12,7 +12,7 @@ import { createNotesTab } from "./ticker-notes-tab";
 
 const TEST_PANE_ID = "ticker-detail:notes-test";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 function createNotesHarnessConfig(symbol: string) {
   return createTestPaneConfig("/tmp/gloomberb-notes-tab", {
@@ -80,15 +80,6 @@ function NotesTabHarness({
   );
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
-});
-
 describe("createNotesTab", () => {
   test("surfaces a save failure when the tab loses focus", async () => {
     const notifications: string[] = [];
@@ -98,29 +89,29 @@ describe("createNotesTab", () => {
       notify: ({ body }) => { notifications.push(body); },
     });
 
-    testSetup = await testRender(
+    await tui.render(
       <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" runtime={runtime} />,
       { width: 80, height: 24 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     const placeholderRow = frame.split("\n").findIndex((line) => line.includes("Write notes"));
     const placeholderCol = frame.split("\n")[placeholderRow]?.indexOf("Write notes") ?? -1;
     expect(placeholderRow).toBeGreaterThanOrEqual(0);
     expect(placeholderCol).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(placeholderCol + 1, placeholderRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(placeholderCol + 1, placeholderRow);
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("ab");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("ab");
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("ab");
 
     const blurRow = frame.split("\n").findIndex((line) => line.includes("blur-tab"));
@@ -128,9 +119,9 @@ describe("createNotesTab", () => {
     expect(blurRow).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(blurCol + 1, blurRow);
+      await tui.setup().mockMouse.click(blurCol + 1, blurRow);
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(notesFiles.saves).toEqual([{ key: "AAPL", text: "ab" }]);
@@ -144,44 +135,44 @@ describe("createNotesTab", () => {
     });
     const NotesTab = createNotesTab(registryFor(notesFiles));
 
-    testSetup = await testRender(
+    await tui.render(
       <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
       { width: 80, height: 24 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     const placeholderRow = frame.split("\n").findIndex((line) => line.includes("Write notes"));
     const placeholderCol = frame.split("\n")[placeholderRow]?.indexOf("Write notes") ?? -1;
 
     await act(async () => {
-      await testSetup!.mockMouse.click(placeholderCol + 1, placeholderRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(placeholderCol + 1, placeholderRow);
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("aapl-note");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("aapl-note");
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("aapl-note");
 
     const switchRow = frame.split("\n").findIndex((line) => line.includes("switch-msft"));
     const switchCol = frame.split("\n")[switchRow]?.indexOf("switch-msft") ?? -1;
 
     await act(async () => {
-      await testSetup!.mockMouse.click(switchCol + 1, switchRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(switchCol + 1, switchRow);
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     const blurRow = frame.split("\n").findIndex((line) => line.includes("blur-tab"));
     const blurCol = frame.split("\n")[blurRow]?.indexOf("blur-tab") ?? -1;
 
     await act(async () => {
-      await testSetup!.mockMouse.click(blurCol + 1, blurRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(blurCol + 1, blurRow);
+      await tui.setup().renderOnce();
     });
 
     expect(notesFiles.saves).toEqual([{ key: "AAPL", text: "aapl-note" }]);
@@ -194,24 +185,24 @@ describe("createNotesTab", () => {
     });
     const NotesTab = createNotesTab(registryFor(notesFiles));
 
-    testSetup = await testRender(
+    await tui.render(
       <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
       { width: 80, height: 24 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     const switchRow = frame.split("\n").findIndex((line) => line.includes("switch-msft"));
     const switchCol = frame.split("\n")[switchRow]?.indexOf("switch-msft") ?? -1;
 
     await act(async () => {
-      await testSetup!.mockMouse.click(switchCol + 1, switchRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(switchCol + 1, switchRow);
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(notesFiles.saves).toEqual([]);
@@ -224,50 +215,50 @@ describe("createNotesTab", () => {
     });
     const NotesTab = createNotesTab(registryFor(notesFiles));
 
-    testSetup = await testRender(
+    await tui.render(
       <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
       { width: 80, height: 24 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     const placeholderRow = frame.split("\n").findIndex((line) => line.includes("Write notes"));
     const placeholderCol = frame.split("\n")[placeholderRow]?.indexOf("Write notes") ?? -1;
 
     await act(async () => {
-      await testSetup!.mockMouse.click(placeholderCol + 1, placeholderRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(placeholderCol + 1, placeholderRow);
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      await testSetup!.mockInput.typeText("aapl-note");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("aapl-note");
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     const switchRow = frame.split("\n").findIndex((line) => line.includes("switch-msft"));
     const switchCol = frame.split("\n")[switchRow]?.indexOf("switch-msft") ?? -1;
 
     await act(async () => {
-      await testSetup!.mockMouse.click(switchCol + 1, switchRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(switchCol + 1, switchRow);
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     const previewRow = frame.split("\n").findIndex((line) => line.includes("Write notes") || line.includes("msft-note"));
     const previewCol = frame.split("\n")[previewRow]?.search(/Write notes|msft-note/) ?? -1;
 
     await act(async () => {
-      await testSetup!.mockMouse.click(previewCol + 1, previewRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(previewCol + 1, previewRow);
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("msft-note");
     expect(notesFiles.saves).toEqual([{ key: "AAPL", text: "aapl-note" }]);
   });
@@ -279,27 +270,27 @@ describe("createNotesTab", () => {
     });
     const NotesTab = createNotesTab(registryFor(notesFiles));
 
-    testSetup = await testRender(
+    await tui.render(
       <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
       { width: 80, height: 24 },
     );
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    let frame = testSetup.captureCharFrame();
+    let frame = tui.frame();
     const placeholderRow = frame.split("\n").findIndex((line) => line.includes("Write notes"));
     const placeholderCol = frame.split("\n")[placeholderRow]?.indexOf("Write notes") ?? -1;
 
     await act(async () => {
-      await testSetup!.mockMouse.click(placeholderCol + 1, placeholderRow);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(placeholderCol + 1, placeholderRow);
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
+    frame = tui.frame();
     expect(frame).toContain("existing-note");
   });
 });

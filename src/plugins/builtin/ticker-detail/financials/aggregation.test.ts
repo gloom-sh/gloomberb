@@ -75,6 +75,6 @@ test("TTM share growth survives different currency windows while monetary growth
   ));
   const table = buildFinancialTableModel({ annualStatements: [{ date: "2024-12-31", currency: "USD", totalRevenue: 400 }], quarterlyStatements }, { expandAll: true })!;
   expect(table.statements[0]!.date).toBe("TTM");
-  expect(table.rows.find(({ summaryKey }) => summaryKey === "totalRevenue")!.cells[0].growth).toBeUndefined();
+  expect(table.rows.find(({ summaryKey }) => summaryKey === "totalRevenue")!.cells[0]!.growth).toBeUndefined();
   expect(table.rows.find(({ key }) => key === "basicShares")!.cells[0]).toMatchObject({ value: 20, growth: 1 });
 });

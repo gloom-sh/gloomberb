@@ -29,7 +29,7 @@ const runtimeLog = debugLog.createLogger("app-runtime");
  * A built-in that cannot register is a bug in this repository and stops
  * startup. An external plugin that cannot register is someone else's code:
  * a reserved or duplicate id, or a `setup()` that throws. Before this, one
- * such plugin in `~/.gloomberb/plugins` took the whole app down at launch,
+ * such plugin in the plugins folder took the whole app down at launch,
  * with nothing on screen to say which one. Now the failure lands on the
  * plugin's entry, where the marketplace shows it as failed with the reason,
  * and the app starts without it. The registry has already undone the
@@ -64,12 +64,14 @@ export function createAppRuntime({
     ...newsOptions,
   });
   const modules = { pluginRegistry, marketData, newsService };
-  pluginRegistry.getConfigFn = () => config;
-  pluginRegistry.getLayoutFn = () => config.layout;
-  pluginRegistry.registerNewsCapabilityFn = registryOptions?.enableCapabilityHandlers === false
-    ? () => () => {}
-    : (capability) => newsService.register(capability);
-  pluginRegistry.watchNewsQueryFn = (query, listener) => newsService.watchQuery(query, listener);
+  pluginRegistry.bindHost({
+    getConfig: () => config,
+    getLayout: () => config.layout,
+    registerNewsCapability: registryOptions?.enableCapabilityHandlers === false
+      ? () => () => {}
+      : (capability) => newsService.register(capability),
+    watchNewsQuery: (query, listener) => newsService.watchQuery(query, listener),
+  });
   setSharedMarketDataCoordinator(marketData);
   setSharedNewsService(newsService);
 

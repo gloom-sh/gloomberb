@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableView,
-  PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneStatusFooter,
+  PaneStatusBody, usePaneTabs, usePaneStatusFooter,
   type DataTableCell,
   type DataTableKeyEvent
 } from "../../../components";
@@ -14,8 +14,9 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { cycleSortPreference } from "../../../utils/sort-values";
-import { useConnectionHealth, usePluginTickerActions } from "../../runtime";
+import { useConnectionHealth, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { usePaneSettingValue } from "../../../public/react";
 import { acquireMarketHaltsHealth, fetchMarketHalts } from "./client";
 import {
   DEFAULT_HALT_SORT,
@@ -27,6 +28,7 @@ import {
   formatEtDate,
   formatEtResumption,
   formatEtTime,
+  formatHaltAge,
   haltStatusColor,
   haltStatusLabel,
   nextHaltFilter,
@@ -42,6 +44,7 @@ import {
 /** Halted rows flip to resumed on the clock alone, so the pane re-reads it. */
 const EMPTY_RECORDS: HaltRecord[] = [];
 const STATUS_TICK_MS = 15_000;
+const HALT_REFRESH_MS = 60_000;
 const HALT_FILTER_TABS = HALT_FILTERS.map((entry) => ({ label: entry.label, value: entry.value as string }));
 
 export function MarketHaltsPane({ focused, width, height }: PaneProps) {
@@ -50,13 +53,18 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
   const request = useCallback(() => fetchMarketHalts(connectionHealth), [connectionHealth]);
   const { data, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request);
   const records = data ?? EMPTY_RECORDS;
-  const [filter, setFilter] = useState<HaltFilter>("all");
+  const [initialTab] = usePaneSettingValue("initialTab", "all");
+  const [filter, setFilter] = usePluginPaneState<HaltFilter>("filter",
+    HALT_FILTERS.find(({ value }) => value === initialTab)?.value ?? "all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<HaltSortPreference>(DEFAULT_HALT_SORT);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => acquireMarketHaltsHealth(connectionHealth), [connectionHealth]);
   useEffect(() => { setNow(Date.now()); }, [fetchedAt]);
-  useAutoRefresh(fetchedAt, load);
+  // Halts start and lift within minutes; the app-wide interval (30 min by
+  // default) would show a halt long after it ended. Nasdaq's feed is meant
+  // to be polled.
+  useAutoRefresh(fetchedAt, load, { intervalMs: HALT_REFRESH_MS });
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), STATUS_TICK_MS);
@@ -74,8 +82,8 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
   }, [rows, selectedId]);
 
   const refresh = useCallback(() => load(), [load]);
-  const selectFilter = useCallback((value: string) => setFilter(value as HaltFilter), []);
-  const cycleFilter = useCallback(() => setFilter((current) => nextHaltFilter(current)), []);
+  const selectFilter = useCallback((value: string) => setFilter(value as HaltFilter), [setFilter]);
+  const cycleFilter = useCallback(() => setFilter((current) => nextHaltFilter(current)), [setFilter]);
   const columns = useMemo(() => buildHaltColumns(width), [width]);
   // A narrow pane drops columns; the sort keys only step through the ones on screen.
   const sortColumnIds = useMemo(
@@ -116,12 +124,14 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
 
   // The only partition of this pane: the desktop draws it in the title bar and
   // the body starts with the table instead of spending a row on the strip.
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabs, rows: tabRows } = usePaneTabs({
     tabs: HALT_FILTER_TABS,
     activeValue: filter,
     onSelect: selectFilter,
     focused,
     keyboardNavigation: false,
+    compact: true,
+    variant: "bare",
   });
 
   usePaneStatusFooter({
@@ -155,6 +165,8 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
         return { text: row.reason, color: selectedColor ?? colors.text };
       case "date":
         return { text: formatEtDate(row.haltedAt), color: selectedColor ?? colors.textMuted };
+      case "age":
+        return { text: formatHaltAge(row, now), color: selectedColor ?? colors.textMuted };
       case "halted":
         return { text: formatEtTime(row.haltedAt), color: selectedColor ?? colors.textMuted };
       case "quote":
@@ -177,20 +189,6 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
       }
     }
   }, [now]);
-
-  const tabs = tabsInHeader ? null : (
-    <Box height={1} flexShrink={0} overflow="hidden">
-      <Tabs
-        tabs={HALT_FILTER_TABS}
-        activeValue={filter}
-        onSelect={selectFilter}
-        compact
-        variant="bare"
-        focused={focused}
-        keyboardNavigation={false}
-      />
-    </Box>
-  );
 
   if (status === "loading" && records.length === 0) {
     return (
@@ -216,7 +214,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
       <DataTableView<HaltRecord, HaltColumn>
         focused={focused}
         rootWidth={width}
-        rootHeight={Math.max(1, height - (tabsInHeader ? 0 : 1))}
+        rootHeight={Math.max(1, height - tabRows)}
         selection={{
           kind: "id",
           selectedId,

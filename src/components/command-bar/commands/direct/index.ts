@@ -13,6 +13,7 @@ import {
 } from "../../../../theme/colors";
 import { clampFontSize, MIN_FONT_SIZE_PX } from "../../../../theme/font-scale";
 import type { AppAction, AppState } from "../../../../state/app/context";
+import { openBrokerAddFlow } from "../../../../plugins/builtin/broker-manager/add-request";
 import { isManualPortfolio } from "../../../../plugins/builtin/portfolio-list/mutations";
 import { CHART_RENDERER_PREFERENCES } from "../../../chart/core/types";
 import type { Command } from "../registry";
@@ -27,6 +28,7 @@ import {
 import { parseWindowModeCommandArg } from "../../layout-items";
 import type { CommandBarRoute } from "../../workflow/types";
 import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
+import { reportTelemetryConfig } from "../../../../telemetry/live-config";
 
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
 
@@ -51,7 +53,7 @@ export function runDirectCommandAction(options: {
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string) => void;
-  openPaneSettingsRoute: (paneId: string) => void;
+  openPaneSettings: (paneId: string | null) => void;
   pluginRegistry: PluginRegistry;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pushRoute: (route: CommandBarRoute) => void;
@@ -76,7 +78,7 @@ export function runDirectCommandAction(options: {
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openPaneSettingsRoute,
+    openPaneSettings,
     persistConfig,
     pluginRegistry,
     pushRoute,
@@ -106,7 +108,7 @@ export function runDirectCommandAction(options: {
       pluginRegistry.showPane("layout-marketplace");
       return;
     case "pane-settings":
-      if (state.focusedPaneId) openPaneSettingsRoute(state.focusedPaneId);
+      openPaneSettings(state.focusedPaneId);
       return;
     case "window-mode":
       closeAll({ revertThemePreview: false });
@@ -118,6 +120,10 @@ export function runDirectCommandAction(options: {
       controlWindow(command.id === "minimize-window" ? "minimize" : "toggle-maximize");
       return;
     case "add-broker-account":
+      // Profiles are added in the Brokers pane.
+      closeAll({ revertThemePreview: false });
+      openBrokerAddFlow(pluginRegistry);
+      return;
     case "new-portfolio":
     case "new-watchlist":
     case "set-portfolio-position":
@@ -126,8 +132,7 @@ export function runDirectCommandAction(options: {
     case "delete-portfolio":
     case "reset-all-data":
       if (
-        command.id === "add-broker-account"
-        || command.id === "new-portfolio"
+        command.id === "new-portfolio"
         || command.id === "new-watchlist"
         || command.id === "set-portfolio-position"
       ) {
@@ -298,10 +303,41 @@ export function runDirectCommandAction(options: {
       const key = command.id === "toggle-crash-reports" ? "crashReports" : "usage";
       const enabled = state.config.telemetry?.[key] === false;
       const nextConfig = { ...state.config, telemetry: { ...state.config.telemetry, [key]: enabled } };
+      reportTelemetryConfig(nextConfig.telemetry);
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       persistConfig(nextConfig);
       notify(`${t(command.label)}: ${t(enabled ? "on" : "off")}`, { type: "success" });
       closeAll({ revertThemePreview: false });
+      return;
+    }
+    case "toggle-attention-counts": {
+      const setEnabled = (enabled: boolean) => {
+        const current = getState().config;
+        const nextConfig = { ...current, telemetry: { ...current.telemetry, attention: enabled } };
+        // Clear unsent counts before React commits the settings update.
+        reportTelemetryConfig(nextConfig.telemetry);
+        dispatch({ type: "SET_CONFIG", config: nextConfig });
+        persistConfig(nextConfig);
+        notify(`${t(command.label)}: ${t(enabled ? "on" : "off")}`, { type: "success" });
+      };
+      if (state.config.telemetry?.attention === true) {
+        setEnabled(false);
+        closeAll({ revertThemePreview: false });
+      } else {
+        openInlineConfirm({
+          confirmId: "enable-attention-counts",
+          title: "Share Attention Counts?",
+          body: [
+            "While signed in with a verified account, share the tickers you open in DES, charts, quotes and options, and add to watchlists.",
+            "Gloom uses your account to limit contributions. Published counts are delayed and rounded, and require at least 20 contributors. Your holdings, watchlist names and searches are not included.",
+            "This is separate from Usage Counts and is off by default. Turn it off at any time to stop collection and discard unsent counts. Already published anonymous totals cannot be removed.",
+          ],
+          confirmLabel: "Share Counts",
+          cancelLabel: "Keep Off",
+          tone: "default",
+          onConfirm: async () => { setEnabled(true); },
+        });
+      }
       return;
     }
     case "font-size-increase":

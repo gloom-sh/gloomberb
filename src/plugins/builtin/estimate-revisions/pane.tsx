@@ -1,3 +1,4 @@
+import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, ScrollBox, type ScrollBoxRenderable } from "../../../ui";
 import {
@@ -98,7 +99,7 @@ const SURPRISE: DataTableColumn[] = [
 ];
 const historyId = (row: EstimateObservation) => `${row.source}:${row.date}`;
 const historyDate = (row: EstimateObservation) => new Date(`${row.date}T00:00:00Z`);
-const historySource = (row: EstimateObservation) => row.source === "yahoo" ? "Recorded" : "Reported lookback";
+const historySource = (row: EstimateObservation) => row.source === "gloom" ? "Recorded" : "Reported lookback";
 /** EPS ticks with the decimals the plotted range needs. */
 const formatEpsAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
 
@@ -230,7 +231,7 @@ function EstimateDetail({
               : number(
                   row[column.id as "average" | "low" | "high" | "analysts"],
                 ),
-        color: state.selected ? colors.selectedText : row.source === "yahoo" ? colors.text : colors.warning,
+        color: state.selected ? colors.selectedText : row.source === "gloom" ? colors.text : colors.warning,
       })}
       emptyStateTitle="No stored observations."
     />
@@ -242,6 +243,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     colors = useThemeColors();
   const identity = listingIdentity(boundSymbol, ticker?.metadata.exchange ?? "");
   const symbol = identity?.symbol ?? null;
+  useCompanyDisclosureLinks(boundSymbol);
   const exchange = canonicalExchange(identity?.exchange ?? "");
   const loader = useCallback(
     (force: boolean) => loadEstimates(symbol!, exchange, force),
@@ -386,6 +388,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   if (signInWall)
     return (
       <SignInWall
+        placement="estimate-revisions-signin"
         action="view estimate revisions"
         needsVerification={session.needsVerification}
       />

@@ -1,4 +1,5 @@
 import type { Dispatch } from "react";
+import { t, tf } from "../../../i18n";
 import type { AppAction } from "../../../state/app/context";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type {
@@ -14,14 +15,19 @@ import {
 import { resolveBrokerWorkflowSelection, type WorkflowStringValues } from "./broker";
 import { parseOwnerValue } from "./builtin";
 import { recordPluginCommandOpen } from "../commands/plugin/items";
-import type { PaneSettingField, PaneTemplateCreateOptions } from "../../../types/plugin";
+import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import type {
   CommandBarCollectionWorkflowActions,
   CommandBarNotifyFn,
 } from "./collection-actions";
 
+/**
+ * What the form does after a submit. "stay" keeps it as it was: the user
+ * backed out of a step the submit opened, such as a broker sign-in.
+ */
 export type WorkflowSuccessDisposition = "back" | "close" | "stay";
 
+/** The first required field left empty, and what to tell the user about it. */
 export function validateRequiredWorkflowFields(options: {
   fields: readonly CommandBarWorkflowField[];
   values: Record<string, CommandBarFieldValue>;
@@ -29,20 +35,15 @@ export function validateRequiredWorkflowFields(options: {
     field: CommandBarWorkflowField,
     value: CommandBarFieldValue | undefined,
   ) => string;
-}): string | null {
+}): { fieldId: string; message: string } | null {
   for (const field of options.fields) {
     if (!field.required) continue;
     if (field.type === "toggle") continue;
     const value = options.values[field.id];
-    if (field.type === "multi-select" || field.type === "ordered-multi-select") {
-      if (coerceFieldValues(value).length === 0) {
-        return `${field.label} is required.`;
-      }
-      continue;
-    }
-    if (!options.getFieldStringValue(field, value).trim()) {
-      return `${field.label} is required.`;
-    }
+    const empty = field.type === "multi-select" || field.type === "ordered-multi-select"
+      ? coerceFieldValues(value).length === 0
+      : !options.getFieldStringValue(field, value).trim();
+    if (empty) return { fieldId: field.id, message: tf("{label} is required.", { label: t(field.label) }) };
   }
   return null;
 }
@@ -85,7 +86,6 @@ export async function submitCommandBarWorkflow(options: {
   >;
   extractBrokerWorkflowValues: (
     values: Record<string, CommandBarFieldValue>,
-    selectorKey: "brokerType" | "source",
     selectedBrokerId: string,
   ) => WorkflowStringValues;
   getFieldStringValue: (
@@ -106,20 +106,17 @@ export async function submitCommandBarWorkflow(options: {
     visibleFields,
   } = options;
 
-  const connectBrokerFromWorkflow = async (selectorKey: "brokerType" | "source") => {
-    const selection = resolveBrokerWorkflowSelection(route, selectorKey);
+  /** False when the user backed out of signing the broker in. */
+  const connectBrokerFromWorkflow = async (): Promise<boolean> => {
+    const selection = resolveBrokerWorkflowSelection(route);
     if (!selection) throw new Error("Broker is required.");
     if (selection.method.kind === "signed-in") {
-      // The connect dialog cannot open over the command bar, so the workflow
-      // closes now and the outcome, a refusal included, arrives as a toast.
-      void collectionWorkflowActions.connectSignedInBroker(selection.method.broker).catch((error: unknown) => {
-        notify(error instanceof Error ? error.message : String(error), { type: "error" });
-      });
-      return;
+      return await collectionWorkflowActions.connectSignedInBroker(selection.method.broker);
     }
     const brokerId = selection.method.adapter.id;
-    const values = extractBrokerWorkflowValues(route.values, selectorKey, brokerId);
+    const values = extractBrokerWorkflowValues(route.values, brokerId);
     await collectionWorkflowActions.connectBrokerProfile(brokerId, values);
+    return true;
   };
 
   switch (route.payload.kind) {
@@ -141,7 +138,10 @@ export async function submitCommandBarWorkflow(options: {
         case "rename-layout": {
           const name = coerceFieldString(route.values.name).trim();
           if (!name) throw new Error("Layout name is required.");
-          dispatch({ type: "RENAME_LAYOUT", index: activeLayoutIndex, name });
+          // The layout whose name the form opened with.
+          const layoutIndex = route.payloadMeta?.layoutIndex;
+          if (name === route.payloadMeta?.layoutName) break;
+          dispatch({ type: "RENAME_LAYOUT", index: typeof layoutIndex === "number" ? layoutIndex : activeLayoutIndex, name });
           notify(`Renamed layout to "${name}".`, { type: "success" });
           break;
         }
@@ -152,14 +152,11 @@ export async function submitCommandBarWorkflow(options: {
               coerceFieldString(route.values.name),
               parseOwnerValue(route.values.owner),
             );
-          } else {
-            await connectBrokerFromWorkflow("source");
+          } else if (!await connectBrokerFromWorkflow()) {
+            return "stay";
           }
           break;
         }
-        case "add-broker-account":
-          await connectBrokerFromWorkflow("brokerType");
-          break;
         case "add-portfolio": {
           const shares = coerceFieldString(route.values.shares).trim();
           if (!shares) {
@@ -196,34 +193,22 @@ export async function submitCommandBarWorkflow(options: {
       const template = pluginRegistry.paneTemplates.get(route.payload.actionId);
       if (!template) throw new Error("Pane template not found.");
       const argPlaceholder = String(route.payloadMeta?.argPlaceholder ?? "");
+      // What a plugin passed to `createPaneFromTemplate` along with the form.
+      const baseOptions = route.payloadMeta?.createOptions as PaneTemplateCreateOptions | undefined;
       const values = collectWorkflowStringValues({
         fields: visibleFields,
         getFieldStringValue,
         values: route.values,
       });
       const createOptions: PaneTemplateCreateOptions = {
+        ...baseOptions,
         values,
-        arg: argPlaceholder ? values[argPlaceholder] : undefined,
+        arg: argPlaceholder ? values[argPlaceholder] : baseOptions?.arg,
       };
-      await pluginRegistry.createPaneFromTemplateAsyncFn(template.id, createOptions);
+      await pluginRegistry.createPaneFromTemplateAsync(template.id, createOptions);
       if (route.successLabel) {
         notify(route.successLabel, { type: "success" });
       }
-      break;
-    }
-    case "pane-setting": {
-      const field = route.payloadMeta?.field as PaneSettingField | undefined;
-      const paneId = route.payloadMeta?.paneId as string | undefined;
-      if (!field || !paneId) throw new Error("Setting context is missing.");
-      let nextValue: unknown;
-      switch (field.type) {
-        case "text":
-          nextValue = coerceFieldString(route.values[field.key]);
-          break;
-        default:
-          nextValue = coerceFieldString(route.values[field.key]);
-      }
-      await pluginRegistry.applyPaneSettingValueFn(paneId, field, nextValue);
       break;
     }
     default:

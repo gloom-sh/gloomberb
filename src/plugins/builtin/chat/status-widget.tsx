@@ -10,6 +10,7 @@ import {
   getPreferredChatOpenChannelId,
 } from "./channels";
 import { chatController, type ChatController } from "./controller";
+import { UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
 
 interface ChatStatusWidgetProps {
   controller?: Pick<ChatController, "getSnapshot" | "refreshSession" | "subscribe">;
@@ -61,6 +62,12 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
     createPaneFromTemplate("new-chat-pane", { arg: channelId });
   };
 
+  const openUnread = (event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    createPaneFromTemplate(UNREAD_INBOX_TEMPLATE_ID);
+  };
+
   useEffect(() => {
     const unsubscribe = controller.subscribe((nextSnapshot) => {
       setSnapshot(nextSnapshot);
@@ -79,20 +86,30 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
           <InlineAuthActions showSignup={false} variant="plain" />
         </>
       ) : (
-        <Button label={username ? `Open chat as ${username}` : "Open chat"} variant="plain" compact stopPropagation onPress={openChat}>
-          <Text fg={unreadCount > 0 ? colors.text : colors.textDim}>
-            <Span fg={colors.positive}>@</Span>
-            {username ? (
-              <>
-                {" "}
-                <Span fg={colors.positive}>{username}</Span>
-              </>
-            ) : null}
-          </Text>
+        <>
+          <Button label={username ? `Open chat as ${username}` : "Open chat"} variant="plain" compact stopPropagation onPress={openChat}>
+            <Text fg={unreadCount > 0 ? colors.text : colors.textDim}>
+              <Span fg={colors.positive}>@</Span>
+              {username ? (
+                <>
+                  {" "}
+                  <Span fg={colors.positive}>{username}</Span>
+                </>
+              ) : null}
+            </Text>
+          </Button>
           {unreadCount > 0 ? (
-            <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{` [${unreadCount}]`}</Text>
+            <Button
+              label={`Open ${unreadCount} unread chat messages`}
+              variant="plain"
+              compact
+              stopPropagation
+              onPress={openUnread}
+            >
+              <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{` [${unreadCount}]`}</Text>
+            </Button>
           ) : null}
-        </Button>
+        </>
       )}
     </Box>
   );

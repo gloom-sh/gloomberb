@@ -9,6 +9,7 @@ import {
   rowSymbol,
   summarizeToolArguments,
   toolResultTables,
+  toolRowHeadline,
   turnsFromConversation,
   type ASKGConversationState,
 } from "./model";
@@ -132,6 +133,109 @@ describe("askgReducer", () => {
       undoToken: "undo-1",
       undo: { status: "available" },
     });
+  });
+
+  test("a script reports how it ended on its own row and leaves the rows of its calls alone", () => {
+    const called = apply(withTurn(), {
+      seq: 1,
+      type: "tool-call",
+      turnId: "turn-1",
+      toolCallId: "script-1-1",
+      name: "pane.set_setting",
+      args: { paneId: "chart:main", key: "range", value: "5Y" },
+      writeTier: "ui-write",
+      requiresConfirmation: false,
+      preview: null,
+      timeoutMs: 10_000,
+      expiresAt: new Date().toISOString(),
+    });
+    const ran = askgReducer(called, {
+      type: "tool-result",
+      payload: {
+        turnId: "turn-1",
+        toolCallId: "script-1-1",
+        status: "ok",
+        truncated: false,
+        elapsedMs: 8,
+        undoToken: "undo-1",
+      },
+    });
+    const state = apply(
+      ran,
+      { seq: 2, type: "tool-result-ack", turnId: "turn-1", toolCallId: "script-1-1" },
+      {
+        seq: 3,
+        type: "tool-executed",
+        turnId: "turn-1",
+        toolCallId: "script-1-1",
+        name: "pane.set_setting",
+        source: "remote-op",
+        status: "ok",
+        summary: { elapsedMs: 9, truncated: false },
+      },
+      {
+        seq: 4,
+        type: "tool-executed",
+        turnId: "turn-1",
+        toolCallId: "script-1-2",
+        name: "news.search",
+        source: "server",
+        status: "error",
+        summary: { elapsedMs: 40, truncated: false, note: "Search failed." },
+      },
+      // An echo that calls the client's own call a server one changes nothing.
+      {
+        seq: 5,
+        type: "tool-executed",
+        turnId: "turn-1",
+        toolCallId: "script-1-1",
+        name: "pane.set_setting",
+        source: "server",
+        status: "ok",
+        summary: { elapsedMs: 9, truncated: false, note: "echo" },
+      },
+      // The script itself is reported last, once its calls are done.
+      {
+        seq: 6,
+        type: "tool-executed",
+        turnId: "turn-1",
+        toolCallId: "script-1",
+        name: "run_script",
+        source: "server",
+        status: "partial",
+        summary: { rowCount: 2, elapsedMs: 1_200, truncated: false, note: "2 calls, 1 failed, 1.2 s" },
+      },
+    );
+
+    const [call, serverCall, script, ...rest] = state.turns[0]!.tools;
+    expect(rest).toEqual([]);
+    expect(call).toMatchObject({
+      toolCallId: "script-1-1",
+      name: "pane.set_setting",
+      origin: "client",
+      writeTier: "ui-write",
+      argumentSummary: "chart:main \u00b7 key=range \u00b7 value=5Y",
+      undoToken: "undo-1",
+      undo: { status: "available" },
+    });
+    expect(serverCall).toMatchObject({ name: "news.search", origin: "server", status: "error" });
+    expect(toolRowHeadline(script!)).toEqual({ label: "Script", summary: "" });
+    expect(describeToolStatus(script!)).toBe("partial");
+    expect(script?.note).toBe("2 calls, 1 failed, 1.2 s");
+
+    // A clean run says how it went on the row itself.
+    const clean = apply(withTurn(), {
+      seq: 1,
+      type: "tool-executed",
+      turnId: "turn-1",
+      toolCallId: "script-2",
+      name: "run_script",
+      source: "server",
+      status: "ok",
+      summary: { rowCount: 3, elapsedMs: 1_200, truncated: false, note: "3 calls, 1.2 s" },
+    }).turns[0]!.tools[0]!;
+    expect(toolRowHeadline(clean)).toEqual({ label: "Script", summary: "3 calls, 1.2 s" });
+    expect(describeToolStatus(clean)).toBe("done");
   });
 
   test("an error event describes the turn instead of leaving it streaming", () => {
@@ -320,6 +424,50 @@ describe("stored conversations", () => {
     expect(turns[0]?.tools[0]?.result).toBeUndefined();
     expect(turns[1]).toMatchObject({ prompt: "and 10y?", answer: "About 4.4%." });
     expect(turns[2]).toMatchObject({ prompt: "", answer: "Orphan." });
+  });
+
+  test("a stored script reads as it did live, its calls in their own rows", () => {
+    const at = "2026-09-20T10:00:00.000Z";
+    const [turn] = turnsFromConversation({
+      id: "conv-3",
+      title: "Margins",
+      messageCount: 2,
+      lastMessageAt: at,
+      createdAt: at,
+      updatedAt: at,
+      messages: [
+        { seq: 1, role: "user", text: "compare margins", tools: [], turnId: "t1", createdAt: at },
+        {
+          seq: 2,
+          role: "assistant",
+          text: "Partly.",
+          tools: [
+            { toolCallId: "s-1", name: "fa", origin: "client", status: "ok", args: { symbol: "NVDA" }, rowCount: 8 },
+            { toolCallId: "s-2", name: "fa", origin: "client", status: "error", args: { symbol: "AMD" }, note: "No filings." },
+            {
+              toolCallId: "s",
+              name: "run_script",
+              origin: "server",
+              status: "timeout",
+              // Whatever the platform kept of the call, the code is not a summary.
+              args: { code: "const a = await tools.fa({ symbol: 'NVDA' });" },
+              rowCount: 2,
+              note: "Script timed out after 2 calls, 20.0 s",
+            },
+          ],
+          turnId: "t1",
+          createdAt: at,
+        },
+      ],
+    });
+
+    expect(turn?.tools.map((row) => [toolRowHeadline(row).label, describeToolStatus(row)])).toEqual([
+      ["fa", "8 rows"],
+      ["fa", "failed"],
+      ["Script", "timed out"],
+    ]);
+    expect(toolRowHeadline(turn!.tools[2]!).summary).toBe("");
+    expect(turn?.tools[2]?.note).toBe("Script timed out after 2 calls, 20.0 s");
   });
 
   test("opening a conversation replaces the turns and starting one clears them", () => {

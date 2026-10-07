@@ -52,6 +52,7 @@ export function SessionMoversBody(props: {
   session: UsSession;
   focused: boolean;
   width: number;
+  height: number;
   summaryQuotes: MarketSummaryQuote[];
   liveStreaming: boolean;
 }) {
@@ -66,11 +67,13 @@ export function SessionMoversBody(props: {
     entitled ? null : { info: summaryFooterSegments(props.summaryQuotes) }
   ), [entitled, props.summaryQuotes]);
 
-  if (!access.signedIn) return <SignInWall action="see pre-market, after-hours and gap movers" />;
-  if (!access.emailVerified) return <SignInWall action="see pre-market, after-hours and gap movers" needsVerification />;
+  if (!access.signedIn) return <SignInWall placement="most-signin" width={props.width} height={props.height} action="see pre-market, after-hours and gap movers" />;
+  if (!access.emailVerified) return <SignInWall placement="most-signin" width={props.width} height={props.height} action="see pre-market, after-hours and gap movers" needsVerification />;
   if (!entitled) {
     return (
       <ProWall
+        placement="most-wall"
+        width={props.width} height={props.height}
         title="Pre-market, after-hours and gap movers are part of Gloom Cloud Pro."
         message="The whole listed US market from 04:00 to 20:00, with relative volume, VWAP, float and catalysts."
       />

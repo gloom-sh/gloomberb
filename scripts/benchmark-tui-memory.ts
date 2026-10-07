@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
-import { createDefaultConfig } from "../src/types/config";
+import { createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../src/types/config";
 import { sendRemoteControlRequest } from "../src/remote/client";
 import { positiveInteger, runTmux, shellQuote, takeOption, waitForFile } from "./tui-benchmark-harness";
 
@@ -13,20 +13,33 @@ import { positiveInteger, runTmux, shellQuote, takeOption, waitForFile } from ".
  * RSS rises and falls with the collector and cannot tell a leak from a late GC.
  */
 
-// Liquid US listings, so every one resolves on the free delayed feed.
+// Qualify the same 120 US listings: bare symbols can stop at an ambiguity
+// picker, leaving the stores below their cap when the plateau measurement starts.
 const TICKERS = [
-  "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "BRK-B", "JPM",
-  "LLY", "V", "UNH", "XOM", "MA", "JNJ", "PG", "HD", "COST", "ABBV",
-  "MRK", "CVX", "ORCL", "KO", "PEP", "ADBE", "WMT", "BAC", "CRM", "NFLX",
-  "AMD", "TMO", "MCD", "CSCO", "ACN", "LIN", "ABT", "INTC", "DHR", "WFC",
-  "DIS", "TXN", "PM", "CAT", "VZ", "INTU", "AMGN", "IBM", "QCOM", "NEE",
-  "UNP", "GE", "HON", "LOW", "SPGI", "AMAT", "RTX", "BA", "GS", "NKE",
-  "PFE", "ISRG", "T", "BKNG", "ELV", "SBUX", "MDT", "BLK", "PLD", "DE",
-  "LMT", "SYK", "GILD", "ADP", "MDLZ", "TJX", "CB", "MMC", "ADI", "VRTX",
-  "REGN", "C", "SCHW", "MO", "LRCX", "CI", "ZTS", "BSX", "SO", "PGR",
-  "ETN", "MU", "DUK", "BDX", "SLB", "EQIX", "AON", "ITW", "CME", "NOC",
-  "PANW", "APD", "CSX", "CL", "SNPS", "ICE", "SHW", "KLAC", "WM", "MCK",
-  "FCX", "EOG", "CDNS", "USB", "GD", "HUM", "EMR", "MPC", "PNC", "ORLY",
+  "AAPL:NASDAQ", "MSFT:NASDAQ", "NVDA:NASDAQ", "AMZN:NASDAQ", "GOOGL:NASDAQ",
+  "META:NASDAQ", "TSLA:NASDAQ", "AVGO:NASDAQ", "BRK.B:NYSE", "JPM:NYSE",
+  "LLY:NYSE", "V:NYSE", "UNH:NYSE", "XOM:NYSE", "MA:NYSE",
+  "JNJ:NYSE", "PG:NYSE", "HD:NYSE", "COST:NASDAQ", "ABBV:NYSE",
+  "MRK:NYSE", "CVX:NYSE", "ORCL:NYSE", "KO:NYSE", "PEP:NASDAQ",
+  "ADBE:NASDAQ", "WMT:NASDAQ", "BAC:NYSE", "CRM:NYSE", "NFLX:NASDAQ",
+  "AMD:NASDAQ", "TMO:NYSE", "MCD:NYSE", "CSCO:NASDAQ", "ACN:NYSE",
+  "LIN:NASDAQ", "ABT:NYSE", "INTC:NASDAQ", "DHR:NYSE", "WFC:NYSE",
+  "DIS:NYSE", "TXN:NASDAQ", "PM:NYSE", "CAT:NYSE", "VZ:NYSE",
+  "INTU:NASDAQ", "AMGN:NASDAQ", "IBM:NYSE", "QCOM:NASDAQ", "NEE:NYSE",
+  "UNP:NYSE", "GE:NYSE", "HON:NASDAQ", "LOW:NYSE", "SPGI:NYSE",
+  "AMAT:NASDAQ", "RTX:NYSE", "BA:NYSE", "GS:NYSE", "NKE:NYSE",
+  "PFE:NYSE", "ISRG:NASDAQ", "T:NYSE", "BKNG:NASDAQ", "ELV:NYSE",
+  "SBUX:NASDAQ", "MDT:NYSE", "BLK:NYSE", "PLD:NYSE", "DE:NYSE",
+  "LMT:NYSE", "SYK:NYSE", "GILD:NASDAQ", "ADP:NASDAQ", "MDLZ:NASDAQ",
+  "TJX:NYSE", "CB:NYSE", "MMC:NYSE", "ADI:NASDAQ", "VRTX:NASDAQ",
+  "REGN:NASDAQ", "C:NYSE", "SCHW:NYSE", "MO:NYSE", "LRCX:NASDAQ",
+  "CI:NYSE", "ZTS:NYSE", "BSX:NYSE", "SO:NYSE", "PGR:NYSE",
+  "ETN:NYSE", "MU:NASDAQ", "DUK:NYSE", "BDX:NYSE", "SLB:NYSE",
+  "EQIX:NASDAQ", "AON:NYSE", "ITW:NYSE", "CME:NASDAQ", "NOC:NYSE",
+  "PANW:NASDAQ", "APD:NYSE", "CSX:NASDAQ", "CL:NYSE", "SNPS:NASDAQ",
+  "ICE:NYSE", "SHW:NYSE", "KLAC:NASDAQ", "WM:NYSE", "MCK:NYSE",
+  "FCX:NYSE", "EOG:NYSE", "CDNS:NASDAQ", "USB:NYSE", "GD:NYSE",
+  "HUM:NYSE", "EMR:NYSE", "MPC:NYSE", "PNC:NYSE", "ORLY:NASDAQ",
 ] as const;
 
 const options = parseOptions(process.argv.slice(2));
@@ -45,7 +58,7 @@ try {
     "utf8",
   );
   await runTmux(["new-session", "-d", "-s", session, "-x", "140", "-y", "45", "-c", options.root,
-    `env HOME=${shellQuote(sandboxHome)} GLOOMBERB_HEAP_PROBE=${shellQuote(heapLog)} `
+    `env GLOOMBERB_HOME=${shellQuote(dataDir)} GLOOMBERB_HEAP_PROBE=${shellQuote(heapLog)} `
     + `bun --preload ${shellQuote(join(import.meta.dir, "heap-probe.ts"))} src/cli/entry.ts`]);
 
   const endpointPath = join(dataDir, "remote-control.tui.json");
@@ -62,6 +75,7 @@ try {
       { dataDir, appKind: "tui" },
     );
     if (!response.ok) throw new Error(`ticker.navigate ${symbol} failed: ${JSON.stringify(response)}`);
+    await waitForTickerPane(symbol);
     await Bun.sleep(options.intervalMs);
     samples.push({ tickers: index + 1, heapMiB: await heapMiB(pid) });
   }
@@ -89,6 +103,33 @@ try {
 } finally {
   await runTmux(["kill-session", "-t", session], false);
   await rm(sandbox, { recursive: true, force: true });
+}
+
+// ticker.navigate acknowledges the command before its asynchronous listing lookup.
+// Count it only after the requested ticker actually replaces the focused pane.
+async function waitForTickerPane(symbol: string): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const response = await sendRemoteControlRequest(
+      { type: "get", resource: "app://panes", include: ["app"] },
+      { dataDir, appKind: "tui" },
+    );
+    if (!response.ok) throw new Error(`Could not inspect ticker pane: ${JSON.stringify(response)}`);
+    const app = response.state?.app as { commandBarOpen?: boolean } | undefined;
+    const panes = response.data as Array<{
+      focused?: boolean;
+      paneId?: string;
+      placement?: string;
+      binding?: { kind?: string; symbol?: string };
+    }>;
+    if (app?.commandBarOpen === false && panes.some((pane) =>
+      pane.focused && pane.paneId === TICKER_RESEARCH_PANE_ID
+      && ["docked", "floating", "detached"].includes(pane.placement ?? "")
+      && pane.binding?.kind === "fixed" && pane.binding.symbol === symbol,
+    )) return;
+    await Bun.sleep(50);
+  }
+  throw new Error(`ticker.navigate ${symbol} did not open the requested listing within 15 seconds.`);
 }
 
 async function heapMiB(pid: number): Promise<number> {

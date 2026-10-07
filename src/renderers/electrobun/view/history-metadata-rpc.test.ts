@@ -6,7 +6,7 @@ import type { PriceHistoryResult } from "../../../types/price-history";
 import { HistoryRetentionError, type HistoryRetention } from "../../../sources/history-retention";
 import { DesktopCapabilityBridge } from "../bun/desktop/capability-bridge";
 import { createRpcLoopback } from "../../../test-support/rpc-loopback";
-import { decodeRpcResponse, decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "./rpc-codec";
+import { decodeRpcResponse, decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "../shared/rpc-codec";
 
 function transport(provider: DataProvider) {
   const registry = new CapabilityRegistry();
@@ -23,7 +23,7 @@ test("history metadata methods cross desktop capabilities and JSON with Dates, a
   const calls: unknown[][] = [];
   const result: PriceHistoryResult = { points: [{ date: new Date("2026-09-21T19:45:00Z"), close: 338.89, volume: 2218511 }],
     resolution: "15m", sourceKey: "provider:gloomberb-cloud", session: { version: 1, kind: "regular", calendar: "us-equity",
-      timeZone: "America/New_York", symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "yahoo",
+      timeZone: "America/New_York", symbol: "AAPL", exchange: "NASDAQ", interval: "15min", source: "gloom",
       timestampConvention: "bar-open", barAlignment: "session-open", observedAt: Date.parse("2026-09-22T12:42:12Z") } };
   const load = async (...args: unknown[]) => { calls.push(args); return result; };
   const { request } = transport({ id: "test", name: "History", getPriceHistoryWithMetadata: load,
@@ -41,7 +41,7 @@ test("history metadata methods cross desktop capabilities and JSON with Dates, a
 
 test("metadata-aware desktop history preserves typed retention errors and does not advertise unsupported methods", async () => {
   const now = Math.floor(Date.now() / 1000) * 1000;
-  const retention: HistoryRetention = { version: 1, source: "yahoo", symbol: "BTC-USD", exchange: "CCC", interval: "15min",
+  const retention: HistoryRetention = { version: 1, source: "gloom", symbol: "BTC-USD", exchange: "CCC", interval: "15min",
     requestedStart: now - 90 * 86_400_000, requestedEnd: now, observedAt: now, availableStart: now - 60 * 86_400_000 };
   const { request } = transport({ id: "test", name: "History", getDetailedPriceHistoryWithMetadata: async () => {
     throw new HistoryRetentionError(retention);

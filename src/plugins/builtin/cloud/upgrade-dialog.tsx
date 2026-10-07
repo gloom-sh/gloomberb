@@ -19,13 +19,13 @@ import {
   formatCloudPrice,
   formatTrialEnd,
   monthsFreeYearly,
+  trialDaysOf,
 } from "../account-management/model";
 
 const CONTENT_WIDTH = 64;
 /** Border plus padding the terminal dialog host draws around the content. */
 const TERMINAL_DIALOG_CHROME = 6;
 const FEATURE_LABEL_WIDTH = 16;
-const DEFAULT_TRIAL_DAYS = 7;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** What the account can buy right now. Null fields mean the server could not say. */
@@ -66,7 +66,7 @@ export function upgradeDialogCopy(
   }
   const price = formatCloudPrice(offer.pricing, interval);
   if (offer.trialAvailable === true) {
-    const days = offer.pricing?.trialDays ?? DEFAULT_TRIAL_DAYS;
+    const days = trialDaysOf(offer.pricing);
     const firstCharge = formatTrialEnd(new Date(now.getTime() + days * MS_PER_DAY));
     return {
       title: tf("Try Pro free for {days} days", { days }),
@@ -88,6 +88,31 @@ export function upgradeDialogCopy(
   };
 }
 
+export interface ProStepCopy {
+  confirmLabel: string;
+  /** The line under the price. */
+  note: string;
+}
+
+/**
+ * Onboarding's Pro step makes the pitch itself and opens checkout without the
+ * sheet, so it keeps the sheet's rule: the free trial and "$0 today" only when
+ * the server confirmed this account still has its trial.
+ */
+export function proStepCopy(offer: UpgradeOffer | null): ProStepCopy {
+  if (offer?.trialAvailable === true) {
+    const days = trialDaysOf(offer.pricing);
+    return {
+      confirmLabel: tf("Start {days}-day free trial", { days }),
+      note: tf("$0 today, free for {days} days. Card required. Cancel anytime.", { days }),
+    };
+  }
+  return {
+    confirmLabel: t("Continue to checkout"),
+    note: offer?.trialAvailable === false ? t("Billed today. Cancel anytime.") : t("Card required. Cancel anytime."),
+  };
+}
+
 /** Ranked like the onboarding Pro step: the data first, then what reads it. */
 const PRO_FEATURES: Array<{ label: string; value: string }> = [
   { label: "Real-time data", value: "Free runs 15 min behind on quotes, 12 h on news" },
@@ -96,6 +121,7 @@ const PRO_FEATURES: Array<{ label: string; value: string }> = [
   { label: "Flow and X", value: "Options flow, the X feed and sentiment" },
 ];
 
+/** Pricing and this account's trial and billing state; never rejects, unknowns come back null. */
 export async function loadUpgradeOffer(): Promise<UpgradeOffer> {
   const [pricing, account] = await Promise.allSettled([
     apiClient.getCloudPricing(),
@@ -109,7 +135,7 @@ export async function loadUpgradeOffer(): Promise<UpgradeOffer> {
   };
 }
 
-export function UpgradeDialog({
+function UpgradeDialog({
   dialogId,
   resolve,
   dismiss,

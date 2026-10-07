@@ -35,8 +35,9 @@ function runtime() {
   const notifications: unknown[] = [];
   const requests = new Map<string, PromiseWithResolvers<TickerOpenTarget | null>>();
   const feedbackOwners = new Map<string, (() => boolean) | undefined>();
-  const registry = { panes: new Map(), getTermSizeFn: () => ({ width: 120, height: 40 }),
-    notify: (message: unknown) => notifications.push(message) } as any;
+  const registry = { panes: new Map(), getTermSize: () => ({ width: 120, height: 40 }),
+    notify: (message: unknown) => notifications.push(message),
+    bindHost(actions: object) { Object.assign(this, actions); return () => {}; } } as any;
   const persistLayout = (layout: LayoutConfig) => {
     stateRef.current = { ...stateRef.current, config: { ...stateRef.current.config, layout } };
   };
@@ -70,7 +71,7 @@ test("replacement preserves an explicit public selection or broker contract inst
     const selected = target("ES", instrument);
     // The record's default is intentionally a competing instrument.
     selected.ticker.metadata.broker_contracts = [{ ...future, brokerInstanceId: "taxable", conId: 456 }];
-    app.registry.navigateTickerFn("ES", { sourcePaneId: "first" });
+    app.registry.navigateTicker("ES", { sourcePaneId: "first" });
     app.requests.get("ES")!.resolve(selected);
     await settle();
     expect(app.binding()).toEqual({ kind: "fixed", symbol: "ES", instrument, listing: selected.listing });
@@ -82,9 +83,9 @@ test("replacement preserves an explicit public selection or broker contract inst
 test("a newer navigation owns the pane across registry rebinding and stale failure cannot notify", async () => {
   for (const staleFails of [false, true]) {
     const app = runtime();
-    app.registry.navigateTickerFn("OLD", { sourcePaneId: "first" });
+    app.registry.navigateTicker("OLD", { sourcePaneId: "first" });
     app.rebind();
-    app.registry.navigateTickerFn("NEW", { sourcePaneId: "first" });
+    app.registry.navigateTicker("NEW", { sourcePaneId: "first" });
     expect(app.feedbackOwners.get("OLD")?.()).toBe(false);
     expect(app.feedbackOwners.get("NEW")?.()).toBe(true);
     const selected = target("NEW", null);
@@ -102,10 +103,10 @@ test("a newer navigation owns the pane across registry rebinding and stale failu
 
 test("independent pane navigation completes without reclaiming focus from the other pane", async () => {
   const app = runtime();
-  app.registry.navigateTickerFn("LEFT", { sourcePaneId: "first" });
+  app.registry.navigateTicker("LEFT", { sourcePaneId: "first" });
   app.stateRef.current = { ...app.stateRef.current, focusedPaneId: "second" };
   app.rebind();
-  app.registry.navigateTickerFn("RIGHT", { sourcePaneId: "second" });
+  app.registry.navigateTicker("RIGHT", { sourcePaneId: "second" });
   expect(app.feedbackOwners.get("LEFT")?.()).toBe(false);
   expect(app.feedbackOwners.get("RIGHT")?.()).toBe(true);
   app.requests.get("RIGHT")!.resolve(target("RIGHT", future));
@@ -121,7 +122,7 @@ test("independent pane navigation completes without reclaiming focus from the ot
 test("a pending result cannot overwrite an intervening direct selection or reopen a closed destination", async () => {
   for (const close of [false, true]) {
     const app = runtime();
-    app.registry.navigateTickerFn("SLOW", { sourcePaneId: "first" });
+    app.registry.navigateTicker("SLOW", { sourcePaneId: "first" });
     const layout = app.stateRef.current.config.layout;
     const replacement: PaneBinding = { kind: "fixed", symbol: "DIRECT", instrument: future };
     app.persistLayout({ ...layout, instances: close ? layout.instances.filter(pane => pane.instanceId !== "first")

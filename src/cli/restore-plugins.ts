@@ -1,7 +1,7 @@
 import { saveConfig } from "../data/config/store";
 import { loadCliConfigIfAvailable } from "./context";
 import { getPluginsDir } from "../plugins/loader";
-import { seedExtractedPlugins } from "../plugins/seed";
+import { seedExtractedPlugins } from "../plugins/extracted-plugins";
 import { debugLog } from "../utils/debug-log";
 
 const log = debugLog.createLogger("plugin-seed");

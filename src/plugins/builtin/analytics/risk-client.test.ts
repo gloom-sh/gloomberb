@@ -98,3 +98,42 @@ test("without a current quote a dated USD history marks the holding at its lates
   delete unlabelled.providerMeta!.normalizedExchange;
   expect(() => validateRiskHistory(unlabelled, { symbol: "SPY", exchange: "LSE" }, null, now)).toThrow("Current USD listing identity unavailable");
 });
+
+test("a cancelled load stops requesting histories and passes the signal to each request", async () => {
+  const controller = new AbortController();
+  const requested: string[] = [];
+  const signals: Array<AbortSignal | undefined> = [];
+  const client = {
+    getCloudQuotesBatch: async (
+      targets: Array<{ symbol: string; exchange: string }>,
+      _mode: string,
+      options?: { signal?: AbortSignal },
+    ) => {
+      signals.push(options?.signal);
+      return { status: "success", data: { items: targets.map((row) => ({ ...row, status: "success", data: riskQuote(row.symbol, row.exchange) })) } };
+    },
+    getCloudHistory: async (
+      symbol: string,
+      _exchange: string,
+      _params: unknown,
+      options?: { signal?: AbortSignal },
+    ) => {
+      requested.push(symbol);
+      signals.push(options?.signal);
+      // The turn is cancelled while the first history is loading.
+      controller.abort();
+      return riskHistory();
+    },
+    getCloudFredSeries: async (_id: string, _params: unknown, options?: { signal?: AbortSignal }) => {
+      signals.push(options?.signal);
+      throw new Error("FRED unavailable");
+    },
+  };
+  const holdings = Array.from({ length: 40 }, (_, index) => ({ symbol: `H${index}`, exchange: "NASDAQ" }));
+
+  await expect(fetchPortfolioRiskMarket(holdings, client as any, now, controller.signal)).rejects.toThrow();
+
+  // Four workers each had one request in flight; none started another.
+  expect(requested.length).toBeLessThanOrEqual(4);
+  expect(signals.every((signal) => signal === controller.signal)).toBe(true);
+});

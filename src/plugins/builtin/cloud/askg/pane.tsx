@@ -40,6 +40,7 @@ import { MarkdownText } from "../../../../components/markdown-text";
 import { useShortcut } from "../../../../react/input";
 import {
   useAppDispatch,
+  useAppGetState,
   useAppSelector,
   usePaneAppConfig,
 } from "../../../../state/app/context";
@@ -48,6 +49,7 @@ import { useRemoteControlHandler } from "../../../../remote/app-host";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
 import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
+import { countEscapeTowardClose } from "../../../../utils/double-escape-close";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
@@ -67,7 +69,9 @@ import {
 import { confirmDialog } from "../../../../components/ui/confirm-dialog";
 import { useDialog, type PromptContext } from "../../../../ui/dialog";
 import { subscribeASKGQuestions } from "./pending-question";
+import { buildASKGUserData } from "./user-data";
 import { ASKGConversationSidebar } from "./sidebar";
+import { ASKGUndoManager } from "./undo";
 import {
   activeTurn,
   canRetryASKGError,
@@ -78,6 +82,7 @@ import {
   pendingConfirmation,
   rowSymbol,
   toolResultTables,
+  toolRowHeadline,
   type ASKGConversationState,
   type ASKGResultTable,
   type ASKGToolRow,
@@ -138,7 +143,7 @@ function canUndo(row: ASKGToolRow): boolean {
   return !!row.undoToken && (!row.undo || row.undo.status === "available");
 }
 
-function ToolTimelineRow({
+export function ToolTimelineRow({
   row,
   width,
   selected,
@@ -162,6 +167,7 @@ function ToolTimelineRow({
   const marker = hasRows ? (expanded ? "▾" : "▸") : "·";
   const tier = tierLabel(row);
   const status = describeToolStatus(row);
+  const { label, summary } = toolRowHeadline(row);
   const undoLabel = row.undo?.status === "running"
     ? "undoing…"
     : row.undo?.status === "done"
@@ -171,23 +177,24 @@ function ToolTimelineRow({
         : row.undoToken
           ? "undo"
           : null;
-  const trailing = ` ${status}${row.origin === "server" ? " · Gloom" : ""}`;
-  const summaryWidth = Math.max(
-    6,
-    width - marker.length - row.name.length - trailing.length - (tier ? tier.length + 3 : 0) - 4,
-  );
+  // The row lays its parts out with a one-cell gap between each: marker, name,
+  // "  " + summary, spacer, tier, status, server mark. A summary that leaves no
+  // room for them pushes the row onto two lines, over the note below it.
+  const parts = [marker, label, "  ", "", ...(tier ? [`${tier}  `] : []), status, ...(row.origin === "server" ? [" · Gloom"] : [])];
+  const fixedWidth = parts.reduce((total, part) => total + part.length, 0) + parts.length;
+  const summaryWidth = Math.max(6, width - fixedWidth);
 
   return (
     <Box ref={selected ? selectedRowRef : undefined} flexDirection="column">
       <ActionRow
-        label={row.name}
+        label={label}
         expanded={hasRows ? expanded : undefined}
         active={selected}
         width={width}
         onPress={() => { onSelect(); onToggle(); }}
       >
-        {row.argumentSummary ? (
-          <Text fg={colors.textDim}>{`  ${truncateWithEllipsis(row.argumentSummary, summaryWidth)}`}</Text>
+        {summary ? (
+          <Text fg={colors.textDim}>{`  ${truncateWithEllipsis(summary, summaryWidth)}`}</Text>
         ) : null}
         <Box flexGrow={1} />
         {tier ? <Text fg={row.writeTier === "ui-write" ? colors.textMuted : colors.warning}>{`${tier}  `}</Text> : null}
@@ -228,7 +235,7 @@ function ToolTimelineRow({
 /** Rows the confirmation block reserves for the dry run preview. */
 const MAX_PREVIEW_LINES = 4;
 
-export function confirmationBlockHeight(row: ASKGToolRow): number {
+function confirmationBlockHeight(row: ASKGToolRow): number {
   return 3 + Math.min(MAX_PREVIEW_LINES, previewLines(row.preview).length);
 }
 
@@ -505,6 +512,18 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   remoteHandlerRef.current = remoteHandler;
   const contextRef = useRef({ symbol: activeSymbol, paneId });
   contextRef.current = { symbol: activeSymbol, paneId };
+  // Read when a question is sent, so portfolio and ticker changes do not re-render the pane.
+  const getAppState = useAppGetState();
+  const getAppStateRef = useRef(getAppState);
+  getAppStateRef.current = getAppState;
+
+  // Each call and each undo gets a fresh executor, so the tokens live here:
+  // an executor's own manager would forget them as soon as its call returned.
+  const undoManager = useMemo(() => new ASKGUndoManager((request) => {
+    const handler = remoteHandlerRef.current;
+    if (!handler) return Promise.reject(new Error("This window cannot undo tool calls."));
+    return handler(request);
+  }), []);
 
   const controller = useMemo(() => new ASKGSessionController({
     transport: apiClient.askg,
@@ -520,14 +539,24 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
           manifestHash: manifest.manifestHash,
           skipped: [],
         },
+        undoManager,
       });
     },
     client: { kind: clientKind(), version: CLIENT_VERSION },
-    getContext: () => ({
-      ...(contextRef.current.symbol ? { symbol: contextRef.current.symbol } : {}),
-      paneId: contextRef.current.paneId,
-    }),
-  }), []);
+    getContext: () => {
+      const state = getAppStateRef.current();
+      const userData = buildASKGUserData({
+        config: state.config,
+        brokerAccounts: state.brokerAccounts,
+        tickers: state.tickers.values(),
+      });
+      return {
+        ...(contextRef.current.symbol ? { symbol: contextRef.current.symbol } : {}),
+        paneId: contextRef.current.paneId,
+        ...(userData ? { userData } : {}),
+      };
+    },
+  }), [undoManager]);
 
   useEffect(() => () => controller.dispose(), [controller]);
 
@@ -904,6 +933,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (inputFocused) {
       if (isPlainKey(event, "escape")) {
         consume();
+        // Leaving an empty composer counts toward a double-Esc close; a draft does not.
+        const value = inputRef.current?.editBuffer.getText() ?? inputValue;
+        if (!value.trim()) countEscapeTowardClose(event);
         blurInput();
       }
       return;
@@ -1066,6 +1098,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   if (!planAccess.emailVerified) {
     return (
       <SignInWall
+        placement="gp-signin"
         action="ask questions about any pane in the terminal"
         needsVerification={planAccess.signedIn}
       />
@@ -1109,6 +1142,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         width={nativePaneChrome ? undefined : bodyWidth}
         height={nativePaneChrome ? "100%" : height}
         flexGrow={nativePaneChrome ? 1 : undefined}
+        // Without shrink the column takes the width of its longest line, so a
+        // tool note ran past the pane's edge on desktop instead of wrapping.
+        flexShrink={nativePaneChrome ? 1 : undefined}
         minWidth={0}
         overflow="hidden"
         onMouseDown={() => setSidebarFocused(false)}

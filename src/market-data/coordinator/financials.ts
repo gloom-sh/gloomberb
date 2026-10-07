@@ -15,11 +15,13 @@ import { createBaselineChartRequest } from "./chart";
 import {
   EXPECTED_EMPTY,
   SNAPSHOT_CACHE_TTL_MS,
+  SNAPSHOT_FAILURE_RETRY_MS,
   classifyError,
   createAttempt,
   errorEntry,
   hasCachedSnapshotData,
   hasFreshEntryData,
+  hasRecentFailedAttempt,
   heldQuoteSupersedes,
   loadingEntry,
   readyEntry,
@@ -110,6 +112,24 @@ function storeFinancialsSnapshot(
   return entry;
 }
 
+/** Fresh data, or a failure too recent to ask about again unless forced. */
+function canReuseSnapshotEntry(entry: QueryEntry<TickerFinancials>): boolean {
+  return hasFreshEntryData(entry, SNAPSHOT_CACHE_TTL_MS) || hasRecentFailedAttempt(entry, SNAPSHOT_FAILURE_RETRY_MS);
+}
+
+function storeFinancialsFailure(
+  stores: FinancialCacheStores,
+  key: string,
+  providerId: string,
+  startedAt: number,
+  error: unknown,
+): QueryEntry<TickerFinancials> {
+  const classified = classifyError(error);
+  const status = EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error";
+  const attempt = createAttempt(providerId, startedAt, status, classified.reasonCode, classified.message);
+  return stores.snapshotStore.update(key, (current) => errorEntry(current, attempt));
+}
+
 type CoordinatorSingleFlight = <T>(key: string, task: () => Promise<T>) => Promise<T>;
 type CoordinatorLoadOptions = { forceRefresh?: boolean };
 
@@ -130,7 +150,7 @@ export async function loadFinancialsSnapshotEntry({
 }: LoadFinancialsSnapshotEntryOptions): Promise<QueryEntry<TickerFinancials>> {
   const key = buildSnapshotKey(instrument);
   const current = stores.snapshotStore.get(key);
-  if (!options.forceRefresh && hasFreshEntryData(current, SNAPSHOT_CACHE_TTL_MS)) {
+  if (!options.forceRefresh && canReuseSnapshotEntry(current)) {
     return current;
   }
   const flightKey = options.forceRefresh ? `${key}|refresh` : key;
@@ -158,11 +178,8 @@ export async function loadFinancialsSnapshotEntry({
       });
       return entry;
     } catch (error) {
-      const classified = classifyError(error);
-      const status = EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error";
-      const attempt = createAttempt(dataProvider.id, startedAt, status, classified.reasonCode, classified.message);
-      traceMarketData("snapshot:error", { key, symbol: instrument.symbol, ...classified });
-      return stores.snapshotStore.update(key, (current) => errorEntry(current, attempt));
+      traceMarketData("snapshot:error", { key, symbol: instrument.symbol, ...classifyError(error) });
+      return storeFinancialsFailure(stores, key, dataProvider.id, startedAt, error);
     }
   });
 }
@@ -189,7 +206,7 @@ export async function loadFinancialsSnapshotBatch({
   for (const instrument of uniqueInstruments) {
     const key = buildSnapshotKey(instrument);
     const current = stores.snapshotStore.get(key);
-    if (!options.forceRefresh && hasFreshEntryData(current, SNAPSHOT_CACHE_TTL_MS)) {
+    if (!options.forceRefresh && canReuseSnapshotEntry(current)) {
       results.set(key, current);
     } else {
       misses.push(instrument);
@@ -197,14 +214,22 @@ export async function loadFinancialsSnapshotBatch({
   }
 
   if (misses.length > 0 && dataProvider.getTickerFinancialsBatch) {
+    const startedAt = Date.now();
     const batchResults = await dataProvider.getTickerFinancialsBatch(
       misses.map((instrument) => cachedFinancialsTargetFromInstrument(instrument)),
       { forceRefresh: options.forceRefresh },
     );
     batchResults.forEach((item, index) => {
       const instrument = misses[index];
-      if (!instrument || !item.financials) return;
+      if (!instrument) return;
       const key = buildSnapshotKey(instrument);
+      if (!item.financials) {
+        // The batch already asked for this one, one by one where the batch
+        // answer fell short, and says why it failed. Asking again here would
+        // only send the same request a second time.
+        if (item.error != null) results.set(key, storeFinancialsFailure(stores, key, dataProvider.id, startedAt, item.error));
+        return;
+      }
       const source = item.financials.quote?.providerId ?? dataProvider.id;
       const attempts = [createAttempt(source, Date.now(), "success")];
       results.set(key, storeFinancialsSnapshot(stores, instrument, item.financials, source, attempts));

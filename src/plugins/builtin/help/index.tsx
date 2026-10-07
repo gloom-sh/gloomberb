@@ -7,6 +7,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiHost } from "../../../ui";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
+import { apiClient, type CloudPricing } from "../../../api-client";
+import { trialDaysOf } from "../account-management/model";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { requestFeedbackDialog } from "../../../components/feedback-dialog";
@@ -53,10 +55,26 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const tickerSearchBadges = actionBadges("ticker-search");
   const windowMoveBadges = actionBadges("window-move-mode");
   const windowResizeBadges = actionBadges("window-resize-mode");
+  const functionHelpBadges = actionBadges("function-help");
   useEffect(() => subscribeKeybindingCapture(() => setActiveTabId("shortcuts")), []);
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
   const [functionsSearching, setFunctionsSearching] = useState(false);
+  // The UPGRADE line says how long the trial is; the length comes from /pricing.
+  const [pricing, setPricing] = useState<CloudPricing | null>(null);
+  useEffect(() => {
+    if (activeTabId !== "basics" || pricing) return;
+    let live = true;
+    void apiClient.getCloudPricing()
+      .then((next) => {
+        if (live) setPricing(next);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [activeTabId, pricing]);
+  const trialDays = trialDaysOf(pricing);
   // The Functions search only owns the keyboard while its tab is showing.
   const selectTab = (value: string) => {
     setFunctionsSearching(false);
@@ -107,6 +125,22 @@ function HelpPane({ focused, width, height }: PaneProps) {
   // The footer binds each hint's key; a search field keeps its typing.
   usePaneFooter("help:tab", () => tabHints.length > 0 ? { hints: tabHints } : null, [tabHints]);
 
+  // What to do first, by task rather than by key: new people leave when they
+  // do not know any code or what the data is for.
+  const startSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [{
+    label: "Start Here",
+    items: [
+      entry("start-des", ["DES", "<ticker>"], "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls."),
+      entry("start-ap", ["AP"], "Add what you own. Alerts and emails then follow your portfolio."),
+      entry("start-pf", ["PF"], "Your portfolio and watchlists."),
+      entry("start-most", ["MOST"], "Today's biggest movers, with pre-market, after-hours and gap lists."),
+      entry("start-top", ["TOP"], "The top market stories, ranked."),
+      entry("start-ern", ["ERN"], "Upcoming earnings, with the move options imply."),
+      entry("start-eco", ["ECO"], "The economic calendar."),
+      entry("start-askg", ["ASKG", "<question>"], "Ask Gloom: answers that cite filings, calls and news."),
+    ],
+  }], []);
+
   const commandBarSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [{
     label: "Command Bar",
     items: [
@@ -117,7 +151,8 @@ function HelpPane({ focused, width, height }: PaneProps) {
         ? [entry("ticker-search", tickerSearchBadges, "Open ticker search directly.")]
         : []),
       entry("des", ["DES", "<ticker>"], "Open security details for a specific ticker."),
-      entry("upgrade", ["UPGRADE"], "Go Pro for real-time data at gloom.sh/cloud, free for 7 days."),
+      entry("help-card", ["HELP", "<function>"], "Open a function's help card: what it shows, its keys, how fresh its data is. HELP HELP reaches support."),
+      entry("upgrade", ["UPGRADE"], tf("Go Pro for real-time data at gloom.sh/cloud, free for {days} days.", { days: trialDays })),
       entry("move", ["Up/Down", "Ctrl+P/N"], "Move through command bar results."),
       entry("page", ["PageUp/PageDown", "Ctrl+Home/End"], "Jump a page, or to the first or last result."),
       entry("run", ["Enter", "Shift+Enter"], "Run the selected result or its secondary action."),
@@ -126,11 +161,8 @@ function HelpPane({ focused, width, height }: PaneProps) {
       entry("clear", ["Ctrl+U"], "Clear command text."),
       entry("delete-word", ["Ctrl+W"], "Delete the previous word in command text."),
       entry("back", ["Backspace"], "Go back from a nested command screen when the query is empty."),
-      entry("toggle", ["Space"], "Toggle command-bar plugin rows, toggles, and multi-select choices."),
-      entry("reorder", ["[", "]"], "Reorder ordered multi-select choices."),
-      entry("submit", shortcutDisplayMode === "terminal" ? ["Ctrl+S"] : [platformShortcut("S")], "Submit command bar forms from any field."),
     ],
-  }], [commandBarBadges, tickerSearchBadges]);
+  }], [commandBarBadges, tickerSearchBadges, trialDays]);
 
   const referenceSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [
     {
@@ -141,9 +173,20 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("tabs", ["Left/Right", "h/l"], "Switch tabs when a tab bar is focused."),
         entry("back", ["Esc", "Backspace"], "Go back from a detail view."),
         entry("pane-menu", actionBadges("pane-menu"), "Open the focused pane's menu: every action in the pane with its key, sorting, filters, tabs, toggles and the pane actions."),
+        ...(functionHelpBadges.length > 0
+          ? [entry("function-help", functionHelpBadges, "Open the focused pane's help card, with a link to its docs.")]
+          : []),
         entry("search", ["/"], "Search in the focused pane."),
         entry("warnings", ["!"], "Open the focused pane's data warnings."),
         entry("notification", [...actionBadges("notification-action"), ...actionBadges("notification-dismiss")], "Run or dismiss the newest notification."),
+      ],
+    },
+    {
+      label: "Forms",
+      items: [
+        entry("toggle", ["Space"], "Toggle a checkbox or a multi-select choice."),
+        entry("reorder", ["[", "]"], "Reorder ordered multi-select choices."),
+        entry("submit", shortcutDisplayMode === "terminal" ? ["Ctrl+S"] : [platformShortcut("S")], "Submit a form from any field."),
       ],
     },
     {
@@ -202,7 +245,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("commit", ["Enter", "Esc"], "Commit pending changes or exit window mode."),
       ],
     },
-  ], [copyBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
+  ], [copyBadges, functionHelpBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
 
   const renderContent = () => {
     switch (activeTabId) {
@@ -224,7 +267,16 @@ function HelpPane({ focused, width, height }: PaneProps) {
               <Box flexDirection="column">
                 <Text fg={colors.textDim}>{t("Gloomberb is command-bar first.")}</Text>
                 <Text fg={colors.textDim}>{t("Use the keyboard for speed, and the mouse for windows.")}</Text>
+                <Text fg={colors.textDim} wrapText>
+                  {commandBarBadges[0]
+                    ? tf("Not sure of a code? Press {key} and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.", { key: commandBarBadges[0] })
+                    : t("Not sure of a code? Type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.")}
+                </Text>
               </Box>
+            </Box>
+
+            <Box marginTop={1}>
+              <ShortcutTable sections={startSections} width={bodyWidth} />
             </Box>
 
             <Box marginTop={1}>

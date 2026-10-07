@@ -10,13 +10,30 @@ import {
 import {
   addPaneFloating,
   addPaneToLayout,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { PinTickerOptions } from "../../types/plugin";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import type { AppAction, AppState } from "../../state/app/context";
 import { recordFunctionOpen } from "../../telemetry/usage-counts";
+
+/** Points the portfolio pane the focus follows (or the main one) at a collection. */
+export function showCollectionInPortfolioPane(
+  state: AppState,
+  dispatch: Dispatch<AppAction>,
+  collectionId: string,
+): void {
+  const targetPaneId = resolveFollowBindingInstance(
+    state.config.layout,
+    state.focusedPaneId,
+    (instance) => instance.paneId === "portfolio-list",
+  )?.instanceId
+    ?? findPrimaryPaneInstance(state.config.layout, "portfolio-list")?.instanceId
+    ?? null;
+  if (!targetPaneId) return;
+  dispatch({ type: "UPDATE_PANE_STATE", paneId: targetPaneId, patch: { collectionId } });
+}
 
 interface CommandBarPaneActionsOptions {
   dispatch: Dispatch<AppAction>;
@@ -29,19 +46,6 @@ export function useCommandBarPaneActions({
   pluginRegistry,
   stateRef,
 }: CommandBarPaneActionsOptions) {
-  const setActiveCollection = useCallback((collectionId: string) => {
-    const currentState = stateRef.current;
-    const targetPaneId = resolveFollowBindingInstance(
-      currentState.config.layout,
-      currentState.focusedPaneId,
-      (instance) => instance.paneId === "portfolio-list",
-    )?.instanceId
-      ?? findPrimaryPaneInstance(currentState.config.layout, "portfolio-list")?.instanceId
-      ?? null;
-    if (!targetPaneId) return;
-    dispatch({ type: "UPDATE_PANE_STATE", paneId: targetPaneId, patch: { collectionId } });
-  }, [dispatch, stateRef]);
-
   const retargetTickerResearchPane = useCallback((paneId: string, symbol: string, options?: PinTickerOptions) => {
     const currentState = stateRef.current;
     const targetPane = findPaneInstance(currentState.config.layout, paneId);
@@ -91,7 +95,7 @@ export function useCommandBarPaneActions({
   }, [openFixedTickerPane, retargetTickerResearchPane, stateRef]);
 
   const persistLayoutChange = useCallback((nextLayout: LayoutConfig) => {
-    pluginRegistry.updateLayoutFn(nextLayout);
+    pluginRegistry.updateLayout(nextLayout);
   }, [pluginRegistry]);
 
   const duplicatePane = useCallback((paneId: string) => {
@@ -108,7 +112,7 @@ export function useCommandBarPaneActions({
       settings: pane.settings,
     });
 
-    const { width, height } = pluginRegistry.getTermSizeFn();
+    const { width, height } = pluginRegistry.getTermSize();
     const nextLayout = currentState.config.layout.floating.some((entry) => entry.instanceId === paneId)
       ? addPaneFloating(currentState.config.layout, duplicate, width, height, paneDef)
       : addPaneToLayout(currentState.config.layout, duplicate, { relativeTo: paneId, position: "right" });
@@ -120,6 +124,5 @@ export function useCommandBarPaneActions({
     duplicatePane,
     focusTicker,
     persistLayoutChange,
-    setActiveCollection,
   };
 }

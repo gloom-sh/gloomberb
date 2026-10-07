@@ -72,7 +72,7 @@ function alignRelationshipPrices(leftPoints: PricePoint[], rightPoints: PricePoi
   }));
 }
 
-function buildRelationshipReturns(aligned: RelationshipAlignedPoint[]): RelationshipReturnPoint[] {
+export function buildRelationshipReturns(aligned: readonly Omit<RelationshipAlignedPoint, "ratio">[]): RelationshipReturnPoint[] {
   const returns: RelationshipReturnPoint[] = [];
   for (let index = 1; index < aligned.length; index++) {
     const previous = aligned[index - 1]!;
@@ -91,7 +91,7 @@ function buildRelationshipReturns(aligned: RelationshipAlignedPoint[]): Relation
   return returns;
 }
 
-function buildRollingCorrelationPoints(
+export function buildRollingCorrelationPoints(
   returns: RelationshipReturnPoint[],
   windowSize: number,
 ): ProjectedChartPoint[] {

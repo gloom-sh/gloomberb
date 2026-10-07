@@ -75,7 +75,7 @@ function toRow(deal: IpoDeal) {
   };
 }
 
-export function projectIpoCalendarHeadless(payload: IpoCalendarPayload, args: HeadlessPaneLoadArgs): HeadlessRowsResult {
+function projectIpoCalendarHeadless(payload: IpoCalendarPayload, args: HeadlessPaneLoadArgs): HeadlessRowsResult {
   const query = typeof args.argument === "string" ? args.argument.trim() : "";
   const region = regionOption(args);
   const status = statusOption(args);

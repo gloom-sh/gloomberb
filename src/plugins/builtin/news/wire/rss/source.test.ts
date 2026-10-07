@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { MemoryPluginPersistence as MemoryPersistence } from "../../../../../test-support/plugin-persistence";
 import { createRssNewsCapability, RSS_FEED_CACHE_POLICY, RSS_FEED_CACHE_VERSION } from "./source";
 import type { RssFeedConfig } from "./parser";
+import { MANAGED_NEWS_FEED } from "./managed-feed";
 
 const FEED: RssFeedConfig = {
   id: "example-feed",
@@ -150,4 +151,21 @@ test("legacy parser cache is refetched and valid empty feeds are cached without 
   expect(source.provider.supports!({ feed: "latest", cursor: "next" })).toBe(false);
   expect((await source.provider.fetchNewsPage!({ feed: "latest", cursor: "next" })).articles).toEqual([]);
   expect(fetchText).toHaveBeenCalledTimes(1);
+});
+
+test("an old feed-label cache cannot return as fresh data or an outage fallback", async () => {
+  const persistence = new MemoryPersistence();
+  persistence.seedResource("rss-feed", MANAGED_NEWS_FEED.id, { items: [{
+    id: "old", title: "Old syndicated story", url: "https://delivery.example/item", source: "Old delivery service", publishedAt: new Date().toISOString(),
+  }] }, { sourceKey: MANAGED_NEWS_FEED.url, schemaVersion: 2 });
+  let available = false;
+  const source = createRssNewsCapability([MANAGED_NEWS_FEED], { persistence, fetchText: async () => ({
+    ok: available,
+    text: async () => RSS_FIXTURE.replace("</item>", '<source url="https://publisher.example/rss">Actual Publisher</source></item>'),
+  }) });
+  expect(source.provider.getCachedNews!({ feed: "latest" })).toEqual([]);
+  expect((await source.provider.fetchNewsPage!({ feed: "latest" })).articles).toEqual([]);
+  available = true;
+  expect((await source.provider.fetchNewsPage!({ feed: "latest" })).articles[0]?.source).toBe("Actual Publisher");
+  expect(source.provider.getCachedNews!({ feed: "latest" })[0]?.source).toBe("Actual Publisher");
 });

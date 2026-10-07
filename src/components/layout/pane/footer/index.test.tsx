@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
 import { Box } from "../../../../ui";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import {
   PaneFooterBar,
   PaneFooterProvider,
@@ -10,13 +10,9 @@ import {
 import { useExternalLinkFooter } from "../../../use-external-link-footer";
 import { setLanguage, t } from "../../../../i18n";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => testSetup?.renderer.destroy());
-    testSetup = undefined;
-  }
+afterEach(() => {
   setLanguage("en");
 });
 
@@ -112,62 +108,119 @@ function ExternalLinkFooterHarness() {
 
 describe("PaneFooterBar", () => {
   test("rebuilds translated registrations when the app language changes", async () => {
-    testSetup = await testRender(<TranslatedFooterHarness />, { width: 40, height: 1 });
+    await tui.render(<TranslatedFooterHarness />, { width: 40, height: 1 });
     await act(async () => {
-      await testSetup?.renderOnce();
-      await testSetup?.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("Open");
+    expect(tui.frame()).toContain("Open");
 
     await act(async () => {
       setLanguage("zh-CN");
       await Promise.resolve();
     });
     await act(async () => {
-      await testSetup?.renderOnce();
-      await testSetup?.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
       await Promise.resolve();
-      await testSetup?.renderOnce();
+      await tui.setup().renderOnce();
     });
-    expect(testSetup.captureCharFrame()).toContain("打开");
+    expect(tui.frame()).toContain("打开");
   });
 
   test("hides hints on inactive footers but keeps info visible", async () => {
-    testSetup = await testRender(<FooterHarness />, { width: 64, height: 1 });
+    await tui.render(<FooterHarness />, { width: 64, height: 1 });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Rows 12");
     expect(frame).not.toContain("[o]pen");
   });
 
   test("keeps raw external URLs out of footer text", async () => {
-    testSetup = await testRender(<ExternalLinkFooterHarness />, { width: 80, height: 1 });
+    await tui.render(<ExternalLinkFooterHarness />, { width: 80, height: 1 });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("source Reuters");
     expect(frame).toContain("[o]pen");
     expect(frame).not.toContain("https://example.com");
   });
 
+  test("hints that do not fit open from More and run from there", async () => {
+    const actions: string[] = [];
+    function Crowded() {
+      usePaneFooter("crowded", () => ({
+        info: [{ id: "loading", parts: [{ text: "loading", tone: "muted" }] }],
+        hints: [
+          { id: "search", key: "/", label: "search", onPress: () => actions.push("search") },
+          { id: "open", key: "o", label: "pen", onPress: () => actions.push("open") },
+          { id: "pop-out", key: "p", label: "op out", onPress: () => actions.push("pop-out") },
+          { id: "share", key: "s", label: "hare", onPress: () => actions.push("share") },
+          { id: "archive", key: "a", label: "rchive", onPress: () => actions.push("archive") },
+          { id: "bookmark", key: "b", label: "ookmark", onPress: () => actions.push("bookmark") },
+          { id: "copy", key: "c", label: "opy", onPress: () => actions.push("copy") },
+          { id: "yank", key: "y", label: "ank", onPress: () => actions.push("yank") },
+        ],
+      }), []);
+      return null;
+    }
+    await tui.render(
+      <PaneFooterProvider>
+        {(footer) => (
+          <Box width={34} height={18} flexDirection="column">
+            <Crowded />
+            <PaneFooterBar footer={footer} focused width={34} />
+          </Box>
+        )}
+      </PaneFooterProvider>,
+      { width: 34, height: 18 },
+    );
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+    const frame = tui.frame();
+    expect(frame).toContain("loading");
+    expect(frame).toContain("[/]search");
+    expect(frame).toContain("More");
+    expect(frame).not.toContain("[y]ank");
+
+    const lines = frame.split("\n");
+    const moreRow = lines.findIndex((line) => line.includes("More"));
+    expect(moreRow).toBeGreaterThanOrEqual(0);
+    await act(async () => {
+      await tui.setup().mockMouse.click(lines[moreRow]!.indexOf("More"), moreRow);
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+    const menuLines = tui.frame().split("\n");
+    const yankRow = menuLines.findIndex((line) => line.includes("[y]ank"));
+    expect(yankRow).toBeGreaterThanOrEqual(0);
+    await act(async () => {
+      await tui.setup().mockMouse.click(menuLines[yankRow]!.indexOf("[y]ank"), yankRow);
+      await tui.setup().renderOnce();
+    });
+    expect(actions).toEqual(["yank"]);
+  });
+
   test("omits disabled controls instead of rendering muted hints", async () => {
-    testSetup = await testRender(
+    await tui.render(
       <FooterHarness focused openDisabled onOpen={() => {}} />,
       { width: 64, height: 1 },
     );
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Rows 12");
     expect(frame).not.toContain("[o]pen");
   });

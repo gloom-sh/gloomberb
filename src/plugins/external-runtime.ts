@@ -14,7 +14,7 @@ let entries: LoadedExternalPlugin[] = [];
 let seeded: readonly LoadedExternalPlugin[] | null = null;
 
 /** Adopts the startup list once; later calls with the same array are no-ops. */
-export function seedExternalPlugins(initial: readonly LoadedExternalPlugin[] | undefined): void {
+export function setExternalPlugins(initial: readonly LoadedExternalPlugin[] | undefined): void {
   if (!initial || seeded === initial) return;
   seeded = initial;
   entries = [...initial];

@@ -7,7 +7,7 @@ import {
   showDesktopContextMenu,
   startElectrobunWindowDrag,
 } from "./host/native";
-import { createDomUiHost } from "./dom-ui-host";
+import { createDomUiHost } from "../../dom/dom-ui-host";
 
 export function createWebUiHost(desktopPlatform?: string): UiHost {
   return createDomUiHost(desktopPlatform, {

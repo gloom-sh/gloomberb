@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender, settleFrame } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
@@ -13,11 +13,7 @@ import { quoteComparisonHeadless } from "../../plugins/builtin/ticker-detail/hea
 import { renderHeadlessPaneText } from "../pane-functions/headless";
 import { buildTickerReport } from "./ticker";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 for (const [symbol, price, change, priorPrice] of [
   ["NG=F", 3.125, 0.001, 3.124],
@@ -39,15 +35,15 @@ for (const [symbol, price, change, priorPrice] of [
     // A saved category must not override the current source's FUTURE type.
     const ticker = createTestTicker(symbol, symbol, { assetCategory: "STK", currency: "USD" });
     await act(async () => {
-      setup = await testRender(
+      await tui.render(
         <AppContext value={createStaticAppStore(createInitialState(config))}>
           <OverviewTab ticker={ticker} financials={financials} width={120} />
         </AppContext>,
         { width: 120, height: 20 },
       );
     });
-    await settleFrame(setup!, 8);
-    const frame = setup!.captureCharFrame();
+    await settleFrame(tui.setup(), 8);
+    const frame = tui.frame();
     expect(frame).toContain(priceText);
     expect(frame).toContain(priorText);
     const report = await buildTickerReport({ symbol, tickerFile: ticker, financials, config, toBase: async value => value });

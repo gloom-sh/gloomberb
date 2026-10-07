@@ -2,7 +2,7 @@ import type { PluginTarget } from "../../../types/plugin";
 import { compareSemver, formatVersion, requiredGloomberb } from "../../../utils/semver";
 import { runsExternalPlugins } from "../../current-target";
 
-export type PluginTier = "official" | "verified" | "community";
+type PluginTier = "official" | "verified" | "community";
 
 /** A command-bar code a registry plugin answers to, such as `POLL`. */
 export interface RegistryPluginShortcut {
@@ -57,6 +57,8 @@ export interface InstalledPlugin {
   source: "builtin" | "external";
   /** Folder under the plugins directory; absent for built-ins. */
   directory?: string;
+  /** Full path of that folder, which differs by platform and `GLOOMBERB_HOME`. */
+  path?: string;
   /** Checked-out commit, when the install is a git checkout. */
   commit?: string;
   /** A dev link (`gloomberb plugin link`) rather than a clone. */
@@ -96,6 +98,7 @@ export interface MarketplaceEntry {
   enabled: boolean;
   toggleable: boolean;
   directory?: string;
+  path?: string;
   linked: boolean;
   installedVersion?: string;
   installedCommit?: string;
@@ -216,6 +219,7 @@ export function mergeCatalog(options: {
       enabled: local ? local.enabled : plugin.bundled,
       toggleable: local ? local.toggleable : true,
       directory: local?.directory,
+      path: local?.path,
       linked: local?.linked === true,
       installedVersion: local?.version,
       installedCommit: local?.commit,
@@ -265,6 +269,7 @@ export function mergeCatalog(options: {
       enabled: local.enabled,
       toggleable: local.toggleable,
       directory: local.directory,
+      path: local.path,
       linked: local.linked === true,
       installedVersion: local.version,
       installedCommit: local.commit,

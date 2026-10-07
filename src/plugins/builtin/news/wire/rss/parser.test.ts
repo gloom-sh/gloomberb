@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseRssFeedDocument, type RssFeedConfig } from "./parser";
+import { MANAGED_NEWS_FEED } from "./managed-feed";
 
 const DEFAULT_CONFIG: RssFeedConfig = {
   id: "test-feed",
@@ -175,4 +176,31 @@ test("RSS comment and CDATA markup cannot create additional stories or replace i
       <title>Actual issuer update</title><link>https://example.com/update</link></item></channel></rss>`;
   expect(parseRssFeedDocument(xml, DEFAULT_CONFIG)).toMatchObject([{ title: "Actual issuer update", url: "https://example.com/update" }]);
   expect(parseRssFeedDocument(xml, DEFAULT_CONFIG)).toHaveLength(1);
+});
+
+test("syndicated RSS credits each direct item source without treating its feed URL as the article", () => {
+  const xml = `<rss><channel><title>Combined wire</title>
+    <item><title>Issuer update</title><link>https://publisher.example/article</link>
+      <description><![CDATA[<source>Content impersonator</source>]]></description>
+      <source url="https://publisher.example/rss">Publisher &amp; Co</source></item>
+    <item><title>Unattributed</title><link>https://publisher.example/unknown</link></item>
+    <item><title>Blank attribution</title><source> </source></item>
+  </channel></rss>`;
+  expect(parseRssFeedDocument(xml, MANAGED_NEWS_FEED)).toMatchObject([
+    { title: "Issuer update", source: "Publisher & Co", url: "https://publisher.example/article" },
+  ]);
+  expect(parseRssFeedDocument(xml, DEFAULT_CONFIG).map((item) => item.source))
+    .toEqual(["Publisher & Co", DEFAULT_CONFIG.name, DEFAULT_CONFIG.name]);
+});
+
+test("Atom origin titles supply publisher credit without replacing entry title, identity or link", () => {
+  const xml = `<a:feed xmlns:a="http://www.w3.org/2005/Atom"><a:entry>
+    <a:source><a:title type="html">&lt;b&gt;Publisher &amp;amp; Co&lt;/b&gt;</a:title>
+      <a:link href="https://publisher.example/feed"/><a:id>feed-id</a:id></a:source>
+    <a:id>article-id</a:id><a:title>Issuer update</a:title><a:link href="https://publisher.example/article"/>
+    </a:entry><a:entry><a:title>Unattributed</a:title></a:entry></a:feed>`;
+  expect(parseRssFeedDocument(xml, MANAGED_NEWS_FEED)).toMatchObject([
+    { id: "atom:article-id", title: "Issuer update", source: "Publisher & Co", url: "https://publisher.example/article" },
+  ]);
+  expect(parseRssFeedDocument(xml, DEFAULT_CONFIG)[1]?.source).toBe(DEFAULT_CONFIG.name);
 });

@@ -31,15 +31,29 @@ import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
+import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { captureAttentionAction } from "../../../telemetry/attention-counts";
+import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
 import { tickerQuoteFooterInfo } from "./quote-footer";
 import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-keys";
 import { ResearchTabNavigationProvider } from "./research-tab-navigation";
+import { usePluginAppActions } from "../../../public/react";
+import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 /** A tab counts as viewed once it stays open this long, not when h/l passes over it. */
 const TICKER_RESEARCH_TAB_VIEW_DWELL_MS = 2_000;
+
+const COMPANY_RESEARCH = [
+  { id: "supply-chain-pane", label: "Supply Chain (SPLC)" },
+  { id: "company-kpis-pane", label: "Company KPIs (KPIS)" },
+  { id: "company-guidance-pane", label: "Company Guidance (GUIDE)" },
+  { id: "credit-documents-pane", label: "Credit Documents (CRDOC)" },
+  { id: "awards-pane", label: "Government Awards (AWARDS)" },
+  { id: "catalysts-pane", label: "Catalysts (CATL)" },
+  { id: "hiring-pane", label: "Hiring Momentum (HIRE)" },
+  { id: "apps-pane", label: "App Attention (APPS)" },
+];
 
 function sameStringSet(left: Set<string>, right: Set<string>): boolean {
   if (left.size !== right.size) return false;
@@ -100,6 +114,7 @@ function getCollectionName(state: AppState, collectionId: string | null): string
 
 export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const dispatch = useAppDispatch();
+  const { createPaneFromTemplate } = usePluginAppActions();
   const config = usePaneAppConfig();
   const paneInstance = usePaneInstance();
   const { ticker, financials, error: instrumentError } = usePaneTicker();
@@ -147,7 +162,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     url.searchParams.set("ticker", ticker.metadata.ticker);
     // A bare ticker can name different issuers on different venues. Keep the
     // selected listing on reload, and replace any previous pane's venue.
-    if (ticker.metadata.exchange && !parsePublicTickerKey(ticker.metadata.ticker).exchange && !tickerHasYahooSuffix(ticker.metadata.ticker)) {
+    if (ticker.metadata.exchange && !parsePublicTickerKey(ticker.metadata.ticker).exchange && !tickerHasListingSuffix(ticker.metadata.ticker)) {
       url.searchParams.set("exchange", ticker.metadata.exchange);
     } else {
       url.searchParams.delete("exchange");
@@ -192,7 +207,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const quoteFooterActive = resolvedTabId === "overview" || resolvedTabId === "chart";
   const cloudAccess = useCloudAccessFooter({
     delayLabel: tf("{count}m", { count: CLOUD_QUOTE_DELAY_MINUTES }),
-    degraded: financials?.quote?.dataSource !== "live",
+    degraded: financials?.quote?.priceObservation !== "nav" && financials?.quote?.dataSource !== "live",
     focused: focused && quoteFooterActive,
     segmentId: "ticker-research-access",
     shortcutScope: "ticker-research:upgrade",
@@ -220,15 +235,44 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // those keys while it is open; Esc gives them back to the strip.
   const researchTabKeys = useResearchTabKeysHost();
   const stripFocused = focused && !pluginCaptured && !researchTabKeys.claimed;
+  const selectResearchTab = useCallback((tabId: string) => {
+    if (ticker && tabId !== resolvedTabId) {
+      const action = tabId === "chart" ? "chart" : tabId === "options" ? "option_chain" : null;
+      if (action) captureAttentionAction()(publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange), action);
+    }
+    setActiveTabId(tabId);
+  }, [resolvedTabId, setActiveTabId, ticker]);
   const { strip: tabStrip, rows: tabBarHeight } = usePaneTabs(!paneSettings.hideTabs && ticker ? {
     tabs: tabItems,
     activeValue: resolvedTabId,
-    onSelect: setActiveTabId,
+    onSelect: selectResearchTab,
     focused: stripFocused,
   } : null);
   // h/l step one tab at a time; with twenty tabs the pane menu jumps straight to one.
   const dialog = useOptionalDialog();
   const showTabs = !paneSettings.hideTabs && !!ticker;
+  const companySymbol = ticker && resolveTickerInstrumentKind(ticker, financials) === "equity"
+    ? tickerHasListingSuffix(ticker.metadata.ticker) ? ticker.metadata.ticker : publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)
+    : null;
+  usePaneMenuItems("ticker-research:company-research", () => {
+    if (!companySymbol || !dialog) return null;
+    const choices = COMPANY_RESEARCH.filter((item) => {
+      if (!registry) return true;
+      const owner = registry.getPaneTemplatePluginId?.(item.id);
+      return registry.paneTemplates?.has(item.id) && (!owner || !disabledPlugins.includes(owner));
+    });
+    if (!choices.length) return null;
+    return [{ id: "company-research", label: t("Company Research…"), onSelect: () => {
+      void dialog.prompt<string>({
+        closeOnClickOutside: true,
+        content: (context: PromptContext<string>) => <ChoiceDialog {...context}
+          title={tf("Research {symbol}", { symbol: companySymbol })}
+          choices={choices.map((item) => ({ ...item, label: t(item.label) }))} />,
+      }).then((templateId) => {
+        if (templateId && choices.some((item) => item.id === templateId)) createPaneFromTemplate(templateId, { symbol: companySymbol });
+      }).catch(() => {});
+    } }];
+  }, [companySymbol, createPaneFromTemplate, dialog, disabledPlugins, registry, tickerResearchTabsSnapshot]);
   usePaneMenuItems("ticker-research:go-to-tab", () => {
     if (!showTabs || !dialog || tabItems.length < 2) return null;
     return [{
@@ -246,11 +290,11 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
             />
           ),
         }).then((tabId) => {
-          if (tabId) setActiveTabId(tabId);
+          if (tabId) selectResearchTab(tabId);
         }).catch(() => {});
       },
     }];
-  }, [dialog, resolvedTabId, setActiveTabId, showTabs, tabItems]);
+  }, [dialog, resolvedTabId, selectResearchTab, showTabs, tabItems]);
   // Which tabs people stay on. A pane pinned to one tab has no strip; opening
   // it is a function open, counted with those.
   useEffect(() => {
@@ -265,9 +309,9 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // A figure on one tab can open the tab that explains it (holders, short interest).
   const openResearchTab = useCallback((tabId: string) => {
     if (!visibleTabIds.has(tabId)) return false;
-    setActiveTabId(tabId);
+    selectResearchTab(tabId);
     return true;
-  }, [setActiveTabId, visibleTabIds]);
+  }, [selectResearchTab, visibleTabIds]);
   const renderedTabIds = useMemo(() => {
     const next = new Set<string>();
     for (const tabId of mountedTabIds) {

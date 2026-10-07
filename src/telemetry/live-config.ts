@@ -6,9 +6,16 @@ import type { TelemetryConfig } from "../types/config";
  * turned off in the command bar takes effect at once, not at the next launch.
  */
 let reported: { telemetry?: TelemetryConfig } | null = null;
+const listeners = new Set<() => void>();
 
 export function reportTelemetryConfig(telemetry: TelemetryConfig | undefined): void {
   reported = { telemetry };
+  for (const listener of listeners) listener();
+}
+
+export function subscribeTelemetryConfig(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
 
 /** The switches the app last reported, or the config read at launch until it has. */

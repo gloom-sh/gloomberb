@@ -5,7 +5,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { fetchDividendData } from "./client";
 import { createDividendYieldHeadless, projectDividendYieldHeadless } from "./headless";
 import { fetchProviderDividendData } from "./provider-client";
-import { chartResponse, yahooTransport } from "./test-fixture";
+import { chartResponse, marketTransport } from "./test-fixture";
 import { useRegularMarketSession } from "../../../test-support/market-session";
 
 useRegularMarketSession();
@@ -16,7 +16,7 @@ function chartFixture() {
   const timestamp = Math.floor(Date.now() / 1000);
   const meta = { currency: "USD", exchangeName: "NMS", regularMarketPrice: 100,
     regularMarketTime: timestamp, dataGranularity: "1mo" };
-  setHttpFetchTransport(yahooTransport(async (url) => {
+  setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) return chartResponse({
       meta, time: timestamp, dividends: { cash: { date: timestamp - 86_400, amount: 4 } },
     });
@@ -37,7 +37,7 @@ test("dividend price/time selection stays paired through native and headless fal
   expect(supplied.priceAsOf).toBeUndefined(); // Its caller owns the separate quote timestamp.
   const quoteTime = meta.regularMarketTime * 1000 - 1_000;
   for (const currency of ["USD", "EUR"]) {
-    const result = await createDividendYieldHeadless().load({ argument: "FUND", symbols: ["FUND"], options: {} }, {
+    const result = await createDividendYieldHeadless().load({ rawArgument: "FUND", argument: "FUND", symbols: ["FUND"], options: {} }, {
       resolveInstrument: async () => ({ symbol: "FUND", exchange: "NASDAQ" }),
       marketData: { getQuote: async () => ({ symbol: "FUND", price: 250, currency,
         lastUpdated: quoteTime, stale: true, change: 0, changePercent: 0 }) },
@@ -48,13 +48,13 @@ test("dividend price/time selection stays paired through native and headless fal
   }
 });
 
-test("old, missing and recovered Yahoo times do not alter the cash numerator or borrow fetch time", async () => {
+test("old, missing and recovered source times do not alter the cash numerator or borrow fetch time", async () => {
   const meta = chartFixture();
   const fresh = meta.regularMarketTime;
   for (const timestamp of [fresh - 10 * 86_400, undefined, 0, NaN, Infinity, 1e20, fresh + 86_400, fresh]) {
     meta.regularMarketTime = timestamp as number;
     const data = await fetchDividendData("FUND", null);
-    const result = projectDividendYieldHeadless(data, { argument: "FUND", symbols: ["FUND"], options: {} });
+    const result = projectDividendYieldHeadless(data, { rawArgument: "FUND", argument: "FUND", symbols: ["FUND"], options: {} });
     expect(data.metrics.trailingRate).toBe(4);
     expect(data.metrics.trailingYield).toBe(0.04);
     const status = result.sections[0]?.entries?.find((row) => row.label === "Price status")?.value;
@@ -95,7 +95,7 @@ test("provider quote metadata handles missing dates without losing valid cash or
 test("a future external quote time cannot make a dividend yield look fresh or borrow chart time", async () => {
   const meta = chartFixture();
   let quoteTime = Date.now() + 86_400_000;
-  const load = () => createDividendYieldHeadless().load({ argument: "FUND", symbols: ["FUND"], options: {} }, {
+  const load = () => createDividendYieldHeadless().load({ rawArgument: "FUND", argument: "FUND", symbols: ["FUND"], options: {} }, {
     resolveInstrument: async () => ({ symbol: "FUND", exchange: "NASDAQ" }),
     marketData: { getQuote: async () => ({ symbol: "FUND", price: 200, currency: "USD",
       lastUpdated: quoteTime, exchangeName: "NASDAQ", marketState: "CLOSED", stale: false, change: 0, changePercent: 0 }) },

@@ -6,6 +6,7 @@ import type {
   PaneDef,
   PaneTemplateDef,
 } from "../../../../types/plugin";
+import { getLoadablePlugins } from "../../../catalog";
 import {
   buildASKGToolManifests,
   hashASKGToolManifests,
@@ -97,6 +98,47 @@ describe("ASKG client manifest", () => {
     expect(tools.every(({ writeTier, confirm }) => writeTier === "read" && confirm === "never")).toBe(true);
   });
 
+  test("describes a tool by what its report returns, not by opening the pane", () => {
+    const chart = template("price", "pane-price", "GP", { kind: "ticker" });
+    chart.description = "Open a price chart for a ticker.";
+    chart.headless = { ...chart.headless!, description: "Daily price history for one ticker." };
+    const [tool] = headlessTools(registry([chart]));
+
+    expect(tool?.description).toBe("Daily price history for one ticker.");
+  });
+
+  test("no built-in read tool is described as opening something", () => {
+    const panes = new Map<string, PaneDef>();
+    const paneTemplates = new Map<string, PaneTemplateDef>();
+    for (const plugin of getLoadablePlugins()) {
+      for (const entry of plugin.panes ?? []) panes.set(entry.id, entry);
+      for (const entry of plugin.paneTemplates ?? []) paneTemplates.set(entry.id, entry);
+    }
+    const openers = headlessTools({ panes, paneTemplates, destroy() {} })
+      .filter(({ description }) => /^(open|launch|show)\b/i.test(description))
+      .map(({ name }) => name);
+
+    expect(openers).toEqual([]);
+  });
+
+  test("every built-in option default fits its own schema, which the platform requires", () => {
+    const panes = new Map<string, PaneDef>();
+    const paneTemplates = new Map<string, PaneTemplateDef>();
+    for (const plugin of getLoadablePlugins()) {
+      for (const entry of plugin.panes ?? []) panes.set(entry.id, entry);
+      for (const entry of plugin.paneTemplates ?? []) paneTemplates.set(entry.id, entry);
+    }
+    const invalid = headlessTools({ panes, paneTemplates, destroy() {} }).flatMap(({ name, options }) => (
+      (options ?? []).filter((option) => option.type === "enum"
+        && option.defaultValue !== undefined
+        && !option.values?.some(({ value }) => value === option.defaultValue))
+        .map((option) => `${name} --${option.key}`)
+    ));
+
+    // `calls --section` defaults to "" (no section), and the platform dropped CALLS for it.
+    expect(invalid).toEqual([]);
+  });
+
   test("projects remote operation schemas and confirmation tiers", () => {
     const { tools } = buildASKGToolManifests(registry([]));
     const notify = tools.find(({ name }) => name === "app.notify");
@@ -130,7 +172,7 @@ describe("ASKG client manifest", () => {
     expect(await hashASKGToolManifests(changed)).not.toBe(await hashASKGToolManifests(tools));
   });
 
-  test("skips illegal and ambiguous names instead of rewriting them", () => {
+  test("skips illegal, reserved and ambiguous names instead of rewriting them", () => {
     const catalog = registry([
       // Short and digit leading tokens are legal: the terminal's own shortcuts
       // include N, SI and 13F, and a tool the model cannot name is a tool the
@@ -138,6 +180,8 @@ describe("ASKG client manifest", () => {
       template("short", "pane-short", "N", { kind: "none" }),
       template("numeric", "pane-numeric", "13F", { kind: "none" }),
       template("bad", "pane-bad", "BAD/TOKEN", { kind: "none" }),
+      // The platform's own script tool; advertising it gets the client refused.
+      template("script", "pane-script", "RUN_SCRIPT", { kind: "none" }),
       template("first", "pane-first", "VAL", { kind: "none" }),
       template("second", "pane-second", "val", { kind: "none" }),
     ]);
@@ -145,7 +189,7 @@ describe("ASKG client manifest", () => {
 
     expect(tools.filter(({ source }) => source === "headless").map(({ name }) => name))
       .toEqual(["13f", "n"]);
-    expect(skipped.map(({ token }) => token)).toEqual(["BAD/TOKEN", "VAL", "val"]);
+    expect(skipped.map(({ token }) => token)).toEqual(["BAD/TOKEN", "RUN_SCRIPT", "VAL", "val"]);
     expect(skipped.filter(({ token }) => token.toLowerCase() === "val").every(({ reason }) => (
       reason.includes("Duplicate tool name")
     ))).toBe(true);

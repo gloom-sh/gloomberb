@@ -107,7 +107,10 @@ export async function importPluginHostModule(specifier: string): Promise<object>
   return hostModule.load();
 }
 
-/** Import the complete registry from the same table the bundler uses. */
+/**
+ * Import the complete registry from the same table the bundler uses.
+ * @knipignore Also imported by the script host-modules.test.ts compiles and runs.
+ */
 export async function importAllPluginHostModules(): Promise<Readonly<Record<string, object>>> {
   const entries = await Promise.all(
     SHARED_SPECIFIERS.map(async (specifier) => [specifier, await importPluginHostModule(specifier)] as const),

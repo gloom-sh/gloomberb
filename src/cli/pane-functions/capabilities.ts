@@ -7,8 +7,8 @@ import type {
 } from "../../types/plugin";
 
 export type PaneFunctionReadiness = "ready" | "partial" | "live-dom" | "unsupported";
-export type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
-export type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
+type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
+type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
 export type PaneFunctionOptionDef = HeadlessPaneOptionDef;
 export type NormalizedPaneFunctionOptions = Record<string, string | number | boolean>;
 

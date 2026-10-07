@@ -19,6 +19,7 @@ export function ResponsiveTickerBadgeText({
   userByUsername,
   onUserHover,
   onUserHoverEnd,
+  onUserActivate,
 }: {
   text?: string;
   tokens?: readonly InlineContentToken[];
@@ -29,6 +30,7 @@ export function ResponsiveTickerBadgeText({
   userByUsername?: Map<string, ChatUserSummary>;
   onUserHover?: (user: ChatUserSummary) => void;
   onUserHoverEnd?: () => void;
+  onUserActivate?: (user: ChatUserSummary) => void;
 }) {
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const tokens = useMemo(() => providedTokens ?? tokenizeInlineContent(text), [providedTokens, text]);
@@ -65,6 +67,13 @@ export function ResponsiveTickerBadgeText({
         onMouseOut={() => {
           if (user) onUserHoverEnd?.();
         }}
+        // Only a mention of someone the chat has a summary for has a card to open.
+        onMouseDown={user && onUserActivate ? (event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+          event.preventDefault?.();
+          event.stopPropagation?.();
+          onUserActivate(user);
+        } : undefined}
+        style={user && onUserActivate ? { cursor: "pointer" } : undefined}
       >
         <Text fg={colors.positive} attributes={TextAttributes.BOLD}>
           {value}

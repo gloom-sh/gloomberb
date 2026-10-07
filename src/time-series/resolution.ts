@@ -215,7 +215,7 @@ export function normalizeChartResolutionSupport(support: readonly ChartResolutio
   );
 }
 
-/** Yahoo-shaped support used for first paint when broker/provider support is async. */
+/** provider-shaped support used for first paint when broker/provider support is async. */
 export const DEFAULT_CHART_RESOLUTION_SUPPORT: ChartResolutionSupport[] = normalizeChartResolutionSupport([
   { resolution: "5m", maxRange: "1W" },
   { resolution: "15m", maxRange: "1M" },

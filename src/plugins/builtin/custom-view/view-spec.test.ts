@@ -80,6 +80,32 @@ describe("applyViewProjection", () => {
     expect(applyViewProjection(rows, spec.projection, null).map((row) => row.symbol)).toEqual(["AAPL", "NVDA", "MSFT"]);
   });
 
+  test("rows with an empty sort value go last in either direction", () => {
+    const ratios = [
+      { symbol: "A", ratio: null },
+      { symbol: "B", ratio: 3.7 },
+      { symbol: "C" },
+      { symbol: "D", ratio: 1.2 },
+      { symbol: "E", ratio: "" },
+      { symbol: "F", ratio: 10 },
+      { symbol: "G", ratio: 2 },
+    ];
+    const sorted = (direction: "asc" | "desc") => applyViewProjection(ratios, { columns: [], filters: [] }, { by: "ratio", direction })
+      .map((row) => row.symbol);
+    expect(sorted("desc")).toEqual(["F", "B", "G", "D", "A", "C", "E"]);
+    expect(sorted("asc")).toEqual(["D", "G", "B", "F", "A", "C", "E"]);
+    expect(applyViewProjection(rows, { columns: [], filters: [] }, { by: "sector", direction: "desc" }).map((row) => row.symbol))
+      .toEqual(["AAPL", "NVDA", "XOM", "MSFT"]);
+  });
+
+  test("an all-empty sort column keeps the source order", () => {
+    const empty = [{ symbol: "A", ratio: null }, { symbol: "B" }, { symbol: "C", ratio: "" }, { symbol: "D", ratio: null }];
+    for (const direction of ["asc", "desc"] as const) {
+      expect(applyViewProjection(empty, { columns: [], filters: [] }, { by: "ratio", direction }).map((row) => row.symbol))
+        .toEqual(["A", "B", "C", "D"]);
+    }
+  });
+
   test("supports every operator", () => {
     const run = (op: string, value?: unknown) => applyViewProjection(rows, {
       columns: [],

@@ -54,7 +54,7 @@ export interface ResultItem {
   action: () => void | Promise<void>;
 }
 
-type ListScreenKind = "root" | "mode" | "picker" | "pane-settings";
+type ListScreenKind = "root" | "mode" | "picker";
 
 export interface ListScreenState {
   kind: ListScreenKind;

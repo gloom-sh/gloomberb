@@ -5,12 +5,11 @@ import { zonedDateKey } from "../utils/zoned-date-time";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "./published-us-sessions";
 
 const intervals = new Set(["1min", "5min", "15min", "30min", "1h"]);
-const sourceKinds = new Set(["yahoo", "twelvedata", "alpaca"]);
 const DAY = 86_400_000;
 const FEED_DELAY = 15 * 60_000;
 // Sources stamp observedAt with their own clock; a desktop clock a little
 // behind the server must not turn fresh history into invalid metadata.
-export const HISTORY_CLOCK_SKEW_MS = 5 * 60_000;
+const HISTORY_CLOCK_SKEW_MS = 5 * 60_000;
 
 /** Untrusted wire/cache metadata must match the actual requested listing and interval. */
 export function parseHistorySession(
@@ -23,11 +22,10 @@ export function parseHistorySession(
   if (record.version !== 1 || record.kind !== "regular" || record.calendar !== "us-equity"
     || record.timeZone !== "America/New_York" || typeof record.symbol !== "string"
     || !record.symbol || record.symbol.length > 256 || /[\r\n\0]/.test(record.symbol)
-    || typeof record.exchange !== "string" || typeof record.source !== "string"
-    || !sourceKinds.has(record.source)
+    || typeof record.exchange !== "string" || record.source !== "gloom"
     || (record.barAlignment !== "session-open" && record.barAlignment !== "clock")
     || (record.timestampConvention !== "bar-open"
-      && !(record.timestampConvention === "bar-open-with-final-observation" && record.source === "yahoo"))
+      && record.timestampConvention !== "bar-open-with-final-observation")
     || typeof record.observedAt !== "number" || !Number.isSafeInteger(record.observedAt)
     || record.observedAt <= 0 || record.observedAt > now + HISTORY_CLOCK_SKEW_MS) return null;
   const target = parsePublicTickerKey(record.symbol);
@@ -43,7 +41,7 @@ export function parseHistorySession(
       || (expected.interval !== undefined && interval !== canonicalHistoryInterval(expected.interval))) return null;
   }
   return { version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York",
-    symbol: target.symbol, exchange, interval, source: record.source as HistorySession["source"],
+    symbol: target.symbol, exchange, interval, source: record.source,
     timestampConvention: record.timestampConvention, barAlignment: record.barAlignment, observedAt: Math.min(record.observedAt, now) };
 }
 

@@ -10,10 +10,13 @@ import {
   buildInsiderRows,
   buildInsiderSummary,
   buildInsiderDisclosureText,
+  isInsiderTypeFilter,
   matchesInsiderOwner,
+  matchesInsiderTypeFilter,
   type ParsedInsiderFiling,
 } from "./model";
 import { relevantInsiderAmendments } from "./amendments";
+import { formatInsiderName } from "./display";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
@@ -27,7 +30,11 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
     header: "Tx",
     format: (value) => typeof value === "string" ? value.slice(0, 10) : "-",
   },
-  { key: "insider", header: "Insider" },
+  {
+    key: "insider",
+    header: "Insider",
+    format: (value) => typeof value === "string" ? formatInsiderName(value) : "-",
+  },
   { key: "title", header: "Title" },
   { key: "security", header: "Security" },
   {
@@ -91,6 +98,17 @@ export function createInsiderHeadless(
         pluginState: { pluginId: "ticker-research", key: "nameFilter" },
       },
       {
+        key: "type",
+        description: "Transaction types: trades (open-market buys and sells, what the pane opens on), other (awards, exercises, tax, gifts), or all. Without it, every line.",
+        type: "enum",
+        values: [
+          { value: "trades", aliases: ["buys-sells", "buys", "sells"] },
+          { value: "other" },
+          { value: "all" },
+        ],
+        pluginState: { pluginId: "ticker-research", key: "insider:typeFilter" },
+      },
+      {
         key: "limit",
         aliases: ["count", "rows"],
         description: "Maximum Form 4 and Form 4/A filings to parse.",
@@ -107,9 +125,11 @@ export function createInsiderHeadless(
       const limit = Number(args.options.limit);
       const parsed = await dependencies.loadParsed(symbol, limit, args, ctx);
       const name = String(args.options.name ?? "").trim().toLocaleLowerCase();
-      const filtered = name
+      const type = isInsiderTypeFilter(args.options.type) ? args.options.type : "all";
+      const owned = name
         ? parsed.filter((entry) => matchesInsiderOwner(entry, name))
         : parsed;
+      const filtered = owned.filter((entry) => matchesInsiderTypeFilter(entry, type));
       const amendments = relevantInsiderAmendments(filtered, parsed);
       const incomplete = [...new Set(buildInsiderRows(parsed)
         .filter((row) => row.status !== "parsed" && row.status !== "disclosure")
@@ -122,7 +142,7 @@ export function createInsiderHeadless(
         ],
         metadata: {
           symbol,
-          summary: buildInsiderSummary(filtered, Date.now(), parsed),
+          summary: buildInsiderSummary(owned, Date.now(), parsed),
           amendments,
           notices: amendments.map((scope) => {
             const entry = parsed.find(({ filing }) => filing.accessionNumber === scope.accessionNumber)!;
@@ -133,6 +153,7 @@ export function createInsiderHeadless(
           transactions: filtered.filter(({ transaction }) => transaction != null).length,
           requested: limit,
           name: name || null,
+          type,
           limitations: ["Loaded Form 4 and Form 4/A rows are as filed, not reconciled transactions; affected aggregates are withheld."],
         },
       };

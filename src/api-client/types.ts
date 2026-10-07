@@ -22,6 +22,21 @@ export interface ChatUserSummary {
   portfolioAnalytics?: PublicPortfolioAnalytics | null;
 }
 
+/**
+ * An image in a chat message, as the server stored it: `width`, `height`,
+ * `size` and `mime` describe the stored copy, not the upload. `url` opens in an
+ * <img> without headers; signed links last one to two hours, and a fresh copy
+ * of the message carries a fresh one.
+ */
+export interface ChatAttachment {
+  id: string;
+  mime: string;
+  width: number;
+  height: number;
+  size: number;
+  url: string;
+}
+
 export interface ChatMessage {
   id: string;
   channelId: string;
@@ -30,9 +45,24 @@ export interface ChatMessage {
   createdAt: string;
   editedAt?: string | null;
   user: ChatUserSummary;
-  replyTo?: { content: string; user: { id?: string; username: string } } | null;
+  replyTo?: {
+    content: string;
+    user: { id?: string; username: string };
+    /** Images on the quoted message. */
+    attachmentCount?: number;
+  } | null;
+  /** Images in display order. A server that predates them leaves this out. */
+  attachments?: ChatAttachment[];
+  /**
+   * Only on the author's copy of a public message whose images are still being
+   * checked ("pending") or could not be checked ("failed"). Nobody else has the
+   * message yet.
+   */
+  attachmentReview?: "pending" | "failed";
   clientStatus?: "sending" | "failed";
   clientError?: string | null;
+  /** The idempotency key a local send went out with, so a retry repeats it. */
+  clientMessageId?: string;
 }
 
 export interface ChatChannel {
@@ -171,7 +201,7 @@ export interface BuildoutTokenResponse {
   expiresAt: string;
 }
 
-export interface CloudPricingTier {
+interface CloudPricingTier {
   /** Charged amount, in integer cents. */
   amount: number;
 }
@@ -191,6 +221,14 @@ export interface CloudPricing {
   trialDays: number;
   monthly: CloudPricingTier;
   yearly: CloudPricingTier;
+}
+
+/** The account's private calendar feed link (`/account/calendar-feed`). */
+export interface CalendarFeed {
+  url: string;
+  createdAt: string;
+  /** The last time a calendar app read it, to the hour. */
+  lastFetchedAt: string | null;
 }
 
 /** One command-bar prefix described for `/assist/command`. */
@@ -257,7 +295,9 @@ export interface CloudSyncPushResponse {
   settings: SyncSettings;
 }
 
-export interface CloudQuotePayload extends Omit<Quote, "change" | "changePercent"> {
+export interface CloudQuotePayload extends Omit<Quote, "change" | "changePercent" | "priceBasis" | "priceObservation"> {
+  /** The service labels daily NAV here; the app separates observation kind from price units. */
+  priceBasis?: Quote["priceBasis"] | "nav";
   // JSON encodes the provider's unavailable numeric values as null.
   change?: number | null;
   changePercent?: number | null;
@@ -370,7 +410,7 @@ export interface CloudFredSeriesPayload {
  * One month of Robert Shiller's dataset. FRED carries no long-run S&P earnings,
  * so this is what every earnings-based valuation ratio is built from.
  */
-export interface CloudShillerObservationPayload {
+interface CloudShillerObservationPayload {
   date: string;
   price: number | null;
   dividend: number | null;
@@ -444,8 +484,9 @@ export interface CloudCdsHistoryResponse {
   points: CloudCdsHistoryPointPayload[];
 }
 
-export interface CloudShortInterestPointPayload {
+interface CloudShortInterestPointPayload {
   settlementDate: string;
+  shortPercentFloat?: number | null;
   sharesShort: number;
   previousSharesShort: number | null;
   averageDailyVolume: number | null;
@@ -455,6 +496,7 @@ export interface CloudShortInterestPointPayload {
 }
 
 export interface CloudShortInterestPayload {
+  source?: "finra" | "gloom";
   symbol: string;
   issueName: string | null;
   points: CloudShortInterestPointPayload[];
@@ -585,7 +627,7 @@ export interface CloudEarningsCallPayload {
   webcastUrl?: string | null;
 }
 
-export interface CloudJobsSeriesPoint {
+interface CloudJobsSeriesPoint {
   day: string;
   open: number;
   /** Null on the first observed day, when the whole board is seen for the first time. */
@@ -687,7 +729,7 @@ export interface CloudJobsSummaryPayload {
   recent: CloudJobsPosting[];
 }
 
-export interface CloudJobsPendingPayload {
+interface CloudJobsPendingPayload {
   status: "pending";
   ticker: string;
   queued: boolean;
@@ -744,7 +786,7 @@ export interface CloudExecutiveRowPayload {
   total: number | null;
 }
 
-export interface CloudProxyStatementSummaryPayload {
+interface CloudProxyStatementSummaryPayload {
   id: string;
   ticker: string;
   company: {
@@ -778,7 +820,7 @@ export interface CloudProxyStatementPayload extends CloudProxyStatementSummaryPa
   otherYears: CloudProxyStatementSummaryPayload[];
 }
 
-export interface CloudRiskFactorPayload {
+interface CloudRiskFactorPayload {
   heading: string;
   group: string | null;
   excerpt: string;
@@ -791,7 +833,7 @@ export interface CloudRiskNotePayload {
   text: string;
 }
 
-export interface CloudRiskReportSummaryPayload {
+interface CloudRiskReportSummaryPayload {
   id: string;
   ticker: string;
   company: {
@@ -848,7 +890,7 @@ export interface CloudRiskReportListPayload {
   reports: CloudRiskReportSummaryPayload[];
 }
 
-export interface CloudFilingPersonPayload {
+interface CloudFilingPersonPayload {
   name: string;
   role: string;
   action: string;
@@ -904,7 +946,7 @@ export interface CloudTranscriptTurnPayload {
   startSeconds: number | null;
 }
 
-export interface CloudTranscriptKeyFigurePayload {
+interface CloudTranscriptKeyFigurePayload {
   /** What the number is, e.g. "Q3 revenue guidance". */
   label: string;
   /** As management said it, e.g. "$108B ± 2%". */
@@ -913,7 +955,7 @@ export interface CloudTranscriptKeyFigurePayload {
   note?: string;
 }
 
-export interface CloudTranscriptParticipantPayload {
+interface CloudTranscriptParticipantPayload {
   name: string;
   role?: string;
   company?: string;
@@ -1056,7 +1098,7 @@ export interface CloudSavedSearchInput {
   alertChannels?: string[];
 }
 
-export interface CloudSecFilingPayload {
+interface CloudSecFilingPayload {
   accessionNumber: string;
   form: string;
   filingDate: string;
@@ -1072,7 +1114,7 @@ export interface CloudSecFilingPayload {
   primaryDocumentUrl?: string;
 }
 
-export interface CloudSecDocumentPayload {
+interface CloudSecDocumentPayload {
   sequence?: string;
   type: string;
   description?: string;
@@ -1092,7 +1134,7 @@ export interface CloudSecDocumentsResponse {
   documents: CloudSecDocumentPayload[];
 }
 
-export interface CloudSecForm4Payload {
+interface CloudSecForm4Payload {
   filingDate: string;
   reportedName: string;
   title: string;
@@ -1283,6 +1325,8 @@ export interface CloudMarketResponse<T> {
   historyRetention?: unknown;
   /** Source-declared history semantics; validated separately from quote metadata. */
   historySession?: unknown;
+  /** "extended" when the history includes the pre-market and after-hours bars asked for. */
+  session?: unknown;
   /** Untrusted until the history adapter validates its boundary dates. */
   coverage?: CloudHistoryCoverage;
   providerMeta?: {
@@ -1333,6 +1377,10 @@ export interface CloudMarketScreenerItem {
   change: number;
   changePercent: number;
   volume: number;
+  /** Available average volume for this listing, independent of public ranking membership. */
+  avgVolume?: number;
+  /** Observation time of the optional retained metadata. */
+  metadataAsOf?: string;
   tradeCount?: number;
   currency: string;
   high52w?: number;
@@ -1359,7 +1407,7 @@ export type CloudEquityDiagnosticFindingKind =
   "red_flag" | "green_flag" | "anomaly";
 
 /** 3 is the most severe. */
-export type CloudEquityDiagnosticSeverity = 1 | 2 | 3;
+type CloudEquityDiagnosticSeverity = 1 | 2 | 3;
 
 export interface CloudEquityDiagnosticFinding {
   id: string;
@@ -1393,7 +1441,7 @@ export interface CloudEquityDiagnosticEvidence {
   url?: string;
 }
 
-export interface CloudEquityDiagnosticPending {
+interface CloudEquityDiagnosticPending {
   status: "generating";
   retryAfterMs: number;
 }
@@ -1459,7 +1507,7 @@ export type ScannerKind = "hilo" | "flow";
 
 export type ScannerStatus = "live" | "starting" | "closed" | "degraded";
 
-export interface ScannerWindowCounts {
+interface ScannerWindowCounts {
   highs: number;
   lows: number;
 }
@@ -1474,7 +1522,7 @@ export interface ScannerHiloExtreme {
 }
 
 /** Which entitlement tier produced the payload: free accounts get a delayed instance. */
-export interface ScannerAccessInfo {
+interface ScannerAccessInfo {
   access: "realtime" | "delayed";
   /** 0 on the realtime instance, 15 on the delayed one. */
   delayMinutes: number;
@@ -1559,7 +1607,7 @@ export interface QuoteStreamTarget {
   weight?: number;
 }
 
-export const TEAM_ACCENT_COLORS = [
+const TEAM_ACCENT_COLORS = [
   "amber",
   "blue",
   "cyan",
@@ -1667,7 +1715,7 @@ interface TeamNotificationTeam {
   shortName: string;
 }
 
-export type TeamNotificationData =
+type TeamNotificationData =
   | {
       kind: "team-invite";
       team: TeamNotificationTeam;
@@ -1685,7 +1733,7 @@ export type TeamNotificationData =
       author: TeamActor;
     };
 
-export type TeamNotificationType = TeamNotificationData["kind"];
+type TeamNotificationType = TeamNotificationData["kind"];
 
 export interface TeamNotification {
   id: string;
@@ -1697,10 +1745,10 @@ export interface TeamNotification {
 
 // Cloud notes
 
-export type NoteOwnerKind = "user" | "team";
+type NoteOwnerKind = "user" | "team";
 export type NoteKind = "ticker" | "quick";
 
-export interface CloudNoteOwner {
+interface CloudNoteOwner {
   kind: NoteOwnerKind;
   id: string;
 }
@@ -1733,14 +1781,14 @@ export type ThesisStatus = "watching" | "active" | "closed";
 export type ThesisHealth = "unverified" | "intact" | "weakening" | "broken";
 export type ThesisPillarStatus = ThesisHealth;
 
-export interface ThesisInstrument {
+interface ThesisInstrument {
   symbol: string;
   exchange?: string;
   side: "long" | "short";
   role: "core" | "hedge";
 }
 
-export interface ThesisMetricBound {
+interface ThesisMetricBound {
   key: string;
   op: ">=" | "<=";
   value: number;
@@ -1783,13 +1831,13 @@ export interface ThesisDocument {
   entry?: { date?: string; price?: number };
 }
 
-export interface ThesisOutcome {
+interface ThesisOutcome {
   verdict: "right" | "wrong" | "lucky" | "unlucky";
   returnPct?: number;
   lesson?: string;
 }
 
-export interface ThesisEditor {
+interface ThesisEditor {
   id: string;
   username: string | null;
   displayName: string;
@@ -1817,11 +1865,11 @@ export interface CloudThesis {
   closedAt: string | null;
 }
 
-export type ThesisSignalTargetKind = "pillar" | "kill" | "catalyst" | "thesis";
-export type ThesisSignalVerdict = "supports" | "challenges" | "breaks" | "neutral";
-export type ThesisSignalStatus = "open" | "accepted" | "dismissed" | "snoozed" | "noted";
+type ThesisSignalTargetKind = "pillar" | "kill" | "catalyst" | "thesis";
+type ThesisSignalVerdict = "supports" | "challenges" | "breaks" | "neutral";
+type ThesisSignalStatus = "open" | "accepted" | "dismissed" | "snoozed" | "noted";
 
-export interface ThesisSignalSource {
+interface ThesisSignalSource {
   kind: "news" | "filing" | "transcript" | "metric" | "review" | "user";
   id?: string;
   title?: string;
@@ -1893,7 +1941,7 @@ export interface TeamCollectionItem {
   updatedAt: string;
 }
 
-export type TeamCollectionChange =
+type TeamCollectionChange =
   | { change: "created"; collection: TeamCollection }
   | { change: "updated"; collection: TeamCollection }
   | { change: "deleted"; collectionId: string }

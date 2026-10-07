@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test";
-import { buildVolatilityData } from "./model";
+import { buildVolatilityData, type VolatilityInputs } from "./model";
 import { readVolatilityEvidence, volatilitySemanticEvidence } from "./evidence";
 import type { VolatilityLoadResult } from "./client";
 
-const result = (): VolatilityLoadResult => ({
-  data: buildVolatilityData({ fred: {
+const result = (): VolatilityLoadResult => {
+  const inputs: VolatilityInputs = { fred: {
     VIXCLS: { info: null, observations: [{ date: "2026-09-18", value: 20 }, { date: "2026-09-19", value: null }, { date: "2026-09-21", value: 22 }] },
     VXVCLS: { info: null, observations: [{ date: "2026-09-18", value: 23 }, { date: "2026-09-19", value: 24 }, { date: "2026-09-21", value: 25 }] },
-  } }), stale: false, errors: [], phase: "partial", loaded: 22, total: 22,
-});
+  } };
+  return { data: buildVolatilityData(inputs), inputs, stale: false, errors: [], phase: "partial", loaded: 22, total: 22 };
+};
 
 test("history evidence proves plotted legs, dated ratios and gaps independently of unavailable board sources", () => {
   const evidence = volatilitySemanticEvidence(result(), "history", null, false);

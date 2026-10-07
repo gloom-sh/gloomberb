@@ -281,7 +281,6 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       // Not `u`: that installs an app update.
       { id: "underlying", key: "t", label: "icker", title: "Edit Underlying", onPress: editSymbol },
       ...(american ? [{ id: "dividends", key: "d", label: "ividends", onPress: () => setActiveFieldId("dividends") }] : []),
-      ...(surfaceSource ? [{ id: "refresh", key: "r", label: "efresh", onPress: () => { void surfaceResource.reload(); } }] : []),
     ],
   }), [implied.note, problem, american, surfaceSource, surfaceResource.loading, surface, activeFieldId, draft.symbol, draft.steps, effectiveSteps, liveInputs?.delayed, !!liveInputs, selectedField?.id, selectedField?.label, editSelectedField, editSymbol]);
 

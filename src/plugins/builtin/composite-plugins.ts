@@ -1,3 +1,13 @@
+import { creditDocumentsModule } from "./credit-documents";
+import { attentionModule } from "./attention";
+import { companyAttentionModule } from "./company-attention";
+import { catalystsModule } from "./catalysts";
+import { companyKpisModule } from "./company-kpis";
+import { powerModule } from "./power";
+import { perpsModule } from "./perps";
+import { exposureModule } from "./exposure";
+import { supplyChainModule } from "./supply-chain";
+import { awardsModule } from "./awards";
 import { cryptoBoardModule } from "./crypto-board";
 import { portfolioAnalyticsModule } from "./analytics";
 import { brokerManagerModule } from "./broker-manager";
@@ -12,12 +22,15 @@ import { creditBoardsModule } from "./credit-boards";
 import { creditConditionsModule } from "./credit-conditions";
 import { marketValuationModule } from "./market-valuation";
 import { economicCalendarModule } from "./econ";
+import { cpiModule } from "./cpi";
 import { econStatisticsModule } from "./econ-statistics";
 import { earningsModule } from "./earnings";
 import { earningsCallsModule } from "./earnings-calls";
 import { futuresModule } from "./futures";
 import { futuresCurveModule } from "./futures-curve";
 import { cotModule } from "./cot";
+import { doeModule } from "./doe";
+import { gpuModule } from "./gpu";
 import { fxMatrixModule } from "./fx-matrix";
 import { helpModule } from "./help";
 import { positionSizerModule } from "./kelly-sizer";
@@ -52,10 +65,16 @@ import { holdersModule } from "./holders";
 import { insiderModule } from "./insider";
 import { jobsModule } from "./jobs";
 import { optionsModule } from "./options";
+import { optionsPositioningModule } from "./options-positioning";
 import { optionsScenarioModule } from "./options-scenario";
 import { optionsCalculatorModule } from "./options-calculator";
 import { volSurfaceModule } from "./vol-surface";
 import { realizedVolModule } from "./realized-vol";
+import { seasonalityModule } from "./seasonality";
+import { earningsRippleModule } from "./earnings-ripple";
+import { reverseDcfModule } from "./reverse-dcf";
+import { peBandModule } from "./pe-band";
+import { macroDayModule } from "./macro-day";
 import { ivHistoryModule } from "./iv-history";
 import { backtestModule } from "./backtest";
 import { researchModule } from "./research";
@@ -90,10 +109,16 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     chartComposerModule,
     congressResearchModule,
     optionsModule,
+    optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
+    seasonalityModule,
+    earningsRippleModule,
+    reverseDcfModule,
+    peBandModule,
+    macroDayModule,
     ivHistoryModule,
     backtestModule,
     estimateRevisionsModule,
@@ -102,6 +127,13 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     socialMentionsModule,
     debtMaturitiesModule,
     revenueBreakdownModule,
+    supplyChainModule,
+    creditDocumentsModule,
+    companyAttentionModule,
+    catalystsModule,
+    companyKpisModule,
+    awardsModule,
+    exposureModule,
     mnaModule,
     dividendYieldModule,
     holdersModule,
@@ -142,7 +174,12 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     futuresModule,
     futuresCurveModule,
     cotModule,
+    doeModule,
+    gpuModule,
+    attentionModule,
+    powerModule,
     cryptoBoardModule,
+    perpsModule,
   ],
 });
 
@@ -153,6 +190,7 @@ export const macroPlugin = composeBuiltinPlugin({
     macroSharedResourcesModule,
     economicCalendarModule,
     econStatisticsModule,
+    cpiModule,
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,

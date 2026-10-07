@@ -7,6 +7,7 @@ import {
   isProviderQuoteUsableForCurrentSession,
 } from "./financials";
 import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { createDailyNavQuote } from "../../test-support/daily-nav";
 
 describe("provider-router financial quote usability", () => {
   let clock: ReturnType<typeof spyOn>;
@@ -14,6 +15,25 @@ describe("provider-router financial quote usability", () => {
     clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-14T18:00:00Z"));
   });
   afterEach(() => clock.mockRestore());
+
+  test("accepts the dated daily NAV in quotes and embedded financials during regular hours", () => {
+    clock.mockReturnValue(Date.parse("2026-10-07T15:00:00Z"));
+    const quote = createDailyNavQuote();
+    expect(isProviderQuoteUsableForCurrentSession(quote, "NASDAQ", "VFIAX")).toBe(true);
+    const financials = { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+    expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toEqual(quote);
+    expect(isProviderQuoteUsableForCurrentSession(quote, "NYSE", "VFIAX")).toBe(false);
+    expect(isProviderQuoteUsableForCurrentSession(quote, "NASDAQ", "FXAIX")).toBe(false);
+    expect(isProviderQuoteUsableForCurrentSession({ ...quote, listingExchangeName: undefined,
+      exchangeName: undefined }, "NASDAQ", "VFIAX")).toBe(false);
+    for (const invalid of [{ stale: true }, { changeSessionDate: "2026-10-05" }, { instrumentType: "ETF" }]) {
+      expect(dropUnusableProviderQuote({ ...financials, quote: { ...quote, ...invalid } }, "NASDAQ").quote).toBeUndefined();
+    }
+    clock.mockReturnValue(Date.parse("2026-10-08T07:59:59.999Z"));
+    expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toEqual(quote);
+    clock.mockReturnValue(Date.parse("2026-10-08T08:00:00Z"));
+    expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toBeUndefined();
+  });
 
   test("rejects active-session labels without active-session prices", () => {
     clock.mockReturnValue(Date.parse("2026-09-14T11:00:00Z"));
@@ -51,6 +71,39 @@ describe("provider-router financial quote usability", () => {
     }
     clock.mockReturnValue(Date.parse("2026-09-24T23:30:00Z"));
     expect(isProviderQuoteUsableForCurrentSession(toyota, "JPX")).toBe(false);
+  });
+
+  test("keeps an NSE close through a published holiday and the weekend after it", () => {
+    const nifty = createTestQuote({ symbol: "^NSEI", listingExchangeName: "NSE", marketState: "CLOSED",
+      dataSource: "delayed", lastUpdated: Date.parse("2026-10-01T10:00:00Z") });
+    // Fri Oct 2 2026 (Gandhi Jayanti) is closed; Mon Oct 5 trades again.
+    for (const now of ["2026-10-03T06:00:00Z", "2026-10-05T03:00:00Z"]) {
+      clock.mockReturnValue(Date.parse(now));
+      expect(isProviderQuoteUsableForCurrentSession(nifty, "NSE")).toBe(true);
+    }
+    clock.mockReturnValue(Date.parse("2026-10-06T02:00:00Z"));
+    expect(isProviderQuoteUsableForCurrentSession(nifty, "NSE")).toBe(false);
+  });
+
+  test("keeps Chinese closes through National Day, but rejects older or unusable observations", () => {
+    for (const [symbol, exchange] of [["601138.SS", "SSE"], ["301219.SZ", "SZSE"]]) {
+      const close = createTestQuote({ symbol, listingExchangeName: exchange, marketState: "CLOSED",
+        dataSource: "delayed", lastUpdated: Date.parse("2026-09-30T07:04:07Z") });
+      // Oct 1-7 are closed; Oct 8 opens at 09:30 Shanghai.
+      for (const now of ["2026-10-04T08:00:00Z", "2026-10-07T08:00:00Z", "2026-10-08T01:00:00Z"]) {
+        clock.mockReturnValue(Date.parse(now));
+        expect(isProviderQuoteUsableForCurrentSession(close, exchange)).toBe(true);
+        expect(isProviderQuoteUsableForCurrentSession({ ...close, stale: true }, exchange)).toBe(false);
+        for (const lastUpdated of [Date.parse("2026-09-29T07:04:07Z"), 0, NaN, Date.now() + 60 * 60_000]) {
+          expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated }, exchange)).toBe(false);
+        }
+      }
+      // Tuesday 09:35 Shanghai is still before the delayed feed's first session prints.
+      clock.mockReturnValue(Date.parse("2026-10-13T01:35:00Z"));
+      expect(isProviderQuoteUsableForCurrentSession({ ...close,
+        lastUpdated: Date.parse("2026-10-12T07:00:00Z"),
+      }, exchange)).toBe(true);
+    }
   });
 
   test("rejects old active-session provider quotes", () => {
@@ -93,7 +146,7 @@ describe("provider-router financial quote usability", () => {
     }), "NASDAQ")).toBe(false);
   });
 
-  test("keeps a closed Asian index that Yahoo still labels POST hours after the close", () => {
+  test("keeps a closed Asian index that Gloom still labels POST hours after the close", () => {
     expect(isProviderQuoteUsableForCurrentSession(createTestQuote({
       symbol: "^N225",
       dataSource: "delayed",
@@ -179,13 +232,13 @@ test("fallback reporting currency does not label unknown primary statement units
 });
 
 test("yield basis and source stay attached to the selected yield observation", () => {
-  const forward = createTestFinancials({ fundamentals: { dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo" } });
-  const trailing = createTestFinancials({ fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "twelvedata", revenue: 100 } });
-  expect(mergeFinancials(forward, trailing)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo", revenue: 100 });
+  const forward = createTestFinancials({ fundamentals: { dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "gloom" } });
+  const trailing = createTestFinancials({ fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "gloom", revenue: 100 } });
+  expect(mergeFinancials(forward, trailing)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "gloom", revenue: 100 });
   const unknown = createTestFinancials({ fundamentals: { dividendYield: 0.16 } });
   expect(mergeFinancials(unknown, forward)?.fundamentals?.dividendYieldBasis).toBeUndefined();
   expect(mergeFinancials(unknown, forward)?.fundamentals?.dividendYieldSource).toBeUndefined();
-  expect(mergeFinancials(createTestFinancials({ fundamentals: { revenue: 200 } }), forward)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo" });
+  expect(mergeFinancials(createTestFinancials({ fundamentals: { revenue: 200 } }), forward)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "gloom" });
 });
 
 test("per-share bases that reprice a multiple stay with that multiple's observation", () => {

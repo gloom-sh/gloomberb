@@ -10,7 +10,7 @@ const bars = (...rows: Array<[string, number]>): PricePoint[] =>
   rows.map(([day, close]) => ({ date: new Date(`${day}T04:00:00Z`), close }) as PricePoint);
 
 describe("front contract", () => {
-  test("is the month the quote names, in either of Yahoo's spellings", () => {
+  test("is the month the quote names, in either supported spelling", () => {
     expect(frontContractCandidates(contract("LE"), quote("LE=F", "Live Cattle Futures,Dec-2026"))).toEqual(["LEZ26.CME"]);
     expect(frontContractCandidates(contract("CL"), quote("CL=F", "Crude Oil Nov 26"))).toEqual(["CLX26.NYM"]);
   });

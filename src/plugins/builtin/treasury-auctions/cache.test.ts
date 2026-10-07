@@ -14,6 +14,7 @@ import type { TreasuryAuction } from "./types";
 function auctionFixture(id: string): TreasuryAuction {
   return {
     id,
+    cusip: null,
     secType: "Note",
     securityTerm: "10-Year",
     auctionDate: "2026-08-12",

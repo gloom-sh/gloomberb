@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useAppSelector } from "../../../state/app/context";
 import type { TickerRecord } from "../../../types/ticker";
 
-export function collectMineTickers(tickers: Iterable<TickerRecord>): ReadonlySet<string> {
+function collectMineTickers(tickers: Iterable<TickerRecord>): ReadonlySet<string> {
   const symbols = new Set<string>();
   for (const { metadata } of tickers) {
     if (metadata.portfolios.length || metadata.watchlists.length) {

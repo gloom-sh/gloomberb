@@ -24,13 +24,19 @@ const FIELD_LABELS: Record<PositionFieldId, string> = {
   ticker: "Ticker",
   shares: "Shares",
   avgCost: "Avg cost",
+  currency: "Currency",
 };
 
-const FIELD_PLACEHOLDERS: Record<PositionFieldId, string> = {
+const FIELD_PLACEHOLDERS: Record<Exclude<PositionFieldId, "currency">, string> = {
   ticker: "e.g. AAPL",
   shares: "optional",
   avgCost: "current price",
 };
+
+/** A blank Currency shows the code it will save, as the AP form does. */
+function fieldPlaceholder(field: PositionFieldId, state: OnboardingPositionsState): string {
+  return field === "currency" ? state.blankCurrency : t(FIELD_PLACEHOLDERS[field]);
+}
 
 /** Company name and last price for the symbol being typed, or why it will not resolve. */
 function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview" | "error">) {
@@ -163,7 +169,7 @@ function DesktopPositionsPanel({
     label: t(FIELD_LABELS[field]),
     inputRef: index === state.fieldIdx ? inputRef : undefined,
     value: state.draft[field],
-    placeholder: t(FIELD_PLACEHOLDERS[field]),
+    placeholder: fieldPlaceholder(field, state),
     focused: editing && index === state.fieldIdx && !state.submitting,
     size: "comfortable" as const,
     backgroundColor: colors.panel,
@@ -183,6 +189,9 @@ function DesktopPositionsPanel({
         </Box>
         <Box style={{ width: 128, flexShrink: 0 }}>
           <NumberField {...fieldProps("avgCost", 2)} onChange={(value) => state.setField("avgCost", value)} />
+        </Box>
+        <Box style={{ width: 80, flexShrink: 0 }}>
+          <TextField {...fieldProps("currency", 3)} onChange={(value) => state.setField("currency", value)} />
         </Box>
         <Box style={{ flexShrink: 0 }}>
           <Button
@@ -229,7 +238,7 @@ function TuiFieldRow({
   const colors = useThemeColors();
   const active = editing && index === state.fieldIdx;
   const value = state.draft[field];
-  const Field = field === "ticker" ? TextField : NumberField;
+  const Field = field === "ticker" || field === "currency" ? TextField : NumberField;
   return (
     <Box height={1} flexDirection="row">
       <Box width={10} flexShrink={0}>
@@ -242,7 +251,7 @@ function TuiFieldRow({
           <Field
             inputRef={inputRef}
             value={value}
-            placeholder={t(FIELD_PLACEHOLDERS[field])}
+            placeholder={fieldPlaceholder(field, state)}
             focused={!state.submitting}
             backgroundColor={colors.panel}
             textColor={colors.text}
@@ -250,7 +259,7 @@ function TuiFieldRow({
             onChange={(next) => state.setField(field, next)}
           />
         ) : (
-          <Text fg={value ? colors.text : colors.textMuted}>{value || t(FIELD_PLACEHOLDERS[field])}</Text>
+          <Text fg={value ? colors.text : colors.textMuted}>{value || fieldPlaceholder(field, state)}</Text>
         )}
       </Box>
       {field === "ticker" ? (

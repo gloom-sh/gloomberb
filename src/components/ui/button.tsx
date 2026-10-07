@@ -4,7 +4,7 @@ import { type ComponentType, type ReactNode } from "react";
 import type { ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
-import { useRemoteUiNode } from "../../remote/semantic-tree";
+import { useRemoteUiNode, useRemoteUiScope } from "../../remote/semantic-tree";
 import { useScopedButtonAction } from "./action-scope";
 
 /**
@@ -87,6 +87,7 @@ export function Button({
   const label = t(rawLabel);
   const scopedShortcut = useScopedButtonAction(label, onPress, disabled);
   shortcut = shortcut ?? scopedShortcut;
+  const remoteScope = useRemoteUiScope();
   useRemoteUiNode({
     role: "button",
     label,
@@ -96,7 +97,7 @@ export function Button({
         if (!disabled) onPress?.();
       },
     },
-    metadata: { variant, active, shortcut, expanded },
+    metadata: { variant, active, shortcut, expanded, ...(remoteScope ? { scope: remoteScope } : {}) },
   });
   const HostButton = useUiHost().Button as ComponentType<ButtonProps> | undefined;
   if (HostButton) {

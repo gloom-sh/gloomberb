@@ -31,6 +31,8 @@ interface FloatingPaneWrapperProps {
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
   onCloseMouseDown?: (event: any) => void;
+  onRestoreMouseDown?: (event: any) => void;
+  fullscreen?: boolean;
   onResizeMouseDown?: (event: any) => void;
   onResizeMouseDrag?: (event: any) => void;
   onResizeMouseDragEnd?: (event: any) => void;
@@ -80,6 +82,8 @@ export function FloatingPaneWrapper({
   onHeaderContextMenu,
   onActionMouseDown,
   onCloseMouseDown,
+  onRestoreMouseDown,
+  fullscreen = false,
   onResizeMouseDown,
   onResizeMouseDrag,
   onResizeMouseDragEnd,
@@ -137,6 +141,8 @@ export function FloatingPaneWrapper({
         onHeaderContextMenu={onHeaderContextMenu}
         onActionMouseDown={onActionMouseDown}
         onCloseMouseDown={onCloseMouseDown}
+        onRestoreMouseDown={onRestoreMouseDown}
+        fullscreen={fullscreen}
       />
 
       <PaneBodyFrame layoutProps={bodyFrame.layoutProps} backgroundColor={bg}>

@@ -91,6 +91,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "PaneLinkMenu",
     "PaneSidebar",
     "PaneSidebarAction",
+    "PaneSidebarList",
     "PaneSidebarRow",
     "PaneStatusBody",
     "Popover",
@@ -193,7 +194,6 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "seedPaneLaunchSession",
   ],
   "./market-data": [
-    "YahooHttpClient",
     "computeTickerPriceReturns",
     "currencyMinorDigits",
     "formatCompactMarketPriceWithCurrency",
@@ -307,6 +307,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "clearPersistedBrokerAccounts",
     "createConfigBackedTestPluginRuntime",
     "createInitialState",
+    "createOpenTuiTestHarness",
     "createOpenTuiTestRoot",
     "createStatefulTestPluginRuntime",
     "createStaticAppStore",

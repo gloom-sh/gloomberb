@@ -1,7 +1,6 @@
-import { YAHOO_FINANCE_HEADERS } from "../../../sources/yahoo-finance/http";
-import { yahooSecurityName } from "../../../sources/yahoo-finance/names";
+import type { ScreenerQuote } from "../../../api-client/market-discovery";
+export type { ScreenerQuote } from "../../../api-client/market-discovery";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { createThrottledFetch, type ThrottledFetchTransport } from "../../../utils/throttled-fetch";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import type {
@@ -12,26 +11,32 @@ import type {
 } from "../../../api-client/types";
 import { hasProAccess } from "../../../api-client/plan-access";
 
-const YAHOO_FINANCE_HOSTS = [
-  "query2.finance.yahoo.com",
-  "query1.finance.yahoo.com",
-] as const;
-const CACHE_KIND = "yahoo-screener";
-const CACHE_SOURCE = "yahoo-finance";
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_KIND = "market-screener";
+const CACHE_SOURCE = "gloom";
+const CACHE_SCHEMA_VERSION = 3;
 const CACHE_POLICY = {
   staleMs: 5 * 60 * 1000,
   expireMs: 60 * 60 * 1000,
 } as const;
-const YAHOO_METADATA_WAIT_MS = 1_500;
+/** A pane shows the live ranking first; the backend's average volumes follow if they are quick. */
+const MARKET_METADATA_WAIT_MS = 1_500;
 
-export interface YahooScreenerApi {
-  fetchJson<T = unknown>(path: string, params: Record<string, string | number>): Promise<T>;
+export interface MarketScreenerApi {
+  getMarketMovers: Pick<typeof apiClient, "getMarketMovers">["getMarketMovers"];
+  getMarketTrending?: Pick<typeof apiClient, "getMarketTrending">["getMarketTrending"];
 }
 
 export interface FetchCacheOptions {
   cache?: boolean;
   forceRefresh?: boolean;
+}
+
+export interface PreferredMoversOptions extends FetchCacheOptions {
+  /**
+   * How long a Cloud list waits for the backend's average volumes and market
+   * caps, which it borrows by symbol: without them every row has no ratio.
+   */
+  metadataWaitMs?: number;
 }
 
 let marketMoversPersistence: PluginPersistence | null = null;
@@ -48,46 +53,14 @@ export function resetMarketMoversPersistence(): void {
   failedFetches.clear();
 }
 
-export function createYahooScreenerApi(transport?: ThrottledFetchTransport): YahooScreenerApi {
-  const client = createThrottledFetch({
-    requestsPerMinute: 15,
-    maxRetries: 2,
-    timeoutMs: 10_000,
-    defaultHeaders: YAHOO_FINANCE_HEADERS,
-    transport,
-  });
+const screenerApi: MarketScreenerApi = apiClient;
 
-  return {
-    async fetchJson<T = unknown>(path: string, params: Record<string, string | number>): Promise<T> {
-      let lastError: unknown;
-      for (const host of YAHOO_FINANCE_HOSTS) {
-        const url = new URL(`https://${host}${path}`);
-        for (const [key, value] of Object.entries(params)) {
-          url.searchParams.set(key, String(value));
-        }
-
-        try {
-          return await client.fetchJson<T>(url.toString());
-        } catch (error) {
-          lastError = error;
-        }
-      }
-
-      throw lastError instanceof Error
-        ? lastError
-        : new Error("Yahoo Finance screener request failed");
-    },
-  };
-}
-
-const screenerApi = createYahooScreenerApi();
-
-function shouldUseCache(api: YahooScreenerApi, options?: FetchCacheOptions): boolean {
+function shouldUseCache(api: MarketScreenerApi, options?: FetchCacheOptions): boolean {
   return options?.cache === true || (options?.cache !== false && api === screenerApi);
 }
 
 function readCache<T>(key: string, options?: { allowExpired?: boolean }): { data: T; stale: boolean } | null {
-  const record = marketMoversPersistence?.getResource<T>(CACHE_KIND, key, {
+  const record = marketMoversPersistence?.getResource<CachedResult<T>>(CACHE_KIND, key, {
     sourceKey: CACHE_SOURCE,
     schemaVersion: CACHE_SCHEMA_VERSION,
     allowExpired: options?.allowExpired,
@@ -95,8 +68,8 @@ function readCache<T>(key: string, options?: { allowExpired?: boolean }): { data
   if (!record) return null;
 
   return {
-    data: record.value,
-    stale: !!record.stale || failedFetches.has(key),
+    data: record.value.data,
+    stale: record.value.stale || !!record.stale || failedFetches.has(key),
   };
 }
 
@@ -116,10 +89,10 @@ export interface CachedResult<T> {
 
 async function loadCached<T>(
   key: string,
-  fetcher: () => Promise<T>,
+  fetcher: () => Promise<CachedResult<T>>,
   options?: FetchCacheOptions,
 ): Promise<CachedResult<T>> {
-  if (options?.cache === false) return { data: await fetcher(), stale: false };
+  if (options?.cache === false) return fetcher();
 
   const cached = readCache<T>(key);
   if (!options?.forceRefresh && cached && !cached.stale) return { data: cached.data, stale: false };
@@ -129,10 +102,10 @@ async function loadCached<T>(
 
   const fallback = cached ?? readCache<T>(key, { allowExpired: true });
   const fetchPromise = fetcher()
-    .then((data) => {
-      writeCache(key, data);
+    .then((result) => {
+      writeCache(key, result);
       failedFetches.delete(key);
-      return { data, stale: false };
+      return result;
     })
     .catch((error) => {
       // Serving the expired copy is right; hiding that it is expired is not.
@@ -154,28 +127,8 @@ async function loadCached<T>(
 
 export type ScreenerCategory = "day_gainers" | "day_losers" | "most_actives";
 
-export interface ScreenerQuote {
-  symbol: string;
-  name: string;
-  price: number | null;
-  change: number | null;
-  changePercent: number | null;
-  volume: number | null;
-  avgVolume: number | null;
-  volumeRatio: number | null; // volume / avgVolume
-  marketCap: number | undefined;
-  currency: string;
-  fiftyTwoWeekHigh: number | undefined;
-  fiftyTwoWeekLow: number | undefined;
-  dayHigh: number | undefined;
-  dayLow: number | undefined;
-  exchange: string;
-  lastUpdated?: number;
-  /** Session-fixed, so the price column reads its decimals from it rather than from each tick. */
-  previousClose?: number;
-}
 
-export type MarketMoversDataSource = "cloud" | "yahoo";
+type MarketMoversDataSource = "cloud" | "gloom";
 
 export interface MarketMoversResult {
   quotes: ScreenerQuote[];
@@ -190,7 +143,7 @@ export interface PreferredMarketMoverSources {
     count: number,
     mode: "cache-first" | "refresh",
   ): Promise<CloudMarketResponse<CloudMarketScreenerPayload>>;
-  fetchYahoo(
+  fetchMarket(
     category: ScreenerCategory,
     count: number,
     options?: FetchCacheOptions,
@@ -231,35 +184,24 @@ export function convertScreenerPriceUnit(value: number | undefined, from: string
     ? value / source.divisor * target.divisor : undefined;
 }
 
-const textField = (value: unknown) => typeof value === "string" ? value : undefined;
-
-export function parseScreenerResponse(data: any): ScreenerQuote[] {
-  const quotes = data?.finance?.result?.[0]?.quotes;
-  if (data?.finance?.error != null || !Array.isArray(quotes)) {
+/** Validate numeric fields at the API boundary so absent values stay unavailable. */
+export function parseScreenerResponse(data: unknown): ScreenerQuote[] {
+  if (!data || typeof data !== "object" || !("quotes" in data) || !Array.isArray(data.quotes)) {
     throw new Error("Invalid market movers response");
   }
-  return quotes.flatMap((q): ScreenerQuote[] => {
+  return data.quotes.flatMap((q): ScreenerQuote[] => {
     if (!q || typeof q.symbol !== "string" || !q.symbol.trim()) return [];
-    const volume = screenerVolume(q.regularMarketVolume);
-    const avgVolume = screenerVolume(q.averageDailyVolume3Month) ?? screenerVolume(q.averageDailyVolume10Day);
+    const volume = screenerVolume(q.volume);
+    const avgVolume = screenerVolume(q.avgVolume);
     return [{
-      symbol: q.symbol.trim(),
-      name: yahooSecurityName(textField(q.shortName), textField(q.longName)) ?? q.symbol.trim(),
-      price: screenerNumber(q.regularMarketPrice),
-      change: screenerNumber(q.regularMarketChange),
-      changePercent: screenerNumber(q.regularMarketChangePercent),
-      volume, avgVolume,
-      volumeRatio: screenerVolumeRatio(volume, avgVolume),
-      marketCap: screenerVolume(q.marketCap) ?? undefined,
-      currency: typeof q.currency === "string" ? q.currency.trim() : "",
-      fiftyTwoWeekHigh: screenerNumber(q.fiftyTwoWeekHigh) ?? undefined,
-      fiftyTwoWeekLow: screenerNumber(q.fiftyTwoWeekLow) ?? undefined,
-      dayHigh: screenerNumber(q.regularMarketDayHigh) ?? undefined,
-      dayLow: screenerNumber(q.regularMarketDayLow) ?? undefined,
-      previousClose: screenerNumber(q.regularMarketPreviousClose) ?? undefined,
-      exchange: typeof (q.fullExchangeName ?? q.exchange) === "string" ? q.fullExchangeName ?? q.exchange : "",
-      lastUpdated: typeof q.regularMarketTime === "number" && Number.isFinite(q.regularMarketTime) && q.regularMarketTime > 0
-        ? q.regularMarketTime * 1000 : undefined,
+      symbol: q.symbol.trim(), name: typeof q.name === "string" && q.name.trim() ? q.name.trim() : q.symbol.trim(),
+      price: screenerNumber(q.price), change: screenerNumber(q.change), changePercent: screenerNumber(q.changePercent),
+      volume, avgVolume, volumeRatio: screenerVolumeRatio(volume, avgVolume),
+      marketCap: screenerVolume(q.marketCap) ?? undefined, currency: typeof q.currency === "string" ? q.currency.trim() : "",
+      fiftyTwoWeekHigh: screenerNumber(q.fiftyTwoWeekHigh) ?? undefined, fiftyTwoWeekLow: screenerNumber(q.fiftyTwoWeekLow) ?? undefined,
+      dayHigh: screenerNumber(q.dayHigh) ?? undefined, dayLow: screenerNumber(q.dayLow) ?? undefined,
+      previousClose: screenerNumber(q.previousClose) ?? undefined, exchange: typeof q.exchange === "string" ? q.exchange : "",
+      lastUpdated: typeof q.lastUpdated === "number" && Number.isFinite(q.lastUpdated) && q.lastUpdated > 0 ? q.lastUpdated : undefined,
     }];
   });
 }
@@ -267,27 +209,22 @@ export function parseScreenerResponse(data: any): ScreenerQuote[] {
 export async function fetchScreenerResult(
   category: ScreenerCategory,
   count = 25,
-  api: YahooScreenerApi = screenerApi,
+  api: MarketScreenerApi = screenerApi,
   options?: FetchCacheOptions,
 ): Promise<CachedResult<ScreenerQuote[]>> {
   const load = async () => {
-    const data = await api.fetchJson("/v1/finance/screener/predefined/saved", {
-      formatted: "false",
-      lang: "en-US",
-      region: "US",
-      scrIds: category,
-      count,
-    });
-    return parseScreenerResponse(data);
+    const response = await api.getMarketMovers(category, count, options?.forceRefresh);
+    if (!response.data) throw new Error("Invalid market movers response");
+    return { data: parseScreenerResponse(response.data), stale: response.stale === true || response.data.stale === true };
   };
-  if (!shouldUseCache(api, options)) return { data: await load(), stale: false };
+  if (!shouldUseCache(api, options)) return load();
   return loadCached(`screener:${category}:count=${count}`, load, options);
 }
 
 export async function fetchScreener(
   category: ScreenerCategory,
   count = 25,
-  api: YahooScreenerApi = screenerApi,
+  api: MarketScreenerApi = screenerApi,
   options?: FetchCacheOptions,
 ): Promise<ScreenerQuote[]> {
   return (await fetchScreenerResult(category, count, api, options)).data;
@@ -307,7 +244,7 @@ function isCloudScreenerEligible(): boolean {
 const defaultPreferredMarketMoverSources: PreferredMarketMoverSources = {
   isCloudEligible: isCloudScreenerEligible,
   fetchCloud: (category, count, mode) => apiClient.getCloudMarketScreener(category, count, mode),
-  fetchYahoo: (category, count, options) => fetchScreenerResult(category, count, undefined, options),
+  fetchMarket: (category, count, options) => fetchScreenerResult(category, count, undefined, options),
 };
 
 function mergeCloudScreenerItem(
@@ -315,6 +252,8 @@ function mergeCloudScreenerItem(
   metadata?: ScreenerQuote,
 ): ScreenerQuote {
   const currency = typeof item.currency === "string" ? item.currency.trim() : "";
+  const directAverage = screenerNumber(item.avgVolume);
+  const avgVolume = directAverage != null && directAverage > 0 ? directAverage : metadata?.avgVolume ?? null;
   const metadataPrice = (value: number | undefined) => convertScreenerPriceUnit(value, metadata?.currency ?? "", currency);
   return {
     symbol: item.symbol,
@@ -325,8 +264,8 @@ function mergeCloudScreenerItem(
     change: screenerNumber(item.change),
     changePercent: screenerNumber(item.changePercent),
     volume: screenerVolume(item.volume),
-    avgVolume: metadata?.avgVolume ?? null,
-    volumeRatio: screenerVolumeRatio(screenerVolume(item.volume), metadata?.avgVolume ?? null),
+    avgVolume,
+    volumeRatio: screenerVolumeRatio(screenerVolume(item.volume), avgVolume),
     marketCap: metadata?.marketCap,
     currency,
     fiftyTwoWeekHigh: screenerNumber(item.high52w) ?? metadataPrice(metadata?.fiftyTwoWeekHigh),
@@ -338,15 +277,16 @@ function mergeCloudScreenerItem(
   };
 }
 
-async function bestEffortYahooMetadata(
+async function bestEffortMarketMetadata(
   request: Promise<CachedResult<ScreenerQuote[]>>,
+  waitMs: number,
 ): Promise<ScreenerQuote[]> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       request.then((result) => result.data).catch(() => []),
       new Promise<ScreenerQuote[]>((resolve) => {
-        timeout = setTimeout(() => resolve([]), YAHOO_METADATA_WAIT_MS);
+        timeout = setTimeout(() => resolve([]), waitMs);
       }),
     ]);
   } finally {
@@ -375,15 +315,16 @@ export function rankScreenerQuotes(category: ScreenerCategory, quotes: ScreenerQ
 export async function fetchPreferredMarketMovers(
   category: ScreenerCategory,
   count = 25,
-  options?: FetchCacheOptions,
+  preferredOptions?: PreferredMoversOptions,
   sources: PreferredMarketMoverSources = defaultPreferredMarketMoverSources,
 ): Promise<MarketMoversResult> {
+  const { metadataWaitMs = MARKET_METADATA_WAIT_MS, ...options } = preferredOptions ?? {};
   if (!sources.isCloudEligible()) {
-    const result = await sources.fetchYahoo(category, count, options);
-    return { quotes: rankScreenerQuotes(category, result.data), source: "yahoo", stale: result.stale };
+    const result = await sources.fetchMarket(category, count, options);
+    return { quotes: rankScreenerQuotes(category, result.data), source: "gloom", stale: result.stale };
   }
 
-  const yahooMetadata = sources.fetchYahoo(
+  const marketMetadata = sources.fetchMarket(
     category,
     Math.max(count, 50),
     options,
@@ -399,7 +340,7 @@ export async function fetchPreferredMarketMovers(
       && response.data
       && response.data.items.length > 0
     ) {
-      const metadata = await bestEffortYahooMetadata(yahooMetadata);
+      const metadata = await bestEffortMarketMetadata(marketMetadata, metadataWaitMs);
       const metadataBySymbol = new Map(metadata.map((quote) => [quote.symbol, quote]));
       return {
         quotes: rankScreenerQuotes(category, response.data.items.map((item) => (
@@ -410,44 +351,34 @@ export async function fetchPreferredMarketMovers(
       };
     }
   } catch {
-    // Yahoo remains the resilient fallback when Cloud is unavailable.
+    // The public backend snapshot remains available when live rankings fail.
   }
 
-  const fallback = await yahooMetadata;
+  const fallback = await marketMetadata;
   return {
     quotes: rankScreenerQuotes(category, fallback.data),
-    source: "yahoo",
+    source: "gloom",
     stale: fallback.stale,
   };
 }
 
-export function parseTrendingResponse(data: any): TrendingSymbol[] {
-  try {
-    const quotes = data?.finance?.result?.[0]?.quotes;
-    if (!Array.isArray(quotes)) return [];
-    const result: TrendingSymbol[] = [];
-    for (const q of quotes) {
-      if (!q || typeof q.symbol !== "string") continue;
-      result.push({ symbol: q.symbol });
-    }
-    return result;
-  } catch {
-    return [];
-  }
+export function parseTrendingResponse(data: unknown): TrendingSymbol[] {
+  if (!Array.isArray(data)) return [];
+  return data.flatMap(q => q && typeof q.symbol === "string" && q.symbol.trim() ? [{ symbol: q.symbol.trim() }] : []);
 }
 
 export async function fetchTrending(
   count = 25,
-  api: YahooScreenerApi = screenerApi,
+  api: MarketScreenerApi = screenerApi,
   options?: FetchCacheOptions,
 ): Promise<TrendingSymbol[]> {
   const load = async () => {
-    const data = await api.fetchJson("/v1/finance/trending/US", {
-      count,
-    });
-    return parseTrendingResponse(data);
+    const response = await (api.getMarketTrending ?? apiClient.getMarketTrending)(count);
+    if (response.status === "empty") return { data: [], stale: response.stale === true };
+    if (!response.data) throw new Error("Market trends unavailable");
+    return { data: parseTrendingResponse(response.data), stale: response.stale === true };
   };
-  if (!shouldUseCache(api, options)) return load();
+  if (!shouldUseCache(api, options)) return (await load()).data;
   return (await loadCached(`trending:US:count=${count}`, load, options)).data;
 }
 

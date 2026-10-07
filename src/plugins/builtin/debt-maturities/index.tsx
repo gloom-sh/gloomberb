@@ -12,6 +12,7 @@ export const debtMaturitiesModule: PluginModule = {
       icon: "D",
       component: DebtMaturitiesPane,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 96, height: 30 },
       tableExport: true,

@@ -1,4 +1,7 @@
+/** Cited company disclosures; Pro, omitted by older servers. */
+export const KPI_FIELDS = ["kpiArr", "kpiNrrPercent", "kpiRpo", "kpiCrpo", "kpiSubscribers", "kpiDau", "kpiMau", "kpiGmv", "kpiTakeRatePercent", "kpiSameStoreSalesPercent", "kpiStores", "kpiBacklog", "kpiBookToBill", "kpiNimPercent", "kpiCet1Percent", "kpiCombinedRatioPercent", "kpiOccupancyPercent", "kpiLoadFactorPercent", "guideRevenueChangePercent", "guideEpsChangePercent"] as const;
 export const NUMERIC_FIELDS = [
+  ...KPI_FIELDS,
   "price",
   "changePercent",
   "volume",
@@ -26,6 +29,8 @@ export const NUMERIC_FIELDS = [
   "xPostsVsMedian",
   "wikiViewsPerDay",
   "wikiViewsVsMedian",
+  "attentionResearchUnits",
+  "attentionZScore",
   "return1WPercent",
   "return1MPercent",
   "return3MPercent",
@@ -40,9 +45,14 @@ export const NUMERIC_FIELDS = [
   "analystUpsidePercent",
   "ivRank",
   "ivToHv",
+  "hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore",
+  "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
 ] as const;
+/** Hiring and app attention are optional when connecting to an older server. */
+export const HIRING_APP_FIELDS = ["hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore", "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d"] as const;
 /** Social attention; a server from before them omits these metrics. */
 export const SOCIAL_FIELDS = ["xPostsPerDay", "xPostsVsMedian", "wikiViewsPerDay", "wikiViewsVsMedian"] as const;
+export const ATTENTION_FIELDS = ["attentionResearchUnits", "attentionZScore"] as const;
 /** Returns, valuation, estimates and options; a server from before them omits these metrics. */
 export const RESEARCH_FIELDS = [
   "return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent", "return1YPercent", "fromHigh52WPercent",
@@ -56,7 +66,7 @@ export const CATEGORY_FIELDS = [
   "industry",
 ] as const;
 export type NumericField = (typeof NUMERIC_FIELDS)[number];
-export type CategoryField = (typeof CATEGORY_FIELDS)[number];
+type CategoryField = (typeof CATEGORY_FIELDS)[number];
 export type ScreenField = NumericField | CategoryField;
 export type ScreenOperator =
   "gte" | "lte" | "gt" | "lt" | "eq" | "between" | "in" | "present" | "missing";
@@ -110,7 +120,7 @@ export interface ScreenRow {
   metrics: Record<NumericField, ScreenMetric>;
   warnings: string[];
 }
-export interface ScreenCoverage {
+interface ScreenCoverage {
   covered: number;
   skipped: number;
   knownByField: Record<NumericField, number>;
@@ -147,6 +157,7 @@ export interface SavedScreen {
   updatedAt: string;
 }
 export interface ScreenFieldDefinition {
+  access?: "pro";
   id: ScreenField;
   label: string;
   kind: "number" | "category";

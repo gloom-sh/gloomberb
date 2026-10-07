@@ -65,6 +65,7 @@ export function createSectorsHeadless(
       type: "enum",
       values: [{ value: "sectors" }, { value: "industries" }],
       defaultValue: "sectors",
+      pluginState: { pluginId: "market-overview", key: "activeCollectionId" },
     }],
     columns: COLUMNS,
     describe: (args) => `Sector Performance | ${String(args.options.collection)}`,

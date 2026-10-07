@@ -131,7 +131,7 @@ function throwIfAborted(signal: AbortSignal): void {
     : new Error("Headless pane load was aborted.");
 }
 
-export async function loadHeadlessPaneModel(
+async function loadHeadlessPaneModel(
   definition: HeadlessPaneDefinition,
   args: HeadlessPaneLoadArgs,
   context: HeadlessPaneContext,
@@ -169,6 +169,10 @@ export async function loadResolvedHeadlessPaneModel(
       if (!portfolio) return null;
       const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(id));
       return { portfolio, tickers };
+    },
+    async resolveWatchlist(id) {
+      if (!context.config.watchlists.some(row => row.id === id)) return null;
+      return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(id));
     },
     async resolveInstrument(key) {
       const parsed = parsePublicTickerKey(key);

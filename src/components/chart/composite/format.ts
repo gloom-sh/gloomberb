@@ -1,6 +1,7 @@
 import { formatMarketPrice, formatMarketPriceWithCurrency, stablePriceFractionDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
+import { timeZoneLabel, zonedWallClockMs } from "../../../utils/zoned-date-time";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
@@ -411,17 +412,28 @@ function utcTime(date: Date): string {
   return date.toISOString().slice(11, 16);
 }
 
+/** The date's wall-clock reading in `timeZone` (UTC when absent), and the zone's short name. */
+function onClock(date: Date, timeZone: string | undefined): { wall: Date; zone: string } {
+  if (!timeZone || timeZone === "UTC") return { wall: date, zone: "UTC" };
+  try {
+    return { wall: new Date(zonedWallClockMs(date.getTime(), timeZone)), zone: timeZoneLabel(timeZone) };
+  } catch {
+    return { wall: date, zone: "UTC" };
+  }
+}
+
 function isIntradaySpan(startTime: number, endTime: number): boolean {
   return Number.isFinite(startTime)
     && Number.isFinite(endTime)
     && Math.abs(endTime - startTime) <= INTRADAY_SPAN_MAX_MS;
 }
 
-/** Shared-cursor timestamp using the chart's explicit UTC convention. */
-export function formatCompositeCursorDate(date: Date, startTime: number, endTime: number): string {
+/** Shared-cursor timestamp on the chart's clock: the venue's for intraday bars, else UTC. */
+export function formatCompositeCursorDate(date: Date, startTime: number, endTime: number, timeZone?: string): string {
+  const { wall, zone } = onClock(date, timeZone);
   return isIntradaySpan(startTime, endTime)
-    ? `${utcDate(date)} ${utcTime(date)} UTC`
-    : utcDate(date);
+    ? `${utcDate(wall)} ${utcTime(wall)} ${zone}`
+    : utcDate(wall);
 }
 
 function validUtcTimestamp(date: Date | undefined): string | null {
@@ -462,12 +474,13 @@ export function formatCompositePointDetails(point: TimeSeriesPoint | null | unde
   return details.join(" · ");
 }
 
-/** Compact UTC tick label selected from the full visible chart span. */
-export function formatCompositeTimeAxisDate(date: Date, startTime: number, endTime: number): string {
-  if (!isIntradaySpan(startTime, endTime)) return utcDate(date);
-  const startDate = utcDate(new Date(startTime));
-  const endDate = utcDate(new Date(endTime));
+/** Compact tick label on the chart's clock, selected from the full visible chart span. */
+export function formatCompositeTimeAxisDate(date: Date, startTime: number, endTime: number, timeZone?: string): string {
+  const { wall, zone } = onClock(date, timeZone);
+  if (!isIntradaySpan(startTime, endTime)) return utcDate(wall);
+  const startDate = utcDate(onClock(new Date(startTime), timeZone).wall);
+  const endDate = utcDate(onClock(new Date(endTime), timeZone).wall);
   return startDate === endDate
-    ? `${utcTime(date)} UTC`
-    : `${utcDate(date).slice(5)} ${utcTime(date)} UTC`;
+    ? `${utcTime(wall)} ${zone}`
+    : `${utcDate(wall).slice(5)} ${utcTime(wall)} ${zone}`;
 }

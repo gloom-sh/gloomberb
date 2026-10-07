@@ -6,7 +6,7 @@ import { DialogFrame } from "./frame";
 import { TextField } from "./fields";
 
 /** A whole number within [min, max], or null for anything else. */
-export function parseWholeNumber(text: string, min: number, max: number): number | null {
+function parseWholeNumber(text: string, min: number, max: number): number | null {
   const trimmed = text.trim();
   if (!/^\d+$/.test(trimmed)) return null;
   const value = Number(trimmed);

@@ -31,7 +31,7 @@ const BROWSER_ENTRIES = [
 const BUN_ONLY_MODULES = [
   "src/plugins/loader.ts",
   "src/plugins/bundle.ts",
-  "src/plugins/seed.ts",
+  "src/plugins/extracted-plugins.ts",
   "src/plugins/host-link.ts",
   "src/plugins/host-resolver.ts",
   "src/cli/restore-plugins.ts",

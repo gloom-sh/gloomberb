@@ -18,7 +18,7 @@ function confirmDisconnect(instance: BrokerInstanceConfig): string[] {
     layout: {} as LayoutConfig,
     openInlineConfirm,
     persistLayoutChange: () => {},
-    pluginRegistry: { getConfigFn: () => config } as unknown as PluginRegistry,
+    pluginRegistry: { getConfig: () => config } as unknown as PluginRegistry,
     route: {
       kind: "picker",
       pickerId: "disconnect-broker",
@@ -29,9 +29,6 @@ function confirmDisconnect(instance: BrokerInstanceConfig): string[] {
       options: [{ id: instance.id, label: instance.label }],
     },
     selectedId: instance.id,
-    setRouteStack: () => {},
-    updateTopRoute: () => {},
-    updateWorkflowValue: () => {},
   });
   return body;
 }
@@ -39,12 +36,14 @@ function confirmDisconnect(instance: BrokerInstanceConfig): string[] {
 test("disconnecting a signed-in profile warns that the account-wide connection goes too", () => {
   const signedIn: BrokerInstanceConfig = { id: "ibkr-main", brokerType: "signed-in", label: "IBKR", connectionMode: "ibkr", config: {} };
   expect(confirmDisconnect(signedIn)).toEqual([
-    'Remove "IBKR" and all imported broker portfolios, positions, and contracts?',
+    'Remove "IBKR" and imported broker data?',
+    "Broker-managed portfolios, positions, and contracts will be removed.",
     "This also disconnects IBKR from your other devices and agents.",
   ]);
 
   const flex: BrokerInstanceConfig = { id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", connectionMode: "flex", config: {} };
   expect(confirmDisconnect(flex)).toEqual([
-    'Remove "IBKR Flex" and all imported broker portfolios, positions, and contracts?',
+    'Remove "IBKR Flex" and imported broker data?',
+    "Broker-managed portfolios, positions, and contracts will be removed.",
   ]);
 });

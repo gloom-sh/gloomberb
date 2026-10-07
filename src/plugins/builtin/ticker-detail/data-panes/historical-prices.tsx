@@ -16,6 +16,7 @@ import type { PaneProps } from "../../../../types/plugin";
 import type { PricePoint } from "../../../../types/financials";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatCompact, formatPercent } from "../../../../utils/format";
+import { isPlainKeyboardEvent } from "../../../../utils/keyboard";
 import { publicTickerKey } from "../../../../utils/exchanges";
 import { formatPriceObservation, quoteFormatOptions } from "../../../../market-data/market/format";
 import { cleanFloat32Price, historyPriceDecimals } from "../../../../cli/history-rows";
@@ -26,7 +27,7 @@ import {
   usePluginPaneState,
 } from "../../../runtime";
 import { usePaneTicker } from "../../../../state/app/context";
-import { useClampSelectedIndex } from "../../../../components/data-table/table-pane";
+import { handleRefreshKey, useClampSelectedIndex } from "../../../../components/data-table/table-pane";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 
 type HistoryColumnId = "date" | "open" | "high" | "low" | "close" | "change" | "changePercent" | "volume";
@@ -89,7 +90,7 @@ function formatMaybeCompact(value: number | null | undefined): string {
   return value == null ? "-" : formatCompact(value);
 }
 
-export function buildHistoricalPriceRows(points: PricePoint[]): HistoricalPriceRow[] {
+function buildHistoricalPriceRows(points: PricePoint[]): HistoricalPriceRow[] {
   const sorted = points
     .flatMap((point, sourceIndex) => {
       const date = pricePointDate(point);
@@ -193,11 +194,9 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name === "r") {
-      event.preventDefault?.();
-      reload();
-      return true;
-    }
+    // A modified key is an app chord (Cmd/Ctrl+Shift+R resizes the pane).
+    if (!isPlainKeyboardEvent(event)) return false;
+    if (handleRefreshKey(event, reload)) return true;
     if (event.name === "t") {
       event.preventDefault?.();
       cycleRange();

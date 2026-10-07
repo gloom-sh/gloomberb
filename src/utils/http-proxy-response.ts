@@ -13,10 +13,12 @@
  * plugin completing a login, need `get("set-cookie")` and `getSetCookie()` to
  * work, so `createProxyResponse` restores them.
  */
-export interface HttpProxyRequestInit {
+interface HttpProxyRequestInit {
   method?: string;
   headers?: Record<string, string>;
   body?: string;
+  /** A binary body, such as an image upload, which `body` would mangle as text. */
+  bodyBase64?: string;
   redirect?: "follow" | "error" | "manual";
   timeoutMs?: number;
 }
@@ -50,10 +52,40 @@ function headersToRecord(headers: HeadersInit | undefined): Record<string, strin
   return { ...headers };
 }
 
-async function serializeBody(body: BodyInit | null | undefined): Promise<string | undefined> {
-  if (body == null) return undefined;
-  if (typeof body === "string") return body;
-  return new Response(body).text();
+const BASE64_CHUNK_BYTES = 0x8000;
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_BYTES) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_BYTES));
+  }
+  return btoa(binary);
+}
+
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> | undefined {
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return undefined;
+  }
+}
+
+function isBinaryBody(body: BodyInit): boolean {
+  return (typeof Blob !== "undefined" && body instanceof Blob)
+    || body instanceof ArrayBuffer
+    || ArrayBuffer.isView(body);
+}
+
+async function serializeBody(body: BodyInit | null | undefined): Promise<Pick<HttpProxyRequestInit, "body" | "bodyBase64">> {
+  if (body == null) return {};
+  if (typeof body === "string") return { body };
+  if (isBinaryBody(body)) {
+    return { bodyBase64: encodeBase64(new Uint8Array(await new Response(body).arrayBuffer())) };
+  }
+  return { body: await new Response(body).text() };
 }
 
 /** Client half: flattens a `fetch` call into JSON the proxy can carry. */
@@ -67,7 +99,7 @@ export async function toRequestEnvelope(
     init: {
       method: init?.method,
       headers: headersToRecord(init?.headers),
-      body: await serializeBody(init?.body),
+      ...await serializeBody(init?.body),
       redirect: init?.redirect,
       timeoutMs,
     },
@@ -78,7 +110,7 @@ export async function toRequestEnvelope(
 export interface ProxiedRequestInit {
   method: string;
   headers: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array<ArrayBuffer>;
   redirect?: "follow" | "error" | "manual";
   /** Positive and finite when present; each proxy applies its own ceiling. */
   timeoutMs?: number;
@@ -98,10 +130,15 @@ export function readRequestInit(raw: unknown): ProxiedRequestInit {
         .filter((entry): entry is [string, string] => typeof entry[1] === "string"),
     )
     : {};
+  const acceptsBody = method !== "GET" && method !== "HEAD";
   return {
     method,
     headers,
-    body: typeof init.body === "string" && method !== "GET" && method !== "HEAD" ? init.body : undefined,
+    body: !acceptsBody
+      ? undefined
+      : typeof init.body === "string"
+        ? init.body
+        : typeof init.bodyBase64 === "string" ? decodeBase64(init.bodyBase64) : undefined,
     redirect: init.redirect === "manual" || init.redirect === "error" || init.redirect === "follow"
       ? init.redirect
       : undefined,

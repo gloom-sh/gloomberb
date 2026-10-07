@@ -17,7 +17,7 @@ export function registerCloudUpgradeCommand(ctx: GloomPluginContext): void {
     hidden: () => resolvePlanAccess(apiClient.getCurrentUser()).isPayingPro,
     execute: () => {
       const openUpgrade = () => {
-        if (openCloudUpgradeUrl()) return;
+        if (openCloudUpgradeUrl("command")) return;
         // No renderer-backed opener yet: fall back to the in-app billing surface.
         requestAccountManagementTab("pro");
         ctx.showPane("account-management");

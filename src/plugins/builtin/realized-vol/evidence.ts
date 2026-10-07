@@ -47,7 +47,7 @@ export function useRealizedVolEvidence(series: readonly ResolvedSeries[], status
 }
 
 /** Recount actual observations; a canvas or asserted count alone cannot certify a capture. */
-export function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | null {
+function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | null {
   if (!isRecord(value) || value.kind !== "realized-volatility" || value.version !== 1
     || typeof value.symbol !== "string" || !value.symbol || !["graph", "cone"].includes(String(value.view))
     || typeof value.estimator !== "string" || !Array.isArray(value.windows) || !value.windows.every(isFiniteNumber)

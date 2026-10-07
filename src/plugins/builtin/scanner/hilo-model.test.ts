@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildHiloBarRows, hiloBarLayout, hiloWindowLabel, HILO_LABEL_WIDTH, HILO_SIDE_NAME_WIDTH } from "./hilo-model";
+import { buildHiloBarRows, hiloBarLayout, HILO_LABEL_WIDTH, HILO_SIDE_NAME_WIDTH } from "./hilo-model";
 
 const windows = {
   s30: { highs: 42, lows: 11 },
@@ -31,16 +31,6 @@ describe("hilo bar scaling", () => {
 });
 
 describe("hilo bar labels", () => {
-  test("centres every window label with at least two cells either side", () => {
-    for (const label of ["5 min", "1 min", "30 sec"]) {
-      const padded = hiloWindowLabel(label);
-      expect(padded).toHaveLength(HILO_LABEL_WIDTH);
-      expect(padded.trim()).toBe(label);
-      expect(padded.indexOf(label)).toBeGreaterThanOrEqual(2);
-      expect(HILO_LABEL_WIDTH - padded.indexOf(label) - label.length).toBeGreaterThanOrEqual(2);
-    }
-  });
-
   test("names the sides only when the bars keep their room, and never overflows the row", () => {
     const wide = hiloBarLayout(80, 4);
     expect(wide.sideNameWidth).toBe(HILO_SIDE_NAME_WIDTH);

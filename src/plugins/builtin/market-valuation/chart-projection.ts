@@ -11,7 +11,7 @@ import {
   type ValuationZoneId,
 } from "./defs";
 
-export interface ChartMarkerLine {
+interface ChartMarkerLine {
   value: number;
   label: string;
 }

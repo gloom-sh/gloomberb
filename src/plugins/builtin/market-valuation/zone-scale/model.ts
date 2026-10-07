@@ -12,7 +12,7 @@ export interface ZoneScaleProps {
   markerColor: string;
 }
 
-export interface ZoneScaleTick {
+interface ZoneScaleTick {
   label: string;
   fraction: number;
 }

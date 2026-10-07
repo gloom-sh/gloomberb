@@ -6,6 +6,7 @@ import type { PaneRuntimeState } from "../core/state/app/state";
 import { setPaneSettings } from "../pane-settings";
 import type { LayoutConfig } from "../types/config";
 import { commandBarResultsFromNodes, commandBarSnapshot } from "./command-bar";
+import { formSnapshot } from "./form";
 import type { RemoteUiRegistry } from "./semantic-tree";
 import { REMOTE_AGENT_HELP, remoteControlSchema } from "./schema";
 import type { RemoteIncludedState, RemoteStateInclude } from "./types";
@@ -28,6 +29,8 @@ interface RemoteResourceContext {
   getState: () => AppState;
   pluginRegistry: PluginRegistry;
   uiRegistry: RemoteUiRegistry | null;
+  /** Whether a dialog (a form, a confirm, pane settings) is open now. */
+  isDialogOpen: () => boolean;
 }
 
 /**
@@ -67,6 +70,7 @@ export function createRemoteResources({
   getState,
   pluginRegistry,
   uiRegistry,
+  isDialogOpen,
 }: RemoteResourceContext) {
   const getResource = (resource: string): unknown => {
     const state = getState();
@@ -86,6 +90,7 @@ export function createRemoteResources({
         config: state.config,
         panes: state.config.layout.instances.map((pane) => paneSnapshot(state, pane)),
         commandBar: commandBarSnapshot(state, uiNodes),
+        form: formSnapshot(uiNodes, isDialogOpen()),
         ui: uiNodes,
         schema: remoteControlSchema(),
         help: REMOTE_AGENT_HELP,
@@ -138,6 +143,7 @@ export function createRemoteResources({
     }
     if (resource === "app://command-bar") return commandBarSnapshot(state, uiNodes);
     if (resource === "app://command-bar/results") return commandBarResultsFromNodes(uiNodes);
+    if (resource === "app://form") return formSnapshot(uiNodes, isDialogOpen());
     if (resource === "app://capabilities") return pluginRegistry.capabilities.manifests();
     if (resource === "app://auth") return apiClient.describeAuthState();
     if (resource === "app://accounts") return brokerAccountsResource(state);
@@ -178,6 +184,7 @@ export function createRemoteResources({
         ? commandBar
         : { results: commandBar.results };
     }
+    if (included.includes("form")) result.form = formSnapshot(uiNodes, isDialogOpen());
     if (included.includes("ui")) result.ui = uiNodes;
     if (included.includes("schema")) result.schema = remoteControlSchema();
     if (included.includes("help")) result.help = REMOTE_AGENT_HELP;
@@ -195,7 +202,7 @@ export function createRemoteResources({
     if (resource === "app://layout/current") {
       return {
         value: state.config.layout,
-        apply: (value) => pluginRegistry.updateLayoutFn(value as LayoutConfig),
+        apply: (value) => pluginRegistry.updateLayout(value as LayoutConfig),
       };
     }
     if (resource.startsWith("app://pane-state/")) {
@@ -213,7 +220,7 @@ export function createRemoteResources({
         value: descriptor.context.settings,
         apply: (value) => {
           const nextLayout = setPaneSettings(getState().config.layout, descriptor.paneId, value as Record<string, unknown>);
-          pluginRegistry.updateLayoutFn(nextLayout);
+          pluginRegistry.updateLayout(nextLayout);
         },
       };
     }

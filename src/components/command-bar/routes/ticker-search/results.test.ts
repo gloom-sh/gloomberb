@@ -105,17 +105,23 @@ test("folds a plain query's symbol hits into one capped Instruments section behi
  * mutual fund, and an unclassified instrument gets no tag rather than a stand-in.
  */
 test("names the instrument class for the badge column", () => {
-  const search = (type: string) => ({ providerId: "yahoo", symbol: "X", name: "X", exchange: "NYQ", type });
+  const search = (type: string) => ({ providerId: "gloom", symbol: "X", name: "X", exchange: "NYQ", type });
   expect(formatInstrumentBadge({ instrumentClass: "equity" })).toBe("EQ");
   expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("ETF") })).toBe("ETF");
   expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("ETN") })).toBe("ETF");
   expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("MUTUALFUND") })).toBe("FUND");
+  expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("Closed-end Fund") })).toBe("FUND");
+  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("MONEY_MARKET") })).toBe("FUND");
   expect(formatInstrumentBadge({
     instrumentClass: "fund",
     ticker: { metadata: { ticker: "VTI", assetCategory: "ETF" } } as never,
   })).toBe("ETF");
-  expect(formatInstrumentBadge({ instrumentClass: "derivative" })).toBe("DERIV");
-  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("INDEX") })).toBeUndefined();
+  expect(formatInstrumentBadge({ instrumentClass: "derivative", result: search("Warrant") })).toBe("DERIV");
+  // The class codes a query can end with (ES FUT) are the badges of the rows they keep.
+  expect(formatInstrumentBadge({ instrumentClass: "derivative", result: search("FUTURE") })).toBe("FUT");
+  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("INDEX") })).toBe("IDX");
+  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("CRYPTOCURRENCY") })).toBe("CRYP");
+  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("Unit") })).toBeUndefined();
 });
 
 
@@ -125,4 +131,49 @@ test("plain exact-symbol search retains venue choices while deduplicating the sa
     resultItem("gld:duplicate", "GLD", "XNYS", "search")];
   expect(mergePlainRootTickerResults("GLD", items, []).map((item) => item.id))
     .toEqual(["gld:tsv", "gld:nyse", "gld:byma"]);
+});
+
+test("an exact symbol keeps a row for each security before more exchanges of one, then looser hits", () => {
+  const listing = (id: string, label: string, right: string, detail: string): ResultItem => ({
+    ...resultItem(id, label, right, "search"), detail, badge: "EQ",
+  });
+  // Cloud's answer for SAP: SAP SE on nine venues, Saputo on Toronto last.
+  const sapSe = ["NYSE", "XETRA", "XSTU", "FWB2", "VIE", "SWX", "MUNICH", "HANOVER", "BUD"]
+    .map((venue) => listing(`sap:${venue}`, "SAP", venue, "SAP SE | Common Stock"));
+  const providerItems = [
+    ...sapSe,
+    listing("sap:TSX", "SAP", "TSX", "Saputo Inc. | EQUITY"),
+    listing("sapr", "SAPR", "IDX", "Saraswati Persada | Common Stock"),
+  ];
+
+  expect(mergePlainRootTickerResults("SAP", providerItems, []).map((item) => [item.id, item.category])).toEqual([
+    ["sap:NYSE", "Exact Match"],
+    ["sap:XETRA", "Exact Match"],
+    ["sap:XSTU", "Exact Match"],
+    ["sap:FWB2", "Exact Match"],
+    ["sap:TSX", "Exact Match"],
+  ]);
+  // Fewer exact rows than the cap leave the rest to looser hits, as before.
+  expect(mergePlainRootTickerResults("SAP", [sapSe[0]!, sapSe[1]!, providerItems.at(-1)!], [])
+    .map((item) => item.id)).toEqual(["sap:NYSE", "sap:XETRA", "sapr"]);
+});
+
+test("one exchange is one exact row however the listing is spelled", () => {
+  const items = [
+    resultItem("saved:SAP", "SAP", "NYSE"),
+    resultItem("saved:SAP:XETR", "SAP:XETR", "XETRA"),
+    resultItem("search:XETRA", "SAP", "XETRA", "search"),
+    resultItem("search:FWB2", "SAP", "FWB2", "search"),
+  ];
+  expect(mergePlainRootTickerResults("SAP", items, []).map((item) => item.id))
+    .toEqual(["saved:SAP", "saved:SAP:XETR", "search:FWB2"]);
+  // Cloud answers BRK.B and its BRK-B spelling with a row each for NYSE.
+  const berkshire = [
+    resultItem("dot:NYSE", "BRK.B", "NYSE", "search"),
+    resultItem("dot:IEX", "BRK.B", "IEX", "search"),
+    resultItem("dash:NYSE", "BRK-B", "NYSE", "search"),
+    resultItem("compact:BMV", "BRKB", "BMV", "search"),
+  ];
+  expect(mergePlainRootTickerResults("BRK.B", berkshire, []).map((item) => item.id))
+    .toEqual(["dot:NYSE", "dot:IEX", "compact:BMV"]);
 });

@@ -1,6 +1,6 @@
 import {
   getDockLeafLayouts,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import {
   findPaneInstance,
   isTickerPaneId,

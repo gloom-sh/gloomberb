@@ -1,15 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
-import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { expect, test } from "bun:test";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { CommandBarListBody } from "./view";
 import type { CommandBarListRow, ListScreenState, ResultItem } from "./model";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(() => {
-  testSetup?.renderer.destroy();
-  testSetup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 function item(overrides: Partial<ResultItem> & { id: string; label: string }): ResultItem {
   return {
@@ -87,11 +81,10 @@ test("keeps labels in place when a later section brings wider badges", async () 
     item({ id: "quote", label: "Quote", right: "Q" }),
   ];
 
-  testSetup = await testRender(<ListHarness nativeListRows={rows(local)} />, { width: 60, height: 20 });
-  await testSetup.renderOnce();
-  const before = testSetup.captureCharFrame();
-  testSetup.renderer.destroy();
-  testSetup = await testRender(
+  await tui.render(<ListHarness nativeListRows={rows(local)} />, { width: 60, height: 20 });
+  await tui.setup().renderOnce();
+  const before = tui.frame();
+  await tui.render(
     <ListHarness
       nativeListRows={rows([
         ...local,
@@ -102,8 +95,8 @@ test("keeps labels in place when a later section brings wider badges", async () 
     />,
     { width: 60, height: 20 },
   );
-  await testSetup.renderOnce();
-  const after = testSetup.captureCharFrame();
+  await tui.setup().renderOnce();
+  const after = tui.frame();
 
   expect(columnOf(before, "Open Portfolio")).toBeGreaterThan(0);
   expect(columnOf(after, "Open Portfolio")).toBe(columnOf(before, "Open Portfolio"));

@@ -14,6 +14,7 @@ import {
   getPanelFocusTarget,
   getTopFloatingPaneId,
   hydrateDesktopSnapshot,
+  nextRecentCommands,
   nextRecentTickers,
   reconcilePaneState,
   resolveCollectionForPane,
@@ -126,6 +127,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case "TRACK_TICKER":
       return { ...state, recentTickers: nextRecentTickers(state.recentTickers, action.symbol) };
+
+    case "RECORD_COMMAND": {
+      // Kept in config, not beside it like the recent tickers: a pane run is
+      // followed by a layout save, which writes the config as it stands and
+      // would drop a list held anywhere else.
+      const arg = action.arg?.trim();
+      const current = state.config.recentCommands ?? [];
+      const recentCommands = nextRecentCommands(current, {
+        id: action.id,
+        label: action.label,
+        ...(arg ? { arg } : {}),
+      });
+      return recentCommands === current ? state : { ...state, config: { ...state.config, recentCommands } };
+    }
 
     case "SET_ACTIVE_PANEL": {
       if (action.preserveFocus) return state;

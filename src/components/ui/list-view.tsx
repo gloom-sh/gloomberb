@@ -1,11 +1,12 @@
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, ScrollBox, Text, useUiHost } from "../../ui";
-import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
 import { hoverBg } from "../../theme/colors";
 import { t } from "../../i18n";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { resolveRemoteItemIndex } from "../../remote/semantic-helpers";
+import { observeScrollBoxContentSize, observeScrollBoxViewportSize } from "../../renderers/opentui/scrollbox-layout";
 import { isPlainKey, type KeyboardModifierEventLike } from "../../utils/keyboard";
 
 export interface ListViewItem {
@@ -268,7 +269,7 @@ export function ListView({
   const terminalRowGap = rowGap ?? 0;
   const rowStride = terminalRowHeight + terminalRowGap;
 
-  useEffect(() => {
+  const revealActiveRow = useCallback(() => {
     if (!scrollable || !autoScrollToIndex || activeScrollIndex < 0) return;
     const sb = scrollRef.current;
     if (!sb) return;
@@ -281,15 +282,21 @@ export function ListView({
       sb.scrollTo(rowTop + terminalRowHeight - viewportH);
     }
   }, [activeScrollIndex, autoScrollToIndex, items.length, rowStride, scrollable, terminalRowHeight]);
+  useEffect(revealActiveRow, [revealActiveRow]);
+  // A list that opens on a row past the fold has nothing to scroll until its
+  // first computed layout sizes the viewport and the rows.
+  useEffect(() => observeScrollBoxViewportSize(scrollRef.current, revealActiveRow), [revealActiveRow, scrollable]);
+  useEffect(() => observeScrollBoxContentSize(scrollRef.current, revealActiveRow), [revealActiveRow, scrollable]);
 
-  useEffect(() => {
-    if (!scrollable) return;
+  const syncScrollBar = useCallback(() => {
     const sb = scrollRef.current;
-    if (!sb) return;
-    if (sb.verticalScrollBar) {
-      sb.verticalScrollBar.visible = items.length * rowStride - terminalRowGap > (sb.viewport?.height ?? 0);
-    }
-  }, [items.length, height, flexGrow, rowStride, scrollable, terminalRowGap]);
+    if (!scrollable || !sb?.verticalScrollBar) return;
+    sb.verticalScrollBar.visible = items.length * rowStride - terminalRowGap > (sb.viewport?.height ?? 0);
+  }, [items.length, rowStride, scrollable, terminalRowGap]);
+  useEffect(syncScrollBar, [syncScrollBar, height, flexGrow]);
+  // A list that mounts before its first layout has no viewport height to
+  // compare yet, which would leave a scroll bar on rows that all fit.
+  useEffect(() => observeScrollBoxViewportSize(scrollRef.current, syncScrollBar), [syncScrollBar]);
 
   if (items.length === 0) {
     return (

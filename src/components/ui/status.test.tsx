@@ -1,15 +1,11 @@
 import type { BoxRenderable } from "@opentui/core";
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { Box, Text } from "../../ui";
 import { PaneStatusBody } from "./status";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 test("content replacing the loading body sits at the pane origin without the status padding", async () => {
   let setLoading: (loading: boolean) => void = () => {};
@@ -28,14 +24,14 @@ test("content replacing the loading body sits at the pane origin without the sta
     );
   }
 
-  setup = await testRender(<Harness />, { width: 24, height: 6 });
-  await act(async () => { await setup!.renderOnce(); });
-  expect(setup.captureCharFrame()).toContain("Loading prices...");
+  await tui.render(<Harness />, { width: 24, height: 6 });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(tui.frame()).toContain("Loading prices...");
 
   await act(async () => { setLoading(false); });
   await act(async () => {
-    await setup!.renderOnce();
-    await setup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
 
   const box = content as BoxRenderable | null;
@@ -43,5 +39,5 @@ test("content replacing the loading body sits at the pane origin without the sta
   expect(box?.y).toBe(0);
   expect(box?.width).toBe(24);
   expect(box?.height).toBe(6);
-  expect(setup.captureCharFrame().split("\n")[0]?.startsWith("CONTENT")).toBe(true);
+  expect(tui.frame().split("\n")[0]?.startsWith("CONTENT")).toBe(true);
 });

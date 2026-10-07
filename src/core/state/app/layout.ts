@@ -1,4 +1,5 @@
-import { getDockLeafLayouts, getDockedPaneIds } from "../../../plugins/pane-manager";
+import { getDockLeafLayouts, getDockedPaneIds } from "../../../layout/pane-manager";
+import { pinFollowingPane } from "../../../layout/pane-follow";
 import {
   cloneLayout,
   findPaneInstance,
@@ -7,9 +8,13 @@ import {
   normalizePaneLayout,
   removePaneInstances,
   TICKER_RESEARCH_PANE_ID,
+  type AppConfig,
   type LayoutConfig,
+  type PaneBinding,
+  type PaneInstanceConfig,
+  type RecentCommand,
+  type SavedLayout,
 } from "../../../types/config";
-import type { AppConfig, PaneBinding, PaneInstanceConfig, SavedLayout } from "../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { BrokerAccount } from "../../../types/trading";
 import { isBrokerPortfolioId } from "../../../utils/broker-instances";
@@ -281,6 +286,36 @@ export function nextRecentTickers(current: string[], symbol: string | null): str
   return next;
 }
 
+/** Cap for the recently run pane templates. */
+export const RECENT_COMMANDS_LIMIT = 10;
+
+function sameRecentCommandEntry(left: RecentCommand, right: RecentCommand | undefined): boolean {
+  return !!right
+    && left.id === right.id
+    && left.label === right.label
+    && left.arg === right.arg;
+}
+
+/**
+ * Newest first. The same id with the same argument is promoted instead of
+ * duplicated, so two tickers opened in one pane both stay in the ring.
+ */
+export function nextRecentCommands(
+  current: readonly RecentCommand[],
+  entry: RecentCommand | null,
+): RecentCommand[] {
+  if (!entry?.id || !entry.label) return current as RecentCommand[];
+  const next = [entry, ...current.filter((existing) => (
+    existing.id !== entry.id || existing.arg !== entry.arg
+  ))].slice(0, RECENT_COMMANDS_LIMIT);
+  if (next.length === current.length && next.every((candidate, index) => (
+    sameRecentCommandEntry(candidate, current[index])
+  ))) {
+    return current as RecentCommand[];
+  }
+  return next;
+}
+
 const savedLayoutClones = new WeakMap<SavedLayout, SavedLayout>();
 const layoutClones = new WeakMap<LayoutConfig, LayoutConfig>();
 
@@ -532,6 +567,7 @@ export function withFocusedPane(
   const normalizedLayout = normalizePaneLayout(config.layout, {
     // Keep a follower alive on its last symbol when its source pane is gone.
     resolveOrphanSymbol: (instanceId) => resolveTickerForPane(state, instanceId),
+    pinOrphan: pinFollowingPane,
   });
   const nextConfig = normalizedLayout === config.layout
     ? config

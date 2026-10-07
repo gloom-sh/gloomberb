@@ -1,15 +1,14 @@
 {
   "hosts": [
     "api.elections.kalshi.com",
-    "api.nasdaq.com",
+    "api.fda.gov",
     "api.votehub.com",
+    "clinicaltrials.gov",
     "clob.polymarket.com",
     "data-api.polymarket.com",
-    "fc.yahoo.com",
+    "efts.sec.gov",
     "gamma-api.polymarket.com",
     "nasdaqtrader.com",
-    "production.dataviz.cnn.io",
-    "query1.finance.yahoo.com",
-    "query2.finance.yahoo.com"
+    "production.dataviz.cnn.io"
   ]
 }

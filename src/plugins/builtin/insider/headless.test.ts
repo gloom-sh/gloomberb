@@ -51,12 +51,12 @@ const parsed: ParsedInsiderFiling[] = [
   },
 ];
 
-function args(name = "", limit = 20): HeadlessPaneLoadArgs {
+function args(name = "", limit = 20, type?: string): HeadlessPaneLoadArgs {
   return {
     rawArgument: "AMD",
     argument: "AMD",
     symbols: ["AMD"],
-    options: { name, limit },
+    options: { name, limit, ...(type ? { type } : {}) },
   };
 }
 
@@ -64,7 +64,7 @@ describe("insider client", () => {
   test("scans Form 4 filings and loads their content sequentially", async () => {
     let activeContentLoads = 0;
     let maxActiveContentLoads = 0;
-    const filingRequests: Array<{ symbol: string; count: number; exchange: string | undefined }> = [];
+    const filingRequests: Array<{ symbol: string; count: number | undefined; exchange: string | undefined }> = [];
     const provider = createTestDataProvider({
       getSecFilings: async (symbol, count, exchange) => {
         filingRequests.push({ symbol, count, exchange });
@@ -122,6 +122,9 @@ describe("insider headless model", () => {
     const filtered = await headless.load(args("other officer", 2), createTestHeadlessContext());
     expect(filtered.rows).toHaveLength(1);
     expect(filtered.rows[0]).toMatchObject({ insider: "OTHER OFFICER", side: "SELL" });
-    expect(requestedLimits).toEqual([2, 2]);
+    // The name the pane shows matches too.
+    const shown = await headless.load(args("Lisa T. Su", 2), createTestHeadlessContext());
+    expect(shown.rows.map((row) => [row.insider, row.insiderName, row.role])).toEqual([["SU LISA T", "Lisa T. Su", "CEO"]]);
+    expect(requestedLimits).toEqual([2, 2, 2]);
   });
 });

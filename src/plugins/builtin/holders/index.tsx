@@ -22,6 +22,7 @@ export const holdersModule: PluginModule = {
       icon: "H",
       component: HoldersView,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 105, height: 34 },
       tableExport: true,

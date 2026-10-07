@@ -6,9 +6,9 @@ import {
   getDockedPaneIds,
   isPaneInLayout,
   isPaneDocked,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
-import { findFixedTickerPaneForSymbol } from "../../plugins/ticker-navigation";
+import { findFixedTickerPaneForSymbol } from "../../layout/ticker-navigation";
 import type { AppAction, AppState } from "../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID, normalizePaneId } from "../../types/config";
 import type {
@@ -23,8 +23,10 @@ import {
   type TickerOpenTarget,
 } from "../../tickers/open-target";
 import { AmbiguousTickerError, findExactTickerSearchMatch } from "../../tickers/search";
-import { parsePublicTickerKey } from "../../utils/exchanges";
-import { tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
+import { isDialogOpen } from "../../ui/dialog-stack";
+import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { attentionActionForPane, captureAttentionAction } from "../../telemetry/attention-counts";
+import { tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
 
@@ -75,7 +77,8 @@ export function useAppTickerOpenRuntime({
       return target;
     } catch (err) {
       if (!canPresentFeedback()) return null;
-      if (err instanceof AmbiguousTickerError) {
+      // Ticker search offers the listings, unless a dialog would sit over the bar.
+      if (err instanceof AmbiguousTickerError && !isDialogOpen()) {
         dispatch({ type: "SET_COMMAND_BAR", open: true, query: rawSymbol,
           launch: { kind: "ticker-search", query: rawSymbol } });
       }
@@ -114,7 +117,7 @@ export function useAppTickerOpenRuntime({
     if (!options?.forceNewPane && !existing && instrument === null && !target.ticker.metadata.broker_contracts?.length) {
       existing = findFixedTickerPaneForSymbol(currentLayout, paneType, symbol);
     }
-    if (!options?.forceNewPane && !existing && !instrument && (parsePublicTickerKey(symbol).exchange || tickerHasYahooSuffix(symbol))) {
+    if (!options?.forceNewPane && !existing && !instrument && (parsePublicTickerKey(symbol).exchange || tickerHasListingSuffix(symbol))) {
       existing = currentLayout.instances.find((instance) => {
         if (instance.paneId !== paneType || instance.binding?.kind !== "fixed" || instance.binding.instrument || !isPaneInLayout(currentLayout, instance.instanceId)) return false;
         const ticker = currentState.tickers.get(instance.binding.symbol);
@@ -152,7 +155,7 @@ export function useAppTickerOpenRuntime({
     });
     if (!instance) return;
 
-    const { width, height } = pluginRegistry.getTermSizeFn();
+    const { width, height } = pluginRegistry.getTermSize();
     const shouldFloat = options?.floating ?? true;
     const nextLayout = shouldFloat
       ? addPaneFloating(currentLayout, instance, width, height, paneDef)
@@ -183,13 +186,18 @@ export function useAppTickerOpenRuntime({
   ]);
 
   const openPinnedTicker = useCallback(async (rawSymbol: string, options?: PinTickerOptions) => {
+    const recordAttention = captureAttentionAction();
     const selectedTicker = options?.instrument !== undefined && (options.instrument || options.listing) ? await tickerRepository.loadTicker(rawSymbol) : null;
     const target = selectedTicker
       ? { symbol: selectedTicker.metadata.ticker, ticker: selectedTicker, created: false, instrument: options?.instrument, listing: options?.listing }
       : await resolveOpenTickerTarget(rawSymbol, options?.instrument === null);
     if (!target) return;
     placePinnedTickerTarget(target, options);
-  }, [placePinnedTickerTarget, resolveOpenTickerTarget, tickerRepository]);
+    const action = attentionActionForPane(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
+    if (action && pluginRegistry.panes.has(options?.paneType ?? TICKER_RESEARCH_PANE_ID)) {
+      recordAttention(publicTickerKey(target.symbol, target.listing?.exchange ?? target.ticker.metadata.exchange), action);
+    }
+  }, [placePinnedTickerTarget, pluginRegistry, resolveOpenTickerTarget, tickerRepository]);
 
   return {
     openPinnedTicker,

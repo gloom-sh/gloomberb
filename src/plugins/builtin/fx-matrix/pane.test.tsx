@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import {
   MarketDataCoordinator,
   setSharedMarketDataCoordinator,
@@ -75,28 +75,22 @@ function Harness() {
   );
 }
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
 });
 
 describe("FxMatrixPane", () => {
   test("renders a missing rate as unavailable instead of parity", async () => {
     installCoordinator();
-    testSetup = await testRender(<Harness />, { width: 100, height: 14 });
+    await tui.render(<Harness />, { width: 100, height: 14 });
     await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     // EUR/USD is a real cross built from the two USD legs.
     expect(frame).toContain("1.0800");
 

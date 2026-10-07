@@ -2,6 +2,7 @@ import type { MutableRefObject } from "react";
 import { useShortcut } from "../../../../react/input";
 import type { ScrollBoxRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
+import { countEscapeTowardClose } from "../../../../utils/double-escape-close";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { scrollToBottom } from "../layout";
 import type { ChatSidebarRow } from "../sidebar-rows";
@@ -39,13 +40,15 @@ export function useChatContentShortcuts({
   requestOlderMessages,
   requestOlderMessagesIfNeeded,
   returnToComposer,
+  retryMessage,
+  removeLastDraftAttachment,
   scrollRef,
   selectedIdx,
   setFollowMessages,
   setSelectedIdx,
   setSidebarSectionExpanded,
   shouldLeaveComposerForSelection,
-  showChannelSidebar,
+  channelListReachable,
   sidebarCursorRow,
   sidebarFocusedRef,
 }: {
@@ -81,13 +84,18 @@ export function useChatContentShortcuts({
   requestOlderMessages: () => void;
   requestOlderMessagesIfNeeded: () => void;
   returnToComposer: () => void;
+  /** Sends a failed message again. */
+  retryMessage: (index: number) => void;
+  /** Drops the last image waiting in the composer; false when there is none. */
+  removeLastDraftAttachment: () => boolean;
   scrollRef: MutableRefObject<ScrollBoxRenderable | null>;
   selectedIdx: number;
   setFollowMessages: (followMessages: boolean) => void;
   setSelectedIdx: (selectedIdx: number) => void;
   setSidebarSectionExpanded: (expanded: boolean | "toggle") => boolean;
   shouldLeaveComposerForSelection: (direction: "up" | "down") => boolean;
-  showChannelSidebar: boolean;
+  /** The channel list is drawn, or in the narrow stack one step back. */
+  channelListReachable: boolean;
   sidebarCursorRow: ChatSidebarRow | null;
   sidebarFocusedRef: MutableRefObject<boolean>;
 }) {
@@ -112,7 +120,7 @@ export function useChatContentShortcuts({
     if (!focused || commandBarOpen) return;
     const isEnterKey = event.name === "return" || event.name === "enter";
 
-    if (sidebarFocusedRef.current && showChannelSidebar) {
+    if (sidebarFocusedRef.current && channelListReachable) {
       // A section header folds and unfolds in place; a channel opens.
       const headerRow = sidebarCursorRow && sidebarCursorRow.kind !== "channel" ? sidebarCursorRow : null;
       if (isEnterKey) {
@@ -154,7 +162,7 @@ export function useChatContentShortcuts({
 
     if (
       isPlainKey(event, "left") &&
-      showChannelSidebar &&
+      channelListReachable &&
       (!inputFocused || inputValueRef.current.length === 0) &&
       focusChannelSidebar()
     ) {
@@ -190,8 +198,24 @@ export function useChatContentShortcuts({
         } else if (replyTo) {
           clearReplyTarget();
         } else {
+          // Leaving an empty composer is the first half of a double-Esc close;
+          // leaving a draft is not, so a quick Esc Esc never closes over it.
+          if (inputValueRef.current.trim().length === 0) countEscapeTowardClose(event);
           blurInput();
         }
+        return;
+      }
+
+      // The terminal's image rows have no focus of their own: Backspace in an
+      // empty composer takes the last one back out.
+      if (
+        !nativePaneChrome
+        && isPlainKey(event, "backspace")
+        && inputValueRef.current.length === 0
+        && removeLastDraftAttachment()
+      ) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
         return;
       }
 
@@ -234,7 +258,9 @@ export function useChatContentShortcuts({
     if (canSend && isEnterKey && selectedIdx >= 0 && selectedIdx < messages.length) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      beginReplyTo(selectedIdx, { deferFocus: true });
+      // A failed send of yours is sent again; any other message gets a reply.
+      if (messages[selectedIdx]?.clientStatus === "failed") retryMessage(selectedIdx);
+      else beginReplyTo(selectedIdx, { deferFocus: true });
       return;
     }
 
@@ -245,17 +271,16 @@ export function useChatContentShortcuts({
       return;
     }
 
-    if (event.name === "escape") {
+    // An Esc with nothing to back out of is left to the pane's double-Esc close.
+    if (event.name === "escape" && (profilePopoverOpen || selectedIdx >= 0)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       if (profilePopoverOpen) {
         closeProfilePopover();
         return;
       }
-      if (selectedIdx >= 0) {
-        setSelectedIdx(-1);
-        setFollowMessages(true);
-      }
+      setSelectedIdx(-1);
+      setFollowMessages(true);
       return;
     }
 
@@ -289,7 +314,7 @@ export function useChatContentShortcuts({
       queueMicrotask(requestOlderMessagesIfNeeded);
       return;
     }
-    if (event.name === "g" && event.shift) {
+    if (event.name === "g" && event.shift && !event.ctrl && !event.meta && !event.super && !event.alt) {
       event.preventDefault?.();
       event.stopPropagation?.();
       setSelectedIdx(messages.length - 1);

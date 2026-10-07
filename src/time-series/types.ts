@@ -5,7 +5,11 @@ import type { InstrumentRef } from "../market-data/request-types";
 export const CHART_SPEC_VERSION = 2 as const;
 
 export type SeriesPeriod = "auto" | "daily" | "weekly" | "monthly" | "quarterly" | "annual" | "ttm";
-export type SeriesStyle = "line" | "area" | "step" | "columns" | "points" | "candles" | "ohlc" | "hlc";
+/**
+ * "band" draws a line through each point's value inside a shaded range from
+ * its `low` to its `high`: an average within its historical range.
+ */
+export type SeriesStyle = "line" | "area" | "step" | "columns" | "points" | "candles" | "ohlc" | "hlc" | "band";
 export type SeriesTransform = "raw" | "percent" | "index100" | "yoy" | "qoq" | "log";
 export type SeriesAxis = "auto" | "left" | "right";
 export type SeriesInterpolation = "none" | "step-after";
@@ -56,6 +60,10 @@ export type ChartStudyKind =
   | "rsi"
   | "macd"
   | "realized-vol"
+  | "vwap"
+  | "anchored-vwap"
+  | "volume-profile"
+  | "atr"
   | "ratio"
   | "spread"
   | "correlation";
@@ -84,6 +92,8 @@ export interface ChartViewportSpec {
   dateWindow?: { start: string; end: string };
   /** Optional latest-observation cap, useful for period-based financial views. */
   maxPoints?: number;
+  /** Intraday market history includes pre-market and after-hours bars where the venue has them. */
+  extendedHours?: boolean;
 }
 
 export interface ChartSpec {
@@ -131,6 +141,8 @@ export interface ResolvedSeriesMarketTimeBasis {
   kind: "market";
   /** IANA timezone used to recognize one exchange-local trading day. */
   timeZone: string;
+  /** Canonical listing exchange, which sets the regular session's hours. */
+  exchange?: string;
   /** Requested bar cadence when known; otherwise the chart derives it. */
   cadenceMs?: number;
 }
@@ -160,17 +172,31 @@ export interface ResolvedSeries {
   interpolation: SeriesInterpolation;
   /** Present only for exchange-traded market observations. */
   timeBasis?: ResolvedSeriesMarketTimeBasis;
+  /**
+   * The listing a market field reads, whose trading sessions studies such as
+   * VWAP follow. Set even where no exchange time zone is known (futures).
+   */
+  listing?: { symbol: string; exchange: string };
   /** Price/volume observations and their derived studies, including 24/7
    * markets. Independent of whether the chart compresses exchange sessions. */
   observationKind?: "market";
   /** Regular-session move supplied with the latest market quote. */
   latestChangePercent?: number;
+  /** The previous session's close, set on a one-day chart's price series and drawn as its reference line. */
+  priorClose?: number;
   points: TimeSeriesPoint[];
   /** Rejected valuation price inputs, retained independently of usable observations. */
   valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
   warning?: string;
   /** Listed in the legend so it can be restored, but not drawn. */
   hidden?: boolean;
+  /** Columns below zero take this colour instead, so a change reads by its sign. */
+  negativeColor?: string;
+  /**
+   * Drawn as the volume traded at each price over the bars in view, against
+   * the right edge, instead of as a line through its points.
+   */
+  profile?: { rows: number };
 }
 
 export interface TimeSeriesFieldDefinition {

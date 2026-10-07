@@ -100,7 +100,7 @@ export function CriterionEditor({
         label="Field"
         emphasized={focused && active === "field"}
         value={fieldId}
-        options={fields.map((row) => ({ value: row.id, label: row.label }))}
+        options={fields.map((row) => ({ value: row.id, label: row.access === "pro" ? `${row.label} · Pro` : row.label }))}
         variant="field"
         width={Math.min(40, width - 4)}
         onFocus={() => setActive("field")}

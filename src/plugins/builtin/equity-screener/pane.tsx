@@ -634,6 +634,7 @@ function EquityScreenView({
   const bodyHeight = Math.max(5, height - 1 - tabRows);
   const saveContent = !access.emailVerified ? (
     <SignInWall
+      placement="eqs-save-signin"
       action="save and open your screens"
       needsVerification={session.needsVerification}
     />
@@ -787,6 +788,7 @@ function EquityScreenView({
     ) : mode === "saved" ? (
       !access.emailVerified ? (
         <SignInWall
+          placement="eqs-signin"
           action="save and open your screens"
           needsVerification={session.needsVerification}
         />

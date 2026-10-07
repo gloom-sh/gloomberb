@@ -5,6 +5,7 @@ import type { AppConfig, OnboardingProgress, OnboardingStage } from "../../types
 import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { getManualPortfolioPosition } from "../../plugins/builtin/portfolio-list/mutations";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
 
 /**
  * Stages older builds persisted that the wizard no longer renders. A profile
@@ -96,18 +97,25 @@ export function listOnboardingPositions(
   for (const ticker of tickers) {
     if (!ticker.metadata.portfolios.includes(portfolioId)) continue;
     const position = getManualPortfolioPosition(ticker, portfolioId);
-    const price = quotes(ticker.metadata.ticker)?.price;
+    const quote = quotes(ticker.metadata.ticker);
+    const price = typeof quote?.price === "number" && Number.isFinite(quote.price) ? quote.price : null;
     const shares = position?.shares ?? null;
     const avgCost = position?.avgCost ?? null;
-    const basis = typeof price === "number" && Number.isFinite(price) ? price : avgCost;
+    const costCurrency = position?.currency || ticker.metadata.currency || "USD";
+    // Priced, the row is worth the quote in the listing's own currency (pence
+    // in pounds), whatever currency the cost was entered in.
+    const quoteUnit = price !== null ? resolveCurrencyUnit(quote?.currency || costCurrency) : null;
     rows.push({
       symbol: ticker.metadata.ticker,
       name: ticker.metadata.name || "",
-      currency: position?.currency ?? ticker.metadata.currency ?? "USD",
+      currency: quoteUnit?.currency || costCurrency,
       shares,
       avgCost,
-      price: typeof price === "number" && Number.isFinite(price) ? price : null,
-      value: shares !== null && basis !== null ? shares * basis : null,
+      price,
+      value: shares === null ? null
+        : price !== null ? shares * price / quoteUnit!.divisor
+        : avgCost !== null ? shares * avgCost
+        : null,
     });
   }
   return rows;

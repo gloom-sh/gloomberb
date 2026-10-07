@@ -57,6 +57,8 @@ async function electrobunCloudApiFetch(url: string, init?: RequestInit): Promise
   const path = new URL(url).pathname;
   const timeoutMs = path.startsWith("/market/")
     ? CLOUD_MARKET_HTTP_TIMEOUT_MS
+    : path === "/telemetry/attention"
+      ? 5_000
     : path.endsWith("/feedback") && init?.method === "POST"
       ? FEEDBACK_SUBMIT_BUN_TIMEOUT_MS
       : undefined;

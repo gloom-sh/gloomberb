@@ -1,10 +1,14 @@
 import { useCallback, useState } from "react";
 import { Button } from "../ui/button";
+import { confirmDialog } from "../ui/confirm-dialog";
 import { EmptyState } from "../ui/status";
-import { canInstallPlugins } from "../../plugins/current-target";
-import { getPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
+import { runsExternalPlugins } from "../../plugins/current-target";
+import { activateInstalledPlugin } from "../../plugins/builtin/plugin-marketplace/activation";
+import { installConsent } from "../../plugins/builtin/plugin-marketplace/model";
+import { getMarketplaceHost, getPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
 import type { PaneDef, PaneProps } from "../../types/plugin";
 import { Box } from "../../ui";
+import { useOptionalDialog } from "../../ui/dialog";
 import { useAppSelector } from "../../state/app/context";
 import type { LayoutRequirement } from "../../layout-marketplace/cloud";
 
@@ -32,46 +36,106 @@ function requirementFor(paneId: string, layoutIds: readonly string[]): LayoutReq
   return null;
 }
 
+/**
+ * What the placeholder says. Pane ids are `<plugin>:<name>`, and a dash is part
+ * of a name (`market-heatmap`), so only a layout requirement can name the
+ * plugin behind a dashed id; without one the id is cut at the colon, or shown
+ * whole when it has none.
+ */
+export function describeMissingPane({ paneType, requirement, fromTeam, canInstall, runsPlugins }: {
+  paneType: string;
+  requirement: LayoutRequirement | null;
+  /** The pane arrived with a published team layout. */
+  fromTeam: boolean;
+  /** This renderer has a plugin manager registered and a dialog to confirm the install in. */
+  canInstall: boolean;
+  /** This renderer loads plugins that are not part of its build. The web terminal does not. */
+  runsPlugins: boolean;
+}): { pluginLabel: string; title: string; message: string; installable: boolean } {
+  const pluginLabel = requirement?.pluginId ?? (paneType.split(":")[0] || paneType);
+  const source = fromTeam
+    ? `A teammate's pane from ${pluginLabel}.`
+    : `This pane comes from the ${pluginLabel} plugin.`;
+  const installable = canInstall && !!requirement?.repo;
+  const action = installable
+    ? "Install the plugin to see it."
+    : canInstall || runsPlugins
+      ? "Install the plugin with PL to see it."
+      : "Plugins are not available on the web.";
+  return { pluginLabel, title: `${pluginLabel} is not installed`, message: `${source} ${action}`, installable };
+}
+
 function MissingPanePlaceholder({ paneType, width }: PaneProps) {
   const layouts = useAppSelector((state) => state.config.layouts);
   const activeIndex = useAppSelector((state) => state.config.activeLayoutIndex);
   const linkedIds = [layouts[activeIndex]?.origin?.layoutId, ...layouts.map((layout) => layout.origin?.layoutId)]
     .filter((id): id is string => !!id);
   const requirement = requirementFor(paneType, linkedIds);
-  const installer = canInstallPlugins() ? getPluginManager() : null;
+  // The renderers that can run git and bun register a manager at startup: the
+  // terminal itself, and the desktop view through its Bun process. The web
+  // terminal leaves it unset.
+  const installer = getPluginManager();
+  // An install runs the plugin with full permissions, so it is never started
+  // without asking; where no dialog can be shown it is not offered at all.
+  const dialog = useOptionalDialog();
+  const { pluginLabel, title, message, installable } = describeMissingPane({
+    paneType,
+    requirement,
+    fromTeam: !!requirement || !!layouts[activeIndex]?.origin,
+    canInstall: !!installer && !!dialog,
+    runsPlugins: runsExternalPlugins(),
+  });
   const [installing, setInstalling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
 
-  const install = useCallback(() => {
-    if (!installer || !requirement?.repo || installing) return;
-    setInstalling(true);
-    setError(null);
-    void installer.install(requirement.repo).then((result) => {
-      setInstalling(false);
-      if (!result.ok) setError(result.error);
+  // The terminal's default dialog is 60 columns, 54 inside its border and
+  // padding; a wider body runs over the border.
+  const confirmWidth = Math.min(54, Math.max(44, width - 8));
+  const repo = requirement?.repo;
+  const install = useCallback(async () => {
+    if (!installer || !dialog || !repo || installing) return;
+    // The repo comes from a team layout, not from a catalog Gloom reviewed.
+    const consent = installConsent({ name: pluginLabel, tier: "community", hosts: [], repo }, undefined);
+    const confirmed = await confirmDialog(dialog, {
+      title: consent.title,
+      body: consent.body,
+      confirmLabel: "Install",
+      confirmVariant: "primary",
+      width: confirmWidth,
     });
-  }, [installer, installing, requirement]);
-
-  const pluginLabel = requirement?.pluginId ?? paneType.split(/[:\-]/)[0] ?? paneType;
-  const message = canInstallPlugins()
-    ? requirement?.repo
-      ? `A teammate's pane from ${pluginLabel}. Install the plugin to see it.`
-      : `A teammate's pane from ${pluginLabel}. Install the plugin with PL to see it.`
-    : `A teammate's pane from ${pluginLabel}. Plugins are not available on the web.`;
+    if (!confirmed) return;
+    setInstalling(true);
+    setNotice(null);
+    try {
+      const result = await installer.install(repo);
+      if (!result.ok) {
+        setNotice({ text: result.error, error: true });
+        return;
+      }
+      // Bring it into this session so the pane replaces the placeholder rather
+      // than waiting for a restart; a plugin that cannot load live says so.
+      const host = getMarketplaceHost();
+      const activated = host ? await activateInstalledPlugin(result.directory, host, installer) : null;
+      if (activated && !activated.ok) setNotice({ text: `Installed but did not load: ${activated.error}`, error: true });
+      else if (!activated || activated.restart) setNotice({ text: "Installed. Restart to finish.", error: false });
+    } finally {
+      setInstalling(false);
+    }
+  }, [confirmWidth, dialog, installer, installing, pluginLabel, repo]);
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1} width={width}>
       <EmptyState
-        title={`${pluginLabel} is not installed`}
+        title={title}
         message={message}
-        hint={error ?? "Publishing from here keeps this pane for the rest of the team."}
-        status={error ? "error" : "empty"}
-        actions={installer && requirement?.repo ? (
+        hint={notice?.text ?? "Publishing from here keeps this pane for the rest of the team."}
+        status={notice?.error ? "error" : "empty"}
+        actions={installable ? (
           <Button
             label={installing ? "Installing..." : `Install ${pluginLabel}`}
             variant="primary"
             compact
-            onPress={install}
+            onPress={() => { void install(); }}
             disabled={installing}
           />
         ) : undefined}

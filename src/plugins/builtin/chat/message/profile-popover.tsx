@@ -23,7 +23,7 @@ export function hasPublicChatProfileInfo(user: ChatUserSummary): boolean {
   return Boolean(user.bio?.trim() || user.title?.trim() || user.company?.trim() || hasPortfolioAnalytics(user.portfolioAnalytics));
 }
 
-export function hasChatProfileDetails(user: ChatUserSummary): boolean {
+function hasChatProfileDetails(user: ChatUserSummary): boolean {
   return Boolean(user.bio?.trim() || user.title?.trim() || user.company?.trim());
 }
 
@@ -126,13 +126,17 @@ export function UserProfilePopover({
   user,
   width,
   onClose,
+  onDismiss = onClose,
   onKeepOpen,
   isOwnProfile = false,
   onSetUpProfile,
 }: {
   user: ChatUserSummary;
   width: number;
+  /** The pointer left the card. */
   onClose: () => void;
+  /** A click outside the card or Esc closes it, even a pinned one. */
+  onDismiss?: () => void;
   onKeepOpen: () => void;
   isOwnProfile?: boolean;
   onSetUpProfile?: () => void;
@@ -186,7 +190,7 @@ export function UserProfilePopover({
       <Box position="absolute" top={1} right={2} width={1} height={0}>
         <Popover
           open
-          onOpenChange={(open) => { if (!open) onClose(); }}
+          onOpenChange={(open) => { if (!open) onDismiss(); }}
           trigger={<Box width={1} height={0} />}
           placement="bottom-end"
           minWidth={0}

@@ -4,11 +4,23 @@ import {
   findExactTickerSearchMatch,
   type TickerSearchCandidate,
 } from "../../../../tickers/search";
+import {
+  assetClassMarketSymbol,
+  instrumentClassCode,
+  parseAssetClassQuery,
+} from "../../../../tickers/search/asset-classes";
 import type { ResultItem } from "../../list/model";
 import { canonicalExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
-import { isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
+import { compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
+
+/**
+ * The command bar ranks a full page of symbol search (Cloud answers ten), so
+ * a second security on the same symbol is still in hand when the root list
+ * picks its exact rows.
+ */
+export const COMMAND_BAR_TICKER_SEARCH_LIMIT = 10;
 
 export function buildTickerSearchCacheKey(
   query: string,
@@ -31,20 +43,28 @@ function rawInstrumentType(candidate: Pick<TickerSearchCandidate, "result" | "ti
 }
 
 /**
- * Class tag for the badge column. An unclassified instrument gets none: the
- * row lifts its exchange code there instead when the code is short enough.
+ * Class tag for the badge column. A query can end with the same code: EQ,
+ * CUR, CRYP, OPT, FUT, IDX, ETF, FUND. A fund or derivative whose type string
+ * did not classify still badges FUND or DERIV. Anything else gets none, and
+ * the row shows its exchange code there when the code is short enough.
  */
 export function formatInstrumentBadge(
-  candidate: Pick<TickerSearchCandidate, "instrumentClass" | "result" | "ticker">,
+  candidate: Pick<TickerSearchCandidate, "instrumentClass" | "result" | "ticker">
+    & Partial<Pick<TickerSearchCandidate, "symbol" | "exchangeLabel">>,
 ): string | undefined {
+  const code = instrumentClassCode({
+    instrumentClass: candidate.instrumentClass,
+    instrumentType: rawInstrumentType(candidate),
+    symbol: candidate.symbol ?? candidate.result?.symbol ?? candidate.ticker?.metadata.ticker ?? "",
+    exchange: candidate.exchangeLabel ?? candidate.result?.exchange ?? candidate.ticker?.metadata.exchange,
+  });
+  if (code) return code;
   switch (candidate.instrumentClass) {
-    case "equity":
-      return "EQ";
     case "fund":
-      return /\bET[FNP]\b/i.test(rawInstrumentType(candidate)) ? "ETF" : "FUND";
+      return "FUND";
     case "derivative":
       return "DERIV";
-    case "other":
+    default:
       return undefined;
   }
 }
@@ -54,10 +74,15 @@ export function normalizeCommandTickerSearchText(value: string): string {
   return isExplicitMarketSymbol(normalized) ? normalized : normalized.replace(/[^A-Z0-9]+/g, "");
 }
 
-function isExactTickerResultMatch(item: ResultItem, query: string): boolean {
+function isExactTickerResultMatch(item: ResultItem, rawQuery: string): boolean {
   if (item.kind !== "ticker" && item.kind !== "search") return false;
-  return findExactTickerSearchMatch([item], query) != null
-    || parsePublicTickerKey(item.label).symbol === query.trim().toUpperCase();
+  // "ES FUT" names ES, and the future's own spelling ES=F.
+  const assetClass = parseAssetClassQuery(rawQuery);
+  const marketSymbol = assetClass ? assetClassMarketSymbol(assetClass) : null;
+  return [assetClass?.symbolQuery ?? rawQuery, ...(marketSymbol ? [marketSymbol] : [])].some((query) => (
+    findExactTickerSearchMatch([item], query) != null
+    || parsePublicTickerKey(item.label).symbol === query.trim().toUpperCase()
+  ));
 }
 
 export function mergeTickerSearchResultItems(
@@ -83,7 +108,7 @@ export function mergeTickerSearchResultItems(
       : item);
 }
 
-export const ROOT_INSTRUMENTS_CATEGORY = "Instruments";
+const ROOT_INSTRUMENTS_CATEGORY = "Instruments";
 
 /** Enough to surface the listing the user means without burying the sections below. */
 const ROOT_INSTRUMENTS_LIMIT = 5;
@@ -93,29 +118,46 @@ function isInstrumentItem(item: ResultItem): boolean {
 }
 
 /**
- * Fold symbol-search rows into a plain root query's list. An exact symbol hit
- * is promoted ahead of everything, with distinct venues retained so a bare
- * symbol cannot hide another security. Non-exact matches collapse into one
- * Instruments section with one row per symbol. Info rows ("no matches", "search
- * failed") are dropped: the instruments are an extra here, never the answer.
+ * Fold symbol-search rows into a plain root query's list. An exact symbol
+ * keeps one row per exchange: a saved listing written with its venue
+ * (`SAP:XETR`) counts as that exchange, and share-class spellings of one
+ * listing (BRK.B and BRK-B on NYSE) are one row. Looser hits stay one row per
+ * symbol.
+ * When the rows outnumber the cap, each distinct security gets a row before a
+ * further exchange of one already shown, so Saputo's SAP on Toronto is not
+ * pushed out by SAP SE's fourth German venue; the rows keep their ranked order.
+ * Info rows ("no matches", "search failed") are dropped: the instruments are
+ * an extra here, never the answer.
  */
 export function mergePlainRootTickerResults(
   query: string,
   providerItems: ResultItem[],
   rootItems: ResultItem[],
 ): ResultItem[] {
-  const seenSymbols = new Set<string>();
-  const instruments: ResultItem[] = [];
+  const seenExactVenues = new Set<string>();
+  const seenLooseSymbols = new Set<string>();
+  const symbolsWithExact = new Set<string>();
+  const candidates: ResultItem[] = [];
   const isExact = (item: ResultItem) => item.category === "Exact Match" || isExactTickerResultMatch(item, query);
   for (const item of providerItems) {
     if (!isInstrumentItem(item)) continue;
-    const symbol = item.label.trim().toUpperCase();
-    const key = (isExact(item) ? `${symbol}:${canonicalExchange(item.right)}` : symbol) + (item.contractKey ? `:${item.contractKey}` : "");
-    if (seenSymbols.has(key)) continue;
-    seenSymbols.add(key);
-    instruments.push(item);
-    if (instruments.length >= ROOT_INSTRUMENTS_LIMIT) break;
+    const label = item.label.trim().toUpperCase();
+    const symbol = parsePublicTickerKey(label).symbol || label;
+    if (isExact(item)) {
+      const venue = canonicalExchange(parsePublicTickerKey(label).exchange || item.right);
+      const key = `${compactSearchText(symbol)}|${venue}|${item.contractKey ?? ""}`;
+      if (seenExactVenues.has(key)) continue;
+      seenExactVenues.add(key);
+      symbolsWithExact.add(label);
+      symbolsWithExact.add(symbol);
+    } else if (symbolsWithExact.has(label) || symbolsWithExact.has(symbol) || seenLooseSymbols.has(label)) {
+      continue;
+    } else {
+      seenLooseSymbols.add(label);
+    }
+    candidates.push(item);
   }
+  const instruments = pickRootInstruments(candidates, isExact);
   if (instruments.length === 0) return rootItems;
 
   return [
@@ -123,4 +165,27 @@ export function mergePlainRootTickerResults(
     ...rootItems,
     ...instruments.filter((item) => !isExact(item)).map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
   ];
+}
+
+/**
+ * Up to the cap, in this order: the first exact row of each security, the
+ * exact symbol's other exchanges, then looser hits. The rows keep their
+ * ranked order. Exchanges of one security share its issuer name and class.
+ */
+function pickRootInstruments(candidates: ResultItem[], isExact: (item: ResultItem) => boolean): ResultItem[] {
+  if (candidates.length <= ROOT_INSTRUMENTS_LIMIT) return candidates;
+  const exact = candidates.filter(isExact);
+  const picked = new Set<ResultItem>();
+  const securities = new Set<string>();
+  for (const item of exact) {
+    const security = `${getIssuerGroupKey(item.detail) || item.id}|${item.badge ?? item.instrumentType ?? ""}`;
+    if (securities.has(security)) continue;
+    securities.add(security);
+    picked.add(item);
+  }
+  for (const item of [...exact, ...candidates]) {
+    if (picked.size >= ROOT_INSTRUMENTS_LIMIT) break;
+    picked.add(item);
+  }
+  return candidates.filter((item) => picked.has(item)).slice(0, ROOT_INSTRUMENTS_LIMIT);
 }

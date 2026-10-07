@@ -153,7 +153,7 @@ export function RelativeRotationPane(props: PaneProps) {
         scope === "custom"
           ? rotationInstruments(symbols)
           : scope === "collection"
-            ? Object.values(tickers)
+            ? [...tickers.values()]
                 .filter(
                   (ticker) =>
                     collectionId &&
@@ -163,9 +163,9 @@ export function RelativeRotationPane(props: PaneProps) {
                     ].includes(collectionId),
                 )
                 .map((ticker) => ({
-                  symbol: ticker.metadata.symbol,
+                  symbol: ticker.metadata.ticker,
                   exchange: ticker.metadata.exchange,
-                  label: ticker.metadata.symbol,
+                  label: ticker.metadata.ticker,
                 }))
             : sectorRotationInstruments();
       if (!instruments.length)

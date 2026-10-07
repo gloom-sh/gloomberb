@@ -13,10 +13,9 @@ export type ShillerField =
   | "excessCapeYield";
 
 /**
- * Every leg resolves through the Gloom Cloud proxy. Nothing here talks to Yahoo or
- * FRED directly, which is what lets the pane run in the hosted browser build.
+ * Every leg resolves through the market backend, including the hosted browser build.
  */
-export type SeriesSource =
+type SeriesSource =
   | { kind: "fred"; seriesId: string; limit: number }
   /**
    * Same-dated FRED series added together. A date is kept only when every leg
@@ -55,7 +54,7 @@ export interface ZoneHit {
  * where a high reading means cheap (a yield spread) simply lists them in the
  * opposite order rather than needing an inversion flag.
  */
-export interface ZoneBand {
+interface ZoneBand {
   max: number | null;
   id: ValuationZoneId;
   label: string;
@@ -69,7 +68,7 @@ export interface ZoneScaleBand {
 }
 
 /** A ratio of two series, or a single series that is already the measure. */
-export type IndicatorInput =
+type IndicatorInput =
   | {
     kind: "ratio";
     numerator: SeriesDef;

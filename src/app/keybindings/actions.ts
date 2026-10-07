@@ -7,6 +7,7 @@ export type CoreKeybindingActionId =
   | "command-bar"
   | "ticker-search"
   | "help"
+  | "function-help"
   | "switch-layout"
   | "focus-next-pane"
   | "focus-prev-pane"
@@ -31,7 +32,7 @@ export type CoreKeybindingActionId =
   | "window-move-mode"
   | "window-resize-mode";
 
-export type KeybindingActionCategory = "Global Keys" | "Pane Management";
+type KeybindingActionCategory = "Global Keys" | "Pane Management";
 
 export interface KeybindingActionDef {
   id: CoreKeybindingActionId;
@@ -87,6 +88,13 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     category: "Global Keys",
     description: "Open help.",
     defaults: ["?"],
+  },
+  {
+    id: "function-help",
+    category: "Global Keys",
+    description: "Open the focused pane's help card: what it shows, its keys and how fresh its data is.",
+    // F1 is help on every platform and nothing in the app used it.
+    defaults: ["F1"],
   },
   {
     id: "switch-layout",

@@ -29,7 +29,7 @@ export interface CrowdingRow {
   totalValue: number | null;
   weightChange: number | null;
 }
-export interface SignalsBase {
+interface SignalsBase {
   quarter: string;
   period: string;
   previousPeriod: string;

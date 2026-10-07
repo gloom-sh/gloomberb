@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -12,19 +12,14 @@ import { TICKER_RESEARCH_BUILTIN_TABS } from "../ticker-detail/research-tabs";
 import { ThirteenFPane } from "./pane";
 import { ThirteenFTickerPane } from "./signals-pane";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
 
 const PANE_ID = "thirteenf-pane-test";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let latestState: AppState | null = null;
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-    testSetup = undefined;
-  }
+afterEach(() => {
   latestState = null;
   setHttpFetchTransport(null);
 });
@@ -52,14 +47,14 @@ async function renderFrames(count = 4) {
   for (let index = 0; index < count; index += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
 
-const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { trackPropagation: true });
+const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event, { trackPropagation: true });
 
-const emitKeypressBatch = (events: TestKeyEvent[]) => emitTuiKeypress(testSetup!, events, { trackPropagation: true });
+const emitKeypressBatch = (events: TestKeyEvent[]) => tui.emitKeypress(events, { trackPropagation: true });
 
 function installAlpha13FTransport(urls: string[] = []) {
   setHttpFetchTransport(async (url) => {
@@ -149,10 +144,10 @@ describe("ThirteenFPane", () => {
     });
 
     await act(async () => {
-      testSetup = await testRender(<Harness />, { width: 100, height: 20 });
+      await tui.render(<Harness />, { width: 100, height: 20 });
     });
     await renderFrames();
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame.indexOf("Alpha Capital")).toBeLessThan(frame.indexOf("Beta Capital"));
     expect(frame.indexOf("Beta Capital")).toBeLessThan(frame.indexOf("Zeta Capital"));
 
@@ -160,7 +155,7 @@ describe("ThirteenFPane", () => {
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderFrames(2);
 
-    expect(testSetup!.captureCharFrame()).toContain("Back Beta Capital");
+    expect(tui.frame()).toContain("Back Beta Capital");
     expect(
       latestState?.paneState[PANE_ID]?.pluginState?.thirteenf?.selectedId,
     ).toBeUndefined();
@@ -178,18 +173,18 @@ describe("ThirteenFPane", () => {
     });
 
     await act(async () => {
-      testSetup = await testRender(<Harness />, { width: 100, height: 20 });
+      await tui.render(<Harness />, { width: 100, height: 20 });
     });
     await renderFrames();
 
     await emitKeypress({ name: "up", sequence: "\u001B[A" });
     await act(async () => {
-      await testSetup!.mockInput.typeText("BRK");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("BRK");
+      await tui.setup().renderOnce();
     });
     await renderFrames(2);
 
-    expect(testSetup!.captureCharFrame()).toContain("BRK");
+    expect(tui.frame()).toContain("BRK");
   });
 
   test("rapid keyboard navigation activates the current rendered row", async () => {
@@ -207,7 +202,7 @@ describe("ThirteenFPane", () => {
     });
 
     await act(async () => {
-      testSetup = await testRender(<Harness />, { width: 100, height: 20 });
+      await tui.render(<Harness />, { width: 100, height: 20 });
     });
     await renderFrames();
 
@@ -218,17 +213,47 @@ describe("ThirteenFPane", () => {
     ]);
     await renderFrames(2);
 
-    expect(testSetup!.captureCharFrame()).toContain("Back Gamma Capital");
+    expect(tui.frame()).toContain("Back Gamma Capital");
     expect(
       latestState?.paneState[PANE_ID]?.pluginState?.thirteenf?.selectedId,
     ).toBeUndefined();
+  });
+
+  test("leaves Cmd/Ctrl+Shift+R to window resize mode, and r still refreshes", async () => {
+    const urls: string[] = [];
+    installAlpha13FTransport(urls);
+    const modes: Array<string | undefined> = [];
+
+    await act(async () => {
+      await tui.render(
+        <>
+          <Harness />
+          <TestShellPaneKeys focusedPaneId={PANE_ID} startWindowMode={(_paneId, mode) => { modes.push(mode); }} />
+        </>,
+        { width: 100, height: 20 },
+      );
+    });
+    await renderFrames();
+    expect(tui.frame()).toContain("Alpha Capital");
+
+    urls.length = 0;
+    await emitKeypress({ name: "r", sequence: "R", ctrl: true, shift: true });
+    await emitKeypress({ name: "r", sequence: "R", super: true, shift: true });
+    await renderFrames(4);
+    expect(modes).toEqual(["resize", "resize"]);
+    expect(urls).toEqual([]);
+
+    await emitKeypress({ name: "r", sequence: "r" });
+    await renderFrames(4);
+    expect(modes).toHaveLength(2);
+    expect(urls.map((url) => new URL(url).pathname)).toContainEqual(expect.stringMatching(/\/topfunds$/));
   });
 
   test("filing shortcut on a holding opens filing detail inside the pane", async () => {
     installAlpha13FTransport();
 
     await act(async () => {
-      testSetup = await testRender(<Harness />, { width: 100, height: 24 });
+      await tui.render(<Harness />, { width: 100, height: 24 });
     });
     await renderFrames();
 
@@ -237,7 +262,7 @@ describe("ThirteenFPane", () => {
     await emitKeypress({ name: "f", sequence: "f" });
     await renderFrames(6);
 
-    const detailFrame = testSetup!.captureCharFrame();
+    const detailFrame = tui.frame();
     expect(detailFrame).toContain("Back 2026-03-31 filing");
     expect(detailFrame).toContain("Accession");
     expect(detailFrame).toContain("0000000001-26-000001");
@@ -246,7 +271,7 @@ describe("ThirteenFPane", () => {
     await emitKeypress({ name: "backspace", sequence: "\u007f" });
     await renderFrames(2);
 
-    const holdingsFrame = testSetup!.captureCharFrame();
+    const holdingsFrame = tui.frame();
     expect(holdingsFrame).toContain("Holdings");
     expect(holdingsFrame).toContain("filed 2026-05-15, restated");
     expect(holdingsFrame).toContain("AAPL");
@@ -258,7 +283,7 @@ describe("ThirteenFPane", () => {
     installAlpha13FTransport(urls);
 
     await act(async () => {
-      testSetup = await testRender(<Harness />, { width: 100, height: 24 });
+      await tui.render(<Harness />, { width: 100, height: 24 });
     });
     await renderFrames();
 
@@ -269,7 +294,7 @@ describe("ThirteenFPane", () => {
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderFrames(6);
 
-    const detailFrame = testSetup!.captureCharFrame();
+    const detailFrame = tui.frame();
     expect(detailFrame).toContain("Accession");
     expect(detailFrame).toContain("0000000001-26-000001");
     expect(detailFrame).toContain("Restatement");
@@ -289,7 +314,7 @@ describe("ThirteenFPane", () => {
     await emitKeypress({ name: "backspace", sequence: "\u007f" });
     await renderFrames(2);
 
-    const filingsFrame = testSetup!.captureCharFrame();
+    const filingsFrame = tui.frame();
     expect(filingsFrame).toContain("PERIOD");
     expect(filingsFrame).toContain("Restatement");
     expect(filingsFrame).toContain("Back Alpha Capital");
@@ -297,7 +322,7 @@ describe("ThirteenFPane", () => {
   });
   test("back from an overlap keeps the first fund open and returns to the second fund picker", async () => {
     installAlpha13FTransport();
-    await act(async () => { testSetup = await testRender(<Harness />, { width: 110, height: 26 }); });
+    await act(async () => { await tui.render(<Harness />, { width: 110, height: 26 }); });
     await renderFrames();
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderFrames(6);
@@ -306,7 +331,7 @@ describe("ThirteenFPane", () => {
     await emitKeypress({ name: "right", sequence: "\u001B[C" });
     await renderFrames(2);
     await emitKeypress({ name: "/", sequence: "/" });
-    await act(async () => { await testSetup!.mockInput.typeText("0000000001"); });
+    await act(async () => { await tui.setup().mockInput.typeText("0000000001"); });
     await renderFrames(2);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
     await renderFrames(4);
@@ -314,10 +339,10 @@ describe("ThirteenFPane", () => {
     await renderFrames(2);
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderFrames(6);
-    expect(testSetup!.captureCharFrame()).toContain("SECOND %");
+    expect(tui.frame()).toContain("SECOND %");
     await emitKeypress({ name: "backspace", sequence: "\u007f" });
     await renderFrames(2);
-    const frame = testSetup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Back Alpha Capital");
     expect(frame).toContain("Overlap");
     expect(frame).not.toContain("SECOND %");
@@ -325,25 +350,25 @@ describe("ThirteenFPane", () => {
 
   test("slash in a fund opened from a ticker query reaches the overlap search", async () => {
     installAlpha13FTransport();
-    await act(async () => { testSetup = await testRender(<Harness />, { width: 110, height: 26 }); });
+    await act(async () => { await tui.render(<Harness />, { width: 110, height: 26 }); });
     await renderFrames();
     await emitKeypress({ name: "/", sequence: "/" });
-    await act(async () => { await testSetup!.mockInput.typeText("AAPL"); });
+    await act(async () => { await tui.setup().mockInput.typeText("AAPL"); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
     await renderFrames(4);
     await emitKeypress({ name: "down", sequence: "\u001B[B" });
     await renderFrames(2);
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderFrames(6);
-    expect(testSetup!.captureCharFrame()).toContain("Back Alpha Capital");
+    expect(tui.frame()).toContain("Back Alpha Capital");
     await emitKeypress({ name: "right", sequence: "\u001B[C" });
     await renderFrames(2);
     await emitKeypress({ name: "right", sequence: "\u001B[C" });
     await renderFrames(2);
     await emitKeypress({ name: "/", sequence: "/" });
-    await act(async () => { await testSetup!.mockInput.typeText("0000000009"); });
+    await act(async () => { await tui.setup().mockInput.typeText("0000000009"); });
     await renderFrames(2);
-    expect(testSetup!.captureCharFrame()).toContain("0000000009");
+    expect(tui.frame()).toContain("0000000009");
   }, 20_000);
 
   test("in the Research pane, h/l move an open fund's sections instead of the research tabs", async () => {
@@ -373,15 +398,15 @@ describe("ThirteenFPane", () => {
       );
     }
     try {
-      await act(async () => { testSetup = await testRender(<ResearchHarness />, { width: 100, height: 26 }); });
+      await act(async () => { await tui.render(<ResearchHarness />, { width: 100, height: 26 }); });
       await renderFrames(6);
       await emitKeypress({ name: "enter", sequence: "\r" });
       await renderFrames(6);
-      expect(testSetup!.captureCharFrame()).toContain("Back Alpha Capital");
+      expect(tui.frame()).toContain("Back Alpha Capital");
 
       await emitKeypress({ name: "l", sequence: "l" });
       await renderFrames(2);
-      const filings = testSetup!.captureCharFrame();
+      const filings = tui.frame();
       expect(filings).toContain("PERIOD");
       expect(latestState?.paneState[researchPaneId]?.activeTabId).toBe("thirteenf");
 

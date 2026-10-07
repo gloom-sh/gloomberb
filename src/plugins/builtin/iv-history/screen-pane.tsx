@@ -35,7 +35,7 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
   const { collectionId } = usePaneCollection();
   const tickers = useTickers();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const universe = useMemo(() => vcaUniverse(scope, symbolsText, collectionId, Object.values(tickers)), [scope, symbolsText, collectionId, tickers]);
+  const universe = useMemo(() => vcaUniverse(scope, symbolsText, collectionId, [...tickers.values()]), [scope, symbolsText, collectionId, tickers]);
   const key = universe.instruments.map((instrument) => instrument.symbol).join(",");
   const controller = useRef<AbortController | null>(null);
   const [hv, setHv] = useState<Map<string, number | null>>(new Map());

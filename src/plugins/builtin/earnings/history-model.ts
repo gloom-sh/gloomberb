@@ -30,7 +30,7 @@ export interface HistoryRow {
 }
 
 /** Past quarters shown, beside the upcoming report. */
-export const HISTORY_QUARTERS = 12;
+const HISTORY_QUARTERS = 12;
 const AVERAGE_OVER = 8;
 
 /**

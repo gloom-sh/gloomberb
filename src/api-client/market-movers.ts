@@ -13,7 +13,7 @@ export type CloudSessionMoversSide = "up" | "down" | "active";
 export type CloudSessionPhase = "pre" | "regular" | "post" | "closed";
 
 /** A trading halt, an 8-K, or a news story in the list's own window (see docs/quote-board-data.md). */
-export type CloudSessionCatalyst = "halt" | "filing" | "news";
+type CloudSessionCatalyst = "halt" | "filing" | "news";
 
 export interface CloudSessionMoverItem {
   rank: number;

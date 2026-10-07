@@ -24,7 +24,7 @@ export const FIRST_RUN_WATCHLIST: ReadonlyArray<Pick<TickerMetadata, "ticker" | 
   { ticker: "AMZN", name: "Amazon.com Inc.", exchange: "NASDAQ", assetCategory: "STK" },
   { ticker: "TSLA", name: "Tesla Inc.", exchange: "NASDAQ", assetCategory: "STK" },
 ];
-export const FIRST_RUN_WATCHLIST_SIZE = 7;
+const FIRST_RUN_WATCHLIST_SIZE = 7;
 
 export const FIRST_RUN_PANE_IDS = {
   heatmap: "portfolio-list:home-heatmap",
@@ -33,6 +33,7 @@ export const FIRST_RUN_PANE_IDS = {
   news: "news-top:home",
   indices: "world-indices:home",
   sentiment: "fear-greed:home",
+  trending: "attention-trending:home",
 } as const;
 
 export interface FirstRunWatchlistPlan {
@@ -152,6 +153,11 @@ export function buildFirstRunLayout({
         ? { instanceId: FIRST_RUN_PANE_IDS.indices, paneId: "world-indices", binding: { kind: "none" as const } }
         : null;
   if (secondary) instances.push(secondary);
+  const trending = hasPane("attention-trending");
+  if (trending) instances.push({ instanceId: FIRST_RUN_PANE_IDS.trending, paneId: "attention-trending", binding: { kind: "none" } });
+  const lower = secondary && trending ? { kind: "split" as const, axis: "horizontal" as const, ratio: 0.6,
+    first: { kind: "pane" as const, instanceId: secondary.instanceId }, second: { kind: "pane" as const, instanceId: FIRST_RUN_PANE_IDS.trending } }
+    : { kind: "pane" as const, instanceId: secondary?.instanceId ?? FIRST_RUN_PANE_IDS.trending };
 
   // The float is a market read that stands on its own: the Fear & Greed
   // gauge, else the indices where a host has no gauge. The shell clamps floats
@@ -183,13 +189,13 @@ export function buildFirstRunLayout({
         first: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.heatmap },
         second: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.watchlist },
       },
-      second: secondary
+      second: secondary || trending
         ? {
           kind: "split",
           axis: "vertical",
           ratio: 0.62,
           first: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.chart },
-          second: { kind: "pane", instanceId: secondary.instanceId },
+          second: lower,
         }
         : { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.chart },
     },

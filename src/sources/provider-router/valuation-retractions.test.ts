@@ -16,7 +16,7 @@ const fields = ["enterpriseValue", "enterpriseToRevenue"] as const;
 const recorded = createTestFinancials({
   quote: createTestQuote({ symbol: "ACME", listingExchangeName: "NASDAQ", currency: "USD", providerId: "gloomberb-cloud" }),
   fundamentals: { financialCurrency: "EUR", enterpriseValue: 43_716_311_028_848, enterpriseToRevenue: 1065.865,
-    dividendYield: 0.0054, dividendYieldBasis: "forward", dividendYieldSource: "yahoo", revenue: 32_667_300_000 },
+    dividendYield: 0.0054, dividendYieldBasis: "forward", dividendYieldSource: "gloom", revenue: 32_667_300_000 },
   annualStatements: [{ date: "2025-12-31", currency: "EUR", totalRevenue: 32_667_300_000 }],
 });
 const roundTrip = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -27,7 +27,7 @@ test("explicit cloud retraction survives serialization, cached fallback, and fur
   })));
   const merged = mergeFinancials(corrected, roundTrip(recorded))!;
   expect(merged.fundamentals).toEqual({ financialCurrency: "EUR", trailingPE: 58.7, unavailableFields: [...fields],
-    dividendYield: 0.0054, dividendYieldBasis: "forward", dividendYieldSource: "yahoo", revenue: 32_667_300_000 });
+    dividendYield: 0.0054, dividendYieldBasis: "forward", dividendYieldSource: "gloom", revenue: 32_667_300_000 });
   expect(merged.annualStatements).toEqual(recorded.annualStatements);
   const sparse = createTestFinancials({ fundamentals: { financialCurrency: "EUR", forwardPE: 28.8 } });
   expect(mergeFinancials(sparse, roundTrip(merged))?.fundamentals?.unavailableFields).toEqual(fields);
@@ -39,7 +39,7 @@ test("explicit cloud retraction survives serialization, cached fallback, and fur
 test("authoritative finite observations clear inherited markers without suppressing valid native values", () => {
   const unavailable = createTestFinancials({ fundamentals: { financialCurrency: "EUR", unavailableFields: [...fields] } });
   for (const value of [662_293_158_034, 0, -100]) {
-    const native = createTestFinancials({ quote: { ...recorded.quote!, providerId: "yahoo" },
+    const native = createTestFinancials({ quote: { ...recorded.quote!, providerId: "gloom" },
       fundamentals: { financialCurrency: "EUR", enterpriseValue: value } });
     const merged = mergeFinancials(native, unavailable)!;
     expect(merged.fundamentals?.enterpriseValue).toBe(value);
@@ -113,14 +113,14 @@ test("a newly fetched retraction overrides an earlier finite cache during profil
 });
 
 test("provider enrichment preserves authoritative native and broker valuation contributions", async () => {
-  for (const sourceKey of ["provider:yahoo", "broker:ibkr:ibkr-work"]) {
+  for (const sourceKey of ["provider:gloom", "broker:ibkr:ibkr-work"]) {
     const persistence = new AppPersistence(createTempDbPath("valuation-contribution-priority"));
-    const valid = { ...recorded, quote: { ...recorded.quote!, providerId: sourceKey.includes("broker") ? "ibkr" : "yahoo", dataSource: "live" as const, price: 1700 },
+    const valid = { ...recorded, quote: { ...recorded.quote!, providerId: sourceKey.includes("broker") ? "ibkr" : "gloom", dataSource: "live" as const, price: 1700 },
       fundamentals: { financialCurrency: "EUR", enterpriseValue: 662_293_158_034 } };
     cacheRouterResource(persistence.resources, "financials", "ACME", "exchange=NASDAQ", sourceKey, valid,
       { staleMs: 60_000, expireMs: 120_000 });
     let cloudLoads = 0;
-    const router = new AssetDataRouter(fallbackProvider, [{ ...fallbackProvider, id: "yahoo", priority: 1,
+    const router = new AssetDataRouter(fallbackProvider, [{ ...fallbackProvider, id: "gloom", priority: 1,
       async getTickerFinancials() { throw new Error("Native provider temporarily unavailable"); },
     }, { ...fallbackProvider, id: "gloomberb-cloud", priority: 100,
       async getTickerFinancials() { cloudLoads++; return createTestFinancials({ quote: recorded.quote, fundamentals: { unavailableFields: [...fields] } }); },
@@ -141,10 +141,10 @@ test("provider enrichment preserves authoritative native and broker valuation co
 test("a quote-only primary cache cannot shield a fallback provider valuation from its own retraction", async () => {
   const persistence = new AppPersistence(createTempDbPath("mixed-valuation-origin"));
   const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
-  cacheRouterResource(persistence.resources, "financials", "ACME", "exchange=NASDAQ", "provider:yahoo",
-    createTestFinancials({ quote: { ...recorded.quote!, providerId: "yahoo" } }), cachePolicy);
+  cacheRouterResource(persistence.resources, "financials", "ACME", "exchange=NASDAQ", "provider:gloom",
+    createTestFinancials({ quote: { ...recorded.quote!, providerId: "gloom" } }), cachePolicy);
   cacheRouterResource(persistence.resources, "financials", "ACME", "exchange=NASDAQ", "provider:gloomberb-cloud", recorded, cachePolicy);
-  const router = new AssetDataRouter(fallbackProvider, [{ ...fallbackProvider, id: "yahoo", priority: 1,
+  const router = new AssetDataRouter(fallbackProvider, [{ ...fallbackProvider, id: "gloom", priority: 1,
     async getTickerFinancials() { throw new Error("Native snapshot unavailable"); },
   }, { ...fallbackProvider, id: "gloomberb-cloud", priority: 100,
     async getTickerFinancials() { return createTestFinancials({ quote: recorded.quote, fundamentals: { unavailableFields: [...fields] } }); },

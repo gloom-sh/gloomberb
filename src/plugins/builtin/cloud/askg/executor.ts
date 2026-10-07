@@ -3,9 +3,9 @@ import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog
 import {
   loadResolvedHeadlessPaneModel,
   serializeHeadlessPaneResult,
+  type LoadedHeadlessPaneModel,
 } from "../../../../cli/pane-functions/headless";
 import { resolvePaneFunction } from "../../../../cli/pane-functions/resolver";
-import { stableStringify } from "../../../../utils/hash";
 import type {
   HeadlessBundleResult,
   HeadlessPaneDefinition,
@@ -21,7 +21,14 @@ import {
   type ToolResultPayload,
   type ToolResultStatus,
 } from "./protocol";
-import { normalizeJson, shortReason } from "./json";
+import { normalizeJson } from "./json";
+import {
+  capToolNote,
+  joinToolNotes,
+  summarizeToolWarnings,
+  toolErrorNote,
+} from "./notes";
+import { describeTrimmedLists, fitResultToBytes } from "./result-budget";
 import {
   remoteRequestForTool,
   resolveRemoteToolBinding,
@@ -38,14 +45,14 @@ interface HeadlessExecution {
   errors?: string[];
 }
 
-export interface HeadlessToolCall {
+interface HeadlessToolCall {
   name: string;
   args: Record<string, JsonValue>;
   manifest: ClientToolManifest;
   signal: AbortSignal;
 }
 
-export type HeadlessToolExecutor = (call: HeadlessToolCall) => Promise<HeadlessExecution>;
+type HeadlessToolExecutor = (call: HeadlessToolCall) => Promise<HeadlessExecution>;
 
 export interface ASKGToolExecutorDependencies {
   manifests: readonly ClientToolManifest[];
@@ -57,7 +64,7 @@ export interface ASKGToolExecutorDependencies {
   now?: () => number;
 }
 
-export interface ASKGToolExecutionOptions {
+interface ASKGToolExecutionOptions {
   signal?: AbortSignal;
   confirmed?: boolean;
 }
@@ -81,54 +88,47 @@ interface ExecutionValue {
 }
 
 const ARGUMENT_KEYS = new Set(["symbol", "symbols", "text"]);
-const REASON_MAX_LENGTH = 320;
+/** The list of shortened values gets this much of the note; the rest is the tool's own. */
+const TRIM_DESCRIPTION_LENGTH = 160;
 
 class ToolTimeoutError extends Error {}
 class ToolCancelledError extends Error {}
-
-function appendNote(current: string | undefined, next: string): string {
-  return current ? `${current} ${next}` : next;
-}
 
 function encodedSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
+/** Room left for the note that says what was trimmed. */
+const TRIM_NOTE_RESERVE_BYTES = 1_024;
+
+/**
+ * Keeps the posted payload under the server's byte cap. An oversized result
+ * loses rows (one text value is cut only when no list can shrink), so what
+ * reaches Gloom is still whole records and the note says what was shortened.
+ */
 function withBoundedPayload(payload: ToolResultPayload): ToolResultPayload {
   if (encodedSize(payload) <= MAX_TOOL_RESULT_BYTES) return payload;
 
-  const resultText = stableStringify(payload.result ?? null);
-  const originalBytes = encodedSize(payload.result ?? null);
-  const note = appendNote(
-    payload.note,
-    `Result exceeded ${MAX_TOOL_RESULT_BYTES} bytes. result.jsonPreview contains a canonical JSON prefix.`,
-  );
   const status = payload.status === "ok" ? "partial" : payload.status;
-  let low = 0;
-  let high = resultText.length;
-  let best: ToolResultPayload = {
-    ...payload,
-    status,
-    result: { jsonPreview: "", originalBytes },
-    truncated: true,
-    note,
-  };
-
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const candidate: ToolResultPayload = {
-      ...best,
-      result: { jsonPreview: resultText.slice(0, middle), originalBytes },
+  const overhead = encodedSize({ ...payload, result: null }) + TRIM_NOTE_RESERVE_BYTES;
+  const fitted = payload.result === undefined
+    ? null
+    : fitResultToBytes(payload.result, MAX_TOOL_RESULT_BYTES - overhead);
+  if (fitted) {
+    const trimmed = describeTrimmedLists(fitted.trimmed);
+    const bounded: ToolResultPayload = {
+      ...payload,
+      status,
+      result: fitted.result,
+      truncated: true,
+      note: joinToolNotes(
+        payload.note,
+        `Trimmed to fit the size limit${trimmed ? `: ${capToolNote(trimmed, TRIM_DESCRIPTION_LENGTH)}` : ""}.`,
+      ),
     };
-    if (encodedSize(candidate) <= MAX_TOOL_RESULT_BYTES) {
-      best = candidate;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
+    if (encodedSize(bounded) <= MAX_TOOL_RESULT_BYTES) return bounded;
   }
 
-  if (encodedSize(best) <= MAX_TOOL_RESULT_BYTES) return best;
   const withoutResult: ToolResultPayload = {
     turnId: payload.turnId,
     toolCallId: payload.toolCallId,
@@ -281,12 +281,27 @@ function defaultHeadlessExecutor(
       requireBotSafe: false,
     }, { strictHeadlessOptions: true });
     const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument, signal);
+    const result = compactHeadlessResult(loaded);
     return {
-      result: serializeHeadlessPaneResult(loaded.definition, loaded.result),
-      rowCount: headlessRowCount(loaded.definition, loaded.result),
-      ...(loaded.result.errors?.length ? { errors: loaded.result.errors } : {}),
+      result: serializeHeadlessPaneResult(loaded.definition, result),
+      rowCount: headlessRowCount(loaded.definition, result),
+      ...(result.errors?.length ? { errors: result.errors } : {}),
     };
   };
+}
+
+/**
+ * What Gloom reads is the function's compact form when it has one: the view
+ * that was asked for rather than every view and the full model. `fn` and the
+ * pane keep the full result.
+ */
+function compactHeadlessResult({ definition, result, args }: LoadedHeadlessPaneModel): HeadlessPaneResult {
+  if (!definition.compact) return result;
+  try {
+    return definition.compact(result, args);
+  } catch {
+    return result;
+  }
 }
 
 export function createASKGToolExecutor(
@@ -311,7 +326,7 @@ export function createASKGToolExecutor(
       ...(value.rowCount !== undefined ? { rowCount: value.rowCount } : {}),
       truncated: value.truncated ?? false,
       elapsedMs: Math.max(0, now() - startedAt),
-      ...(value.note ? { note: value.note } : {}),
+      ...(value.note ? { note: capToolNote(value.note) } : {}),
       ...(value.rev ? { rev: value.rev } : {}),
       ...(value.undoToken ? { undoToken: value.undoToken } : {}),
     });
@@ -342,7 +357,7 @@ export function createASKGToolExecutor(
             rowCount: loaded.rowCount,
             ...(errors.length > 0 ? {
               truncated: loaded.rowCount > 0,
-              note: errors.map((error) => shortReason(error, REASON_MAX_LENGTH)).join(" "),
+              note: summarizeToolWarnings(errors),
             } : {}),
           };
         }
@@ -355,7 +370,7 @@ export function createASKGToolExecutor(
           try {
             preparedUndo = await undoManager.prepare(binding.operation, call.args, signal);
           } catch (error) {
-            undoNote = `Undo is unavailable: ${shortReason(error, REASON_MAX_LENGTH)}`;
+            undoNote = capToolNote(`Undo is unavailable: ${toolErrorNote(error)}`);
           }
         }
 
@@ -364,7 +379,7 @@ export function createASKGToolExecutor(
           return {
             status: "error",
             result: { code: response.error.code, ...(response.error.details !== undefined ? { details: response.error.details } : {}) },
-            note: shortReason(response.error.message, REASON_MAX_LENGTH),
+            note: toolErrorNote(response.error.message),
           };
         }
 
@@ -373,7 +388,7 @@ export function createASKGToolExecutor(
           try {
             undoToken = await undoManager.commit(preparedUndo, signal) ?? undefined;
           } catch (error) {
-            undoNote = `Undo is unavailable: ${shortReason(error, REASON_MAX_LENGTH)}`;
+            undoNote = capToolNote(`Undo is unavailable: ${toolErrorNote(error)}`);
           }
         }
         return {
@@ -393,7 +408,7 @@ export function createASKGToolExecutor(
       if (error instanceof ToolCancelledError || options.signal?.aborted) {
         return base({ status: "cancelled", note: "Tool call was cancelled." });
       }
-      return base({ status: "error", note: shortReason(error, REASON_MAX_LENGTH) });
+      return base({ status: "error", note: toolErrorNote(error) });
     }
   };
 

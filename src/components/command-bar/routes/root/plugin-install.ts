@@ -252,9 +252,9 @@ function buildPluginInstallItem(
 
 /**
  * The install row for the root query, or null. `enabled` is false whenever
- * something else already claimed the query or the bar shows another route,
- * such as the install confirmation, so coming back from one re-reads what is
- * installed.
+ * something else already claimed the query or the bar shows a route (a ticker
+ * search, a picker). The install confirm opens in the form modal with the bar
+ * closed, so the bar's next visit re-reads what is installed.
  */
 export function useRootPluginInstallItem({
   enabled,

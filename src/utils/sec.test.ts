@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerRecord } from "../types/ticker";
-import { isKnownNonUsEquityTicker, isUsEquityTicker } from "./sec";
+import { isKnownNonUsEquityTicker, isUsEquityOrFundTicker, isUsEquityTicker } from "./sec";
 import { createTestTicker } from "../test-support/ticker";
 
 const makeTicker = (overrides: Partial<TickerRecord["metadata"]>) => createTestTicker("AAPL", "Apple Inc.", overrides);
@@ -33,6 +33,14 @@ describe("isUsEquityTicker", () => {
     for (const assetCategory of ["OPT", "ETF", "Mutual Fund", "Preferred Stock"]) {
       expect(isUsEquityTicker(makeTicker({ assetCategory }))).toBe(false);
     }
+  });
+
+  test("the fund filings view also admits US-listed funds, still not foreign listings or options", () => {
+    for (const assetCategory of ["ETF", "Mutual Fund", "Common Stock"]) {
+      expect(isUsEquityOrFundTicker(makeTicker({ assetCategory, exchange: "NYSEARCA" }))).toBe(true);
+      expect(isUsEquityOrFundTicker(makeTicker({ assetCategory, exchange: "LSE" }))).toBe(false);
+    }
+    expect(isUsEquityOrFundTicker(makeTicker({ assetCategory: "OPT" }))).toBe(false);
   });
 });
 

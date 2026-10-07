@@ -25,7 +25,7 @@ import type {
   ElectrobunBackendInit,
   ElectrobunDesktopRpcSchema,
 } from "../../shared/protocol";
-import { decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "../../view/rpc-codec";
+import { decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "../../shared/rpc-codec";
 import { buildDesktopApplicationMenu, type ElectrobunApplicationMenuCommand } from "../application-menu";
 import { registerElectrobunCoreCapabilities } from "../core-capabilities";
 import {
@@ -286,7 +286,13 @@ export class DesktopBackend {
       setTimeout(() => this.quit(), QUIT_FALLBACK_MS);
       return;
     }
-    rpc?.send["application-menu.select"]({ command });
+    if (!rpc) return;
+    // The bar and every form open in the main window; with a detached window
+    // key, the keys would go there instead.
+    if (command.type === "open-command-bar" || command.type === "open-builtin-workflow" || command.type === "open-plugin-workflow") {
+      this.detachedWindows.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);
+    }
+    rpc.send["application-menu.select"]({ command });
   }
 
   private quit(): void {
@@ -323,36 +329,38 @@ export class DesktopBackend {
   private syncConfigAccessors(): void {
     const services = this.services;
     if (!services || !this.config) return;
-    services.pluginRegistry.getConfigFn = () => this.config!;
-    services.pluginRegistry.getLayoutFn = () => this.config!.layout;
-    services.pluginRegistry.updateBrokerInstanceFn = async (instanceId, values, options = {}) => {
-      const config = this.requireConfig();
-      let found = false;
-      const brokerInstances = config.brokerInstances.map((instance) => {
-        if (instance.id !== instanceId) return instance;
-        found = true;
-        const nextValues = options.replaceConfig ? values : { ...instance.config, ...values };
-        return {
-          ...instance,
-          label: options.label ?? instance.label,
-          enabled: options.enabled ?? instance.enabled,
-          connectionMode: typeof nextValues.connectionMode === "string" ? nextValues.connectionMode : instance.connectionMode,
-          config: nextValues,
-        };
-      });
-      if (!found) return;
+    services.pluginRegistry.bindHost({
+      getConfig: () => this.config!,
+      getLayout: () => this.config!.layout,
+      updateBrokerInstance: async (instanceId, values, options = {}) => {
+        const config = this.requireConfig();
+        let found = false;
+        const brokerInstances = config.brokerInstances.map((instance) => {
+          if (instance.id !== instanceId) return instance;
+          found = true;
+          const nextValues = options.replaceConfig ? values : { ...instance.config, ...values };
+          return {
+            ...instance,
+            label: options.label ?? instance.label,
+            enabled: options.enabled ?? instance.enabled,
+            connectionMode: typeof nextValues.connectionMode === "string" ? nextValues.connectionMode : instance.connectionMode,
+            config: nextValues,
+          };
+        });
+        if (!found) return;
 
-      const nextConfig = {
-        ...config,
-        brokerInstances,
-      };
-      if (this.workspace) {
-        await this.commitDesktopSnapshot(this.workspace.replaceConfig(nextConfig, { layoutChanged: false }));
-        return;
-      }
-      this.setConfig(nextConfig);
-      await saveConfig(this.requireConfig());
-    };
+        const nextConfig = {
+          ...config,
+          brokerInstances,
+        };
+        if (this.workspace) {
+          await this.commitDesktopSnapshot(this.workspace.replaceConfig(nextConfig, { layoutChanged: false }));
+          return;
+        }
+        this.setConfig(nextConfig);
+        await saveConfig(this.requireConfig());
+      },
+    });
     const configurableProvider = services.providerRouter as {
       setConfigAccessor?: (accessor: () => AppConfig) => void;
     };

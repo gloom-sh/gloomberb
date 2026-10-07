@@ -3,12 +3,12 @@ import {
   addPaneFloating,
   addPaneToLayout,
   findDockLeaf,
-} from "../../plugins/pane-manager";
+} from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import {
   findTickerResearchFollower,
   listVisibleTickerSourcePanes,
-} from "../../plugins/ticker-navigation";
+} from "../../layout/ticker-navigation";
 import type {
   AppAction,
   AppState,
@@ -101,7 +101,7 @@ export function useAppTickerInspectorRuntime({
       instanceId: preferredInstanceId,
       binding: { kind: "follow", sourceInstanceId: sourcePaneId },
     });
-    const { width, height } = pluginRegistry.getTermSizeFn();
+    const { width, height } = pluginRegistry.getTermSize();
     const sourceDocked = findDockLeaf(state.config.layout, sourcePaneId);
     const layout = sourceDocked && paneDef.defaultMode !== "floating"
       ? addPaneToLayout(state.config.layout, instance, { relativeTo: sourcePaneId, position: "right" })

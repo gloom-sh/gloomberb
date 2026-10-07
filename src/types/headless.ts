@@ -72,6 +72,8 @@ export interface HeadlessPaneContext {
   capabilities?: CapabilityInvoker;
   /** Read one local portfolio without passing holdings through a remote endpoint. */
   resolvePortfolio?: (id: string) => Promise<{ portfolio: import("./ticker").Portfolio; tickers: import("./ticker").TickerRecord[] } | null>;
+  /** Read locally remembered watchlist membership. */
+  resolveWatchlist?: (id: string) => Promise<import("./ticker").TickerRecord[] | null>;
   /** Resolve locally remembered exchange identities without coupling plugins to storage. */
   resolveInstrument?: (symbol: string) => Promise<{ symbol: string; exchange?: string }>;
 }
@@ -175,6 +177,12 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
     limitations?: string[];
     screenshotReadiness?: "ready" | "partial" | "live-dom" | "unsupported";
   };
+  /**
+   * What a report returns, in a sentence, for readers that only ever see the
+   * function as a data source, such as Ask Gloom. The template's description
+   * says what opening the pane does and is used when this is absent.
+   */
+  description?: string;
   argument: HeadlessPaneArgumentDef;
   options: HeadlessPaneOptionDef[];
   columns?: HeadlessPaneColumn[];
@@ -183,6 +191,15 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): HeadlessPaneResultByShape[Shape] | Promise<HeadlessPaneResultByShape[Shape]>;
+  /**
+   * A smaller form of a loaded result for readers with a tight size budget,
+   * such as Ask Gloom: only what `args` asked for, without full-precision
+   * metadata. Reports, screenshots and panes always use the full result.
+   */
+  compact?(
+    result: HeadlessPaneResultByShape[Shape],
+    args: HeadlessPaneLoadArgs,
+  ): HeadlessPaneResultByShape[Shape];
 }
 
 export type HeadlessPaneResult = HeadlessPaneResultByShape[HeadlessPaneShape];

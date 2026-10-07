@@ -25,8 +25,12 @@ export function openUrl(rawUrl: string) {
       : platform === "win32"
         ? ["cmd", "/c", "start", "", url]
         : ["xdg-open", url];
-    const child = Bun.spawn(command, { stdio: ["ignore", "ignore", "ignore"] });
-    child.unref();
+    // Spawning throws when the opener is not installed (no xdg-open on
+    // minimal Linux and WSL); a link that does nothing beats a crash.
+    try {
+      const child = Bun.spawn(command, { stdio: ["ignore", "ignore", "ignore"] });
+      child.unref();
+    } catch {}
   }
 }
 

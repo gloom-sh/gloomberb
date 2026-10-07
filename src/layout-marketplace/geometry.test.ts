@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { cloneLayout, createDefaultConfig } from "../types/config";
 import { buildLayoutPreviewRects } from "./geometry";
+import { testDockedLayout } from "./test-fixture";
 
 const layout = (() => {
-  const next = cloneLayout(createDefaultConfig("/tmp/gloomberb-test").layout);
+  const next = testDockedLayout();
   next.floating = [{ instanceId: "chat:main", x: 40, y: 6, width: 30, height: 10 }];
   next.detached = [{ instanceId: "quote-monitor:main", x: 70, y: 2, width: 24, height: 8 }];
   return next;

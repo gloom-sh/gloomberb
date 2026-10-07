@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetFredSeriesPersistence } from "../../../data/fred-series";
+import { resetFredSeriesPersistence } from "../../../sources/gloomberb-cloud/fred-series";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { buildVolatilityData } from "./model";
@@ -36,8 +36,8 @@ describe("volatility headless model", () => {
     expect(metadata.phase).toBe("partial");
     const curve = result.sections.find((section) => section.title === "Aligned curve observations");
     const board = result.sections.find((section) => section.title === "Cross-asset volatility");
-    expect(curve && "rows" in curve ? curve.rows[1] : null).toMatchObject({ sourceId: "^VIX", value: 20, date: "2026-09-21" });
-    expect(board && "rows" in board ? board.rows.find((row) => row.id === "vix") : null)
+    expect(curve?.rows?.[1] ?? null).toMatchObject({ sourceId: "^VIX", value: 20, date: "2026-09-21" });
+    expect(board?.rows?.find((row) => row.id === "vix") ?? null)
       .toMatchObject({ value: 20, change1d: null, percentile1y: null, date: "2026-09-21" });
   });
 
@@ -45,7 +45,7 @@ describe("volatility headless model", () => {
     const controller = new AbortController();
     const headless = createVolatilityHeadless({ load: async () => {
       controller.abort();
-      return { data: buildVolatilityData({}), phase: "error", stale: false, errors: ["offline"], loaded: 23, total: 23 };
+      return { data: buildVolatilityData({}), inputs: {}, phase: "error", stale: false, errors: ["offline"], loaded: 23, total: 23 };
     } });
     await expect(headless.load(args, { signal: controller.signal } as HeadlessPaneContext)).rejects.toMatchObject({ name: "AbortError" });
   });

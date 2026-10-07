@@ -1,17 +1,32 @@
 import { statGridRows, type StatItem } from "../ui/stat-grid";
 import { getTableWidth, hasMeaningfulTableHorizontalOverflow, type TableWidthColumn } from "../ui/table-layout";
 
+/** Drop optional columns in priority order, using the same widths as the table. */
+export function fitChartTableColumns<C extends TableWidthColumn & { id: string }>(
+  columns: readonly C[],
+  width: number,
+  dropOrder: readonly C["id"][],
+): C[] {
+  let kept = [...columns];
+  for (const id of dropOrder) {
+    // Reserve the vertical scrollbar, including when the current rows fit.
+    if (getTableWidth(kept) <= width - 1) break;
+    kept = kept.filter((column) => column.id !== id);
+  }
+  return kept;
+}
+
 /** A readable kit chart: legend row, four plot rows, time axis. */
 export const CHART_MIN_ROWS = 6;
 /** The least a kit chart draws in: legend, two plot rows, time axis. Only
  * used for rows a short table leaves, which would otherwise stay blank. */
 export const CHART_COMPACT_ROWS = 4;
 /** Narrower than this the axis labels no longer fit beside the plot. */
-export const CHART_MIN_WIDTH = 24;
+const CHART_MIN_WIDTH = 24;
 /** The table keeps its header and this many rows before the chart gives way. */
-export const TABLE_MIN_BODY_ROWS = 4;
+const TABLE_MIN_BODY_ROWS = 4;
 /** The chart's share of what the figures leave, while the table has more rows than fit. */
-export const CHART_SHARE = 0.4;
+const CHART_SHARE = 0.4;
 /** Below this many body rows the figures keep a single row. */
 const SHORT_BODY_ROWS = 12;
 /** The figures never take more than this share of the body. */

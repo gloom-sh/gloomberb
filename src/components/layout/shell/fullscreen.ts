@@ -1,4 +1,4 @@
-import { isPaneInLayout } from "../../../plugins/pane-manager";
+import { isPaneInLayout } from "../../../layout/pane-manager";
 import { cloneLayout, type LayoutConfig } from "../../../types/config";
 
 export function resolvePaneFocusSourceLayout(

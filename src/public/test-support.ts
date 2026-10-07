@@ -22,14 +22,22 @@ export {
 export { PluginRenderProvider } from "../plugins/runtime";
 export type { PluginRuntimeAccess } from "../plugins/runtime";
 
+// `createOpenTuiTestHarness` mounts one renderer per test and tears it down
+// after every test, so a suite does not hand-roll its own `afterEach` destroy.
 export {
+  createOpenTuiTestHarness,
   createOpenTuiTestRoot,
   emitKeypress,
   settleFrame,
   TestDialogProvider,
   testRender,
 } from "../renderers/opentui/test-utils";
-export type { TestKeyEvent } from "../renderers/opentui/test-utils";
+export type {
+  OpenTuiTestHarness,
+  OpenTuiTestRenderOptions,
+  OpenTuiTestSetup,
+  TestKeyEvent,
+} from "../renderers/opentui/test-utils";
 
 export { AppContext, PaneInstanceProvider } from "../state/app/context";
 // The value to hand `AppContext` when a test renders hooks without the app's

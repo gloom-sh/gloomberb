@@ -10,7 +10,7 @@ export interface HistorySession {
   symbol: string;
   exchange: string;
   interval: string;
-  source: "yahoo" | "twelvedata" | "alpaca";
+  source: "gloom";
   timestampConvention: "bar-open" | "bar-open-with-final-observation";
   barAlignment: "session-open" | "clock";
   /** Actual acquisition time, retained unchanged through source/cache projections. */
@@ -26,4 +26,6 @@ export interface PriceHistoryResult {
   sourceKey?: string;
   /** First date (YYYY-MM-DD) the source vouches for; it excluded earlier prices. */
   coverageStart?: string;
+  /** The source served the pre-market and after-hours bars the request asked for. */
+  extendedHours?: boolean;
 }

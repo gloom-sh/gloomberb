@@ -18,7 +18,7 @@ import {
   type TickerColumn,
 } from "./model";
 
-export function sideColor(side: CloudCongressTradePayload["side"]): string {
+function sideColor(side: CloudCongressTradePayload["side"]): string {
   if (side === "BUY") return colors.positive;
   if (side === "SELL") return colors.negative;
   if (side === "EXCHANGE") return colors.text;

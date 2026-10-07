@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box } from "../../../ui";
 import { DataTableView, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
-import { usePaneSettingValue } from "../../../state/app/context";
+import { usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { useAssetData, useDebouncedPluginPaneState, usePluginPaneState, usePluginTickerActions } from "../../runtime";
@@ -45,6 +45,9 @@ import {
 } from "./sector-model";
 import { loadSectorRows } from "./client";
 import { sectorsHeadless } from "./headless";
+import { membersCache, themesCache } from "../themes/client";
+import { themesHeadless } from "../themes/headless";
+import { ThemesBoard, useOpenTheme } from "../themes/pane";
 
 
 /** Stable identity: a fresh literal here would refetch the board every render. */
@@ -63,14 +66,63 @@ const sectorQuoteKey = (etf: string) => buildQuoteKey({ symbol: etf, exchange: "
 /** The value as printed (two decimals), so a move that rounds to zero is neither signed nor coloured. */
 const shownPercent = (value: number) => Math.round(value * 100) / 100 || 0;
 
+/** Thematic baskets (`THEM`), the tab beside the ETF collections. */
+const THEMES_TAB = "themes";
+type SectorTabId = SectorCollectionId | typeof THEMES_TAB;
+const SECTOR_TABS = [
+  ...SECTOR_COLLECTIONS.map((collection) => ({ label: collection.label, value: collection.id })),
+  { label: "Themes", value: THEMES_TAB },
+];
+
 function SectorPerformancePane({ focused, width, height }: PaneProps) {
+  // `THEM` opens this pane with a theme param, as did the old Thematic Baskets pane.
+  const opensOnThemes = usePaneInstance()?.params?.theme !== undefined;
+  const [activeTabId, setActiveTabId] = usePluginPaneState<SectorTabId>(
+    "activeCollectionId",
+    opensOnThemes ? THEMES_TAB : DEFAULT_COLLECTION_ID,
+  );
+  const activeTab: SectorTabId = activeTabId === THEMES_TAB ? THEMES_TAB : getSectorCollection(activeTabId).id;
+  const [, setSelectedEtf] = usePluginPaneState<string | null>("selectedEtf", null);
+  const [openTheme] = useOpenTheme();
+
+  useEffect(() => {
+    if (activeTabId === activeTab) return;
+    setActiveTabId(activeTab);
+  }, [activeTab, activeTabId, setActiveTabId]);
+
+  const selectTab = (value: string) => {
+    setActiveTabId(value as SectorTabId);
+    setSelectedEtf(null);
+  };
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
+    tabs: SECTOR_TABS,
+    activeValue: activeTab,
+    onSelect: selectTab,
+    // An open theme's members take the keys, as in any stack detail.
+    focused: focused && !(activeTab === THEMES_TAB && openTheme),
+    compact: true,
+    variant: "bare",
+  });
+  const rootBefore = tabStrip ? <Box height={1} flexShrink={0} paddingX={1} flexDirection="column">{tabStrip}</Box> : undefined;
+
+  return activeTab === THEMES_TAB
+    ? <ThemesBoard focused={focused} width={width} height={height} tabStrip={rootBefore} tabRows={tabRows} />
+    : <EtfBoard collectionId={activeTab} focused={focused} width={width} height={height} rootBefore={rootBefore} />;
+}
+
+interface EtfBoardProps {
+  collectionId: SectorCollectionId;
+  focused: boolean;
+  width: number;
+  height: number;
+  rootBefore: ReactNode;
+}
+
+/** The Sectors and Industries tabs: one board of ETFs with live quotes. */
+function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoardProps) {
   const dataProvider = useAssetData();
   const { navigateTicker } = usePluginTickerActions();
-  const [activeCollectionId, setActiveCollectionId] = usePluginPaneState<SectorCollectionId>(
-    "activeCollectionId",
-    DEFAULT_COLLECTION_ID,
-  );
-  const activeCollection = getSectorCollection(activeCollectionId);
+  const activeCollection = getSectorCollection(collectionId);
   const [savedSectorEtfs] = usePaneSettingValue<string[]>("sectorEtfs", NO_SAVED_ETFS);
   const [savedIndustryEtfs] = usePaneSettingValue<string[]>("industryEtfs", NO_SAVED_ETFS);
   const activeItems = useMemo(
@@ -153,10 +205,6 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
   const sortedRows = useMemo(() => sortRows(liveRows, sortPreference), [liveRows, sortPreference]);
   const lastRefreshMs = lastRefreshByCollection[activeCollection.id] ?? null;
   const loading = rows.some((row) => row.loading);
-  const tabs = useMemo(() => SECTOR_COLLECTIONS.map((collection) => ({
-    label: collection.label,
-    value: collection.id,
-  })), []);
   /**
    * A full load marks every row loading and replaces it. A background one,
    * the automatic refresh, never flashes "loading", never cancels a full load
@@ -207,11 +255,6 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
 
   const fallbackRefresh = !feedCoversBoard || loadError != null;
   useAutoRefresh(lastRefreshMs, refreshInBackground, { intervalMs: fallbackRefresh ? SECTOR_FALLBACK_REFRESH_MS : null });
-
-  useEffect(() => {
-    if (activeCollectionId === activeCollection.id) return;
-    setActiveCollectionId(activeCollection.id);
-  }, [activeCollection.id, activeCollectionId, setActiveCollectionId]);
 
   useEffect(() => {
     if (selectedEtf && sortedRows.some((row) => row.etf === selectedEtf)) return;
@@ -292,16 +335,6 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     ]) }] : [] };
   }, [loadError, loading, returnAsOfDate, updatedAgo]);
 
-  const selectCollection = (value: string) => {
-    const nextId = value as SectorCollectionId;
-    setActiveCollectionId(nextId);
-    setSelectedEtf(null);
-  };
-  const { strip: tabStrip } = usePaneTabs({
-    tabs, activeValue: activeCollection.id, onSelect: selectCollection, focused, compact: true, variant: "bare",
-  });
-  const rootBefore = tabStrip ? <Box height={1} flexShrink={0} paddingX={1} flexDirection="column">{tabStrip}</Box> : undefined;
-
   return (
     <DataTableView<SectorRow, SectorColumn>
       focused={focused}
@@ -381,5 +414,18 @@ export const sectorsModule: PluginModule = {
       shortcut: { prefix: "BI", aliases: ["IMAP"] },
       headless: sectorsHeadless,
     },
+    {
+      id: "themes-pane",
+      paneId: "sectors",
+      label: "Thematic Baskets",
+      description: "Curated themes with equal-weight returns, breadth and member leaders and laggards.",
+      keywords: ["themes", "thematic", "baskets", "AI compute", "datacenters", "electrification", "power grid", "nuclear", "uranium", "defense", "aerospace", "cybersecurity", "robotics", "automation", "critical minerals", "crypto", "bitcoin", "solar", "clean energy", "gold", "silver", "homebuilders", "memory", "chip equipment", "cloud software"],
+      shortcut: { prefix: "THEM", argKind: "text", argPlaceholder: "theme", argOptional: true },
+      headless: themesHeadless,
+      // The theme param opens the Themes tab, and the named theme's members.
+      createInstance: (_context, options) => ({ placement: "floating", params: { theme: options?.arg?.trim() ?? "" } }),
+    },
   ],
+  setup(ctx) { themesCache.attach(ctx.persistence); membersCache.attach(ctx.persistence); },
+  dispose() { themesCache.reset(); membersCache.reset(); },
 };

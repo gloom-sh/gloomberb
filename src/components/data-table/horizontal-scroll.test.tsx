@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import { testRender, emitKeypress, type TestKeyEvent } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
@@ -22,7 +22,7 @@ const NARROW_ID_COLUMNS = [
   { id: "weight", label: "WEIGHT", width: 30 },
 ];
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let update: (options: Partial<Options>) => void;
 interface Options {
   focused: boolean;
@@ -81,23 +81,21 @@ function Harness({ initial }: { initial: Partial<Options> }) {
   </AppContext>;
 }
 
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
+afterEach(() => {
   selectedTab = "a";
 });
 
 async function mount(initial: Partial<Options> = {}) {
-  await act(async () => { setup = await testRender(<Harness initial={initial} />, { width: 40, height: 8 }); });
+  await act(async () => { await tui.render(<Harness initial={initial} />, { width: 40, height: 8 }); });
 }
 async function settle() {
-  for (let i = 0; i < 4; i++) await act(async () => { await setup!.renderOnce(); });
+  for (let i = 0; i < 4; i++) await act(async () => { await tui.setup().renderOnce(); });
 }
 function table(id: "header" | "body") {
-  return setup!.renderer.root.findDescendantById(`horizontal-${id}`) as ScrollBoxRenderable;
+  return tui.setup().renderer.root.findDescendantById(`horizontal-${id}`) as ScrollBoxRenderable;
 }
 async function key(event: TestKeyEvent) {
-  const delivered = await emitKeypress(setup!, event, { trackPropagation: true });
+  const delivered = await tui.emitKeypress(event, { trackPropagation: true });
   await settle();
   return delivered;
 }
@@ -111,24 +109,24 @@ test("horizontal keys, body wheel, header wheel and scrollbar drag keep labels w
   expect((await key({ name: "right", ctrl: true })).defaultPrevented).toBe(true);
   expect(body.scrollLeft).toBe(20);
   expect(header.scrollLeft).toBe(body.scrollLeft);
-  expect(setup!.captureCharFrame()).toContain("$100M");
+  expect(tui.frame()).toContain("$100M");
 
-  await act(async () => { await setup!.mockMouse.scroll(body.x + 2, body.y, "left"); });
+  await act(async () => { await tui.setup().mockMouse.scroll(body.x + 2, body.y, "left"); });
   await settle();
   expect(body.scrollLeft).toBeLessThan(20);
   expect(header.scrollLeft).toBe(body.scrollLeft);
   const beforeHeaderWheel = body.scrollLeft;
-  await act(async () => { await setup!.mockMouse.scroll(header.x + 2, header.y, "left"); });
+  await act(async () => { await tui.setup().mockMouse.scroll(header.x + 2, header.y, "left"); });
   await settle();
   expect(body.scrollLeft).toBeLessThan(beforeHeaderWheel);
   expect(header.scrollLeft).toBe(body.scrollLeft);
 
   const bar = body.horizontalScrollBar;
-  await act(async () => { await setup!.mockMouse.drag(bar.x + 18, bar.y, bar.x, bar.y); });
+  await act(async () => { await tui.setup().mockMouse.drag(bar.x + 18, bar.y, bar.x, bar.y); });
   await settle();
   expect(body.scrollLeft).toBe(0);
   expect(header.scrollLeft).toBe(0);
-  expect(setup!.captureCharFrame()).toContain("ALPH");
+  expect(tui.frame()).toContain("ALPH");
 });
 
 test("horizontal shortcuts preserve editing, other modifiers, disabled focus and fitting tables", async () => {
@@ -147,7 +145,7 @@ test("horizontal shortcuts preserve editing, other modifiers, disabled focus and
   }
   await act(async () => update({ editing: true }));
   await settle();
-  expect(setup!.renderer.currentFocusedEditor).not.toBeNull();
+  expect(tui.setup().renderer.currentFocusedEditor).not.toBeNull();
   await key({ name: "right", ctrl: true });
   expect(table("body").scrollLeft).toBe(0);
   await act(async () => update({ editing: false }));
@@ -192,12 +190,12 @@ test("the last columns stay aligned when vertical overflow changes the body view
   expect(table("body").scrollLeft).toBe(table("body").scrollWidth - table("body").viewport.width);
   expect(table("header").scrollLeft).toBe(table("body").scrollLeft);
   expect(table("header").viewport.width).toBe(table("body").viewport.width);
-  await act(async () => setup!.resize(40, 64));
+  await act(async () => tui.setup().resize(40, 64));
   await settle();
   expect(table("body").verticalScrollBar.visible).toBe(false);
   expect(table("header").viewport.width).toBe(table("body").viewport.width);
   expect(table("header").scrollLeft).toBe(table("body").scrollLeft);
-  await act(async () => setup!.resize(40, 8));
+  await act(async () => tui.setup().resize(40, 8));
   await settle();
   expect(table("body").verticalScrollBar.visible).toBe(true);
   expect(table("header").viewport.width).toBe(table("body").viewport.width);
@@ -216,39 +214,39 @@ test("frozen identifiers survive keyboard, wheel, scrollbar and vertical resize 
   await mount({ frozen: true, columns: NARROW_ID_COLUMNS });
   await settle();
   for (let i = 0; i < 4; i++) await key({ name: "right", ctrl: true });
-  expect(setup!.captureCharFrame()).toContain("ALPH");
-  expect(setup!.captureCharFrame()).toContain("66.7%");
+  expect(tui.frame()).toContain("ALPH");
+  expect(tui.frame()).toContain("66.7%");
   expect(table("header").scrollLeft).toBe(table("body").scrollLeft);
-  await act(async () => { await setup!.mockMouse.click(2, 1); });
+  await act(async () => { await tui.setup().mockMouse.click(2, 1); });
   await settle();
-  expect(setup!.captureCharFrame()).toContain("ALPH");
-  await act(async () => { await setup!.mockMouse.scroll(10, 1, "left"); });
+  expect(tui.frame()).toContain("ALPH");
+  await act(async () => { await tui.setup().mockMouse.scroll(10, 1, "left"); });
   await settle();
-  expect(setup!.captureCharFrame()).toContain("ALPH");
+  expect(tui.frame()).toContain("ALPH");
   const before = table("body").scrollLeft;
-  await act(async () => { await setup!.mockMouse.scroll(10, 0, "left"); });
+  await act(async () => { await tui.setup().mockMouse.scroll(10, 0, "left"); });
   await settle();
   expect(table("body").scrollLeft).toBeLessThan(before);
-  expect(setup!.captureCharFrame()).toContain("ALPH");
+  expect(tui.frame()).toContain("ALPH");
   const bar = table("body").horizontalScrollBar;
-  await act(async () => { await setup!.mockMouse.drag(bar.x + 18, bar.y, bar.x, bar.y); });
+  await act(async () => { await tui.setup().mockMouse.drag(bar.x + 18, bar.y, bar.x, bar.y); });
   await settle();
   expect(table("body").scrollLeft).toBe(0);
-  expect(setup!.captureCharFrame()).toContain("ALPH");
+  expect(tui.frame()).toContain("ALPH");
   await act(async () => update({ manyRows: true }));
   await settle();
   for (let i = 0; i < 4; i++) await key({ name: "right", ctrl: true });
-  expect(setup!.captureCharFrame()).toContain("ALPH0");
+  expect(tui.frame()).toContain("ALPH0");
   expect(table("body").verticalScrollBar.visible).toBe(true);
-  await act(async () => setup!.resize(40, 64));
+  await act(async () => tui.setup().resize(40, 64));
   await settle();
   expect(table("body").verticalScrollBar.visible).toBe(false);
-  expect(setup!.captureCharFrame()).toContain("ALPH0");
+  expect(tui.frame()).toContain("ALPH0");
   await act(async () => update({ compact: true }));
   await settle();
   expect(table("body").scrollLeft).toBe(0);
   expect(table("header").scrollLeft).toBe(0);
-  expect(setup!.captureCharFrame()).toContain("ALPH0");
+  expect(tui.frame()).toContain("ALPH0");
 });
 
 test("an ordinary table still scrolls its first column normally", async () => {
@@ -257,9 +255,9 @@ test("an ordinary table still scrolls its first column normally", async () => {
   await settle();
   await key({ name: "right", ctrl: true });
   expect(table("body").scrollLeft).toBe(20);
-  expect(setup!.captureCharFrame()).not.toContain("ALPH");
-  expect(setup!.captureCharFrame()).toContain("66.7%");
+  expect(tui.frame()).not.toContain("ALPH");
+  expect(tui.frame()).toContain("66.7%");
   await act(async () => update({ frozen: true }));
   await settle();
-  expect(setup!.captureCharFrame()).toContain("ALPH");
+  expect(tui.frame()).toContain("ALPH");
 });

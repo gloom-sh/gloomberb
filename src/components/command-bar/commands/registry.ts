@@ -43,7 +43,10 @@ export const commands: Command[] = [
     prefix: "HELP",
     aliases: ["HL"],
     label: "Help",
-    description: "Open the help window",
+    description: "Open the help window, or a function's help card",
+    // Optional: HELP alone opens the window, HELP OMON the card, HELP HELP support.
+    hasArg: true,
+    argPlaceholder: "function",
     category: "Navigation",
   },
   {
@@ -244,6 +247,13 @@ export const commands: Command[] = [
     prefix: "",
     label: "Usage Counts",
     description: "Turn usage counts and the command bar search log on or off",
+    category: "Config",
+  },
+  {
+    id: "toggle-attention-counts",
+    prefix: "",
+    label: "Attention Counts",
+    description: "Opt in to sharing ticker research counts for Gloom Trending",
     category: "Config",
   },
 

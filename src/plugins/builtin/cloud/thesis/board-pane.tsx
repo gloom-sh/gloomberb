@@ -123,7 +123,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
   const dialog = useDialog();
   const { notify } = usePluginAppActions();
   const plan = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("thesis-board");
   const snapshot = useSyncExternalStore((onChange) => thesisStore.subscribe(onChange), () => thesisStore.getSnapshot());
   const teams = useSyncExternalStore((onChange) => teamStore.subscribe(onChange), () => teamStore.getSnapshot()).teams;
   const signedIn = useSyncExternalStore((onChange) => apiClient.subscribeCurrentUser(onChange), () => apiClient.isVerified());
@@ -377,7 +377,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
   const handleDetailKeyDown = useCallback((_event: DataTableKeyEvent) => false, []);
 
   if (!signedIn) {
-    return <SignInWall action="keep investment theses" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
+    return <SignInWall placement="thesis-board-signin" action="keep investment theses" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
   }
   if (!snapshot.loaded && snapshot.theses.length === 0) {
     return <PaneStatusBody loading={snapshot.loading} error={snapshot.error} subject="Theses" />;

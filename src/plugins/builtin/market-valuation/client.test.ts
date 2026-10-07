@@ -173,7 +173,7 @@ describe("market-capitalization source basis", () => {
     const cached = getCachedValuationBundle()!;
     expect(cached.builds).toHaveLength(INDICATORS.length);
     expect(cached.errors).toHaveLength(0);
-    expect(cached.sources.W5000).toBeUndefined();
+    expect(cached.sources!.W5000).toBeUndefined();
     const legs = new Map(Object.entries(LEGS).map(([seriesId, observations]) => [seriesId, { seriesId, observations, provenance: "fred" as const }]));
     for (const id of ["buffett", "market-cap-profits", "market-cap-m2"]) {
       const indicator = INDICATORS.find((entry) => entry.id === id)!;

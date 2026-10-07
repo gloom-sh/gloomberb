@@ -14,13 +14,14 @@ import { useViewport } from "../../../react/input";
 import { useOptionalDialog } from "../../../ui/dialog";
 import { promptCloudUpgrade } from "../cloud/upgrade-dialog";
 
-export const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
+const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
 
 /**
  * The renderer host only exists inside React, so UI that uses it publishes an
- * opener here for the command bar, which runs outside the tree.
+ * opener here for the command bar, which runs outside the tree. Every mounted
+ * prompt publishes one, so a pane closing never leaves the command without.
  */
-let cloudUpgradeOpener: (() => void) | null = null;
+const cloudUpgradeOpeners = new Set<(options?: unknown) => void>();
 
 /**
  * Signed-out users get the public Cloud page. Signed-in free accounts go
@@ -30,72 +31,171 @@ let cloudUpgradeOpener: (() => void) | null = null;
  * re-buys a subscription they already hold. Both URLs are account-bound, so no
  * session handoff is needed.
  */
-export interface CloudUpgradeOptions {
+interface CloudUpgradeOptions {
+  /**
+   * The prompt the upgrade came from, sent with `upgrade_intent` so each one's
+   * conversion can be read: a short id in the shape of a tab id (`srch-wall`,
+   * `status-widget`), never the prompt's text or anything the user typed.
+   */
+  placement?: string;
   /** Billing interval for a fresh checkout; ignored when the account already has Pro. */
   interval?: "month" | "year";
   /** False when the upgrade sheet already recorded the intent on open. */
   recordIntent?: boolean;
   /** False when the caller already made the pitch, like onboarding's Pro step. */
   sheet?: boolean;
+  /**
+   * Called once checkout or the billing portal starts opening, after the sheet;
+   * never for a press ignored as a repeat.
+   */
+  onOpening?: () => void;
 }
 
-export async function resolveCloudUpgradeUrl(options: CloudUpgradeOptions = {}): Promise<string> {
-  if (options.recordIntent !== false) recordResearchActivity("upgrade_intent");
+function recordUpgradeIntent(placement: string | undefined): void {
+  recordResearchActivity("upgrade_intent", undefined, undefined, { placement });
+}
+
+/**
+ * The page an upgrade opens: Stripe checkout for a free account, the billing
+ * portal for one that has Pro, and the public Cloud page when signed out or
+ * when neither can be created.
+ */
+type CloudUpgradePage = "checkout" | "portal" | "cloud";
+
+/** How long another open of the same page is ignored once one has opened. */
+const CLOUD_UPGRADE_REOPEN_MS = 3_000;
+
+/**
+ * How long a page may stay opening before another press tries again. The
+ * checkout and portal requests have no deadline of their own, and one that
+ * hangs must not block the page until the app restarts.
+ */
+const CLOUD_UPGRADE_PENDING_MS = 30_000;
+
+/**
+ * When each page may open again: not while its URL is being created or
+ * opened (up to {@link CLOUD_UPGRADE_PENDING_MS}), and not for
+ * {@link CLOUD_UPGRADE_REOPEN_MS} after it opened. Every
+ * open creates a Stripe session and a browser tab, and a held Enter repeats a
+ * press many times a second. Keyed by page, so a checkout that just opened
+ * never swallows the billing portal or the Cloud page.
+ */
+const cloudUpgradeBlockedUntil = new Map<CloudUpgradePage, number>();
+
+function currentCloudUpgradePage(): CloudUpgradePage {
+  if (!apiClient.isSignedIn()) return "cloud";
+  return resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess ? "portal" : "checkout";
+}
+
+function isCloudUpgradeBlocked(page: CloudUpgradePage): boolean {
+  return (cloudUpgradeBlockedUntil.get(page) ?? 0) > Date.now();
+}
+
+/**
+ * Runs `open` unless `page` is already opening or opened moments ago. A failed
+ * open releases the page at once, so a retry works, and rethrows. A call that
+ * outlived its pending window leaves the block of the call after it alone.
+ */
+async function openCloudUpgradePage(page: CloudUpgradePage, open: () => Promise<void>): Promise<void> {
+  if (isCloudUpgradeBlocked(page)) return;
+  const pending = Date.now() + CLOUD_UPGRADE_PENDING_MS;
+  cloudUpgradeBlockedUntil.set(page, pending);
+  const settle = (until: number | null) => {
+    if (cloudUpgradeBlockedUntil.get(page) !== pending) return;
+    if (until === null) cloudUpgradeBlockedUntil.delete(page);
+    else cloudUpgradeBlockedUntil.set(page, until);
+  };
+  try {
+    await open();
+  } catch (error) {
+    settle(null);
+    throw error;
+  }
+  settle(Date.now() + CLOUD_UPGRADE_REOPEN_MS);
+}
+
+/** Forgets every recent open, so one test's checkout does not swallow the next test's. */
+export function resetCloudUpgradeGuardForTests(): void {
+  cloudUpgradeBlockedUntil.clear();
+}
+
+async function resolveCloudUpgradeUrl(page: CloudUpgradePage, options: CloudUpgradeOptions): Promise<string> {
   const returnTo = getCurrentPluginTarget() === "web" ? window.location.href : undefined;
-  if (!apiClient.isSignedIn()) return researchUpgradeUrl(returnTo);
-  const { url } = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess
+  if (page === "cloud") return researchUpgradeUrl(returnTo);
+  const { url } = page === "portal"
     ? await apiClient.createBillingPortal()
     : await apiClient.createCloudCheckout(returnTo, options.interval ?? "month");
   return url;
 }
 
-/** Opens checkout or the billing portal in the user's browser. */
-export async function openCloudUpgrade(
+/** Opens checkout, the billing portal or the Cloud page in the user's browser. */
+async function openCloudUpgrade(
   rendererHost: Pick<RendererHost, "openExternal">,
-  options: CloudUpgradeOptions = {},
+  page: CloudUpgradePage,
+  options: CloudUpgradeOptions,
 ): Promise<void> {
-  await rendererHost.openExternal(await resolveCloudUpgradeUrl(options));
-}
-
-/** Opens the checkout page when any cloud UI has published an opener. */
-export function openCloudUpgradeUrl(): boolean {
-  if (!cloudUpgradeOpener) return false;
-  cloudUpgradeOpener();
-  return true;
-}
-
-function isCloudUpgradeOptions(value: unknown): value is CloudUpgradeOptions {
-  return !!value && typeof value === "object" && "interval" in value;
+  await rendererHost.openExternal(await resolveCloudUpgradeUrl(page, options));
 }
 
 /**
- * Opens the Pro checkout page in the user's browser. The action doubles as a
- * press handler for buttons and footer segments, which hand it their event,
- * so only an explicit options object changes the checkout.
+ * Opens the checkout page when any cloud UI has published an opener, counted
+ * under `placement` rather than the UI that published it.
+ */
+export function openCloudUpgradeUrl(placement: string): boolean {
+  const opener = [...cloudUpgradeOpeners].at(-1);
+  if (!opener) return false;
+  opener({ placement });
+  return true;
+}
+
+const CLOUD_UPGRADE_OPTION_KEYS: ReadonlyArray<keyof CloudUpgradeOptions> = ["placement", "interval", "recordIntent", "sheet", "onOpening"];
+
+/** A press event carries none of these keys, so it never reads as options. */
+function isCloudUpgradeOptions(value: unknown): value is CloudUpgradeOptions {
+  return !!value && typeof value === "object" && CLOUD_UPGRADE_OPTION_KEYS.some((key) => key in value);
+}
+
+/**
+ * Opens the Pro checkout page in the user's browser, counting the intent under
+ * `placement` (see {@link CloudUpgradeOptions.placement}). The action doubles
+ * as a press handler for buttons and footer segments, which hand it their
+ * event, so only an explicit options object changes the checkout. It settles
+ * once checkout has opened or the person backed out of the sheet. A call while
+ * the same page is opening, or for a few seconds after it opened, is ignored:
+ * a held Enter would otherwise open a checkout per keypress.
  *
  * A signed-in account without Pro sees the upgrade sheet first (what Pro adds,
  * what today costs), and checkout opens only once they choose to go on.
  * Signed-out users get the public Cloud page and Pro accounts the billing
  * portal, as before.
  */
-export function useCloudUpgradeAction(): (options?: unknown) => void {
+export function useCloudUpgradeAction(placement: string): (options?: unknown) => Promise<void> {
   const rendererHost = useRendererHost();
   // Null in isolated renders (tests, previews): checkout then opens directly.
   const dialog = useOptionalDialog();
   const viewport = useViewport();
   const viewportWidthRef = useRef(viewport.width);
   viewportWidthRef.current = viewport.width;
-  const openUpgrade = useCallback((options?: unknown) => {
-    const checkout = isCloudUpgradeOptions(options) ? options : {};
-    const openCheckout = (resolved: CloudUpgradeOptions) => {
-      void openCloudUpgrade(rendererHost, resolved).catch(async () => {
+  const openUpgrade = useCallback(async (options?: unknown) => {
+    const checkout: CloudUpgradeOptions = { placement, ...(isCloudUpgradeOptions(options) ? options : {}) };
+    const openCheckout = async (resolved: CloudUpgradeOptions) => {
+      if (resolved.recordIntent !== false) recordUpgradeIntent(resolved.placement);
+      const page = currentCloudUpgradePage();
+      await openCloudUpgradePage(page, async () => {
+        resolved.onOpening?.();
+        await openCloudUpgrade(rendererHost, page, resolved);
+      }).catch(() => (
         // Keep the Cloud page reachable when checkout cannot be created; a native
-        // session still rides along on the server's one-time handoff URL.
-        const url = await apiClient.createBrowserHandoff()
-          .then((handoff) => handoff.url)
-          .catch(() => CLOUD_UPGRADE_URL);
-        void rendererHost.openExternal(url);
-      });
+        // session still rides along on the server's one-time handoff URL. Under
+        // the Cloud page's guard, so a retry that fails again moments later
+        // opens no second tab.
+        openCloudUpgradePage("cloud", async () => {
+          const url = await apiClient.createBrowserHandoff()
+            .then((handoff) => handoff.url)
+            .catch(() => CLOUD_UPGRADE_URL);
+          await rendererHost.openExternal(url);
+        })
+      )).catch(() => {});
     };
     if (
       checkout.sheet === false ||
@@ -103,21 +203,22 @@ export function useCloudUpgradeAction(): (options?: unknown) => void {
       !apiClient.isSignedIn() ||
       resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess
     ) {
-      openCheckout(checkout);
+      await openCheckout(checkout);
       return;
     }
-    recordResearchActivity("upgrade_intent");
-    void promptCloudUpgrade(dialog, {
+    recordUpgradeIntent(checkout.placement);
+    // Checkout is opening or just opened: a second sheet would lead nowhere.
+    if (isCloudUpgradeBlocked("checkout")) return;
+    const interval = await promptCloudUpgrade(dialog, {
       interval: checkout.interval,
       viewportWidth: viewportWidthRef.current,
-    }).then((interval) => {
-      if (interval) openCheckout({ interval, recordIntent: false });
     });
-  }, [dialog, rendererHost]);
+    if (interval) await openCheckout({ ...checkout, interval, recordIntent: false });
+  }, [dialog, placement, rendererHost]);
   useEffect(() => {
-    cloudUpgradeOpener = openUpgrade;
+    cloudUpgradeOpeners.add(openUpgrade);
     return () => {
-      if (cloudUpgradeOpener === openUpgrade) cloudUpgradeOpener = null;
+      cloudUpgradeOpeners.delete(openUpgrade);
     };
   }, [openUpgrade]);
   return openUpgrade;
@@ -150,6 +251,8 @@ export interface CloudAccessFooterOptions {
   /** Set false while the pane happens to show data that is not cloud-delayed. */
   degraded?: boolean;
   segmentId?: string;
+  /** The upgrade intent's placement id (see {@link CloudUpgradeOptions.placement}); the segment id when omitted. */
+  placement?: string;
 }
 
 export interface CloudAccessFooter {
@@ -175,10 +278,11 @@ export function useCloudAccessFooter({
   degraded = true,
   segmentId = "cloud-access",
   shortcutScope,
+  placement = segmentId,
 }: CloudAccessFooterOptions): CloudAccessFooter {
   const language = useAppLanguage();
   const access = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction(placement);
   const openPlan = useCloudPlanAction();
 
   const showTrial = access.isTrialActive;

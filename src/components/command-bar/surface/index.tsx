@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
+import type { LayoutBounds } from "../../../layout/pane-manager";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";
@@ -15,9 +15,9 @@ import {
   getAvailableCommandBarSearchProviders,
   useCommandBarSearchProviders,
 } from "../routes/root/search-providers";
-import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
+import { createQuickLookTickerCandidates } from "../routes/ticker-search/results";
 import { useCommandSearchReport } from "../routes/root/search-report";
 import { useAppStateRef } from "../../../state/app/context";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
@@ -32,6 +32,7 @@ import { useCommandBarRouteEffects } from "../routing/effects";
 import { useCommandBarEnvironment } from "./environment";
 import { useCommandBarActionRuntime } from "../action-runtime";
 import { requestKeybindingCapture } from "../../../app/keybindings";
+import { isDialogOpen } from "../../../ui/dialog-stack";
 
 interface CommandBarProps {
   dataProvider: DataProvider;
@@ -161,25 +162,19 @@ export function CommandBar({
     buildTickerSearchResultItems,
     buildWindowModeItems,
     collectionWorkflowActions,
-    confirmCurrentRoute,
     createPaneTemplateItem,
     createPluginCommandItem,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
     getAvailablePaneTemplates,
     getAvailablePluginCommands,
-    ensureRouteFieldFocus,
-    focusWorkflowField,
-    getWorkflowFieldStringValue,
-    getWorkflowInputRef,
     localTickerSearchResultItems,
-    moveWorkflowFocus,
+    mapTickerSearchCandidateToResultItem,
     nonShortcutPaneTemplateItems,
     openInlineConfirm,
     openModeRoute,
     openPaneTemplateWorkflow,
     openPluginCommandWorkflow,
-    openWorkflowFieldPicker,
     paneShortcutItems,
     persistLayoutChange,
     pluginCommandItems,
@@ -187,13 +182,7 @@ export function CommandBar({
     readTickerSearchCache,
     runDirectCommand,
     runSecurityDescriptionShortcut,
-    setWorkflowSelectFieldRef,
-    submitWorkflowRoute,
-    syncActiveWorkflowTextarea,
     tickerActionItems,
-    updateWorkflowValue,
-    workflowSelectFieldRefs,
-    workflowScrollRef,
     writeTickerSearchCache,
   } = useCommandBarActionRuntime({
     activeCollectionId,
@@ -202,7 +191,6 @@ export function CommandBar({
     activeTickerSymbol,
     closeAll: closeAfterRun,
     config: state.config,
-    currentRoute,
     dataProvider,
     dispatch,
     focusedPaneId: state.focusedPaneId,
@@ -213,18 +201,27 @@ export function CommandBar({
     quitApp,
     rootThemeBaseIdRef,
     setRootQuery,
-    setRouteStack,
     skipTickerSearchDebounceRef,
     state,
     stateRef,
     themePickerRef,
     tickerRepository,
     tickers: state.tickers,
-    updateTopRoute,
   });
 
   const getTickerSearchTickers = useCallback(() => stateRef.current.tickers, []);
   const hasPaneSettings = useCallback((paneId: string) => pluginRegistry.hasPaneSettings(paneId), [pluginRegistry]);
+  const buildRecentTickerItem = useCallback((symbol: string) => {
+    const ticker = state.tickers.get(symbol);
+    if (!ticker) return null;
+    const candidate = createQuickLookTickerCandidates([ticker])[0];
+    return candidate ? mapTickerSearchCandidateToResultItem(candidate) : null;
+  }, [mapTickerSearchCandidateToResultItem, state.tickers]);
+  const getRecentPaneTemplate = useCallback(
+    (id: string, arg?: string) => getAvailablePaneTemplates(arg ? { arg } : undefined, { includePromptableTickerTemplates: true })
+      .find((template) => template.id === id),
+    [getAvailablePaneTemplates],
+  );
 
   const rootShortcutIntent = useMemo(() => parseRootShortcutIntent({
     query: rootQuery,
@@ -235,8 +232,10 @@ export function CommandBar({
   }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
 
   // Runs the typed text again once a plugin installed from the bar is in, the
-  // way a key bound to it would.
+  // way a key bound to it would. Not over a dialog opened since: the bar would
+  // sit over it without its keys, and close a form the user is filling in.
   const rerunQuery = useCallback((query: string) => {
+    if (isDialogOpen()) return;
     dispatch({ type: "SET_COMMAND_BAR", open: true, query, launch: { kind: "run-query", query } });
   }, [dispatch]);
   const closeBar = useCallback(() => closeAfterRun({ revertThemePreview: false }), [closeAfterRun]);
@@ -403,6 +402,7 @@ export function CommandBar({
     bindKey,
     buildLayoutItems,
     buildPaneSettingItems,
+    buildRecentTickerItem,
     buildTickerSearchResultItems,
     buildWindowModeItems,
     createPaneTemplateItem,
@@ -411,6 +411,7 @@ export function CommandBar({
     dataProvider,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
+    getRecentPaneTemplate,
     getTickers: getTickerSearchTickers,
     hasPaneSettings,
     localTickerSearchResultItems,
@@ -491,11 +492,9 @@ export function CommandBar({
     runRootRow,
     runSecurityDescriptionShortcut,
     setRootQuery,
-    setRouteStack,
     stateConfigLayout: state.config.layout,
     stateRef,
     updateTopRoute,
-    updateWorkflowValue,
     visibleListStateRef,
   });
   runRootQueryRef.current = runRootQuery;
@@ -517,10 +516,8 @@ export function CommandBar({
     activeMatch,
     adaptTickerSearchRouteResult,
     buildLayoutItems,
-    buildPaneSettingItems,
     currentRoute,
     orderedRootResults,
-    pluginRegistry,
     rootCategoryPriorities: providerCategoryPriorities,
     rootHoveredIdx,
     rootModeKind: rootModeInfo.kind,
@@ -535,14 +532,11 @@ export function CommandBar({
     clearThemePreview,
     committedThemeId: state.config.theme,
     currentRoute,
-    dataProvider,
-    ensureRouteFieldFocus,
     lastMainBrowseRef,
     rootModeKind: rootModeInfo.kind,
     rootQuery,
     rootSelectedIdx,
     rootThemeBaseIdRef,
-    updateTopRoute,
   });
 
   const panelProps = useCommandBarPanelRuntime({
@@ -555,23 +549,16 @@ export function CommandBar({
     closeAll: closeAfterRun,
     commitTheme: commitRootTheme,
     committedThemeId: state.config.theme,
-    confirmCurrentRoute,
     currentRoute,
     currentRouteRef,
     dismissCommandBar,
     dismissOverlay,
-    focusWorkflowField,
-    getWorkflowInputRef,
-    getWorkflowFieldStringValue,
     markRootSelectionNavigated,
-    moveWorkflowFocus,
     nativeListScrollRef,
     nativePaneChrome,
     nativeWindowChrome,
     onNativeOccluderChange,
-    openWorkflowFieldPicker,
     persistConfig,
-    pluginRegistry,
     popRoute,
     resetAssist,
     rootModeKind: rootModeInfo.kind,
@@ -582,10 +569,7 @@ export function CommandBar({
     setRootHoveredIdx,
     setRootSelectedIdx,
     setRouteStack,
-    setWorkflowSelectFieldRef,
     stateRef,
-    submitWorkflowRoute,
-    syncActiveWorkflowTextarea,
     termHeight,
     termWidth,
     themePickerActive,
@@ -593,10 +577,7 @@ export function CommandBar({
     themePickerRef,
     titleBarOverlay,
     updateTopRoute,
-    updateWorkflowValue,
     visibleListStateRef,
-    workflowSelectFieldRefs,
-    workflowScrollRef,
   });
 
   return (

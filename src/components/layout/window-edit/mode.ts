@@ -14,7 +14,7 @@ import {
   type FloatingRect,
   type FloatingResizeCorner,
   type LayoutBounds,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import type { WindowEditMode } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
 import type { SnapGuidePosition } from "../shell/drag";

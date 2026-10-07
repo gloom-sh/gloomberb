@@ -10,6 +10,9 @@ const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
   COMMONSTOCK: "equity",
   ADR: "equity",
   DEPOSITARYRECEIPT: "equity",
+  AMERICANDEPOSITARYRECEIPT: "equity",
+  GLOBALDEPOSITARYRECEIPT: "equity",
+  LIMITEDPARTNERSHIP: "equity",
   REIT: "equity",
   PREFERREDSTOCK: "equity",
   ETF: "fund",
@@ -54,7 +57,7 @@ const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
 };
 
 /** A provider or broker type string, or null when it names nothing known. */
-function classifyInstrumentType(type: string | null | undefined): TickerInstrumentKind | null {
+export function classifyInstrumentType(type: string | null | undefined): TickerInstrumentKind | null {
   const normalized = (type ?? "").trim().toUpperCase().replace(/[\s_-]+/g, "");
   if (!normalized) return null;
   const exact = KIND_BY_TYPE[normalized];
@@ -65,15 +68,18 @@ function classifyInstrumentType(type: string | null | undefined): TickerInstrume
   return null;
 }
 
-/** Yahoo-style listing syntax: `CCC` coins, `^` indices, `=X` pairs, `=F` futures. */
-function kindFromListing(ticker: TickerRecord | null | undefined): TickerInstrumentKind | null {
-  if (!ticker) return null;
-  if (canonicalExchange(ticker.metadata.exchange) === "CCC") return "crypto";
-  const symbol = parsePublicTickerKey(ticker.metadata.ticker).symbol;
+/** Market listing syntax: `CCC` coins, `^` indices, `=X` pairs, `=F` futures. */
+export function kindFromListingSyntax(listing: string, exchange?: string): TickerInstrumentKind | null {
+  if (canonicalExchange(exchange) === "CCC") return "crypto";
+  const symbol = parsePublicTickerKey(listing).symbol;
   if (symbol.startsWith("^")) return "index";
   if (symbol.endsWith("=X")) return "currency";
   if (symbol.endsWith("=F")) return "future";
   return null;
+}
+
+function kindFromListing(ticker: TickerRecord | null | undefined): TickerInstrumentKind | null {
+  return ticker ? kindFromListingSyntax(ticker.metadata.ticker, ticker.metadata.exchange) : null;
 }
 
 /**

@@ -14,7 +14,7 @@ function normalizeTicker(ticker: string | undefined): string {
   return ticker ? normalizeSymbol(ticker) : "";
 }
 
-export function normalizeNewsCategory(category: string): string {
+function normalizeNewsCategory(category: string): string {
   return category.trim().toLowerCase();
 }
 

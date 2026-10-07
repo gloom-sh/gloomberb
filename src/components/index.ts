@@ -106,6 +106,7 @@ export {
   getPaneSidebarWidthRange,
   PaneSidebar,
   PaneSidebarAction,
+  PaneSidebarList,
   PaneSidebarRow,
   readStoredPaneSidebarWidth,
   shouldShowPaneSidebar,

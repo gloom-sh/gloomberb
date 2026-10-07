@@ -17,14 +17,25 @@ export interface InsiderTransaction {
   acquiredDisposed?: string;
   ownershipType?: string;
   ownershipNature?: string;
-  reportingOwners?: Array<{ name: string; cik: string; title: string }>;
+  reportingOwners?: InsiderReportingOwner[];
   footnoteIds?: string[];
+  /** The filer checked the Rule 10b5-1 plan box; undefined on forms filed before the box existed. */
+  rule10b51?: boolean;
+}
+
+export interface InsiderReportingOwner {
+  name: string;
+  cik: string;
+  title: string;
+  /** The relationship boxes, which `title` drops when there is an officer title. */
+  director?: boolean;
+  tenPercentOwner?: boolean;
 }
 
 export interface InsiderFilingDisclosure {
   form: string;
   originalFilingDate: string | null;
-  reportingOwners: Array<{ name: string; cik: string; title: string }>;
+  reportingOwners: InsiderReportingOwner[];
   footnotes: Array<{ id: string; text: string }>;
   remarks: string | null;
   /** False for a filing with no transaction lines, e.g. one reporting only that the owner left Section 16. */
@@ -58,6 +69,14 @@ function isFlagSet(xml: string, tag: string): boolean {
   return /^(?:1|true)$/i.test(tagText(xml, tag));
 }
 
+/** A checkbox the form may predate: true, false, or undefined when the tag is missing. */
+function optionalFlag(xml: string, tag: string): boolean | undefined {
+  const value = tagText(xml, tag);
+  if (/^(?:1|true)$/i.test(value)) return true;
+  if (/^(?:0|false)$/i.test(value)) return false;
+  return undefined;
+}
+
 /** The officer title, else the relationship boxes checked on the form (directors have no officer title). */
 function ownerTitle(owner: string): string {
   const officerTitle = tagText(owner, "officerTitle");
@@ -72,7 +91,13 @@ function ownerTitle(owner: string): string {
 
 function reportingOwners(xml: string): InsiderFilingDisclosure["reportingOwners"] {
   return [...xml.matchAll(/<(?:[\w.-]+:)?reportingOwner(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?reportingOwner\s*>/gi)]
-    .map((match) => ({ name: tagText(match[1]!, "rptOwnerName"), cik: tagText(match[1]!, "rptOwnerCik"), title: ownerTitle(match[1]!) }));
+    .map((match) => ({
+      name: tagText(match[1]!, "rptOwnerName"),
+      cik: tagText(match[1]!, "rptOwnerCik"),
+      title: ownerTitle(match[1]!),
+      director: isFlagSet(match[1]!, "isDirector"),
+      tenPercentOwner: isFlagSet(match[1]!, "isTenPercentOwner"),
+    }));
 }
 
 function disclosureText(xml: string): string {
@@ -98,6 +123,8 @@ export function parseForm4Xml(xml: string): InsiderTransaction[] {
   const owners = reportingOwners(xml).filter((owner) => owner.name);
   if (!owners.length) return [];
   const blocks = [...xml.matchAll(/<(?:[\w.-]+:)?(nonDerivativeTransaction|derivativeTransaction)(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?\1\s*>/gi)];
+  // One box for the whole form, so it covers every line on it.
+  const rule10b51 = optionalFlag(xml, "aff10b5One");
   return blocks.map((match, transactionIndex) => {
     const block = match[2]!;
     const amounts = tagContent(block, "transactionAmounts") ?? "";
@@ -123,6 +150,7 @@ export function parseForm4Xml(xml: string): InsiderTransaction[] {
       ownershipNature: tagText(tagContent(tagContent(block, "ownershipNature") ?? "", "natureOfOwnership") ?? "", "value"),
       form: tagText(xml, "documentType") || "4",
       footnoteIds: [...new Set([...block.matchAll(/<(?:[\w.-]+:)?footnoteId\s[^>]*\bid\s*=\s*["']([^"']+)["']/gi)].map((note) => note[1]!))],
+      ...(rule10b51 === undefined ? {} : { rule10b51 }),
     };
   });
 }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../../api-client";
 import { PaneFooterProvider } from "../../../../components/layout/pane/footer";
-import { emitKeypress, TestDialogProvider, testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, TestDialogProvider } from "../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
@@ -10,10 +10,10 @@ import { setSharedRegistryForTests, type PluginRegistry } from "../../../registr
 import { Box, Text } from "../../../../ui";
 import { askgConversationListStore } from "./conversation-store";
 import { resetASKGClientManifestCache } from "./host";
-import { ASKGPane } from "./pane";
+import type { ASKGToolRow } from "./model";
+import { ASKGPane, ToolTimelineRow } from "./pane";
 
-type Setup = Awaited<ReturnType<typeof testRender>>;
-let setup: Setup | undefined;
+const tui = createOpenTuiTestHarness();
 
 const PANE_ID = "askg-test-pane";
 /** Narrow enough that the failure cannot fit on one line, and no sidebar. */
@@ -22,6 +22,8 @@ const PANE_WIDTH = 64;
 const WIDE_PANE_WIDTH = 96;
 
 const requests: string[] = [];
+const sessionBodies: Array<Record<string, unknown>> = [];
+let configPortfolios: Array<{ id: string; name: string; currency: string; brokerInstanceId?: string }> = [];
 let sessionStatus = 200;
 let storedConversations: Array<Record<string, unknown>> = [];
 let storedTranscripts: Record<string, Record<string, unknown>> = {};
@@ -33,6 +35,7 @@ function Harness({ paneWidth = PANE_WIDTH }: { paneWidth?: number }) {
       paneId: "askg",
     }));
     initial.focusedPaneId = PANE_ID;
+    initial.config = { ...initial.config, portfolios: configPortfolios };
     return initial;
   });
   return (
@@ -86,6 +89,8 @@ function transcript(id: string, question: string, answer: string) {
 
 beforeEach(() => {
   requests.length = 0;
+  sessionBodies.length = 0;
+  configPortfolios = [];
   sessionStatus = 200;
   storedConversations = [];
   storedTranscripts = {};
@@ -96,6 +101,7 @@ beforeEach(() => {
     const parsed = new URL(url);
     requests.push(`${init?.method ?? "GET"} ${parsed.pathname}`);
     if (parsed.pathname === "/askg/session") {
+      if (typeof init?.body === "string") sessionBodies.push(JSON.parse(init.body));
       if (sessionStatus !== 200) {
         return new Response(JSON.stringify({ message: "Ask Gloom is unavailable." }), {
           status: sessionStatus,
@@ -152,13 +158,7 @@ beforeEach(() => {
   } as unknown as PluginRegistry);
 });
 
-afterEach(async () => {
-  if (setup) {
-    await act(async () => {
-      setup!.renderer.destroy();
-    });
-    setup = undefined;
-  }
+afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
   resetASKGClientManifestCache();
@@ -168,34 +168,34 @@ afterEach(async () => {
 
 async function renderPane(paneWidth: number): Promise<string> {
   await act(async () => {
-    setup = await testRender(<Harness paneWidth={paneWidth} />, {
+    await tui.render(<Harness paneWidth={paneWidth} />, {
       width: paneWidth,
       height: 24,
     });
   });
   await flush();
-  return setup!.captureCharFrame();
+  return tui.frame();
 }
 
 async function ask(question: string): Promise<string> {
   await act(async () => {
-    setup = await testRender(<Harness />, { width: PANE_WIDTH, height: 24 });
+    await tui.render(<Harness />, { width: PANE_WIDTH, height: 24 });
   });
   await flush();
   await act(async () => {
-    setup!.mockInput.pressEnter();
-    await setup!.renderOnce();
+    tui.setup().mockInput.pressEnter();
+    await tui.setup().renderOnce();
   });
   await act(async () => {
-    setup!.mockInput.typeText(question);
-    await setup!.renderOnce();
+    tui.setup().mockInput.typeText(question);
+    await tui.setup().renderOnce();
   });
   await act(async () => {
-    setup!.mockInput.pressEnter();
-    await setup!.renderOnce();
+    tui.setup().mockInput.pressEnter();
+    await tui.setup().renderOnce();
   });
   await flush();
-  return setup!.captureCharFrame();
+  return tui.frame();
 }
 
 describe("ASKGPane failures", () => {
@@ -220,13 +220,90 @@ describe("ASKGPane failures", () => {
 
     // Sending leaves the composer, so the answer's keys work straight away
     // instead of being typed into the next question.
-    await emitKeypress(setup!, { name: "r" });
+    await tui.emitKeypress({ name: "r" });
     await flush();
 
     expect(requests.filter((entry) => entry === "POST /askg/session")).toHaveLength(2);
     // The failed attempt is replaced, not stacked above the retry.
-    const retried = setup!.captureCharFrame();
+    const retried = tui.frame();
     expect(retried.split("what does a 5y bond return").length - 1).toBe(1);
+  });
+});
+
+describe("ASKGPane tool rows", () => {
+  test("a row stays on one line with its note below it, and a script says how it ended once", async () => {
+    const row = (name: string, argumentSummary: string, rowCount: number, note: string): ASKGToolRow => ({
+      toolCallId: name,
+      name,
+      argumentSummary,
+      writeTier: "read",
+      origin: "client",
+      status: "partial",
+      requiresConfirmation: false,
+      rowCount,
+      note,
+      result: { rows: [] },
+      expanded: false,
+    });
+    const script = (status: ASKGToolRow["status"], note: string): ASKGToolRow => ({
+      toolCallId: `script-${status}`,
+      name: "run_script",
+      argumentSummary: note,
+      writeTier: "read",
+      origin: "server",
+      status,
+      requiresConfirmation: false,
+      rowCount: 3,
+      note,
+      expanded: false,
+    });
+    const rows = [
+      row("pf", "broker:ibkr-main:U1234567 · limit=50", 50, "No market value for 1211; totals leave it out"),
+      row("port", "broker:ibkr-main:U1234567 · equity-shift=-10 · rate-shift=100 · view=holdings · vol-shift=10", 94, "6 foreign listings skipped"),
+      script("ok", "3 calls, 1.2 s"),
+      script("timeout", "Script timed out after 2 calls, 20.0 s"),
+    ];
+    await act(async () => {
+      await tui.render(
+        <TestDialogProvider>
+          <Box flexDirection="column" width={70} height={8}>
+            {rows.map((entry) => (
+              <ToolTimelineRow key={entry.toolCallId} row={entry} width={70} selected={false} expanded={false}
+                selectedRowRef={() => {}} onSelect={() => {}} onToggle={() => {}} onUndo={() => {}} />
+            ))}
+          </Box>
+        </TestDialogProvider>,
+        { width: 70, height: 8 },
+      );
+    });
+    await flush();
+    const lines = tui.frame().split("\n");
+
+    expect(lines[0]).toMatch(/^▸ pf .* 50 rows · partial\s*$/);
+    expect(lines[1]?.trim()).toBe("No market value for 1211; totals leave it out");
+    expect(lines[2]).toMatch(/^▸ port .* 94 rows · partial\s*$/);
+    expect(lines[3]?.trim()).toBe("6 foreign listings skipped");
+    // A script says how it went once: on its line when clean, below it when not.
+    expect(lines[4]).toMatch(/^Script +3 calls, 1\.2 s +done +· Gloom\s*$/);
+    expect(lines[5]).toMatch(/^Script +timed out +· Gloom\s*$/);
+    expect(lines[6]?.trim()).toBe("Script timed out after 2 calls, 20.0 s");
+  });
+});
+
+describe("ASKGPane context", () => {
+  test("a question carries the user's portfolio ids, so Gloom does not guess them", async () => {
+    sessionStatus = 503;
+    configPortfolios = [
+      { id: "main", name: "Main Portfolio", currency: "USD" },
+      { id: "broker:ibkr-main:U1234567", name: "U1234567", currency: "USD", brokerInstanceId: "ibkr-main" },
+    ];
+    await ask("what do i have open");
+
+    const context = sessionBodies[0]?.context as { userData?: { portfolios?: unknown[] } } | undefined;
+    expect(context?.userData?.portfolios).toEqual([
+      { id: "main", name: "Main Portfolio", kind: "manual" },
+      { id: "broker:ibkr-main:U1234567", name: "U1234567", kind: "broker" },
+    ]);
   });
 });
 
@@ -273,21 +350,21 @@ describe("ASKGPane conversations", () => {
       "conv-2": transcript("conv-2", "how are Nvidia margins", "Holding above 70%."),
     };
     await renderPane(WIDE_PANE_WIDTH);
-    expect(setup!.captureCharFrame()).not.toContain("\u203a");
+    expect(tui.frame()).not.toContain("\u203a");
 
     // Left hands the keyboard to the list; arrows only move the cursor.
-    await emitKeypress(setup!, { name: "escape" });
-    await emitKeypress(setup!, { name: "left" });
-    await emitKeypress(setup!, { name: "down" });
-    await emitKeypress(setup!, { name: "down" });
+    await tui.emitKeypress({ name: "escape" });
+    await tui.emitKeypress({ name: "left" });
+    await tui.emitKeypress({ name: "down" });
+    await tui.emitKeypress({ name: "down" });
     await flush();
     expect(requests.filter((entry) => entry.startsWith("GET /askg/conversations/"))).toEqual([]);
 
-    await emitKeypress(setup!, { name: "return" });
+    await tui.emitKeypress({ name: "return" });
     await flush();
 
     expect(requests).toContain("GET /askg/conversations/conv-2");
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("how are Nvidia margins");
     expect(frame).toContain("Holding above 70%");
     // The marker sits on the row that is open, and only on that row.
@@ -309,18 +386,18 @@ describe("ASKGPane conversations", () => {
     };
     await renderPane(WIDE_PANE_WIDTH);
 
-    await emitKeypress(setup!, { name: "escape" });
-    await emitKeypress(setup!, { name: "left" });
-    await emitKeypress(setup!, { name: "down" });
-    await emitKeypress(setup!, { name: "return" });
+    await tui.emitKeypress({ name: "escape" });
+    await tui.emitKeypress({ name: "left" });
+    await tui.emitKeypress({ name: "down" });
+    await tui.emitKeypress({ name: "return" });
     await flush();
-    expect(setup!.captureCharFrame()).toContain("About 4.2%");
+    expect(tui.frame()).toContain("About 4.2%");
 
-    await emitKeypress(setup!, { name: "left" });
-    await emitKeypress(setup!, { name: "n" });
+    await tui.emitKeypress({ name: "left" });
+    await tui.emitKeypress({ name: "n" });
     await flush();
 
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).not.toContain("About 4.2%");
     expect(frame).toContain("Ask about anything on screen");
     expect(frame).toContain("Bond returns");

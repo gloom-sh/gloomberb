@@ -16,7 +16,7 @@ import type { CommandBarRoute } from "../../workflow/types";
 const USAGE_SETTING_ROW_IDS = new Set(["toggle-usage-counts", "command:toggle-usage-counts"]);
 
 /** A root row the user runs, read before it runs: running a row can rewrite the query. */
-export interface RootRowRun {
+interface RootRowRun {
   item: ResultItem;
   /** The root query at that moment, as typed. */
   query: string;
@@ -88,7 +88,8 @@ interface CommandSearchReportOptions {
  * query the user finished and the row they ran from the root list, or, when
  * the bar closes on a root query with nothing run, that they dismissed it.
  * Keystrokes are never reported, nor an empty query, nor anything typed in a
- * route (a ticker search, a pane form).
+ * route (a ticker search, a picker). Forms and confirms open in the form modal
+ * after the bar closes, so the row that opened one counts as run.
  *
  * The first root row that runs is held as the visit's choice until the bar
  * closes. A row that only rewrites the query ("Change Theme" writes "TH ")

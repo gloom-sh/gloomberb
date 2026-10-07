@@ -24,6 +24,7 @@ interface UseNewsArticleFooterOptions {
   info?: PaneFooterSegment[];
   loading?: boolean;
   error?: string | null;
+  onPopOut?: () => void;
 }
 
 export function useNewsArticleFooter({
@@ -33,6 +34,7 @@ export function useNewsArticleFooter({
   info,
   loading = false,
   error,
+  onPopOut,
 }: UseNewsArticleFooterOptions) {
   const language = useAppLanguage();
   const { publicSharing } = useUiCapabilities();
@@ -54,6 +56,7 @@ export function useNewsArticleFooter({
     delayLabel: tf("{count}h", { count: CLOUD_NEWS_DELAY_HOURS }),
     focused,
     segmentId: "news-access",
+    placement: "news-footer",
     shortcutScope: `${registrationId}:news-upgrade`,
   });
 
@@ -77,6 +80,7 @@ export function useNewsArticleFooter({
       ...(publicSharing && article?.title && paneInstanceId
         ? [{ id: "share", key: "y", label: " share", onPress: shareArticle }]
         : []),
+      ...(onPopOut ? [{ id: "pop-out", key: "p", label: "op out", onPress: onPopOut }] : []),
     ],
     showOpenHint: true,
     loading,

@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useMemo, useReducer } from "react";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -9,8 +10,8 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../
 import { insiderModule } from "./index";
 
 const InsiderView = insiderModule.panes![0]!.component;
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-function xml(amendment: boolean, owner = "A. OFFICER", cik = "111", explanationOnly = false) {
+const tui = createOpenTuiTestHarness();
+function xml(amendment: boolean, owner = "SMITH ANNA B", cik = "111", explanationOnly = false) {
   return `<ownershipDocument><documentType>${amendment ? "4/A" : "4"}</documentType>${amendment ? "<dateOfOriginalSubmission>2026-08-20</dateOfOriginalSubmission>" : ""}<reportingOwner><reportingOwnerId><rptOwnerName>${owner}</rptOwnerName><rptOwnerCik>${cik}</rptOwnerCik></reportingOwnerId></reportingOwner>${explanationOnly ? "" : `<nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>2026-08-19</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${amendment ? 40 : 100}</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction>`}${amendment ? "<footnotes><footnote id='F1'>Corrects the original disclosure.</footnote></footnotes>" : ""}</ownershipDocument>`;
 }
 function Harness({ width }: { width: number }) {
@@ -28,14 +29,14 @@ function Harness({ width }: { width: number }) {
   </TestPaneFrame>;
 }
 async function settle() {
-  for (let i = 0; i < 8; i++) await act(async () => { await Bun.sleep(2); await setup!.renderOnce(); });
+  for (let i = 0; i < 8; i++) await act(async () => { await Bun.sleep(2); await tui.setup().renderOnce(); });
 }
 async function mount(width: number, explanationOnly = false) {
   const filings = ["amendment", "original", "other"].map((accessionNumber) => ({ accessionNumber, form: accessionNumber === "amendment" ? "4/A" : "4",
     filingDate: new Date(`2026-08-${accessionNumber === "amendment" ? "21" : "20"}T00:00:00Z`), cik: "999", filingUrl: `https://www.sec.gov/${accessionNumber}` }));
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => filings,
-    getSecFilingContent: async (filing) => filing.accessionNumber === "other" ? xml(false, "B. OFFICER", "222") : xml(filing.accessionNumber === "amendment", "A. OFFICER", "111", explanationOnly && filing.accessionNumber === "amendment") })));
-  await act(async () => { setup = await testRender(<Harness width={width} />, { width, height: 30 }); });
+    getSecFilingContent: async (filing) => filing.accessionNumber === "other" ? xml(false, "JONES BOB", "222") : xml(filing.accessionNumber === "amendment", "SMITH ANNA B", "111", explanationOnly && filing.accessionNumber === "amendment") })));
+  await act(async () => { await tui.render(<Harness width={width} />, { width, height: 30 }); });
   await settle();
 }
 async function mountWindow(inWindow: number) {
@@ -44,63 +45,117 @@ async function mountWindow(inWindow: number) {
   const filings = Array.from({ length: inWindow + 1 }, (_, index) => ({ accessionNumber: `f${index}`, form: "4",
     filingDate: new Date(Date.now() - (index < inWindow ? 1 + index % 60 : 120) * day), cik: "999", filingUrl: `https://www.sec.gov/f${index}` }));
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => filings,
-    getSecFilingContent: async (filing) => `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>A. OFFICER</rptOwnerName><rptOwnerCik>111</rptOwnerCik></reportingOwnerId></reportingOwner><nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>${isoDate(new Date(filing.filingDate).getTime())}</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></ownershipDocument>` })));
-  await act(async () => { setup = await testRender(<Harness width={80} />, { width: 80, height: 30 }); });
-  for (let i = 0; i < 40 && (i < 8 || setup!.captureCharFrame().includes("loading")); i++) await settle();
+    getSecFilingContent: async (filing) => `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>SMITH ANNA B</rptOwnerName><rptOwnerCik>111</rptOwnerCik></reportingOwnerId></reportingOwner><nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>${isoDate(new Date(filing.filingDate).getTime())}</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></ownershipDocument>` })));
+  await act(async () => { await tui.render(<Harness width={80} />, { width: 80, height: 30 }); });
+  for (let i = 0; i < 40 && (i < 8 || tui.frame().includes("loading")); i++) await settle();
 }
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
 });
 
 test("narrow actual amendment detail retains corrected shares, explanation, status and the existing Open action", async () => {
   await mount(48);
-  expect(setup!.captureCharFrame()).toContain("4/A · BUY 40");
-  expect(setup!.captureCharFrame()).toContain("BUY 100");
-  await act(async () => { setup!.mockInput.pressEnter(); });
+  // The amendment stays marked when the narrow pane drops columns.
+  expect(tui.frame()).toMatch(/Anna B\. Smith\s+BUY 4\/A\s+\$400/);
+  expect(tui.frame()).toMatch(/Anna B\. Smith\s+BUY\s+\$1k/);
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Original filed 2026-08-20");
   expect(frame).toContain("Corrects the original disclosure.");
-  expect(frame).toContain("Shares: 40");
+  expect(frame).toMatch(/Shares\s+40\s/);
   expect(frame).toContain("⚠");
   expect(frame).toContain("[o]pen");
 });
 
 test("owner filtering keeps explanation-only amendments and clears amendment status for independent owners", async () => {
   await mount(80, true);
-  expect(setup!.captureCharFrame()).toContain("Form 4/A disclosure");
-  await act(async () => { setup!.mockInput.pressKey("f"); });
+  expect(tui.frame()).toContain("NOTICE 4/A");
+  await act(async () => { tui.setup().mockInput.pressKey("f"); });
   await settle();
-  expect(setup!.captureCharFrame()).toContain("Form 4/A disclosure");
-  expect(setup!.captureCharFrame()).toContain("BUY 100");
-  expect(setup!.captureCharFrame()).not.toContain("B. OFFICER");
-  await act(async () => { setup!.mockInput.pressKey("f"); });
+  expect(tui.frame()).toContain("Insider Anna B. Smith");
+  expect(tui.frame()).toContain("NOTICE 4/A");
+  expect(tui.frame()).toMatch(/Anna B\. Smith\s+BUY\s+Class A\s+100/);
+  expect(tui.frame()).not.toContain("Bob Jones");
+  await act(async () => { tui.setup().mockInput.pressKey("f"); });
   await settle();
-  await emitKeypress(setup!, { name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
-  await emitKeypress(setup!, { name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { await Bun.sleep(180); });
   await settle();
-  const rows = setup!.captureCharFrame().split("\n");
+  const rows = tui.frame().split("\n");
   const row = rows.findIndex((line) => line.includes("[f]ilter"));
-  await act(async () => { await setup!.mockMouse.click(rows[row]!.indexOf("[f]ilter") + 2, row); });
+  await act(async () => { await tui.setup().mockMouse.click(rows[row]!.indexOf("[f]ilter") + 2, row); });
   await settle();
-  expect(setup!.captureCharFrame()).toContain("B. OFFICER");
-  expect(setup!.captureCharFrame()).not.toContain("A. OFFICER");
-  expect(setup!.captureCharFrame()).not.toContain("⚠");
+  expect(tui.frame()).toContain("Bob Jones");
+  expect(tui.frame()).not.toContain("Anna B. Smith");
+  expect(tui.frame()).not.toContain("⚠");
 });
+
+// Reading 25 and 121 filings one after another takes seconds on a loaded runner.
+const WINDOW_TEST_TIMEOUT_MS = 30_000;
 
 test("the 90-day totals load every filing in the window, past the first page", async () => {
   await mountWindow(25);
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("2.5k shares");
   expect(frame).not.toContain("⚠");
-});
+}, WINDOW_TEST_TIMEOUT_MS);
 
 test("a window larger than the cap still says the totals are partial", async () => {
   await mountWindow(121);
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("12k shares");
   expect(frame).toContain("⚠");
+}, WINDOW_TEST_TIMEOUT_MS);
+
+async function mountMixed() {
+  const recent = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+  const day = recent.toISOString().slice(0, 10);
+  const lines: Record<string, [owner: string, title: string, code: string, security: string, derivative: boolean]> = {
+    buy: ["COOK TIMOTHY D", "Chief Executive Officer", "P", "Common Stock", false],
+    sale: ["O'BRIEN DEIRDRE", "Senior Vice President", "S", "Common Stock", false],
+    award: ["Lund Deanna H", "EVP & CFO", "A", "Restricted Stock Unit", true],
+    tax: ["Lund Deanna H", "EVP & CFO", "F", "Common Stock", false],
+  };
+  const filings = Object.keys(lines).map((accessionNumber) => ({ accessionNumber, form: "4", filingDate: recent, cik: "999", filingUrl: `https://www.sec.gov/${accessionNumber}` }));
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => filings,
+    getSecFilingContent: async (filing) => {
+      const [owner, title, code, security, derivative] = lines[filing.accessionNumber]!;
+      const tag = derivative ? "derivativeTransaction" : "nonDerivativeTransaction";
+      return `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>${owner}</rptOwnerName><rptOwnerCik>${filing.accessionNumber}</rptOwnerCik></reportingOwnerId><reportingOwnerRelationship><isOfficer>1</isOfficer><officerTitle>${title}</officerTitle></reportingOwnerRelationship></reportingOwner><${tag}><securityTitle><value>${security}</value></securityTitle><transactionDate><value>${day}</value></transactionDate><transactionCoding><transactionCode>${code}</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></${tag}></ownershipDocument>`;
+    } })));
+  await act(async () => { await tui.render(<Harness width={100} />, { width: 100, height: 30 }); });
+  await settle();
+}
+
+test("the pane opens on open-market buys and sells, with the other lines one click away", async () => {
+  await mountMixed();
+  // Filings are read one after another; a loaded runner needs more frames.
+  for (let i = 0; i < 40 && !tui.frame().includes("Other (2)"); i++) await settle();
+  let frame = tui.frame();
+  expect(frame).toContain("Other (2)");
+  expect(frame).toContain("Buys and sells (2)");
+  expect(frame).toMatch(/Timothy D\. Cook\s+CEO\s+BUY/);
+  expect(frame).toMatch(/Deirdre O'Brien\s+SVP\s+SELL/);
+  expect(frame).not.toContain("AWARD");
+  expect(frame).not.toContain("not in this view");
+
+  await act(async () => { await tui.clickFrameText("All (4)"); });
+  await settle();
+  frame = tui.frame();
+  expect(frame).toMatch(/Deanna H\. Lund\s+CFO\s+AWARD\s+RSU/);
+  expect(frame).toMatch(/Deanna H\. Lund\s+CFO\s+TAX/);
+  // CSV export writes what the table shows, with full numbers and ISO dates.
+  await exportPaneTable("insider:amendment:test", "insider.csv");
+  const csv = takeSavedTextFile()!.text.trim().split("\n");
+  expect(csv[0]).toBe("Date,Insider,Role,Type,Security,Shares,Price ($),Value ($)");
+  expect(csv.some((row) => /^\d{4}-\d{2}-\d{2},Deanna H\. Lund,CFO,AWARD,Restricted Stock Unit,100,10,1000$/.test(row))).toBe(true);
+
+  // The 90-day totals count buys and sales, so a view of the other lines says they are not in it.
+  await act(async () => { await tui.clickFrameText("Other (2)"); });
+  await settle();
+  frame = tui.frame();
+  expect(frame).not.toContain("Timothy D. Cook");
+  expect(frame).toContain("not in this view");
 });

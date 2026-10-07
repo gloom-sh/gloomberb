@@ -25,7 +25,8 @@ export type IconName =
   | "user"
   | "sort-up"
   | "sort-down"
-  | "grip";
+  | "grip"
+  | "image";
 
 /** Terminal glyph for each icon; the desktop host draws SVG. */
 export const ICON_GLYPHS: Record<IconName, string> = {
@@ -50,6 +51,7 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   "sort-up": "▲",
   "sort-down": "▼",
   grip: "::",
+  image: "▣",
 };
 
 export interface IconProps {

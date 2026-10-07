@@ -49,6 +49,10 @@ const STUDIES = new Set<ChartStudyKind>([
   "rsi",
   "macd",
   "realized-vol",
+  "vwap",
+  "anchored-vwap",
+  "volume-profile",
+  "atr",
   "ratio",
   "spread",
   "correlation",
@@ -81,7 +85,7 @@ export const DEFAULT_CHART_SPEC: ChartSpec = Object.freeze({
   studies: Object.freeze([]) as unknown as ChartStudySpec[],
 });
 
-export interface ChartSpecIssue {
+interface ChartSpecIssue {
   path: string;
   code: string;
   message: string;
@@ -316,6 +320,7 @@ export function normalizeChartSpec(value: unknown, fallback: ChartSpec = DEFAULT
         && viewport.maxPoints > 0
         ? Math.min(10_000, Math.floor(viewport.maxPoints))
         : undefined,
+      ...(viewport?.extendedHours === true ? { extendedHours: true } : {}),
     },
     panels,
     series,

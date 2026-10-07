@@ -122,6 +122,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
       {isSessionTab(activeTab) ? (
         <SessionMoversBody
           view={activeTab}
+          height={height - (tabStrip ? 1 : 0)}
           session={session}
           focused={focused}
           width={width}

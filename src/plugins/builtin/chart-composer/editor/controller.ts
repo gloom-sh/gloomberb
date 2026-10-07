@@ -6,7 +6,6 @@ import type {
   ChartSeriesSpec,
   ChartSpec,
   PanelScale,
-  SeriesPeriod,
   SeriesStyle,
   SeriesTimestampMode,
   SeriesTransform,
@@ -19,22 +18,22 @@ import {
   MAX_CHART_COMPOSER_SERIES,
   parseChartSpecOr,
 } from "../chart-spec";
+import { chartSeriesLabel, formatSeriesExpression, parseSeriesExpression } from "../series-expression";
 import {
   appendChartSeries,
   applySeriesStyle,
   applySeriesTimestampMode,
-  buildEmptyChartPreset,
   buildSeriesSpec,
-  chartSeriesLabel,
-  formatSeriesExpression,
   getCompatibleSeriesStyles,
   getCompatibleSeriesTransforms,
+} from "../chart-spec-edit";
+import {
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
-  parseSeriesExpression,
   setBuiltinStudies,
   setPairStudies,
-} from "../presets";
+} from "../studies";
+import { buildEmptyChartPreset } from "../presets";
 import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "../series-catalog";
 import { useSeriesCatalogSuggestions } from "../use-series-catalog";
 import type {
@@ -182,7 +181,7 @@ export function useSeriesEditorController({
         ? firstSecurity.source.instrument
         : undefined;
     const symbol = security?.symbol ?? "AAPL";
-    const saved = getSharedRegistry()?.getTickerFn(symbol);
+    const saved = getSharedRegistry()?.getTicker(symbol);
     return {
       symbol,
       ...(security?.exchange ? { exchange: security.exchange } : saved?.metadata.exchange ? { exchange: saved.metadata.exchange } : {}),

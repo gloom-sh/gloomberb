@@ -5,7 +5,7 @@ import type {
   FloatingRect,
   LayoutBounds,
   ResolvedPane,
-} from "../../../plugins/pane-manager";
+} from "../../../layout/pane-manager";
 import {
   constrainFloatingRectToBounds,
   pointInRect,
@@ -30,6 +30,7 @@ interface UseShellTerminalPointerRuntimeOptions {
   focusedPaneId: string | null;
   handleActiveDrag: (event: ShellMouseEvent) => void;
   handleFloatingClose: (paneId: string) => void;
+  restoreFullscreen: () => void;
   menuState: ActionMenuState | null;
   openPaneMenu: (
     paneId: string,
@@ -73,6 +74,7 @@ export function useShellTerminalPointerRuntime({
   focusedPaneId,
   handleActiveDrag,
   handleFloatingClose,
+  restoreFullscreen,
   menuState,
   openPaneMenu,
   paneMap,
@@ -185,6 +187,7 @@ export function useShellTerminalPointerRuntime({
         const headerAreas = resolveHeaderHitAreas(rect.width, {
           floating: true,
           focused: isFocused,
+          fullscreen: transientFocusActive,
         });
         focusPane(paneId);
         if (event.button === 2 && relativeY === 0) {
@@ -192,7 +195,8 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (relativeY === 0 && headerAreas.closeStart != null && relativeX >= headerAreas.closeStart && relativeX < rect.width) {
-          handleFloatingClose(paneId);
+          if (transientFocusActive) restoreFullscreen();
+          else handleFloatingClose(paneId);
           event.stopPropagation();
           event.preventDefault();
           return;
@@ -207,7 +211,7 @@ export function useShellTerminalPointerRuntime({
           event.preventDefault();
           return;
         }
-        if (relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
+        if (!transientFocusActive && relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
           dragRef.current = {
             type: "float-resize",
             paneId,
@@ -216,6 +220,11 @@ export function useShellTerminalPointerRuntime({
             origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           };
           updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+          event.stopPropagation();
+          event.preventDefault();
+          return;
+        }
+        if (relativeY === 0 && transientFocusActive) {
           event.stopPropagation();
           event.preventDefault();
           return;
@@ -268,6 +277,7 @@ export function useShellTerminalPointerRuntime({
         const headerAreas = resolveHeaderHitAreas(leaf.rect.width, {
           floating: false,
           focused: isFocused,
+          fullscreen: transientFocusActive,
         });
         focusPane(leaf.instanceId);
         if (event.button === 2 && relativeY === 0) {
@@ -275,8 +285,18 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (relativeY === 0
+          && transientFocusActive
+          && headerAreas.closeStart != null
+          && relativeX >= headerAreas.closeStart) {
+          restoreFullscreen();
+          event.stopPropagation();
+          event.preventDefault();
+          return;
+        }
+        if (relativeY === 0
           && headerAreas.actionStart != null
-          && relativeX >= headerAreas.actionStart) {
+          && relativeX >= headerAreas.actionStart
+          && (headerAreas.closeStart == null || relativeX < headerAreas.closeStart)) {
           openPaneMenu(leaf.instanceId, leaf.rect, event);
           event.stopPropagation();
           event.preventDefault();
@@ -319,6 +339,7 @@ export function useShellTerminalPointerRuntime({
     focusedPaneId,
     handleActiveDrag,
     handleFloatingClose,
+    restoreFullscreen,
     menuState,
     openPaneMenu,
     paneMap,

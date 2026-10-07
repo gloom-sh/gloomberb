@@ -1,7 +1,6 @@
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import type { LoadedExternalPlugin } from "./loader";
 import { debugPlugin } from "./builtin/debug";
-import { yahooPlugin } from "./builtin/yahoo";
 import { uiBuiltinPlugins } from "./catalog-ui";
 
 export interface PluginCatalogEntry {
@@ -18,7 +17,6 @@ export interface PluginCatalogEntry {
 }
 
 const builtinPlugins: GloomPlugin[] = [
-  yahooPlugin,
   ...uiBuiltinPlugins,
   debugPlugin,
 ];

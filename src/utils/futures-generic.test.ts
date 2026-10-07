@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { rebindFollowChartSpec } from "../plugins/builtin/chart-composer/follow-binding";
-import { buildPriceChartPreset, chartFuturesGeneric, rebindResearchChartSpec, setChartFuturesGeneric } from "../plugins/builtin/chart-composer/presets";
+import { chartFuturesGeneric, rebindResearchChartSpec, setChartFuturesGeneric } from "../plugins/builtin/chart-composer/chart-spec-edit";
+import { buildPriceChartPreset } from "../plugins/builtin/chart-composer/presets";
 import { formatFuturesGeneric, futuresGenericCaption, futuresGenericListing, futuresGenericRollFromValue, parseFuturesGeneric } from "./futures-generic";
 
 describe("generic futures tickers", () => {

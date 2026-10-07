@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { useQuoteStreaming } from "../state/hooks/quote-streaming";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { TickerRecord } from "../types/ticker";
@@ -9,11 +9,10 @@ import { useQuoteEntry, useTickerFinancials, useTickerFinancialsMap } from "./ho
 import { quoteSubscriptionTargetFromTicker } from "./request-types";
 import { createTestTicker } from "../test-support/ticker";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | undefined;
 afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined; coordinator?.destroy(); coordinator = undefined; setSharedMarketDataCoordinator(null);
+  coordinator?.destroy(); coordinator = undefined; setSharedMarketDataCoordinator(null);
   await new Promise(resolve => setTimeout(resolve, 260));
 });
 
@@ -41,8 +40,8 @@ test.each([false, true])("hooks reload and resubscribe when a supplied definitio
     observed = [quoteEntry?.data?.price, financials?.quote?.price, map.get("ACME")?.quote?.price];
     return <text>{JSON.stringify(observed)}</text>;
   }
-  setup = await testRender(<Harness />, { width: 48, height: 2 });
-  const settle = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 280)); }); await act(async () => { await setup!.renderOnce(); }); };
+  await tui.render(<Harness />, { width: 48, height: 2 });
+  const settle = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 280)); }); await act(async () => { await tui.setup().renderOnce(); }); };
   await settle(); expect(observed).toEqual([10, 10, 10]);
   await act(async () => replace(ticker(110))); await settle();
   expect(observed).toEqual([11, 11, 11]); expect(snapshots).toEqual([100, 110]);

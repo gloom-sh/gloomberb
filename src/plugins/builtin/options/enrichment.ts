@@ -10,7 +10,7 @@ import { projectOptionsEnrichment, type OptionsEnrichmentCache, type OptionsEnri
   type OptionsEnrichmentSnapshot } from "./enrichment-model";
 
 /** Live quotes refit the selected smile at most this often. */
-export const OPTIONS_LIVE_ANALYTICS_INTERVAL_MS = 1_000;
+const OPTIONS_LIVE_ANALYTICS_INTERVAL_MS = 1_000;
 /** A dense chain's refit is slower; its cadence stretches so the refit never takes more than this share of the time. */
 const LIVE_ANALYTICS_MAX_LOAD = 0.05;
 /** The Treasury curve is daily; a refreshed chain reuses the one it already loaded. */

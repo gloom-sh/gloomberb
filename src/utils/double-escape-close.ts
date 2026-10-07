@@ -34,6 +34,26 @@ export function takeDoubleEscapeClose(
   return matched;
 }
 
+const escapeArmOffers = new WeakMap<object, () => void>();
+
+/**
+ * Leaving an empty text field is the one Esc a pane uses that still counts as
+ * the first half of a close, so Esc Esc from an idle composer closes the pane.
+ * The shell offers every Esc in its `before` phase, focused field or not; a
+ * pane handler that runs later takes the offer with `countEscapeTowardClose`
+ * and consumes the Esc as usual. Anything the Esc backs out of (a draft, a
+ * reply, a menu) keeps it from counting.
+ */
+export function offerEscapeTowardClose(event: object, arm: () => void) {
+  escapeArmOffers.set(event, arm);
+}
+
+export function countEscapeTowardClose(event: object) {
+  const arm = escapeArmOffers.get(event);
+  escapeArmOffers.delete(event);
+  arm?.();
+}
+
 export function armDoubleEscapeClose(
   state: DoubleEscapeCloseState,
   targetId: string | null | undefined,

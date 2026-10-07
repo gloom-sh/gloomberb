@@ -8,7 +8,6 @@ import type { ASKGToolExecutor } from "./executor";
 import {
   activeTurn,
   askgReducer,
-  describeASKGError,
   EMPTY_ASKG_CONVERSATION,
   isTurnRunning,
   requiresLocalConfirmation,
@@ -17,7 +16,9 @@ import {
   type ASKGErrorState,
 } from "./model";
 import {
+  ASKG_CLIENT_CAPABILITIES,
   ASKG_PROTOCOL_VERSION,
+  type ASKGCapabilities,
   type ASKGClientDescriptor,
   type ASKGSessionContext,
   type ASKGSessionStartResponse,
@@ -27,6 +28,7 @@ import {
   type ClientToolManifest,
   type ToolResultPayload,
 } from "./protocol";
+import { toolErrorNote } from "./notes";
 
 /** Turns kept as context for the next question. */
 const MAX_HISTORY_TURNS = 8;
@@ -76,6 +78,30 @@ function refusedResult(
     case "unknown-call":
       return { ...payload, status: "error", note: "Gloom no longer has this tool call." };
   }
+}
+
+/**
+ * A result whose post failed never reached the turn, which continues without
+ * it once the call times out. The row says so in its own words: the
+ * transport's message can carry the server's response body, and that echoes
+ * the whole payload back.
+ */
+function undeliveredResult(payload: ToolResultPayload): ToolResultPayload {
+  return {
+    ...payload,
+    status: "error",
+    note: "Could not send this result to Gloom, so it answered without it.",
+  };
+}
+
+/**
+ * The features a turn on this session asks for: exactly the ones the session
+ * response accepted, read from the session the turn runs on, so a renegotiated
+ * session never inherits what an earlier one allowed. An older server sends
+ * none, and its turns go out as they always have.
+ */
+function turnCapabilities(session: ASKGSessionStartResponse): ASKGCapabilities | null {
+  return session.capabilities?.scripts === 1 ? { scripts: 1 } : null;
 }
 
 function errorState(error: unknown): ASKGErrorState {
@@ -153,6 +179,7 @@ export class ASKGSessionController {
         context: this.options.getContext?.() ?? {},
         tools: manifest.tools,
         manifestHash: manifest.manifestHash,
+        capabilities: { ...ASKG_CLIENT_CAPABILITIES },
       }, { signal });
       this.session = session;
       this.dispatch({
@@ -206,6 +233,7 @@ export class ASKGSessionController {
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
       const session = await this.ensureSession(abort.signal);
+      const capabilities = turnCapabilities(session);
       // A stalled stream must fail visibly rather than spin forever.
       const wallClockMs = session.limits.turnWallClockMs > 0
         ? session.limits.turnWallClockMs
@@ -233,6 +261,7 @@ export class ASKGSessionController {
         input: trimmed,
         ...(this.options.getContext ? { context: this.options.getContext() } : {}),
         ...(history && history.length > 0 ? { history } : {}),
+        ...(capabilities ? { capabilities } : {}),
       }, {
         signal: abort.signal,
         onEvent: (event) => this.handleEvent(event),
@@ -317,7 +346,7 @@ export class ASKGSessionController {
       status: "error",
       truncated: false,
       elapsedMs: Math.max(0, this.now() - startedAt),
-      note,
+      note: toolErrorNote(note),
     });
 
     const accepted = this.state.acceptedTools;
@@ -381,15 +410,17 @@ export class ASKGSessionController {
     this.dispatch({ type: "tool-result", payload });
     const sessionId = this.session?.sessionId;
     if (!sessionId) return;
+    const signal = this.turnAbort?.signal;
     try {
       const outcome = await this.options.transport.postToolResult(sessionId, payload, {
-        ...(this.turnAbort ? { signal: this.turnAbort.signal } : {}),
+        ...(signal ? { signal } : {}),
       });
       const refused = refusedResult(payload, outcome);
       if (refused) this.dispatch({ type: "tool-result", payload: refused });
-    } catch (error) {
-      const note = `${payload.note ? `${payload.note} ` : ""}Result could not be delivered: ${describeASKGError(errorState(error))}`;
-      this.dispatch({ type: "tool-result", payload: { ...payload, note } });
+    } catch {
+      // A cancelled turn already marked its rows; nothing was lost.
+      if (signal?.aborted) return;
+      this.dispatch({ type: "tool-result", payload: undeliveredResult(payload) });
     }
   }
 

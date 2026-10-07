@@ -114,6 +114,14 @@ export interface PaneDef {
   defaultMode?: "docked" | "floating";
   /** Pane publishes its selected symbol as pane-state `cursorSymbol`, so ticker panes can follow it. */
   tickerSource?: boolean;
+  /**
+   * Pane shows one ticker read through its binding (`usePaneTicker`, `usePaneTickerIdentity`), so
+   * its pane menu offers "Link to" each visible list, scanner, and other single-ticker pane, and
+   * it then follows that pane's selection. A function decides per instance (a chart with one
+   * security, not a comparison). A follower must never write its own `cursorSymbol`: that would
+   * win over the binding.
+   */
+  tickerFollower?: boolean | ((pane: PaneInstanceConfig) => boolean);
   /** Renderer-neutral data model used by CLI functions, automation, and hosted tools. */
   headless?: HeadlessPaneDefinition;
   /** Add an Excel-compatible CSV action for the pane's single active DataTable. */
@@ -512,6 +520,7 @@ export interface CommandDef {
   description?: string;
   wizard?: WizardStep[];
   confirm?: CommandConfirmDef | ((context: CommandConfirmContext) => CommandConfirmDef | null);
+  /** @deprecated Ignored: a wizard always opens as one form with every step at once. */
   wizardLayout?: "steps" | "form";
   hidden?: () => boolean;
 }
@@ -830,9 +839,8 @@ export interface GloomPlugin {
    * the rest. A plugin that leaves a host out works on the desktop and fails
    * on the web.
    *
-   * Hosts reached on the plugin's behalf count too: `YahooHttpClient` collects
-   * a cookie from `fc.yahoo.com` before any screener call, so a plugin using it
-   * declares that host even though its own code never names it.
+   * Hosts reached by a plugin's dependencies count too: declare every host
+   * contacted on the plugin's behalf, including authentication endpoints.
    */
   hosts?: readonly string[];
   /** Shown in the marketplace pane and on the website. */

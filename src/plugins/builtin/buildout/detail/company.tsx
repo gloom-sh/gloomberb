@@ -24,7 +24,7 @@ interface LiveCompanyValues {
  * replaces them for a USD listing; the cap moves with the price, from the
  * dataset's own cap and price. Anything else keeps the dataset's strings.
  */
-export function liveCompanyValues(company: BuildoutCompany, quote: Quote | null): LiveCompanyValues | null {
+function liveCompanyValues(company: BuildoutCompany, quote: Quote | null): LiveCompanyValues | null {
   if (!quote || quote.stale || !(quote.price > 0) || quote.currency !== "USD") return null;
   if ((company.currency?.trim().toUpperCase() || "USD") !== "USD") return null;
   const datasetPrice = metricNumber(company.stockPrice);

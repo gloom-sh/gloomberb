@@ -36,7 +36,6 @@ import {
   appReducer,
   createInitialState,
   getEffectiveThemeId,
-  getFocusedTickerSymbol,
   type PaneRuntimeState,
   resolveCollectionForPane,
   resolveTickerForPane,
@@ -118,6 +117,19 @@ export function useAppStateRef() {
   }, [context]);
 
   return stateRef;
+}
+
+/**
+ * Reads the store at the moment of the call. Unlike `useAppStateRef`, it stays
+ * current after the component unmounts, for work that outlives it: a confirm
+ * the command bar opened and then closed behind.
+ */
+export function useAppGetState(): () => AppState {
+  const context = useRequiredAppContext();
+  return useMemo(
+    () => isAppStoreContextValue(context) ? () => context.getState() : () => context.state,
+    [context],
+  );
 }
 
 export function useAppDispatch(): Dispatch<AppAction> {
@@ -443,6 +455,7 @@ export function AppProvider({
   );
   const effectiveThemeId = getEffectiveThemeId(state);
   const previousRecentTickers = useRef(state.recentTickers);
+  const previousRecentCommands = useRef(state.config.recentCommands);
   const stateRef = useRef(state);
   const listenersRef = useRef(new Set<() => void>());
   const storeRef = useRef<AppContextStoreValue | null>(null);
@@ -515,6 +528,13 @@ export function AppProvider({
       { delayMs: LOW_PRIORITY_CONFIG_SAVE_DEBOUNCE_MS },
     );
   }, [state.config, state.recentTickers]);
+
+  // A recent pane run changes only config.recentCommands; nothing else saves it.
+  useEffect(() => {
+    if (previousRecentCommands.current === state.config.recentCommands) return;
+    previousRecentCommands.current = state.config.recentCommands;
+    scheduleConfigSave(() => ({ ...stateRef.current.config, recentTickers: stateRef.current.recentTickers }));
+  }, [state.config.recentCommands]);
 
   useEffect(() => {
     if (!desktopBridge) return;

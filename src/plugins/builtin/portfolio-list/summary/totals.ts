@@ -1,8 +1,10 @@
 import type { TickerFinancials } from "../../../../types/financials";
-import type { TickerRecord } from "../../../../types/ticker";
-import { convertCurrency } from "../../../../utils/format";
+import type { Portfolio, TickerRecord } from "../../../../types/ticker";
+import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
+import { getCurrencySymbol } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
+import { isManualPortfolio } from "../mutations";
 import {
   getPortfolioPositionMetrics,
   getPortfolioQuoteDisplay,
@@ -12,8 +14,8 @@ import {
   type PortfolioPositionPnl,
 } from "../position-metrics";
 
-/** A position lot valued from a current quote, in the base currency. */
-export interface PricedPortfolioLot {
+/** A position lot valued from a current quote, in the totals currency. */
+interface PricedPortfolioLot {
   /** Stable for the lot while the positions stay as imported. */
   key: string;
   direction: 1 | -1;
@@ -46,10 +48,49 @@ export interface PortfolioSummaryTotals {
   pricedLots?: PricedPortfolioLot[];
 }
 
+const CURRENCY_CODE = /^[A-Z]{3}$/;
+
+function currencyCode(value: string | undefined): string | null {
+  const code = value?.trim().toUpperCase() ?? "";
+  return CURRENCY_CODE.test(code) ? code : null;
+}
+
+/**
+ * The currency a portfolio's totals, market values and P&L are in. A broker
+ * portfolio uses its account currency. A manual portfolio uses its stored
+ * currency with the default USD base (its first holding sets it, see
+ * adoptFirstPositionCurrency); a base currency the user chose is what manual
+ * portfolios and watchlists total in.
+ */
+export function resolvePortfolioTotalsCurrency(portfolio: Portfolio | null | undefined, baseCurrency: string): string {
+  const base = currencyCode(baseCurrency) ?? "USD";
+  if (!portfolio) return base;
+  if (isManualPortfolio(portfolio) && base !== "USD") return base;
+  return currencyCode(portfolio.currency) ?? base;
+}
+
+/**
+ * A compact total in the portfolio's currency. Bare when both it and the app's
+ * base currency are USD, as the pane has always shown it; otherwise it leads
+ * with the currency symbol, as prices do: A$108.6k, +$600.12.
+ */
+export function formatPortfolioAmount(
+  value: number | undefined,
+  currency: string,
+  { signed = false, baseCurrency = "USD" }: { signed?: boolean; baseCurrency?: string } = {},
+): string {
+  const text = formatCompactAmount(value, { signed });
+  const bare = currency === "USD" && (currencyCode(baseCurrency) ?? "USD") === "USD";
+  if (bare || value == null || !Number.isFinite(value)) return text;
+  const sign = text.startsWith("+") || text.startsWith("-") ? text.charAt(0) : "";
+  return `${sign}${getCurrencySymbol(currency)}${text.slice(sign.length)}`;
+}
+
+/** Totals over the collection, every amount converted into `totalsCurrency`. */
 export function calculatePortfolioSummaryTotals(
   tickers: TickerRecord[],
   financialsMap: Map<string, TickerFinancials>,
-  baseCurrency: string,
+  totalsCurrency: string,
   exchangeRates: Map<string, number>,
   isPortfolio: boolean,
   collectionId: string | null,
@@ -73,8 +114,8 @@ export function calculatePortfolioSummaryTotals(
   const pricedLots: PricedPortfolioLot[] = [];
   const now = Date.now();
   const toBase = (value: number, currency: string) => {
-    const converted = convertCurrency(value, currency, baseCurrency, exchangeRates);
-    if (Number.isFinite(value) && !Number.isFinite(converted)) unavailableConversions.add(`${currency}/${baseCurrency}`);
+    const converted = convertCurrency(value, currency, totalsCurrency, exchangeRates);
+    if (Number.isFinite(value) && !Number.isFinite(converted)) unavailableConversions.add(`${currency}/${totalsCurrency}`);
     return converted;
   };
 
@@ -94,7 +135,7 @@ export function calculatePortfolioSummaryTotals(
     }
 
     const positionMetrics = getPortfolioPositionMetrics(ticker, collectionId ?? undefined, quoteCurrency, {
-      currency: baseCurrency, convert: toBase,
+      currency: totalsCurrency, convert: toBase,
     }, quote);
     activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
     const { totalPriceUnits, grossPriceUnits, totalCost } = positionMetrics;

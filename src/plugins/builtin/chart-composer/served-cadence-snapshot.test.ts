@@ -8,7 +8,7 @@ import { buildCustomChartPreset, buildPriceChartPreset } from "./presets";
 
 const daily = [100, 105, 103, 108].map((close, index) => ({ date: new Date(Date.UTC(2026, 8, index + 1)), close, volume: 10 + index }));
 const fine = [1, 2, 3, 4].map((close, index) => ({ date: new Date(Date.UTC(2026, 8, 1, 9, index * 15)), close, volume: 20 + index }));
-const metadata = (symbol: string) => ({ symbol, currency: "USD", instrumentType: "EQUITY" });
+const metadata = (symbol: string) => ({ symbol, currency: "USD", instrumentType: "EQUITY", source: {} });
 const window = { range: "1M" as const, resolution: "auto" as const, dateWindow: { start: "2026-09-01", end: "2026-09-05" } };
 const NOW = Date.parse("2026-09-22T12:00:00Z"), DAY = 86_400_000;
 afterEach(() => setSystemTime());
@@ -59,7 +59,7 @@ test("different assets retain individually served AUTO cadences through capture 
     getPriceHistoryForResolution: async (symbol, _exchange, _range, resolution) => {
       calls.push(`${symbol}:${resolution}`);
       if (symbol === "DAILY" && resolution === "15m") throw new HistoryRetentionError({
-        version: 1, source: "yahoo", symbol, exchange: "NASDAQ", interval: "15min",
+        version: 1, source: "gloom", symbol, exchange: "NASDAQ", interval: "15min",
         requestedStart: NOW - 92 * DAY, requestedEnd: NOW, observedAt: NOW, availableStart: NOW - 60 * DAY,
       });
       if (resolution !== (symbol === "FINE" ? "15m" : "1d")) throw new Error("Unsupported interval");
@@ -141,7 +141,7 @@ test("one instrument's finer market capture cannot substitute for its separately
     getChartResolutionSupport: () => [{ resolution: "15m", maxRange: "ALL" }, { resolution: "1d", maxRange: "ALL" }],
     getPriceHistoryForResolution: async (symbol, _exchange, range, resolution) => {
       if (range === "ALL" && resolution === "15m") throw new HistoryRetentionError({
-        version: 1, source: "yahoo", symbol, exchange: "NASDAQ", interval: "15min",
+        version: 1, source: "gloom", symbol, exchange: "NASDAQ", interval: "15min",
         requestedStart: NOW - 92 * DAY, requestedEnd: NOW, observedAt: NOW, availableStart: NOW - 60 * DAY,
       });
       return resolution === "15m" ? fine : daily;

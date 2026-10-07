@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { testRender, settleFrame } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
@@ -23,11 +23,7 @@ function tickerCommandContext(financials: TickerFinancials) {
   });
 }
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (setup) await act(async () => setup!.renderer.destroy());
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 for (const quoted of [true, false]) test(`fund classification and profile survive ${quoted ? "generic saved broker type" : "missing quote"} across consumers`, async () => {
   const financials: TickerFinancials = {
@@ -35,12 +31,12 @@ for (const quoted of [true, false]) test(`fund classification and profile surviv
     profile, fundamentals: { dividendYield: 0 }, priceHistory: [], annualStatements: [], quarterlyStatements: [],
   };
   await act(async () => {
-    setup = await testRender(<AppContext value={createStaticAppStore(createInitialState(config))}>
+    await tui.render(<AppContext value={createStaticAppStore(createInitialState(config))}>
       <OverviewTab ticker={ticker} financials={financials} width={80} />
     </AppContext>, { width: 80, height: 24 });
   });
-  await settleFrame(setup!, 10);
-  const frame = setup!.captureCharFrame();
+  await settleFrame(tui.setup(), 10);
+  const frame = tui.frame();
   expect(frame).toMatch(/Type\s+ETF/);
   expect(frame).toContain(profile.description);
   expect(frame).toMatch(/Div Yield\s+0.00%/);
@@ -102,12 +98,12 @@ test("blank source type cannot hide retained fund classification while reports s
 test("quote-free reported capitalization retains source units, zero, and provenance without borrowing unknown units", async () => {
   for (const [marketCap, currency] of [[200_000_000, "GBP"], [0, "USD"], [200_000_000, undefined]] as const) {
     const financials: TickerFinancials = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
-      fundamentals: { marketCap, marketCapCurrency: currency, source: "yahoo", fetchedAt: "2026-09-11T14:00:00Z", stale: true },
+      fundamentals: { marketCap, marketCapCurrency: currency, source: "gloom", fetchedAt: "2026-09-11T14:00:00Z", stale: true },
     };
     const text = await buildTickerReport({ symbol: "CLASSA", tickerFile: ticker, financials, config, toBase: async () => Number.NaN });
     if (currency) {
       expect(text).toContain(currency === "GBP" ? "200M GBP" : "0 USD");
-      expect(text).toContain("yahoo fundamentals");
+      expect(text).toContain("gloom fundamentals");
       expect(text).toContain("stale; valuation date unavailable");
     } else expect(text).not.toContain("Market Cap");
     expect(text).toContain("Quote unavailable.");

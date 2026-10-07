@@ -1,6 +1,6 @@
 import { Box } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
-import type { FloatingRect } from "../../../../plugins/pane-manager";
+import type { FloatingRect } from "../../../../layout/pane-manager";
 import type { DragPreview, HoverOverlay } from "./index";
 
 export function ShellDragOverlays({

@@ -23,7 +23,7 @@ import {
   loadCachedFredSeries,
   type FredSeriesData,
   type FredSeriesRequest,
-} from "../../../data/fred-series";
+} from "../../../sources/gloomberb-cloud/fred-series";
 import { colors } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
 import { displayWidth } from "../../../utils/format";

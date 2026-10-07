@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -10,7 +10,7 @@ import type { CdsActivity, CdsSpreadHistory, CdsSpreadHistoryLoader } from "./cl
 import { normalizeCdsTrades } from "./model";
 import { CdsPane } from "./pane";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 const ACTIVITY: CdsActivity = {
   source: "DTCC PPD",
@@ -57,8 +57,6 @@ function trade(
   };
 }
 
-const loadActivity = async () => ACTIVITY;
-
 // Oracle's on-the-run 5Y from the DTCC tape, rolling to the Dec 2031 contract on Sep 21.
 const HISTORY: CdsSpreadHistory = {
   issuer: "Oracle Corporation",
@@ -78,7 +76,7 @@ async function settle() {
   for (let index = 0; index < 6; index += 1) {
     await act(async () => {
       await Promise.resolve();
-      await setup!.renderOnce();
+      await tui.setup().renderOnce();
     });
   }
 }
@@ -121,22 +119,15 @@ async function renderPane(options: {
     );
   }
   await act(async () => {
-    setup = await testRender(<Harness />, { width: 92, height });
+    await tui.render(<Harness />, { width: 92, height });
   });
   await settle();
 }
 
-afterEach(async () => {
-  if (setup) {
-    await act(async () => setup?.renderer.destroy());
-    setup = undefined;
-  }
-});
-
 describe("CdsPane", () => {
   test("groups market activity by issuer, keeping the newest available spread", async () => {
     await renderPane();
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
 
     // Most active first: numeric notation 4 stays 250bp; decimal notation 3 becomes 90bp.
     const oracle = frame.indexOf("Oracle Corporation");
@@ -150,12 +141,12 @@ describe("CdsPane", () => {
   test("opens the selected issuer's trades and shows -- for an unreported spread", async () => {
     await renderPane();
     await act(async () => {
-      setup!.mockInput.pressEnter();
-      await setup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await settle();
 
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("NOTIONAL");
     // Capped notional keeps its "+", and the coupon is shown instead of an implied spread.
     expect(frame).toContain("5M+");
@@ -175,7 +166,7 @@ describe("CdsPane", () => {
         return HISTORY;
       },
     });
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     const lines = frame.split("\n");
     const tableHeader = lines.findIndex((line) => line.includes("TIME UTC"));
 
@@ -194,20 +185,18 @@ describe("CdsPane", () => {
   test("fits the chart into a short pane's spare rows, then gives way to a strip", async () => {
     // Three trades need four rows, so a 12-row pane still has six for the chart.
     await renderPane({ symbol: "ORCL", height: 12, activity: { ...ACTIVITY, issuer: "Oracle Corporation" } });
-    let lines = setup!.captureCharFrame().split("\n");
+    let lines = tui.frame().split("\n");
     expect(lines.findIndex((line) => line.includes("TIME UTC"))).toBe(12 - 4);
     expect(lines.some((line) => line.includes("● 5Y spread"))).toBe(true);
-    await act(async () => setup?.renderer.destroy());
     // Nine rows: the figures, then a compact chart in the rows the three trades leave.
     await renderPane({ symbol: "ORCL", height: 9, activity: { ...ACTIVITY, issuer: "Oracle Corporation" } });
-    lines = setup!.captureCharFrame().split("\n");
+    lines = tui.frame().split("\n");
     expect(lines[0]).toContain("235bp");
     expect(lines.some((line) => line.includes("● 5Y spread"))).toBe(true);
     expect(lines.findIndex((line) => line.includes("TIME UTC"))).toBe(9 - 4);
-    await act(async () => setup?.renderer.destroy());
     // Seven rows: too short for any chart, so a one-row strip, then every trade.
     await renderPane({ symbol: "ORCL", height: 7, activity: { ...ACTIVITY, issuer: "Oracle Corporation" } });
-    lines = setup!.captureCharFrame().split("\n");
+    lines = tui.frame().split("\n");
     const tableHeader = lines.findIndex((line) => line.includes("TIME UTC"));
     expect(lines[tableHeader - 1]).toContain("●");
     expect(lines.filter((line) => /\d{2}\/\d{2} \d{2}:\d{2}/.test(line))).toHaveLength(3);
@@ -222,7 +211,7 @@ describe("CdsPane", () => {
         throw new Error("offline");
       },
     });
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Oracle Corporation");
     expect(frame).toContain("5M+");
     expect(frame).not.toContain("5Y spread");
@@ -239,12 +228,12 @@ describe("CdsPane", () => {
     });
     expect(requested).toEqual([]);
     await act(async () => {
-      setup!.mockInput.pressEnter();
-      await setup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
     await settle();
     expect(requested).toEqual(["Oracle Corporation"]);
-    const frame = setup!.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("5Y spread");
     // The detail title already names the issuer; the figures do not repeat it.
     expect(frame.split("Oracle Corporation").length - 1).toBe(1);

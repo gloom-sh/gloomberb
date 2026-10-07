@@ -8,8 +8,6 @@ import {
 import { FearGreedPane } from "./pane";
 import { fearGreedHeadless } from "./headless";
 
-export { fearGreedHeadless } from "./headless";
-
 export const fearGreedPlugin: GloomPlugin = {
   id: "fear-greed",
   name: "Fear & Greed",

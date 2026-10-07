@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { setSharedMarketDataCoordinator, type MarketDataCoordinator } from "../../market-data/coordinator";
 import { buildQuoteKey } from "../../market-data/selectors";
 import { createIdleEntry, type QueryEntry } from "../../market-data/result-types";
@@ -17,7 +17,7 @@ import { INLINE_TICKER_STREAM_WEIGHT, useInlineTickers } from "./inline-tickers"
 import { resetInlineTickerFailures } from "./inline-ticker-failures";
 import { createTestTicker } from "../../test-support/ticker";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 
 function InlineTickerHarness({ liveQuotes = true }: { liveQuotes?: boolean }) {
   const { catalog } = useInlineTickers(["$LGD1L"], { liveQuotes });
@@ -30,21 +30,15 @@ async function renderUntil(status: string): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 2));
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    frame = testSetup!.captureCharFrame();
+    frame = tui.frame();
     if (frame.includes(status)) break;
   }
   return frame;
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
-  }
-  testSetup = undefined;
+afterEach(() => {
   resetInlineTickerFailures();
   setSharedMarketDataCoordinator(null);
   setSharedRegistryForTests(undefined);
@@ -66,7 +60,7 @@ describe("useInlineTickers", () => {
     } as unknown as PluginRegistry);
 
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
           <InlineTickerHarness />
         </AppContext>,
@@ -94,7 +88,7 @@ describe("useInlineTickers", () => {
     } as unknown as PluginRegistry);
 
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <AppContext value={createStaticAppStore(state)}>
           <InlineTickerHarness liveQuotes={false} />
         </AppContext>,
@@ -103,11 +97,11 @@ describe("useInlineTickers", () => {
     });
 
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
       await Promise.resolve();
     });
 
-    expect(testSetup!.captureCharFrame()).toContain("ready");
+    expect(tui.frame()).toContain("ready");
     expect(quoteCalls).toBe(0);
   });
 
@@ -128,7 +122,7 @@ describe("useInlineTickers", () => {
     } as unknown as PluginRegistry);
 
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <AppContext value={createStaticAppStore(state)}>
           <InlineTickerHarness />
         </AppContext>,
@@ -191,7 +185,7 @@ describe("useInlineTickers", () => {
     }
 
     await act(async () => {
-      testSetup = await testRender(
+      await tui.render(
         <AppContext value={createStaticAppStore(state)}>
           <Host />
         </AppContext>,

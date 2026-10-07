@@ -5,6 +5,7 @@ import type { WindowEditMode } from "../../../../plugins/registry";
 import {
   armDoubleEscapeClose,
   createDoubleEscapeCloseState,
+  offerEscapeTowardClose,
   resetDoubleEscapeClose,
   takeDoubleEscapeClose,
 } from "../../../../utils/double-escape-close";
@@ -100,12 +101,23 @@ export function useShellPaneManagementShortcuts({
     }
   }, { phase: "before" });
 
+  const armDoubleEscape = () => {
+    armDoubleEscapeClose(doubleEscapeCloseRef.current, focusedPaneId, Date.now());
+  };
+
+  // A pane that uses an Esc to leave an empty field may still count it.
+  useShortcut((event) => {
+    if (event.name !== "escape" && event.name !== "esc") return;
+    if (hasActiveDrag() || overlayOpen) return;
+    offerEscapeTowardClose(event, armDoubleEscape);
+  }, { phase: "before", allowEditable: true });
+
   // Only an Esc nothing else used arms the close, including a footer's Esc
   // hint: the idle phase runs last and never sees a key a handler consumed.
   useShortcut((event) => {
     if (event.name !== "escape" && event.name !== "esc") return;
     if (hasActiveDrag() || overlayOpen) return;
-    armDoubleEscapeClose(doubleEscapeCloseRef.current, focusedPaneId, Date.now());
+    armDoubleEscape();
   }, { phase: "idle" });
 
   // The pane menu key is a fallback too: a pane that binds "." keeps it,

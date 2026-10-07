@@ -1,9 +1,10 @@
 /**
  * Email/password auth form body, without any surrounding chrome. The dialog
  * wraps it in a `DialogFrame`; the hosted-terminal sign-in gate wraps it in its
- * own panel. All the non-React logic lives in `auth-model`.
+ * own panel. The sign-in attempt it shares with onboarding lives in
+ * `email-auth-attempt`, the non-React logic in `auth-model`.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { apiClient, type AuthUser } from "../../../api-client";
 import { matchesKeyChord, parseKeyChord } from "../../../app/keybindings";
 import { Button, Spinner, TextField } from "../../../components";
@@ -13,19 +14,10 @@ import { colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { useDialogKeyboard } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
-import {
-  advanceAccountField,
-  classifyAccountError,
-  performEmailAuth,
-  validateAccountEmail,
-  validateAccountPassword,
-  type AccountMode,
-  type AccountSubmitError,
-} from "./auth-model";
+import { validateAccountEmail, type AccountMode } from "./auth-model";
+import { useEmailAuthAttempt, type EmailAuthField } from "./email-auth-attempt";
 
-export const AUTH_FIELD_WIDTH = 42;
-
-type AuthField = "email" | "password";
+const AUTH_FIELD_WIDTH = 42;
 
 type ResetState = "idle" | "sending" | "sent";
 
@@ -70,46 +62,48 @@ export function AuthForm({
   const [mode, setMode] = useState<AccountMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [activeField, setActiveField] = useState<AuthField>("email");
+  const [activeField, setActiveField] = useState<EmailAuthField>("email");
   const [showPassword, setShowPassword] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<AccountSubmitError | null>(null);
   const [resetState, setResetState] = useState<ResetState>("idle");
-  const attemptRef = useRef(0);
   const emailInputRef = useRef<InputRenderable>(null);
   const passwordInputRef = useRef<InputRenderable>(null);
+  const {
+    submitting,
+    validationError,
+    submitError,
+    setValidationError,
+    setSubmitError,
+    clearErrors,
+    cancel,
+    submit,
+    submitField,
+  } = useEmailAuthAttempt({
+    mode,
+    email,
+    password,
+    onFocusField: setActiveField,
+    onSwitchToLogin: () => switchMode("login"),
+    onSignedIn,
+  });
 
   /**
    * Moves the keyboard to a field. Focusing directly as well as through the
    * `focused` prop brings it back when a clicked button holds the focus and
    * the field is already the active one.
    */
-  const focusField = useCallback((field: AuthField) => {
+  const focusField = useCallback((field: EmailAuthField) => {
     setActiveField(field);
     if (!submitting) (field === "email" ? emailInputRef : passwordInputRef).current?.focus?.();
   }, [submitting]);
 
-  const clearErrors = useCallback(() => {
-    setValidationError(null);
-    setSubmitError(null);
-  }, []);
-
-  useEffect(() => () => {
-    // Unmounting abandons any in-flight attempt so a late response can't set state.
-    attemptRef.current += 1;
-  }, []);
-
   const switchMode = useCallback((nextMode: AccountMode) => {
-    attemptRef.current += 1;
+    cancel();
     setMode(nextMode);
-    setSubmitting(false);
     setPassword("");
     setResetState("idle");
-    clearErrors();
     setActiveField(email.trim() ? "password" : "email");
     onModeChange?.(nextMode);
-  }, [clearErrors, email, onModeChange]);
+  }, [cancel, email, onModeChange]);
 
   const requestReset = useCallback(() => {
     if (submitting || resetState === "sending") return;
@@ -128,64 +122,7 @@ export function AuthForm({
         setResetState("idle");
         setSubmitError({ message: t("Could not send the reset email."), kind: "retry" });
       });
-  }, [clearErrors, email, resetState, submitting]);
-
-  const submit = useCallback(() => {
-    if (submitting) return;
-    const trimmedEmail = email.trim();
-    const emailError = validateAccountEmail(trimmedEmail);
-    if (emailError) {
-      setActiveField("email");
-      setValidationError(emailError);
-      return;
-    }
-    const passwordError = validateAccountPassword(password, mode);
-    if (passwordError) {
-      setActiveField("password");
-      setValidationError(passwordError);
-      return;
-    }
-
-    const attemptId = attemptRef.current + 1;
-    attemptRef.current = attemptId;
-    setSubmitting(true);
-    clearErrors();
-    void (async () => {
-      try {
-        const user = await performEmailAuth(mode, trimmedEmail, password);
-        if (attemptRef.current !== attemptId) return;
-        onSignedIn(user);
-      } catch (error) {
-        if (attemptRef.current !== attemptId) return;
-        setSubmitting(false);
-        setSubmitError(classifyAccountError(error, mode));
-      }
-    })();
-  }, [clearErrors, email, mode, onSignedIn, password, submitting]);
-
-  const submitField = useCallback(() => {
-    // The email already has an account: Enter carries it over to log in.
-    if (submitError?.kind === "switch-to-login" && !submitting) {
-      switchMode("login");
-      return;
-    }
-    const advance = advanceAccountField({
-      mode,
-      email: email.trim(),
-      password,
-      fieldIdx: activeField === "email" ? 0 : 1,
-    });
-    if (advance.action === "invalid") {
-      setValidationError(advance.message);
-      return;
-    }
-    if (advance.action === "next-field") {
-      setValidationError(null);
-      setActiveField("password");
-      return;
-    }
-    submit();
-  }, [activeField, email, mode, password, submit, submitError, submitting, switchMode]);
+  }, [clearErrors, email, resetState, setSubmitError, setValidationError, submitting]);
 
   useDialogKeyboard((event) => {
     if (event.name === "escape") {
@@ -246,7 +183,7 @@ export function AuthForm({
           setResetState("idle");
           clearErrors();
         }}
-        onSubmit={submitField}
+        onSubmit={() => submitField(activeField)}
       />
       <Box flexDirection="column">
         <Box height={1} width={AUTH_FIELD_WIDTH} flexDirection="row" justifyContent="space-between">
@@ -279,7 +216,7 @@ export function AuthForm({
             setPassword(value);
             clearErrors();
           }}
-          onSubmit={submitField}
+          onSubmit={() => submitField(activeField)}
         />
       </Box>
       <Box flexDirection="column" minHeight={2} width={AUTH_FIELD_WIDTH}>

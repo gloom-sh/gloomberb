@@ -47,7 +47,11 @@ describe("Form 4 transaction parsing", () => {
 
   test("a director without an officer title is labeled, and a Form 4 without transaction lines is a disclosure, not a parse failure", () => {
     const director = `<reportingOwner><reportingOwnerId><rptOwnerName>DIRECTOR A</rptOwnerName><rptOwnerCik>9</rptOwnerCik></reportingOwnerId><reportingOwnerRelationship><isDirector>1</isDirector><officerTitle></officerTitle></reportingOwnerRelationship></reportingOwner>`;
-    expect(parseForm4Xml(`<ownershipDocument>${director}${transaction("S", "Common Stock", "10", "5")}</ownershipDocument>`)[0]?.title).toBe("Director");
+    expect(parseForm4Xml(`<ownershipDocument>${director}${transaction("S", "Common Stock", "10", "5")}</ownershipDocument>`)[0]).toMatchObject({ title: "Director", reportingOwners: [{ director: true, tenPercentOwner: false }] });
+    // The 10b5-1 box is one per form; forms filed before it existed leave it unknown.
+    expect(parseForm4Xml(`<ownershipDocument>${director}<aff10b5One>1</aff10b5One>${transaction("S", "Common Stock", "10", "5")}</ownershipDocument>`)[0]?.rule10b51).toBe(true);
+    expect(parseForm4Xml(`<ownershipDocument>${director}<aff10b5One>0</aff10b5One>${transaction("S", "Common Stock", "10", "5")}</ownershipDocument>`)[0]?.rule10b51).toBe(false);
+    expect(parseForm4Xml(`<ownershipDocument>${director}${transaction("S", "Common Stock", "10", "5")}</ownershipDocument>`)[0]?.rule10b51).toBeUndefined();
     const exit = parseInsiderFiling(filing, `<ownershipDocument>${owner}<remarks>No longer subject to Section 16.</remarks></ownershipDocument>`);
     expect(buildInsiderRows(exit)[0]).toMatchObject({ status: "disclosure", remarks: "No longer subject to Section 16." });
     expect(buildInsiderSummary(exit, new Date("2026-09-10").getTime())).toBe("Loaded filings, last 90 days: no parsed non-derivative buys/sales.");

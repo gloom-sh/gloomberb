@@ -1,4 +1,4 @@
-import { displayWidth } from "./format";
+import { displayWidth, truncateToDisplayWidth } from "./format";
 
 export function truncateWithEllipsis(text: string, width: number): string {
   if (width <= 0) return "";
@@ -56,16 +56,21 @@ export function wrapTextLines(
     let current = "";
     for (const rawWord of paragraph.split(" ")) {
       let word = rawWord;
-      while (word.length > width) {
-        const available = current ? width - current.length - 1 : width;
+      while (displayWidth(word) > width) {
+        const available = current ? width - displayWidth(current) - 1 : width;
         if (available <= 0) {
           pushLine(current);
           current = "";
           continue;
         }
-        if (word.length <= available) break;
-        const piece = word.slice(0, available);
-        word = word.slice(available);
+        if (displayWidth(word) <= available) break;
+        const piece = splitLongTextSegmentByDisplayWidth(word, available)[0]!;
+        if (current && displayWidth(piece) > available) {
+          pushLine(current);
+          current = "";
+          continue;
+        }
+        word = word.slice(piece.length);
         pushLine(current ? `${current} ${piece}` : piece);
         current = "";
       }
@@ -75,7 +80,7 @@ export function wrapTextLines(
         continue;
       }
 
-      if (current.length + 1 + word.length <= width) {
+      if (displayWidth(current) + 1 + displayWidth(word) <= width) {
         current = `${current} ${word}`;
       } else {
         pushLine(current);
@@ -92,7 +97,7 @@ export function wrapTextLines(
     lines.length === maxLines &&
     paragraphs.join(" ").length > lines.join(" ").length
   ) {
-    lines[maxLines - 1] = truncateWithEllipsis(
+    lines[maxLines - 1] = truncateToDisplayWidth(
       lines[maxLines - 1] ?? "",
       width,
     );

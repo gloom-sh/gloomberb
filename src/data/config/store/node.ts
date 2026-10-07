@@ -1,12 +1,12 @@
 import { existsSync, readdirSync, type Dirent } from "fs";
 import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
-import { dirname, join } from "path";
-import { expandUserHome, getGloomberbHome, isGloomberbHomeOverridden } from "../home";
+import { dirname, join, resolve } from "path";
+import { expandUserHome, getGloomberbDirs } from "../home";
 import type { AppConfig } from "../../../types/config";
 import { createDefaultConfig } from "../../../types/config";
 import { debugLog } from "../../../utils/debug-log";
 import { findAbsorbedCheckout, isDirectoryOrLink, isPluginDirectory } from "../../../plugins/loader";
-import { EXTRACTED_PLUGINS } from "../../../plugins/seed";
+import { EXTRACTED_PLUGINS } from "../../../plugins/extracted-plugins";
 import type { ConfigMigrationHost } from "./migrations";
 import {
   normalizeConfigForSave,
@@ -15,8 +15,16 @@ import {
 
 const configLog = debugLog.createLogger("config");
 
-function getGlobalConfigFile(): string {
-  return join(getGloomberbHome(), "config.json");
+/**
+ * The config.json for a data directory: the file inside it, except that the
+ * default data directory of the XDG layout keeps its config in the config
+ * directory. A data directory chosen in config.json still carries its own
+ * file, as everywhere else, and the global one only points at it.
+ */
+function configFileFor(dataDir: string): string {
+  const dirs = getGloomberbDirs();
+  if (dirs.kind === "xdg" && resolve(dataDir) === resolve(dirs.data)) return dirs.configFile;
+  return join(dataDir, "config.json");
 }
 
 const expandHomePath = expandUserHome;
@@ -24,17 +32,19 @@ const expandHomePath = expandUserHome;
 /**
  * The data directory the global config records, or null on a first run.
  *
- * Under `GLOOMBERB_HOME`, a recorded directory that no longer exists gives
- * way to the home itself: a config.json carried along in a moved folder
- * still names the old `~/.gloomberb`, and honouring that would recreate the
- * old folder, which is the one thing the move was meant to avoid.
+ * Under `GLOOMBERB_HOME` or the XDG layout, a recorded directory that no
+ * longer exists gives way to the default data directory: a config.json
+ * carried along in a moved folder still names the old `~/.gloomberb`, and
+ * honouring that would recreate the old folder, which is the one thing the
+ * move was meant to avoid.
  */
 export async function getDataDir(): Promise<string | null> {
   try {
-    const raw = await readFile(getGlobalConfigFile(), "utf-8");
+    const dirs = getGloomberbDirs();
+    const raw = await readFile(dirs.configFile, "utf-8");
     const config = JSON.parse(raw) as { dataDir?: string };
     const recorded = config.dataDir || null;
-    if (recorded && isGloomberbHomeOverridden() && !existsSync(recorded)) return getGloomberbHome();
+    if (recorded && dirs.kind !== "home" && !existsSync(recorded)) return dirs.data;
     return recorded;
   } catch {
     return null;
@@ -44,11 +54,11 @@ export async function getDataDir(): Promise<string | null> {
 /**
  * Whether the plugins folder holds a copy of a plugin that is built in now,
  * under its own folder name or another whose gloom.json claims the id. Only a
- * one-time migration asks, so no ordinary load reads the folder. The home is
+ * one-time migration asks, so no ordinary load reads the folder. The folder is
  * resolved per call, so a test can point it away from the real plugins.
  */
 function hasAbsorbedPluginCheckout(pluginId: string): boolean {
-  const pluginsDir = join(getGloomberbHome(), "plugins");
+  const pluginsDir = getGloomberbDirs().plugins;
   let entries: Dirent[];
   try {
     entries = readdirSync(pluginsDir, { withFileTypes: true });
@@ -71,14 +81,14 @@ export async function loadConfig(dataDir: string): Promise<AppConfig> {
 }
 
 async function loadConfigState(dataDir: string): Promise<{ config: AppConfig; needsSave: boolean }> {
-  const configPath = join(dataDir, "config.json");
+  const configPath = configFileFor(dataDir);
 
   try {
     const raw = await readFile(configPath, "utf-8");
     const saved = JSON.parse(raw) as Record<string, unknown>;
     const state = normalizeLoadedConfig(saved, dataDir, migrationHost);
-    // A config.json that names a different directory than the one it sits in
-    // came along with a moved folder. Record where it lives now, so the next
+    // A config.json that names a different directory than the one it belongs
+    // to came along with a moved folder. Record where it lives now, so the next
     // launch reads it directly instead of through the missing-path fallback.
     const recorded = typeof saved.dataDir === "string" ? saved.dataDir : null;
     return { config: state.config, needsSave: state.needsSave || (recorded !== null && recorded !== dataDir) };
@@ -93,7 +103,7 @@ async function loadConfigState(dataDir: string): Promise<{ config: AppConfig; ne
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
-  const configPath = join(config.dataDir, "config.json");
+  const configPath = configFileFor(config.dataDir);
   await mkdir(dirname(configPath), { recursive: true });
 
   const persisted = normalizeConfigForSave(config);
@@ -119,6 +129,9 @@ export async function initDataDir(dataDir: string): Promise<AppConfig> {
 
 export async function resetAllData(dataDir: string): Promise<void> {
   await rm(dataDir, { recursive: true, force: true });
+  // Settings outside the data directory (the XDG config file) go too, or the
+  // next launch would skip the setup wizard the reset promises.
+  await rm(configFileFor(dataDir), { force: true });
 }
 
 export async function exportConfig(config: AppConfig, destPath: string): Promise<void> {

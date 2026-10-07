@@ -10,7 +10,7 @@ import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS, importPluginHostModule } from ".
  * Compiles an external plugin for a renderer that cannot read the filesystem.
  *
  * The terminal renderer runs in Bun and can `import()` a plugin directly from
- * `~/.gloomberb/plugins`. The desktop view and the hosted browser app cannot:
+ * the plugins folder. The desktop view and the hosted browser app cannot:
  * they are browser contexts running a sealed bundle, so plugin source has to be
  * compiled to an ES module they can fetch.
  *
@@ -50,7 +50,7 @@ export function buildSharedModuleSource(specifier: string, exportNames: readonly
  *
  * Those get bundled into the plugin, which is the intent: anything holding host
  * state is in `SHARED_SPECIFIERS`, so a second copy of the rest costs nothing.
- * Finding them is the problem. A plugin installed under `~/.gloomberb/plugins`
+ * Finding them is the problem. A plugin installed in the plugins folder
  * has a symlinked `node_modules/gloomberb` (see host-link.ts), but one compiled
  * straight out of this repo's `node_modules` has none, and linking it there
  * would point a nested `node_modules` back at the repo root. Reading the host's
@@ -87,7 +87,7 @@ export interface BundlePluginResult {
  * how names are discovered — the bundler runs in Bun and can simply import the
  * real module, but a test should not have to.
  */
-export function createSharedModuleResolver(
+function createSharedModuleResolver(
   exportNamesFor: (specifier: string) => Promise<readonly string[]>,
   onShared?: (specifier: string) => void,
 ): import("bun").BunPlugin {

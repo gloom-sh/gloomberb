@@ -8,8 +8,9 @@ import type { Portfolio, TickerRecord, Watchlist } from "../../../types/ticker";
 import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";
 import { parseTickerListInput } from "../../../tickers/list";
 import { resolveTickerOpenTarget, type TickerOpenTarget } from "../../../tickers/open-target";
-import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
+import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
 import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { captureAttentionAction } from "../../../telemetry/attention-counts";
 
 export interface SharedWorkflowDeps {
   dataProvider: DataProvider;
@@ -147,7 +148,7 @@ export async function resolveTickerInput(
   let resolvedTicker;
   try {
     const query = rawInput?.trim() || activeTicker || "";
-    if (options.preserveListingKey && (parsePublicTickerKey(query).exchange || tickerHasYahooSuffix(query.toUpperCase()))) {
+    if (options.preserveListingKey && (parsePublicTickerKey(query).exchange || tickerHasListingSuffix(query.toUpperCase()))) {
       // Commands and incoming layouts must preserve the same validated listing
       // key, including when the repository already stores a bare-symbol holding.
       const target = await resolveTickerOpenTarget({
@@ -202,6 +203,7 @@ export async function applyCollectionMembershipChange(
   collectionId: string,
   deps: SharedWorkflowDeps,
 ): Promise<{ changed: boolean; ticker: TickerRecord }> {
+  const recordAttention = captureAttentionAction();
   const field = kind === "watchlist" ? "watchlists" : "portfolios";
   const currentValues = ticker.metadata[field];
   const nextValues = action === "add"
@@ -221,6 +223,9 @@ export async function applyCollectionMembershipChange(
   };
   await deps.tickerRepository.saveTicker(nextTicker);
   deps.dispatch({ type: "UPDATE_TICKER", ticker: nextTicker });
+  if (kind === "watchlist" && action === "add") {
+    recordAttention(publicTickerKey(nextTicker.metadata.ticker, nextTicker.metadata.exchange), "watchlist_add");
+  }
   return { changed: true, ticker: nextTicker };
 }
 

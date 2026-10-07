@@ -6,7 +6,7 @@
 import { apiClient } from "../../api-client";
 import type { BrokerOrderType } from "../../types/trading";
 
-export interface SignedInBrokerCapabilities {
+interface SignedInBrokerCapabilities {
   history: boolean;
   executions: boolean;
   orders: false | { mode: "review" | "direct"; types: BrokerOrderType[] };

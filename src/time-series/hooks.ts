@@ -1,11 +1,11 @@
 import { createContext, useContext, useMemo } from "react";
 import { apiClient } from "../api-client";
-import { loadCachedFredSeries } from "../data/fred-series";
+import { loadCachedFredSeries } from "../sources/gloomberb-cloud/fred-series";
 import { instrumentFromTicker } from "../market-data/request-types";
 import { useAssetData, useCapabilityInvoker } from "../plugins/runtime";
 import { createChartSeriesResolver } from "../capabilities";
 import { useAppSelector } from "../state/app/context";
-import type { FredSeriesRequest } from "../data/fred-series";
+import type { FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import type { TickerRecord } from "../types/ticker";
 import type { ChartResolutionResult, ChartSpec } from "./types";
 import {

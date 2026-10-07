@@ -52,6 +52,38 @@
       }
     },
     {
+      "id": "clinical-trials",
+      "name": "Clinical Trials",
+      "description": "Track clinical trials from ClinicalTrials.gov. Search by condition, drug, or sponsor with phase and status.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "trials"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "comment-letters",
+      "name": "SEC Comment Letters",
+      "description": "SEC staff comment letters and company responses (CORRESP and UPLOAD). Search their text or list a company's letters by ticker.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "comment-letters"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "custom-view",
       "name": "Custom Views",
       "description": "Tables built from any data function: columns, a filter, a sort. Made by the agent, shared with a team.",
@@ -101,7 +133,8 @@
           "chat",
           "congress-trades",
           "team",
-          "thesis-board"
+          "thesis-board",
+          "unread-inbox"
         ],
         "capabilities": [
           "asset-data.gloomberb-cloud",
@@ -126,6 +159,7 @@
           "cds",
           "cdx-board",
           "central-bank-rates",
+          "cpi",
           "credit-conditions",
           "earnings-calendar",
           "earnings-calls",
@@ -155,14 +189,20 @@
       "toggleable": true,
       "contributes": {
         "panes": [
+          "attention",
+          "attention-trending",
           "correlation",
           "cot",
           "crypto-board",
+          "doe",
           "equity-screener",
           "futures",
           "futures-curve",
           "fx-matrix",
+          "gpu",
           "market-movers",
+          "perps",
+          "power",
           "relationship-graph",
           "relative-rotation",
           "scanner-flow",
@@ -188,6 +228,7 @@
           "news-breaking",
           "news-feed",
           "news-industry",
+          "news-story",
           "news-top",
           "ticker-news"
         ],
@@ -205,6 +246,22 @@
       "toggleable": true,
       "contributes": {
         "panes": [],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "openfda",
+      "name": "FDA Reports and Recalls",
+      "description": "FDA adverse event reports for drugs and devices, and drug recalls, from openFDA. Search by drug, device, or firm name.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "adverse-events"
+        ],
         "capabilities": [],
         "broker": false
       }
@@ -255,60 +312,61 @@
       "contributes": {
         "panes": [
           "analyst-research",
+          "apps",
+          "awards",
           "backtest",
+          "catalysts",
           "chart-composer",
+          "company-guidance",
+          "company-kpis",
           "corporate-actions",
+          "credit-documents",
           "data-catalog",
           "debt-maturities",
           "dividend-yield",
           "earnings-estimates",
+          "earnings-ripple",
           "equity-diagnostic",
           "estimate-revisions",
           "executives",
+          "exposure",
           "filing-events",
           "financial-analysis",
+          "hiring",
           "historical-prices",
           "holders",
           "insider",
           "iv-history",
           "iv-screen",
           "jobs",
+          "litigation",
+          "macro-day",
           "mna",
           "options",
           "options-calculator",
+          "options-positioning",
           "options-scenario",
+          "pe-band",
           "quote-monitor",
           "realized-vol",
           "relative-valuation",
+          "returns",
           "revenue-breakdown",
+          "reverse-dcf",
           "risk-factors",
+          "seasonality",
           "sec",
           "short-interest",
           "short-volume",
+          "short-watch",
           "social-mentions",
+          "supply-chain",
           "thirteenf-funds",
           "ticker-research",
           "time-sales",
           "vol-surface"
         ],
         "capabilities": [],
-        "broker": false
-      }
-    },
-    {
-      "id": "yahoo",
-      "name": "Yahoo Fallback",
-      "description": "Built-in delayed fallback for quotes, fundamentals, charts, and unsupported cloud data.",
-      "categories": [
-        "data"
-      ],
-      "toggleable": false,
-      "contributes": {
-        "panes": [],
-        "capabilities": [
-          "asset-data.yahoo",
-          "news.yahoo"
-        ],
         "broker": false
       }
     }

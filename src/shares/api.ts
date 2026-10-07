@@ -1,4 +1,3 @@
-import { apiClient } from "../api-client";
 import { ApiRequestError } from "../api-client/errors";
 import { parseSharePayload, type SharePayload } from "./payload";
 
@@ -52,6 +51,9 @@ export async function createShare(payload: SharePayload, fetchImpl?: ShareFetch)
     body = await readJson(response);
   } else {
     try {
+      // Public share pages only read/delete through fetch. Load the signed-in
+      // client when an interactive app creates a share, not on every public view.
+      const { apiClient } = await import("../api-client");
       body = await apiClient.createTerminalShare(validated);
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 401) throw new Error("Sign in to Gloom Cloud to share.");

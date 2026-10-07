@@ -36,7 +36,7 @@ const SCANNER_LABELS: Record<ScannerName, string> = {
  * and returned only if nothing better arrives before the deadline, since a
  * scanner warming up can pass through a stale row on its way to live.
  */
-export function loadScannerSnapshot<T extends ScannerPayload>(
+function loadScannerSnapshot<T extends ScannerPayload>(
   client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
   scanner: ScannerName,
   signal: AbortSignal,
@@ -88,7 +88,7 @@ export function loadHiloSnapshot(
   return loadScannerSnapshot<ScannerHiloPayload>(client, "hilo", signal, timeoutMs);
 }
 
-export function projectHiloSnapshot(
+function projectHiloSnapshot(
   payload: ScannerHiloPayload,
   minPrice: HiloMinPrice,
   sort: HiloSort,
@@ -204,7 +204,7 @@ function flowOption(key: FlowHeadlessFilterKey): HeadlessPaneOptionDef {
   };
 }
 
-export function projectFlowSnapshot(
+function projectFlowSnapshot(
   payload: ScannerFlowPayload,
   filters: FlowFilters,
   now = Date.now(),
@@ -224,7 +224,7 @@ export function projectFlowSnapshot(
   };
 }
 
-export interface FlowHeadlessDependencies {
+interface FlowHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
@@ -232,7 +232,7 @@ export interface FlowHeadlessDependencies {
   ): Promise<ScannerFlowPayload>;
 }
 
-export function createFlowHeadless(
+function createFlowHeadless(
   dependencies: FlowHeadlessDependencies = {
     load: (_args, client, signal) => loadScannerSnapshot<ScannerFlowPayload>(client, "flow", signal),
   },

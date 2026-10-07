@@ -272,7 +272,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
     return (
       <>
         {footer}
-        <SignInWall action="view analyst research" needsVerification={cloudSession.needsVerification} />
+        <SignInWall placement="analyst-signin" action="view analyst research" needsVerification={cloudSession.needsVerification} />
       </>
     );
   }

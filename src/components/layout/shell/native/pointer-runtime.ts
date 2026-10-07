@@ -1,5 +1,5 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
-import type { DockDividerLayout, FloatingRect, LayoutBounds } from "../../../../plugins/pane-manager";
+import type { DockDividerLayout, FloatingRect, LayoutBounds } from "../../../../layout/pane-manager";
 import type { ActionMenuState } from "../action-menu-overlay";
 import type { ShellDragRuntimeState, ShellMouseEvent } from "../drag/runtime";
 import type { WindowEditState } from "../../window-edit/mode";

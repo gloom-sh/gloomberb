@@ -6,7 +6,7 @@ function formattedValue(value: unknown): string { return typeof value === "numbe
 function formattedPercentile(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(0) : "--"; }
 /** The full ratio history stays in the JSON metadata. */
 const RECENT_RATIO_SESSIONS = 20;
-export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
+function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
   return { sections: [
     { title: "Cash VIX tenor curve", entries: [
       { label: "As of", value: data.curve.date },

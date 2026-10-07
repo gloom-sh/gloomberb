@@ -19,6 +19,8 @@ export interface TextPromptDialogProps extends PromptContext<string> {
   confirmLabel?: string;
   /** Sentences rather than a name: a taller field where Shift+Enter breaks a line. */
   multiline?: boolean;
+  /** Lines the multiline field shows. */
+  rows?: number;
   /** Empty is an answer (clearing a value) rather than nothing to save. */
   allowEmpty?: boolean;
   width?: number;
@@ -40,6 +42,7 @@ export function TextPromptDialog({
   placeholder,
   confirmLabel = "Save",
   multiline = false,
+  rows = 3,
   allowEmpty = false,
   width = 72,
   footer,
@@ -83,7 +86,7 @@ export function TextPromptDialog({
         ))}
         {body && body.length > 0 && <Box height={1} />}
         {multiline ? (
-          <Box height={5} border borderColor={colors.border} backgroundColor={colors.panel}>
+          <Box height={rows + 2} border borderColor={colors.border} backgroundColor={colors.panel}>
             <Textarea
               ref={textareaRef}
               initialValue={initialValue}

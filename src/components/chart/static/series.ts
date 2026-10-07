@@ -23,6 +23,8 @@ export interface StaticSeriesOptions {
   dataShape?: ResolvedSeries["dataShape"];
   /** Wall-clock spacing instead of one slot per observation. */
   calendarSpaced?: boolean;
+  /** Columns below zero in this colour. */
+  negativeColor?: string;
 }
 
 export function staticSeries(points: TimeSeriesPoint[], options: StaticSeriesOptions): ResolvedSeries {
@@ -40,6 +42,7 @@ export function staticSeries(points: TimeSeriesPoint[], options: StaticSeriesOpt
     panelId: "main",
     interpolation: "none",
     ...(options.calendarSpaced ? {} : { timeBasis: INDEX_SPACED_TIME_BASIS }),
+    ...(options.negativeColor ? { negativeColor: options.negativeColor } : {}),
     points,
   };
 }

@@ -16,6 +16,7 @@ import { askGloomQuestion } from "./askg/pending-question";
 import { registerCloudAuthCommands } from "./auth-commands";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
 import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
+import { registerTrialOfferCommand, TrialOfferStatusWidget } from "./trial-offer-status-widget";
 import { CloudVerificationStatusWidget } from "./verification-status-widget";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { teamModule } from "./team/module";
@@ -38,19 +39,21 @@ function createCloudDataModule(): PluginModule {
   };
 }
 
-/** Sign-in and upgrade commands, and the email verification and upgrade prompts. */
+/** Sign-in and upgrade commands, and the email verification, upgrade and trial prompts. */
 const cloudAccountModule: PluginModule = {
   slots: {
     "status:widget": () => (
       <>
         <CloudVerificationStatusWidget />
         <CloudUpgradeStatusWidget />
+        <TrialOfferStatusWidget />
       </>
     ),
   },
   setup: (ctx) => {
     registerCloudAuthCommands(ctx);
     registerCloudUpgradeCommand(ctx);
+    registerTrialOfferCommand(ctx);
   },
 };
 

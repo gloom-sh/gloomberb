@@ -18,11 +18,11 @@ export interface SurfaceSettings {
 export const DEFAULT_SURFACE_SETTINGS: SurfaceSettings = {
   ivSource: "recomputed", priceSide: "mid", maxRelativeSpread: 0.5, maxStaleSessions: 5,
 };
-export const SURFACE_MONEYNESS = [0.8, 0.9, 0.95, 1, 1.05, 1.1, 1.2] as const;
-export const SURFACE_DELTAS = [-0.1, -0.25, 0, 0.25, 0.1] as const;
+const SURFACE_MONEYNESS = [0.8, 0.9, 0.95, 1, 1.05, 1.1, 1.2] as const;
+const SURFACE_DELTAS = [-0.1, -0.25, 0, 0.25, 0.1] as const;
 /** 3D delta axis: 10-delta put through ATM (spot strike) to 10-delta call, in 5-delta steps. */
 /** The 3D sheet's constant maturities, as on a dealer surface. */
-export const SURFACE_3D_TENORS = [
+const SURFACE_3D_TENORS = [
   { label: "1W", years: 7 / 365 }, { label: "2W", years: 14 / 365 }, { label: "1M", years: 30 / 365 },
   { label: "2M", years: 61 / 365 }, { label: "3M", years: 91 / 365 }, { label: "4M", years: 122 / 365 },
   { label: "6M", years: 182 / 365 }, { label: "9M", years: 273 / 365 }, { label: "1Y", years: 1 },
@@ -43,7 +43,7 @@ export function surfaceSheetTenors(snapshot: SurfaceSnapshot): ReadonlyArray<{ l
 
 export const SURFACE_3D_DELTAS = [-0.1, -0.15, -0.2, -0.25, -0.3, -0.35, -0.4, -0.45, 0, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1] as const;
 
-export type SurfaceFilterReason = "invalid-contract" | "expiry-mismatch" | "zero-bid" | "crossed"
+type SurfaceFilterReason = "invalid-contract" | "expiry-mismatch" | "zero-bid" | "crossed"
   | "wide-spread" | "no-interest" | "stale-duplicate" | "duplicate" | "itm" | "iv-unavailable";
 export type SurfaceFilterCounts = Record<SurfaceFilterReason, number>;
 
@@ -260,7 +260,7 @@ export function optionQuoteValuationTime(chain: Pick<OptionsChain, "asOf">, now:
 /**
  * Listed strikes the cleaned smile may skip around the forward. A coarse
  * chain skips one; a chain whose near-the-money quotes are all zero-bid
- * (Yahoo after the close, on LEAPS) skips dozens, and a fit bridging the
+ * (after the close, on LEAPS) skips dozens, and a fit bridging the
  * wings then invents the ATM level.
  */
 const MAX_UNQUOTED_FORWARD_STRIKES = 8;
@@ -405,7 +405,7 @@ export interface SurfaceGridOptions {
   fixedTenors?: ReadonlyArray<{ label: string; years: number }>;
 }
 
-export interface SurfaceCell {
+interface SurfaceCell {
   coordinate: number;
   strike: number | null;
   volatility: number | null;
@@ -434,7 +434,7 @@ export interface SurfaceGrid {
 }
 
 /** Default 3D window: strikes within this many ATM standard deviations of the forward. */
-export const SURFACE_SIGMA_WINDOW = 2.5;
+const SURFACE_SIGMA_WINDOW = 2.5;
 
 /**
  * Restrict each listed expiry to strikes within `sigmas` ATM standard
@@ -471,7 +471,7 @@ export function evaluateSurfaceSmile(expiry: SurfaceExpiry, strike: number): num
  * On a delta axis ATM must sit between 45P and 45C; spot does not once the
  * forward drifts away from it at long tenors.
  */
-export function deltaNeutralStrike(forward: number, years: number, volatilityAt: (logMoneyness: number) => number | null): number | null {
+function deltaNeutralStrike(forward: number, years: number, volatilityAt: (logMoneyness: number) => number | null): number | null {
   let k = 0;
   for (let iteration = 0; iteration < 12; iteration += 1) {
     const volatility = volatilityAt(k);

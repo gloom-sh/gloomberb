@@ -15,7 +15,7 @@ import { PluginRenderProvider } from "../../runtime";
 import { positionSizerModule } from "./index";
 import { createTestTicker } from "../../../test-support/ticker";
 
-export const TEST_PANE_ID = "kelly-sizer:test";
+const TEST_PANE_ID = "kelly-sizer:test";
 
 const KellySizerPane = positionSizerModule.panes![0]!.component as (props: {
   paneId: string;

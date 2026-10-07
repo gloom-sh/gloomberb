@@ -2,17 +2,16 @@ import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { Box } from "../../../ui";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
-import { takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { RelativeValuationPane } from "./relative-valuation-pane";
 
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 const paneId = "relative-valuation:test";
 function Harness({ width }: { width: number }) {
   const config = createTestPaneConfig("/tmp/gloom-relative-valuation-test", {
@@ -27,11 +26,9 @@ function Harness({ width }: { width: number }) {
   </TestPaneProvider>;
 }
 async function settle() {
-  for (let i = 0; i < 5; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); await setup!.renderOnce(); });
+  for (let i = 0; i < 5; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); await tui.setup().renderOnce(); });
 }
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   setSharedMarketDataCoordinator(null);
 });
 test("stale peer remains inspectable with contextual failure, excluded quote values and healthy peers intact", async () => {
@@ -44,9 +41,9 @@ test("stale peer remains inspectable with contextual failure, excluded quote val
       fundamentals: { trailingPE: 30.2, operatingMargin: .4, financialCurrency: "USD" },
     };
   } })));
-  await act(async () => { setup = await testRender(<Harness width={120} />, { width: 120, height: 16 }); });
+  await act(async () => { await tui.render(<Harness width={120} />, { width: 120, height: 16 }); });
   await settle();
-  const frame = setup!.captureCharFrame();
+  const frame = tui.frame();
   expect(frame).toContain("Stale quotes: PLD");
   expect(frame).toContain("MISSING: source unavailable");
   expect(frame).toContain("PLD");
@@ -56,9 +53,9 @@ test("stale peer remains inspectable with contextual failure, excluded quote val
   const csv = takeSavedTextFile()!.text;
   expect(csv).toContain("PLD,,,,30.2");
   stale = false;
-  await act(async () => { setup!.mockInput.pressKey("r"); });
+  await act(async () => { tui.setup().mockInput.pressKey("r"); });
   await settle();
-  const recovered = setup!.captureCharFrame();
+  const recovered = tui.frame();
   expect(recovered).toContain("$135.75");
   expect(recovered).not.toContain("Stale quotes:");
   expect(recovered).toContain("MISSING: source unavailable");
@@ -69,28 +66,28 @@ test("stale fundamentals retain their disclosure and export provenance with a fr
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getTickerFinancials: async (symbol) => ({
     annualStatements: [], quarterlyStatements: [], priceHistory: [],
     quote: { symbol, price: 135.75, change: 1, changePercent: 1, currency: "USD", lastUpdated: 1789567200000, stale: false, marketCap: 131e9 },
-    fundamentals: { trailingPE: 30.2, financialCurrency: "USD", source: "yahoo", fetchedAt: "2026-09-11T23:52:16.139Z", stale: symbol === "PLD" && stale },
+    fundamentals: { trailingPE: 30.2, financialCurrency: "USD", source: "gloom", fetchedAt: "2026-09-11T23:52:16.139Z", stale: symbol === "PLD" && stale },
   }) })));
-  setup = await testRender(<Harness width={120} />, { width: 120, height: 16 });
+  await tui.render(<Harness width={120} />, { width: 120, height: 16 });
   await settle();
-  expect(setup.captureCharFrame()).toContain("$135.75");
-  expect(setup.captureCharFrame()).not.toContain("Fundamentals stale");
-  await act(async () => setup!.mockInput.pressKey("!"));
+  expect(tui.frame()).toContain("$135.75");
+  expect(tui.frame()).not.toContain("Fundamentals stale");
+  await act(async () => tui.setup().mockInput.pressKey("!"));
   await settle();
-  expect(setup.captureCharFrame()).toContain("PLD: Fundamentals stale");
-  await act(async () => setup!.mockInput.pressKey("escape"));
+  expect(tui.frame()).toContain("PLD: Fundamentals stale");
+  await act(async () => tui.setup().mockInput.pressKey("escape"));
   await settle();
   await exportPaneTable(paneId, "rv-stale-fundamentals.csv");
   const csv = takeSavedTextFile()!.text;
   expect(csv).toContain("PLD,Fundamentals retrieved,2026-09-11T23:52:16.139Z,Stale,true");
-  expect(csv).not.toContain("yahoo");
+  expect(csv).not.toContain("gloom");
   expect(csv).toContain("PLD,Fundamentals stale");
   stale = false;
-  await act(async () => setup!.mockInput.pressKey("r"));
+  await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
-  await act(async () => setup!.mockInput.pressKey("!"));
+  await act(async () => tui.setup().mockInput.pressKey("!"));
   await settle();
-  expect(setup.captureCharFrame()).not.toContain("Fundamentals stale");
+  expect(tui.frame()).not.toContain("Fundamentals stale");
   await exportPaneTable(paneId, "rv-fresh-fundamentals.csv");
   expect(takeSavedTextFile()!.text).toContain("PLD,Fundamentals retrieved,2026-09-11T23:52:16.139Z,Stale,false");
 });

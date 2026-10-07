@@ -38,7 +38,7 @@ export function useChatChannelNavigation({
   inputFocused,
   onChannelChange,
   resetTranscriptSelection,
-  showChannelSidebar,
+  channelListVisible,
 }: {
   blurInput: () => void;
   /** Whether the sidebar draws a DMs header with no DMs under it yet. */
@@ -51,7 +51,8 @@ export function useChatChannelNavigation({
   inputFocused: boolean;
   onChannelChange?: (channelId: string) => void;
   resetTranscriptSelection: () => void;
-  showChannelSidebar: boolean;
+  /** The sidebar, or in the narrow stack the list that stands in for the channel. */
+  channelListVisible: boolean;
 }): {
   cycleChannel: (direction: 1 | -1) => boolean;
   expandDirectSection: () => void;
@@ -149,7 +150,7 @@ export function useChatChannelNavigation({
   }, [channelIdRef, channels, onChannelChange, setSidebarCursorChannelId, setSidebarHeaderCursor]);
 
   const focusChannelSidebar = useCallback(() => {
-    if (!showChannelSidebar || !onChannelChange) return false;
+    if (!channelListVisible || !onChannelChange) return false;
     if (inputFocused) {
       blurInput();
     }
@@ -172,17 +173,17 @@ export function useChatChannelNavigation({
     resetTranscriptSelection,
     setSidebarFocused,
     setSidebarHeaderCursor,
-    showChannelSidebar,
+    channelListVisible,
     sidebarRows,
   ]);
 
   const focusChatContent = useCallback(() => {
-    if (!showChannelSidebar) return false;
+    if (!channelListVisible) return false;
     flushSidebarCursorChannelId(sidebarCursorChannelIdRef.current);
     setSidebarHeaderCursor(null);
     setSidebarFocused(false);
     return true;
-  }, [flushSidebarCursorChannelId, setSidebarFocused, setSidebarHeaderCursor, showChannelSidebar, sidebarCursorChannelIdRef]);
+  }, [channelListVisible, flushSidebarCursorChannelId, setSidebarFocused, setSidebarHeaderCursor, sidebarCursorChannelIdRef]);
 
   const cursorRowIndex = useCallback(() => {
     const headerKey = sidebarHeaderCursorRef.current;
@@ -201,7 +202,7 @@ export function useChatChannelNavigation({
   }, [setSidebarCursorChannelId, setSidebarHeaderCursor]);
 
   const moveSidebarChannelSelection = useCallback((direction: "up" | "down") => {
-    if (!showChannelSidebar || sidebarRows.length <= 1 || !onChannelChange) return false;
+    if (!channelListVisible || sidebarRows.length <= 1 || !onChannelChange) return false;
     const currentIndex = cursorRowIndex();
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
     const nextIndex = direction === "down"
@@ -211,16 +212,16 @@ export function useChatChannelNavigation({
     if (!nextRow || nextIndex === baseIndex) return true;
     moveSidebarCursorTo(nextRow);
     return true;
-  }, [cursorRowIndex, moveSidebarCursorTo, onChannelChange, showChannelSidebar, sidebarRows]);
+  }, [channelListVisible, cursorRowIndex, moveSidebarCursorTo, onChannelChange, sidebarRows]);
 
   const moveSidebarToEdge = useCallback((edge: "first" | "last") => {
-    if (!showChannelSidebar || !onChannelChange) return false;
+    if (!channelListVisible || !onChannelChange) return false;
     const channelRows = sidebarRows.filter((row) => row.kind === "channel");
     const pool = channelRows.length > 0 ? channelRows : sidebarRows;
     const target = edge === "first" ? pool[0] : pool[pool.length - 1];
     if (target) moveSidebarCursorTo(target);
     return true;
-  }, [moveSidebarCursorTo, onChannelChange, showChannelSidebar, sidebarRows]);
+  }, [channelListVisible, moveSidebarCursorTo, onChannelChange, sidebarRows]);
 
   /** Folds or unfolds the section whose header has the cursor; false when a channel has it. */
   const setSidebarSectionExpanded = useCallback((expanded: boolean | "toggle") => {
@@ -242,10 +243,10 @@ export function useChatChannelNavigation({
   }, [setSidebarCursorChannelId, setSidebarHeaderCursor]);
 
   useEffect(() => {
-    if (focused && showChannelSidebar) return;
+    if (focused && channelListVisible) return;
     setSidebarFocused(false);
     setSidebarHeaderCursor(null);
-  }, [focused, setSidebarFocused, setSidebarHeaderCursor, showChannelSidebar]);
+  }, [channelListVisible, focused, setSidebarFocused, setSidebarHeaderCursor]);
 
   // A header that stopped being drawn (its team left) cannot hold the cursor.
   useEffect(() => {

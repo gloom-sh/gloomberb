@@ -8,7 +8,7 @@ const US_EQUITY_EXCHANGES = new Set([
   "IEX",
   "OTC",
   "PINK",
-  // Yahoo's codes for Cboe BZX and the OTC Markets tiers.
+  // Listing codes for Cboe BZX and the OTC Markets tiers.
   "BTS",
   "PNK",
   "OQB",
@@ -33,7 +33,25 @@ function isEquityType(value?: string): boolean {
   return normalized.length === 0 || ["STK", "EQUITY", "ADR", "COMMONSTOCK", "DEPOSITARYRECEIPT"].includes(normalized);
 }
 
+const FUND_TYPES = new Set(["ETF", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND", "CLOSEDENDFUND"]);
+
+function isFundType(value?: string): boolean {
+  return FUND_TYPES.has(normalize(value).replace(/[\s_-]/g, ""));
+}
+
 export function isUsEquityTicker(ticker: TickerRecord | null | undefined): boolean {
+  return isUsListingOfType(ticker, isEquityType);
+}
+
+/** A US equity, or a US-listed fund, which files fund forms with the SEC. */
+export function isUsEquityOrFundTicker(ticker: TickerRecord | null | undefined): boolean {
+  return isUsListingOfType(ticker, (type) => isEquityType(type) || isFundType(type));
+}
+
+function isUsListingOfType(
+  ticker: TickerRecord | null | undefined,
+  acceptsType: (type?: string) => boolean,
+): boolean {
   if (!ticker) return false;
 
   const primaryContract = ticker.metadata.broker_contracts?.[0];
@@ -45,8 +63,9 @@ export function isUsEquityTicker(ticker: TickerRecord | null | undefined): boole
     ticker.metadata.exchange,
   ];
 
-  return isEquityType(type)
-    && currency === "USD"
+  // A listing saved without a known currency counts by its venue.
+  return acceptsType(type)
+    && (currency === "USD" || !currency)
     && exchangeCandidates.some((exchange) => isUsExchange(exchange));
 }
 

@@ -1,5 +1,6 @@
 import type { Dispatch } from "react";
 import { apiClient } from "../../../api-client";
+import { t } from "../../../i18n";
 import { teamCollectionLocalId } from "../../../plugins/builtin/cloud/team/collections";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
@@ -10,15 +11,15 @@ import {
   validateBrokerProfileValues,
 } from "../../../brokers/profile-form";
 import type { SignedInBroker } from "../../../brokers/signed-in/client";
-import {
-  connectSignedInBrokerProfile,
-  disconnectSignedInProfile,
-  signedInBrokerForProfile,
-} from "../../../brokers/signed-in/connect";
+import { removeBrokerProfile } from "../../../brokers/remove-profile";
+import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect";
 import {
   addTickerToPortfolio,
+  adoptFirstPositionCurrency,
   createManualPortfolio as createManualPortfolioConfig,
   deleteManualPortfolio,
+  deleteWatchlist as deleteWatchlistConfig,
+  hasOpenPortfolioPositions,
   isManualPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
@@ -37,8 +38,11 @@ export type CommandBarNotifyFn = (
 
 export interface CommandBarCollectionWorkflowActions {
   connectBrokerProfile: (brokerId: string, values: WorkflowStringValues) => Promise<void>;
-  /** Opens the connect dialog; rejects with what to tell the user when it is not connected. */
-  connectSignedInBroker: (broker: SignedInBroker) => Promise<void>;
+  /**
+   * Asks the user to connect `broker` (the form's connect step), then syncs
+   * its profile. False when they backed out before it connected.
+   */
+  connectSignedInBroker: (broker: SignedInBroker) => Promise<boolean>;
   createManualPortfolio: (name: string, owner?: CollectionOwner) => Promise<void>;
   createWatchlist: (name: string, owner?: CollectionOwner) => Promise<void>;
   deletePortfolio: (portfolioId: string) => Promise<void>;
@@ -57,6 +61,8 @@ export function createCommandBarCollectionWorkflowActions(options: {
   notify: CommandBarNotifyFn;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
+  /** Shows the connect step for a signed-in broker; the app's connect dialog when missing. */
+  requestBrokerSignIn?: (broker: SignedInBroker) => Promise<boolean>;
   setActiveCollection: (collectionId: string) => void;
   tickerRepository: AppTickerRepositoryPort;
 }): CommandBarCollectionWorkflowActions {
@@ -69,6 +75,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
     notify,
     persistConfig,
     pluginRegistry,
+    requestBrokerSignIn,
     setActiveCollection,
     tickerRepository,
   } = options;
@@ -83,11 +90,11 @@ export function createCommandBarCollectionWorkflowActions(options: {
 
   /** Lands on the synced profile's portfolio once a broker is connected. */
   const showConnectedBroker = (instanceId: string) => {
-    const freshConfig = pluginRegistry.getConfigFn();
+    const freshConfig = pluginRegistry.getConfig();
     dispatch({ type: "SET_CONFIG", config: freshConfig });
     const brokerTab = freshConfig.portfolios.find((portfolio) => portfolio.brokerInstanceId === instanceId);
     if (brokerTab) setActiveCollection(brokerTab.id);
-    notify("Connected! Positions will sync automatically.", { type: "success" });
+    notify(t("Connected! Positions will sync automatically."), { type: "success" });
   };
 
   return {
@@ -101,23 +108,25 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (validationError) throw new Error(validationError);
 
       const brokerValues = buildBrokerProfileConfig(adapter, values);
-      const instance = await pluginRegistry.createBrokerInstanceFn(
+      const instance = await pluginRegistry.createBrokerInstance(
         brokerId,
         adapter.name.trim(),
         brokerValues as Record<string, unknown>,
       );
-      await pluginRegistry.syncBrokerInstanceFn(instance.id);
+      await pluginRegistry.syncBrokerInstance(instance.id);
       showConnectedBroker(instance.id);
     },
 
     async connectSignedInBroker(broker) {
       const connected = await connectSignedInBrokerProfile(broker, {
-        getConfig: () => pluginRegistry.getConfigFn(),
-        createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstanceFn(brokerType, label, values),
-        syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstanceFn(instanceId),
+        getConfig: () => pluginRegistry.getConfig(),
+        createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstance(brokerType, label, values),
+        syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstance(instanceId),
+        requestSignIn: requestBrokerSignIn,
       });
-      if (!connected) throw new Error(`${broker.name} was not connected.`);
+      if (!connected) return false;
       showConnectedBroker(connected.instance.id);
+      return true;
     },
 
     async createManualPortfolio(name, owner) {
@@ -166,15 +175,16 @@ export function createCommandBarCollectionWorkflowActions(options: {
 
     async deleteWatchlist(watchlistId) {
       const currentState = getState();
-      const watchlist = currentState.config.watchlists.find((entry) => entry.id === watchlistId);
-      if (!watchlist) {
-        throw new Error("Watchlist not found.");
+      const { config: nextConfig, watchlist, tickers } = deleteWatchlistConfig(
+        currentState.config,
+        currentState.tickers.values(),
+        watchlistId,
+      );
+      for (const ticker of tickers) {
+        await tickerRepository.saveTicker(ticker);
+        dispatch({ type: "UPDATE_TICKER", ticker });
       }
 
-      const nextConfig = {
-        ...currentState.config,
-        watchlists: currentState.config.watchlists.filter((entry) => entry.id !== watchlistId),
-      };
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       if (activeCollectionId === watchlistId) {
         const fallback = nextConfig.portfolios[0]?.id || nextConfig.watchlists[0]?.id || "";
@@ -253,8 +263,14 @@ export function createCommandBarCollectionWorkflowActions(options: {
         avgCost,
         currency,
       });
+      const firstPosition = !hasOpenPortfolioPositions(portfolio.id, getState().tickers.values());
       await tickerRepository.saveTicker(result.ticker);
       dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
+      const adopted = firstPosition ? adoptFirstPositionCurrency(getState().config, portfolio.id, currency) : null;
+      if (adopted) {
+        dispatch({ type: "SET_CONFIG", config: adopted });
+        persistConfig(adopted);
+      }
       pluginRegistry.events.emit("host:portfolio-ticker-saved", {
         symbol: result.ticker.metadata.ticker,
         portfolioId: portfolio.id,
@@ -299,24 +315,15 @@ export function createCommandBarCollectionWorkflowActions(options: {
     async disconnectBrokerInstance(instanceId) {
       const instance = getState().config.brokerInstances.find((entry) => entry.id === instanceId);
       if (!instance) {
-        throw new Error("Broker profile not found.");
+        throw new Error(t("Broker profile not found."));
       }
-      const { stillConnected } = await disconnectSignedInProfile(instance);
-      await pluginRegistry.removeBrokerInstanceFn(instanceId);
-      const freshConfig = pluginRegistry.getConfigFn();
-      dispatch({ type: "SET_CONFIG", config: freshConfig });
-      if (stillConnected) {
-        // Signed out of Gloom, so the account keeps the broker for its other devices and agents.
-        const broker = signedInBrokerForProfile(instance, instance.label);
-        notify(`Removed ${instance.label}. Sign in to Gloom to disconnect ${broker.name} from your account.`, { type: "info" });
-        return;
-      }
-      notify(`Removed ${instance.label}.`, { type: "success" });
+      const removal = await removeBrokerProfile(instance, instance.label, (id) => pluginRegistry.removeBrokerInstance(id));
+      notify(removal.message, { type: removal.accountKept ? "info" : "success" });
     },
   };
 }
 
-export type CollectionOwner = { kind: "user" } | { kind: "team"; teamId: string };
+type CollectionOwner = { kind: "user" } | { kind: "team"; teamId: string };
 
 /**
  * Creates the collection on the server. The collection.updated frame brings

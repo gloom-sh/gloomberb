@@ -41,7 +41,7 @@ export interface NewsArticle {
   sourceCount?: number;
   items?: NewsStoryItem[];
 
-  // Compatibility aliases for RSS/Yahoo panes and existing table columns.
+  // Compatibility aliases for RSS/ticker-news panes and existing table columns.
   importance: number;
 }
 
@@ -68,7 +68,7 @@ export interface NewsQuery {
   cursor?: string;
 }
 
-export type NewsQueryPhase = "idle" | "loading" | "ready" | "refreshing" | "error";
+type NewsQueryPhase = "idle" | "loading" | "ready" | "refreshing" | "error";
 
 export interface NewsPage {
   /** Active source failure, including a partial failure with usable articles. */

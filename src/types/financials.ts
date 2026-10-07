@@ -41,6 +41,8 @@ export interface QuoteMetadata {
 export interface Quote {
   /** Applies to this price observation; a stored position cannot supply it. */
   priceBasis?: PriceBasis;
+  /** Daily fund net asset value; independent of the units used to format its price. */
+  priceObservation?: "nav";
   symbol: string;
   /** Provider-reported security type, independent of the company profile. */
   instrumentType?: string;
@@ -105,7 +107,7 @@ export interface QuoteContribution extends Quote {
 export type QuoteContributionMap = Record<string, QuoteContribution>;
 
 export interface Fundamentals {
-  source?: "twelvedata" | "yahoo";
+  source?: "gloom";
   fetchedAt?: string;
   stale?: boolean;
   /** Currency of reported revenue, income, and cash flows; may differ from the listing. */
@@ -130,7 +132,7 @@ export interface Fundamentals {
   freeCashFlow?: number;
   dividendYield?: number;
   dividendYieldBasis?: "forward" | "trailing";
-  dividendYieldSource?: "twelvedata" | "yahoo";
+  dividendYieldSource?: "gloom";
   /**
    * Annual dividend per share behind `dividendYield`, in the listing's major
    * currency unit. Served only when its basis matches the yield, so the yield
@@ -370,7 +372,7 @@ export interface ReportedOperatingCohort {
 
 /** @deprecated No longer populated. */
 export interface ProviderOperatingObservation {
-  provider: "yahoo" | "twelvedata";
+  provider: "gloom";
   sourceField: string;
   period: "annual" | "quarterly";
   endDate: string;
@@ -715,7 +717,7 @@ export interface OptionContract {
   lastPrice: number;
   change: number;
   percentChange: number;
-  /** Missing activity is unknown; an explicitly reported zero remains zero. Yahoo reports an untraded volume as zero. */
+  /** Missing activity is unknown; an explicitly reported zero remains zero. */
   volume?: number;
   openInterest?: number;
   bid: number;
@@ -735,7 +737,7 @@ export interface OptionsChain {
   puts: OptionContract[];
   providerId?: string;
   dataSource?: "live" | "delayed";
-  feed?: "opra" | "yahoo";
+  feed?: "opra" | "gloom";
   delayMinutes?: number;
   realtimeEligible?: boolean;
   /** ISO timestamp for the upstream options snapshot. */

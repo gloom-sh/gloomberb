@@ -5,7 +5,7 @@ import { installPluginHostResolver } from "./host-resolver";
 import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
 
 /**
- * External plugins live in `~/.gloomberb/plugins/<name>/`, outside any
+ * External plugins live in `<plugins folder>/<name>/`, outside any
  * `node_modules` chain that could reach the running Gloomberb install. Left
  * alone, `import { Box } from "gloomberb/ui"` does not resolve, and a plugin
  * that lists `react` as a real dependency gets its *own* copy — two React
@@ -31,7 +31,10 @@ const LINKED_PACKAGES = ["gloomberb", "react"] as const;
 
 let cachedHostRoot: string | null | undefined;
 
-/** Walks up from this module to the directory holding the `gloomberb` package.json. */
+/**
+ * Walks up from this module to the directory holding the `gloomberb` package.json.
+ * @knipignore Also imported by the script host-resolver.test.ts compiles and runs.
+ */
 export function findHostPackageRoot(startDir: string = import.meta.dir): string | null {
   if (cachedHostRoot !== undefined && startDir === import.meta.dir) return cachedHostRoot;
   let dir = resolve(startDir);

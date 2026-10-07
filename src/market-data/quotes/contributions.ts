@@ -152,6 +152,12 @@ export function mergeQuoteContribution(
   }
   if (!current) return next;
 
+  // NAV responses are complete dated observations. Never carry an earlier
+  // date or intraday session fields into one, or its marker into a later tick.
+  if (current.priceObservation != null || next.priceObservation != null) {
+    return { ...next, name: next.name ?? current.name };
+  }
+
   const priorBasis = resolvePriceBasis(current.priceBasis, current.instrumentType);
   const samePriceBasis = priorBasis !== null && priorBasis === resolvePriceBasis(next.priceBasis, next.instrumentType || current.instrumentType);
   const merged: QuoteContribution = {

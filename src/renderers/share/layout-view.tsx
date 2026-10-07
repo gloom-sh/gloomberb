@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import type { CSSProperties } from "react";
 import type { DockLayoutNode, PaneInstanceConfig } from "../../types/config";
-import type { LayoutMarketplaceEntry } from "../../layout-marketplace/payload";
+import type { LayoutMarketplaceEntry } from "../../shares/portable-layout";
 
 const PANE_NAMES: Record<string, string> = {
   "chart-composer": "Chart",

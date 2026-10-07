@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { Box } from "../../../../ui";
-import { PaneFooterProvider, PaneFooterBar } from "../../../../components/layout/pane/footer";
+import { PaneFooterProvider, PaneFooterBar, PaneFooterKeys } from "../../../../components/layout/pane/footer";
 import type { ReactElement } from "react";
-import { createTestControls, testRender } from "../../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { AppPersistence } from "../../../../data/app-persistence";
 import { TickerRepository } from "../../../../data/ticker-repository";
 import { appReducer, createInitialState, type AppAction } from "../../../../state/app/context";
@@ -30,7 +30,7 @@ import { createTempDbPath, removeTempDbFiles } from "../../../../test-support/te
 
 const TEST_PANE_ID = "portfolio-list:test";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let harnessDispatch: React.Dispatch<AppAction> | null = null;
 let sharedCoordinator: MarketDataCoordinator | null = null;
 let harnessState: ReturnType<typeof createInitialState> | null = null;
@@ -146,7 +146,7 @@ function installQuickAddRegistry(provider: DataProvider): PluginRegistry {
   const persistence = new AppPersistence(createTempDbPath("quick-add"));
   tempPersistences.push(persistence);
   const registry = new PluginRegistry(provider, new TickerRepository(persistence.tickers), persistence);
-  registry.getConfigFn = () => harnessState?.config ?? createDefaultConfig("/tmp/gloomberb-portfolio-list");
+  registry.bindHost({ getConfig: () => harnessState?.config ?? createDefaultConfig("/tmp/gloomberb-portfolio-list") });
   return registry;
 }
 
@@ -254,10 +254,10 @@ function PortfolioHarness({
 async function flushFrame() {
   await act(async () => {
     await Promise.resolve();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.resolve();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
   });
 }
 
@@ -367,7 +367,7 @@ async function renderHiddenChangePctSortWarmup(options: { staleCachedSiveSnapsho
     }]);
   }
 
-  testSetup = await testRender(
+  await tui.render(
     <PortfolioHarness
       config={config}
       collectionId={portfolioId}
@@ -400,20 +400,16 @@ async function renderHiddenChangePctSortWarmup(options: { staleCachedSiveSnapsho
   );
 
   await flushFrame();
-  const beforeFrame = testSetup.captureCharFrame();
+  const beforeFrame = tui.frame();
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 400));
   });
   await flushFrame();
 
-  return { beforeFrame, frame: testSetup.captureCharFrame(), requestedSnapshots };
+  return { beforeFrame, frame: tui.frame(), requestedSnapshots };
 }
 
-afterEach(async () => {
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
+afterEach(() => {
   harnessDispatch = null;
   sharedCoordinator = null;
   setSharedMarketDataCoordinator(null);
@@ -434,14 +430,13 @@ describe("PortfolioListPane cash and margin UI", () => {
       const portfolioId = "broker:ibkr-flex:DU12345";
       const requested: string[] = [];
       sharedCoordinator = new MarketDataCoordinator(createTestDataProvider({
-        getQuote: async () => null,
         getExchangeRate: async (currency) => { requested.push(currency); return 0.75; },
       }));
       setSharedMarketDataCoordinator(sharedCoordinator);
       const config = createPortfolioConfig(portfolioId, [createBrokerInstance("flex")]);
       config.baseCurrency = "USD";
       await act(async () => {
-        testSetup = await testRender(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+        await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
           <PortfolioHarness config={config} collectionId={portfolioId} paneHeight={23}
             paneWidth={160} brokerAccounts={{ "ibkr-flex": [{
               accountId: "DU12345", name: "Fixture", source: "flex",
@@ -452,7 +447,7 @@ describe("PortfolioListPane cash and margin UI", () => {
         </Box>}</PaneFooterProvider>, { width: 160, height: 24 });
       });
       for (let index = 0; index < 6; index++) await flushFrame();
-      const frame = testSetup!.captureCharFrame();
+      const frame = tui.frame();
       expect(frame).toContain(source === "unknown currency" ? "Net Liq —" : "Net Liq 15.0k");
       expect(frame).toContain(source === "CAD" ? "Cash 13.5k" : "Cash —");
       expect(frame).not.toContain("Cash 0");
@@ -474,24 +469,24 @@ describe("PortfolioListPane cash and margin UI", () => {
       },
     });
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness config={config} collectionId={portfolioId} runtime={runtime} />,
       { width: 100, height: 24 },
     );
 
     await flushFrame();
-    const rowY = testSetup.captureCharFrame().split("\n").findIndex((line) => line.includes("AAPL"));
+    const rowY = tui.frame().split("\n").findIndex((line) => line.includes("AAPL"));
     expect(rowY).toBeGreaterThanOrEqual(0);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(2, rowY);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, rowY);
+      await tui.setup().renderOnce();
     });
     expect(pinned).toEqual([]);
 
     await act(async () => {
-      await testSetup!.mockMouse.click(2, rowY);
-      await testSetup!.renderOnce();
+      await tui.setup().mockMouse.click(2, rowY);
+      await tui.setup().renderOnce();
     });
     expect(pinned).toEqual([{ symbol: "AAPL", options: { floating: true, paneType: TICKER_RESEARCH_PANE_ID } }]);
   });
@@ -501,13 +496,13 @@ describe("PortfolioListPane cash and margin UI", () => {
     const notifications: Array<{ type?: string; body: string }> = [];
     installQuickAddRegistry(createQuickAddProvider(true));
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="watchlist"
         ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })}
         runtime={createTestPluginRuntime({
-          notify: (notification) => notifications.push(notification),
+          notify: (notification) => { notifications.push(notification); },
         })}
         paneHeight={12}
       />,
@@ -516,27 +511,27 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
     await act(async () => {
-      testSetup!.mockInput.pressKey("a");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressKey("a");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockInput.typeText("MSFT");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("MSFT");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 360));
     });
     await flushFrame();
 
-    const previewFrame = testSetup.captureCharFrame();
+    const previewFrame = tui.frame();
     expect(previewFrame).toContain("420");
     expect(previewFrame).not.toMatch(/MSFT\s+420/);
     expect(previewFrame).toContain("+1.25%");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
@@ -552,13 +547,13 @@ describe("PortfolioListPane cash and margin UI", () => {
     const notifications: Array<{ type?: string; body: string }> = [];
     installQuickAddRegistry(createQuickAddProvider(true));
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="main"
         ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })}
         runtime={createTestPluginRuntime({
-          notify: (notification) => notifications.push(notification),
+          notify: (notification) => { notifications.push(notification); },
         })}
         paneHeight={12}
       />,
@@ -567,12 +562,12 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
     await act(async () => {
-      testSetup!.mockInput.pressKey("n");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressKey("n");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockInput.typeText("MSFT");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("MSFT");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 360));
@@ -580,9 +575,9 @@ describe("PortfolioListPane cash and margin UI", () => {
     await flushFrame();
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
@@ -593,18 +588,119 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
   });
 
+  async function renderRemovable(
+    config: AppConfig,
+    collectionId: string,
+    tickers: TickerRecord[],
+    cursorSymbol = tickers[0]!.metadata.ticker,
+  ) {
+    const notifications: Array<{ type?: string; body: string }> = [];
+    installQuickAddRegistry(createQuickAddProvider(true));
+    await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+      <PortfolioHarness
+        config={config}
+        collectionId={collectionId}
+        stateMutator={(state) => {
+          state.tickers = new Map(tickers.map((ticker) => [ticker.metadata.ticker, ticker]));
+          state.paneState[TEST_PANE_ID] = { ...state.paneState[TEST_PANE_ID], cursorSymbol };
+        }}
+        runtime={createTestPluginRuntime({
+          notify: (notification) => { notifications.push(notification); },
+        })}
+        paneHeight={11}
+      />
+      <PaneFooterBar footer={footer} focused width={100} />
+      <PaneFooterKeys paneId={TEST_PANE_ID} footer={footer} focused />
+    </Box>}</PaneFooterProvider>, { width: 100, height: 24 });
+    await flushFrame();
+    return notifications;
+  }
+
+  async function press(key: "d" | "y" | "escape") {
+    await act(async () => {
+      if (key === "escape") tui.setup().mockInput.pressEscape();
+      else tui.setup().mockInput.pressKey(key);
+      await Promise.resolve();
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+  }
+
+  test("d asks before taking the selected ticker off a watchlist, then moves to the next row", async () => {
+    const position = { portfolio: "main", shares: 2, avgCost: 40, currency: "USD", broker: "manual" as const };
+    const watched = (symbol: string, overrides: Partial<TickerRecord["metadata"]> = {}) => makeTicker({
+      ticker: symbol, name: symbol, portfolios: [], positions: [], watchlists: ["watchlist"], ...overrides,
+    });
+    const notifications = await renderRemovable(createManualCollectionConfig("watchlist"), "watchlist", [
+      watched("AAPL"),
+      watched("MSFT", { watchlists: ["watchlist", "team:t1:w1"], portfolios: ["main"], positions: [position] }),
+      watched("NVDA"),
+    ], "MSFT");
+    expect(tui.frame()).toContain("[d]elete");
+
+    await press("d");
+    expect(tui.frame()).toContain("Remove MSFT from Watchlist?");
+    await press("escape");
+    await tui.waitForFrameToExclude("Remove MSFT from Watchlist?");
+    expect(harnessState?.tickers.get("MSFT")?.metadata.watchlists).toEqual(["watchlist", "team:t1:w1"]);
+
+    await press("d");
+    await press("y");
+    const ticker = harnessState?.tickers.get("MSFT");
+    expect(ticker?.metadata.watchlists).toEqual(["team:t1:w1"]);
+    expect(ticker?.metadata.positions).toEqual([position]);
+    expect(harnessState?.paneState[TEST_PANE_ID]?.cursorSymbol).toBe("NVDA");
+    expect(notifications.at(-1)).toMatchObject({ type: "success", body: "Removed MSFT from Watchlist." });
+  });
+
+  test("d on a manual portfolio says the position goes with the ticker", async () => {
+    const kept = { portfolio: "other", shares: 1, avgCost: 10, currency: "USD", broker: "manual" as const };
+    await renderRemovable(createManualCollectionConfig("main"), "main", [makeTicker({
+      portfolios: ["main", "other"],
+      watchlists: ["watchlist"],
+      positions: [{ portfolio: "main", shares: 4, avgCost: 100, currency: "USD", broker: "manual" }, kept],
+    })]);
+
+    await press("d");
+    expect(tui.frame()).toContain("Its position here, 4 at 100");
+    await press("y");
+    const ticker = harnessState?.tickers.get("AAPL");
+    expect(ticker?.metadata.portfolios).toEqual(["other"]);
+    expect(ticker?.metadata.positions).toEqual([kept]);
+    expect(ticker?.metadata.watchlists).toEqual(["watchlist"]);
+  });
+
+  const teamConfig = createManualCollectionConfig("team:t1:w1");
+  teamConfig.watchlists = [{ id: "team:t1:w1", name: "Desk", teamId: "t1" }];
+  for (const [name, collectionId, config] of [
+    ["a broker portfolio", "broker:ibkr-flex:DU12345", createPortfolioConfig("broker:ibkr-flex:DU12345", [createBrokerInstance("flex")])],
+    ["a team watchlist", "team:t1:w1", teamConfig],
+  ] satisfies Array<[string, string, AppConfig]>) {
+    test(`${name} offers no delete`, async () => {
+      const ticker = makeTicker({ watchlists: ["team:t1:w1"] });
+      const notifications = await renderRemovable(config, collectionId, [ticker]);
+      expect(tui.frame()).toContain("AAPL");
+      expect(tui.frame()).not.toContain("[d]elete");
+
+      await press("d");
+      expect(tui.frame()).not.toContain("Remove AAPL");
+      expect(harnessState?.tickers.get("AAPL")).toBe(ticker);
+      expect(notifications).toEqual([]);
+    });
+  }
+
   test("quick-add rejects unresolved ticker input", async () => {
     const config = createManualCollectionConfig("watchlist");
     const notifications: Array<{ type?: string; body: string }> = [];
     installQuickAddRegistry(createQuickAddProvider(false));
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="watchlist"
         ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })}
         runtime={createTestPluginRuntime({
-          notify: (notification) => notifications.push(notification),
+          notify: (notification) => { notifications.push(notification); },
         })}
         paneHeight={12}
       />,
@@ -613,24 +709,24 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
     await act(async () => {
-      testSetup!.mockInput.pressKey("n");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressKey("n");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
-      await testSetup!.mockInput.typeText("NOPE");
-      await testSetup!.renderOnce();
+      await tui.setup().mockInput.typeText("NOPE");
+      await tui.setup().renderOnce();
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 360));
     });
     await flushFrame();
 
-    expect(testSetup.captureCharFrame()).toContain("No exact ticker match");
+    expect(tui.frame()).toContain("No exact ticker match");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
+      tui.setup().mockInput.pressEnter();
       await Promise.resolve();
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
     await flushFrame();
 
@@ -648,7 +744,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("flex")],
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-flex:DU12345"
@@ -670,7 +766,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("1M");
     const row = frame.split("\n").find((line) => line.includes("AAPL")) ?? "";
     expect(row).toMatch(/[\u2800-\u28ff]/);
@@ -684,12 +780,11 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("flex")],
     );
     sharedCoordinator = new MarketDataCoordinator(createTestDataProvider({
-      getQuote: async () => null,
       getExchangeRate: async (currency) => (currency === "EUR" ? 1.1 : 1),
     }));
     setSharedMarketDataCoordinator(sharedCoordinator);
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId={portfolioId}
@@ -720,7 +815,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     await flushFrame();
 
     // The EUR rate arrives from the market data coordinator a frame later.
-    const frame = await createTestControls(() => testSetup!).waitForFrameToContain("1.4k");
+    const frame = await tui.waitForFrameToContain("1.4k");
     expect(frame).toMatch(/AAPL\s+125\.00\s+\+4\.17%/);
     expect(frame).toContain("100");
     expect(frame).toContain("+275");
@@ -735,13 +830,13 @@ describe("PortfolioListPane cash and margin UI", () => {
       const imported = makeTicker({ portfolios: [portfolioId], positions: [{
         portfolio: portfolioId, shares: 10, currency: "USD", broker: "demo", unrealizedPnl: 200,
       }] });
-      testSetup = await testRender(<PaneFooterProvider>{footer => <Box flexDirection="column">
+      await tui.render(<PaneFooterProvider>{footer => <Box flexDirection="column">
         <PortfolioHarness config={config} collectionId={portfolioId}
           ticker={imported} quote={makeQuote({ price: 120 })} paneWidth={width} paneHeight={15} />
         <PaneFooterBar footer={footer} focused width={width} />
       </Box>}</PaneFooterProvider>, { width, height: 16 });
       await flushFrame();
-      const before = testSetup.captureCharFrame();
+      const before = tui.frame();
       expect(before).toContain("⚠");
       expect(before).toMatch(/AAPL\s+—\s+1\.2k\s+\+200\.00\s+—/);
       expect(before).not.toContain("NaN");
@@ -750,7 +845,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       } };
       await act(async () => { harnessDispatch!({ type: "UPDATE_TICKER", ticker: corrected }); });
       await flushFrame();
-      const after = testSetup.captureCharFrame();
+      const after = tui.frame();
       expect(after).not.toContain("⚠");
       expect(after).toMatch(/AAPL\s+100\s+1\.2k\s+\+200\.00\s+\+20\.00%/);
     });
@@ -764,7 +859,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("flex")],
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId={portfolioId}
@@ -797,7 +892,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("1.3k");
     expect(frame).toContain("125");
     expect(frame).toContain("+250");
@@ -821,7 +916,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       },
     });
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId={portfolioId}
@@ -832,14 +927,14 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("AAPL");
     expect(frame).toContain("1.3k");
     expect(frame).toContain("+4.17%");
 
     await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
     });
 
     expect(pinned).toEqual([{ symbol: "AAPL", options: { floating: true, paneType: TICKER_RESEARCH_PANE_ID } }]);
@@ -850,21 +945,21 @@ describe("PortfolioListPane cash and margin UI", () => {
     const config = createPortfolioConfig(portfolioId, [createBrokerInstance("flex")]);
     const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID);
     if (instance) instance.settings = { ...(instance.settings ?? {}), viewMode: "grid" };
-    testSetup = await testRender(<PortfolioHarness config={config} collectionId={portfolioId} />, { width: 100, height: 12 });
+    await tui.render(<PortfolioHarness config={config} collectionId={portfolioId} />, { width: 100, height: 12 });
     await flushFrame();
     const collection = () => harnessState?.paneState[TEST_PANE_ID]?.collectionId;
     expect(collection()).toBe(portfolioId);
 
     // The tabs mount first and would take left and right for themselves.
     await act(async () => {
-      testSetup!.mockInput.pressArrow("right");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("right");
+      await tui.setup().renderOnce();
     });
     expect(collection()).toBe(portfolioId);
 
     await act(async () => {
-      testSetup!.mockInput.pressKey("l");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressKey("l");
+      await tui.setup().renderOnce();
     });
     expect(collection()).not.toBe(portfolioId);
   });
@@ -879,7 +974,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       };
     }
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="watchlist"
@@ -890,7 +985,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("TICKER");
     expect(frame).toContain("AAPL");
   });
@@ -904,7 +999,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("flex")],
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId={portfolioId}
@@ -953,7 +1048,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("4.25");
     expect(frame).toContain("5");
     expect(frame).toContain("850");
@@ -964,7 +1059,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
   test("shows flex cash summary once and hides unavailable margin metrics", async () => {
     const config = createPortfolioConfig("broker:ibkr-flex:DU12345", [createBrokerInstance("flex")]);
-    testSetup = await testRender(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+    await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-flex:DU12345"
@@ -993,7 +1088,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("Cash & Margin");
     expect(frame.match(/Cash -50.0k/g)).toHaveLength(1);
     expect(frame.match(/Net Liq 125.0k/g)).toHaveLength(1);
@@ -1012,7 +1107,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("flex")],
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-flex:DU12345"
@@ -1021,7 +1116,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       { width: 60, height: 8 },
     );
     await flushFrame();
-    expect(testSetup.captureCharFrame()).toMatch(/AAPL\s+125\.00\s+2s/);
+    expect(tui.frame()).toMatch(/AAPL\s+125\.00\s+2s/);
 
     // A quote received since the clock last ticked reads its true age on the next tick.
     clock += 5_000;
@@ -1029,7 +1124,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       await Bun.sleep(AGE_CLOCK_MS + 50);
     });
     await flushFrame();
-    expect(testSetup.captureCharFrame()).toMatch(/AAPL\s+125\.00\s+7s/);
+    expect(tui.frame()).toMatch(/AAPL\s+125\.00\s+7s/);
   });
 
   test("warms full financials for visible rows when only quote data is loaded", async () => {
@@ -1063,7 +1158,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     }]);
     setSharedMarketDataCoordinator(sharedCoordinator);
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-flex:DU12345"
@@ -1093,7 +1188,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(calls).toBeGreaterThan(0);
     expect(frame).toContain("2.00B");
     expect(frame).toContain("25.0");
@@ -1145,7 +1240,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     sharedCoordinator = new MarketDataCoordinator(provider);
     setSharedMarketDataCoordinator(sharedCoordinator);
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-flex:DU12345"
@@ -1172,7 +1267,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     await flushFrame();
 
     expect(batchOptions.some((options) => options?.forceRefresh === true)).toBe(true);
-    expect(testSetup.captureCharFrame()).toContain("126");
+    expect(tui.frame()).toContain("126");
   });
 
   test("shows cached market cap on reopen for broker-linked rows", async () => {
@@ -1215,10 +1310,10 @@ describe("PortfolioListPane cash and margin UI", () => {
         });
       },
     });
-    const yahooProvider: DataProvider = {
+    const gloomProvider: DataProvider = {
       ...cloudProvider,
-      id: "yahoo",
-      name: "Yahoo",
+      id: "gloom",
+      name: "Gloom",
       priority: 1000,
       async getTickerFinancials() {
         return createTestFinancials({
@@ -1238,7 +1333,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       },
     };
 
-    const seedRouter = new AssetDataRouter(yahooProvider, [cloudProvider], persistence.resources);
+    const seedRouter = new AssetDataRouter(gloomProvider, [cloudProvider], persistence.resources);
     await seedRouter.getTickerFinancials("AAPL", "NASDAQ", {
       brokerId: "ibkr",
       brokerInstanceId: "ibkr-live",
@@ -1247,10 +1342,10 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     let liveCalls = 0;
     const cachedRouter = new AssetDataRouter({
-      ...yahooProvider,
+      ...gloomProvider,
       async getTickerFinancials() {
         liveCalls += 1;
-        throw new Error("expected cached yahoo snapshot");
+        throw new Error("expected cached gloom snapshot");
       },
     }, [{
       ...cloudProvider,
@@ -1285,7 +1380,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("gateway", "ibkr-live")],
     );
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-live:DU12345"
@@ -1316,7 +1411,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(liveCalls).toBe(0);
     expect(frame).toContain("2.00B");
     expect(frame).toContain("25.0");
@@ -1394,7 +1489,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     sharedCoordinator = new MarketDataCoordinator(provider);
     setSharedMarketDataCoordinator(sharedCoordinator);
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-live:DU12345"
@@ -1480,7 +1575,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("AAPL");
     expect(frame).toContain("126.5");
     expect(frame).toContain("+5.41%");
@@ -1526,7 +1621,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       conId: 275759,
     };
 
-    testSetup = await testRender(
+    await tui.render(
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-live:DU12345"

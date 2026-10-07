@@ -1,10 +1,9 @@
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../../ui";
 import type { Dispatch, SetStateAction } from "react";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
-import { Button } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
-import type { ChatMessage, ChatUserSummary } from "../../../../api-client";
+import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 import { DesktopChatMessage } from "../message/desktop";
 import { UserProfilePopover } from "../message/profile-popover";
 import { TerminalChatMessage } from "../message/terminal";
@@ -28,6 +27,8 @@ interface ChatTranscriptProps {
   loadingOlderMessages: boolean;
   messagesError: string | null;
   onRetryMessages: () => void;
+  retryMessage: (index: number) => void;
+  onImageLoadError: (attachment: ChatAttachment) => void;
   messageAreaHeight: number;
   messageBodyWidth: number;
   messages: ChatMessage[];
@@ -41,6 +42,10 @@ interface ChatTranscriptProps {
   selectedIdx: number;
   setHoveredIdx: Dispatch<SetStateAction<number | null>>;
   showProfilePopover: (user: ChatUserSummary) => void;
+  /** A click on a name: pins its card, or closes the one it pinned. */
+  toggleProfilePopover: (user: ChatUserSummary) => void;
+  /** Closes the card at once, pinned or not (a click outside it on the desktop). */
+  dismissProfilePopover: () => void;
   onSetUpProfile: () => void;
   stickyTranscript: boolean;
   user: { id: string; username: string; emailVerified: boolean } | null;
@@ -62,6 +67,8 @@ export function ChatTranscript({
   loadingOlderMessages,
   messagesError,
   onRetryMessages,
+  retryMessage,
+  onImageLoadError,
   messageAreaHeight,
   messageBodyWidth,
   messages,
@@ -75,6 +82,8 @@ export function ChatTranscript({
   selectedIdx,
   setHoveredIdx,
   showProfilePopover,
+  toggleProfilePopover,
+  dismissProfilePopover,
   stickyTranscript,
   user,
   userByUsername,
@@ -127,10 +136,13 @@ export function ChatTranscript({
               openTicker={openTicker}
               onUserHover={showProfilePopover}
               onUserHoverEnd={scheduleProfilePopoverClose}
+              onUserActivate={toggleProfilePopover}
               beginReplyTo={beginReplyTo}
               beginEditMessage={beginEditMessage}
               jumpToMessage={jumpToMessage}
               latestEditableMessageId={latestEditableMessageId}
+              retryMessage={retryMessage}
+              onImageLoadError={onImageLoadError}
               registerMessageElement={registerMessageElement}
             />
           ) : (
@@ -149,10 +161,12 @@ export function ChatTranscript({
               openTicker={openTicker}
               onUserHover={showProfilePopover}
               onUserHoverEnd={scheduleProfilePopoverClose}
+              onUserActivate={toggleProfilePopover}
               beginReplyTo={beginReplyTo}
               beginEditMessage={beginEditMessage}
               jumpToMessage={jumpToMessage}
               latestEditableMessageId={latestEditableMessageId}
+              retryMessage={retryMessage}
               setHoveredIdx={setHoveredIdx}
             />
           )
@@ -164,6 +178,7 @@ export function ChatTranscript({
           user={profilePopoverUser}
           width={chatWidth}
           onClose={scheduleProfilePopoverClose}
+          onDismiss={dismissProfilePopover}
           onKeepOpen={cancelProfilePopoverClose}
           isOwnProfile={profilePopoverUser.id === user?.id}
           onSetUpProfile={onSetUpProfile}

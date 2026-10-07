@@ -4,7 +4,7 @@ import type { ChartSpec, ResolvedSeries, TimeSeriesPoint } from "./types";
 import type { ManualChartResolution } from "./resolution";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 
-export const PRICE_COMPARISON_BASIS = "Price returns in each listing's currency; cash distributions and FX conversion excluded.";
+const PRICE_COMPARISON_BASIS = "Price returns in each listing's currency; cash distributions and FX conversion excluded.";
 
 export interface PriceComparison {
   seriesIds: string[];

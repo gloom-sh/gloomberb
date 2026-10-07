@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "src/plugins/builtin/**/*.test.ts",
+    "src/plugins/builtin/**/*.test.tsx",
+    "src/plugins/builtin/**/*test-data.ts",
+    "src/plugins/builtin/**/test-fixture*.ts",
+    "src/plugins/builtin/**/test-harness.tsx",
+    "src/test-support/**/*.ts",
+    "src/test-support/**/*.tsx",
+    "src/public/test-support.ts"
+  ]
+}

@@ -6,7 +6,7 @@ import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult 
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
 import { intersectChartResolutionSupport, isIntradayResolution, normalizeChartResolutionSupport, type ManualChartResolution } from "../../../time-series/resolution";
-import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "../../../time-series/session-history";
+import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
@@ -148,7 +148,9 @@ export async function loadChartPaneModel(
     },
     symbols: [...new Set(spec.series.flatMap(({ source }) => source.kind === "security"
       ? [publicTickerKey(source.instrument.symbol, source.instrument.exchange)] : []))],
-    series: chart.series.map((series) => {
+    // A volume profile is drawn over the bars in view; its points are the
+    // price's own bars, which a report would mislabel as the profile.
+    series: chart.series.filter((series) => !series.profile).map((series) => {
       const source = spec.series.find((entry) => entry.id === series.id)?.source;
       const kind = source?.kind === "security" && source.fieldId.startsWith("fundamental.") ? "fundamental"
         : source?.kind === "security" && source.fieldId.startsWith("valuation.") ? "valuation" : null;
@@ -182,7 +184,7 @@ export async function loadChartPaneModel(
       ...(periodCoverage.length ? { periodCoverage } : {}),
       notices: [...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice), ...integrityNotices],
       priceComparison: chart.priceComparison ?? null,
-      summaries: chart.series.map((series) => ({ id: series.id, ...summarizeResolvedSeries(series) })),
+      summaries: chart.series.filter((series) => !series.profile).map((series) => ({ id: series.id, ...summarizeResolvedSeries(series) })),
     },
   };
 }

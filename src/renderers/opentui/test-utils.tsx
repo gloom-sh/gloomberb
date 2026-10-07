@@ -1,8 +1,11 @@
+import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot as openTuiCreateRoot, useRenderer } from "@opentui/react";
 import { testRender as openTuiTestRender } from "@opentui/react/test-utils";
+import { afterEach } from "bun:test";
 import { act, useMemo, type ReactNode } from "react";
 import { UiHostProvider, type NativeRendererHost, type RendererHost } from "../../ui";
 import { ToastHostProvider } from "../../ui/toast";
+import { AppDialogBridge } from "../../app/dialog-bridge";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
 import { OpenTuiInputHostProvider } from "./input-host";
 import { provideKittyServices } from "./kitty-services";
@@ -20,6 +23,7 @@ export interface TestKeyEvent {
   option?: boolean;
   defaultPrevented?: boolean;
   propagationStopped?: boolean;
+  repeated?: boolean;
 }
 
 /** Batch keys in one React update; keep each suite's frame and propagation semantics. */
@@ -59,11 +63,17 @@ export function takeSavedTextFile(): { name: string; text: string } | null {
   return saved;
 }
 
+/**
+ * Dialogs open in testRender's host, outside the tree under test, as they open
+ * outside the app in production. This registers the app's bridge the way App
+ * does, so dialog content reaches only the providers the app would give it.
+ */
 export function TestDialogProvider({ children }: { children: ReactNode }) {
   return (
-    <OpenTuiDialogHostProvider>
+    <>
+      <AppDialogBridge />
       {children}
-    </OpenTuiDialogHostProvider>
+    </>
   );
 }
 
@@ -155,17 +165,30 @@ export async function settleFrame(
 export function createTestControls(
   getRenderer: () => Awaited<ReturnType<typeof testRender>>,
 ) {
-  const waitForFrameToContain = async (text: string, attempts = 12, delayMs = 50): Promise<string> => {
+  const waitForFrame = async (
+    matches: (frame: string) => boolean,
+    description: string,
+    attempts: number,
+    delayMs: number,
+  ): Promise<string> => {
     const renderer = getRenderer();
     for (let attempt = 0; attempt < attempts; attempt++) {
       const frame = renderer.captureCharFrame();
-      if (frame.includes(text)) {
+      if (matches(frame)) {
         return frame;
       }
       await settleFrame(renderer, delayMs);
     }
-    throw new Error(`Timed out waiting for frame to contain "${text}".\n${renderer.captureCharFrame()}`);
+    throw new Error(`Timed out waiting for frame to ${description}.\n${renderer.captureCharFrame()}`);
   };
+
+  const waitForFrameToContain = (text: string, attempts = 12, delayMs = 50): Promise<string> => (
+    waitForFrame((frame) => frame.includes(text), `contain "${text}"`, attempts, delayMs)
+  );
+
+  const waitForFrameToExclude = (text: string, attempts = 12, delayMs = 50): Promise<string> => (
+    waitForFrame((frame) => !frame.includes(text), `drop "${text}"`, attempts, delayMs)
+  );
 
   const clickFrameText = async (text: string): Promise<void> => {
     const renderer = getRenderer();
@@ -193,7 +216,92 @@ export function createTestControls(
 
   return {
     waitForFrameToContain,
+    waitForFrameToExclude,
     clickFrameText,
     renderFrames,
   };
 }
+
+export type OpenTuiTestSetup = Awaited<ReturnType<typeof testRender>>;
+type OpenTuiTestRoot = ReturnType<typeof createOpenTuiTestRoot>;
+export type OpenTuiTestRenderOptions = NonNullable<Parameters<typeof openTuiTestRender>[1]>;
+
+/**
+ * One OpenTUI renderer per test, torn down after every test even when an
+ * assertion fails. Call it once per suite (at module level, or inside the
+ * `describe` whose own `afterEach` resets have to run after the renderer is
+ * gone), then `render` in each test. The teardown is registered here, so it
+ * runs before any `afterEach` the suite registers after this call.
+ */
+export function createOpenTuiTestHarness(defaults: OpenTuiTestRenderOptions = {}) {
+  let current: OpenTuiTestSetup | undefined;
+  let currentRoot: OpenTuiTestRoot | undefined;
+
+  const setup = (): OpenTuiTestSetup => {
+    if (!current) throw new Error("No OpenTUI test renderer is mounted. Call render() first.");
+    return current;
+  };
+
+  /** Unmounts and destroys the current renderer. Safe to call when nothing is mounted. */
+  const destroy = async (): Promise<void> => {
+    const mounted = current;
+    const root = currentRoot;
+    current = undefined;
+    currentRoot = undefined;
+    if (!mounted) return;
+    if (root) {
+      await act(async () => {
+        root.unmount();
+      });
+      mounted.renderer.destroy();
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+      return;
+    }
+    await act(async () => {
+      mounted.renderer.destroy();
+    });
+  };
+
+  afterEach(destroy);
+
+  /**
+   * `testRender`, replacing any renderer this test already mounted. The first
+   * commit happens inside `act`; updates that effects schedule after it land on
+   * later frames. Wrap the call in `act` to flush them before it returns.
+   */
+  const render = async (node: ReactNode, options?: OpenTuiTestRenderOptions): Promise<OpenTuiTestSetup> => {
+    await destroy();
+    current = await testRender(node, { ...defaults, ...options });
+    return current;
+  };
+
+  /**
+   * For a suite that has to configure the renderer (terminal capabilities,
+   * pixel resolution) before anything mounts: creates the renderer and an empty
+   * root, and leaves rendering into it to the test.
+   */
+  const createRoot = async (
+    options?: OpenTuiTestRenderOptions,
+  ): Promise<{ setup: OpenTuiTestSetup; root: OpenTuiTestRoot }> => {
+    await destroy();
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    current = await createTestRenderer({ ...defaults, ...options });
+    currentRoot = createOpenTuiTestRoot(current.renderer);
+    return { setup: current, root: currentRoot };
+  };
+
+  return {
+    render,
+    createRoot,
+    destroy,
+    setup,
+    isMounted: (): boolean => current !== undefined,
+    frame: (): string => setup().captureCharFrame(),
+    emitKeypress: (events: TestKeyEvent | TestKeyEvent[], options?: Parameters<typeof emitKeypress>[2]) => (
+      emitKeypress(setup(), events, options)
+    ),
+    ...createTestControls(setup),
+  };
+}
+
+export type OpenTuiTestHarness = ReturnType<typeof createOpenTuiTestHarness>;

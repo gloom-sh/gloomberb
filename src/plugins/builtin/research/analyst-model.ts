@@ -138,7 +138,7 @@ export interface RatingTargetColumnSizing {
 }
 
 /**
- * Yahoo reports a firm's first target with a 0 prior. The mapper drops it, but
+ * A firm's first target can be reported with a 0 prior. The mapper drops it, but
  * entries cached before that still carry the 0, so read it as no prior here too.
  */
 function priorRatingTarget(row: AnalystResearchData["ratings"][number]): number | undefined {

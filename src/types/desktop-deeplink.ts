@@ -1,3 +1,4 @@
+/** @public */
 export interface DesktopDeepLink {
   url: string;
 }

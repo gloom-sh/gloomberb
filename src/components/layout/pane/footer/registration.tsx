@@ -16,7 +16,6 @@ import {
   samePaneFooterRegistration,
   type CombinedPaneFooter,
   type PaneFooterRegistration,
-  type PaneHint,
 } from "./model";
 import { useAppLanguage } from "../../../../i18n/react";
 import type { ContextMenuItem } from "../../../../types/context-menu";
@@ -230,16 +229,5 @@ export function usePaneMenuItems(
   usePaneFooter(registrationId, () => {
     const menu = factory();
     return menu && menu.length > 0 ? { menu } : null;
-  }, deps);
-}
-
-export function usePaneHints(
-  registrationId: string,
-  factory: () => PaneHint[] | null | undefined,
-  deps: DependencyList,
-) {
-  usePaneFooter(registrationId, () => {
-    const hints = factory();
-    return hints && hints.length > 0 ? { hints } : null;
   }, deps);
 }

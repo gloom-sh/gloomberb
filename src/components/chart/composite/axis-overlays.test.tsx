@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { act, useState, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -6,9 +6,9 @@ import {
   UiHostProvider,
 } from "../../../ui";
 import type { UiHost } from "../../../ui/host";
-import { WebBox } from "../../../renderers/electrobun/view/host/box";
-import { WebText } from "../../../renderers/electrobun/view/host/text";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { WebBox } from "../../../renderers/dom/host/box";
+import { WebText } from "../../../renderers/dom/host/text";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { StaticXAxisLabels } from "./axis-overlays";
 import { buildCompositeViewportTimeAxisLayout } from "./time-axis";
 import { noopRendererHost } from "../../../test-support/renderer-host";
@@ -76,11 +76,7 @@ describe("StaticXAxisLabels", () => {
 
 type AxisProps = ComponentProps<typeof StaticXAxisLabels>;
 
-let terminalSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(async () => {
-  if (terminalSetup) await act(async () => terminalSetup!.renderer.destroy());
-  terminalSetup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 /** Renders the axis in terminal cells and returns a frame reader per prop set. */
 async function renderTerminalAxis(initial: AxisProps) {
@@ -90,11 +86,11 @@ async function renderTerminalAxis(initial: AxisProps) {
     setProps = setPropsState;
     return <Box width={props.width} height={1}><StaticXAxisLabels {...props} /></Box>;
   }
-  terminalSetup = await testRender(<Harness />, { width: initial.width, height: 1 });
+  await tui.render(<Harness />, { width: initial.width, height: 1 });
   return async (props: AxisProps) => {
     await act(async () => { setProps(props); });
-    await act(async () => { await terminalSetup!.renderOnce(); });
-    return terminalSetup!.captureCharFrame().split("\n")[0]!.slice(0, props.width);
+    await act(async () => { await tui.setup().renderOnce(); });
+    return tui.frame().split("\n")[0]!.slice(0, props.width);
   };
 }
 
@@ -153,8 +149,7 @@ describe("StaticXAxisLabels in the terminal", () => {
           { label: cursorLabel, start: cursorBadgeStart(column, cursorLabel, width) },
         ]);
       }
-      await act(async () => terminalSetup!.renderer.destroy());
-      terminalSetup = undefined;
+      await tui.destroy();
     }
   });
 

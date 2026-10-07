@@ -5,6 +5,7 @@ import {
   useQueryBarSearch,
   type DataTableColumn,
   type DataTableSelectionChangeReason,
+  type QueryBarFilter,
   type QueryBarView,
 } from "../../../components";
 import type { DataTableViewProps } from "../../../components/data-table/view";
@@ -127,6 +128,7 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
   focused,
   listWidth: maxListWidth,
   searchPlaceholder,
+  filters,
   columns: buildColumns,
   rows,
   getRowId,
@@ -143,6 +145,8 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
   /** The table's width beside the detail. */
   listWidth: number;
   searchPlaceholder: string;
+  /** Choices beside the search that pick which series the list holds, such as a model. */
+  filters?: QueryBarFilter[];
   columns: (width: number, stacked: boolean) => Column[];
   /** Table rows for the visible items, with any section headers. */
   rows: Row[];
@@ -170,7 +174,7 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <QueryBar width={width} search={{ ...list.search, placeholder: searchPlaceholder }} view={list.range} />
+      <QueryBar width={width} search={{ ...list.search, placeholder: searchPlaceholder }} filters={filters} view={list.range} />
       <Box flexDirection={split ? "row" : "column"} flexGrow={1} overflow="hidden">
         <Box flexDirection="column" width={listWidth} flexShrink={0}>
           <Box flexDirection="column" width={listWidth} height={tableHeight} flexShrink={0} overflow="hidden">

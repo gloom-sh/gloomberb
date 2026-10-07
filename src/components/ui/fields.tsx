@@ -233,6 +233,11 @@ function TextFieldControl({
             onChange?.(nextValue);
           }}
           onChange={(nextValue: string) => {
+            // The input commits on blur what onInput already reported. A field
+            // the form has since cleared and swapped out still blurs when the
+            // next one takes focus, and passing its old text on would put it
+            // back into the cleared draft.
+            if (nextValue === currentValueRef.current) return;
             currentValueRef.current = nextValue;
             syncCursorOffset(nextValue);
             onChange?.(nextValue);

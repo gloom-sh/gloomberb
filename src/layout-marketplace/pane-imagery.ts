@@ -45,6 +45,7 @@ const IMAGERY_RULES: ReadonlyArray<readonly [string, PaneImagery]> = [
   ["video", "media"],
   ["chart", "chart"],
   ["historical-prices", "chart"],
+  ["returns", "table"],
   ["yield-curve", "chart"],
   ["volatility", "chart"],
   ["credit-conditions", "chart"],

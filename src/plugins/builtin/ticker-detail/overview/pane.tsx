@@ -1,3 +1,4 @@
+import { PerpEquityRow } from "../../perps/equity-row";
 import { useCallback } from "react";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
 import {
@@ -41,6 +42,7 @@ export function OverviewResearchTab({ width, focused }: TickerResearchTabProps) 
       financials={financials}
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
+      perpetuals={ticker ? <PerpEquityRow symbol={ticker.metadata.ticker} instrumentType={financials?.quote?.instrumentType ?? ticker.metadata.assetCategory} /> : undefined}
     />
   );
 }

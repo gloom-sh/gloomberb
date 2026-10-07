@@ -17,7 +17,7 @@ const YEAR_DAYS = 365;
 const STALE_DAYS = 5;
 
 /** The history the board draws, as dated closes. */
-export function pointHistory(points: readonly CreditBoardPoint[]): PricePoint[] {
+function pointHistory(points: readonly CreditBoardPoint[]): PricePoint[] {
   return points.map((point) => ({ date: new Date(`${point.date}T00:00:00Z`), close: point.level }));
 }
 
@@ -46,24 +46,24 @@ function shown(quote: CreditIndexQuote, value: number | null): number | null {
 }
 
 /** Wider spreads and lower prices are the adverse direction. */
-export function adverseMove(quote: CreditIndexQuote): "up" | "down" {
+function adverseMove(quote: CreditIndexQuote): "up" | "down" {
   return quote === "spread" ? "up" : "down";
 }
 
-export const formatPriceAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
+const formatPriceAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
 
 export function axisFormatter(quote: CreditIndexQuote) {
   return quote === "spread" ? formatBpAxis : formatPriceAxis;
 }
 
-export interface YearStatistics {
+interface YearStatistics {
   percentile: number | null;
   low: number | null;
   high: number | null;
 }
 
 /** Where the latest level sits in its own year: midrank, with the range. */
-export function yearStatistics(points: readonly CreditBoardPoint[], level: number | null, date: string | null): YearStatistics {
+function yearStatistics(points: readonly CreditBoardPoint[], level: number | null, date: string | null): YearStatistics {
   if (level == null || !date) return { percentile: null, low: null, high: null };
   const year = historyStatistics(points.map((point) => ({ date: point.date, value: point.level })), level,
     { asOf: date, windowDays: YEAR_DAYS });
@@ -117,12 +117,6 @@ export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null):
   });
 }
 
-/** The local currency's move against the dollar, in percent; null while unknown. */
-export interface CurrencyMove {
-  currency: string;
-  movePercent: number | null;
-}
-
 export interface SovrRow extends MarketBoardRow {
   sovereign: SovrBoardSovereign;
   year: YearStatistics;
@@ -166,7 +160,7 @@ export function formatCurrencyMove(currency: string, movePercent: number | null)
 /** Quoted as XXX/USD; every other currency is quoted per dollar. */
 const USD_QUOTED = new Set(["EUR", "GBP", "AUD", "NZD"]);
 
-/** The Yahoo-style pair for a currency against the dollar, and whether its rate is dollars per unit. */
+/** The exchange-suffixed pair for a currency against the dollar, and whether its rate is dollars per unit. */
 export function currencyPair(currency: string): { symbol: string; dollarsPerUnit: boolean } | null {
   const code = currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(code) || code === "USD") return null;

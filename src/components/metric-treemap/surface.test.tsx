@@ -1,14 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { MetricTreemapSurface, type MetricTreemapItem } from ".";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (testSetup) await act(async () => testSetup!.renderer.destroy());
-  testSetup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 function items(weights: [number, number]): Array<MetricTreemapItem<string>> {
   return [
@@ -39,13 +34,13 @@ test("a relayout under a resting pointer leaves the keyboard's selection alone",
       />
     );
   }
-  testSetup = await testRender(<Harness />, { width: 40, height: 6 });
-  await act(async () => testSetup!.renderOnce());
+  await tui.render(<Harness />, { width: 40, height: 6 });
+  await act(async () => tui.setup().renderOnce());
 
   // The pointer moves onto the wide tile on the left: hover selects it.
   await act(async () => {
-    await testSetup!.mockMouse.moveTo(5, 2);
-    await testSetup!.renderOnce();
+    await tui.setup().mockMouse.moveTo(5, 2);
+    await tui.setup().renderOnce();
   });
   expect(selected).toEqual(["a"]);
 
@@ -54,8 +49,8 @@ test("a relayout under a resting pointer leaves the keyboard's selection alone",
   await act(async () => setSelectedId?.("b"));
   await act(async () => setWeights?.([1, 3]));
   await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
+    await tui.setup().renderOnce();
+    await tui.setup().renderOnce();
   });
   expect(selected).toEqual(["a"]);
 

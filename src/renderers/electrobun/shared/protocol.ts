@@ -26,7 +26,7 @@ export interface ElectrobunBackendInit {
   telemetry: ElectrobunTelemetryInit;
 }
 
-export interface ElectrobunTelemetryInit {
+interface ElectrobunTelemetryInit {
   /** Random per-install id from `<dataDir>/install-id`; null when the file could not be written. */
   installId: string | null;
   os: string;
@@ -86,14 +86,14 @@ export type DesktopHttpStreamOpenResponse = Omit<HttpProxyResponseEnvelope, "bod
  * One slice of a streamed body. Exactly one terminal message ends a stream:
  * `done` when the body completed, `error` when reading it failed.
  */
-export interface DesktopHttpStreamChunkMessage {
+interface DesktopHttpStreamChunkMessage {
   streamId: string;
   chunk?: string;
   done?: boolean;
   error?: string;
 }
 
-export interface DesktopCapabilityInvokeRequest {
+interface DesktopCapabilityInvokeRequest {
   capabilityId: string;
   operationId: string;
   payload?: unknown;
@@ -147,7 +147,7 @@ export type DesktopPluginActivationResult =
   | { ok: true; pluginId: string; capabilityManifests: CapabilityManifest[] }
   | { ok: false; error: string };
 
-export interface DesktopBackendRequestMap {
+interface DesktopBackendRequestMap {
   init: {
     request: { kind?: "main" | "detached"; paneId?: string };
     response: ElectrobunBackendInit;
@@ -230,7 +230,7 @@ export type DesktopBackendRequestPayload<K extends DesktopBackendRequestMethod> 
   DesktopBackendRequestMap[K]["request"];
 export type DesktopBackendRequestResponse<K extends DesktopBackendRequestMethod> =
   DesktopBackendRequestMap[K]["response"];
-export type DesktopBackendRequestFor<K extends DesktopBackendRequestMethod> = {
+type DesktopBackendRequestFor<K extends DesktopBackendRequestMethod> = {
   [Method in K]: {
     method: Method;
     payload: DesktopBackendRequestPayload<Method>;
@@ -261,11 +261,11 @@ export interface ContextMenuSelectMessage {
   itemId: string;
 }
 
-export interface ApplicationMenuSelectMessage {
+interface ApplicationMenuSelectMessage {
   command: DesktopApplicationMenuCommand;
 }
 
-export interface DesktopStateMessage {
+interface DesktopStateMessage {
   snapshot: DesktopSharedStateSnapshot;
 }
 
@@ -277,23 +277,23 @@ export interface DesktopThemePreviewMessage {
   preview: DesktopThemePreviewState;
 }
 
-export interface UpdateProgressMessage {
+interface UpdateProgressMessage {
   progress: UpdateProgress;
 }
 
-export interface CapabilityEventMessage {
+interface CapabilityEventMessage {
   subscriptionId: string;
   event: unknown;
 }
 
-export type HttpStreamChunkMessage = DesktopHttpStreamChunkMessage;
+type HttpStreamChunkMessage = DesktopHttpStreamChunkMessage;
 
 export interface DesktopDeepLinkMessage {
   url: string;
 }
 
 /** Plugin folders the Bun process updated in the background, for the main window to bring into its session. */
-export interface PluginsUpdatedMessage {
+interface PluginsUpdatedMessage {
   directories: string[];
 }
 

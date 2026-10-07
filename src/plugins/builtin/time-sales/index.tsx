@@ -4,7 +4,7 @@ import { timeSalesHeadless } from "./headless";
 import { TimeSalesPane } from "./pane";
 export const timeSalesModule: PluginModule = {
   panes: [{ id: "time-sales", name: "Time and Sales", icon: "T", component: TimeSalesPane,
-    defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 104, height: 28 },
+    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 104, height: 28 },
     tableExport: true, headless: timeSalesHeadless, settings: { title: "Time and Sales", fields: [{ key: "tab", label: "View", type: "select", options: [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }] }] } }],
   paneTemplates: [
     { ...createTickerSurfacePaneTemplate({ id: "time-sales-tas", paneId: "time-sales", label: "Time and Sales",

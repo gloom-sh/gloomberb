@@ -17,6 +17,12 @@ import { SESSION_COOKIE_NAMES } from "./session-cookie";
 
 const DEFAULT_API_URL = "https://api.gloom.sh";
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS = 45_000;
+// Research may fill missing sections after a primary read; quote/history reads remain latency bounded.
+const RESEARCH_MARKET_PATHS = new Set([
+  "/market/dividends", "/market/short-interest", "/market/movers", "/market/trending",
+  "/market/heatmap", "/market/earnings-calendar",
+]);
 /** Local status for "this runtime cannot stream", never returned by the server. */
 export const STREAMING_UNSUPPORTED_STATUS = 0;
 
@@ -47,7 +53,22 @@ export interface CloudApiFetchTransportOptions {
   streamFetch?: CloudApiStreamFetch;
 }
 
+/**
+ * One upload with its bytes and the headers the client built. A transport that
+ * can watch the body go out (a browser XMLHttpRequest) reports `onProgress`
+ * with the fraction sent; others never call it.
+ */
+export interface CloudApiUploadRequest {
+  url: string;
+  body: Blob | Uint8Array;
+  headers: Headers;
+  signal?: AbortSignal;
+  onProgress?: (fraction: number) => void;
+}
+type CloudApiUploadTransport = (request: CloudApiUploadRequest) => Promise<CloudApiResponse>;
+
 let cloudApiFetchTransport: CloudApiFetchTransport = httpFetch;
+let cloudApiUploadTransport: CloudApiUploadTransport | null = null;
 let cloudApiTransportInstalled = false;
 let cloudApiFetchStreaming = true;
 let cloudApiStreamFetch: CloudApiStreamFetch | null = null;
@@ -62,11 +83,16 @@ export function setCloudApiFetchTransport(
   cloudApiStreamFetch = transport ? options.streamFetch ?? null : null;
 }
 
+/** Installs the transport uploads go through; without one they use the fetch transport. */
+export function setCloudApiUploadTransport(transport: CloudApiUploadTransport | null): void {
+  cloudApiUploadTransport = transport;
+}
+
 /**
  * The fetch to use for a response that must be read while it arrives, or null
  * when the installed transport buffers whole responses.
  */
-export function getCloudApiStreamFetch(): CloudApiStreamFetch | null {
+function getCloudApiStreamFetch(): CloudApiStreamFetch | null {
   if (cloudApiTransportInstalled) {
     if (cloudApiStreamFetch) return cloudApiStreamFetch;
     // A transport that declares streaming returns a real Response.
@@ -140,6 +166,7 @@ export class CloudApiRequestTransport {
   private cookieSessionMode = false;
   private readonly fetchTransport: CloudApiFetchTransport | null;
   private readonly marketRequestTimeoutMs: number;
+  private readonly researchRequestTimeoutMs: number;
   private readonly connectionHealth: ConnectionHealthRegistry;
 
   readonly baseUrl = getCloudApiBaseUrl();
@@ -154,6 +181,7 @@ export class CloudApiRequestTransport {
     this.fetchTransport = options.fetchTransport ?? null;
     this.marketRequestTimeoutMs =
       options.marketRequestTimeoutMs ?? DEFAULT_MARKET_REQUEST_TIMEOUT_MS;
+    this.researchRequestTimeoutMs = options.marketRequestTimeoutMs ?? DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS;
     this.connectionHealth = options.connectionHealth ?? connectionHealth;
   }
 
@@ -257,6 +285,8 @@ export class CloudApiRequestTransport {
       return this.performRequest<T>(path, options, canApplySession);
     }
 
+    const timeoutMs = RESEARCH_MARKET_PATHS.has(path.split("?")[0]!)
+      ? this.researchRequestTimeoutMs : this.marketRequestTimeoutMs;
     const controller = new AbortController();
     const callerSignal = options?.signal;
     const abortFromCaller = () => controller.abort(callerSignal?.reason);
@@ -273,8 +303,8 @@ export class CloudApiRequestTransport {
       }, canApplySession);
       return await withDeadline(
         request,
-        this.marketRequestTimeoutMs,
-        `Cloud market request timed out after ${this.marketRequestTimeoutMs}ms: ${path}`,
+        timeoutMs,
+        `Cloud market request timed out after ${timeoutMs}ms: ${path}`,
         (error) => controller.abort(error),
       );
     } finally {
@@ -282,10 +312,47 @@ export class CloudApiRequestTransport {
     }
   }
 
+  /**
+   * POSTs raw bytes, such as an image, and parses the JSON answer like
+   * `request`. Progress is reported where the installed upload transport can
+   * see the body go out.
+   */
+  async upload<T>(
+    path: string,
+    body: Blob | Uint8Array,
+    options: {
+      contentType: string;
+      headers?: HeadersInit;
+      signal?: AbortSignal;
+      onProgress?: (fraction: number) => void;
+    },
+  ): Promise<T> {
+    const headers = new Headers(options.headers);
+    headers.set("Content-Type", options.contentType);
+    const uploadTransport = this.fetchTransport ? null : cloudApiUploadTransport;
+    const send: CloudApiFetchTransport | undefined = uploadTransport
+      ? (url, init) => uploadTransport({
+        url,
+        body,
+        headers: new Headers(init?.headers),
+        signal: options.signal,
+        onProgress: options.onProgress,
+      })
+      : undefined;
+    return this.performRequest<T>(path, {
+      method: "POST",
+      headers,
+      // Typed arrays are valid fetch bodies; RequestInit's DOM typing lags behind.
+      body: body as BodyInit,
+      signal: options.signal,
+    }, () => true, send);
+  }
+
   private async performRequest<T>(
     path: string,
     options: RequestInit | undefined,
     canApplySession: () => boolean,
+    send?: CloudApiFetchTransport,
   ): Promise<T> {
     throwIfRequestAborted(options?.signal);
     const headers = new Headers(options?.headers);
@@ -302,7 +369,7 @@ export class CloudApiRequestTransport {
 
     const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
     const request = async () => {
-      const res = await (this.fetchTransport ?? cloudApiFetchTransport)(
+      const res = await (send ?? this.fetchTransport ?? cloudApiFetchTransport)(
         `${this.baseUrl}${path}`,
         {
           ...options,

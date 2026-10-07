@@ -1,4 +1,4 @@
-import { fredSeriesUrl } from "../../../data/fred-series";
+import { fredSeriesUrl } from "../../../sources/gloomberb-cloud/fred-series";
 import { resolveAssetDisplayKind } from "../../../market-data/market/format";
 import {
   getTimeSeriesField,
@@ -20,7 +20,7 @@ export const CHART_COMPOSER_TEMPLATE_ID = "chart-composer-pane";
 export const DATA_CATALOG_PANE_ID = "data-catalog";
 export const DATA_CATALOG_TEMPLATE_ID = "data-catalog-pane";
 
-export type CatalogSourceId =
+type CatalogSourceId =
   | "security"
   | "option"
   | "crypto"

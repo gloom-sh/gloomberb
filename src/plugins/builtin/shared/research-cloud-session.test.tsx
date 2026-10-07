@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient, type AuthUser } from "../../../api-client";
-import { createTestControls, emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -14,7 +14,7 @@ import { isCloudSessionRequired } from "./research-cloud-session";
 
 const denial = "Gloom Cloud requires signup and email verification";
 const panes = ["dividend-yield", "analyst-research", "corporate-actions", "earnings-estimates"] as const;
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let user: AuthUser | null = null;
 const listeners = new Set<() => void>();
 let getUserSpy: ReturnType<typeof spyOn>;
@@ -29,9 +29,7 @@ beforeEach(() => {
   });
 });
 
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
+afterEach(() => {
   getUserSpy.mockRestore();
   subscribeSpy.mockRestore();
   listeners.clear();
@@ -39,7 +37,7 @@ afterEach(async () => {
 
 async function frame() {
   await act(async () => { await Bun.sleep(1); });
-  await act(async () => { await setup!.renderOnce(); });
+  await act(async () => { await tui.setup().renderOnce(); });
 }
 
 async function setSession(emailVerified: boolean | null) {
@@ -85,7 +83,7 @@ async function render(pane: typeof panes[number], state: { cloudRequired: boolea
       ? <AnalystResearchView focused width={80} height={23} />
       : <CorporateActionsView focused width={80} height={23} variant={pane} footerPaneId={pane} />;
   await act(async () => {
-    setup = await testRender(<TestPaneFrame state={appState} paneId={id} pluginId="ticker-research" runtime={runtime} width={80} height={24}>
+    await tui.render(<TestPaneFrame state={appState} paneId={id} pluginId="ticker-research" runtime={runtime} width={80} height={24}>
       {() => content}
     </TestPaneFrame>, { width: 80, height: 24 });
   });
@@ -93,37 +91,37 @@ async function render(pane: typeof panes[number], state: { cloudRequired: boolea
   return commands;
 }
 
-test.each(panes)("%s recovers from sign-in and verification while preserving provider failures", async (pane) => {
+test.each([...panes])("%s recovers from sign-in and verification while preserving provider failures", async (pane) => {
   const state = { cloudRequired: true, failure: undefined as string | undefined };
   const commands = await render(pane, state);
-  const controls = createTestControls(() => setup!);
-  expect(setup!.captureCharFrame()).toContain("Sign in to");
-  expect(setup!.captureCharFrame()).not.toContain(denial);
+  const controls = tui;
+  expect(tui.frame()).toContain("Sign in to");
+  expect(tui.frame()).not.toContain(denial);
   await controls.clickFrameText("Log in");
   expect(commands.at(-1)).toBe("Log In");
   await setSession(false);
-  expect(setup!.captureCharFrame()).toContain("Verify your email to");
+  expect(tui.frame()).toContain("Verify your email to");
   await controls.clickFrameText("Resend Verification Email");
   expect(commands.at(-1)).toBe("Resend Verification Email");
   state.failure = "Research provider timed out";
   await setSession(true);
-  expect(setup!.captureCharFrame()).toContain(state.failure);
-  expect(setup!.captureCharFrame()).not.toContain("Sign in to");
+  expect(tui.frame()).toContain(state.failure);
+  expect(tui.frame()).not.toContain("Sign in to");
   state.failure = undefined;
-  await emitKeypress(setup!, { name: "r" });
+  await tui.emitKeypress({ name: "r" });
   for (let i = 0; i < 5; i++) await frame();
-  expect(setup!.captureCharFrame()).toContain(pane === "dividend-yield" ? "TTM/share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
-  expect(setup!.captureCharFrame()).not.toContain("Research provider timed out");
+  expect(tui.frame()).toContain(pane === "dividend-yield" ? "TTM/share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
+  expect(tui.frame()).not.toContain("Research provider timed out");
   // A usable non-Cloud source remains available without any signed-in account.
   state.cloudRequired = false;
   await setSession(null);
-  expect(setup!.captureCharFrame()).not.toContain("Sign in to");
-  expect(setup!.captureCharFrame()).toContain(pane === "dividend-yield" ? "TTM/share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
+  expect(tui.frame()).not.toContain("Sign in to");
+  expect(tui.frame()).toContain(pane === "dividend-yield" ? "TTM/share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
 });
 
 test("partial event data keeps usable rows and reports an auth-denied source once", async () => {
   await render("corporate-actions", { cloudRequired: false, analystDenied: true });
-  const output = setup!.captureCharFrame();
+  const output = tui.frame();
   expect(output).toContain("Dividend");
   expect(output).toContain("Earnings");
   expect(output.match(/Gloom Cloud requires signup/g)).toHaveLength(1);
@@ -132,7 +130,7 @@ test("partial event data keeps usable rows and reports an auth-denied source onc
 
 test("Cloud account detection does not turn unrelated provider failures into sign-in prompts", () => {
   expect(isCloudSessionRequired(denial)).toBe(true);
-  for (const error of [null, "Unauthorized: Yahoo", "Verification service unavailable", "Cloud request failed", "Gloom Cloud Pro required"]) {
+  for (const error of [null, "Unauthorized: Gloom", "Verification service unavailable", "Cloud request failed", "Gloom Cloud Pro required"]) {
     expect(isCloudSessionRequired(error)).toBe(false);
   }
 });

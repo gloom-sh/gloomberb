@@ -1,0 +1,490 @@
+{
+  "AAPL": [
+    {
+      "id": "kpi:d6ac325b-e74e-44ca-ad8f-39c1acc6bd3f",
+      "kind": "kpi",
+      "label": "Revenue",
+      "value": 167045000000,
+      "units": "currency",
+      "currency": "USD",
+      "period": "Fiscal year 2024 ended September 28, 2024",
+      "asOf": "2024-11-01T00:00:00.000Z",
+      "basis": "reported",
+      "dimensions": {
+        "scope": "geographic segment",
+        "geography": "Americas"
+      },
+      "qualifier": "exact",
+      "evidence": [
+        {
+          "id": "kpi:59ef3153-4012-4116-b89d-3b6006f75a94",
+          "source": "filing",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+          "quote": "The following table shows information by reportable segment for 2024, 2023 and 2022 (in millions):\n2024 2023 2022\nAmericas:\nNet sales $ 167,045 $ 162,560 $ 169,658",
+          "asOf": "2024-11-01T00:00:00.000Z",
+          "period": "Fiscal year 2024 ended September 28, 2024",
+          "units": "currency",
+          "currency": "USD",
+          "confidence": 1,
+          "revision": "d6ac325b-e74e-44ca-ad8f-39c1acc6bd3f"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "kpi:07e5a14a-b7d4-4032-90b4-e0701871d85e",
+      "kind": "kpi",
+      "label": "Product sales",
+      "value": 201183000000,
+      "units": "currency",
+      "currency": "USD",
+      "period": "Fiscal year 2024 ended September 28, 2024",
+      "asOf": "2024-11-01T00:00:00.000Z",
+      "basis": "reported",
+      "dimensions": {
+        "product": "iPhone"
+      },
+      "qualifier": "exact",
+      "evidence": [
+        {
+          "id": "kpi:0c430f55-e22c-4b99-9601-698c88a41184",
+          "source": "filing",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+          "quote": "Net sales disaggregated by significant products and services for 2024, 2023 and 2022 were as follows (in millions):\n2024 2023 2022\niPhone\n$ 201,183 $ 200,583 $ 205,489\nMac\n29,984 29,357 40,177\n iPad\n26,694 28,300 29,292\nWearables, Home and Accessories\n37,005 39,845 41,241\nServices (1)\n96,169 85,200 78,129\nTotal net sales $ 391,035 $ 383,285 $ 394,328",
+          "asOf": "2024-11-01T00:00:00.000Z",
+          "period": "Fiscal year 2024 ended September 28, 2024",
+          "units": "currency",
+          "currency": "USD",
+          "confidence": 0.98,
+          "revision": "07e5a14a-b7d4-4032-90b4-e0701871d85e"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "kpi:bec2d3a2-dc95-4dce-8c78-7c4a7a75dde8",
+      "kind": "kpi",
+      "label": "Product sales",
+      "value": 26694000000,
+      "units": "currency",
+      "currency": "USD",
+      "period": "Fiscal year 2024 ended September 28, 2024",
+      "asOf": "2024-11-01T00:00:00.000Z",
+      "basis": "reported",
+      "dimensions": {
+        "product": "iPad"
+      },
+      "qualifier": "exact",
+      "evidence": [
+        {
+          "id": "kpi:5d0f8e46-e674-4936-9c71-6c0d8c00d88d",
+          "source": "filing",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+          "quote": "Net sales disaggregated by significant products and services for 2024, 2023 and 2022 were as follows (in millions):\n2024 2023 2022\niPhone\n$ 201,183 $ 200,583 $ 205,489\nMac\n29,984 29,357 40,177\n iPad\n26,694 28,300 29,292\nWearables, Home and Accessories\n37,005 39,845 41,241\nServices (1)\n96,169 85,200 78,129\nTotal net sales $ 391,035 $ 383,285 $ 394,328",
+          "asOf": "2024-11-01T00:00:00.000Z",
+          "period": "Fiscal year 2024 ended September 28, 2024",
+          "units": "currency",
+          "currency": "USD",
+          "confidence": 0.98,
+          "revision": "bec2d3a2-dc95-4dce-8c78-7c4a7a75dde8"
+        }
+      ],
+      "sensitivity": null
+    }
+  ],
+  "WMT": [
+    {
+      "id": "kpi:e1596801-4fec-4178-837a-7eb0e47eb39a",
+      "kind": "kpi",
+      "label": "Earnings per share",
+      "value": 0.62,
+      "units": "currency_per_share",
+      "currency": "USD",
+      "period": "Q3 fiscal year 2026",
+      "asOf": "2025-11-20T12:58:21.000Z",
+      "basis": "adjusted",
+      "dimensions": {
+        "scope": "diluted"
+      },
+      "qualifier": "exact",
+      "evidence": [
+        {
+          "id": "kpi:843d743d-ef84-4eec-a8b9-8ef564df21be",
+          "source": "transcript",
+          "tier": "secondary",
+          "url": "https://www.youtube.com/watch?v=SzlUB0C_gQw",
+          "quote": "Adjusted EPS was slightly better than we expected, up nearly 7% to $0.62.",
+          "asOf": "2025-11-20T12:58:21.000Z",
+          "period": "Q3 fiscal year 2026",
+          "units": "currency_per_share",
+          "currency": "USD",
+          "confidence": 0.98,
+          "revision": "e1596801-4fec-4178-837a-7eb0e47eb39a"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "kpi:37ded5c6-1c9e-462d-abbf-779cd7a7b3a1",
+      "kind": "kpi",
+      "label": "Revenue growth",
+      "value": 33,
+      "units": "percent",
+      "currency": null,
+      "period": "Q3 fiscal year 2026",
+      "asOf": "2025-11-20T12:58:21.000Z",
+      "basis": "reported",
+      "dimensions": {
+        "scope": "Walmart Connect U.S. advertising",
+        "excludes": "Vizio",
+        "comparison": "year_over_year"
+      },
+      "qualifier": "exact",
+      "evidence": [
+        {
+          "id": "kpi:f410d339-1bbe-41bf-bfae-a9b944b20336",
+          "source": "transcript",
+          "tier": "secondary",
+          "url": "https://www.youtube.com/watch?v=SzlUB0C_gQw",
+          "quote": "Walmart Connect in the U.S., ex-Vizio, grew 33% as we continue to grow advertiser counts, including through our third-party marketplace.",
+          "asOf": "2025-11-20T12:58:21.000Z",
+          "period": "Q3 fiscal year 2026",
+          "units": "percent",
+          "currency": null,
+          "confidence": 0.99,
+          "revision": "37ded5c6-1c9e-462d-abbf-779cd7a7b3a1"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "kpi:a14ba143-c29f-49a1-99b5-43d01dcad492",
+      "kind": "kpi",
+      "label": "Revenue growth",
+      "value": 53,
+      "units": "percent",
+      "currency": null,
+      "period": "Q3 fiscal year 2026",
+      "asOf": "2025-11-20T12:58:21.000Z",
+      "basis": "reported",
+      "dimensions": {
+        "scope": "global advertising",
+        "includes": "Vizio",
+        "comparison": "year_over_year"
+      },
+      "qualifier": "exact",
+      "evidence": [
+        {
+          "id": "kpi:a17ae061-da00-4c86-8e5a-bf6da7468926",
+          "source": "transcript",
+          "tier": "secondary",
+          "url": "https://www.youtube.com/watch?v=SzlUB0C_gQw",
+          "quote": "With continued strong momentum in e-commerce, our advertising business globally increased 53%, including Vizio.",
+          "asOf": "2025-11-20T12:58:21.000Z",
+          "period": "Q3 fiscal year 2026",
+          "units": "percent",
+          "currency": null,
+          "confidence": 0.99,
+          "revision": "a14ba143-c29f-49a1-99b5-43d01dcad492"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "guidance:ad184f0d-0aa5-4daf-8f69-ed52e8c03c89",
+      "kind": "guidance",
+      "label": "Earnings per share",
+      "value": null,
+      "range": {
+        "low": 2.58,
+        "high": 2.63
+      },
+      "valueText": "$2.58 to $2.63",
+      "units": "currency_per_share",
+      "currency": "USD",
+      "period": "full fiscal year 2026",
+      "asOf": "2025-11-20T12:58:21.000Z",
+      "basis": "adjusted",
+      "dimensions": {},
+      "qualifier": "exact",
+      "notes": [],
+      "evidence": [
+        {
+          "id": "kpi:862541a9-7ce8-4466-b6aa-9fd3bbe4239d",
+          "source": "transcript",
+          "tier": "secondary",
+          "url": "https://www.youtube.com/watch?v=SzlUB0C_gQw",
+          "quote": "For adjusted EPS, we expect the full year to be in a range of $2.58 to $2.63, with Q4 in a range of $0.67 to $0.72.",
+          "asOf": "2025-11-20T12:58:21.000Z",
+          "period": "full fiscal year 2026",
+          "units": "currency_per_share",
+          "currency": "USD",
+          "confidence": 0.99,
+          "revision": "ad184f0d-0aa5-4daf-8f69-ed52e8c03c89"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "guidance:bec7a738-1dc3-4032-9d20-5bdaf2898ed9",
+      "kind": "guidance",
+      "label": "Earnings per share",
+      "value": null,
+      "range": {
+        "low": 0.67,
+        "high": 0.72
+      },
+      "valueText": "$0.67 to $0.72",
+      "units": "currency_per_share",
+      "currency": "USD",
+      "period": "Q4 fiscal year 2026",
+      "asOf": "2025-11-20T12:58:21.000Z",
+      "basis": "adjusted",
+      "dimensions": {},
+      "qualifier": "exact",
+      "notes": [],
+      "evidence": [
+        {
+          "id": "kpi:fb2a1ad5-b822-452c-8faf-52683d70a004",
+          "source": "transcript",
+          "tier": "secondary",
+          "url": "https://www.youtube.com/watch?v=SzlUB0C_gQw",
+          "quote": "For adjusted EPS, we expect the full year to be in a range of $2.58 to $2.63, with Q4 in a range of $0.67 to $0.72.",
+          "asOf": "2025-11-20T12:58:21.000Z",
+          "period": "Q4 fiscal year 2026",
+          "units": "currency_per_share",
+          "currency": "USD",
+          "confidence": 0.99,
+          "revision": "bec7a738-1dc3-4032-9d20-5bdaf2898ed9"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "guidance:ad690cf1-113f-416a-b396-ebe40d72a03b",
+      "kind": "guidance",
+      "label": "Revenue growth",
+      "value": null,
+      "range": {
+        "low": 4.8,
+        "high": 5.1
+      },
+      "valueText": "between 4.8% and 5.1%",
+      "units": "percent",
+      "currency": null,
+      "period": "full fiscal year 2026",
+      "asOf": "2025-11-20T12:58:21.000Z",
+      "basis": "constant_currency",
+      "dimensions": {
+        "scope": "consolidated sales",
+        "comparison": "year_over_year"
+      },
+      "qualifier": "exact",
+      "notes": [],
+      "evidence": [
+        {
+          "id": "kpi:63cb0920-7383-4c45-b879-f24a39af3827",
+          "source": "transcript",
+          "tier": "secondary",
+          "url": "https://www.youtube.com/watch?v=SzlUB0C_gQw",
+          "quote": "Full year sales in constant currency is expected to grow between 4.8% and 5.1%, up from 3.75% to 4.75% prior.",
+          "asOf": "2025-11-20T12:58:21.000Z",
+          "period": "full fiscal year 2026",
+          "units": "percent",
+          "currency": null,
+          "confidence": 0.99,
+          "revision": "ad690cf1-113f-416a-b396-ebe40d72a03b"
+        }
+      ],
+      "sensitivity": null
+    }
+  ],
+  "FICO": [
+    {
+      "id": "credit:734d29b7-1d58-46e0-b509-7718a9f6d483",
+      "kind": "credit",
+      "label": "$1.0 billion revolving line of credit: principal",
+      "value": 265000000,
+      "units": "currency",
+      "currency": "USD",
+      "period": "2026-03-31",
+      "asOf": "2026-03-31",
+      "dimensions": {
+        "instrument": "$1.0 billion revolving line of credit"
+      },
+      "evidence": [
+        {
+          "id": "credit:734d29b7-1d58-46e0-b509-7718a9f6d483",
+          "source": "10-Q",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/814547/000081454726000021/fico-20260331.htm",
+          "quote": "As of March 31, 2026, we had $265.0 million in borrowings outstanding under the revolving line of credit at a weighted-average interest rate of 4.931%, and we were in compliance with all financial covenants under the credit agreement.",
+          "asOf": "2026-04-28",
+          "period": "2026-03-31",
+          "units": "currency",
+          "currency": "USD",
+          "confidence": 1,
+          "revision": "734d29b7-1d58-46e0-b509-7718a9f6d483"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "credit:f7de36e5-1872-4ba7-b728-5527e2de1d02",
+      "kind": "credit",
+      "label": "$1.0 billion revolving line of credit: drawn",
+      "value": 265000000,
+      "units": "currency",
+      "currency": "USD",
+      "period": "2026-03-31",
+      "asOf": "2026-03-31",
+      "dimensions": {
+        "instrument": "$1.0 billion revolving line of credit"
+      },
+      "evidence": [
+        {
+          "id": "credit:f7de36e5-1872-4ba7-b728-5527e2de1d02",
+          "source": "10-Q",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/814547/000081454726000021/fico-20260331.htm",
+          "quote": "As of March 31, 2026, we had $265.0 million in borrowings outstanding under the revolving line of credit at a weighted-average interest rate of 4.931%, and we were in compliance with all financial covenants under the credit agreement.",
+          "asOf": "2026-04-28",
+          "period": "2026-03-31",
+          "units": "currency",
+          "currency": "USD",
+          "confidence": 1,
+          "revision": "f7de36e5-1872-4ba7-b728-5527e2de1d02"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "credit:f288be8e-aa4b-4380-8ee0-24f42a10cad5",
+      "kind": "credit",
+      "label": "$1.0 billion revolving line of credit: commitment",
+      "value": 1000000000,
+      "units": "currency",
+      "currency": "USD",
+      "period": "2026-06-30",
+      "asOf": "2026-06-30",
+      "dimensions": {
+        "instrument": "$1.0 billion revolving line of credit"
+      },
+      "evidence": [
+        {
+          "id": "credit:f288be8e-aa4b-4380-8ee0-24f42a10cad5",
+          "source": "10-Q",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/814547/000081454726000030/fico-20260630.htm",
+          "quote": "available borrowings from our $1.0 billion revolving line of credit",
+          "asOf": "2026-07-29",
+          "period": "2026-06-30",
+          "units": "currency",
+          "currency": "USD",
+          "confidence": 0.98,
+          "revision": "f288be8e-aa4b-4380-8ee0-24f42a10cad5"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "credit:0d71d008-cefa-4534-88cd-a744f4e7c2c2",
+      "kind": "credit",
+      "label": "$1.0 billion revolving line of credit: maturity",
+      "value": null,
+      "valueText": "2030-05-13",
+      "units": "date",
+      "currency": null,
+      "period": "2026-03-31",
+      "asOf": "2026-03-31",
+      "dimensions": {
+        "instrument": "$1.0 billion revolving line of credit"
+      },
+      "evidence": [
+        {
+          "id": "credit:0d71d008-cefa-4534-88cd-a744f4e7c2c2",
+          "source": "10-Q",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/814547/000081454726000021/fico-20260331.htm",
+          "quote": "We have a $1.0 billion unsecured revolving line of credit with a syndicate of banks that matures on May 13, 2030.",
+          "asOf": "2026-04-28",
+          "period": "2026-03-31",
+          "units": "date",
+          "currency": null,
+          "confidence": 1,
+          "revision": "0d71d008-cefa-4534-88cd-a744f4e7c2c2"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "credit:headroom:730db9b6-66b1-428b-98a5-bde18b904200",
+      "kind": "credit",
+      "label": "$1.0 billion revolving line of credit: consolidated leverage ratio headroom",
+      "value": null,
+      "units": "percent",
+      "currency": null,
+      "period": "2025-12-31",
+      "asOf": "2025-12-31",
+      "status": "uncomputable",
+      "notes": [
+        "Covenant boundary inclusivity is not established"
+      ],
+      "dimensions": {
+        "instrument": "$1.0 billion revolving line of credit"
+      },
+      "evidence": [
+        {
+          "id": "credit:730db9b6-66b1-428b-98a5-bde18b904200",
+          "source": "10-Q",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/814547/000081454726000011/fico-20251231.htm",
+          "quote": "The credit agreement contains certain restrictive covenants including a maximum consolidated leverage ratio of 3.5 to 1.0, subject to a step up to 4.0 to 1.0 following certain permitted acquisitions and subject to certain conditions",
+          "asOf": "2026-01-28",
+          "period": "2025-12-31",
+          "units": "ratio",
+          "currency": null,
+          "confidence": 1,
+          "revision": "730db9b6-66b1-428b-98a5-bde18b904200"
+        }
+      ],
+      "sensitivity": null
+    },
+    {
+      "id": "credit:headroom:4d2eedb2-595d-47e2-9715-47bfb163fdfc",
+      "kind": "credit",
+      "label": "$1.0 billion revolving line of credit: consolidated leverage ratio headroom",
+      "value": null,
+      "units": "percent",
+      "currency": null,
+      "period": "2026-03-31",
+      "asOf": "2026-03-31",
+      "status": "uncomputable",
+      "notes": [
+        "subject to a step up to 4.0 to 1.0 following certain permitted acquisitions and subject to certain conditions"
+      ],
+      "dimensions": {
+        "instrument": "$1.0 billion revolving line of credit"
+      },
+      "evidence": [
+        {
+          "id": "credit:4d2eedb2-595d-47e2-9715-47bfb163fdfc",
+          "source": "10-Q",
+          "tier": "primary",
+          "url": "https://www.sec.gov/Archives/edgar/data/814547/000081454726000021/fico-20260331.htm",
+          "quote": "The credit agreement contains certain restrictive covenants including a maximum consolidated leverage ratio of 3.5 to 1.0, subject to a step up to 4.0 to 1.0 following certain permitted acquisitions and subject to certain conditions",
+          "asOf": "2026-04-28",
+          "period": "2026-03-31",
+          "units": "ratio",
+          "currency": null,
+          "confidence": 1,
+          "revision": "4d2eedb2-595d-47e2-9715-47bfb163fdfc"
+        }
+      ],
+      "sensitivity": null
+    }
+  ]
+}

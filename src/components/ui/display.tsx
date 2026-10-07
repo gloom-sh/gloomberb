@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { t } from "../../i18n";
 import { blendHex } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
-import { Box, Text, TextAttributes } from "../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
-import { headerCase } from "./header-case";
+import { titleCase } from "./header-case";
 import { statToneColor, type StatTone } from "./stat-grid";
 
 export { BulletList, FigureList, Prose, READING_WIDTH } from "./prose";
@@ -19,10 +19,13 @@ export interface SectionHeadingProps {
 
 export function SectionHeading({ title, marginTop = 0, width, wrap = false }: SectionHeadingProps) {
   const colors = useThemeColors();
+  // English reads in title case; a translation keeps its own casing.
+  const translated = t(title);
+  const text = translated === title ? titleCase(title) : translated;
   return (
     <Box height={wrap ? undefined : 1} marginTop={marginTop} width={width} overflow="hidden" data-gloom-ui="section-heading">
-      <Text fg={colors.textDim} attributes={TextAttributes.BOLD} wrapText={wrap}>
-        {wrap || width === undefined ? headerCase(t(title)) : truncateToDisplayWidth(headerCase(t(title)), width)}
+      <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText={wrap}>
+        {wrap || width === undefined ? text : truncateToDisplayWidth(text, width)}
       </Text>
     </Box>
   );
@@ -92,16 +95,22 @@ export interface BadgeProps {
   variant?: "subtle" | "solid";
 }
 
+/** A chip as tall as its row runs into the one below in a column of chips; the desktop leaves a hairline above and below, as ticker chips do. */
+const NATIVE_BADGE_STYLE = { height: "calc(100% - 4px)", borderRadius: 3 };
+
 export function Badge({ label, tone = "neutral", color, variant = "subtle" }: BadgeProps) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const accent = color ?? (tone === "neutral" ? colors.textDim : tone === "accent" ? colors.borderFocused : colors[tone]);
   const solid = variant === "solid";
   const neutral = solid && tone === "neutral" && !color;
-  return (
-    <Box height={1} paddingX={1} backgroundColor={neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, 0.28)} data-gloom-ui="badge">
+  const chip = (
+    <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, 0.28)}
+      data-gloom-ui="badge" justifyContent={nativePaneChrome ? "center" : undefined} style={nativePaneChrome ? NATIVE_BADGE_STYLE : undefined}>
       <Text fg={neutral ? colors.selectedText : solid ? colors.bg : accent} attributes={TextAttributes.BOLD}>{t(label)}</Text>
     </Box>
   );
+  return nativePaneChrome ? <Box height={1} flexShrink={0} justifyContent="center">{chip}</Box> : chip;
 }
 
 export interface DividerProps {

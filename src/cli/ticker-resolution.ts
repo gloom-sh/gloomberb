@@ -40,8 +40,8 @@ export async function resolveTickerForCli(
 }
 
 /**
- * Search catalogues can file a listing under another company's name: Twelve
- * Data names BAE Systems' London line (BA:LSE) after Boeing. The listing's own
+ * Search catalogues can file a listing under another company's name, such as
+ * BAE Systems' London line (BA:LSE) under Boeing. The listing's own
  * quote names the security it prices, which is the name the ticker command
  * shows, so a record created here takes it.
  */

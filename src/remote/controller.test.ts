@@ -8,7 +8,12 @@ import { createAppRemoteController } from "./controller";
 import type { RemoteControlSchema, RemoteUiNodeSnapshot } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
 
-function createRegistryHarness(options: { withFloatingPane?: boolean; withCustomView?: boolean; financials?: TickerFinancials } = {}) {
+function createRegistryHarness(options: {
+  withFloatingPane?: boolean;
+  withCustomView?: boolean;
+  financials?: TickerFinancials;
+  dialogOpen?: boolean;
+} = {}) {
   const config = {
     ...createDefaultConfig("/tmp/gloom-remote-controller"),
     onboardingComplete: true,
@@ -80,18 +85,18 @@ function createRegistryHarness(options: { withFloatingPane?: boolean; withCustom
     showPane: () => {},
     focusPane: () => {},
     hidePane: () => {},
-    createPaneFromTemplateAsyncFn: async (templateId: string, options: unknown) => {
+    createPaneFromTemplateAsync: async (templateId: string, options: unknown) => {
       createdFromTemplate.push({ templateId, options });
     },
     navigateTicker: () => {},
     pinTicker: () => {},
     selectTicker: () => {},
     switchTab: () => {},
-    getTermSizeFn: () => ({ width: 120, height: 40 }),
-    updateLayoutFn: (layout: AppState["config"]["layout"]) => {
+    getTermSize: () => ({ width: 120, height: 40 }),
+    updateLayout: (layout: AppState["config"]["layout"]) => {
       dispatch({ type: "UPDATE_LAYOUT", layout });
     },
-    applyPaneSettingValueFn: async () => {},
+    applyPaneSettingValue: async () => {},
     notify: () => {},
   } as unknown as PluginRegistry;
   let uiNodes: RemoteUiNodeSnapshot[] = [{ id: "ui:test", role: "button", label: "Test", actions: ["press"] }];
@@ -105,11 +110,18 @@ function createRegistryHarness(options: { withFloatingPane?: boolean; withCustom
       return { nodeId, action, input };
     },
   };
+  let dialogOpen = options.dialogOpen === true;
   const controller = createAppRemoteController({
     dispatch,
     getState: () => state,
     pluginRegistry: registry,
     uiRegistry,
+    isDialogOpen: () => dialogOpen,
+    closeTopmostDialog: () => {
+      const closed = dialogOpen;
+      dialogOpen = false;
+      return closed;
+    },
   });
   return {
     actions,
@@ -281,6 +293,25 @@ describe("createAppRemoteController", () => {
     });
   });
 
+  test("leaves the bar shut while a dialog is open, and says so until app.closeDialog closes it", async () => {
+    const { actions, controller } = createRegistryHarness({ dialogOpen: true });
+
+    // Pane settings: a dialog that is not a form.
+    expect(await controller.handle({ type: "get", resource: "app://form" }))
+      .toMatchObject({ ok: true, data: { open: false, otherDialogOpen: true } });
+    for (const operation of ["app.openCommandBar", "app.search"]) {
+      const response = await controller.handle({ type: "call", operation, input: { query: "NVDA" } });
+      expect(response).toMatchObject({ ok: false, error: { message: "A dialog is open. Close it first with app.closeDialog." } });
+    }
+    expect(actions).toEqual([]);
+
+    const closed = await controller.handle({ type: "call", operation: "app.closeDialog", input: {} });
+    expect(closed.ok && closed.state?.form).toEqual({ open: false });
+    expect(await controller.handle({ type: "call", operation: "app.closeDialog", input: {} }))
+      .toMatchObject({ ok: false, error: { message: "No dialog is open." } });
+    expect((await controller.handle({ type: "call", operation: "app.search", input: { query: "NVDA" } })).ok).toBe(true);
+  });
+
   test("exposes and activates semantic command-bar results", async () => {
     const { controller, invokedUiActions, setUiNodes } = createRegistryHarness();
     setUiNodes([
@@ -414,6 +445,41 @@ describe("createAppRemoteController", () => {
 
     expect(response.ok).toBe(true);
     expect(invokedUiActions).toContainEqual({ nodeId: "ui:done", action: "press", input: undefined });
+
+    // An open form covers the panes: its Cancel is pressed, not a pane's
+    // registered earlier, and every call reports the form.
+    setUiNodes([
+      { id: "ui:pane-cancel", role: "button", label: "Cancel", actions: ["press"] },
+      { id: "ui:form-cancel", role: "button", label: "Cancel", actions: ["press"], metadata: { scope: "form" } },
+      { id: "ui:form", role: "form", label: "New Watchlist", actions: ["cancel", "submit"], metadata: { scope: "form", kind: "form", title: "New Watchlist" } },
+    ]);
+    const formResponse = await controller.handle({
+      type: "call",
+      operation: "ui.invokeMatching",
+      input: { role: "button", label: "Cancel" },
+    });
+    expect(invokedUiActions.at(-1)).toMatchObject({ nodeId: "ui:form-cancel", action: "press" });
+    expect(formResponse.ok && formResponse.state?.form).toEqual({
+      open: true,
+      nodeId: "ui:form",
+      actions: ["cancel", "submit"],
+      kind: "form",
+      title: "New Watchlist",
+    });
+
+    // A listing picker over the form: the form's controls are out of reach.
+    setUiNodes([
+      { id: "ui:form-cancel", role: "button", label: "Cancel", actions: ["press"], metadata: { scope: "form" } },
+      { id: "ui:form", role: "form", label: "Compare", actions: ["cancel", "submit"], metadata: { scope: "form", kind: "form", covered: true } },
+    ]);
+    const covered = await controller.handle({
+      type: "call",
+      operation: "ui.invokeMatching",
+      input: { role: "button", label: "Cancel" },
+    });
+    expect(covered).toMatchObject({ ok: false, error: { message: "No matching semantic UI node is visible." } });
+    expect((await controller.handle({ type: "get", resource: "app://form" })))
+      .toMatchObject({ ok: true, data: { open: true, kind: "form", covered: true } });
 
     const directResponse = await controller.handle({
       type: "call",

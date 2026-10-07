@@ -1,22 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { testRender } from "../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { AppContext, createInitialState, type AppAction } from "../state/app/context";
 import { createStaticAppStore } from "../test-support/app-store";
 import { createDefaultConfig } from "../types/config";
 import type { InputRenderable } from "../ui";
 import { InputSearchBar } from "./input-search-bar";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const tui = createOpenTuiTestHarness();
 let setSearchActive: Dispatch<SetStateAction<boolean>> | null = null;
 
-afterEach(async () => {
+afterEach(() => {
   setSearchActive = null;
-  if (!testSetup) return;
-  await act(async () => {
-    testSetup!.renderer.destroy();
-  });
-  testSetup = undefined;
 });
 
 function Harness({
@@ -62,9 +57,9 @@ describe("InputSearchBar", () => {
   test("captures app input while the search input is active", async () => {
     const actions: AppAction[] = [];
 
-    testSetup = await testRender(<Harness actions={actions} />, { width: 40, height: 4 });
+    await tui.render(<Harness actions={actions} />, { width: 40, height: 4 });
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(actions).toEqual([{ type: "SET_INPUT_CAPTURED", captured: true }]);
@@ -72,7 +67,7 @@ describe("InputSearchBar", () => {
 
     await act(async () => {
       setSearchActive(false);
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     expect(actions).toEqual([
@@ -88,7 +83,7 @@ describe("InputSearchBar", () => {
     const queries: string[] = [];
     let blurred = false;
 
-    testSetup = await testRender(
+    await tui.render(
       <Harness
         actions={actions}
         onBlur={() => {
@@ -99,13 +94,10 @@ describe("InputSearchBar", () => {
       { width: 40, height: 4 },
     );
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
-    await act(async () => {
-      testSetup!.renderer.keyInput.emit("keypress", { name: "escape" });
-      await testSetup!.renderOnce();
-    });
+    await tui.emitKeypress({ name: "escape" });
 
     expect(queries).toEqual([""]);
     expect(blurred).toBe(true);
@@ -115,7 +107,7 @@ describe("InputSearchBar", () => {
     const actions: AppAction[] = [];
     let navigatedDown = 0;
 
-    testSetup = await testRender(
+    await tui.render(
       <Harness
         actions={actions}
         onNavigateDown={() => {
@@ -125,12 +117,12 @@ describe("InputSearchBar", () => {
       { width: 40, height: 4 },
     );
     await act(async () => {
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
 
     await act(async () => {
-      testSetup!.mockInput.pressArrow("down");
-      await testSetup!.renderOnce();
+      tui.setup().mockInput.pressArrow("down");
+      await tui.setup().renderOnce();
     });
 
     expect(navigatedDown).toBe(1);

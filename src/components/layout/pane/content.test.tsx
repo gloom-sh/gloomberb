@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, type Dispatch } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { AppProvider, useAppDispatch, type AppAction } from "../../../state/app/context";
 import { setLanguage, t } from "../../../i18n";
 import { applyTheme, colors } from "../../../theme/colors";
@@ -8,7 +8,6 @@ import { getTheme } from "../../../theme/themes";
 import { createDefaultConfig } from "../../../types/config";
 import { PaneContent } from "./content";
 
-let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let capturedDispatch: Dispatch<AppAction> | null = null;
 
 function DispatchCapture() {
@@ -25,11 +24,9 @@ function LanguageProbe() {
 }
 
 describe("PaneContent", () => {
-  afterEach(async () => {
-    if (testSetup) {
-      await act(async () => testSetup?.renderer.destroy());
-    }
-    testSetup = undefined;
+  const tui = createOpenTuiTestHarness();
+
+  afterEach(() => {
     capturedDispatch = null;
     applyTheme("amber");
     setLanguage("en");
@@ -41,7 +38,7 @@ describe("PaneContent", () => {
       theme: "amber",
     };
 
-    testSetup = await testRender(
+    await tui.render(
       <AppProvider config={config}>
         <DispatchCapture />
         <PaneContent
@@ -56,16 +53,16 @@ describe("PaneContent", () => {
       { width: 32, height: 6 },
     );
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(getTheme("amber").textBright);
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain(getTheme("amber").textBright);
 
     await act(async () => {
       capturedDispatch?.({ type: "PREVIEW_THEME", theme: "green" });
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain(getTheme("green").textBright);
     expect(frame).not.toContain(getTheme("amber").textBright);
   });
@@ -73,7 +70,7 @@ describe("PaneContent", () => {
   test("rerenders pane bodies when the app language changes", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-language-test");
 
-    testSetup = await testRender(
+    await tui.render(
       <AppProvider config={config}>
         <PaneContent
           component={LanguageProbe}
@@ -87,16 +84,16 @@ describe("PaneContent", () => {
       { width: 32, height: 6 },
     );
 
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Done");
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Done");
 
     await act(async () => {
       setLanguage("zh-CN");
-      await testSetup!.renderOnce();
+      await tui.setup().renderOnce();
     });
-    await testSetup.renderOnce();
+    await tui.setup().renderOnce();
 
-    const frame = testSetup.captureCharFrame();
+    const frame = tui.frame();
     expect(frame).toContain("完成");
     expect(frame).not.toContain("Done");
   });

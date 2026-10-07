@@ -1,5 +1,5 @@
 import { Box, Text, Textarea, useUiHost } from "../../ui";
-import { type ComponentType, type RefObject } from "react";
+import { type ComponentType, type ReactNode, type RefObject } from "react";
 import { type TextareaRenderable } from "../../ui";
 import { colors } from "../../theme/colors";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
@@ -21,6 +21,11 @@ export interface MessageComposerProps {
   onSubmit?: () => void;
   keyBindings?: Array<Record<string, unknown>>;
   wrapText?: boolean;
+  /**
+   * Desktop and web: a control at the end of the field, such as an attach
+   * button. The terminal draws only the field.
+   */
+  accessory?: ReactNode;
 }
 
 export interface MessageComposerBlockHeightOptions {
@@ -57,6 +62,7 @@ export function MessageComposer({
   onSubmit,
   keyBindings,
   wrapText = false,
+  accessory,
 }: MessageComposerProps) {
   useRemoteUiNode({
     role: "message-composer",
@@ -97,6 +103,7 @@ export function MessageComposer({
         onSubmit={onSubmit}
         keyBindings={keyBindings}
         wrapText={wrapText}
+        accessory={accessory}
       />
     );
   }

@@ -1,4 +1,7 @@
 import type { ContextMenuItem } from "../../../../types/context-menu";
+import { t } from "../../../../i18n";
+import { displayWidth } from "../../../../utils/format";
+import { getShortcutHintWidth } from "../../../ui/shortcut-hint";
 
 export interface PaneFooterRegistration {
   order?: number;
@@ -64,6 +67,88 @@ export interface CombinedPaneFooter {
 }
 
 export const EMPTY_FOOTER: CombinedPaneFooter = { info: [], hints: [], menu: [], keys: [] };
+
+/** Status the hints leave room for, more when it is a warning: a failure must stay readable. */
+const INFO_FLOOR_CHARS = 10;
+const WARNING_FLOOR_CHARS = 24;
+const HINT_GAP = 1;
+
+function paneHintWidth(hint: Pick<PaneHint, "key" | "label">, prefix = ""): number {
+  return getShortcutHintWidth(hint.key, hint.label, prefix);
+}
+
+export function totalHintsWidth(hints: readonly Pick<PaneHint, "key" | "label">[]): number {
+  return hints.reduce((total, hint, index) => total + paneHintWidth(hint, index > 0 ? " " : ""), 0);
+}
+
+function infoTextWidth(segments: readonly PaneFooterSegment[]): number {
+  if (segments.length === 0) return 0;
+  return segments.reduce((total, segment, index) => {
+    const text = segment.parts.reduce((sum, part, partIndex) => (
+      sum + (partIndex > 0 ? 1 : 0) + displayWidth(part.text)
+    ), 0);
+    return total + (index > 0 ? 1 : 0) + text;
+  }, 0);
+}
+
+function moreControl(budget: number): { label: string; width: number } {
+  const label = t("More");
+  const width = displayWidth(label) + 2;
+  if (budget >= width) return { label, width };
+  const short = "…";
+  return { label: short, width: Math.min(Math.max(0, budget), displayWidth(short) + 2) };
+}
+
+export interface PaneFooterHintRow {
+  hints: PaneHint[];
+  overflow: PaneHint[];
+  moreLabel: string;
+  moreWidth: number;
+  hintsWidth: number;
+  infoWidth: number;
+}
+
+/** Hints that fit this footer row, and the rest, which a More control owns. */
+export function layoutPaneFooterHintRow(
+  footer: CombinedPaneFooter,
+  contentWidth: number,
+  iconReserve = 0,
+): PaneFooterHintRow {
+  const width = Math.max(0, Math.floor(contentWidth));
+  const hints = footer.hints.filter((hint) => !hint.disabled);
+  const warning = footer.info.some((segment) => segment.parts.some((part) => part.tone === "warning" || part.tone === "negative"));
+  const textFloor = footer.info.length > 0
+    ? Math.min(warning ? WARNING_FLOOR_CHARS : INFO_FLOOR_CHARS, infoTextWidth(footer.info))
+    : 0;
+  const infoFloor = Math.min(width, Math.max(iconReserve, textFloor));
+  const hintBudget = Math.max(0, width - infoFloor - (infoFloor > 0 && hints.length > 0 ? 1 : 0));
+  const more = moreControl(hintBudget);
+  let visible = hints;
+  let overflow: PaneHint[] = [];
+  if (totalHintsWidth(hints) > hintBudget) {
+    const room = Math.max(0, hintBudget - more.width - (more.width > 0 ? HINT_GAP : 0));
+    visible = [];
+    let used = 0;
+    for (const hint of hints) {
+      const next = used + (visible.length > 0 ? HINT_GAP : 0) + paneHintWidth(hint);
+      if (next > room) break;
+      visible.push(hint);
+      used = next;
+    }
+    overflow = hints.slice(visible.length);
+  }
+  const hintsWidth = overflow.length > 0
+    ? totalHintsWidth(visible) + (visible.length > 0 ? HINT_GAP : 0) + more.width
+    : totalHintsWidth(visible);
+  return {
+    hints: visible,
+    overflow,
+    moreLabel: more.label,
+    moreWidth: more.width,
+    hintsWidth,
+    infoWidth: Math.max(0, width - hintsWidth),
+  };
+}
 
 /** The name a hint goes by in the pane menu: `[a]dd` is "Add", `[r]efresh` is "Refresh". */
 export function paneHintTitle(hint: Pick<PaneHint, "key" | "label" | "title">): string {

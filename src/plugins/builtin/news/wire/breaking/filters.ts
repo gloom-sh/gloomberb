@@ -5,7 +5,7 @@ export const BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY = "breakingNewsNotification
 export const BREAKING_NEWS_SCOPE_KEY = "breakingNewsScope";
 export const BREAKING_NEWS_MUTED_SECTORS_KEY = "breakingNewsMutedSectors";
 
-export const BREAKING_SCOPES = [
+const BREAKING_SCOPES = [
   "watchlist-macro",
   "watchlist",
   "macro",
@@ -14,7 +14,7 @@ export const BREAKING_SCOPES = [
 
 export type BreakingScope = (typeof BREAKING_SCOPES)[number];
 
-export const DEFAULT_BREAKING_SCOPE: BreakingScope = "watchlist-macro";
+const DEFAULT_BREAKING_SCOPE: BreakingScope = "watchlist-macro";
 
 export const BREAKING_SCOPE_OPTIONS = [
   {
@@ -58,18 +58,18 @@ export function parseMutedSectors(value: unknown): Set<string> {
  * structure. The server never attributes those to a symbol, so absence of
  * tickers is the signal.
  */
-export function isMacroArticle(article: MarketNewsItem): boolean {
+function isMacroArticle(article: MarketNewsItem): boolean {
   return article.tickers.length === 0;
 }
 
-export function matchesWatchlist(
+function matchesWatchlist(
   article: MarketNewsItem,
   watchedSymbols: ReadonlySet<string>,
 ): boolean {
   return article.tickers.some((ticker) => watchedSymbols.has(ticker.toUpperCase()));
 }
 
-export function matchesScope(
+function matchesScope(
   article: MarketNewsItem,
   scope: BreakingScope,
   watchedSymbols: ReadonlySet<string>,

@@ -50,7 +50,7 @@ describe("buildFuturesRows search", () => {
     expect(futuresContractName(contract("CL=F"), { symbol: "OTHER", name: "Crude Oil Nov 26" } as Quote)).toBe("WTI Crude Oil");
   });
 
-  test("matches contract code, name, and Yahoo symbol case-insensitively", () => {
+  test("matches contract code, name, and listed symbol case-insensitively", () => {
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "gc" })))
       .toEqual(["header:metals", "GC=F"]);
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "crude" })))

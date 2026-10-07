@@ -1,7 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
 import { ApiRequestError } from "../../../api-client/errors";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -12,18 +12,13 @@ import { HistoricalPricesPane } from "../ticker-detail/data-panes/historical-pri
 import { listingIdentity } from "./ticker-request";
 
 type Pane = "analyst-research" | "earnings-estimates" | "corporate-actions" | "historical-prices";
-let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-afterEach(async () => {
-  if (setup) await act(async () => { setup!.renderer.destroy(); });
-  setup = undefined;
-});
+const tui = createOpenTuiTestHarness();
 
 async function settle() {
-  for (let i = 0; i < 4; i++) await act(async () => { await Bun.sleep(1); await setup!.renderOnce(); });
+  for (let i = 0; i < 4; i++) await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
 }
 
-function view() { return setup!.captureCharFrame(); }
+function view() { return tui.frame(); }
 
 async function mount(pane: Pane, width: number, state: { failure: Error | null; revision: number }) {
   const fail = () => { if (state.failure) throw state.failure; };
@@ -62,7 +57,7 @@ async function mount(pane: Pane, width: number, state: { failure: Error | null; 
       ? <HistoricalPricesPane focused width={width} height={23} paneId={paneId} paneType={pane} />
       : <CorporateActionsView focused width={width} height={23} variant={pane} footerPaneId={pane} />;
   await act(async () => {
-    setup = await testRender(<TestPaneFrame state={app} paneId={paneId} pluginId="ticker-research" runtime={runtime} width={width} height={24}>
+    await tui.render(<TestPaneFrame state={app} paneId={paneId} pluginId="ticker-research" runtime={runtime} width={width} height={24}>
       {() => content}
     </TestPaneFrame>, { width, height: 24 });
   });
@@ -84,20 +79,20 @@ test.each(cases)("%s at %i keeps known research through a transient refresh fail
   const requests = await mount(pane, width, state);
   expect(view()).toContain(original);
   state.failure = new ApiRequestError("Research source timed out", 503);
-  await emitKeypress(setup!, { name: "r" });
+  await tui.emitKeypress({ name: "r" });
   await settle();
   const failedRefresh = view();
   expect(failedRefresh).toContain(original);
   expect(failedRefresh).toContain("Research source timed out");
   state.failure = null;
   state.revision = 1;
-  await emitKeypress(setup!, { name: "r" });
+  await tui.emitKeypress({ name: "r" });
   await settle();
   const recoveredRefresh = view();
   expect(recoveredRefresh).toContain(recovered);
   expect(recoveredRefresh).not.toContain("Research source timed out");
   state.failure = new ApiRequestError("Research access denied", 403);
-  await emitKeypress(setup!, { name: "r" });
+  await tui.emitKeypress({ name: "r" });
   await settle();
   const deniedRefresh = view();
   expect(deniedRefresh).not.toContain(recovered);
@@ -114,7 +109,7 @@ test.each([
   await mount("analyst-research", 80, state);
   expect(view()).toContain("Original Research");
   state.failure = denial;
-  await emitKeypress(setup!, { name: "r" });
+  await tui.emitKeypress({ name: "r" });
   await settle();
   const denied = view();
   expect(denied).not.toContain("Original Research");
@@ -125,7 +120,7 @@ test("a refresh failure without a message cannot leave retained data looking cur
   const state = { failure: null as Error | null, revision: 0 };
   await mount("analyst-research", 80, state);
   state.failure = new Error("");
-  await emitKeypress(setup!, { name: "r" });
+  await tui.emitKeypress({ name: "r" });
   await settle();
   const failed = view();
   expect(failed).toContain("Original Research");

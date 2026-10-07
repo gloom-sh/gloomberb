@@ -7,7 +7,7 @@ import { getSharedRegistry } from "../../../registry";
 import type { PluginRegistry } from "../../../registry";
 import { createASKGToolExecutor, type ASKGToolExecutor } from "./executor";
 import { buildASKGClientManifest, type ASKGClientManifest } from "./manifest";
-import type { InProcessRemoteControlHandler } from "./undo";
+import type { ASKGUndoManager, InProcessRemoteControlHandler } from "./undo";
 
 /**
  * Headless loaders only read `config` and `dataProvider`, and the persisted
@@ -45,12 +45,18 @@ export interface ASKGToolExecutorOptions {
   config: AppConfig;
   remoteHandler: InProcessRemoteControlHandler;
   manifest: ASKGClientManifest;
+  /**
+   * Keeps the undo tokens. A token only undoes through the manager that
+   * issued it, so it must outlive the executor that ran the call.
+   */
+  undoManager?: ASKGUndoManager;
 }
 
 export function createASKGRendererToolExecutor({
   config,
   remoteHandler,
   manifest,
+  undoManager,
 }: ASKGToolExecutorOptions): ASKGToolExecutor | null {
   const registry = getSharedRegistry();
   if (!registry) return null;
@@ -59,6 +65,7 @@ export function createASKGRendererToolExecutor({
     registry,
     context: marketContextFromRegistry(registry, config),
     remoteHandler,
+    ...(undoManager ? { undoManager } : {}),
   });
 }
 

@@ -4,7 +4,7 @@ import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 
 export const SYNC_SNAPSHOT_SCHEMA_VERSION = 1;
 
-export interface SyncContributorPayload {
+interface SyncContributorPayload {
   schemaVersion: number;
   updatedAt: string;
   payload: unknown;
@@ -19,11 +19,11 @@ export interface SyncSnapshot {
   contributors: Record<string, SyncContributorPayload>;
 }
 
-export interface SyncCollectContext {
+interface SyncCollectContext {
   state: AppState;
 }
 
-export interface SyncApplyContext {
+interface SyncApplyContext {
   snapshot: SyncSnapshot;
   baselineState: AppState;
   /**
@@ -53,7 +53,7 @@ export interface SyncSnapshotResponse {
   settings?: SyncSettings;
 }
 
-export interface SyncPushResult {
+interface SyncPushResult {
   revision: number;
   updatedAt: string;
   settings?: SyncSettings;

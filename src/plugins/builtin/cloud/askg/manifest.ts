@@ -13,6 +13,7 @@ import type {
   PaneTemplateDef,
 } from "../../../../types/plugin";
 import {
+  SCRIPT_TOOL_NAME,
   TOOL_NAME_PATTERN,
   type ClientToolManifest,
   type ClientToolManifestSource,
@@ -22,9 +23,9 @@ import {
   type ToolManifestOption,
 } from "./protocol";
 
-export const HEADLESS_TOOL_TIMEOUT_MS = 30_000;
-export const REMOTE_TOOL_TIMEOUT_MS = 10_000;
-export const REMOTE_RESOURCE_TOOL_NAME = "app.get_resource";
+const HEADLESS_TOOL_TIMEOUT_MS = 30_000;
+const REMOTE_TOOL_TIMEOUT_MS = 10_000;
+const REMOTE_RESOURCE_TOOL_NAME = "app.get_resource";
 
 const TOOL_NAME_REGEX = new RegExp(TOOL_NAME_PATTERN);
 
@@ -58,15 +59,30 @@ function projectArgument(argument: HeadlessPaneDefinition["argument"]): ToolMani
   return { ...argument };
 }
 
+/**
+ * An enum whose default is not one of its values ("" for "no section") is a
+ * schema the platform cannot build, and it drops the whole tool. Without the
+ * default the option is simply optional, and the CLI applies its default.
+ */
+function hasInvalidEnumDefault(option: HeadlessPaneDefinition["options"][number]): boolean {
+  return option.type === "enum"
+    && option.defaultValue !== undefined
+    && !option.values?.some(({ value }) => value === option.defaultValue);
+}
+
 function projectOptions(options: HeadlessPaneDefinition["options"]): ToolManifestOption[] {
   return options.map(({
     settingKey: _settingKey,
     pluginState: _pluginState,
     values,
     aliases,
+    defaultValue,
     ...option
   }) => ({
     ...option,
+    ...(defaultValue !== undefined && !hasInvalidEnumDefault({ ...option, values, defaultValue })
+      ? { defaultValue }
+      : {}),
     ...(aliases ? { aliases: [...aliases] } : {}),
     ...(values ? {
       values: values.map((value) => ({
@@ -124,7 +140,9 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
     candidates.push({
       token,
       identity: `template:${template.id}`,
-      manifest: headlessManifest(token, template.label, template.description, definition),
+      // Tools return data, so a description that says "Open a chart" would
+      // have Gloom report opening one.
+      manifest: headlessManifest(token, template.label, definition.description ?? template.description, definition),
     });
   }
 
@@ -138,7 +156,7 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
       manifest: headlessManifest(
         pane.id,
         pane.name,
-        `Read data from the ${pane.name} pane.`,
+        pane.headless.description ?? `Read data from the ${pane.name} pane.`,
         pane.headless,
       ),
     });
@@ -218,6 +236,15 @@ function filterCandidates(candidates: ManifestCandidate[]): {
         source: candidate.manifest.source,
         token: candidate.token,
         reason: `Lowercased token "${candidate.manifest.name}" does not match ${TOOL_NAME_PATTERN}.`,
+      });
+      continue;
+    }
+    // The platform refuses a client that advertises its own script tool.
+    if (candidate.manifest.name === SCRIPT_TOOL_NAME) {
+      skipped.push({
+        source: candidate.manifest.source,
+        token: candidate.token,
+        reason: `Tool name "${SCRIPT_TOOL_NAME}" is reserved for Gloom.`,
       });
       continue;
     }

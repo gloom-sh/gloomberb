@@ -27,6 +27,7 @@ import {
 } from "../../../ui";
 import { isPermanentClientError } from "../../../api-client/errors";
 import { useFilingYearReader } from "../shared/filing-year-reader";
+import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
 import { useBoundTicker } from "../shared/ticker-request";
 import { SplitBar } from "../../../components/ui/split-bar";
 import { loadProxyStatement, loadProxyStatements } from "./data";
@@ -228,9 +229,17 @@ function figuresOf(statement: CloudProxyStatementPayload) {
   return figures;
 }
 
+const EXEC_WALL: ProFeatureWallCopy = {
+  placement: "exec-wall",
+  action: "see executive pay",
+  title: "Executive pay is part of Gloom Cloud Pro.",
+  message: "Named executive officers and how they were paid, read from each proxy statement and checked against the filing.",
+};
+
 export function ExecutivesPane({
   focused,
   width,
+  height,
   nested = false,
 }: {
   focused: boolean;
@@ -239,26 +248,28 @@ export function ExecutivesPane({
   /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
   nested?: boolean;
 }) {
+  const { wall, guard } = useProFeatureWall(EXEC_WALL, { width, height });
   const { symbol } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
+  if (wall) return wall;
   if (!ticker) return <EmptyState title="Pick a ticker to see its executives." />;
-  return <ExecutiveResearch key={ticker} ticker={ticker} focused={focused} width={width} nested={nested} />;
+  return <ExecutiveResearch key={ticker} ticker={ticker} focused={focused} width={width} nested={nested} guard={guard} />;
 }
 
 export function ExecutivesResearchTab(props: { focused: boolean; width: number; height: number }) {
   return <ExecutivesPane {...props} nested />;
 }
 
-function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string; focused: boolean; width: number; nested: boolean }) {
+function ExecutiveResearch({ ticker, focused, width, nested, guard }: { ticker: string; focused: boolean; width: number; nested: boolean; guard: ReadGuard }) {
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
   const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
-  const loadYears = useCallback((force: boolean) => loadProxyStatements(ticker, { force }), [ticker]);
+  const loadYears = useCallback((force: boolean) => guard(loadProxyStatements(ticker, { force })), [guard, ticker]);
   const list = useAsyncResource(loadYears, { clearOnError: isPermanentClientError });
   const years = useMemo(() => (list.data?.data?.proxies ?? []).map((entry) => entry.proxyYear), [list.data]);
   const year = selectedYear !== null && years.includes(selectedYear)
     ? selectedYear : years[0] ?? null;
-  const loadStatement = useCallback((force: boolean) => loadProxyStatement(ticker, year!, { force }), [ticker, year]);
+  const loadStatement = useCallback((force: boolean) => guard(loadProxyStatement(ticker, year!, { force })), [guard, ticker, year]);
   const detail = useAsyncResource(year === null ? null : loadStatement, { clearOnError: isPermanentClientError });
   const statement = detail.data?.data ?? null;
   const loading = list.loading || detail.loading;
@@ -364,21 +375,21 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
           >
             {figures.length > 0 && (
               <Box flexDirection="column">
-                <SectionHeading title="KEY FIGURES" />
+                <SectionHeading title="Key Figures" />
                 <FigureList figures={figures} width={proseWidth} minValueWidth={4} maxValueWidth={14} />
               </Box>
             )}
             {statement.ceo && (
               <Box flexDirection="column">
                 <SectionHeading marginTop={figures.length > 0 ? 1 : 0}
-                  title={`HOW ${statement.ceo.name.split(" ").pop()?.toUpperCase() ?? "THE CEO"} WAS PAID`}
+                  title={`How ${statement.ceo.name.trim().split(/\s+/).pop() || "the CEO"} Was Paid`}
                 />
                 <PayMixBar row={statement.ceo} width={proseWidth} />
               </Box>
             )}
             {statement.namedExecutives.length > 0 && (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1} title="NAMED EXECUTIVE OFFICERS" />
+                <SectionHeading marginTop={1} title="Named Executive Officers" />
                 <ExecutiveRows
                   rows={statement.namedExecutives}
                   width={proseWidth}
@@ -387,7 +398,7 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
             )}
             {statement.highlights && (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1} title="WHAT CHANGED" />
+                <SectionHeading marginTop={1} title="What Changed" />
                 <BulletList items={statement.highlights.split("\n")} width={proseWidth} color={colors.text} />
               </Box>
             )}

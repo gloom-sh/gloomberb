@@ -8,7 +8,6 @@ import {
   type ASKGSessionStartResponse,
   type ASKGSseEvent,
   type ClientToolManifest,
-  type ToolManifest,
   type ToolResultPayload,
 } from "./protocol";
 

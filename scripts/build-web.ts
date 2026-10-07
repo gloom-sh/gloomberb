@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import { join, relative } from "path";
-import { buildViewBundle } from "../src/renderers/electrobun/view/build-assets";
+import { buildViewBundle } from "../src/renderers/dom/build-assets";
 import type { WebBundledPluginDescriptor } from "../src/plugins/web-bundled";
 import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../src/utils/plugin-proxy-hosts";
 import { compileWebBundledPlugins } from "./web-plugins";

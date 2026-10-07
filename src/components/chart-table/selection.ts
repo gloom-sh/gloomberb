@@ -30,7 +30,7 @@ interface DatedRow {
 }
 
 /** The row nearest a date, or null when no row has a point. */
-export function nearestDatedRow(rows: readonly DatedRow[], time: number): DatedRow | null {
+function nearestDatedRow(rows: readonly DatedRow[], time: number): DatedRow | null {
   let best: DatedRow | null = null;
   for (const row of rows) {
     if (!best || Math.abs(row.time - time) < Math.abs(best.time - time)) best = row;

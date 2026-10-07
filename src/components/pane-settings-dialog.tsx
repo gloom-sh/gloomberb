@@ -25,6 +25,8 @@ interface PaneSettingsDialogContentProps extends AlertContext {
   paneId: string;
   pluginRegistry: PluginRegistry;
   applyFieldValue: (paneId: string, field: PaneSettingField, value: unknown) => Promise<void>;
+  /** The setting the cursor starts on, when one was picked in the command bar. */
+  initialFieldKey?: string;
 }
 
 export function PaneSettingsDialogContent({
@@ -32,6 +34,7 @@ export function PaneSettingsDialogContent({
   paneId,
   pluginRegistry,
   applyFieldValue,
+  initialFieldKey,
 }: PaneSettingsDialogContentProps) {
   const dialog = useDialog();
   const isDesktop = useUiCapabilities().nativePaneChrome === true;
@@ -39,7 +42,10 @@ export function PaneSettingsDialogContent({
   const fields = descriptor?.settingsDef.fields ?? [];
   // The cursor steps over action rows that cannot run, as the mouse does.
   const rows = fields.map((field) => ({ disabled: isPaneSettingDisabled(field) }));
-  const [selectedIndex, setSelectedIndex] = useState(() => Math.max(0, stepListCursor(rows, -1, 1)));
+  const [selectedIndex, setSelectedIndex] = useState(() => {
+    const chosen = initialFieldKey ? fields.findIndex((field) => field.key === initialFieldKey) : -1;
+    return chosen >= 0 && !rows[chosen]!.disabled ? chosen : Math.max(0, stepListCursor(rows, -1, 1));
+  });
   const [, setSettingsRevision] = useState(0);
   const desktopSelectRefs = useRef(new Map<string, SelectFieldHandle>());
 

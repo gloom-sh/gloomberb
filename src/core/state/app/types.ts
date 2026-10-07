@@ -30,17 +30,6 @@ interface CommandBarLaunchRequestBase {
   sequence: number;
 }
 
-interface CommandBarPluginLaunchRequest extends CommandBarLaunchRequestBase {
-  kind: "plugin-command";
-  commandId: string;
-}
-
-/** Open one of the command bar's own workflows, such as `new-layout`. */
-interface CommandBarBuiltInWorkflowLaunchRequest extends CommandBarLaunchRequestBase {
-  kind: "builtin-workflow";
-  actionId: string;
-}
-
 interface CommandBarTickerSearchLaunchRequest extends CommandBarLaunchRequestBase {
   kind: "ticker-search";
   query?: string;
@@ -56,9 +45,8 @@ interface CommandBarRunQueryLaunchRequest extends CommandBarLaunchRequestBase {
   query: string;
 }
 
-export type CommandBarLaunch =
-  | { kind: "plugin-command"; commandId: string }
-  | { kind: "builtin-workflow"; actionId: string }
+/** Forms open in their own modal (`openFormModal`), so the bar launches only its own screens. */
+type CommandBarLaunch =
   | { kind: "ticker-search"; query?: string }
   | { kind: "run-query"; query: string };
 
@@ -84,8 +72,6 @@ export interface AppState {
   commandBarOpen: boolean;
   commandBarQuery: string;
   commandBarLaunchRequest:
-    | CommandBarPluginLaunchRequest
-    | CommandBarBuiltInWorkflowLaunchRequest
     | CommandBarTickerSearchLaunchRequest
     | CommandBarRunQueryLaunchRequest
     | null;
@@ -131,6 +117,7 @@ export type AppAction =
       launch?: CommandBarLaunch | null;
     }
   | { type: "SET_COMMAND_BAR_QUERY"; query: string }
+  | { type: "RECORD_COMMAND"; id: string; label: string; arg?: string }
   | { type: "SET_REFRESHING"; symbol: string; refreshing: boolean }
   | { type: "SET_BROKER_ACCOUNTS"; instanceId: string; accounts: BrokerAccount[] }
   | { type: "SET_INITIALIZED" }

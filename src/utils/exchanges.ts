@@ -52,6 +52,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   SWX: "SWX",
   EBS: "SWX",
   XSWX: "SWX",
+  ETR: "XETRA",
   XETR: "XETRA",
   XETRA: "XETRA",
   IBIS: "XETRA",

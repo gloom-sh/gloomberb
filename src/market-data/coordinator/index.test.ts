@@ -6,6 +6,7 @@ import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-pro
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { PricePoint, Quote } from "../../types/financials";
 import { createTestDataProvider, createTestFinancials } from "../../test-support/data-provider";
+import { SNAPSHOT_FAILURE_RETRY_MS } from "./entries";
 
 // Stream ticks apply on a data frame; these tests step that frame directly.
 const streamClock = createManualFrameDriver(0);
@@ -127,6 +128,37 @@ describe("MarketDataCoordinator", () => {
     expect(calls).toBe(2);
   });
 
+  it("does not ask again for financials that just failed until the retry window passes, unless forced", async () => {
+    let calls = 0;
+    const provider = createProvider({
+      getTickerFinancials: async () => {
+        calls += 1;
+        throw new Error("No provider available for ^SPX");
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider);
+    const instrument = { symbol: "^SPX", exchange: "CHICAGO BOARD OPTIONS EXCHANGE" };
+    const realNow = Date.now;
+    const start = realNow();
+    try {
+      Date.now = () => start;
+      expect((await coordinator.loadSnapshot(instrument)).phase).toBe("error");
+      Date.now = () => start + 60_000;
+      await coordinator.loadSnapshot(instrument);
+      await coordinator.loadSnapshotsBatch([instrument]);
+      expect(calls).toBe(1);
+
+      await coordinator.loadSnapshot(instrument, { forceRefresh: true });
+      expect(calls).toBe(2);
+
+      Date.now = () => start + 60_000 + SNAPSHOT_FAILURE_RETRY_MS;
+      await coordinator.loadSnapshot(instrument);
+      expect(calls).toBe(3);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   it("serves USD exchange rates without hitting the provider", async () => {
     let calls = 0;
     const provider = createProvider({
@@ -150,7 +182,7 @@ describe("MarketDataCoordinator", () => {
     const provider = createProvider({
       getExchangeRateSnapshot: async () => {
         if (++calls > 1) throw new Error("rate provider offline");
-        return { fromCurrency: "EUR", toCurrency: "USD", rate: 1.16, source: "yahoo",
+        return { fromCurrency: "EUR", toCurrency: "USD", rate: 1.16, source: "gloom",
           asOf: new Date(now - 7_200_000).toISOString(), fetchedAt: new Date(now).toISOString(),
           staleAt: new Date(now - 3_600_000).toISOString(), stale: true };
       },
@@ -407,9 +439,9 @@ describe("MarketDataCoordinator", () => {
               marketState: "REGULAR",
               dataSource: "live",
             },
-            yahoo: {
+            gloom: {
               symbol: "VICR",
-              providerId: "yahoo",
+              providerId: "gloom",
               price: 294.39,
               currency: "USD",
               previousClose: 282.95,
@@ -473,7 +505,7 @@ describe("MarketDataCoordinator", () => {
     expect(quote?.price).toBe(293.07);
     expect(quote?.previousClose).toBe(282.95);
     expect(quote?.changePercent).toBeCloseTo(((293.07 - 282.95) / 282.95) * 100, 10);
-    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("gloom");
   });
 
   // Reading the cache costs a query, a parse and a sanitize of the whole
@@ -564,9 +596,9 @@ describe("MarketDataCoordinator", () => {
               marketState: "REGULAR",
               dataSource: "live",
             },
-            yahoo: {
+            gloom: {
               symbol: "VICR",
-              providerId: "yahoo",
+              providerId: "gloom",
               price: 294.39,
               currency: "USD",
               previousClose: 282.95,
@@ -615,7 +647,7 @@ describe("MarketDataCoordinator", () => {
     expect(quote?.price).toBe(293.07);
     expect(quote?.previousClose).toBe(282.95);
     expect(quote?.changePercent).toBeCloseTo(((293.07 - 282.95) / 282.95) * 100, 10);
-    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+    expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("gloom");
   });
 
   it("preserves requested quote stream routes", () => {
@@ -825,7 +857,7 @@ describe("MarketDataCoordinator", () => {
         getTickerFinancials: async () => createTestFinancials({
           quote: {
             symbol: "HY9H",
-            providerId: "yahoo",
+            providerId: "gloom",
             dataSource: "delayed",
             price: 598,
             currency: "EUR",
@@ -867,9 +899,9 @@ describe("MarketDataCoordinator", () => {
       );
 
       expect(coordinator.getQuoteEntry(instrument).data?.price).toBe(598);
-      expect(coordinator.getQuoteEntry(instrument).data?.providerId).toBe("yahoo");
+      expect(coordinator.getQuoteEntry(instrument).data?.providerId).toBe("gloom");
       expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.price).toBe(598);
-      expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.providerId).toBe("yahoo");
+      expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.providerId).toBe("gloom");
     } finally {
       Date.now = realDateNow;
     }
@@ -1053,7 +1085,7 @@ describe("MarketDataCoordinator", () => {
               lastUpdated: Date.parse("2026-05-13T06:24:00Z"),
               marketState: "CLOSED",
               listingExchangeName: "JPX",
-              providerId: "yahoo",
+              providerId: "gloom",
             },
           }));
         },
@@ -1120,5 +1152,32 @@ describe("MarketDataCoordinator", () => {
     expect(batchSymbols).toEqual([["AAPL", "MSFT"]]);
     expect(coordinator.getTickerFinancialsSync({ symbol: "AAPL", exchange: "NASDAQ" })?.quote?.price).toBe(150);
     expect(coordinator.getTickerFinancialsSync({ symbol: "MSFT", exchange: "NASDAQ" })?.fundamentals?.trailingPE).toBe(30);
+  });
+
+  it("does not repeat one by one a snapshot the provider batch reported failing", async () => {
+    const batchSymbols: string[][] = [];
+    let singleCalls = 0;
+    const provider = createProvider({
+      getTickerFinancials: async () => {
+        singleCalls += 1;
+        throw new Error("unexpected single request");
+      },
+      getTickerFinancialsBatch: async (targets) => {
+        batchSymbols.push(targets.map((target) => target.symbol));
+        return targets.map((target) => target.symbol === "VWCE.DE"
+          ? { target, financials: createTestFinancials({ profile: { description: "All-world fund" } }) }
+          : { target, financials: null, error: new Error(`Cloud financials are unavailable for ${target.symbol}`) });
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider);
+    const instruments = [{ symbol: "VWCE.DE", exchange: "XETRA" }, { symbol: "HYPE32196-USD", exchange: "CCC" }];
+
+    const [fund, crypto] = await coordinator.loadSnapshotsBatch(instruments, { forceRefresh: true });
+    await coordinator.loadSnapshotsBatch(instruments);
+
+    expect(fund?.data?.profile?.description).toBe("All-world fund");
+    expect(crypto?.phase).toBe("error");
+    expect(singleCalls).toBe(0);
+    expect(batchSymbols).toEqual([["VWCE.DE", "HYPE32196-USD"]]);
   });
 });

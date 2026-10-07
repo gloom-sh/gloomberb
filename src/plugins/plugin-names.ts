@@ -9,7 +9,7 @@
  * to resolve a sibling's imports, and the seeder would install a second copy
  * whose duplicate id the loader then refuses.
  */
-export const PLUGIN_NAME_PREFIXES = ["gloom-", "gloomberb-"] as const;
+const PLUGIN_NAME_PREFIXES = ["gloom-", "gloomberb-"] as const;
 
 /** True for a name that belongs to a plugin package under either product name. */
 export function isPluginPackageName(name: string): boolean {

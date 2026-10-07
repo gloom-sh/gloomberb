@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { apiClient } from "../../../../api-client";
 import { Button, EmptyState, QueryBar, usePaneFooter } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
-import { colors } from "../../../../theme/colors";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
 import { Box } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
@@ -28,7 +27,7 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
   const dialog = useDialog();
   const { notify } = usePluginAppActions();
   const plan = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
+  const openUpgrade = useCloudUpgradeAction("thesis-tab");
   const snapshot = useSyncExternalStore((onChange) => thesisStore.subscribe(onChange), () => thesisStore.getSnapshot());
   const teams = useSyncExternalStore((onChange) => teamStore.subscribe(onChange), () => teamStore.getSnapshot()).teams;
   const signedIn = useSyncExternalStore((onChange) => apiClient.subscribeCurrentUser(onChange), () => apiClient.isVerified());
@@ -97,7 +96,7 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
 
   if (!ticker) return <EmptyState title="No ticker selected." hint="Select a ticker to see its thesis." />;
   if (!signedIn) {
-    return <SignInWall action="keep a thesis on this ticker" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
+    return <SignInWall placement="thesis-ticker-signin" action="keep a thesis on this ticker" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
   }
   if (!active) {
     return (

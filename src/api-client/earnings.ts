@@ -1,7 +1,7 @@
 /** Before the open, during the session, after the close. */
 export type EarningsTiming = "bmo" | "dmh" | "amc";
 
-export interface EarningsImpliedMove {
+interface EarningsImpliedMove {
   /** Straddle over spot, the move priced in either direction. */
   move: number;
   straddle: number;
@@ -16,7 +16,7 @@ export interface EarningsImpliedMove {
   at: string;
 }
 
-export interface EarningsRealizedMove {
+interface EarningsRealizedMove {
   /** Signed: the close after the report over the close before it, minus one. */
   move: number;
   baseSession: string;
@@ -59,7 +59,7 @@ export interface EarningsCalendarPayload {
   reports: EarningsCalendarReport[];
 }
 
-export interface EarningsHistoryReport extends EarningsReport {
+interface EarningsHistoryReport extends EarningsReport {
   revenueActual: number | null;
 }
 

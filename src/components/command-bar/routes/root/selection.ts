@@ -14,6 +14,7 @@ import {
 import type { ResultItem } from "../../list/model";
 import { getPaneTemplateArgKind } from "../../pane-templates/items";
 import { parseRootShortcutIntent } from "./shortcuts";
+import { buildHelpArgumentItems } from "./help-items";
 import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 
 interface PaneTemplateItemOptions {
@@ -222,7 +223,12 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
     };
   }
 
-  if (!match.command.hasArg) {
+  if (match.command.id === "help" && match.arg) {
+    const item = buildHelpArgumentItems(match.arg).find((candidate) => !candidate.disabled);
+    if (item) return item;
+  }
+
+  if (!match.command.hasArg || match.command.id === "help") {
     return {
       id: `command:${match.command.id}`,
       label: match.command.label,

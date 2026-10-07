@@ -15,7 +15,7 @@ import { compareSortValues } from "../../../utils/sort-values";
  * and the `fn` report draw. No React, no fetching.
  */
 
-export const FUNCTION_LABELS: Record<string, string> = {
+const FUNCTION_LABELS: Record<string, string> = {
   engineering: "Engineering",
   data_ai: "Data & AI",
   product: "Product",
@@ -53,7 +53,7 @@ export function functionLabel(id: string | null | undefined): string {
   return FUNCTION_LABELS[id] ?? id;
 }
 
-export function seniorityLabel(id: string | null | undefined): string {
+function seniorityLabel(id: string | null | undefined): string {
   if (!id) return "";
   return SENIORITY_SHORT[id] ?? id;
 }
@@ -62,7 +62,7 @@ function utcDate(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
 }
 
-export function seriesToChartPoints(summary: Pick<CloudJobsSummaryPayload, "series">): ProjectedChartPoint[] {
+function seriesToChartPoints(summary: Pick<CloudJobsSummaryPayload, "series">): ProjectedChartPoint[] {
   return summary.series.map((point) => ({
     date: utcDate(point.day),
     open: point.open,

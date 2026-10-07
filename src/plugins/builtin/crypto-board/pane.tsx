@@ -47,7 +47,7 @@ import {
  * feed does not carry, and every coin on a delayed plan, whose streamed quotes
  * trail it by 15 minutes. It refreshes on this clock, not the app's data one.
  */
-export const CRYPTO_BOARD_REFRESH_MS = 15_000;
+const CRYPTO_BOARD_REFRESH_MS = 15_000;
 /** Once every streamed row is live, the board only carries the rest of the tab. */
 const CRYPTO_BOARD_STREAMING_REFRESH_MS = 60_000;
 

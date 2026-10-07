@@ -14,7 +14,7 @@ import {
 } from "./client";
 
 /** "signed-out": Gloom refused the session, so the dialog host signs in again. */
-export type BrokerSignInPhase = "starting" | "waiting" | "connected" | "signed-out" | "error";
+type BrokerSignInPhase = "starting" | "waiting" | "connected" | "signed-out" | "error";
 
 export interface BrokerSignInSnapshot {
   phase: BrokerSignInPhase;

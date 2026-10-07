@@ -27,7 +27,7 @@ export function remoteNumberValue(input: unknown, keys: string[], fallback = 0):
   return fallback;
 }
 
-export function remoteOptionalNumberValue(input: unknown, keys: string[]): number | undefined {
+function remoteOptionalNumberValue(input: unknown, keys: string[]): number | undefined {
   if (typeof input === "number") return input;
   if (input && typeof input === "object") {
     const record = input as Record<string, unknown>;

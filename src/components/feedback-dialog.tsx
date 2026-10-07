@@ -38,6 +38,7 @@ import { VERSION } from "../version";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { DialogFrame } from "./ui/frame";
+import { TERMINAL_MESSAGE_KEYS } from "./textarea-keys";
 
 /** What the person typed, kept when the dialog closes without sending. */
 const draft = { message: "" };
@@ -53,20 +54,7 @@ function errorMessage(error: unknown): string {
 
 type KeyLike = KeyChordEventLike & { preventDefault?: () => void };
 
-/**
- * Enter starts a new line; Shift+Enter sends. Terminals without the kitty
- * keyboard protocol report Shift+Enter as Enter, so Alt+Enter also sends there.
- */
-const TERMINAL_MESSAGE_KEYS = [
-  { name: "return", action: "newline" },
-  { name: "linefeed", action: "newline" },
-  { name: "return", shift: true, action: "submit" },
-  { name: "linefeed", shift: true, action: "submit" },
-  { name: "return", meta: true, action: "submit" },
-  { name: "linefeed", meta: true, action: "submit" },
-];
-
-export function FeedbackDialog({
+function FeedbackDialog({
   dialogId,
   resolve,
   dismiss,

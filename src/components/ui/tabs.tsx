@@ -43,6 +43,8 @@ export interface TabsProps {
   addLabel?: string;
   onAdd?: () => void;
   onReorder?: (fromValue: string, toValue: string) => void;
+  /** A press that moves, on a tab that is not reordered. Desktop title-bar tabs use it to move the window. */
+  onDrag?: () => void;
   focused?: boolean;
   keyboardNavigation?: boolean;
   /**
@@ -67,6 +69,7 @@ export function Tabs({
   addLabel = "+",
   onAdd,
   onReorder,
+  onDrag,
   focused = false,
   keyboardNavigation = true,
   paneMenu = true,
@@ -229,6 +232,7 @@ export function Tabs({
         addLabel={addLabel}
         onAdd={onAdd}
         onReorder={onReorder}
+        onDrag={onDrag}
         focused={focused}
         palette={palette}
       />

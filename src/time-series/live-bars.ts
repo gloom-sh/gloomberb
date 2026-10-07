@@ -14,6 +14,8 @@ import { isFiniteNumber } from "../utils/guards";
 
 const DAY_MS = 24 * 60 * 60_000;
 const EXTENDED_HOURS_STATES = new Set(["PRE", "PREPRE", "POST", "POSTPOST"]);
+/** Before 04:00 and after 20:00 New York, outside even extended hours. */
+const OVERNIGHT_STATES = new Set(["PREPRE", "POSTPOST"]);
 const PRE_MARKET_STATES = new Set(["PRE", "PREPRE"]);
 /** Bars formed without any history refresh stay bounded on a chart left open for weeks. */
 const MAX_FORMED_BARS = 2_000;
@@ -30,6 +32,8 @@ export interface LiveBarOptions {
   liveSince?: number;
   /** The history's declared bar contract and acquisition time, when its source provides one. */
   session?: Pick<HistorySession, "timestampConvention" | "observedAt">;
+  /** The history includes pre-market and after-hours bars, so quotes then form bars too. */
+  extendedHours?: boolean;
 }
 
 interface FormedBar {
@@ -92,7 +96,7 @@ function foldIntoBar(bar: PricePoint, observation: PricePoint): PricePoint {
  * the bar containing it. Kept as a point of its own, it would move the grid
  * every later bar is placed on.
  */
-export function foldFinalObservation(
+function foldFinalObservation(
   history: PricePoint[],
   stepMs: number,
   session?: Pick<HistorySession, "timestampConvention">,
@@ -291,9 +295,10 @@ export class LiveBarAccumulator {
     this.lastPreMarket = preMarket;
     this.version += 1;
 
-    // Loaded intraday bars cover the regular session. Extended-hours prints
-    // would extend or form bars that no refresh can confirm.
-    if (!calendar && quote.marketState && EXTENDED_HOURS_STATES.has(quote.marketState)) {
+    // Loaded intraday bars cover the regular session unless they include
+    // extended hours. Otherwise extended-hours prints would extend or form
+    // bars that no refresh can confirm.
+    if (!calendar && quote.marketState && (options.extendedHours ? OVERNIGHT_STATES : EXTENDED_HOURS_STATES).has(quote.marketState)) {
       this.closeFormingVolume(previous);
       return;
     }
