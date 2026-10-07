@@ -25,7 +25,7 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
     const data = await fetchMembers(fund, context.apiClient);
     const movers = args.options.tab === "movers";
     const rows = memberRows(data.members, movers ? "movers" : "members", "", DEFAULT_SORT).flatMap((row) => row.kind === "item" ? [{ ...row.item }] : []);
-    return { rows, columns: movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right", format: (value) => percent(value as number | null, "") }] : columns,
+    return { rows, columns: movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right", format: (value) => percent(value as number | null, "", 3) }] : columns,
       complete: !data.stale && data.aggregate.fresh1D === data.aggregate.total,
       unavailableSymbols: data.members.flatMap((row) => row.symbol && row.changePercent === null ? [row.symbol] : []),
       metadata: { fund: data.fund, asOf: data.asOf, snapshotAsOf: data.snapshotAsOf, aggregate: data.aggregate, stale: data.stale } };

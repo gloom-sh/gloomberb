@@ -16,7 +16,7 @@ export function membersTitle(input: string) {
     : requested ? `MEMB ${requested}` : "Index and ETF members";
 }
 export const DEFAULT_SORT: SortPreference<string> = { columnId: "weight", direction: "desc" };
-export const percent = (value: number | null, suffix = "%") => value == null || !Number.isFinite(value) ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}${suffix}`;
+export const percent = (value: number | null, suffix = "%", digits = 2) => value == null || !Number.isFinite(value) ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(digits)}${suffix}`;
 export const decimal = (value: number | null, digits = 2) => value == null || !Number.isFinite(value) ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 export function sortMembers(rows: readonly FundMember[], sort: SortPreference<string>) {
   return [...rows].sort((a, b) => compareSortValues(a[sort.columnId as keyof FundMember] as number | string | null,
