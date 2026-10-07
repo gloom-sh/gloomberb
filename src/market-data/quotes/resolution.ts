@@ -281,7 +281,7 @@ function buildAcceptedPriceCandidates(contributions: QuoteContribution[], now: n
 }
 
 export function isQuoteContributionStaleForCurrentSession(contribution: Quote, now = Date.now()): boolean {
-  if (contribution.marketState != null) return isQuoteStaleForCurrentSession(contribution, now);
+  if (contribution.priceObservation != null || contribution.marketState != null) return isQuoteStaleForCurrentSession(contribution, now);
   // A price-only source can be combined with independent session metadata.
   // Its observation must still belong to the current active session.
   if (contribution.stale === true || !hasValidQuoteObservationTime(contribution, now)) return true;
@@ -387,8 +387,8 @@ export function resolveCanonicalQuote(
   const { accepted: acceptedPriceCandidates, rejectedProviders } = buildAcceptedPriceCandidates(effectiveQuoteCandidates, now);
   if (acceptedPriceCandidates.length === 0) return {};
 
-  const sessionCandidates = buildSessionCandidates(effectiveQuoteCandidates);
-  const listingCandidates = buildListingCandidates(contributions);
+  let sessionCandidates = buildSessionCandidates(effectiveQuoteCandidates);
+  let listingCandidates = buildListingCandidates(contributions);
   const routingCandidates = buildRoutingCandidates(contributions);
   const descriptiveCandidates = buildDescriptiveCandidates(contributions);
 
@@ -401,9 +401,18 @@ export function resolveCanonicalQuote(
   // The selected response owns the price convention; metadata enrichment must
   // not declare units for another provider's price or supply incompatible anchors.
   assignField(resolved, provenance, "priceBasis", priceProvider);
+  assignField(resolved, provenance, "priceObservation", priceProvider);
+  const isNav = priceProvider?.priceObservation === "nav";
+  if (isNav) {
+    sessionCandidates = priceProvider ? [priceProvider] : [];
+    listingCandidates = sessionCandidates;
+  } else {
+    sessionCandidates = sessionCandidates.filter((quote) => quote.priceObservation == null);
+  }
   const selectedBasis = resolvePriceBasis(priceProvider?.priceBasis, priceProvider?.instrumentType);
   const compatiblePrice = (candidate: QuoteContribution) => candidate === priceProvider
-    || selectedBasis !== null && resolvePriceBasis(candidate.priceBasis, candidate.instrumentType) === selectedBasis;
+    || !isNav && candidate.priceObservation == null
+      && selectedBasis !== null && resolvePriceBasis(candidate.priceBasis, candidate.instrumentType) === selectedBasis;
   const compatiblePriceCandidates = acceptedPriceCandidates.filter(compatiblePrice);
   for (const field of PRICE_FIELD_KEYS) {
     if (field === "price") continue;
@@ -459,13 +468,14 @@ export function resolveCanonicalQuote(
 
   let descriptiveProvider: QuoteContribution | undefined;
   for (const field of DESCRIPTIVE_FIELD_KEYS) {
-    const provider = pickField(resolved, provenance, field, field === "high52w" || field === "low52w" ? descriptiveCandidates.filter(compatiblePrice) : descriptiveCandidates);
+    const ownsPriceField = field === "high52w" || field === "low52w" || isNav && (field === "volume" || field === "marketCap");
+    const provider = pickField(resolved, provenance, field, ownsPriceField ? descriptiveCandidates.filter(compatiblePrice) : descriptiveCandidates);
     descriptiveProvider ??= provider;
   }
   provenance.descriptive = toProvenance(descriptiveProvider);
   // Descriptive enrichment cannot turn an unknown-unit bond observation into
   // an ordinary share price by replacing its source-reported security type.
-  if (priceProvider?.instrumentType?.trim().toUpperCase() === "BOND") {
+  if (isNav || priceProvider?.instrumentType?.trim().toUpperCase() === "BOND") {
     assignField(resolved, provenance, "instrumentType", priceProvider);
   }
 
@@ -474,6 +484,7 @@ export function resolveCanonicalQuote(
     providerId: priceProvider?.providerId ?? contributions[0]!.providerId,
     price: Number(resolved.price ?? priceProvider?.price ?? 0),
     priceBasis: priceProvider?.priceBasis,
+    priceObservation: priceProvider?.priceObservation,
     // The price's own source unit, like its basis; another provider's divisor does not apply.
     ...(typeof priceProvider?.providerPriceDivisor === "number" ? { providerPriceDivisor: priceProvider.providerPriceDivisor } : {}),
     currency: String(resolved.currency ?? priceProvider?.currency ?? contributions[0]!.currency ?? ""),

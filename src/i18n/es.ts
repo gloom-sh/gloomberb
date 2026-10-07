@@ -5,6 +5,7 @@
  * fixed-width terminal layouts stay readable.
  */
 export const es: Record<string, string> = {
+  "NAV · as of {date}": "NAV · al {date}",
   // ── Common UI ────────────────────────────────────────────────
   "Back": "Atrás",
   "Done": "Listo",

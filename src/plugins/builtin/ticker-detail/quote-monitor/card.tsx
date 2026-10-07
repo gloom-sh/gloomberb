@@ -12,6 +12,7 @@ import { formatPercentRaw } from "../../../../utils/format";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
+import { formatQuoteNavAsOf } from "../../../../market-data/quotes/time";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
 import { appendLiveQuotePoint } from "../../../../time-series/chart-data";
 import {
@@ -100,11 +101,13 @@ export function QuoteMonitorCard({
   const display = getActiveQuoteDisplay(quote);
   const quoteStatus = resolveQuoteStatus(quoteEntry, symbol, quote);
   const quoteFailed = quoteStatus.failed && !!display;
+  const navAsOf = formatQuoteNavAsOf(quote);
   const changeColor = quoteFailed ? colors.textDim : priceColor(display?.change ?? 0);
   const flashing = !!flashDirection;
   const currency = quote?.currency || ticker?.metadata.currency || "USD";
   const stacked = width < 31;
   const compactQuoteFailure = quoteFailed && stacked && height <= 3;
+  const compactNavAsOf = navAsOf && stacked && height <= 3;
   // One decimal count per instrument, so streamed ticks never narrow or widen the price column.
   const priceOptions = liveQuoteFormatOptions(quote, currency, assetCategory, cachedFinancials?.quoteMetadata?.instrumentType);
   const priceText = display ? formatMarketPriceWithCurrency(display.price, currency, priceOptions) : "";
@@ -121,7 +124,9 @@ export function QuoteMonitorCard({
   const sparklineWidth = Math.max(8, width - (nativePaneChrome ? rangeLabel.length + 5 : 2));
   const trend = quoteTrend(display?.change);
   const terminalSparklineHeight = !nativePaneChrome && !stacked && height >= 4 ? 2 : 1;
-  const showTerminalSparkline = !quoteFailed || height >= (stacked ? 3 : 2) + 1 + terminalSparklineHeight;
+  const statusRows = (quoteFailed && !compactQuoteFailure ? 1 : 0) + (navAsOf && !compactNavAsOf ? 1 : 0);
+  const showTerminalSparkline = (!quoteFailed && !navAsOf)
+    || height >= (stacked ? 3 : 2) + statusRows + terminalSparklineHeight;
   // Figures sit over the sparkline, so the desktop rings them in the card colour.
   const figureHalo = { textShadow: `0 1px 2px ${colors.bg}` };
   const desktopSymbolStyle = nativePaneChrome
@@ -226,6 +231,11 @@ export function QuoteMonitorCard({
                 {ticker.metadata.name}
               </Text>
             )}
+            {navAsOf && (
+              <Text fg={colors.textDim} style={{ fontSize: "12px", lineHeight: "14px" }}>
+                {navAsOf}
+              </Text>
+            )}
           </Box>
 
           <Box
@@ -274,9 +284,12 @@ export function QuoteMonitorCard({
         <Box flexDirection="column" flexGrow={1} justifyContent="flex-start">
           {stacked ? (
             <Box flexDirection="column">
-              <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
-                {symbol}
-              </Text>
+              <Box flexDirection="row" gap={1} height={1} overflow="hidden">
+                <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
+                  {symbol}
+                </Text>
+                {compactNavAsOf && <Text fg={colors.textDim}>{navAsOf}</Text>}
+              </Box>
               <Box flexDirection="column">
                 <FigureText fg={changeColor} dim={flashing} style={figureHalo}>
                   {compactQuoteFailure ? `${priceText} · ${quoteStatus.stale ? "STALE" : "ERROR"}` : priceText}
@@ -326,6 +339,9 @@ export function QuoteMonitorCard({
 
           {quoteFailed && !compactQuoteFailure && (
             <Box height={1} overflow="hidden"><Text fg={colors.negative}>{quoteStatus.text}</Text></Box>
+          )}
+          {navAsOf && !compactNavAsOf && (
+            <Box height={1} overflow="hidden"><Text fg={colors.textDim}>{navAsOf}</Text></Box>
           )}
           {perpetuals}
           {showTerminalSparkline && <Box height={terminalSparklineHeight} flexDirection="row" alignItems="center" gap={1}>

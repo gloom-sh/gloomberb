@@ -5,6 +5,7 @@
  * fixed-width terminal layouts stay readable.
  */
 export const zhCN: Record<string, string> = {
+  "NAV · as of {date}": "NAV · 截至{date}",
   // ── Common UI ────────────────────────────────────────────────
   "Back": "返回",
   "Done": "完成",

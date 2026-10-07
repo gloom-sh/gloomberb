@@ -41,6 +41,8 @@ export interface QuoteMetadata {
 export interface Quote {
   /** Applies to this price observation; a stored position cannot supply it. */
   priceBasis?: PriceBasis;
+  /** Daily fund net asset value; independent of the units used to format its price. */
+  priceObservation?: "nav";
   symbol: string;
   /** Provider-reported security type, independent of the company profile. */
   instrumentType?: string;

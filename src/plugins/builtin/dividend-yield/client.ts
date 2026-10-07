@@ -6,6 +6,7 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { inferCadence, trailingCashAt } from "./trailing-cash";
 import { dividendQuotePriceMetadata } from "./reference-price";
+import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 
 export const DIVIDENDS_CONNECTION_ID = "gloom-dividends";
 export const INCOMPLETE_DIVIDEND_HISTORY = "Incomplete cash history; totals unavailable.";
@@ -78,7 +79,8 @@ export async function fetchDividendData(
 ): Promise<DividendData> {
   const response = await trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
   if (!response.data) throw new Error(`No dividend data found for ${symbol}`);
-  const { actions, quote, summary: quoteFields } = response.data;
+  const { actions, quote: rawQuote, summary: quoteFields } = response.data;
+  const quote = rawQuote ? mapQuote(rawQuote) : null;
   const summaryError = response.data.summaryError ?? (!quoteFields ? UNAVAILABLE_DIVIDEND_SUMMARY
     : [quoteFields.exDividendDate, quoteFields.dividendDate]
       .some((timestamp) => timestamp != null && reportedDividendDate(timestamp) === null)
@@ -111,7 +113,7 @@ export async function fetchDividendData(
   }
   return {
     payments, metrics, price, currency: currency || undefined, historyAvailable,
-    ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata({ ...quote, change: quote.change ?? NaN, changePercent: quote.changePercent ?? NaN }) : {}),
+    ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata(quote) : {}),
     ...(historyError ? { historyError } : {}), ...(summaryError ? { summaryError } : {}),
     providerId: actions?.providerId ?? "gloom", fetchedAt: actions?.fetchedAt,
     stale: response.stale === true || response.data.stale === true || actions?.stale === true,

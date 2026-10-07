@@ -207,7 +207,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const quoteFooterActive = resolvedTabId === "overview" || resolvedTabId === "chart";
   const cloudAccess = useCloudAccessFooter({
     delayLabel: tf("{count}m", { count: CLOUD_QUOTE_DELAY_MINUTES }),
-    degraded: financials?.quote?.dataSource !== "live",
+    degraded: financials?.quote?.priceObservation !== "nav" && financials?.quote?.dataSource !== "live",
     focused: focused && quoteFooterActive,
     segmentId: "ticker-research-access",
     shortcutScope: "ticker-research:upgrade",

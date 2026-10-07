@@ -295,7 +295,9 @@ export interface CloudSyncPushResponse {
   settings: SyncSettings;
 }
 
-export interface CloudQuotePayload extends Omit<Quote, "change" | "changePercent"> {
+export interface CloudQuotePayload extends Omit<Quote, "change" | "changePercent" | "priceBasis" | "priceObservation"> {
+  /** The service labels daily NAV here; the app separates observation kind from price units. */
+  priceBasis?: Quote["priceBasis"] | "nav";
   // JSON encodes the provider's unavailable numeric values as null.
   change?: number | null;
   changePercent?: number | null;
