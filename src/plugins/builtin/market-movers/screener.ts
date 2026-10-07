@@ -252,6 +252,8 @@ function mergeCloudScreenerItem(
   metadata?: ScreenerQuote,
 ): ScreenerQuote {
   const currency = typeof item.currency === "string" ? item.currency.trim() : "";
+  const directAverage = screenerNumber(item.avgVolume);
+  const avgVolume = directAverage != null && directAverage > 0 ? directAverage : metadata?.avgVolume ?? null;
   const metadataPrice = (value: number | undefined) => convertScreenerPriceUnit(value, metadata?.currency ?? "", currency);
   return {
     symbol: item.symbol,
@@ -262,8 +264,8 @@ function mergeCloudScreenerItem(
     change: screenerNumber(item.change),
     changePercent: screenerNumber(item.changePercent),
     volume: screenerVolume(item.volume),
-    avgVolume: metadata?.avgVolume ?? null,
-    volumeRatio: screenerVolumeRatio(screenerVolume(item.volume), metadata?.avgVolume ?? null),
+    avgVolume,
+    volumeRatio: screenerVolumeRatio(screenerVolume(item.volume), avgVolume),
     marketCap: metadata?.marketCap,
     currency,
     fiftyTwoWeekHigh: screenerNumber(item.high52w) ?? metadataPrice(metadata?.fiftyTwoWeekHigh),

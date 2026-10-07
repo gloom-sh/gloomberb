@@ -1375,6 +1375,10 @@ export interface CloudMarketScreenerItem {
   change: number;
   changePercent: number;
   volume: number;
+  /** Available average volume for this listing, independent of public ranking membership. */
+  avgVolume?: number;
+  /** Observation time of the optional retained metadata. */
+  metadataAsOf?: string;
   tradeCount?: number;
   currency: string;
   high52w?: number;

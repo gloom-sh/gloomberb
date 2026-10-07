@@ -86,6 +86,28 @@ describe("fetchScreener", () => {
     });
   });
 
+  test("unqualified direct averages retain the public average without coercing or fabricating a ratio", async () => {
+    const invalid = [undefined, null, "100", 0, -1, NaN, Infinity, -Infinity];
+    const symbols = invalid.map((_, index) => `INVALID${index}`);
+    const marketQuotes = parseScreenerResponse({ quotes: symbols.map(symbol => ({ symbol, volume: 1, avgVolume: 20_000_000 })) });
+    const result = await fetchPreferredMarketMovers("most_actives", 25, undefined, {
+      isCloudEligible: () => true,
+      fetchCloud: async () => ({ status: "success", data: {
+        providerId: "gloomberb-cloud", category: "most-active", asOf: "2026-10-07T09:30:00.000Z",
+        items: [...symbols, "MISSING"].map((symbol, index) => ({
+          rank: index + 1, symbol, name: symbol, price: 190, change: 0, changePercent: 0,
+          volume: 60_000_000, avgVolume: invalid[index] as number | undefined,
+          currency: "USD", exchange: "NASDAQ", lastUpdated: 1, dataSource: "live" as const,
+        })),
+      } }),
+      fetchMarket: async () => ({ data: marketQuotes, stale: false }),
+    });
+    expect(result.quotes.map(quote => [quote.symbol, quote.avgVolume, quote.volumeRatio])).toEqual([
+      ...symbols.map(symbol => [symbol, 20_000_000, 3]),
+      ["MISSING", null, null],
+    ]);
+  });
+
   test.each([
     { options: undefined, waitMs: 1_500 },
     { options: { metadataWaitMs: 10_000 }, waitMs: 10_000 },

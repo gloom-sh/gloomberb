@@ -125,14 +125,14 @@ test("preferred Cloud prices qualify backend range units before default headless
   }
 });
 
-test("a view over a Pro list waits for the average volumes a slow backend sends, and sorts rows without one last", async () => {
+test("a view over a Pro list keeps direct averages, waits for slow fallback metadata, and sorts missing ratios last", async () => {
   jest.useFakeTimers();
-  const item = (symbol: string, volume: number) => ({ symbol, name: symbol, price: 2, change: 0, changePercent: 0, volume, currency: "USD", exchange: "NASDAQ", lastUpdated: 1, dataSource: "live" as const });
+  const item = (symbol: string, volume: number, avgVolume?: number) => ({ symbol, name: symbol, price: 2, change: 0, changePercent: 0, volume, avgVolume, currency: "USD", exchange: "NASDAQ", lastUpdated: 1, dataSource: "live" as const });
   const metadata = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getMarketMovers>>>();
   spyOn(apiClient, "isVerified").mockReturnValue(true);
   spyOn(apiClient, "getCurrentUser").mockReturnValue({ emailVerified: true, plan: "pro" } as ReturnType<typeof apiClient.getCurrentUser>);
-  // The live ranking lists a name the backend's own movers snapshot has never seen, first.
-  spyOn(apiClient, "getCloudMarketScreener").mockResolvedValue({ status: "success", data: { providerId: "gloomberb-cloud", category: "most-active", asOf: "2026-10-07T09:30:00.000Z", items: [item("NEW", 700e6), item("BIG", 60e6), item("OLOX", 80e6)] } } as never);
+  // NEW has no average; NVDA is outside the public snapshot but carries its own.
+  spyOn(apiClient, "getCloudMarketScreener").mockResolvedValue({ status: "success", data: { providerId: "gloomberb-cloud", category: "most-active", asOf: "2026-10-07T09:30:00.000Z", items: [item("NEW", 700e6), item("BIG", 60e6), item("NVDA", 60e6, 20e6), item("OLOX", 80e6, 4e6)] } } as never);
   spyOn(apiClient, "getMarketMovers").mockReturnValue(metadata.promise);
   const definition = createMarketMoversHeadless();
   const loading = definition.load({ rawArgument: "", argument: null, symbols: [], options: { list: "actives" } }, { marketData: createTestDataProvider() } as any);
@@ -140,10 +140,12 @@ test("a view over a Pro list waits for the average volumes a slow backend sends,
   // Past the pane's own cutoff for slow metadata.
   jest.advanceTimersByTime(2_000);
   metadata.resolve({ status: "success", data: { source: "gloom", stale: false, asOf: "2026-10-06", quotes: parseScreenerResponse(payload([
-    raw("OLOX", { name: "OLENOX INDUSTRIES INC.", volume: 1, avgVolume: 4e6, marketCap: 1.46e6 }),
+    raw("OLOX", { name: "OLENOX INDUSTRIES INC.", volume: 1, avgVolume: 2e6, marketCap: 1.46e6 }),
     raw("BIG", { volume: 1, avgVolume: 40e6 }),
   ])) } });
   const spec = normalizeViewSpec({ source: { pane: "MOST" }, projection: { columns: ["symbol", "volumeRatio"], sort: { by: "volumeRatio", direction: "desc" } } });
   const { rows } = serializeHeadlessPaneResult(definition, await loading) as { rows: Array<Record<string, unknown>> };
-  expect(applyViewProjection(rows, spec.projection).map(row => [row.symbol, row.volumeRatio])).toEqual([["OLOX", 20], ["BIG", 1.5], ["NEW", null]]);
+  expect(rows.find(row => row.symbol === "NVDA")).toMatchObject({ avgVolume: 20e6, volumeRatio: 3 });
+  expect(rows.find(row => row.symbol === "OLOX")).toMatchObject({ avgVolume: 4e6, volumeRatio: 20 });
+  expect(applyViewProjection(rows, spec.projection).map(row => [row.symbol, row.volumeRatio])).toEqual([["OLOX", 20], ["NVDA", 3], ["BIG", 1.5], ["NEW", null]]);
 });
