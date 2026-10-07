@@ -1,6 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchChanges, fetchFunds, fetchMembers } from "./client";
-import { canonicalFund, decimal, DEFAULT_SORT, memberRows, percent } from "./model";
+import { canonicalFund, changeReason, decimal, DEFAULT_SORT, memberRows, percent } from "./model";
 const columns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" },
   { key: "weight", header: "Weight %", align: "right", format: (value) => value == null ? "--" : decimal(Number(value) * 100) },
@@ -19,7 +19,7 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
     const fund = canonicalFund(input);
     if (args.options.tab === "changes") {
       const data = await fetchChanges(fund, context.apiClient);
-      return { rows: data.changes.map((row) => ({ ...row })), columns: [{ key: "effectiveDate", header: "Effective" }, { key: "added", header: "Added" }, { key: "removed", header: "Removed" }, { key: "daysToGo", header: "In days", align: "right" }, { key: "reason", header: "Reason / announcement" }],
+      return { rows: data.changes.map((row) => ({ ...row, reason: changeReason(row) })), columns: [{ key: "effectiveDate", header: "Effective" }, { key: "added", header: "Added" }, { key: "removed", header: "Removed" }, { key: "daysToGo", header: "In days", align: "right" }, { key: "reason", header: "Reason" }],
         complete: data.available && !data.stale, metadata: { ...data, changes: undefined } };
     }
     const data = await fetchMembers(fund, context.apiClient);

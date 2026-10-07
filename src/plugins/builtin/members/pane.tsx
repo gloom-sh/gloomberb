@@ -12,7 +12,7 @@ import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cachedChanges, cachedFunds, cachedMembers, loadChanges, loadFunds, loadMembers } from "./client";
-import { canonicalFund, changeColumns, changeLabel, COVERED, decimal, DEFAULT_SORT, isTab, memberColumns, memberRows, membersTitle, percent, TABS, type MembersTab } from "./model";
+import { canonicalFund, changeColumns, changeLabel, changeReason, COVERED, decimal, DEFAULT_SORT, isTab, memberColumns, memberRows, membersTitle, percent, TABS, type MembersTab } from "./model";
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
 const rowKey = (row: SectionedRow<FundMember>) => row.key;
@@ -32,13 +32,13 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
   useAutoRefresh(resource.updatedAt, () => { if (active) void resource.load(); });
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active && !search.active });
   const info = useMemo<PaneFooterSegment[]>(() => data ? [{ id: "holdings-date", parts: [{ text: `holdings ${data.asOf}`, tone: "muted" }] },
-    { id: "coverage", parts: [{ text: `${data.quotesUnavailable ? "returns unavailable" : "15m delayed"} · 1D ${data.aggregate.fresh1D}/${data.aggregate.total}`, tone: data.aggregate.fresh1D < data.aggregate.total ? "warning" : "muted" }] }] : [], [data]);
+    { id: "coverage", parts: [{ text: `${data.quotesUnavailable ? "returns unavailable" : "15m delayed"} · 1D ${data.aggregate.fresh1D}/${data.aggregate.total} · ${decimal(data.aggregate.coveredWeight * 100, 1)}% wt`, tone: data.aggregate.fresh1D < data.aggregate.total ? "warning" : "muted" }] }] : [], [data]);
   usePaneStatusFooter({ registrationId: "members:status", loading: !!data && resource.loading,
     stale: !!data && (data.stale || resource.data!.stale || !!resource.error), info });
   usePaneNoticeFooter({ registrationId: "members:notices", focused, notices: [
     ...(resource.error || resource.data?.refreshError ? [resource.error ?? resource.data!.refreshError!] : []),
     ...(data?.quotesUnavailable ? ["Member returns and current prices are unavailable. Dated holdings remain available."] : []),
-    ...(data && data.aggregate.fresh1D < data.aggregate.total ? [`Fresh 1D returns cover ${data.aggregate.fresh1D} of ${data.aggregate.total} holdings. Missing returns are excluded from contributions.`] : []),
+    ...(data && data.aggregate.fresh1D < data.aggregate.total ? [`Fresh 1D: ${data.aggregate.fresh1D}/${data.aggregate.total} holdings, ${decimal(data.aggregate.coveredWeight * 100, 1)}% of whole-fund weight. Missing returns are excluded.`] : []),
     ...(movers && data?.aggregate.withinTolerance === false ? [`The covered contribution sum differs from the fund by ${percent(data.aggregate.residual, " pp")}.`] : []),
     ...(data?.excludedDerivatives ? [`${data.excludedDerivatives} derivative positions are excluded from these share holdings.`] : []),
   ] });
@@ -57,7 +57,7 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
     {data && <DataTableView<SectionedRow<FundMember>> items={rows} columns={columns} rootWidth={width} rootHeight={height} focused={focused && !search.active}
       rootBefore={<Box flexDirection="column"><QueryBar width={width} search={{ value: query, onChange: setQuery, placeholder: "ticker, name or sector", focused, ...search.searchProps }} />
         {movers && <StatGrid width={width} items={[
-          { label: "Covered move", value: percent(data.aggregate.sum, " pp"), color: priceColor(data.aggregate.sum ?? 0, colors) },
+          { label: "Covered contrib.", value: percent(data.aggregate.sum, " pp"), color: priceColor(data.aggregate.sum ?? 0, colors) },
           { label: `${fund} 1D`, value: percent(data.aggregate.fundReturn), color: priceColor(data.aggregate.fundReturn ?? 0, colors) },
           { label: "Difference", value: percent(data.aggregate.residual, " pp"), tone: data.aggregate.withinTolerance === false ? "warning" : "muted" },
         ]} />}</Box>}
@@ -89,11 +89,11 @@ function Changes({ fund, width, height, focused, active }: ViewProps) {
   usePaneNoticeFooter({ registrationId: "members:changes-notices", focused, notices: resource.error || resource.data?.refreshError ? [resource.error ?? resource.data!.refreshError!] : [] });
   const renderCell = useCallback((row: FundChange, column: DataTableColumn): DataTableCell => {
     if (column.id === "effectiveDate") return { text: row.effectiveDate ?? "--" };
-    if (column.id === "daysToGo") return { text: row.daysToGo === null ? "--" : String(row.daysToGo), value: row.daysToGo, color: row.daysToGo === null ? colors.textMuted : colors.warning };
+    if (column.id === "daysToGo") return { text: row.daysToGo === null ? "--" : `${row.daysToGo}${column.label === "In" ? "d" : ""}`, value: row.daysToGo, color: row.daysToGo === null ? colors.textMuted : colors.warning };
     if (column.id === "added") return { text: row.added ?? "--", color: colors.positive };
     if (column.id === "removed") return { text: row.removed ?? "--", color: colors.negative };
     if (column.id === "estimate") { const value = row.estimates.length === 1 ? row.estimates[0]!.days : null; return { text: percent(value, ""), value }; }
-    return { text: row.reason, color: colors.text };
+    return { text: changeReason(row), color: colors.text };
   }, [colors]);
   return <PaneStatusBody subject="index changes" loading={!data && resource.loading} error={!data ? resource.error : null}>
     {data && !data.available ? <EmptyState title="Index changes are not covered for this fund." /> : data && <DataTableStackView<FundChange>
@@ -104,7 +104,7 @@ function Changes({ fund, width, height, focused, active }: ViewProps) {
       detailContent={detail && <DetailScrollBody ref={scrollRef} resetScrollKey={detail.id}>
         <KeyValueRow label="Effective" value={detail.effectiveDate ?? "Not confirmed"} />
         {detail.announcedAt && <KeyValueRow label="Announced" value={detail.announcedAt.slice(0, 10)} />}
-        {detail.headline && detail.added && <KeyValueRow label="Added" value={detail.added} />}{detail.headline && detail.removed && <KeyValueRow label="Removed" value={detail.removed} />}
+        {detail.headline && <Prose text={detail.headline} width={Math.max(8, width - 4)} />}
         {detail.reason !== detail.headline && <Prose text={detail.reason} width={Math.max(8, width - 4)} />}
         {detail.estimates.map((estimate) => <KeyValueRow key={estimate.symbol} label={`${estimate.symbol} est. ADV days`} labelWidth={24} value={percent(estimate.days, "")} />)}
         {!!detail.estimates.length && <KeyValueRow label="Holdings as of" labelWidth={24} value={detail.estimates[0]!.asOf} />}

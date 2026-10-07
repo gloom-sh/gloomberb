@@ -41,13 +41,20 @@ function fit(columns: DataTableColumn[], width: number, drops: string[]) {
   return columns;
 }
 export function memberColumns(width: number, movers = false): DataTableColumn[] {
+  const compact = width < 50;
   return fit([column("symbol", "Ticker", 8, "left"), column("name", "Name", 22, "left"),
-    column("weight", "Weight %", 10), ...(movers ? [column("contribution", "Contrib. pp", 13)] : []),
+    column("weight", compact ? "Wt. %" : "Weight %", compact ? 7 : 10), ...(movers ? [column("contribution", compact ? "pp" : "Contrib. pp", compact ? 7 : 13)] : []),
     ...(!movers ? [column("shares", "Shares", 14), column("price", "Price $", 11)] : []),
-    column("changePercent", "1D", 9), ...(!movers ? [column("return1WPercent", "1W", 9), column("return1MPercent", "1M", 9), column("returnYtdPercent", "YTD", 9), column("sector", "Sector", 22, "left")] : [])], width,
+    column("changePercent", "1D", compact ? 8 : 9), ...(!movers ? [column("return1WPercent", "1W", 9), column("return1MPercent", "1M", 9), column("returnYtdPercent", "YTD", 9), column("sector", "Sector", 22, "left")] : [])], width,
     ["sector", "shares", "returnYtdPercent", "return1MPercent", "return1WPercent", "price", "name"]);
 }
 export function changeColumns(width: number) {
-  return fit([column("effectiveDate", "Effective", 12, "left"), column("daysToGo", "In days", 9), column("added", "Added", 8, "left"), column("removed", "Removed", 9, "left"), column("estimate", "Est. ADV days", 15), column("reason", "Reason / announcement", 28, "left")], width, ["estimate", "daysToGo"]);
+  const compact = width < 50;
+  return fit([column("effectiveDate", compact ? "Date" : "Effective", compact ? 10 : 12, "left"), column("daysToGo", compact ? "In" : "In days", compact ? 4 : 9), column("added", "Added", compact ? 7 : 8, "left"), column("removed", "Removed", 9, "left"), column("estimate", "Est. ADV days", 15), column("reason", "Reason", 28, "left")], width, ["estimate", "reason"]);
 }
-export const changeLabel = (row: FundChange) => row.headline ?? (row.added && row.removed ? `${row.added} replaces ${row.removed}` : row.added ? `${row.added} added` : `${row.removed ?? "--"} removed`);
+export const changeLabel = (row: FundChange) => row.added && row.removed ? `${row.added} replaces ${row.removed}`
+  : row.added ? `${row.added} added` : row.removed ? `${row.removed} removed` : "Index announcement";
+export function changeReason(row: FundChange) {
+  if (row.kind !== "announcement" || row.reason !== row.headline || !row.added && !row.removed) return row.reason;
+  return row.added && row.removed ? "Index replacement" : row.added ? "Index addition" : "Index deletion";
+}
