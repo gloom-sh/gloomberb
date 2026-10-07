@@ -56,9 +56,13 @@ const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
   CMDTY: "other",
 };
 
+function normalizeInstrumentType(type: string | null | undefined): string {
+  return (type ?? "").trim().toUpperCase().replace(/[\s_-]+/g, "");
+}
+
 /** A provider or broker type string, or null when it names nothing known. */
 export function classifyInstrumentType(type: string | null | undefined): TickerInstrumentKind | null {
-  const normalized = (type ?? "").trim().toUpperCase().replace(/[\s_-]+/g, "");
+  const normalized = normalizeInstrumentType(type);
   if (!normalized) return null;
   const exact = KIND_BY_TYPE[normalized];
   if (exact) return exact;
@@ -82,6 +86,34 @@ function kindFromListing(ticker: TickerRecord | null | undefined): TickerInstrum
   return ticker ? kindFromListingSyntax(ticker.metadata.ticker, ticker.metadata.exchange) : null;
 }
 
+function instrumentTypes(
+  ticker: TickerRecord | null | undefined,
+  financials?: Pick<TickerFinancials, "quote" | "quoteMetadata"> | null,
+) {
+  return [
+    financials?.quote?.instrumentType,
+    financials?.quoteMetadata?.instrumentType,
+    ticker?.metadata.broker_contracts?.[0]?.secType,
+    ticker?.metadata.assetCategory,
+  ];
+}
+
+/**
+ * Explicit mutual-fund and money-market shares have neither listed options nor
+ * 13F-reportable ownership. Use the kind resolver's type precedence; generic
+ * funds, ETFs and closed-end funds stay eligible.
+ */
+export function isKnownMutualFund(
+  ticker: TickerRecord | null | undefined,
+  financials?: Pick<TickerFinancials, "quote" | "quoteMetadata"> | null,
+): boolean {
+  const type = instrumentTypes(ticker, financials).find((candidate) => {
+    const kind = classifyInstrumentType(candidate);
+    return kind !== null && kind !== "equity";
+  });
+  return ["MUTUALFUND", "MONEYMARKET", "MONEYMARKETFUND"].includes(normalizeInstrumentType(type));
+}
+
 /**
  * The ticker's instrument kind from its quote, broker contract, saved type and
  * listing syntax. Brokers file funds and stocks under one generic type (`STK`),
@@ -93,12 +125,7 @@ export function resolveTickerInstrumentKind(
   ticker: TickerRecord | null | undefined,
   financials?: Pick<TickerFinancials, "quote" | "quoteMetadata"> | null,
 ): TickerInstrumentKind {
-  const typed = [
-    financials?.quote?.instrumentType,
-    financials?.quoteMetadata?.instrumentType,
-    ticker?.metadata.broker_contracts?.[0]?.secType,
-    ticker?.metadata.assetCategory,
-  ].map(classifyInstrumentType);
+  const typed = instrumentTypes(ticker, financials).map(classifyInstrumentType);
   return typed.find((kind) => kind !== null && kind !== "equity")
     ?? kindFromListing(ticker)
     ?? "equity";
