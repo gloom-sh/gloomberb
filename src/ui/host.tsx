@@ -375,6 +375,8 @@ export interface HostTabsProps {
   addLabel?: string;
   onAdd?: () => void;
   onReorder?: (fromValue: string, toValue: string) => void;
+  /** A press that moves, on a tab that is not reordered. */
+  onDrag?: () => void;
   focused?: boolean;
   palette: HostTabsPalette;
 }

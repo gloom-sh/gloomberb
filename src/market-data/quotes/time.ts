@@ -1,4 +1,20 @@
 import type { Quote } from "../../types/financials";
+import { getLanguage, tf } from "../../i18n";
+import { dailyNavDate } from "./freshness";
+
+/** The published NAV session date, independent of local time and receipt time. */
+export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
+  const date = quote && dailyNavDate(quote, now);
+  if (!date) return null;
+  const sourceDate = new Date(`${date}T00:00:00Z`);
+  const dateText = new Intl.DateTimeFormat(getLanguage(), {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    ...(sourceDate.getUTCFullYear() !== new Date(now).getUTCFullYear() ? { year: "numeric" as const } : {}),
+  }).format(sourceDate);
+  return tf("NAV · as of {date}", { date: dateText });
+}
 
 function clampQuoteTimestamp(lastUpdated: number | undefined, now = Date.now()): number | null {
   if (typeof lastUpdated !== "number" || !Number.isFinite(lastUpdated) || lastUpdated <= 0) {

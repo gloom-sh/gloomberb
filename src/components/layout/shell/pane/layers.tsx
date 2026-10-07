@@ -37,6 +37,7 @@ interface ShellPaneLayersProps {
   getPaneQuickSettings: (paneId: string) => PaneHeaderQuickSetting[];
   handleFloatingClose: (paneId: string) => void;
   handleFloatingCloseMouseDown: (paneId: string, event: any) => void;
+  handleRestoreFullscreen: ShellMouseHandler;
   handleNativeDrag: ShellMouseHandler;
   handleNativePaneContextMenu: (paneId: string, rect: LayoutBounds, event: any) => void;
   handleNativePaneMouseDown: (paneId: string, event: any) => void;
@@ -73,6 +74,7 @@ export function ShellPaneLayers({
   getPaneQuickSettings,
   handleFloatingClose,
   handleFloatingCloseMouseDown,
+  handleRestoreFullscreen,
   handleNativeDrag,
   handleNativePaneContextMenu,
   handleNativePaneMouseDown,
@@ -125,6 +127,7 @@ export function ShellPaneLayers({
         const rect = transientFocusActive
           ? { x: 0, y: 0, width, height: contentHeight }
           : leaf.rect;
+        const isFullscreenBase = transientFocusActive && leaf.instanceId === transientFocusPaneId;
         const focused = focusedPaneId === leaf.instanceId && (!overlayOpen || menuPaneId === leaf.instanceId);
         const windowModeSelected = windowModePaneId === leaf.instanceId;
         const showActions = focused || hoveredPaneId === leaf.instanceId || menuPaneId === leaf.instanceId;
@@ -170,6 +173,8 @@ export function ShellPaneLayers({
                     onHeaderMouseDragEnd={nativePaneChrome && !transientFocusActive ? handleNativeDrag : undefined}
                     onHeaderContextMenu={nativePaneChrome && nativeContextMenu === true ? (event) => handleNativePaneContextMenu(leaf.instanceId, rect, event) : undefined}
                     onActionMouseDown={(event) => handlePaneAction(leaf.instanceId, rect, event)}
+                    fullscreen={isFullscreenBase}
+                    onRestoreMouseDown={isFullscreenBase ? handleRestoreFullscreen : undefined}
                   >
                     <PaneFooterKeys paneId={leaf.instanceId} footer={footer} focused={focused} />
                     <PaneContent
@@ -191,6 +196,7 @@ export function ShellPaneLayers({
 
       {visibleFloatingPanes.map(({ pane, rect }) => {
         if (transientFocusActive && pane.instance.instanceId !== transientFocusPaneId) return null;
+        const isFullscreenBase = transientFocusActive && pane.instance.instanceId === transientFocusPaneId;
         const preview = transientFocusActive
           ? { x: 0, y: 0, width, height: contentHeight }
           : dragFloatingRect?.paneId === pane.instance.instanceId
@@ -230,15 +236,17 @@ export function ShellPaneLayers({
                   footer={footer}
                   onMouseDownCapture={nativePaneChrome ? (event) => handleNativePaneMouseDown(pane.instance.instanceId, event) : undefined}
                   onHeaderMouseMove={() => setHoveredPaneIfChanged(pane.instance.instanceId)}
-                  onHeaderMouseDown={nativePaneChrome ? (event) => startNativeFloatingDrag(pane.instance.instanceId, preview, event) : undefined}
-                  onHeaderMouseDrag={nativePaneChrome ? handleNativeDrag : undefined}
-                  onHeaderMouseDragEnd={nativePaneChrome ? handleNativeDrag : undefined}
+                  onHeaderMouseDown={nativePaneChrome && !isFullscreenBase ? (event) => startNativeFloatingDrag(pane.instance.instanceId, preview, event) : undefined}
+                  onHeaderMouseDrag={nativePaneChrome && !isFullscreenBase ? handleNativeDrag : undefined}
+                  onHeaderMouseDragEnd={nativePaneChrome && !isFullscreenBase ? handleNativeDrag : undefined}
                   onHeaderContextMenu={nativePaneChrome && nativeContextMenu === true ? (event) => handleNativePaneContextMenu(pane.instance.instanceId, preview, event) : undefined}
                   onActionMouseDown={(event) => handlePaneAction(pane.instance.instanceId, preview, event)}
-                  onCloseMouseDown={(event) => handleFloatingCloseMouseDown(pane.instance.instanceId, event)}
-                  onResizeMouseDown={nativePaneChrome ? (event) => startNativeFloatResize(pane.instance.instanceId, preview, event) : undefined}
-                  onResizeMouseDrag={nativePaneChrome ? handleNativeDrag : undefined}
-                  onResizeMouseDragEnd={nativePaneChrome ? handleNativeDrag : undefined}
+                  onCloseMouseDown={isFullscreenBase ? undefined : (event) => handleFloatingCloseMouseDown(pane.instance.instanceId, event)}
+                  onRestoreMouseDown={isFullscreenBase ? handleRestoreFullscreen : undefined}
+                  fullscreen={isFullscreenBase}
+                  onResizeMouseDown={nativePaneChrome && !isFullscreenBase ? (event) => startNativeFloatResize(pane.instance.instanceId, preview, event) : undefined}
+                  onResizeMouseDrag={nativePaneChrome && !isFullscreenBase ? handleNativeDrag : undefined}
+                  onResizeMouseDragEnd={nativePaneChrome && !isFullscreenBase ? handleNativeDrag : undefined}
                 >
                   <PaneFooterKeys paneId={pane.instance.instanceId} footer={footer} focused={focused} />
                   <PaneContent

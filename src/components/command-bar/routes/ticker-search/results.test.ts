@@ -110,6 +110,8 @@ test("names the instrument class for the badge column", () => {
   expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("ETF") })).toBe("ETF");
   expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("ETN") })).toBe("ETF");
   expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("MUTUALFUND") })).toBe("FUND");
+  expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("Closed-end Fund") })).toBe("FUND");
+  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("MONEY_MARKET") })).toBe("FUND");
   expect(formatInstrumentBadge({
     instrumentClass: "fund",
     ticker: { metadata: { ticker: "VTI", assetCategory: "ETF" } } as never,
@@ -118,7 +120,7 @@ test("names the instrument class for the badge column", () => {
   // The class codes a query can end with (ES FUT) are the badges of the rows they keep.
   expect(formatInstrumentBadge({ instrumentClass: "derivative", result: search("FUTURE") })).toBe("FUT");
   expect(formatInstrumentBadge({ instrumentClass: "other", result: search("INDEX") })).toBe("IDX");
-  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("CRYPTOCURRENCY") })).toBe("CUR");
+  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("CRYPTOCURRENCY") })).toBe("CRYP");
   expect(formatInstrumentBadge({ instrumentClass: "other", result: search("Unit") })).toBeUndefined();
 });
 

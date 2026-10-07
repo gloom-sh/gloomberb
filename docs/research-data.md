@@ -546,6 +546,8 @@ The existing `r` shortcut refreshes 8-K discovery and SEC filing lists. Same-com
 
 ## Fund profiles and ticker reports
 
+Daily mutual-fund prices show NAV with its source date and the change from the previous NAV. A NAV remains current until the next session's NAV has had time to publish, allowing 12 hours after that session's published close and respecting holidays and early closes.
+
 Overview, ticker reports and AI context identify the security using its reported quote type, then retained quote metadata, then the saved asset category. Blank type fields do not stop that fallback. A broker's generic `STK` category remains part of the stored holding; it does not replace an explicit provider `ETF` classification in the research view. This classification does not establish domicile, fees, fund base currency, hedge policy, distribution policy or total return.
 
 A missing current quote does not discard independently available profile details, reported fundamentals or supported dated return summaries from `gloomberb ticker`. Text retains the quote-unavailable status; structured output has a null quote, a warning and any separately available quote metadata with its source information. Unknown and nonfinite values are not supplied zero, and cached undated return fields alone do not establish usable research coverage.

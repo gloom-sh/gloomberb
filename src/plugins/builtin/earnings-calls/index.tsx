@@ -36,6 +36,7 @@ export const earningsCallsModule: PluginModule = {
       icon: "C",
       component: EarningsCallsPane,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },
       tableExport: true,

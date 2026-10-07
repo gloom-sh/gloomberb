@@ -754,6 +754,7 @@ export function Shell({
     focusPane,
     focusedPaneId,
     handleFloatingClose,
+    restoreFullscreen: exitTransientFocusLayout,
     menuState,
     nativePaneChrome,
     openPaneMenu,
@@ -834,6 +835,11 @@ export function Shell({
         getPaneQuickSettings={getPaneQuickSettings}
         handleFloatingClose={handleFloatingClose}
         handleFloatingCloseMouseDown={handleFloatingCloseMouseDown}
+        handleRestoreFullscreen={(event) => {
+          event?.preventDefault?.();
+          event?.stopPropagation?.();
+          exitTransientFocusLayout();
+        }}
         handleNativeDrag={handleNativeDrag}
         handleNativePaneContextMenu={handleNativePaneContextMenu}
         handleNativePaneMouseDown={handleNativePaneMouseDown}

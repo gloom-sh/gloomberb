@@ -3,6 +3,7 @@
  * Keep finance terminology precise and translations concise for dense layouts.
  */
 export const ko: Record<string, string> = {
+  "NAV · as of {date}": "NAV · {date} 기준",
   // ── Common UI ────────────────────────────────────────────────
   "Back": "뒤로",
   "Done": "완료",

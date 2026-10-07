@@ -116,9 +116,10 @@ export interface PaneDef {
   tickerSource?: boolean;
   /**
    * Pane shows one ticker read through its binding (`usePaneTicker`, `usePaneTickerIdentity`), so
-   * its pane menu offers "Link to" each visible `tickerSource` pane and it then follows that pane's
-   * selection. A function decides per instance (a chart with one security, not a comparison). A
-   * follower must never write its own `cursorSymbol`: that would win over the binding.
+   * its pane menu offers "Link to" each visible list, scanner, and other single-ticker pane, and
+   * it then follows that pane's selection. A function decides per instance (a chart with one
+   * security, not a comparison). A follower must never write its own `cursorSymbol`: that would
+   * win over the binding.
    */
   tickerFollower?: boolean | ((pane: PaneInstanceConfig) => boolean);
   /** Renderer-neutral data model used by CLI functions, automation, and hosted tools. */

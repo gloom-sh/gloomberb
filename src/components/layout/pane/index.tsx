@@ -28,6 +28,8 @@ interface PaneWrapperProps {
   onHeaderMouseDragEnd?: (event: any) => void;
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
+  onRestoreMouseDown?: (event: any) => void;
+  fullscreen?: boolean;
   footer?: CombinedPaneFooter | null;
   children: ReactNode;
 }
@@ -52,6 +54,8 @@ export function PaneWrapper({
   onHeaderMouseDragEnd,
   onHeaderContextMenu,
   onActionMouseDown,
+  onRestoreMouseDown,
+  fullscreen = false,
   footer,
   children,
 }: PaneWrapperProps) {
@@ -107,6 +111,8 @@ export function PaneWrapper({
           onHeaderMouseDragEnd={onHeaderMouseDragEnd}
           onHeaderContextMenu={onHeaderContextMenu}
           onActionMouseDown={onActionMouseDown}
+          fullscreen={fullscreen}
+          onRestoreMouseDown={onRestoreMouseDown}
         />
       )}
       <PaneBodyFrame layoutProps={bodyFrame.layoutProps} backgroundColor={bg}>

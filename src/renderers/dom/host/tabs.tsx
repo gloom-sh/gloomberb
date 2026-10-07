@@ -27,6 +27,7 @@ export function WebTabs({
   addLabel = "+",
   onAdd,
   onReorder,
+  onDrag,
   focused = false,
   palette,
 }: HostTabsProps) {
@@ -135,6 +136,41 @@ export function WebTabs({
     setDragSourceValue(sourceValue);
     document.addEventListener("mousemove", handleMove);
     document.addEventListener("mouseup", handleUp);
+    dragCleanupRef.current = cleanup;
+  };
+
+  // A click selects the tab. A drag moves the window, and the listeners come off
+  // before that starts so a native move that swallows mouseup cannot leave them on.
+  const startPressDrag = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || !onDrag) return;
+    dragCleanupRef.current?.();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let moved = false;
+    const cleanup = () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("blur", handleUp);
+      dragCleanupRef.current = null;
+    };
+    const handleMove = (moveEvent: MouseEvent) => {
+      if (moveEvent.buttons === 0) {
+        cleanup();
+        return;
+      }
+      if (moved) return;
+      if (Math.abs(moveEvent.clientX - startX) < 4 && Math.abs(moveEvent.clientY - startY) < 4) return;
+      moved = true;
+      suppressClickRef.current = true;
+      cleanup();
+      onDrag();
+    };
+    const handleUp = () => {
+      cleanup();
+    };
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    window.addEventListener("blur", handleUp);
     dragCleanupRef.current = cleanup;
   };
 
@@ -264,7 +300,7 @@ export function WebTabs({
             style={tabStyle}
             onMouseEnter={() => setHoveredValue(tab.value)}
             onMouseLeave={() => setHoveredValue((current) => (current === tab.value ? null : current))}
-            onMouseDown={reorderable ? (event) => startReorder(tab.value, event) : undefined}
+            onMouseDown={reorderable ? (event) => startReorder(tab.value, event) : onDrag ? startPressDrag : undefined}
             onClick={(event) => {
               if (suppressClickRef.current) {
                 suppressClickRef.current = false;

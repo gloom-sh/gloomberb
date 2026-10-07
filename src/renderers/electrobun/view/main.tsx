@@ -26,6 +26,7 @@ import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
 import { installDomMarketDataFrames } from "../../dom/data-frames";
 import { DomErrorBoundary, DomHostProviders } from "../../dom/dom-host-providers";
 import { DesktopFatalScreen } from "./fatal-screen";
+import { resolveRendererWindowError } from "./renderer-window-error";
 import { createWebUiHost, webRendererHost } from "./ui-host";
 import {
   initializeDesktopResearchActivity,
@@ -83,7 +84,12 @@ function renderFatalError(error: unknown, details?: string, title = "Gloomberb f
 }
 
 window.__gloomRenderFatalError = (error, details, source) => {
-  if (appMounted && source === "unhandledrejection") {
+  if (resolveRendererWindowError({
+    error,
+    details,
+    source,
+    appMounted,
+  }) === "ignore") {
     return;
   }
   renderFatalError(error, details, "Gloomberb crashed");

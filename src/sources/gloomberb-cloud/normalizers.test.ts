@@ -4,6 +4,36 @@ import type { CloudQuotePayload } from "../../api-client";
 import { mergeQuoteContribution, normalizeQuoteContribution } from "../../market-data/quotes/contributions";
 import { resolveCanonicalQuote, resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
 import { deriveQuarterlyStatements } from "../../time-series/fundamentals";
+import { formatMarketChangeWithCurrency, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+
+test("daily fund NAV mapping separates its observation kind from monetary price units", () => {
+  const raw: CloudQuotePayload = {
+    symbol: "VFIAX", currency: "USD", instrumentType: "MUTUALFUND", priceBasis: "nav",
+    price: 721.63, previousClose: 718.5, change: 3.13, changePercent: 3.13 / 718.5 * 100,
+    changeSessionDate: "2026-10-06", lastUpdated: Date.parse("2026-10-06T04:00:00Z"),
+    listingExchangeName: "NASDAQ", providerId: "gloomberb-cloud", dataSource: "delayed",
+    stale: false, sessionConfidence: "unknown",
+  };
+  const quote = mapQuote(raw);
+  expect(quote).toMatchObject({ priceObservation: "nav", priceBasis: "per-unit", price: 721.63,
+    change: 3.13, previousClose: 718.5, changeSessionDate: "2026-10-06", lastUpdated: raw.lastUpdated });
+  const options = quoteFormatOptions(quote);
+  expect(formatMarketPriceWithCurrency(quote.price, quote.currency, options)).toBe("$721.63");
+  expect(formatMarketChangeWithCurrency(quote.change, quote.currency, options, quote.price)).toBe("+$3.13");
+  expect(quote.changePercent).toBeCloseTo(0.4356298);
+
+  const financials = mapCloudFinancials({ quote: raw, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
+  expect(financials.quote).toEqual(quote);
+  expect(financials.fundamentals).toBeUndefined();
+  const contribution = normalizeQuoteContribution(JSON.parse(JSON.stringify(quote)))!;
+  const selected = resolveCanonicalQuote({ "gloomberb-cloud": contribution }, Date.parse("2026-10-07T15:00:00Z")).quote;
+  expect(selected).toMatchObject({ priceObservation: "nav", priceBasis: "per-unit", price: 721.63,
+    changeSessionDate: "2026-10-06", lastUpdated: raw.lastUpdated, sessionConfidence: "unknown" });
+  expect(selected?.marketState).toBeUndefined();
+  for (const priceBasis of ["NAV", "unknown", 1]) {
+    expect(() => mapQuote({ ...raw, priceBasis } as CloudQuotePayload)).toThrow("Unsupported quote price basis");
+  }
+});
 
 test("intraday boundaries use venue time or explicit UTC while daily dates stay UTC calendar dates", () => {
   const winter = new Date("2026-01-15T01:02:03.456Z");

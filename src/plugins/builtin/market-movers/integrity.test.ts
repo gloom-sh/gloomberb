@@ -1,7 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, jest, spyOn, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { apiClient } from "../../../api-client";
+import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { applyViewProjection, normalizeViewSpec } from "../custom-view/view-spec";
 import { createMarketMoversHeadless } from "./headless";
 import { loadMarketMoverTab } from "./client";
 import { createRows, sortRows } from "./model";
@@ -10,7 +12,11 @@ import { attachMarketMoversPersistence, fetchPreferredMarketMovers, fetchScreene
 const payload = (quotes: unknown[]) => ({ quotes });
 const raw = (symbol: string, fields = {}) => ({ symbol, price: 10, currency: "USD", ...fields });
 const noSessionMovers = async (): Promise<never> => { throw new Error("Session movers are not requested"); };
-afterEach(resetMarketMoversPersistence);
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+  resetMarketMoversPersistence();
+});
 
 test("source fields, sorted rows and headless text preserve missing versus reported zero", async () => {
   const rows = parseScreenerResponse(payload([
@@ -117,4 +123,29 @@ test("preferred Cloud prices qualify backend range units before default headless
     expect(unknown.model.rows[0]!.fiftyTwoWeekLow).toBeUndefined();
     expect(unknown.text).not.toContain("£");
   }
+});
+
+test("a view over a Pro list keeps direct averages, waits for slow fallback metadata, and sorts missing ratios last", async () => {
+  jest.useFakeTimers();
+  const item = (symbol: string, volume: number, avgVolume?: number) => ({ symbol, name: symbol, price: 2, change: 0, changePercent: 0, volume, avgVolume, currency: "USD", exchange: "NASDAQ", lastUpdated: 1, dataSource: "live" as const });
+  const metadata = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getMarketMovers>>>();
+  spyOn(apiClient, "isVerified").mockReturnValue(true);
+  spyOn(apiClient, "getCurrentUser").mockReturnValue({ emailVerified: true, plan: "pro" } as ReturnType<typeof apiClient.getCurrentUser>);
+  // NEW has no average; NVDA is outside the public snapshot but carries its own.
+  spyOn(apiClient, "getCloudMarketScreener").mockResolvedValue({ status: "success", data: { providerId: "gloomberb-cloud", category: "most-active", asOf: "2026-10-07T09:30:00.000Z", items: [item("NEW", 700e6), item("BIG", 60e6), item("NVDA", 60e6, 20e6), item("OLOX", 80e6, 4e6)] } } as never);
+  spyOn(apiClient, "getMarketMovers").mockReturnValue(metadata.promise);
+  const definition = createMarketMoversHeadless();
+  const loading = definition.load({ rawArgument: "", argument: null, symbols: [], options: { list: "actives" } }, { marketData: createTestDataProvider() } as any);
+  for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+  // Past the pane's own cutoff for slow metadata.
+  jest.advanceTimersByTime(2_000);
+  metadata.resolve({ status: "success", data: { source: "gloom", stale: false, asOf: "2026-10-06", quotes: parseScreenerResponse(payload([
+    raw("OLOX", { name: "OLENOX INDUSTRIES INC.", volume: 1, avgVolume: 2e6, marketCap: 1.46e6 }),
+    raw("BIG", { volume: 1, avgVolume: 40e6 }),
+  ])) } });
+  const spec = normalizeViewSpec({ source: { pane: "MOST" }, projection: { columns: ["symbol", "volumeRatio"], sort: { by: "volumeRatio", direction: "desc" } } });
+  const { rows } = serializeHeadlessPaneResult(definition, await loading) as { rows: Array<Record<string, unknown>> };
+  expect(rows.find(row => row.symbol === "NVDA")).toMatchObject({ avgVolume: 20e6, volumeRatio: 3 });
+  expect(rows.find(row => row.symbol === "OLOX")).toMatchObject({ avgVolume: 4e6, volumeRatio: 20 });
+  expect(applyViewProjection(rows, spec.projection).map(row => [row.symbol, row.volumeRatio])).toEqual([["OLOX", 20], ["NVDA", 3], ["BIG", 1.5], ["NEW", null]]);
 });

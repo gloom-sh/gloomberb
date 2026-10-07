@@ -5,6 +5,7 @@
  * fixed-width terminal layouts stay readable.
  */
 export const ja: Record<string, string> = {
+  "NAV · as of {date}": "NAV · {date}時点",
   // ── Common UI ────────────────────────────────────────────────
   "Back": "戻る",
   "Done": "完了",

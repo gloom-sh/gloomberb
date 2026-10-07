@@ -22,8 +22,8 @@ export function listVisibleTickerSourcePanes(
 }
 
 /**
- * Whether the pane menu may link this pane to a ticker source (`PaneDef.tickerFollower`). A source
- * never follows: its own cursor symbol would win over the binding.
+ * Whether the pane menu may link this pane to another pane's ticker (`PaneDef.tickerFollower`).
+ * A source never follows: its own cursor symbol would win over the binding.
  */
 export function canFollowTickerSource(
   instance: PaneInstanceConfig,
@@ -32,6 +32,32 @@ export function canFollowTickerSource(
   const def = panes.get(instance.paneId);
   if (!def || def.tickerSource) return false;
   return typeof def.tickerFollower === "function" ? def.tickerFollower(instance) : def.tickerFollower === true;
+}
+
+/**
+ * A single-ticker pane other panes can follow. Lists and scanners stay sources; Ticker Research
+ * follows the same rule as any pane flagged `tickerFollower`.
+ */
+export function isTickerLinkPeer(
+  instance: PaneInstanceConfig,
+  panes: ReadonlyMap<string, PaneDef>,
+): boolean {
+  return instance.paneId === TICKER_RESEARCH_PANE_ID || canFollowTickerSource(instance, panes);
+}
+
+/** True when `fromInstanceId`'s follow chain reaches `targetInstanceId`. */
+export function followBindingReaches(
+  layout: LayoutConfig,
+  fromInstanceId: string,
+  targetInstanceId: string,
+  seen = new Set<string>(),
+): boolean {
+  if (seen.has(fromInstanceId)) return false;
+  seen.add(fromInstanceId);
+  const instance = findPaneInstance(layout, fromInstanceId);
+  if (instance?.binding?.kind !== "follow") return false;
+  const next = instance.binding.sourceInstanceId;
+  return next === targetInstanceId || followBindingReaches(layout, next, targetInstanceId, seen);
 }
 
 /** The visible Ticker Research pane that follows `sourceInstanceId`, if any. */

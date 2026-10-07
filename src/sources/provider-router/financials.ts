@@ -92,7 +92,7 @@ export function sanitizeCachedFinancials(
 }
 
 export function quoteWithFreshnessExchange(quote: Quote, exchange?: string): Quote {
-  if (!exchange || quote.listingExchangeName || quote.exchangeName) return quote;
+  if (!exchange || quote.priceObservation != null || quote.listingExchangeName || quote.exchangeName) return quote;
   return {
     ...quote,
     listingExchangeName: exchange,
@@ -123,6 +123,8 @@ function isQuoteInActiveSession(quote: Quote, now: number): boolean {
 }
 
 function isActiveProviderQuoteTooOld(quote: Quote, now = Date.now()): boolean {
+  // The shared freshness predicate already validates and dates a daily NAV.
+  if (quote.priceObservation === "nav") return false;
   if (!isQuoteInActiveSession(quote, now)) return false;
   // A prior-session close before any pre-market trade has no in-session print
   // to age; the session-date rules bound it instead.

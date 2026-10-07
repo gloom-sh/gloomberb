@@ -166,7 +166,13 @@ describe("desktop pane sidebar", () => {
     expect(handle).toBeTruthy();
 
     const mouse = (type: string, target: { dispatchEvent: (event: unknown) => unknown }, cells: number) => {
-      target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: cells * WEB_CELL_WIDTH, clientY: 40 }));
+      target.dispatchEvent(new MouseEvent(type, {
+        bubbles: true,
+        button: 0,
+        buttons: type === "mouseup" ? 0 : 1,
+        clientX: cells * WEB_CELL_WIDTH,
+        clientY: 40,
+      }));
     };
     await act(async () => mouse("mousedown", handle, 20));
     await act(async () => {

@@ -1,6 +1,11 @@
 import { tf } from "../../../i18n";
 import { updatePaneInstance } from "../../../pane-settings";
-import { canFollowTickerSource, listVisibleTickerSourcePanes } from "../../../layout/ticker-navigation";
+import {
+  canFollowTickerSource,
+  followBindingReaches,
+  isTickerLinkPeer,
+} from "../../../layout/ticker-navigation";
+import { isPaneInLayout } from "../../../layout/pane-manager";
 import { resolveTickerForPane, type AppState } from "../../../state/app/context";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { paneTitleMnemonic, pinFollowingPane } from "../../../layout/pane-follow";
@@ -11,13 +16,13 @@ import {
 } from "../../../types/config";
 import type { ContextMenuItem } from "../../../types/context-menu";
 import type { PaneDef } from "../../../types/plugin";
-import { getBasePaneDisplayTitle } from "../pane/title";
+import { getTickerLinkSourceTitle } from "../pane/title";
 
 /**
  * Flat link controls for a pane that shows one ticker (Ticker Research, or a pane that sets
- * `PaneDef.tickerFollower`): one "Link to" entry per visible ticker source, plus an unlink entry
- * that pins the pane on the symbol it currently shows. Only list panes and scanners are targets;
- * a pane following anything else (a desk's OMON following OVDV) gets no rows.
+ * `PaneDef.tickerFollower`): one "Link to" entry per visible list, scanner, or other single-ticker
+ * pane, plus an unlink entry that pins the pane on the symbol it currently shows. A target whose
+ * follow chain already reaches this pane is left out, so two panes cannot point at each other.
  */
 export function tickerLinkMenuItems({
   instance,
@@ -72,10 +77,19 @@ export function tickerLinkMenuItems({
     });
   };
 
-  return listVisibleTickerSourcePanes(layout, panes).flatMap((source): ContextMenuItem[] => {
-    const paneDef = panes.get(source.paneId);
-    if (!paneDef || source.instanceId === instance.instanceId) return [];
-    const title = getBasePaneDisplayTitle(state, source, paneDef);
+  return layout.instances.flatMap((source): ContextMenuItem[] => {
+    if (source.instanceId === instance.instanceId || !isPaneInLayout(layout, source.instanceId)) return [];
+    const sourceDef = panes.get(source.paneId);
+    if (!sourceDef) return [];
+    const list = sourceDef.tickerSource === true;
+    const peer = isTickerLinkPeer(source, panes);
+    if (!list && !peer) return [];
+    if (
+      source.instanceId !== sourceInstanceId
+      && followBindingReaches(layout, source.instanceId, instance.instanceId)
+    ) return [];
+    if (peer && !list && !resolveTickerForPane(state as AppState, source.instanceId)) return [];
+    const title = getTickerLinkSourceTitle(state, source, sourceDef, panes, "menu");
 
     if (source.instanceId !== sourceInstanceId) {
       return linkable

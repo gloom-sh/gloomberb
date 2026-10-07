@@ -7,6 +7,7 @@ import {
   isProviderQuoteUsableForCurrentSession,
 } from "./financials";
 import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { createDailyNavQuote } from "../../test-support/daily-nav";
 
 describe("provider-router financial quote usability", () => {
   let clock: ReturnType<typeof spyOn>;
@@ -14,6 +15,25 @@ describe("provider-router financial quote usability", () => {
     clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-14T18:00:00Z"));
   });
   afterEach(() => clock.mockRestore());
+
+  test("accepts the dated daily NAV in quotes and embedded financials during regular hours", () => {
+    clock.mockReturnValue(Date.parse("2026-10-07T15:00:00Z"));
+    const quote = createDailyNavQuote();
+    expect(isProviderQuoteUsableForCurrentSession(quote, "NASDAQ", "VFIAX")).toBe(true);
+    const financials = { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+    expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toEqual(quote);
+    expect(isProviderQuoteUsableForCurrentSession(quote, "NYSE", "VFIAX")).toBe(false);
+    expect(isProviderQuoteUsableForCurrentSession(quote, "NASDAQ", "FXAIX")).toBe(false);
+    expect(isProviderQuoteUsableForCurrentSession({ ...quote, listingExchangeName: undefined,
+      exchangeName: undefined }, "NASDAQ", "VFIAX")).toBe(false);
+    for (const invalid of [{ stale: true }, { changeSessionDate: "2026-10-05" }, { instrumentType: "ETF" }]) {
+      expect(dropUnusableProviderQuote({ ...financials, quote: { ...quote, ...invalid } }, "NASDAQ").quote).toBeUndefined();
+    }
+    clock.mockReturnValue(Date.parse("2026-10-08T07:59:59.999Z"));
+    expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toEqual(quote);
+    clock.mockReturnValue(Date.parse("2026-10-08T08:00:00Z"));
+    expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toBeUndefined();
+  });
 
   test("rejects active-session labels without active-session prices", () => {
     clock.mockReturnValue(Date.parse("2026-09-14T11:00:00Z"));

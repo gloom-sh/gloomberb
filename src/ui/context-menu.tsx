@@ -42,6 +42,7 @@ const MENU_SURFACE_SELECTOR = [
   "[data-gloom-role='pane-header']",
   "[data-gloom-role='pane-action']",
   "[data-gloom-role='pane-close']",
+  "[data-gloom-role='pane-restore']",
   "[data-gloom-role='status-bar']",
   "[data-gloom-role='tab-button']",
 ].join(", ");

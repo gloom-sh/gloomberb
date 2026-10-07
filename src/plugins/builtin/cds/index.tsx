@@ -18,6 +18,7 @@ export const cdsModule: PluginModule = {
     icon: "D",
     component: CdsPane,
     defaultPosition: "right",
+    tickerFollower: true,
     defaultMode: "floating",
     // Tall enough for the 5Y line above the trades, like Daily Short Volume.
     defaultFloatingSize: { width: 92, height: 28 },

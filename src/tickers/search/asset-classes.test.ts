@@ -7,7 +7,7 @@ describe("asset class query", () => {
     expect(parseAssetClassQuery("Vanguard Total ETF")).toEqual({ code: "ETF", symbolQuery: "Vanguard Total" });
     // A code alone is a symbol (EQ) or a command (FUT, ETF), and a leading
     // code is a command with its argument (ETF SPY opens ETF Filings).
-    for (const query of ["EQ", "FUT", "ETF", "ETF SPY", "FUT ES", "ES FUTURE"]) {
+    for (const query of ["EQ", "FUT", "ETF", "CRYP", "FUND", "ETF SPY", "FUT ES", "CRYP BTC", "FUND VTSAX", "ES FUTURE"]) {
       expect(parseAssetClassQuery(query)).toBeNull();
     }
   });
@@ -17,8 +17,11 @@ describe("asset class query", () => {
     expect(spell("ES FUT")).toBe("ES=F");
     expect(spell("eurusd CUR")).toBe("EURUSD=X");
     expect(spell("BTC CUR")).toBe("BTC-USD");
+    expect(spell("BTC CRYP")).toBe("BTC-USD");
+    expect(spell("BTC-USD CRYP")).toBeNull();
     expect(spell("GSPC IDX")).toBe("^GSPC");
     expect(spell("AAPL EQ")).toBeNull();
+    expect(spell("VTI FUND")).toBeNull();
     expect(spell("S&P 500 IDX")).toBeNull();
   });
 });
@@ -34,12 +37,13 @@ describe("instrument class code", () => {
     ["Limited Partnership", "EQ"],
     ["STK", "EQ"],
     ["ETF", "ETF"],
-    ["MUTUALFUND", null],
-    ["Closed-end Fund", null],
+    ["MUTUALFUND", "FUND"],
+    ["Closed-end Fund", "FUND"],
+    ["MONEY_MARKET", "FUND"],
     ["CURRENCY", "CUR"],
     ["CASH", "CUR"],
-    ["CRYPTOCURRENCY", "CUR"],
-    ["Digital Currency", "CUR"],
+    ["CRYPTOCURRENCY", "CRYP"],
+    ["Digital Currency", "CRYP"],
     ["FUTURE", "FUT"],
     ["CONTFUT", "FUT"],
     ["INDEX", "IDX"],
@@ -55,7 +59,7 @@ describe("instrument class code", () => {
     expect(instrumentClassCode({ symbol: "ES=F" })).toBe("FUT");
     expect(instrumentClassCode({ symbol: "EURUSD=X" })).toBe("CUR");
     expect(instrumentClassCode({ symbol: "^GSPC" })).toBe("IDX");
-    expect(instrumentClassCode({ symbol: "BTC-USD", exchange: "CCC" })).toBe("CUR");
+    expect(instrumentClassCode({ symbol: "BTC-USD", exchange: "CCC" })).toBe("CRYP");
     expect(instrumentClassCode({ symbol: "XYZ" })).toBeNull();
   });
 });

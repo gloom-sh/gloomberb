@@ -26,6 +26,7 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
+import { listingIdentity } from "../shared/ticker-request";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
@@ -130,10 +131,12 @@ const MNA_TABS: { label: string; value: MnaTab }[] = [
   { label: "Distress", value: "distress" },
 ];
 
-/** `MA`, or `MA ACVA` with the ticker kept in pane settings. */
+/** `MA`, or `MA ACVA`. A link supplies the ticker; an older pane still has it in settings. */
 export function MnaPane(props: PaneProps) {
+  const { symbol: bound } = usePaneTickerIdentity();
   const [ticker] = usePaneSettingValue("ticker", "");
-  const symbol = typeof ticker === "string" ? ticker.trim().toUpperCase() : "";
+  const fromSettings = typeof ticker === "string" ? ticker.trim().toUpperCase() : "";
+  const symbol = listingIdentity(bound)?.symbol || fromSettings;
   // One company's deals have no market-wide distress tab beside them.
   if (symbol) return <MnaDealsView key={symbol} focused={props.focused} width={props.width} height={props.height} symbol={symbol} />;
   return <MnaBoard focused={props.focused} width={props.width} height={props.height} />;

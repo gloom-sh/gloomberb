@@ -35,6 +35,7 @@ export const jobsModule: PluginModule = {
       icon: "J",
       component: JobsPane,
       defaultPosition: "right",
+      tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 34 },
       tableExport: true,

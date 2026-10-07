@@ -4,7 +4,7 @@ import type {
 } from "./types";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
-import { assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
+import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
 
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
 const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
@@ -174,12 +174,12 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   if (!intent.normalizedQuery) return items;
 
   const ranked = (assetClass
-    ? items.filter((item) => instrumentClassCode({
+    ? items.filter((item) => assetClassKeeps(assetClass.code, instrumentClassCode({
       instrumentClass: item.instrumentClass,
       instrumentType: item.instrumentType,
       symbol: item.symbol || item.label,
       exchange: item.exchangeLabel || item.right,
-    }) === assetClass.code)
+    })))
     : items)
     .map((item, index) => {
       // A saved public key replaces its provider row during deduplication.

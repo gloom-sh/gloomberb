@@ -30,8 +30,10 @@ const EMPTY_FILTERS: Record<string, unknown> = {};
 const EMPTY_DETAILS: Record<string, CatalystDetail> = {};
 
 export function CatalystsPane(props: PaneProps) {
+  const { symbol: bound } = usePaneTickerIdentity();
   const [scope] = usePaneSettingValue<string>("symbol", "");
-  return <CatalystView key={scope || "market"} {...props} symbol={scope || null} />;
+  const symbol = bound || scope.trim() || null;
+  return <CatalystView key={symbol || "market"} {...props} symbol={symbol} />;
 }
 export function LitigationPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();

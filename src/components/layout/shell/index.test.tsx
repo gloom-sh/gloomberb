@@ -378,6 +378,47 @@ describe("Shell", () => {
     expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
   });
 
+  test("the fullscreen corner restores the layout and leaves the pane open", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-fullscreen-restore-test");
+    const mainPane = requireLayoutInstance(config, "portfolio-list:main");
+    const detailPane = requireLayoutInstance(config, "ticker-detail:main");
+    const layout = cloneLayout(config.layout);
+    layout.dockRoot = { kind: "pane", instanceId: "portfolio-list:main" };
+    layout.instances = [{ ...mainPane }, { ...detailPane }];
+    layout.floating = [{ instanceId: "ticker-detail:main", x: 8, y: 2, width: 32, height: 10, zIndex: 75 }];
+    const { actions } = await renderShell(
+      createShellStateWithLayout(config, layout, "ticker-detail:main"),
+      { width: 80, height: 18 },
+    );
+
+    await emitKeypress({ name: "f", ctrl: true, shift: true });
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+    const frame = tui.frame();
+    const rows = frame.split("\n");
+    const headerRow = rows.findIndex((row) => row.includes(" - "));
+    expect(headerRow).toBeGreaterThanOrEqual(0);
+    expect(rows[headerRow]).not.toContain(" x ");
+    expect(frame).toContain("Ticker Research Body");
+    expect(frame).not.toContain("Portfolio Body");
+
+    await act(async () => {
+      await tui.setup().mockMouse.click(rows[headerRow]!.indexOf(" - ") + 1, headerRow + 1);
+    });
+    // The mouse handler's state update lands on the next turn.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await tui.setup().renderOnce();
+    });
+
+    const restored = tui.frame();
+    expect(restored).toContain("Portfolio Body");
+    expect(restored).toContain("Ticker Research Body");
+    expect(restored).not.toContain(" - ");
+    expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
+  });
+
   test("captures the source layout for transient pane focus", () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-fullscreen-layout-test");
     const layout = cloneLayout(config.layout);

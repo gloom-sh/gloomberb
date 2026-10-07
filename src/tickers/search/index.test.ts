@@ -198,16 +198,45 @@ describe("ticker-search utilities", () => {
     expect(candidates.map((item) => item.symbol).sort()).toEqual(["ES=F", "ESR=F"]);
 
     // The word ranking alone puts coins named "... BTC USD" ahead of BTC-USD.
-    const coins = buildTickerSearchCandidates({
-      query: "BTC CUR",
+    // CRYP keeps coins, and CUR keeps them too.
+    const coinResults = [
+      makeSearchResult("PBTC-USD", "pTokens BTC USD", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
+      makeSearchResult("BTC", "Grayscale Bitcoin Mini Trust ETF", { exchange: "ARCA", type: "ETF" }),
+      makeSearchResult("BTC-USD", "Bitcoin USD", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
+    ];
+    for (const query of ["BTC CRYP", "BTC CUR"]) {
+      expect(buildTickerSearchCandidates({ query, tickers: new Map(), providerResults: coinResults })
+        .map((item) => item.symbol)).toEqual(["BTC-USD", "PBTC-USD"]);
+    }
+    expect(buildTickerSearchCandidates({
+      query: "EUR CRYP",
       tickers: new Map(),
-      providerResults: [
-        makeSearchResult("PBTC-USD", "pTokens BTC USD", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
-        makeSearchResult("BTC", "Grayscale Bitcoin Mini Trust ETF", { exchange: "ARCA", type: "ETF" }),
-        makeSearchResult("BTC-USD", "Bitcoin USD", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
-      ],
+      providerResults: [makeSearchResult("EURUSD=X", "EUR/USD", { type: "CURRENCY" })],
+    })).toEqual([]);
+
+    asked.length = 0;
+    await searchTickerCandidates({
+      query: "BTC CRYP",
+      tickers: new Map(),
+      dataProvider: createTestDataProvider({ search: async (query) => { asked.push(query); return []; } }),
     });
-    expect(coins.map((item) => item.symbol)).toEqual(["BTC-USD", "PBTC-USD"]);
+    expect(asked).toContain("BTC-USD");
+    expect(asked).not.toContain("BTC CRYP");
+  });
+
+  test("a name ending in Fund keeps every fund, and ETF only exchange-traded ones", () => {
+    // Full fund names end in "Fund" whether or not they trade on an exchange.
+    const providerResults = [
+      makeSearchResult("XLK", "Technology Select Sector SPDR Fund", { exchange: "ARCA", type: "ETF" }),
+      makeSearchResult("VWELX", "Vanguard Wellington Fund Investor Shares", { exchange: "NASDAQ", type: "Mutual Fund" }),
+      makeSearchResult("PDI", "PIMCO Dynamic Income Fund", { exchange: "NYSE", type: "Closed-end Fund" }),
+      makeSearchResult("FUNDX", "Fund Holdings Inc", { exchange: "NYSE", type: "Common Stock" }),
+    ];
+    const symbols = (query: string) => buildTickerSearchCandidates({ query, tickers: new Map(), providerResults })
+      .map((item) => item.symbol).sort();
+    expect(symbols("Technology Select Sector SPDR Fund")).toEqual(["XLK"]);
+    expect(symbols("Fund FUND")).toEqual(["PDI", "VWELX", "XLK"]);
+    expect(symbols("Fund ETF")).toEqual(["XLK"]);
   });
 
   test("resolves catalogue omissions through a quote for the exact market symbol only", async () => {

@@ -10,6 +10,7 @@ import {
   fetchPreferredMarketMovers,
   fetchTrending,
   type MarketMoversResult,
+  type PreferredMoversOptions,
   type ScreenerQuote,
   type TrendingSymbol,
 } from "./screener";
@@ -22,7 +23,7 @@ export interface MarketMoverTabDependencies {
   fetchPreferred(
     category: "day_gainers" | "day_losers" | "most_actives",
     count: number,
-    options?: { forceRefresh?: boolean },
+    options?: PreferredMoversOptions,
   ): Promise<MarketMoversResult>;
   fetchTrending(count: number, options?: { forceRefresh?: boolean }): Promise<TrendingSymbol[]>;
 }
@@ -65,7 +66,7 @@ async function hydrateTrending(
 export async function loadMarketMoverTab(
   tab: ScreenerTabId,
   provider: DataProvider | null,
-  options?: { forceRefresh?: boolean },
+  options?: Pick<PreferredMoversOptions, "forceRefresh" | "metadataWaitMs">,
   dependencies: MarketMoverTabDependencies = defaultDependencies,
 ): Promise<MarketMoverTabResult> {
   if (tab === "trending") {

@@ -40,6 +40,9 @@ export function mapQuote(
   quote: CloudQuotePayload,
   providerMeta?: CloudProviderMeta,
 ): Quote {
+  if (quote.priceBasis != null && !["nav", "per-unit", "percent-of-par", "points", "thirty-seconds"].includes(quote.priceBasis)) {
+    throw createProviderMiss("Unsupported quote price basis");
+  }
   const { currency, divisor } = resolveCurrencyUnit(quote.currency);
   const listingExchangeName = quote.listingExchangeName ?? quote.exchangeName;
   const listingExchangeFullName =
@@ -55,10 +58,14 @@ export function mapQuote(
     : Number.NaN;
   // A generic future (VX1, TY1) reads in points or 32nds, not dollars.
   const generic = futuresGenericListing(quote.symbol, quote.listingExchangeName ?? quote.exchangeName);
-  const priceBasis = generic ? futuresGenericPriceBasis(generic) : null;
+  const priceObservation = quote.priceBasis === "nav" ? "nav" : undefined;
+  const priceBasis = quote.priceBasis === "nav"
+    ? "per-unit"
+    : (generic ? futuresGenericPriceBasis(generic) : null) ?? quote.priceBasis;
   return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
-    ...priceBasis ? { priceBasis } : {},
+    priceBasis,
+    priceObservation,
     currency: currency || quote.currency,
     price: normalizePriceValueByDivisor(quote.price, divisor) ?? quote.price,
     change,

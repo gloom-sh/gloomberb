@@ -29,7 +29,12 @@ await writeElectrobunViewPage({
         '<pre></pre>',
         '</div>',
       ].join("");
+      const resizeObserverLoop = (error, details) => {
+        const message = error && typeof error === "object" && "message" in error ? error.message : String(error ?? "");
+        return /resizeobserver loop/i.test([message, details].filter(Boolean).join(" "));
+      };
       const renderBootstrapError = (error, details = "", source = "bootstrap-error") => {
+        if (resizeObserverLoop(error, details)) return;
         if (typeof window.__gloomRenderFatalError === "function") {
           window.__gloomRenderFatalError(error, details, source);
           return;
@@ -52,11 +57,15 @@ await writeElectrobunViewPage({
           }
         });
       };
-      window.addEventListener("error", (event) => renderBootstrapError(
-        event.error || event.message,
-        [event.filename, event.lineno, event.colno].filter(Boolean).join(":"),
-        "error",
-      ));
+      window.addEventListener("error", (event) => {
+        const details = [event.filename, event.lineno, event.colno].filter(Boolean).join(":");
+        const error = event.error || event.message;
+        if (resizeObserverLoop(error, details)) {
+          event.preventDefault();
+          return;
+        }
+        renderBootstrapError(error, details, "error");
+      });
       window.addEventListener("unhandledrejection", (event) => renderBootstrapError(event.reason, "", "unhandledrejection"));
       document.getElementById("root").innerHTML = '<div class="gloom-loading">Booting Gloomberb renderer...</div>';
 `,

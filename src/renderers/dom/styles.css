@@ -136,21 +136,29 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="pane-header"] {
   align-items: center;
   padding-inline: 7px;
-  cursor: grab;
+  cursor: default;
   -webkit-user-select: none;
   user-select: none;
 }
-[data-gloom-role="pane-header"] * {
-  cursor: inherit;
+[data-gloom-role="pane-grip"],
+[data-gloom-role="pane-header-chrome"] {
+  cursor: grab;
+}
+[data-gloom-role="pane-header"] [data-gloom-role="tab-button"],
+[data-gloom-role="pane-header"] button,
+[data-gloom-role="pane-header"] [data-gloom-interactive="true"] {
+  cursor: pointer;
 }
 [data-gloom-role="pane-header"][data-window-mode-selected="true"] {
   background: color-mix(in srgb, var(--gloom-border-focused) 24%, var(--gloom-panel)) !important;
 }
 [data-gloom-role="pane-action"],
-[data-gloom-role="pane-close"] {
+[data-gloom-role="pane-close"],
+[data-gloom-role="pane-restore"] {
   cursor: pointer;
 }
-body.gloom-dragging [data-gloom-role="pane-header"] {
+body.gloom-dragging [data-gloom-role="pane-grip"],
+body.gloom-dragging [data-gloom-role="pane-header-chrome"] {
   cursor: grabbing;
 }
 body.gloom-dragging {

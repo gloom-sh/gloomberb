@@ -1,4 +1,4 @@
-import Electrobun, { ApplicationMenu } from "electrobun/bun";
+import Electrobun, { ApplicationMenu, Screen } from "electrobun/bun";
 import { debugLog } from "../../../utils/debug-log";
 import { setConfigStoreHost } from "../../../data/config/store";
 import * as nodeConfigStoreHost from "../../../data/config/store/node";
@@ -13,6 +13,14 @@ import {
 } from "./window/frame";
 import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
 import { createAppWindow } from "./window/create";
+import { getWindowFrame } from "./window/events";
+import {
+  fitWindowFrameToDisplays,
+  readRememberedDesktopWindow,
+  rememberedDesktopWindowPath,
+  writeRememberedDesktopWindow,
+  type RememberedDesktopWindow,
+} from "./window/remembered-frame";
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
 import { installProcessCrashListeners } from "../../../telemetry/crash-reports-node";
 
@@ -68,16 +76,75 @@ backend.installApplicationMenu();
 reapStaleTerminalMedia();
 
 const mainRpc = backend.createWindowRpc(MAIN_WINDOW_RPC_KEY);
-const initialMainWindowFrame = normalizeWindowFrameWithMinimum(
-  defaultMainWindowFrame(),
-  defaultMainWindowFrame(),
-  MAIN_WINDOW_MIN_SIZE,
+const rememberedWindowPath = rememberedDesktopWindowPath();
+const rememberedWindow = readRememberedDesktopWindow(rememberedWindowPath);
+const fallbackMainWindowFrame = defaultMainWindowFrame();
+const initialMainWindowFrame = fitWindowFrameToDisplays(
+  normalizeWindowFrameWithMinimum(rememberedWindow?.frame, fallbackMainWindowFrame, MAIN_WINDOW_MIN_SIZE),
+  readDisplayWorkAreas(),
 );
 
-backend.mainWindow = createAppWindow({
+let windowedFrame = initialMainWindowFrame;
+let rememberTimer: ReturnType<typeof setTimeout> | null = null;
+
+function readDisplayWorkAreas() {
+  try {
+    return Screen.getAllDisplays().map((display) => ({
+      x: display.workArea?.x ?? display.bounds.x,
+      y: display.workArea?.y ?? display.bounds.y,
+      width: display.workArea?.width ?? display.bounds.width,
+      height: display.workArea?.height ?? display.bounds.height,
+      primary: display.isPrimary,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function rememberedFromWindow(): RememberedDesktopWindow | null {
+  const window = backend.mainWindow;
+  const live = getWindowFrame(window) ?? windowedFrame;
+  let minimized = false;
+  let fullscreen = false;
+  let maximized = false;
+  try { minimized = window?.isMinimized() === true; } catch { minimized = false; }
+  if (minimized) return null;
+  try { fullscreen = window?.isFullScreen() === true; } catch { fullscreen = false; }
+  try { maximized = !fullscreen && window?.isMaximized() === true; } catch { maximized = false; }
+  if (!fullscreen && !maximized) windowedFrame = live;
+  return { frame: windowedFrame, maximized, fullscreen };
+}
+
+function flushRememberedWindow(): void {
+  if (rememberTimer) {
+    clearTimeout(rememberTimer);
+    rememberTimer = null;
+  }
+  const next = rememberedFromWindow();
+  if (next) writeRememberedDesktopWindow(rememberedWindowPath, next);
+}
+
+function scheduleRememberedWindow(): void {
+  if (rememberTimer) clearTimeout(rememberTimer);
+  rememberTimer = setTimeout(() => {
+    rememberTimer = null;
+    const next = rememberedFromWindow();
+    if (next) writeRememberedDesktopWindow(rememberedWindowPath, next);
+  }, 300);
+}
+
+const mainWindow = createAppWindow({
   title: "Gloomberb",
   frame: initialMainWindowFrame,
   rpc: mainRpc,
   minSize: MAIN_WINDOW_MIN_SIZE,
+  onFrameChange: scheduleRememberedWindow,
 });
+backend.mainWindow = mainWindow;
+if (rememberedWindow?.fullscreen) {
+  try { mainWindow.setFullScreen(true); } catch { /* the framed window is still the one they sized */ }
+} else if (rememberedWindow?.maximized) {
+  try { mainWindow.maximize(); } catch { /* the framed window is still the one they sized */ }
+}
+(mainWindow as { on?: (event: "close", listener: () => void) => void }).on?.("close", flushRememberedWindow);
 backend.detachedWindows.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);

@@ -7,13 +7,13 @@ import {
 } from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
 import { paneTitleMnemonic } from "../../../layout/pane-follow";
-import { canFollowTickerSource } from "../../../layout/ticker-navigation";
+import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-navigation";
 
 /** Single-cell link glyph: emoji link icons render double-width in terminals. */
 const LINK_GLYPH = "\u29c9";
 
-/** The title without the link suffix; a menu row naming a source uses it as is. */
-export function getBasePaneDisplayTitle(
+/** The title without the link suffix. */
+function getBasePaneDisplayTitle(
   state: Pick<AppState, "config" | "paneState">,
   instance: PaneInstanceConfig,
   paneDef: PaneDef,
@@ -79,9 +79,33 @@ export function getPaneDisplayTitle(
   const source = findPaneInstance(state.config.layout, instance.binding.sourceInstanceId);
   const sourceDef = source ? panes.get(source.paneId) : null;
   if (!source || !sourceDef) return title;
-  // Other panes name only the list or scanner they follow; one chained to a fixed pane (a desk's
-  // OMON following OVDV) reads as it always has.
-  if (!research && !sourceDef.tickerSource) return title;
-  const sourceTitle = getBasePaneDisplayTitle(state, source, sourceDef);
+  // Name the list, scanner, or single-ticker pane this one follows. A follow pointed at anything
+  // else (a desk's OMON following a comparison chart) reads as it always has.
+  if (!sourceDef.tickerSource && !isTickerLinkPeer(source, panes)) return title;
+  const sourceTitle = getTickerLinkSourceTitle(state, source, sourceDef, panes, "title");
   return `${title}  ${LINK_GLYPH} ${tf("Linked to {source}", { source: sourceTitle })}`;
+}
+
+/**
+ * How a follower names the pane it follows. A list or scanner goes by its title. A single-ticker
+ * pane shows the follower's own symbol, so a title names only its command ("OMON SPY  ⧉ Linked to
+ * OVDV"), and a menu row keeps the symbol to tell two of them apart ("Link to OVDV SPY"). Ticker
+ * Research's title is only its symbol, which would read as a ticker, so it goes by its name
+ * ("Link to Ticker Research AAPL").
+ */
+export function getTickerLinkSourceTitle(
+  state: Pick<AppState, "config" | "paneState">,
+  source: PaneInstanceConfig,
+  sourceDef: PaneDef,
+  panes: ReadonlyMap<string, PaneDef>,
+  place: "menu" | "title",
+): string {
+  const title = getBasePaneDisplayTitle(state, source, sourceDef, panes);
+  if (sourceDef.tickerSource) return title;
+  const research = source.paneId === TICKER_RESEARCH_PANE_ID;
+  const kind = research ? t("Ticker Research") : paneTitleMnemonic(title);
+  if (!kind) return title;
+  if (place === "title") return kind;
+  const symbol = research ? resolveTickerForPane(state as AppState, source.instanceId) : null;
+  return symbol ? `${kind} ${symbol}` : title;
 }

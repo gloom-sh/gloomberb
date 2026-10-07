@@ -295,7 +295,9 @@ export interface CloudSyncPushResponse {
   settings: SyncSettings;
 }
 
-export interface CloudQuotePayload extends Omit<Quote, "change" | "changePercent"> {
+export interface CloudQuotePayload extends Omit<Quote, "change" | "changePercent" | "priceBasis" | "priceObservation"> {
+  /** The service labels daily NAV here; the app separates observation kind from price units. */
+  priceBasis?: Quote["priceBasis"] | "nav";
   // JSON encodes the provider's unavailable numeric values as null.
   change?: number | null;
   changePercent?: number | null;
@@ -1375,6 +1377,10 @@ export interface CloudMarketScreenerItem {
   change: number;
   changePercent: number;
   volume: number;
+  /** Available average volume for this listing, independent of public ranking membership. */
+  avgVolume?: number;
+  /** Observation time of the optional retained metadata. */
+  metadataAsOf?: string;
   tradeCount?: number;
   currency: string;
   high52w?: number;

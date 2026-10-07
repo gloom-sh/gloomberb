@@ -389,7 +389,7 @@ header, with the detail's height.
   own goes there with `usePaneMenuItems`, never in a body button row. Set a
   hint's `title` when its key is not the action's first letter. A pane that
   shows one ticker sets `tickerFollower` on its `PaneDef`, and the menu gains
-  "Link to" each visible list or scanner and "Unlink from" the one it follows;
+  "Link to" each visible list, scanner, or other single-ticker pane and "Unlink from" the one it follows;
   the title then reads `OPX NVDA  ⧉ Linked to Watchlist`. Such a pane changes
   ticker while mounted, so it keys its view by symbol and keeps saved
   per-ticker choices (expiry, strike) per symbol.

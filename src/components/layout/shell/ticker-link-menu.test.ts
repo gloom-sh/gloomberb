@@ -133,8 +133,14 @@ describe("tickerLinkMenuItems", () => {
     };
 
     expect(menu(notes.instanceId)).toEqual([]);
-    // Following a fixed pane: it can move to a list, but there is no row to unlink from the hub.
-    expect(menu(chain.instanceId).map((item) => item.id)).toEqual(["link:portfolio-list:main"]);
+    // vol-surface is not a single-ticker pane here, so the chain can move to a list or another
+    // asset pane, and there is no row to unlink from the surface.
+    expect(menu(chain.instanceId).map((item) => item.id)).toEqual([
+      "link:portfolio-list:main",
+      "link:ticker-detail:main",
+      "link:options-positioning:AAPL",
+      "link:options:legacy",
+    ]);
     expect(title(chain.instanceId)).toBe("Options: SPY");
 
     menu(opx.instanceId).find((item) => item.id === "link:portfolio-list:main")!.onSelect!();
@@ -172,6 +178,81 @@ describe("tickerLinkMenuItems", () => {
     expect(findPaneInstance(closed, legacy.instanceId)).toMatchObject({
       title: "OMON MSFT",
       binding: { kind: "fixed", symbol: "MSFT" },
+    });
+  });
+
+  test("single-ticker panes link to each other, refuse a cycle, and pin when the source closes", () => {
+    const linkedPanes = new Map(panes);
+    linkedPanes.set("vol-surface", {
+      ...panes.get("vol-surface")!,
+      tickerFollower: true,
+    });
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-link-menu-peers"));
+    state.paneState["portfolio-list:main"] = { collectionId: "main", cursorSymbol: "AAPL" };
+    const surface = createPaneInstance("vol-surface", {
+      instanceId: "vol-surface:SPY",
+      title: "OVDV SPY",
+      binding: { kind: "fixed", symbol: "SPY" },
+    });
+    const options = createPaneInstance("options", {
+      instanceId: "options:AAPL",
+      title: "OMON AAPL",
+      binding: { kind: "fixed", symbol: "AAPL" },
+    });
+    const second = createPaneInstance("options", {
+      instanceId: "options:second",
+      title: "OMON QQQ",
+      binding: { kind: "fixed", symbol: "QQQ" },
+    });
+    const added = [surface, options, second];
+    let layout: LayoutConfig = {
+      ...state.config.layout,
+      instances: [...state.config.layout.instances, ...added],
+      floating: added.map((instance, index) => ({ instanceId: instance.instanceId, x: index, y: index, width: 40, height: 12 })),
+    };
+    const at = (nextLayout: LayoutConfig) => ({ ...state, config: { ...state.config, layout: nextLayout } });
+    const menu = (instanceId: string, current = at(layout)) => tickerLinkMenuItems({
+      instance: findPaneInstance(layout, instanceId)!,
+      layout,
+      panes: linkedPanes,
+      state: current,
+      persistLayout: (nextLayout) => { layout = nextLayout; },
+    });
+    const title = (instanceId: string, current = at(layout)) => {
+      const instance = findPaneInstance(current.config.layout, instanceId)!;
+      return getPaneDisplayTitle(current, instance, linkedPanes.get(instance.paneId)!, linkedPanes);
+    };
+
+    // Ticker Research's title is only its symbol, so a row names the pane as well.
+    expect(menu(options.instanceId).find((item) => item.id === "link:ticker-detail:main")?.label)
+      .toBe("Link to Ticker Research AAPL");
+    menu(options.instanceId).find((item) => item.id === "link:vol-surface:SPY")!.onSelect!();
+    menu(second.instanceId).find((item) => item.id === "link:vol-surface:SPY")!.onSelect!();
+    expect(findPaneInstance(layout, options.instanceId)).toMatchObject({
+      title: "OMON",
+      binding: { kind: "follow", sourceInstanceId: surface.instanceId },
+    });
+    expect(findPaneInstance(layout, second.instanceId)?.binding).toEqual({
+      kind: "follow",
+      sourceInstanceId: surface.instanceId,
+    });
+    expect(title(options.instanceId)).toBe("OMON SPY  ⧉ Linked to OVDV");
+    expect(menu(surface.instanceId).map((item) => item.id)).not.toContain(`link:${options.instanceId}`);
+
+    const linked = layout;
+    menu(options.instanceId).find((item) => item.id === "unlink:vol-surface:SPY")!.onSelect!();
+    expect(findPaneInstance(layout, options.instanceId)).toMatchObject({
+      title: "OMON SPY",
+      binding: { kind: "fixed", symbol: "SPY" },
+    });
+
+    const closed = appReducer(at(linked), {
+      type: "UPDATE_LAYOUT",
+      layout: removePaneInstances(linked, [surface.instanceId]),
+    }).config.layout;
+    expect(findPaneInstance(closed, second.instanceId)).toMatchObject({
+      title: "OMON SPY",
+      binding: { kind: "fixed", symbol: "SPY" },
     });
   });
 });

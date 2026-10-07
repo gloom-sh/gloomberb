@@ -31,7 +31,15 @@ test("reports a drag as a drag, never as a move, and keeps its modifiers", async
   );
   const surface = container.firstElementChild as unknown as HTMLElement;
   const mouse = (type: string, target: { dispatchEvent: (event: unknown) => unknown }, clientX: number) => {
-    target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX, clientY: 24, shiftKey: true }));
+    target.dispatchEvent(new MouseEvent(type, {
+      bubbles: true,
+      button: 0,
+      // A move while the button is down reports buttons. A move with none means the release was lost.
+      buttons: type === "mouseup" ? 0 : 1,
+      clientX,
+      clientY: 24,
+      shiftKey: true,
+    }));
   };
 
   await act(async () => {
@@ -49,6 +57,39 @@ test("reports a drag as a drag, never as a move, and keeps its modifiers", async
 
   expect(seen).toEqual(["move", "down", "drag", "up"]);
   expect(modifiers.every((entry) => entry.shift)).toBe(true);
+});
+
+test("a drag ends when the button is up even if mouseup never arrives", async () => {
+  const seen: string[] = [];
+  const { WebBox } = await import("./box");
+  const container = await renderDom(
+    <WebBox
+      width={10}
+      height={2}
+      onMouseDrag={() => seen.push("drag")}
+      onMouseDragEnd={() => seen.push("end")}
+    />,
+  );
+  const surface = container.firstElementChild as unknown as HTMLElement;
+  const mouse = (type: string, clientX: number, buttons: number) => {
+    testWindow.document.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, buttons, clientX, clientY: 4 }));
+    surface.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, buttons, clientX, clientY: 4 }));
+  };
+
+  await act(async () => mouse("mousedown", 4, 1));
+  await act(async () => {
+    mouse("mousemove", 40, 1);
+    await settle();
+  });
+  expect(seen).toEqual(["drag"]);
+  expect(testWindow.document.body.classList.contains("gloom-dragging")).toBe(true);
+
+  await act(async () => {
+    mouse("mousemove", 48, 0);
+    await settle();
+  });
+  expect(seen).toEqual(["drag", "end"]);
+  expect(testWindow.document.body.classList.contains("gloom-dragging")).toBe(false);
 });
 
 test("chart surfaces consume browser pan and zoom gestures", async () => {
@@ -168,4 +209,44 @@ test("desktop tabs reorder through mouse dragging", async () => {
   });
 
   expect(reordered).toEqual([["home", "news"]]);
+});
+
+test("a header tab click selects, and a drag moves the window instead", async () => {
+  const { WebTabs } = await import("./tabs");
+  const selected: string[] = [];
+  let drags = 0;
+  const container = await renderDom(
+    <WebTabs
+      tabs={[{ label: "Main Portfolio", value: "main" }, { label: "Watchlist", value: "watch" }]}
+      activeValue="main"
+      onSelect={(value) => selected.push(value)}
+      onDrag={() => { drags += 1; }}
+      variant="header"
+      palette={{} as never}
+    />,
+  );
+  const button = container.querySelector('[data-gloom-role="tab-button"]') as unknown as HTMLElement;
+  const mouse = (type: string, clientX: number, buttons: number) => {
+    const event = new MouseEvent(type, { bubbles: true, button: 0, buttons, clientX, clientY: 8 });
+    if (type === "mousedown" || type === "click") button.dispatchEvent(event);
+    else testWindow.document.dispatchEvent(event);
+  };
+
+  await act(async () => {
+    mouse("mousedown", 10, 1);
+    mouse("mousemove", 12, 1);
+    mouse("mouseup", 12, 0);
+    mouse("click", 12, 0);
+  });
+  expect(drags).toBe(0);
+  expect(selected).toEqual(["main"]);
+
+  await act(async () => {
+    mouse("mousedown", 10, 1);
+    mouse("mousemove", 30, 1);
+    mouse("mouseup", 30, 0);
+    mouse("click", 30, 0);
+  });
+  expect(drags).toBe(1);
+  expect(selected).toEqual(["main"]);
 });

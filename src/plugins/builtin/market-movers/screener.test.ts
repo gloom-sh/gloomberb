@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   attachMarketMoversPersistence,
@@ -19,7 +19,10 @@ const SAMPLE_SCREENER_RESPONSE = { quotes: [
     marketCap: 3_100_000_000_000, currency: "USD", exchange: "NasdaqGS" },
 ] };
 const response = () => ({ status: "success" as const, data: { ...SAMPLE_SCREENER_RESPONSE, source: "gloom" as const, stale: false, asOf: "2026-08-14" } }) as Awaited<ReturnType<MarketScreenerApi["getMarketMovers"]>>;
-afterEach(resetMarketMoversPersistence);
+afterEach(() => {
+  jest.useRealTimers();
+  resetMarketMoversPersistence();
+});
 
 test("trending ignores malformed symbols without inventing rows", () => {
   expect(parseTrendingResponse([{ symbol: null }, { symbol: "SPY" }])).toEqual([{ symbol: "SPY" }]);
@@ -81,6 +84,53 @@ describe("fetchScreener", () => {
       marketCap: 2_900_000_000_000,
       lastUpdated: 1_700_000_000_000,
     });
+  });
+
+  test("unqualified direct averages retain the public average without coercing or fabricating a ratio", async () => {
+    const invalid = [undefined, null, "100", 0, -1, NaN, Infinity, -Infinity];
+    const symbols = invalid.map((_, index) => `INVALID${index}`);
+    const marketQuotes = parseScreenerResponse({ quotes: symbols.map(symbol => ({ symbol, volume: 1, avgVolume: 20_000_000 })) });
+    const result = await fetchPreferredMarketMovers("most_actives", 25, undefined, {
+      isCloudEligible: () => true,
+      fetchCloud: async () => ({ status: "success", data: {
+        providerId: "gloomberb-cloud", category: "most-active", asOf: "2026-10-07T09:30:00.000Z",
+        items: [...symbols, "MISSING"].map((symbol, index) => ({
+          rank: index + 1, symbol, name: symbol, price: 190, change: 0, changePercent: 0,
+          volume: 60_000_000, avgVolume: invalid[index] as number | undefined,
+          currency: "USD", exchange: "NASDAQ", lastUpdated: 1, dataSource: "live" as const,
+        })),
+      } }),
+      fetchMarket: async () => ({ data: marketQuotes, stale: false }),
+    });
+    expect(result.quotes.map(quote => [quote.symbol, quote.avgVolume, quote.volumeRatio])).toEqual([
+      ...symbols.map(symbol => [symbol, 20_000_000, 3]),
+      ["MISSING", null, null],
+    ]);
+  });
+
+  test.each([
+    { options: undefined, waitMs: 1_500 },
+    { options: { metadataWaitMs: 10_000 }, waitMs: 10_000 },
+  ])("metadata that never arrives leaves live rows available after $waitMs ms", async ({ options, waitMs }) => {
+    jest.useFakeTimers();
+    const sources: PreferredMarketMoverSources = {
+      isCloudEligible: () => true,
+      fetchCloud: async () => ({ status: "success", data: { providerId: "gloomberb-cloud", category: "most-active", asOf: "2026-10-07T09:30:00.000Z", items: [
+        { rank: 1, symbol: "AAPL", name: "AAPL", price: 190, change: 0, changePercent: 0, volume: 60_000_000, currency: "USD", exchange: "NASDAQ", lastUpdated: 1, dataSource: "live" },
+      ] } }),
+      fetchMarket: () => new Promise(() => {}),
+    };
+    let settled = false;
+    const loading = fetchPreferredMarketMovers("most_actives", 25, options, sources).then(result => {
+      settled = true;
+      return result;
+    });
+    for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+    jest.advanceTimersByTime(waitMs - 1);
+    for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+    expect(settled).toBe(false);
+    jest.advanceTimersByTime(1);
+    expect((await loading).quotes[0]).toMatchObject({ symbol: "AAPL", avgVolume: null, volumeRatio: null });
   });
 
   test("keeps free accounts on backend without calling the Pro screener", async () => {
