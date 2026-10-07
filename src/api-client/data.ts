@@ -181,6 +181,18 @@ export class CloudDataApi {
     return this.request<T>(`/cloud/equity-screener/${path}`, init);
   }
 
+  getMemberFunds() {
+    return this.request<import("./members").MemberFundsPayload>("/cloud/members");
+  }
+
+  getFundMembers(fund: string) {
+    return this.request<import("./members").FundMembersPayload>(`/cloud/members/${encodeURIComponent(fund)}`);
+  }
+
+  getFundChanges(fund: string) {
+    return this.request<import("./members").FundChangesPayload>(`/cloud/members/${encodeURIComponent(fund)}/changes`);
+  }
+
   getCloudThemes() {
     return this.request<import("./themes").ThemesPayload>("/cloud/themes");
   }

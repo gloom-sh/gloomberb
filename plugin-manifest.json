@@ -216,6 +216,23 @@
       }
     },
     {
+      "id": "members",
+      "name": "Index and ETF members",
+      "description": "ETF holdings, member returns, contributions and index changes",
+      "categories": [
+        "markets",
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "members"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "news",
       "name": "News",
       "description": "Market news wire and company news for each ticker.",

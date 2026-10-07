@@ -9,6 +9,7 @@ import { researchSearchPlugin } from "./builtin/research-search";
 import { marketHeatmapPlugin } from "./builtin/market-heatmap";
 import { marketHaltsPlugin } from "./builtin/market-halts";
 import { fearGreedPlugin } from "./builtin/fear-greed";
+import { membersPlugin } from "./builtin/members";
 import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
 import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
 import { commentLettersPlugin } from "./builtin/comment-letters";
@@ -35,6 +36,7 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   marketHeatmapPlugin,
   marketHaltsPlugin,
   fearGreedPlugin,
+  membersPlugin,
   ipoCalendarPlugin,
   clinicalTrialsPlugin,
   commentLettersPlugin,

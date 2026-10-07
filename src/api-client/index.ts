@@ -742,6 +742,9 @@ class GloomApiClient {
   getCloudEstimateRevisions = this.data.getCloudEstimateRevisions.bind(this.data);
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
   equityScreener = this.data.equityScreener.bind(this.data);
+  getMemberFunds = this.data.getMemberFunds.bind(this.data);
+  getFundMembers = this.data.getFundMembers.bind(this.data);
+  getFundChanges = this.data.getFundChanges.bind(this.data);
   getCloudThemes = this.data.getCloudThemes.bind(this.data);
   getCloudThemeMembers = this.data.getCloudThemeMembers.bind(this.data);
   impliedVolatility = this.data.impliedVolatility.bind(this.data);

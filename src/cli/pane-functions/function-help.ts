@@ -660,6 +660,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: QUOTES,
     bloomberg: ["IMAP"],
   },
+  MEMB: {
+    summary: "ETF holdings with weights, shares, member returns, daily contributions and index changes. SPX and SPY use IVV holdings.",
+    usage: ["MEMB", "MEMB SPY", "MEMB IWM"],
+    keys: [TABS, OPEN],
+    data: same("Dated fund holdings and partial delayed member returns. Nasdaq-100 is not covered."),
+    bloomberg: ["MEMB", "MRR", "IMOV"],
+  },
   THEM: {
     summary: "Curated thematic baskets with equal-weight returns and breadth. Open a theme to see its members, leaders and laggards. The Themes tab of BI.",
     usage: ["THEM", "THEM nuclear"],

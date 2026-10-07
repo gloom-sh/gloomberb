@@ -50,6 +50,7 @@ const EDITORIAL: Record<
   "custom-view": { categories: ["data", "productivity"] },
   debug: { categories: ["developer"] },
   "fear-greed": { categories: ["markets", "sentiment"], icon: "plugin-icons/fear-greed.webp" },
+  members: { categories: ["markets", "research"] },
   "ipo-calendar": { categories: ["macro", "markets"], icon: "plugin-icons/ipo-calendar.webp" },
   macro: { categories: ["macro"] },
   "market-halts": { categories: ["markets"], icon: "plugin-icons/market-halts.webp" },
