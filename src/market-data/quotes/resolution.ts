@@ -12,7 +12,7 @@ import { mergeQuoteMetadata, quoteMetadataFromQuote } from "./metadata";
 import { resolvePriceBasis } from "../market/price-basis";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { debugLog } from "../../utils/debug-log";
-import { hasValidQuoteObservationTime, isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "./freshness";
+import { dailyNavDate, hasValidQuoteObservationTime, isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "./freshness";
 import { activeUsExtendedHoursSession, isTimestampStaleForExchangeSession } from "../market/freshness";
 import {
   finalizeSessionFields,
@@ -243,7 +243,10 @@ function buildAcceptedPriceCandidates(contributions: QuoteContribution[], now: n
 } {
   const ranks = new Map(contributions.map((quote) => [quote, priceRank(quote, now)] as const));
   const sorted = [...contributions]
-    .filter((quote) => Number.isFinite(quote.price))
+    // Even a stale research snapshot must have its own NAV evidence. Canonical
+    // fallbacks cannot supply a missing observation time or security type.
+    .filter((quote) => Number.isFinite(quote.price)
+      && (quote.priceObservation == null || dailyNavDate(quote, now) !== null))
     .sort((left, right) => {
       const rankDelta = ranks.get(left)! - ranks.get(right)!;
       if (rankDelta !== 0) return rankDelta;

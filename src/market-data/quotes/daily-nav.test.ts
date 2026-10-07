@@ -42,3 +42,27 @@ test("canonical NAV keeps its own observation even when stale research includes 
     lastUpdated: Date.parse("2026-10-07T15:00:00Z"), changeSessionDate: "2026-10-07" };
   expect(resolveCanonicalQuote({ nav, live }, live.lastUpdated).quote?.priceObservation).toBeUndefined();
 });
+
+test("canonical NAV cannot repair missing observation evidence from the clock or another contribution", () => {
+  const now = Date.parse("2026-10-07T15:00:00Z");
+  const dated = createDailyNavQuote({ providerId: "fund-source", changeSessionDate: "2026-10-07", lastUpdated: now });
+  const descriptors = normalizeQuoteContribution({ ...dated, providerId: "gloomberb-cloud",
+    priceObservation: undefined, price: Number.NaN, stale: true })!;
+  for (const malformed of [
+    { ...dated, lastUpdated: undefined as unknown as number },
+    { ...dated, lastUpdated: null as unknown as number },
+    { ...dated, instrumentType: undefined },
+  ]) {
+    const nav = normalizeQuoteContribution(malformed)!;
+    expect(isQuoteContributionStaleForCurrentSession(nav, now)).toBe(true);
+    expect(resolveCanonicalQuote({ nav, descriptors }, now).quote).toBeUndefined();
+  }
+
+  // Age and explicit stale status do not invalidate the source evidence of a
+  // held research snapshot; it must retain the original date and observation.
+  const old = normalizeQuoteContribution(createDailyNavQuote({ providerId: "fund-source", stale: true }))!;
+  const selected = resolveCanonicalQuote({ old, descriptors }, now).quote!;
+  expect(selected).toMatchObject({ priceObservation: "nav", changeSessionDate: old.changeSessionDate,
+    lastUpdated: old.lastUpdated, stale: true });
+  expect(isQuoteContributionStaleForCurrentSession(selected, now)).toBe(true);
+});
