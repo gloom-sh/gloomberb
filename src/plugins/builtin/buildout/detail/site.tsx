@@ -1,11 +1,11 @@
-import { Section } from "../../../../components";
+import { Section, TickerBadgeList } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { activityColor, activityLabel, dateShort, sourceDomains } from "../format";
 import type { BuildoutSite } from "../model/types";
 import { SiteSatelliteImages } from "./satellite-images";
-import { DetailSpecGrid, InlineSources, MarkdownBlock, SourceDetailLines, tickerBadges, type InlineTickerCatalog } from "./ui";
+import { DetailSpecGrid, InlineSources, MarkdownBlock, SourceDetailLines, type InlineTickerCatalog } from "./ui";
 import { booleanText, dateCell, metadataSpecs, reportSectionText } from "./values";
 
 export function SiteDetail({
@@ -28,7 +28,7 @@ export function SiteDetail({
     <>
       {site.ownerTicker ? (
         <Box flexDirection="row" height={1}>
-          {tickerBadges({ symbols: [site.ownerTicker], width: Math.min(bodyWidth, 16) })}
+          <TickerBadgeList symbols={[site.ownerTicker]} width={Math.min(bodyWidth, 16)} />
         </Box>
       ) : null}
       <DetailSpecGrid
@@ -99,10 +99,7 @@ export function SiteDetail({
             <Box key={`${builder.companyName}-${index}`} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
               <Box flexDirection="row" height={1}>
                 {builder.companyTicker
-                  ? tickerBadges({
-                    symbols: [builder.companyTicker],
-                    width: Math.min(12, bodyWidth),
-                  })
+                  ? <TickerBadgeList symbols={[builder.companyTicker]} width={Math.min(12, bodyWidth)} />
                   : null}
                 <Text fg={colors.textMuted}>
                   {truncateWithEllipsis(`${builder.companyName ?? "Company"}${builder.role ? ` - ${builder.role}` : ""}`, Math.max(0, bodyWidth - (builder.companyTicker ? 12 : 0)))}

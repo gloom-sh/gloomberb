@@ -36,6 +36,10 @@ export { FieldGrid, GridFieldView, fieldGridColumns, fieldGridRows } from "./fie
 export type { FieldGridProps, GridField } from "./field-grid";
 export { StatGrid, statGridColumns, statGridRows } from "./stat-grid";
 export type { StatGridProps, StatItem } from "./stat-grid";
+export { RatioBar } from "./ratio-bar";
+export type { RatioBarProps } from "./ratio-bar";
+export { RangeTrack } from "./range-track";
+export type { RangeTrackProps } from "./range-track";
 export type { QueryBarProps, QueryBarFilter, QueryBarMultiFilter, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter, QueryBarToggleFilter, QueryBarView } from "./query-bar";
 export type { FieldLabelProps, TextFieldProps, NumberFieldProps } from "./fields";
 

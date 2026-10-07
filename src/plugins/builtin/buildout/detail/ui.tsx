@@ -180,25 +180,6 @@ export function MarkdownBlock({
   );
 }
 
-export function tickerBadges({
-  symbols,
-  width,
-  fallbackColor,
-}: {
-  symbols: readonly string[];
-  width: number;
-  fallbackColor?: string;
-}) {
-  if (symbols.length === 0) return null;
-  return (
-    <TickerBadgeList
-      symbols={symbols}
-      width={width}
-      fallbackColor={fallbackColor}
-    />
-  );
-}
-
 export function FavoriteCell({
   starred,
   busy,

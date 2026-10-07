@@ -79,24 +79,6 @@ export function hiloBarLayout(width: number, countWidth: number): HiloBarLayout 
   return { halfWidth, barWidth: Math.max(0, halfWidth - countWidth), sideNameWidth };
 }
 
-export interface TerminalBarCells {
-  full: number;
-  /** Trailing half cell, so small-but-nonzero counts stay visible in cell units. */
-  half: boolean;
-}
-
-/** Converts a 0..1 bar ratio into terminal cells at half-cell resolution. */
-export function terminalBarCells(ratio: number, halfWidth: number): TerminalBarCells {
-  if (!(ratio > 0) || halfWidth <= 0) return { full: 0, half: false };
-  const capped = Math.min(1, ratio);
-  const cells = capped * halfWidth;
-  let full = Math.floor(cells);
-  let half = cells - full >= 0.5;
-  if (full >= halfWidth) return { full: halfWidth, half: false };
-  if (full === 0 && !half) half = true;
-  return { full, half };
-}
-
 function hiloMinPriceValue(setting: HiloMinPrice): number {
   return setting === "1" ? 1 : setting === "5" ? 5 : 0;
 }

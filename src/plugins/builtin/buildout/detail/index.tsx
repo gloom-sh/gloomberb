@@ -9,7 +9,6 @@ import { IntelDetail } from "./intel";
 export {
   CompanyCell,
   FavoriteCell,
-  tickerBadges,
 } from "./ui";
 
 export function BuildoutDetail({

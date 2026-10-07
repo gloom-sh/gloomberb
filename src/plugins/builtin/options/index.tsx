@@ -3,6 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import type { OptionsViewProps } from "./types";
 import { OptionsView } from "./view";
+import { isKnownMutualFund } from "../../../tickers/instrument-kind";
 
 /** The registered chain shows IV rank; isolated view renders stay offline. */
 function OptionsPane(props: OptionsViewProps) {
@@ -95,7 +96,7 @@ export const optionsModule: PluginModule = {
       order: 35,
       component: OptionsResearchTab,
       instruments: ["equity", "fund", "index", "future", "option"],
-      isVisible: ({ hasOptionsChain }) => hasOptionsChain,
+      isVisible: ({ ticker, financials, hasOptionsChain }) => hasOptionsChain && !isKnownMutualFund(ticker, financials),
     });
   },
 };

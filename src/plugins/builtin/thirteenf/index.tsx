@@ -14,6 +14,7 @@ import {
 import { thirteenFHeadless } from "./headless";
 import { ThirteenFTickerPane } from "./signals-pane";
 import { isKnownNonUsListing } from "../../../utils/sec";
+import { isKnownMutualFund } from "../../../tickers/instrument-kind";
 
 
 function queryFromOptions(options?: PaneTemplateCreateOptions): string {
@@ -33,7 +34,7 @@ export const thirteenFModule: PluginModule = {
       order: 39,
       component: ThirteenFTickerPane,
       instruments: ["equity", "fund"],
-      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
+      isVisible: ({ ticker, financials }) => !isKnownNonUsListing(ticker) && !isKnownMutualFund(ticker, financials),
     });
   },
 
