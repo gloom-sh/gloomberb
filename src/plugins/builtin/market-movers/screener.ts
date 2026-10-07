@@ -18,6 +18,7 @@ const CACHE_POLICY = {
   staleMs: 5 * 60 * 1000,
   expireMs: 60 * 60 * 1000,
 } as const;
+/** A pane shows the live ranking first; the backend's average volumes follow if they are quick. */
 const MARKET_METADATA_WAIT_MS = 1_500;
 
 export interface MarketScreenerApi {
@@ -28,6 +29,14 @@ export interface MarketScreenerApi {
 export interface FetchCacheOptions {
   cache?: boolean;
   forceRefresh?: boolean;
+}
+
+export interface PreferredMoversOptions extends FetchCacheOptions {
+  /**
+   * How long a Cloud list waits for the backend's average volumes and market
+   * caps, which it borrows by symbol: without them every row has no ratio.
+   */
+  metadataWaitMs?: number;
 }
 
 let marketMoversPersistence: PluginPersistence | null = null;
@@ -268,13 +277,14 @@ function mergeCloudScreenerItem(
 
 async function bestEffortMarketMetadata(
   request: Promise<CachedResult<ScreenerQuote[]>>,
+  waitMs: number,
 ): Promise<ScreenerQuote[]> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       request.then((result) => result.data).catch(() => []),
       new Promise<ScreenerQuote[]>((resolve) => {
-        timeout = setTimeout(() => resolve([]), MARKET_METADATA_WAIT_MS);
+        timeout = setTimeout(() => resolve([]), waitMs);
       }),
     ]);
   } finally {
@@ -303,9 +313,10 @@ export function rankScreenerQuotes(category: ScreenerCategory, quotes: ScreenerQ
 export async function fetchPreferredMarketMovers(
   category: ScreenerCategory,
   count = 25,
-  options?: FetchCacheOptions,
+  preferredOptions?: PreferredMoversOptions,
   sources: PreferredMarketMoverSources = defaultPreferredMarketMoverSources,
 ): Promise<MarketMoversResult> {
+  const { metadataWaitMs = MARKET_METADATA_WAIT_MS, ...options } = preferredOptions ?? {};
   if (!sources.isCloudEligible()) {
     const result = await sources.fetchMarket(category, count, options);
     return { quotes: rankScreenerQuotes(category, result.data), source: "gloom", stale: result.stale };
@@ -327,7 +338,7 @@ export async function fetchPreferredMarketMovers(
       && response.data
       && response.data.items.length > 0
     ) {
-      const metadata = await bestEffortMarketMetadata(marketMetadata);
+      const metadata = await bestEffortMarketMetadata(marketMetadata, metadataWaitMs);
       const metadataBySymbol = new Map(metadata.map((quote) => [quote.symbol, quote]));
       return {
         quotes: rankScreenerQuotes(category, response.data.items.map((item) => (
