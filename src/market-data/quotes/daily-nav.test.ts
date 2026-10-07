@@ -20,7 +20,8 @@ test("a NAV contribution owns its source date and cannot inherit an intraday ses
   expect(intoIntraday.priceObservation).toBeUndefined();
   expect(intoIntraday.changeSessionDate).toBeUndefined();
   expect(isQuoteContributionStaleForCurrentSession(intoNav, Date.parse("2026-10-07T15:00:00Z"))).toBe(false);
-  expect(isQuoteContributionStaleForCurrentSession(intoNav, Date.parse("2026-10-07T20:30:00Z"))).toBe(true);
+  expect(isQuoteContributionStaleForCurrentSession(intoNav, Date.parse("2026-10-08T07:59:59.999Z"))).toBe(false);
+  expect(isQuoteContributionStaleForCurrentSession(intoNav, Date.parse("2026-10-08T08:00:00Z"))).toBe(true);
 });
 
 test("canonical NAV keeps its own observation even when stale research includes another session", () => {
@@ -31,7 +32,7 @@ test("canonical NAV keeps its own observation even when stale research includes 
     postMarketPrice: 700, previousClose: 699, bid: 698, ask: 701, volume: 200, marketCap: 1e12, price: 700 })!;
   // Once both observations are stale, the canonical research snapshot still
   // needs to preserve the selected NAV's identity for its stale display.
-  const selected = resolveCanonicalQuote({ nav, intraday }, Date.parse("2026-10-07T21:00:00Z")).quote!;
+  const selected = resolveCanonicalQuote({ nav, intraday }, Date.parse("2026-10-08T09:00:00Z")).quote!;
   expect(selected).toMatchObject({ price: nav.price, priceObservation: "nav", instrumentType: "MUTUALFUND",
     changeSessionDate: nav.changeSessionDate, lastUpdated: nav.lastUpdated, previousClose: nav.previousClose,
     listingExchangeName: nav.listingExchangeName, sessionConfidence: "unknown" });

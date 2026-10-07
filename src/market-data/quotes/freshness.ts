@@ -7,8 +7,10 @@ import {
   activeUsExtendedHoursSession,
   isTimestampStaleForExchangeSession,
   isUsPriorSessionPremarketQuote,
-  latestRegularSessionClose,
 } from "../market/freshness";
+
+// Give the next regular session's NAV time to publish after its actual close.
+const NAV_PUBLICATION_ALLOWANCE_MS = 12 * 60 * 60_000;
 
 /**
  * Receipt time cannot establish when the source observed a quoted price. A
@@ -40,13 +42,15 @@ function isDailyNavStale(quote: Quote, now: number): boolean {
   if (!date) return true;
   const exchange = quote.listingExchangeName || quote.exchangeName;
   const today = zonedDateKey(now, "America/New_York");
-  // Daily NAVs follow the published close plus the daily settlement window.
-  // The general session helper can fall back to weekday hours outside calendar
-  // coverage, so require published coverage for today and its selected close.
   if (!today || !getPublishedUsEquitySession(exchange!, today) || date > today) return true;
-  const settled = latestRegularSessionClose(exchange, now - 30 * 60_000);
-  return !settled || getPublishedUsEquitySession(exchange!, settled.date)?.kind !== "session"
-    || date < settled.date;
+  const sourceDay = Date.parse(`${date}T00:00:00Z`);
+  for (let ahead = 1; ahead <= 10; ahead++) {
+    const nextDate = new Date(sourceDay + ahead * 24 * 60 * 60_000).toISOString().slice(0, 10);
+    const next = getPublishedUsEquitySession(exchange!, nextDate);
+    if (!next) return true;
+    if (next.kind === "session") return now >= next.close + NAV_PUBLICATION_ALLOWANCE_MS;
+  }
+  return true;
 }
 
 export function isExtendedHoursExchange(quote: Quote): boolean {

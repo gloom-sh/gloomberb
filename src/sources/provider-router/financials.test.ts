@@ -29,7 +29,9 @@ describe("provider-router financial quote usability", () => {
     for (const invalid of [{ stale: true }, { changeSessionDate: "2026-10-05" }, { instrumentType: "ETF" }]) {
       expect(dropUnusableProviderQuote({ ...financials, quote: { ...quote, ...invalid } }, "NASDAQ").quote).toBeUndefined();
     }
-    clock.mockReturnValue(Date.parse("2026-10-07T20:30:00Z"));
+    clock.mockReturnValue(Date.parse("2026-10-08T07:59:59.999Z"));
+    expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toEqual(quote);
+    clock.mockReturnValue(Date.parse("2026-10-08T08:00:00Z"));
     expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toBeUndefined();
   });
 

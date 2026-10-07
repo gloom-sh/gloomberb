@@ -20,28 +20,34 @@ function quote(overrides: Partial<Quote>): Quote {
 }
 
 describe("quote freshness", () => {
-  test("keeps the previous daily NAV through the next session until its close settles", () => {
+  test("keeps the previous daily NAV until the next session has twelve hours to publish", () => {
     const nav = createDailyNavQuote();
-    for (const time of ["2026-10-07T15:00:00Z", "2026-10-07T09:00:00Z", "2026-10-07T20:29:59Z"]) {
+    for (const time of ["2026-10-07T15:00:00Z", "2026-10-07T09:00:00Z", "2026-10-07T20:30:00Z", "2026-10-08T07:59:59.999Z"]) {
       expect(isQuoteStaleForCurrentSession(nav, Date.parse(time)), time).toBe(false);
     }
-    expect(isQuoteStaleForCurrentSession(nav, Date.parse("2026-10-07T20:30:00Z"))).toBe(true);
-    expect(isQuoteStaleForCurrentSession(createDailyNavQuote({ changeSessionDate: "2026-10-05",
-      lastUpdated: Date.parse("2026-10-05T04:00:00Z") }), Date.parse("2026-10-07T15:00:00Z"))).toBe(true);
+    expect(isQuoteStaleForCurrentSession(nav, Date.parse("2026-10-08T08:00:00Z"))).toBe(true);
   });
 
   test.each([
     ["2026-07-02", "2026-07-03T15:00:00Z", false],
     ["2026-07-02", "2026-07-05T21:00:00Z", false],
-    ["2026-07-02", "2026-07-06T20:29:59Z", false],
-    ["2026-07-02", "2026-07-06T20:30:00Z", true],
-    ["2026-11-25", "2026-11-27T18:29:59Z", false],
-    ["2026-11-25", "2026-11-27T18:30:00Z", true],
+    ["2026-07-02", "2026-07-07T07:59:59.999Z", false],
+    ["2026-07-02", "2026-07-07T08:00:00Z", true],
+    ["2026-11-25", "2026-11-28T05:59:59.999Z", false],
+    ["2026-11-25", "2026-11-28T06:00:00Z", true],
     ["2026-11-27", "2026-11-29T21:00:00Z", false],
-    ["2026-03-06", "2026-03-09T20:29:59Z", false],
-    ["2026-03-06", "2026-03-09T20:30:00Z", true],
+    ["2026-11-27", "2026-12-01T08:59:59.999Z", false],
+    ["2026-11-27", "2026-12-01T09:00:00Z", true],
+    ["2026-03-06", "2026-03-10T07:59:59.999Z", false],
+    ["2026-03-06", "2026-03-10T08:00:00Z", true],
+    ["2026-10-30", "2026-11-03T08:59:59.999Z", false],
+    ["2026-10-30", "2026-11-03T09:00:00Z", true],
+    ["2026-10-02", "2026-10-06T07:59:59.999Z", false],
+    ["2026-10-02", "2026-10-06T08:00:00Z", true],
+    ["2026-10-05", "2026-10-07T07:59:59.999Z", false],
+    ["2026-10-05", "2026-10-07T08:00:00Z", true],
     ["2025-01-08", "2025-01-09T22:00:00Z", false],
-  ] as const)("dates NAV %s against the published settled session at %s", (date, time, stale) => {
+  ] as const)("dates NAV %s against the next session publication deadline at %s", (date, time, stale) => {
     const nav = createDailyNavQuote({ changeSessionDate: date, lastUpdated: Date.parse(`${date}T12:00:00Z`) });
     for (const listingExchangeName of ["NASDAQ", "NasdaqGM", "NYSE"]) {
       expect(isQuoteStaleForCurrentSession({ ...nav, listingExchangeName }, Date.parse(time))).toBe(stale);
@@ -67,9 +73,12 @@ describe("quote freshness", () => {
     const malformed = { ...createDailyNavQuote(), priceObservation: "intraday" } as unknown as Quote;
     expect(isQuoteStaleForCurrentSession(malformed, now)).toBe(true);
     const uncovered = createDailyNavQuote({ changeSessionDate: "2028-12-29", lastUpdated: Date.parse("2028-12-29T05:00:00Z") });
+    // The source date is covered, but its next session's close is unknown.
+    expect(isQuoteStaleForCurrentSession(uncovered, Date.parse("2028-12-30T15:00:00Z"))).toBe(true);
     expect(isQuoteStaleForCurrentSession(uncovered, Date.parse("2029-01-01T15:00:00Z"))).toBe(true);
     const firstCoveredDay = createDailyNavQuote({ changeSessionDate: "2025-01-02", lastUpdated: Date.parse("2025-01-02T05:00:00Z") });
-    expect(isQuoteStaleForCurrentSession(firstCoveredDay, Date.parse("2025-01-02T15:00:00Z"))).toBe(true);
+    // Only the source, current and next session dates need coverage.
+    expect(isQuoteStaleForCurrentSession(firstCoveredDay, Date.parse("2025-01-02T15:00:00Z"))).toBe(false);
   });
 
   test.each([

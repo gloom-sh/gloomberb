@@ -9,7 +9,7 @@ import { AssetDataRouter } from "./index";
 afterEach(removeTempDbFiles);
 
 test("daily NAV source date survives financials disk cache and coordinator quote reconciliation", async () => {
-  const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-07T15:00:00Z"));
+  const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-08T07:59:59.999Z"));
   const quote = createDailyNavQuote({ providerId: "gloomberb-cloud" });
   const financials = createTestFinancials({ quote });
   let fetches = 0;
@@ -37,6 +37,11 @@ test("daily NAV source date survives financials disk cache and coordinator quote
       expect(value?.change).toBeCloseTo(3.13);
     }
     expect(fetches).toBe(1);
+    // The resource is only a millisecond old; its TTL cannot extend the NAV.
+    clock.mockReturnValue(Date.parse("2026-10-08T08:00:00Z"));
+    expect(router.getCachedFinancialsForTargets([target]).get(target.symbol)?.quote).toBeUndefined();
+    expect(router.getCachedFinancialsForTargets([target], { includeStaleQuotes: true }).get(target.symbol)?.quote)
+      .toMatchObject({ priceObservation: "nav", changeSessionDate: "2026-10-06", lastUpdated: quote.lastUpdated });
   } finally {
     coordinator?.destroy();
     persistence.close();
