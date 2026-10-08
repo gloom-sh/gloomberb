@@ -524,7 +524,7 @@ export const ko: Record<string, string> = {
   "Quit the terminal app.": "터미널 앱을 종료합니다.",
   "Copy the active terminal selection.": "활성 터미널 선택을 복사합니다.",
   "Paste clipboard text into the active input.": "클립보드 텍스트를 활성 입력에 붙여넣습니다.",
-  "Install an available app update when one is shown.": "사용 가능한 앱 업데이트가 표시되면 설치하세요.",
+  "Restart into a downloaded app update, or retry one that failed.": "다운로드한 업데이트로 다시 시작하거나, 실패한 업데이트를 다시 시도합니다.",
   "Close the focused pane, docked or floating.": "도킹 또는 플로팅된 포커스 패널을 닫습니다.",
   "Close all floating panes.": "모든 플로팅 패널을 닫습니다.",
   "Edit settings for the focused pane.": "포커스 패널 설정을 편집합니다.",
@@ -956,7 +956,9 @@ export const ko: Record<string, string> = {
 
   // ── Main dashboard ──────────────────────────────────────────
   "Installing update...": "업데이트 설치 중...",
-  "Update installed, restart to apply": "업데이트 설치 완료. 적용하려면 다시 시작하세요",
+  "Update ready, restart to apply": "업데이트 준비 완료. 적용하려면 다시 시작하세요",
+  "Update ready": "업데이트 준비 완료",
+  "Restart": "다시 시작",
   "Checking for updates...": "업데이트 확인 중...",
   "Downloading v{version}: {percent}%": "v{version} 다운로드 중: {percent}%",
   "Update failed: {error}": "업데이트 실패: {error}",

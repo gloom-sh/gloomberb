@@ -525,7 +525,7 @@ export const es: Record<string, string> = {
   "Quit the terminal app.": "Salir de la aplicación de terminal.",
   "Copy the active terminal selection.": "Copiar la selección activa del terminal.",
   "Paste clipboard text into the active input.": "Pegar el portapapeles en la entrada activa.",
-  "Install an available app update when one is shown.": "Instalar una actualización disponible cuando se muestre.",
+  "Restart into a downloaded app update, or retry one that failed.": "Reinicia con una actualización descargada o reintenta una fallida.",
   "Close the focused pane, docked or floating.": "Cerrar el panel activo, anclado o flotante.",
   "Close all floating panes.": "Cerrar todos los paneles flotantes.",
   "Edit settings for the focused pane.": "Editar los ajustes del panel activo.",
@@ -944,7 +944,9 @@ export const es: Record<string, string> = {
 
   // ── Main dashboard ──────────────────────────────────────────
   "Installing update...": "Instalando actualización...",
-  "Update installed, restart to apply": "Actualización instalada; reinicia para aplicar",
+  "Update ready, restart to apply": "Actualización lista; reinicia para aplicar",
+  "Update ready": "Actualización lista",
+  "Restart": "Reiniciar",
   "Checking for updates...": "Buscando actualizaciones...",
   "Downloading v{version}: {percent}%": "Descargando v{version}: {percent}%",
   "Update failed: {error}": "Error al actualizar: {error}",

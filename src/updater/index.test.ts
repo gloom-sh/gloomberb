@@ -5,6 +5,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { gzipSync } from "zlib";
 import {
+  applyUpdate,
+  canRestartToApply,
   checkForUpdate,
   checkForUpdateDetailed,
   describeUnwritableInstall,
@@ -250,6 +252,30 @@ describe("update host", () => {
       { phase: "downloading", percent: 50 },
       { phase: "done", message: "Update installed, restarting..." },
     ]);
+  });
+});
+
+describe("restarting into a ready update", () => {
+  test("only a host that can relaunch offers it, and the terminal never restarts itself", async () => {
+    expect(canRestartToApply({ phase: "ready", canRestart: true })).toBe(true);
+    // The terminal binary is swapped and says so; there is nothing to click.
+    expect(canRestartToApply({ phase: "ready" })).toBe(false);
+    expect(canRestartToApply({ phase: "replacing", canRestart: true })).toBe(false);
+
+    const progress: UpdateProgress[] = [];
+    await applyUpdate((entry) => { progress.push(entry); });
+    expect(progress).toEqual([
+      { phase: "error", error: "Restarting to apply an update is unavailable in this runtime." },
+    ]);
+
+    let applied = 0;
+    setUpdateHost({
+      async checkForUpdateDetailed() { return { kind: "current" }; },
+      async performUpdate() {},
+      async applyUpdate() { applied += 1; },
+    });
+    await applyUpdate(() => {});
+    expect(applied).toBe(1);
   });
 });
 
@@ -542,7 +568,8 @@ describe("performUpdate", () => {
       }, (entry) => { progress.push(entry); });
 
       expect(readFileSync(execPath)).toEqual(nextBinary);
-      expect(progress.at(-1)).toEqual({ phase: "done" });
+      // Swapped in and waiting: the running process is never restarted for the user.
+      expect(progress.at(-1)).toEqual({ phase: "ready" });
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
       Object.defineProperty(process, "argv", { value: originalArgv, configurable: true });

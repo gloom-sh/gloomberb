@@ -1,8 +1,10 @@
-import { useCallback, useEffect, type Dispatch } from "react";
+import { useCallback, useEffect, useRef, type Dispatch } from "react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import type { AppAction, AppState } from "../../state/app/context";
 import {
+  applyUpdate,
+  canRestartToApply,
   canSelfUpdate,
   checkForUpdateDetailed,
   performUpdate,
@@ -14,6 +16,11 @@ import { reportCrash } from "../../telemetry/crash-reports";
 import { runAutomated } from "../../telemetry/usage-counts";
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60_000; // hourly
+
+/** An update is being downloaded, applied, or is downloaded and waiting for a restart. */
+function updateInFlight(progress: AppState["updateProgress"]): boolean {
+  return progress?.phase === "downloading" || progress?.phase === "replacing" || progress?.phase === "ready";
+}
 
 export function useAppUpdateRuntime({
   enabled = true,
@@ -36,7 +43,13 @@ export function useAppUpdateRuntime({
 }): {
   runUpdateCheck: (manual?: boolean) => Promise<void>;
   startUpdate: (release: ReleaseInfo) => void;
+  /** Installs the downloaded desktop update and relaunches. Does nothing unless one is ready. */
+  restartToApplyUpdate: () => void;
+  /** The command bar's Check for Updates: restarts into a downloaded update, otherwise checks. */
+  runUpdateCommand: () => void;
 } {
+  const restartingRef = useRef(false);
+
   const startUpdate = useCallback((release: ReleaseInfo) => {
     dispatch({ type: "SET_UPDATE_PROGRESS", progress: { phase: "downloading", percent: 0 } });
     void performUpdate(release, (progress) => {
@@ -44,7 +57,23 @@ export function useAppUpdateRuntime({
     });
   }, [dispatch]);
 
+  const restartToApplyUpdate = useCallback(() => {
+    if (!enabled || isDetachedWindow) return;
+    // The app relaunches here, so this must only ever follow the user's own
+    // request, and a second one while the first is working changes nothing.
+    if (restartingRef.current || !canRestartToApply(stateRef.current.updateProgress)) return;
+    restartingRef.current = true;
+    dispatch({ type: "SET_UPDATE_PROGRESS", progress: { phase: "replacing" } });
+    void applyUpdate((progress) => {
+      if (progress.phase === "error") restartingRef.current = false;
+      dispatch({ type: "SET_UPDATE_PROGRESS", progress });
+    });
+  }, [dispatch, enabled, isDetachedWindow, stateRef]);
+
   const runUpdateCheck = useCallback(async (manual = false) => {
+    // A staged update is the answer until it is applied: another check would
+    // swap the release under the "ready" state, and the host has nothing to add.
+    if (updateInFlight(stateRef.current.updateProgress)) return;
     if (manual) {
       dispatch({ type: "SET_UPDATE_CHECK_IN_PROGRESS", checking: true });
       dispatch({ type: "SET_UPDATE_NOTICE", notice: null });
@@ -88,7 +117,12 @@ export function useAppUpdateRuntime({
     }
 
     dispatch({ type: "SET_UPDATE_NOTICE", notice: `Update check failed: ${result.error}` });
-  }, [dispatch]);
+  }, [dispatch, stateRef]);
+
+  const runUpdateCommand = useCallback(() => {
+    if (canRestartToApply(stateRef.current.updateProgress)) restartToApplyUpdate();
+    else void runUpdateCheck(true);
+  }, [restartToApplyUpdate, runUpdateCheck, stateRef]);
 
   useEffect(() => {
     if (!enabled || isDetachedWindow) return;
@@ -121,7 +155,9 @@ export function useAppUpdateRuntime({
   }, [enabled, isDetachedWindow, startUpdate, updateAvailable, updateCheckInProgress, updateProgress]);
 
   return {
+    restartToApplyUpdate,
     runUpdateCheck,
+    runUpdateCommand,
     startUpdate,
   };
 }

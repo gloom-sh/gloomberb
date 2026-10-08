@@ -1,3 +1,4 @@
+import Electrobun from "electrobun/bun";
 import {
   exportConfig,
   importConfig,
@@ -12,10 +13,9 @@ import type {
 import { encodeRpcValue } from "../../shared/rpc-codec";
 import { paneIdFromDetachedRpcKey } from "../window/focus";
 import type { DesktopBackend, DesktopRpc } from "./backend";
-import {
-  checkElectrobunDesktopUpdate,
-  runElectrobunDesktopUpdate,
-} from "./update";
+import { createElectrobunDesktopUpdater } from "./update";
+
+const desktopUpdater = createElectrobunDesktopUpdater(Electrobun.Updater);
 
 function sendUpdateProgress(rpc: DesktopRpc, progress: UpdateProgress): void {
   try {
@@ -41,17 +41,22 @@ export async function handleDesktopBackendRequest(
 ): Promise<DesktopBackendRequestResponse<DesktopCoreRequest["method"]>> {
   switch (request.method) {
     case "update.check":
-      return checkElectrobunDesktopUpdate(
+      return desktopUpdater.check(
         typeof request.payload.currentVersion === "string" ? request.payload.currentVersion : "",
       );
     case "update.start": {
       const { release, currentVersion } = request.payload;
-      void runElectrobunDesktopUpdate(
+      void desktopUpdater.download(
         typeof currentVersion === "string" ? currentVersion : release.version,
         (progress) => sendUpdateProgress(rpc, progress),
       );
       return null;
     }
+    case "update.apply":
+      // Only the main window offers Restart; a popped-out window never relaunches the app.
+      if (paneIdFromDetachedRpcKey(backend.rpcs.getRpcWindowKey(rpc))) return null;
+      void desktopUpdater.apply((progress) => sendUpdateProgress(rpc, progress));
+      return null;
     case "ticker.loadAll":
       return backend.requireServices().tickerRepository.loadAllTickers();
     case "ticker.load":

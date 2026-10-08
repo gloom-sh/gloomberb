@@ -526,7 +526,7 @@ export const ja: Record<string, string> = {
   "Quit the terminal app.": "ターミナル アプリを終了します。",
   "Copy the active terminal selection.": "アクティブな端末の選択をコピーします。",
   "Paste clipboard text into the active input.": "クリップボードのテキストをアクティブな入力に貼り付けます。",
-  "Install an available app update when one is shown.": "利用可能なアプリのアップデートが表示されたら、それをインストールします。",
+  "Restart into a downloaded app update, or retry one that failed.": "ダウンロード済みのアップデートで再起動するか、失敗したアップデートを再試行します。",
   "Close the focused pane, docked or floating.": "フォーカスされたペインをドッキングまたはフローティング状態で閉じます。",
   "Close all floating panes.": "すべてのフローティング ペインを閉じます。",
   "Edit settings for the focused pane.": "フォーカスされたペインの設定を編集します。",
@@ -958,7 +958,9 @@ export const ja: Record<string, string> = {
 
   // ── Main dashboard ──────────────────────────────────────────
   "Installing update...": "アップデートをインストール中...",
-  "Update installed, restart to apply": "アップデートがインストールされました。適用するには再起動してください",
+  "Update ready, restart to apply": "アップデートの準備ができました。適用するには再起動してください",
+  "Update ready": "アップデートの準備完了",
+  "Restart": "再起動",
   "Checking for updates...": "アップデートを確認中...",
   "Downloading v{version}: {percent}%": "v{version} をダウンロード中: {percent}%",
   "Update failed: {error}": "更新に失敗しました: {error}",

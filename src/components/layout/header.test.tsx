@@ -79,3 +79,43 @@ test("hosts the command bar input while a list screen is published", async () =>
   });
   expect(tui.frame()).not.toContain("QQ");
 });
+
+/**
+ * A downloaded desktop update waits for the user: the header names it and
+ * offers Restart, which is clickable. The terminal binary is already swapped
+ * in, so it only says to restart and has nothing to press.
+ */
+test("offers a clickable Restart for a downloaded desktop update, and only text for a terminal one", async () => {
+  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  const desktop = { ...createInitialState(config), updateProgress: { phase: "ready" as const, canRestart: true } };
+  let restarts = 0;
+  await tui.render(
+    <AppContext value={createStaticAppStore(desktop)}>
+      <Header onRestartForUpdate={() => { restarts += 1; }} />
+    </AppContext>,
+    { width: 120, height: 1 },
+  );
+  await tui.setup().renderOnce();
+  expect(tui.frame()).toContain("Update ready");
+  const restartX = tui.frame().indexOf("Restart");
+  expect(restartX).toBeGreaterThanOrEqual(0);
+  // The key that restarts is advertised beside the button.
+  expect(tui.frame()).toMatch(/Restart\s+u/i);
+
+  await act(async () => {
+    await tui.setup().mockMouse.click(restartX + 2, 0);
+    await tui.setup().renderOnce();
+  });
+  expect(restarts).toBe(1);
+
+  const terminal = { ...createInitialState(config), updateProgress: { phase: "ready" as const } };
+  await tui.render(
+    <AppContext value={createStaticAppStore(terminal)}>
+      <Header onRestartForUpdate={() => { restarts += 1; }} />
+    </AppContext>,
+    { width: 120, height: 1 },
+  );
+  await tui.setup().renderOnce();
+  expect(tui.frame()).toContain("Update ready, restart to apply");
+  expect(tui.frame()).not.toContain("Restart ");
+});

@@ -71,6 +71,45 @@ function mutablePaneRegistryMap(map: ReadonlyMap<string, unknown>): Map<string, 
 }
 
 describe("CommandBar", () => {
+  test("Check for Updates reads 'Update ready, restart to apply' and restarts when chosen", async () => {
+    let checks = 0;
+    await tui.render(<CommandBarHarness
+      query="check for updates"
+      onCheckForUpdates={() => { checks += 1; }}
+      configureState={(state) => ({ ...state, updateProgress: { phase: "ready", canRestart: true } })}
+    />, { width: 100, height: 24 });
+
+    // The header carries the same words on its own row; the command's is below it.
+    await tui.waitForFrameToContain("Update ready, restart to apply");
+    const row = tui.frame().split("\n").slice(1).find((line) => line.includes("Update ready, restart to apply"));
+    expect(row).toBeDefined();
+    expect(tui.frame()).not.toContain("Check for Updates");
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    expect(checks).toBe(1);
+  });
+
+  test("Check for Updates is inert once the terminal binary is swapped in", async () => {
+    let checks = 0;
+    await tui.render(<CommandBarHarness
+      query="check for updates"
+      onCheckForUpdates={() => { checks += 1; }}
+      configureState={(state) => ({ ...state, updateProgress: { phase: "ready" } })}
+    />, { width: 100, height: 24 });
+
+    await tui.waitForFrameToContain("Update ready, restart to apply");
+    expect(tui.frame().split("\n").slice(1).some((line) => line.includes("Update ready, restart to apply"))).toBe(true);
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    expect(checks).toBe(0);
+  });
+
   test("runs symbol search for plain text and folds the hits under the local matches", async () => {
     const searchQueries: string[] = [];
     await tui.render(<CommandBarHarness

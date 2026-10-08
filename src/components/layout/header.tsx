@@ -239,14 +239,15 @@ function HeaderCommandPrompt({
   );
 }
 
-function UpdateStatus() {
+function UpdateStatus({ onRestart }: { onRestart?: () => void }) {
   const colors = useThemeColors();
   const dispatch = useAppDispatch();
   const updateAvailable = useAppSelector((state) => state.updateAvailable);
   const updateProgress = useAppSelector((state) => state.updateProgress);
   const updateCheckInProgress = useAppSelector((state) => state.updateCheckInProgress);
   const updateNotice = useAppSelector((state) => state.updateNotice);
-  const retryKey = useActionShortcut("install-update");
+  // One key: Restart for a downloaded update, retry for a failed one.
+  const updateKey = useActionShortcut("install-update");
 
   useEffect(() => {
     if (!updateNotice || updateAvailable || updateProgress || updateCheckInProgress) return;
@@ -278,15 +279,28 @@ function UpdateStatus() {
         </Box>
       );
     }
+    if (updateProgress.phase === "ready") {
+      // A desktop update waits for the user: the app never relaunches by itself.
+      // The terminal binary is already swapped in and only needs a new launch.
+      if (updateProgress.canRestart && onRestart) {
+        return (
+          <Box flexDirection="row" gap={1} alignItems="center">
+            <Text fg={colors.headerText}>{t("Update ready")}</Text>
+            <Button compact label="Restart" shortcut={updateKey || undefined} onPress={onRestart} stopPropagation />
+          </Box>
+        );
+      }
+      return <Text fg={colors.headerText}>{t("Update ready, restart to apply")}</Text>;
+    }
     if (updateProgress.phase === "done") {
-      return <Text fg={colors.headerText}>{t(updateProgress.message ?? "Update installed, restart to apply")}</Text>;
+      return <Text fg={colors.headerText}>{t(updateProgress.message ?? "Update ready, restart to apply")}</Text>;
     }
     if (updateProgress.phase === "error") {
-      const retry = retryKey && canRetryUpdate({ updateAvailable, updateProgress, updateCheckInProgress });
+      const retry = updateKey && canRetryUpdate({ updateAvailable, updateProgress, updateCheckInProgress });
       return (
         <Box flexDirection="row">
           <Text fg={colors.headerText}>{tf("Update failed: {error}", { error: updateProgress.error ?? "Unknown error" })}</Text>
-          {retry ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{`  ${retryKey} ${t("retry")}`}</Text> : null}
+          {retry ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{`  ${updateKey} ${t("retry")}`}</Text> : null}
         </Box>
       );
     }
@@ -378,8 +392,11 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
 
 export function Header({
   onOpenHelp,
+  onRestartForUpdate,
 }: {
   onOpenHelp?: () => void;
+  /** Applies a downloaded desktop update and relaunches; the header offers Restart only when it is given. */
+  onRestartForUpdate?: () => void;
 }) {
   const colors = useThemeColors();
   const rendererHost = useRendererHost();
@@ -444,7 +461,7 @@ export function Header({
         <Box width={prompt.left} />
         {commandPrompt}
         <Box flexGrow={1} paddingLeft={2} paddingRight={2} minWidth={0}>
-          <UpdateStatus />
+          <UpdateStatus onRestart={onRestartForUpdate} />
         </Box>
         {onOpenHelp ? (
           <Box flexShrink={0} data-gloom-role="header-help-action" style={{ marginRight: 8 }}>
@@ -470,7 +487,7 @@ export function Header({
       <Box width={prompt.left} />
       {commandPrompt}
       <Box flexGrow={1} minWidth={0} paddingLeft={2}>
-        <UpdateStatus />
+        <UpdateStatus onRestart={onRestartForUpdate} />
       </Box>
       {marketSummary}
       {showWindowControls ? <WindowControls /> : null}

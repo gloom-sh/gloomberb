@@ -35,6 +35,7 @@ function ShortcutHarness({
   focusedTickerSymbol = null,
   pluginRegistry,
   refreshTicker = () => {},
+  restartToApplyUpdate = () => {},
   startUpdate = () => {},
   state,
 }: {
@@ -42,6 +43,7 @@ function ShortcutHarness({
   focusedTickerSymbol?: string | null;
   pluginRegistry: PluginRegistry;
   refreshTicker?: (symbol: string, exchange?: string, tickerOverride?: any, priority?: number) => void;
+  restartToApplyUpdate?: () => void;
   startUpdate?: (release: ReleaseInfo) => void;
   state: AppState;
 }) {
@@ -52,6 +54,7 @@ function ShortcutHarness({
     keybindings: resolveKeybindings(state.config.keybindings),
     pluginRegistry,
     refreshTicker,
+    restartToApplyUpdate,
     startUpdate,
     state,
   });
@@ -71,6 +74,7 @@ async function renderHarness(
   options: {
     focusedTickerSymbol?: string | null;
     refreshTicker?: (symbol: string, exchange?: string, tickerOverride?: any, priority?: number) => void;
+    restartToApplyUpdate?: () => void;
     startUpdate?: (release: ReleaseInfo) => void;
   } = {},
 ) {
@@ -81,6 +85,7 @@ async function renderHarness(
         focusedTickerSymbol={options.focusedTickerSymbol}
         pluginRegistry={registry}
         refreshTicker={options.refreshTicker}
+        restartToApplyUpdate={options.restartToApplyUpdate}
         startUpdate={options.startUpdate}
         state={state}
       />
@@ -129,6 +134,24 @@ describe("useAppGlobalShortcuts", () => {
     const retry = await emitKeypress({ name: "u" });
     expect(started).toEqual(["9.9.9"]);
     expect(retry.defaultPrevented).toBe(true);
+  });
+
+  test("U restarts into a downloaded desktop update, and does nothing for a terminal one", async () => {
+    let restarts = 0;
+    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-restart");
+    const desktopReady = { ...createInitialState(config), updateProgress: { phase: "ready" as const, canRestart: true } };
+    await renderHarness(desktopReady, createRegistry(), () => {}, { restartToApplyUpdate: () => { restarts += 1; } });
+
+    const restart = await emitKeypress({ name: "u" });
+    expect(restarts).toBe(1);
+    expect(restart.defaultPrevented).toBe(true);
+
+    // The terminal binary is swapped in already: nothing to press.
+    const terminalReady = { ...createInitialState(config), updateProgress: { phase: "ready" as const } };
+    await renderHarness(terminalReady, createRegistry(), () => {}, { restartToApplyUpdate: () => { restarts += 1; } });
+    const ignored = await emitKeypress({ name: "u" });
+    expect(restarts).toBe(1);
+    expect(ignored.defaultPrevented).toBe(false);
   });
 
   test("a rebound action answers to its new key and not the old one", async () => {

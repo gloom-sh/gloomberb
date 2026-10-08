@@ -17,10 +17,18 @@ export interface ReleaseInfo {
 }
 
 export interface UpdateProgress {
-  phase: "downloading" | "replacing" | "done" | "error";
+  /**
+   * `ready`: the new version is downloaded and waiting. The terminal binary is
+   * already swapped and runs on the next launch; the desktop app applies it
+   * when `canRestart` is set and the user asks. Nothing restarts by itself.
+   * `done` is for a finished action that has nothing left to wait for.
+   */
+  phase: "downloading" | "ready" | "replacing" | "done" | "error";
   percent?: number;
   error?: string;
   message?: string;
+  /** With `ready`: this host can apply the update and relaunch on request. */
+  canRestart?: boolean;
 }
 
 export type UpdateAction =
@@ -43,7 +51,10 @@ export type UpdateCheckResult =
 
 export interface UpdateHost {
   checkForUpdateDetailed(currentVersion: string): Promise<UpdateCheckResult>;
+  /** Downloads and stages the update, ending in `ready` (or `error`). It never relaunches the app. */
   performUpdate(release: ReleaseInfo, onProgress: (p: UpdateProgress) => void): Promise<void>;
+  /** Installs the staged update and relaunches the app. Only runs on an explicit request. */
+  applyUpdate?(onProgress: (p: UpdateProgress) => void): Promise<void>;
 }
 
 let updateHost: UpdateHost | null = null;
@@ -255,6 +266,11 @@ export function canSelfUpdate(release: Pick<ReleaseInfo, "updateAction"> | null 
   return release?.updateAction.kind === "self" || release?.updateAction.kind === "desktop";
 }
 
+/** A downloaded update this host can install and relaunch into when the user asks. */
+export function canRestartToApply(progress: UpdateProgress | null | undefined): boolean {
+  return progress?.phase === "ready" && progress.canRestart === true;
+}
+
 export async function checkForUpdateDetailed(
   currentVersion: string,
 ): Promise<UpdateCheckResult> {
@@ -337,6 +353,15 @@ export async function checkForUpdate(
 ): Promise<ReleaseInfo | null> {
   const result = await checkForUpdateDetailed(currentVersion);
   return result.kind === "available" ? result.release : null;
+}
+
+/** Installs the downloaded update and relaunches. Callers gate it on `canRestartToApply`. */
+export async function applyUpdate(onProgress: (p: UpdateProgress) => void): Promise<void> {
+  if (!updateHost?.applyUpdate) {
+    onProgress({ phase: "error", error: "Restarting to apply an update is unavailable in this runtime." });
+    return;
+  }
+  await updateHost.applyUpdate(onProgress);
 }
 
 export async function performUpdate(
@@ -458,7 +483,9 @@ export async function performUpdate(
       unlinkSync(oldPath);
     } catch {}
 
-    onProgress({ phase: "done" });
+    // The new binary is in place; the running process keeps the old one until
+    // the user restarts it, which this process never does for them.
+    onProgress({ phase: "ready" });
   } catch (err: unknown) {
     // Clean up temp file on failure
     try {

@@ -268,7 +268,7 @@ function AppInner({
     tickerRepository,
   });
 
-  const { runUpdateCheck, startUpdate } = useAppUpdateRuntime({
+  const { restartToApplyUpdate, runUpdateCheck, runUpdateCommand, startUpdate } = useAppUpdateRuntime({
     enabled: updatesEnabled,
     dispatch,
     isDetachedWindow,
@@ -409,6 +409,7 @@ function AppInner({
     keybindings,
     pluginRegistry,
     refreshTicker,
+    restartToApplyUpdate,
     startUpdate,
     state,
   });
@@ -450,10 +451,13 @@ function AppInner({
         desktopWindowBridge={desktopWindowBridge}
       >
         <ThemedAppRoot>
-          <Header onOpenHelp={() => {
-            recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
-            pluginRegistry.showPane("help");
-          }} />
+          <Header
+            onOpenHelp={() => {
+              recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
+              pluginRegistry.showPane("help");
+            }}
+            onRestartForUpdate={updatesEnabled && !isDetachedWindow ? restartToApplyUpdate : undefined}
+          />
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}
@@ -486,7 +490,7 @@ function AppInner({
               tickerRepository={tickerRepository}
               pluginRegistry={pluginRegistry}
               quitApp={() => rendererHost.requestExit()}
-              onCheckForUpdates={updatesEnabled ? () => runUpdateCheck(true) : undefined}
+              onCheckForUpdates={updatesEnabled ? runUpdateCommand : undefined}
               onNativeOccluderChange={setCommandBarNativeOccluder}
             />
           )}

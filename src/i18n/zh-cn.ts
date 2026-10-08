@@ -526,7 +526,7 @@ export const zhCN: Record<string, string> = {
   "Quit the terminal app.": "退出终端应用。",
   "Copy the active terminal selection.": "复制当前终端选中内容。",
   "Paste clipboard text into the active input.": "把剪贴板文本粘贴到当前输入框。",
-  "Install an available app update when one is shown.": "有可用更新提示时安装更新。",
+  "Restart into a downloaded app update, or retry one that failed.": "使用已下载的更新重启，或重试失败的更新。",
   "Close the focused pane, docked or floating.": "关闭聚焦面板（停靠或浮动）。",
   "Close all floating panes.": "关闭所有浮动面板。",
   "Edit settings for the focused pane.": "编辑聚焦面板的设置。",
@@ -958,7 +958,9 @@ export const zhCN: Record<string, string> = {
 
   // ── Main dashboard ──────────────────────────────────────────
   "Installing update...": "正在安装更新...",
-  "Update installed, restart to apply": "更新已安装，重启后生效",
+  "Update ready, restart to apply": "更新已就绪，重启后生效",
+  "Update ready": "更新已就绪",
+  "Restart": "重启",
   "Checking for updates...": "正在检查更新...",
   "Downloading v{version}: {percent}%": "正在下载 v{version}：{percent}%",
   "Update failed: {error}": "更新失败：{error}",

@@ -129,7 +129,7 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
   {
     id: "install-update",
     category: "Global Keys",
-    description: "Install an available app update when one is shown.",
+    description: "Restart into a downloaded app update, or retry one that failed.",
     defaults: ["U"],
   },
   {

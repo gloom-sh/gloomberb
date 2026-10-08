@@ -500,6 +500,7 @@ export class DesktopBackend {
         return handleDesktopHostRequest(this, rpc, request);
       case "update.check":
       case "update.start":
+      case "update.apply":
       case "ticker.loadAll":
       case "ticker.load":
       case "ticker.save":
