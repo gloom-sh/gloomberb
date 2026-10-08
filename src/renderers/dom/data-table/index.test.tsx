@@ -169,3 +169,54 @@ test("an opted-in table draws the selected row in selection text unless a cell k
     ["#999999", "#00ff00"],
   ]);
 });
+
+test("artwork before a label is hidden decoration: the text keeps its selection color and a press on it selects the row", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  const selected: string[] = [];
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <WebDataTable
+          items={["a", "b"]}
+          columns={[
+            { id: "name", label: "", width: 6 },
+            { id: "rate", label: "Rate", width: 8, align: "right", headerLeading: <i data-art="header" /> },
+          ]}
+          sortColumnId={null}
+          sortDirection="asc"
+          headerScrollRef={headerScrollRef}
+          scrollRef={scrollRef}
+          syncHeaderScroll={() => {}}
+          onBodyScrollActivity={() => {}}
+          getItemKey={String}
+          isSelected={(item) => item === "a"}
+          onSelect={(item) => selected.push(item)}
+          renderCell={(item, column) => column.id === "name"
+            ? { text: item, color: "#999999", leading: <i data-art={`row-${item}`} /> }
+            : { text: "1.0" }}
+          selectedTextOverridesCellColor
+          emptyStateTitle="No rows"
+          virtualize={false}
+        />
+      </AppContext>
+    );
+  }
+
+  const container = await render(<Harness />);
+  const leading = [...container.querySelectorAll('[data-gloom-role="data-table-leading"]')];
+  expect(leading).toHaveLength(3);
+  expect(leading.every((node) => node.getAttribute("aria-hidden") === "true")).toBe(true);
+
+  const rowA = container.querySelector('[data-gloom-row-key="a"]')!;
+  expect((rowA.querySelector("span[title]") as HTMLElement).style.color).toBe("var(--gloom-selected-text)");
+  expect(rowA.textContent).toBe("a1.0");
+  const header = container.querySelectorAll('[data-gloom-role="data-table-header-cell"]')[1] as HTMLElement;
+  expect(header.textContent).toBe("Rate");
+  expect(header.style.justifyContent).toBe("flex-end");
+
+  const art = container.querySelector('[data-art="row-b"]')!;
+  await act(async () => { art.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }) as unknown as Event); });
+  expect(selected).toEqual(["b"]);
+});

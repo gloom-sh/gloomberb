@@ -2,6 +2,18 @@
 export const MAJOR_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"] as const;
 export type MajorCurrency = typeof MAJOR_CURRENCIES[number];
 
+/** The flag each major wears on the desktop and web; the euro is the EU's, not one member's. */
+export const CURRENCY_FLAG_REGIONS: Record<MajorCurrency, string> = {
+  USD: "US",
+  EUR: "EU",
+  GBP: "GB",
+  JPY: "JP",
+  CHF: "CH",
+  CAD: "CA",
+  AUD: "AU",
+  NZD: "NZ",
+};
+
 /**
  * Preserve conventional quote precision and meaningful digits on inverse JPY
  * crosses. The digits are counted at `referenceRate` (the cross at a rate that

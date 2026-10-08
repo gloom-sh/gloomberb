@@ -93,6 +93,11 @@ describe("FxMatrixPane", () => {
     const frame = tui.frame();
     // EUR/USD is a real cross built from the two USD legs.
     expect(frame).toContain("1.0800");
+    // The terminal draws no flags: codes only, in the columns it always had.
+    const [header, usdRow] = frame.split("\n");
+    expect(header!.trim().split(/\s+/)).toEqual(["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"]);
+    expect(header!.indexOf("USD")).toBe(13);
+    expect(usdRow!.indexOf("USD")).toBe(1);
 
     // Regression: a currency with no rate rendered 1.0000 against everything.
     const jpyRow = frame.split("\n").find((line) => line.trimStart().startsWith("JPY"));

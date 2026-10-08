@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { memo, type CSSProperties } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 import { TextAttributes } from "../../../ui/host";
 import { DisclosureMarker } from "../../../components/ui/disclosure-marker";
 import type {
@@ -27,9 +27,25 @@ import {
   eventWithCellCoordinates,
 } from "./dom";
 
-/** Space between a header label and its sort marker. */
-const SORT_MARKER_GAP_PX = 4;
+/** Space between a label and its sort marker or the artwork drawn before it. */
+const LABEL_GAP_PX = 4;
 const SORT_MARKER_SIZE_PX = 9;
+
+/**
+ * Artwork a column or cell draws before its text. It is decoration, so
+ * assistive technology skips it and the text stays the only name.
+ */
+function Leading({ children }: { children: ReactNode }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-gloom-role="data-table-leading"
+      style={{ display: "flex", flex: "none", alignItems: "center" }}
+    >
+      {children}
+    </span>
+  );
+}
 
 function contentJustifyForAlign(align: string | undefined): CSSProperties["justifyContent"] {
   if (align === "right") return "flex-end";
@@ -130,7 +146,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
               display: "flex",
               alignItems: "center",
               justifyContent: contentJustifyForAlign(column.align),
-              gap: column.label ? SORT_MARKER_GAP_PX : 0,
+              gap: column.label ? LABEL_GAP_PX : 0,
               backgroundColor: column.headerBackgroundColor ?? CSS_PANEL,
               boxShadow: freezeFirstColumn && columnIndex === 0 ? `-${inlinePaddingPx(horizontalPadding)}px 0 0 ${column.headerBackgroundColor ?? CSS_PANEL}, ${columnGap * WEB_CELL_WIDTH}px 0 0 ${column.headerBackgroundColor ?? CSS_PANEL}` : undefined,
             }}
@@ -141,6 +157,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
               onHeaderClick(column.id);
             } : undefined}
           >
+            {column.headerLeading !== undefined ? <Leading>{column.headerLeading}</Leading> : null}
             <span
               title={column.label || undefined}
               style={{
@@ -392,22 +409,39 @@ function WebDataTableRowInner<
                 {cell.content}
               </div>
             ) : (
-              <span
-                title={cell.text}
-                style={clippedCellTextStyle(
-                  column,
-                  selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
-                    ? CSS_SELECTED_TEXT
-                    : cell.color ?? CSS_TEXT,
-                  cell.attributes ?? TextAttributes.NONE,
-                )}
-              >
-                {cell.text}
-              </span>
+              <CellText
+                cell={cell}
+                column={column}
+                color={selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
+                  ? CSS_SELECTED_TEXT
+                  : cell.color ?? CSS_TEXT}
+              />
             )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function CellText({ cell, column, color }: { cell: DataTableCell; column: DataTableColumn; color: string }) {
+  const style = clippedCellTextStyle(column, color, cell.attributes ?? TextAttributes.NONE);
+  if (cell.leading === undefined) return <span title={cell.text} style={style}>{cell.text}</span>;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: contentJustifyForAlign(column.align),
+        gap: LABEL_GAP_PX,
+        width: "100%",
+        height: "100%",
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
+      <Leading>{cell.leading}</Leading>
+      <span title={cell.text} style={{ ...style, width: "auto", flex: "0 1 auto" }}>{cell.text}</span>
     </div>
   );
 }

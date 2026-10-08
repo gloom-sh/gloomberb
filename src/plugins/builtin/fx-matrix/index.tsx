@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DataTableView,
   usePaneFooter,
@@ -8,13 +8,14 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { CountryFlag } from "../../../components/ui/country-flag";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { TextAttributes } from "../../../ui";
+import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { useAssetData } from "../../runtime";
 import { summarizeFxRates, fxStatusLabel } from "../../../utils/fx-status";
 import type { PluginModule } from "../plugin-module";
@@ -23,19 +24,25 @@ import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { isStreamCarryingQuote } from "../shared/use-quote-board";
 import { fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, liveFxLegEntry } from "./live-legs";
-import { MAJOR_CURRENCIES, formatRate, resolveCurrencies, type MajorCurrency } from "./pairs";
+import { CURRENCY_FLAG_REGIONS, MAJOR_CURRENCIES, formatRate, resolveCurrencies, type MajorCurrency } from "./pairs";
 import { createFxExportMetadata } from "./export";
 
 const FX_MATRIX_PANE_ID = "fx-matrix";
 /** Stable identity: a fresh literal here would reload the board every render. */
 const NO_SAVED_CURRENCIES: string[] = [];
 const BASE_COLUMN_WIDTH = 5;
+/** Room for a flag, a space and the code once the desktop draws the flag. */
+const FLAGGED_BASE_COLUMN_WIDTH = 6;
+const CURRENCY_FLAGS = new Map<string, ReactNode>(
+  MAJOR_CURRENCIES.map((currency) => [currency, <CountryFlag region={CURRENCY_FLAG_REGIONS[currency]} />]),
+);
 const RATE_COLUMN_WIDTH = 10;
 /** Snapshot rates reload at this pace while the feed is not carrying every leg. */
 const FX_FALLBACK_REFRESH_MS = 60_000;
 
 function FxMatrixPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
+  const flagged = useUiCapabilities().nativePaneChrome === true;
   const [savedCurrencies] = usePaneSettingValue<string[]>("currencies", NO_SAVED_CURRENCIES);
   const currencies = useMemo(() => resolveCurrencies(savedCurrencies), [savedCurrencies]);
   const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
@@ -117,14 +124,15 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(snapshotFetchedAt || null, refresh, { intervalMs: allLegsLive ? null : FX_FALLBACK_REFRESH_MS });
 
   const columns = useMemo<DataTableColumn[]>(() => [
-    { id: "base", label: "", width: BASE_COLUMN_WIDTH, align: "left" },
+    { id: "base", label: "", width: flagged ? FLAGGED_BASE_COLUMN_WIDTH : BASE_COLUMN_WIDTH, align: "left" },
     ...currencies.map((currency) => ({
       id: currency,
       label: currency,
       width: RATE_COLUMN_WIDTH,
       align: "right" as const,
+      headerLeading: flagged ? CURRENCY_FLAGS.get(currency) : undefined,
     })),
-  ], [currencies]);
+  ], [currencies, flagged]);
 
   const renderCell = useCallback((
     row: MajorCurrency,
@@ -135,6 +143,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
         text: row,
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
+        leading: flagged ? CURRENCY_FLAGS.get(row) : undefined,
       };
     }
 
@@ -151,7 +160,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     }
     const reference = (referenceRates.get(row) ?? base) / (referenceRates.get(quoteCurrency) ?? quote);
     return { text: formatRate(base / quote, quoteCurrency, reference), color: colors.text };
-  }, [rates, referenceRates, status.loading]);
+  }, [flagged, rates, referenceRates, status.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
 

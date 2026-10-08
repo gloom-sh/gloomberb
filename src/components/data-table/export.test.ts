@@ -113,3 +113,10 @@ test("notes follow the table after a blank row, as-of first", () => {
     "warning,'-stale feed",
   ]);
 });
+
+test("desktop artwork beside a label never reaches the file", () => {
+  expect(csvRows(
+    [{ ...left("base", ""), headerLeading: "header art" }, { ...right("EUR", "EUR"), headerLeading: "header art" }],
+    [{ base: { text: "USD", leading: "row art" }, EUR: { text: "0.8937", leading: "row art" } }],
+  )).toEqual([",EUR", "USD,0.8937"]);
+});

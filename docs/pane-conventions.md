@@ -139,7 +139,9 @@ CSV. A table that colors its cells passes `selectedTextOverridesCellColor`
 so the selected row reads in the selection color without each cell checking
 `rowState.selected`; a cell whose tone must survive the selection sets
 `keepColorWhenSelected`. Custom `content` still takes its colors from
-`rowState`.
+`rowState`. Artwork before a label on the desktop and web, such as a flag,
+goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
+it, the text keeps its own selection color, and exports read only the text.
 
 **Table + detail.** `DataTableStackView` is the "list, then open one" shape:
 Enter or click calls `onActivate`, the pane sets the open item, the stack
