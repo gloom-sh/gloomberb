@@ -42,7 +42,7 @@ export function OverviewResearchTab({ width, focused }: TickerResearchTabProps) 
       financials={financials}
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
-      perpetuals={ticker ? <PerpEquityRow symbol={ticker.metadata.ticker} instrumentType={financials?.quote?.instrumentType ?? ticker.metadata.assetCategory} /> : undefined}
+      perpetuals={ticker ? <PerpEquityRow symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={financials?.quote?.instrumentType ?? ticker.metadata.assetCategory} /> : undefined}
     />
   );
 }

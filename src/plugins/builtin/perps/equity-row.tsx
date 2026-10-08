@@ -4,19 +4,21 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { ActionRow } from "../../../components";
 import { useAsyncResource, useAutoRefresh, usePluginAppActions } from "../../../public/react";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { listingIdentity } from "../shared/ticker-request";
+import { perpEquityIdentity } from "./equity-identity";
 import { loadPerpsEquity } from "./client";
 import { compact, marketLabel, percent, price } from "./model";
 
 /** A failed optional market comparison never blocks a stock's quote. */
-export function PerpEquityRow({ symbol, instrumentType, maxRows = 3 }: { symbol: string; instrumentType?: string; maxRows?: number }) {
+export function PerpEquityRow({ symbol, exchange, instrumentType, maxRows = 3 }: { symbol: string; exchange?: string; instrumentType?: string; maxRows?: number }) {
   const session = useResearchCloudSession();
   const plan = usePlanAccess();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const identity = listingIdentity(symbol)?.symbol;
+  const identity = perpEquityIdentity(symbol, exchange);
+  const listingSymbol = identity?.symbol;
+  const listingExchange = identity?.exchange;
   const enabled = !!identity && ["STK", "EQUITY", "STOCK", "COMMON STOCK"].includes(instrumentType?.toUpperCase() ?? "");
   const accessKey = `${session.requestKey}:${plan.hasProAccess ? "pro" : "preview"}`;
-  const loader = useCallback((force: boolean) => loadPerpsEquity(identity!, accessKey, force), [identity, accessKey]);
+  const loader = useCallback((force: boolean) => loadPerpsEquity({ symbol: listingSymbol!, exchange: listingExchange! }, accessKey, force), [listingSymbol, listingExchange, accessKey]);
   const resource = useAsyncResource(enabled ? loader : null, { clearOnError: isAccessDenied });
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   const rows = resource.data?.payload.rows.filter((row) => !row.delisted) ?? [];

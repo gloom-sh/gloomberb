@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { PerpBoardPayload, PerpBoardRow, PerpHistoryPayload, PerpHistoryQuery, PerpMarketPayload } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardRow, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery, PerpMarketPayload } from "../../../api-client/perps";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 
@@ -34,8 +34,22 @@ export function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?
   return data;
 }
 export const fetchPerpsHistory = async (query: PerpHistoryQuery, client: Pick<typeof apiClient, "getCloudPerpsHistory"> = apiClient) => validatePerpsHistory(await client.getCloudPerpsHistory(query), query.marketId);
-const fetchPerpsEquity = async (symbol: string, client: Pick<typeof apiClient, "getCloudPerpsEquity"> = apiClient) => validatePerpsBoard(await client.getCloudPerpsEquity(symbol));
-export const loadPerpsEquity = (symbol: string, access: string, force = false) => loadCloudResource(perpsCache, `equity:${symbol}:${access}`, () => fetchPerpsEquity(symbol), { force, validate: validatePerpsBoard });
+function validatePerpsEquity(data: PerpBoardPayload, listing: PerpEquityListing): PerpBoardPayload {
+  validatePerpsBoard(data);
+  const same = (value: PerpEquityListing | null | undefined) => value?.symbol === listing.symbol && value.exchange === listing.exchange;
+  if (!same(data.listing) || !data.rows.every((row) => {
+    const match = row.equityMatch;
+    return same(match?.listing) && row.assetClass === "stocks" && !!match?.underlying.exchange
+      && match.underlying.symbol === row.underlyingSymbol
+      && (match.basis === "issuer" || match.basis === "listing" && same(match.underlying));
+  })) throw new Error("The server returned perpetuals for another listing");
+  return data;
+}
+export const loadPerpsEquity = (listing: PerpEquityListing, access: string, force = false) => {
+  const validate = (data: PerpBoardPayload) => validatePerpsEquity(data, listing);
+  return loadCloudResource(perpsCache, `equity:v2:${listing.symbol}:${listing.exchange}:${access}`,
+    async () => validate(await apiClient.getCloudPerpsEquity(listing.symbol, listing.exchange)), { force, validate });
+};
 
 function validatePerpsMarket(data: PerpMarketPayload): PerpMarketPayload {
   validatePerpsBoard(data);

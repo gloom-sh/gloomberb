@@ -2,8 +2,8 @@ import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { PerpMarketPayload } from "../../../api-client/perps";
-import { cachedPerpSelection, fetchPerpSelection, loadPerpSelection, loadPerpsHistoryForRange, perpsMarketCache, perpsHistoryCache, validatePerpsBoard, validatePerpsHistory } from "./client";
-import { perpBoard, perpHistory, perpRow } from "./test-fixture";
+import { cachedPerpSelection, fetchPerpSelection, loadPerpSelection, loadPerpsEquity, loadPerpsHistoryForRange, perpsCache, perpsMarketCache, perpsHistoryCache, validatePerpsBoard, validatePerpsHistory } from "./client";
+import { equityBoard, perpBoard, perpHistory, perpRow } from "./test-fixture";
 const market = (patch: Partial<PerpMarketPayload> = {}): PerpMarketPayload => ({ ...perpBoard({ rows: [perpRow()] }), evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals", ...patch });
 
 test("boundary refuses invalid intervals, non-finite funding, wrong market and duplicate identities while retaining null baselines", () => {
@@ -68,4 +68,28 @@ test("refresh advances the history lookback and uses the requested market's own 
     expect(request.mock.calls.map(([query]) => query.from)).toEqual(["2026-09-26T00:00:00.000Z", "2026-09-27T00:00:00.000Z"]);
     expect(request.mock.calls.every(([query]) => query.marketId === perpRow().marketId && query.limit === 5000)).toBe(true);
   } finally { now.mockRestore(); request.mockRestore(); perpsHistoryCache.reset(); }
+});
+
+test("equity caches separate listings and accounts from legacy rows, and validate network and stale identities", async () => {
+  perpsCache.reset();
+  const nyse = { symbol: "NET", exchange: "NYSE" };
+  const london = { symbol: "NET", exchange: "LSE" };
+  const data = equityBoard(nyse);
+  const request = spyOn(apiClient, "getCloudPerpsEquity").mockResolvedValue(data);
+  try {
+    await perpsCache.load("equity:NET:account-a:pro", async () => perpBoard());
+    expect((await loadPerpsEquity(nyse, "account-a:pro")).payload).toEqual(data);
+    expect(request.mock.calls).toEqual([["NET", "NYSE"]]);
+    await expect(loadPerpsEquity(london, "account-a:pro")).rejects.toThrow("another listing");
+    request.mockResolvedValue(perpBoard());
+    await expect(loadPerpsEquity(nyse, "account-b:preview")).rejects.toThrow("another listing");
+    request.mockRejectedValue(new ApiRequestError("Gateway unavailable", 502));
+    expect(await loadPerpsEquity(nyse, "account-a:pro", true)).toMatchObject({ payload: data, stale: true });
+    await expect(loadPerpsEquity(london, "account-a:pro", true)).rejects.toThrow("Gateway unavailable");
+    request.mockRejectedValue(new ApiRequestError("Session expired", 401));
+    await expect(loadPerpsEquity(nyse, "account-a:pro", true)).rejects.toThrow("Session expired");
+    // A matching envelope cannot authorize a row associated with another listing.
+    request.mockResolvedValue({ ...data, listing: london });
+    await expect(loadPerpsEquity(london, "account-a:pro", true)).rejects.toThrow("another listing");
+  } finally { request.mockRestore(); perpsCache.reset(); }
 });

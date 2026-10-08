@@ -71,6 +71,7 @@ interface PerpCandle {
 
 interface UnderlyingReference {
   symbol: string
+  listingExchange?: string
   price: number
   currency: string
   asOf: string
@@ -79,6 +80,7 @@ interface UnderlyingReference {
 }
 
 export interface PerpBoardRow extends PerpMarket {
+  equityMatch?: { listing: PerpEquityListing; underlying: PerpEquityListing; basis: "listing" | "issuer" }
   stale: boolean
   oiChange1h: number | null
   oiChange24h: number | null
@@ -105,9 +107,11 @@ type PerpHistoryPoint = {
 }
 
 export interface PerpBoardPayload {
+  listing?: PerpEquityListing | null;
   status: string; asOf: string | null; rows: PerpBoardRow[]; total: number; locked: number;
   access: "pro" | "preview"; sources?: unknown[];
 }
+export interface PerpEquityListing { symbol: string; exchange: string }
 export interface PerpHistoryPayload {
   status: string; marketId: string; rows: PerpHistoryPoint[]; funding: PerpFunding[]; candles: PerpCandle[];
   locked: boolean; access: "pro" | "preview"; asOf: string | null;

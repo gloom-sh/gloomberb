@@ -2,6 +2,8 @@
 
 `PERP` opens per-market History and Evidence. An optional market or underlying selects contracts: `PERP BTC`, `PERP TSLA`, or `PERP hyperliquid:xyz:TSLA`. Stock descriptions (`DES`) and quote cards (`QQ`, when tall enough) link their matching stock perpetuals, showing mark, premium versus the underlying last price, interval-labelled funding, USD open interest and premium versus oracle.
 
+Stock links follow the selected listing and only appear when its underlying identity is confirmed. The same ticker on another exchange may belong to another company. A linked cross-listing still uses the perpetual's own reference listing, currency and share units for its premium.
+
 This is a **Pro dataset**. Free accounts receive a fixed preview of three markets per asset class and a latest-value stock/market preview. Full history, rankings and the complete universe require Pro. Trading and order routing belong to a separate plugin.
 
 History offers paid funding, collected open interest, mark/oracle premium and hourly candles with 1D, 7D, 30D, 90D and 365D windows. The market search accepts a base asset, underlying symbol or canonical market identity; an unqualified symbol prefers its default crypto contract, then the xyz stock contract. Use the canonical identity for another contract or venue. Evidence keeps observation time, source time, units, confidence, contract constraints and correction records. `o` opens the primary source; `d`, `f`, `g` open the underlying description, financials and chart where mapped.

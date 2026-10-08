@@ -490,7 +490,10 @@ export class CloudDataApi {
   }
   async getCloudPerpsRankings(): Promise<PerpRankingsPayload> { return this.request("/cloud/perps/rankings"); }
   async getCloudPerpsCompare(baseAsset: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/compare?${new URLSearchParams({ baseAsset })}`); }
-  async getCloudPerpsEquity(symbol: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/equity/${encodeURIComponent(symbol)}`); }
+  async getCloudPerpsEquity(symbol: string, exchange?: string): Promise<PerpBoardPayload> {
+    const query = exchange === undefined ? "" : `?${new URLSearchParams({ identity: "listing", exchange })}`;
+    return this.request(`/cloud/perps/equity/${encodeURIComponent(symbol)}${query}`);
+  }
   async getCloudPerpsMarket(marketId: string): Promise<PerpMarketPayload> { return this.request(`/cloud/perps/market?${new URLSearchParams({ marketId })}`); }
 
   async analyzeCloudExposure(request: ExposureRequest): Promise<ExposurePayload> {
