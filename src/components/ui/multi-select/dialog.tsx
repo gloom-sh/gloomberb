@@ -1,4 +1,4 @@
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { Box, Text, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import { useShortcut, useViewport } from "../../../react/input";
 import { type AlertContext, useDialog, useDialogKeyboard } from "../../../ui/dialog";
@@ -18,6 +18,7 @@ import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { ToggleList } from "../../toggle-list";
 import { Button } from "../button";
+import { TextField } from "../fields";
 import { listCursorMove } from "../list-view";
 import { DialogFrame } from "../frame";
 import { Popover } from "../popover";
@@ -64,6 +65,13 @@ export interface MultiSelectDialogContentProps extends AlertContext {
   emptyLabel?: string;
   idPrefix?: string;
   rowAction?: MultiSelectRowAction;
+  /**
+   * For a long list: a filter box over the rows (typing narrows them by label
+   * and description), each description beside its label and, when ordered,
+   * each selection's position at the row's end. The keyboard stays with the
+   * box: arrows move, Space picks, [ and ] reorder, Enter is done.
+   */
+  searchable?: boolean;
 }
 
 export interface MultiSelectDialogButtonProps {
@@ -82,6 +90,8 @@ export interface MultiSelectDialogButtonProps {
   onOpenChange?: (open: boolean) => void;
   /** Opens the dialog on desktop too, since the popover menu has no row actions. */
   rowAction?: MultiSelectRowAction;
+  /** A filter box over the rows; opens the dialog on desktop too, since the popover menu has none. */
+  searchable?: boolean;
 }
 
 export interface MultiSelectPopoverAnchorPoint {
@@ -118,6 +128,26 @@ function stopMouseEvent(event?: DialogTriggerEvent) {
 const DESKTOP_ROW_HEIGHT = 1.35;
 /** Terminal rows the dialog spends around its list: frame, title, buttons. */
 const TERMINAL_DIALOG_CHROME_ROWS = 10;
+/** Cells a searchable list shows on the desktop and web; the rest scrolls. */
+const DESKTOP_SEARCHABLE_LIST_CELLS = 16;
+
+/** A key that types a character: the filter box takes it. */
+function isTextKey(event: { sequence?: string; ctrl?: boolean; meta?: boolean; alt?: boolean }): boolean {
+  return event.sequence?.length === 1 && event.sequence >= " " && event.sequence !== "\u007f"
+    && !event.ctrl && !event.meta && !event.alt;
+}
+
+function matchesFilter(option: MultiSelectOption, needle: string): boolean {
+  return `${option.label} ${option.description ?? ""}`.toLowerCase().includes(needle);
+}
+
+/** The picks in their order, then every other option in the order given. */
+function selectedFirstOptions(options: readonly MultiSelectOption[], selectedValues: readonly string[]): MultiSelectOption[] {
+  const byValue = new Map(options.map((option) => [option.value, option]));
+  const picked = selectedValues.flatMap((value) => byValue.get(value) ?? []);
+  const chosen = new Set(picked.map((option) => option.value));
+  return [...picked, ...options.filter((option) => !chosen.has(option.value))];
+}
 
 type FocusedNode = { blur?(): void; closest?(selector: string): unknown };
 
@@ -219,19 +249,32 @@ export function MultiSelectDialogContent({
   ordered = false,
   idPrefix,
   rowAction,
+  searchable = false,
 }: MultiSelectDialogContentProps) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const optionByValue = useMemo(() => new Map(options.map((option) => [option.value, option])), [options]);
   const [selectedValues, setSelectedValues] = useState(() => normalizeDialogSelectedValues(options, selectedValuesProp, ordered));
   const [displayValues, setDisplayValues] = useState(() => getMultiSelectDisplayValues(options, selectedValuesProp, ordered));
   const knownSelectedValues = selectedValues.filter((value) => optionByValue.has(value));
+  // A long ordered list reads as the list being built on top, the rest below;
+  // a short one keeps every option in its row and swaps the picks among them.
+  const selectedFirst = searchable && ordered;
   const displayOptions = useMemo(
-    () => orderMultiSelectOptionsForDisplay(options, displayValues),
-    [displayValues, options],
+    () => (selectedFirst
+      ? selectedFirstOptions(options, selectedValues)
+      : orderMultiSelectOptionsForDisplay(options, displayValues)),
+    [displayValues, options, selectedFirst, selectedValues],
+  );
+  const [filter, setFilter] = useState("");
+  const filterRef = useRef<InputRenderable | null>(null);
+  const needle = searchable ? filter.trim().toLowerCase() : "";
+  const visibleOptions = useMemo(
+    () => (needle ? displayOptions.filter((option) => matchesFilter(option, needle)) : displayOptions),
+    [displayOptions, needle],
   );
   const [selectedOptionId, setSelectedOptionId] = useState(options[0]?.value ?? "");
-  const selectedIndex = Math.max(0, displayOptions.findIndex((option) => option.value === selectedOptionId));
-  const selectedOption = displayOptions[selectedIndex];
+  const selectedIndex = Math.max(0, visibleOptions.findIndex((option) => option.value === selectedOptionId));
+  const selectedOption = visibleOptions[selectedIndex];
   const selectedOptionValue = selectedOption?.value ?? "";
   const selectedValueOrder = knownSelectedValues.indexOf(selectedOptionValue);
   const canMoveUp = ordered && selectedValueOrder > 0;
@@ -258,7 +301,14 @@ export function MultiSelectDialogContent({
     setSelectedOptionId(displayOptions[0]?.value ?? "");
   }, [displayOptions, selectedOptionId]);
 
-  const toggleItems = displayOptions.map((option) => {
+  // A touch screen would raise its keyboard over the list the moment it opens.
+  useEffect(() => {
+    if (!searchable || (globalThis as { matchMedia?: (query: string) => { matches: boolean } }).matchMedia?.("(pointer: coarse)").matches) return;
+    const timer = setTimeout(() => filterRef.current?.focus?.(), 0);
+    return () => clearTimeout(timer);
+  }, [searchable]);
+
+  const toggleItems = visibleOptions.map((option) => {
     const order = knownSelectedValues.indexOf(option.value);
     const orderDescription = ordered && order >= 0
       ? `Order ${order + 1} of ${knownSelectedValues.length}.`
@@ -269,15 +319,19 @@ export function MultiSelectDialogContent({
       label: labelOverrides[option.value] ?? option.label,
       disabled: option.disabled,
       enabled: selectedValues.includes(option.value),
-      description: [option.description, orderDescription].filter((entry): entry is string => !!entry).join(" "),
+      description: searchable
+        ? option.description
+        : [option.description, orderDescription].filter((entry): entry is string => !!entry).join(" "),
+      detail: searchable && ordered && order >= 0 ? String(order + 1) : undefined,
     };
   });
   const viewport = useViewport();
   // A short terminal would clip rows under the dialog's edge: the list scrolls
-  // in whatever height is left.
+  // in whatever height is left. The height follows the whole list, not the rows
+  // the filter leaves, so typing does not make the dialog jump.
   const listHeight = isDesktopWeb
-    ? Math.min(12, Math.max(5, displayOptions.length * DESKTOP_ROW_HEIGHT))
-    : Math.max(3, Math.min(12, Math.max(6, toggleItems.length), viewport.height - TERMINAL_DIALOG_CHROME_ROWS));
+    ? Math.min(searchable ? DESKTOP_SEARCHABLE_LIST_CELLS : 12, Math.max(5, displayOptions.length * DESKTOP_ROW_HEIGHT))
+    : Math.max(3, Math.min(12, Math.max(6, displayOptions.length), viewport.height - TERMINAL_DIALOG_CHROME_ROWS - (searchable ? 2 : 0)));
   const pageSize = Math.floor(listHeight / (isDesktopWeb ? DESKTOP_ROW_HEIGHT : 1)) - 1;
 
   const applySelectedValues = async (nextValues: string[], nextDisplayValues = displayValues) => {
@@ -296,16 +350,23 @@ export function MultiSelectDialogContent({
 
   const toggleOption = async (option: MultiSelectOption | undefined) => {
     if (!option || option.disabled) return;
-    await applySelectedValues(ordered
+    const nextValues = ordered
       ? toggleOrderedMultiSelectValue(options, selectedValues, option.value)
-      : toggleMultiSelectValue(options, selectedValues, option.value));
+      : toggleMultiSelectValue(options, selectedValues, option.value);
+    const row = visibleOptions.findIndex((entry) => entry.value === option.value);
+    await applySelectedValues(nextValues);
+    if (!selectedFirst) return;
+    // The row moved between the picks and the rest. The cursor stays on its
+    // line, so Space picks or drops a row and moves on to the next.
+    const next = selectedFirstOptions(options, nextValues).filter((entry) => !needle || matchesFilter(entry, needle));
+    setSelectedOptionId(next[Math.min(Math.max(row, 0), next.length - 1)]?.value ?? option.value);
   };
 
   const moveOption = async (direction: "up" | "down") => {
     if (!ordered || !selectedOption) return;
     await applySelectedValues(
       moveMultiSelectValue(options, selectedValues, selectedOption.value, direction),
-      moveMultiSelectDisplayValue(displayValues, knownSelectedValues, selectedOption.value, direction),
+      selectedFirst ? displayValues : moveMultiSelectDisplayValue(displayValues, knownSelectedValues, selectedOption.value, direction),
     );
   };
 
@@ -318,11 +379,24 @@ export function MultiSelectDialogContent({
   };
 
   useDialogKeyboard((event) => {
+    if (searchable) {
+      // The box owns every key that types or edits text; the list keeps the rest.
+      const typing = event.targetEditable === true;
+      const editsText = isTextKey(event) ? event.sequence !== " " && event.name !== "[" && event.name !== "]"
+        : typing && ["backspace", "delete", "left", "right", "home", "end"].includes(event.name ?? "");
+      const backsUp = !typing && filter !== "" && (event.name === "backspace" || event.name === "delete");
+      if (editsText || backsUp) {
+        // A click on a row or button took the focus; the first key typed brings it back.
+        if (!typing) filterRef.current?.focus?.();
+        return;
+      }
+      if (isSpaceKey(event)) event.preventDefault();
+    }
     event.stopPropagation();
     const move = listCursorMove(event, pageSize);
     if (move) {
-      if (isDesktopWeb) releaseFocusOutsideList();
-      setSelectedOptionId(displayOptions[move(displayOptions, selectedIndex)]?.value ?? selectedOptionId);
+      if (isDesktopWeb && !searchable) releaseFocusOutsideList();
+      setSelectedOptionId(visibleOptions[move(visibleOptions, selectedIndex)]?.value ?? selectedOptionId);
     } else if (isSpaceKey(event)) {
       void toggleOption(selectedOption).catch(() => {});
     } else if (event.name === "[" && ordered) {
@@ -334,15 +408,24 @@ export function MultiSelectDialogContent({
     } else if (event.name === "enter" || event.name === "return" || event.name === "escape" || isDetailBackNavigationKey(event)) {
       dismiss();
     }
-  }, dialogId);
+  }, searchable ? { scope: dialogId, allowEditable: true } : dialogId);
 
   return (
     <DialogFrame title={title} showTitleDivider={!isDesktopWeb}>
       <Box
         flexDirection="column"
         gap={1}
-        style={isDesktopWeb ? { minWidth: 520 } : undefined}
+        style={isDesktopWeb ? { minWidth: "min(520px, calc(100vw - 96px))" } : undefined}
       >
+        {searchable && (
+          <TextField
+            inputRef={filterRef}
+            value={filter}
+            placeholder="Filter"
+            focused
+            onChange={setFilter}
+          />
+        )}
         <ToggleList
           items={toggleItems}
           selectedIdx={selectedIndex}
@@ -350,11 +433,12 @@ export function MultiSelectDialogContent({
           height={listHeight}
           scrollable
           showSelectedDescription={false}
+          showDescriptions={searchable}
           rowIdPrefix={idPrefix ? `${idPrefix}:option` : undefined}
           rowGap={isDesktopWeb ? 0 : undefined}
           rowHeight={isDesktopWeb ? DESKTOP_ROW_HEIGHT : undefined}
           surface={isDesktopWeb ? "plain" : undefined}
-          onSelect={(index) => setSelectedOptionId(displayOptions[index]?.value ?? selectedOptionId)}
+          onSelect={(index) => setSelectedOptionId(visibleOptions[index]?.value ?? selectedOptionId)}
           onToggle={(id) => {
             setSelectedOptionId(id);
             void toggleOption(optionByValue.get(id)).catch(() => {});
@@ -364,7 +448,7 @@ export function MultiSelectDialogContent({
           flexDirection="row"
           gap={1}
           justifyContent={isDesktopWeb ? "flex-end" : undefined}
-          style={isDesktopWeb ? { paddingTop: 6 } : undefined}
+          style={isDesktopWeb ? { paddingTop: 6, flexWrap: "wrap" } : undefined}
         >
           {ordered && (
             <>
@@ -403,6 +487,7 @@ function MultiSelectDialogButtonInner({
   shortcutActive = false,
   onOpenChange,
   rowAction,
+  searchable = false,
 }: MultiSelectDialogButtonProps, ref: ForwardedRef<MultiSelectDialogButtonHandle>) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const dialog = useDialog();
@@ -415,7 +500,7 @@ function MultiSelectDialogButtonInner({
   const openDialog = useCallback((event?: DialogTriggerEvent, anchorPoint?: MultiSelectPopoverAnchorPoint) => {
     stopMouseEvent(event);
     if (disabled) return;
-    if (isDesktopWeb && !ordered && !rowAction) {
+    if (isDesktopWeb && !ordered && !rowAction && !searchable) {
       setPopoverAnchorPoint(anchorPoint ?? null);
       setPopoverOpen(true);
       onOpenChange?.(true);
@@ -435,10 +520,11 @@ function MultiSelectDialogButtonInner({
           emptyLabel={emptyLabel}
           idPrefix={idPrefix}
           rowAction={rowAction}
+          searchable={searchable}
         />
       ),
     }).catch(() => {}).finally(() => onOpenChange?.(false));
-  }, [dialog, disabled, emptyLabel, idPrefix, isDesktopWeb, label, onChange, onOpenChange, options, ordered, rowAction, selectedValues, title]);
+  }, [dialog, disabled, emptyLabel, idPrefix, isDesktopWeb, label, onChange, onOpenChange, options, ordered, rowAction, searchable, selectedValues, title]);
 
   const closePopover = useCallback(() => {
     setPopoverOpen(false);
@@ -521,7 +607,7 @@ function MultiSelectDialogButtonInner({
     );
   }
 
-  if (isDesktopWeb && !ordered && !rowAction) {
+  if (isDesktopWeb && !ordered && !rowAction && !searchable) {
     return (
       <Popover
         open={popoverOpen}

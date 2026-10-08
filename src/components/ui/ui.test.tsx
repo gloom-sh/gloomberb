@@ -186,6 +186,31 @@ function MultiSelectDialogButtonHarness() {
   );
 }
 
+let searchableChanges: string[][] = [];
+
+function SearchableMultiSelectHarness() {
+  const [values, setValues] = useState(["USD"]);
+  return (
+    <TestDialogProvider>
+      <MultiSelectDialogButton
+        ref={multiSelectDialogHandle}
+        label="CUR"
+        title="Currencies"
+        ordered
+        searchable
+        selectedValues={values}
+        onChange={(next) => { searchableChanges.push(next); setValues(next); }}
+        options={[
+          { value: "USD", label: "USD", description: "US Dollar" },
+          { value: "KRW", label: "KRW", description: "South Korean Won" },
+          { value: "CZK", label: "CZK", description: "Czech Koruna" },
+          { value: "MXN", label: "MXN", description: "Mexican Peso" },
+        ]}
+      />
+    </TestDialogProvider>
+  );
+}
+
 function ChoiceDialogHarness({
   selectedChoiceId,
   choices,
@@ -295,6 +320,38 @@ describe("shared UI kit", () => {
     });
     expect(tui.frame()).toContain("Chart Indicators");
     expect(multiSelectOpenStates.at(-1)).toBe(true);
+  });
+
+  test("a searchable list narrows as you type and keeps arrows, Space and [ ] for its rows", async () => {
+    searchableChanges = [];
+    await tui.render(<SearchableMultiSelectHarness />, { width: 70, height: 24 });
+    await act(async () => {
+      multiSelectDialogHandle.current?.open();
+      await Promise.resolve();
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).toContain("Mexican Peso");
+
+    // j and k are letters here, not cursor keys: they go into the filter.
+    for (const letter of "kor") await emitKeypress({ name: letter, sequence: letter });
+    let frame = tui.frame();
+    expect(frame).toContain("South Korean Won");
+    expect(frame).toContain("Czech Koruna");
+    expect(frame).not.toContain("Mexican Peso");
+    expect(frame).not.toContain("US Dollar");
+
+    await emitKeypress({ name: "space", sequence: " " });
+    expect(searchableChanges.at(-1)).toEqual(["USD", "KRW"]);
+    await emitKeypress({ name: "down" });
+    await emitKeypress({ name: "space", sequence: " " });
+    expect(searchableChanges.at(-1)).toEqual(["USD", "KRW", "CZK"]);
+    // The space went to the list, not into the filter.
+    expect(tui.frame()).toContain("South Korean Won");
+    expect(tui.frame()).toContain("Czech Koruna");
+
+    await emitKeypress({ name: "[", sequence: "[" });
+    expect(searchableChanges.at(-1)).toEqual(["USD", "CZK", "KRW"]);
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
   });
 
   test("supports keyboard and pointer selection in choice dialogs", async () => {

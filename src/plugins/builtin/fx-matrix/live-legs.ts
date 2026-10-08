@@ -2,6 +2,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
+import { isStreamCarryingQuote } from "../shared/use-quote-board";
 
 /** Currencies the market quotes as USD per unit; the rest quote as units per USD. */
 const USD_QUOTED = new Set(["EUR", "GBP", "AUD", "NZD"]);
@@ -67,6 +68,22 @@ export function liveFxLegEntry(
     error: null,
     attempts: [],
   };
+}
+
+/**
+ * The legs the feed is not carrying, whose snapshot rates a reload has to
+ * stand in for. With streaming off the legs' own quote poll is the feed.
+ */
+export function fxLegsBehind(
+  legs: readonly FxLeg[],
+  entries: ReadonlyMap<string, QueryEntry<Quote>>,
+  feed: { liveStreaming: boolean; liveCurrencies: ReadonlySet<string>; startedAt: number; now: number },
+): string[] {
+  return legs.filter((leg) => {
+    const entry = entries.get(fxLegQuoteKey(leg));
+    if (!feed.liveStreaming) return !(feed.liveCurrencies.has(leg.currency) && (entry?.fetchedAt ?? 0) >= feed.startedAt);
+    return !isStreamCarryingQuote(entry, feed.startedAt, feed.now);
+  }).map((leg) => leg.currency);
 }
 
 /** USD per unit at the pair's previous close: a rate that holds still for the session. */

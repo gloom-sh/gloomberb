@@ -102,7 +102,8 @@ describe("FxMatrixPane", () => {
     // Regression: a currency with no rate rendered 1.0000 against everything.
     const jpyRow = frame.split("\n").find((line) => line.trimStart().startsWith("JPY"));
     expect(jpyRow).toBeDefined();
-    expect(jpyRow).not.toContain("1.0000");
+    // Its own diagonal is the only 1.0000 in the row.
+    expect(jpyRow!.match(/1\.0000/g)).toHaveLength(1);
     expect(jpyRow).toContain("—");
   });
 });

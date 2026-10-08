@@ -184,11 +184,15 @@ interface PaneSettingSelectField extends PaneSettingFieldBase {
 interface PaneSettingMultiSelectField extends PaneSettingFieldBase {
   type: "multi-select";
   options: PaneSettingOption[];
+  /** A long list: a filter box, each description beside its label. */
+  searchable?: boolean;
 }
 
 interface PaneSettingOrderedMultiSelectField extends PaneSettingFieldBase {
   type: "ordered-multi-select";
   options: PaneSettingOption[];
+  /** A long list: a filter box, each description beside its label and each selection's position. */
+  searchable?: boolean;
 }
 
 export interface PaneSettingActionContext extends PaneSettingsContext {

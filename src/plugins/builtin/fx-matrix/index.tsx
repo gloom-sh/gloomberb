@@ -22,9 +22,9 @@ import type { PluginModule } from "../plugin-module";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { isStreamCarryingQuote } from "../shared/use-quote-board";
-import { fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, liveFxLegEntry } from "./live-legs";
-import { CURRENCY_FLAG_REGIONS, MAJOR_CURRENCIES, formatRate, resolveCurrencies, type MajorCurrency } from "./pairs";
+import { fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
+import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
+import { fxMatrixSettings } from "./settings";
 import { createFxExportMetadata } from "./export";
 
 const FX_MATRIX_PANE_ID = "fx-matrix";
@@ -34,7 +34,7 @@ const BASE_COLUMN_WIDTH = 5;
 /** Room for a flag, a space and the code once the desktop draws the flag. */
 const FLAGGED_BASE_COLUMN_WIDTH = 6;
 const CURRENCY_FLAGS = new Map<string, ReactNode>(
-  MAJOR_CURRENCIES.map((currency) => [currency, <CountryFlag region={CURRENCY_FLAG_REGIONS[currency]} />]),
+  FX_CURRENCIES.map((currency) => [currency, <CountryFlag region={CURRENCY_FLAG_REGIONS[currency]} />]),
 );
 const RATE_COLUMN_WIDTH = 10;
 /** Snapshot rates reload at this pace while the feed is not carrying every leg. */
@@ -106,22 +106,30 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   // current relaxes the snapshot reload: a quote another pane loaded, or one
   // the stream stopped sending, would otherwise freeze the matrix. With
   // streaming off, the legs' own quote poll is the feed.
-  const allLegsLive = legs.every((leg) => {
-    const entry = legEntries.get(fxLegQuoteKey(leg));
-    if (!liveStreaming) return liveEntries.has(leg.currency) && (entry?.fetchedAt ?? 0) >= subscriptionStartedAt;
-    return isStreamCarryingQuote(entry, subscriptionStartedAt, freshnessNow);
+  const legsBehind = fxLegsBehind(legs, legEntries, {
+    liveStreaming,
+    liveCurrencies: new Set(liveEntries.keys()),
+    startedAt: subscriptionStartedAt,
+    now: freshnessNow,
   });
+  const allLegsLive = legsBehind.length === 0;
 
-  const refresh = useCallback(() => {
+  const reload = useCallback((codes: readonly string[]) => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator) return;
-    for (const currency of currencies) {
+    for (const currency of codes) {
       if (currency === "USD") continue;
       void coordinator.loadFxRate(currency, { forceRefresh: true }).catch(() => {});
     }
-  }, [currencies]);
+  }, []);
+  const refresh = useCallback(() => reload(currencies), [currencies, reload]);
 
-  useAutoRefresh(snapshotFetchedAt || null, refresh, { intervalMs: allLegsLive ? null : FX_FALLBACK_REFRESH_MS });
+  // The reload that stands in for the feed asks only for the legs it is
+  // behind on: a thin pair that rarely ticks must not make every selected
+  // currency reload each minute.
+  useAutoRefresh(snapshotFetchedAt || null, () => reload(allLegsLive ? currencies : legsBehind), {
+    intervalMs: allLegsLive ? null : FX_FALLBACK_REFRESH_MS,
+  });
 
   const columns = useMemo<DataTableColumn[]>(() => [
     { id: "base", label: "", width: flagged ? FLAGGED_BASE_COLUMN_WIDTH : BASE_COLUMN_WIDTH, align: "left" },
@@ -135,7 +143,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   ], [currencies, flagged]);
 
   const renderCell = useCallback((
-    row: MajorCurrency,
+    row: FxCurrency,
     column: DataTableColumn,
   ): DataTableCell => {
     if (column.id === "base") {
@@ -147,8 +155,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       };
     }
 
-    const quoteCurrency = column.id as MajorCurrency;
-    if (row === quoteCurrency) return { text: formatRate(1, quoteCurrency), color: colors.textDim };
+    const quoteCurrency = column.id as FxCurrency;
+    if (row === quoteCurrency) return { text: formatRate(1), color: colors.textDim };
 
     const base = rates.get(row);
     const quote = rates.get(quoteCurrency);
@@ -159,7 +167,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       return { text: pending ? "…" : "—", color: colors.textDim };
     }
     const reference = (referenceRates.get(row) ?? base) / (referenceRates.get(quoteCurrency) ?? quote);
-    return { text: formatRate(base / quote, quoteCurrency, reference), color: colors.text };
+    return { text: formatRate(base / quote, reference), color: colors.text };
   }, [flagged, rates, referenceRates, status.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
@@ -175,7 +183,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   }, [status.loading, statusText, updatedAgo]);
 
   return (
-    <DataTableView<MajorCurrency>
+    <DataTableView<FxCurrency>
       focused={focused}
       selection={{
         kind: "id",
@@ -212,18 +220,7 @@ export const fxMatrixModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 105, height: 14 },
       tableExport: true,
-      settings: (context) => ({
-        title: "FX Cross Rates Settings",
-        values: {
-          currencies: resolveCurrencies(context.settings.currencies as string[] | undefined),
-        },
-        fields: [{
-          key: "currencies",
-          label: "Currencies",
-          type: "ordered-multi-select",
-          options: MAJOR_CURRENCIES.map((currency) => ({ value: currency, label: currency })),
-        }],
-      }),
+      settings: fxMatrixSettings,
     },
   ],
 

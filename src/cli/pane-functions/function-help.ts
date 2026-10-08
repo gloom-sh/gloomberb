@@ -689,7 +689,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["IMAP"],
   },
   FXC: {
-    summary: "A cross-rate matrix for the major currencies.",
+    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings.",
     usage: ["FXC"],
     keys: [],
     data: FX,
