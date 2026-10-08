@@ -20,6 +20,8 @@ export interface ChatMessageRenderState {
   replyAuthorColor: string;
   headerStatus: string;
   headerStatusColor: string;
+  /** The dim "Discord" tag beside the author of a message that came from Discord. */
+  originTagColor: string;
   authorColor: string;
   authorAttributes: number;
   bodyColor: string;
@@ -82,6 +84,7 @@ export function getChatMessageRenderState({
         : hasFailed
           ? colors.negative
           : colors.textMuted,
+    originTagColor: isSelected ? selectedTextColor : colors.textDim,
     authorColor: isSelected ? selectedTextColor : hasFailed ? colors.negative : colors.positive,
     authorAttributes: (isSending ? TextAttributes.DIM : 0) | TextAttributes.BOLD,
     bodyColor: isSelected ? selectedTextColor : hasFailed ? colors.negative : isSending ? colors.textDim : colors.text,

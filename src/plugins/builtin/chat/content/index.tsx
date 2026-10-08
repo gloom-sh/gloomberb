@@ -1,4 +1,4 @@
-import { Box, Text, useUiCapabilities } from "../../../../ui";
+import { Box, Text, useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import { PageStackView } from "../../../../components/ui";
 import { type ScrollBoxRenderable, type TextareaRenderable } from "../../../../ui";
@@ -33,6 +33,8 @@ import {
 } from "./layout-metrics";
 import { buildChatUserByUsername } from "./user-map";
 import { useChatComposerRuntime } from "./composer-runtime";
+import { runDiscordCommand } from "../discord-command";
+import type { DiscordComposerCommand } from "../composer-commands";
 import { useChatMessageSelection } from "./selection-runtime";
 import type { ChatAttachment, ChatMessage } from "../../../../api-client";
 import { DesktopChatDropOverlay, DesktopChatDropTarget } from "../attachments/desktop";
@@ -86,6 +88,7 @@ export function ChatContent({
   channelIdRef.current = channelId;
   const initialSnapshot = controller.getSnapshot(channelId);
   const { nativePaneChrome } = useUiCapabilities();
+  const rendererHost = useRendererHost();
   const [inputFocused, setInputFocused] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -458,6 +461,10 @@ export function ChatContent({
     if (controller.attachToChannel(channelIdRef.current, files.map(uploadFromTransferFile)) > 0) focusInput();
   }, [canAttach, controller, focusInput, imagesAvailable, notify]);
 
+  const handleDiscordCommand = useCallback((command: DiscordComposerCommand) => {
+    void runDiscordCommand(command, { openUrl: (url) => rendererHost.openExternal(url) }).then(notify);
+  }, [notify, rendererHost]);
+
   // The terminal: a pasted or dropped path to an image file attaches the file
   // and leaves the composer. A path that is no file stays as typed.
   const handlePastedImagePaths = useCallback((paths: string[], pasted: string) => {
@@ -535,6 +542,7 @@ export function ChatContent({
     useDefaultControllerChannel,
     draftAttachmentCount: draftAttachments.length,
     onPastedImagePaths: !nativePaneChrome && canAttach ? handlePastedImagePaths : undefined,
+    onDiscordCommand: handleDiscordCommand,
   });
   replaceComposerDraftRef.current = replaceComposerDraft;
 

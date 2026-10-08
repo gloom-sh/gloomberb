@@ -691,6 +691,34 @@ describe("ChatContent", () => {
     expect(sentMessages).toEqual(["hello"]);
   });
 
+  test("runs /discord commands instead of posting them to the channel", async () => {
+    const controller = createController({ sessionToken: "token-123" });
+    const sentMessages: string[] = [];
+    (controller as any).send = (content: string) => {
+      sentMessages.push(content);
+      return true;
+    };
+    const originalSetMirror = apiClient.setChatDiscordMirror;
+    const mirrorCalls: boolean[] = [];
+    apiClient.setChatDiscordMirror = async (enabled) => { mirrorCalls.push(enabled); };
+    try {
+      await renderFocusedComposerWithDraft(controller, "/discord mirror off");
+      await tui.waitForFrameToContain("> /discord mirror off");
+
+      await act(async () => {
+        tui.setup().mockInput.pressEnter();
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
+      });
+
+      expect(mirrorCalls).toEqual([false]);
+      expect(sentMessages).toEqual([]);
+      expect(tui.frame()).not.toContain("/discord mirror off");
+    } finally {
+      apiClient.setChatDiscordMirror = originalSetMirror;
+    }
+  });
+
   test("keeps typed shortcut letters in the composer instead of moving message selection", async () => {
     const controller = createController({
       messages: Array.from({ length: 18 }, (_, index) => makeMessage(index + 1)),
@@ -1020,6 +1048,37 @@ describe("ChatContent", () => {
     const caption = rows.findIndex((row) => row.includes("my chart"));
     expect(rows[caption + 1]).toContain("[image 800x600 1.2 MB]");
     expect(rows[caption + 2]).toContain("Checking image...");
+  });
+
+  test("tags messages that came from Discord, and signs a ghost with its Discord name", async () => {
+    const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
+    const bob = { id: "u1", username: "bob", displayName: "Bob" };
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: "from the app", replyToId: null, createdAt: at(0), user: bob },
+        // The same person, writing from Discord a moment later: the tag needs a header of its own.
+        { id: "m2", channelId: "everyone", content: "from the other side", replyToId: null, createdAt: at(10), user: bob, origin: "discord" },
+        {
+          id: "m3", channelId: "everyone", content: "a guest speaking", replyToId: null, createdAt: at(20),
+          user: { id: "d1", username: null, displayName: "Grace H", accountType: "discord" }, origin: "discord",
+        },
+        // Values a newer server adds read as an app message from a human.
+        {
+          id: "m4", channelId: "everyone", content: "from somewhere new", replyToId: null, createdAt: at(30),
+          user: { id: "u4", username: "cy", displayName: "Cy", accountType: "bot" as never }, origin: "slack" as never,
+        },
+      ],
+    });
+
+    await mountChat(controller, { width: 60, height: 18 });
+
+    const rows = tui.frame().split("\n").map((row) => row.trimEnd());
+    const header = (author: string) => rows.find((row) => row.startsWith(` ${author} `))!;
+    expect(rows.filter((row) => row.startsWith(" bob "))).toHaveLength(2);
+    expect(header("bob")).not.toContain("Discord");
+    expect(rows.filter((row) => row.startsWith(" bob ") && row.includes("Discord"))).toHaveLength(1);
+    expect(header("Grace H")).toContain("Discord");
+    expect(header("cy")).not.toContain("Discord");
   });
 
   test("shows a saved-login read-only footer when a session token is cached", async () => {

@@ -5,6 +5,7 @@ import { colors } from "../../../../theme/colors";
 import type { ChatUserSummary, PublicPortfolioAnalytics } from "../../../../api-client";
 import { formatNumber } from "../../../../utils/format";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
+import { isDiscordGhost } from "../ghost-user";
 
 export const PROFILE_POPOVER_CLOSE_DELAY_MS = 40;
 
@@ -19,7 +20,7 @@ function hasPortfolioAnalytics(analytics: PublicPortfolioAnalytics | null | unde
 }
 
 export function hasPublicChatProfileInfo(user: ChatUserSummary): boolean {
-  if (user.profilePublic === false) return false;
+  if (user.profilePublic === false || isDiscordGhost(user)) return false;
   return Boolean(user.bio?.trim() || user.title?.trim() || user.company?.trim() || hasPortfolioAnalytics(user.portfolioAnalytics));
 }
 

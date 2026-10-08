@@ -70,3 +70,30 @@ test("an image upload crosses the desktop's text-only bridge byte for byte", asy
   expect(body).toBeInstanceOf(Uint8Array);
   expect([...(body as Uint8Array)]).toEqual([...bytes]);
 });
+
+test("keeps the Discord origin and ghost account type of a message and drops values it does not know", async () => {
+  const user = (id: string, accountType?: string) => ({ id, username: id, displayName: id, ...(accountType ? { accountType } : {}) });
+  const message = (id: string, extra: Record<string, unknown>) => ({
+    id, channelId: "everyone", content: id, replyToId: null, createdAt: "2026-10-05T00:00:00Z", ...extra,
+  });
+  const { chat } = createChat(() => [
+    message("a", { user: user("ghost", "discord"), origin: "discord" }),
+    message("b", { user: user("bot", "robot"), origin: "carrier-pigeon" }),
+    message("c", { user: user("plain"), origin: "app" }),
+  ]);
+  const [ghost, unknown, app] = await chat.getMessages("everyone");
+  expect([ghost!.user.accountType, ghost!.origin]).toEqual(["discord", "discord"]);
+  expect("accountType" in unknown!.user).toBe(false);
+  expect("origin" in unknown!).toBe(false);
+  expect(app!.origin).toBe("app");
+});
+
+test("reads the Discord link with mirroring on unless the server says off", async () => {
+  const answers: Record<string, unknown> = {
+    "/chat/discord/link": { linked: true, discordUsername: " ada ", mirror: false },
+  };
+  const { chat } = createChat((path) => answers[path] ?? { linked: false });
+  expect(await chat.getDiscordLink()).toEqual({ linked: true, discordUsername: "ada", mirror: false });
+  answers["/chat/discord/link"] = { linked: false };
+  expect(await chat.getDiscordLink()).toEqual({ linked: false, mirror: true });
+});

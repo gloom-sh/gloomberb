@@ -7,6 +7,7 @@ import { useAppLanguage } from "../../../../i18n/react";
 import { normalizeInlinePreview } from "../layout";
 import { DesktopChatMessageImages } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
+import { chatAuthorName } from "../ghost-user";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { useSlowPendingSend } from "./pending-send";
@@ -150,7 +151,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           <DesktopChatMessageImages
             attachments={attachments}
             caption={msg.content}
-            author={msg.user.username ?? "anon"}
+            author={chatAuthorName(msg.user)}
             review={msg.attachmentReview}
             dimmed={state.isSending || msg.clientStatus === "failed"}
             onLoadError={onImageLoadError}

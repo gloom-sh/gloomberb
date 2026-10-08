@@ -7,6 +7,7 @@ import type { ContextMenuItem } from "../../../../types/context-menu";
 import { useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { hasPublicChatProfileInfo } from "../message/profile-popover";
+import { chatAuthorName } from "../ghost-user";
 import { chatMessageOpenTargets, type ChatOpenTarget } from "./open-targets";
 import { openChatImageViewer } from "../attachments/desktop";
 
@@ -105,7 +106,7 @@ export function useChatFooter({
         attachments: selectedMessage.attachments,
         index: target.index,
         caption: selectedMessage.content,
-        author: selectedMessage.user.username ?? "anon",
+        author: chatAuthorName(selectedMessage.user),
       });
       return;
     }

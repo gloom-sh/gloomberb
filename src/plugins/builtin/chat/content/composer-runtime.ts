@@ -5,7 +5,7 @@ import {
   COMPOSER_ACTION_WIDTH,
   formatInlinePreview,
 } from "../layout";
-import { parseChatComposerCommand } from "../composer-commands";
+import { parseChatComposerCommand, type DiscordComposerCommand } from "../composer-commands";
 import { t, tf } from "../../../../i18n";
 import type { ChatContentController } from "./types";
 import { getComposerCursorOffset, moveComposerCursorToOffset } from "./composer-cursor";
@@ -44,6 +44,7 @@ export function useChatComposerRuntime({
   useDefaultControllerChannel,
   draftAttachmentCount = 0,
   onPastedImagePaths,
+  onDiscordCommand,
 }: {
   applyingExternalDraftRef: MutableRef<boolean>;
   blurInput: () => void;
@@ -74,6 +75,8 @@ export function useChatComposerRuntime({
   draftAttachmentCount?: number;
   /** Set where pasted file paths can attach (the terminal): the paths, and the text that named them. */
   onPastedImagePaths?: (paths: string[], pasted: string) => void;
+  /** Runs a /discord command. Without it the command is sent as text. */
+  onDiscordCommand?: (command: DiscordComposerCommand) => void;
 }) {
   const replyToRef = useRef(replyTo);
   const draftAttachmentCountRef = useRef(draftAttachmentCount);
@@ -259,6 +262,11 @@ export function useChatComposerRuntime({
       }).catch(() => {});
       return;
     }
+    if (composerCommand?.kind === "discord" && onDiscordCommand) {
+      replaceComposerDraft("");
+      onDiscordCommand(composerCommand);
+      return;
+    }
     if (composerCommand?.kind === "group") {
       void controller.openGroupChannel({
         usernames: composerCommand.usernames,
@@ -289,8 +297,10 @@ export function useChatComposerRuntime({
     controller,
     inputValueRef,
     onChannelChange,
+    onDiscordCommand,
     expandDirectSection,
     persistDraft,
+    replaceComposerDraft,
     setEditingMessage,
     setFollowMessages,
     setSelectedIdx,

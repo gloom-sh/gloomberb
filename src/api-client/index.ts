@@ -643,6 +643,10 @@ class GloomApiClient {
   connectChannel = this.chat.connectChannel.bind(this.chat);
   subscribeChatNotifications = this.chat.subscribeNotifications.bind(this.chat);
   subscribeChatPresence = this.chat.subscribePresence.bind(this.chat);
+  getChatDiscordLink = this.chat.getDiscordLink.bind(this.chat);
+  startChatDiscordLink = this.chat.startDiscordLink.bind(this.chat);
+  unlinkChatDiscord = this.chat.unlinkDiscord.bind(this.chat);
+  setChatDiscordMirror = this.chat.setDiscordMirror.bind(this.chat);
   subscribeQuotes = this.socket.subscribeQuotes.bind(this.socket);
 
   listTeams = this.teams.listTeams.bind(this.teams);

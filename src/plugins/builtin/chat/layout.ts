@@ -23,6 +23,8 @@ export function isGroupedWithPrevious(messages: ChatMessage[], index: number) {
   const prev = messages[index - 1]!;
   const curr = messages[index]!;
   if (prev.user.id !== curr.user.id) return false;
+  // The Discord tag sits on a header, so a linked person's Discord and app messages do not share one.
+  if ((prev.origin === "discord") !== (curr.origin === "discord")) return false;
   return new Date(curr.createdAt).getTime() - new Date(prev.createdAt).getTime() < MESSAGE_GROUP_THRESHOLD_MS;
 }
 

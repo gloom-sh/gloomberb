@@ -1,5 +1,7 @@
 import { Box, Text } from "../../../../ui";
 import { t } from "../../../../i18n";
+import { displayWidth } from "../../../../utils/format";
+import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
 import type { ChatMessageRenderState } from "./render-state";
@@ -80,26 +82,33 @@ export function ChatMessageHeader({
   /** The terminal sizes the author cell to its label. */
   fitAuthorWidth?: boolean;
 }) {
-  const authorLabel = msg.user.username ?? "anon";
+  const authorLabel = chatAuthorName(msg.user);
+  // A Discord ghost has no Gloom profile to open.
+  const hasProfile = !isDiscordGhost(msg.user);
   return (
     <Box {...rowProps} flexDirection="row" height={1} paddingLeft={1}>
       <Box
-        width={fitAuthorWidth ? authorLabel.length : undefined}
+        width={fitAuthorWidth ? displayWidth(authorLabel) : undefined}
         height={1}
-        onMouseOver={() => onUserHover(msg.user)}
-        onMouseMove={() => onUserHover(msg.user)}
-        onMouseOut={onUserHoverEnd}
-        onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
-          event.preventDefault?.();
-          event.stopPropagation?.();
-          onUserActivate?.(msg.user);
-        }}
-        style={{ cursor: "pointer" }}
+        {...(hasProfile
+          ? {
+            onMouseOver: () => onUserHover(msg.user),
+            onMouseMove: () => onUserHover(msg.user),
+            onMouseOut: onUserHoverEnd,
+            onMouseDown: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+              event.preventDefault?.();
+              event.stopPropagation?.();
+              onUserActivate?.(msg.user);
+            },
+            style: { cursor: "pointer" },
+          }
+          : {})}
       >
         <Text fg={state.authorColor} attributes={state.authorAttributes}>
           {authorLabel}
         </Text>
       </Box>
+      {msg.origin === "discord" && <Text fg={state.originTagColor}> Discord</Text>}
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
       {(state.showReplyAction || (state.showRetryAction && actionProps.retryMessage)) && <Text fg={state.headerStatusColor}> </Text>}
       <ChatMessageActions state={state} {...actionProps} />

@@ -1,4 +1,5 @@
 import type { ChatChannel, ChatMessage } from "../../../../api-client";
+import { isDiscordGhost } from "../ghost-user";
 
 export interface ChatMentionSuggestion {
   username: string;
@@ -49,7 +50,7 @@ export function buildRecentMentionSuggestions({
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const user = messages[index]?.user;
     const username = normalizeUsername(user?.username);
-    if (!user || !username || user.id === currentUserId) continue;
+    if (!user || !username || user.id === currentUserId || isDiscordGhost(user)) continue;
     const key = username.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

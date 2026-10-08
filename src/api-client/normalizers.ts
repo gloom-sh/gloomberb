@@ -1,7 +1,10 @@
 import type {
+  ChatAccountType,
   ChatAttachment,
   ChatChannel,
+  ChatDiscordLink,
   ChatMessage,
+  ChatMessageOrigin,
   ChatNotification,
   ChatStateResponse,
   CloudSavedSearch,
@@ -74,9 +77,20 @@ export function normalizeChatAttachments(value: unknown): ChatAttachment[] {
   });
 }
 
+const CHAT_ACCOUNT_TYPES: readonly string[] = ["human", "managed_llm", "discord"] satisfies ChatAccountType[];
+const CHAT_MESSAGE_ORIGINS: readonly string[] = ["app", "discord"] satisfies ChatMessageOrigin[];
+
+/** A value a newer server adds that this client does not know reads as absent: a human, a message from the app. */
+function chatUserWithKnownAccountType(user: ChatMessage["user"]): ChatMessage["user"] {
+  if (!user || user.accountType === undefined || CHAT_ACCOUNT_TYPES.includes(user.accountType)) return user;
+  const { accountType: _unknown, ...known } = user;
+  return known;
+}
+
 export function normalizeChatMessage(message: ChatMessage): ChatMessage {
   const normalized: ChatMessage = {
     ...message,
+    user: chatUserWithKnownAccountType(message.user),
     content: typeof message.content === "string" ? message.content : "",
     createdAt: normalizeTimestamp(message.createdAt),
     ...(message.editedAt
@@ -84,10 +98,22 @@ export function normalizeChatMessage(message: ChatMessage): ChatMessage {
       : {}),
   };
   if ("attachments" in message) normalized.attachments = normalizeChatAttachments(message.attachments);
+  if (message.origin !== undefined && !CHAT_MESSAGE_ORIGINS.includes(message.origin)) delete normalized.origin;
   if (message.attachmentReview !== "pending" && message.attachmentReview !== "failed") {
     delete normalized.attachmentReview;
   }
   return normalized;
+}
+
+/** The link answer of a server that knows Discord: mirroring is on unless it says otherwise. */
+export function normalizeChatDiscordLink(value: unknown): ChatDiscordLink {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const username = typeof raw.discordUsername === "string" ? raw.discordUsername.trim() : "";
+  return {
+    linked: raw.linked === true,
+    ...(username ? { discordUsername: username } : {}),
+    mirror: raw.mirror !== false,
+  };
 }
 
 export function normalizeChatMessages(messages: ChatMessage[]): ChatMessage[] {

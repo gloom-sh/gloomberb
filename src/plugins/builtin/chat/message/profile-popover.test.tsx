@@ -128,6 +128,11 @@ describe("profile popover", () => {
     }))).toBe(false);
   });
 
+  test("a Discord ghost has no profile card, even when the server sent profile fields", () => {
+    expect(hasPublicChatProfileInfo(makeUser({ accountType: "discord", bio: "Hello from Discord" }))).toBe(false);
+    expect(hasPublicChatProfileInfo(makeUser({ accountType: "human", bio: "Hello from Gloom" }))).toBe(true);
+  });
+
   test("refreshes your cached chat identity from the current account profile", async () => {
     apiClient.setSessionToken("token-123");
     apiClient.getAccountProfile = async () => makeAccountProfile({
