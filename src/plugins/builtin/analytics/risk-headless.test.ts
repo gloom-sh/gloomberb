@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { createDefaultConfig } from "../../../types/config";
 import { portfolioRiskHeadless } from "./risk-headless";
+import { BROKER_PORTFOLIO, brokerFixtureTickers, brokerRiskClient, now } from "./risk-test-data";
 
 test("local evidence reports keep account identity and work without market network access", async () => {
   const portfolio = { id: "local", name: "Local account", currency: "USD" };
@@ -38,11 +39,11 @@ test("the compact result is the requested view, without the model, with the stro
   )));
   pairs[42] = { ...pairs[42]!, value: -0.995 };
   const model = {
-    portfolio: { id: "broker:ibkr:U1", name: "Interactive Brokers", currency: "USD" },
+    portfolio: { id: "broker:test:U1", name: "Broker account", currency: "USD" },
     holdings,
-    book: { gross: 100_000, net: 98_000 },
     fetchedAt: "2026-10-01T12:00:00.000Z",
-    complete: false,
+    complete: true,
+    coverage: { currency: "USD", marketValue: 100_000, coveredValue: 100_000, share: 1, holdings: 120, covered: 120, unvalued: 0, minimumShare: 0.5, sufficient: true, leftOut: [] },
     rows: {
       risk: [riskRow("vol", 12.5, "%")],
       factors: [],
@@ -55,8 +56,8 @@ test("the compact result is the requested view, without the model, with the stro
     },
   };
   const full = {
-    complete: false,
-    errors: ["Basket risk supports at most 80 holdings"],
+    complete: true,
+    errors: ["Treasury yield: Internal server error"],
     sections: Object.entries(model.rows).map(([title, rows]) => ({ title, rows })),
     metadata: { model },
   };
@@ -65,7 +66,7 @@ test("the compact result is the requested view, without the model, with the stro
   const correlation = portfolioRiskHeadless.compact!(full as never, args("correlation"));
   expect(correlation.sections.map((section) => section.title)).toEqual(["correlation"]);
   expect(correlation.metadata?.model).toBeUndefined();
-  expect(correlation.metadata).toMatchObject({ view: "correlation", holdings: 120, grossValue: 100_000, portfolio: { id: "broker:ibkr:U1" } });
+  expect(correlation.metadata).toMatchObject({ view: "correlation", coverage: { share: 1, holdings: 120, leftOut: [] }, portfolio: { id: "broker:test:U1" } });
   const strongest = correlation.sections[0]!.rows!;
   expect(strongest).toHaveLength(25);
   expect(strongest[0]!.label).toBe(pairs[42]!.label);
@@ -81,34 +82,32 @@ test("the compact result is the requested view, without the model, with the stro
   expect(full.metadata.model).toBe(model);
 });
 
-test("the compact result names skipped foreign listings once", () => {
-  const model = {
-    portfolio: { id: "broker:ibkr:U1", name: "Interactive Brokers", currency: "USD" },
-    holdings: [],
-    book: null,
-    fetchedAt: "2026-10-01T12:00:00.000Z",
-    rows: { risk: [], factors: [], holdings: [], correlation: [], stress: [], performance: [], attribution: [], greeks: [] },
-  };
-  const foreign = ["1211", "2337", "700", "7203", "ASML", "SHEL"];
-  const full = {
-    complete: false,
-    errors: [
-      "Treasury yield: Internal server error",
-      ...foreign.map((symbol) => `${symbol}: Current USD listing identity unavailable`),
-      "ARKK: Quote listing differs from the requested holding",
-      ...foreign.map((symbol) => `${symbol}: Foreign holdings: historical FX returns required`),
-      "SNOW: Daily history unavailable",
-    ],
-    sections: [],
-    metadata: { model },
-  };
+test("the report and its compact form state what the basket covers and why each holding is left out", async () => {
+  setSystemTime(now);
+  try {
+    const tickers = brokerFixtureTickers();
+    const context = {
+      config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [BROKER_PORTFOLIO] },
+      signal: new AbortController().signal,
+      apiClient: brokerRiskClient(now),
+      resolvePortfolio: async () => ({ portfolio: BROKER_PORTFOLIO, tickers }),
+    } as unknown as HeadlessPaneContext;
+    const args = { rawArgument: BROKER_PORTFOLIO.id, argument: BROKER_PORTFOLIO.id, symbols: [], options: { view: "risk" } };
+    const full = await portfolioRiskHeadless.load(args, context);
+    expect(full.complete).toBe(false);
+    expect(full.metadata?.coverage).toMatchObject({ holdings: 94, covered: 85, estimated: true, shareIsUpperBound: false });
+    expect(full.errors).toContain("TWD1 (4.0% of market value): Foreign holdings: historical FX returns required");
+    // Every risk row is a number, not a dash.
+    expect(full.sections.find((section) => section.title === "risk")!.rows!.every((row) => row.value !== "--")).toBe(true);
 
-  const compact = portfolioRiskHeadless.compact!(full as never, { rawArgument: "", argument: null, symbols: [], options: { view: "holdings" } });
-
-  expect(compact.errors).toEqual([
-    "Treasury yield: Internal server error",
-    "6 foreign listings skipped: 1211, 2337, 700, 7203, ASML, SHEL",
-    "ARKK: Quote listing differs from the requested holding",
-    "SNOW: Daily history unavailable",
-  ]);
+    const compact = portfolioRiskHeadless.compact!(full, args);
+    expect(compact.errors).toEqual(["Basket covers 78% of market value \u00b7 9 holdings left out; metadata.coverage lists each with its reason."]);
+    const coverage = compact.metadata?.coverage as { share: number; leftOut: Array<{ symbol: string; reason: string; share: number }> };
+    expect(coverage.share).toBeCloseTo(365_500 / 468_560, 10);
+    expect(coverage.leftOut[0]).toMatchObject({ symbol: "EUR2", reason: "Foreign holdings: historical FX returns required" });
+    expect(coverage.leftOut[0]!.share).toBeCloseTo(20_020 / 468_560, 10);
+    expect(coverage.leftOut.at(-1)).toMatchObject({ symbol: "UNQ3", reason: "Daily history unavailable" });
+  } finally {
+    setSystemTime();
+  }
 });

@@ -1,6 +1,11 @@
 import { portfolioOptionGreeks } from "./risk-options";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { formatNumber } from "../../../utils/format";
+import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import {
+  getPortfolioPositionMetrics,
+  resolvePortfolioMarketValue,
+} from "../portfolio-list/position-metrics";
 import type { DatedReturn } from "./metrics";
 import {
   computeWeightedPortfolioReturns,
@@ -22,6 +27,7 @@ import {
 import {
   RISK_FACTOR_INSTRUMENTS,
   riskInstrumentId,
+  type RiskHoldingRequest,
   type RiskMarketSnapshot,
 } from "./risk-client";
 
@@ -31,14 +37,46 @@ interface PortfolioRiskHolding {
   exchange: string;
   quantity: number;
   currency: string;
+  /** Signed USD value at the current mark; only these marks weight the basket. */
   value: number | null;
+  /** Weight in the covered basket, null outside it. */
   weight: number | null;
+  /** Gross current value in the portfolio currency, for the covered share only; null when nothing values it. */
+  marketValue: number | null;
   priceAsOf: string | null;
   /** "close" when no current quote arrived and the latest completed close marks the holding. */
   markSource?: "quote" | "close" | null;
   historyAsOf: string | null;
   returns: DatedReturn[];
   error: string | null;
+  /** Why the holding is outside the basket; null when it qualifies. */
+  leftOut: string | null;
+}
+/** A holding outside the basket, with its share of market value when one is known. */
+interface RiskLeftOut {
+  id: string;
+  symbol: string;
+  reason: string;
+  value: number | null;
+  share: number | null;
+}
+/** What the basket views cover of the account. */
+export interface RiskCoverage {
+  currency: string;
+  /** Gross current value of every holding that has one, in the portfolio currency. */
+  marketValue: number;
+  coveredValue: number;
+  /** Covered share of market value; an upper bound while `unvalued` holdings have no value. */
+  share: number | null;
+  holdings: number;
+  /** Holdings that qualify for the basket. */
+  covered: number;
+  unvalued: number;
+  minimumShare: number;
+  /** The basket views estimate only when qualifying holdings reach the minimum share. */
+  sufficient: boolean;
+  /** Largest first. */
+  leftOut: RiskLeftOut[];
 }
 export interface RiskDisplayRow {
   id: string;
@@ -53,7 +91,17 @@ export interface RiskDisplayRow {
   allocation?: number;
   selection?: number;
   interaction?: number;
+  /** Holdings rows only: why the holding is outside the covered basket. */
+  leftOut?: string;
 }
+/**
+ * Below half of market value the qualifying holdings are not most of the
+ * account, so a basket estimate would mostly describe something other than it;
+ * the basket views say why instead of estimating.
+ */
+const RISK_MIN_COVERAGE = 0.5;
+/** Views computed from the covered basket; the others read the whole account or its option book. */
+export const BASKET_VIEWS: ReadonlySet<RiskView> = new Set(["risk", "factors", "holdings", "correlation", "stress"]);
 /** Book-level concentration rows that lead the holdings view, ahead of one row per holding. */
 export const HOLDINGS_SUMMARY_ROW_IDS: ReadonlySet<string> = new Set(["top", "top-five", "hhi"]);
 export const RISK_VIEWS = [
@@ -110,7 +158,121 @@ export function portfolioRiskTickers(
       positions(ticker, portfolioId).length > 0,
   );
 }
-/** All holding identities stay in the denominator. A missing value/history blocks basket estimates. */
+const signedQuantity = (lots: TickerRecord["metadata"]["positions"]) =>
+  lots.reduce(
+    (sum, row) => sum + (row.side === "short" ? -Math.abs(row.shares) : row.shares),
+    0,
+  );
+/** What the market load needs to rank holdings by value and skip the ones the basket cannot take. */
+export function portfolioRiskRequests(
+  tickers: readonly TickerRecord[],
+  portfolioId: string,
+): RiskHoldingRequest[] {
+  return tickers.map((ticker) => {
+    const lots = positions(ticker, portfolioId);
+    const currency = lots.find((row) => row.currency)?.currency ?? ticker.metadata.currency;
+    const snapshot = lots.every(
+      (row) => Number.isFinite(row.marketValue) && (row.currency ?? ticker.metadata.currency) === "USD",
+    )
+      ? lots.reduce((sum, row) => sum + Math.abs(row.marketValue!), 0)
+      : null;
+    return {
+      symbol: ticker.metadata.ticker,
+      exchange: ticker.metadata.exchange,
+      quantity: signedQuantity(lots),
+      currency,
+      snapshotValue: snapshot,
+      unsupported:
+        syntheticPositionUnsupportedReason(ticker, "USD", portfolioId) != null ||
+        lots.some((row) => !Number.isFinite(row.shares)),
+    };
+  });
+}
+/**
+ * Current gross value of a holding outside the USD marks, in the portfolio
+ * currency: its listing price, else the broker's snapshot, at the load's rates.
+ * It sizes what is left out and never enters a return.
+ */
+function outsideValue(
+  ticker: TickerRecord,
+  portfolio: Portfolio,
+  price: { price: number; currency: string } | null,
+  rates: Readonly<Record<string, number>>,
+): number | null {
+  const toUsd = (value: number, currency: string) => {
+    const unit = resolveCurrencyUnit(currency);
+    const rate = unit.currency === "USD" ? 1 : rates[unit.currency];
+    return rate != null && rate > 0 ? (value * rate) / unit.divisor : Number.NaN;
+  };
+  const toAccount = (value: number, currency: string) => {
+    if (currency === portfolio.currency) return value;
+    const rate = portfolio.currency === "USD" ? 1 : rates[portfolio.currency];
+    return rate != null && rate > 0 ? toUsd(value, currency) / rate : Number.NaN;
+  };
+  const metrics = getPortfolioPositionMetrics(ticker, portfolio.id, ticker.metadata.currency, {
+    currency: portfolio.currency,
+    convert: toAccount,
+  });
+  const unit = price && Number.isFinite(price.price) && price.price > 0
+    ? toAccount(price.price, price.currency)
+    : null;
+  const value = resolvePortfolioMarketValue(metrics, unit != null && Number.isFinite(unit) ? unit : null)?.gross;
+  return value != null && Number.isFinite(value) ? value : null;
+}
+const coveragePercent = (share: number) => Math.floor(share * 100);
+const holdingCount = (count: number) => `${count} holding${count === 1 ? "" : "s"}`;
+const shareText = (share: number) =>
+  share < 0.001 ? "under 0.1%" : `${(share * 100).toFixed(1)}%`;
+/** "covers 78% of market value · 9 holdings left out", or null when nothing is left out. */
+export function riskCoverageText(coverage: RiskCoverage | undefined): string | null {
+  if (!coverage?.leftOut.length) return null;
+  const covers = coverage.share == null
+    ? "covers an unknown share of market value"
+    : `covers ${coverage.unvalued ? "at most " : ""}${coveragePercent(coverage.share)}% of market value`;
+  return `${covers} · ${holdingCount(coverage.leftOut.length)} left out`;
+}
+/** One notice per left-out holding, largest first, after a lead line. */
+export function riskCoverageNotices(coverage: RiskCoverage | undefined): string[] {
+  if (!coverage?.leftOut.length) return [];
+  return [
+    `${holdingCount(coverage.leftOut.length)} left out of the basket, largest first:`,
+    ...coverage.leftOut.map(
+      (row) =>
+        `${row.symbol} (${row.share == null ? "value unknown" : `${shareText(row.share)} of market value`}): ${row.reason}`,
+    ),
+  ];
+}
+/** Why the basket views show no estimate, when too little of the account qualifies. */
+export function riskCoverageShortfall(
+  coverage: RiskCoverage | undefined,
+): { title: string; message: string } | null {
+  if (!coverage || coverage.sufficient) return null;
+  if (!coverage.holdings) return { title: "No holdings in this portfolio.", message: "" };
+  const minimum = Math.round(coverage.minimumShare * 100);
+  const reasons = new Map<string, { share: number; count: number }>();
+  for (const row of coverage.leftOut) {
+    const entry = reasons.get(row.reason) ?? { share: 0, count: 0 };
+    entry.share += row.share ?? 0;
+    entry.count += 1;
+    reasons.set(row.reason, entry);
+  }
+  const [reason, largest] = [...reasons].sort(
+    ([, left], [, right]) => right.share - left.share || right.count - left.count,
+  )[0] ?? [];
+  return {
+    title: coverage.covered === 0 || coverage.share == null
+      ? `No holding qualifies for basket estimates, which need ${minimum}% of market value.`
+      : `Qualifying holdings cover ${coverage.unvalued ? "at most " : ""}${coveragePercent(coverage.share)}% of market value; basket estimates need ${minimum}%.`,
+    message: reason
+      ? `Most of what is left out: ${reason}${largest!.share > 0 ? ` (${shareText(largest!.share)} of market value)` : ""}.`
+      : "",
+  };
+}
+/**
+ * Basket estimates use the holdings that qualify, reweighted among themselves.
+ * Every other holding stays listed with its reason and counts in the market
+ * value they are measured against.
+ */
 export function buildPortfolioRisk(
   portfolio: Portfolio,
   tickers: readonly TickerRecord[],
@@ -138,6 +300,7 @@ export function buildPortfolioRisk(
   const byId = new Map(
     market.histories.map((row) => [riskInstrumentId(row.instrument), row]),
   );
+  const rates = market.fxRates ?? {};
   const holdings: PortfolioRiskHolding[] = portfolioRiskTickers(
     tickers,
     portfolio.id,
@@ -157,17 +320,11 @@ export function buildPortfolioRisk(
       : quote
         ? { price: quote.price, currency: quote.currency, stale: !!quote.stale }
         : null;
-    const quantity = lots.reduce(
-      (sum, row) =>
-        sum + (row.side === "short" ? -Math.abs(row.shares) : row.shares),
-      0,
-    );
+    const quantity = signedQuantity(lots);
+    const listingCurrency =
+      quote?.currency ?? close?.currency ?? history?.listing?.currency ?? ticker.metadata.currency;
     const error =
-      syntheticPositionUnsupportedReason(
-        ticker,
-        quote?.currency ?? close?.currency ?? ticker.metadata.currency,
-        portfolio.id,
-      ) ??
+      syntheticPositionUnsupportedReason(ticker, listingCurrency, portfolio.id) ??
       (lots.some((row) => !Number.isFinite(row.shares))
         ? "Invalid position quantity"
         : null) ??
@@ -182,7 +339,7 @@ export function buildPortfolioRisk(
       history?.error ??
       (!history ? "Daily history unavailable" : null);
     const priceDate = close ? close.date : quoteDate(quote?.lastUpdated);
-    const value =
+    const marked =
       mark &&
       mark.currency === portfolio.currency &&
       !mark.stale &&
@@ -197,27 +354,69 @@ export function buildPortfolioRisk(
         error?.startsWith("Short positions"))
         ? quantity * mark.price
         : null;
+    const value = marked != null && Number.isFinite(marked) ? marked : null;
+    const returns = history?.returns ?? [];
+    const leftOut =
+      error ??
+      (value == null || value <= 0
+        ? "No current USD mark"
+        : returns.length < 60
+          ? "Fewer than 60 daily returns"
+          : null);
     return {
       id,
       ...instrument,
       quantity,
-      currency: quote?.currency ?? close?.currency ?? ticker.metadata.currency,
-      value: Number.isFinite(value) ? value : null,
+      currency: listingCurrency,
+      value,
       weight: null,
+      marketValue:
+        value != null
+          ? Math.abs(value)
+          : outsideValue(ticker, portfolio, quote ?? history?.listing ?? null, rates),
       priceAsOf: priceDate,
       markSource: close ? "close" : quote ? "quote" : null,
       historyAsOf: history?.asOf ?? null,
-      returns: history?.returns ?? [],
+      returns,
       error,
+      leftOut,
     };
   });
-  const book = concentration(holdings);
-  for (const holding of holdings)
+  const qualifying = holdings.filter((row) => row.leftOut == null);
+  const valued = holdings.filter((row) => row.marketValue != null);
+  const marketValue = valued.reduce((sum, row) => sum + row.marketValue!, 0);
+  const coveredValue = qualifying.reduce((sum, row) => sum + row.value!, 0);
+  const share = marketValue > 0 ? coveredValue / marketValue : null;
+  const sufficient = qualifying.length > 0 && share != null && share >= RISK_MIN_COVERAGE;
+  const coverage: RiskCoverage = {
+    currency: portfolio.currency,
+    marketValue,
+    coveredValue,
+    share,
+    holdings: holdings.length,
+    covered: qualifying.length,
+    unvalued: holdings.length - valued.length,
+    minimumShare: RISK_MIN_COVERAGE,
+    sufficient,
+    leftOut: holdings
+      .filter((row) => row.leftOut != null)
+      .sort((a, b) => (b.marketValue ?? -1) - (a.marketValue ?? -1))
+      .map((row) => ({
+        id: row.id,
+        symbol: row.symbol,
+        reason: row.leftOut!,
+        value: row.marketValue,
+        share: row.marketValue != null && marketValue > 0 ? row.marketValue / marketValue : null,
+      })),
+  };
+  // Weights renormalize over the covered basket; nothing outside it is approximated into it.
+  const members = sufficient ? qualifying : [];
+  const book = members.length ? concentration(members) : null;
+  for (const holding of members)
     holding.weight =
       book?.rows.find((row) => row.id === holding.id)?.weight ?? null;
-  const closeMarked = holdings.filter(
-    (row) => row.markSource === "close" && row.value != null,
-  ).length;
+  const closeMarked = members.filter((row) => row.markSource === "close").length;
+  const held = new Set(holdings.map((row) => row.id));
   const warnings = [
     ...market.warnings,
     ...(closeMarked
@@ -225,33 +424,16 @@ export function buildPortfolioRisk(
           `${closeMarked} holding${closeMarked === 1 ? "" : "s"} had no current quote; weighted at the latest completed close.`,
         ]
       : []),
+    // A held instrument's failure is its left-out reason; factor proxies report here.
     ...market.histories.flatMap((row) =>
-      row.error ? [`${row.instrument.symbol}: ${row.error}`] : [],
-    ),
-    ...holdings.flatMap((row) =>
-      row.error ? [`${row.symbol}: ${row.error}`] : [],
+      row.error && !held.has(riskInstrumentId(row.instrument))
+        ? [`${row.instrument.symbol}: ${row.error}`]
+        : [],
     ),
   ];
-  const completeBasket =
-    holdings.length > 0 &&
-    holdings.length <= 80 &&
-    book != null &&
-    holdings.every(
-      (row) =>
-        !row.error &&
-        row.value != null &&
-        row.value > 0 &&
-        row.returns.length >= 60,
-    );
-  if (holdings.length > 80)
-    warnings.push("Basket risk supports at most 80 holdings");
-  if (!completeBasket && holdings.length)
-    warnings.push(
-      "Basket estimates require complete, positive USD equity marks and matched daily history for every holding.",
-    );
-  const basket = completeBasket
+  const basket = members.length
     ? computeWeightedPortfolioReturns(
-        holdings.map((row) => ({ weight: row.weight!, returns: row.returns })),
+        members.map((row) => ({ weight: row.weight!, returns: row.returns })),
       )
     : [];
   const proxy = (symbol: string) => {
@@ -290,8 +472,8 @@ export function buildPortfolioRisk(
     ...rollingBeta(basket, factor.series, factor.label, factor.id),
     regression: regressReturns(basket.slice(-60), factor.series),
   }));
-  const correlation = holdings.flatMap((left, index) =>
-    holdings.slice(index + 1).map((right) => {
+  const correlation = members.flatMap((left, index) =>
+    members.slice(index + 1).map((right) => {
       const regression = regressReturns(left.returns.slice(-60), right.returns);
       return {
         left: left.id,
@@ -332,11 +514,11 @@ export function buildPortfolioRisk(
       value: regression ? regression.beta * stress.shock * 100 : null,
     };
   });
-  if (completeBasket)
+  if (sufficient)
     for (const factor of factors)
       if (factor.samples === 0)
         warnings.push(`${factor.label}: no matched factor history`);
-  if (completeBasket && metrics.every((row) => row.value == null))
+  if (sufficient && metrics.every((row) => row.value == null))
     warnings.push("Fewer than 60 consecutive matched completed daily returns.");
   const performance = evidence?.performance
     ? calculateAccountPerformance(evidence.performance)
@@ -359,26 +541,28 @@ export function buildPortfolioRisk(
     risk: metrics.map((row) => ({
       ...row,
       percentile: row.rank.percentile,
-      detail: `${row.samples} sessions; price returns; fixed current weights`,
+      // The method (price returns at fixed current weights) is in docs; the footer keeps room for coverage.
+      detail: `${row.samples} sessions`,
     })),
     factors: factors.map((row) => ({
       ...row,
       percentile: row.rank.percentile,
       detail: `${row.samples} sessions; R² ${row.regression?.rSquared?.toFixed(2) ?? "--"}; independent ETF proxy`,
     })),
-    // Largest exposure first; holdings without a mark sort last.
+    // Largest current value first, left-out holdings in place; unvalued ones last.
     holdings: [...holdings]
-      .sort((a, b) => (b.weight ?? -Infinity) - (a.weight ?? -Infinity))
+      .sort((a, b) => (b.marketValue ?? -1) - (a.marketValue ?? -1))
       .map((row) => ({
       id: row.id,
       label: row.symbol,
       value: row.weight == null ? null : row.weight * 100,
-      unit: "% gross",
+      unit: "% basket",
       percentile: null,
       asOf: row.priceAsOf,
-      detail:
-        row.error ??
-        `${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${row.currency}${row.markSource === "close" ? ` at ${row.priceAsOf} close` : ""}; history ${row.historyAsOf}`,
+      detail: row.leftOut
+        ? row.leftOut
+        : `${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${row.currency}${row.markSource === "close" ? ` at ${row.priceAsOf} close` : ""}; history ${row.historyAsOf}`,
+      ...(row.leftOut ? { leftOut: row.leftOut } : {}),
     })),
     correlation: correlation.map((row) => ({
       id: `${row.left}/${row.right}`,
@@ -504,19 +688,19 @@ export function buildPortfolioRisk(
         id: "top",
         label: "Largest holding",
         value: book.top * 100,
-        unit: "% gross",
+        unit: "% basket",
         percentile: null,
         asOf: market.fetchedAt,
-        detail: "Absolute gross current exposure",
+        detail: "Current value in the covered basket",
       },
       {
         id: "top-five",
         label: "Largest five",
         value: book.topFive * 100,
-        unit: "% gross",
+        unit: "% basket",
         percentile: null,
         asOf: market.fetchedAt,
-        detail: "Absolute gross current exposure",
+        detail: "Current value in the covered basket",
       },
       {
         id: "hhi",
@@ -543,14 +727,20 @@ export function buildPortfolioRisk(
     greeks,
     evidence,
     rows,
-    complete: completeBasket && metrics.some((row) => row.value != null),
+    coverage,
+    complete:
+      sufficient &&
+      coverage.leftOut.length === 0 &&
+      metrics.some((row) => row.value != null),
     warnings: [...new Set(warnings)],
     fetchedAt: market.fetchedAt,
   };
 }
 export type PortfolioRiskModel = ReturnType<typeof buildPortfolioRisk>;
 export const riskValue = (row: RiskDisplayRow) =>
-  row.value == null
+  row.leftOut
+    ? "left out"
+    : row.value == null
     ? "--"
     : `${row.value.toFixed(2)}${row.unit === "%" ? "%" : ` ${row.unit}`}`;
 export const riskPercentile = (row: RiskDisplayRow) =>

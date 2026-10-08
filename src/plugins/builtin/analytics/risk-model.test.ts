@@ -1,12 +1,30 @@
 import { expect, test } from "bun:test";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { buildPortfolioRisk } from "./risk-model";
 import {
+  buildPortfolioRisk,
+  portfolioRiskRequests,
+  portfolioRiskTickers,
+  riskCoverageNotices,
+  riskCoverageShortfall,
+  riskCoverageText,
+} from "./risk-model";
+import {
+  BEYOND_SIZE_REASON,
+  fetchPortfolioRiskMarket,
   RISK_FACTOR_INSTRUMENTS,
+  RISK_HISTORY_LIMIT,
   validateRiskHistory,
   type RiskMarketSnapshot,
 } from "./risk-client";
-import { riskHistory, riskQuote, now } from "./risk-test-data";
+import {
+  BROKER_PORTFOLIO,
+  brokerFixtureHoldings,
+  brokerFixtureTickers,
+  brokerRiskClient,
+  riskHistory,
+  riskQuote,
+  now,
+} from "./risk-test-data";
 import { portfolioOptionGreeks } from "./risk-options";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
 import { createTestTicker } from "../../../test-support/ticker";
@@ -41,33 +59,88 @@ function market(staleQuotes: readonly string[] = []): RiskMarketSnapshot {
     fetchedAt: now.toISOString(),
   };
 }
-test("missing holdings block complete-book risk without renormalizing the surviving book", () => {
-  const complete = buildPortfolioRisk(
-    portfolio,
-    [holding("SPY"), holding("IWM")],
-    market(),
+async function brokerModel(holdings = brokerFixtureHoldings()) {
+  const tickers = brokerFixtureTickers(holdings);
+  const client = brokerRiskClient(now, holdings);
+  const market = await fetchPortfolioRiskMarket(
+    portfolioRiskRequests(portfolioRiskTickers(tickers, BROKER_PORTFOLIO.id), BROKER_PORTFOLIO.id),
+    client as never,
+    now,
   );
-  expect(complete.complete).toBe(true);
-  expect(complete.holdings.map((row) => row.weight)).toEqual([0.5, 0.5]);
-  expect(complete.metrics[2]!.value).toBeCloseTo(0, 8);
-  const missing = buildPortfolioRisk(
-    portfolio,
-    [holding("SPY"), holding("MISSING")],
-    market(),
+  return { model: buildPortfolioRisk(BROKER_PORTFOLIO, tickers, market), client };
+}
+test("a broker account estimates on the holdings that qualify and lists every other with its reason", async () => {
+  const { model, client } = await brokerModel();
+  // Foreign listings are quoted for their value but never request USD history.
+  expect(client.calls.histories.filter((symbol) => /^(EUR|GBP|HKD|JPY|TWD)\d$/.test(symbol))).toEqual([]);
+  expect(client.calls.rates.toSorted()).toEqual(["EUR", "GBP", "HKD", "JPY", "TWD"]);
+  // 85 US listings worth $365,500 of $468,560: foreign listings at the load's rates, the rest at the broker's value.
+  expect(model.coverage).toMatchObject({ holdings: 94, covered: 85, unvalued: 0, marketValue: 468_560, coveredValue: 365_500, sufficient: true });
+  expect(model.coverage.share).toBeCloseTo(365_500 / 468_560, 10);
+  expect(riskCoverageText(model.coverage)).toBe("covers 78% of market value \u00b7 9 holdings left out");
+  expect(riskCoverageNotices(model.coverage)).toEqual([
+    "9 holdings left out of the basket, largest first:",
+    "EUR2 (4.3% of market value): Foreign holdings: historical FX returns required",
+    "TWD1 (4.0% of market value): Foreign holdings: historical FX returns required",
+    "EUR1 (3.5% of market value): Foreign holdings: historical FX returns required",
+    "GBP1 (2.7% of market value): Foreign holdings: historical FX returns required",
+    "HKD1 (2.2% of market value): Foreign holdings: historical FX returns required",
+    "JPY1 (2.2% of market value): Foreign holdings: historical FX returns required",
+    "UNQ1 (1.7% of market value): Daily history unavailable",
+    "UNQ2 (1.1% of market value): Daily history unavailable",
+    "UNQ3 (0.4% of market value): Daily history unavailable",
+  ]);
+  // Weights renormalize over the basket; nothing left out carries one.
+  const weights = new Map(model.holdings.map((row) => [row.symbol, row.weight]));
+  expect(weights.get("US85")).toBeCloseTo(8_500 / 365_500, 12);
+  expect(weights.get("EUR2")).toBeNull();
+  expect(model.holdings.reduce((sum, row) => sum + (row.weight ?? 0), 0)).toBeCloseTo(1, 12);
+  expect(model.metrics.every((row) => row.value != null)).toBe(true);
+  expect(model.factors.every((row) => row.value != null)).toBe(true);
+  expect(model.rows.correlation).toHaveLength((85 * 84) / 2);
+  expect(model.rows.holdings.find((row) => row.label === "TWD1")).toMatchObject({ value: null, leftOut: "Foreign holdings: historical FX returns required" });
+  expect(model.complete).toBe(false);
+
+  // A left-out holding nothing values makes the share an upper bound.
+  const unvalued = brokerFixtureHoldings().map((row) => (row.symbol === "UNQ3" ? { ...row, brokerValue: undefined } : row));
+  const bound = (await brokerModel(unvalued)).model.coverage;
+  expect(bound.unvalued).toBe(1);
+  expect(riskCoverageText(bound)).toBe("covers at most 78% of market value \u00b7 9 holdings left out");
+  expect(riskCoverageNotices(bound).at(-1)).toBe("UNQ3 (value unknown): Daily history unavailable");
+});
+test("past the size limit the largest holdings by value are modelled and the rest left out", async () => {
+  // Listed smallest first, so the limit has to rank by value rather than keep the order.
+  const holdings = Array.from({ length: RISK_HISTORY_LIMIT + 10 }, (_, index) => ({
+    symbol: `H${String(index).padStart(3, "0")}`,
+    exchange: "NASDAQ",
+    currency: "USD",
+    quantity: index + 1,
+    price: 100,
+  }));
+  const { model, client } = await brokerModel(holdings);
+  expect(new Set(client.calls.histories).size).toBe(RISK_HISTORY_LIMIT + RISK_FACTOR_INSTRUMENTS.length);
+  expect(model.coverage.leftOut.map((row) => row.symbol)).toEqual(
+    holdings.slice(0, 10).map((row) => row.symbol).reverse(),
   );
-  expect(missing.complete).toBe(false);
-  expect(missing.metrics.every((row) => row.value === null)).toBe(true);
-  expect(missing.holdings.every((row) => row.weight === null)).toBe(true);
-  const noHistory = market();
-  noHistory.histories[1]!.returns = [];
-  noHistory.histories[1]!.error = "History unavailable";
-  const partial = buildPortfolioRisk(
-    portfolio,
-    [holding("SPY"), holding("IWM")],
-    noHistory,
-  );
-  expect(partial.holdings[0]!.weight).toBe(0.5);
-  expect(partial.complete).toBe(false);
+  expect(new Set(model.coverage.leftOut.map((row) => row.reason))).toEqual(new Set([BEYOND_SIZE_REASON]));
+  // Quantities 11 to 160 of 1 to 160, all at $100.
+  expect(model.coverage.share).toBeCloseTo(12_825 / 12_880, 12);
+  expect(model.coverage.covered).toBe(RISK_HISTORY_LIMIT);
+});
+test("below half of market value the basket views estimate nothing and say why", async () => {
+  // Ten US listings worth $5,500 against $103,060 left out.
+  const holdings = brokerFixtureHoldings().filter((row) => row.currency !== "USD" || !/^US(?:[2-9]\d|1[1-9])$/.test(row.symbol));
+  const { model } = await brokerModel(holdings);
+  expect(model.coverage).toMatchObject({ covered: 10, coveredValue: 5_500, marketValue: 108_560, sufficient: false });
+  expect(model.metrics.every((row) => row.value == null)).toBe(true);
+  expect(model.factors.every((row) => row.value == null)).toBe(true);
+  expect(model.rows.correlation).toEqual([]);
+  expect(model.book).toBeNull();
+  expect(model.holdings.every((row) => row.weight == null)).toBe(true);
+  expect(riskCoverageShortfall(model.coverage)).toEqual({
+    title: "Qualifying holdings cover 5% of market value; basket estimates need 50%.",
+    message: "Most of what is left out: Foreign holdings: historical FX returns required (81.1% of market value).",
+  });
   expect(() =>
     buildPortfolioRisk(portfolio, [], market(), {
       version: 1,
@@ -108,16 +181,19 @@ test("only held positions marked at a close raise the close-mark warning", () =>
     "1 holding had no current quote; weighted at the latest completed close.",
   ]);
 });
-test("signed equity exposure remains in concentration while shorts block the unfinanced basket", () => {
+test("a short is left out of the basket with its reason and counts in the market value", () => {
   const model = buildPortfolioRisk(
     portfolio,
     [holding("SPY", 3), holding("IWM", -1)],
     market(),
   );
-  expect(model.book?.net).toBe(220);
-  expect(model.book?.gross).toBe(440);
-  expect(model.holdings[1]!.weight).toBe(0.25);
-  expect(model.complete).toBe(false);
+  expect(model.coverage.share).toBe(0.75);
+  expect(model.coverage.leftOut).toEqual([
+    { id: "ARCA:IWM", symbol: "IWM", reason: "Short positions: signed exposure history required", value: 110, share: 0.25 },
+  ]);
+  expect(model.holdings.map((row) => row.weight)).toEqual([1, null]);
+  expect(model.book?.gross).toBe(330);
+  expect(model.metrics[2]!.value).toBeCloseTo(0, 8);
 });
 test("imported option snapshots use signed dollar sensitivities, preserve scope and reject stale or mixed currencies", () => {
   const position = {

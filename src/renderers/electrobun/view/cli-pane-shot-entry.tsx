@@ -436,8 +436,9 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
   const title = getPaneDisplayTitle(titleState, instance, pane, registry.panes);
   const width = payload.widthCells;
   const height = payload.heightCells;
+  // PORT keeps what its basket covers, so a capture never reads as the whole account.
   return (
-    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} preserveStatus={["time-sales", "gpu", "hiring", "apps", "catalysts", "litigation", "perps", "members"].includes(pane.id)}>
+    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} preserveStatus={["time-sales", "gpu", "hiring", "apps", "catalysts", "litigation", "perps", "members", "analytics"].includes(pane.id)}>
       {(bodyFrame) => <PaneContent
         component={pane.component}
         paneId={instance.instanceId}

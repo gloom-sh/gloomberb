@@ -47,9 +47,14 @@ import { loadPortfolioRiskMarket } from "./risk-client";
 import { brokerPerformanceEvidence, parsePortfolioRiskEvidence } from "./risk-evidence";
 import { useBrokerPortfolioPerformance } from "./broker-performance";
 import {
+  BASKET_VIEWS,
   buildPortfolioRisk,
   HOLDINGS_SUMMARY_ROW_IDS,
+  portfolioRiskRequests,
   portfolioRiskTickers,
+  riskCoverageNotices,
+  riskCoverageShortfall,
+  riskCoverageText,
   riskPercentile,
   riskValue,
   RISK_VIEWS,
@@ -108,9 +113,9 @@ function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
   return rows.map((row) => ({
     id: row.id,
     label: HOLDINGS_SUMMARY_LABELS[row.id] ?? row.label,
-    value: row.value == null ? "--" : row.unit === "% gross" ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
-    // "Absolute gross current exposure" is the same method note on both weights.
-    detail: row.unit === "% gross" ? "gross" : row.detail,
+    value: row.value == null ? "--" : row.unit === "% basket" ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
+    // The same method note sits on both weights.
+    detail: row.unit === "% basket" ? "of basket" : row.detail,
   }));
 }
 /**
@@ -276,24 +281,20 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         : [],
     [portfolio?.id, tickers],
   );
-  const instruments = useMemo(
-    () =>
-      localTickers.slice(0, 80).map((row) => ({
-        symbol: row.metadata.ticker,
-        exchange: row.metadata.exchange,
-      })),
-    [localTickers],
+  const requests = useMemo(
+    () => (portfolio ? portfolioRiskRequests(localTickers, portfolio.id) : []),
+    [localTickers, portfolio?.id],
   );
   const session = useResearchCloudSession();
   const loader = useCallback(
     async (force: boolean) => {
       const [market, brokerOptions] = await Promise.all([
-        loadPortfolioRiskMarket(instruments, force),
+        loadPortfolioRiskMarket(requests, force),
         loadPortfolioOptionBook(localTickers, portfolio!),
       ]);
       return { ...market, brokerOptions };
     },
-    [instruments, localTickers, portfolio, session.requestKey],
+    [requests, localTickers, portfolio, session.requestKey],
   );
   const resource = useAsyncResource(!frozen && portfolio ? loader : null, {
     clearOnError: isAccessDenied,
@@ -343,13 +344,21 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     volatility,
   ]);
   const model = derived.model;
+  const marketLoading = resource.loading && !resource.data;
+  // A basket view with nothing to estimate says why in the body, not with a table of dashes.
+  const basketBody = useMemo<{ loading?: boolean; error?: string; title?: string; message?: string } | null>(() => {
+    if (!model || !BASKET_VIEWS.has(view)) return null;
+    if (!frozen && !resource.data)
+      return marketLoading ? { loading: true } : resource.error ? { error: resource.error } : null;
+    return view === "holdings" ? null : riskCoverageShortfall(model.coverage);
+  }, [frozen, marketLoading, model, resource.data, resource.error, view]);
   const holdingsSummary = useMemo(
     () => view === "holdings" ? holdingsSummaryItems((model?.rows.holdings ?? []).filter((row) => HOLDINGS_SUMMARY_ROW_IDS.has(row.id))) : [],
     [model, view],
   );
   const rows = useMemo(
     () =>
-      (model?.rows[view] ?? [])
+      (basketBody ? [] : model?.rows[view] ?? [])
         .filter((row) => view !== "holdings" || !HOLDINGS_SUMMARY_ROW_IDS.has(row.id))
         .sort((a, b) => {
         if (!sort.column) return 0;
@@ -364,7 +373,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           (sort.direction === "asc" ? 1 : -1)
         );
       }),
-    [model, view, sort],
+    [basketBody, model, view, sort],
   );
   const openRow = rows.find((row) => row.id === open);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -434,10 +443,26 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   // Only real data limitations raise the footer warning; the empty evidence
   // views say what they need in the body, with the import action.
   const notices = [
+    ...riskCoverageNotices(model?.coverage),
     ...(model?.warnings ?? []),
     ...(derived.error ? [derived.error] : []),
     ...(resource.error ? [resource.error] : []),
   ];
+  // What the basket views cover, unless the body already says why they show nothing.
+  const coverageText = model && BASKET_VIEWS.has(view) && !basketBody ? riskCoverageText(model.coverage) : null;
+  const asOfDate = model?.rows[view].find((row) => row.asOf)?.asOf?.slice(0, 10) ?? null;
+  // Dated evidence only when a row has a date; a missing date is not a claim about history.
+  const asOfText = !model
+    ? null
+    : [
+        ...(basketBody ? [] : [
+          ...(asOfDate && sharedEvidence ? [sharedEvidence] : []),
+          model.portfolio.currency,
+          ...(asOfDate ? [asOfDate] : []),
+          ...(EVIDENCE_VIEWS.has(view) && model.evidence ? [model.evidence.source] : []),
+        ]),
+        ...(frozen ? ["snapshot"] : []),
+      ].join(" · ") || null;
   usePaneNoticeFooter({
     registrationId: "portfolio-risk-notices",
     notices,
@@ -458,18 +483,12 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
               },
             ]
           : []),
-        ...(model
-          ? [
-              {
-                id: "asof",
-                parts: [
-                  {
-                    text: `${sharedEvidence ? `${sharedEvidence} · ` : ""}${model.portfolio.currency} · ${model.rows[view].find((row) => row.asOf)?.asOf?.slice(0, 10) ?? "history unavailable"}${["performance", "attribution", "greeks"].includes(view) && model.evidence ? ` · ${model.evidence.source}` : ""}${frozen ? " · snapshot" : ""}`,
-                    tone: "muted" as const,
-                  },
-                ],
-              },
-            ]
+        // One segment, coverage first: a narrow footer cuts the date before what the numbers cover.
+        ...(coverageText || asOfText
+          ? [{
+              id: "asof",
+              parts: [{ text: [coverageText, asOfText].filter(Boolean).join(" · "), tone: "muted" as const }],
+            }]
           : []),
         ...(actionStatus
           ? [
@@ -482,7 +501,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ],
       hints,
     }),
-    [resource.loading, model, view, frozen, actionStatus, hints, sharedEvidence],
+    [resource.loading, coverageText, asOfText, actionStatus, hints],
   );
   useShortcut(
     (event) => {
@@ -509,7 +528,6 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   // The chart follows the selected row: its own history, or for the return
   // rows the basket against SPY. Performance charts the account's TWR.
   const chartRow = rows.find((row) => row.id === selected) ?? rows[0];
-  const marketLoading = resource.loading && !resource.data;
   const chart = useMemo<ChartTableChart | null>(() => {
     if (!model) return null;
     if (view === "performance") {
@@ -673,7 +691,10 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         }
         renderCell={(row, column) => {
           if (column.id === "label") return { text: row.label };
-          if (column.id === "value") return { text: sharedUnit || attributionParts ? bareValue(row) : riskValue(row) };
+          if (column.id === "value")
+            return row.leftOut
+              ? { text: "left out", value: null, color: colors.textMuted }
+              : { text: sharedUnit || attributionParts ? bareValue(row) : riskValue(row) };
           if (column.id === "percentile") return { text: riskPercentile(row) };
           if (column.id === "asOf") return { text: row.asOf?.slice(0, 10) ?? "--" };
           if (column.id === "allocation" || column.id === "selection" || column.id === "interaction") {
@@ -682,6 +703,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           }
           return { text: row.detail };
         }}
+        selectedTextOverridesCellColor
         onActivate={(row) => setOpen(row.id)}
         detailOpen={!!openRow}
         detailTitle={openRow?.label}
@@ -699,7 +721,16 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         }
         detailScrollRef={detailScrollRef}
         emptyContent={
-          evidenceMissing ? (
+          basketBody ? (
+            <PaneStatusBody
+              loading={basketBody.loading}
+              error={basketBody.error ?? null}
+              empty={!!basketBody.title}
+              loadingLabel="Loading portfolio risk"
+              emptyTitle={basketBody.title}
+              emptyMessage={basketBody.message || undefined}
+            />
+          ) : evidenceMissing ? (
             <PaneStatusBody
               empty
               emptyTitle="This view needs dated local evidence."
