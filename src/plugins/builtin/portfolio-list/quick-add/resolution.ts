@@ -1,7 +1,13 @@
 import { getSharedRegistry } from "../../../registry";
-import { resolveTickerSearch, type ResolvedTickerSearch } from "../../../../tickers/search";
+import {
+  AmbiguousContractError,
+  AmbiguousTickerError,
+  resolveTickerSearch,
+  type ResolvedTickerSearch,
+} from "../../../../tickers/search";
 import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
+import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
 
 const QUICK_ADD_MAX_QUERY_LENGTH = 32;
 const QUICK_ADD_SYMBOL_RE = /^[A-Z0-9][A-Z0-9.\-\s]*$/;
@@ -21,6 +27,8 @@ export type QuickAddValidation =
   | { status: "checking"; query: string }
   | (ResolvedQuickAdd & { status: "ready" })
   | (ResolvedQuickAdd & { status: "duplicate" })
+  /** The symbol names several listings and none is the default: the add row asks which. */
+  | { status: "choose"; query: string }
   | { status: "missing"; query: string; message: string }
   | { status: "error"; query: string; message: string };
 
@@ -73,6 +81,38 @@ export function tickerNameFromValidation(
   return validation.resolved.kind === "provider" ? validation.resolved.result.name : "";
 }
 
+export function exchangeLabelFromValidation(
+  validation: Extract<QuickAddValidation, { status: "ready" | "duplicate" }>,
+): string {
+  if (validation.resolved.kind === "provider") {
+    const result = validation.resolved.result;
+    return result.exchange === "SMART" ? result.primaryExchange || result.exchange : result.exchange || "";
+  }
+  return validation.ticker?.metadata.exchange || "";
+}
+
+/**
+ * The symbol key can already store another listing. Only this listing's own
+ * record, and its cached quote, belong to this add.
+ */
+function tickerForResolved(
+  resolved: ResolvedTickerSearch,
+  tickers: Map<string, TickerRecord>,
+): TickerRecord | null {
+  if (resolved.kind === "local") return resolved.ticker;
+  const result = resolved.result;
+  const exchange = canonicalExchange(result.exchange === "SMART" ? result.primaryExchange : result.exchange);
+  const bare = parsePublicTickerKey(resolved.symbol).symbol;
+  const qualified = publicTickerKey(bare, exchange || undefined);
+  const qualifiedTicker = qualified === bare ? undefined : tickers.get(qualified);
+  if (qualifiedTicker) return qualifiedTicker;
+  const saved = tickers.get(bare) ?? tickers.get(resolved.symbol) ?? null;
+  if (!saved) return null;
+  const savedExchange = canonicalExchange(saved.metadata.exchange);
+  if (exchange && savedExchange && exchange !== savedExchange) return null;
+  return saved;
+}
+
 export async function resolveQuickAddValidation({
   query,
   collectionId,
@@ -108,8 +148,8 @@ export async function resolveQuickAddValidation({
     }
 
     const symbol = resolved.symbol;
-    const ticker = resolved.kind === "local" ? resolved.ticker : (tickers.get(symbol) ?? null);
-    const cachedQuote = financials.get(symbol)?.quote ?? null;
+    const ticker = tickerForResolved(resolved, tickers);
+    const cachedQuote = ticker ? financials.get(ticker.metadata.ticker)?.quote ?? null : null;
     let quote = cachedQuote;
     if (!quote) {
       try {
@@ -126,12 +166,15 @@ export async function resolveQuickAddValidation({
     return {
       status: tickerBelongsToCollection(ticker, collectionKind, collectionId) ? "duplicate" : "ready",
       query,
-      symbol,
+      symbol: ticker?.metadata.ticker ?? symbol,
       resolved,
       ticker,
       quote,
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof AmbiguousTickerError && !(error instanceof AmbiguousContractError)) {
+      return { status: "choose", query };
+    }
     return { status: "error", query, message: "Ticker lookup failed" };
   }
 }

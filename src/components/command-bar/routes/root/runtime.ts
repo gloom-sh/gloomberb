@@ -4,7 +4,7 @@ import type { AppState } from "../../../../state/app/context";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { CommandDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
-import type { TickerSearchCandidate } from "../../../../tickers/search";
+import { listingChoiceQuery, symbolSearchQuery, type TickerSearchCandidate } from "../../../../tickers/search";
 import type { AssistRowHandlers } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import type { ResultItem } from "../../list/model";
@@ -246,11 +246,19 @@ export function useCommandBarRootRuntime({
   // Free text that no prefix claims also goes to symbol search, so "nvidia"
   // finds NVDA without the backtick. Skipped when a local row already carries
   // that exact name, since an "Exact Match" symbol would otherwise outrank it.
+  // `NET:` is that symbol's venue dropdown. The search itself is the bare symbol.
+  const rootListingChoice = useMemo(() => {
+    if (currentRoute || activeMatch || rootShortcutIntent.kind !== "none") return null;
+    return listingChoiceQuery(rootQuery);
+  }, [activeMatch, currentRoute, rootQuery, rootShortcutIntent.kind]);
   const rootPlainTickerSearchArg = useMemo(() => {
     if (currentRoute || activeMatch || rootShortcutIntent.kind !== "none") return null;
+    // An explicit venue choice also searches one-letter symbols and names shared with local actions.
+    if (rootListingChoice) return rootListingChoice.symbol;
     const trimmed = rootQuery.trim();
-    if (trimmed.length < 2) return null;
-    const normalizedQuery = normalizeCommandTickerSearchText(trimmed);
+    const symbolQuery = symbolSearchQuery(trimmed);
+    if (symbolQuery.length < 2) return null;
+    const normalizedQuery = normalizeCommandTickerSearchText(symbolQuery);
     // The install row for "TV" is labelled TV, but it leads on purpose and
     // must not keep Grupo Televisa out of the list.
     const hasExactLocalRow = rootResultModel.items.some((item) => (
@@ -259,8 +267,8 @@ export function useCommandBarRootRuntime({
       && item.kind !== "search"
       && normalizeCommandTickerSearchText(item.label) === normalizedQuery
     ));
-    return hasExactLocalRow ? null : trimmed;
-  }, [activeMatch, currentRoute, pluginInstallItem, rootQuery, rootResultModel.items, rootShortcutIntent.kind]);
+    return hasExactLocalRow ? null : symbolQuery;
+  }, [activeMatch, currentRoute, pluginInstallItem, rootListingChoice, rootQuery, rootResultModel.items, rootShortcutIntent.kind]);
   const rootTickerSearchArg = rootSecurityDescriptionArg ?? rootPlainTickerSearchArg;
 
   const {
@@ -278,6 +286,7 @@ export function useCommandBarRootRuntime({
     portfolios: state.config.portfolios,
     readTickerSearchCache,
     rootPlainTickerSearchArg,
+    listingSuffix: rootPlainTickerSearchArg && rootListingChoice ? rootListingChoice.suffix : null,
     rootResultItems: rootResultModel.items,
     rootTickerSearchArg,
     tickers: state.tickers,

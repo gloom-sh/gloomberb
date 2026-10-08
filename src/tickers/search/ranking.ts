@@ -259,8 +259,28 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   promoteMuchMorePopularCompanies(filtered);
 
   type RankedEntry = (typeof ranked)[number];
+  // One exact symbol can name several companies (NET is Cloudflare in New York
+  // and Netcall in London). Saved listings come first, then each company ranks
+  // by its earliest listing position in the returned search order.
+  // Without this, a name that starts with the symbol (Netcall) or the boost for
+  // stocks over funds (GLD) put a thinly traded company first.
+  const exactIssuerRank = new Map<string, number>();
+  const exactIssuerKey = (entry: RankedEntry) => getIssuerGroupKey(entry.item.detail) || `item:${entry.index}`;
+  for (const entry of filtered) {
+    if (entry.symbolMatchRank !== 4 || entry.item.providerRank == null) continue;
+    const key = exactIssuerKey(entry);
+    exactIssuerRank.set(key, Math.min(entry.item.providerRank, exactIssuerRank.get(key) ?? Number.POSITIVE_INFINITY));
+  }
   const compareFallbackEntries = (a: RankedEntry, b: RankedEntry): number => {
     if (b.symbolMatchRank !== a.symbolMatchRank) return b.symbolMatchRank - a.symbolMatchRank;
+    if (a.symbolMatchRank === 4) {
+      const aSaved = isSavedSearchItem(a.item);
+      const bSaved = isSavedSearchItem(b.item);
+      if (aSaved !== bSaved) return aSaved ? -1 : 1;
+      const aIssuerRank = exactIssuerRank.get(exactIssuerKey(a)) ?? Number.POSITIVE_INFINITY;
+      const bIssuerRank = exactIssuerRank.get(exactIssuerKey(b)) ?? Number.POSITIVE_INFINITY;
+      if (aIssuerRank !== bIssuerRank) return aIssuerRank - bIssuerRank;
+    }
     if (b.score !== a.score) return b.score - a.score;
     const aSaved = isSavedSearchItem(a.item);
     const bSaved = isSavedSearchItem(b.item);

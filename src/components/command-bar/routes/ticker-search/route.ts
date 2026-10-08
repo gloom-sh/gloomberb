@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppState } from "../../../../state/app/context";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { TickerSearchCandidate } from "../../../../tickers/search";
-import { searchTickerCandidates } from "../../../../tickers/search";
+import { searchTickerCandidates, symbolSearchQuery } from "../../../../tickers/search";
 import {
   COMMAND_BAR_TICKER_SEARCH_LIMIT,
   mergeTickerSearchResultItems,
@@ -64,7 +64,7 @@ export function useTickerSearchRouteResults(options: {
       return;
     }
 
-    const searchQuery = routeQuery.trim();
+    const searchQuery = symbolSearchQuery(routeQuery);
     if (!searchQuery) {
       searchRequestIdRef.current += 1;
       setTickerSearchPending(false);

@@ -45,10 +45,18 @@ interface CommandBarRunQueryLaunchRequest extends CommandBarLaunchRequestBase {
   query: string;
 }
 
+/** The add row opened the bar so the chosen venue joins this collection. */
+interface CommandBarAddListingLaunchRequest extends CommandBarLaunchRequestBase {
+  kind: "add-listing";
+  collectionId: string;
+  collectionKind: "watchlist" | "portfolio";
+}
+
 /** Forms open in their own modal (`openFormModal`), so the bar launches only its own screens. */
 type CommandBarLaunch =
   | { kind: "ticker-search"; query?: string }
-  | { kind: "run-query"; query: string };
+  | { kind: "run-query"; query: string }
+  | { kind: "add-listing"; collectionId: string; collectionKind: "watchlist" | "portfolio" };
 
 export interface AppState {
   config: AppConfig;
@@ -74,6 +82,7 @@ export interface AppState {
   commandBarLaunchRequest:
     | CommandBarTickerSearchLaunchRequest
     | CommandBarRunQueryLaunchRequest
+    | CommandBarAddListingLaunchRequest
     | null;
   themePreview: string | null;
   refreshing: Set<string>;

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ResultItem } from "../../list/model";
-import { formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems } from "./results";
+import { formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems, venueDropdownResults } from "./results";
 
 function resultItem(id: string, label: string, right: string, kind: ResultItem["kind"] = "ticker"): ResultItem {
   return {
@@ -124,6 +124,22 @@ test("names the instrument class for the badge column", () => {
   expect(formatInstrumentBadge({ instrumentClass: "other", result: search("Unit") })).toBeUndefined();
 });
 
+
+test("a colon dropdown is one exact venue per row, narrowed by the exchange prefix", () => {
+  const items = [
+    resultItem("lse", "NET", "LSE", "search"),
+    resultItem("nyse", "NET", "NYSE", "search"),
+    resultItem("lookalike", "NETE", "NASDAQ", "search"),
+    resultItem("command", "NET", "DES", "command"),
+  ];
+  expect(venueDropdownResults("NET", items, "").map((item) => [item.id, item.category])).toEqual([
+    ["lse", "Exact Match"],
+    ["nyse", "Exact Match"],
+  ]);
+  expect(venueDropdownResults("NET", items, "N").map((item) => item.right)).toEqual(["NYSE"]);
+  expect(venueDropdownResults("NET", items, "X").map((item) => item.right)).toEqual(["LSE", "NYSE"]);
+  expect(venueDropdownResults("NET", items, "LON").map((item) => item.right)).toEqual(["LSE"]);
+});
 
 test("plain exact-symbol search retains venue choices while deduplicating the same listing", () => {
   const items = [resultItem("gld:tsv", "GLD", "TSXV", "search"),

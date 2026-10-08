@@ -8,6 +8,7 @@ import {
   buildTickerSearchCandidates,
   createLocalTickerSearchCandidates,
   findExactTickerSearchMatch,
+  listingChoiceQuery,
   normalizeTickerInput,
   rankTickerSearchItems,
   resolveTickerSearch,
@@ -16,6 +17,7 @@ import {
 } from "./index";
 import { createTestTicker } from "../../test-support/ticker";
 import { resolveManualPositionCurrency } from "../../plugins/builtin/portfolio-list/mutations";
+import { parsePublicTickerKey } from "../../utils/exchanges";
 
 function makeSearchResult(
   symbol: string,
@@ -61,6 +63,49 @@ describe("ticker-search utilities", () => {
         expect(quoteCalls).toEqual([[symbol, "", { brokerId: "ibkr", brokerInstanceId: "research-account" }]]);
       }
     }
+  });
+
+  test("one symbol's companies follow the search order, a saved one first", () => {
+    // /market/search?q=NET and q=GLD order, captured 2026-10-08.
+    const netcall = makeSearchResult("NET", "Netcall Plc", { exchange: "LSE", currency: "GBp" });
+    const cloudflare = makeSearchResult("NET", "Cloudflare, Inc. Class A Common Stock", { exchange: "NYSE", currency: "USD" });
+    const venues = (query: string, results: InstrumentSearchResult[], tickers = new Map<string, TickerRecord>()) =>
+      buildTickerSearchCandidates({ query, tickers, providerResults: results, totalLimit: 12 })
+        .filter((item) => parsePublicTickerKey(item.symbol).symbol === query)
+        .map((item) => item.exchangeLabel);
+    // "Netcall" starts with NET, which used to put London first.
+    expect(venues("NET", [cloudflare, { ...cloudflare, exchange: "BMV" }, netcall])).toEqual(["NYSE", "BMV", "LSE"]);
+    // The stock boost used to put a penny miner above the gold ETF.
+    expect(venues("GLD", [
+      makeSearchResult("GLD", "SPDR Gold Shares", { exchange: "ARCA", type: "ETF" }),
+      makeSearchResult("GLD", "SPDR Gold Shares", { exchange: "BYMA", type: "ETF" }),
+      makeSearchResult("GLD", "Gold Finder Resources Ltd.", { exchange: "TSXV", type: "Common Stock" }),
+    ])).toEqual(["ARCA", "BYMA", "TSXV"]);
+    const saved = createTestTicker("NET", "Netcall Plc", { exchange: "LSE", currency: "GBP" });
+    expect(venues("NET", [cloudflare, netcall], new Map([["NET", saved]]))).toEqual(["LSE", "NYSE"]);
+  });
+
+  test("a trailing colon lists every venue, even under a saved symbol", async () => {
+    const netcall = makeSearchResult("NET", "Netcall", { exchange: "LSE", currency: "GBP" });
+    const cloudflare = makeSearchResult("NET", "Cloudflare", { exchange: "NYSE", currency: "USD" });
+    let quoteCalls = 0;
+    const dataProvider = createTestDataProvider({
+      search: async () => [cloudflare, netcall],
+      getQuote: async () => { quoteCalls++; throw new Error("no quote needed"); },
+    });
+    const saved = createTestTicker("NET", "Netcall", { exchange: "LSE", currency: "GBP" });
+    const tickers = new Map([[saved.metadata.ticker, saved]]);
+    const error = await resolveTickerSearch({ query: "net:", activeTicker: null, tickers, dataProvider }).catch((caught) => caught);
+    expect(error).toBeInstanceOf(AmbiguousTickerError);
+    expect(error.query).toBe("NET:");
+    expect(error.listings).toEqual(["NET:XNYS", "NET:XLON"]);
+    expect(await resolveTickerSearch({ query: "NET", activeTicker: null, tickers, dataProvider }))
+      .toMatchObject({ kind: "local", ticker: saved });
+    expect(await resolveTickerSearch({ query: "NET:XNYS", activeTicker: null, tickers, dataProvider }))
+      .toMatchObject({ kind: "provider", result: { name: "Cloudflare", exchange: "NYSE" } });
+    expect(quoteCalls).toBe(0);
+    expect(listingChoiceQuery("net:n")).toEqual({ symbol: "NET", suffix: "N" });
+    expect(listingChoiceQuery("ES=F:")).toBeNull();
   });
 
   test("ambiguous symbols require venue, currency and exact quote evidence", async () => {

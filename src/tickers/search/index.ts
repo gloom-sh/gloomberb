@@ -184,7 +184,7 @@ function createProviderTickerSearchCandidates(
 }
 
 export async function searchTickerCandidates({
-  query,
+  query: rawQuery,
   tickers,
   dataProvider,
   searchContext,
@@ -203,6 +203,7 @@ export async function searchTickerCandidates({
   /** Called when a slower, richer source improves results already returned. */
   onPartial?: (candidates: TickerSearchCandidate[]) => void;
 }): Promise<TickerSearchCandidate[]> {
+  const query = symbolSearchQuery(rawQuery);
   const assemble = (providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
     query,
     tickers,
@@ -261,17 +262,42 @@ interface ResolveTickerSearchOptions {
   searchContext?: SearchRequestContext;
 }
 
+/** `NET:` asks which NET. `NET:N` narrows that list. `NET:XNYS` already names one. */
+const LISTING_PICKER_QUERY = /^[A-Z0-9][A-Z0-9.\-]{0,20}:$/;
+const LISTING_CHOICE_QUERY = /^([A-Z0-9][A-Z0-9.\-]{0,20}):([A-Z0-9.\-]*)$/;
+
+function isListingPickerQuery(query: string): boolean {
+  return LISTING_PICKER_QUERY.test(query.trim().toUpperCase());
+}
+
+/** `NET:` and `NET:N` name a symbol plus the exchange prefix still being typed. */
+export function listingChoiceQuery(query: string): { symbol: string; suffix: string } | null {
+  const match = LISTING_CHOICE_QUERY.exec(query.trim().toUpperCase());
+  if (!match?.[1]) return null;
+  return { symbol: match[1], suffix: match[2] ?? "" };
+}
+
+/** Search text for a ticker query. A trailing colon searches the symbol it qualifies. */
+export function symbolSearchQuery(query: string): string {
+  const trimmed = query.trim();
+  if (!isListingPickerQuery(trimmed)) return trimmed;
+  return trimmed.slice(0, -1).toUpperCase();
+}
+
 export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promise<ResolvedTickerSearch | null> {
-  const symbol = normalizeTickerInput(options.activeTicker, options.query);
-  if (!symbol) return Promise.resolve(null);
-  const literal = resolveTickerSymbol(symbol, options);
-  const alternatives = dottedVenueQueries(symbol);
+  const requested = normalizeTickerInput(options.activeTicker, options.query);
+  if (!requested) return Promise.resolve(null);
+  // `NET:` lists NET's venues instead of settling on one.
+  const pickListing = isListingPickerQuery(requested);
+  const symbol = symbolSearchQuery(requested);
+  const literal = resolveTickerSymbol(symbol, options, pickListing ? requested : null);
+  const alternatives = pickListing ? [] : dottedVenueQueries(symbol);
   // Most input has no venue code to retry: hand back the literal lookup
   // itself, so it settles no later than it did before the retry existed.
   if (alternatives.length === 0) return literal;
   return literal.then(async (resolved) => {
     for (const alternative of resolved ? [] : alternatives) {
-      const match = await resolveTickerSymbol(alternative, options);
+      const match = await resolveTickerSymbol(alternative, options, null);
       if (match) return match;
     }
     return resolved;
@@ -281,6 +307,8 @@ export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promis
 async function resolveTickerSymbol(
   symbol: string,
   { tickers, dataProvider, searchContext }: ResolveTickerSearchOptions,
+  /** The `NET:` text that asked for every venue, or null to settle on one. */
+  pickerQuery: string | null,
 ): Promise<ResolvedTickerSearch | null> {
   const local = tickers.get(symbol)
     ?? findExactTickerSearchMatch(createLocalTickerSearchCandidates(tickers.values()), symbol)?.ticker
@@ -292,8 +320,10 @@ async function resolveTickerSymbol(
     }));
     if (contracts.size > 1) throw new AmbiguousContractError(symbol,
       [...contracts.values()].map((contract) => tickerInstrumentLabel(local.metadata.ticker, contract)));
-    return { kind: "local", symbol: local.metadata.ticker, ticker: local };
   }
+  // A saved symbol keeps its company. The colon still offers the others.
+  const saved: ResolvedTickerSearch | null = local ? { kind: "local", symbol: local.metadata.ticker, ticker: local } : null;
+  if (saved && !pickerQuery) return saved;
 
   const providerItems = createProviderTickerSearchCandidates(
     await searchProviderResults(dataProvider, symbol, searchContext),
@@ -303,13 +333,18 @@ async function resolveTickerSymbol(
   const matches = literalMatches.length ? literalMatches
     : providerItems.filter((item) => findExactTickerSearchMatch([item], symbol));
   let exactMatch = matches[0];
-  if (!exactMatch?.result) return null;
+  if (!exactMatch?.result) return saved;
 
   const contracts = new Set(matches.map((item) => item.contractKey).filter(Boolean));
   if (contracts.size > 1 || (contracts.size && matches.some((item) => !item.contractKey))) {
     throw new AmbiguousContractError(symbol, matches.map((item) => tickerInstrumentLabel(item.symbol, item.result?.brokerContract)));
   }
   const listings = new Set(matches.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!))));
+  const ambiguity = (query: string) => new AmbiguousTickerError(query, [...listings], Object.fromEntries(matches.map((item) => [
+    publicTickerKey(item.symbol, listingExchange(item.result!)), item.result!.name,
+  ])));
+  if (pickerQuery && listings.size > 1) throw ambiguity(pickerQuery);
+  if (saved) return saved;
   if (listings.size > 1 && !parsePublicTickerKey(symbol).exchange && !tickerHasListingSuffix(symbol)) {
     // Search order is relevance, not a canonical listing identifier. Align bare
     // symbols with the quote source only when it supplies the exact identity.
@@ -336,9 +371,7 @@ async function resolveTickerSymbol(
       // An unavailable quote cannot establish the default listing.
     }
     if (new Set(verified.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!)))).size !== 1) {
-      throw new AmbiguousTickerError(symbol, [...listings], Object.fromEntries(matches.map((item) => [
-        publicTickerKey(item.symbol, listingExchange(item.result!)), item.result!.name,
-      ])));
+      throw ambiguity(symbol);
     }
     exactMatch = verified[0]!;
   }

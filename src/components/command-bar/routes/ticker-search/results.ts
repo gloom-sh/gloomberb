@@ -10,7 +10,7 @@ import {
   parseAssetClassQuery,
 } from "../../../../tickers/search/asset-classes";
 import type { ResultItem } from "../../list/model";
-import { canonicalExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
 import { compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
@@ -165,6 +165,32 @@ export function mergePlainRootTickerResults(
     ...rootItems,
     ...instruments.filter((item) => !isExact(item)).map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
   ];
+}
+
+function venueMatchesSuffix(item: ResultItem, suffix: string): boolean {
+  if (!suffix) return true;
+  const displayed = (item.right ?? "").trim().toUpperCase();
+  const fromLabel = parsePublicTickerKey(item.label.trim().toUpperCase()).exchange ?? "";
+  const canonicalDisplayed = canonicalExchange(displayed);
+  const targets = [displayed, canonicalDisplayed, fromLabel, publicExchange(canonicalDisplayed || displayed)];
+  if (targets.some((value) => value.startsWith(suffix))) return true;
+  const aliased = canonicalExchange(suffix);
+  return aliased !== suffix && targets.some((value) => canonicalExchange(value) === aliased);
+}
+
+/**
+ * The colon query's dropdown: one row per exact venue, in ranked order. A
+ * typed exchange prefix keeps the rows it matches.
+ */
+export function venueDropdownResults(symbol: string, items: ResultItem[], suffix: string): ResultItem[] {
+  const rows: ResultItem[] = [];
+  for (const item of items) {
+    if (item.kind !== "ticker" && item.kind !== "search") continue;
+    if (!isExactTickerResultMatch(item, symbol)) continue;
+    if (!venueMatchesSuffix(item, suffix)) continue;
+    rows.push(item.category === "Exact Match" ? item : { ...item, category: "Exact Match" });
+  }
+  return rows;
 }
 
 /**

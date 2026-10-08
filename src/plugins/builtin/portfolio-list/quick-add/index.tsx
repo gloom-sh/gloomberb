@@ -9,10 +9,11 @@ import { useAppInputCapture } from "../../../../state/app/input-capture";
 import { t, tf } from "../../../../i18n";
 import { getSharedRegistry } from "../../../registry";
 import { usePluginAppActions } from "../../../runtime";
+import { isDialogOpen } from "../../../../ui/dialog-stack";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatPercentRaw } from "../../../../utils/format";
 import { formatMarketPrice } from "../../../../market-data/market/format";
-import { upsertTickerFromSearchResult } from "../../../../tickers/search";
+import { listingChoiceQuery, upsertTickerFromSearchResult } from "../../../../tickers/search";
 import type { TickerRecord } from "../../../../types/ticker";
 import { addTickerToPortfolio, addTickerToWatchlist } from "../mutations";
 import { captureAttentionAction } from "../../../../telemetry/attention-counts";
@@ -20,6 +21,7 @@ import { publicTickerKey } from "../../../../utils/exchanges";
 import {
   IDLE_VALIDATION,
   isPlausibleTickerQuery,
+  exchangeLabelFromValidation,
   normalizeQuickAddQuery,
   resolveQuickAddValidation,
   tickerNameFromValidation,
@@ -56,6 +58,10 @@ function QuickAddPreview({
     return <Text fg={colors.textMuted}>{t(validation.message)}</Text>;
   }
 
+  if (validation.status === "choose") {
+    return <Text fg={colors.textMuted}>{t("Multiple listings")}</Text>;
+  }
+
   if (validation.status === "duplicate") {
     return <Text fg={colors.textMuted}>{tf("{symbol} already in {collection}", {
       symbol: validation.symbol,
@@ -71,6 +77,7 @@ function QuickAddPreview({
     : "-";
   const changeValue = quote?.changePercent;
   const name = tickerNameFromValidation(validation);
+  const exchange = exchangeLabelFromValidation(validation);
   const showSymbol = normalizeQuickAddQuery(validation.symbol) !== validation.query;
   const symbolPrefix = showSymbol ? `${validation.symbol} ` : "";
 
@@ -81,6 +88,7 @@ function QuickAddPreview({
         {formatPercentRaw(changeValue)}
       </Text>
       {name ? <Text fg={colors.textMuted}>{`  ${name}`}</Text> : null}
+      {exchange ? <Text fg={colors.textDim}>{`  ${exchange}`}</Text> : null}
     </Box>
   );
 }
@@ -129,6 +137,21 @@ export function QuickAddTickerInput({
     setValidation(IDLE_VALIDATION);
   }, []);
 
+  // `NET:` is the command bar's venue dropdown. Choosing a row adds it here.
+  const handOffListingChoice = useCallback((query: string) => {
+    validationSeqRef.current += 1;
+    if (!isDialogOpen()) {
+      dispatch({
+        type: "SET_COMMAND_BAR",
+        open: true,
+        query,
+        launch: { kind: "add-listing", collectionId, collectionKind },
+      });
+    }
+    resetInput();
+    blurInput();
+  }, [blurInput, collectionId, collectionKind, dispatch, resetInput]);
+
   useEffect(() => {
     onFocusChange?.(inputFocused && focused);
   }, [focused, inputFocused, onFocusChange]);
@@ -159,6 +182,15 @@ export function QuickAddTickerInput({
       return;
     }
 
+    if (listingChoiceQuery(query)) {
+      setValidation(IDLE_VALIDATION);
+      const timeoutId = setTimeout(() => {
+        if (validationSeqRef.current !== seq) return;
+        handOffListingChoice(query);
+      }, QUICK_ADD_DEBOUNCE_MS);
+      return () => clearTimeout(timeoutId);
+    }
+
     if (!isPlausibleTickerQuery(query)) {
       setValidation({ status: "missing", query, message: "Use a ticker symbol" });
       return;
@@ -174,12 +206,16 @@ export function QuickAddTickerInput({
     }, QUICK_ADD_DEBOUNCE_MS);
 
     return () => clearTimeout(timeoutId);
-  }, [inputValue, validateQuery]);
+  }, [handOffListingChoice, inputValue, validateQuery]);
 
   const submitInput = useCallback(async (submittedValue?: string) => {
     const recordAttention = captureAttentionAction();
     const query = normalizeQuickAddQuery(submittedValue ?? inputValue);
     if (!query || submitting) return;
+    if (listingChoiceQuery(query)) {
+      handOffListingChoice(query);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -189,6 +225,10 @@ export function QuickAddTickerInput({
       )
         ? validation
         : await validateQuery(query);
+      if (currentValidation.status === "choose") {
+        handOffListingChoice(`${query}:`);
+        return;
+      }
       setValidation(currentValidation);
 
       if (currentValidation.status === "duplicate") {
@@ -275,6 +315,7 @@ export function QuickAddTickerInput({
     collectionKind,
     collectionName,
     dispatch,
+    handOffListingChoice,
     inputValue,
     notify,
     onAdded,

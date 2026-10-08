@@ -737,6 +737,71 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
   });
 
+  test("quick-add shows the saved listing's venue, and a colon opens that symbol's venues in the command bar", async () => {
+    const config = createManualCollectionConfig("watchlist");
+    const nyse = { providerId: "quick-add-test", symbol: "NET", name: "Cloudflare", exchange: "NYSE", currency: "USD", type: "STK" };
+    const lse = { providerId: "quick-add-test", symbol: "NET", name: "Netcall Plc", exchange: "LSE", currency: "GBP", type: "STK" };
+    installQuickAddRegistry(createTestDataProvider({
+      id: "quick-add-test",
+      name: "Quick Add Test",
+      async search() { return [nyse, lse]; },
+    }));
+
+    await tui.render(
+      <PortfolioHarness
+        config={config}
+        collectionId="watchlist"
+        stateMutator={(state) => {
+          const net = createTestTicker("NET", "Netcall Plc", {
+            exchange: "LSE", currency: "GBP", portfolios: [], watchlists: [], positions: [],
+          });
+          state.tickers = new Map([["NET", net]]);
+          state.financials = new Map([["NET", createTestFinancials({
+            quote: makeQuote({ symbol: "NET", price: 1.26, changePercent: 0.4, currency: "GBP", name: "Netcall Plc" }),
+          })]]);
+        }}
+        paneHeight={16}
+      />,
+      { width: 100, height: 16 },
+    );
+
+    await flushFrame();
+    await act(async () => {
+      tui.setup().mockInput.pressKey("a");
+      await tui.setup().renderOnce();
+    });
+    await act(async () => {
+      await tui.setup().mockInput.typeText("NET");
+      await tui.setup().renderOnce();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 360));
+    });
+    await flushFrame();
+
+    const bare = tui.frame();
+    expect(bare).toContain("Netcall Plc");
+    expect(bare).toContain("LSE");
+
+    await act(async () => {
+      await tui.setup().mockInput.typeText(":");
+      await tui.setup().renderOnce();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 360));
+    });
+    await flushFrame();
+
+    expect(harnessState?.commandBarOpen).toBe(true);
+    expect(harnessState?.commandBarQuery).toBe("NET:");
+    expect(harnessState?.commandBarLaunchRequest).toMatchObject({
+      kind: "add-listing",
+      collectionId: "watchlist",
+      collectionKind: "watchlist",
+    });
+    expect(tui.frame()).not.toContain("Use a ticker symbol");
+  });
+
   test("renders one-month sparkline column when price history is loaded", async () => {
     const config = createPortfolioConfigWithColumns(
       "broker:ibkr-flex:DU12345",

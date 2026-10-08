@@ -34,6 +34,8 @@ export async function executeCollectionCommandAction(options: {
   buildWorkflowDeps: () => WorkflowDeps;
   openModeRoute: (screen: "ticker-search", initialQuery?: string, payload?: Record<string, unknown>) => void;
   openAddToPortfolioWorkflow: (ticker: TickerRecord, preferredPortfolioId?: string | null) => void;
+  /** Join the named collection without the position form. */
+  directMembership?: boolean;
   pushRoute: (route: CommandBarRoute) => void;
   notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
@@ -73,7 +75,9 @@ export async function executeCollectionCommandAction(options: {
   };
   if (!selectSavedOwner(options.explicitTargetId ?? options.activeCollectionId)) return;
 
-  if (kind === "portfolio" && action === "add") {
+  // A venue picked from the add row joins that collection directly. The AP
+  // command still asks for the position.
+  if (kind === "portfolio" && action === "add" && !options.directMembership) {
     const manualPortfolios = stateForCommand.config.portfolios.filter(isManualPortfolio);
     if (manualPortfolios.length === 0) {
       options.notify("Create a manual portfolio first.", { type: "info" });
