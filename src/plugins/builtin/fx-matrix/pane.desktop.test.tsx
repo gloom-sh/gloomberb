@@ -11,6 +11,7 @@ import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pa
 import { createDefaultConfig } from "../../../types/config";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../../ui";
 import type { PluginRuntimeAccess } from "../../runtime";
+import type { Quote } from "../../../types/financials";
 import { fxMatrixModule } from "./index";
 import { FX_CURRENCIES } from "./pairs";
 
@@ -26,15 +27,20 @@ function readyEntry(rate: number): QueryEntry<number> {
   return { phase: "ready", data: rate, lastGoodData: rate, source: "test", fetchedAt: 1, staleAt: null, error: null, attempts: [] };
 }
 
-function installCoordinator(): void {
+function installCoordinator(quotes: Record<string, Partial<Quote>> = {}): void {
   setSharedMarketDataCoordinator({
     subscribe: () => () => {},
     subscribeKeys: () => () => {},
     getVersion: () => 1,
-    getFxEntry: () => readyEntry(1.08),
+    getFxEntry: (currency: string) => readyEntry(currency === "USD" ? 1 : 1.08),
     loadFxRate: async () => {},
     subscribeQuotes: () => () => {},
-    getQuoteEntry: () => createIdleEntry(),
+    getQuoteEntry: ({ symbol }: { symbol: string }) => {
+      const quote = quotes[symbol];
+      if (!quote) return createIdleEntry();
+      const data = { symbol, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now(), receivedAt: Date.now(), ...quote } as Quote;
+      return { ...readyEntry(data.price), data, lastGoodData: data } as unknown as QueryEntry<Quote>;
+    },
   } as unknown as MarketDataCoordinator);
 }
 
@@ -107,6 +113,36 @@ test("every currency the settings offer draws its flag in the rows and the heade
   // A currency added without artwork would draw a bare code.
   expect(rows.filter((row) => !row.querySelector('[data-gloom-role="country-flag"]'))).toEqual([]);
   expect(container.querySelectorAll('[data-gloom-role="data-table-header-cell"] [data-gloom-role="country-flag"]')).toHaveLength(saved.length);
+});
+
+test("a cross is tinted by its move against the previous close only while both legs are live and carry one", async () => {
+  installCoordinator({
+    "EURUSD=X": { price: 1.1, previousClose: 1.08 },
+    "GBPUSD=X": { price: 1.27, previousClose: 1.27 },
+    // Stale, so its rate is the snapshot's and its previous close is not read.
+    "JPY=X": { price: 151, previousClose: 149, stale: true },
+    // No previous close to read against.
+    "CHF=X": { price: 0.9 },
+  });
+  const container = await desktop.render(<Pane currencies={["USD", "EUR", "GBP", "JPY", "CHF", "CAD"]} />);
+  const background = (row: string, column: string) => {
+    const index = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD"].indexOf(column) + 1;
+    const cell = container.querySelector(`[data-gloom-row-key="${row}"]`)!.querySelectorAll('[data-gloom-role="data-table-cell"]')[index] as HTMLElement;
+    return cell.style.backgroundColor;
+  };
+  // An untinted cell takes the row's colour, a CSS variable; a tint is a plain colour.
+  const tinted = (row: string, column: string) => /^(#|rgb)/.test(background(row, column));
+
+  // EUR gained 1.85% on USD; the same cross read the other way lost it.
+  expect(tinted("EUR", "USD")).toBe(true);
+  expect(tinted("USD", "EUR")).toBe(true);
+  expect(background("EUR", "USD")).not.toBe(background("USD", "EUR"));
+  // GBP is unchanged on USD, but EUR moved against it.
+  expect(tinted("GBP", "USD")).toBe(false);
+  expect(tinted("EUR", "GBP")).toBe(true);
+  // Stale, previous-close-less and unfetched legs, and the diagonal, stay plain.
+  expect(["JPY", "CHF", "CAD"].flatMap((leg) => [tinted(leg, "USD"), tinted("EUR", leg), tinted(leg, "EUR")])).not.toContain(true);
+  expect(tinted("EUR", "EUR")).toBe(false);
 });
 
 test("without desktop chrome the matrix keeps its plain codes and its original base column", async () => {

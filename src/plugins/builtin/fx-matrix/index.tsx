@@ -24,6 +24,7 @@ import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
 import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
+import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { fxMatrixSettings } from "./settings";
 import { createFxExportMetadata } from "./export";
 
@@ -87,6 +88,22 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     }
     return references;
   }, [legEntries, legs, rates]);
+  // A cell's direction is its cross against the pair's previous close. Only a
+  // leg whose rate is the live quote's and whose quote carries a previous close
+  // counts, USD (the base) as 1: the first rate this pane drew is no daily
+  // reference, and a snapshot rate or a stale quote has no previous close to
+  // read against.
+  const directionReferences = useMemo(() => {
+    const references = new Map<string, number>([["USD", 1]]);
+    for (const leg of legs) {
+      if (!liveEntries.has(leg.currency)) continue;
+      const reference = fxLegReferenceRate(leg, legEntries.get(fxLegQuoteKey(leg)));
+      if (reference != null) references.set(leg.currency, reference);
+    }
+    return references;
+  }, [legEntries, legs, liveEntries]);
+  // The step each cell showed last, which a tick near a boundary keeps.
+  const tintLevels = useRef(new Map<string, number>());
   // Export the provenance of this render's rates, even if a provider response
   // arrives before React commits the next render and the user exports now.
   const rateEntries = new Map(currencies.map((currency) => {
@@ -145,6 +162,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: FxCurrency,
     column: DataTableColumn,
+    _index: number,
+    rowState: { selected: boolean },
   ): DataTableCell => {
     if (column.id === "base") {
       return {
@@ -167,8 +186,21 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       return { text: pending ? "…" : "—", color: colors.textDim };
     }
     const reference = (referenceRates.get(row) ?? base) / (referenceRates.get(quoteCurrency) ?? quote);
-    return { text: formatRate(base / quote, reference), color: colors.text };
-  }, [flagged, rates, referenceRates, status.loading]);
+    const rowReference = directionReferences.get(row);
+    const columnReference = directionReferences.get(quoteCurrency);
+    const level = nextTintLevel(
+      tintLevels.current,
+      `${row}/${quoteCurrency}`,
+      rowReference != null && columnReference != null
+        ? crossMovePercent(base, rowReference, quote, columnReference)
+        : null,
+    );
+    // The cursor row keeps its selection colours; the tint leans on them.
+    const backgroundColor = rowState.selected
+      ? directionTint(level, { background: colors.selected, text: colors.selectedText })
+      : directionTint(level, { background: colors.bg, text: colors.text });
+    return { text: formatRate(base / quote, reference), color: colors.text, backgroundColor };
+  }, [directionReferences, flagged, rates, referenceRates, status.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
 

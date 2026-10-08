@@ -358,6 +358,8 @@ One unit of the row currency buys the amount in the column currency. Indicative 
 
 The base-currency axis remains visible during horizontal scrolling; partially covered values are shortened with an ellipsis. CSV export retains the full matrix and appends each currency's raw USD leg, observation time, retrieval time, source, and current status. Each cross uses its row's leg divided by its column's leg; same-currency cells are identity. Exported provenance belongs to the displayed rates, and unknown observation times remain blank rather than being replaced by retrieval time.
 
+A cell is tinted green when the row currency gained on the column currency since the previous close, red when it lost, in five steps at 0.05%, 0.15%, 0.3%, 0.6% and 1%; a step holds until the move falls a fifth (at least 0.02%) short of its threshold, so ticks around a boundary do not flicker. The previous close is the provider's for each pair, with USD as 1. A cell has no tint when the cross is unchanged or has moved under 0.05%, or when either leg is without a current quote carrying a previous close: a snapshot rate, a stale quote and a pair beyond the stream's symbol limit are never read against one, and the first rate the pane drew is not a reference. Exports carry no tint.
+
 ## Short interest
 
 Short interest is outstanding short positions at each settlement date, not daily short-sale trading volume. FINRA supplies settlement history, average daily volume and days to cover. The backend supplements missing settlement history with current and prior settlement shares; its supplied current days-to-cover ratio and percentage of float remain attached to the current record.
