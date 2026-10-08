@@ -70,9 +70,9 @@ export async function fetchEarningsCalendar(query: EarningsCalendarQuery, client
   }
 }
 
-export async function fetchEarningsHistory(symbol: string, client: HistoryClient = apiClient) {
+export async function fetchEarningsHistory(symbol: string, client: HistoryClient = apiClient, limit?: number) {
   try {
-    return validateEarningsHistory(await client.getCloudEarningsHistory(symbol), symbol);
+    return validateEarningsHistory(await client.getCloudEarningsHistory(symbol, limit), symbol);
   } catch (error) {
     throw unavailableOnServer(error, "Earnings history is not available yet.", [404, 503]);
   }

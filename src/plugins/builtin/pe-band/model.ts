@@ -3,6 +3,7 @@ import type { SecuritySeriesSource, TimeSeriesPoint } from "../../../time-series
 import { createValuationCurrencyContext } from "../../../time-series/valuation-currency";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../../types/financials";
 import { areNearbyFinancialPeriodEnds } from "../../../utils/financial-statements";
+import { datedByReport, type ReportDate } from "./report-dates";
 
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365.25 * DAY_MS;
@@ -23,7 +24,7 @@ export interface EpsStep {
   /** Four reported quarters summed, or a reported fiscal year. */
   basis: "ttm" | "annual";
   knownAt: Date;
-  /** False when no publication date is on record and `knownAt` is the period end. */
+  /** False when no publication date or report is on record and `knownAt` is the period end. */
   dated: boolean;
   /** Statement currency units; null when unavailable (a declared gap or an incomplete run of quarters). */
   eps: number | null;
@@ -64,7 +65,7 @@ export interface PeBandModel {
    * the line just above today's P/E when that is higher.
    */
   bandCeiling: number | null;
-  /** Figures in the window dated by period end because no publication date is on record. */
+  /** Figures in the window dated by period end because neither a publication date nor a report is on record. */
   undated: number;
   /** Trailing sums in the window that are unavailable (a quarter's EPS is withheld or not reported). */
   unavailable: number;
@@ -98,10 +99,13 @@ function epsSeries(financials: TickerFinancials, period: "ttm" | "annual"): Time
  * by the shared statement series, which keeps declared gaps and broken runs
  * of quarters unavailable. A reported fiscal year is itself a trailing
  * twelve-month figure; at a fiscal year end it replaces the quarterly sum.
+ * A figure with no publication date of its own is dated by the company's
+ * report of that quarter, when `reports` has it.
  */
-export function trailingEpsSteps(financials: TickerFinancials): EpsStep[] {
-  const adjusted = { ...financials, quarterlyStatements: financials.quarterlyStatements.map(knownWhenFiled),
-    annualStatements: financials.annualStatements.map(knownWhenFiled) };
+export function trailingEpsSteps(financials: TickerFinancials, reports: readonly ReportDate[] = []): EpsStep[] {
+  const known = (row: FinancialStatement) => datedByReport(knownWhenFiled(row), reports);
+  const adjusted = { ...financials, quarterlyStatements: financials.quarterlyStatements.map(known),
+    annualStatements: financials.annualStatements.map(known) };
   const toStep = (basis: EpsStep["basis"]) => (point: TimeSeriesPoint): EpsStep => ({
     periodEnd: point.observedAt.toISOString().slice(0, 10), basis, knownAt: point.date, dated: point.availableAt !== undefined,
     eps: point.value != null && Number.isFinite(point.value) ? point.value : null, currency: point.provenance?.currency ?? null,
@@ -193,13 +197,13 @@ export function stepAt(steps: readonly EpsStep[], time: number): EpsStep | null 
 export function projectPeBand(
   financials: TickerFinancials | null,
   history: readonly PricePoint[],
-  options: { symbol: string; lookbackYears: number; now?: number },
+  options: { symbol: string; lookbackYears: number; now?: number; reports?: readonly ReportDate[] },
 ): PeBandModel {
   const currency = financials?.quote?.currency ?? null;
   const empty: PeBandModel = { symbol: options.symbol, currency, weeks: [], rows: [], multiples: [], current: null, range: null, sample: null, bandCeiling: null,
     undated: 0, unavailable: 0, error: null, notice: null };
   if (!financials) return { ...empty, error: "Fundamentals unavailable." };
-  const allSteps = trailingEpsSteps(financials);
+  const allSteps = trailingEpsSteps(financials, options.reports);
   const latest = allSteps.findLast((step) => step.eps != null);
   if (!latest) return { ...empty, error: "No trailing EPS on record." };
   const units = createValuationCurrencyContext(financials);

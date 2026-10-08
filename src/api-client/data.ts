@@ -232,8 +232,8 @@ export class CloudDataApi {
     return this.request<EarningsCalendarPayload>(`/cloud/earnings/calendar?${params}`, { signal: AbortSignal.timeout(30_000) });
   }
 
-  async getCloudEarningsHistory(symbol: string): Promise<EarningsHistoryPayload> {
-    const params = new URLSearchParams({ symbol, limit: "13" });
+  async getCloudEarningsHistory(symbol: string, limit = 13): Promise<EarningsHistoryPayload> {
+    const params = new URLSearchParams({ symbol, limit: String(limit) });
     return this.request<EarningsHistoryPayload>(`/cloud/earnings/history?${params}`, { signal: AbortSignal.timeout(30_000) });
   }
 

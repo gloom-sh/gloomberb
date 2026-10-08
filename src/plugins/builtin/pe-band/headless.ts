@@ -17,10 +17,10 @@ export const peBandHeadless: HeadlessPaneDefinition<"bundle"> = {
   ],
   async load(args, ctx) {
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
-    const inputs = await loadPeBandInputs({ instrument, signal: ctx.signal }, ctx.marketData, new MarketDataCoordinator(ctx.marketData));
+    const inputs = await loadPeBandInputs({ instrument, signal: ctx.signal }, ctx.marketData, new MarketDataCoordinator(ctx.marketData), ctx.apiClient);
     ctx.signal.throwIfAborted();
     const lookbackYears = Number(args.options.lookbackYears ?? 10);
-    const model = projectPeBand(inputs.financials, inputs.history, { symbol: instrument.symbol, lookbackYears });
+    const model = projectPeBand(inputs.financials, inputs.history, { symbol: instrument.symbol, lookbackYears, reports: inputs.reports });
     const current = model.current;
     return {
       sections: [

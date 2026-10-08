@@ -94,7 +94,8 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
 
   const lookbackYears = Number(lookback);
   const model = useMemo(() => inputs.data
-    ? projectPeBand(inputs.data.financials, inputs.data.history, { symbol: symbol ?? "", lookbackYears: Number.isFinite(lookbackYears) ? lookbackYears : 10 })
+    ? projectPeBand(inputs.data.financials, inputs.data.history, { symbol: symbol ?? "", lookbackYears: Number.isFinite(lookbackYears) ? lookbackYears : 10,
+      reports: inputs.data.reports })
     : null, [inputs.data, lookbackYears, symbol]);
   const rows = model?.rows ?? [];
   const series = useMemo(() => model && !model.error ? chartSeries(model, colors) : [], [model, colors]);

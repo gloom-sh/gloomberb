@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { FinancialStatement, PricePoint, Quote, TickerFinancials } from "../../../types/financials";
 import { chooseMultiples, projectPeBand, stepAt, trailingEpsSteps } from "./model";
+import type { ReportDate } from "./report-dates";
 
 const quarter = (date: string, eps: number | null, filed: string): FinancialStatement => ({
   date, currency: "USD", fieldAvailability: { eps: filed },
   ...(eps == null ? { unavailableEarnings: ["eps" as const] } : { eps }),
 });
+const unfiled = (date: string, eps: number): FinancialStatement => ({ date, currency: "USD", eps });
 const financials = (quarterlyStatements: FinancialStatement[], annualStatements: FinancialStatement[] = [], quote?: Partial<Quote>): TickerFinancials =>
   ({ quarterlyStatements, annualStatements, priceHistory: [], quote: quote as Quote | undefined });
 
@@ -72,5 +74,56 @@ describe("P/E band", () => {
     expect(pence.current?.pe).toBe(1.4);
     expect(projectPeBand(financials(quarters.map((row) => ({ ...row, currency: "TWD" })), [], { price: 140, currency: "USD" }), weeks,
       { symbol: "X", lookbackYears: 10 }).error).toBe("EPS is reported in TWD and the price is in USD.");
+  });
+
+  test("a report dates the figures with no publication date, so the weeks before it no longer price an unreleased EPS", () => {
+    // The fiscal fourth quarter has no filing date on record, as in the SEC history of a company whose year ends in December.
+    const quarters = [
+      quarter("2023-12-31", 1, "2024-02-05"), quarter("2024-03-31", 1, "2024-05-01"), quarter("2024-06-30", 1, "2024-08-01"),
+      quarter("2024-09-30", 1, "2024-11-01"), unfiled("2024-12-31", 2), quarter("2025-03-31", 2, "2025-05-01"),
+    ];
+    const reports: ReportDate[] = [
+      { date: "2025-02-06", fiscalPeriod: "2024-12", reportedAt: "2025-02-06T21:30:00.000Z" },
+      // Earlier and later than the filing dates on record: the statements' own dates stand.
+      { date: "2024-10-30", fiscalPeriod: "2024-09", reportedAt: null }, { date: "2025-05-20", fiscalPeriod: "2025-03", reportedAt: null },
+    ];
+    const data = financials(quarters, [], { price: 120, currency: "USD" });
+    const weeks: PricePoint[] = [["2025-01-06", 100], ["2025-02-10", 100], ["2025-04-07", 110], ["2025-05-05", 120]]
+      .map(([date, close]) => ({ date: new Date(date as string), close: close as number }));
+    const options = { symbol: "X", lookbackYears: 0, now: Date.parse("2025-06-01") };
+
+    const today = projectPeBand(data, weeks, options);
+    // Both sums that contain the undated quarter step at their period end, weeks before anyone could know them.
+    expect(today.weeks.map((week) => week.pe)).toEqual([20, 20, 110 / 6, 20]);
+    expect(today.undated).toBe(2);
+
+    const dated = projectPeBand(data, weeks, { ...options, reports });
+    // January prices the figure in force (4); the year's 5 arrives with the report and 6 with the quarter's filing.
+    expect(dated.weeks.map((week) => week.pe)).toEqual([25, 20, 22, 20]);
+    expect(dated.undated).toBe(0);
+    const steps = trailingEpsSteps(data, reports);
+    const known = (periodEnd: string) => steps.find((step) => step.periodEnd === periodEnd)!;
+    expect(known("2024-12-31")).toMatchObject({ dated: true, eps: 5 });
+    expect(known("2024-12-31").knownAt.toISOString()).toBe("2025-02-06T21:30:00.000Z");
+    expect(known("2024-09-30").knownAt.toISOString().slice(0, 10)).toBe("2024-11-01");
+    // A sum is known when its newest quarter is, never before the report of the older one.
+    expect(known("2025-03-31")).toMatchObject({ dated: true, eps: 6 });
+    expect(known("2025-03-31").knownAt.toISOString().slice(0, 10)).toBe("2025-05-01");
+    expect(dated.rows.find((row) => row.periodEnd === "2024-12-31")).toMatchObject({ dated: true, price: 100 });
+  });
+
+  test("a sum with one quarter no report covers stays undated even when its newest quarter is dated", () => {
+    const quarters = [
+      quarter("2023-12-31", 1, "2024-02-05"), quarter("2024-03-31", 1, "2024-05-01"), unfiled("2024-06-30", 1),
+      quarter("2024-09-30", 1, "2024-11-01"), quarter("2024-12-31", 2, "2025-02-06"),
+    ];
+    const noMatch: ReportDate[] = [{ date: "2024-08-01", fiscalPeriod: "2024-03", reportedAt: null }];
+    const steps = trailingEpsSteps(financials(quarters), noMatch);
+    expect(steps.map((step) => [step.periodEnd, step.dated])).toEqual([["2024-09-30", false], ["2024-12-31", false]]);
+    expect(steps.every((step) => step.knownAt.toISOString().slice(0, 10) === step.periodEnd)).toBe(true);
+    // The same quarter, once a report covers it, dates both sums.
+    const covered = trailingEpsSteps(financials(quarters), [{ date: "2024-08-01", fiscalPeriod: "2024-06", reportedAt: null }]);
+    expect(covered.map((step) => [step.periodEnd, step.dated, step.knownAt.toISOString().slice(0, 10)]))
+      .toEqual([["2024-09-30", true, "2024-11-01"], ["2024-12-31", true, "2025-02-06"]]);
   });
 });
