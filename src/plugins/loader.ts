@@ -8,7 +8,7 @@ import { reportCrash } from "../telemetry/crash-reports";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import { checkPluginCompatibility, explainPluginLoadError, findMissingHostExport, pluginSourceFiles, readPluginManifest } from "./compat";
 import { installPluginDependencies, missingPluginDependencies } from "./dependencies";
-import { linkHostPackages } from "./host-link";
+import { isLinkedPeerModule, linkHostPackages } from "./host-link";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
 const loaderLog = debugLog.createLogger("plugin-loader");
@@ -40,7 +40,11 @@ export interface LoadedExternalPlugin {
   needsGloomberb?: string;
   /** Set when the plugin loaded but does not support the running renderer. */
   unsupportedTarget?: PluginTarget;
-  /** Loaded after startup in a way this session could not fully apply. */
+  /**
+   * Loaded in a way this session cannot fully apply: new files under modules
+   * it already imported, or an import Bun failed before a sibling plugin was
+   * linked. Never registered; the next launch loads it.
+   */
   needsRestart?: boolean;
 }
 
@@ -197,6 +201,9 @@ export function pluginsMissingHostExports(): string[] {
   return [...missingHostExportFailures].sort();
 }
 
+/** Bun's wording when an import does not resolve, from a native import. */
+const UNRESOLVED_MODULE = /Cannot find (?:module|package) '([^']+)'/;
+
 /** Imported at another commit earlier in this process, with files besides the entry that Bun keeps. */
 function hasStaleModules(pluginDir: string, commit: string | null): boolean {
   if (!importedCommits.has(pluginDir) || importedCommits.get(pluginDir) === commit) return false;
@@ -289,9 +296,17 @@ export async function loadExternalPlugin(
     loaderLog.info(`Loaded external plugin: ${plugin.id} v${plugin.version ?? "0.0.0"}`);
     return { ...base, ...restart, plugin };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // A sibling plugin it imports that is linked now but was not when this
+    // process first resolved it. Bun keeps that failure until a restart, which
+    // is all the plugin needs: not a crash.
+    const unresolved = UNRESOLVED_MODULE.exec(message)?.[1];
+    if (unresolved && isLinkedPeerModule(pluginDir, unresolved)) {
+      loaderLog.info(`${directory} loads after a restart: ${message}`);
+      return { ...base, plugin: placeholder, needsRestart: true };
+    }
     loaderLog.error(`Failed to load plugin from ${pluginDir}: ${err}`);
     reportCrash(err, { kind: "plugin", plugin: directory });
-    const message = err instanceof Error ? err.message : String(err);
     if (findMissingHostExport(message)) missingHostExportFailures.add(directory);
     return {
       ...base,

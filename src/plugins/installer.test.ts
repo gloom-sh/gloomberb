@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -138,4 +138,116 @@ describe("plugins that are built in now", () => {
 
     await expect(linkPlugin(dir, { quiet: true })).rejects.toThrow("Market Halts is built into Gloomberb now.");
   });
+});
+
+/**
+ * IBKR Gateway imports Interactive Brokers. Bun remembers a failed import for
+ * the life of the process, so importing a plugin before its sibling is
+ * installed fails every later load in that session too, even after the
+ * sibling arrives. These run the installer in a Bun process of their own,
+ * against a throwaway plugins folder, with `fixture/*` cloned from disk and
+ * the registry listing both fixtures at `v1`.
+ */
+describe("plugins that import a sibling plugin", () => {
+  function publish(remotes: string, name: string, files: Record<string, string>) {
+    const dir = join(remotes, `${name}.git`);
+    mkdirSync(dir, { recursive: true });
+    git(dir, ["init", "-q", "-b", "main"]);
+    for (const [file, content] of Object.entries(files)) writeFileSync(join(dir, file), content);
+    git(dir, ["add", "."]);
+    git(dir, ["commit", "-q", "-m", "v1"]);
+    git(dir, ["tag", "v1"]);
+  }
+
+  function setup() {
+    const root = mkdtempSync(join(tmpdir(), "gloom-peers-"));
+    scratch.push(root);
+    const remotes = join(root, "remotes");
+    publish(remotes, "gloom-fixture-peer", {
+      "package.json": JSON.stringify({ name: "gloom-fixture-peer", main: "index.ts" }),
+      "index.ts": `export default { id: "fixture-peer", name: "Fixture Peer" };\n`,
+      "bridge.ts": `export const bridge = "Fixture Gateway";\n`,
+    });
+    // Shaped like IBKR Gateway: the entry imports a file that imports the sibling.
+    publish(remotes, "gloom-fixture-gateway", {
+      "package.json": JSON.stringify({
+        name: "gloom-fixture-gateway",
+        main: "index.ts",
+        peerDependencies: { "gloom-fixture-peer": ">=1.0.0" },
+        peerDependenciesMeta: { "gloom-fixture-peer": { optional: true } },
+      }),
+      "index.ts": `import { label } from "./plugin";\nexport default { id: "fixture-gateway", name: label };\n`,
+      "plugin.ts": `import { bridge } from "gloom-fixture-peer/bridge";\nexport const label = bridge;\n`,
+    });
+    const home = join(root, "home");
+    const run = async (body: string): Promise<any> => {
+      const script = join(root, "run.ts");
+      const registry = {
+        plugins: [
+          { id: "fixture-gateway", name: "Fixture Gateway", repo: "fixture/gloom-fixture-gateway", ref: "v1" },
+          { id: "fixture-peer", name: "Fixture Peer", repo: "fixture/gloom-fixture-peer", ref: "v1" },
+        ],
+      };
+      writeFileSync(script, `
+        globalThis.fetch = async (url) => String(url).endsWith("/registry.json")
+          ? Response.json(${JSON.stringify(registry)})
+          : Promise.reject(new Error("offline"));
+        const installer = await import(${JSON.stringify(join(import.meta.dir, "installer.ts"))});
+        const loader = await import(${JSON.stringify(join(import.meta.dir, "loader.ts"))});
+        const { createNodePluginManager } = await import(${JSON.stringify(join(import.meta.dir, "manager-node.ts"))});
+        console.log(JSON.stringify(await (async () => { ${body} })()));
+      `);
+      const child = Bun.spawn([process.execPath, script], {
+        env: {
+          ...process.env,
+          GLOOMBERB_HOME: home,
+          GLOOMBERB_NO_TELEMETRY: "1",
+          GIT_CONFIG_COUNT: "1",
+          GIT_CONFIG_KEY_0: `url.file://${remotes}/.insteadOf`,
+          GIT_CONFIG_VALUE_0: "https://github.com/fixture/",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, status] = await Promise.all([
+        new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
+      ]);
+      expect({ status, stderr: status === 0 ? "" : stderr }).toEqual({ status: 0, stderr: "" });
+      return JSON.parse(stdout.trim().split("\n").pop()!);
+    };
+    return { home, run };
+  }
+
+  test("an install is not imported while its sibling is missing, so it loads once the sibling arrives", async () => {
+    const { run } = setup();
+    const result = await run(`
+      const gateway = await installer.installPlugin("fixture/gloom-fixture-gateway", { quiet: true });
+      await installer.installPlugin("fixture/gloom-fixture-peer", { quiet: true });
+      const loaded = await loader.loadExternalPlugin(gateway.path, "cli", { fresh: true });
+      return { validated: gateway.plugin, name: loaded.plugin.name, error: loaded.error ?? null, needsRestart: !!loaded.needsRestart };
+    `);
+
+    expect(result).toEqual({ validated: null, name: "Fixture Gateway", error: null, needsRestart: false });
+  }, 30_000);
+
+  test("an install from the app brings the sibling along and loads both", async () => {
+    const { home, run } = setup();
+    const result = await run(`
+      const manager = createNodePluginManager("cli");
+      const installed = await manager.install("fixture/gloom-fixture-gateway", { ref: "v1" });
+      const loaded = [];
+      for (const directory of [...(installed.peers ?? []), installed.directory]) {
+        const entry = await manager.load(directory);
+        loaded.push({ name: entry.plugin.name, error: entry.error ?? null });
+      }
+      return { installed, loaded };
+    `);
+
+    expect(result.installed).toEqual({ ok: true, directory: "gloom-fixture-gateway", peers: ["gloom-fixture-peer"] });
+    expect(existsSync(join(home, "plugins", "gloom-fixture-peer", "bridge.ts"))).toBe(true);
+    expect(result.loaded).toEqual([
+      { name: "Fixture Peer", error: null },
+      { name: "Fixture Gateway", error: null },
+    ]);
+  }, 30_000);
 });

@@ -22,18 +22,28 @@ export interface NodePluginManagerHooks {
 const installer = () => import("./installer");
 
 export function createNodePluginManager(target: PluginTarget, hooks: NodePluginManagerHooks = {}): NodePluginManager {
-  async function attempt(run: () => Promise<{ directory: string; kept?: string; changed?: boolean }>): Promise<PluginOperationResult> {
+  async function attempt(
+    run: () => Promise<{ directory: string; kept?: string; changed?: boolean; peers?: string[] }>,
+  ): Promise<PluginOperationResult> {
     try {
-      const { directory, kept, changed } = await run();
-      hooks.onChanged?.(join(getPluginsDir(), directory));
-      return { ok: true, directory, ...(kept ? { kept } : {}), ...(changed !== undefined ? { changed } : {}) };
+      const { directory, kept, changed, peers } = await run();
+      for (const changedDirectory of [...(peers ?? []), directory]) hooks.onChanged?.(join(getPluginsDir(), changedDirectory));
+      return {
+        ok: true,
+        directory,
+        ...(kept ? { kept } : {}),
+        ...(changed !== undefined ? { changed } : {}),
+        ...(peers?.length ? { peers } : {}),
+      };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
   return {
-    install: (repo, pin) => attempt(async () => (await installer()).installPlugin(repo, { quiet: true, pin })),
+    // Through the registry, like `gloomberb install`: a plugin that builds on
+    // another brings it along instead of failing to load without it.
+    install: (repo, pin) => attempt(async () => (await installer()).installListedPlugin(repo, { quiet: true, ...(pin ? { pin } : {}) })),
     update: (directory, pin) => attempt(async () => (await installer()).updatePlugin(directory, { quiet: true, pin })),
     remove: (directory) => attempt(async () => {
       await (await installer()).removePlugin(directory, { quiet: true });

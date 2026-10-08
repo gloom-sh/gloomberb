@@ -38,7 +38,7 @@ export function getPluginCatalog(externalPlugins: LoadedExternalPlugin[] = []): 
 }
 
 export function getLoadablePlugins(externalPlugins: LoadedExternalPlugin[] = []): GloomPlugin[] {
-  return getPluginCatalog(externalPlugins)
+  return getPluginCatalog(externalPlugins.filter((entry) => !entry.needsRestart))
     .filter((entry) => !entry.error && !entry.unsupportedTarget)
     .map((entry) => entry.plugin);
 }

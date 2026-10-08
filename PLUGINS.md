@@ -31,7 +31,9 @@ A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) is installed at
 the tag and commit the registry reviewed, not at whatever the default branch
 holds that day, and `update` moves it to the next reviewed one. A plugin
 installed from a repository the registry does not list follows the remote's
-default branch instead.
+default branch instead. A plugin that builds on another, such as IBKR Gateway
+on Interactive Brokers, brings that one along from the registry, from the
+Plugins pane and the CLI alike.
 
 Either way the Plugins pane says when an update is waiting. For a listed
 plugin that is the reviewed commit; for an unlisted one, including a private

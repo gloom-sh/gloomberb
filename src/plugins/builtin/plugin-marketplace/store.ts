@@ -72,6 +72,8 @@ export type PluginOperationResult =
     kept?: string;
     /** Whether an update moved the checkout to another commit. */
     changed?: boolean;
+    /** Sibling plugins an install brought along, by folder, to activate before it. */
+    peers?: string[];
   }
   | { ok: false; error: string };
 

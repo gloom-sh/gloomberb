@@ -3,6 +3,8 @@ import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from "os";
 import { join } from "path";
 
+import type { CrashReportsPayload } from "../api-client";
+import { flushCrashReports, installCrashReporter, resetCrashReporterForTests } from "../telemetry/crash-reports";
 import { VERSION } from "../version";
 import { listPluginDirectories, loadExternalPlugin, readPluginCommit } from "./loader";
 
@@ -98,6 +100,67 @@ describe("loadExternalPlugin", () => {
     writeFileSync(join(dir, "label.ts"), `export const label = "Split 2";\n`);
     writeFileSync(join(dir, ".git", "HEAD"), `${"1".repeat(40)}\n`);
     expect((await loadExternalPlugin(dir, "cli", { fresh: true }))?.needsRestart).toBe(true);
+  });
+});
+
+/**
+ * An import of IBKR Gateway that ran before Interactive Brokers was linked
+ * fails, and Bun keeps that failure for the rest of the process. Loading the
+ * gateway after the sibling arrives needs a restart, not a crash report. A
+ * sibling that really lacks the module is still a failure.
+ */
+describe("a plugin whose sibling plugin was linked after its import failed", () => {
+  afterEach(() => resetCrashReporterForTests());
+
+  function setup(peerFiles: Record<string, string>) {
+    const pluginsDir = mkdtempSync(join(tmpdir(), "gloom-plugins-"));
+    scratch.push(pluginsDir);
+    const folder = (name: string, files: Record<string, string>) => {
+      mkdirSync(join(pluginsDir, name));
+      for (const [file, content] of Object.entries(files)) writeFileSync(join(pluginsDir, name, file), content);
+      return join(pluginsDir, name);
+    };
+    const gateway = folder("gloom-fixture-gateway", {
+      "package.json": JSON.stringify({ name: "gloom-fixture-gateway", main: "index.ts", peerDependencies: { "gloom-fixture-peer": ">=1.0.0" } }),
+      "index.ts": `import { label } from "./plugin";\nexport default { id: "fixture-gateway", name: label };\n`,
+      "plugin.ts": `import { bridge } from "gloom-fixture-peer/bridge";\nexport const label = bridge;\n`,
+    });
+    const addPeer = () => folder("gloom-fixture-peer", { "package.json": JSON.stringify({ name: "gloom-fixture-peer" }), ...peerFiles });
+    const sent: CrashReportsPayload[] = [];
+    resetCrashReporterForTests();
+    installCrashReporter({
+      surface: "terminal",
+      isEnabled: () => true,
+      getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
+      send: async (payload) => { sent.push(payload); },
+    });
+    return { gateway, addPeer, sent };
+  }
+
+  test("asks for a restart when the module is there now", async () => {
+    const { gateway, addPeer, sent } = setup({ "bridge.ts": `export const bridge = "Fixture Gateway";\n` });
+    await import(join(gateway, "index.ts")).catch(() => {});
+    addPeer();
+
+    const loaded = await loadExternalPlugin(gateway, "cli", { fresh: true });
+    await flushCrashReports({ timeoutMs: 500 });
+
+    expect({ needsRestart: loaded?.needsRestart, error: loaded?.error }).toEqual({ needsRestart: true, error: undefined });
+    expect(sent).toEqual([]);
+  });
+
+  test("still fails and reports a module the sibling does not have", async () => {
+    const { gateway, addPeer, sent } = setup({ "index.ts": `export default { id: "fixture-peer", name: "Fixture Peer" };\n` });
+    addPeer();
+
+    const loaded = await loadExternalPlugin(gateway, "cli", { fresh: true });
+    await flushCrashReports({ timeoutMs: 500 });
+
+    expect(loaded?.needsRestart).toBeUndefined();
+    expect(loaded?.error).toContain("Cannot find module 'gloom-fixture-peer/bridge'");
+    expect(sent.flatMap((payload) => payload.errors.map((error) => error.message))).toEqual([
+      expect.stringContaining("Cannot find module 'gloom-fixture-peer/bridge'"),
+    ]);
   });
 });
 

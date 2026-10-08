@@ -49,7 +49,7 @@ import {
   type MarketplaceStatusKind,
   type RegistryPlugin,
 } from "./model";
-import { activateInstalledPlugin } from "./activation";
+import { activateInstall, activateInstalledPlugin } from "./activation";
 import { getMarketplaceHost, getPluginManager, type MarketplaceHost } from "./store";
 
 import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
@@ -376,7 +376,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       notify({ body: `Could not install ${entry.name}: ${result.error}`, type: "error" });
       return;
     }
-    const activated = await activateInstalledPlugin(result.directory, host, manager);
+    const activated = await activateInstall(result, host, manager);
     setBusy(null);
     bump();
     if (activated.ok && activated.restart) notify({ body: `Restart to finish installing ${entry.name}.`, type: "info" });

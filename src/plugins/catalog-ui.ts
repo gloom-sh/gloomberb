@@ -58,7 +58,7 @@ export function getRendererPlugins(externalPlugins: readonly LoadedExternalPlugi
   return [
     ...uiBuiltinPlugins,
     ...externalPlugins
-      .filter((entry) => !entry.error && !entry.unsupportedTarget)
+      .filter((entry) => !entry.error && !entry.unsupportedTarget && !entry.needsRestart)
       .map((entry) => entry.plugin),
   ];
 }

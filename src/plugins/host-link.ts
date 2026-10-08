@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, type Stats } from "fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, type Stats } from "fs";
 import { basename, dirname, join, resolve } from "path";
 
 import { installPluginHostResolver } from "./host-resolver";
@@ -174,6 +174,38 @@ export function installedPeerPlugins(pluginDir: string, pluginsDir: string = dir
     if (directory) installed.push({ peer, directory });
   }
   return installed;
+}
+
+/** What an import without an extension can name: the file, one with an extension Bun tries, or a folder's index. */
+const MODULE_SUFFIXES = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", "/index.ts", "/index.tsx", "/index.js"];
+
+function isFile(path: string): boolean {
+  return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
+}
+
+function packageMain(packageDir: string): string | null {
+  try {
+    const main = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf-8")).main;
+    return typeof main === "string" && main ? main : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `specifier` (`gloom-ibkr/gateway-bridge`) names a file in a
+ * sibling plugin that is installed and linked into `pluginDir` right now.
+ * An import that failed to resolve one anyway ran before the link existed:
+ * Bun keeps that answer for the rest of the process, so a restart fixes it.
+ */
+export function isLinkedPeerModule(pluginDir: string, specifier: string, pluginsDir: string = dirname(pluginDir)): boolean {
+  const found = installedPeerPlugins(pluginDir, pluginsDir)
+    .find(({ peer }) => specifier === peer || specifier.startsWith(`${peer}/`));
+  if (!found) return false;
+  const peerDir = join(pluginsDir, found.directory);
+  if (!alreadyLinked(join(pluginDir, "node_modules", found.peer), peerDir)) return false;
+  const subpath = specifier.slice(found.peer.length + 1) || packageMain(peerDir) || "index";
+  return MODULE_SUFFIXES.some((suffix) => isFile(join(peerDir, subpath + suffix)));
 }
 
 /**

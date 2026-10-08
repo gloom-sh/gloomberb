@@ -46,6 +46,25 @@ export async function activateInstalledPlugin(
 }
 
 /**
+ * Brings a fresh install into this session, the sibling plugins it brought
+ * along first: IBKR Gateway, for one, registers against Interactive Brokers.
+ * A sibling that only finishes after a restart holds the plugin to the same.
+ */
+export async function activateInstall(
+  installed: { directory: string; peers?: readonly string[] },
+  host: MarketplaceHost,
+  manager: PluginManager,
+): Promise<PluginActivation> {
+  let restart = false;
+  for (const peer of installed.peers ?? []) {
+    const activated = await activateInstalledPlugin(peer, host, manager);
+    if (activated.ok && activated.restart) restart = true;
+  }
+  const activated = await activateInstalledPlugin(installed.directory, host, manager);
+  return activated.ok && restart ? { ...activated, restart: true } : activated;
+}
+
+/**
  * Brings plugins the automatic updater moved into this session, exactly as
  * the pane does after an update, and says so in one toast rather than one per
  * plugin. A plugin split across files keeps running its old modules until a

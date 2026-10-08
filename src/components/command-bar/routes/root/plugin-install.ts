@@ -3,7 +3,7 @@ import type { PluginRegistry } from "../../../../plugins/registry";
 import { findAbsorbedPlugin } from "../../../../plugins/absorbed";
 import { isOfficialPluginRepo } from "../../../../plugins/auto-update";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../../../plugins/current-target";
-import { activateInstalledPlugin } from "../../../../plugins/builtin/plugin-marketplace/activation";
+import { activateInstall } from "../../../../plugins/builtin/plugin-marketplace/activation";
 import { loadRegistry, registryPluginUrl } from "../../../../plugins/builtin/plugin-marketplace/feed";
 import {
   installConsent,
@@ -217,7 +217,7 @@ function buildPluginInstallItem(
       onConfirm: async () => {
         const result = await manager.install(repo, pin);
         if (!result.ok) throw new Error(`Could not install ${plugin.name}: ${result.error}`);
-        const activated = await activateInstalledPlugin(result.directory, host, manager);
+        const activated = await activateInstall(result, host, manager);
         if (!activated.ok) throw new Error(`${plugin.name} installed but did not load: ${activated.error}`);
         if (activated.restart) {
           context.notify(`Restart to finish installing ${plugin.name}.`, "info");

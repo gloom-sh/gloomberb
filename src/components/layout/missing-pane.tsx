@@ -3,7 +3,7 @@ import { Button } from "../ui/button";
 import { confirmDialog } from "../ui/confirm-dialog";
 import { EmptyState } from "../ui/status";
 import { runsExternalPlugins } from "../../plugins/current-target";
-import { activateInstalledPlugin } from "../../plugins/builtin/plugin-marketplace/activation";
+import { activateInstall } from "../../plugins/builtin/plugin-marketplace/activation";
 import { installConsent } from "../../plugins/builtin/plugin-marketplace/model";
 import { getMarketplaceHost, getPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
 import type { PaneDef, PaneProps } from "../../types/plugin";
@@ -115,7 +115,7 @@ function MissingPanePlaceholder({ paneType, width }: PaneProps) {
       // Bring it into this session so the pane replaces the placeholder rather
       // than waiting for a restart; a plugin that cannot load live says so.
       const host = getMarketplaceHost();
-      const activated = host ? await activateInstalledPlugin(result.directory, host, installer) : null;
+      const activated = host ? await activateInstall(result, host, installer) : null;
       if (activated && !activated.ok) setNotice({ text: `Installed but did not load: ${activated.error}`, error: true });
       else if (!activated || activated.restart) setNotice({ text: "Installed. Restart to finish.", error: false });
     } finally {
