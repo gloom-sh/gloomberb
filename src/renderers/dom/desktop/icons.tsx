@@ -14,6 +14,7 @@ const ICONS: Record<IconName, ReactNode> = {
   ),
   close: <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />,
   zap: <path d="M7.1 1.2 2.7 6.5h3.1l-.7 4.3 4.4-5.5H6.4l.7-4.1Z" fill="currentColor" />,
+  sqrt: <path d="M1.5 6.6h1.6l1.8 3.6L7.6 2h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />,
   lock: (
     <>
       <rect x="2.5" y="5.5" width="7" height="5" rx="1.2" fill="currentColor" />

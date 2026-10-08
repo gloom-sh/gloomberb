@@ -267,7 +267,9 @@ const DomHeatTile = memo(function DomHeatTile({
     justifyContent: "center",
     gap: 0,
     cursor: "pointer",
-    boxShadow: selected ? `inset 0 0 0 2px ${foreground}` : undefined,
+    // The page's brightest text, then a hairline of the page: clear on a pink or
+    // aqua tile whether its own text is dark or light.
+    boxShadow: selected ? `inset 0 0 0 2px ${colors.textBright}, inset 0 0 0 3px ${colors.bg}` : undefined,
     zIndex: selected ? 1 : undefined,
     ...(motion.glideAnimation
       ? {
@@ -668,8 +670,9 @@ function TerminalHeatTreemap<T>({
             {other.showLabel && other.rect.width >= 7 && (
               <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>{clipToDisplayWidth(t("Other").toUpperCase(), other.rect.width - 1)}</Text>
             )}
-            {other.rect.width >= 7 && other.rect.height >= (other.showLabel ? 3 : 2) && otherSummary && (
-              <Text fg={colors.textMuted}>{clipToDisplayWidth(otherSummary, other.rect.width - 1)}</Text>
+            {/* A count is whole or absent: "2 nam…" says less than nothing. */}
+            {other.rect.height >= (other.showLabel ? 3 : 2) && otherSummary && otherSummary.length <= other.rect.width - 1 && (
+              <Text fg={colors.textMuted}>{otherSummary}</Text>
             )}
           </Box>
         )}

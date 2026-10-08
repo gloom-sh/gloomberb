@@ -8,6 +8,7 @@ export type IconName =
   | "more"
   | "close"
   | "zap"
+  | "sqrt"
   | "lock"
   | "warning"
   | "back"
@@ -33,6 +34,7 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   more: "...",
   close: "x",
   zap: "⚡",
+  sqrt: "√",
   lock: "🔒",
   warning: "⚠",
   back: "←",

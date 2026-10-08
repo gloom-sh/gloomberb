@@ -123,8 +123,8 @@ test("holdings are sized by market value in the portfolio's currency, and a name
   expect(assets[1]).toMatchObject({ sizeCaption: "Value", changePercent: -2, hasChange: true });
 });
 
-test("watchlist names are sized by the square root of market cap in the base currency", () => {
-  const { assets } = buildPortfolioHeatmapAssets({
+test("watchlist names are sized by market cap in the base currency, or its square root", () => {
+  const board = (sizeBy?: "sqrt-market-cap") => buildPortfolioHeatmapAssets({
     tickers: [ticker("IWM"), ticker("SPY"), ticker("7203", { currency: "JPY" })],
     financials: new Map<string, TickerFinancials>([
       ["SPY", { ...quote("SPY"), fundamentals: { marketCap: 400, marketCapCurrency: "USD" } }],
@@ -134,8 +134,15 @@ test("watchlist names are sized by the square root of market cap in the base cur
     kind: "watchlist",
     currency: "USD",
     exchangeRates: new Map([["JPY", 0.01]]),
-  });
-  expect(assets.map((asset) => [asset.symbol, asset.size, asset.weight, asset.showSize])).toEqual([
+    sizeBy,
+  }).assets.map((asset) => [asset.symbol, asset.size, asset.weight, asset.showSize]);
+  expect(board()).toEqual([
+    ["7203", 900, 900, true],
+    ["SPY", 400, 400, true],
+    ["IWM", null, 400, false],
+  ]);
+  // The caption keeps the real cap; only the area takes the square root.
+  expect(board("sqrt-market-cap")).toEqual([
     ["7203", 900, 30, true],
     ["SPY", 400, 20, true],
     ["IWM", null, 20, false],

@@ -101,24 +101,38 @@ export function resolveHeatCellColors(
 
 /**
  * Heat map tiles: one fixed diverging hue scale for every theme, so a move
- * reads the same in Amber as in GitHub Light. Losses run to hot pink, a flat
- * session sits on muted indigo and gains run to teal; pink against teal also
- * separates for red-green colour blindness, where red against green does not.
- * The ends keep white text at 4.5:1. A light theme lifts the flat end to a
- * pale lavender so the page is not a dark block; the ends stay the same.
+ * reads the same in Amber as in GitHub Light. Losses run to a bright hot
+ * pink, a flat session sits on a muted violet and gains run to a bright aqua;
+ * pink against aqua also separates for red-green colour blindness, where red
+ * against green does not. Each tile takes whichever text reads best on it,
+ * white on the violet middle and a dark navy on the bright ends, at 4.5:1 or
+ * better. The stops were sampled from a market wall's pinks, violets and
+ * aquas. A light theme starts from a pale lavender so the page is not a dark
+ * block; the ends stay the same.
  */
 const HEATMAP_TILE_FULL_SCALE_PERCENT = 3;
 /** How fast colour builds from flat: below 1 a small move already leans to its hue. */
-const HEATMAP_TILE_EASING = 0.7;
+const HEATMAP_TILE_EASING = 0.8;
 const HEATMAP_TILE_TEXT_MIN_CONTRAST = 4.5;
-const HEATMAP_LOSS = { l: 0.588, c: 0.215, h: 356 } as const;
-const HEATMAP_GAIN = { l: 0.545, c: 0.104, h: 186 } as const;
-const HEATMAP_FLAT_DARK = { l: 0.43, c: 0.1, h: 290 } as const;
+const HEATMAP_FLAT_DARK = { l: 0.53, c: 0.12, h: 296 } as const;
 const HEATMAP_FLAT_LIGHT = { l: 0.9, c: 0.035, h: 290 } as const;
+/** From flat to full strength, evenly spaced; dark pages pass a saturated middle stop on the way. */
+const HEATMAP_STOPS = {
+  dark: {
+    loss: [{ l: 0.62, c: 0.2, h: 350 }, { l: 0.7, c: 0.22, h: 356 }],
+    gain: [{ l: 0.64, c: 0.1, h: 205 }, { l: 0.8, c: 0.13, h: 185 }],
+  },
+  light: {
+    loss: [{ l: 0.7, c: 0.22, h: 356 }],
+    gain: [{ l: 0.8, c: 0.13, h: 185 }],
+  },
+} as const;
 const HEATMAP_MISSING_DARK = "#3a3a40";
 const HEATMAP_MISSING_LIGHT = "#cfcfd6";
 const HEATMAP_TEXT_LIGHT = "#ffffff";
-const HEATMAP_TEXT_DARK = "#0b0b12";
+const HEATMAP_TEXT_DARK = "#0a0d1f";
+/** Where neither white nor the navy reaches 4.5:1, black always does. */
+const HEATMAP_TEXT_BLACK = "#000000";
 const HEATMAP_STEPS = 64;
 
 export interface HeatmapTileColors {
@@ -182,8 +196,9 @@ function mixLch(from: Lch, to: Lch, ratio: number): Lch {
 }
 
 function heatmapTextColor(background: string): string {
-  if (contrastRatio(HEATMAP_TEXT_LIGHT, background) >= HEATMAP_TILE_TEXT_MIN_CONTRAST) return HEATMAP_TEXT_LIGHT;
-  return highestContrast([HEATMAP_TEXT_LIGHT, HEATMAP_TEXT_DARK], background);
+  const best = highestContrast([HEATMAP_TEXT_LIGHT, HEATMAP_TEXT_DARK], background);
+  if (contrastRatio(best, background) >= HEATMAP_TILE_TEXT_MIN_CONTRAST) return best;
+  return highestContrast([HEATMAP_TEXT_LIGHT, HEATMAP_TEXT_BLACK], background);
 }
 
 const heatmapScaleCache = new Map<string, HeatmapTileColors[]>();
@@ -194,10 +209,14 @@ function heatmapScale(light: boolean): HeatmapTileColors[] {
   const cached = heatmapScaleCache.get(key);
   if (cached) return cached;
   const flat = light ? HEATMAP_FLAT_LIGHT : HEATMAP_FLAT_DARK;
+  const stops = HEATMAP_STOPS[key];
   const scale: HeatmapTileColors[] = [];
   for (let step = -HEATMAP_STEPS; step <= HEATMAP_STEPS; step += 1) {
     const strength = (Math.abs(step) / HEATMAP_STEPS) ** HEATMAP_TILE_EASING;
-    const background = oklabToHex(lch(mixLch(flat, step < 0 ? HEATMAP_LOSS : HEATMAP_GAIN, strength)));
+    const path: readonly Lch[] = [flat, ...(step < 0 ? stops.loss : stops.gain)];
+    const position = strength * (path.length - 1);
+    const segment = Math.min(path.length - 2, Math.floor(position));
+    const background = oklabToHex(lch(mixLch(path[segment]!, path[segment + 1]!, position - segment)));
     scale.push({ background, foreground: heatmapTextColor(background) });
   }
   heatmapScaleCache.set(key, scale);

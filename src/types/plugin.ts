@@ -129,15 +129,23 @@ export interface PaneDef {
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);
   /** Portable sharing is public by default; list the few pane-owned fields that must remain local. */
   portableShare?: PanePortableShareDef;
-  /** Compact controls surfaced next to the pane title. Toggle keys reference toggle fields in settings. */
+  /**
+   * Compact controls surfaced next to the pane title. A key references a
+   * toggle field in settings, or a two-option select field when `onValue` is set.
+   */
   quickSettings?: readonly PaneQuickSettingDef[];
 }
 
 export interface PaneQuickSettingDef {
   type: "toggle";
   key: string;
-  icon: "zap";
+  icon: "zap" | "sqrt";
   label?: string;
+  /**
+   * For a two-option select field: the option the control turns on. Turning
+   * it off picks the field's other option.
+   */
+  onValue?: string;
 }
 
 export interface PaneSettingsContext {

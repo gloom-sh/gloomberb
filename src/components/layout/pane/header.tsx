@@ -5,7 +5,7 @@ import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { Tabs } from "../../ui/tabs";
-import { Icon, IconButton } from "../../ui/icon";
+import { ICON_GLYPHS, Icon, IconButton } from "../../ui/icon";
 import type { PaneHeaderTabsRegistration } from "./header-tabs";
 import { nativePaneHeaderRows } from "./sizing";
 
@@ -68,9 +68,14 @@ interface PaneHeaderTitleBar {
   trailing?: ReactNode;
 }
 
+/** A quick setting's terminal button: its glyph with a space either side. */
+function quickSettingText(setting: { icon: PaneHeaderQuickSetting["icon"] }): string {
+  return ` ${ICON_GLYPHS[setting.icon]} `;
+}
+
 export interface PaneHeaderQuickSetting {
   key: string;
-  icon: "zap";
+  icon: "zap" | "sqrt";
   label: string;
   description?: string;
   active: boolean;
@@ -139,7 +144,7 @@ export function PaneHeader({
   const closeText = fullscreen ? PANE_HEADER_RESTORE : floating ? PANE_HEADER_CLOSE : "";
   const onCornerMouseDown = fullscreen ? onRestoreMouseDown : onCloseMouseDown;
   const lockText = locked ? PANE_HEADER_LOCK : "";
-  const terminalQuickSettingsWidth = quickSettings.reduce((total) => total + displayWidth(" ⚡ "), 0)
+  const terminalQuickSettingsWidth = quickSettings.reduce((total, setting) => total + displayWidth(quickSettingText(setting)), 0)
     + displayWidth(lockText);
   const textColor = paneTitleText(visuallyFocused, floating);
   const topInset = topRule ? 1 : 0;
@@ -273,7 +278,7 @@ export function PaneHeader({
         {quickSettings.map((setting) => (
           <Box key={setting.key} data-gloom-role="pane-quick-setting" data-setting-key={setting.key}>
             <IconButton
-              icon="zap"
+              icon={setting.icon}
               label={`${setting.label}: ${setting.active ? "on" : "off"}`}
               pressed={setting.active}
               onPress={setting.onMouseDown ? (event) => setting.onMouseDown?.(event) : undefined}
@@ -340,7 +345,7 @@ export function PaneHeader({
         {quickSettings.map((setting) => (
           <TerminalPaneButton
             key={setting.key}
-            text=" ⚡ "
+            text={quickSettingText(setting)}
             fg={setting.active ? colors.warning : colors.textDim}
             role="pane-quick-setting"
             onMouseDown={setting.onMouseDown}
@@ -391,7 +396,7 @@ export function PaneHeader({
       {quickSettings.map((setting) => (
         <TerminalPaneButton
           key={setting.key}
-          text=" ⚡ "
+          text={quickSettingText(setting)}
           fg={setting.active ? colors.warning : colors.textDim}
           role="pane-quick-setting"
           onMouseDown={setting.onMouseDown}

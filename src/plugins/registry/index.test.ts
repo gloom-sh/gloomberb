@@ -493,13 +493,21 @@ describe("PluginRegistry pane settings", () => {
         name: "Test Pane",
         defaultPosition: "right",
         component: () => null,
-        quickSettings: [{ type: "toggle", key: "liveStreaming", icon: "zap" }],
+        quickSettings: [
+          { type: "toggle", key: "liveStreaming", icon: "zap" },
+          { type: "toggle", key: "sizeBy", icon: "sqrt", onValue: "sqrt", label: "Square root sizing" },
+        ],
         settings: {
-          values: { liveStreaming: true },
+          values: { liveStreaming: true, sizeBy: "cap" },
           fields: [{
             key: "liveStreaming",
             label: "Live streaming",
             type: "toggle",
+          }, {
+            key: "sizeBy",
+            label: "Size by",
+            type: "select",
+            options: [{ value: "cap", label: "Market cap" }, { value: "sqrt", label: "Square root" }],
           }],
         },
       });
@@ -517,10 +525,17 @@ describe("PluginRegistry pane settings", () => {
       icon: "zap",
       label: "Live streaming",
       value: true,
+    }, {
+      key: "sizeBy",
+      icon: "sqrt",
+      label: "Square root sizing",
+      value: false,
     }]);
 
     await registry.togglePaneQuickSetting("test-pane:main", "liveStreaming");
-    expect(applied).toEqual([{ key: "liveStreaming", value: false }]);
+    // A two-option select flips to the option the control stands for.
+    await registry.togglePaneQuickSetting("test-pane:main", "sizeBy");
+    expect(applied).toEqual([{ key: "liveStreaming", value: false }, { key: "sizeBy", value: "sqrt" }]);
   });
 });
 

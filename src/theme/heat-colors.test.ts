@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { applyTheme } from "./colors";
-import { contrastRatio } from "./color-utils";
+import { contrastRatio, relativeLuminance } from "./color-utils";
 import { DEFAULT_THEME, themes } from "./themes";
 import {
   hexToOklab,
@@ -57,7 +57,7 @@ function chroma(hex: string): number {
 describe("heat map tile colors", () => {
   const MOVES = [-6, -3, -2, -1, -0.5, -0.1, 0, 0.1, 0.5, 1, 2, 3, 6];
 
-  test("every tile, selected or not, keeps its text readable in every theme", () => {
+  test("every tile, selected or not, keeps its text readable in every theme, dark text on the bright ends", () => {
     for (const themeId of Object.keys(themes)) {
       applyTheme(themeId);
       for (const move of [...MOVES, null]) {
@@ -65,7 +65,15 @@ describe("heat map tile colors", () => {
           expect(contrastRatio(tile.foreground, tile.background), `${themeId} ${move}`).toBeGreaterThanOrEqual(CELL_TEXT_MIN_CONTRAST);
         }
       }
+      // The full-strength ends are bright, so they carry dark text; the dark-page middle carries light text.
+      for (const move of [-3, 3]) {
+        const tile = resolveHeatmapTileColors(move);
+        expect(relativeLuminance(tile.foreground), `${themeId} ${move}`).toBeLessThan(relativeLuminance(tile.background));
+      }
     }
+    applyTheme(DEFAULT_THEME);
+    const flat = resolveHeatmapTileColors(0);
+    expect(relativeLuminance(flat.foreground)).toBeGreaterThan(relativeLuminance(flat.background));
   });
 
   test("colour moves away from flat steadily with the size of the move and is full at 3%", () => {

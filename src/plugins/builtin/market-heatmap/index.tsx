@@ -55,10 +55,13 @@ import {
   fallbackHeatmapCollectionId,
   heatmapCollectionLabel,
   heatmapFollowsCollection,
+  heatmapSizeBy,
+  heatmapSizeWeight,
   heatmapTabId,
   isRemoteHeatmapUniverse,
   useLinkedHeatmapCollection,
   type HeatmapBoardAsset,
+  type HeatmapSizeBy,
 } from "./portfolio";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import {
@@ -89,6 +92,8 @@ const LAYOUT_TOLERANCE = 0.005;
 const TERMINAL_PAINT_THROTTLE_MS = 250;
 const SELECTION_STREAM_SETTLE_MS = 1_500;
 const TOOLTIP_NAME_WIDTH = 28;
+const SIZE_BY_SETTING_KEY = "sizeBy";
+const SQRT_SIZE_VALUE: HeatmapSizeBy = "sqrt-market-cap";
 const NO_BOARD = { assets: NO_ASSETS, omitted: 0 };
 const EMPTY_TICKERS: TickerRecord[] = [];
 const NO_CURRENCIES: string[] = [];
@@ -153,15 +158,23 @@ function resolveGrouping(assets: readonly HeatmapBoardAsset[], industries: boole
   return industries ? "sector-industry" : "sector";
 }
 
+/**
+ * The size transform applies to each name before groups sum them, so a
+ * sector's block is the sum of its transformed names. A board that already
+ * carries a weight (a portfolio or watchlist) applied it when it was built.
+ */
 function buildLayoutItems(
   snapshot: readonly HeatmapBoardAsset[],
   live: readonly HeatmapBoardAsset[],
   grouping: HeatmapGrouping,
+  sizeBy: HeatmapSizeBy,
 ): Array<MetricTreemapItem<HeatmapBoardAsset>> {
   return snapshot.map((asset, index) => ({
     id: asset.symbol,
     label: asset.symbol,
-    weight: liveHeatmapWeight(asset, live[index] ?? asset),
+    weight: asset.weight != null
+      ? liveHeatmapWeight(asset, live[index] ?? asset)
+      : heatmapSizeWeight(liveHeatmapWeight(asset, live[index] ?? asset), sizeBy),
     group: grouping === "flat" ? undefined : asset.sector ?? null,
     subgroup: grouping === "sector-industry" ? asset.industry ?? null : undefined,
     data: asset,
@@ -240,6 +253,8 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   // A pane setting, not private pane state, so the settings dialog can show it.
   const [universeSetting, setActiveUniverse] = usePaneSettingValue<string>("universe", "us-equity");
   const [linkPortfolio] = usePaneSettingValue<boolean>("linkPortfolio", false);
+  const [sizeBySetting] = usePaneSettingValue<string>(SIZE_BY_SETTING_KEY, "market-cap");
+  const sizeBy = heatmapSizeBy(sizeBySetting);
   const activeUniverse = heatmapTabId(universeSetting);
   const portfolioTab = activeUniverse === PORTFOLIO_HEATMAP_TAB;
   const config = usePaneAppConfig();
@@ -286,10 +301,11 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
         kind: collectionKind,
         currency: boardCurrency,
         exchangeRates,
+        sizeBy,
       })
       : NO_BOARD),
     [financials],
-    [boardCurrency, collectionId, collectionKind, collectionTickers, exchangeRates, financials.size],
+    [boardCurrency, collectionId, collectionKind, collectionTickers, exchangeRates, financials.size, sizeBy],
     PORTFOLIO_REORDER_THROTTLE_MS,
   );
   const portfolioAssets = portfolioBoard.assets;
@@ -375,7 +391,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     LAYOUT_THROTTLE_MS,
   );
   const layoutItems = useSettledLayoutItems(
-    useMemo(() => buildLayoutItems(boardAssets, layoutAssets, grouping), [boardAssets, grouping, layoutAssets]),
+    useMemo(() => buildLayoutItems(boardAssets, layoutAssets, grouping, sizeBy), [boardAssets, grouping, layoutAssets, sizeBy]),
   );
   // The board on screen seeds the next layout's order, so a refresh nudges tiles instead of reshuffling them.
   const sceneRef = useRef<{ tab: string; scene: ReturnType<typeof buildHeatTreemapScene<HeatmapBoardAsset>> } | null>(null);
@@ -683,10 +699,16 @@ export const marketHeatmapPlugin: GloomPlugin = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 36 },
-      quickSettings: [LIVE_STREAMING_QUICK_SETTING],
+      quickSettings: [
+        LIVE_STREAMING_QUICK_SETTING,
+        { type: "toggle", key: SIZE_BY_SETTING_KEY, icon: "sqrt", onValue: SQRT_SIZE_VALUE, label: "Size by square root of market cap" },
+      ],
       settings: (context) => withLiveStreamingSetting({
         title: "Market Heatmap Settings",
-        values: { linkPortfolio: context.settings.linkPortfolio === true },
+        values: {
+          linkPortfolio: context.settings.linkPortfolio === true,
+          [SIZE_BY_SETTING_KEY]: heatmapSizeBy(context.settings[SIZE_BY_SETTING_KEY]),
+        },
         fields: [
           {
             key: "universe",
@@ -699,6 +721,16 @@ export const marketHeatmapPlugin: GloomPlugin = {
               })),
               { value: PORTFOLIO_HEATMAP_TAB, label: "Portfolio pane list" },
             ],
+          },
+          {
+            key: SIZE_BY_SETTING_KEY,
+            label: "Size by",
+            type: "select",
+            options: [
+              { value: "market-cap", label: "Market cap" },
+              { value: SQRT_SIZE_VALUE, label: "Square root of market cap" },
+            ],
+            description: "Square root gives mid-size names room next to the largest. Portfolios apply it to position value.",
           },
           {
             key: "linkPortfolio",

@@ -7,6 +7,21 @@ import type { TickerRecord } from "../../../types/ticker";
 import { getSortValue, type ColumnContext } from "../portfolio-list/metrics";
 
 export const PORTFOLIO_HEATMAP_TAB = "portfolio";
+
+/**
+ * How tile area follows size. The square root gives mid-size names room next
+ * to the largest; groups still sum their tiles, so a sector's block stays
+ * the sum of its transformed names.
+ */
+export type HeatmapSizeBy = "market-cap" | "sqrt-market-cap";
+
+export function heatmapSizeBy(value: unknown): HeatmapSizeBy {
+  return value === "sqrt-market-cap" ? "sqrt-market-cap" : "market-cap";
+}
+
+export function heatmapSizeWeight(size: number, sizeBy: HeatmapSizeBy): number {
+  return sizeBy === "sqrt-market-cap" ? Math.sqrt(size) : size;
+}
 const MAX_PORTFOLIO_TILES = 160;
 
 export type HeatmapTabId = MarketHeatmapUniverseId | typeof PORTFOLIO_HEATMAP_TAB;
@@ -147,11 +162,11 @@ function positiveNumber(value: number | string | null): number | null {
 /**
  * A portfolio's holdings are sized by market value, read as the portfolio pane
  * reads its MKT VALUE column: lots, contract multipliers and price basis, in
- * the portfolio's currency. A watchlist's names are sized by the square root
- * of market cap in the base currency, so a mega-cap does not hide the rest of
- * a short list. A name with no size (no position, no quote, no cap, no FX
- * rate) gets the smallest tile and no caption. Past `MAX_PORTFOLIO_TILES`,
- * the smallest names are left out and counted in `omitted`.
+ * the portfolio's currency. A watchlist's names are sized by market cap in the
+ * base currency. `sizeBy` takes the square root of either. A name with no
+ * size (no position, no quote, no cap, no FX rate) gets the smallest tile and
+ * no caption. Past `MAX_PORTFOLIO_TILES`, the smallest names are left out and
+ * counted in `omitted`.
  */
 export function buildPortfolioHeatmapAssets({
   tickers,
@@ -160,6 +175,7 @@ export function buildPortfolioHeatmapAssets({
   kind,
   currency,
   exchangeRates,
+  sizeBy = "market-cap",
 }: {
   tickers: readonly TickerRecord[];
   financials: ReadonlyMap<string, TickerFinancials>;
@@ -168,6 +184,7 @@ export function buildPortfolioHeatmapAssets({
   /** The portfolio's totals currency, or the base currency for a watchlist. */
   currency: string;
   exchangeRates: Map<string, number>;
+  sizeBy?: HeatmapSizeBy;
 }): { assets: HeatmapBoardAsset[]; omitted: number } {
   const context: ColumnContext = {
     activeTab: kind === "portfolio" ? collectionId : undefined,
@@ -191,7 +208,7 @@ export function buildPortfolioHeatmapAssets({
       changePercent: hasChange ? quote.changePercent : 0,
       hasChange,
       size,
-      weight: size == null ? undefined : kind === "portfolio" ? size : Math.sqrt(size),
+      weight: size == null ? undefined : heatmapSizeWeight(size, sizeBy),
       sizeKind: "market-cap",
       sizeCaption: kind === "portfolio" ? "Value" : undefined,
       sizeCurrency: currency,
@@ -212,7 +229,7 @@ export function buildPortfolioHeatmapAssets({
   const kept = measured.slice(0, MAX_PORTFOLIO_TILES);
   const sizes = kept.flatMap((asset) => (asset.size != null ? [asset.size] : []));
   const floor = sizes.length > 0 ? Math.min(...sizes) : 1;
-  const floorWeight = kind === "portfolio" ? floor : Math.sqrt(floor);
+  const floorWeight = heatmapSizeWeight(floor, sizeBy);
   return {
     assets: kept.map((asset) => (asset.size != null ? asset : { ...asset, weight: floorWeight })),
     omitted: measured.length - kept.length,
