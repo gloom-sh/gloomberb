@@ -245,6 +245,10 @@ const DomHeatTile = memo(function DomHeatTile({
     shownRef.current = background;
   }
   const fade = fadeRef.current;
+  // A finished overlay leaves the DOM, so idle tiles carry no extra nodes.
+  const [, setOverlayVersion] = useState(0);
+  const pulseDoneRef = useRef(0);
+  const pulsing = motion.pulseAnimation != null && pulseCount > pulseDoneRef.current;
   const style: CSSProperties = {
     position: "absolute",
     left: `calc(${pct(rect.x, canvasWidth)} + ${gap}px)`,
@@ -305,10 +309,26 @@ const DomHeatTile = memo(function DomHeatTile({
       onMouseOut={() => events.leave(id)}
     >
       {fade && (
-        <Box key={`fade:${fade.key}`} style={{ ...overlayStyle, backgroundColor: fade.from, animation: motion.fadeAnimation }} />
+        <Box
+          key={`fade:${fade.key}`}
+          // Invisible at rest: if animations are off the old colour must not stay on top.
+          style={{ ...overlayStyle, backgroundColor: fade.from, opacity: 0, animation: motion.fadeAnimation }}
+          onAnimationEnd={() => {
+            if (fadeRef.current?.key !== fade.key) return;
+            fadeRef.current = null;
+            setOverlayVersion((version) => version + 1);
+          }}
+        />
       )}
-      {motion.pulseAnimation && (
-        <Box key={`pulse:${pulseCount}`} style={{ ...overlayStyle, backgroundColor: "#ffffff", opacity: 0, animation: motion.pulseAnimation }} />
+      {pulsing && (
+        <Box
+          key={`pulse:${pulseCount}`}
+          style={{ ...overlayStyle, backgroundColor: "#ffffff", opacity: 0, animation: motion.pulseAnimation }}
+          onAnimationEnd={() => {
+            pulseDoneRef.current = Math.max(pulseDoneRef.current, pulseCount);
+            setOverlayVersion((version) => version + 1);
+          }}
+        />
       )}
       {text.tier !== "none" && (
         <Text style={{ ...lineStyle, fontSize: text.tickerPx, fontWeight: 700, lineHeight: 1.12 }}>{label}</Text>
