@@ -6,6 +6,12 @@ export interface MetricTreemapItem<T = unknown> {
   primaryText?: string | null;
   secondaryText?: string | null;
   tertiaryText?: string | null;
+  /** Optional hierarchy for the heat map layout (a sector); the flat layouts ignore it. */
+  group?: string | null;
+  /** Second level inside `group` (an industry). */
+  subgroup?: string | null;
+  /** Hover lines on the desktop heat map, the first one emphasised. */
+  tooltip?: readonly string[];
   data: T;
 }
 

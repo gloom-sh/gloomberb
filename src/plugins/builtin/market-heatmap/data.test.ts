@@ -1,6 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { fetchMarketHeatmap, resetMarketHeatmapCache } from "./data";
+import { dedupeHeatmapAssets, fetchMarketHeatmap, resetMarketHeatmapCache } from "./data";
 let restore: (() => void) | undefined;
 afterEach(() => { restore?.(); restore = undefined; resetMarketHeatmapCache(); });
 test("concurrent requests share the backend snapshot and force refresh replaces the cache", async () => {
@@ -41,4 +41,27 @@ test("mismatched universes and failed envelopes never become a usable cached boa
     await expect(fetchMarketHeatmap("us-equity", { cache: false }, { client: { getMarketHeatmap: async () => response as any } }))
       .rejects.toThrow("Market heatmap unavailable");
   }
+});
+
+test("a board asks for at most 500 names, and an older server's shorter answer is used as is", async () => {
+  const counts: number[] = [];
+  const client = { getMarketHeatmap: async (_universe: string, count: number) => {
+    counts.push(count);
+    return { status: "success" as const, data: { universe: "us-equity" as const, source: "gloom" as const, fetchedAt: 1,
+      assets: Array.from({ length: Math.min(count, 160) }, (_, index) => ({ symbol: `S${index}` }) as any) } };
+  } };
+  const result = await fetchMarketHeatmap("us-equity", { count: 900, cache: false }, { client: client as any });
+  expect(counts).toEqual([500]);
+  expect(result.assets).toHaveLength(160);
+});
+
+test("a company listed twice gets one tile, the larger listing, in its place", () => {
+  const assets = [
+    { symbol: "AAA", exchange: "NASDAQ", size: 300 },
+    { symbol: "KHC", exchange: "NASDAQ", size: 26.68 },
+    { symbol: "BBB", exchange: "NYSE", size: 20 },
+    { symbol: "KHC", exchange: "NYSE", size: 26.66 },
+  ];
+  expect(dedupeHeatmapAssets(assets)).toEqual([assets[0]!, assets[1]!, assets[2]!]);
+  expect(dedupeHeatmapAssets([assets[3]!, assets[1]!]).map((asset) => asset.exchange)).toEqual(["NASDAQ"]);
 });

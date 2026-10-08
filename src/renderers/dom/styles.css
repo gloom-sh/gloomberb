@@ -281,6 +281,33 @@ body.gloom-dragging {
     0 0 0 4px color-mix(in srgb, var(--gloom-border-focused) 28%, transparent);
   pointer-events: none;
 }
+/* Heat map tiles animate only transforms and opacity, which the compositor
+   runs on its own: a tile sliding from its old place after a relayout, the
+   previous colour fading out over the new one, and a light flash on a tile
+   whose move just jumped. */
+@keyframes gloom-heat-glide-a {
+  from { transform: translate(var(--heat-glide-x, 0), var(--heat-glide-y, 0)); }
+  to { transform: none; }
+}
+@keyframes gloom-heat-glide-b {
+  from { transform: translate(var(--heat-glide-x, 0), var(--heat-glide-y, 0)); }
+  to { transform: none; }
+}
+@keyframes gloom-heat-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes gloom-heat-pulse {
+  0%, 100% { opacity: 0; }
+  30% { opacity: 0.16; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-gloom-role="heat-tile"],
+  [data-gloom-role="heat-tile"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
 [data-gloom-role="chart-surface"] {
   cursor: crosshair;
 }
