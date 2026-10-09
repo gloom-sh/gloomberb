@@ -717,8 +717,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["GLCO"],
   },
   CTM: {
-    summary: "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest and volume.",
-    usage: ["CTM GC"],
+    summary: "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest and volume. Takes a FUT root, VX or a CME crypto root (BTC, ETH, SOL, XRP).",
+    usage: ["CTM GC", "CTM BTC"],
     keys: [key("d", "ate"), key("c", "urrent"), STEP],
     data: same("Delayed, usually 10 minutes; VIX at settlement"),
     bloomberg: ["CTM", "CT"],
@@ -731,8 +731,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   COT: {
-    summary: "CFTC Commitments of Traders: net positioning by trader class, the weekly change, and one- and three-year percentiles. Pass a root like CL to chart it under the front-month price.",
-    usage: ["COT", "COT CL"],
+    summary: "CFTC Commitments of Traders: net positioning by trader class, the weekly change, and one- and three-year percentiles. Pass a root like CL or BTC (also ETH, MBT, MET, SOL, XRP) for one market, charted under its front-month price where there is one.",
+    usage: ["COT", "COT CL", "COT BTC"],
     keys: [key("c", "lass"), key("s", "cope"), SEARCH],
     data: same("Weekly: Tuesday positions, out on Friday"),
     bloomberg: ["COT"],

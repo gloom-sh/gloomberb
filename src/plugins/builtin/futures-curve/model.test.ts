@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
+import { FUTURES_CONTRACTS } from "../futures/contracts";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { archivedFuturesCurve, curveAsOfDate, curveAxisPrice, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, futuresCurveSeries, newestQuote, sortCurveContracts } from "./model";
+import { archivedFuturesCurve, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts } from "./model";
+import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
   price: 80, asOf: "2026-09-22T15:00:00Z", currency: "USD", quoteUnit: "USD", volume: 0, openInterest: 0, delayMinutes: 10,
@@ -92,6 +94,40 @@ test("Treasury prices keep one decimal count per root on their 32nd tick grid an
   expect(curveContractMonth("ZFZ26.CBT", "2026-12-31")).toBe("Dec 26");
   expect(curveContractMonth("RTYH27.CME", "2027-03-19")).toBe("Mar 27");
   expect(curveContractMonth("VX/V6", "2026-10-21")).toBe("Oct 26");
+});
+
+test("CME crypto roots are listed with prices at their tick, and FUT's board keeps its own list", () => {
+  expect(CURVE_ROOTS.filter((row) => ["BTC", "ETH", "SOL", "XRP"].includes(row.value)).map((row) => row.label)).toEqual(["BTC Bitcoin", "ETH Ether", "SOL Solana", "XRP"]);
+  expect(futuresCurveModule.paneTemplates?.[0]?.shortcut?.argOptions?.().map((row) => row.value)).toEqual(expect.arrayContaining(["BTC", "ETH", "SOL", "XRP"]));
+  expect(FUTURES_CONTRACTS.some((row) => ["BTC", "ETH", "SOL", "XRP"].includes(row.code))).toBe(false);
+  // BTC $5, ETH $0.50, SOL $0.05 and XRP $0.0005 ticks, as the live curves quote them.
+  expect(curvePrice(82470, "BTC")).toBe("82470.00");
+  expect(curvePrice(2492.5, "ETH")).toBe("2492.50");
+  expect(curvePrice(110.1, "SOL")).toBe("110.10");
+  expect(curvePrice(1.399, "XRP")).toBe("1.3990");
+  expect(curveChangeText(-0.0935, "XRP")).toBe("-0.0935");
+});
+
+test("a crypto root opens from a typed argument, a crypto ticker or a futures symbol, never from the equity under the cursor", async () => {
+  expect(["btc", "ETH", "sol=f", " xrp "].map(normalizeCurveRoot)).toEqual(["BTC", "ETH", "SOL", "XRP"]);
+  // BTC and ETH are Grayscale's mini trusts, SOL an equity too: the bare symbol is theirs.
+  expect(["BTC", "ETH", "SOL", "XRP", "btc"].map(curveRootForTicker)).toEqual([null, null, null, null, null]);
+  expect(["BTC-USD", "eth-usd", "BTC=F", "SOL-USD", "XRP=F"].map(curveRootForTicker)).toEqual(["BTC", "ETH", "BTC", "SOL", "XRP"]);
+  expect(["DOGE-USD", "AAPL", null].map(curveRootForTicker)).toEqual([null, null, null]);
+  // The futures that already follow the cursor still do.
+  expect(["ES", "CL=F", "gc"].map(curveRootForTicker)).toEqual(["ES", "CL", "GC"]);
+
+  const template = futuresCurveModule.paneTemplates![0]!;
+  const open = (arg: string | undefined, activeTicker: string | null) => template.createInstance!({ activeTicker } as never, { arg } as never);
+  expect(await open("BTC", "AAPL")).toMatchObject({ title: "CTM BTC", params: { root: "BTC" } });
+  expect(await open(undefined, "BTC")).toMatchObject({ title: "CTM ES", params: { root: "ES" } });
+  expect(await open(undefined, "ETH-USD")).toMatchObject({ title: "CTM ETH", params: { root: "ETH" } });
+  expect(await open(undefined, "SOL")).toMatchObject({ title: "CTM ES" });
+  // An explicit argument still wins over the cursor.
+  expect(await open("XRP", "BTC-USD")).toMatchObject({ title: "CTM XRP" });
+  const requested: string[] = [];
+  await fetchFuturesCurve("btc", { getCloudFuturesCurve: async (root) => { requested.push(root); return { ...payload(), root }; } });
+  expect(requested).toEqual(["BTC"]);
 });
 
 test("each contract's move since the look-back curves, with missing legs left empty", () => {

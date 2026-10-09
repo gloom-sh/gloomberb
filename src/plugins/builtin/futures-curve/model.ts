@@ -5,18 +5,46 @@ import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
 import { formatPercentileRank } from "../../../utils/format";
+import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
+/**
+ * CME crypto futures have a curve but no FUT board row, so their name and tick
+ * live here rather than in the catalogue the board lists. Outright ticks:
+ * BTC $5, ETH $0.50, SOL $0.05, XRP $0.0005 (each $25 a contract).
+ */
+const CRYPTO_CURVE_ROOTS: readonly { code: string; name: string; tick: number }[] = [
+  { code: "BTC", name: "Bitcoin", tick: 5 }, { code: "ETH", name: "Ether", tick: 0.5 },
+  { code: "SOL", name: "Solana", tick: 0.05 }, { code: "XRP", name: "XRP", tick: 0.0005 },
+];
+const rootLabel = (code: string, name: string) => name === code ? code : `${code} ${name}`;
+
 export const CURVE_ROOTS = [
-  ...FUTURES_CONTRACTS.filter((row) => row.curve !== false).map((row) => ({ value: row.code, label: `${row.code} ${row.name}` })),
+  ...FUTURES_CONTRACTS.filter((row) => row.curve !== false).map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
   { value: "VX", label: "VX VIX Futures" },
+  ...CRYPTO_CURVE_ROOTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
 ];
 
+/** A root typed as an argument, a stored pane setting or a request: every listed root, crypto included. */
 export function normalizeCurveRoot(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const raw = value.trim().toUpperCase().replace(/=F$/, "");
   const root = raw === "VIX" ? "VX" : raw;
   return CURVE_ROOTS.some((row) => row.value === root) ? root : null;
+}
+
+/**
+ * The root for the ticker under the cursor, when CTM is opened without an
+ * argument. The crypto roots are also US ticker symbols (Grayscale's mini
+ * trusts are BTC and ETH), so a bare one is the equity's, never the future's:
+ * only a futures symbol (BTC=F) or a coin pair (BTC-USD) names the crypto curve.
+ */
+export function curveRootForTicker(ticker: unknown): string | null {
+  if (typeof ticker !== "string") return null;
+  const coin = cryptoPairCoin(ticker);
+  if (coin) return CRYPTO_CURVE_ROOTS.some((row) => row.code === coin) ? coin : null;
+  const root = normalizeCurveRoot(ticker);
+  return root && CRYPTO_CURVE_ROOTS.some((row) => row.code === root) && !isFuturesSymbol(ticker) ? null : root;
 }
 
 /**
@@ -32,7 +60,7 @@ function curvePriceDecimals(root: string): number {
   const rateTick = RATE_TICKS[root];
   if (rateTick != null) return tickDecimals(rateTick);
   if (root === "VX") return 4;
-  const tick = FUTURES_CONTRACTS.find((row) => row.code === root)?.tick;
+  const tick = FUTURES_CONTRACTS.find((row) => row.code === root)?.tick ?? CRYPTO_CURVE_ROOTS.find((row) => row.code === root)?.tick;
   return tick == null ? 5 : Math.max(2, tickDecimals(tick));
 }
 
