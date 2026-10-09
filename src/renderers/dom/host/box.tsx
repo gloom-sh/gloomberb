@@ -6,6 +6,7 @@ import {
   useRef,
   type CSSProperties,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   type Ref,
 } from "react";
@@ -20,6 +21,26 @@ import {
   requestWebFrame,
 } from "./mouse";
 import { cleanDomProps, commonStyle } from "./style";
+
+function capturePointer(element: HTMLElement | null, pointerId: number | null): { element: HTMLElement; pointerId: number } | null {
+  if (!element || pointerId === null || typeof element.setPointerCapture !== "function") return null;
+  try {
+    element.setPointerCapture(pointerId);
+    return { element, pointerId };
+  } catch {
+    // The pointer is already up or belongs to another frame: drag uncaptured.
+    return null;
+  }
+}
+
+function releasePointer(captured: { element: HTMLElement; pointerId: number } | null): void {
+  if (!captured) return;
+  try {
+    if (captured.element.hasPointerCapture?.(captured.pointerId)) captured.element.releasePointerCapture(captured.pointerId);
+  } catch {
+    // Released already, by the browser on pointerup.
+  }
+}
 
 export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { children?: ReactNode }>(
   function WebBox({ children, ...props }, ref: Ref<HTMLDivElement>) {
@@ -89,10 +110,13 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
     };
 
     const lastPointRef = useRef({ x: 0, y: 0 });
+    // The pointer that pressed this box, so a drag can capture it.
+    const pressedPointerRef = useRef<number | null>(null);
     const dragSessionRef = useRef<{
       move: (event: globalThis.MouseEvent) => void;
       up: (event: globalThis.MouseEvent) => void;
       cancel: () => void;
+      captured: { element: HTMLElement; pointerId: number } | null;
     } | null>(null);
     const endDocumentDragRef = useRef<(event: globalThis.MouseEvent | null, notify: boolean) => void>(() => {});
     endDocumentDragRef.current = (event, notify) => {
@@ -108,6 +132,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         document.removeEventListener("pointerup", session.up);
         document.removeEventListener("pointercancel", session.cancel);
         window.removeEventListener("blur", session.cancel);
+        releasePointer(session.captured);
       }
       if (!notify || !wasDragging) return;
       const point = event ?? new MouseEvent("mouseup", {
@@ -168,6 +193,13 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         if (!document.body.classList.contains("gloom-dragging")) {
           if (dx * dx + dy * dy < 9) return;
           document.body.classList.add("gloom-dragging");
+          // Captured once it is a drag (a click keeps its usual target), the
+          // moves skip hit testing and leave every other element's hover state
+          // alone: nothing under the pointer restyles or repaints while a pane,
+          // divider or chart is dragged across it. The document listeners still
+          // see every move.
+          const session = dragSessionRef.current;
+          if (session && !session.captured) session.captured = capturePointer(elementRef.current, pressedPointerRef.current);
         }
         scheduleFrameMouseHandler(moveEvent, "drag");
       };
@@ -177,12 +209,19 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       const cancel = () => {
         endDocumentDragRef.current(null, true);
       };
-      dragSessionRef.current = { move, up, cancel };
+      dragSessionRef.current = { move, up, cancel, captured: null };
       document.addEventListener("mousemove", move);
       document.addEventListener("mouseup", up);
       document.addEventListener("pointerup", up);
       document.addEventListener("pointercancel", cancel);
       window.addEventListener("blur", cancel);
+    };
+
+    const handlesDrag = typeof props.onMouse === "function"
+      || typeof props.onMouseDrag === "function"
+      || typeof props.onMouseDragEnd === "function";
+    const handlePointerDown = (event: PointerEvent) => {
+      pressedPointerRef.current = event.pointerId;
     };
 
     const handleMouseDownCapture = (event: MouseEvent) => {
@@ -204,6 +243,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         data-gloom-hover-bg={hoverBackgroundColor ? "true" : undefined}
         ref={elementRef}
         onMouseDownCapture={typeof props.onMouseDownCapture === "function" ? handleMouseDownCapture : undefined}
+        onPointerDown={handlesDrag ? handlePointerDown : undefined}
         onMouseDown={handleMouseDown}
         onMouseOver={handleMouseOver}
         onMouseMove={(event) => scheduleFrameMouseHandler(event, "move")}

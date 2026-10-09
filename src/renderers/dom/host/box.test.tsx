@@ -92,6 +92,41 @@ test("a drag ends when the button is up even if mouseup never arrives", async ()
   expect(testWindow.document.body.classList.contains("gloom-dragging")).toBe(false);
 });
 
+test("a drag captures its pointer once it moves, and a click leaves the pointer alone", async () => {
+  const { WebBox } = await import("./box");
+  const container = await renderDom(<WebBox width={10} height={2} onMouseDrag={() => {}} onMouseDragEnd={() => {}} />);
+  const surface = container.firstElementChild as unknown as HTMLElement;
+  const captured = new Set<number>();
+  const calls: string[] = [];
+  Object.assign(surface, {
+    setPointerCapture: (id: number) => { calls.push(`capture:${id}`); captured.add(id); },
+    releasePointerCapture: (id: number) => { calls.push(`release:${id}`); captured.delete(id); },
+    hasPointerCapture: (id: number) => captured.has(id),
+  });
+  const press = async () => {
+    await act(async () => {
+      surface.dispatchEvent(new testWindow.PointerEvent("pointerdown", { bubbles: true, pointerId: 7, button: 0, buttons: 1 }) as never);
+      surface.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, buttons: 1, clientX: 4, clientY: 4 }));
+    });
+  };
+  const document = testWindow.document;
+
+  // A click keeps its usual target: nothing is captured.
+  await press();
+  await act(async () => document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0, buttons: 0, clientX: 4, clientY: 4 })));
+  expect(calls).toEqual([]);
+
+  // A drag takes the pointer, so moves skip hit testing and hover elsewhere, and gives it back on release.
+  await press();
+  await act(async () => {
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, button: 0, buttons: 1, clientX: 40, clientY: 4 }));
+    await settle();
+  });
+  expect(calls).toEqual(["capture:7"]);
+  await act(async () => document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0, buttons: 0, clientX: 40, clientY: 4 })));
+  expect(calls).toEqual(["capture:7", "release:7"]);
+});
+
 test("chart surfaces consume browser pan and zoom gestures", async () => {
   const directions: string[] = [];
   const container = await renderDom(
