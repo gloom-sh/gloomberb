@@ -11,7 +11,14 @@ export const DEFAULT_SORT: SortPreference = {
 export const VIEW_TABS: Array<{ label: string; value: ViewMode }> = [
   { label: "Table", value: "table" },
   { label: "Chart", value: "chart" },
+  { label: "13D/G", value: "13dg" },
 ];
+
+/** `s` steps through the views in tab order. */
+export function nextViewMode(current: ViewMode): ViewMode {
+  const index = VIEW_TABS.findIndex((tab) => tab.value === current);
+  return VIEW_TABS[(index + 1) % VIEW_TABS.length]!.value;
+}
 
 export function buildRows(data: HolderData | null): HolderRow[] {
   return (data?.holders ?? []).map((holder, index) => ({

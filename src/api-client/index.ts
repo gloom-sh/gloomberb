@@ -820,6 +820,7 @@ class GloomApiClient {
   getRiskReports = this.data.getRiskReports.bind(this.data);
   getRiskReport = this.data.getRiskReport.bind(this.data);
   getCloudSecFilings = this.data.getCloudSecFilings.bind(this.data);
+  getCloudSecBeneficialOwners = this.data.getCloudSecBeneficialOwners.bind(this.data);
   getCloudSecFilingDocuments = this.data.getCloudSecFilingDocuments.bind(this.data);
   getCloudSecFilingContent = this.data.getCloudSecFilingContent.bind(this.data);
   getCloudSec13F = this.data.getCloudSec13F.bind(this.data);

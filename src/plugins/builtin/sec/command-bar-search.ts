@@ -116,6 +116,19 @@ function requestSecFilingFocus(symbol: string, accessionNumber: string): void {
   for (const listener of listeners.values()) listener(accessionNumber);
 }
 
+/**
+ * Opens a filing in the SEC pane for `symbol`, reusing an open one, the way a
+ * filing row in the command bar does.
+ */
+export function openSecFilingInPane(
+  ctx: Pick<GloomPluginContext, "createPaneFromTemplate">,
+  symbol: string,
+  accessionNumber: string,
+): void {
+  requestSecFilingFocus(symbol, accessionNumber);
+  void ctx.createPaneFromTemplate(SEC_TEMPLATE_ID, { symbol });
+}
+
 export function useSecFilingFocusRequest(symbol: string | null | undefined, onFocus: FocusListener): void {
   const [view] = useState(() => ({}));
   useEffect(() => {
@@ -173,10 +186,7 @@ function filingRow(
     badge: filing.form.replace(/\s+/g, "").slice(0, 6),
     right: filingDateLabel(filedAt(filing), now),
     keywords: [ticker, filing.form],
-    execute: () => {
-      requestSecFilingFocus(ticker, filing.accessionNumber);
-      void ctx.createPaneFromTemplate(SEC_TEMPLATE_ID, { symbol: ticker });
-    },
+    execute: () => openSecFilingInPane(ctx, ticker, filing.accessionNumber),
   };
 }
 

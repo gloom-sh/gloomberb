@@ -30,6 +30,7 @@ import type { MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
+import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./beneficial-owners";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
 import type { FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
@@ -70,6 +71,7 @@ import {
   cloudProxyStatementsPath,
   cloudExchangeRatePath,
   cloudSec13FPath,
+  cloudSecBeneficialOwnersPath,
   cloudSecFilingContentPath,
   cloudSecFilingDocumentsPath,
   cloudSecFilingsPath,
@@ -798,6 +800,16 @@ export class CloudDataApi {
     params: CloudSecFilingsParams,
   ): Promise<CloudSecFilingsResponse> {
     return this.request<CloudSecFilingsResponse>(cloudSecFilingsPath(params));
+  }
+
+  /** Schedule 13D/13G reports about an issuer. Unknown tickers answer 404; no reports is an empty `owners`. */
+  async getCloudSecBeneficialOwners(
+    params: CloudBeneficialOwnersParams,
+    options?: { signal?: AbortSignal },
+  ): Promise<BeneficialOwnersPayload> {
+    return this.request<BeneficialOwnersPayload>(cloudSecBeneficialOwnersPath(params), {
+      signal: options?.signal,
+    });
   }
 
   async getCloudSecFilingDocuments(

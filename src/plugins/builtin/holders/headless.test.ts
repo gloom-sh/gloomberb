@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createHoldersHeadless } from "./headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import { carBeneficialOwnersPayload } from "./test-fixture";
 
 function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): HeadlessPaneLoadArgs {
   return {
@@ -77,4 +78,30 @@ describe("holders headless model", () => {
       "Positions come from institutional filings (mostly US 13F), not the LSE share register.",
     ]);
   });
+});
+
+test("--form 13g lists the beneficial owners joined to the 13F holders, and --history every report newest first", async () => {
+  const requests: unknown[] = [];
+  const headless = createHoldersHeadless({
+    loadSnapshot: async () => ({
+      data: { symbol: "CAR", holders: [{ ownerType: "institution", name: "Pentwater Capital Management Lp", shares: 2_513_300, changeShares: -1_340_000 }] },
+    }),
+    loadBeneficialOwners: async (_symbol, request) => {
+      requests.push(request);
+      return carBeneficialOwnersPayload({ history: request.history });
+    },
+  });
+  const latest = await headless.load(args({ form: "13g", limit: 3 }), createTestHeadlessContext());
+  expect(requests).toEqual([{ form: "13G", history: false }]);
+  expect(latest.columns?.map((column) => column.key)).toEqual(["filer", "form", "percentOfClass", "changePoints", "shares", "eventDate", "filingDate", "thirteenF"]);
+  expect(latest.rows.map((row) => [row.filer, row.form, row.percentOfClass, row.changePoints, row.thirteenF])).toEqual([
+    ["SRS Investment Management, LLC", "13D/A", 49.3, 1.4, null],
+    ["Vanguard Group Inc", "13G/A", 9.9, -0.5, null],
+    ["Pentwater Capital Management LP", "13G/A", 7.3, -14.9, "-35%"],
+  ]);
+
+  const history = await headless.load(args({ form: "all", history: true, limit: 3 }), createTestHeadlessContext());
+  expect(history.rows.map((row) => [row.filingDate, row.percentOfClass])).toEqual([
+    ["2026-05-11", 5.6], ["2026-05-07", 7.3], ["2026-04-07", 22.2],
+  ]);
 });

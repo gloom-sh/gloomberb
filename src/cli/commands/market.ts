@@ -13,7 +13,7 @@ import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, 
 import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
-import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
+import { isoDate, parsePositiveInt, requireArg, takeFlag, takeOption } from "./command-utils";
 import { CLI_COMMAND_GROUPS } from "../help";
 import {
   formatChangePercentCell,
@@ -45,6 +45,7 @@ import {
   listingVenues,
   loadListingQuote,
   requireCliListing,
+  type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
@@ -58,6 +59,18 @@ import {
   nonUsHolderCaveat,
   sharedReportDate,
 } from "../../plugins/builtin/holders/report-header";
+import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
+import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
+import {
+  BENEFICIAL_REPORT_COLUMNS,
+  beneficialCoverageNotices,
+  beneficialListUnreadable,
+  beneficialRouteForm,
+  buildBeneficialReportRows,
+  HOLDER_FORMS,
+  parseHolderForm,
+  type HolderForm,
+} from "../../plugins/builtin/holders/beneficial-report";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
 const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);
@@ -532,6 +545,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const args = [...rawArgs];
   const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.limit ?? 15, "Count", ctx);
   const exchangeOption = takeOption(args, "--exchange");
+  const form = takeOption(args, "--form")?.trim() || null;
   const raw = requireArg(args[0], "Usage: gloomberb filings <symbol>", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
@@ -540,16 +554,21 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const quotePromise = loadListingQuote(market.dataProvider, listing);
     const identity = nonUsSecListingVenue(symbol, exchange) ? listingIdentity(listing, await quotePromise) : null;
     try {
+      const context = identity?.name ? { listingName: identity.name } : undefined;
       const [filings, quote] = await Promise.all([
-        market.dataProvider.getSecFilings(symbol, count, exchange, identity?.name ? { listingName: identity.name } : undefined),
+        // A form filter searches every filing the service lists for the issuer, as the SEC pane does.
+        form
+          ? market.dataProvider.getSecFilings(symbol, SEC_FILING_FETCH_LIMIT, exchange, context)
+            .then((all) => all.filter((filing) => filingFormMatches(filing.form, form)).slice(0, count))
+          : market.dataProvider.getSecFilings(symbol, count, exchange, context),
         quotePromise,
       ]);
       const resolved = identity ?? listingIdentity(listing, quote);
-      ctx.printResult({ data: filings, metadata: listingMetadata(resolved) }, {
+      ctx.printResult({ data: filings, metadata: { ...listingMetadata(resolved), ...(form ? { form } : {}) } }, {
         heading: listingHeading(resolved),
         rows: filingRows,
         columns: FILING_COLUMNS,
-        empty: `No SEC filings found for ${listingTitle(resolved)}.`,
+        empty: form ? `No ${form} filings found for ${listingTitle(resolved)}.` : `No SEC filings found for ${listingTitle(resolved)}.`,
       });
     } catch (error) {
       if (!(error instanceof SecRegistrantMismatchError)) throw error;
@@ -581,6 +600,52 @@ function insiderSummary(data: HolderData, ownerTypes: Set<string>): string {
   return [share, transactions].filter(Boolean).join("\n");
 }
 
+/** `holders --form 13d|13g|all`: the 13D/13G beneficial owners, joined by name to the 13F holders. */
+async function printBeneficialOwners(
+  listing: CliListing,
+  market: MarketContext,
+  form: Exclude<HolderForm, "13f">,
+  history: boolean,
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+) {
+  const { symbol, exchange } = listing.request;
+  const [payload, holders, quote] = await Promise.all([
+    fetchBeneficialOwners(symbol, { form: beneficialRouteForm(form), history }),
+    market.dataProvider.getHolders?.(symbol, exchange).catch(() => null) ?? null,
+    loadListingQuote(market.dataProvider, listing),
+  ]);
+  const identity = listingIdentity(listing, quote);
+  const rows = buildBeneficialReportRows(payload, { history, holders });
+  const notices = beneficialCoverageNotices(payload.coverage);
+  ctx.printResult({
+    data: rows,
+    ...(notices.length ? { warnings: notices } : {}),
+    metadata: {
+      ...listingMetadata(identity),
+      name: identity.name ?? (payload.companyName || null),
+      cik: payload.cik || null,
+      form,
+      history,
+      asOf: payload.asOf,
+      coverage: payload.coverage,
+      complete: !payload.hasMore && !payload.coverage?.unavailable,
+    },
+  }, {
+    heading: listingHeading(identity),
+    textColumns: BENEFICIAL_REPORT_COLUMNS,
+    columns: [
+      ...BENEFICIAL_REPORT_COLUMNS,
+      { key: "status", header: "Status" },
+      { key: "filerCik", header: "Filer CIK" },
+      { key: "accessionNumber", header: "Accession" },
+      { key: "filingUrl", header: "URL" },
+    ],
+    empty: beneficialListUnreadable(payload)
+      ? `13D/13G filings for ${listingTitle(identity)} are listed but could not be read.`
+      : `No 13D/13G filings in the last 4 years for ${listingTitle(identity)}.`,
+  });
+}
+
 async function runHolders(
   rawArgs: string[],
   ctx: Parameters<CliCommandDef["execute"]>[1],
@@ -589,9 +654,15 @@ async function runHolders(
 ) {
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
+  const formOption = commandName === "holders" ? takeOption(args, "--form") : undefined;
+  const history = commandName === "holders" && takeFlag(args, "--history");
   const raw = requireArg(args[0], `Usage: gloomberb ${commandName} <symbol>`, ctx);
+  const form = formOption == null ? "13f" : parseHolderForm(formOption);
+  if (!form) ctx.fail(`Unknown form "${formOption}".`, `Use one of ${HOLDER_FORMS.join(", ")}.`);
+  if (form === "13f" && history) ctx.fail("--history lists 13D/13G reports.", "Add --form 13d, 13g or all.");
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    if (form !== "13f") return printBeneficialOwners(listing, market, form, history, ctx);
     const [data, quote] = await Promise.all([
       market.dataProvider.getHolders(listing.request.symbol, listing.request.exchange),
       loadListingQuote(market.dataProvider, listing),
@@ -946,12 +1017,16 @@ export const marketDataCliCommands: CliCommandDef[] = [
   },
   {
     name: "holders",
-    description: "Fetch institutional, fund, and insider holders",
+    description: "Fetch institutional holders, or the 13D/13G beneficial owners",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
-      usage: ["holders <symbol>"],
-      options: [EXCHANGE_OPTION],
-      examples: ["holders AAPL", "holders SAN:EPA"],
+      usage: ["holders <symbol> [--form 13f|13d|13g|all] [--history]"],
+      options: [
+        { flags: "--form <form>", description: "13f for the holder table (default); 13d, 13g or all for beneficial owners over 5%" },
+        { flags: "--history", description: "With --form 13d, 13g or all, every report newest first instead of the latest per filer" },
+        EXCHANGE_OPTION,
+      ],
+      examples: ["holders AAPL", "holders SAN:EPA", "holders CAR --form all", "holders CAR --form 13g --history --json"],
     },
     execute: (args, ctx) => runHolders(args, ctx, "holders"),
   },
@@ -986,12 +1061,13 @@ export const marketDataCliCommands: CliCommandDef[] = [
     description: "Fetch recent SEC filings",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
-      usage: ["filings <symbol> [--count <n>]"],
+      usage: ["filings <symbol> [--count <n>] [--form <form>]"],
       options: [
         { flags: "--count <n>", description: "Number of filings (default 15)" },
+        { flags: "--form <form>", description: "Only this form and its amendments, such as 10-K or 13D" },
         EXCHANGE_OPTION,
       ],
-      examples: ["filings AAPL", "filings BHP:ASX", "filings AAPL --count 40 --json"],
+      examples: ["filings AAPL", "filings BHP:ASX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],
     },
     execute: runFilings,
   },

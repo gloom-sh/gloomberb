@@ -28,6 +28,17 @@ import {
 
 /** Columns a source fills only when it reports the quarter's change. */
 const CHANGE_COLUMN_KEYS = new Set(["changeShares", "changePercent"]);
+import type { BeneficialOwnersPayload } from "../../../api-client/beneficial-owners";
+import { fetchBeneficialOwners, type BeneficialOwnersRequest } from "./beneficial-client";
+import type { BeneficialColumnId } from "./beneficial-model";
+import {
+  BENEFICIAL_REPORT_COLUMNS,
+  beneficialCoverageNotices,
+  beneficialRouteForm,
+  buildBeneficialReportRows,
+  HOLDER_FORMS,
+  parseHolderForm,
+} from "./beneficial-report";
 
 const HOLDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Holder" },
@@ -82,6 +93,17 @@ const SORT_COLUMNS: Record<string, HolderColumnId> = {
   date: "reportDate",
 };
 
+/** The same sort keys order the 13D/13G rows; `value` and `held` are the percent of class. */
+const BENEFICIAL_SORT_COLUMNS: Record<string, BeneficialColumnId> = {
+  holder: "filer",
+  value: "percentOfClass",
+  shares: "shares",
+  change: "change",
+  "change-percent": "thirteenF",
+  held: "percentOfClass",
+  date: "filingDate",
+};
+
 interface HolderSnapshot {
   data: HolderData;
   marketCap?: number;
@@ -93,15 +115,25 @@ export interface HoldersHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<HolderSnapshot>;
+  loadBeneficialOwners(
+    symbol: string,
+    request: BeneficialOwnersRequest,
+    ctx: HeadlessPaneContext,
+  ): Promise<BeneficialOwnersPayload>;
 }
 
 const defaultDependencies: HoldersHeadlessDependencies = {
   loadSnapshot: (symbol, _args, ctx) => loadHolderSnapshot(ctx.marketData, symbol),
+  loadBeneficialOwners: (symbol, request, ctx) => fetchBeneficialOwners(symbol, request, {
+    client: ctx.apiClient,
+    signal: ctx.signal,
+  }),
 };
 
 export function createHoldersHeadless(
-  dependencies: HoldersHeadlessDependencies = defaultDependencies,
+  overrides: Partial<HoldersHeadlessDependencies> = {},
 ): HeadlessPaneDefinition<"rows"> {
+  const dependencies = { ...defaultDependencies, ...overrides };
   return {
     shape: "rows",
     freshness: { ...SEC_FILINGS, basis: "13F filings" },
@@ -136,17 +168,69 @@ export function createHoldersHeadless(
       },
       {
         key: "view",
-        description: "Rendered pane view: the holder table or the ownership treemap.",
+        description: "Rendered pane view: the holder table, the ownership treemap or the 13D/13G beneficial owners.",
         type: "enum",
-        values: [{ value: "table" }, { value: "chart" }],
+        values: [{ value: "table" }, { value: "chart" }, { value: "13dg", aliases: ["beneficial"] }],
         defaultValue: "table",
         pluginState: { pluginId: "ticker-research", key: "viewMode" },
+      },
+      {
+        key: "form",
+        description: "Rows: 13f for institutional holders, 13d or 13g for beneficial owners over 5% of the class (activists, crowding into large stakes), all for both kinds.",
+        type: "enum",
+        values: HOLDER_FORMS.map((value) => ({ value })),
+        defaultValue: "13f",
+      },
+      {
+        key: "history",
+        description: "With a 13d, 13g or all form, every report newest first instead of the latest per filer.",
+        type: "boolean",
+        defaultValue: false,
       },
     ],
     columns: HOLDER_COLUMNS,
     describe: (args) => `Holders | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
+      const requestedForm = parseHolderForm(args.options.form) ?? "13f";
+      // The 13D/G view reports what it shows when no form is asked for.
+      const form = requestedForm === "13f" && args.options.view === "13dg" ? "all" : requestedForm;
+      if (form !== "13f") {
+        const history = args.options.history === true;
+        const [payload, snapshot] = await Promise.all([
+          dependencies.loadBeneficialOwners(symbol, { form: beneficialRouteForm(form), history }, ctx),
+          // The 13F column is a join; the 13D/13G rows stand without it.
+          dependencies.loadSnapshot(symbol, args, ctx).catch(() => null),
+        ]);
+        const rows = buildBeneficialReportRows(payload, {
+          history,
+          holders: snapshot?.data ?? null,
+          sort: {
+            columnId: BENEFICIAL_SORT_COLUMNS[String(args.options.sort)] ?? "percentOfClass",
+            direction: args.options.order === "asc" ? "asc" : "desc",
+          },
+        });
+        const limited = rows.slice(0, Number(args.options.limit));
+        return {
+          columns: BENEFICIAL_REPORT_COLUMNS,
+          rows: limited,
+          // Reports that could not be read this time are missing from the rows.
+          complete: !payload.hasMore && !payload.coverage?.unavailable,
+          freshness: { ...SEC_FILINGS, basis: "13D/13G filings", observedKey: "filingDate" },
+          metadata: {
+            symbol: payload.ticker || symbol,
+            name: payload.companyName || null,
+            cik: payload.cik || null,
+            form,
+            history,
+            asOf: payload.asOf,
+            coverage: payload.coverage,
+            notices: beneficialCoverageNotices(payload.coverage),
+            returned: limited.length,
+            total: rows.length,
+          },
+        };
+      }
       const { data, marketCap } = await dependencies.loadSnapshot(symbol, args, ctx);
       const currency = data.currency ?? "USD";
       const sorted = sortRows(buildRows(data), {

@@ -142,7 +142,7 @@ Text that no command claims searches symbols and names, and every result carries
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
 | `OVME` | Option calculator: European Black-Scholes or American pricing, discrete dividends, Greeks, implied and surface volatility |
-| `HDS <ticker>` | Institutional holders |
+| `HDS <ticker>` | Institutional holders, and 13D/13G beneficial owners over 5% |
 | `DVD <ticker>` | Dividend yield and history |
 | `SI <ticker>` | Short interest |
 | `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
@@ -160,6 +160,8 @@ The Overview headline is the regular session: after the close it stays at the of
 Earnings-call data exports and fiscal-quarter lookup inspect at most the latest 200 calls in the requested scope; the interactive list loads 50. The server does not supply a total or a `hasMore` marker. When a response fills its source limit, exports report `sourceLimitReached: true`, `complete: false`, and `truncated: true`: additional calls may exist. `total` counts matching loaded calls; `totalIsExact: false` marks capped, pending, or stale results. A missing quarter in a capped lookup is not proof that the company has no such call. Pending discovery remains pending when reopening or refreshing the pane. Full-text documents can be read and searched without structured turns, but Q&A requires source segmentation.
 
 The ticker research `13F` tab shows fund positions for the ticker, reported value, shares, weight and quarter action; open a row for its fund detail and scroll to page more funds. The `13F` pane's Crowding tab ranks new positions, exits, and weight increases or decreases across the top 25 ranked funds. `m` or the Mine filter limits positions to portfolio and watchlist tickers. CLI equivalents: `gloomberb fn 13F AAPL --view=ticker-holdings --offset=0 --json` (a ticker argument defaults to this view; `--view=by-ticker` lists the holders' whole 13F books) and `gloomberb fn 13F --view=crowding --json`. The text report opens with the quarters compared, the holder, new and exited counts, and, when the list is longer than `--limit`, which funds are shown and the `--offset` that continues it; `--json` carries the same as `shown`, `total`, `truncated` and `nextOffset`. Values are as reported at the period end, not at today's price. With a ticker, `gloomberb fn 13F MU --view=crowding` shows that ticker's rank in the crowding sample, or says it is not in it.
+
+`HDS` has three tabs: Table and Chart show the 13F institutional holders, and 13D/G shows who disclosed more than 5% of the class on Schedule 13D (activists) or 13G (passive holders) in the last four years, one row per filer: the form of its latest report, the percent of class that report gives, the change in points against its previous report, shares, event and filing dates, and its latest 13F move in the ticker (NEW, the share change, EXIT, or a dash when unknown). The latest report is the filer's latest disclosure, not its position today. A stake reported under 5% keeps its percentage, marked `<5%` where the column has room, and sorts after the 5% holders with reports of zero, marked `EXIT`. Enter opens the filing in the SEC pane and `o` opens it on EDGAR. CLI equivalents: `gloomberb holders CAR --form all` (`13d` or `13g` for one kind, `--history` for every report instead of the latest per filer) and `gloomberb fn HDS CAR --form all --json`; `gloomberb filings CAR --form 13G` lists the filings themselves.
 
 In a 13F fund detail, open Overlap, search a second fund by name or CIK, and select it to compare shared positions and weights. Back returns to the fund picker. The Performance list includes three prior-quarter estimates when available. Headless crowding accepts `--rank=new`, `--rank=exits`, `--rank=increases` or `--rank=decreases`. CLI overlap: `gloomberb fn 13F 0001067983 --view=overlap --compare=0001037389 --json`.
 
@@ -417,7 +419,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols |
 | `gloomberb ticker <symbol>` | Show quote, ownership, and financials |
 | `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
-| `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`13f` is the holders list without insiders; `fn 13F` has 13F filings) |
+| `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`13f` is the holders list without insiders; `fn 13F` has 13F filings; `holders --form 13d\|13g\|all` lists 13D/13G beneficial owners; `filings --form <form>` keeps one form) |
 | `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market overview data |
 | `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
 | `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |

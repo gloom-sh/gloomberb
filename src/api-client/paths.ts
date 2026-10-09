@@ -6,6 +6,7 @@ import type {
 import { isUsListingExchange, normalizeSymbol, parsePublicTickerKey, publicTickerKey } from "../utils/exchanges";
 import { nonUsSecListingVenue } from "../utils/sec";
 import type { HistoryRetention } from "../sources/history-retention";
+import type { CloudBeneficialOwnersParams } from "./beneficial-owners";
 
 export type CloudHistoryParams = {
   interval?: string;
@@ -366,6 +367,16 @@ export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
     if (name) search.set("name", name);
   }
   return appendQuery("/cloud/sec/filings", search);
+}
+
+/** Schedule 13D and 13G reports about the issuer behind `ticker`. */
+export function cloudSecBeneficialOwnersPath(params: CloudBeneficialOwnersParams): string {
+  const search = new URLSearchParams({ ticker: normalizeIssuerResearchTicker(params.ticker) });
+  if (params.form) search.set("form", params.form);
+  if (params.history) search.set("history", "1");
+  if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.offset != null) search.set("offset", String(params.offset));
+  return appendQuery("/cloud/sec/beneficial-owners", search);
 }
 
 export function cloudSecFilingDocumentsPath(

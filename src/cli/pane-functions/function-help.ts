@@ -960,10 +960,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   HDS: {
-    summary: "Institutional holders as a table (value, shares, change, percent held) or as an ownership treemap.",
-    usage: ["HDS NVDA"],
-    keys: [TABS, key("o", "pen 13F")],
-    data: same("Quarterly, as 13Fs are filed"),
+    summary: "Institutional holders as a table (value, shares, change, percent held) or as an ownership treemap, and the 13D/G tab: 13D and 13G beneficial owners over 5%, activists and passive stakes, with percent of class, its change and each filer's 13F move.",
+    usage: ["HDS NVDA", "HDS CAR"],
+    keys: [TABS, OPEN, key("o", "pen 13F or filing")],
+    data: same("13F quarterly as filed; 13D and 13G as filed"),
     bloomberg: ["HDS"],
   },
   "13F": {
