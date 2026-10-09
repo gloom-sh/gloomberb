@@ -1,42 +1,17 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
 import { apiClient } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { buildBrokerDirectory } from "../../brokers/directory";
-import {
-  getSignedInBrokers,
-  refreshSignedInBrokers,
-  subscribeSignedInBrokers,
-} from "../../brokers/signed-in/catalog";
+import { getSignedInBrokers, refreshSignedInBrokers, subscribeSignedInBrokers } from "../../brokers/signed-in/catalog";
 import { SIGNED_IN_BROKER_TYPE } from "../../brokers/signed-in/profile";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
-import {
-  type AppConfig,
-  findPaneInstance,
-  type OnboardingProgress,
-  type OnboardingStage,
-} from "../../types/config";
+import { type AppConfig, findPaneInstance, type OnboardingProgress, type OnboardingStage } from "../../types/config";
 import { resolveBrokerConfigFields, type BrokerConfigField } from "../../types/broker";
-import { useShortcut, useViewport, type KeyEventLike } from "../../react/input";
-import {
-  matchKeybinding,
-  matchesKeybindingAction,
-  useKeybindings,
-  type ResolvedKeybindings,
-} from "../../app/keybindings";
-import {
-  useAppDispatch,
-  useAppSelector,
-  useAppStateRef,
-} from "../../state/app/context";
+import { useViewport } from "../../react/input";
+import { useKeybindings } from "../../app/keybindings";
+import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import { useAppActive } from "../../state/app/activity";
 import {
   Box,
@@ -48,8 +23,6 @@ import {
   type InputRenderable,
 } from "../../ui";
 import { useDialogState } from "../../ui/dialog";
-import { isPlainKey } from "../../utils/keyboard";
-import { isCopyShortcut, isPasteShortcut } from "../../utils/selection-clipboard";
 import { useThemeColors } from "../../theme/theme-context";
 import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
@@ -65,8 +38,7 @@ import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrad
 import { resolvePlanAccess, usePlanAccess } from "../../api-client/plan-access";
 import { Button, SegmentedControl, type ListViewItem } from "../ui";
 import { AccountStep, PortfolioStep, type PortfolioSub } from "./onboarding-steps";
-import { BROKER_GUIDE_KEY, brokerSetupGuideUrl } from "./portfolio-step/broker-setup-panel";
-import { REMOVE_POSITION_KEY } from "./portfolio-step/positions-panel";
+import { brokerSetupGuideUrl } from "./portfolio-step/broker-setup-panel";
 import {
   ONBOARDING_DESKTOP,
   OnboardingActions,
@@ -80,18 +52,10 @@ import {
 } from "./onboarding-frame";
 import { useOnboardingAccount } from "./wizard-account";
 import { useOnboardingBrokerSync } from "./wizard-broker-sync";
-import { POSITION_FIELDS, useOnboardingPositions } from "./wizard-positions";
+import { useOnboardingPositions } from "./wizard-positions";
 import { applyFirstRunLayout, buildFirstRunLayout, planFirstRunWatchlist } from "./first-run-workspace";
 import { DesksStep, toggleDeskChoice } from "./desks-step";
-import {
-  buildDesk,
-  DESKS,
-  getDesk,
-  isDeskKey,
-  isDeskStock,
-  pickDeskCompany,
-  type DeskKey,
-} from "../../layout/desks";
+import { buildDesk, getDesk, isDeskKey, isDeskStock, pickDeskCompany, type DeskKey } from "../../layout/desks";
 import { debugLog } from "../../utils/debug-log";
 import {
   getConnectableBrokerOptions,
@@ -101,6 +65,16 @@ import {
   withOnboardingProgress,
   type BrokerOption,
 } from "./wizard-model";
+import { useOnboardingKeyboard } from "./onboarding-keyboard";
+import {
+  SKIP_SETUP_KEY,
+  KEEP_FREE_KEY,
+  CONNECT_BROKER_KEY,
+  BROWSER_SIGN_IN_KEY,
+  SKIP_DESKS_KEY,
+} from "./onboarding-keyboard";
+export { keyReachesPastOnboardingModal } from "./onboarding-keyboard";
+
 
 const onboardingLog = debugLog.createLogger("onboarding");
 
@@ -117,41 +91,6 @@ const STAGE_ACTIVITY: Partial<Record<OnboardingStage, ResearchActivity>> = {
   account: "onboarding_account_viewed",
   upgrade: "onboarding_pro_viewed",
 };
-
-/**
- * Card keys, shown on the buttons they press. Letters only act while no field
- * is being typed in (Esc leaves the field first); F10, the old skip key, still
- * works everywhere.
- */
-const SKIP_SETUP_KEY = "s";
-const KEEP_FREE_KEY = "f";
-const CONNECT_BROKER_KEY = "b";
-const BROWSER_SIGN_IN_KEY = "b";
-const SKIP_DESKS_KEY = "s";
-
-/** Digits jump straight to a section the header would let you click. */
-const SECTION_DIGITS: Record<string, OnboardingSectionId> = { "1": "portfolio", "2": "cloud", "3": "pro" };
-
-/**
- * Whether a key the onboarding card did not use may still reach the app
- * behind it. Toasts float above the card, copy and paste work anywhere, and
- * Help is the way out (the card steps aside while Help has focus). A field
- * keeps its typing and editing keys; of the chords that reach app shortcuts
- * while typing, only the ones the app binds are held back. Everything else
- * would act on a pane hidden behind the scrim.
- */
-export function keyReachesPastOnboardingModal(event: KeyEventLike, keybindings: ResolvedKeybindings): boolean {
-  if (isCopyShortcut(event) || isPasteShortcut(event)) return true;
-  const match = matchKeybinding(keybindings, event);
-  const action = match?.kind === "action" ? match.id : null;
-  if (action === "notification-action" || action === "notification-dismiss") return true;
-  if (event.targetEditable) {
-    const chord = event.ctrl || event.meta || event.super === true;
-    return !chord || !match;
-  }
-  return action === "help";
-}
-
 export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete }: OnboardingWizardProps) {
   const language = useAppLanguage();
   const colors = useThemeColors();
@@ -787,211 +726,14 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       || progress.accountStatus === "signed-in"
     ),
   };
-
-  const activeSection: OnboardingSectionId = stage === "portfolio" || stage === "desks"
-    ? "portfolio"
-    : stage === "upgrade" || (stage === "ready" && progress.accountStatus === "signed-in")
-      ? "pro"
-      : "cloud";
-  const accountForm = account.accountSub === "signup" || account.accountSub === "login";
-  const modalShown = !helpFocused && stage !== "research";
-
-  /**
-   * The card's keys. The card is modal: whatever it does not use stops here,
-   * so nothing reaches the workspace behind the scrim. The scope carries the
-   * stage so each step registers afresh and runs ahead of any pane that
-   * mounted since (the first-run workspace mounts after the wizard).
-   */
-  useShortcut((event) => {
-    const name = event.name ?? event.key ?? "";
-    const chord = event.ctrl || event.meta || event.super === true || event.alt;
-    const enter = !chord && (name === "enter" || name === "return");
-    const escape = !chord && (name === "escape" || name === "backspace");
-    const letter = (key: string) => !chord && !event.shift && name === key;
-    const tab = !chord && name === "tab";
-    const sectionDigit = !chord && !editingField && !event.targetEditable ? SECTION_DIGITS[name] : undefined;
-
-    const handled = ((): boolean => {
-      if (isPlainKey(event, "f10")) {
-        if (stage === "portfolio" || stage === "desks" || isBrokerCommitting) return true;
-        if (stage === "upgrade" && !planAccess.hasProAccess) continueFree();
-        else void finish(true);
-        return true;
-      }
-
-      if (sectionDigit) {
-        if (sectionDigit !== activeSection && sectionAvailability[sectionDigit]) goToSection(sectionDigit);
-        return true;
-      }
-
-      if (stage === "portfolio" && portfolioSub === "positions") {
-        if (editingField) {
-          if (enter) {
-            positions.submitField();
-          } else if (tab) {
-            positions.setFieldIdx((index) => (
-              event.shift ? Math.max(0, index - 1) : Math.min(POSITION_FIELDS.length - 1, index + 1)
-            ));
-          } else if (!chord && name === "escape") {
-            setEditingField(false);
-          } else {
-            return false;
-          }
-          return true;
-        }
-        if (enter) {
-          if (positionCount > 0) continueFromPositions();
-          else positions.focusField(0);
-        } else if (letter("a") || tab) {
-          // Tab from the list goes back into the form, at its far end for Shift+Tab.
-          positions.focusField(tab && event.shift ? POSITION_FIELDS.length - 1 : 0);
-        } else if (letter(CONNECT_BROKER_KEY) && positionCount > 0) {
-          openBrokerConnect();
-        } else if (!chord && (name === "up" || name === "k")) {
-          movePositionCursor(-1);
-        } else if (!chord && (name === "down" || name === "j")) {
-          movePositionCursor(1);
-        } else if (letter(REMOVE_POSITION_KEY) || (!chord && name === "delete")) {
-          removePositionAtCursor();
-        } else {
-          return false;
-        }
-        return true;
-      }
-
-      if (editingField && (stage === "portfolio" || (stage === "account" && accountForm))) {
-        if (enter) {
-          if (stage === "portfolio") submitBrokerField();
-          else submitAccountField();
-        } else if (!chord && name === "escape") {
-          setEditingField(false);
-          if (stage === "portfolio") backPortfolio();
-        } else if (stage === "account" && tab) {
-          account.focusAccountField(event.shift ? 0 : 1);
-        } else {
-          return false;
-        }
-        return true;
-      }
-
-      if (stage === "portfolio") {
-        if (enter) {
-          continuePortfolio();
-        } else if (escape) {
-          backPortfolio();
-        } else if (!chord && (name === "up" || name === "k")) {
-          if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.max(0, index - 1));
-          else if (activeBrokerFields[brokerFieldIdx]?.type === "select") setBrokerSelectIdx((index) => Math.max(0, index - 1));
-        } else if (!chord && (name === "down" || name === "j")) {
-          if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.min(brokerChoices.length - 1, index + 1));
-          else if (activeBrokerFields[brokerFieldIdx]?.type === "select") {
-            const optionCount = activeBrokerFields[brokerFieldIdx]?.options?.length ?? 0;
-            setBrokerSelectIdx((index) => Math.min(Math.max(0, optionCount - 1), index + 1));
-          }
-        } else if (portfolioSub === "broker-setup" && letter(BROKER_GUIDE_KEY)) {
-          openBrokerGuide();
-        } else {
-          return false;
-        }
-        return true;
-      }
-
-      if (stage === "desks") {
-        if (enter) {
-          if (chosenDesks.length > 0) finishDesks(chosenDesks);
-        } else if (letter(SKIP_DESKS_KEY)) {
-          finishDesks([]);
-        } else if (!chord && (name === "up" || name === "k")) {
-          setDeskCursor((index) => Math.max(0, index - 1));
-        } else if (!chord && (name === "down" || name === "j")) {
-          setDeskCursor((index) => Math.min(DESKS.length - 1, index + 1));
-        } else if (!chord && (name === "space" || event.sequence === " ")) {
-          const desk = DESKS[deskCursor];
-          if (desk) setChosenDesks((current) => toggleDeskChoice(current, desk.key));
-        } else {
-          return false;
-        }
-        return true;
-      }
-
-      if (stage === "account") {
-        if (enter) {
-          continueAccount();
-        } else if (escape) {
-          if (account.accountSub === "qr" || account.accountSub === "login") account.returnToAccountForm();
-          else goToSection("portfolio");
-        } else if (letter(BROWSER_SIGN_IN_KEY) && accountForm) {
-          account.beginQrSignIn();
-        } else if (letter(SKIP_SETUP_KEY)) {
-          skipSetup();
-        } else if (tab && accountForm) {
-          account.focusAccountField(account.accountFieldIdx > 0 ? 1 : 0);
-        } else {
-          return false;
-        }
-        return true;
-      }
-
-      if (stage === "upgrade") {
-        if (enter) {
-          primaryUpgradeAction();
-        } else if (escape) {
-          goToSection("cloud");
-        } else if (!planAccess.hasProAccess && letter(KEEP_FREE_KEY)) {
-          continueFree();
-        } else if (!planAccess.hasProAccess && (isPlainKey(event, "left") || letter("h"))) {
-          setBillingInterval("month");
-        } else if (!planAccess.hasProAccess && (isPlainKey(event, "right") || letter("l"))) {
-          setBillingInterval("year");
-        } else {
-          return false;
-        }
-        return true;
-      }
-
-      if (stage === "ready") {
-        if (enter) void finish();
-        else if (escape) goToSection(progress.accountStatus === "signed-in" ? "pro" : "cloud");
-        else return false;
-        return true;
-      }
-      return false;
-    })();
-
-    if (handled) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-    if (keyReachesPastOnboardingModal(event, keybindings)) return;
-    // An app chord held here still must not fall through to the browser's own
-    // meaning for it (Cmd+digit switches tabs in a web host).
-    if (matchKeybinding(keybindings, event)) event.preventDefault();
-    event.stopPropagation();
-  }, {
-    phase: "before",
-    allowEditable: true,
-    scope: `onboarding:${stage}`,
-    enabled: modalShown && !dialogOpen && !commandBarOpen,
-  });
-
-  /**
-   * The research coach floats over a live workspace, so it takes no key a pane
-   * could want. It answers the notification keys, like a toast that stays up,
-   * and only when nothing else used them.
-   */
-  useShortcut((event) => {
-    if (event.targetEditable) return;
-    const connect = matchesKeybindingAction(keybindings, "notification-action", event);
-    const dismiss = matchesKeybindingAction(keybindings, "notification-dismiss", event) || isPlainKey(event, "f10");
-    if (!connect && !dismiss) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (connect) saveProgressInBackground({ stage: "account" });
-    else void finish();
-  }, {
-    phase: "after",
-    enabled: stage === "research" && !helpFocused && !dialogOpen && !commandBarOpen,
+  useOnboardingKeyboard({
+    stage, progress, account, helpFocused, editingField, isBrokerCommitting, planAccess, continueFree,
+    finish, sectionAvailability, goToSection, portfolioSub, positions, setEditingField, positionCount,
+    continueFromPositions, openBrokerConnect, movePositionCursor, removePositionAtCursor, submitBrokerField,
+    submitAccountField, backPortfolio, continuePortfolio, setPortfolioOptionIdx, activeBrokerFields,
+    brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
+    setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
+    setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground,
   });
 
   if (helpFocused) {
