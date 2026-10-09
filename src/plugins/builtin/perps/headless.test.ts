@@ -3,7 +3,7 @@ import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cl
 import type { PerpMarketPayload } from "../../../api-client/perps";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { perpsHeadless } from "./headless";
-import { perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
+import { longShort, longShortPoint, okxLongShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 
 const iso = "2026-10-03T23:20:09Z";
 const market = perpRow({ priceChange24h: -0.00123456789, premium: -0.000411228603072, fundingRate: -0.0000504956, openInterestUsd: 1_234_567_890 });
@@ -12,7 +12,8 @@ const point = { time: "2026-10-03T22:00:00Z", resolution: "hour" as const, markP
   openInterestBase: 100, openInterestUsd: 3_129_363_818.7, sampleCount: 58, firstObservedAt: iso, lastObservedAt: iso };
 const history = perpHistory({ rows: [point, { ...point, markPrice: null, premium: null, fundingRate: null, fundingIntervalHours: null, openInterestUsd: null }],
   funding: [{ marketId: market.marketId, time: iso, rate: -0.0000504956, intervalHours: 1, premium: -0.000411228603072, observedAt: iso, sourceUrl: "https://example.test" }],
-  candles: [{ marketId: market.marketId, time: iso, interval: "1h", open: 84700, high: 84900.5, low: 84600, close: 84724, volumeBase: 1234.5, trades: 5100, observedAt: iso, sourceUrl: "https://example.test" }] });
+  candles: [{ marketId: market.marketId, time: iso, interval: "1h", open: 84700, high: 84900.5, low: 84600, close: 84724, volumeBase: 1234.5, trades: 5100, observedAt: iso, sourceUrl: "https://example.test" }],
+  longShortRatio: [longShortPoint("2026-10-03T22:00:00.000Z", 0.631, { ratio: 1.71 }), longShortPoint("2026-10-03T23:00:00.000Z", 0.6183, { ratio: 1.6199 })] });
 const evidence: PerpMarketPayload["evidence"] = [
   { kind: "funding", period_at: iso, received_at: iso, superseded_at: "2026-10-04T01:00:00Z", fingerprint: "9f2c41d7a0b35e88c1", payload: { ...history.funding[0]! } },
   { kind: "market", period_at: iso, received_at: iso, superseded_at: null, fingerprint: "ab12", payload: market },
@@ -43,11 +44,13 @@ test("history report reads as units and the rows keep every raw field", async ()
   expect(longest(text)).toBeLessThanOrEqual(140);
   const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ title: string; rows: unknown[] }>; metadata: { rates: string } };
   expect(json.metadata.rates).toBe("fraction");
-  expect(json.sections.map((section) => section.title)).toEqual(["Latest market", "Own observations", "Paid funding", "Hourly candles"]);
+  expect(json.sections.map((section) => section.title)).toEqual(["Latest market", "Own observations", "Paid funding", "Hourly candles", "Long/short history"]);
   expect(json.sections[0]!.rows).toEqual([market]);
   expect(json.sections[1]!.rows).toEqual(history.rows);
   expect(json.sections[2]!.rows).toEqual(history.funding);
   expect(json.sections[3]!.rows).toEqual(history.candles);
+  expect(json.sections[4]!.rows).toEqual(history.longShortRatio!);
+  expect(text).toMatch(/2026-10-03 23:00 UTC\s+61\.83%\s+38\.17%\s+1\.62\s+Published/);
 });
 
 test("an underlying without data and the revision payloads stay short and honest", async () => {
@@ -60,6 +63,24 @@ test("an underlying without data and the revision payloads stay short and honest
   expect(longest(text)).toBeLessThanOrEqual(140);
   const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ rows: unknown[] }> };
   expect(json.sections[1]!.rows).toEqual(evidence);
+});
+
+test("evidence reads an OKX reading as derived from its ratio, keeps raw fractions in JSON, and a venue that publishes none says why", async () => {
+  const okx = venueRow("okx", { marketId: "okx:BTC-USD-SWAP", symbol: "BTC-USD-SWAP", longShortRatio: okxLongShort, longShortRatioReason: null });
+  const { result, text } = await report("evidence", [okx]);
+  expect(text).toMatch(/Long accounts\s+67\.98%/);
+  expect(text).toMatch(/Short accounts\s+32\.02%/);
+  expect(text).toMatch(/Long \/ short ratio\s+2\.1229/);
+  expect(text).toContain("Derived from the published ratio");
+  expect(text).toContain("2026-10-09 11:00 UTC · OKX 1h");
+  expect(longest(text)).toBeLessThanOrEqual(140);
+  const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ title: string; entries?: Array<{ key: string; value: unknown }> }> };
+  expect(json.sections.find((section) => section.title === "Positioning")!.entries!.find((entry) => entry.key === "longShare")!.value).toBe(okxLongShort.longShare);
+
+  const hyperliquid = await report("evidence", [perpRow({ longShortRatio: null, longShortRatioReason: "unsupported" })]);
+  expect(hyperliquid.text).toMatch(/Long accounts\s+This venue publishes no per-contract account ratio/);
+  // A server older than the series sends neither field: no Positioning lines at all.
+  expect((await report("evidence", [perpRow()])).text).not.toContain("Long accounts");
 });
 
 test("a market nothing matches fails with markets that work, and no market says which one it showed", async () => {
@@ -76,7 +97,7 @@ test("a market nothing matches fails with markets that work, and no market says 
 test("a named market with no tab still reports its history, and no market reports the board", async () => {
   const args = (argument: string | null, options: Record<string, string> = {}) => createTestHeadlessArgs({ argument, rawArgument: argument ?? "", options: { days: "7", metric: "funding", ...options } });
   const named = await perpsHeadless.load(args("BTC"), context([market]));
-  expect(named.sections.map((section) => section.title)).toEqual(["Latest market", "Own observations", "Paid funding", "Hourly candles"]);
+  expect(named.sections.map((section) => section.title)).toEqual(["Latest market", "Own observations", "Paid funding", "Hourly candles", "Long/short history"]);
   const queries: unknown[] = [];
   const rows = [market, venueRow("bybit", { fundingRate: 0.0002, oiChange24h: 0.1234 }), venueRow("binance", { assetClass: "metals", marketId: "binance:XAUUSDT", baseAsset: "XAU" })];
   const boardContext = createTestHeadlessContext({ apiClient: { getCloudPerpsBoard: async (query: unknown) => { queries.push(query); return perpBoard({ rows, access: "preview", locked: 2501 }); } } as never });
@@ -103,7 +124,8 @@ test("rankings and comparisons name the figure they rank and the venues a spread
   const top = Array.from({ length: 12 }, (_, index) => perpRow({ marketId: `hyperliquid:default:M${index}`, baseAsset: `M${index}` }));
   const apiClient = {
     getCloudPerpsRankings: async () => perpRankings({ fundingPositive: top, closedMarketDislocations: [perpRow({ closedMarketPremium: 0.07681 })] }),
-    getCloudPerpsCompare: async (base: string) => perpBoard({ rows: base === "BTC" ? [venueRow("binance", { fundingRate8h: 0.00003 }), venueRow("bybit", { fundingRate8h: 0.0001 })] : [] }),
+    getCloudPerpsCompare: async (base: string) => perpBoard({ rows: base === "BTC" ? [venueRow("binance", { fundingRate8h: 0.00003, longShortRatio: longShort() }),
+      venueRow("bybit", { fundingRate8h: 0.0001, longShortRatio: longShort({ venue: "bybit", longShare: 0.5521, shortShare: 0.4479, ratio: 1.2326 }) })] : [] }),
     getCloudPerpsBoard: async () => perpBoard({ rows: [venueRow("okx", { marketId: "okx:BTC-USDT-SWAP", symbol: "BTC-USDT-SWAP" })] }),
     getCloudPerpsMarket: async () => ({ ...perpBoard({ rows: [venueRow("okx", { marketId: "okx:BTC-USDT-SWAP", symbol: "BTC-USDT-SWAP" })] }), evidence: [], methodologyUrl: "" }),
   } as never;
@@ -120,6 +142,8 @@ test("rankings and comparisons name the figure they rank and the venues a spread
   const compareText = renderHeadlessPaneText(perpsHeadless, compare, args(null, "compare"), "PERP");
   expect(compareText).toContain("0.0070pp Bybit over Binance");
   expect(compareText).toContain("+0.0100%");
+  expect(compareText).toMatch(/Binance\s+BTCUSDT.*61\.8%/);
+  expect(compareText).toMatch(/Bybit\s+BTCUSDT.*55\.2%/);
   // A canonical identity compares its own base asset; an asset no venue lists names ones that work.
   const canonical = await perpsHeadless.load(args("okx:BTC-USDT-SWAP", "compare"), createTestHeadlessContext({ apiClient }));
   expect(canonical.metadata).toMatchObject({ baseAsset: "BTC" });

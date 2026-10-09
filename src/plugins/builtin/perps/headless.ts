@@ -2,8 +2,8 @@ import type { PerpBoardPayload, PerpBoardRow } from "../../../api-client/perps";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsHistory, fetchPerpsRankings } from "./client";
-import { ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, COMPARE_COLUMNS, compact, fundingSpread, label, openingTab, PERP_TABS, perpCellText, perpColumnLabel, percent, price,
-  RANKING_COLUMNS, rankingRows, RANKINGS, time, VENUES, venueLabel, venueName, venuesOf, type PerpColumnId } from "./model";
+import { ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, openingTab, PERP_TABS, perpCellText, perpColumnLabel, percent,
+  positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, VENUES, venueLabel, venueName, venuesOf, type PerpColumnId } from "./model";
 
 // Text columns only: the text report shows these, JSON keeps every field of every row. Rates, premiums and
 // changes stay fractions in the rows; `percent` multiplies by 100 so the text agrees with the desktop pane.
@@ -19,10 +19,11 @@ const oiColumn = right("openInterestUsd", "OI USD", (value) => compact(num(value
 
 const asMarket = (row: HeadlessPaneRow) => row as unknown as PerpBoardRow;
 // The board, comparison and ranking columns print what the pane's cells show, through the same formatter.
-const RIGHT = new Set<PerpColumnId>(["markPrice", "fundingRate", "fundingRate8h", "fundingApr", "premium", "openInterestUsd", "oiChange24h", "priceChange24h", "value"]);
-const KEYS: Partial<Record<PerpColumnId, string>> = { market: "baseAsset" };
+const RIGHT = new Set<PerpColumnId>(["markPrice", "fundingRate", "fundingRate8h", "fundingApr", "premium", "openInterestUsd", "oiChange24h", "longShare", "priceChange24h", "value"]);
+const KEYS: Partial<Record<PerpColumnId, string>> = { market: "baseAsset", longShare: "longShortRatio" };
+const DESCRIPTIONS: Partial<Record<PerpColumnId, string>> = { longShare: "Share of accounts net long on the contract, by each venue's own definition and hourly bucket" };
 const perpColumn = (id: PerpColumnId): HeadlessPaneColumn => ({ key: KEYS[id] ?? id, header: perpColumnLabel(id), ...(RIGHT.has(id) ? { align: "right" as const } : {}),
-  format: (_, row) => perpCellText(asMarket(row), id) });
+  ...(DESCRIPTIONS[id] ? { description: DESCRIPTIONS[id] } : {}), format: (_, row) => perpCellText(asMarket(row), id) });
 // One market's row keeps its full observation time, as it always printed.
 const MARKET_COLUMNS: HeadlessPaneColumn[] = BOARD_COLUMNS.filter((id) => id !== "oiChange24h").map((id) => id === "observedAt" ? timeColumn("observedAt", "Observed") : perpColumn(id));
 const BOARD_TEXT_COLUMNS = BOARD_COLUMNS.map(perpColumn);
@@ -50,6 +51,14 @@ const candleColumns = (currency: string): HeadlessPaneColumn[] => [
   priceColumn("open", "Open"), priceColumn("high", "High"), priceColumn("low", "Low"), priceColumn("close", `Close ${currency}`),
   right("volumeBase", "Volume (base)", (value) => compact(num(value))),
   right("trades", "Trades", (value) => num(value)?.toLocaleString("en-US") ?? "--"),
+];
+const LONG_SHORT_COLUMNS: HeadlessPaneColumn[] = [
+  timeColumn("time", "Bucket"),
+  right("longShare", "Long %", (value) => share(num(value), 2)),
+  right("shortShare", "Short %", (value) => share(num(value), 2)),
+  right("ratio", "Ratio", (value) => ratioText(num(value))),
+  { key: "derived", header: "Shares", format: (value) => value === true ? "From ratio" : "Published" },
+  timeColumn("observedAt", "Observed"),
 ];
 const REVISION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "kind", header: "Kind", format: (value) => text(value) ? label(text(value)!) : "--" },
@@ -84,11 +93,12 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, history or evidence. Board without a market, history with one." },
     { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board asset class." },
     { key: "venue", type: "enum", settingKey: "venue", values: ["all", ...VENUES].map((value) => ({ value })), defaultValue: "all", description: "Board venue." },
-    { key: "sort", type: "enum", settingKey: "sort", values: BOARD_SORTS.map((value) => ({ value })), defaultValue: "oi", description: "Board order: open interest, funding, open-interest change or premium." },
+    { key: "sort", type: "enum", settingKey: "sort", values: BOARD_SORTS.map((value) => ({ value })), defaultValue: "oi", description: "Board order: open interest, funding, open-interest change, premium or long share of accounts." },
     { key: "days", type: "enum", settingKey: "days", values: ["1", "7", "30", "90", "365"].map((value) => ({ value })), defaultValue: "7", description: "History lookback in days." },
-    { key: "metric", type: "enum", settingKey: "metric", values: ["funding", "oi", "premium", "price"].map((value) => ({ value })), defaultValue: "funding", description: "Displayed history chart; JSON retains every series." },
+    { key: "metric", type: "enum", settingKey: "metric", values: HISTORY_METRICS.map((value) => ({ value })), defaultValue: "funding", description: "Displayed history chart; JSON retains every series." },
   ],
-  discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Free accounts see a fixed preview of the board, rankings and comparisons, and latest values for one market", "Pro unlocks every market, full rankings and history", "Rankings list up to ten markets each", "Rates, premiums and changes are fractions in JSON", "Open-interest history begins at first collection", "Funding APR is a simple annualization, not a forecast"] },
+  discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Free accounts see a fixed preview of the board, rankings and comparisons, and latest values for one market", "Pro unlocks every market, full rankings and history", "Rankings list up to ten markets each", "Rates, premiums and changes are fractions in JSON", "Open-interest history begins at first collection", "Funding APR is a simple annualization, not a forecast",
+    "Long/short account shares: venue definitions differ; history begins at first collection"] },
   describe: (args) => TITLES[tabOf(args)],
   async load(args, ctx) {
     const requested = requestedOf(args);
@@ -130,14 +140,20 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
       rates: "fraction", quoteCurrency: selected.quoteCurrency, oiCurrency: "USD", fundingIntervalHours: selected.fundingIntervalHours };
     // The venue's market, as last polled: not a stream, and a venue trading around the clock is stale after an hour without a poll.
     const freshness = { source: venueLabel(selected), status: "delayed" as const, asOf: selected.observedAt, maxAgeMinutes: 60 };
+    // The same Positioning lines the pane's Evidence shows; JSON keeps the raw reading on the market row.
+    const positioning = positioningFields(selected);
     if (tab === "evidence") return {
-      sections: [{ title: "Market evidence", columns: MARKET_COLUMNS, rows: market.rows.map((row) => ({ ...row })) }, { title: "Observation revisions", columns: REVISION_COLUMNS, rows: market.evidence.map((row) => ({ ...row })) }],
+      sections: [{ title: "Market evidence", columns: MARKET_COLUMNS, rows: market.rows.map((row) => ({ ...row })) },
+        ...(positioning ? [{ title: "Positioning", entries: positioning.map((field) => ({ key: field.key, label: field.label, value: field.value,
+          formatted: field.detail ? `${field.text} · ${field.detail}` : field.text })) }] : []),
+        { title: "Observation revisions", columns: REVISION_COLUMNS, rows: market.evidence.map((row) => ({ ...row })) }],
       complete: market.access === "pro" && market.status === "ok", errors: market.access !== "pro" ? ["Full evidence requires Gloom Pro"] : [], freshness,
       metadata: { ...metadata, asOf: market.asOf, access: market.access, locked: market.locked, status: market.status },
     };
     const history = await fetchPerpsHistory({ marketId: selected.marketId, from: new Date(Date.now() - Number(args.options.days ?? 7) * 86_400_000).toISOString(), resolution: "auto", limit: 5000 }, ctx.apiClient);
     return { sections: [{ title: "Latest market", columns: MARKET_COLUMNS, rows: [{ ...selected }] }, { title: "Own observations", columns: observationColumns(selected.quoteCurrency), rows: history.rows.map((row) => ({ ...row })) },
-      { title: "Paid funding", columns: FUNDING_COLUMNS, rows: history.funding.map((row) => ({ ...row })) }, { title: "Hourly candles", columns: candleColumns(selected.quoteCurrency), rows: history.candles.map((row) => ({ ...row })) }],
+      { title: "Paid funding", columns: FUNDING_COLUMNS, rows: history.funding.map((row) => ({ ...row })) }, { title: "Hourly candles", columns: candleColumns(selected.quoteCurrency), rows: history.candles.map((row) => ({ ...row })) },
+      { title: "Long/short history", columns: LONG_SHORT_COLUMNS, rows: (history.longShortRatio ?? []).map((row) => ({ ...row })) }],
       complete: !history.locked && !history.truncated && history.status === "ok", freshness,
       errors: history.locked ? ["Full history requires Gloom Pro"] : history.truncated ? ["History reached the 5,000-observation limit; narrow the range"] : [],
       metadata: { ...metadata, asOf: history.asOf, access: history.access, locked: history.locked, status: history.status, from: history.from, to: history.to, resolution: history.resolution, truncated: history.truncated ?? false },

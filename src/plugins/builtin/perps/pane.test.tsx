@@ -10,7 +10,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { perpsCache, perpsHistoryCache, perpsMarketCache, perpsRankingsCache } from "./client";
 import { PerpsPane } from "./pane";
-import { perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
+import { longShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 const tui = createOpenTuiTestHarness();
 const reset = () => { setCloudApiFetchTransport(null); perpsCache.reset(); perpsHistoryCache.reset(); perpsMarketCache.reset(); perpsRankingsCache.reset(); };
 afterEach(reset);
@@ -33,7 +33,7 @@ function serve({ board = perpBoard(), rankings = perpRankings(), compare = perpB
   setCloudApiFetchTransport(async (input) => {
     const url = decodeURIComponent(String(input));
     calls.push(url);
-    if (url.includes("/history")) return Response.json(perpHistory({ locked: board.access === "preview", access: board.access }));
+    if (url.includes("/history")) return Response.json(perpHistory({ marketId: url.split("marketId=")[1]!.split("&")[0]!, locked: board.access === "preview", access: board.access }));
     if (url.includes("/market?")) {
       const marketId = url.split("marketId=")[1]!.split("&")[0]!;
       return Response.json({ ...board, rows: [...board.rows, ...compare.rows].filter((row) => row.marketId === marketId).slice(0, 1), evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals" });
@@ -56,6 +56,16 @@ test("no market opens the board in its preview; a named market still opens its h
   const history = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
   expect(history).toContain("Funding / 8h");
   expect(history).toContain("Upgrade for full history");
+});
+
+test("free long/short history keeps the row's latest reading beside the same Pro lock as every series", async () => {
+  serve({ board: perpBoard({ access: "preview", locked: 5, rows: [venueRow("binance", { longShortRatio: longShort() })] }) });
+  await mount({ market: "BTC", metric: "long-short" });
+  const frame = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
+  expect(frame).toContain("Long accounts");
+  expect(frame).toContain("61.83%");
+  expect(frame).toContain("1.62");
+  expect(frame).toContain("Upgrade for full history");
 });
 
 test("the venue filter narrows the board, and Enter opens the chosen venue's contract in History", async () => {

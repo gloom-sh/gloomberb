@@ -1,5 +1,6 @@
 import { apiClient } from "../../../api-client";
-import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery, PerpMarketPayload, PerpRankingsPayload } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery, PerpLongShortPoint, PerpLongShortRatio, PerpMarketPayload,
+  PerpRankingsPayload } from "../../../api-client/perps";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 
@@ -9,6 +10,12 @@ export const perpsHistoryCache = createPluginCache<PerpHistoryPayload>({ kind: "
   policy: { staleMs: 60_000, expireMs: 86_400_000 } });
 const finiteOrNull = (n: unknown) => n === null || typeof n === "number" && Number.isFinite(n);
 const date = (s: unknown) => typeof s === "string" && Number.isFinite(Date.parse(s));
+const share = (n: unknown) => typeof n === "number" && n >= 0 && n <= 1;
+/** A long/short reading: shares within 0..1, a finite ratio or none. Older servers send no reading at all. */
+const validShares = (value: Pick<PerpLongShortPoint, "longShare" | "shortShare" | "ratio" | "derived" | "definition" | "observedAt">) =>
+  share(value.longShare) && share(value.shortShare) && finiteOrNull(value.ratio) && typeof value.derived === "boolean" && typeof value.definition === "string" && date(value.observedAt);
+const validLongShort = (value: PerpLongShortRatio | null | undefined) => value == null
+  || typeof value === "object" && validShares(value) && typeof value.venue === "string" && typeof value.definitionText === "string" && date(value.bucketAt) && typeof value.stale === "boolean";
 function validRow(row: PerpBoardRow) {
   return !!row && typeof row.marketId === "string" && typeof row.symbol === "string" && typeof row.displayName === "string"
     && typeof row.baseAsset === "string" && typeof row.quoteCurrency === "string" && typeof row.marginCurrency === "string"
@@ -16,7 +23,8 @@ function validRow(row: PerpBoardRow) {
     && [row.markPrice, row.oraclePrice, row.fundingRate, row.fundingIntervalHours, row.fundingRate8h, row.fundingApr,
       row.predictedFundingRate, row.predictedFundingIntervalHours, row.openInterestBase, row.openInterestUsd, row.volume24hUsd,
       row.premium, row.oiChange24h, row.closedMarketPremium].every(finiteOrNull)
-    && (row.fundingIntervalHours === null || row.fundingIntervalHours > 0);
+    && (row.fundingIntervalHours === null || row.fundingIntervalHours > 0)
+    && validLongShort(row.longShortRatio) && (row.longShortRatioReason == null || typeof row.longShortRatioReason === "string");
 }
 function envelope(data: { access: string; locked: number | boolean; asOf: string | null }) {
   return !!data && ["pro", "preview"].includes(data.access) && (typeof data.locked === "boolean" || Number.isInteger(data.locked) && data.locked >= 0) && (data.asOf === null || date(data.asOf));
@@ -30,7 +38,8 @@ export function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?
   if (!envelope(data) || typeof data.marketId !== "string" || expectedMarketId !== undefined && data.marketId !== expectedMarketId || !Array.isArray(data.rows) || !Array.isArray(data.funding) || !Array.isArray(data.candles)
     || !data.rows.every((row) => date(row.time) && [row.markPrice, row.oraclePrice, row.premium, row.fundingRate, row.fundingIntervalHours, row.openInterestBase, row.openInterestUsd].every(finiteOrNull) && (row.fundingIntervalHours === null || row.fundingIntervalHours > 0))
     || !data.funding.every((row) => date(row.time) && typeof row.rate === "number" && Number.isFinite(row.rate) && Number.isFinite(row.intervalHours) && row.intervalHours > 0 && row.marketId === data.marketId && date(row.observedAt) && typeof row.sourceUrl === "string")
-    || !data.candles.every((row) => date(row.time) && [row.open, row.high, row.low, row.close].every((n) => typeof n === "number" && Number.isFinite(n)) && row.marketId === data.marketId && date(row.observedAt) && typeof row.sourceUrl === "string")) throw new Error("The server returned unreadable perpetual history");
+    || !data.candles.every((row) => date(row.time) && [row.open, row.high, row.low, row.close].every((n) => typeof n === "number" && Number.isFinite(n)) && row.marketId === data.marketId && date(row.observedAt) && typeof row.sourceUrl === "string")
+    || data.longShortRatio != null && !(Array.isArray(data.longShortRatio) && data.longShortRatio.every((point) => !!point && date(point.time) && validShares(point)))) throw new Error("The server returned unreadable perpetual history");
   return data;
 }
 export const fetchPerpsHistory = async (query: PerpHistoryQuery, client: Pick<typeof apiClient, "getCloudPerpsHistory"> = apiClient) => validatePerpsHistory(await client.getCloudPerpsHistory(query), query.marketId);
@@ -42,7 +51,18 @@ export function validatePerpsRankings(data: PerpRankingsPayload): PerpRankingsPa
     && new Set(data[key].map((row) => row.marketId)).size === data[key].length)) throw new Error("The server returned unreadable perpetual rankings");
   return data;
 }
-export const fetchPerpsBoard = async (query: PerpBoardQuery, client: Pick<typeof apiClient, "getCloudPerpsBoard"> = apiClient) => validatePerpsBoard(await client.getCloudPerpsBoard(query));
+/**
+ * The server ranks by its own figures and has no long-share order. A full board (Pro) and the fixed preview
+ * both arrive whole, so ordering them here is the order the server would give: highest first, none last.
+ */
+const LONG_SHORT_SORT = "long-short";
+const byLongShare = (rows: readonly PerpBoardRow[]) => [...rows].sort((a, b) =>
+  (b.longShortRatio?.longShare ?? -Infinity) - (a.longShortRatio?.longShare ?? -Infinity) || a.marketId.localeCompare(b.marketId));
+export async function fetchPerpsBoard(query: PerpBoardQuery, client: Pick<typeof apiClient, "getCloudPerpsBoard"> = apiClient) {
+  if (query.sort !== LONG_SHORT_SORT) return validatePerpsBoard(await client.getCloudPerpsBoard(query));
+  const data = validatePerpsBoard(await client.getCloudPerpsBoard({ ...query, sort: "oi" }));
+  return { ...data, rows: byLongShare(data.rows) };
+}
 export const fetchPerpsRankings = async (client: Pick<typeof apiClient, "getCloudPerpsRankings"> = apiClient) => validatePerpsRankings(await client.getCloudPerpsRankings());
 function validatePerpsCompare(data: PerpBoardPayload, baseAsset: string): PerpBoardPayload {
   validatePerpsBoard(data);
