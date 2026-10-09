@@ -1,6 +1,6 @@
 import { FigureText } from "../../../components/ui/figure";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Badge, Button, Checkbox, FieldLabel, Notice, NumberField, SegmentedControl, TextField, useFieldRing, type SelectControl } from "../../../components";
+import { Badge, Button, Checkbox, FieldLabel, Notice, NumberField, SegmentedControl, SelectButton, TextField, useFieldRing, type SelectControl } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -35,6 +35,7 @@ export function ticketQuoteAge(quote: Quote | undefined, now = Date.now()): stri
   return seconds < 60 ? `${seconds}s old` : seconds < 3600 ? `${Math.floor(seconds / 60)}m old` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m old`;
 }
 const stateName: Record<string, string> = { NEW: "Working", WORKING: "Working", SUBMITTED: "Submitted", PENDING_NEW: "Submitted", PARTIALLY_FILLED: "Partially filled", FILLED: "Filled", REJECTED: "Rejected", PENDING_CANCEL: "Pending cancel", CANCELED: "Cancelled", CANCELLED: "Cancelled", UNKNOWN: "Outcome unknown" };
+const tifName: Record<string, string> = { DAY: "Day", GTC: "Good til cancelled", IOC: "Immediate or cancel", FOK: "Fill or kill", EXTENDED_HOURS: "Extended hours", AT_THE_OPENING: "At the opening", AT_THE_CLOSE: "At the close" };
 
 /** One ticket presentation, with the same review and focus gates on every renderer. */
 export function BrokerTicketView({ model: m, width, height, focused, onEdit, onAction, onAccountChange }: BrokerTicketViewProps) {
@@ -67,7 +68,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const [active, setActive] = useState("account");
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const accountControl = useRef<SelectControl>(null);
-  const keys = useMemo(() => m.phase === "enable" ? ["enable", "back"] : editing ? ["account", "action", "orderType", "quantity", "quantity25", "quantity50", "all", ...(showLimit ? ["limitPrice", "priceBid", "priceMid", "priceAsk", "priceLast"] : []), ...(showStop ? ["stopPrice"] : []), "tif", ...(extendedHours ? ["outsideRth"] : []), "review"] : review ? ["back", ...(live ? ["typedConfirmation"] : []), "confirm"] : m.phase === "cancel-review" ? ["back", "cancel"] : ["refresh", "orders", "new"], [m.phase, editing, review, live, showLimit, showStop, extendedHours]);
+  const tifControl = useRef<SelectControl>(null);
+  const resultStatus = m.result?.status.toUpperCase() ?? "UNKNOWN";
+  const keys = useMemo(() => m.phase === "enable" ? ["enable", "back"] : editing ? ["account", "action", "orderType", "quantity", "quantity25", "quantity50", "all", ...(showLimit ? ["limitPrice", "priceBid", "priceMid", "priceAsk", "priceLast"] : []), ...(showStop ? ["stopPrice"] : []), "tif", ...(extendedHours ? ["outsideRth"] : []), "review"] : review ? ["back", ...(live ? ["typedConfirmation"] : []), "confirm"] : m.phase === "cancel-review" ? ["back", "cancel"] : resultStatus === "REJECTED" ? ["back", "refresh", "orders"] : resultStatus === "FILLED" ? ["new", "refresh", "orders"] : resultStatus === "UNKNOWN" ? ["refresh", "orders"] : ["refresh", "orders", "new"], [m.phase, editing, review, live, showLimit, showStop, extendedHours, resultStatus]);
   useEffect(() => { setActive(review || m.phase === "cancel-review" ? "back" : keys[0]!); }, [m.phase]);
   useEffect(() => { if (!keys.includes(active)) setActive(keys[0]!); }, [keys, active]);
   const { nodeRef } = useFieldRing({ ids: keys, activeId: active, onActivate: setActive, enabled: focused && !busy, scope, wrap: true, scrollRef });
@@ -84,13 +87,14 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     event.preventDefault(); event.stopPropagation();
     if (busy) return;
     if (active === "account") { accountControl.current?.open(); return; }
+    if (active === "tif") { tifControl.current?.open(); return; }
     if (active === "review" && canReview) onAction("review");
     else if (active === "confirm" && typedMatches && !blockingPreview && m.connected && m.tradingEnabled) onAction("confirm");
     else if (["back", "refresh", "orders", "new", "enable", "cancel", ...quickActions].includes(active)) onAction(active as TicketAction);
     else setActive(editing ? "review" : "confirm");
   }, { enabled: focused, phase: "before", scope, allowEditable: true });
-  const action = (key: TicketAction, label: string, disabled = false, primary = false, tone: "positive" | "negative" | "neutral" = sideTone) => <Box ref={nodeRef(key)} onMouseDown={() => setActive(key)} flexShrink={0}>
-    <Button label={label} variant={primary ? "primary" : "ghost"} tone={primary ? tone : undefined} height={native && primary ? 2 : 1} active={focused && active === key} disabled={disabled || busy} width={primary ? Math.max(16, formInner) : undefined} onPress={() => { setActive(key); onAction(key); }} />
+  const action = (key: TicketAction, label: string, disabled = false, primary = false, tone: "positive" | "negative" | "neutral" | "warning" = sideTone) => <Box ref={nodeRef(key)} onMouseDown={() => setActive(key)} flexShrink={0}>
+    <Button label={label} variant={primary ? "primary" : review && key === "back" ? "plain" : "ghost"} tone={primary ? tone : undefined} height={native && primary ? 2 : 1} active={focused && active === key} disabled={disabled || busy} width={primary ? Math.max(16, formInner) : undefined} onPress={() => { setActive(key); onAction(key); }} />
   </Box>;
   const quick = (key: TicketAction, label: string, disabled = false) => <Box ref={nodeRef(key)} key={key}><Button label={label} variant="ghost" compact active={active === key && focused} disabled={disabled || busy} onPress={() => { setActive(key); onAction(key); }} /></Box>;
   const numeric = (key: TicketField, label: string, value: number | undefined, suffix: string) => <Box ref={nodeRef(key)} onMouseDown={() => setActive(key)} flexDirection="row" alignItems="center" gap={1}>
@@ -103,7 +107,6 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const updated = sourceAt && Number.isFinite(sourceAt) ? `${new Date(sourceAt).toISOString().slice(11, 19)} UTC` : "unknown";
   const delayed = m.quoteData !== "realtime" || m.quote?.dataSource !== "live";
   const source = `${m.brokerName}, ${delayed ? "delayed" : "real-time"} ${ticketQuoteAge(m.quote, m.now).replace(" old", "")}`;
-  const resultStatus = m.result?.status.toUpperCase() ?? "UNKNOWN";
   const title = stateName[resultStatus] ?? m.result?.status ?? "Outcome unknown";
   const accountLine = <Box flexDirection="row" alignItems="center" gap={1}><Text fg={c.textDim} truncate>{account?.name ?? "Choose an account"}</Text><Badge label={modeLabel} color={modeColor} variant={live && account ? "solid" : "subtle"} /></Box>;
   const warnings = [...new Set(m.warnings)];
@@ -148,7 +151,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
               <Box flexDirection="row" justifyContent="flex-end" gap={1} paddingRight={9}>{quick("quantity25", "25%", sell && m.position === undefined)}{quick("quantity50", "50%", sell && m.position === undefined)}{quick("all", sell ? `Max ${number(m.position)}` : "Max", sell && !(m.position && m.position > 0))}</Box>
               {showLimit ? <>{numeric("limitPrice", "Limit price", draft.limitPrice, currency)}<Box flexDirection="row" justifyContent="flex-end" gap={1} paddingRight={9}>{quick("priceBid", "Bid", !m.quote?.bid)}{quick("priceMid", "Mid", !m.quote?.bid || !m.quote?.ask)}{quick("priceAsk", "Ask", !m.quote?.ask)}{quick("priceLast", "Last", !m.quote?.price)}</Box></> : null}
               {showStop ? numeric("stopPrice", "Stop price", draft.stopPrice, currency) : null}
-              <Box flexDirection="row" alignItems="center" gap={1}><Box ref={nodeRef("tif")} flexDirection="row" gap={1} onMouseDown={() => setActive("tif")}><FieldLabel label="Time in force" width={native ? 13 : 16} active={active === "tif"} /><SegmentedControl value={draft.tif ?? "DAY"} options={(m.capabilities?.tif ?? ["DAY"]).map((v) => ({ value: v, label: v === "DAY" ? "Day" : v, disabled: m.modifying }))} focused={focused && active === "tif"} onChange={(v) => onEdit("tif", v)} shortcutScope={scope} /></Box>{extendedHours ? <Box ref={nodeRef("outsideRth")}><Checkbox label="Extended" checked={draft.outsideRth ?? false} disabled={m.modifying} active={focused && active === "outsideRth"} onChange={(v) => { setActive("outsideRth"); onEdit("outsideRth", v); }} /></Box> : null}</Box>
+              <Box flexDirection="row" alignItems="center" gap={1}><Box ref={nodeRef("tif")} flexDirection="row" alignItems="center" gap={1} onMouseDown={() => setActive("tif")}><FieldLabel label="Time in force" width={native ? 13 : 16} active={active === "tif"} /><SelectButton label="Time in force" title="Time in force" showLabel={false} variant="field" width={22} value={draft.tif ?? "DAY"} options={(m.capabilities?.tif ?? ["DAY"]).map((v) => ({ value: v, label: tifName[v] ?? v }))} disabled={busy || m.modifying} emphasized={focused && active === "tif"} controlRef={tifControl} onFocus={() => setActive("tif")} onChange={(v) => onEdit("tif", v)} /></Box>{extendedHours ? <Box ref={nodeRef("outsideRth")}><Checkbox label="Extended" checked={draft.outsideRth ?? false} disabled={m.modifying} active={focused && active === "outsideRth"} onChange={(v) => { setActive("outsideRth"); onEdit("outsideRth", v); }} /></Box> : null}</Box>
               {holdingBlocked ? <Notice tone="negative">{m.position === undefined ? "Refresh holdings before selling." : `You hold ${number(m.position)} ${unit}. Short selling is unavailable.`}</Notice> : null}
               {m.error ? <Notice variant="callout" tone="negative">{m.error}</Notice> : null}
               {!wide ? <TicketOrderSummary model={m} width={formInner} compact /> : null}
@@ -172,9 +175,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           <Box marginTop={native && wide ? 1 : 0} flexDirection="column" gap={native && wide ? 0.4 : 0}>
             <TicketReceiptRow label="Fees" value={money(m.preview?.fees, currency)} width={formInner} />
             <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formInner} />
-            <TicketReceiptRow label={m.preview?.buyingPowerAfter === undefined ? "Buying power impact" : "Buying power after"} value={money(m.preview?.buyingPowerAfter ?? m.preview?.buyingPowerImpact, currency)} width={formInner} />
+            {!wide ? <TicketOrderSummary model={m} width={formInner} compact receipt /> : null}
           </Box>
-          <Box flexDirection="row" justifyContent="space-between" alignItems="center" border={["top"]} borderColor={c.border} paddingTop={native && wide ? 0.7 : 0}><Text fg={c.textDim}>Estimated cost</Text><FigureText>{money(m.preview?.estimatedCost, currency)}</FigureText></Box>
+          <Box flexDirection="row" justifyContent="space-between" alignItems={native ? "baseline" : "center"} border={["top"]} borderColor={c.border} paddingTop={native && wide ? 0.7 : 0}><Text fg={c.textDim}>Estimated cost</Text><FigureText>{money(m.preview?.estimatedCost, currency)}</FigureText></Box>
           {warnings.map((warning, index) => <Notice key={index} variant="callout" tone="warning">{warning}</Notice>)}
           {m.preview?.errors?.map((error, index) => <Notice key={index} variant="callout" tone="negative">{error}</Notice>)}
           {live ? <TicketCard dense={!wide} width={formInner} accent={c.negative} compact><Box ref={nodeRef("typedConfirmation")} onMouseDown={() => setActive("typedConfirmation")}><FieldLabel label={`Type ${confirmationSymbol} to confirm a LIVE order`} active={active === "typedConfirmation"} /><TextField value={m.typedConfirmation ?? ""} onChange={(v) => onEdit("typedConfirmation", v)} focused={focused && active === "typedConfirmation"} active={active === "typedConfirmation"} width={Math.max(16, formInner - 6)} onSubmit={() => setActive("confirm")} /></Box></TicketCard> : null}
@@ -183,15 +186,15 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
         </TicketCard>{wide ? <TicketOrderSummary model={m} width={summaryWidth} receipt /> : null}</Box> : null}
         {m.phase === "cancel-review" || m.phase === "cancelling" ? <TicketCard dense={!wide} width={formWidth} title="Cancel this order?">
           <TicketOrderHeadline model={m} large />{accountLine}<Notice variant="callout">The order can still fill before the broker confirms cancellation.</Notice>
-          {action("back", "Keep order")}{action("cancel", "Confirm cancellation", false, true, live ? "negative" : sideTone)}
+          {action("back", "Keep order")}{action("cancel", "Confirm cancellation", false, true, "negative")}
         </TicketCard> : null}
         {m.phase === "result" ? <Box flexDirection={wide ? "row" : "column"} gap={3}><TicketCard dense={!wide} width={formWidth} title={title}>
           <TicketOrderHeadline model={m} large />{accountLine}<TicketStatus model={m} width={formInner} />
           {!["PARTIALLY_FILLED", "FILLED"].includes(resultStatus) ? <TicketReceiptRow label="Filled" value={number(m.result?.filled)} width={formInner} /> : null}
           <TicketReceiptRow label="Remaining" value={number(m.result?.remaining)} width={formInner} />
           {m.error && !["UNKNOWN", "REJECTED"].includes(resultStatus) ? <Notice variant="callout" tone="negative">{m.error}</Notice> : null}
-          {action("refresh", "Refresh status", false, true, resultStatus === "UNKNOWN" ? "neutral" : sideTone)}
-          <Box flexDirection="row" gap={1}>{action("orders", "Open orders")}{resultStatus !== "UNKNOWN" ? action("new", "New order") : null}</Box>
+          {resultStatus === "REJECTED" ? action("back", "Edit order", false, true, "neutral") : resultStatus === "FILLED" ? action("new", "New order", false, true) : action("refresh", "Refresh status", false, true, resultStatus === "UNKNOWN" ? "warning" : "neutral")}
+          <Box flexDirection="row" gap={1}>{["REJECTED", "FILLED"].includes(resultStatus) ? action("refresh", "Refresh status") : null}{action("orders", "Open orders")}{!["UNKNOWN", "REJECTED", "FILLED"].includes(resultStatus) ? action("new", "New order") : null}</Box>
         </TicketCard>{wide ? <TicketOrderSummary model={m} width={summaryWidth} /> : null}</Box> : null}
       </Box>
     </ScrollBox>

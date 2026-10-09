@@ -27,7 +27,7 @@ function accountMode(mode: BrokerTradingMode | undefined): string {
   return mode === "simulation" ? "SIMULATION" : mode === "live" ? "LIVE" : "MODE UNKNOWN";
 }
 
-export function BrokerAccountChoiceDialog({ accounts, value, resolve }: PromptContext<string> & Pick<BrokerAccountPickerProps, "accounts" | "value">) {
+function BrokerAccountChoiceDialog({ accounts, value, resolve }: PromptContext<string> & Pick<BrokerAccountPickerProps, "accounts" | "value">) {
   const colors = useThemeColors();
   const [index, setIndex] = useState(() => accounts.findIndex((account) => account.value === value));
   const selected = accounts[index];

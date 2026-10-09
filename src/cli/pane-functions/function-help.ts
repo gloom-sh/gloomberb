@@ -1134,6 +1134,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: null,
     bloomberg: [],
   },
+  ORD: {
+    summary: "Open orders and recent activity for a selected broker profile and account. Review a modification or confirm cancellation from an open order; uncertain outcomes require reconciliation before another action.",
+    usage: ["ORD"],
+    keys: [key("m", "odify"), key("c", "ancel")],
+    data: same("Broker account snapshot"),
+    bloomberg: [],
+  },
 
   // Layouts and settings
   GL: {

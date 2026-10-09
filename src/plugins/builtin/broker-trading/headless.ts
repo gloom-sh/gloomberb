@@ -24,7 +24,7 @@ function ordinal(value: unknown, count: number, label: string): number {
   return value - 1;
 }
 
-export function createBrokerOrdersHeadless(
+function createBrokerOrdersHeadless(
   resolveBroker: BrokerResolver = (type, context) => context.resolveBroker?.(type) ?? null,
 ): HeadlessPaneDefinition<"bundle"> {
   return {

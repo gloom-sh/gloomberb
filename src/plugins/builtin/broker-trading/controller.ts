@@ -25,7 +25,7 @@ export interface BrokerTicketQuote {
   stale: boolean;
 }
 
-export interface BrokerOrderReview {
+interface BrokerOrderReview {
   request: BrokerOrderRequest;
   preview: BrokerOrderPreview;
   warnings: string[];
@@ -76,7 +76,7 @@ function canonical(value: unknown): string {
 function positive(value: number | undefined): value is number { return value !== undefined && Number.isFinite(value) && value > 0; }
 function errorMessage(error: unknown, fallback: string): string { return error instanceof Error && error.message ? error.message : fallback; }
 
-export function tradingCapabilities(context: BrokerTradingContext, request?: BrokerOrderRequest): BrokerTradingCapabilities {
+function tradingCapabilities(context: BrokerTradingContext, request?: BrokerOrderRequest): BrokerTradingCapabilities {
   return context.adapter.getTradingCapabilities?.(context.instance, request?.contract, request?.orderType) ?? {
     enabled: false, disabledReason: "This broker has not enabled the shared order ticket.", orderTypes: [], tif: [],
   };

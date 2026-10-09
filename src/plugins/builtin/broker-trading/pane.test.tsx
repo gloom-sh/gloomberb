@@ -50,6 +50,9 @@ test("broker read status heartbeats never reschedule account or holdings reads",
   await tui.renderFrames(8);
   expect(calls).toEqual({ accounts: 2, positions: 1, quote: 1 });
 
+  await act(async () => { emit({ state: "error", message: "Rate limited. Try again in 30 seconds." }); });
+  await tui.waitForFrameToContain("Rate limited. Try again in 30 seconds.");
+  expect(calls).toEqual({ accounts: 2, positions: 1, quote: 1 });
   await act(async () => { emit({ state: "disconnected" }); });
   await tui.renderFrames(3);
   expect(calls).toEqual({ accounts: 2, positions: 1, quote: 1 });

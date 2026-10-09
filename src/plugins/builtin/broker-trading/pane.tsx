@@ -55,7 +55,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const draft = state.draft;
   const caps = broker.getTradingCapabilities?.(instance, draft?.contract ?? contract, draft?.orderType);
-  const connected = broker.getStatus?.(instance)?.state === "connected";
+  const connection = broker.getStatus?.(instance);
+  const connected = connection?.state === "connected";
   const ticketContract = draft?.contract ?? contract;
   const contractKey = JSON.stringify(ticketContract);
   const busy = state.phase === "submitting" || state.phase === "cancelling";
@@ -223,9 +224,10 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     brokerName: broker.name, symbol: ticketContract.localSymbol ?? ticketContract.symbol, accounts, accountId,
     accountChoices, accountChoiceValue: accountChoices && accountId ? ticketAccountChoiceKey(instance.id, accountId) : undefined,
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,
-    quote: state.quote?.quote, quoteData: broker.getStatus?.(instance)?.quoteData,
+    quote: state.quote?.quote, quoteData: connection?.quoteData,
     phase: page === "enable" ? "enable" : state.phase, draft, preview: state.review?.preview, warnings: state.review?.warnings ?? [], result: state.result,
-    error: error ?? state.error, position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
+    error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error,
+    position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
     typedConfirmation: typed, connected, capabilities: caps, modifying: state.modifying, defaultPriceLabel,
   }} onEdit={onEdit} onAction={onAction} onAccountChange={onTicketAccountChange} />;
 }

@@ -35,6 +35,7 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
   const positionAfter = m.position !== undefined && draft ? m.position + (draft.action === "SELL" ? -draft.quantity : draft.quantity) : undefined;
   const powerAfter = m.preview?.buyingPowerAfter ?? (draft?.action === "BUY" && account?.buyingPower !== undefined && total !== undefined ? account.buyingPower - total : undefined);
   const sideColor = draft?.action === "SELL" ? c.negative : c.positive;
+  if (compact && receipt) return <TicketReceiptRow label="Account impact" value={`Buying power ${m.preview?.buyingPowerAfter === undefined ? "impact" : "after"} ${ticketMoney(m.preview?.buyingPowerAfter ?? m.preview?.buyingPowerImpact, currency)}`} width={width} />;
   if (compact) return <Box flexDirection="row" justifyContent="space-between" paddingX={1} backgroundColor={c.panel}>
     <Text fg={sideColor} attributes={TextAttributes.BOLD}>{`${draft?.action ?? "BUY"} ${ticketNumber(draft?.quantity)} ${m.symbol}`}</Text>
     <Text fg={c.textBright} attributes={TextAttributes.BOLD}>{`Est. ${ticketMoney(total, currency)}`}</Text>

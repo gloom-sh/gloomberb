@@ -25,7 +25,7 @@ export interface ButtonProps {
   onPress?: () => void;
   variant?: ButtonVariant;
   /** Semantic fill for a primary action, retained while keyboard focused. */
-  tone?: "positive" | "negative" | "neutral";
+  tone?: "positive" | "negative" | "neutral" | "warning";
   disabled?: boolean;
   active?: boolean;
   shortcut?: string;

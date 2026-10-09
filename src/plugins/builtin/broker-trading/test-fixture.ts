@@ -18,9 +18,9 @@ export interface DemoBrokerOptions {
 
 export const DEMO_SIM_ACCOUNT = "demo-simulation";
 export const DEMO_LIVE_ACCOUNT = "demo-live";
-export const DEMO_BROKER_ID = "demo-broker";
+const DEMO_BROKER_ID = "demo-broker";
 
-export function demoContract(symbol = "AAPL", instanceId = "demo-simulation-profile") {
+function demoContract(symbol = "AAPL", instanceId = "demo-simulation-profile") {
   return { brokerId: DEMO_BROKER_ID, brokerInstanceId: instanceId, symbol, secType: "STK", exchange: "NASDAQ", currency: "USD" };
 }
 
