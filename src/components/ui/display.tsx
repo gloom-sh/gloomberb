@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { t } from "../../i18n";
 import { blendHex } from "../../theme/colors";
+import { blendForContrast, higherContrast } from "../../theme/color-utils";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
@@ -55,10 +56,11 @@ export interface KeyValueRowProps {
   width?: number;
   labelWidth?: number;
   emphasis?: boolean;
+  align?: "left" | "right";
 }
 
 /** Aligned labels and values; a bounded row reserves room for an optional detail. */
-export function KeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true }: KeyValueRowProps) {
+export function KeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, align = "left" }: KeyValueRowProps) {
   const colors = useThemeColors();
   const rowWidth = width === undefined ? undefined : Math.max(0, Math.floor(width));
   const preferredLabelWidth = Math.max(0, labelWidth ?? (rowWidth === undefined ? 14 : Math.min(12, Math.max(8, Math.floor(rowWidth * 0.32)))));
@@ -73,7 +75,7 @@ export function KeyValueRow({ label, value, detail, tone, color, width, labelWid
       <Box width={labelColumns} flexShrink={0} overflow="hidden">
         <Text fg={colors.textDim}>{t(label)}</Text>
       </Box>
-      <Box width={valueWidth} flexShrink={0} overflow="hidden">
+      <Box width={valueWidth} flexShrink={0} overflow="hidden" alignItems={align === "right" ? "flex-end" : undefined}>
         <Text fg={color ?? statToneColor(tone, colors) ?? colors.text} attributes={emphasis ? TextAttributes.BOLD : undefined}>
           {valueWidth === undefined ? value : truncateToDisplayWidth(value, valueWidth)}
         </Text>
@@ -104,10 +106,13 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle" }: Ba
   const accent = color ?? (tone === "neutral" ? colors.textDim : tone === "accent" ? colors.borderFocused : colors[tone]);
   const solid = variant === "solid";
   const neutral = solid && tone === "neutral" && !color;
+  const background = neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, 0.28);
+  const baseForeground = neutral ? colors.selectedText : solid ? colors.bg : accent;
+  const foreground = blendForContrast(baseForeground, background, higherContrast("#000000", "#ffffff", background), 4.5);
   const chip = (
-    <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, 0.28)}
+    <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={background}
       data-gloom-ui="badge" justifyContent={nativePaneChrome ? "center" : undefined} style={nativePaneChrome ? NATIVE_BADGE_STYLE : undefined}>
-      <Text fg={neutral ? colors.selectedText : solid ? colors.bg : accent} attributes={TextAttributes.BOLD}>{t(label)}</Text>
+      <Text fg={foreground} attributes={TextAttributes.BOLD}>{t(label)}</Text>
     </Box>
   );
   return nativePaneChrome ? <Box height={1} flexShrink={0} justifyContent="center">{chip}</Box> : chip;

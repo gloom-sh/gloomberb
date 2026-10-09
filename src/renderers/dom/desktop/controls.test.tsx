@@ -4,8 +4,13 @@ import { act, useState } from "react";
 import { WebCheckbox, WebSegmentedControl } from "./controls";
 import { WebListView } from "./list-view";
 import { Button } from "../../../components/ui/button";
-import { TextField } from "../../../components/ui/fields";
+import { NumberField, TextField } from "../../../components/ui/fields";
 import { ActionRow } from "../../../components/ui/action-row";
+import { Badge } from "../../../components/ui/display";
+import { Notice } from "../../../components/ui/status";
+import { contrastRatio } from "../../../theme/color-utils";
+import { getCurrentThemeId, getThemeColors, syncTheme } from "../../../theme/colors";
+import { ThemeProvider } from "../../../theme/theme-context";
 import { Box, Text } from "../../../ui";
 import { createDomTestHarness } from "../test-utils";
 
@@ -119,6 +124,46 @@ test("TextField delivers normalized native keys before submit and respects cance
   });
   expect(keys).toEqual(["return:true", "return:false"]);
   expect(submitted).toEqual(["draft"]);
+});
+
+test("field labels survive the shared wrapper and reach native accessible names", async () => {
+  const container = await renderDom(<Box>
+    <TextField label="Visible label" value="one" />
+    <NumberField label="Quantity" labelWidth={12} value="10" />
+    <TextField accessibleLabel="LIVE order symbol confirmation" value="" />
+    <WebSegmentedControl accessibleLabel="Order side" value="buy" options={[{ value: "buy", label: "Buy" }, { value: "sell", label: "Sell" }]} />
+  </Box>);
+  expect([...container.querySelectorAll("input")].map((input) => input.getAttribute("aria-label")))
+    .toEqual(["Visible label", "Quantity", "LIVE order symbol confirmation"]);
+  expect(container.querySelector('[role="radiogroup"]')?.getAttribute("aria-label")).toBe("Order side");
+});
+
+test("warning and LIVE text meet normal-text contrast while preserving semantic borders and fills", async () => {
+  const originalTheme = getCurrentThemeId();
+  const hex = (css: string): string => css.startsWith("#") ? css : `#${css.match(/\d+/g)!.slice(0, 3).map((part) => Number(part).toString(16).padStart(2, "0")).join("")}`;
+  try {
+    for (const theme of ["white", "monokai"]) {
+      const colors = getThemeColors(theme);
+      const container = await renderDom(<ThemeProvider themeId={theme}>
+        <Notice variant="callout" tone="warning">Delayed quote</Notice>
+        <Notice variant="callout" tone="negative">Order rejected</Notice>
+        <Badge label="LIVE" tone="negative" variant="solid" />
+      </ThemeProvider>);
+      const notices = [...container.querySelectorAll<HTMLElement>('[data-gloom-ui="notice"]')];
+      expect(notices.map((notice) => notice.getAttribute("role"))).toEqual(["status", "alert"]);
+      for (const [index, notice] of notices.entries()) {
+        const text = [...notice.querySelectorAll<HTMLElement>("span")].find((node) => node.textContent !== "!")!;
+        expect(contrastRatio(hex(text.style.color), hex(notice.style.backgroundColor))).toBeGreaterThanOrEqual(4.5);
+        expect(hex(notice.style.borderLeftColor)).toBe(index === 0 ? colors.warning : colors.negative);
+      }
+      const badge = container.querySelector<HTMLElement>('[data-gloom-ui="badge"]')!;
+      const text = badge.querySelector<HTMLElement>("span")!;
+      expect(hex(badge.style.backgroundColor)).toBe(colors.negative);
+      expect(contrastRatio(hex(text.style.color), hex(badge.style.backgroundColor))).toBeGreaterThanOrEqual(4.5);
+    }
+  } finally {
+    syncTheme(originalTheme);
+  }
 });
 
 test("a framed TextField keeps its text a cell off the frame, and a plain one sits flush", async () => {

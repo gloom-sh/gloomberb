@@ -1134,6 +1134,27 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: null,
     bloomberg: [],
   },
+  BUY: {
+    summary: "Open the shared Trade ticket with a buy quantity and optional limit price. Focus starts on Review; choose an account and review the broker preview before confirming.",
+    usage: ["BUY AAPL 10", "BUY AAPL 10 150.25"],
+    keys: [key("r", "eview"), key("o", "rders")],
+    data: same("Broker account and quote"),
+    bloomberg: [],
+  },
+  SELL: {
+    summary: "Open the shared Trade ticket with a sell quantity and optional limit price. Focus starts on Review; holdings and broker capabilities are checked before confirmation.",
+    usage: ["SELL AAPL 10", "SELL AAPL 10 350.25"],
+    keys: [key("r", "eview"), key("o", "rders")],
+    data: same("Broker account and quote"),
+    bloomberg: [],
+  },
+  ORD: {
+    summary: "Open orders and recent activity for a selected broker profile and account. Review a modification or confirm cancellation from an open order; uncertain outcomes require reconciliation before another action.",
+    usage: ["ORD"],
+    keys: [key("m", "odify"), key("c", "ancel")],
+    data: same("Broker account snapshot"),
+    bloomberg: [],
+  },
 
   // Layouts and settings
   GL: {

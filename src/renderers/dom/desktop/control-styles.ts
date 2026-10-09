@@ -32,7 +32,7 @@ export function controlShadow(active = false, palette: ThemeColors = colors): st
 }
 
 export function buttonPalette(
-  props: Pick<ButtonProps, "variant" | "active" | "disabled">,
+  props: Pick<ButtonProps, "variant" | "active" | "disabled" | "tone">,
   palette: ThemeColors = colors,
 ) {
   if (props.variant === "plain") {
@@ -49,6 +49,7 @@ export function buttonPalette(
       border: panelBorder(palette),
     };
   }
+  if (props.tone && props.variant === "primary") return { fg: palette.bg, bg: palette[props.tone], border: props.active ? palette.textBright : palette[props.tone] };
   if (props.active) {
     return {
       fg: palette.selectedText,

@@ -864,8 +864,14 @@ ctx.hidePane("my-pane");               // Hide a pane
 ctx.focusPane("my-pane");              // Move focus to a pane
 ctx.pinTicker("AAPL");                 // Open or focus a fixed Ticker Research pane for AAPL
 ctx.pinTicker("AAPL", { floating: true, paneType: "ticker-research", forceNewPane: true });
+ctx.pinTicker("AAPL", { tabId: "my-research-tab", tabState: { myTabRequest: requestToken } });
 ctx.createPaneFromTemplate("quote-monitor-new", { symbol: "AAPL" });
 ```
+
+`tabState` merges into the resolved research pane when `tabId` is selected,
+including when an existing pane is reused after ticker resolution. Prefix keys
+for your tab. Pane state is saved with layouts, so keep sensitive draft values
+in memory and pass an opaque, single-use request token for temporary actions.
 
 ### Broker management
 
@@ -877,6 +883,52 @@ await ctx.updateBrokerInstance(instance.id, { token: "new-token" });
 await ctx.syncBrokerInstance(instance.id);  // Trigger position import
 await ctx.removeBrokerInstance(instance.id);
 ```
+
+#### Shared order ticket
+
+The built-in Trade tab and Orders pane use the selected `BrokerAdapter` directly. To opt into the shared ticket, implement `listAccounts`, `getQuote`, `previewOrder`, `placeOrder` and synchronous `getTradingCapabilities(instance, contract?, orderType?)`. An adapter without capability metadata remains read only in this ticket; its existing custom trading UI and method signatures keep working. The ticket does not reinterpret another broker's contract or use the market-data router to prefill prices.
+
+```typescript
+getTradingCapabilities(instance, contract, orderType) {
+  return {
+    enabled: instance.config.enableTrading === "true",
+    disabledReason: "Enable trading for this profile in Brokers.",
+    orderTypes: ["MKT", "LMT", "STP", "STP LMT"],
+    tif: orderType === "MKT" ? ["DAY"] : ["DAY", "GTC"],
+    extendedHours: contract?.secType !== "OPT",
+    extendedHoursTif: ["DAY"],
+    fractionalQuantity: false,
+    shortSelling: false,
+    minQuantity: 1,
+    quantityStep: 1,
+    priceDecimals: 2,
+    modify: true,
+    cancel: true,
+    executionKind: "fills",
+  };
+},
+getTradingConfigUpdate(_instance, enabled) {
+  return { enableTrading: String(enabled) };
+},
+```
+
+`BrokerTradingCapabilities` describes supported order types, time in force, quantity and price constraints, extended hours, modification and cancellation. `extendedHoursTif`, when supplied, restricts extended hours to those time-in-force values. Return capabilities for the given instrument and order type, without network requests. `getTradingConfigUpdate` is optional and returns the config patch the host saves after consent, also without I/O; without it, users enable trading through the broker's own settings. Keep the adapter's mutation guards even when the host ticket enforces the same constraints.
+
+`shortSelling` defaults to false. Without an explicit true value, selling requires a fresh position snapshot for the exact profile, account and contract, and quantity cannot exceed the long holding. Missing or stale holdings block a sell; a successfully loaded empty position list means zero held. Position changes invalidate a sell review. Quick quantity controls round down to the broker's increment, use the held quantity for sells, and use reported buying power and the broker quote for buys, including the contract multiplier. These are sizing aids; the broker preview still decides whether the order can proceed.
+
+Set optional `BrokerAccount.tradingMode` to `simulation`, `live` or `unknown`. The ticket only selects an account automatically when it is the sole account and explicitly marked simulation. Multiple accounts require a choice; live and unknown accounts require a typed symbol confirmation. Use account names that are safe to display. The ticket reviews the exact current request, invalidates a review on edits or relevant profile changes, and does not automatically retry uncertain mutations. Modification goes through another review; cancellation requires its own confirmation.
+
+Set optional `BrokerAccount.accountType` to the broker-reported classification, such as Cash or Margin, for the ticket context chip. Omit it when the broker does not report one; never infer it from buying power or balances.
+
+`BrokerOrderPreview` now has optional `currency`, `estimatedCost`, `fees`, `buyingPowerBefore`, `buyingPowerAfter`, `buyingPowerImpact`, `warnings` and blocking `errors`. Return only values reported by the broker or calculations whose units are known. Existing margin fields, `commission`, `commissionCurrency` and `warningText` remain supported. When `warnings` is present, it replaces the legacy `warningText` in the shared review. Preview errors prevent submission. A preview is validation, never order placement.
+
+`BrokerOrder.brokerOrderId` and `BrokerExecution.brokerOrderId` optionally retain native string identifiers. Existing numeric `orderId` and the numeric arguments to `modifyOrder` and `cancelOrder` are unchanged. Adapters with string IDs must maintain a safe mapping from those mutation handles to the original profile, account and native identifier. An uncertain placement without an acknowledged identity cannot be reconciled by symbol or by absence from open orders. `executionKind: "order-summaries"` tells the activity view that history rows are cumulative order summaries, not individual fills.
+
+Optional `getOrderStatus(instance, orderId)` resolves an acknowledged numeric handle to its current broker order, including explicit terminal records from order history. Return `null` when the outcome is unconfirmed. The ticket uses this method when available; disappearance from open orders alone never proves cancellation or a fill.
+
+`ctx.getBrokerAdapter?(brokerType)` looks up a registered adapter. Built-in React code uses `usePluginBrokerActions().getBrokerAdapter`; external plugins can use the context method and tolerate its absence on older hosts. Headless code receives optional `HeadlessPaneContext.resolveBroker` for the same lookup during `fn` and `shot` execution. The Orders report performs account, open-order and execution reads only; headless reporting never submits, modifies or cancels orders. These lookups expose adapters, not serialized credentials, and do not replace explicit profile and account selection.
+
+The shared ticket handles one instrument per order where the adapter declares support. It does not add multi-leg orders, infer unreported broker constraints, or guarantee that a vanished open order was filled or cancelled. Polling refreshes open orders while a pending result remains visible. Brokers must supply trustworthy account modes, quote timestamps and `BrokerConnectionStatus.quoteData`; unknown quote entitlement is treated as delayed.
 
 #### Bond position price conventions
 

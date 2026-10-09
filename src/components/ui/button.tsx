@@ -24,6 +24,8 @@ export interface ButtonProps {
   expanded?: boolean;
   onPress?: () => void;
   variant?: ButtonVariant;
+  /** Semantic fill for a primary action, retained while keyboard focused. */
+  tone?: "positive" | "negative" | "neutral" | "warning";
   disabled?: boolean;
   active?: boolean;
   shortcut?: string;
@@ -42,13 +44,14 @@ export interface ButtonProps {
   stopPropagation?: boolean;
 }
 
-function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors): { bg?: string; fg: string } {
+function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors, tone?: ButtonProps["tone"]): { bg?: string; fg: string } {
   if (variant === "plain") {
     return { fg: disabled ? colors.textMuted : active ? colors.textBright : colors.textDim };
   }
   if (disabled) {
     return { bg: colors.panel, fg: colors.textMuted };
   }
+  if (tone && variant === "primary") return { bg: colors[tone], fg: colors.bg };
   if (active) {
     return { bg: colors.selected, fg: colors.selectedText };
   }
@@ -73,6 +76,7 @@ export function Button({
   expanded,
   onPress,
   variant = "secondary",
+  tone,
   disabled = false,
   active = false,
   shortcut,
@@ -108,6 +112,7 @@ export function Button({
         expanded={expanded}
         onPress={onPress}
         variant={variant}
+        tone={tone}
         disabled={disabled}
         active={active}
         shortcut={shortcut}
@@ -121,7 +126,7 @@ export function Button({
     );
   }
 
-  const palette = resolveButtonColors(variant, active, disabled, colors);
+  const palette = resolveButtonColors(variant, active, disabled, colors, tone);
 
   return (
     <Box

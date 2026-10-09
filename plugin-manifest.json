@@ -38,13 +38,14 @@
     {
       "id": "broker",
       "name": "Broker",
-      "description": "Broker profiles, account sync, and connection status.",
+      "description": "Broker profiles, account sync, order review, and trading status.",
       "categories": [
         "broker"
       ],
       "toggleable": true,
       "contributes": {
         "panes": [
+          "broker-orders",
           "brokers"
         ],
         "capabilities": [],

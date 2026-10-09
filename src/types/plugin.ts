@@ -745,6 +745,8 @@ export interface PinTickerOptions {
   listing?: TickerListingRef;
   /** Select this research tab once the requested ticker has resolved. */
   tabId?: string;
+  /** Merge this state into the resolved research pane when selecting `tabId`. */
+  tabState?: Record<string, unknown>;
 }
 
 export interface GloomPluginContext {
@@ -770,6 +772,8 @@ export interface GloomPluginContext {
   getData(ticker: string): TickerFinancials | null;
   getTicker(ticker: string): TickerRecord | null;
   getConfig(): import("./config").AppConfig;
+  /** Resolve a broker registered by another plugin, without connecting it. */
+  getBrokerAdapter?(brokerType: string): BrokerAdapter | null;
   getPaneDef(paneId: string): PaneDef | undefined;
 
   readonly marketData: DataProvider;
