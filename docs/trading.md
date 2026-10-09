@@ -40,12 +40,13 @@ The footer shows actions relevant to the current screen. Tab and Shift+Tab walk 
 | Review | Enter | Activate the focused control; submit only when confirmation is focused and allowed |
 | Result | `r` | Refresh and reconcile status |
 | Rejected result | `e` | Edit the rejected order |
-| Result, except unknown | `n` | Start a new order |
+| Result, except unknown or rejected | `n` | Start a new order |
 | Orders | Up/Down or `k`/`j` | Select an order |
 | Orders | `m` | Modify the selected order |
 | Orders | `c` | Request cancellation confirmation |
-| Orders | `o`, `a`, `v` | Choose broker, account, or view |
+| Orders | `a`, `v` | Choose account or view |
 | Orders | `r` | Refresh orders and executions |
+| Orders opened from Trade | Escape | Return to the ticket |
 | Confirmation or picker | Enter | Activate the focused confirmation or selected choice |
 | Confirmation or picker | Escape | Go back without confirming |
 
@@ -61,4 +62,4 @@ The terminal draws a cell grid. It does not expose the desktop DOM roles or a na
 
 Contrast was measured using the rendered theme colours. White Phosphor has 4.79:1 for muted form-card labels, 9.26:1 for amber callouts, 5.44:1 for red callouts, and 5.77:1 for LIVE badge text. Monokai, the built-in theme described as high contrast, has 5.53:1 for form-card labels, 11.63:1 for amber callouts, 4.63:1 for red callouts, and 4.62:1 for LIVE badge text. Terminal and desktop cards use the same explicit fill, so labels retain these ratios inside focused floating panes. Callouts and badges adjust their text colour to meet the 4.5:1 normal-text target while preserving their semantic border or fill. The measured desktop field-focus borders exceed 3:1 in both themes. These checks do not cover OS forced-colour modes or certify all application chrome.
 
-The keyboard flow is verified at 90 columns by 30 rows with a disposable, synthetic broker profile. It includes command entry, editing, review, deliberate confirmation, result, Orders, replacement review, and cancellation confirmation. No pointer input is needed for those steps. This verification does not establish that every broker supports every order type or that an order will execute at the displayed quote.
+The keyboard flow is verified at 90 columns by 30 rows with a disposable, synthetic broker profile. It includes command entry, editing, review, deliberate confirmation, result, Orders, replacement review, and cancellation confirmation. The synthetic broker acknowledges cancellation as Pending cancel; this proves the request flow, not completed cancellation. No pointer input is needed for those steps. This verification does not establish that every broker supports every order type or that an order will execute at the displayed quote.
