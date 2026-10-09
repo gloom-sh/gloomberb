@@ -3,8 +3,9 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache, validateSupplyChain } from "./client";
-import { counterpartyLabel, counterpartyName, disclosedValue, flowBands, percentage, shareParts, sortRows } from "./model";
+import { counterpartyLabel, counterpartyName, disclosedValue, flowBands, percentage, shareParts, sortRows, supplyRoleCounts } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
+import { supplyOptions } from "./trust";
 
 afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); });
 
@@ -70,6 +71,31 @@ test("70 relationships remain bounded and every band page is reachable without i
   const mixed = flowBands([supplyRow("scoped", { pctOfRevenue: 99, pctScope: "Segment" }), supplyRow("revenue", { pctOfRevenue: 80 }), supplyRow("receivables", { pctOfRevenue: 99, pctBasis: "receivables" })], 6).customers;
   expect(mixed.find((node) => node.id === "receivables")?.weight).toBeNull();
   expect(mixed.find((node) => node.id === "scoped")?.weight).toBeNull();
+});
+
+test("role counts are companies the tab draws, with preview disclosures locked apart, the same for table and flow", () => {
+  // A free preview of FN: its filings name three of eleven customer disclosures, and the reverse
+  // view repeats NVIDIA twice. The flow draws three customer cards; the server counts disclosures.
+  const nvidia = entity("nvidia");
+  const says = [supplyRow("cisco"), supplyRow("nvidia", { counterparty: nvidia }), supplyRow("nokia"),
+    supplyRow("bench", { role: "competitor", direction: "mutual" }), supplyRow("cohort", { counterparty: { ...entity("cohort", "Four customers"), aggregate: true } }),
+    supplyRow("lead", { tier: 6, leadStatus: "lead" }), supplyRow("rejected", { leadStatus: "rejected" })];
+  const names = [supplyRow("nvidia-xbrl", { counterparty: nvidia, reportingEntity: nvidia }), supplyRow("nvidia-text", { counterparty: nvidia, reportingEntity: nvidia })];
+  const data = supplyPayload({ says, names, access: "preview", truncated: true });
+  data.counts.says = { customer: 11, supplier: 0, partner: 0, competitor: 10, investee: 0 };
+  data.counts.names = { customer: 2, supplier: 0, partner: 0, competitor: 0, investee: 0 };
+  const options = supplyOptions();
+  const table = supplyRoleCounts(data, ["says"], options);
+  expect(table).toEqual([{ role: "customer", counterparties: 3, locked: 5 }, { role: "competitor", counterparties: 1, locked: 9 }]);
+  expect(supplyRoleCounts(data, ["says", "names"], options)).toEqual(table);
+  expect(supplyRoleCounts(data, ["names"], options)).toEqual([{ role: "customer", counterparties: 1, locked: 0 }]);
+  // Exactly the companies the flow draws: one card per counterparty and role.
+  const bands = flowBands([...says, ...names], 12, {}, "FOCUS");
+  expect(bands.customers.filter((node) => node.row)).toHaveLength(table[0]!.counterparties);
+  // Leads stay out even when the evidence filter shows them; full access locks nothing.
+  expect(supplyRoleCounts(data, ["says"], supplyOptions("sec,unconfirmed"))[0]?.counterparties).toBe(3);
+  const full = supplyPayload({ says, names, counts: { says: { customer: 6, supplier: 0, partner: 0, competitor: 1, investee: 0 }, names: { customer: 2, supplier: 0, partner: 0, competitor: 0, investee: 0 } } });
+  expect(supplyRoleCounts(full, ["says", "names"], options).map((entry) => entry.locked)).toEqual([0, 0]);
 });
 
 test("flow keeps the latest counterparty role once and does not total reverse concentrations", () => {

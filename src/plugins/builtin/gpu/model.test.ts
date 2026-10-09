@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { equityFiveDayReturn, gpuBoardSections, gpuChangeWindows, gpuEquityRows, gpuHistorySeries, gpuHistoryChart, gpuHistoryViewport, gpuEventDate, gpuEventSections, gpuPricePeriods, gpuPriceLadder, gpuSource, gpuSparklineSeries } from "./model";
+import { equityFiveDayReturn, gpuAxisLabels, gpuBoardSections, gpuChangeWindows, gpuEquityRows, gpuHistorySeries, gpuHistoryChart, gpuHistoryViewport, gpuEventDate, gpuEventSections, gpuPricePeriods, gpuPriceLadder, gpuSource, gpuSparklineSeries } from "./model";
 import { gpuEvent, gpuRow } from "./test-fixture";
 
 describe("GPU observation charts", () => {
@@ -163,6 +163,24 @@ describe("GPU board layout", () => {
     const median = gpuRow({ skuKey: "median", providerClass: "aggregate", pricePerGpuHr: 4.5 });
     const [ladder] = gpuPriceLadder([...list, median, gpuRow({ skuKey: "b", gpuModel: "B200", pricePerGpuHr: 99 })], "H100");
     expect(ladder).toEqual({ basis: "list", n: 4, min: 3, max: 10, p25: 3.75, median: 4.5, p75: 6.25 });
+  });
+
+  test("axis labels sit centred on their own values, never repeat, and give way rather than move", () => {
+    // A10: list 2.036 and spot 2.19, padded to 1.986..2.24. The 2.19 marker must land left of the $2.2 tick.
+    const low = 1.986, high = 2.24, cells = 60;
+    const cell = (value: number) => Math.round((value - low) / (high - low) * (cells - 1));
+    const labels = gpuAxisLabels(low, high, cells, { left: 15, right: 7 });
+    expect(labels.map((label) => label.text)).toEqual(["$2.0", "$2.1", "$2.2"]);
+    for (const label of labels) {
+      expect(label.ratio).toBeCloseTo((label.value - low) / (high - low), 12);
+      expect(label.start + Math.floor(label.text.length / 2)).toBe(cell(label.value));
+    }
+    expect(cell(2.19)).toBeLessThan(labels[2]!.start + 2);
+    // Steps of 0.05 and 0.25 keep the decimals that tell neighbours apart.
+    expect(gpuAxisLabels(2, 2.2, 80, { left: 3, right: 3 }).map((label) => label.text)).toEqual(["$2.00", "$2.05", "$2.10", "$2.15", "$2.20"]);
+    expect(gpuAxisLabels(0, 1.2, 80, { left: 3, right: 3 }).map((label) => label.text)).toEqual(["$0.00", "$0.25", "$0.50", "$0.75", "$1.00"]);
+    // A track too short for every label drops the one that would touch its neighbour and keeps the rest on their values.
+    expect(gpuAxisLabels(low, high, 8, { left: 3, right: 3 }).map((label) => [label.text, label.start])).toEqual([["$2.0", -2], ["$2.2", 4]]);
   });
 
   test("history periods fold unchanged hourly snapshots and measure each move against the previous price", () => {

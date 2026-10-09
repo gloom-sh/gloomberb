@@ -4,6 +4,7 @@ import { fetchSupplyChain } from "./client";
 import { evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, trustTier } from "./trust";
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
 import { exposureLabel, pathLabel } from "./graph-model";
+import { supplyRoleCounts } from "./model";
 
 const pathColumns = [
   { key: "route", header: "Route" }, { key: "hops", header: "Hops" },
@@ -88,6 +89,9 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const options = supplyOptions(args.options.tiers);
     const data = await fetchSupplyChain(args.symbols[0]!, ctx.apiClient, options);
+    // The pane's figures, per tab: Table shows one direction, Flow both.
+    const figures = (key: "counterparties" | "locked") => Object.fromEntries(([["says", ["says"]], ["names", ["names"]], ["flow", ["says", "names"]]] as const)
+      .map(([scope, views]) => [scope, Object.fromEntries(supplyRoleCounts(data, views, options).filter((entry) => entry[key] > 0).map((entry) => [entry.role, entry[key]]))]));
     return { complete: !data.truncated, errors: data.truncated ? ["Additional relationships need Gloom Pro"] : [],
       sections: (["says", "names"] as const).flatMap((view) => [false, true].map((leads) => ({ title: `${view === "says" ? `${data.symbol} says` : `Names ${data.symbol}`}${leads ? " | Unconfirmed" : ""}`,
         rows: data[view].filter((row) => matchesSupplyOptions(row, options) && isUnconfirmed(row) === leads).map((row) => ({ counterparty: row.counterparty.name, ticker: row.counterparty.ticker, aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
@@ -101,6 +105,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
           quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss ?? null, quoteGlossKind: row.quoteGloss ? "machine_translation" : null,
           quoteMatchMode: row.quoteMatchMode, sourceUrl: row.filingUrl, filingUrl: row.filingUrl, sectionRef: row.sectionRef ?? null, sourceAttribution: row.sourceAttribution ?? null,
           evidence: row.evidence ?? [] })) })).filter((section) => section.rows.length > 0)),
-      metadata: { symbol: data.symbol, asOf: data.asOf, counts: data.counts, tierCounts: data.tierCounts, tiers: options.tiers, disclaimer: data.disclaimer } };
+      metadata: { symbol: data.symbol, asOf: data.asOf, counterparties: figures("counterparties"), locked: figures("locked"),
+        counts: data.counts, tierCounts: data.tierCounts, tiers: options.tiers, disclaimer: data.disclaimer } };
   },
 };

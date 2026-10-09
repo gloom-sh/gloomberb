@@ -27,27 +27,46 @@ import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
 import {
   cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, nativeValue, percentage, ROLE_COLORS, roleLabel,
-  shareParts, sortRows, type SupplySort,
+  shareParts, sortRows, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, TIER_OPTIONS } from "./trust";
 
 type Item = { kind: "edge"; row: SupplyRow } | { kind: "locked"; id: string };
 const itemId = (item: Item) => item.kind === "edge" ? item.row.id : item.id;
-const ROLE_ORDER: SupplyRole[] = ["customer", "supplier", "partner", "competitor", "investee"];
 const ROLE_PLURALS: Record<SupplyRole, string> = { customer: "Customers", supplier: "Suppliers", partner: "Partners", competitor: "Competitors", investee: "Investees" };
-const BAR_CELLS = 8;
+/** A share figure is at most five cells (`99.9%`, `100%`), right-aligned so the bars line up. */
+const SHARE_FIGURE_CELLS = 5;
+/** Bar, gap and figure: below this a share cell shows the figure alone. */
+const SHARE_BAR_MIN_CELLS = 3 + 1 + SHARE_FIGURE_CELLS;
 
 /**
- * A narrow pane folds the ticker into the name and leaves the filing to the
- * evidence view before anything scrolls sideways. Value shows only when some
- * row discloses a value, retaining its original currency and units.
+ * Cells of a share column's bar: as long as the column allows after the figure
+ * and the longest basis that fits, between 3 and 8 cells, and the same on every
+ * row so the bars and figures line up. Zero leaves the figure alone.
  */
-function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null): DataTableColumn[] {
+function shareBarCells(width: number, bases: readonly number[]): number {
+  if (width < SHARE_BAR_MIN_CELLS) return 0;
+  // Room for the longest basis that can show at all; a longer one gives way, not every bar.
+  const basis = longestBasis(bases, width);
+  return Math.min(width >= 36 ? 8 : 5, Math.max(3, width - SHARE_FIGURE_CELLS - 2 - basis));
+}
+const longestBasis = (bases: readonly number[], width: number) => Math.max(0, ...bases.filter((cells) => SHARE_BAR_MIN_CELLS + 1 + cells <= width));
+
+/**
+ * Columns that fit the pane, giving up the least first: the share bar shortens
+ * to keep the whole basis, the name shortens to 18 cells, the ticker folds into
+ * the name and the period is left to the evidence view; then the share drops
+ * its basis and its bar, and the name shortens further. Only a pane narrower
+ * than that scrolls sideways, so the pane edge never cuts a share in half.
+ * Value shows only when some row discloses a value, retaining its original
+ * currency and units.
+ */
+function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: readonly number[]): DataTableColumn[] {
   const wide = width >= 150, medium = width >= 110;
   const name: DataTableColumn = { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" };
   const share: DataTableColumn = { id: "pct", label: "Share", width: wide ? 34 : medium ? 30 : 26, align: "left" };
-  const columns: DataTableColumn[] = [
+  let columns: DataTableColumn[] = [
     name,
     { id: "evidence", label: "Evidence", width: 12, align: "left" },
     ...(medium ? [{ id: "ticker", label: "Ticker", width: 8, align: "left" as const }] : []),
@@ -61,40 +80,57 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
       { id: "corroboration", label: "Origins", width: 8, align: "right" as const },
     ] : []),
   ];
-  // Preserve trust labels, native units and final columns before expanding the share and name.
+  const preferred = { share: share.width, name: name.width };
   // The table ignores its last trailing gutter when deciding whether it fits.
-  if (valueWidth !== null || width >= 80) {
-    share.width = Math.max(valueWidth !== null ? 10 : 14, share.width - Math.max(0, getTableWidth(columns) - width - 1));
-    name.width = Math.max(18, name.width - Math.max(0, getTableWidth(columns) - width - 1));
+  const overflow = () => getTableWidth(columns) - width - 1;
+  // Native units keep their column before the share keeps its bar or basis.
+  const shareFloor = valueWidth !== null ? SHARE_BAR_MIN_CELLS + 1 : SHARE_BAR_MIN_CELLS + 1 + longestBasis(bases, preferred.share);
+  const fit = (shareMin: number, nameMin = 18) => {
+    share.width = preferred.share; name.width = preferred.name;
+    share.width = Math.max(shareMin, share.width - Math.max(0, overflow()));
+    name.width = Math.max(nameMin, name.width - Math.max(0, overflow()));
+  };
+  fit(shareFloor);
+  for (const id of ["ticker", "fy"]) {
+    if (overflow() <= 0) break;
+    if (!columns.some((column) => column.id === id)) continue;
+    columns = columns.filter((column) => column.id !== id);
+    fit(shareFloor);
   }
+  // The narrowest panes keep the figure alone, then a shorter name, before anything scrolls.
+  if (overflow() > 0) fit(SHARE_BAR_MIN_CELLS);
+  if (overflow() > 0) fit(SHARE_FIGURE_CELLS + 2, 12);
   return columns;
 }
 
-/** Company, then disclosed counterparties per role: the strip that heads both tabs. */
-function supplyFigures(data: SupplyChainPayload, views: readonly ("says" | "names")[], options: Required<SupplyOptions>, flow: boolean): StatItem[] {
-  const shown = views.flatMap((view) => data[view]).filter((row) => matchesSupplyOptions(row, options) && !isUnconfirmed(row));
+/**
+ * Company, then the counterparties per role on this tab, with how many
+ * disclosures a free preview locks: the strip that heads the table and the flow.
+ */
+function supplyFigures(data: SupplyChainPayload, views: readonly ("says" | "names")[], options: Required<SupplyOptions>): StatItem[] {
   return [
     ...(data.entity ? [{ id: "company", label: "Company", value: data.entity.name }] : []),
-    ...ROLE_ORDER.flatMap((role) => {
-      const visible = shown.filter((row) => row.role === role).length;
-      const count = data.truncated && !flow && !options.includeLeads ? views.reduce((total, view) => total + data.counts[view][role], 0) : visible;
-      return count ? [{ id: role, label: ROLE_PLURALS[role], value: String(count), color: ROLE_COLORS[role],
-        detail: visible < count ? `${visible} shown` : undefined }] : [];
-    }),
+    ...supplyRoleCounts(data, views, options).map(({ role, counterparties, locked }) => ({ id: role, label: ROLE_PLURALS[role], value: String(counterparties),
+      color: ROLE_COLORS[role], detail: locked ? `+${locked} locked` : undefined })),
   ];
 }
 
-/** The share as a bar on a 0 to 100% scale, the figure, and what it is a share of. */
-function ShareCell({ row, focusId, width, selected }: { row: SupplyRow; focusId?: string; width: number; selected: boolean }) {
+/**
+ * The share as a bar on a 0 to 100% scale, the figure, and what it is a share
+ * of. The basis shows whole or not at all: a column too narrow for it keeps
+ * the bar and figure, and the evidence view says the rest.
+ */
+function ShareCell({ row, focusId, width, bases, selected }: { row: SupplyRow; focusId?: string; width: number; bases: readonly number[]; selected: boolean }) {
   const colors = useThemeColors();
   const share = shareParts(row, focusId);
   if (!share) return <Text fg={colors.textMuted}>{""}</Text>;
-  if (width < 14) return <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{share.value}</Text>;
-  const barWidth = width >= 36 ? BAR_CELLS : Math.min(5, Math.max(3, width - 11));
+  const bar = shareBarCells(width, bases);
+  if (!bar) return <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{share.value}</Text>;
+  const basis = bar + SHARE_FIGURE_CELLS + 2 + displayWidth(share.basis) <= width;
   return <Box flexDirection="row" width={width} height={1} gap={1} overflow="hidden">
-    <RatioBar ratio={row.pctOfRevenue! / 100} width={barWidth} color={ROLE_COLORS[row.role]} track />
-    <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{share.value.padStart(5)}</Text>
-    <Text fg={selected ? colors.selectedText : colors.textDim}>{truncateToDisplayWidth(share.basis, Math.max(4, width - barWidth - 7))}</Text>
+    <RatioBar ratio={row.pctOfRevenue! / 100} width={bar} color={ROLE_COLORS[row.role]} track />
+    <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{share.value.padStart(SHARE_FIGURE_CELLS)}</Text>
+    {basis ? <Text fg={selected ? colors.selectedText : colors.textDim}>{share.basis}</Text> : null}
   </Box>;
 }
 
@@ -180,7 +216,8 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const focusId = data?.entity?.id;
   const values = rows.filter((row) => nativeValue(row) !== null || row.usd !== null);
   const valueWidth = values.length ? Math.min(28, Math.max(...values.map((row) => displayWidth(disclosedValue(row).replace(/ (disclosed|derived)$/, ""))))) : null;
-  const columns = tableColumns(width, desktop, locked > 0, valueWidth);
+  const bases = rows.flatMap((row) => { const share = shareParts(row, focusId); return share ? [displayWidth(share.basis)] : []; });
+  const columns = tableColumns(width, desktop, locked > 0, valueWidth, bases);
   const renderCell = (entry: SectionedRow<Item>, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (!isSectionedItemRow(entry)) return { text: "" };
     const item = entry.item;
@@ -222,7 +259,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         <Text fg={ink ?? ROLE_COLORS[row.role]}>{` ${roleLabel(row.role)}`}</Text>
       </Box> };
       case "pct": return { text: percentage(row) === "--" ? "" : `${shareParts(row, focusId)?.value ?? ""} ${shareParts(row, focusId)?.basis ?? ""}`.trim(), value: row.pctOfRevenue,
-        content: <ShareCell row={row} focusId={focusId} width={column.width} selected={state.selected} /> };
+        content: <ShareCell row={row} focusId={focusId} width={column.width} bases={bases} selected={state.selected} /> };
       case "usd": return nativeValue(row) === null && row.usd === null ? { text: "", value: null }
         : { text: disclosedValue(row).replace(/ (disclosed|derived)$/, ""), value: row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd, color: colors.text };
       case "fy": return { text: row.period, color: colors.textDim };
@@ -233,7 +270,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   if (graphTab) return <Box width={width} height={height} flexDirection="column">{strip}<SupplyGraphPane symbol={symbol} tab={savedTab as "graph" | "path"} width={width} height={Math.max(3, height - tabRows)} focused={focused} /></Box>;
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="supply-chain-signin" action="view supply chain disclosures" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
-  const figures = data ? supplyFigures(data, tab === "flow" ? ["says", "names"] : [view], options, tab === "flow") : [];
+  const figures = data ? supplyFigures(data, tab === "flow" ? ["says", "names"] : [view], options) : [];
   const tierFilter = { id: "tiers", label: "Evidence", kind: "multi" as const, emptyLabel: "Primary", values: options.tiers, options: TIER_OPTIONS, onChange: (value: string[]) => { setTiers(supplyOptions(value).tiers); setSelected(null); setOpen(null); } };
   const header = <Box flexDirection="column" flexShrink={0}>
     <QueryBar width={width} filters={[{ id: "direction", label: "Direction", inline: true, value: view,
@@ -263,7 +300,9 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         </Box> : <DataTableView<SectionedRow<Item>> columns={columns}
           items={items} focused={focused && !openRow} rootWidth={width} rootHeight={bodyHeight} rootBefore={header}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (entry) => entry.key, onChange: (id) => setSelected(id) }} getItemKey={(entry) => entry.key}
-          isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}
+          isNavigable={isSectionedItemRow}
+          // The placeholders stand for every locked disclosure; the header counts those, as the figures do.
+          renderSectionHeader={(entry) => entry.kind === "section" && entry.label === "Pro" ? { text: `Pro (${locked})` } : renderSectionedRowHeader(entry)}
           onActivate={(entry) => { if (isSectionedItemRow(entry)) entry.item.kind === "edge" ? navigate(entry.item.row) : openUpgrade(); }}
           renderCell={renderCell} sortColumnId={sort.column} sortDirection={sort.direction}
           onHeaderClick={(column) => setSort((old) => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
