@@ -86,6 +86,24 @@ describe("terminal", () => {
     await tui.renderFrames(1);
     expect(tui.frame()).toContain("line 1");
   });
+
+  test("a hidden box does not take the keys from the one on screen", async () => {
+    let hidden: { scrollTop: number } | null = null;
+    let shown: { scrollTop: number } | null = null;
+    await act(async () => {
+      await tui.render(<PaneHarness>
+        <Box width={30} height={12} flexDirection="column">
+          <ScrollBox ref={(node: typeof hidden) => { hidden = node; }} visible={false} width={30} height={8}><Lines /></ScrollBox>
+          <ScrollBox ref={(node: typeof shown) => { shown = node; }} width={30} height={4}><Lines /></ScrollBox>
+        </Box>
+      </PaneHarness>, { width: 30, height: 12 });
+    });
+    await tui.renderFrames(2);
+
+    await tui.emitKeypress({ name: "pagedown" });
+    expect(shown!.scrollTop).toBeGreaterThan(0);
+    expect(hidden!.scrollTop).toBe(0);
+  });
 });
 
 describe("desktop and web", () => {
@@ -148,6 +166,24 @@ describe("desktop and web", () => {
     expect(element.scrollTop).toBe(max - (VIEWPORT_ROWS - 1) * CELL);
     await press("Home");
     expect(element.scrollTop).toBe(0);
+  });
+
+  test("a hidden box does not take the keys from the one on screen", async () => {
+    const container = await renderDom(<WebInputHostProvider>
+      <PaneHarness>
+        <ScrollBox visible={false} width={30} height={VIEWPORT_ROWS}><Lines /></ScrollBox>
+        <ScrollBox width={30} height={VIEWPORT_ROWS / 2}><Lines /></ScrollBox>
+      </PaneHarness>
+    </WebInputHostProvider>);
+    const [hidden, shown] = [...container.querySelectorAll("div[style*='overflow']")] as HTMLElement[];
+    // The hidden one keeps the size it had; display: none gives it no box.
+    layOut(hidden!, ROWS * CELL, VIEWPORT_ROWS * CELL);
+    hidden!.getBoundingClientRect = () => ({ x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON() {} });
+    layOut(shown!, ROWS * CELL, (VIEWPORT_ROWS / 2) * CELL);
+
+    await press("PageDown");
+    expect(shown!.scrollTop).toBeGreaterThan(0);
+    expect(hidden!.scrollTop).toBe(0);
   });
 
   test("End reaches the last pixel of a body that ends part way into a row", async () => {
