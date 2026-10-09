@@ -177,8 +177,9 @@ function tradedQuoteDisplay(
  * that close. Until the close, and wherever no close is reported (the
  * pre-market, venues without extended hours), the traded price as above.
  * Valuation columns (DAY P&L, MKT VAL, weight, P&L) keep the live price.
+ * A watchlist's Avg Day averages this CHG%.
  */
-function headlineQuoteDisplay(
+export function headlineQuoteDisplay(
   traded: ActiveQuoteDisplay | null,
   quote: TickerFinancials["quote"],
 ): ActiveQuoteDisplay | null {

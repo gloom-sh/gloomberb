@@ -4,6 +4,7 @@ import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
 import { getCurrencySymbol } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
+import { headlineQuoteDisplay } from "../column-values";
 import { isManualPortfolio } from "../mutations";
 import {
   getPortfolioPositionMetrics,
@@ -127,8 +128,10 @@ export function calculatePortfolioSummaryTotals(
     const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
     if (!isPortfolio) {
-      if (activeQuote?.changePercent != null) {
-        watchlistChangeSum += activeQuote.changePercent;
+      // The CHG% column's value, so Avg Day is the mean of that column.
+      const changePercent = headlineQuoteDisplay(activeQuote, quote)?.changePercent;
+      if (changePercent != null) {
+        watchlistChangeSum += changePercent;
         watchlistCount++;
       }
       continue;

@@ -676,4 +676,30 @@ describe("watchlist and portfolio LAST, CHG and CHG% around the close", () => {
     expect(shown(closed, "price", "change", "change_pct", "ext_hours")).toEqual(["2,800", "+12", "+0.43%", "—"]);
     expect(sorted(closed, "price", "change_pct")).toEqual([2800, 0.43]);
   });
+
+  test("the watchlist Avg Day is the mean of the CHG% column after the close, while portfolio DAY stays live", () => {
+    const watchContext: ColumnContext = { ...defaultColumnContext, activeTab: "watch" };
+    const rows = [
+      { ticker: createTestTicker("SPCX"), quote: afterHours },
+      // Up 2% in the session, then down after hours.
+      { ticker: createTestTicker("RISE"), quote: { ...afterHours, price: 99.5, change: -0.5, changePercent: -0.5, previousClose: 100,
+        regularClose: 102, postMarketPrice: 99.5, postMarketChange: -2.5, postMarketChangePercent: -2.451 } },
+      { ticker: createTestTicker("7203.T"), quote: { symbol: "7203.T", currency: "JPY", price: 2800, change: 12, changePercent: 0.43,
+        previousClose: 2788, marketState: "CLOSED" as const, listingExchangeName: "JPX", lastUpdated: Date.parse("2026-10-08T06:30:00Z") } },
+    ].map(({ ticker, quote }) => ({ ticker, financials: createFinancials({ quote: { symbol: ticker.metadata.ticker, ...quote } }) }));
+    const financialsMap = new Map(rows.map(({ ticker, financials }) => [ticker.metadata.ticker, financials]));
+    const watchlist = calculatePortfolioSummaryTotals(rows.map(({ ticker }) => ticker), financialsMap, "USD", new Map([["USD", 1]]), false, "watch");
+
+    const column = rows.map(({ ticker, financials }) => getSortValue({ id: "change_pct", label: "CHG%", width: 10, align: "right" }, ticker, financials, watchContext) as number);
+    expect(column[0]).toBeCloseTo(-4.1945, 3);
+    expect(column[1]).toBeCloseTo(2, 8);
+    expect(watchlist.watchlistCount).toBe(3);
+    expect(watchlist.avgWatchlistChange).toBeCloseTo(column.reduce((sum, value) => sum + value, 0) / column.length, 8);
+    expect(watchlist.avgWatchlistChange).toBeCloseTo((-4.1945 + 2 + 0.43) / 3, 3);
+
+    // Portfolio DAY keeps the live print against the previous close.
+    const held = createTicker({ positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "manual" }] });
+    const portfolio = calculatePortfolioSummaryTotals([held], new Map([["AAPL", createFinancials({ quote: afterHours })]]), "USD", new Map([["USD", 1]]), true, "main");
+    expect(portfolio.dailyPnl).toBeCloseTo(-22.1, 8);
+  });
 });
