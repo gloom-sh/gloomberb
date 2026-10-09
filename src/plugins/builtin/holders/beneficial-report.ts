@@ -4,6 +4,7 @@ import {
   beneficialReportRow,
   buildBeneficialRows,
   DEFAULT_BENEFICIAL_SORT,
+  formatClassPercent,
   formatOwnerShares,
   formatPointChange,
   stakeMarker,
@@ -37,7 +38,7 @@ export const BENEFICIAL_REPORT_COLUMNS = [
     format: (value: unknown, row: Record<string, unknown>) => {
       const marker = stakeMarker(row.status === "below-threshold" || row.status === "exited" ? row.status : null);
       if (typeof value !== "number") return marker || "-";
-      return marker ? `${value.toFixed(1)}% ${marker}` : `${value.toFixed(1)}%`;
+      return marker ? `${formatClassPercent(value)} ${marker}` : formatClassPercent(value);
     },
   },
   {
@@ -68,7 +69,7 @@ export function beneficialCoverageNotices(coverage: BeneficialOwnersCoverage | n
   if (!coverage) return [];
   const notices: string[] = [];
   if (coverage.unavailable) {
-    notices.push(`${coverage.unavailable} of ${filings(coverage.filings)} could not be read this time and are left out; a refresh retries them.`);
+    notices.push(`${coverage.unavailable} of ${filings(coverage.filings)} could not be read this time and are left out, so a filer's row may not be its latest report; a refresh retries them.`);
   }
   // Reports that could not be read count as unparsed too.
   const indexOnly = Math.max(0, coverage.unparsed - (coverage.unavailable ?? 0));
@@ -76,6 +77,24 @@ export function beneficialCoverageNotices(coverage: BeneficialOwnersCoverage | n
     notices.push(`Percent of class and shares are blank for ${filings(indexOnly)} known only from the EDGAR index.`);
   }
   return notices;
+}
+
+/** What the list covers, for the line above it: `13D/13G filings since 2022-10-09`, `11 filers`. */
+export function beneficialListFacts(
+  payload: Pick<BeneficialOwnersPayload, "coverage">,
+  form: Exclude<HolderForm, "13f">,
+  rows: number,
+  history: boolean,
+): string[] {
+  const kind = form === "all" ? "13D/13G" : form.toUpperCase();
+  const since = payload.coverage?.from ? `${kind} filings since ${payload.coverage.from}` : `${kind} filings`;
+  const count = history ? `${rows} ${rows === 1 ? "report" : "reports"}` : `${rows} ${rows === 1 ? "filer" : "filers"}`;
+  return [since, count];
+}
+
+/** Every page loaded and every filing in the window read. */
+export function beneficialListComplete(payload: Pick<BeneficialOwnersPayload, "hasMore" | "coverage">): boolean {
+  return !payload.hasMore && !payload.coverage?.unavailable && payload.coverage?.complete !== false;
 }
 
 /** No rows although filings are listed: they could not be read, which is not the same as none filed. */

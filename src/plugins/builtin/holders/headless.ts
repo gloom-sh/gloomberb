@@ -34,6 +34,8 @@ import type { BeneficialColumnId } from "./beneficial-model";
 import {
   BENEFICIAL_REPORT_COLUMNS,
   beneficialCoverageNotices,
+  beneficialListComplete,
+  beneficialListFacts,
   beneficialRouteForm,
   buildBeneficialReportRows,
   HOLDER_FORMS,
@@ -215,7 +217,7 @@ export function createHoldersHeadless(
           columns: BENEFICIAL_REPORT_COLUMNS,
           rows: limited,
           // Reports that could not be read this time are missing from the rows.
-          complete: !payload.hasMore && !payload.coverage?.unavailable,
+          complete: beneficialListComplete(payload),
           freshness: { ...SEC_FILINGS, basis: "13D/13G filings", observedKey: "filingDate" },
           metadata: {
             symbol: payload.ticker || symbol,
@@ -225,7 +227,10 @@ export function createHoldersHeadless(
             history,
             asOf: payload.asOf,
             coverage: payload.coverage,
-            notices: beneficialCoverageNotices(payload.coverage),
+            notices: [
+              [payload.companyName || symbol, ...beneficialListFacts(payload, form, rows.length, history)].join(" · "),
+              ...beneficialCoverageNotices(payload.coverage),
+            ],
             returned: limited.length,
             total: rows.length,
           },

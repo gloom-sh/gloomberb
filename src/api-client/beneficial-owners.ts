@@ -45,6 +45,11 @@ export interface BeneficialOwnerFiling {
   previousPercent?: number | null;
   previousFilingDate?: string | null;
   status?: BeneficialOwnerStatus;
+  /**
+   * Only with `owners`: a filing the route could not read may be this filer's
+   * newer report or its real previous one, so the row and its change may be off.
+   */
+  provisional?: boolean;
   /** `text` and `index` reports could not be read in full; their missing numbers stay null. */
   source: "xml" | "text" | "index";
   reportingPersons: BeneficialOwnerReportingPerson[];
@@ -60,6 +65,8 @@ export interface BeneficialOwnersCoverage {
   unparsed: number;
   /** Reports that could not be read this time and are left out until a later request. */
   unavailable?: number;
+  /** Every report in the window was read; when false the owners are provisional. */
+  complete?: boolean;
 }
 
 export interface BeneficialOwnersPayload {

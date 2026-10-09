@@ -87,6 +87,7 @@ function normalizeBeneficialOwnerFiling(value: unknown): BeneficialOwnerFiling |
     previousPercent: "previousPercent" in raw ? finiteOrNull(raw.previousPercent) : undefined,
     previousFilingDate: "previousFilingDate" in raw ? isoDate(raw.previousFilingDate) : undefined,
     status: STATUSES.includes(raw.status as BeneficialOwnerStatus) ? raw.status as BeneficialOwnerStatus : undefined,
+    provisional: raw.provisional === true ? true : undefined,
     source,
     reportingPersons: Array.isArray(raw.reportingPersons)
       ? raw.reportingPersons.map(normalizeReportingPerson).filter((person) => person != null)
@@ -116,6 +117,7 @@ function normalizeBeneficialOwnersPayload(value: unknown, ticker: string): Benef
     hasMore: raw.hasMore === true && nextOffset != null,
     nextOffset,
     coverage: coverage ? {
+      ...coverage,
       from: isoDate(coverage.from),
       filings: finiteOrNull(coverage.filings) ?? 0,
       parsed: finiteOrNull(coverage.parsed) ?? 0,

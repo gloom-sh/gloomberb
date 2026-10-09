@@ -58,6 +58,8 @@ test("a stake under 5% stays a stake, only a report of zero is an exit, and a mi
   expect(nomura.stake).toBe("below-threshold");
   expect(formatPercentOfClass(nomura)).toBe("3.9%");
   expect(formatPercentOfClass(nomura, { marker: true })).toBe("3.9% <5%");
+  // Rounding never lifts a stake under 5% to 5.0%.
+  expect(formatPercentOfClass({ ...nomura, filing: { ...nomura.filing, percentOfClass: 4.96 } }, { marker: true })).toBe("4.96% <5%");
   const fmr = row("FMR LLC");
   expect(fmr.stake).toBe("exited");
   expect(formatPercentOfClass(fmr, { marker: true })).toBe("0.0% EXIT");
@@ -71,6 +73,8 @@ test("a stake under 5% stays a stake, only a report of zero is an exit, and a mi
   expect(disclosedStake({ percentOfClass: null, shares: null, status: "exited" })).toBeNull();
   expect(disclosedStake({ percentOfClass: null, shares: null })).toBeNull();
   expect(disclosedStake({ percentOfClass: null, shares: 0 })).toBe("exited");
+  // 0% beside a share count contradicts itself: a stake under 5%, not an exit.
+  expect(disclosedStake({ percentOfClass: 0, shares: 12_000 })).toBe("below-threshold");
   // History reports carry no status or previous report, and none is made up.
   const history = buildBeneficialRows(carBeneficialOwnersPayload({ history: true }).filings!);
   expect(history.filter((entry) => entry.stake === "exited").map((entry) => entry.filing.filerName)).toEqual(["FMR LLC"]);
@@ -104,7 +108,7 @@ test("a narrow filer column drops the entity suffix before the name and never cu
 test("filings that could not be read are a gap, not an empty list", () => {
   const coverage = { from: "2022-10-09", filings: 12, parsed: 9, unparsed: 3, unavailable: 2 };
   expect(beneficialCoverageNotices(coverage)).toEqual([
-    "2 of 12 filings could not be read this time and are left out; a refresh retries them.",
+    "2 of 12 filings could not be read this time and are left out, so a filer's row may not be its latest report; a refresh retries them.",
     "Percent of class and shares are blank for 1 filing known only from the EDGAR index.",
   ]);
   expect(beneficialListUnreadable({ owners: [], coverage: { ...coverage, parsed: 0, unparsed: 12, unavailable: 12 } })).toBe(true);

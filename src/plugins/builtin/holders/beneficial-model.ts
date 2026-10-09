@@ -49,20 +49,20 @@ type JoinableHolder = HolderRecord & { id: string };
 const REPORTING_THRESHOLD = 5;
 
 /**
- * The stake a report discloses, from its own figures first. A stake under 5%
- * is still a stake; only a report of 0% or zero shares is an exit. A report
- * with neither figure keeps the route's word for a stake under the
- * threshold, but is never read as an exit.
+ * The stake a report discloses, from its own figures first, as the route
+ * reads them. A stake under 5% is still a stake; only a report whose figures
+ * are all zero (0% and zero shares, or one of them with the other missing)
+ * is an exit, and a contradictory one is not. A report with neither figure
+ * keeps the route's word for a stake under the threshold, but is never read
+ * as an exit.
  */
 export function disclosedStake(
   filing: Pick<BeneficialOwnerFiling, "percentOfClass" | "shares" | "status">,
 ): BeneficialOwnerStatus | null {
   const { percentOfClass: percent, shares } = filing;
-  if (percent != null) {
-    if (percent === 0) return "exited";
-    return percent < REPORTING_THRESHOLD ? "below-threshold" : "holder";
-  }
-  if (shares === 0) return "exited";
+  const reported = [percent, shares].filter((value) => value != null);
+  if (reported.length > 0 && reported.every((value) => value === 0)) return "exited";
+  if (percent != null) return percent < REPORTING_THRESHOLD ? "below-threshold" : "holder";
   return filing.status === "holder" || filing.status === "below-threshold" ? filing.status : null;
 }
 
@@ -205,6 +205,16 @@ export function stakeMarker(stake: BeneficialOwnerStatus | null): string {
 }
 
 /**
+ * A percent of class to one decimal, or two when one would round a stake
+ * under 5% up to `5.0%`: 4.96 reads `4.96%`.
+ */
+export function formatClassPercent(value: number): string {
+  const short = value.toFixed(1);
+  if (value >= REPORTING_THRESHOLD || Number(short) < REPORTING_THRESHOLD) return `${short}%`;
+  return `${(Math.floor(value * 100) / 100).toFixed(2)}%`;
+}
+
+/**
  * The reported percent of class, as filed: `4.9%` stays `4.9%`. With
  * `marker`, a stake under 5% reads `4.9% <5%` and a report of zero
  * `0.0% EXIT`. A missing figure is a dash, or the bare marker when the
@@ -217,7 +227,7 @@ export function formatPercentOfClass(
   const value = row.filing.percentOfClass;
   const mark = marker ? stakeMarker(row.stake) : "";
   if (value == null) return mark || "-";
-  return mark ? `${value.toFixed(1)}% ${mark}` : `${value.toFixed(1)}%`;
+  return mark ? `${formatClassPercent(value)} ${mark}` : formatClassPercent(value);
 }
 
 export function formatPointChange(value: number | null): string {
@@ -257,6 +267,8 @@ export function beneficialReportRow(row: BeneficialOwnerRow) {
     previousFilingDate: filing.previousFilingDate ?? null,
     thirteenF: row.thirteenF?.label ?? null,
     status: row.stake,
+    /** The route could not read every filing, so this may not be the filer's latest disclosure or its change may be off. */
+    provisional: filing.provisional === true,
     parsedFrom: filing.source,
     accessionNumber: filing.accessionNumber,
     filingUrl: filing.filingUrl,

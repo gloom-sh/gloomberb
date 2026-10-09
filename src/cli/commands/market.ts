@@ -64,6 +64,8 @@ import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin
 import {
   BENEFICIAL_REPORT_COLUMNS,
   beneficialCoverageNotices,
+  beneficialListComplete,
+  beneficialListFacts,
   beneficialListUnreadable,
   beneficialRouteForm,
   buildBeneficialReportRows,
@@ -628,10 +630,10 @@ async function printBeneficialOwners(
       history,
       asOf: payload.asOf,
       coverage: payload.coverage,
-      complete: !payload.hasMore && !payload.coverage?.unavailable,
+      complete: beneficialListComplete(payload),
     },
   }, {
-    heading: listingHeading(identity),
+    heading: `${listingHeading(identity)}${cliStyles.muted(beneficialListFacts(payload, form, rows.length, history).map((fact) => `  ·  ${fact}`).join(""))}`,
     textColumns: BENEFICIAL_REPORT_COLUMNS,
     columns: [
       ...BENEFICIAL_REPORT_COLUMNS,
