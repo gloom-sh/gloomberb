@@ -90,7 +90,11 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   // Sessions after the published lists end may be unlisted release days, so they are left out of both sides.
   const end = last < coveredThrough ? last : coveredThrough;
   const startYear = Number(end.slice(0, 4)) - Math.max(1, options.lookbackYears);
-  const start = `${startYear}${end.slice(4)}`;
+  const nominalStart = `${startYear}${end.slice(4)}`;
+  // The history can begin after the nominal start (daily bars reach back five years from today, the list's end is older).
+  // The first bar has no close before it, so the window opens there: a release before it falls outside the stated start.
+  const firstSession = sessions[0]!;
+  const start = firstSession > nominalStart ? firstSession : nominalStart;
   /** Session date -> close-to-close move from the session before, when the two are one session apart. */
   const moves = new Map<string, number>();
   for (let index = 1; index < sessions.length; index++) {

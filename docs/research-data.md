@@ -106,7 +106,7 @@ The latest month is a return to date until December closes the year: the Returns
 - **Move.** Close to close on the release day: the previous session's close to the release day's close. CPI and payrolls come out at 8:30 ET, before the open, and the FOMC statement at 14:00 ET, before the close, so that close carries either. A release on a weekday the market was shut (payrolls on Good Friday) is read on the next session. A release whose close-to-close would span a gap of more than the release day in the price history is left out.
 - **Normal day.** Every other session in the lookback that is not a release day of the three kinds. PCE and GDP days are not in the list, so they count as normal days.
 - **Figures.** Average absolute move and its multiple of a normal day's, average signed move, and the share of release days that closed up. With All selected the figures compare the three releases; selecting one shows its own. When CPI and FOMC fall on the same day the move counts for both.
-- **History.** Five years of daily closes at most, so the lookback runs to five years.
+- **History.** Five years of daily closes at most. The window starts five years before the last covered day, or at the first day of the available history when that is later, and the reported start names it. A release before that first day is outside the window.
 
 ## Price history corrections
 

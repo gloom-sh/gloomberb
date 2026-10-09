@@ -45,4 +45,23 @@ describe("macro-day alignment", () => {
       { symbol: "TEST", lookbackYears: 1, coveredThrough: "2026-12-31", releases: [{ kind: "cpi", date: "2026-04-01" }] });
     expect(stamped.events.map((event) => event.session)).toEqual(["2026-04-01"]);
   });
+
+  test("opens the window at the first session of a history that starts after the nominal start", () => {
+    // Five years of daily bars counted back from 2026-10-09 begin on 2021-10-11; the lists are covered through 2026-10-01.
+    const options = { symbol: "TEST", lookbackYears: 5, coveredThrough: "2026-10-01" };
+    const releases = [{ kind: "jobs", date: "2021-10-08" }, { kind: "cpi", date: "2021-10-13" }] as const;
+    const history = weekdays("2021-10-11", "2026-10-09", []);
+    const model = projectMacroDays(history, { ...options, releases });
+    expect(model.start).toBe("2021-10-11");
+    expect(model.asOf).toBe("2026-10-01");
+    expect(model.events.map((event) => [event.kind, event.date])).toEqual([["cpi", "2021-10-13"]]);
+    // Moves start the session after the first bar and stop at the covered end; the CPI session is not a normal day.
+    const moved = history.filter((point) => { const date = point.date.toISOString().slice(0, 10); return date > "2021-10-11" && date <= "2026-10-01"; });
+    expect(model.normal.count).toBe(moved.length - 1);
+
+    // A history that starts well before the nominal start keeps the nominal start.
+    const longer = projectMacroDays(weekdays("2020-06-01", "2026-10-09", []), { ...options, releases: [{ kind: "jobs", date: "2021-10-01" }, { kind: "cpi", date: "2021-10-13" }] });
+    expect(longer.start).toBe("2021-10-01");
+    expect(longer.events.map((event) => event.date)).toEqual(["2021-10-13"]);
+  });
 });
