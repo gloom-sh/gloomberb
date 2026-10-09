@@ -428,9 +428,11 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
                   component={paneDef.component}
                   paneId={instance.instanceId}
                   paneType={instance.paneId}
+                  title={title}
                   focused={focused}
                   width={bodyWidth}
                   height={bodyHeight}
+                  closePane={closePane}
                 />
               </PaneHeaderTabsProvider>
             </PaneBodyFrame>

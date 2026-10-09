@@ -7,6 +7,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
 import type { PaneDef } from "../../../types/plugin";
 import { Box } from "../../../ui";
+import { PaneErrorBoundary } from "./error-boundary";
 
 // Under GLOOMBERB_PERF_TRACE every pane commit is reported by pane, which is
 // how a store update that fans out to the whole layout gets attributed. The
@@ -29,29 +30,39 @@ interface PaneContentProps {
   component: PaneDef["component"];
   paneId: string;
   paneType: string;
+  /** The header's title, named by the failure card when the pane throws. */
+  title: string;
   focused: boolean;
   width: number;
   height: number;
   /** False while the pane is covered on screen; its streams drop to the off-screen cadence. */
   inView?: boolean;
+  /** Passed to the pane as `close` (floating panes). */
   onClose?: (paneId: string) => void;
+  /** Takes the pane out of its layout; the failure card offers it. Keep it stable: the content is memoized. */
+  closePane?: (paneId: string) => void;
 }
 
 export const PaneContent = memo(function PaneContent({
   component: Component,
   paneId,
   paneType,
+  title,
   focused,
   width,
   height,
   inView = true,
   onClose,
+  closePane,
 }: PaneContentProps) {
   useAppLanguage();
   useThemeColors();
   const close = useCallback(() => {
     onClose?.(paneId);
   }, [onClose, paneId]);
+  const closeFailedPane = useCallback(() => {
+    closePane?.(paneId);
+  }, [closePane, paneId]);
 
   return (
     <PaneInstanceProvider paneId={paneId}>
@@ -67,16 +78,18 @@ export const PaneContent = memo(function PaneContent({
           overflow="hidden"
           data-gloom-role="pane-content"
         >
-          <PaneRenderTrace paneId={paneId} paneType={paneType}>
-            <Component
-              paneId={paneId}
-              paneType={paneType}
-              focused={focused}
-              width={width}
-              height={height}
-              close={onClose ? close : undefined}
-            />
-          </PaneRenderTrace>
+          <PaneErrorBoundary paneType={paneType} title={title} onClose={closePane ? closeFailedPane : undefined}>
+            <PaneRenderTrace paneId={paneId} paneType={paneType}>
+              <Component
+                paneId={paneId}
+                paneType={paneType}
+                focused={focused}
+                width={width}
+                height={height}
+                close={onClose ? close : undefined}
+              />
+            </PaneRenderTrace>
+          </PaneErrorBoundary>
         </Box>
       </PaneInViewProvider>
     </PaneInstanceProvider>

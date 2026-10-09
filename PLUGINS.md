@@ -164,6 +164,12 @@ in the pane as `errors (n)`, with the last message in the detail view and the
 rather than swallowing them; it is how a user finds out that a plugin which
 loaded fine is failing at runtime.
 
+A pane that throws while it renders stays inside its own frame: its body
+becomes a short failure card with Reload pane and Close pane, the rest of the
+app keeps running, and the error counts toward the plugin's errors. Only
+render errors are caught this way; errors in event handlers, effects and async
+code are still yours to catch and log.
+
 ## Plugin structure
 
 A plugin implements the `GloomPlugin` interface:

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { t, tf } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
-import { Box, Text } from "../../ui";
+import { Box, Text, useUiCapabilities } from "../../ui";
 import { Spinner } from "./loading";
 import { ButtonActionScope } from "./action-scope";
 
@@ -15,13 +15,19 @@ export interface EmptyStateProps {
 
 export function EmptyState({ title, message, hint, actions, status = "empty" }: EmptyStateProps) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   // Provider messages must wrap at narrow pane widths rather than lose their tail.
   return (
     <Box flexDirection="column" data-gloom-status={status} data-gloom-ui="empty-state">
       <Box><Text fg={status === "error" ? colors.negative : colors.textDim} wrapText>{t(title)}</Text></Box>
       {message && <Box><Text fg={colors.textMuted} wrapText>{t(message)}</Text></Box>}
       {hint && <Box><Text fg={colors.textMuted} wrapText>{t(hint)}</Text></Box>}
-      {actions && <Box flexDirection="row" gap={1} marginTop={1}><ButtonActionScope>{actions}</ButtonActionScope></Box>}
+      {/* Wraps in a narrow pane rather than clipping the second action; a terminal wraps without a blank row. */}
+      {actions && (
+        <Box flexDirection="row" flexWrap="wrap" gap={1} rowGap={nativePaneChrome ? undefined : 0} marginTop={1}>
+          <ButtonActionScope>{actions}</ButtonActionScope>
+        </Box>
+      )}
     </Box>
   );
 }

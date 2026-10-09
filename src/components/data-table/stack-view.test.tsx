@@ -183,7 +183,7 @@ describe("DataTableStackView", () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-data-table-stack-view-test"));
     await tui.render(
       <AppContext value={createStaticAppStore(state)}>
-        <PaneContent component={LongDetailPane} paneId="test-pane:main" paneType="test-pane" focused width={40} height={12} />
+        <PaneContent component={LongDetailPane} paneId="test-pane:main" paneType="test-pane" title="Test" focused width={40} height={12} />
       </AppContext>,
       { width: 40, height: 12 },
     );

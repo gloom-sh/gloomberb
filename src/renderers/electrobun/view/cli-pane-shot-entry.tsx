@@ -443,6 +443,7 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
         component={pane.component}
         paneId={instance.instanceId}
         paneType={instance.paneId}
+        title={title}
         focused
         width={bodyFrame.width ?? 1}
         height={bodyFrame.height ?? 1}

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { Box } from "../../../../ui";
 import { resolveOccludedPaneIds } from "../pane-occlusion";
 import type {
@@ -117,6 +117,11 @@ export function ShellPaneLayers({
   // the compositor already skips covered windows, and a drag keeps everything
   // drawn so the preview never reveals a blank spot.
   const occludedPaneIds = nativePaneChrome || dragFloatingRect ? EMPTY_OCCLUSION : coveredPaneIds;
+  // The failure card's Close. Stable, so a focus or layout change does not
+  // re-render every memoized pane body.
+  const closePaneRef = useRef(handleFloatingClose);
+  closePaneRef.current = handleFloatingClose;
+  const closePane = useCallback((paneId: string) => closePaneRef.current(paneId), []);
 
   return (
     <>
@@ -131,6 +136,7 @@ export function ShellPaneLayers({
         const focused = focusedPaneId === leaf.instanceId && (!overlayOpen || menuPaneId === leaf.instanceId);
         const windowModeSelected = windowModePaneId === leaf.instanceId;
         const showActions = focused || hoveredPaneId === leaf.instanceId || menuPaneId === leaf.instanceId;
+        const title = getPaneTitle(pane);
         return (
           <Box
             key={`dock:${leaf.instanceId}`}
@@ -156,7 +162,7 @@ export function ShellPaneLayers({
                 return (
                   <PaneWrapper
                     paneId={leaf.instanceId}
-                    title={getPaneTitle(pane)}
+                    title={title}
                     focused={focused}
                     width={rect.width}
                     height={rect.height}
@@ -181,10 +187,12 @@ export function ShellPaneLayers({
                       component={pane.def.component}
                       paneId={pane.instance.instanceId}
                       paneType={pane.instance.paneId}
+                      title={title}
                       focused={focused}
                       width={bodyFrame.width ?? 1}
                       height={bodyFrame.height ?? 1}
                       inView={!coveredPaneIds.has(leaf.instanceId)}
+                      closePane={closePane}
                     />
                   </PaneWrapper>
                 );
@@ -205,6 +213,7 @@ export function ShellPaneLayers({
         const focused = focusedPaneId === pane.instance.instanceId && (!overlayOpen || menuPaneId === pane.instance.instanceId);
         const windowModeSelected = windowModePaneId === pane.instance.instanceId;
         const showActions = focused || hoveredPaneId === pane.instance.instanceId || menuPaneId === pane.instance.instanceId;
+        const title = getPaneTitle(pane);
         return (
           <PaneFooterProvider key={`float:${pane.instance.instanceId}`}>
             {(footer) => {
@@ -221,7 +230,7 @@ export function ShellPaneLayers({
               return (
                 <FloatingPaneWrapper
                   paneId={pane.instance.instanceId}
-                  title={getPaneTitle(pane)}
+                  title={title}
                   x={preview.x}
                   y={preview.y}
                   width={preview.width}
@@ -253,11 +262,13 @@ export function ShellPaneLayers({
                     component={pane.def.component}
                     paneId={pane.instance.instanceId}
                     paneType={pane.instance.paneId}
+                    title={title}
                     focused={focused}
                     width={bodyFrame.width ?? 1}
                     height={bodyFrame.height ?? 1}
                     inView={!coveredPaneIds.has(pane.instance.instanceId)}
                     onClose={handleFloatingClose}
+                    closePane={closePane}
                   />
                 </FloatingPaneWrapper>
               );

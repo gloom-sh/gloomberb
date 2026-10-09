@@ -109,6 +109,7 @@ function Harness({
         component={component}
         paneId="test-pane:main"
         paneType="test-pane"
+        title="Test"
         focused={focused}
         width={30}
         height={5}
