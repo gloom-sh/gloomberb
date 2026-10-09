@@ -159,9 +159,20 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="pane-restore"] {
   cursor: pointer;
 }
-body.gloom-dragging,
-body.gloom-dragging [data-gloom-role="pane-header"] {
+/* Up for the length of a drag (see drag-shield.ts): the grabbing cursor
+   everywhere, and no hover under the pointer. */
+[data-gloom-role="drag-shield"] {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
   cursor: grabbing;
+}
+/* Surfaces that drag a pane, its size or a split keep the whole pointer
+   stream: a touch or pen press on them never starts a pan or zoom. */
+[data-gloom-role="pane-header"][data-drag-surface="pane"],
+[data-gloom-role="resize-handle"],
+[data-gloom-role="dock-divider"] {
+  touch-action: none;
 }
 [data-gloom-role="pane-title"] {
   overflow: hidden;
@@ -309,9 +320,6 @@ body.gloom-dragging [data-gloom-role="pane-header"] {
 }
 [data-gloom-role="chart-surface"] {
   cursor: crosshair;
-}
-body.gloom-dragging [data-gloom-role="chart-surface"] {
-  cursor: grabbing;
 }
 [data-gloom-role="tab-list"] {
   scrollbar-width: none;

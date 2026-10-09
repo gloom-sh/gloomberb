@@ -20,7 +20,34 @@ import {
   cellMouseEvent,
   requestWebFrame,
 } from "./mouse";
+import { hideDragShield, showDragShield } from "./drag-shield";
 import { cleanDomProps, commonStyle } from "./style";
+
+/** Farther than this from the pointer, in px, a predicted point is noise. */
+const MAX_PREDICTION_PX = 48;
+
+type PointerMoveEvent = globalThis.MouseEvent & {
+  pointerId?: number;
+  getPredictedEvents?: () => Array<{ clientX: number; clientY: number }>;
+};
+
+function isPointerMove(event: globalThis.MouseEvent): boolean {
+  return typeof (event as PointerMoveEvent).pointerId === "number";
+}
+
+/**
+ * Where the browser predicts the pointer will be a moment after this move, when
+ * it predicts at all (Chrome does for the mouse; WebKit returns none). The
+ * event itself already sits at the last of its coalesced points.
+ */
+function predictedPoint(event: globalThis.MouseEvent): { clientX: number; clientY: number } | null {
+  const predicted = (event as PointerMoveEvent).getPredictedEvents?.();
+  const next = predicted?.[0];
+  if (!next) return null;
+  const dx = next.clientX - event.clientX;
+  const dy = next.clientY - event.clientY;
+  return dx * dx + dy * dy <= MAX_PREDICTION_PX * MAX_PREDICTION_PX ? next : null;
+}
 
 function capturePointer(element: HTMLElement | null, pointerId: number | null): { element: HTMLElement; pointerId: number } | null {
   if (!element || pointerId === null || typeof element.setPointerCapture !== "function") return null;
@@ -84,7 +111,11 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       flushPendingFrameMouseHandlers();
     };
 
-    const scheduleFrameMouseHandler = (event: MouseLikeEvent, type: "move" | "drag") => {
+    const scheduleFrameMouseHandler = (
+      event: MouseLikeEvent,
+      type: "move" | "drag",
+      ahead: { clientX: number; clientY: number } | null = null,
+    ) => {
       // The DOM keeps firing mousemove while a button is held. A move means no
       // button anywhere else in the app, so drags must not surface as moves.
       if (type === "move" && draggingRef.current) return;
@@ -95,7 +126,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         return;
       }
 
-      const nextEvent = cellMouseEvent(event, type);
+      const nextEvent = cellMouseEvent(event, type, ahead);
       if (type === "move") {
         pendingMoveRef.current = nextEvent;
       } else {
@@ -117,6 +148,10 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       up: (event: globalThis.MouseEvent) => void;
       cancel: () => void;
       captured: { element: HTMLElement; pointerId: number } | null;
+      /** Pointer events are arriving, so the mousemove after each is a repeat. */
+      pointerMoves: boolean;
+      /** Moved far enough to be a drag: the drag shield is up. */
+      shielded: boolean;
     } | null>(null);
     const endDocumentDragRef = useRef<(event: globalThis.MouseEvent | null, notify: boolean) => void>(() => {});
     endDocumentDragRef.current = (event, notify) => {
@@ -124,9 +159,11 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       const wasDragging = draggingRef.current;
       if (!session && !wasDragging) return;
       draggingRef.current = false;
+      const shielded = session?.shielded === true;
       dragSessionRef.current = null;
-      document.body.classList.remove("gloom-dragging");
+      if (shielded) hideDragShield();
       if (session) {
+        document.removeEventListener("pointermove", session.move);
         document.removeEventListener("mousemove", session.move);
         document.removeEventListener("mouseup", session.up);
         document.removeEventListener("pointerup", session.up);
@@ -182,6 +219,12 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       const originY = event.clientY;
       const move = (moveEvent: globalThis.MouseEvent) => {
         if (!draggingRef.current) return;
+        const current = dragSessionRef.current;
+        if (isPointerMove(moveEvent)) {
+          if (current) current.pointerMoves = true;
+        } else if (current?.pointerMoves) {
+          return;
+        }
         lastPointRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
         // The button is up and mouseup never arrived. End the drag instead of following the cursor.
         if (moveEvent.buttons === 0) {
@@ -190,18 +233,18 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         }
         const dx = moveEvent.clientX - originX;
         const dy = moveEvent.clientY - originY;
-        if (!document.body.classList.contains("gloom-dragging")) {
+        if (current && !current.shielded) {
           if (dx * dx + dy * dy < 9) return;
-          document.body.classList.add("gloom-dragging");
+          current.shielded = true;
+          showDragShield();
           // Captured once it is a drag (a click keeps its usual target), the
           // moves skip hit testing and leave every other element's hover state
           // alone: nothing under the pointer restyles or repaints while a pane,
           // divider or chart is dragged across it. The document listeners still
           // see every move.
-          const session = dragSessionRef.current;
-          if (session && !session.captured) session.captured = capturePointer(elementRef.current, pressedPointerRef.current);
+          if (!current.captured) current.captured = capturePointer(elementRef.current, pressedPointerRef.current);
         }
-        scheduleFrameMouseHandler(moveEvent, "drag");
+        scheduleFrameMouseHandler(moveEvent, "drag", predictedPoint(moveEvent));
       };
       const up = (upEvent: globalThis.MouseEvent) => {
         endDocumentDragRef.current(upEvent, true);
@@ -209,7 +252,8 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       const cancel = () => {
         endDocumentDragRef.current(null, true);
       };
-      dragSessionRef.current = { move, up, cancel, captured: null };
+      dragSessionRef.current = { move, up, cancel, captured: null, pointerMoves: false, shielded: false };
+      document.addEventListener("pointermove", move);
       document.addEventListener("mousemove", move);
       document.addEventListener("mouseup", up);
       document.addEventListener("pointerup", up);
