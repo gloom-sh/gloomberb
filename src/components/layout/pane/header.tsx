@@ -152,8 +152,9 @@ export function PaneHeader({
     capturePointerDrag(nativeRenderer, terminalHeaderRef.current);
     onHeaderMouseDown?.(event);
   }, [nativeRenderer, onHeaderMouseDown]);
-  // The grip, the title and the empty bar move the pane. A fullscreen pane
-  // cannot move, so there they move the desktop window instead.
+  // The whole bar moves the pane: the grip, the title, the empty space and its
+  // padding. Tabs and buttons stop the press before it gets here. A fullscreen
+  // pane cannot move, so there the bar moves the desktop window instead.
   const windowDrag = Boolean(titleBar) || (fullscreen && titleBarOverlay === true && nativeWindowChrome === true);
   const beginPaneDrag = (event: { stopPropagation?: () => void }) => {
     event.stopPropagation?.();
@@ -167,12 +168,9 @@ export function PaneHeader({
     }
     void rendererHost.startWindowDrag?.();
   };
-  const paneDragHandlers = {
-    onMouseDown: beginPaneDrag,
-    onMouseDrag: onHeaderMouseDrag,
-    onMouseDragEnd: onHeaderMouseDragEnd,
-  };
-  const chromeHandlers = windowDrag ? { onMouseDown: beginWindowDrag } : paneDragHandlers;
+  const barHandlers = windowDrag
+    ? { onMouseDown: beginWindowDrag }
+    : { onMouseDown: beginPaneDrag, onMouseDrag: onHeaderMouseDrag, onMouseDragEnd: onHeaderMouseDragEnd };
 
   if (nativePaneChrome) {
     const ruleColor = visuallyFocused ? colors.borderFocused : colors.border;
@@ -187,6 +185,8 @@ export function PaneHeader({
         data-floating={floating ? "true" : "false"}
         data-focused={focused ? "true" : "false"}
         data-window-mode-selected={windowModeSelected ? "true" : "false"}
+        data-drag-surface={windowDrag ? "window" : "pane"}
+        {...barHandlers}
         onMouseMove={onHeaderMouseMove}
         onContextMenu={onHeaderContextMenu}
         style={{
@@ -207,13 +207,13 @@ export function PaneHeader({
         }}
       >
         {!titleBar && (
-          <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: 6 }} {...paneDragHandlers}>
+          <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: 6 }}>
             <Icon name="grip" size={12} color={visuallyFocused ? colors.borderFocused : colors.textMuted} />
           </Box>
         )}
         {/* Full header height, so trimming the title to its capitals never lets
             this clip cut descenders. */}
-        <Box data-gloom-role="pane-header-chrome" minWidth={0} flexShrink={tabs ? 0 : 1} overflow="hidden" flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", ...(tabs ? { maxWidth: "40%" } : {}) }} {...chromeHandlers}>
+        <Box data-gloom-role="pane-header-chrome" minWidth={0} flexShrink={tabs ? 0 : 1} overflow="hidden" flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", ...(tabs ? { maxWidth: "40%" } : {}) }}>
           <Text
             fg={textColor}
             selectable={false}
@@ -285,7 +285,7 @@ export function PaneHeader({
             />
           </Box>
         ))}
-        <Box data-gloom-role="pane-header-chrome" flexGrow={1} minWidth={0} {...chromeHandlers} />
+        <Box flexGrow={1} minWidth={0} />
         {locked && (
           <Box data-gloom-role="pane-lock">
             <IconButton icon="lock" label="Locked: the close shortcut leaves this pane open" color={colors.textMuted} />
