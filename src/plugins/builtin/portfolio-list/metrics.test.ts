@@ -601,7 +601,8 @@ test("portfolio daily P&L and extended-hours returns use distinct reference clos
     postMarketChange: 0.11, postMarketChangePercent: 0.0503755266532 } });
   const column = (id: string): ColumnConfig => ({ id, label: id, width: 15, align: "right" });
   expect(getSortValue(column("day_pnl"), ticker, financials, defaultColumnContext)).toBeCloseTo(-52, 8);
-  expect(getColumnValue(column("change_pct"), ticker, financials, defaultColumnContext).text).toBe("-2.32%");
+  // CHG% is the regular session (close taken from the after-hours move here); EXT% is the print against that close.
+  expect(getColumnValue(column("change_pct"), ticker, financials, defaultColumnContext).text).toBe("-2.37%");
   expect(getColumnValue(column("ext_hours"), ticker, financials, defaultColumnContext).text).toBe("+0.05%");
   expect(calculatePortfolioSummaryTotals([ticker], new Map([["AAPL", financials]]), "USD", new Map([["USD", 1]]), true, "main").dailyPnl).toBeCloseTo(-52, 8);
   delete financials.quote!.previousClose;
@@ -614,4 +615,65 @@ test("portfolio daily P&L and extended-hours returns use distinct reference clos
   delete financials.quote!.postMarketChange;
   expect(getColumnValue(column("ext_hours"), ticker, financials, defaultColumnContext).text).toBe("—");
   expect(getSortValue(column("ext_hours"), ticker, financials, defaultColumnContext)).toBeNull();
+});
+
+describe("watchlist and portfolio LAST, CHG and CHG% around the close", () => {
+  const column = (id: string): ColumnConfig => ({ id, label: id, width: 10, align: "right" });
+  const ticker = createTicker({ positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "manual" }] });
+  const shown = (financials: TickerFinancials, ...ids: string[]) =>
+    ids.map((id) => getColumnValue(column(id), ticker, financials, defaultColumnContext).text);
+  const sorted = (financials: TickerFinancials, ...ids: string[]) =>
+    ids.map((id) => getSortValue(column(id), ticker, financials, defaultColumnContext));
+  // SPCX after the 2026-10-08 close: the quote's price and change are the after-hours print against the day before's close.
+  const afterHours = {
+    price: 165.39, change: -2.21, changePercent: -1.3186, previousClose: 167.6, regularClose: 160.57,
+    regularCloseSessionDate: "2026-10-08", marketState: "POST" as const, postMarketPrice: 165.39,
+    postMarketChange: 4.82, postMarketChangePercent: 3.0017, listingExchangeName: "NASDAQ",
+    lastUpdated: Date.parse("2026-10-08T22:22:00Z"),
+  };
+
+  test("after the close the row holds the regular close and its move while EXT% follows the extended print", () => {
+    const posted = createFinancials({ quote: afterHours });
+    expect(shown(posted, "price", "change", "change_pct", "ext_hours")).toEqual(["160.57", "-7.03", "-4.19%", "+3.00%"]);
+    const [price, change, changePercent, extended] = sorted(posted, "price", "change", "change_pct", "ext_hours");
+    expect(price).toBe(160.57);
+    expect(change).toBeCloseTo(-7.03, 8);
+    expect(changePercent).toBeCloseTo(-4.1945, 3);
+    expect(extended).toBeCloseTo(3.0017, 3);
+    // Holdings stay valued on the live print against the previous close.
+    expect(sorted(posted, "day_pnl")[0]).toBeCloseTo(-22.1, 8);
+    expect(sorted(posted, "mkt_value")[0]).toBeCloseTo(1653.9, 8);
+
+    // The extended print moves; the headline does not.
+    const ticked = createFinancials({ quote: { ...afterHours, price: 167, postMarketPrice: 167, postMarketChange: 6.43, postMarketChangePercent: 4.0044 } });
+    expect(shown(ticked, "price", "change_pct", "ext_hours")).toEqual(["160.57", "-4.19%", "+4.00%"]);
+
+    // Overnight and over a weekend the quote keeps that day's close and the last extended print.
+    for (const marketState of ["POSTPOST", "CLOSED"] as const) {
+      const overnight = createFinancials({ quote: { ...afterHours, marketState, price: 164.35, change: -3.25, changePercent: -1.939,
+        postMarketPrice: undefined, postMarketChange: undefined, postMarketChangePercent: undefined } });
+      expect(shown(overnight, "price", "change_pct", "ext_hours")).toEqual(["160.57", "-4.19%", "+2.35%"]);
+      expect(sorted(overnight, "price", "ext_hours")).toEqual([160.57, expect.closeTo(2.3541, 3)]);
+    }
+  });
+
+  test("without a reported close the row falls back as the headline does, and PRE and closed venues are unchanged", () => {
+    // No reported close and no after-hours move: nothing to take the close from, so the live print stays.
+    const unknownClose = createFinancials({ quote: { ...afterHours, regularClose: undefined, regularCloseSessionDate: undefined,
+      postMarketChange: undefined, postMarketChangePercent: undefined } });
+    expect(shown(unknownClose, "price", "change", "change_pct", "ext_hours")).toEqual(["165.39", "-2.21", "-1.32%", "—"]);
+    expect(sorted(unknownClose, "price", "change_pct")[0]).toBe(165.39);
+
+    // The pre-market quote carries no earlier close: LAST is the pre-market print against the previous close, as EXT% is.
+    const pre = createFinancials({ quote: { price: 160.57, change: 0, changePercent: 0, previousClose: 160.57, marketState: "PRE",
+      preMarketPrice: 162, preMarketChange: 1.43, preMarketChangePercent: 0.8906, listingExchangeName: "NASDAQ" } });
+    expect(shown(pre, "price", "change", "change_pct", "ext_hours")).toEqual(["162.00", "+1.43", "+0.89%", "+0.89%"]);
+    expect(sorted(pre, "price", "change_pct")).toEqual([162, 0.8906]);
+
+    // A venue without extended hours reports no close beside its move.
+    const closed = createFinancials({ quote: { symbol: "7203.T", currency: "JPY", price: 2800, change: 12, changePercent: 0.43,
+      previousClose: 2788, marketState: "CLOSED", listingExchangeName: "JPX", lastUpdated: Date.parse("2026-10-08T06:30:00Z") } });
+    expect(shown(closed, "price", "change", "change_pct", "ext_hours")).toEqual(["2,800", "+12", "+0.43%", "—"]);
+    expect(sorted(closed, "price", "change_pct")).toEqual([2800, 0.43]);
+  });
 });

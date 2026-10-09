@@ -9,7 +9,7 @@ import type { TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import type { ScrollBoxRenderable } from "../../ui";
 import { PaneFooterProvider, type CombinedPaneFooter } from "../layout/pane/footer";
-import { TickerListTableView, type TickerTableCell } from "./list-table-view";
+import { TickerListTableView, flashesOnQuoteTick, type TickerTableCell } from "./list-table-view";
 import { createTestTicker } from "../../test-support/ticker";
 
 const tui = createOpenTuiTestHarness();
@@ -258,5 +258,23 @@ describe("TickerListTableView", () => {
 
     await act(async () => { setFocused(false); await tui.setup().renderOnce(); });
     expect(labels()).not.toContain("Open T1 Ticker Research");
+  });
+});
+
+describe("flashesOnQuoteTick", () => {
+  const quote = (overrides: Partial<TickerFinancials["quote"] & object>) => ({
+    symbol: "SPCX", currency: "USD", price: 165.39, change: -2.21, changePercent: -1.32, previousClose: 167.6,
+    marketState: "POST", postMarketPrice: 165.39, postMarketChange: 4.82, lastUpdated: Date.parse("2026-10-08T22:22:00Z"),
+    ...overrides,
+  }) as TickerFinancials["quote"];
+
+  test("after the regular close a tick leaves LAST, CHG and CHG% alone and flashes the columns that moved", () => {
+    const afterHours = quote({ regularClose: 160.57, regularCloseSessionDate: "2026-10-08" });
+    for (const id of ["price", "change", "change_pct"]) expect(flashesOnQuoteTick(id, afterHours)).toBe(false);
+    for (const id of ["ext_hours", "day_pnl", "mkt_value", "bid"]) expect(flashesOnQuoteTick(id, afterHours)).toBe(true);
+    // Before a close is known the print is the headline, so it flashes.
+    for (const open of [quote({ marketState: "REGULAR" }), quote({ marketState: "POST", postMarketChange: undefined })]) {
+      for (const id of ["price", "change", "change_pct"]) expect(flashesOnQuoteTick(id, open)).toBe(true);
+    }
   });
 });

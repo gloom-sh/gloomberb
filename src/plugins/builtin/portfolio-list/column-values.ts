@@ -22,7 +22,8 @@ import {
 } from "../../../market-data/market/format";
 import {
   getActiveQuoteDisplay,
-  getOpenExtendedSessionDisplay,
+  getCompletedRegularSessionDisplay,
+  getExtendedSessionDisplay,
   marketChangeColor,
   marketPriceColor,
   marketStateDot,
@@ -170,6 +171,29 @@ function tradedQuoteDisplay(
   return valuation && metrics.valuesAtMark ? getActiveQuoteDisplay(quote) : valuation;
 }
 
+/**
+ * LAST, CHG and CHG% once the regular session is over: its close and its move,
+ * frozen, because the EXT% column carries the extended print measured from
+ * that close. Until the close, and wherever no close is reported (the
+ * pre-market, venues without extended hours), the traded price as above.
+ * Valuation columns (DAY P&L, MKT VAL, weight, P&L) keep the live price.
+ */
+function headlineQuoteDisplay(
+  traded: ActiveQuoteDisplay | null,
+  quote: TickerFinancials["quote"],
+): ActiveQuoteDisplay | null {
+  return traded ? getCompletedRegularSessionDisplay(quote) ?? traded : null;
+}
+
+/** CHG% as shown: the headline's, else the quote's own when no position price is usable. */
+function headlineChangePercent(
+  headline: ActiveQuoteDisplay | null,
+  quote: TickerFinancials["quote"],
+): number | undefined {
+  if (headline) return headline.changePercent;
+  return quote ? (getCompletedRegularSessionDisplay(quote) ?? quote).changePercent : undefined;
+}
+
 function fiftyTwoWeekPosition(displayQuote: ActiveQuoteDisplay | null, quote: TickerFinancials["quote"]): number | null {
   const range = displayQuote ? liveFiftyTwoWeekRange(quote, displayQuote.price) : null;
   return displayQuote && range ? ((displayQuote.price - range.low) / (range.high - range.low)) * 100 : null;
@@ -216,6 +240,7 @@ export function getColumnValue(
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
   const activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
   const displayQuote = tradedQuoteDisplay(positionMetrics, activeQuote, quote);
+  const headlineQuote = headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
     currency: ctx.baseCurrency,
@@ -271,12 +296,12 @@ export function getColumnValue(
     case "tags":
       return { text: ticker.metadata.tags.length > 0 ? ticker.metadata.tags.join(",") : "—" };
     case "price":
-      return resolvePortfolioPriceValue(displayQuote, brokerMarkPrice, displayQuote ? currentQuoteOptions : markOptions, col.width, quote?.marketState);
+      return resolvePortfolioPriceValue(headlineQuote, brokerMarkPrice, headlineQuote ? currentQuoteOptions : markOptions, col.width, quote?.marketState);
     case "change":
-      if (!displayQuote) return { text: "—" };
+      if (!headlineQuote) return { text: "—" };
       return {
-        text: formatSignedMarketPrice(displayQuote.change, { ...currentQuoteOptions, maxWidth: col.width }),
-        color: marketChangeColor(displayQuote.change, quote?.marketState),
+        text: formatSignedMarketPrice(headlineQuote.change, { ...currentQuoteOptions, maxWidth: col.width }),
+        color: marketChangeColor(headlineQuote.change, quote?.marketState),
       };
     case "bid":
       return { text: quote?.bid != null ? formatMarketPrice(quote.bid, { ...currentQuoteOptions, maxWidth: col.width }) : "—" };
@@ -298,10 +323,12 @@ export function getColumnValue(
       if (!isFiniteNumber(quote?.bidSize) && !isFiniteNumber(quote?.askSize)) return { text: "—" };
       return { text: `${formatCompact(quote?.bidSize)}/${formatCompact(quote?.askSize)}` };
     }
-    case "change_pct":
-      return displayQuote
-        ? { text: formatPercentRaw(displayQuote.changePercent), color: marketChangeColor(displayQuote.changePercent, quote?.marketState) }
-        : { text: quote ? formatPercentRaw(quote.changePercent) : "—", color: quote ? marketChangeColor(quote.changePercent, quote.marketState) : undefined };
+    case "change_pct": {
+      const changePercent = headlineChangePercent(headlineQuote, quote);
+      return quote
+        ? { text: formatPercentRaw(changePercent), color: marketChangeColor(changePercent, quote.marketState) }
+        : { text: "—" };
+    }
     case "volume":
       return { text: isFiniteNumber(quote?.volume) ? formatCompact(quote.volume, { fixedDecimals: true }) : "—" };
     case "dollar_volume": {
@@ -326,7 +353,7 @@ export function getColumnValue(
       return { text: dividendYield != null ? `${(dividendYield * 100).toFixed(2)}%` : "—" };
     }
     case "ext_hours": {
-      const changePercent = getOpenExtendedSessionDisplay(quote)?.changePercent;
+      const changePercent = getExtendedSessionDisplay(quote)?.changePercent;
       if (!isFiniteNumber(changePercent)) return { text: "—" };
       return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
     }
@@ -432,6 +459,7 @@ export function getSortValue(
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
   const activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
   const displayQuote = tradedQuoteDisplay(positionMetrics, activeQuote, quote);
+  const headlineQuote = headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
     currency: ctx.baseCurrency,
@@ -465,7 +493,7 @@ export function getSortValue(
     case "tags":
       return ticker.metadata.tags.join(",");
     case "price":
-      if (displayQuote) return displayQuote.price;
+      if (headlineQuote) return headlineQuote.price;
       if (brokerMarkPrice != null) return brokerMarkPrice;
       return null;
     case "bid":
@@ -484,9 +512,9 @@ export function getSortValue(
         ? (quote?.bidSize ?? 0) + (quote?.askSize ?? 0)
         : null;
     case "change":
-      return displayQuote?.change ?? null;
+      return headlineQuote?.change ?? null;
     case "change_pct":
-      return displayQuote?.changePercent ?? null;
+      return headlineChangePercent(headlineQuote, quote) ?? null;
     case "volume":
       return quote?.volume ?? null;
     case "dollar_volume":
@@ -506,7 +534,7 @@ export function getSortValue(
     case "dividend_yield":
       return liveDividendYield(quote, fundamentals) ?? null;
     case "ext_hours":
-      return getOpenExtendedSessionDisplay(quote)?.changePercent ?? null;
+      return getExtendedSessionDisplay(quote)?.changePercent ?? null;
     case "side":
       return positionSideLabel(ticker, ctx.activeTab);
     case "shares":

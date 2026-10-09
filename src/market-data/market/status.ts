@@ -202,6 +202,16 @@ export function getRegularSessionDisplay(quote: Quote | null | undefined): Activ
 }
 
 /**
+ * getRegularSessionDisplay once the regular session is over, null while it is
+ * open or in the pre-market. A table row headlines this when it has a column
+ * for the extended move: the close and the day's move stay put, and the
+ * extended column is the only figure that follows the extended print.
+ */
+export function getCompletedRegularSessionDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
+  return quote && completedRegularClose(quote) != null ? getRegularSessionDisplay(quote) : null;
+}
+
+/**
  * The pre-market or after-hours print, measured from the regular close before
  * it, while the quote has one: the pre-market until the open, the after-hours
  * session from the close, and its last print until the next pre-market. Null
@@ -230,7 +240,7 @@ export function getExtendedSessionDisplay(quote: Quote | null | undefined): Exte
 }
 
 /** The extended display only while its session is open: the pre-market or the after-hours session. */
-export function getOpenExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
+function getOpenExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
   return quote?.marketState === "PRE" || quote?.marketState === "POST" ? getExtendedSessionDisplay(quote) : null;
 }
 
