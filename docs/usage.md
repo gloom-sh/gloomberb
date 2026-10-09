@@ -239,7 +239,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
 | `CBR` / `ECFC` / `CBRT` | G20 central bank policy rates, last observed moves and one-year history |
-| `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` and CME crypto (`CTM BTC`) |
+| `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` and CME crypto (`CTM BTC`, which adds each contract's premium to spot and annualised basis) |
 | `COT [code or root]` / `CFTC [code or root]` | CFTC positioning extremes, weekly changes and historical percentiles, including CME crypto (`COT BTC`) |
 | `AUCT` | Treasury auction results: auction rate, bid-to-cover, indirect share, and size |
 | `VIX` | VIX 9D through 1Y cash-tenor curve, FRED history and 3M/30D ratio |

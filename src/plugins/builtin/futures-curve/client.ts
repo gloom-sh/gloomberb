@@ -2,7 +2,8 @@ import { apiClient } from "../../../api-client";
 import type { FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import { archivedFuturesCurve, curveLookbackDate, normalizeCurveRoot, unsupportedCurveRootMessage } from "./model";
+import type { DataProvider } from "../../../types/data-provider";
+import { archivedFuturesCurve, curveLookbackDate, curveSpot, normalizeCurveRoot, unsupportedCurveRootMessage, type CurveSpot } from "./model";
 
 export const futuresCurveCache = createPluginCache<FuturesCurvePayload>({
   kind: "futures-curve", source: "gloom-cloud", schemaVersion: 1,
@@ -84,4 +85,12 @@ export async function loadFuturesCurveAsOf(root: string, date: string,
     }
     return archivedFuturesCurve(normalized, curve, { "1W": week, "1M": month }, new Date().toISOString());
   } catch (error) { throw unavailableOnServer(error, "Past futures curves are not available yet."); }
+}
+
+/**
+ * The spot behind a crypto curve's basis, read through the same quote path every pane uses.
+ * A failed read is a missing spot, never a failed report: the curve stands without its basis.
+ */
+export async function loadCurveSpot(symbol: string, provider: Pick<DataProvider, "getQuote">, now = Date.now()): Promise<CurveSpot> {
+  return curveSpot(symbol, await provider.getQuote(symbol, "").catch(() => null), now);
 }
