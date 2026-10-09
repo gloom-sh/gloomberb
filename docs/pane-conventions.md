@@ -265,6 +265,10 @@ header, with the detail's height.
   draws `strip` as the first row of the body. Subtract `rows`. Never in the
   footer. Register `null` while a sign-in wall or any state makes every tab
   show the same thing.
+- A chart you pan and draw on sits one level below a tab strip: the strip
+  keeps Left, Right, `h` and `l`; Down, Enter, a click or a chart tool moves
+  into the chart, and Esc or Up hands the keys back, with `[Esc]tabs` in the
+  footer while inside. `Tabs` and `CompositeChart` do this; a pane adds nothing.
 - A strip inside content that already has a title-bar strip (a Ticker
   Research tab, a stack detail) becomes a `QueryBar` view (`usePaneTabs`
   with `queryBarWidth`) or inline filter on the desktop; the terminal keeps
