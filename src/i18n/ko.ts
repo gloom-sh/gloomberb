@@ -377,7 +377,6 @@ export const ko: Record<string, string> = {
   "Price trigger alerts with notifications": "알림이 있는 목표가 알림",
   "Create a price alert from a symbol, condition, and target price": "종목코드, 조건 및 목표가로 가격 알림 생성",
   "Public market heatmap for the largest US stocks and ETFs.": "미국 대형주 및 ETF 시장 히트맵.",
-  "Largest US stocks and ETFs, sized by market cap or assets and colored by daily move.": "미국 대형주와 ETF를 시가총액·자산 규모 및 일일 변동률로 표시.",
   "Top gainers, losers, most active, and trending tickers": "상승률·하락률·거래량 상위 및 인기 종목",
   "Top gainers, losers, most active, and trending tickers.": "상승률·하락률·거래량 상위 및 인기 종목.",
   "S&P 500 sector and industry performance via ETF proxies": "ETF 기준 S&P 500 섹터 및 산업 성과",

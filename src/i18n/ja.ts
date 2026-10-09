@@ -379,7 +379,6 @@ export const ja: Record<string, string> = {
   "Price trigger alerts with notifications": "通知付きの価格トリガーアラート",
   "Create a price alert from a symbol, condition, and target price": "銘柄コード、条件、目標価格から価格アラートを作成",
   "Public market heatmap for the largest US stocks and ETFs.": "米国大型株と ETF の市場ヒートマップ。",
-  "Largest US stocks and ETFs, sized by market cap or assets and colored by daily move.": "米国大型株と ETF を時価総額・資産規模で表示し、日次騰落率で色分けします。",
   "Top gainers, losers, most active, and trending tickers": "値上がり、値下がり、出来高、注目銘柄",
   "Top gainers, losers, most active, and trending tickers.": "値上がり、値下がり、出来高、注目銘柄。",
   "S&P 500 sector and industry performance via ETF proxies": "ETF を使った S&P 500 のセクター・業種別騰落率",

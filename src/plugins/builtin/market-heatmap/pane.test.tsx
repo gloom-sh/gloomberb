@@ -120,3 +120,9 @@ test("US Stocks draws sector blocks, and the arrows and Enter reach tiles across
   await tui.emitKeypress({ name: "return", sequence: "\r" });
   expect(pinned).toEqual([selected()!]);
 });
+
+test("the size quick setting reads square root until the pane saves a choice", () => {
+  const settings = marketHeatmapPlugin.panes![0]!.settings as (context: any) => { values?: Record<string, unknown> };
+  expect(settings({ settings: {} }).values?.sizeBy).toBe("sqrt-market-cap");
+  expect(settings({ settings: { sizeBy: "market-cap" } }).values?.sizeBy).toBe("market-cap");
+});

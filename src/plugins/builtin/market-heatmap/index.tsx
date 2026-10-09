@@ -253,7 +253,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   // A pane setting, not private pane state, so the settings dialog can show it.
   const [universeSetting, setActiveUniverse] = usePaneSettingValue<string>("universe", "us-equity");
   const [linkPortfolio] = usePaneSettingValue<boolean>("linkPortfolio", false);
-  const [sizeBySetting] = usePaneSettingValue<string>(SIZE_BY_SETTING_KEY, "market-cap");
+  const [sizeBySetting] = usePaneSettingValue<string>(SIZE_BY_SETTING_KEY, SQRT_SIZE_VALUE);
   const sizeBy = heatmapSizeBy(sizeBySetting);
   const activeUniverse = heatmapTabId(universeSetting);
   const portfolioTab = activeUniverse === PORTFOLIO_HEATMAP_TAB;
@@ -682,7 +682,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
   id: "market-heatmap",
   name: "Market Heatmap",
   version: "1.0.0",
-  description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by market cap or position and colored by daily move",
+  description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by the square root of market cap or by position value and colored by daily move",
   toggleable: true,
   targets: ["cli", "tui", "desktop", "web"],
 
@@ -730,7 +730,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
               { value: "market-cap", label: "Market cap" },
               { value: SQRT_SIZE_VALUE, label: "Square root of market cap" },
             ],
-            description: "Square root gives mid-size names room next to the largest. Portfolios apply it to position value.",
+            description: "Square root gives mid-size names room next to the largest. A portfolio is always sized by position value.",
           },
           {
             key: "linkPortfolio",
@@ -748,7 +748,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
       id: "market-heatmap-pane",
       paneId: "market-heatmap",
       label: "Market Heatmap",
-      description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by market cap or position and colored by daily move.",
+      description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by the square root of market cap or by position value and colored by daily move.",
       keywords: ["heatmap", "market", "largest", "top", "stocks", "etf", "portfolio", "watchlist", "screener"],
       shortcut: { prefix: "HM" },
     },

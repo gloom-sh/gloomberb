@@ -379,7 +379,6 @@ export const zhTW: Record<string, string> = {
   "Price trigger alerts with notifications": "透過通知的價格觸發提醒",
   "Create a price alert from a symbol, condition, and target price": "用代號、條件和目標價建立價格提醒",
   "Public market heatmap for the largest US stocks and ETFs.": "美股大盤股與 ETF 的市場熱力圖。",
-  "Largest US stocks and ETFs, sized by market cap or assets and colored by daily move.": "按市值/規模定大小、按日漲跌著色的美股與 ETF。",
   "Top gainers, losers, most active, and trending tickers": "漲幅榜、跌幅榜、成交活躍與熱門股票",
   "Top gainers, losers, most active, and trending tickers.": "漲幅榜、跌幅榜、成交活躍與熱門股票。",
   "S&P 500 sector and industry performance via ETF proxies": "以 ETF 代表 S&P 500 類股與產業表現",

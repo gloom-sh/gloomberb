@@ -378,7 +378,6 @@ export const es: Record<string, string> = {
   "Price trigger alerts with notifications": "Alertas de precio con notificaciones",
   "Create a price alert from a symbol, condition, and target price": "Crear una alerta de precio con símbolo, condición y precio objetivo",
   "Public market heatmap for the largest US stocks and ETFs.": "Mapa de calor de las mayores acciones y ETF de EE. UU.",
-  "Largest US stocks and ETFs, sized by market cap or assets and colored by daily move.": "Mayores acciones y ETF de EE. UU., dimensionados por capitalización o activos y coloreados por variación diaria.",
   "Top gainers, losers, most active, and trending tickers": "Mayores alzas, bajas, más activos y tickers en tendencia",
   "Top gainers, losers, most active, and trending tickers.": "Mayores alzas, bajas, más activos y tickers en tendencia.",
   "S&P 500 sector and industry performance via ETF proxies": "Rendimiento sectorial e industrial del S&P 500 vía ETF",
