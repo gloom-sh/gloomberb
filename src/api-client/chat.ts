@@ -263,15 +263,6 @@ export class CloudChatApi {
     return normalizeChatDiscordLink(await this.options.request<unknown>("/chat/discord/link"));
   }
 
-  /** Starts linking: the Discord authorize page to open, where the user approves. */
-  async startDiscordLink(): Promise<{ url: string }> {
-    const started = await this.options.request<{ url?: unknown } | undefined>("/chat/discord/link/start", {
-      method: "POST",
-    });
-    if (typeof started?.url !== "string" || !started.url) throw new Error("Discord did not send a link to approve.");
-    return { url: started.url };
-  }
-
   async unlinkDiscord(): Promise<void> {
     await this.options.request<unknown>("/chat/discord/link", { method: "DELETE" });
   }

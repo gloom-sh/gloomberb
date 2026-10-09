@@ -82,6 +82,8 @@ export interface ChatDiscordLink {
   linked: boolean;
   discordUsername?: string;
   mirror: boolean;
+  /** False when the server has linking switched off. A server that predates the field is available. */
+  available: boolean;
 }
 
 export interface ChatChannel {

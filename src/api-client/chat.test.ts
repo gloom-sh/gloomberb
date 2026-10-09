@@ -88,12 +88,12 @@ test("keeps the Discord origin and ghost account type of a message and drops val
   expect(app!.origin).toBe("app");
 });
 
-test("reads the Discord link with mirroring on unless the server says off", async () => {
+test("reads the Discord link with mirroring on and linking available unless the server says otherwise", async () => {
   const answers: Record<string, unknown> = {
-    "/chat/discord/link": { linked: true, discordUsername: " ada ", mirror: false },
+    "/chat/discord/link": { linked: true, discordUsername: " ada ", mirror: false, available: false },
   };
   const { chat } = createChat((path) => answers[path] ?? { linked: false });
-  expect(await chat.getDiscordLink()).toEqual({ linked: true, discordUsername: "ada", mirror: false });
+  expect(await chat.getDiscordLink()).toEqual({ linked: true, discordUsername: "ada", mirror: false, available: false });
   answers["/chat/discord/link"] = { linked: false };
-  expect(await chat.getDiscordLink()).toEqual({ linked: false, mirror: true });
+  expect(await chat.getDiscordLink()).toEqual({ linked: false, mirror: true, available: true });
 });

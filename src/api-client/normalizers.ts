@@ -105,7 +105,7 @@ export function normalizeChatMessage(message: ChatMessage): ChatMessage {
   return normalized;
 }
 
-/** The link answer of a server that knows Discord: mirroring is on unless it says otherwise. */
+/** The link answer of a server that knows Discord: mirroring is on and linking available unless it says otherwise. */
 export function normalizeChatDiscordLink(value: unknown): ChatDiscordLink {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const username = typeof raw.discordUsername === "string" ? raw.discordUsername.trim() : "";
@@ -113,6 +113,7 @@ export function normalizeChatDiscordLink(value: unknown): ChatDiscordLink {
     linked: raw.linked === true,
     ...(username ? { discordUsername: username } : {}),
     mirror: raw.mirror !== false,
+    available: raw.available !== false,
   };
 }
 

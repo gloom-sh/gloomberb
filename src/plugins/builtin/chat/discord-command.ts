@@ -1,20 +1,25 @@
 import { apiClient, type ChatDiscordLink } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import { safeExternalUrl } from "../../../utils/external-url";
 import type { AppNotificationRequest } from "../../../types/plugin";
 import type { DiscordComposerCommand } from "./composer-commands";
 
-/** The four Discord calls the composer's /discord command makes. */
+/**
+ * Where /discord sends someone to connect. The approval has to happen in a
+ * browser that is signed in to gloom.sh as the same account, which a terminal
+ * user's often is not, so the page handles the web sign-in and then starts the
+ * Discord authorization itself.
+ */
+export const DISCORD_LINK_URL = "https://gloom.sh/discord/link";
+
+/** The Discord calls the composer's /discord command makes. */
 export interface DiscordCommandApi {
   getLink(): Promise<ChatDiscordLink>;
-  startLink(): Promise<{ url: string }>;
   unlink(): Promise<void>;
   setMirror(enabled: boolean): Promise<void>;
 }
 
 const discordCommandApi: DiscordCommandApi = {
   getLink: () => apiClient.getChatDiscordLink(),
-  startLink: () => apiClient.startChatDiscordLink(),
   unlink: () => apiClient.unlinkChatDiscord(),
   setMirror: (enabled) => apiClient.setChatDiscordMirror(enabled),
 };
@@ -35,19 +40,20 @@ function linkedStatus(link: ChatDiscordLink): string {
   return `${name}. ${mirror}. /discord mirror on|off, /discord unlink`;
 }
 
+const UNAVAILABLE_OUTCOME: DiscordCommandOutcome = { body: DISCORD_UNAVAILABLE, type: "info" };
+
 async function connect(api: DiscordCommandApi, openUrl: (url: string) => Promise<void>): Promise<DiscordCommandOutcome> {
   const link = await api.getLink();
+  if (!link.available) return UNAVAILABLE_OUTCOME;
   if (link.linked) return { body: linkedStatus(link), type: "info" };
-  const { url } = await api.startLink();
-  const approveUrl = safeExternalUrl(url);
-  if (!approveUrl) return { body: "Discord sent a link that cannot be opened.", type: "error" };
-  await openUrl(approveUrl);
-  return { body: "Approve in your browser", type: "info" };
+  await openUrl(DISCORD_LINK_URL);
+  return { body: "Opened gloom.sh in your browser to connect Discord", type: "info" };
 }
 
 async function unlink(api: DiscordCommandApi): Promise<DiscordCommandOutcome> {
   // A 404 from the unlink route alone could mean "no Discord sync" or "nothing linked", so ask first.
   const link = await api.getLink();
+  if (!link.available) return UNAVAILABLE_OUTCOME;
   if (!link.linked) return { body: "Discord is not linked", type: "info" };
   await api.unlink();
   return { body: "Unlinked from Discord", type: "success" };
@@ -79,7 +85,7 @@ export async function runDiscordCommand(
         return { body: DISCORD_USAGE, type: "info" };
     }
   } catch (error) {
-    if (isUnavailable(error)) return { body: DISCORD_UNAVAILABLE, type: "info" };
+    if (isUnavailable(error)) return UNAVAILABLE_OUTCOME;
     return { body: error instanceof Error && error.message ? error.message : "Discord request failed.", type: "error" };
   }
 }

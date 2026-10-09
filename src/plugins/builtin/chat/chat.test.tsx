@@ -334,6 +334,21 @@ describe("ChatContent", () => {
     expect(headerLine).not.toContain("Edit");
   });
 
+  test("offers no edit for your latest message when it was written on Discord", async () => {
+    const controller = createController({
+      messages: [makeOwnMessage("from the app", recentChatTimestamp(120_000)), { ...makeOwnMessage("from the other side"), id: "m-own-dc", origin: "discord" }],
+    });
+
+    await mountChat(controller, { width: 72, height: 12 });
+
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await flushFrame();
+
+    const headerLine = tui.frame().split("\n").find((line) => line.includes("ada") && line.includes("Discord"));
+    expect(headerLine).toContain("Reply");
+    expect(headerLine).not.toContain("Edit");
+  });
+
   test("up arrow from an empty focused composer edits the latest own message", async () => {
     const ownMessage = makeOwnMessage();
     const controller = createController({

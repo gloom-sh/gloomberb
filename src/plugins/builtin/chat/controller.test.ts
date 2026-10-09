@@ -1214,6 +1214,36 @@ describe("ChatController", () => {
     expect(notifications).toEqual([{ body: "Messages can only be edited within 15 minutes.", type: "error" }]);
   });
 
+  test("refuses to edit a message written on Discord without asking the server", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    const notifications: AppNotificationRequest[] = [];
+    const original: ChatMessage = chatMessage({
+      id: "m1",
+      content: "from the other side",
+      createdAt: recentChatTimestamp(),
+      origin: "discord",
+    });
+
+    persistSession(persistence, { emailVerified: true });
+    persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
+      messages: [original],
+    }, {
+      sourceKey: TRANSCRIPT_SOURCE,
+      schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
+      cachePolicy: { staleMs: 1_000, expireMs: 2_000 },
+    });
+    controller.setNotifier((notification) => { notifications.push(notification); });
+    controller.attachPersistence(persistence);
+    apiClient.editMessage = async () => {
+      throw new Error("should not call server");
+    };
+
+    await expect(controller.editChannelMessage("everyone", "m1", "edited")).resolves.toBe(false);
+
+    expect(notifications).toEqual([{ body: "This message was sent on Discord. Edit it there.", type: "error" }]);
+  });
+
   test("refuses to edit an older message from the current user", async () => {
     const persistence = new MemoryPersistence();
     const controller = createController();
