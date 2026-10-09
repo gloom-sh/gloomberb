@@ -314,7 +314,7 @@ function isBarBeforeSession(latestTime: number, session: string, intervalMs: num
  * A daily or coarser series changes at every close. A copy fetched before the
  * latest settled close is outdated whatever its cache TTL. A copy fetched
  * after it but without its bar is behind only where the venue's closures are
- * published (US venues, JPX): elsewhere, and for a bare symbol whose venue is
+ * published (hasPublishedSessionCalendar): elsewhere, and for a bare symbol whose venue is
  * unknown, a local holiday would read as a missing session. A copy of a 24/7
  * series goes out of date within the hour.
  */

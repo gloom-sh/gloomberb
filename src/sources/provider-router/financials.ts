@@ -7,7 +7,7 @@ import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../
 import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import { parsePublicTickerKey } from "../../utils/exchanges";
-import { activeUsMarketSession, isUsPriorSessionPremarketQuote } from "../../market-data/market/freshness";
+import { activeUsMarketSession, delayedFeedLagMs, isMiddayBreakPrint, isUsPriorSessionPremarketQuote } from "../../market-data/market/freshness";
 import {
   mergeQuoteContributionMaps,
   isQuoteContributionStaleForCurrentSession,
@@ -128,15 +128,16 @@ function isActiveProviderQuoteTooOld(quote: Quote, now = Date.now()): boolean {
   if (!isQuoteInActiveSession(quote, now)) return false;
   // A prior-session close before any pre-market trade has no in-session print
   // to age; the session-date rules bound it instead.
-  if (isUsPriorSessionPremarketQuote(quote.lastUpdated, quote.listingExchangeName || quote.exchangeName, quote.marketState, now)) {
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  if (isUsPriorSessionPremarketQuote(quote.lastUpdated, exchange, quote.marketState, now)) {
     return false;
   }
   if (!Number.isFinite(quote.lastUpdated)) return false;
-  const maxAge =
-    quote.dataSource === "delayed"
-      ? ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS
-      : ACTIVE_PROVIDER_QUOTE_MAX_AGE_MS;
-  return now - quote.lastUpdated > maxAge;
+  const delayed = quote.dataSource === "delayed";
+  const maxAge = delayed ? ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS : ACTIVE_PROVIDER_QUOTE_MAX_AGE_MS;
+  if (now - quote.lastUpdated <= maxAge) return false;
+  // While the venue pauses at midday, the morning's last print is the current price.
+  return !isMiddayBreakPrint(quote.lastUpdated, exchange, now, delayed ? delayedFeedLagMs(exchange) : 0);
 }
 
 export function providerQuoteMatchesTarget(quote: Quote | null | undefined, symbol?: string, exchange?: string): quote is Quote {

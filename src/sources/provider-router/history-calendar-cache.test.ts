@@ -219,14 +219,14 @@ test("a listing on a venue without published closures is not re-checked through 
     calls.push(`${range} ${new Date().toISOString()}`);
     return upTo("2026-09-23");
   } };
-  const store = new AppPersistence(createTempDbPath("calendar-krx"));
+  const store = new AppPersistence(createTempDbPath("calendar-jse"));
   const router = new AssetDataRouter(provider, [], store.resources);
   try {
-    // KRX is closed for Chuseok, Thursday 09-24 to Saturday 09-26.
+    // The JSE is closed for Heritage Day, Thursday 09-24, and its closures are not published.
     for (let time = Date.parse("2026-09-24T00:00:00Z"); time < Date.parse("2026-09-28T00:00:00Z"); time += 10 * 60_000) {
       setSystemTime(new Date(time));
-      await router.getPriceHistory("005930", "KRX", "1M");
-      await router.getPriceHistory("005930", "KRX", "1Y");
+      await router.getPriceHistory("NPN", "JSE", "1M");
+      await router.getPriceHistory("NPN", "JSE", "1Y");
       await Bun.sleep(0);
     }
     // One fetch per key a day, as before: the holiday is not a missing session.

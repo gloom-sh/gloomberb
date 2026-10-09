@@ -1,5 +1,6 @@
 import type { MarketState } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
+import { hasPublishedApacCalendar, isPublishedApacClosure } from "../published-apac-sessions";
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
 import { hasPublishedNseCalendar, isPublishedNseClosure } from "../published-nse-sessions";
@@ -11,6 +12,9 @@ const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const OVERNIGHT_CLOSE_MAX_AGE_MS = 20 * 60 * 60 * 1000;
 const ALWAYS_OPEN_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+// Spring Festival can put the previous session twelve calendar days back
+// (TWSE, February 2026).
+const SESSION_LOOKBACK_DAYS = 14;
 const REGULAR_OPEN_MINUTES: Record<string, number> = {
   NASDAQ: 9 * 60 + 30,
   NYSE: 9 * 60 + 30,
@@ -72,6 +76,28 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   NZX: 17 * 60, SSE: 15 * 60 + 30, SZSE: 15 * 60 + 30,
   BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15, TASE: 17 * 60 + 40,
 };
+// Venues that pause at midday, as local minutes [start, end), with a zone for
+// those the session tables above do not cover. Jakarta pauses longer on Fridays.
+const MIDDAY_BREAKS: Record<string, {
+  timeZone?: string;
+  weekdays: readonly [number, number];
+  friday?: readonly [number, number];
+}> = {
+  HKEX: { weekdays: [12 * 60, 13 * 60] },
+  SGX: { weekdays: [12 * 60, 13 * 60] },
+  SSE: { weekdays: [11 * 60 + 30, 13 * 60] },
+  SZSE: { weekdays: [11 * 60 + 30, 13 * 60] },
+  JPX: { weekdays: [11 * 60 + 30, 12 * 60 + 30] },
+  BURSAMY: { timeZone: "Asia/Kuala_Lumpur", weekdays: [12 * 60 + 30, 14 * 60 + 30] },
+  JAKARTA: { timeZone: "Asia/Jakarta", weekdays: [12 * 60, 13 * 60 + 30], friday: [11 * 60 + 30, 14 * 60] },
+};
+// A morning print this close to the break is its last one, and afternoon
+// prints are due this long after the feed's lag has passed the reopening.
+const MIDDAY_BREAK_MARGIN_MS = 5 * 60_000;
+// How far the delayed feed runs behind each venue's trades.
+const DELAYED_FEED_LAG_MS = 15 * 60_000;
+const SLOWER_DELAYED_FEED_LAG_MS = 20 * 60_000;
+const SLOWER_DELAYED_FEEDS = new Set(["ASX", "KRX", "KOSDAQ", "TWSE", "TPEX", "SGX", "NZX"]);
 const exchangeLocalTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const usSessionFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
@@ -159,6 +185,7 @@ function isPublishedClosure(exchange: string, date: string): boolean {
   if (exchange === "JPX") return isPublishedJpxClosure(date);
   if (exchange === "NSE" || exchange === "BSE") return isPublishedNseClosure(date);
   if (exchange === "SSE" || exchange === "SZSE") return isPublishedCnClosure(date);
+  if (isPublishedApacClosure(exchange, date)) return true;
   return getPublishedUsEquityCalendarDay(exchange, date) === "closed";
 }
 
@@ -207,9 +234,7 @@ export function latestRegularSessionClose(
   if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  // Spring Festival can put the previous session eleven calendar days back.
-  const lookback = (canonical === "SSE" || canonical === "SZSE") && hasPublishedCnCalendar(year) ? 14 : 10;
-  for (let offset = 0; offset <= lookback; offset++) {
+  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
     const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
     const published = getPublishedUsEquitySession(canonical, date);
     let close: number | null = null;
@@ -252,8 +277,7 @@ export function latestRegularSessionOpen(exchange: string | undefined, time: num
   const minutes = REGULAR_OPEN_MINUTES[canonical];
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  const lookback = (canonical === "SSE" || canonical === "SZSE") && hasPublishedCnCalendar(year) ? 14 : 10;
-  for (let offset = 0; offset <= lookback; offset++) {
+  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
     const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
     const published = getPublishedUsEquitySession(canonical, date);
     let open: number | null = null;
@@ -284,7 +308,8 @@ export function isRegularSessionTime(exchange: string | undefined, time: number)
 
 /**
  * True when the venue's full-day closures for the year of `date` are
- * published: US venues, JPX, NSE, BSE, SSE and SZSE. Elsewhere a local holiday reads as a weekday.
+ * published: US venues, JPX, NSE, BSE, SSE, SZSE, KRX, KOSDAQ, TWSE, TPEX,
+ * HKEX, SGX and ASX. Elsewhere a local holiday reads as a weekday.
  */
 export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
   const canonical = canonicalExchange(exchange);
@@ -292,7 +317,40 @@ export function hasPublishedSessionCalendar(exchange: string | undefined, date: 
   if (canonical === "JPX") return hasPublishedJpxCalendar(year);
   if (canonical === "NSE" || canonical === "BSE") return hasPublishedNseCalendar(year);
   if (canonical === "SSE" || canonical === "SZSE") return hasPublishedCnCalendar(year);
+  if (hasPublishedApacCalendar(canonical, year)) return true;
   return !!getPublishedUsEquityCalendarYears(canonical)?.includes(year);
+}
+
+/** How far the delayed feed runs behind the venue's trades. */
+export function delayedFeedLagMs(exchange: string | undefined): number {
+  return SLOWER_DELAYED_FEEDS.has(canonicalExchange(exchange)) ? SLOWER_DELAYED_FEED_LAG_MS : DELAYED_FEED_LAG_MS;
+}
+
+/**
+ * Whether a print is still the current price because the venue is paused at
+ * midday: `now` falls in the break, or within the feed's lag plus five
+ * minutes after it, and the print is the morning's last, no earlier than five
+ * minutes before the break started. An earlier morning print means the feed
+ * stopped before the break.
+ */
+export function isMiddayBreakPrint(
+  timestampMs: number,
+  exchange: string | undefined,
+  now: number,
+  feedLagMs: number,
+): boolean {
+  const canonical = canonicalExchange(exchange);
+  const pause = MIDDAY_BREAKS[canonical];
+  const timeZone = pause?.timeZone ?? EXCHANGE_TIME_ZONES[canonical];
+  if (!pause || !timeZone || !Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now) return false;
+  const { year, month, day } = zonedDateTimeParts(now, timeZone);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  if (weekday === 0 || weekday === 6) return false;
+  const [start, end] = weekday === 5 && pause.friday ? pause.friday : pause.weekdays;
+  const at = (minutes: number) => zonedWallClockToUtcMs(timeZone, year, month, day, Math.floor(minutes / 60), minutes % 60, 0);
+  const breakStart = at(start);
+  return now >= breakStart && now <= at(end) + feedLagMs + MIDDAY_BREAK_MARGIN_MS
+    && timestampMs >= breakStart - MIDDAY_BREAK_MARGIN_MS;
 }
 
 function usSessionState(timestampMs: number): UsSessionState {
