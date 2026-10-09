@@ -159,40 +159,72 @@ function isPositive(value: number | undefined): value is number {
   return isFiniteNumber(value) && value > 0;
 }
 
+interface CompletedRegularSession {
+  close: number;
+  /** The close's move from the session before it, when the quote reports it with the close. */
+  reported: { change: number; changePercent: number } | null;
+}
+
+function reportedRegularMove(quote: Quote, close: number): CompletedRegularSession["reported"] {
+  const change = quote.regularChange;
+  if (!isFiniteNumber(change)) return null;
+  const reference = close - change;
+  const changePercent = isFiniteNumber(quote.regularChangePercent)
+    ? quote.regularChangePercent
+    : isPositive(reference) ? (change / reference) * 100 : null;
+  return changePercent == null ? null : { change, changePercent };
+}
+
 /**
- * The official close of the regular session the quote's day belongs to, once
- * that session is over: after hours, overnight, and through a weekend or
- * holiday until the next pre-market. Only a US listing with extended trading
- * reports one. Without a reported close, an after-hours print less its move
- * from the close gives it. Null in the regular session and the pre-market.
+ * The regular session the quote's day follows, once it is over: after hours,
+ * overnight, and through a weekend or holiday until the next pre-market, and
+ * in the pre-market when the quote reports the last session's close and move,
+ * which its own previous close can no longer give once the day has rolled.
+ * Only a US listing with extended trading reports one. Without a reported
+ * close, an after-hours print less its move from the close gives it. Null in
+ * the regular session.
  */
-function completedRegularClose(quote: Quote): number | null {
+function completedRegularSession(quote: Quote): CompletedRegularSession | null {
   const state = quote.marketState;
-  if (state == null || state === "REGULAR" || state === "PRE") return null;
+  if (state == null || state === "REGULAR") return null;
   const close = quote.regularClose;
   if (isPositive(close)) {
     const closeDate = quote.regularCloseSessionDate;
-    if (closeDate ? closeDate === quoteTradingDay(quote) : state === "POST") return close;
+    const reported = reportedRegularMove(quote, close);
+    if (state === "PRE") {
+      // The quote's own day is today; the close must be an earlier one, with its move.
+      const today = quoteTradingDay(quote);
+      return reported && closeDate && today && closeDate < today ? { close, reported } : null;
+    }
+    if (closeDate ? closeDate === quoteTradingDay(quote) : state === "POST") return { close, reported };
   }
   if (state === "POST" && isFiniteNumber(quote.postMarketPrice) && isFiniteNumber(quote.postMarketChange)) {
     const derived = quote.postMarketPrice - quote.postMarketChange;
-    if (derived > 0) return derived;
+    if (derived > 0) return { close: derived, reported: null };
   }
   return null;
 }
 
+function completedRegularClose(quote: Quote): number | null {
+  return completedRegularSession(quote)?.close ?? null;
+}
+
 /**
- * The day's headline: the regular session, which stops at its close. After
- * the close the price is that close and the move is the close against the
- * previous one, so extended trading never moves it; the extended print is
- * getExtendedSessionDisplay. In the pre-market the quote carries no earlier
- * close to measure the last session by, so the headline is the live price
- * against the previous close, as the pre-market line is.
+ * The day's headline: the regular session, which stops at its close. Once it
+ * is over, and in the pre-market while the quote carries the last session's
+ * close and move, the price is that close and the move is its own, so
+ * extended trading never moves it; the extended print is
+ * getExtendedSessionDisplay. A close without its reported move is measured
+ * against the previous close. In the pre-market without that close and move
+ * the headline is the live price against the previous close, as the
+ * pre-market line is.
  */
 export function getRegularSessionDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
   if (!quote) return null;
-  const close = completedRegularClose(quote);
-  if (close == null) return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
+  const session = completedRegularSession(quote);
+  if (session == null) return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
+  const { close, reported } = session;
+  if (reported) return { price: close, ...reported };
   const reference = isPositive(quote.previousClose)
     ? quote.previousClose
     : isFiniteNumber(quote.change) && isPositive(quote.price - quote.change) ? quote.price - quote.change : null;
@@ -202,10 +234,11 @@ export function getRegularSessionDisplay(quote: Quote | null | undefined): Activ
 }
 
 /**
- * getRegularSessionDisplay once the regular session is over, null while it is
- * open or in the pre-market. A table row headlines this when it has a column
- * for the extended move: the close and the day's move stay put, and the
- * extended column is the only figure that follows the extended print.
+ * getRegularSessionDisplay once the regular session is over (and in the
+ * pre-market, while the quote carries the last session's close and move), null
+ * while it is open. A table row headlines this when it has a column for the
+ * extended move: the close and its move stay put, and the extended column is
+ * the only figure that follows the extended print.
  */
 export function getCompletedRegularSessionDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
   return quote && completedRegularClose(quote) != null ? getRegularSessionDisplay(quote) : null;
@@ -222,6 +255,12 @@ export function getExtendedSessionDisplay(quote: Quote | null | undefined): Exte
   const state = quote.marketState;
   if (state === "PRE" || state === "PREPRE") {
     if (isFiniteNumber(quote.preMarketPrice)) {
+      // Against the close the headline shows, so the two cannot disagree about it.
+      const close = state === "PRE" && quote.preMarketPrice > 0 ? completedRegularClose(quote) : null;
+      if (close != null) {
+        const change = quote.preMarketPrice - close;
+        return { session: "PRE", price: quote.preMarketPrice, change, changePercent: (change / close) * 100 };
+      }
       return { session: "PRE", price: quote.preMarketPrice, change: quote.preMarketChange, changePercent: quote.preMarketChangePercent };
     }
     if (state === "PRE") return null;

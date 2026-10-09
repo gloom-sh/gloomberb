@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
 import {
   getActiveQuoteDisplay,
+  getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
   getSessionMoveDisplay,
@@ -97,6 +98,51 @@ describe("regular and extended session displays", () => {
     const bare = { ...derived, price: 218.47, change: -5.2, changePercent: -2.325, postMarketChange: undefined, postMarketChangePercent: undefined };
     expect(getRegularSessionDisplay(bare)).toEqual({ price: 218.47, change: -5.2, changePercent: -2.325 });
     expect(getExtendedSessionDisplay(bare)).toEqual({ session: "POST", price: 218.47, change: undefined, changePercent: undefined });
+  });
+
+  test("in the pre-market with the last session's close and move, the headline holds them and only the pre-market line moves", () => {
+    // SPCX on 2026-10-09 at 12:01Z: the quote's own change is the pre-market print against Thursday's close.
+    const pre: Quote = { symbol: "SPCX", currency: "USD", price: 166.95, change: 6.38, changePercent: 3.9733,
+      previousClose: 160.57, regularClose: 160.57, regularCloseSessionDate: "2026-10-08",
+      regularChange: -7.03, regularChangePercent: -4.1945, changeSessionDate: "2026-10-09", marketState: "PRE",
+      preMarketPrice: 166.95, preMarketChange: 6.38, preMarketChangePercent: 3.9733,
+      listingExchangeName: "NASDAQ", lastUpdated: Date.parse("2026-10-09T12:01:00Z") };
+    const headline = { price: 160.57, change: -7.03, changePercent: -4.1945 };
+    expect(getRegularSessionDisplay(pre)).toEqual(headline);
+    expect(getCompletedRegularSessionDisplay(pre)).toEqual(headline);
+    expect(getExtendedSessionDisplay(pre)).toMatchObject({ session: "PRE", price: 166.95 });
+    expect(getExtendedSessionDisplay(pre)!.change).toBeCloseTo(6.38, 8);
+    expect(getExtendedSessionDisplay(pre)!.changePercent).toBeCloseTo(3.9733, 3);
+
+    // The next pre-market print moves the pre-market line, measured from the same close, and nothing else.
+    const later = { ...pre, price: 158, change: -2.57, changePercent: -1.6, preMarketPrice: 158, preMarketChange: undefined, preMarketChangePercent: undefined };
+    expect(getRegularSessionDisplay(later)).toEqual(headline);
+    expect(getExtendedSessionDisplay(later)!.change).toBeCloseTo(-2.57, 8);
+    expect(getExtendedSessionDisplay(later)!.changePercent).toBeCloseTo(-1.6006, 3);
+    // A board colors a name that has printed by that print, and one that has not by the last session.
+    expect(getSessionMoveDisplay(pre)).toMatchObject({ session: "PRE", price: 166.95 });
+    const noTrade = { ...pre, price: 160.57, change: 0, changePercent: 0, preMarketPrice: undefined, preMarketChange: undefined, preMarketChangePercent: undefined };
+    expect(getSessionMoveDisplay(noTrade)).toEqual(headline);
+
+    // Without the move, from an older server, or with a close that is not an earlier session, nothing changes.
+    const live = { price: 166.95, change: 6.38, changePercent: 3.9733 };
+    for (const quote of [
+      { ...pre, regularChange: undefined, regularChangePercent: undefined },
+      { ...pre, regularClose: undefined, regularCloseSessionDate: undefined },
+      { ...pre, regularCloseSessionDate: undefined },
+      { ...pre, regularCloseSessionDate: "2026-10-09" },
+    ]) {
+      expect(getRegularSessionDisplay(quote)).toEqual(live);
+      expect(getCompletedRegularSessionDisplay(quote)).toBeNull();
+      expect(getExtendedSessionDisplay(quote)).toEqual({ session: "PRE", ...live });
+    }
+  });
+
+  test("a reported move for the completed session is the headline's move in every state, the percent following the change when absent", () => {
+    const reported = { ...afterHours, previousClose: 150, regularChange: -7.03, regularChangePercent: -4.1945 };
+    expect(getRegularSessionDisplay(reported)).toEqual({ price: 160.57, change: -7.03, changePercent: -4.1945 });
+    expect(getRegularSessionDisplay({ ...reported, regularChangePercent: undefined })!.changePercent).toBeCloseTo(-4.1945, 3);
+    expect(getRegularSessionDisplay({ ...overnight, regularChange: -7.03, regularChangePercent: -4.1945 })!.change).toBe(-7.03);
   });
 
   test("in the pre-market the headline and the pre-market line share the previous close", () => {

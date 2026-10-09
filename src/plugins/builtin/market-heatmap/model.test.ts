@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { summarizeHeatmapGroups } from "./model";
+import { heatmapMove, summarizeHeatmapGroups } from "./model";
 
 function asset(symbol: string, size: number, changePercent: number | null, sector: string | null, industry: string | null = null) {
   return { symbol, size, changePercent: changePercent ?? 0, hasChange: changePercent != null, sector, industry };
@@ -42,4 +42,11 @@ describe("summarizeHeatmapGroups", () => {
     expect(etfs.groups).toEqual([etfs.board]);
     expect(etfs.board.move).toBeCloseTo(200 / 800, 10);
   });
+});
+
+test("a name the snapshot has no close for has no move until it streams an extended print", () => {
+  const noClose = { hasChange: false, changePercent: 0 };
+  expect(heatmapMove(noClose)).toBeNull();
+  expect(heatmapMove({ ...noClose, changePercent: 3.97, extendedSession: "PRE" })).toBe(3.97);
+  expect(heatmapMove({ ...noClose, changePercent: Number.NaN, extendedSession: "PRE" })).toBeNull();
 });

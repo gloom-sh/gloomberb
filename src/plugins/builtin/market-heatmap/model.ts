@@ -10,9 +10,13 @@ type HeatmapMoveAsset = Pick<MarketHeatmapAsset, "symbol" | "hasChange" | "chang
   weight?: number;
 };
 
-/** The move, or null when there is none: no change data is not a flat session. */
-export function heatmapMove(asset: Pick<MarketHeatmapAsset, "hasChange" | "changePercent">): number | null {
-  return asset.hasChange && typeof asset.changePercent === "number" && Number.isFinite(asset.changePercent)
+/**
+ * The move, or null when there is none: no change data is not a flat session.
+ * A name without the last session's close still has the move of the open
+ * pre-market or after-hours session it streams (`extendedSession`).
+ */
+export function heatmapMove(asset: Pick<MarketHeatmapAsset, "hasChange" | "changePercent"> & { extendedSession?: string }): number | null {
+  return (asset.hasChange || asset.extendedSession != null) && typeof asset.changePercent === "number" && Number.isFinite(asset.changePercent)
     ? asset.changePercent
     : null;
 }

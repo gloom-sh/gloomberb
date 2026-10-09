@@ -571,6 +571,33 @@ test("live after-hours prices never inherit the daily loss as their session retu
   }
 });
 
+test("the last session's move travels with its close and is never carried from another observation", () => {
+  const now = Date.parse("2026-10-09T12:01:00Z");
+  const base = { symbol: "SPCX", providerId: "gloomberb-cloud", dataSource: "delayed" as const, marketState: "PRE" as const,
+    price: 166.95, currency: "USD", previousClose: 160.57, change: 6.38, changePercent: 3.9733,
+    changeSessionDate: "2026-10-09", listingExchangeName: "NASDAQ", lastUpdated: now };
+  const snapshot = normalizeQuoteContribution({ ...base, regularClose: 160.57, regularCloseSessionDate: "2026-10-08",
+    regularChange: -7.03, regularChangePercent: -4.1945 })!;
+  expect(resolveCanonicalQuote({ cloud: snapshot }, now).quote).toMatchObject({
+    regularClose: 160.57, regularChange: -7.03, regularChangePercent: -4.1945 });
+
+  // A frame that leaves the close out takes its move with it; the old one is not kept next to a new price.
+  const bare = mergeQuoteContribution(snapshot, { ...base, price: 167 });
+  expect([bare.regularClose, bare.regularChange, bare.regularChangePercent]).toEqual([undefined, undefined, undefined]);
+  // A new close arrives with its own move, or none.
+  const newer = mergeQuoteContribution(snapshot, { ...base, regularClose: 170, regularCloseSessionDate: "2026-10-09" });
+  expect([newer.regularClose, newer.regularChange, newer.regularChangePercent]).toEqual([170, undefined, undefined]);
+  // A move reported without a close does not reach the canonical quote.
+  expect(resolveCanonicalQuote({ cloud: { ...snapshot, regularClose: undefined } }, now).quote)
+    .toMatchObject({ regularChange: undefined, regularChangePercent: undefined });
+
+  // Another price provider's quote gets neither the close nor its move.
+  const live = { symbol: "SPCX", providerId: "ibkr", dataSource: "live" as const, price: 167, currency: "USD",
+    change: 6.43, changePercent: 4, lastUpdated: now + 1000 };
+  expect(resolveCanonicalQuote({ cloud: snapshot, ibkr: live }, now + 1000).quote).toMatchObject({
+    price: 167, regularClose: undefined, regularChange: undefined, regularChangePercent: undefined });
+});
+
 test("a different price provider cannot inherit a closing-price anchor", () => {
   const now = Date.parse("2026-09-10T20:30:00Z");
   const result = resolveCanonicalQuote({

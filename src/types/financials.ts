@@ -58,6 +58,9 @@ export interface Quote {
   regularClose?: number;
   /** Exchange-local date of regularClose; separate from the daily previous-close reference. */
   regularCloseSessionDate?: string;
+  /** Move of that completed regular session from the one before it, in this quote's currency; set and cleared together with regularClose. */
+  regularChange?: number;
+  regularChangePercent?: number;
   /** Provider's exchange-local session date for the daily quote reference. */
   changeSessionDate?: string;
   high52w?: number;

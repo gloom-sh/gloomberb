@@ -657,18 +657,26 @@ describe("watchlist and portfolio LAST, CHG and CHG% around the close", () => {
     }
   });
 
-  test("without a reported close the row falls back as the headline does, and PRE and closed venues are unchanged", () => {
+  test("without a reported close the row falls back as the headline does, the pre-market holds the last session only when the quote reports it, and closed venues are unchanged", () => {
     // No reported close and no after-hours move: nothing to take the close from, so the live print stays.
     const unknownClose = createFinancials({ quote: { ...afterHours, regularClose: undefined, regularCloseSessionDate: undefined,
       postMarketChange: undefined, postMarketChangePercent: undefined } });
     expect(shown(unknownClose, "price", "change", "change_pct", "ext_hours")).toEqual(["165.39", "-2.21", "-1.32%", "—"]);
     expect(sorted(unknownClose, "price", "change_pct")[0]).toBe(165.39);
 
-    // The pre-market quote carries no earlier close: LAST is the pre-market print against the previous close, as EXT% is.
+    // A pre-market quote that does not carry the last session's close and move: LAST is the pre-market print against the previous close, as EXT% is.
     const pre = createFinancials({ quote: { price: 160.57, change: 0, changePercent: 0, previousClose: 160.57, marketState: "PRE",
       preMarketPrice: 162, preMarketChange: 1.43, preMarketChangePercent: 0.8906, listingExchangeName: "NASDAQ" } });
     expect(shown(pre, "price", "change", "change_pct", "ext_hours")).toEqual(["162.00", "+1.43", "+0.89%", "+0.89%"]);
     expect(sorted(pre, "price", "change_pct")).toEqual([162, 0.8906]);
+
+    // With them the row holds the last session as after the close, and EXT% is the only pre-market figure; holdings stay live.
+    const reported = createFinancials({ quote: { ...pre.quote!, price: 166.95, change: 6.38, changePercent: 3.9733, previousClose: 160.57,
+      regularClose: 160.57, regularCloseSessionDate: "2026-10-08", regularChange: -7.03, regularChangePercent: -4.1945,
+      changeSessionDate: "2026-10-09", preMarketPrice: 166.95, preMarketChange: 6.38, preMarketChangePercent: 3.9733 } });
+    expect(shown(reported, "price", "change", "change_pct", "ext_hours")).toEqual(["160.57", "-7.03", "-4.19%", "+3.97%"]);
+    expect(sorted(reported, "price", "change_pct")).toEqual([160.57, -4.1945]);
+    expect(sorted(reported, "day_pnl")[0]).toBeCloseTo(63.8, 8);
 
     // A venue without extended hours reports no close beside its move.
     const closed = createFinancials({ quote: { symbol: "7203.T", currency: "JPY", price: 2800, change: 12, changePercent: 0.43,

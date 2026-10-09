@@ -108,9 +108,9 @@ const FLASHABLE_QUOTE_COLUMN_IDS = new Set([
   "mark_delta",
 ]);
 
-// After the regular close these three hold the close and the day's move while
-// only the extended print ticks (see the portfolio column values), so a tick
-// does not flash them.
+// After the regular close, and in the pre-market with the last session's close
+// and move, these three hold that close and its move while only the extended
+// print ticks (see the portfolio column values), so a tick does not flash them.
 const STEADY_AFTER_CLOSE_QUOTE_COLUMN_IDS = new Set(["price", "change", "change_pct"]);
 
 const EMPTY_FLASH_SYMBOLS = new Map<string, QuoteFlashDirection>();

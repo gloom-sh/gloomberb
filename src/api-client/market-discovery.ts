@@ -46,6 +46,12 @@ export interface MarketHeatmapAsset {
   industry: string | null;
   marketState: string | null;
   source: MarketHeatmapSource;
+  /**
+   * The move of the last completed regular session, which `price`, `change`
+   * and `changePercent` then are. Null while the regular session trades, and
+   * for a name without that session's close.
+   */
+  regularChangePercent?: number | null;
 }
 
 export interface MarketHeatmapResult {
@@ -53,9 +59,9 @@ export interface MarketHeatmapResult {
   universe: MarketHeatmapUniverseId;
   source: MarketHeatmapSource;
   fetchedAt: number;
-  /** The market session when the snapshot was taken, such as `PRE`, `REGULAR` or `POST`. */
-  session?: string | null;
-  /** The latest regular session the snapshot knows, as a New York date (`YYYY-MM-DD`). */
+  /** The US market session the snapshot describes; null when the server cannot tell. */
+  session?: "REGULAR" | "PRE" | "POST" | "CLOSED" | null;
+  /** The completed regular session every stored tile describes outside the regular session, as a New York date; null while it trades. */
   regularSessionDate?: string | null;
   assets: MarketHeatmapAsset[];
 }

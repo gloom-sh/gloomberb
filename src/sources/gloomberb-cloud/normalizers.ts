@@ -91,6 +91,11 @@ export function mapQuote(
     changePercent,
     previousClose: impossibleClose ? undefined : normalizePriceValueByDivisor(quote.previousClose, divisor),
     regularClose: normalizePriceValueByDivisor(quote.regularClose, divisor),
+    // JSON carries an unavailable move as null; the percent is unitless.
+    regularChange: normalizePriceValueByDivisor(quote.regularChange ?? undefined, divisor),
+    regularChangePercent: typeof quote.regularChangePercent === "number" && Number.isFinite(quote.regularChangePercent)
+      ? quote.regularChangePercent
+      : undefined,
     high52w: normalizePriceValueByDivisor(quote.high52w, divisor),
     low52w: normalizePriceValueByDivisor(quote.low52w, divisor),
     bid: normalizePriceValueByDivisor(quote.bid, divisor),

@@ -89,6 +89,15 @@ test("a previous close far below the 52-week low drops the move it implies, and 
   expect(mapQuote({ ...withoutRange, previousClose: 0.0002, change: 3813.79, changePercent: 1 }).change).toBe(3813.79);
 });
 
+test("a null last-session move from the service is no move", () => {
+  const quote = mapQuote({ symbol: "SPCX", currency: "USD", price: 166.95, change: 6.38, changePercent: 3.97, lastUpdated: 1,
+    providerId: "gloomberb-cloud", dataSource: "delayed", regularClose: 160.57,
+    regularChange: null as unknown as undefined, regularChangePercent: null as unknown as undefined });
+  expect(quote.regularClose).toBe(160.57);
+  expect("regularChange" in quote).toBe(false);
+  expect("regularChangePercent" in quote).toBe(false);
+});
+
 describe("mapCloudFinancials", () => {
   test("divides GBp history with the raw quote currency, not the normalized GBP quote", () => {
     const financials = mapCloudFinancials({
@@ -100,6 +109,8 @@ describe("mapCloudFinancials", () => {
         currency: "GBp",
         regularClose: 23,
         regularCloseSessionDate: "2026-05-12",
+        regularChange: 0.5,
+        regularChangePercent: 2.2222,
         change: 1,
         changePercent: 4.5,
         lastUpdated: Date.parse("2026-05-13T15:00:00Z"),
@@ -122,6 +133,9 @@ describe("mapCloudFinancials", () => {
     expect(financials.quote?.price).toBeCloseTo(0.231);
     expect(financials.quote?.regularClose).toBeCloseTo(0.23);
     expect(financials.quote?.regularCloseSessionDate).toBe("2026-05-12");
+    // The move is in pence like the close; its percent is unitless.
+    expect(financials.quote?.regularChange).toBeCloseTo(0.005);
+    expect(financials.quote?.regularChangePercent).toBe(2.2222);
     expect(financials.priceHistory[0]?.close).toBeCloseTo(0.231);
     expect(financials.priceHistory[0]?.date.toISOString()).toBe("2026-05-13T09:15:00.000Z");
   });

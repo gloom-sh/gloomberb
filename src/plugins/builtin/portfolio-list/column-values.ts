@@ -172,10 +172,12 @@ function tradedQuoteDisplay(
 }
 
 /**
- * LAST, CHG and CHG% once the regular session is over: its close and its move,
- * frozen, because the EXT% column carries the extended print measured from
- * that close. Until the close, and wherever no close is reported (the
- * pre-market, venues without extended hours), the traded price as above.
+ * LAST, CHG and CHG% once the regular session is over, and in the pre-market
+ * while the quote carries the last session's close and move: that close and its
+ * move, frozen, because the EXT% column carries the extended print measured
+ * from that close. Until the close, and wherever no close is reported (a
+ * pre-market quote without it, venues without extended hours), the traded price
+ * as above.
  * Valuation columns (DAY P&L, MKT VAL, weight, P&L) keep the live price.
  * A watchlist's Avg Day averages this CHG%.
  */
