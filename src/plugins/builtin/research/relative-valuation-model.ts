@@ -12,6 +12,8 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
   const quoteStale = quote?.stale === true;
   const capitalization = selectMarketCapitalization(quoteStale ? undefined : quote, fundamentals);
   const enterpriseValue = reportedEnterpriseValue(fundamentals);
+  // A zero or non-finite enterprise value is the source's gap, and the ratio it serves beside it comes from the same observation.
+  const enterpriseValueGap = fundamentals?.enterpriseValue != null && enterpriseValue == null;
   const compatibleCurrency = !!fundamentals?.financialCurrency && !!quote?.currency
     && fundamentals.financialCurrency === quote.currency;
   const reportedMultiples = {
@@ -49,7 +51,7 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
     /** Why a multiple is N/M: its earnings base is zero or a loss. */
     notMeaningful,
     // Vendor ADR ratios can mix unverified valuation and reporting units too.
-    evSales: !compatibleCurrency ? null
+    evSales: !compatibleCurrency || enterpriseValueGap ? null
       : fundamentals?.enterpriseToRevenue != null && Number.isFinite(fundamentals.enterpriseToRevenue)
         ? fundamentals.enterpriseToRevenue
         : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0

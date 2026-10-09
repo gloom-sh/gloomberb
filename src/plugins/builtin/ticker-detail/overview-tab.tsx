@@ -189,6 +189,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const stats = buildOverviewStats({
     quote,
     fundamentals,
+    financialCurrency: financials?.financialCurrency,
     quoteCurrency,
     baseCurrency,
     toBase,

@@ -113,6 +113,14 @@ test("provider EV/S requires verified compatible reporting units even when a rat
   expect(relativeValuationValues(financials).evSales).toBe(4.2);
   financials.fundamentals.enterpriseToRevenue = NaN;
   expect(relativeValuationValues(financials).evSales).toBe(4);
+
+  // A zero or non-finite enterprise value (a bank's) is a gap, and the ratio served beside it is junk from the same source.
+  for (const enterpriseValue of [0, Number.NaN]) {
+    financials.fundamentals = { financialCurrency: "USD", enterpriseToRevenue: -1.055, enterpriseValue, revenue: 25 };
+    expect(relativeValuationValues(financials).evSales).toBeNull();
+  }
+  financials.fundamentals = { financialCurrency: "USD", enterpriseToRevenue: 4.2, enterpriseValue: 100, revenue: 25 };
+  expect(relativeValuationValues(financials).evSales).toBe(4.2);
 });
 
 test("loss-making peers retain reported multiples without ranking them as cheap earnings", async () => {
