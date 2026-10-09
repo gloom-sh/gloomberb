@@ -4,10 +4,7 @@ import {
   type AccountProfile,
   type ChatUserSummary,
 } from "../../../api-client";
-import {
-  PROFILE_POPOVER_CLOSE_DELAY_MS,
-  hasPublicChatProfileInfo,
-} from "./message/profile-popover";
+import { PROFILE_POPOVER_CLOSE_DELAY_MS } from "./message/profile-popover";
 
 function accountProfileToChatUser(profile: AccountProfile): ChatUserSummary {
   return {
@@ -110,17 +107,13 @@ export function useChatProfilePopover(trackOwnProfileUserId?: string) {
     const cachedUser = ownProfile && ownProfileRef.current?.id === targetUser.id
       ? ownProfileRef.current
       : targetUser;
-    // Only what the server shared: a private or empty profile has no card.
-    if (!ownProfile && !hasPublicChatProfileInfo(cachedUser)) {
-      closeProfilePopover();
-      return;
-    }
+    // Every name has a card: a private or empty profile gets the name-only one.
     cancelProfilePopoverClose();
     pinnedRef.current = options?.pin === true;
     profilePopoverUserIdRef.current = cachedUser.id;
     setProfilePopoverUser(cachedUser);
     if (ownProfile) refreshOwnProfile(targetUser.id);
-  }, [cancelProfilePopoverClose, closeProfilePopover, refreshOwnProfile]);
+  }, [cancelProfilePopoverClose, refreshOwnProfile]);
 
   /** Pointing at a name previews its card, but never over one a click pinned. */
   const hoverProfilePopover = useCallback((targetUser: ChatUserSummary, options?: { ownProfile?: boolean }) => {

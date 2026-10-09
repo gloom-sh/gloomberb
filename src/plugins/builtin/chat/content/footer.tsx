@@ -6,7 +6,6 @@ import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-ti
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
-import { hasPublicChatProfileInfo } from "../message/profile-popover";
 import { chatMessageOpenTargets, type ChatOpenTarget } from "./open-targets";
 import { openChatImageViewer } from "../attachments/desktop";
 
@@ -28,7 +27,6 @@ export function useChatFooter({
   catalog,
   openTicker,
   openAttachPicker,
-  currentUserId,
   profilePopoverUser,
   showProfilePopover,
   closeProfilePopover,
@@ -65,7 +63,6 @@ export function useChatFooter({
   openTicker: (symbol: string) => void;
   /** Opens the composer's file picker; null where images cannot be attached. */
   openAttachPicker: (() => void) | null;
-  currentUserId: string | undefined;
   profilePopoverUser: ChatUserSummary | null;
   showProfilePopover: (user: ChatUserSummary) => void;
   closeProfilePopover: () => void;
@@ -139,7 +136,6 @@ export function useChatFooter({
   }, [dialog, openTarget, openTargets]);
 
   const author = selectedMessage?.user ?? null;
-  const authorHasProfile = !!author && (author.id === currentUserId || hasPublicChatProfileInfo(author));
   // A card opened from the keyboard follows the selection: moving on closes it.
   const keyboardProfileRef = useRef(false);
   const toggleAuthorProfile = useCallback(() => {
@@ -219,7 +215,8 @@ export function useChatFooter({
       else if (canSend) hints.push({ id: "reply", key: "Enter", label: "reply", title: "Reply", onPress: () => latest.current.beginReplyTo(latest.current.selectedIdx, { deferFocus: true }) });
       if (canEdit) hints.push({ id: "edit", key: "e", label: "dit", title: "Edit Message", onPress: () => { latest.current.beginEditMessage(latest.current.selectedIdx, { deferFocus: true }); } });
       if (openTargets.length > 0) hints.push({ id: "open", key: "o", label: "pen", title: openTargetTitle, onPress: () => { void latest.current.openSelectedTargets(); } });
-      if (authorHasProfile) hints.push({ id: "profile", key: "p", label: "rofile", title: "Show Profile", onPress: () => latest.current.toggleAuthorProfile() });
+      // Every author has a card, if only their name and a way to write to them.
+      if (author) hints.push({ id: "profile", key: "p", label: "rofile", title: "Show Profile", onPress: () => latest.current.toggleAuthorProfile() });
     } else if (!composing && canSend) {
       hints.push({ id: "compose", key: "i", label: " compose", title: "Compose", onPress: () => queueMicrotask(() => latest.current.focusComposer()) });
     }
@@ -266,7 +263,7 @@ export function useChatFooter({
     }
     return { hints, menu };
   }, [
-    authorHasProfile,
+    author,
     authorMessageLabel,
     canAttachImages,
     failedSend,

@@ -44,7 +44,6 @@ import {
   directMessageAction,
   findDirectChannelWith,
 } from "../direct-messages";
-import { hasPublicChatProfileInfo } from "../message/profile-popover";
 import type { ChatUserContextMenuEvent } from "../message/types";
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { usePluginAppActions } from "../../../runtime";
@@ -598,11 +597,9 @@ export function ChatContent({
         onSelect: () => { void messageUser(target); },
       });
     }
-    if (target.id === user?.id || hasPublicChatProfileInfo(target)) {
-      items.push({ id: "chat-user:profile", label: "Show Profile", onSelect: () => pinUserProfile(target) });
-    }
+    items.push({ id: "chat-user:profile", label: "Show Profile", onSelect: () => pinUserProfile(target) });
     void showContextMenu({ kind: "chat-user", userId: target.id, username: target.username }, items, event);
-  }, [directMessageContext, messageUser, pinUserProfile, showContextMenu, user?.id]);
+  }, [directMessageContext, messageUser, pinUserProfile, showContextMenu]);
   // Messages are memoized; they keep one handler that runs the latest menu.
   const openUserContextMenuRef = useRef(openUserContextMenu);
   openUserContextMenuRef.current = openUserContextMenu;
@@ -610,12 +607,14 @@ export function ChatContent({
     openUserContextMenuRef.current(target, event);
   }, []);
 
+  const profileDirectMessage = useMemo(() => (
+    profilePopoverUser ? directMessageAction(profilePopoverUser, directMessageContext) : null
+  ), [directMessageContext, profilePopoverUser]);
   const profileMessageAction = useMemo(() => {
-    const action = profilePopoverUser ? directMessageAction(profilePopoverUser, directMessageContext) : null;
-    if (!action || action.kind === "refused" || !profilePopoverUser) return null;
+    if (!profileDirectMessage || profileDirectMessage.kind === "refused" || !profilePopoverUser) return null;
     const target = profilePopoverUser;
-    return { label: action.buttonLabel, onPress: () => { void messageUser(target); } };
-  }, [directMessageContext, messageUser, profilePopoverUser]);
+    return { label: profileDirectMessage.buttonLabel, onPress: () => { void messageUser(target); } };
+  }, [messageUser, profileDirectMessage, profilePopoverUser]);
 
   const selectedMessageAuthor = selectionActive && !sidebarFocused ? messages[selectedIdx]?.user ?? null : null;
   const authorMessageAction = useMemo(() => {
@@ -791,7 +790,6 @@ export function ChatContent({
     catalog,
     openTicker,
     openAttachPicker: canAttach && nativePaneChrome ? () => attachPickerRef.current?.() : null,
-    currentUserId: user?.id,
     profilePopoverUser,
     showProfilePopover: showUserProfilePopover,
     closeProfilePopover,
@@ -913,6 +911,7 @@ export function ChatContent({
         onSetUpProfile={openProfileSetup}
         onUserContextMenu={onUserContextMenu}
         profileMessageAction={profileMessageAction}
+        profileMessageRefusal={profileDirectMessage?.refusal ?? null}
       />
 
       {stackedNav ? null : newDmDialog}

@@ -409,13 +409,12 @@ describe("ChatContent channel sidebar", () => {
     }
   });
 
-  test("the Message action on a profile card starts the DM, selects it and leaves the composer ready", async () => {
+  test("the Message action on the card of someone with no public profile starts the DM, selects it and leaves the composer ready", async () => {
     const juniper = {
       id: "u-juniper",
       username: "juniper",
-      displayName: "Juniper",
-      profilePublic: true,
-      bio: "Rates and FX.",
+      displayName: "Juniper Park",
+      profilePublic: false,
       acceptUnknownDms: true,
     };
     const controller = createController({

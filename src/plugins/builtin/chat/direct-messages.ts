@@ -59,8 +59,9 @@ export function directMessageAvailability(
 export interface DirectMessageAction {
   /**
    * Opens the DM you already share, starts one, or cannot: their settings or
-   * the account refuse a new DM. A menu shows a refused one disabled; a card
-   * or the pane menu leaves it out.
+   * the account refuse a new DM. A menu shows a refused one disabled, the
+   * card of someone with no public profile says why, and a profile card or
+   * the pane menu leaves it out.
    */
   kind: "open" | "start" | "refused";
   username: string;
@@ -68,6 +69,11 @@ export interface DirectMessageAction {
   menuLabel: string;
   /** For a button beside the name: "Message" or "Open DM". */
   buttonLabel: string;
+  /**
+   * A refused one: why, for a line where the button would be. It leaves the
+   * name out; the card it sits on already shows it.
+   */
+  refusal?: string;
 }
 
 /**
@@ -97,6 +103,11 @@ export function directMessageAction(
     username,
     menuLabel: tf("Message @{username}", { username }),
     buttonLabel: t("Message"),
+    ...(availability.kind === "refused" ? {
+      refusal: availability.reason === "dms-off"
+        ? t("Only takes DMs from people they have written to first.")
+        : t("Does not take DMs."),
+    } : {}),
   };
 }
 

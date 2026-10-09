@@ -3,7 +3,7 @@ import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import type { ChatUserSummary, PublicPortfolioAnalytics } from "../../../../api-client";
-import { formatNumber } from "../../../../utils/format";
+import { displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 
 export const PROFILE_POPOVER_CLOSE_DELAY_MS = 40;
@@ -122,6 +122,37 @@ function HeaderAnalyticsStats({
   );
 }
 
+/** The narrowest name-only card, so a short name still has a button to aim at. */
+const NAME_CARD_MIN_WIDTH = 18;
+
+/**
+ * A name-only card's one row: the handle, then the display name where it says
+ * something the handle does not.
+ */
+function nameCardRow(user: ChatUserSummary): { handle: string; name: string | null } {
+  const displayName = user.displayName?.trim() ?? "";
+  if (!user.username) return { handle: displayName, name: null };
+  const same = displayName.replace(/^@+/, "").toLowerCase() === user.username.toLowerCase();
+  return { handle: `@${user.username}`, name: displayName && !same ? displayName : null };
+}
+
+function nameCardNaturalWidth(user: ChatUserSummary): number {
+  const { handle, name } = nameCardRow(user);
+  return displayWidth(handle) + (name ? 1 + displayWidth(name) : 0);
+}
+
+function NameCardRow({ user, width }: { user: ChatUserSummary; width: number }) {
+  const { handle, name } = nameCardRow(user);
+  const handleText = truncateToDisplayWidth(handle, width);
+  const nameWidth = width - displayWidth(handleText) - 1;
+  return (
+    <Box height={1} width={width} flexDirection="row">
+      <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{handleText}</Text>
+      {name && nameWidth >= 4 ? <Text fg={colors.textDim}>{` ${truncateToDisplayWidth(name, nameWidth)}`}</Text> : null}
+    </Box>
+  );
+}
+
 export function UserProfilePopover({
   user,
   width,
@@ -131,6 +162,7 @@ export function UserProfilePopover({
   isOwnProfile = false,
   onSetUpProfile,
   messageAction,
+  messageRefusal,
 }: {
   user: ChatUserSummary;
   width: number;
@@ -143,13 +175,31 @@ export function UserProfilePopover({
   onSetUpProfile?: () => void;
   /** "Message" or "Open DM" for someone you can write to; left out for anyone else. */
   messageAction?: { label: string; onPress: () => void } | null;
+  /**
+   * Why someone takes no DM from you. The name-only card says it where the
+   * button would be; a profile card leaves it out.
+   */
+  messageRefusal?: string | null;
 }) {
-  const popoverWidth = Math.max(24, Math.min(38, width - 4));
+  const { nativePaneChrome } = useUiCapabilities();
+  // The terminal card's border and padding take two cells a side; the desktop
+  // popover pads itself, and its content keeps the width it always had.
+  const chromeWidth = nativePaneChrome ? 2 : 4;
+  const maxPopoverWidth = Math.max(24, Math.min(38, width - 4));
+  // Anyone without a public profile still gets a card: the name and a way to write to them.
+  const nameOnly = !isOwnProfile && !hasPublicChatProfileInfo(user);
+  const popoverWidth = nameOnly
+    ? Math.min(maxPopoverWidth, Math.max(
+      NAME_CARD_MIN_WIDTH,
+      nameCardNaturalWidth(user),
+      messageRefusal ? displayWidth(messageRefusal) : 0,
+    ) + chromeWidth)
+    : maxPopoverWidth;
   const meta = [user.title, user.company].filter(Boolean).join(" · ");
   const bio = user.bio?.trim();
   const analytics = user.portfolioAnalytics;
   const metrics = analytics ? analyticsMetrics(analytics) : [];
-  const headerWidth = Math.max(1, popoverWidth - 2);
+  const headerWidth = Math.max(1, popoverWidth - chromeWidth);
   const maxStatsWidth = Math.max(0, headerWidth - 8);
   const statsWidth = metrics.length > 0 && maxStatsWidth >= 8
     ? Math.min(headerMetricsNaturalWidth(metrics), maxStatsWidth)
@@ -157,8 +207,16 @@ export function UserProfilePopover({
   const usernameWidth = Math.max(1, headerWidth - (statsWidth > 0 ? statsWidth + 1 : 0));
   const showSetupAction = shouldOfferChatProfileSetup(user, isOwnProfile) && !!onSetUpProfile;
 
-  const { nativePaneChrome } = useUiCapabilities();
-  const content = (
+  const content = nameOnly ? (
+    <>
+      <NameCardRow user={user} width={headerWidth} />
+      {messageAction ? (
+        <Button label={messageAction.label} width={headerWidth} variant="ghost" compact stopPropagation onPress={messageAction.onPress} />
+      ) : messageRefusal ? (
+        <Text fg={colors.textDim} wrapText width={headerWidth}>{messageRefusal}</Text>
+      ) : null}
+    </>
+  ) : (
     <>
       <Box height={1} width={headerWidth} flexDirection="row">
         <Box width={usernameWidth}>
@@ -174,9 +232,9 @@ export function UserProfilePopover({
         ) : null}
         <Box flexGrow={1} />
       </Box>
-      {meta ? <Text fg={colors.textDim}>{truncateWithEllipsis(meta, popoverWidth - 2)}</Text> : null}
+      {meta ? <Text fg={colors.textDim}>{truncateWithEllipsis(meta, headerWidth)}</Text> : null}
       {bio ? (
-        <Text fg={colors.text} wrapText width={popoverWidth - 2}>
+        <Text fg={colors.text} wrapText width={headerWidth}>
           {bio}
         </Text>
       ) : null}

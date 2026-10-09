@@ -846,6 +846,8 @@ export const ja: Record<string, string> = {
   "Could not start the conversation (error {status}).": "会話を開始できませんでした (エラー {status})。",
   "Could not start the conversation. Check your connection and try again.": "会話を開始できませんでした。接続を確認して、もう一度お試しください。",
   "no DMs": "DM 不可",
+  "Only takes DMs from people they have written to first.": "自分から先にメッセージを送った相手の DM だけを受け付けています。",
+  "Does not take DMs.": "DM を受け付けていません。",
   "Message @{username}": "@{username} にメッセージ",
   "Open DM with @{username}": "@{username} との DM を開く",
   "Message": "メッセージ",

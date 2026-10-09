@@ -832,6 +832,8 @@ export const es: Record<string, string> = {
   "Could not start the conversation (error {status}).": "No se pudo iniciar la conversación (error {status}).",
   "Could not start the conversation. Check your connection and try again.": "No se pudo iniciar la conversación. Revisa tu conexión e inténtalo de nuevo.",
   "no DMs": "sin DM",
+  "Only takes DMs from people they have written to first.": "Solo acepta DM de personas a las que escribió primero.",
+  "Does not take DMs.": "No acepta DM.",
   "Message @{username}": "Enviar mensaje a @{username}",
   "Open DM with @{username}": "Abrir DM con @{username}",
   "Message": "Mensaje",

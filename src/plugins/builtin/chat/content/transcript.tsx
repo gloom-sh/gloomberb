@@ -52,6 +52,8 @@ interface ChatTranscriptProps {
   onUserContextMenu: (user: ChatUserSummary, event: ChatUserContextMenuEvent) => void;
   /** The card's "Message" action for this user, or null where none is offered. */
   profileMessageAction: { label: string; onPress: () => void } | null;
+  /** Why this user takes no DM from you, for a card that has no profile to show instead. */
+  profileMessageRefusal: string | null;
   stickyTranscript: boolean;
   user: { id: string; username: string; emailVerified: boolean } | null;
   userByUsername: Map<string, ChatUserSummary>;
@@ -95,6 +97,7 @@ export function ChatTranscript({
   onSetUpProfile,
   onUserContextMenu,
   profileMessageAction,
+  profileMessageRefusal,
 }: ChatTranscriptProps) {
   return (
     <>
@@ -192,6 +195,7 @@ export function ChatTranscript({
           isOwnProfile={profilePopoverUser.id === user?.id}
           onSetUpProfile={onSetUpProfile}
           messageAction={profileMessageAction}
+          messageRefusal={profileMessageRefusal}
         />
       )}
     </>

@@ -85,8 +85,9 @@ describe("directMessageAction", () => {
   });
 
   test("refuses a bot and someone who takes no new DMs, and offers nothing for yourself or before you can send", () => {
-    expect(directMessageAction(bot, context)?.kind).toBe("refused");
-    expect(directMessageAction(closed, { ...context, channels: [] })?.kind).toBe("refused");
+    expect(directMessageAction(bot, context)).toMatchObject({ kind: "refused", refusal: "Does not take DMs." });
+    expect(directMessageAction(closed, { ...context, channels: [] }))
+      .toMatchObject({ kind: "refused", refusal: "Only takes DMs from people they have written to first." });
     expect(directMessageAction({ ...open, id: "u-self" }, context)).toBeNull();
     expect(directMessageAction(open, { ...context, canSend: false })).toBeNull();
   });
