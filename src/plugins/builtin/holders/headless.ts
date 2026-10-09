@@ -12,6 +12,7 @@ import {
   formatMaybePercent,
   formatMoneyCompact,
   formatSignedCompact,
+  holderValueCurrency,
   resolveHolderOwnershipPercent,
 } from "./format";
 import { buildRows, sortRows } from "./table-model";
@@ -19,6 +20,8 @@ import type { HolderData } from "../../../types/financials";
 import type { HolderColumnId } from "./types";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import {
+  holderShareBasisMarker,
+  holderShareBasisNote,
   holderValueBasis,
   holdersHeaderLine,
   moneyColumnHeader,
@@ -28,6 +31,8 @@ import {
 
 /** Columns a source fills only when it reports the quarter's change. */
 const CHANGE_COLUMN_KEYS = new Set(["changeShares", "changePercent"]);
+/** Shown only when some row is held as depositary receipts, as on a home line abroad. */
+const BASIS_COLUMN_KEY = "shareBasis";
 import type { BeneficialOwnersPayload } from "../../../api-client/beneficial-owners";
 import { fetchBeneficialOwners, type BeneficialOwnersRequest } from "./beneficial-client";
 import type { BeneficialColumnId } from "./beneficial-model";
@@ -59,6 +64,11 @@ const HOLDER_COLUMNS: HeadlessPaneColumn[] = [
     header: "Amount",
     align: "right",
     format: (value) => value == null ? "-" : formatCompact(Number(value)),
+  },
+  {
+    key: BASIS_COLUMN_KEY,
+    header: "Basis",
+    format: (_value, row) => holderShareBasisMarker(row),
   },
   {
     key: "changeShares",
@@ -238,6 +248,8 @@ export function createHoldersHeadless(
       }
       const { data, marketCap } = await dependencies.loadSnapshot(symbol, args, ctx);
       const currency = data.currency ?? "USD";
+      // A London line's values can be dollars from the 13F filings; they are labelled and formatted as such.
+      const valueCurrency = holderValueCurrency(data, currency)!;
       const sorted = sortRows(buildRows(data), {
         columnId: SORT_COLUMNS[String(args.options.sort)] ?? "value",
         direction: args.options.order === "asc" ? "asc" : "desc",
@@ -253,19 +265,23 @@ export function createHoldersHeadless(
           changePercent: row.changePercent ?? null,
           percentHeld: resolveHolderOwnershipPercent(row, marketCap) ?? null,
           reportDate: row.reportDate ?? null,
-          currency,
+          currency: valueCurrency,
+          shareBasis: row.shareBasis ?? null,
         }));
       const total = data.summary?.institutionsCount ?? null;
       const changeReported = rows.some((row) => row.changeShares != null || row.changePercent != null);
       const reportDate = sharedReportDate(rows);
-      const valueBasis = holderValueBasis(reportDate);
+      const valueBasis = holderValueBasis(reportDate, data.valueBasis, valueCurrency);
       const positionsBasis = rows.length > 0 ? nonUsHolderCaveat(data.exchange, currency) : null;
+      const shareBasisNote = holderShareBasisNote(data, rows);
+      const markedRows = rows.some((row) => holderShareBasisMarker(row));
       // The title names the ticker and the closing line carries the as-of date.
       const header = holdersHeaderLine({
         name: data.name,
         symbol: data.symbol && data.symbol !== symbol ? data.symbol : null,
         exchange: data.exchange,
-        currency,
+        currency: valueCurrency,
+        listingCurrency: data.currency,
         shown: rows.length,
         reported: sorted.length,
         total,
@@ -278,13 +294,18 @@ export function createHoldersHeadless(
         // A change column that is empty on every row says nothing; the line above explains it once.
         columns: HOLDER_COLUMNS
           .filter((column) => changeReported || !CHANGE_COLUMN_KEYS.has(column.key))
-          .map((column) => column.key === "value" ? { ...column, header: moneyColumnHeader(column.header, currency) } : column),
+          .filter((column) => markedRows || column.key !== BASIS_COLUMN_KEY)
+          .map((column) => column.key === "value" ? { ...column, header: moneyColumnHeader(column.header, valueCurrency) } : column),
         rows,
         metadata: {
           symbol: data.symbol || symbol,
           name: data.name ?? null,
           exchange: data.exchange ?? null,
           currency,
+          valueCurrency,
+          ...(data.isDepositaryReceipt != null ? { isDepositaryReceipt: data.isDepositaryReceipt } : {}),
+          ...(data.shareBasis ? { shareBasis: data.shareBasis } : {}),
+          ...(data.adrRatio != null ? { adrRatio: data.adrRatio } : {}),
           asOf: data.asOf ?? null,
           summary: data.summary ?? null,
           shown: rows.length,
@@ -294,7 +315,7 @@ export function createHoldersHeadless(
           valueBasis,
           changeReported,
           positionsBasis,
-          notices: [header, basis, positionsBasis].filter((line): line is string => !!line),
+          notices: [header, basis, positionsBasis, shareBasisNote].filter((line): line is string => !!line),
         },
       };
     },

@@ -26,7 +26,7 @@ import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
-import { isDepositaryReceipt } from "../../../utils/depositary-receipt";
+import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
 import {
   CompactRangeBar,
   FundamentalsGrid,
@@ -194,7 +194,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
     toBase,
     marketCapExchangeRates: exchangeRates,
     nextEarnings: financials?.nextEarnings,
-    depositaryReceipt: isDepositaryReceipt({ ...quote, description }),
+    depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     // Report and ex-dividend dates are the listing's calendar days.
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
   });

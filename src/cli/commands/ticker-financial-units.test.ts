@@ -76,3 +76,26 @@ test("a pence-quoted range shares one decimal count, other ranges are unchanged"
   const dollars = await report({ quote: { ...quote, instrumentType: "EQUITY", low: 99.5, high: 101.25 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
   expect(dollars).toContain("Day Range $99.50 - $101.25");
 });
+
+test("share counts say ADR equivalent where the service puts them on the receipts, and the profile decides only without it", async () => {
+  const profile = { description: "BHP Group Ltd. Sponsored ADR is an American depositary receipt representing two ordinary shares of BHP Group Limited." };
+  const statements = (shareBasis: "depositary_receipt" | "ordinary" | undefined, dilutedShares: number) => ({
+    annualStatements: [{ date: "2026-06-30", currency: "USD", ...(shareBasis ? { shareBasis } : {}), dilutedShares }], quarterlyStatements: [], priceHistory: [],
+  });
+  const nyse = await report({ quote: { ...quote, isDepositaryReceipt: true, adrRatio: 2 }, profile, ...statements("depositary_receipt", 2_544_500_000),
+    fundamentals: { sharesOutstanding: 2_540_081_549, isDepositaryReceipt: true, adrRatio: 2, shareBasis: "depositary_receipt", underlyingOrdinaryShares: 5_080_163_098 },
+  });
+  expect(nyse).toContain("Shares Outstanding 2.54B (ADR equivalent = 5.08B ordinary shares)");
+  expect(nyse).toContain("Diluted Shares 2.54B (ADR equivalent)");
+  // The London line shares the profile but is the ordinary line.
+  const london = await report({ quote: { ...quote, currency: "GBP", isDepositaryReceipt: false }, profile, ...statements("ordinary", 5_089_000_000),
+    fundamentals: { sharesOutstanding: 5_080_163_098, isDepositaryReceipt: false, shareBasis: "ordinary" },
+  });
+  expect(london).toContain("Shares Outstanding 5.08B\n");
+  expect(london).toContain("Diluted Shares 5.09B");
+  expect(london).not.toContain("ADR equivalent");
+  // An older service: the profile marks the count, and a statement row with no basis is not relabelled.
+  const older = await report({ quote, profile, ...statements(undefined, 2_544_500_000), fundamentals: { sharesOutstanding: 5_080_163_098 } });
+  expect(older).toContain("Shares Outstanding 5.08B (ADR equivalent)\n");
+  expect(older).toContain("Diluted Shares 2.54B\n");
+});

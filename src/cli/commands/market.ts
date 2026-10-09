@@ -44,6 +44,7 @@ import {
 import { historyPriceDecimals, historyRows } from "../history-rows";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { formatUtcTime } from "../../utils/utc-time";
+import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, quotesFreshness, rowsFreshness } from "../freshness";
 import {
@@ -72,11 +73,14 @@ import { nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import {
   holderListFacts,
+  holderShareBasisMarker,
+  holderShareBasisNote,
   holderValueBasis,
   moneyColumnHeader,
   nonUsHolderCaveat,
   sharedReportDate,
 } from "../../plugins/builtin/holders/report-header";
+import { formatHolderOwnershipPercent, holderValueCurrency } from "../../plugins/builtin/holders/format";
 import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
 import {
@@ -257,6 +261,7 @@ function holderRows(data: HolderData, ownerTypes?: Set<string>) {
     value: holder.value ?? null,
     percentHeld: holder.percentHeld ?? null,
     changeShares: holder.changeShares ?? null,
+    shareBasis: holder.shareBasis ?? null,
   }));
 }
 
@@ -759,16 +764,23 @@ async function runHolders(
     const institutional = !ownerTypes?.has("insider");
     const total = institutional ? data.summary?.institutionsCount ?? null : null;
     const reportDate = sharedReportDate(rows);
-    const valueBasis = rows.length > 0 ? holderValueBasis(reportDate) : null;
+    // A London line's values can be dollars from the 13F filings; the listing's currency is not their unit.
+    const valueCurrency = holderValueCurrency(data);
+    const valueBasis = rows.length > 0 ? holderValueBasis(reportDate, data.valueBasis, valueCurrency) : null;
     const positionsBasis = rows.length > 0 ? nonUsHolderCaveat(identity.exchange || data.exchange, data.currency) : null;
+    const shareBasisNote = holderShareBasisNote(data, rows);
+    const markedRows = rows.some((row) => holderShareBasisMarker(row));
     // The heading names the listing; its unit, date and how much of the list follows on the same line.
-    const facts = holderListFacts({ currency: data.currency, asOf: data.asOf, shown, reported: rows.length, total });
+    const facts = holderListFacts({
+      currency: valueCurrency, listingCurrency: data.currency, asOf: data.asOf, shown, reported: rows.length, total,
+    });
     ctx.printResult({
       data,
       metadata: {
         ...listingMetadata(identity),
         summary: data.summary,
         currency: data.currency ?? null,
+        valueCurrency: valueCurrency ?? null,
         asOf: data.asOf ?? null,
         shown,
         reported: rows.length,
@@ -785,16 +797,23 @@ async function runHolders(
         { key: "name", header: "Holder" },
         { key: "reportDate", header: "Date" },
         { key: "shares", header: "Shares", align: "right", format: formatCountCell },
+        // Marks the rows of a home line held as receipts; absent when no row is.
+        ...(markedRows ? [{ key: "shareBasis", header: "Basis", value: (row: Record<string, unknown>) => holderShareBasisMarker(row) }] : []),
         {
           key: "value",
-          header: moneyColumnHeader("Value", data.currency),
+          header: moneyColumnHeader("Value", valueCurrency),
           align: "right",
           value: (row) => row.value == null ? "" : formatCompact(Number(row.value)),
         },
-        { key: "percentHeld", header: "% Held", align: "right", format: formatFractionPercentCell },
+        {
+          key: "percentHeld",
+          header: "% Held",
+          align: "right",
+          format: (value) => isFiniteNumber(value) ? formatHolderOwnershipPercent(value) : "",
+        },
       ],
       summary: (holderData: HolderData) => [
-        [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? ""].filter(Boolean).join(" "),
+        [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? ""].filter(Boolean).join(" "),
         commandName === "insider" && ownerTypes ? insiderSummary(holderData, ownerTypes) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,

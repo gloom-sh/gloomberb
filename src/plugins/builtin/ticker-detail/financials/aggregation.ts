@@ -166,10 +166,14 @@ function aggregateQuarterlyStatements(
   }
   const currencies = new Set(statements.map((statement) => statement.currency));
   if (currencies.size > 1) return null;
+  // Its counts and EPS are on the quarters' share basis when all four state the same one.
+  const shareBases = new Set(statements.map((statement) => statement.shareBasis));
+  const shareBasis = shareBases.size === 1 ? [...shareBases][0] : undefined;
 
   const aggregate: FinancialTableStatement = {
     date,
     currency: [...currencies][0],
+    ...(shareBasis ? { shareBasis } : {}),
     aggregation: {
       kind: "trailing-four-quarters",
       periodEnd: statements.at(-1)!.date,

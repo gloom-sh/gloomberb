@@ -107,7 +107,13 @@ const SHARE_COUNT_FIELDS = new Set<keyof FinancialStatement>([
   "basicShares", "dilutedShares", "shareIssued", "ordinarySharesNumber", "treasurySharesNumber",
 ]);
 
-/** Currency changes affect monetary comparisons, not counts of reported shares. */
+const PER_SHARE_EARNINGS_FIELDS = new Set<keyof FinancialStatement>(["eps", "basicEps"]);
+
+/**
+ * Currency changes affect monetary comparisons, not counts of reported
+ * shares. Counts and EPS compare only on one share basis: receipts against
+ * ordinary shares would read as a split.
+ */
 export function canCompareFinancialRow(
   row: FinancialTableRow,
   current: FinancialStatement,
@@ -116,7 +122,9 @@ export function canCompareFinancialRow(
 ): boolean {
   if (!previous) return false;
   const key = row.kind === "group" ? row.summaryKey : row.key;
-  if (key && SHARE_COUNT_FIELDS.has(key)) return true;
+  const sameShareBasis = current.shareBasis === previous.shareBasis;
+  if (key && SHARE_COUNT_FIELDS.has(key)) return sameShareBasis;
+  if (key && PER_SHARE_EARNINGS_FIELDS.has(key) && !sameShareBasis) return false;
   const currentCurrency = (current.currency ?? financialCurrency)?.trim();
   const previousCurrency = (previous.currency ?? financialCurrency)?.trim();
   return !!currentCurrency && currentCurrency === previousCurrency;
@@ -267,6 +275,19 @@ export function financialStatementLimitations(financials: TickerFinancials | nul
     limitations.push("Parent net income is unavailable for some reported periods.");
   }
   return limitations;
+}
+
+/** "Ordinary Shares (bn ADRs)": a share-count line whose counts are depositary receipts. */
+export function receiptShareCountLabel(row: Pick<FinancialTableModelRow, "key" | "label" | "unitLabel">): string {
+  if (!row.key || !SHARE_COUNT_FIELDS.has(row.key)) return row.unitLabel;
+  const unit = row.unitLabel.startsWith(`${row.label} (`) ? row.unitLabel.slice(row.label.length + 2, -1) : "";
+  return `${row.label} (${unit ? `${unit} ` : ""}ADRs)`;
+}
+
+/** Whether a table row shows share counts or per-share earnings. */
+export function isPerShareFinancialRow(row: Pick<FinancialTableModelRow, "key" | "summaryKey">): boolean {
+  const key = row.key ?? row.summaryKey;
+  return !!key && (SHARE_COUNT_FIELDS.has(key) || PER_SHARE_EARNINGS_FIELDS.has(key));
 }
 
 export function resolveFinancialPeriod(
@@ -495,6 +516,7 @@ interface FinancialTableModelRow {
   id: string;
   key?: keyof FinancialStatement;
   summaryKey?: keyof FinancialStatement;
+  label: string;
   unitLabel: string;
   depth: number;
   growthDirection: FinancialGrowthDirection;
@@ -614,6 +636,7 @@ export function buildFinancialTableModel(
       id: row.id,
       key: row.kind === "metric" ? row.key : undefined,
       summaryKey: row.kind === "group" ? row.summaryKey : undefined,
+      label: row.label,
       unitLabel: row.unitLabel,
       depth: row.depth,
       growthDirection: row.growthDirection,

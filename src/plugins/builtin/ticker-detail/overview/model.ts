@@ -82,7 +82,7 @@ export function buildOverviewStats({
   toBase: CurrencyConverter;
   marketCapExchangeRates?: ReadonlyMap<string, number>;
   nextEarnings?: NextEarnings;
-  /** The listing is a depositary receipt, so its share count is in receipts. */
+  /** The share count is in depositary receipts, not ordinary shares. */
   depositaryReceipt?: boolean;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;

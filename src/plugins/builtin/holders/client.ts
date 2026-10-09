@@ -1,5 +1,6 @@
 import type { DataProvider, MarketDataRequestContext } from "../../../types/data-provider";
 import type { HolderData } from "../../../types/financials";
+import { holderStakeMarketCap, holderValueCurrency } from "./format";
 
 export async function loadHolderData(
   provider: DataProvider,
@@ -20,10 +21,6 @@ export async function loadHolderSnapshot(
     loadHolderData(provider, symbol, exchange),
     provider.getTickerFinancials(symbol, exchange).catch(() => null),
   ]);
-  const quoteMarketCap = financials?.quote?.marketCap;
-  const marketCap = financials?.quote?.currency && data.currency
-    && financials.quote.currency !== data.currency
-    ? undefined
-    : quoteMarketCap;
-  return { data, marketCap };
+  const quote = financials?.quote;
+  return { data, marketCap: holderStakeMarketCap(quote?.marketCap, quote?.currency, holderValueCurrency(data)) };
 }

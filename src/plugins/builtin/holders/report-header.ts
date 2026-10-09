@@ -1,4 +1,6 @@
+import type { HolderData } from "../../../types/financials";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../../../utils/currency-units";
+import { adrRatioText } from "../../../utils/depositary-receipt";
 import { canonicalExchange, isUsListingExchange, resolveExchangeTimeZone } from "../../../utils/exchanges";
 
 /**
@@ -12,7 +14,10 @@ export interface HolderReportFacts {
   /** Left out when the report title already names it. */
   symbol?: string | null;
   exchange?: string | null;
+  /** The unit the values are in. */
   currency?: string | null;
+  /** The listing's price currency, when the values are in another one. */
+  listingCurrency?: string | null;
   /** Left out when the report's closing line already carries it. */
   asOf?: string | null;
   /** Rows printed. */
@@ -46,10 +51,13 @@ function venueLabel(exchange?: string | null): string {
 
 /** What the list is, after the listing is named: its unit, date and how much of it is shown. */
 export function holderListFacts(
-  facts: Pick<HolderReportFacts, "currency" | "asOf" | "shown" | "reported" | "total">,
+  facts: Pick<HolderReportFacts, "currency" | "listingCurrency" | "asOf" | "shown" | "reported" | "total">,
 ): string[] {
+  const unit = currencyUnitLabel(facts.currency);
+  // Dollars on a London line: say they are the values' unit, not the listing's.
+  const otherUnit = unit && facts.listingCurrency?.trim() && facts.listingCurrency.trim() !== facts.currency?.trim();
   return [
-    currencyUnitLabel(facts.currency),
+    otherUnit ? `values in ${unit}` : unit,
     facts.asOf ? `as of ${facts.asOf}` : "",
     holderCountText(facts.shown, facts.reported, facts.total),
   ].filter(Boolean);
@@ -69,9 +77,42 @@ export function sharedReportDate(rows: ReadonlyArray<{ reportDate?: unknown }>):
   return dates.size === 1 && only ? only : null;
 }
 
-/** How a holder value was reached: reported shares times a current price, not the filing's own value. */
-export function holderValueBasis(reportDate: string | null): string {
-  return `shares reported${reportDate ? ` at ${reportDate}` : ""} x latest price`;
+/**
+ * How a holder value was reached: reported shares times the latest price, or,
+ * where Gloom Cloud priced the filings themselves, times the security's price
+ * at the report date in the values' currency.
+ */
+export function holderValueBasis(
+  reportDate: string | null,
+  basis?: HolderData["valueBasis"] | null,
+  valueCurrency?: string | null,
+): string {
+  const shares = `shares reported${reportDate ? ` at ${reportDate}` : ""}`;
+  if (basis === "period_end_price") {
+    const unit = valueCurrency?.trim();
+    return `${shares} x period-end price${unit ? ` (${unit})` : ""}`;
+  }
+  return `${shares} x latest price`;
+}
+
+/** The short marker a holder row carries when its position is held as depositary receipts. */
+export function holderShareBasisMarker(row: { shareBasis?: unknown }): string {
+  return row.shareBasis === "depositary_receipt" ? "ADR" : "";
+}
+
+/**
+ * What the share counts are, when Gloom Cloud says: which rows of a home
+ * line are positions in the receipts, or that a receipt line's rows all are.
+ */
+export function holderShareBasisNote(
+  data: Pick<HolderData, "shareBasis" | "adrRatio">,
+  rows: ReadonlyArray<{ shareBasis?: unknown }>,
+): string | null {
+  const ratio = adrRatioText(data.adrRatio);
+  const each = ratio ? ` (${ratio})` : "";
+  if (rows.some((row) => holderShareBasisMarker(row))) return `ADR: shares held as depositary receipts${each}.`;
+  if (rows.length > 0 && data.shareBasis === "depositary_receipt") return `Shares are depositary receipts${each}.`;
+  return null;
 }
 
 /** A listing outside the US, by its venue, or by a currency other than the dollar. */

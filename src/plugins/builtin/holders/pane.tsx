@@ -26,8 +26,11 @@ import {
   formatMaybePercent,
   formatMoneyCompact,
   formatSignedCompact,
+  holderStakeMarketCap,
+  holderValueCurrency,
   resolveHolderOwnershipPercent,
 } from "./format";
+import { holderShareBasisMarker } from "./report-header";
 import {
   buildColumns,
   hasHolderChanges,
@@ -46,8 +49,8 @@ import { useSampledValue, useTickerQuoteStream } from "../../../state/hooks/live
 
 const HOLDER_MARKET_CAP_SAMPLE_MS = 5_000;
 
-/** The "13F" badge: the label and its padding. */
-const FUND_BADGE_WIDTH = 5;
+/** The width of a three-letter badge ("13F", "ADR"): the label and its padding. */
+const BADGE_WIDTH = 5;
 
 export function HoldersView({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -70,13 +73,14 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   // refresh keeps the last holders; the failure goes to the footer.
   const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, { keepPreviousData: true });
 
-  const currency = data?.currency || ticker?.metadata.currency || "USD";
+  // The values' own currency: dollars from the 13F filings on a London line, not its pence.
+  const currency = holderValueCurrency(data, ticker?.metadata.currency || "USD")!;
   // A stake without a reported percentage is the holding's value over the
-  // market cap. The stream keeps the cap current, about once a second; the
-  // stakes follow it at most every few seconds so ticks do not re-sort them.
+  // market cap, when both are in one currency. The stream keeps the cap
+  // current, about once a second; the stakes follow it at most every few
+  // seconds so ticks do not re-sort them.
   useTickerQuoteStream(ticker ? symbol : null, ticker, { surface: "detail", visible: false, weight: 30 });
-  const quoteMarketCap = financials?.quote?.marketCap;
-  const liveMarketCap = financials?.quote?.currency && financials.quote.currency !== currency ? undefined : quoteMarketCap;
+  const liveMarketCap = holderStakeMarketCap(financials?.quote?.marketCap, financials?.quote?.currency, currency);
   const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
   const rows = useMemo(() => buildRows(data), [data]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
@@ -216,17 +220,22 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     switch (column.id) {
       case "holder": {
         const color = rowState.selected ? colors.selectedText : colors.textBright;
-        if (!fundMatches.has(row.id)) return { text: row.name, color, attributes: TextAttributes.BOLD };
-        // A fund with a 13F opens on Enter or o. The name gives way first, so
-        // the marker survives a narrow column.
+        // ADR: a position held as receipts on a home line's list. 13F: a fund
+        // whose filing opens on Enter or o.
+        const receipts = holderShareBasisMarker(row);
+        const fund = fundMatches.has(row.id);
+        if (!receipts && !fund) return { text: row.name, color, attributes: TextAttributes.BOLD };
+        const badges = (receipts ? 1 : 0) + (fund ? 1 : 0);
+        // The name gives way first, so the markers survive a narrow column.
         return {
-          text: `${row.name} 13F`,
+          text: [row.name, receipts, fund ? "13F" : ""].filter(Boolean).join(" "),
           content: (
             <Box flexDirection="row" gap={1} width={column.width} overflow="hidden">
               <Text fg={color} attributes={TextAttributes.BOLD}>
-                {clipToDisplayWidth(row.name, Math.max(1, column.width - FUND_BADGE_WIDTH - 1))}
+                {clipToDisplayWidth(row.name, Math.max(1, column.width - badges * (BADGE_WIDTH + 1)))}
               </Text>
-              <Badge label="13F" tone="accent" />
+              {receipts ? <Badge label={receipts} /> : null}
+              {fund ? <Badge label="13F" tone="accent" /> : null}
             </Box>
           ),
         };

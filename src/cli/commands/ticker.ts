@@ -51,7 +51,7 @@ import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isUsEquityTicker } from "../../utils/sec";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
 import { failIfNotTraded, ListingArgError, listingIdentity, resolveCliListing, type CliListing } from "../listing-arg";
-import { isDepositaryReceipt } from "../../utils/depositary-receipt";
+import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
 import { cliFreshnessFooter } from "../result";
 import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
 import type { ReportFreshness } from "../pane-functions/freshness";
@@ -101,8 +101,24 @@ function buildStatementMetrics(statement: FinancialStatement, currency?: string)
     ["Total Debt", money(statement.totalDebt)],
     ["Equity", money(statement.totalEquity)],
     ["Diluted EPS", money(statement.eps, true)],
-    ["Diluted Shares", formatCompact(statement.dilutedShares)],
+    // Labelled only when the service says the row counts receipts.
+    ["Diluted Shares", statement.dilutedShares != null && statement.shareBasis === "depositary_receipt"
+      ? `${formatCompact(statement.dilutedShares)} (ADR equivalent)`
+      : formatCompact(statement.dilutedShares)],
   ];
+}
+
+/**
+ * A receipt's count is its ordinary shares expressed in receipts, as its
+ * market cap is; the ordinary count follows when the service gives it.
+ */
+function sharesOutstandingText(fundamentals: TickerFinancials["fundamentals"], inReceipts: boolean): string {
+  const shares = fundamentals?.sharesOutstanding;
+  if (shares == null || !inReceipts) return formatCompact(shares);
+  const ordinary = fundamentals?.shareBasis === "depositary_receipt" ? fundamentals.underlyingOrdinaryShares : undefined;
+  return ordinary != null && Number.isFinite(ordinary) && ordinary > 0
+    ? `${formatCompact(shares)} (ADR equivalent = ${formatCompact(ordinary)} ordinary shares)`
+    : `${formatCompact(shares)} (ADR equivalent)`;
 }
 
 /** Provider prose is wrapped; `verbatim` keeps the user's own spacing, such as a table in a note. */
@@ -276,7 +292,7 @@ function fundamentalsMetrics(
   enterpriseValue = reportedMoney(fundamentals?.enterpriseValue, enterpriseValueCurrency(quote, fundamentals)),
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
-  const receipt = fundamentals?.sharesOutstanding != null && isDepositaryReceipt({ ...quote, description: profile?.description });
+  const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
   return [
     { label: "Market Cap", ...marketCap },
     { label: "Enterprise Value", ...enterpriseValue },
@@ -301,10 +317,9 @@ function fundamentalsMetrics(
     { label: "Last Quarter Growth", ...percentFigure(fundamentals?.lastQuarterGrowth, signed) },
     { label: "1Y Return", ...percentFigure(priceReturns.return1Y, signed) },
     { label: "3Y Return", ...percentFigure(priceReturns.return3Y, signed) },
-    // A receipt's count is its ordinary shares expressed in receipts, as its market cap is.
     {
       label: "Shares Outstanding",
-      text: receipt ? `${formatCompact(fundamentals!.sharesOutstanding)} (ADR equivalent)` : formatCompact(fundamentals?.sharesOutstanding),
+      text: sharesOutstandingText(fundamentals, receipt),
       value: fundamentals?.sharesOutstanding,
       ...(receipt ? { unit: "ADR equivalent" } : {}),
     },
