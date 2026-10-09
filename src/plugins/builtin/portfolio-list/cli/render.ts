@@ -416,6 +416,8 @@ async function showCollectionWithMarketData(
     }
 
     const money = (value: number | null | undefined, options?: { signed?: boolean }) => formatAllocationMoney(value, currency, options);
+    // Values and trades in whole units keep the table inside 80 columns; prices, costs and P&L keep the minor unit.
+    const wholeMoney = (value: number | null | undefined, options?: { signed?: boolean }) => formatAllocationMoney(value, currency, { ...options, whole: true });
     const allocationCells = (
       figures: { weight: number | null; targetWeight: number | null; drift: number | null; tradeValue: number | null; tradeUnits?: number | null } | undefined,
       { unpriced, units, assetCategory }: { unpriced: boolean; units?: number; assetCategory?: string },
@@ -429,7 +431,7 @@ async function showCollectionWithMarketData(
       const trade = units == null ? "" : figures?.tradeUnits != null
         ? signed(formatTradeUnits(figures.tradeUnits, { units, assetCategory }), figures.tradeUnits)
         : hasTarget ? missing : "—";
-      const tradeValue = figures?.tradeValue != null ? signed(money(figures.tradeValue, { signed: true }), figures.tradeValue) : hasTarget ? missing : "—";
+      const tradeValue = figures?.tradeValue != null ? signed(wholeMoney(figures.tradeValue, { signed: true }), figures.tradeValue) : hasTarget ? missing : "—";
       return [weight, target, drift, trade, tradeValue];
     };
 
@@ -456,20 +458,20 @@ async function showCollectionWithMarketData(
         changeText,
         formatMarketQuantity(metrics.totalShares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency }),
         formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }),
-        unpriced ? NOT_AVAILABLE : money(marketValue),
+        unpriced ? NOT_AVAILABLE : wholeMoney(marketValue),
         ...allocationCells(figures, { unpriced, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }),
         pnl == null || !Number.isFinite(pnl) ? "—" : colorBySign(money(pnl, { signed: true }), pnl),
       ];
     });
     if (cashExport) {
       const label = cashExport.currency && cashExport.currency !== currency ? `${CASH_SYMBOL} ${cashExport.currency}` : CASH_SYMBOL;
-      rows.push([label, "", "", "", "", cashExport.value == null ? NOT_AVAILABLE : money(cashExport.value),
+      rows.push([label, "", "", "", "", cashExport.value == null ? NOT_AVAILABLE : wholeMoney(cashExport.value),
         ...allocationCells(cashExport, { unpriced: cashExport.value == null }), ""]);
     }
     const total = allocation.total;
     rows.push([
       cliStyles.bold("TOTAL"), "", "", "", "",
-      cliStyles.bold(money(total)),
+      cliStyles.bold(wholeMoney(total)),
       total != null && total > 0 ? formatAllocationWeight(100) : "—",
       ...(showTargets ? [formatAllocationWeight(allocation.targetSum), "", "", ""] : []),
       totalPnlValue == null ? "—" : colorBySign(money(totalPnlValue, { signed: true }), totalPnlValue),

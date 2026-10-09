@@ -227,16 +227,17 @@ export function formatTradeUnits(
 }
 
 /**
- * A money value at its currency's minor unit with thousands separators:
- * $1,234,567.89, ¥1,234,568. Signed values always carry + or -.
+ * A money value with thousands separators, at its currency's minor unit
+ * ($1,234,567.89, ¥1,234,568) or in whole units for market values and
+ * trades ($1,234,568). Signed values always carry + or -.
  */
 export function formatAllocationMoney(
   value: number | null | undefined,
   currency: string,
-  { signed = false }: { signed?: boolean } = {},
+  { signed = false, whole = false }: { signed?: boolean; whole?: boolean } = {},
 ): string {
   if (!finite(value)) return "—";
-  const digits = currencyMinorDigits(currency);
+  const digits = whole ? 0 : currencyMinorDigits(currency);
   const body = formatNumber(Math.abs(value), digits);
   const zero = !/[1-9]/.test(body);
   const sign = zero ? "" : value < 0 ? "-" : signed ? "+" : "";

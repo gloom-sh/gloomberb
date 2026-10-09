@@ -32,8 +32,10 @@ const MAX_ROW_LIMIT = 200;
 const LISTED_COLLECTION_IDS = 12;
 
 const amount = (value: unknown) => formatNumber(typeof value === "number" ? value : undefined, 2);
+/** Market values and trades in whole units, as `portfolio show` prints them. */
+const wholeAmount = (value: unknown) => formatNumber(typeof value === "number" ? value : undefined, 0);
 const signedAmount = (value: unknown) => (
-  typeof value === "number" && Number.isFinite(value) ? `${value > 0 && /[1-9]/.test(amount(value)) ? "+" : ""}${amount(value)}` : formatNumber(undefined)
+  typeof value === "number" && Number.isFinite(value) ? `${value > 0 && /[1-9]/.test(wholeAmount(value)) ? "+" : ""}${wholeAmount(value)}` : formatNumber(undefined)
 );
 const percent = (value: unknown) => formatPercentRaw(typeof value === "number" ? value : undefined);
 const weight = (value: unknown) => formatAllocationWeight(typeof value === "number" ? value : null);
@@ -63,7 +65,7 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "price", header: "Last", align: "right", format: unitMoney("priceCurrency"), description: "In the quote's currency." },
   { key: "priceCurrency", header: "Ccy" },
   { key: "changePercent", header: "Chg", align: "right", format: percent },
-  { key: "marketValue", header: "Mkt Val", align: "right", format: amount, description: "In the portfolio's currency; negative for shorts." },
+  { key: "marketValue", header: "Mkt Val", align: "right", format: wholeAmount, description: "In the portfolio's currency; negative for shorts." },
   { key: "unrealizedPnl", header: "P&L", align: "right", format: amount, description: "Unrealized, in the portfolio's currency." },
   { key: "weight", header: "Weight", align: "right", format: weight, description: "Percent of the total value, cash included; unpriced holdings are left out." },
 ];
