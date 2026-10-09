@@ -35,6 +35,8 @@ export function FieldLabel({ label, active = false, width, maxWidth }: FieldLabe
 
 export interface TextFieldProps {
   label?: string;
+  /** Accessible name when the visible label is rendered separately. */
+  accessibleLabel?: string;
   /**
    * The form's current field, in a form that walks its fields with the
    * keyboard. The terminal marks its label with "> " and indents the other
@@ -103,7 +105,7 @@ function InlineTextField({ label = "", labelWidth = 0, active, width, hint, onMo
     <Box flexDirection="column" width={width}>
       <Box height={1} flexDirection="row" alignItems="center" gap={1} onMouseDown={onMouseDown}>
         <FieldLabel label={label} active={active} width={labelWidth} />
-        <TextFieldControl {...props} width={inputWidth} onMouseDown={onMouseDown} />
+        <TextFieldControl {...props} accessibleLabel={props.accessibleLabel ?? label} width={inputWidth} onMouseDown={onMouseDown} />
       </Box>
       {hint ? (
         <Box paddingLeft={labelWidth + 1}>
@@ -116,6 +118,7 @@ function InlineTextField({ label = "", labelWidth = 0, active, width, hint, onMo
 
 function TextFieldControl({
   label,
+  accessibleLabel,
   active,
   value,
   placeholder,
@@ -142,7 +145,7 @@ function TextFieldControl({
   placeholderColor ??= colors.textDim;
   useRemoteUiNode({
     role: "text-field",
-    label: label ?? placeholder,
+    label: accessibleLabel ?? label ?? placeholder,
     actions: {
       setValue: (input) => {
         const nextValue = remoteStringValue(input);
@@ -161,6 +164,7 @@ function TextFieldControl({
     return (
       <HostTextField
         label={label}
+        accessibleLabel={accessibleLabel}
         value={value}
         placeholder={placeholder}
         focused={focused}

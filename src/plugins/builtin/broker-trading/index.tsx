@@ -1,7 +1,8 @@
 import type { BrokerContractRef } from "../../../types/instrument";
 import type { PluginModule } from "../plugin-module";
 import { brokerOrdersHeadless } from "./headless";
-import { BrokerOrdersPane, BrokerTradeTab, setTradeIntent } from "./pane";
+import { BrokerOrdersPane, BrokerTradeTab } from "./pane";
+import { createTradeCommand, openTradeTicket } from "./command";
 
 /** Trading lives with broker profiles, with one research tab and one orders view. */
 export const brokerTradingModule: PluginModule = {
@@ -30,14 +31,16 @@ export const brokerTradingModule: PluginModule = {
       instruments: ["equity", "fund", "option", "future", "bond", "crypto", "currency", "other"],
       isVisible: ({ ticker, instrumentKind }) => supported(ticker?.metadata.ticker ?? "", ticker?.metadata.assetCategory ?? ({ option: "OPT", future: "FUT", bond: "BOND", crypto: "CRYPTO", currency: "CASH" } as Record<string, string>)[instrumentKind] ?? "STK"),
     });
-    for (const side of ["BUY", "SELL"] as const) ctx.registerTickerAction({
-      id: `broker-${side.toLowerCase()}`, label: side === "BUY" ? "Buy" : "Sell",
-      keywords: [side.toLowerCase(), "trade", "order", "broker"],
-      filter: (ticker) => supported(ticker.metadata.ticker, ticker.metadata.assetCategory),
-      execute: (ticker) => {
-        setTradeIntent(ticker.metadata.ticker, side);
-        ctx.pinTicker(ticker.metadata.ticker, { tabId: "broker-trade" });
-      },
-    });
+    for (const side of ["BUY", "SELL"] as const) {
+      ctx.registerCommand(createTradeCommand(ctx, side, supported));
+      ctx.registerTickerAction({
+        id: `broker-${side.toLowerCase()}`, label: side === "BUY" ? "Buy" : "Sell",
+        keywords: [side.toLowerCase(), "trade", "order", "broker"],
+        filter: (ticker) => supported(ticker.metadata.ticker, ticker.metadata.assetCategory),
+        execute: (ticker) => {
+          openTradeTicket(ctx, ticker.metadata.ticker, { action: side });
+        },
+      });
+    }
   },
 };

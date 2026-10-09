@@ -145,6 +145,8 @@ export interface BrokerAdapter {
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void;
   listOpenOrders?(instance: BrokerInstanceConfig): Promise<BrokerOrder[]>;
+  /** Explicit status, including terminal orders. Null means unconfirmed, never cancelled by absence. */
+  getOrderStatus?(instance: BrokerInstanceConfig, orderId: number): Promise<BrokerOrder | null>;
   listExecutions?(instance: BrokerInstanceConfig): Promise<BrokerExecution[]>;
   /** Opt into the shared ticket with supported combinations and current trading permission. */
   getTradingCapabilities?(instance: BrokerInstanceConfig, contract?: BrokerContractRef, orderType?: BrokerOrderRequest["orderType"]): BrokerTradingCapabilities;

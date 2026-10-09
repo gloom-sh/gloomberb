@@ -745,6 +745,8 @@ export interface PinTickerOptions {
   listing?: TickerListingRef;
   /** Select this research tab once the requested ticker has resolved. */
   tabId?: string;
+  /** Merge this state into the resolved research pane when selecting `tabId`. */
+  tabState?: Record<string, unknown>;
 }
 
 export interface GloomPluginContext {

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Button, EmptyState, Notice, SelectButton, usePaneFooter } from "../../../components";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Button, EmptyState, Notice, SelectButton } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneVisible } from "../../../state/app/activity";
-import { useAppGetState, usePaneAppConfig } from "../../../state/app/context";
+import { useAppGetState, usePaneAppConfig, usePaneStateValue } from "../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
@@ -12,14 +12,11 @@ import type { BrokerAccount, BrokerOrder } from "../../../types/trading";
 import { Box } from "../../../ui";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { BrokerTradingController } from "./controller";
+import { takeTradeIntent } from "./command";
 import { BrokerAccountPicker } from "./account-picker";
 import { BrokerOrdersView } from "./orders";
 import { availableTicketPosition, buildTicketAccountChoices, chooseTicketAccount, editTicketDraft, newTicketDraft, quickTicketQuantity, resolveTicketContract, subscribeTradingStatus, ticketAccountChoiceKey, ticketPositionContext, type ProfileAccountChoice, type TicketPositionSnapshot } from "./pane-model";
 import { BrokerTicketView, type TicketAction, type TicketField } from "./ticket";
-
-const tradeIntents = new Map<string, "BUY" | "SELL">();
-export function setTradeIntent(symbol: string, action: "BUY" | "SELL") { tradeIntents.set(symbol, action); }
-function takeTradeIntent(symbol: string) { const value = tradeIntents.get(symbol); tradeIntents.delete(symbol); return value ?? "BUY"; }
 
 /** The ticket talks to the selected broker directly, never to the market router. */
 function ProfileTicket({ broker, instance, contract, width, height, focused, ordersFirst = false, accountChoices, selectedAccountId, onChooseProfileAccount, allowAutoAccount = true }: {
@@ -31,7 +28,6 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const visible = usePaneVisible();
   const getState = useAppGetState();
   const { updateBrokerInstance, getBrokerAdapter } = usePluginBrokerActions();
-  const { showPane } = usePluginAppActions();
   const [accounts, setAccounts] = useState<BrokerAccount[]>([]);
   const [positions, setPositions] = useState<TicketPositionSnapshot>();
   const [accountId, setAccountId] = useState<string | undefined>(selectedAccountId);
@@ -40,7 +36,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const [typed, setTyped] = useState("");
   const [statusVersion, setStatusVersion] = useState(0);
   const [defaultPriceLabel, setDefaultPriceLabel] = useState<string>();
-  const footerId = `broker-ticket:${useId()}`;
+  const [tradeIntent, setTradeIntent] = usePaneStateValue<string | null>("brokerTradeIntent", null);
+  const [focusRevision, setFocusRevision] = useState(0);
   const refreshResources = useRef<() => void>(() => {});
   const current = useRef({ broker, instance, accounts, accountId, positions });
   current.current = { broker, instance, accounts, accountId, positions };
@@ -63,8 +60,27 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const reportError = (failure: unknown) => setError(failure instanceof Error ? failure.message : "This broker action could not be completed.");
   useEffect(() => () => controller.dispose(), [controller]);
   useEffect(() => {
-    controller.setDraft(newTicketDraft(broker, instance, contract, current.current.accountId, takeTradeIntent(contract.symbol)));
+    controller.setDraft(newTicketDraft(broker, instance, contract, current.current.accountId));
   }, [controller, instance.id, contract]);
+  useEffect(() => {
+    if (!tradeIntent || ordersFirst) return;
+    const intent = takeTradeIntent(tradeIntent);
+    setTradeIntent(null);
+    if (!intent) return;
+    try {
+      if (controller.getSnapshot().result?.status.toUpperCase() === "UNKNOWN") throw new Error("Refresh and reconcile the unknown order before starting another order.");
+      const next = newTicketDraft(broker, instance, contract, current.current.accountId, intent.action);
+      if (intent.quantity !== undefined) next.quantity = intent.quantity;
+      if (intent.limitPrice !== undefined) {
+        if (!broker.getTradingCapabilities?.(instance, contract).orderTypes.includes("LMT")) throw new Error("This broker does not support limit orders for this instrument.");
+        Object.assign(next, editTicketDraft(broker, instance, next, "orderType", "LMT"), { limitPrice: intent.limitPrice });
+      }
+      controller.reset();
+      controller.setDraft(next);
+      setTyped(""); setError(undefined); setDefaultPriceLabel(undefined); setPage("ticket");
+      setFocusRevision((revision) => revision + 1);
+    } catch (failure) { reportError(failure); }
+  }, [tradeIntent, setTradeIntent, controller, broker, instance, contract, ordersFirst]);
   useEffect(() => { const before = controller.getSnapshot(); controller.syncContext(); if (controller.getSnapshot() !== before) setTyped(""); }, [controller, instance, accounts, accountId, positions, statusVersion]);
   useEffect(() => subscribeTradingStatus(broker, instance, () => setStatusVersion((value) => value + 1)), [broker, instance]);
   const selectAccount = useCallback((id: string | undefined) => {
@@ -147,9 +163,13 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   }, [visible, connected, state.phase, state.result?.orderId, state.result?.status, controller]);
   const onEdit = (field: TicketField, value: string | boolean) => {
     if (field === "typedConfirmation") { setTyped(String(value)); return; }
-    if (!draft) return;
+    const latestDraft = controller.getSnapshot().draft;
+    if (!latestDraft) return;
     try {
-      controller.setDraft(editTicketDraft(broker, instance, draft, field, value));
+      const next = editTicketDraft(broker, instance, latestDraft, field, value);
+      // Controlled inputs can echo a programmatic value before React commits the next render.
+      if (Object.entries(next).every(([key, nextValue]) => Object.is(nextValue, latestDraft[key as keyof typeof latestDraft]))) return;
+      controller.setDraft(next);
       setTyped(""); setError(undefined);
       if (field === "limitPrice" || field === "orderType") setDefaultPriceLabel(undefined);
     } catch (failure) { reportError(failure); }
@@ -198,10 +218,6 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
       } catch (failure) { reportError(failure); }
     })();
   };
-  usePaneFooter(footerId, () => ({
-    info: state.phase === "previewing" || state.phase === "submitting" ? [{ id: "progress", parts: [{ text: state.phase === "previewing" ? "Requesting broker preview..." : "Submitting..." }] }] : undefined,
-    hints: page === "orders" ? ticketContract.symbol ? [{ id: "ticket", key: "t", label: "icket", onPress: () => setPage("ticket") }] : [] : state.phase === "editing" ? [{ id: "orders", key: "v", label: "iew orders", title: "View orders", onPress: () => setPage("orders") }, { id: "brokers", key: "b", label: "rokers", onPress: () => showPane("brokers") }] : [],
-  }), [state.phase, page, ticketContract.symbol, showPane]);
   const onAccountChange = (id: string) => { try { selectAccount(id); } catch (failure) { reportError(failure); } };
   const onTicketAccountChange = (value: string) => {
     if (!accountChoices) { onAccountChange(value); return; }
@@ -218,7 +234,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
       setPage("ticket");
     } catch (failure) { reportError(failure); }
   };
-  if (page === "orders") return <Box flexDirection="column" flexGrow={1} minHeight={0}>{error ? <Notice tone="negative">{error}</Notice> : null}<BrokerOrdersView broker={broker} instance={instance} accounts={accounts} accountId={accountId} onAccountChange={onAccountChange} onModify={onModify} width={width} height={height} focused={focused} /></Box>;
+  if (page === "orders") return <Box flexDirection="column" flexGrow={1} minHeight={0}>{error ? <Notice tone="negative">{error}</Notice> : null}<BrokerOrdersView broker={broker} instance={instance} accounts={accounts} accountId={accountId} onAccountChange={onAccountChange} onModify={onModify} onBack={ticketContract.symbol ? () => setPage("ticket") : undefined} width={width} height={height} focused={focused} /></Box>;
   const position = ticketPositionContext(positions, instance, accountId, ticketContract);
   return <BrokerTicketView width={width} height={height} focused={focused} model={{
     brokerName: broker.name, symbol: ticketContract.localSymbol ?? ticketContract.symbol, accounts, accountId,
@@ -229,6 +245,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error,
     position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
     typedConfirmation: typed, connected, capabilities: caps, modifying: state.modifying, defaultPriceLabel,
+    initialFocus: focusRevision ? "review" : undefined, focusRevision,
   }} onEdit={onEdit} onAction={onAction} onAccountChange={onTicketAccountChange} />;
 }
 

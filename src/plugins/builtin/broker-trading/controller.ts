@@ -372,11 +372,13 @@ export class BrokerTradingController {
     const result = this.snapshot.result;
     if (!result) return;
     const { context } = this.context(false);
-    if (!context.adapter.listOpenOrders) throw new Error("Refresh this order in your broker.");
+    if (!context.adapter.listOpenOrders && !context.adapter.getOrderStatus) throw new Error("Refresh this order in your broker.");
     const fingerprint = this.key();
-    const orders = await context.adapter.listOpenOrders(context.instance);
+    const orders = context.adapter.getOrderStatus && result.orderId !== 0
+      ? [await context.adapter.getOrderStatus(context.instance, result.orderId)].filter((order): order is BrokerOrder => order !== null)
+      : await context.adapter.listOpenOrders?.(context.instance) ?? [];
     if (this.disposed || fingerprint !== this.key() || this.snapshot.result !== result) return;
-    const current = orders.find((order) => order.accountId === result.accountId && (result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId));
+    const current = orders.find((order) => order.accountId === result.accountId && order.contract.symbol === result.contract.symbol && (result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId));
     if (current) this.publish({ result: copy(current), error: current.status === "UNKNOWN" ? uncertainMessage : undefined });
     // Absence from open orders does not prove a fill, rejection or cancellation.
   }

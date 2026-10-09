@@ -107,7 +107,7 @@ export function cleanDomProps(props: Record<string, unknown>): Record<string, un
     "focused", "focusedBackgroundColor", "textColor", "focusedTextColor", "placeholderColor",
     "cursorColor", "selectionBg", "selectionFg", "showCursor", "keyBindings", "wrapText", "wrapMode",
     "initialValue", "value", "onInput", "onChange", "onSubmit", "onEscape", "onCursorChange", "onMouse",
-    "scrollX", "scrollY", "focusable", "bitmap", "bitmaps", "crosshair", "vectors", "text", "font",
+    "scrollX", "scrollY", "focusable", "bitmap", "bitmaps", "crosshair", "vectors", "text", "font", "truncate",
     "hoverBackgroundColor",
   ]) {
     delete next[key];

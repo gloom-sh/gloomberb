@@ -11,7 +11,7 @@ export const ticketMoney = (value: number | undefined, currency = "USD") => valu
 export const ticketTypeName: Record<string, string> = { MKT: "Market", LMT: "Limit", STP: "Stop", "STP LMT": "Stop limit" };
 export function TicketCard({ children, width, accent, title, compact = false, dense = false }: { children: ReactNode; width?: number; accent?: string; title?: string; compact?: boolean; dense?: boolean }) {
   const c = useThemeColors(); const native = useUiCapabilities().nativePaneChrome;
-  return <Box width={width} flexDirection="column" flexShrink={0} backgroundColor={native ? blendHex(c.bg, c.panel, 0.55) : undefined}
+  return <Box width={width} flexDirection="column" flexShrink={0} backgroundColor={blendHex(c.bg, c.panel, 0.55)}
     border={native ? true : false} borderColor={accent ?? c.border} paddingX={native ? dense ? 1 : 2 : 1} paddingY={native ? dense ? 0.35 : compact ? 0.6 : 1 : 0}
     gap={native ? dense ? 0.2 : 0.7 : 0} style={native ? { borderRadius: 8, border: `1px solid ${accent ?? c.border}` } : undefined}>
     {title ? <SectionHeading title={title} /> : null}{children}

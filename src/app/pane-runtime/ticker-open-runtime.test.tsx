@@ -56,7 +56,7 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     const rendered = await tui.render(<Harness />);
     await act(async () => { await rendered.renderOnce(); });
     const entry = researchEntryFromSearch("?ticker=VOD&exchange=LSE&tab=financials")!;
-    const opening = runtime.openPinnedTicker(entry.symbol, { tabId: entry.tab, floating: true });
+    const opening = runtime.openPinnedTicker(entry.symbol, { tabId: entry.tab, floating: true, tabState: { requestedView: "one-use-token", activeTabId: "ignored" } });
     // Focus may change while the provider is still resolving the linked listing.
     stateRef.current.focusedPaneId = "world-indices:main";
     // Explicit exact local matches may resolve without the deferred provider.
@@ -64,7 +64,7 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     releaseSearch();
     await act(async () => { await opening; });
     const paneId = reusePane ? BROWSER_RESEARCH_PANE_ID : "ticker-detail:linked";
-    expect(actions).toContainEqual({ type: "UPDATE_PANE_STATE", paneId, patch: { activeTabId: "financials" } });
+    expect(actions).toContainEqual({ type: "UPDATE_PANE_STATE", paneId, patch: { requestedView: "one-use-token", activeTabId: "financials" } });
     expect(actions.filter((action) => action.type === "UPDATE_PANE_STATE")).toHaveLength(1);
     expect(actions.find((action) => action.type === "UPDATE_TICKER")).toMatchObject({ ticker: { metadata: { ticker: "VOD:XLON", exchange: "LSE" } } });
     expect(stateRef.current.config.layout.instances.find((pane) => pane.instanceId === paneId)?.binding)

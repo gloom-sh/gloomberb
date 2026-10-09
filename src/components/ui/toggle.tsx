@@ -13,6 +13,8 @@ interface SegmentedControlOption {
 }
 
 export interface SegmentedControlProps {
+  /** Name of the choice group for assistive technology and semantic access. */
+  accessibleLabel?: string;
   options: SegmentedControlOption[];
   value: string;
   onChange?: (value: string) => void;
@@ -26,6 +28,7 @@ export interface SegmentedControlProps {
 }
 
 export function SegmentedControl({
+  accessibleLabel,
   options,
   value,
   onChange,
@@ -41,7 +44,7 @@ export function SegmentedControl({
   const HostSegmentedControl = ui.SegmentedControl as ComponentType<SegmentedControlProps> | undefined;
   useRemoteUiNode({
     role: "select",
-    label: "Segmented control",
+    label: accessibleLabel ?? "Segmented control",
     actions: {
       select: (input) => {
         const next = typeof input === "string" ? input : (input as { value?: string } | null)?.value;
@@ -81,6 +84,7 @@ export function SegmentedControl({
   if (HostSegmentedControl) {
     return (
       <HostSegmentedControl
+        accessibleLabel={accessibleLabel}
         options={options}
         value={value}
         onChange={onChange}

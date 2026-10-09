@@ -864,8 +864,14 @@ ctx.hidePane("my-pane");               // Hide a pane
 ctx.focusPane("my-pane");              // Move focus to a pane
 ctx.pinTicker("AAPL");                 // Open or focus a fixed Ticker Research pane for AAPL
 ctx.pinTicker("AAPL", { floating: true, paneType: "ticker-research", forceNewPane: true });
+ctx.pinTicker("AAPL", { tabId: "my-research-tab", tabState: { myTabRequest: requestToken } });
 ctx.createPaneFromTemplate("quote-monitor-new", { symbol: "AAPL" });
 ```
+
+`tabState` merges into the resolved research pane when `tabId` is selected,
+including when an existing pane is reused after ticker resolution. Prefix keys
+for your tab. Pane state is saved with layouts, so keep sensitive draft values
+in memory and pass an opaque, single-use request token for temporary actions.
 
 ### Broker management
 
@@ -917,6 +923,8 @@ Set optional `BrokerAccount.accountType` to the broker-reported classification, 
 `BrokerOrderPreview` now has optional `currency`, `estimatedCost`, `fees`, `buyingPowerBefore`, `buyingPowerAfter`, `buyingPowerImpact`, `warnings` and blocking `errors`. Return only values reported by the broker or calculations whose units are known. Existing margin fields, `commission`, `commissionCurrency` and `warningText` remain supported. When `warnings` is present, it replaces the legacy `warningText` in the shared review. Preview errors prevent submission. A preview is validation, never order placement.
 
 `BrokerOrder.brokerOrderId` and `BrokerExecution.brokerOrderId` optionally retain native string identifiers. Existing numeric `orderId` and the numeric arguments to `modifyOrder` and `cancelOrder` are unchanged. Adapters with string IDs must maintain a safe mapping from those mutation handles to the original profile, account and native identifier. An uncertain placement without an acknowledged identity cannot be reconciled by symbol or by absence from open orders. `executionKind: "order-summaries"` tells the activity view that history rows are cumulative order summaries, not individual fills.
+
+Optional `getOrderStatus(instance, orderId)` resolves an acknowledged numeric handle to its current broker order, including explicit terminal records from order history. Return `null` when the outcome is unconfirmed. The ticket uses this method when available; disappearance from open orders alone never proves cancellation or a fill.
 
 `ctx.getBrokerAdapter?(brokerType)` looks up a registered adapter. Built-in React code uses `usePluginBrokerActions().getBrokerAdapter`; external plugins can use the context method and tolerate its absence on older hosts. Headless code receives optional `HeadlessPaneContext.resolveBroker` for the same lookup during `fn` and `shot` execution. The Orders report performs account, open-order and execution reads only; headless reporting never submits, modifies or cancels orders. These lookups expose adapters, not serialized credentials, and do not replace explicit profile and account selection.
 

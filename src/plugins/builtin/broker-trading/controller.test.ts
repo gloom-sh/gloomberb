@@ -373,4 +373,22 @@ describe("modification, cancellation and unknown outcomes", () => {
     expect(() => controller.requestCancel(controller.getSnapshot().result!)).toThrow("reconcile");
     expect(count("cancelOrder")).toBe(1);
   });
+
+  test("explicit terminal lookup confirms cancellation but rejects an unrelated native identity", async () => {
+    const { demo, controller, count } = setup();
+    const order = demo.order(demo.draft); demo.seedOrder(order);
+    controller.requestCancel(order);
+    await controller.confirmCancel(true);
+    demo.adapter.listOpenOrders = async () => [];
+    demo.adapter.getOrderStatus = async () => null;
+    await controller.refreshResult();
+    expect(controller.getSnapshot().result?.status).toBe("PENDING_CANCEL");
+    demo.adapter.getOrderStatus = async () => ({ ...order, status: "CANCELED", brokerOrderId: "unrelated" });
+    await controller.refreshResult();
+    expect(controller.getSnapshot().result?.status).toBe("PENDING_CANCEL");
+    demo.adapter.getOrderStatus = async () => ({ ...order, status: "CANCELED" });
+    await controller.refreshResult();
+    expect(controller.getSnapshot().result?.status).toBe("CANCELED");
+    expect(count("cancelOrder")).toBe(1);
+  });
 });

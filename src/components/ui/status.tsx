@@ -4,6 +4,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../ui";
 import { Spinner } from "./loading";
 import { ButtonActionScope } from "./action-scope";
+import { blendForContrast, higherContrast } from "../../theme/color-utils";
 
 export interface EmptyStateProps {
   title: string;
@@ -44,9 +45,10 @@ export function Notice({ children, tone = "warning", variant = "inline" }: Notic
   const native = useUiCapabilities().nativePaneChrome;
   const callout = variant === "callout";
   const color = tone === "muted" ? colors.textDim : colors[tone];
+  const foreground = callout ? blendForContrast(color, colors.panel, higherContrast("#000000", "#ffffff", colors.panel), 4.5) : color;
   return (
-    <Box flexDirection="row" gap={callout ? 1 : 0} paddingX={callout ? 1 : 0} paddingY={callout && native ? 0.35 : 0} backgroundColor={callout ? colors.panel : undefined} border={callout ? ["left"] : undefined} borderColor={color} data-gloom-status={tone === "negative" ? "error" : "notice"} data-gloom-ui="notice">
-      {callout ? <Text fg={color}>!</Text> : null}<Box flexGrow={1} minWidth={0}><Text fg={color} wrapText>{children}</Text></Box>
+    <Box flexDirection="row" gap={callout ? 1 : 0} paddingX={callout ? 1 : 0} paddingY={callout && native ? 0.35 : 0} backgroundColor={callout ? colors.panel : undefined} border={callout ? ["left"] : undefined} borderColor={color} data-gloom-status={tone === "negative" ? "error" : "notice"} data-gloom-ui="notice" role={native && callout ? tone === "negative" ? "alert" : "status" : undefined} aria-atomic={native && callout ? true : undefined}>
+      {callout ? <Text fg={foreground}>!</Text> : null}<Box flexGrow={1} minWidth={0}><Text fg={foreground} wrapText>{children}</Text></Box>
     </Box>
   );
 }

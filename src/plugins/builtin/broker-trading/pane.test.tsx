@@ -1,14 +1,57 @@
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { AppContext, appReducer, createInitialState, type AppAction } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { BrokerConnectionStatus } from "../../../types/broker";
 import { BrokerTradeTab } from "./pane";
+import { createTradeCommand } from "./command";
 import { createDemoBroker } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
+
+test("a command prefills the resolved ticket once, focuses Review, and invalidates an existing review", async () => {
+  const demo = createDemoBroker({ seedOrders: false });
+  const paneId = "broker-ticket:command-test";
+  const config = createTestPaneConfig("/synthetic/ticket-command", { instanceId: paneId, paneId: "ticker-detail", binding: { kind: "fixed", symbol: "AAPL" }, settings: {} });
+  config.brokerInstances = [demo.instance];
+  const initial = createInitialState(config);
+  initial.focusedPaneId = paneId;
+  initial.tickers.set("AAPL", createTestTicker("AAPL", "Example company"));
+  const runtime = createTestPluginRuntime({ getBrokerAdapter: () => demo.adapter });
+  let latest = initial;
+  const listeners = new Set<() => void>();
+  const store = {
+    getState: () => latest,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    dispatch: (action: AppAction) => { latest = appReducer(latest, action); for (const listener of listeners) listener(); },
+  };
+  const commands = (["BUY", "SELL"] as const).map((action) => createTradeCommand({ pinTicker(symbol, options) {
+    expect(symbol).toBe("AAPL");
+    store.dispatch({ type: "UPDATE_PANE_STATE", paneId, patch: { ...options?.tabState, activeTabId: options?.tabId } });
+  } }, action));
+  await act(async () => {
+    await tui.render(<TestPaneFrame state={initial} paneId={paneId} pluginId="broker" runtime={runtime} width={90} height={30} footerKeys>{() => <AppContext value={store}><BrokerTradeTab width={90} height={29} focused onCapture={() => {}} /></AppContext>}</TestPaneFrame>);
+  });
+  await tui.waitForFrameToContain("Review buy 1 AAPL");
+  await act(async () => { await commands[0]!.execute({ symbol: "AAPL", quantity: "7", limitPrice: "150" }); });
+  await tui.waitForFrameToContain("Review buy 7 AAPL");
+  expect(latest.paneState[paneId]?.brokerTradeIntent).toBeNull();
+  expect(demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(0);
+  await tui.emitKeypress({ name: "enter", sequence: "\r" });
+  await tui.waitForFrameToContain("Review Order");
+  expect(demo.calls.filter((call) => call.method === "previewOrder").at(-1)?.request).toMatchObject({ action: "BUY", quantity: 7, limitPrice: 150, orderType: "LMT" });
+
+  await act(async () => { await commands[1]!.execute({ symbol: "AAPL", quantity: "3" }); });
+  await tui.waitForFrameToContain("Review sell 3 AAPL");
+  expect(latest.paneState[paneId]?.brokerTradeIntent).toBeNull();
+  expect(demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(1);
+  await tui.emitKeypress({ name: "enter", sequence: "\r" });
+  await tui.waitForFrameToContain("Review Order");
+  expect(demo.calls.filter((call) => call.method === "previewOrder").at(-1)?.request).toMatchObject({ action: "SELL", quantity: 3, limitPrice: 336.4, orderType: "LMT" });
+  expect(demo.calls.filter((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method))).toHaveLength(0);
+});
 
 test("broker read status heartbeats never reschedule account or holdings reads", async () => {
   const demo = createDemoBroker();

@@ -263,6 +263,7 @@ const COMFORTABLE_FIELD_HEIGHT = 26;
 
 export function WebTextField({
   label,
+  accessibleLabel,
   value,
   placeholder,
   focused,
@@ -332,6 +333,7 @@ export function WebTextField({
         }}
       >
         <Input
+          aria-label={accessibleLabel ?? label}
           ref={resolvedInputRef as RefObject<InputRenderable | null>}
           width="100%"
           value={value}
@@ -460,6 +462,7 @@ export function WebMessageComposer({
 }
 
 export function WebSegmentedControl({
+  accessibleLabel,
   options,
   value,
   onChange,
@@ -488,6 +491,7 @@ export function WebSegmentedControl({
       alignItems="center"
       backgroundColor={panelFill(colors)}
       role="radiogroup"
+      aria-label={accessibleLabel}
       style={{
         border: `1px solid ${focused ? colors.borderFocused : panelBorder(colors)}`,
         borderRadius: CONTROL_RADIUS,
