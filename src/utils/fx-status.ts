@@ -9,6 +9,11 @@ export interface FxRateStatus {
   latestFetchedAt: number | null;
 }
 
+/** A rate whose last load failed, or whose observation is past its stale time. */
+export function isFxRateStale(entry: QueryEntry<number> | null | undefined, now = Date.now()): boolean {
+  return Boolean(entry?.error || (entry?.staleAt != null && entry.staleAt <= now));
+}
+
 /** A fetched timestamp never stands in for a source observation timestamp. */
 export function summarizeFxRates(
   currencies: readonly string[],
@@ -26,7 +31,7 @@ export function summarizeFxRates(
     // A legacy persisted numeric rate may be present without a dated query.
     if (!entry || entry.asOf == null || !Number.isFinite(entry.asOf)) status.unknownTime++;
     else status.oldestAsOf = Math.min(status.oldestAsOf ?? Infinity, entry.asOf);
-    if (entry?.error || (entry?.staleAt != null && entry.staleAt <= now)) status.stale++;
+    if (isFxRateStale(entry, now)) status.stale++;
     if (entry?.fetchedAt != null) status.latestFetchedAt = Math.max(status.latestFetchedAt ?? 0, entry.fetchedAt);
   }
   return status;

@@ -27,6 +27,7 @@ import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, ty
 import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { fxMatrixSettings } from "./settings";
 import { createFxExportMetadata } from "./export";
+import { fxMatrixHeadless } from "./headless";
 
 const FX_MATRIX_PANE_ID = "fx-matrix";
 /** Stable identity: a fresh literal here would reload the board every render. */
@@ -264,6 +265,7 @@ export const fxMatrixModule: PluginModule = {
       description: "Currency cross-rate matrix for major FX pairs.",
       keywords: ["fx", "forex", "currency", "exchange", "rates", "cross", "matrix"],
       shortcut: { prefix: "FXC" },
+      headless: fxMatrixHeadless,
     },
   ],
 };
