@@ -696,10 +696,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["FXC"],
   },
   PERP: {
-    summary: "Perpetual funding, open interest and premiums across crypto and stock, index, commodity and FX contracts. Per-market History and Evidence. Pro history with a latest-value free preview.",
+    summary: "Perpetual funding, open interest and premiums across venues, for crypto and stock, index, commodity and FX contracts: a board, rankings, one asset across venues, and a market's History and Evidence.",
     usage: ["PERP", "PERP BTC", "PERP TSLA"],
-    keys: [TABS, SEARCH, OPEN_SOURCE, key("a", "lert"), key("e", "vidence"), key("d", "es"), key("f", "a"), key("g", "raph")],
-    data: { free: "Latest market values", pro: "Observed funding, open interest and stored history; source timestamps retained" },
+    keys: [TABS, OPEN, SEARCH, key("e", "vidence"), key("a", "lert")],
+    data: { free: "A fixed preview and any one market's latest values", pro: "Every market, full rankings and stored history; source timestamps retained" },
     bloomberg: [],
   },
   CRYP: {

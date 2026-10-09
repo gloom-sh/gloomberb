@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { historyCell, historyChange, historyColumns, historyRows, percent } from "./model";
-import { perpHistory } from "./test-fixture";
+import { BOARD_COLUMNS, boardColumns, compareColumns, fundingSpread, historyCell, historyChange, historyColumns, historyRows, percent } from "./model";
+import { perpHistory, venueRow } from "./test-fixture";
 
 test("paid funding normalizes each interval independently and stays separate from snapshots", () => {
   const time = "2026-10-03T01:00:00Z";
@@ -30,4 +30,25 @@ test("history CSV names real units and exports unrounded values with percentage-
   expect(historyChange(null, "funding")).toBe("--");
   expect(historyColumns("oi", "USDC")[1]!.label).toBe("OI USD");
   expect(historyColumns("price", "USDC", false)[1]!.label).toBe("Mark USDC");
+});
+
+test("the funding spread runs from the highest 8h rate to the lowest and names a contract only where its venue lists several", () => {
+  const binance = venueRow("binance", { fundingRate8h: 0.00003 });
+  const bybit = venueRow("bybit", { fundingRate8h: 0.0001 });
+  expect(fundingSpread([binance])).toBeNull();
+  expect(fundingSpread([binance, venueRow("okx", { fundingRate8h: null })])).toBeNull();
+  const spread = fundingSpread([binance, bybit])!;
+  expect(spread.value).toBeCloseTo(0.00007);
+  expect([spread.text, spread.detail]).toEqual(["0.0070pp", "Bybit over Binance"]);
+  expect(fundingSpread([binance, bybit, venueRow("binance", { symbol: "BTCUSDC", fundingRate8h: -0.00002 })])!.detail).toBe("Bybit over Binance BTCUSDC");
+});
+
+test("a narrow pane gives up figures before the venue, which alone tells one market's listings apart", () => {
+  const ids = (columns: ReturnType<typeof boardColumns>) => columns.map((column) => column.id);
+  expect(ids(boardColumns(200))).toEqual(BOARD_COLUMNS);
+  expect(ids(boardColumns(45))).toEqual(["market", "venue", "fundingRate"]);
+  // Before the venue goes, the market name gives up its tail.
+  expect(boardColumns(41).map((column) => [column.id, column.width])).toEqual([["market", 10], ["venue", 11], ["fundingRate", 14]]);
+  expect(ids(boardColumns(40))).toEqual(["market", "fundingRate"]);
+  expect(ids(compareColumns(44))).toEqual(["venue", "symbol", "fundingRate8h"]);
 });

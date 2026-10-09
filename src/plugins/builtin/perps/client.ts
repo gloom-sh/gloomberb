@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { PerpBoardPayload, PerpBoardRow, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery, PerpMarketPayload } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery, PerpMarketPayload, PerpRankingsPayload } from "../../../api-client/perps";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 
@@ -34,6 +34,33 @@ export function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?
   return data;
 }
 export const fetchPerpsHistory = async (query: PerpHistoryQuery, client: Pick<typeof apiClient, "getCloudPerpsHistory"> = apiClient) => validatePerpsHistory(await client.getCloudPerpsHistory(query), query.marketId);
+
+const RANKING_KEYS = ["fundingPositive", "fundingNegative", "oiSurges", "premiumDislocations", "closedMarketDislocations"] as const;
+export function validatePerpsRankings(data: PerpRankingsPayload): PerpRankingsPayload {
+  // A market can rank in several lists, but only once in each.
+  if (!envelope(data) || !RANKING_KEYS.every((key) => Array.isArray(data[key]) && data[key].every(validRow)
+    && new Set(data[key].map((row) => row.marketId)).size === data[key].length)) throw new Error("The server returned unreadable perpetual rankings");
+  return data;
+}
+export const fetchPerpsBoard = async (query: PerpBoardQuery, client: Pick<typeof apiClient, "getCloudPerpsBoard"> = apiClient) => validatePerpsBoard(await client.getCloudPerpsBoard(query));
+export const fetchPerpsRankings = async (client: Pick<typeof apiClient, "getCloudPerpsRankings"> = apiClient) => validatePerpsRankings(await client.getCloudPerpsRankings());
+function validatePerpsCompare(data: PerpBoardPayload, baseAsset: string): PerpBoardPayload {
+  validatePerpsBoard(data);
+  if (!data.rows.every((row) => row.baseAsset.toUpperCase() === baseAsset.toUpperCase())) throw new Error("The server returned contracts for another asset");
+  return data;
+}
+export const fetchPerpsCompare = async (baseAsset: string, client: Pick<typeof apiClient, "getCloudPerpsCompare"> = apiClient) => validatePerpsCompare(await client.getCloudPerpsCompare(baseAsset), baseAsset);
+export const perpsRankingsCache = createPluginCache<PerpRankingsPayload>({ kind: "perps-rankings", source: "gloom-cloud", schemaVersion: 1,
+  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
+// Board and comparison payloads share the board cache, keyed by the query and the account's plan.
+const boardKey = (query: PerpBoardQuery, access: string) => `board:v1:${query.assetClass ?? "all"}:${query.sort ?? "oi"}:${query.search?.trim().toUpperCase() ?? ""}:${access}`;
+export const cachedPerpsBoard = (query: PerpBoardQuery, access: string) => cachedCloudResource(perpsCache, boardKey(query, access), validatePerpsBoard);
+export const loadPerpsBoard = (query: PerpBoardQuery, access: string, force = false) => loadCloudResource(perpsCache, boardKey(query, access), () => fetchPerpsBoard(query), { force, validate: validatePerpsBoard });
+export const cachedPerpsRankings = (access: string) => cachedCloudResource(perpsRankingsCache, `rankings:v1:${access}`, validatePerpsRankings);
+export const loadPerpsRankings = (access: string, force = false) => loadCloudResource(perpsRankingsCache, `rankings:v1:${access}`, () => fetchPerpsRankings(), { force, validate: validatePerpsRankings });
+const compareKey = (baseAsset: string, access: string) => `compare:v1:${baseAsset.toUpperCase()}:${access}`;
+export const cachedPerpsCompare = (baseAsset: string, access: string) => cachedCloudResource(perpsCache, compareKey(baseAsset, access), (data) => validatePerpsCompare(data, baseAsset));
+export const loadPerpsCompare = (baseAsset: string, access: string, force = false) => loadCloudResource(perpsCache, compareKey(baseAsset, access), () => fetchPerpsCompare(baseAsset), { force, validate: (data) => validatePerpsCompare(data, baseAsset) });
 function validatePerpsEquity(data: PerpBoardPayload, listing: PerpEquityListing): PerpBoardPayload {
   validatePerpsBoard(data);
   const same = (value: PerpEquityListing | null | undefined) => value?.symbol === listing.symbol && value.exchange === listing.exchange;
