@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
 import { apiClient } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
-import { buildBrokerDirectory } from "../../brokers/directory";
-import { getSignedInBrokers, refreshSignedInBrokers, subscribeSignedInBrokers } from "../../brokers/signed-in/catalog";
-import { SIGNED_IN_BROKER_TYPE } from "../../brokers/signed-in/profile";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import { type AppConfig, findPaneInstance, type OnboardingProgress, type OnboardingStage } from "../../types/config";
-import { resolveBrokerConfigFields, type BrokerConfigField } from "../../types/broker";
 import { useViewport } from "../../react/input";
 import { useKeybindings } from "../../app/keybindings";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
@@ -36,9 +32,8 @@ import {
 import { loadUpgradeOffer, proStepCopy, type UpgradeOffer } from "../../plugins/builtin/cloud/upgrade-dialog";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
 import { resolvePlanAccess, usePlanAccess } from "../../api-client/plan-access";
-import { Button, SegmentedControl, type ListViewItem } from "../ui";
-import { AccountStep, PortfolioStep, type PortfolioSub } from "./onboarding-steps";
-import { brokerSetupGuideUrl } from "./portfolio-step/broker-setup-panel";
+import { Button, SegmentedControl } from "../ui";
+import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import {
   ONBOARDING_DESKTOP,
   OnboardingActions,
@@ -58,14 +53,13 @@ import { DesksStep, toggleDeskChoice } from "./desks-step";
 import { buildDesk, getDesk, isDeskKey, isDeskStock, pickDeskCompany, type DeskKey } from "../../layout/desks";
 import { debugLog } from "../../utils/debug-log";
 import {
-  getConnectableBrokerOptions,
   getOnboardingProgress,
   pickLargestBrokerPosition,
   pickLargestPosition,
   withOnboardingProgress,
-  type BrokerOption,
 } from "./wizard-model";
 import { useOnboardingKeyboard } from "./onboarding-keyboard";
+import { useOnboardingBrokerFields, useOnboardingBrokerForm } from "./use-onboarding-broker-form";
 import {
   SKIP_SETUP_KEY,
   KEEP_FREE_KEY,
@@ -114,13 +108,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const [offer, setOffer] = useState<UpgradeOffer | null>(null);
   const pricing = offer?.pricing ?? null;
   const [billingInterval, setBillingInterval] = useState<CloudBillingInterval>("month");
-
-  const [portfolioSub, setPortfolioSub] = useState<PortfolioSub>("positions");
-  const [portfolioOptionIdx, setPortfolioOptionIdx] = useState(0);
-  const [brokerValues, setBrokerValues] = useState<Record<string, Record<string, string>>>({});
-  const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
-  const [brokerFieldIdx, setBrokerFieldIdx] = useState(0);
-  const [brokerSelectIdx, setBrokerSelectIdx] = useState(0);
   const [editingField, setEditingField] = useState(false);
   /** The added position the keyboard acts on once no field is being typed in. */
   const [positionCursorSymbol, setPositionCursorSymbol] = useState<string | null>(null);
@@ -131,34 +118,13 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const progressSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const finishingRef = useRef(false);
   const buildingDesksRef = useRef(false);
-
-  useEffect(() => {
-    if (pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
-  }, [pluginRegistry.brokers]);
-  const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
-  // Enter inside every form is handled once, by the shortcut below: the
-  // fields deliberately get no onSubmit, because the host input fires it in
-  // the same keystroke and the two paths used to submit twice.
-  const brokerOptions = useMemo(
-    (): BrokerOption[] => getConnectableBrokerOptions(buildBrokerDirectory({
-      signedIn: signedInBrokers,
-      adapters: pluginRegistry.brokers.values(),
-    })),
-    [pluginRegistry.brokers, signedInBrokers],
-  );
-  const brokerChoices = useMemo<ListViewItem[]>(() => brokerOptions.map((broker) => ({
-    id: broker.id,
-    label: tf("Connect {broker}", { broker: broker.name }),
-    // A broker offered two ways shows which way each choice connects.
-    description: broker.methodLabel ?? tf("Import positions from {broker}", { broker: broker.name }),
-  })), [brokerOptions, language]);
-  const activeBrokerFields = useMemo((): BrokerConfigField[] => {
-    if (!selectedBrokerId) return [];
-    const adapter = brokerOptions.find((option) => option.id === selectedBrokerId)?.adapter;
-    return adapter
-      ? resolveBrokerConfigFields(adapter, brokerValues[selectedBrokerId] ?? {}).filter((field) => field.required)
-      : [];
-  }, [brokerOptions, brokerValues, selectedBrokerId]);
+  const {
+    portfolioSub, setPortfolioSub, portfolioOptionIdx, setPortfolioOptionIdx, brokerValues, setBrokerValues,
+    selectedBrokerId, setSelectedBrokerId, brokerFieldIdx, setBrokerFieldIdx, brokerSelectIdx,
+    setBrokerSelectIdx, brokerOptions, brokerChoices, activeBrokerFields,
+  } = useOnboardingBrokerFields({
+    pluginRegistry, language,
+  });
 
   const persistProgress = useCallback(async (
     patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">,
@@ -425,15 +391,16 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     }
   }, [dispatch, onComplete, resetBrokerSync, stateRef]);
   const skipSetup = useCallback(() => { void finish(true); }, [finish]);
-
-  useEffect(() => {
-    if (!selectedBrokerId) return;
-    const field = activeBrokerFields[brokerFieldIdx];
-    if (!field || field.type !== "select") return;
-    const currentValue = brokerValues[selectedBrokerId]?.[field.key] ?? field.options?.[0]?.value ?? "";
-    const index = Math.max(0, field.options?.findIndex((option) => option.value === currentValue) ?? 0);
-    setBrokerSelectIdx(index);
-  }, [activeBrokerFields, brokerFieldIdx, brokerValues, selectedBrokerId]);
+  const {
+    setBrokerFieldValue, chooseBroker, openBrokerConnect, submitBrokerField, continuePortfolio,
+    backPortfolio, openBrokerGuide,
+  } = useOnboardingBrokerForm({
+    selectedBrokerId, activeBrokerFields, brokerFieldIdx, brokerValues, setBrokerSelectIdx, resetBrokerSync,
+    setBrokerValues, setSelectedBrokerId, setBrokerFieldIdx, brokerOptions, setEditingField,
+    connectSignedInBroker, setPortfolioSub, portfolioOptionIdx, brokerChoices, setPortfolioOptionIdx,
+    isBrokerSyncing, syncSelectedBroker, brokerSelectIdx, portfolioSub, continueFromPositions,
+    brokerSyncError, rendererHost,
+  });
 
   useEffect(() => {
     if (!editingField) return;
@@ -481,151 +448,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     }
   }, [planAccess.hasProAccess, saveProgressInBackground, stage]);
 
-  const setBrokerFieldValue = useCallback((brokerId: string, key: string, value: string) => {
-    resetBrokerSync();
-    setBrokerValues((previous) => ({
-      ...previous,
-      [brokerId]: { ...previous[brokerId], [key]: value },
-    }));
-  }, [resetBrokerSync]);
-
-  const selectBroker = useCallback((brokerId: string) => {
-    resetBrokerSync();
-    setSelectedBrokerId(brokerId);
-    setBrokerFieldIdx(0);
-    const broker = brokerOptions.find((option) => option.id === brokerId);
-    if (broker?.signedIn) {
-      // Nothing to fill in: the connect dialog opens over this step.
-      setEditingField(false);
-      void connectSignedInBroker(broker.signedIn);
-      return;
-    }
-    setPortfolioSub("broker-fields");
-    const firstField = broker?.adapter
-      ? resolveBrokerConfigFields(broker.adapter, brokerValues[brokerId] ?? {}).filter((field) => field.required)[0]
-      : null;
-    setEditingField(firstField?.type !== "select");
-  }, [brokerOptions, brokerValues, connectSignedInBroker, resetBrokerSync]);
-
-  const chooseBroker = useCallback((choiceIndex = portfolioOptionIdx) => {
-    const choice = brokerChoices[choiceIndex];
-    if (choice) selectBroker(choice.id);
-  }, [brokerChoices, portfolioOptionIdx, selectBroker]);
-
-  /** Broker import is the secondary path: one broker goes straight to its fields. */
-  const openBrokerConnect = useCallback(() => {
-    if (brokerOptions.length === 0) return;
-    setEditingField(false);
-    if (brokerOptions.length === 1) {
-      selectBroker(brokerOptions[0]!.id);
-      return;
-    }
-    setPortfolioOptionIdx(0);
-    setPortfolioSub("choose");
-  }, [brokerOptions, selectBroker]);
-
-  const submitBrokerField = useCallback(() => {
-    if (!selectedBrokerId || isBrokerSyncing) return;
-    const field = activeBrokerFields[brokerFieldIdx];
-    if (!field) {
-      void syncSelectedBroker();
-      return;
-    }
-
-    const currentValues = brokerValues[selectedBrokerId] ?? {};
-    if (field.type === "select") {
-      const option = field.options?.[brokerSelectIdx];
-      if (!option) return;
-      const nextValues = { ...currentValues, [field.key]: option.value };
-      setBrokerFieldValue(selectedBrokerId, field.key, option.value);
-      const adapter = brokerOptions.find((entry) => entry.id === selectedBrokerId)?.adapter;
-      const nextFields = adapter
-        ? resolveBrokerConfigFields(adapter, nextValues).filter((entry) => entry.required)
-        : activeBrokerFields;
-      if (brokerFieldIdx < nextFields.length - 1) {
-        const nextIndex = brokerFieldIdx + 1;
-        setBrokerFieldIdx(nextIndex);
-        if (field.key === "connectionMode") {
-          setPortfolioSub("broker-setup");
-        } else {
-          setEditingField(nextFields[nextIndex]?.type !== "select");
-        }
-        return;
-      }
-      void syncSelectedBroker(nextValues);
-      return;
-    }
-
-    const rawValue = currentValues[field.key]?.trim() ?? "";
-    const value = rawValue || field.defaultValue || "";
-    if (!value) {
-      setEditingField(true);
-      return;
-    }
-    const nextValues = { ...currentValues, [field.key]: value };
-    if (!rawValue && field.defaultValue) {
-      setBrokerFieldValue(selectedBrokerId, field.key, field.defaultValue);
-    }
-    setEditingField(false);
-    if (brokerFieldIdx < activeBrokerFields.length - 1) {
-      const nextIndex = brokerFieldIdx + 1;
-      setBrokerFieldIdx(nextIndex);
-      setEditingField(activeBrokerFields[nextIndex]?.type !== "select");
-      return;
-    }
-    void syncSelectedBroker(nextValues);
-  }, [
-    activeBrokerFields,
-    brokerFieldIdx,
-    brokerOptions,
-    brokerSelectIdx,
-    brokerValues,
-    isBrokerSyncing,
-    selectedBrokerId,
-    setBrokerFieldValue,
-    syncSelectedBroker,
-  ]);
-
-  const continuePortfolio = useCallback(() => {
-    if (portfolioSub === "positions") {
-      continueFromPositions();
-      return;
-    }
-    if (portfolioSub === "choose") {
-      chooseBroker();
-      return;
-    }
-    if (portfolioSub === "broker-setup") {
-      setPortfolioSub("broker-fields");
-      setEditingField(activeBrokerFields[brokerFieldIdx]?.type !== "select");
-      return;
-    }
-    if (portfolioSub === "broker-sync") {
-      if (!isBrokerSyncing && brokerSyncError) void syncSelectedBroker();
-      return;
-    }
-    submitBrokerField();
-  }, [
-    activeBrokerFields,
-    brokerFieldIdx,
-    brokerSyncError,
-    chooseBroker,
-    continueFromPositions,
-    isBrokerSyncing,
-    portfolioSub,
-    submitBrokerField,
-    syncSelectedBroker,
-  ]);
-
-  const backPortfolio = useCallback(() => {
-    if (portfolioSub === "positions") return;
-    if (portfolioSub === "broker-sync" && !resetBrokerSync()) return;
-    setPortfolioSub("positions");
-    setSelectedBrokerId(null);
-    setBrokerFieldIdx(0);
-    setEditingField(false);
-  }, [portfolioSub, resetBrokerSync]);
-
   const movePositionCursor = useCallback((delta: number) => {
     if (positionCursorIndex < 0) return;
     const next = Math.max(0, Math.min(positionCount - 1, positionCursorIndex + delta));
@@ -639,11 +461,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     setPositionCursorSymbol(neighbour?.symbol ?? null);
     void positions.removePosition(selectedPositionSymbol);
   }, [positionCursorIndex, positions, selectedPositionSymbol]);
-
-  const openBrokerGuide = useCallback(() => {
-    const url = selectedBrokerId ? brokerSetupGuideUrl(selectedBrokerId, brokerValues) : null;
-    if (url) void rendererHost.openExternal(url).catch(() => {});
-  }, [brokerValues, rendererHost, selectedBrokerId]);
 
   const submitAccountField = useCallback(() => {
     setEditingField(false);
