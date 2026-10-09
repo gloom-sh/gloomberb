@@ -129,8 +129,61 @@ async function checkListingExchange(listing: ListingArg, deps: ListingDeps): Pro
   );
 }
 
+/**
+ * "SAN does not trade on TSX. SAN trades on: NYSE, EPA." for a listing whose
+ * exchange the symbol is not listed on, from the same picker `SAN:` opens.
+ * Null when no exchange was named, when the symbol is listed there, or when its
+ * venues cannot be found, so the request's own failure stands. It searches, so
+ * ask only after a request came back empty.
+ */
+export async function notTradedMessage(
+  listing: Pick<ListingArg, "symbol" | "exchange">,
+  deps: ListingDeps,
+): Promise<string | null> {
+  if (!listing.exchange) return null;
+  const venues = await listingVenues(listing.symbol, deps).catch(() => []);
+  if (venues.length === 0 || venues.some((venue) => venue.exchange === listing.exchange)) return null;
+  return `${listing.symbol} does not trade on ${listing.exchange}.${tradesOn(listing.symbol, venues)}`;
+}
+
+/** Fails the command with `notTradedMessage`; returns when the symbol does trade there. */
+export async function failIfNotTraded(
+  listing: Pick<ListingArg, "symbol" | "exchange">,
+  deps: ListingDeps,
+  ctx: Pick<CliCommandContext, "fail">,
+): Promise<void> {
+  const message = await notTradedMessage(listing, deps);
+  if (message) ctx.fail(message);
+}
+
+/**
+ * A data request for the listings a command named. When it throws, or `isMiss`
+ * calls what it returned empty, and a listing's exchange is one its symbol does
+ * not trade on, the command ends in that message instead of the request's own
+ * "unavailable". A request that succeeds costs no extra lookup.
+ */
+export async function loadForListing<T>(
+  listings: Pick<ListingArg, "symbol" | "exchange"> | readonly Pick<ListingArg, "symbol" | "exchange">[],
+  deps: ListingDeps,
+  ctx: Pick<CliCommandContext, "fail">,
+  load: () => Promise<T>,
+  isMiss?: (value: T) => boolean,
+): Promise<T> {
+  const named = ("symbol" in listings ? [listings] : listings).filter((listing) => listing.exchange);
+  const checkVenues = () => Promise.all(named.map((listing) => failIfNotTraded(listing, deps, ctx)));
+  let value: T;
+  try {
+    value = await load();
+  } catch (error) {
+    await checkVenues();
+    throw error;
+  }
+  if (isMiss?.(value)) await checkVenues();
+  return value;
+}
+
 /** The saved ticker for a listing: under its own key, or a saved symbol whose venue it is. */
-async function loadSavedListing(store: ListingStore, listing: ListingArg): Promise<TickerRecord | null> {
+export async function loadSavedListing(store: ListingStore, listing: ListingArg): Promise<TickerRecord | null> {
   if (!listing.exchange) return store.loadTicker(listing.symbol);
   for (const key of new Set([listing.key, publicTickerKey(listing.symbol, listing.exchange), listing.symbol])) {
     const ticker = await store.loadTicker(key);
@@ -243,4 +296,26 @@ export function listingHeading(identity: ListingIdentity): string {
 export function listingTitle(identity: ListingIdentity): string {
   const name = identity.name || identity.symbol;
   return identity.exchange ? `${name} (${identity.exchange})` : name;
+}
+
+export interface SavedListingName {
+  symbol: string;
+  /** Canonical code of the venue the row is saved for, or "" when it has none. */
+  exchange: string;
+  /** SAN:EPA, whichever way the row is stored (SAN, SAN:XNYS). */
+  key: string;
+  name: string | null;
+  /** "SAN:EPA (Sanofi)", for sentences. */
+  label: string;
+}
+
+/** The listing a saved ticker row is, as a collection command names it after adding or removing it. */
+export function savedListingName(ticker: TickerRecord): SavedListingName {
+  const { symbol } = parsePublicTickerKey(ticker.metadata.ticker);
+  const exchange = canonicalExchange(ticker.metadata.exchange);
+  const key = exchange ? `${symbol}:${exchange}` : symbol;
+  // A row saved without a company carries its symbol as the name.
+  const typed = ticker.metadata.name?.trim();
+  const name = typed && typed !== symbol && typed !== ticker.metadata.ticker ? typed : null;
+  return { symbol, exchange, key, name, label: name ? `${key} (${name})` : key };
 }

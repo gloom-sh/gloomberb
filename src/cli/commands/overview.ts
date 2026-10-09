@@ -16,7 +16,7 @@ import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
-import { EXCHANGE_OPTION, listingIdentity, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
+import { EXCHANGE_OPTION, listingIdentity, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
@@ -231,7 +231,10 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
     // assets correlate spuriously, often with the opposite sign.
     const loadSeries = async (listing: CliListing) => buildCorrelationSeries(
       listing.key,
-      await loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
+      await loadForListing(
+        listing, services, ctx,
+        () => loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
+      ),
     );
     const [leftSeries, rightSeries] = await Promise.all([loadSeries(leftListing!), loadSeries(rightListing!)]);
     const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);

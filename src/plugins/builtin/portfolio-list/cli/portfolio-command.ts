@@ -3,7 +3,7 @@ import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { takeOption } from "../../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, parseListingArg } from "../../../../cli/listing-arg";
+import { EXCHANGE_OPTION, loadSavedListing, parseListingArg, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
@@ -41,6 +41,7 @@ import {
   describeTicker,
   failPortfolioCommand,
   isCashArgument,
+  listingFields,
   parseFiniteNumber,
   PortfolioCliError,
   rejectCashSymbol,
@@ -119,12 +120,15 @@ async function addTickerToPortfolioCommand(portfolioName: string, symbol: string
       rejectCashSymbol(symbol, exchange, portfolio.name);
       const ticker = await resolveTickerForCli(symbol, store, dataProvider, exchange);
       const result = addTickerToPortfolio(ticker, portfolio.id);
+      // Name the listing that was stored: SAN:EPA is not the SAN that a bare SAN means.
+      const saved = savedListingName(ticker);
+      const data = { changed: result.changed, ...listingFields(saved), portfolio: portfolio.name };
       if (!result.changed) {
-        console.log(cliStyles.warning(`${describeTicker(ticker)} is already in "${portfolio.name}".`));
+        ctx.printResult({ data }, { text: () => cliStyles.warning(`${saved.label} is already in "${portfolio.name}".`) });
         return;
       }
       await store.saveTicker(result.ticker);
-      console.log(cliStyles.success(`Added ${describeTicker(result.ticker)} to "${portfolio.name}".`));
+      ctx.printResult({ data }, { text: () => cliStyles.success(`Added ${saved.label} to "${portfolio.name}".`) });
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to add ${symbol} to "${portfolioName}".`);
     }
@@ -137,24 +141,37 @@ function withoutTarget(config: AppConfig, portfolio: Portfolio, symbol: string):
   return removed.length > 0 ? next : null;
 }
 
-async function removeTickerFromPortfolioCommand(portfolioName: string, symbol: string, ctx: CliCommandContext) {
+async function removeTickerFromPortfolioCommand(portfolioName: string, symbol: string, exchange: string | undefined, ctx: CliCommandContext) {
+  // SAN:EPA and SAN --exchange EPA name the stored listing, which a bare SAN may hold under another venue.
+  const listing = await requireListingArg(symbol, exchange, ctx);
   await withConfigData(ctx, async ({ config, store }) => {
-    const normalized = symbol.trim().toUpperCase();
-
     try {
       const portfolio = requireManualPortfolio(config, portfolioName);
-      const ticker = await store.loadTicker(normalized);
-      if (!ticker) ctx.fail(`Ticker "${normalized}" was not found in your local data.`);
+      const ticker = await loadSavedListing(store, listing);
+      if (!ticker) ctx.fail(`Ticker "${listing.key}" was not found in your local data.`);
+      const saved = savedListingName(ticker);
       const result = removeTickerFromPortfolio(ticker, portfolio.id);
-      if (!result.changed) ctx.fail(`${describeTicker(ticker)} is not in "${portfolio.name}".`);
+      if (!result.changed) ctx.fail(`${saved.key} is not in "${portfolio.name}".`);
       await store.saveTicker(result.ticker);
       const nextConfig = withoutTarget(config, portfolio, ticker.metadata.ticker);
       if (nextConfig) await saveConfig(nextConfig);
-      console.log(cliStyles.success(`Removed ${describeTicker(ticker)} from "${portfolio.name}".`));
-      console.log(renderStats([
-        ["Removed Positions", String(result.removedPositionCount)],
-        ...(nextConfig ? [["Removed Target", "yes"] as [string, string]] : []),
-      ]));
+      ctx.printResult({
+        data: {
+          changed: true,
+          ...listingFields(saved),
+          portfolio: portfolio.name,
+          removedPositions: result.removedPositionCount,
+          removedTarget: nextConfig != null,
+        },
+      }, {
+        text: () => [
+          cliStyles.success(`Removed ${saved.label} from "${portfolio.name}".`),
+          renderStats([
+            ["Removed Positions", String(result.removedPositionCount)],
+            ...(nextConfig ? [["Removed Target", "yes"] as [string, string]] : []),
+          ]),
+        ].join("\n"),
+      });
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to remove ${symbol} from "${portfolioName}".`);
     }
@@ -471,7 +488,7 @@ export const portfolioCliCommand: CliCommandDef = {
       const symbol = args.at(-1);
       const name = args.slice(1, -1).join(" ");
       if (!name || !symbol) ctx.fail("Usage: gloomberb portfolio remove <portfolio> <ticker>");
-      await removeTickerFromPortfolioCommand(name!, symbol!, ctx);
+      await removeTickerFromPortfolioCommand(name!, symbol!, exchange, ctx);
       return;
     }
 

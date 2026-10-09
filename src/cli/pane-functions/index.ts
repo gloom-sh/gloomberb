@@ -22,6 +22,7 @@ import {
 } from "./catalog";
 import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
+import { loadForListing } from "../listing-arg";
 
 async function withPaneRuntime<T>(
   ctx: CliCommandContext,
@@ -58,9 +59,16 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           + `Use "gloomberb catalog ${resolved.token}" to inspect readiness.`,
         );
       }
+      // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       const report = await withPersistedCloudSession(
         context,
-        () => buildFunctionReport(resolved, context, parsed.arg),
+        () => loadForListing(
+          parsed.listing ?? [],
+          context,
+          ctx,
+          () => buildFunctionReport(resolved, context, parsed.arg),
+          (built) => built.data.empty || !built.data.complete,
+        ),
       );
       if (parsed.requireBotSafe && (report.data.empty || !report.data.complete)) {
         const unavailable = report.data.unavailableSymbols.length > 0

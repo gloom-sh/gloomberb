@@ -102,7 +102,7 @@ describe("CLI watchlist commands", () => {
     });
 
     const addResult = await captureConsole(() => runCli(["watchlist", "add", "Growth", "NVDA"]));
-    expect(addResult.stdout).toContain('Added NVDA to "Growth".');
+    expect(addResult.stdout).toContain('Added NVDA:NASDAQ (NVIDIA Corporation) to "Growth".');
 
     let persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
     let store = new TickerRepository(persistence.tickers);
@@ -164,7 +164,7 @@ describe("CLI portfolio commands", () => {
     });
 
     const addResult = await captureConsole(() => runCli(["portfolio", "add", "Research", "NVDA"]));
-    expect(addResult.stdout).toContain('Added NVDA (NVIDIA Corporation) to "Research".');
+    expect(addResult.stdout).toContain('Added NVDA:NASDAQ (NVIDIA Corporation) to "Research".');
 
     let persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
     let store = new TickerRepository(persistence.tickers);
@@ -249,7 +249,7 @@ describe("CLI portfolio commands", () => {
     });
 
     const removeResult = await captureConsole(() => runCli(["portfolio", "remove", "Research", "NVDA"]));
-    expect(removeResult.stdout).toContain('Removed NVDA (NVIDIA Corporation) from "Research".');
+    expect(removeResult.stdout).toContain('Removed NVDA:NASDAQ (NVIDIA Corporation) from "Research".');
     expect(removeResult.stdout).toContain("Removed Positions");
 
     let persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));

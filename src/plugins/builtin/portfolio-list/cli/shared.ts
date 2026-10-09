@@ -1,7 +1,7 @@
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
-import { parseListingArg } from "../../../../cli/listing-arg";
+import { parseListingArg, type SavedListingName } from "../../../../cli/listing-arg";
 import { isUsListingExchange } from "../../../../utils/exchanges";
 import { findPortfolio, isManualPortfolio } from "../mutations";
 import { CASH_SYMBOL } from "../allocation";
@@ -21,6 +21,11 @@ export function failPortfolioCommand(ctx: CliCommandContext, error: unknown, fal
     return ctx.fail(error.message, typeof details === "string" ? details : undefined);
   }
   return ctx.fail(fallback);
+}
+
+/** What add and remove report about the listing they changed, as JSON and as the sentence's subject. */
+export function listingFields(saved: SavedListingName) {
+  return { listing: saved.key, symbol: saved.symbol, exchange: saved.exchange || null, name: saved.name };
 }
 
 export function parseFiniteNumber(rawValue: string | undefined, label: string): number {

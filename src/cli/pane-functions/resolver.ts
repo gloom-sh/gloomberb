@@ -123,7 +123,7 @@ export async function applyListingArgument(
   const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   const listing = await resolveCliListing(args.arg, exchange, context);
   const { exchange: _exchange, ...options } = args.options;
-  return { ...args, arg: listing.key, options };
+  return { ...args, arg: listing.key, options, listing };
 }
 
 export async function resolvePaneFunction(

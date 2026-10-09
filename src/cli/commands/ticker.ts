@@ -50,7 +50,7 @@ import {
 import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isUsEquityTicker } from "../../utils/sec";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
-import { ListingArgError, listingIdentity, listingVenues, resolveCliListing, type CliListing } from "../listing-arg";
+import { failIfNotTraded, ListingArgError, listingIdentity, resolveCliListing, type CliListing } from "../listing-arg";
 import { isDepositaryReceipt } from "../../utils/depositary-receipt";
 import { cliFreshnessFooter } from "../result";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
@@ -608,15 +608,9 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     try {
       financials = await dataProvider.getTickerFinancials(requestSymbol, exchange);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
       // A known exchange the symbol is not listed on: say where it is.
-      const venues = listing.exchange ? await listingVenues(listing.symbol, { store, dataProvider }).catch(() => []) : [];
-      failCommand(
-        `Failed to fetch data for ${normalized}.`,
-        venues.length > 0 && !venues.some((venue) => venue.exchange === listing.exchange)
-          ? `${reason}\n${listing.symbol} trades on: ${venues.map((venue) => venue.exchange).join(", ")}.`
-          : reason,
-      );
+      await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });
+      failCommand(`Failed to fetch data for ${normalized}.`, error instanceof Error ? error.message : String(error));
     }
 
     const hasResearchData = financials && (
@@ -632,6 +626,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       || financials.quarterlyStatements.length > 0
     );
     if (!financials || (!hasResearchData && !tickerFile?.metadata.positions.some((position) => position.shares !== 0))) {
+      await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });
       failCommand(`No research data available for ${normalized}.`);
     }
     const resolvedFinancials = financials as TickerFinancials;
