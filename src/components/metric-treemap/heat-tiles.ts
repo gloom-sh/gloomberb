@@ -57,6 +57,24 @@ export function heatTileLabelPx(width: number, height: number, ticker: string, v
   return NO_LABEL;
 }
 
+/**
+ * The move with its qualifier (an after-hours move's AH) where that still fits
+ * at the size the move alone was given, else the move alone. The qualifier
+ * never shrinks the text or drops the move.
+ */
+export function heatTileValueWithSuffix(
+  value: string | null,
+  suffix: string | null | undefined,
+  room: { width: number; valuePx?: number },
+): string | null {
+  if (!value || !suffix) return value;
+  const withSuffix = `${value} ${suffix}`;
+  const width = room.valuePx == null
+    ? withSuffix.length
+    : withSuffix.length * MONO_CHAR_EM * room.valuePx + TILE_PAD_X_PX * 2;
+  return width <= room.width ? withSuffix : value;
+}
+
 /** The same tiers on a cell grid: whole words or nothing, never a clipped ticker. */
 export function heatTileLabelCells(width: number, height: number, ticker: string, value: string | null): HeatTileLabelTier {
   if (width < ticker.length || height < 1 || ticker.length === 0) return "none";

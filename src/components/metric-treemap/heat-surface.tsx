@@ -17,6 +17,7 @@ import {
   heatTileLabelCells,
   heatTileLabelPx,
   heatTileMotion,
+  heatTileValueWithSuffix,
 } from "./heat-tiles";
 
 type PreventableMouseEvent = { preventDefault(): void };
@@ -203,7 +204,7 @@ function useItemsById<T>(scene: MetricTreemapScene<T>, items: readonly MetricTre
 const VISIBLE_FADE_DISTANCE = 0.03;
 
 const DomHeatTile = memo(function DomHeatTile({
-  id, rect, canvasWidth, canvasHeight, gap, label, value, background, foreground,
+  id, rect, canvasWidth, canvasHeight, gap, label, value, valueSuffix, background, foreground,
   selected, reducedMotion, glide, pulseCount, events,
 }: {
   id: string;
@@ -213,6 +214,7 @@ const DomHeatTile = memo(function DomHeatTile({
   gap: number;
   label: string;
   value: string | null;
+  valueSuffix: string | null;
   background: string;
   foreground: string;
   selected: boolean;
@@ -222,6 +224,7 @@ const DomHeatTile = memo(function DomHeatTile({
   events: SurfaceEvents;
 }) {
   const text = heatTileLabelPx(rect.width - gap * 2, rect.height - gap * 2, label, value);
+  const shownValue = heatTileValueWithSuffix(value, valueSuffix, { width: rect.width - gap * 2, valuePx: text.valuePx });
   // Where this tile sat before the last relayout, kept to slide it from there.
   const placedRef = useRef(rect);
   const glideRef = useRef<{ dx: number; dy: number; count: number }>({ dx: 0, dy: 0, count: 0 });
@@ -336,7 +339,7 @@ const DomHeatTile = memo(function DomHeatTile({
         <Text style={{ ...lineStyle, fontSize: text.tickerPx, fontWeight: 700, lineHeight: 1.12 }}>{label}</Text>
       )}
       {text.tier === "full" && value && (
-        <Text style={{ ...lineStyle, fontSize: text.valuePx, fontWeight: 500, lineHeight: 1.12 }}>{value}</Text>
+        <Text style={{ ...lineStyle, fontSize: text.valuePx, fontWeight: 500, lineHeight: 1.12 }}>{shownValue}</Text>
       )}
     </Box>
   );
@@ -554,6 +557,7 @@ function DomHeatTreemap<T>({
               gap={gap}
               label={item.label}
               value={item.primaryText ?? null}
+              valueSuffix={item.primaryTextSuffix ?? null}
               background={tileColors.background}
               foreground={tileColors.foreground}
               selected={tile.item.id === selectedId}
@@ -586,7 +590,7 @@ function tileRect(tile: FloatMetricTreemapTile<unknown>): TreemapRect {
 // Terminal: whole cells, a one-cell gutter right of and under each tile.
 
 const TerminalHeatTile = memo(function TerminalHeatTile({
-  id, x, y, width, height, label, value, colorValue, selected, events,
+  id, x, y, width, height, label, value, valueSuffix, colorValue, selected, events,
 }: {
   id: string;
   x: number;
@@ -595,6 +599,7 @@ const TerminalHeatTile = memo(function TerminalHeatTile({
   height: number;
   label: string;
   value: string | null;
+  valueSuffix: string | null;
   colorValue: number | null;
   selected: boolean;
   events: SurfaceEvents;
@@ -605,7 +610,8 @@ const TerminalHeatTile = memo(function TerminalHeatTile({
   const renderWidth = Math.max(1, width - (width >= 3 ? 1 : 0));
   const renderHeight = Math.max(1, height - (height >= 2 ? 1 : 0));
   const tier = heatTileLabelCells(renderWidth, renderHeight, label, value);
-  const lines = tier === "full" && value ? [label, value] : tier === "none" ? [] : [label];
+  const shownValue = heatTileValueWithSuffix(value, valueSuffix, { width: renderWidth });
+  const lines = tier === "full" && shownValue ? [label, shownValue] : tier === "none" ? [] : [label];
   const top = Math.max(0, Math.floor((renderHeight - lines.length) / 2));
   return (
     <Box
@@ -688,6 +694,7 @@ function TerminalHeatTreemap<T>({
               height={tile.height}
               label={item.label}
               value={item.primaryText ?? null}
+              valueSuffix={item.primaryTextSuffix ?? null}
               colorValue={item.colorValue ?? null}
               selected={tile.item.id === selectedId}
               events={events}

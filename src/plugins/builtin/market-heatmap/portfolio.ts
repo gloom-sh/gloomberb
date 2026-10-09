@@ -3,6 +3,7 @@ import type { MarketHeatmapAsset, MarketHeatmapUniverseId } from "../../../api-c
 import { useAppSelector, usePaneStateValue } from "../../../state/app/context";
 import type { ColumnConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
+import { getSessionMoveDisplay, type ExtendedSession } from "../../../market-data/market/status";
 import type { TickerRecord } from "../../../types/ticker";
 import { getSortValue, type ColumnContext } from "../portfolio-list/metrics";
 
@@ -36,6 +37,8 @@ export interface HeatmapBoardAsset extends MarketHeatmapAsset {
   sizeCurrency?: string;
   /** Treemap area, when it is not `size` itself. */
   weight?: number;
+  /** The price and move are this open pre-market or after-hours session's, from the regular close. */
+  extendedSession?: ExtendedSession;
 }
 
 export interface HeatmapPortfolioPane {
@@ -200,16 +203,19 @@ export function buildPortfolioHeatmapAssets({
     const symbol = ticker.metadata.ticker;
     const snapshot = financials.get(symbol);
     const quote = snapshot?.quote;
-    const price = quote != null && Number.isFinite(quote.price) ? quote.price : null;
+    // Colored like the market boards: an open extended session's move, else the regular session's.
+    const display = getSessionMoveDisplay(quote);
+    const price = display != null && Number.isFinite(display.price) ? display.price : null;
     const size = positiveNumber(getSortValue(sizeColumn, ticker, snapshot, context));
-    const hasChange = quote != null && Number.isFinite(quote.changePercent);
+    const hasChange = display?.changePercent != null && Number.isFinite(display.changePercent);
     return {
       symbol,
       name: quote?.name?.trim() || ticker.metadata.name || symbol,
       price: price ?? 0,
-      change: quote != null && Number.isFinite(quote.change) ? quote.change : 0,
-      changePercent: hasChange ? quote.changePercent : 0,
+      change: display?.change != null && Number.isFinite(display.change) ? display.change : 0,
+      changePercent: hasChange ? display.changePercent! : 0,
       hasChange,
+      ...(display?.session ? { extendedSession: display.session } : {}),
       size,
       weight: size == null ? undefined : kind === "portfolio" ? size : heatmapSizeWeight(size, sizeBy),
       sizeKind: "market-cap",

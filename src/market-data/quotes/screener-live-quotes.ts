@@ -5,6 +5,7 @@ import { buildQuoteKey, resolveEntryData } from "../selectors";
 import type { QueryEntry } from "../result-types";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { isFiniteNumber } from "../../utils/guards";
+import { getSessionMoveDisplay, type ExtendedSession } from "../market/status";
 
 const STREAM_FRESHNESS_MS = 2 * 60_000;
 const STREAM_CONNECTING_GRACE_MS = 15_000;
@@ -20,6 +21,18 @@ export interface ScreenerQuoteRow {
   exchange: string;
   lastUpdated?: number;
   previousClose?: number;
+  /** Set when the price and move are an open pre-market or after-hours session's (see `extendedSessions`). */
+  extendedSession?: ExtendedSession;
+}
+
+export interface ScreenerQuoteOverlayOptions {
+  /**
+   * While a pre-market or after-hours session is open, show its price and its
+   * move from the regular close, marked with `extendedSession`; otherwise the
+   * regular session's, which stops at the close. Without it a row shows the
+   * live price against the previous close.
+   */
+  extendedSessions?: boolean;
 }
 
 export interface ScreenerQuoteFreshness {
@@ -64,12 +77,14 @@ function overlayCurrency(row: ScreenerQuoteRow, quote: Quote): string {
  * entries map, but most rows' quotes did not move; returning the same row
  * object for those lets memoized table rows skip the render.
  */
-const overlayCache = new WeakMap<object, { quote: Quote; row: ScreenerQuoteRow }>();
+const overlayCache = new WeakMap<object, { quote: Quote; extended: boolean; row: ScreenerQuoteRow }>();
 
 export function overlayScreenerQuoteEntries<T extends ScreenerQuoteRow>(
   rows: readonly T[],
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
+  options: ScreenerQuoteOverlayOptions = {},
 ): T[] {
+  const extended = options.extendedSessions === true;
   return rows.map((row) => {
     const quote = resolveEntryData(entries.get(quoteKey(row)));
     if (!quote || !isFiniteNumber(quote.price)) return row;
@@ -81,9 +96,9 @@ export function overlayScreenerQuoteEntries<T extends ScreenerQuoteRow>(
       return row;
     }
     const cached = overlayCache.get(row);
-    if (cached?.quote === quote) return cached.row as T;
-    const overlaid = overlayQuote(row, quote);
-    overlayCache.set(row, { quote, row: overlaid });
+    if (cached?.quote === quote && cached.extended === extended) return cached.row as T;
+    const overlaid = extended ? overlaySessionQuote(row, quote) : overlayQuote(row, quote);
+    overlayCache.set(row, { quote, extended, row: overlaid });
     return overlaid;
   });
 }
@@ -101,6 +116,19 @@ function overlayQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): T {
     currency: overlayCurrency(row, quote),
     previousClose: isFiniteNumber(quote.previousClose) ? quote.previousClose : undefined,
     lastUpdated: quote.lastUpdated,
+  };
+}
+
+function overlaySessionQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): T {
+  const overlaid = overlayQuote(row, quote);
+  const display = getSessionMoveDisplay(quote);
+  if (!display || !isFiniteNumber(display.price)) return overlaid;
+  return {
+    ...overlaid,
+    price: display.price,
+    change: isFiniteNumber(display.change) ? display.change : null,
+    changePercent: isFiniteNumber(display.changePercent) ? display.changePercent : null,
+    extendedSession: display.session,
   };
 }
 

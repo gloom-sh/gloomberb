@@ -135,6 +135,18 @@ function changeOf(asset: HeatmapBoardAsset): number | null {
     : null;
 }
 
+/** Marks a pre-market or after-hours move, which is measured from the regular close. */
+function sessionMark(asset: HeatmapBoardAsset): string | null {
+  if (asset.extendedSession === "PRE") return "PM";
+  if (asset.extendedSession === "POST") return "AH";
+  return null;
+}
+
+function formatMove(asset: HeatmapBoardAsset, change: number | null): string {
+  const mark = sessionMark(asset);
+  return change == null ? "—" : mark ? `${formatPercentRaw(change)} ${mark}` : formatPercentRaw(change);
+}
+
 type HeatmapGrouping = "sector-industry" | "sector" | "flat";
 
 /**
@@ -205,8 +217,9 @@ function paintItem(asset: HeatmapBoardAsset): MetricTreemapItem<HeatmapBoardAsse
     weight: asset.weight ?? asset.size ?? 0,
     colorValue: change,
     primaryText: formatHeatTileMove(change),
+    primaryTextSuffix: sessionMark(asset),
     tooltip: [
-      [asset.symbol, name, change == null ? "—" : formatPercentRaw(change)].filter(Boolean).join(" · "),
+      [asset.symbol, name, formatMove(asset, change)].filter(Boolean).join(" · "),
       ...(details.length > 0 ? [details.join(" · ")] : []),
     ],
     data: asset,
@@ -367,7 +380,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     liveStreaming,
   });
   const resolvedAssets = useMemo(
-    () => overlayScreenerQuoteEntries(boardAssets, liveQuoteEntries),
+    () => overlayScreenerQuoteEntries(boardAssets, liveQuoteEntries, { extendedSessions: true }),
     [boardAssets, liveQuoteEntries],
   );
   const feedStatus = useMemo(
@@ -615,6 +628,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
             color: changeOf(selectedAsset) == null ? undefined : priceColor(changeOf(selectedAsset)!),
             bold: true,
           },
+          ...(sessionMark(selectedAsset) ? [{ text: sessionMark(selectedAsset)!, tone: "muted" as const }] : []),
           ...(selectedAsset.price > 0
             ? [{ text: formatCurrency(selectedAsset.price, selectedAsset.currency), tone: "value" as const }]
             : []),
