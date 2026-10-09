@@ -14,7 +14,7 @@ function errorMessages(errors: unknown): string[] {
 }
 
 /** Why the output cannot be used as it is, as a clause: "some values need Gloom Cloud Pro (locked)". */
-export function accessGateReason(gate: PaneAccessGate): string {
+function accessGateReason(gate: PaneAccessGate): string {
   return gate === "pro" ? "some values need Gloom Cloud Pro (locked)" : "it needs a Gloom Cloud sign-in";
 }
 
