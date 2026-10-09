@@ -78,6 +78,14 @@ export interface TextFieldProps {
   }) => void;
 }
 
+/**
+ * Desktop and web: the `style` of a Textarea that sits in its own framed box (a
+ * prompt, a form's long field, a bio), so its text keeps off the frame as a
+ * TextField's does. The terminal's box border already leaves that cell; pass
+ * it only where `nativePaneChrome` is true.
+ */
+export const FRAMED_TEXTAREA_DESKTOP_STYLE = { padding: "6px var(--cell-w)", lineHeight: "var(--cell-h)" } as const;
+
 const PASSWORD_MASK_CHAR = "*";
 
 function maskPassword(value: string): string {

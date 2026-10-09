@@ -37,6 +37,7 @@ import { useToastHost } from "../ui/toast";
 import { VERSION } from "../version";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
+import { FRAMED_TEXTAREA_DESKTOP_STYLE } from "./ui/fields";
 import { DialogFrame } from "./ui/frame";
 import { TERMINAL_MESSAGE_KEYS } from "./textarea-keys";
 
@@ -217,7 +218,7 @@ function FeedbackDialog({
             flexGrow={1}
             wrapText
             {...(nativePaneChrome
-              ? { style: { padding: "6px 8px", lineHeight: "18px" }, onKeyDown: sendOnModifiedEnter }
+              ? { style: FRAMED_TEXTAREA_DESKTOP_STYLE, onKeyDown: sendOnModifiedEnter }
               : { keyBindings: TERMINAL_MESSAGE_KEYS, onSubmit: () => { void send(); } })}
             onInput={(value: string) => {
               messageValueRef.current = value;

@@ -121,6 +121,21 @@ test("TextField delivers normalized native keys before submit and respects cance
   expect(submitted).toEqual(["draft"]);
 });
 
+test("a framed TextField keeps its text a cell off the frame, and a plain one sits flush", async () => {
+  // The input host's own reset once wrote a `padding` shorthand after the
+  // field's inset, so React wiped the inset and the text touched the border.
+  const container = await renderDom(
+    <Box>
+      <TextField value="framed" />
+      <TextField value="plain" variant="plain" />
+    </Box>,
+  );
+  const [framed, plain] = [...container.querySelectorAll("input")];
+  expect(framed!.style.paddingLeft).toBe("var(--cell-w)");
+  expect(framed!.style.paddingRight).toBe("var(--cell-w)");
+  expect(plain!.style.paddingLeft).toBe("0px");
+});
+
 test("desktop lists skip disabled rows during keyboard selection and activation", async () => {
   const selected: number[] = [];
   const activated: string[] = [];

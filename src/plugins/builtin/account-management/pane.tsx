@@ -22,11 +22,13 @@ import {
   ScrollBox,
   Textarea,
   TextAttributes,
+  useUiCapabilities,
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "../../../ui";
 import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { SelectControl } from "../../../components/ui/select-button";
+import { FRAMED_TEXTAREA_DESKTOP_STYLE } from "../../../components/ui/fields";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
@@ -220,6 +222,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     setActiveField(ACCOUNT_TAB_FIELD_ORDER[tab][0] ?? "username");
   }), []);
   const syncStatus = useCloudSyncStatus();
+  const { nativePaneChrome } = useUiCapabilities();
   const bioRef = useRef<TextareaRenderable | null>(null);
   const portfolioSelectRef = useRef<SelectControl | null>(null);
   const refreshedSyncRevisionRef = useRef<number | null>(null);
@@ -821,6 +824,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                     backgroundColor={colors.panel}
                     flexGrow={1}
                     wrapText
+                    {...(nativePaneChrome ? { style: FRAMED_TEXTAREA_DESKTOP_STYLE } : {})}
                     onInput={(value: string) => setDraftValue("bio", value)}
                   />
                 </Box>
