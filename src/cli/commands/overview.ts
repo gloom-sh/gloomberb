@@ -10,8 +10,16 @@ import {
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
 import { formatMoverPrice, moverReferencePrice } from "../../plugins/builtin/market-movers/model";
-import { loadCalendar, matchesCountry, matchesImpact, type CountryFilter, type ImpactFilter } from "../../plugins/builtin/econ/calendar-model";
-import { isoDate, requireArg, takeOption } from "./command-utils";
+import {
+  COUNTRY_CYCLE,
+  FILTER_CYCLE,
+  loadCalendar,
+  matchesCountry,
+  matchesImpact,
+  type CountryFilter,
+  type ImpactFilter,
+} from "../../plugins/builtin/econ/calendar-model";
+import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
@@ -48,11 +56,26 @@ const MOVER_COLUMNS = [
 ];
 const START_OPTION = { flags: "--start <yyyy-mm-dd>", description: "First observation date (default 2021-01-01)" };
 
-function screenerCategory(value: string | undefined): ScreenerCategory | "trending" {
-  if (value === "losers") return "day_losers";
-  if (value === "active" || value === "most-active") return "most_actives";
-  if (value === "trending") return "trending";
-  return "day_gainers";
+const MOVER_LISTS: Record<string, ScreenerCategory | "trending"> = {
+  gainers: "day_gainers",
+  losers: "day_losers",
+  active: "most_actives",
+  "most-active": "most_actives",
+  trending: "trending",
+};
+const MOVERS_USAGE = "movers [gainers|losers|active|trending]";
+
+function screenerCategory(args: readonly string[], ctx: Parameters<CliCommandDef["execute"]>[1]): ScreenerCategory | "trending" {
+  rejectExtraArgs(args, 1, { usage: MOVERS_USAGE, takes: "one list" }, ctx);
+  const list = args[0]?.toLowerCase() ?? "gainers";
+  const category = MOVER_LISTS[list];
+  if (!category) ctx.fail(`Unknown list "${args[0]}".`, "Use gainers, losers, active or trending.");
+  return category;
+}
+
+/** A command that takes no arguments fails on one, rather than answering as if it were not there. */
+function rejectArgs(args: readonly string[], usage: string, ctx: Parameters<CliCommandDef["execute"]>[1], advice?: string): void {
+  rejectExtraArgs(args, 0, { usage, takes: "no arguments", advice }, ctx);
 }
 
 function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/data-provider").AssetDataProvider["getQuotesBatch"]>>>) {
@@ -72,7 +95,7 @@ function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/d
 }
 
 async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const category = screenerCategory(args[0]);
+  const category = screenerCategory(args, ctx);
   const limit = ctx.cliOptions.limit ?? 25;
   if (category === "trending") {
     await withCliServices(ctx, async (services) => {
@@ -126,10 +149,21 @@ function utcDateTimePart(value: unknown, part: "date" | "time"): string {
   return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC`;
 }
 
+const ECON_USAGE = "econ [--country <region>] [--impact <level>]";
+
+/** One of a filter's values, matched without regard to case; anything else fails with the list. */
+function parseFilter<T extends string>(value: string | undefined, values: readonly T[], label: string, ctx: Parameters<CliCommandDef["execute"]>[1]): T {
+  if (value == null) return values[0]!;
+  const match = values.find((candidate) => candidate.toLowerCase() === value.trim().toLowerCase());
+  if (!match) ctx.fail(`Unknown ${label} "${value}".`, `Use ${values.join(", ")}.`);
+  return match;
+}
+
 async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const rawArgs = [...args];
-  const country = (takeOption(rawArgs, "--country") ?? "all") as CountryFilter;
-  const impact = (takeOption(rawArgs, "--impact") ?? "all") as ImpactFilter;
+  const country: CountryFilter = parseFilter(takeOption(rawArgs, "--country"), COUNTRY_CYCLE, "country", ctx);
+  const impact: ImpactFilter = parseFilter(takeOption(rawArgs, "--impact"), FILTER_CYCLE, "impact", ctx);
+  rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country and --impact.");
   await withCliServices(ctx, async (services) => {
     const { data: events } = await loadCalendar(ctx.cliOptions.refresh);
     const rows = events
@@ -170,7 +204,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const args = [...rawArgs];
   const startDate = takeOption(args, "--start") ?? "2021-01-01";
   const sortOrder = (takeOption(args, "--sort") ?? "desc") as "asc" | "desc";
-  const seriesId = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb fred <series-id> [--start <yyyy-mm-dd>]", ctx);
+  const seriesId = requireOneArg(args, "fred <series-id> [--start <yyyy-mm-dd>]", "series", ctx).toUpperCase();
   const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder });
   const rows = data.observations.slice(0, ctx.cliOptions.limit ?? data.observations.length);
   ctx.printResult({
@@ -187,8 +221,10 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
 
 const YIELD_TENORS: Record<string, string> = { DGS3MO: "3M", DGS2: "2Y", DGS10: "10Y", DGS30: "30Y" };
 
-async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  const args = [...rawArgs];
   const startDate = takeOption(args, "--start") ?? "2021-01-01";
+  rejectArgs(args, "yield-curve [--start <yyyy-mm-dd>]", ctx);
   const series = Object.keys(YIELD_TENORS);
   const results = await Promise.all(series.map(async (seriesId) => {
     const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder: "desc" });
@@ -217,9 +253,10 @@ async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["exec
 async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange");
-  const usage = "Usage: gloomberb correlation <symbol-a> <symbol-b>";
-  requireArg(args[0], usage, ctx);
-  requireArg(args[1], usage, ctx);
+  const usage = "correlation <symbol-a> <symbol-b>";
+  requireArg(args[0], `Usage: gloomberb ${usage}`, ctx);
+  requireArg(args[1], `Usage: gloomberb ${usage}`, ctx);
+  rejectExtraArgs(args, 2, { usage, takes: "two symbols", advice: "Run it once per pair." }, ctx);
   await withCliServices(ctx, async (services) => {
     // --exchange is for a symbol that names no exchange of its own.
     const [leftListing, rightListing] = await Promise.all([args[0]!, args[1]!].map((raw) => (
@@ -274,7 +311,7 @@ export const overviewCliCommands: CliCommandDef[] = [
     description: "Show gainers, losers, most active, or trending stocks",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["movers [gainers|losers|active|trending]"],
+      usage: [MOVERS_USAGE],
       examples: ["movers", "movers losers --limit 10", "movers trending"],
     },
     execute: runMoverCommand,
@@ -283,20 +320,26 @@ export const overviewCliCommands: CliCommandDef[] = [
     name: "indices",
     description: "Show the major US stock indices",
     help: { group: CLI_COMMAND_GROUPS.markets, usage: ["indices"] },
-    execute: (_args, ctx) => runQuoteBasket([...MARKET_SUMMARY_SYMBOLS], ctx, { group: "indices" }),
+    execute: (args, ctx) => {
+      rejectArgs(args, "indices", ctx);
+      return runQuoteBasket([...MARKET_SUMMARY_SYMBOLS], ctx, { group: "indices" });
+    },
   },
   {
     name: "sectors",
     description: "Show the SPDR sector ETFs",
     help: { group: CLI_COMMAND_GROUPS.markets, usage: ["sectors"] },
-    execute: (_args, ctx) => runQuoteBasket(getSectorCollection("sectors").items.map((item) => item.etf), ctx, { group: "sectors" }),
+    execute: (args, ctx) => {
+      rejectArgs(args, "sectors", ctx);
+      return runQuoteBasket(getSectorCollection("sectors").items.map((item) => item.etf), ctx, { group: "sectors" });
+    },
   },
   {
     name: "econ",
     description: "List upcoming economic calendar events",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["econ [--country <region>] [--impact <level>]"],
+      usage: [ECON_USAGE],
       options: [
         { flags: "--country <region>", description: "US, G7, EU, or all (default all)" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },

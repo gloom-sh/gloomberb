@@ -27,13 +27,26 @@ function above(left: number, right: number): boolean {
   return left - right > 8 * Number.EPSILON * Math.max(Math.abs(left), Math.abs(right));
 }
 
-/** Missing OHLC fields are not contradictory: close-only histories remain usable. */
-export function pricePointIntegrity(point: PricePoint): PriceHistoryIntegrity | undefined {
+/**
+ * Each way a bar's prices contradict each other, as short codes such as
+ * `high<open` or `low>close`; empty when they agree. Missing OHLC fields are
+ * not contradictory: close-only histories remain usable.
+ */
+export function pricePointIntegrityFlags(point: PricePoint): string[] {
   const { open, high, low, close } = point;
-  const invalid = (isFiniteNumber(high) && isFiniteNumber(low) && above(low, high))
-    || [open, close].some((value) => isFiniteNumber(value)
-      && ((isFiniteNumber(high) && above(value, high)) || (isFiniteNumber(low) && above(low, value))));
-  if (!invalid) return undefined;
+  const flags: string[] = [];
+  for (const [name, value] of [["open", open], ["close", close]] as const) {
+    if (isFiniteNumber(value) && isFiniteNumber(high) && above(value, high)) flags.push(`high<${name}`);
+  }
+  for (const [name, value] of [["open", open], ["close", close]] as const) {
+    if (isFiniteNumber(value) && isFiniteNumber(low) && above(low, value)) flags.push(`low>${name}`);
+  }
+  if (isFiniteNumber(high) && isFiniteNumber(low) && above(low, high)) flags.push("low>high");
+  return flags;
+}
+
+export function pricePointIntegrity(point: PricePoint): PriceHistoryIntegrity | undefined {
+  if (pricePointIntegrityFlags(point).length === 0) return undefined;
   const date = new Date(point.date);
   return Object.freeze({
     reason: "inconsistent-ohlc",

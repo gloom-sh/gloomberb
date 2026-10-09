@@ -388,8 +388,9 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
   if (output) process.stdout.write(`${output}\n`);
-  // Structured formats carry warnings in the envelope; text mode would otherwise lose them.
-  if (options.format === "text") {
+  // JSON carries warnings in its envelope. Text, CSV and NDJSON are only the
+  // rows, so a warning goes to stderr, out of a file the rows are piped into.
+  if (options.format !== "json" && !options.quiet) {
     for (const warning of result.warnings ?? []) {
       console.error(`${cliStyles.warning("warning:")} ${warning}`);
     }

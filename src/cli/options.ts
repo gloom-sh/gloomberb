@@ -15,6 +15,8 @@ export interface ParsedCliArgs {
   options: CliGlobalOptions;
   /** `--help` or `-h` appeared before `--`. The flag is removed from args. */
   help: boolean;
+  /** Index in `args` where the arguments after a bare `--` begin; they are never options. */
+  literalStart: number;
 }
 
 export function isCliHelpFlag(arg: string): boolean {
@@ -43,10 +45,12 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
   const options: CliGlobalOptions = { ...DEFAULT_CLI_OPTIONS };
   const args: string[] = [];
   let help = false;
+  let literalStart: number | null = null;
 
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index]!;
     if (arg === "--") {
+      literalStart = args.length;
       args.push(...rawArgs.slice(index + 1));
       break;
     }
@@ -102,5 +106,5 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
     args.push(arg);
   }
 
-  return { args, options, help };
+  return { args, options, help, literalStart: literalStart ?? args.length };
 }

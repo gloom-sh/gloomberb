@@ -20,11 +20,12 @@ import {
   type CliHelpEntry,
 } from "./help";
 import { parsePaneFunctionArgs } from "./pane-functions/options";
+import { checkCliCommandOptions } from "./command-options";
 import { fail, inferCliErrorOptions, printCliError } from "./errors";
 import { setCliColorEnabledOverride } from "../utils/cli-output";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
-import { takeOption } from "./commands/command-utils";
+import { requireOneArg, takeOption } from "./commands/command-utils";
 import { EXCHANGE_OPTION } from "./listing-arg";
 import { apiCliCommand } from "./commands/api";
 import { marketDataCliCommands } from "./commands/market";
@@ -108,11 +109,8 @@ function createCoreCliCommands(
       execute: async (rawArgs, ctx) => {
         const args = [...rawArgs];
         const exchange = takeOption(args, "--exchange");
-        const symbol = args[0];
-        if (!symbol) {
-          ctx.fail("Usage: gloomberb ticker <symbol>");
-        }
-        await ticker(symbol!, {
+        const symbol = requireOneArg(args, "ticker <symbol>", "symbol", ctx);
+        await ticker(symbol, {
           exchange,
           initMarketData: ctx.initMarketData,
           fail: ctx.fail,
@@ -129,7 +127,7 @@ function createCoreCliCommands(
         usage: ["catalog [query] [--all] [--bot-safe]"],
         options: [
           { flags: "--all", description: "List every match instead of the first 25" },
-          { flags: "--bot-safe", description: "Only functions with a verified unattended report" },
+          { flags: "--bot-safe, --botsafe", description: "Only functions with a verified unattended report" },
         ],
         examples: ["catalog", "catalog options", "catalog HP"],
       },
@@ -360,6 +358,7 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   const target = helpOnly ? registry.lookup.get("help")! : resolved;
   const commandArgs = helpOnly ? [resolved.command.name] : parsed.args.slice(1);
   try {
+    if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
     const result = await target.command.execute(
       commandArgs,
       createCliCommandContext(target.ownerId, registry, parsed.options),

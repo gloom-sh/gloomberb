@@ -13,7 +13,8 @@ import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, 
 import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
-import { isoDate, parsePositiveInt, requireArg, takeFlag, takeOption } from "./command-utils";
+import { isoDate, parsePositiveInt, rejectExtraArgs, requireOneArg, takeFlag, takeOption } from "./command-utils";
+import type { BuiltinCliCommandDef } from "../command-options";
 import { CLI_COMMAND_GROUPS, TABLE_SECTION_OPTION } from "../help";
 import {
   formatChangePercentCell,
@@ -41,7 +42,16 @@ import {
   selectReportTables,
   type CliReportTables,
 } from "../report-tables";
-import { historyPriceDecimals, historyRows } from "../history-rows";
+import {
+  historyFacts,
+  historyFlagNote,
+  historyAllRangeYears,
+  historyIntervalsByRange,
+  historyNotes,
+  historyPriceDecimals,
+  historyRows,
+  historyUnit,
+} from "../history-rows";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { formatUtcTime } from "../../utils/utc-time";
 import { exportedFundamentals } from "../../utils/price-earnings";
@@ -428,11 +438,16 @@ function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandD
   return ctx.fail(errorMessage(error) ?? `No history available for ${symbol}`, CRYPTO_BOARD_HINT);
 }
 
+const HISTORY_USAGE = "history <symbol> [--range <range>]";
+const HISTORY_ALL_RANGE = `ALL gives the full history the source has, up to ${historyAllRangeYears()} years`;
+/** Options people reach for to ask for dates, which history answers with a range. */
+const DATE_WINDOW_OPTIONS = new Set(["--from", "--to", "--start", "--end", "--since", "--until", "--date", "--start-date", "--end-date"]);
+
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const range = parseRange(takeOption(args, "--range"), ctx);
   const requestedExchange = takeOption(args, "--exchange");
-  const raw = requireArg(args[0], "Usage: gloomberb history <symbol> [--range <range>]", ctx);
+  const raw = requireOneArg(args, HISTORY_USAGE, "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, requestedExchange, market, ctx);
     const { symbol, exchange } = listing.request;
@@ -446,7 +461,11 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       loadListingQuote(market.dataProvider, listing),
     ]);
     const identity = listingIdentity(listing, quote);
-    const data = historyRows(points, resolution);
+    // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
+    const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
+    const unit = historyUnit(listing.symbol, listed ?? quote);
+    const data = historyRows(points, resolution, unit.currency);
+    const interval = data[0]?.interval ?? null;
     const decimals = historyPriceDecimals(data, listing.saved?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
     // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
@@ -457,17 +476,47 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       observedKey: "date",
       oldest: null,
     });
-    ctx.printResult({ data, metadata: { ...listingMetadata(identity), range, resolution }, freshness }, {
-      heading: listingHeading(identity),
+    const notes = [...historyNotes(range, interval, data[0]?.date), historyFlagNote(data) ?? []].flat();
+    const priceColumns: CliResultColumn[] = [
+      intraday
+        ? { key: "date", header: "Time", format: (value) => typeof value === "string" ? formatUtcTime(value) : "" }
+        : { key: "date", header: "Date" },
+      { key: "open", header: "Open", align: "right", format: price },
+      { key: "high", header: "High", align: "right", format: price },
+      { key: "low", header: "Low", align: "right", format: price },
+      { key: "close", header: "Close", align: "right", format: price },
+      { key: "volume", header: "Volume", align: "right", format: formatCountCell },
+    ];
+    // Text shows a flag only on a bar that has one; the column is dropped when none does.
+    const flagColumn: CliResultColumn = {
+      key: "flag", header: "Flag", format: (value) => typeof value === "string" ? cliStyles.warning(value) : "",
+    };
+    ctx.printResult({
+      data,
+      metadata: {
+        ...listingMetadata(identity),
+        range,
+        resolution,
+        requestedRange: range,
+        currency: unit.currency,
+        unit: unit.unit,
+        interval,
+        firstDate: data[0]?.date ?? null,
+        lastDate: data.at(-1)?.date ?? null,
+        bars: data.length,
+        asOf: freshness?.asOf ?? null,
+      },
+      ...(notes.length > 0 ? { warnings: notes } : {}),
+      freshness,
+    }, {
+      heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
+      textColumns: [...priceColumns, flagColumn],
+      // Every exported row says its currency and bar size, so it survives head and concatenation.
       columns: [
-        intraday
-          ? { key: "date", header: "Time", format: (value) => typeof value === "string" ? formatUtcTime(value) : "" }
-          : { key: "date", header: "Date" },
-        { key: "open", header: "Open", align: "right", format: price },
-        { key: "high", header: "High", align: "right", format: price },
-        { key: "low", header: "Low", align: "right", format: price },
-        { key: "close", header: "Close", align: "right", format: price },
-        { key: "volume", header: "Volume", align: "right", format: formatCountCell },
+        ...priceColumns,
+        { key: "currency", header: "Currency" },
+        { key: "interval", header: "Interval" },
+        flagColumn,
       ],
     });
   });
@@ -494,7 +543,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   const tabular = ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson";
   if (sectionFlag && !tabular) ctx.fail("--section picks one table of --csv or --ndjson output.");
   if (sectionFlag && !section?.trim()) ctx.fail("--section needs a section title or number.");
-  const raw = requireArg(args[0], `Usage: gloomberb ${commandName} <symbol>`, ctx);
+  const raw = requireOneArg(args, `${commandName} <symbol>`, "symbol", ctx);
   const selectTables = (tables: CliReportTables) => {
     try {
       return selectReportTables(tables, section);
@@ -562,6 +611,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const feed = parseNewsFeed(takeOption(args, "--feed"));
   const exchangeOption = takeOption(args, "--exchange");
   if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloomberb news <symbol> --exchange <code>");
+  rejectExtraArgs(args, 1, { usage: "news [symbol] [--feed <feed>]", takes: "one symbol at most", advice: "Run it once per symbol." }, ctx);
   await withMarketData(ctx, async (market) => {
     const listing = args[0] ? await requireCliListing(args[0], exchangeOption, market, ctx) : null;
     const limit = ctx.cliOptions.limit ?? 20;
@@ -622,7 +672,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.limit ?? 15, "Count", ctx);
   const exchangeOption = takeOption(args, "--exchange");
   const form = takeOption(args, "--form")?.trim() || null;
-  const raw = requireArg(args[0], "Usage: gloomberb filings <symbol>", ctx);
+  const raw = requireOneArg(args, "filings <symbol> [--count <n>] [--form <form>]", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const { symbol, exchange } = listing.request;
@@ -737,7 +787,7 @@ async function runHolders(
   const exchangeOption = takeOption(args, "--exchange");
   const formOption = commandName === "holders" ? takeOption(args, "--form") : undefined;
   const history = commandName === "holders" && takeFlag(args, "--history");
-  const raw = requireArg(args[0], `Usage: gloomberb ${commandName} <symbol>`, ctx);
+  const raw = requireOneArg(args, `${commandName} <symbol>`, "symbol", ctx);
   const form = formOption == null ? "13f" : parseHolderForm(formOption);
   if (!form) ctx.fail(`Unknown form "${formOption}".`, `Use one of ${HOLDER_FORMS.join(", ")}.`);
   if (form === "13f" && history) ctx.fail("--history lists 13D/13G reports.", "Add --form 13d, 13g or all.");
@@ -805,7 +855,7 @@ async function runHolders(
 async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
-  const raw = requireArg(args[0], "Usage: gloomberb analyst <symbol>", ctx);
+  const raw = requireOneArg(args, "analyst <symbol>", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const [data, quote] = await Promise.all([
@@ -842,7 +892,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
-  const raw = requireArg(args[0], "Usage: gloomberb events <symbol>", ctx);
+  const raw = requireOneArg(args, "events <symbol>", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const [data, quote] = await Promise.all([
@@ -872,7 +922,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const args = [...rawArgs];
   const expiration = takeOption(args, "--expiration");
   const exchangeOption = takeOption(args, "--exchange");
-  const raw = requireArg(args[0], "Usage: gloomberb options <symbol> [--expiration <unix>]", ctx);
+  const raw = requireOneArg(args, "options <symbol> [--expiration <unix>]", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const { symbol, exchange } = listing.request;
@@ -919,8 +969,10 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
+const FX_USAGE = "fx <currency>";
+
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const currency = requireArg(rawArgs[0]?.trim().toUpperCase(), "Usage: gloomberb fx <currency>", ctx);
+  const currency = requireOneArg(rawArgs.map((arg) => arg.trim().toUpperCase()), FX_USAGE, "currency", ctx);
   await withMarketData(ctx, async (market) => {
     const baseCurrency = market.config.baseCurrency.trim().toUpperCase();
     const load = (code: string) => market.dataProvider.getCachedQuery("getExchangeRate", [code])
@@ -983,7 +1035,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
   });
 }
 
-export const marketDataCliCommands: CliCommandDef[] = [
+export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   {
     name: "quote",
     description: "Show the latest price for one or more symbols",
@@ -1011,13 +1063,23 @@ export const marketDataCliCommands: CliCommandDef[] = [
     description: "Fetch open, high, low, close, and volume over a range",
     help: {
       group: CLI_COMMAND_GROUPS.research,
-      usage: ["history <symbol> [--range <range>]"],
+      usage: [HISTORY_USAGE],
       options: [
-        { flags: "--range <range>", description: `${TIME_RANGES.join(", ")} (default 1Y)` },
+        { flags: "--range <range>", description: `${TIME_RANGES.join(", ")} (default 1Y); ${HISTORY_ALL_RANGE}` },
         EXCHANGE_OPTION,
       ],
-      examples: ["history AAPL", "history BHP:ASX --range 5Y", "history AAPL --range 5Y --csv > aapl.csv"],
+      sections: [{
+        title: "Bars",
+        lines: [
+          `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for.`,
+          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every exported row (--csv, --ndjson, --json) carries currency, interval and flag.",
+        ],
+      }],
+      examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history AAPL --range 5Y --csv > aapl.csv"],
     },
+    unknownOptionHint: (flag) => DATE_WINDOW_OPTIONS.has(flag)
+      ? `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`
+      : null,
     execute: runHistory,
   },
   {
@@ -1067,7 +1129,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["financials <symbol>"],
-      options: [EXCHANGE_OPTION],
+      options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
       examples: ["financials MSFT", "financials SAN:EPA", "financials MSFT --json", "financials MSFT --csv > msft.csv"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "statements"),
@@ -1089,7 +1151,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["valuation <symbol>"],
-      options: [EXCHANGE_OPTION],
+      options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
       examples: ["valuation NVDA", "valuation BP:LSE", "valuation NVDA --csv"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "valuation"),
@@ -1202,7 +1264,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
     description: "Convert a currency into your base currency",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["fx <currency>"],
+      usage: [FX_USAGE],
       examples: ["fx EUR", "fx JPY --json"],
     },
     execute: runFx,

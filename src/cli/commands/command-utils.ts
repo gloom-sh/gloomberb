@@ -46,6 +46,35 @@ export function requireArg(value: string | undefined, usage: string, ctx: CliCom
   return value;
 }
 
+/**
+ * Fails on arguments past the `max` a command takes rather than dropping them:
+ * `fx NGN ZAR` printing NGN alone reads as an answer for both. `usage` is the
+ * command's usage line without `gloomberb`, `takes` what it takes ("one
+ * currency", "no arguments").
+ */
+export function rejectExtraArgs(
+  args: readonly string[],
+  max: number,
+  { usage, takes, advice }: { usage: string; takes: string; advice?: string },
+  ctx: Pick<CliCommandContext, "fail">,
+): void {
+  if (args.length <= max) return;
+  const command = usage.split(" ")[0];
+  ctx.fail(`${command} takes ${takes}; got ${args.join(" ")}.`, [advice, `Usage: gloomberb ${usage}`].filter(Boolean).join("\n"));
+}
+
+/** The one argument a command takes, such as a symbol: missing fails with the usage line, extras are not dropped. */
+export function requireOneArg(
+  args: readonly string[],
+  usage: string,
+  noun: string,
+  ctx: CliCommandContext,
+): string {
+  const value = requireArg(args[0], `Usage: gloomberb ${usage}`, ctx);
+  rejectExtraArgs(args, 1, { usage, takes: `one ${noun}`, advice: `Run it once per ${noun}.` }, ctx);
+  return value;
+}
+
 export function isoDate(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
   if (typeof value === "number") return new Date(value).toISOString();

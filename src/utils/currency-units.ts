@@ -13,11 +13,16 @@ const SUB_UNIT_NAMES: Record<string, string> = {
   ZAc: "cents",
 };
 
-/** A currency code as a reader should see it; a sub-unit says which one: "GBp (pence)". */
-export function currencyUnitLabel(code?: string | null): string {
+/**
+ * A currency code as a reader should see it; a sub-unit says which one,
+ * "GBp (pence)", and with `ofMajor` what it divides: "ILA (agorot, 1/100 ILS)".
+ */
+export function currencyUnitLabel(code?: string | null, { ofMajor = false }: { ofMajor?: boolean } = {}): string {
   const raw = (code ?? "").trim();
   const unit = SUB_UNIT_NAMES[raw];
-  return unit ? `${raw} (${unit})` : raw;
+  const major = SUB_UNIT_CURRENCIES[raw];
+  if (!unit) return raw;
+  return ofMajor && major ? `${raw} (${unit}, 1/${major.divisor} ${major.currency})` : `${raw} (${unit})`;
 }
 
 const LIKELY_UNIT_MISMATCH_RATIOS: Record<string, number[]> = {
