@@ -1647,7 +1647,7 @@ async function resolveChartSpecPass(
       || (request.bounds.end !== null && now() - (request.bounds.end + 1) < 60 * 60_000);
     const staleCurrent = (value: LoadedPriceHistory) => currentWindow() && !!value.session
       && isPriceHistoryStaleForCurrentWindow(value.points, now(), {
-        exchange: source.instrument.exchange, session: value.session,
+        symbol: source.instrument.symbol, exchange: source.instrument.exchange, session: value.session,
         ...(value.resolution ? { intervalMs: CHART_RESOLUTION_STEP_MS[value.resolution] } : {}),
       });
     if (staleCurrent(loaded)) {

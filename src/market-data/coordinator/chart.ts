@@ -57,7 +57,7 @@ export function normalizeFreshChartData(
     interval: interval ?? undefined }) ?? undefined;
   if (
     isIntradayChartRequest(request, history)
-    && isPriceHistoryStaleForCurrentWindow(normalized, Date.now(), { exchange: target.exchange,
+    && isPriceHistoryStaleForCurrentWindow(normalized, Date.now(), { symbol: target.symbol, exchange: target.exchange,
       intervalMs: interval ? priceHistoryIntervalMs(interval) : undefined, session })
   ) {
     return [];

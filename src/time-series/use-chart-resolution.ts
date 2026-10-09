@@ -105,7 +105,7 @@ function freshSeedPoints(
   // Broker contract/session interpretation remains unproven, as at acquisition.
   const session = instrument.instrument ? undefined : result.session;
   if (currentWindow && isIntradayResolution(resolution) && isPriceHistoryStaleForCurrentWindow(points, now, {
-    exchange: target.exchange, intervalMs: CHART_RESOLUTION_STEP_MS[resolution], session,
+    symbol: target.symbol, exchange: target.exchange, intervalMs: CHART_RESOLUTION_STEP_MS[resolution], session,
   })) return null;
   return points.length ? points : null;
 }

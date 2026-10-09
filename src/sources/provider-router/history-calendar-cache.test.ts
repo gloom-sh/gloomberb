@@ -48,6 +48,30 @@ test("daily history fetched before a close is refetched, and kept when the refet
   } finally { store.close(); }
 });
 
+test("a cached intraday copy of a bare coin pair that has fallen behind is refetched, not served as current", async () => {
+  const calls: string[] = [];
+  // Five-minute bars ending at `last`; the US market is closed through all of this.
+  const bars = (last: string): PricePoint[] => Array.from({ length: 12 }, (_, index) => ({
+    date: new Date(Date.parse(last) - (11 - index) * 300_000), close: 85_000 + index }));
+  let load = () => bars("2026-10-09T06:55:00Z");
+  const store = new AppPersistence(createTempDbPath("coin-intraday-behind"));
+  const router = new AssetDataRouter(source(() => load(), calls), [], store.resources);
+  const lastBar = async () => new Date((await router.getPriceHistory("BTC-USD", "", "1D")).at(-1)!.date).toISOString().slice(11, 16);
+  try {
+    setSystemTime(new Date("2026-10-09T07:00:00Z"));
+    expect(await lastBar()).toBe("06:55");
+    // Two hours on, the stored copy reached the last US close and used to pass for current.
+    load = () => bars("2026-10-09T08:55:00Z");
+    setSystemTime(new Date("2026-10-09T09:00:00Z"));
+    expect(await lastBar()).toBe("08:55");
+    expect(calls).toHaveLength(2);
+    // A source that is itself behind is a miss, never the old copy, and says why.
+    setSystemTime(new Date("2026-10-09T11:30:00Z"));
+    await expect(lastBar()).rejects.toThrow("Latest history for BTC-USD is behind");
+    expect(calls).toHaveLength(3);
+  } finally { store.close(); }
+});
+
 test("a weekly series ending in a trade-time row is refetched after the close", async () => {
   const calls: string[] = [];
   // Gloom's weekly chart before the close: the week row stops at Monday and

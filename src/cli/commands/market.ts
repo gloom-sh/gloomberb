@@ -35,7 +35,7 @@ import { optionQuoteSide } from "../../plugins/builtin/options/market-reference"
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { renderFundamentalsReport } from "./ticker";
 import { historyPriceDecimals, historyRows } from "../history-rows";
-import { CRYPTO_BOARD_HINT, isCryptoPairSymbol, quoteNotes } from "./crypto-hints";
+import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { formatUtcTime } from "../../utils/utc-time";
 import {
   EXCHANGE_OPTION,
@@ -48,6 +48,7 @@ import {
   type ListingIdentity,
 } from "../listing-arg";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
+import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../types/financials";
-import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "./price-history";
+import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "./price-history";
 
 describe("history freshness follows bar cadence", () => {
   const now = Date.parse("2026-09-10T19:39:09Z");
@@ -133,6 +133,67 @@ describe("normalizePriceHistory", () => {
         { exchange: "CCC" },
       ),
     ).toBe(true);
+  });
+});
+
+describe("round-the-clock coin history", () => {
+  // 07:29Z on a Friday: the US market closed 11 hours ago and opens in six.
+  const now = Date.parse("2026-10-09T07:29:00Z");
+  const MIN = 60_000;
+  // Bars every `step` minutes up to `last`, with none inside the hole.
+  const bars = (last: string, step: number, hole?: [string, string]): PricePoint[] => {
+    const end = Date.parse(last);
+    const times = Array.from({ length: 200 }, (_, index) => end - (199 - index) * step * MIN)
+      .filter((time) => !hole || time <= Date.parse(hole[0]) || time >= Date.parse(hole[1]));
+    return times.map((time) => ({ date: new Date(time), close: 85_000 }));
+  };
+  const stale = (points: PricePoint[], step: number, options: { symbol?: string; exchange?: string }) =>
+    isPriceHistoryStaleForCurrentWindow(points, now, { ...options, intervalMs: step * MIN });
+
+  test("a coin is judged by the age of its latest bar, not by the US session, whatever the exchange says", () => {
+    const twoHoursOld = bars("2026-10-09T05:15:00Z", 5);
+    // Judged as a US listing it reaches the latest close and reads as current.
+    expect(stale(twoHoursOld, 5, {})).toBe(false);
+    expect(stale(twoHoursOld, 5, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(twoHoursOld, 5, { symbol: "ETH/USD" })).toBe(true);
+    expect(stale(twoHoursOld, 5, { symbol: "BTC-USD:CCC" })).toBe(true);
+    // The crypto venue's two-hour allowance is not the rule either.
+    expect(stale(bars("2026-10-09T06:25:00Z", 5), 5, { exchange: "CCC" })).toBe(true);
+    // Two bars and the publishing allowance: 25 minutes at 5m, 2h15 at 1h.
+    expect(stale(bars("2026-10-09T07:04:00Z", 5), 5, { symbol: "BTC-USD" })).toBe(false);
+    expect(stale(bars("2026-10-09T07:03:00Z", 5), 5, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(bars("2026-10-09T05:14:00Z", 60), 60, { symbol: "BTC-USD" })).toBe(false);
+    expect(stale(bars("2026-10-09T05:13:00Z", 60), 60, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(bars("2026-10-08T19:00:00Z", 60), 60, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(bars("2026-10-08T19:00:00Z", 60), 60, { exchange: "CCC" })).toBe(true);
+    // A daily series is judged by its cache policy.
+    expect(isPriceHistoryStaleForCurrentWindow(bars("2026-10-08T00:00:00Z", 1440), now, { symbol: "BTC-USD", intervalMs: 1440 * MIN })).toBe(false);
+  });
+
+  test("a hole of hours in the last six hours is behind, an older one is not", () => {
+    expect(stale(bars("2026-10-09T07:25:00Z", 5, ["2026-10-09T03:00:00Z", "2026-10-09T05:30:00Z"]), 5, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(bars("2026-10-09T07:25:00Z", 5, ["2026-10-08T22:00:00Z", "2026-10-09T01:00:00Z"]), 5, { symbol: "BTC-USD" })).toBe(false);
+    // Hourly bars tolerate a gap of three bars.
+    expect(stale(bars("2026-10-09T06:00:00Z", 60, ["2026-10-09T01:00:00Z", "2026-10-09T04:00:00Z"]), 60, { symbol: "BTC-USD" })).toBe(false);
+    expect(stale(bars("2026-10-09T06:00:00Z", 60, ["2026-10-09T01:00:00Z", "2026-10-09T05:00:00Z"]), 60, { symbol: "BTC-USD" })).toBe(true);
+  });
+
+  test("other listings keep their own rules: fiat pairs, equities and a bare BTC fund", () => {
+    const afterHours = bars("2026-10-09T05:15:00Z", 5);
+    expect(stale(afterHours, 5, { symbol: "EUR-USD" })).toBe(false);
+    expect(stale(afterHours, 5, { symbol: "BTC" })).toBe(false);
+    // Thursday's regular session stays current until the next open.
+    expect(stale(bars("2026-10-08T19:55:00Z", 5), 5, { symbol: "AAPL", exchange: "NASDAQ" })).toBe(false);
+  });
+
+  test("a bare coin's daily copy is refetched within the hour and a stale server answer never counts as settled", () => {
+    const daily = ["2026-10-07T00:00:00Z", "2026-10-08T00:00:00Z"].map((date) => ({ date: new Date(date), close: 85_000 }));
+    const state = (symbol: string, fetched: string) => calendarHistoryFetchState(daily, Date.parse(fetched), now, { symbol, intervalMs: 1440 * MIN });
+    expect(state("BTC-USD", "2026-10-09T05:00:00Z")).toBe("unsettled");
+    expect(state("BTC-USD", "2026-10-09T06:45:00Z")).toBe("current");
+    expect(state("AAPL", "2026-10-09T05:00:00Z")).toBe("current");
+    expect(reachesLatestSettledSession(daily, now, { symbol: "AAPL", intervalMs: 1440 * MIN })).toBe(true);
+    expect(reachesLatestSettledSession(daily, now, { symbol: "BTC-USD", intervalMs: 1440 * MIN })).toBe(false);
   });
 });
 

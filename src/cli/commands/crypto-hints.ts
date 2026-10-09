@@ -1,16 +1,9 @@
 import { isCryptoInstrumentType } from "../../tickers/search/ranking";
 import type { Quote } from "../../types/financials";
+import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 
 /** Where a crypto pair that will not load can still be read. `fn CRYP` takes no argument. */
 export const CRYPTO_BOARD_HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";
-
-// A base-quote pair such as BTC-USD or SOL-EUR. Equities with a share-class dash (BRK-B) and
-// currency pairs (EURUSD=X) do not match.
-const CRYPTO_PAIR = /^[A-Z0-9]{1,15}-(?:USD|EUR|GBP|USDT|USDC|BTC)$/;
-
-export function isCryptoPairSymbol(symbol: string): boolean {
-  return CRYPTO_PAIR.test(symbol);
-}
 
 // The coins whose bare ticker is most often typed for the coin itself. The label is how the note
 // names the coin and what a listing's name has to say before the note applies.

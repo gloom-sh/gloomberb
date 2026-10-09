@@ -197,7 +197,7 @@ function mapCloudPriceHistory(
       `Cloud chart data is unavailable for ${ticker}`,
     ).map((point) => mapPricePoint(point, divisor, exchange)),
   );
-  if (stale && !reachesLatestSettledSession(points, Date.now(), { exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
+  if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
   }
   if (
