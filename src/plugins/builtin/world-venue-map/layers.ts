@@ -141,7 +141,7 @@ export const MAP_PRESET_OPTIONS = [
   { value: "ships", label: "Ships and chokepoints" },
   { value: "ports", label: "Ports" },
   { value: "energy", label: "Pipelines, fields and terminals" },
-  { value: "air", label: "Airports" },
+  { value: "air", label: "Airports and flights" },
 ] as const;
 
 function shortDate(iso: string): string | null {
@@ -287,6 +287,28 @@ export function geoViewForViewport(
     ],
     zoom: Number(geoZoomLevel(viewport).toFixed(1)),
   };
+}
+
+/**
+ * Zoom an opened entity is shown at: 16 times the world (the server's zoom 4,
+ * where dense point layers stop clustering) for a ship or a port, wider for a
+ * pipeline or a field, and never short of the zoom its layer draws from
+ * (flights from the server's zoom 5, 32 times the world).
+ */
+export function entityOpenZoom(layer: Pick<GeoLayerInfo, "geometry" | "minZoom">): number {
+  const base = layer.geometry === "point" ? 16 : 4;
+  return layer.minZoom === undefined ? base : Math.max(base, 2 ** layer.minZoom);
+}
+
+/**
+ * The area a layer's table reads. A layer drawn only from a zoom (live
+ * flights) lists what the map shows once it is that close; further out, and
+ * for every other layer, the table asks without one and the server answers
+ * for the whole layer or, for flights, one busy area.
+ */
+export function entityTableBbox(layer: Pick<GeoLayerInfo, "minZoom">, view: GeoView): GeoBbox | undefined {
+  if (layer.minZoom === undefined || view.zoom < layer.minZoom) return undefined;
+  return view.bbox;
 }
 
 export function geoViewKey(view: GeoView): string {

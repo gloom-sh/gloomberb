@@ -4,6 +4,8 @@ import {
   activeLayerTokens,
   applyMapSetting,
   buildMapSettingsDef,
+  entityOpenZoom,
+  entityTableBbox,
   geoViewForViewport,
   LAYERS_SETTING_KEY,
   parseMapPreset,
@@ -113,5 +115,19 @@ describe("map layers", () => {
       .toEqual({ [LAYERS_SETTING_KEY]: ["chokepoints", "vessels"], [VENUES_SETTING_KEY]: false });
     expect(applyMapSetting({}, "layers:ships", ["chokepoints"], withDefaults))
       .toEqual({ [LAYERS_SETTING_KEY]: ["chokepoints"], [VENUES_SETTING_KEY]: true });
+  });
+
+  test("a layer drawn only from a zoom opens its entities there, and its table follows the map once that close", () => {
+    const flights = layer("flights", "air", "live", { minZoom: 5 });
+    const ports = layer("ports", "ports", "daily");
+    // Flights draw from the server's zoom 5; opening one must not land at 4, where none are asked for.
+    expect(Math.log2(entityOpenZoom(flights))).toBeGreaterThanOrEqual(5);
+    expect(entityOpenZoom(ports)).toBe(16);
+    expect(entityOpenZoom({ geometry: "line" })).toBe(4);
+
+    const close = { bbox: [2, 47, 13, 53] as [number, number, number, number], zoom: 5.4 };
+    expect(entityTableBbox(flights, close)).toEqual(close.bbox);
+    expect(entityTableBbox(flights, { ...close, zoom: 3 })).toBeUndefined();
+    expect(entityTableBbox(ports, close)).toBeUndefined();
   });
 });

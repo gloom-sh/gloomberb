@@ -49,6 +49,8 @@ import type { GeoLayerState } from "./feed";
 import { geoLayerColor, type GeoMapLayer, type GeoMapOverlay, type GeoMapSelection } from "./geo-draw";
 import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 import {
+  entityOpenZoom,
+  entityTableBbox,
   featureAnchor,
   formatGeoValue,
   formatTickerLinks,
@@ -83,15 +85,9 @@ interface OpenEntity {
 
 type SortState = { key: string | null; dir: "asc" | "desc" };
 
-/**
- * Zoom an opened entity is shown at: 16 times the world (the server's zoom 4,
- * where dense point layers stop clustering) for a ship or a port, wider for a
- * pipeline or a field.
- */
-function openZoom(layer: GeoLayerInfo): number {
-  return layer.geometry === "point" ? 16 : 4;
-}
 const NO_SORT: SortState = { key: null, dir: "asc" };
+/** How long the map rests before a table that follows it asks again. */
+const TABLE_VIEW_SETTLE_MS = 600;
 /** Layers go closer than venues: 64 times the world is the server's zoom 6, where flights and single ports show. */
 const LAYERED_MAX_ZOOM = 64;
 
@@ -225,10 +221,20 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
 
   const tableLocked = !canAccess(tableLayer) || tableState?.phase === "locked";
   const tableReadable = tableLayer.status !== "unavailable" && tableState?.phase !== "unavailable" && !tableLocked;
+  // The table follows the map once the view rests, not every frame of a pan.
+  const [tableView, setTableView] = useState<GeoView>(view);
+  useEffect(() => {
+    if (sameGeoView(tableView, view)) return;
+    const timer = setTimeout(() => setTableView(view), TABLE_VIEW_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [tableView, view]);
+  const tableBbox = entityTableBbox(tableLayer, tableView);
+  const tableBboxKey = tableBbox?.join(",") ?? "";
   const loadPage = useCallback(async ({ offset, signal }: PageRequest) => {
     const page = await loadEntityPage(tableLayer.id, {
       q: query,
       ...(sort.key ? { sort: sort.key, dir: sort.dir } : {}),
+      ...(tableBbox ? { bbox: tableBbox } : {}),
       offset,
     }, signal);
     const rows = page.rows ?? [];
@@ -239,7 +245,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
       hasMore: rows.length >= ENTITY_PAGE_SIZE && (total === null || offset + rows.length < total),
       nextOffset: offset + rows.length,
     };
-  }, [query, sort.dir, sort.key, tableLayer.id]);
+  }, [query, sort.dir, sort.key, tableBboxKey, tableLayer.id]);
   const pages = usePagedRows(tableReadable ? loadPage : null, { getId: (row) => row.id });
   const rows = pages.rows;
   useWorldMapEvidence(tokens, states, rows.length, pages.loading);
@@ -306,7 +312,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     const lats = trail.map(([, lat]) => lat);
     const span = Math.max(Math.max(...lons) - Math.min(...lons), (Math.max(...lats) - Math.min(...lats)) * 2, 0.05);
     const last = trail.at(-1)!;
-    setFocus({ key: trailKey, longitude: last[0], latitude: last[1], zoom: Math.min(LAYERED_MAX_ZOOM, Math.max(openZoom(tableLayer), 360 / (span * 3))) });
+    setFocus({ key: trailKey, longitude: last[0], latitude: last[1], zoom: Math.min(LAYERED_MAX_ZOOM, Math.max(entityOpenZoom(tableLayer), 360 / (span * 3))) });
   }, [trailKey]);
   const overlay = useMemo<GeoMapOverlay>(() => ({ layers: mapLayers, selected: selection, trail }), [mapLayers, selection, trail]);
 
@@ -477,7 +483,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
         setHeaderSubject("entity");
         selectRow(row.id);
         setOpen({ layer: tableLayer.id, id: row.id });
-        setFocus({ key: `open:${tableLayer.id}:${row.id}`, longitude: row.lon, latitude: row.lat, zoom: openZoom(tableLayer) });
+        setFocus({ key: `open:${tableLayer.id}:${row.id}`, longitude: row.lon, latitude: row.lat, zoom: entityOpenZoom(tableLayer) });
       }}
       detailOpen={detailOpen}
       onBack={() => setOpen(null)}
