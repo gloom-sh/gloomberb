@@ -11,6 +11,7 @@ import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { TickerRepository } from "../../../../data/ticker-repository";
+import { canonicalExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
 import {
   addTickerToPortfolio,
   adoptFirstPositionCurrency,
@@ -271,9 +272,16 @@ function printTargetSumNote(config: AppConfig, portfolioId: string, tickers: rea
 /** The portfolio's own ticker for a symbol, without a search when it is already listed. */
 async function findListedTicker(store: TickerRepository, portfolio: Portfolio, symbol: string, exchange?: string): Promise<TickerRecord | null> {
   const listing = parseListingArg(symbol, exchange);
+  const typed = symbol.trim().toUpperCase();
   const listed = (await store.loadAllTickers()).filter((ticker) => ticker.metadata.portfolios.includes(portfolio.id));
-  return listed.find((ticker) => ticker.metadata.ticker.toUpperCase() === listing.key)
-    ?? (listing.exchange ? null : listed.find((ticker) => ticker.metadata.ticker.toUpperCase() === listing.symbol) ?? null);
+  // The key as saved (VTI:XMEX), else the same listing under another spelling of its venue (VTI:BMV).
+  return listed.find((ticker) => [typed, listing.key].includes(ticker.metadata.ticker.toUpperCase()))
+    ?? listed.find((ticker) => {
+      const saved = parsePublicTickerKey(ticker.metadata.ticker);
+      return saved.symbol === listing.symbol
+        && (!listing.exchange || canonicalExchange(saved.exchange ?? ticker.metadata.exchange) === listing.exchange);
+    })
+    ?? null;
 }
 
 async function setTargetCommand(rest: string[], exchange: string | undefined, ctx: CliCommandContext) {
