@@ -1,3 +1,4 @@
+import { ChartDrawingStore, NO_DRAWINGS, nextDrawingId, nextLevelId } from "./drawing-store";
 import { CompositeLegend } from "./legend";
 import { CHART_TOOL_MENU, KEYBOARD_TOOL_HINTS, ARMED_TOOL_BY_INTERACTION } from "./tool-catalog";
 import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
@@ -22,7 +23,7 @@ import {
 } from "../../layout/pane/footer/registration";
 import type { PaneHint } from "../../layout/pane/footer/model";
 import type { ContextMenuItem } from "../../../types/context-menu";
-import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
+import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { colors as themeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { chartSurfaceBackground, usePaneSurface } from "../../layout/pane/surface";
@@ -78,7 +79,6 @@ import {
 import {
   buildChartToolVectors,
   CHART_DRAWING_COLORS,
-  CHART_DRAWINGS_SETTING_KEY,
   countMeasureBars,
   drawChartToolOverlay,
   resolveChartToolKind,
@@ -89,7 +89,6 @@ import {
   hitTestDrawings,
   isDrawingTool,
   nextDrawingColor,
-  parseChartDrawings,
   resolveDrawingFromDrag,
   resolveZoomBoxRange,
   shiftDrawing,
@@ -315,17 +314,6 @@ function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number 
     3,
   );
   return scale >= 1 ? Math.round(scale * 4) / 4 : null;
-}
-
-let nextDrawingSequence = 1;
-
-function nextDrawingId(): string {
-  return `drawing:${nextDrawingSequence++}`;
-}
-
-/** Levels are stored with the account, so their ids must not repeat across sessions. */
-function nextLevelId(): string {
-  return `${Date.now().toString(36)}-${(nextDrawingSequence++).toString(36)}`;
 }
 
 const NO_LEVELS: readonly ProjectedLevel[] = [];
@@ -1161,52 +1149,7 @@ function CompositePanelSurface({
   );
 }
 
-const NO_DRAWINGS: readonly ChartDrawing[] = [];
 const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
-/** Coalesces a drag into one write instead of one per pointer move. */
-const DRAWING_PERSIST_DELAY_MS = 400;
-
-/**
- * Drawings are anchored to data, so they outlive the mounted chart: they ride
- * along with the pane settings that already carry the chart spec. Only mounted
- * inside a pane, so a standalone chart still renders without app state.
- */
-function ChartDrawingStore({
-  paneInstanceId,
-  drawings,
-  onRestore,
-}: {
-  paneInstanceId: string;
-  drawings: readonly ChartDrawing[];
-  onRestore: (drawings: readonly ChartDrawing[]) => void;
-}) {
-  const [stored, setStored] = usePaneSettingValue<readonly ChartDrawing[]>(
-    CHART_DRAWINGS_SETTING_KEY,
-    NO_DRAWINGS,
-    paneInstanceId,
-  );
-  const restoredRef = useRef<readonly ChartDrawing[] | null>(null);
-  if (restoredRef.current === null) {
-    restoredRef.current = parseChartDrawings(stored);
-  }
-
-  useEffect(() => {
-    const restored = restoredRef.current;
-    if (restored && restored.length > 0) onRestore(restored);
-    // Restoring once on mount: later writes must not scroll back in time.
-  }, []);
-
-  useEffect(() => {
-    const restored = restoredRef.current ?? NO_DRAWINGS;
-    if (drawings === restored) return;
-    if (drawings.length === 0 && restored.length === 0) return;
-    const timer = setTimeout(() => setStored(drawings), DRAWING_PERSIST_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [drawings, setStored]);
-
-  return null;
-}
-
 export function CompositeChart({
   series,
   legendSeries,
