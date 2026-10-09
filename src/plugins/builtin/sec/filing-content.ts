@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useResolvedEntryValue, useSecFilingContent } from "../../../market-data/hooks";
+import { useSecFilingContent } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
+import type { QueryEntry } from "../../../market-data/result-types";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { documentContentTarget, isInlineExhibitDocument } from "./filing-documents";
 
@@ -13,6 +14,22 @@ interface ScopedFilingContentCache {
 
 const EMPTY_CONTENT_CACHE = new Map<string, string | null>();
 const EMPTY_ERRORS = new Map<string, string>();
+
+/** What a finished content entry holds, or null while it is still loading. */
+function settledFilingContent(
+  entry: QueryEntry<string | null> | null | undefined,
+): { content: string | null; error: string | null } | null {
+  if (!entry) return null;
+  const resolved = resolveEntryValue(entry);
+  const settled = entry.phase === "ready"
+    || entry.phase === "error"
+    || (entry.phase === "refreshing" && resolved !== null);
+  if (!settled) return null;
+  return {
+    content: entry.phase === "error" ? null : resolved,
+    error: entry.error?.reasonCode === "NO_DATA" ? null : entry.error?.message ?? null,
+  };
+}
 
 export function buildInlineFilingContentTargets(
   filing: SecFilingItem | null | undefined,
@@ -69,28 +86,36 @@ export function useSecFilingContentCache({
     [contentCache, targets],
   );
   const contentEntry = useSecFilingContent(nextTarget);
-  const resolvedContent = useResolvedEntryValue(contentEntry);
 
   useEffect(() => {
     if (!nextTarget) return;
-    const phase = contentEntry?.phase;
-    const settled = phase === "ready"
-      || phase === "error"
-      || (phase === "refreshing" && resolvedContent !== null);
-    if (!settled) return;
-    const key = nextTarget.accessionNumber;
-    const content = phase === "error" ? null : resolvedContent;
-    const error = contentEntry?.error?.reasonCode === "NO_DATA" ? null : contentEntry?.error?.message;
+    const first = settledFilingContent(contentEntry);
+    if (!first) return;
+    const coordinator = getSharedMarketDataCoordinator();
     setState((current) => {
-      if (current.scopeKey !== scopeKey || current.values.has(key)) return current;
-      return {
-        scopeKey,
-        values: new Map(current.values).set(key, content),
-        errors: error ? new Map(current.errors).set(key, error) : current.errors,
-        retryingKey: current.retryingKey,
+      if (current.scopeKey !== scopeKey) return current;
+      let values = current.values;
+      let errors = current.errors;
+      const record = (key: string, settled: { content: string | null; error: string | null }) => {
+        if (values === current.values) values = new Map(values);
+        values.set(key, settled.content);
+        if (!settled.error) return;
+        if (errors === current.errors) errors = new Map(errors);
+        errors.set(key, settled.error);
       };
+      if (!values.has(nextTarget.accessionNumber)) record(nextTarget.accessionNumber, first);
+      // Content the coordinator already holds (a pane reopened, a ticker
+      // visited again) is taken in this same update. Taken one target per
+      // render, each one would expose the next, and a few dozen filings chain
+      // that many renders in a row, past React's limit of 50 nested updates.
+      for (const target of targets) {
+        if (values.has(target.accessionNumber)) continue;
+        const settled = settledFilingContent(coordinator?.getSecContentEntry(target.accessionNumber));
+        if (settled) record(target.accessionNumber, settled);
+      }
+      return values === current.values ? current : { ...current, values, errors };
     });
-  }, [contentEntry?.phase, contentEntry?.error, nextTarget, resolvedContent, scopeKey]);
+  }, [contentEntry, nextTarget, scopeKey, targets]);
 
   // Successful accession content is immutable. Retry only selected documents
   // that failed or had no readable content, preserving the sequential queue.
