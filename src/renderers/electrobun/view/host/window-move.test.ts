@@ -7,9 +7,17 @@ afterEach(() => {
   else Reflect.deleteProperty(globalThis, "window");
 });
 
+type Listener = (event: { type: string }) => void;
+
+/**
+ * A window with just what the move uses. The listeners are kept by hand: other
+ * suites replace the global Event and EventTarget with a DOM shim, and a
+ * fake built on them breaks whenever one runs first.
+ */
 function fakeWindow() {
   const sent: string[] = [];
-  const target = Object.assign(new EventTarget(), {
+  const listeners = new Map<string, Set<Listener>>();
+  const target = {
     __electrobunWindowId: 3,
     __electrobunInternalBridge: {
       postMessage(batch: string) {
@@ -19,9 +27,22 @@ function fakeWindow() {
         }
       },
     },
-  });
+    addEventListener(type: string, listener: Listener) {
+      const forType = listeners.get(type) ?? new Set<Listener>();
+      forType.add(listener);
+      listeners.set(type, forType);
+    },
+    removeEventListener(type: string, listener: Listener) {
+      listeners.get(type)?.delete(listener);
+    },
+  };
   Object.defineProperty(globalThis, "window", { configurable: true, writable: true, value: target });
-  return { sent, release: () => target.dispatchEvent(new Event("mouseup")) };
+  return {
+    sent,
+    release() {
+      for (const listener of [...(listeners.get("mouseup") ?? [])]) listener({ type: "mouseup" });
+    },
+  };
 }
 
 test("a window move stops on release, also when the release beats the start to the native side", async () => {
