@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "fs/promises";
-import { join, relative } from "path";
+import { dirname, join, relative } from "path";
 import { WEB_BUNDLED_PLUGIN_PACKAGES } from "../src/plugins/web-bundled";
+import { WORLD_MAP_DATA_SPECIFIER } from "../src/renderers/dom/build-assets";
 import { isProxiedHost } from "../src/utils/plugin-proxy-hosts";
 
 const root = join(process.cwd(), "dist", "web");
@@ -79,6 +80,24 @@ for (const packageName of WEB_BUNDLED_PLUGIN_PACKAGES) {
   } else if (!appBundle.includes(`/${module}`)) {
     failures.push(`${module}: built but not referenced by the app bundle`);
   }
+}
+
+/**
+ * Lazy chunks (see src/renderers/dom/build-assets.ts) are fetched by path the
+ * first time a pane asks, so a chunk missing from the build only shows up as
+ * a pane drawn without its data. The world map's land is one: without its
+ * index the map falls back to the coarse outline.
+ */
+for (const path of outputFiles.filter((file) => file.endsWith(".js"))) {
+  const content = await readFile(path, "utf8");
+  for (const [, specifier] of content.matchAll(/import\("(\.\/[^"]+\.chunk\.js)"\)/g)) {
+    if (!outputFiles.includes(join(dirname(path), specifier!))) {
+      failures.push(`${relative(root, path)}: lazy chunk ${specifier} is missing`);
+    }
+  }
+}
+if (!appBundle.includes(`import(${JSON.stringify(WORLD_MAP_DATA_SPECIFIER)})`)) {
+  failures.push("assets/app/main.js: the world map's land data is not wired in");
 }
 
 const shareScripts = outputFiles.filter((path) => /assets\/share\/.*\.js$/.test(path));

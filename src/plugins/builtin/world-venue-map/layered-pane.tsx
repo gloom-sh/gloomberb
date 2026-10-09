@@ -61,6 +61,7 @@ import {
   type GeoView,
 } from "./layers";
 import { WorldVenueMap, type WorldMapFocus } from "./map";
+import { usesClassTones } from "./map-symbols";
 import { filterWorldVenues } from "./model";
 import { useGeoLayerFeed } from "./use-geo";
 import { SelectedVenueHeader } from "./venue-header";
@@ -188,10 +189,15 @@ export function LayeredMapView({ focused, width, height, layers, tokens }: Layer
   const canAccess = useCallback((layer: GeoLayerInfo) => layer.access !== "pro" || hasProAccess, [hasProAccess]);
   const states = useGeoLayerFeed(layers, view, visible, { canAccess });
 
+  // A layer coloured by class (ships) takes the first colour, so its own never meets the class colours.
+  const colorOrder = useMemo(
+    () => [...layers].sort((left, right) => Number(usesClassTones(right.id)) - Number(usesClassTones(left.id))),
+    [layers],
+  );
   const colorFor = useCallback((layerId: string) => {
-    const index = layers.findIndex((layer) => layer.id === layerId);
+    const index = colorOrder.findIndex((layer) => layer.id === layerId);
     return geoLayerColor(Math.max(0, index), dark);
-  }, [dark, layers]);
+  }, [colorOrder, dark]);
 
   const [savedTableLayer, setTableLayer] = usePluginPaneState<string | null>("map:table", null);
   const tableLayer = layers.find((layer) => layer.id === savedTableLayer)

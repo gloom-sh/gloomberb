@@ -2,6 +2,7 @@ import { createElement, useCallback, useEffect, useMemo, useRef, useState, type 
 import type { CloudWorldVenuePayload } from "../../../api-client";
 import { Box, ChartSurface, Text, useNativeRenderer, useUiCapabilities, useUiHost } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
+import { blendHex, parseHex as parseRgb, relativeLuminance } from "../../../theme/color-utils";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../../../components/chart/native/bitmap-support";
 import { drawCircle, drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
 import type { NativeChartBitmap } from "../../../components/chart/native/chart-rasterizer";
@@ -15,13 +16,18 @@ import {
   MAX_WORLD_MAP_ZOOM,
   panWorldMapViewport,
   projectWorldPoint,
+  unprojectWorldPoint,
   zoomWorldMapViewport,
   type WorldMapPoint,
   type WorldMapViewport,
   type WorldVenueCluster,
 } from "./model";
 import { WORLD_OUTLINES } from "./world-outlines";
-import { drawGeoBitmap, GeoSvgLayers, hitTestGeo, rasterGeoCells, type GeoHit, type GeoMapOverlay } from "./geo-draw";
+import { drawGeoBitmap, hitTestGeo, rasterGeoCells, type GeoHit, type GeoMapOverlay } from "./geo-draw";
+import { GeoSvgLayers, MapIconSwatch, toneColor, type MapMatrix, type SymbolTones } from "./geo-svg";
+import { BasemapLayer, type BasemapPalette } from "./basemap-layer";
+import type { GeoBox } from "./basemap";
+import { layerSymbol, shipClass, usesClassTones, type MapSymbolId, type SymbolTone } from "./map-symbols";
 import { geoViewForViewport, sameGeoView, WORLD_GEO_VIEW, type GeoView } from "./layers";
 
 /** Where the map should look: a new key centres it, at least at `zoom`. */
@@ -293,6 +299,7 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
   );
 }
 
+/** Desktop rows are about twice as tall as they are wide; the measured surface replaces this once it is laid out. */
 const DESKTOP_MAP_ASPECT = 2.12;
 const MAP_PAN_THRESHOLD_PX = 4;
 const MAP_CLICK_HIT_PX = 14;
@@ -332,14 +339,59 @@ function clientDeltaToMapDelta(
   };
 }
 
+/** The surface's size in pixels, once laid out. */
+function useElementSize(ref: { current: HTMLElement | null }): { width: number; height: number } | null {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      setSize((current) => current && Math.abs(current.width - rect.width) < 0.5 && Math.abs(current.height - rect.height) < 0.5
+        ? current
+        : { width: rect.width, height: rect.height });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return size;
+}
+
+interface HoverState {
+  hit: GeoHit;
+  x: number;
+  y: number;
+}
+
+function hoverLabel(hit: GeoHit, overlay: GeoMapOverlay): { title: string; detail: string | null } {
+  const layer = overlay.layers.find((entry) => entry.id === hit.layerId);
+  if (hit.kind === "cluster") {
+    return { title: `${hit.cluster.count.toLocaleString("en-US")} ${layer?.name.toLowerCase() ?? ""}`.trim(), detail: null };
+  }
+  const props = hit.feature.props;
+  if (usesClassTones(hit.layerId) || hit.feature.entityKind === "vessel") {
+    const kind = shipClass(hit.feature);
+    const speed = typeof props.speedKn === "number" && props.speedKn >= 1 ? `${props.speedKn.toFixed(0)} kn` : null;
+    return { title: hit.feature.label, detail: [kind.charAt(0).toUpperCase() + kind.slice(1), speed].filter(Boolean).join(" · ") };
+  }
+  return { title: hit.feature.label, detail: null };
+}
+
 function DesktopWorldVenueMap(props: WorldVenueMapProps) {
   const colors = useThemeColors();
   const maxZoom = props.maxZoom ?? MAX_WORLD_MAP_ZOOM;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const surfaceSize = useElementSize(surfaceRef);
   const [viewport, setViewport] = useState<WorldMapViewport>(DEFAULT_WORLD_MAP_VIEWPORT);
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const [dragging, setDragging] = useState(false);
+  const [hover, setHover] = useState<HoverState | null>(null);
+  const hoverFrame = useRef<number | null>(null);
   const dragRef = useRef<{
     pointerId: number;
     lastX: number;
@@ -348,53 +400,52 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     originY: number;
     moved: boolean;
   } | null>(null);
-  // Desktop rows are roughly twice as tall as they are wide. Matching the SVG
-  // view box to those pixels lets the contained world projection keep its shape.
-  const plotHeight = props.height * DESKTOP_MAP_ASPECT;
+  // The view box takes the surface's own proportions, so the drawing fills it
+  // and a pointer maps to the same place it is drawn.
+  const plotHeight = surfaceSize ? (props.width * surfaceSize.height) / surfaceSize.width : props.height * DESKTOP_MAP_ASPECT;
+  const unitPx = surfaceSize ? surfaceSize.width / Math.max(props.width, 1) : 8;
   const zoomed = viewport.zoom > 1;
   const clusters = useMemo(
     () => clusterWorldVenues(props.venues, props.width, plotHeight, 1, viewport),
     [plotHeight, props.venues, props.width, viewport],
   );
-  const outlinePaths = useMemo(() => WORLD_OUTLINES.map((outline) => {
-    let drawing = false;
-    let previousLongitude: number | null = null;
-    return outline.map(([longitude, latitude]) => {
-      if (latitude < -60 || (previousLongitude != null && Math.abs(longitude - previousLongitude) > 180)) {
-        drawing = false;
-        previousLongitude = longitude;
-        return "";
-      }
-      const point = projectWorldPoint(longitude, latitude, props.width, plotHeight, 1, viewport);
-      previousLongitude = longitude;
-      const command = drawing ? "L" : "M";
-      drawing = true;
-      return `${command}${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
-    }).join(" ");
-  }), [plotHeight, props.width, viewport]);
 
   const project = useCallback(
     (longitude: number, latitude: number) => projectWorldPoint(longitude, latitude, props.width, plotHeight, 1, viewport),
     [plotHeight, props.width, viewport],
   );
-  const baseProject = useCallback(
-    (longitude: number, latitude: number) => projectWorldPoint(longitude, latitude, props.width, plotHeight),
-    [plotHeight, props.width],
-  );
-  // The projection is linear, so the view is the whole-world drawing scaled and
-  // moved: panning changes one transform instead of every feature path.
-  const overlayTransform = useMemo(() => {
+  // The projection is linear, so land and layers are drawn once in degrees and
+  // placed with one matrix: a pan or zoom changes that matrix, not the paths.
+  const matrix = useMemo<MapMatrix>(() => {
     const origin = project(0, 0);
-    const east = project(10, 0);
-    const baseOrigin = baseProject(0, 0);
-    const baseEast = baseProject(10, 0);
-    const scale = (east.x - origin.x) / Math.max(baseEast.x - baseOrigin.x, Number.EPSILON);
-    return `translate(${(origin.x - scale * baseOrigin.x).toFixed(3)} ${(origin.y - scale * baseOrigin.y).toFixed(3)}) scale(${scale.toFixed(5)})`;
-  }, [baseProject, project]);
+    return { a: project(1, 0).x - origin.x, bx: origin.x, by: origin.y };
+  }, [project]);
+  const view = useMemo<GeoBox>(() => {
+    const topLeft = unprojectWorldPoint(0, 0, props.width, plotHeight, 1, viewport);
+    const bottomRight = unprojectWorldPoint(props.width, plotHeight, props.width, plotHeight, 1, viewport);
+    return [topLeft.longitude, bottomRight.latitude, bottomRight.longitude, topLeft.latitude];
+  }, [plotHeight, props.width, viewport]);
+  const pxPerDegree = matrix.a * unitPx;
+  const dark = relativeLuminance(colors.text) > relativeLuminance(colors.bg);
+  const palette = useMemo<BasemapPalette>(() => ({
+    land: blendHex(colors.bg, colors.text, dark ? 0.1 : 0.07),
+    coast: blendHex(colors.bg, colors.textDim, dark ? 0.85 : 0.75),
+    border: blendHex(colors.bg, colors.textDim, dark ? 0.42 : 0.35),
+  }), [colors.bg, colors.text, colors.textDim, dark]);
+  // Five colours in all: the layer's own for cargo, amber tankers, bright
+  // passenger ships, green fishing boats, and one quiet grey for the rest.
+  const tones = useMemo<SymbolTones>(() => {
+    const quiet = blendHex(colors.textDim, colors.text, 0.45);
+    return { tanker: colors.warning, passenger: colors.textBright, fishing: colors.positive, service: quiet, other: quiet };
+  }, [colors.positive, colors.text, colors.textBright, colors.textDim, colors.warning]);
+
+  const hitRadius = useCallback((element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    return rect.height <= 0 ? 2.4 : (MAP_CLICK_HIT_PX / rect.height) * plotHeight;
+  }, [plotHeight]);
 
   const selectAt = useCallback((point: WorldMapPoint, element: HTMLElement) => {
-    const rect = element.getBoundingClientRect();
-    const hit = rect.height <= 0 ? 2.4 : (MAP_CLICK_HIT_PX / rect.height) * plotHeight;
+    const hit = hitRadius(element);
     if (props.overlay) {
       const geoHit = hitTestGeo(props.overlay, point, project, Math.max(1.2, hit * 0.8));
       if (geoHit?.kind === "cluster") {
@@ -408,7 +459,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     }
     const cluster = closestWorldVenueCluster(clusters, point.x, point.y, Math.max(1.6, hit));
     if (cluster) props.onSelect(clusterVenue(cluster, props.selectedMic));
-  }, [clusters, maxZoom, plotHeight, project, props]);
+  }, [clusters, hitRadius, maxZoom, plotHeight, project, props]);
 
   const onViewChange = props.onViewChange;
   const reportedViewRef = useRef<GeoView | null>(null);
@@ -492,6 +543,23 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     return () => element.removeEventListener("wheel", onWheel);
   }, [maxZoom, plotHeight, props.width]);
 
+  useEffect(() => () => {
+    if (hoverFrame.current !== null) cancelAnimationFrame(hoverFrame.current);
+  }, []);
+  // What sits under the pointer, at most once a frame: its name shows beside it.
+  const trackHover = (clientX: number, clientY: number, element: HTMLElement) => {
+    if (!props.overlay) return;
+    if (hoverFrame.current !== null) cancelAnimationFrame(hoverFrame.current);
+    hoverFrame.current = requestAnimationFrame(() => {
+      hoverFrame.current = null;
+      if (dragRef.current?.moved || !props.overlay) return;
+      const point = clientToMapPoint({ clientX, clientY }, element, props.width, plotHeight);
+      const hit = hitTestGeo(props.overlay, point, project, Math.max(1.2, hitRadius(element) * 0.8));
+      const rect = element.getBoundingClientRect();
+      setHover(hit ? { hit, x: clientX - rect.left, y: clientY - rect.top } : null);
+    });
+  };
+
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
@@ -502,6 +570,9 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     }
     if (!drag.moved) selectAt(clientToMapPoint(event, event.currentTarget, props.width, plotHeight), event.currentTarget);
   };
+
+  const hovered = hover && !dragging ? hover : null;
+  const tooltip = hovered && props.overlay ? hoverLabel(hovered.hit, props.overlay) : null;
 
   return (
     <Box width={props.width} height={props.height} overflow="hidden">
@@ -526,7 +597,10 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
         }}
         onPointerMove={(event) => {
           const drag = dragRef.current;
-          if (!drag || drag.pointerId !== event.pointerId) return;
+          if (!drag || drag.pointerId !== event.pointerId) {
+            if (event.pointerType !== "touch") trackHover(event.clientX, event.clientY, event.currentTarget);
+            return;
+          }
           const travel = Math.hypot(event.clientX - drag.originX, event.clientY - drag.originY);
           if (!drag.moved && travel < MAP_PAN_THRESHOLD_PX) return;
           if (viewportRef.current.zoom <= 1) return;
@@ -545,6 +619,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
         }}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onPointerLeave={() => setHover(null)}
         onDoubleClick={(event) => {
           const point = clientToMapPoint(event, event.currentTarget, props.width, plotHeight);
           setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, MAP_DOUBLE_CLICK_ZOOM, 1, maxZoom));
@@ -558,7 +633,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
           overflow: "hidden",
           touchAction: "none",
           userSelect: "none",
-          cursor: dragging ? "grabbing" : zoomed ? "grab" : "pointer",
+          cursor: dragging ? "grabbing" : hovered ? "pointer" : zoomed ? "grab" : "default",
           background: colors.bg,
         }}
       >
@@ -569,26 +644,20 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
           aria-hidden="true"
           style={{ display: "block", background: colors.bg, pointerEvents: "none" }}
         >
-          {outlinePaths.map((path, index) => (
-            <path
-              key={index}
-              d={path}
-              fill="none"
-              stroke={colors.textDim}
-              strokeOpacity="0.64"
-              strokeWidth="0.55"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
+          <BasemapLayer matrix={matrix} view={view} pxPerDegree={pxPerDegree} palette={palette} />
           {props.overlay ? (
             <GeoSvgLayers
               overlay={props.overlay}
-              baseProject={baseProject}
+              matrix={matrix}
               project={project}
-              transform={overlayTransform}
-              mapWidth={props.width}
+              view={view}
+              unitPx={unitPx}
+              mapWidthPx={surfaceSize?.width ?? props.width * 8}
               background={colors.bg}
               selectedColor={colors.selectedText}
+              textColor={colors.textBright}
+              tones={tones}
+              hovered={hovered?.hit ?? null}
             />
           ) : null}
           {clusters.map((cluster) => {
@@ -622,48 +691,164 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
             );
           })}
         </svg>
-        {props.overlay ? <GeoLegend overlay={props.overlay} venues={props.venues.length > 0} /> : null}
+        {tooltip && hovered ? (
+          <MapTooltip
+            title={tooltip.title}
+            detail={tooltip.detail}
+            x={hovered.x}
+            y={hovered.y}
+            width={surfaceSize?.width ?? 0}
+          />
+        ) : null}
+        {props.overlay ? <GeoLegend overlay={props.overlay} venues={props.venues.length > 0} tones={tones} /> : null}
       </div>
     </Box>
   );
 }
 
-/** Which colour is which layer, once there is more than one on the map. */
-function GeoLegend({ overlay, venues }: { overlay: GeoMapOverlay; venues: boolean }) {
+function withAlpha(hex: string, alpha: number): string {
+  const [r, g, b] = parseRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** The name under the pointer, beside it and inside the map. */
+function MapTooltip({ title, detail, x, y, width }: { title: string; detail: string | null; x: number; y: number; width: number }) {
   const colors = useThemeColors();
-  const items = [
-    ...(venues ? [{ id: "venues", name: "Venues", color: colors.positive, round: true }] : []),
-    // Only what is drawn: a layer below its zoom or unable to serve has no colour to explain.
+  const flip = width > 0 && x > width - 200;
+  return createElement(
+    "div",
+    {
+      "data-gloom-role": "geo-hover",
+      style: {
+        position: "absolute",
+        left: flip ? undefined : x + 14,
+        right: flip ? width - x + 14 : undefined,
+        top: Math.max(4, y - 30),
+        padding: "3px 8px",
+        background: colors.panel,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 4,
+        color: colors.textBright,
+        fontSize: "0.85em",
+        lineHeight: 1.35,
+        whiteSpace: "nowrap",
+        pointerEvents: "none",
+      },
+    },
+    title,
+    detail ? createElement("span", { style: { color: colors.textDim, marginLeft: 8 } }, detail) : null,
+  );
+}
+
+interface LegendItem {
+  id: string;
+  name: string;
+  color: string;
+  symbol: MapSymbolId | null;
+  line?: boolean;
+}
+
+/** Which icon and colour is which layer, once there is more than one on the map. Ships open their class key on hover. */
+function GeoLegend({ overlay, venues, tones }: { overlay: GeoMapOverlay; venues: boolean; tones: SymbolTones }) {
+  const colors = useThemeColors();
+  const [classesOpen, setClassesOpen] = useState(false);
+  const items: LegendItem[] = [
+    ...(venues ? [{ id: "venues", name: "Venues", color: colors.positive, symbol: "dot" as const }] : []),
+    // Only what is drawn: a layer below its zoom or unable to serve has nothing to explain.
     ...overlay.layers
       .filter((layer) => layer.features.length > 0 || layer.clusters.length > 0)
-      .map((layer) => ({ id: layer.id, name: layer.name, color: layer.color, round: layer.geometry === "point" })),
+      .map((layer) => ({
+        id: layer.id,
+        name: layer.name,
+        color: layer.color,
+        symbol: layer.geometry === "point" || layer.geometry === "area" ? layerSymbol(layer.id, layer.features[0]) : null,
+        line: layer.geometry === "line",
+      })),
   ];
   if (items.length < 2) return null;
-  return (
-    <div
-      data-gloom-role="geo-legend"
-      style={{
+  const ships = overlay.layers.find((layer) => usesClassTones(layer.id));
+  return createElement(
+    "div",
+    {
+      "data-gloom-role": "geo-legend",
+      style: {
         position: "absolute",
-        left: 10,
-        bottom: 8,
+        left: 6,
+        bottom: 6,
         display: "flex",
-        flexWrap: "wrap",
-        gap: "4px 14px",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        gap: 6,
         color: colors.textDim,
         fontSize: "0.85em",
         pointerEvents: "none",
-      }}
-    >
-      {/* DOM spans, built with createElement like the SVG text above: this branch only runs on the desktop and the web. */}
-      {items.map((item) => createElement(
+      },
+    },
+    classesOpen && ships ? createElement(
+      "div",
+      {
+        "data-gloom-role": "geo-legend-classes",
+        style: {
+          display: "grid",
+          gridTemplateColumns: "14px auto",
+          alignItems: "center",
+          gap: "3px 8px",
+          padding: "6px 9px",
+          background: colors.panel,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 4,
+        },
+      },
+      ...SHIP_CLASS_KEY.flatMap(({ id, label, tone, symbol }) => [
+        createElement("span", { key: `${id}:icon` }, <MapIconSwatch symbol={symbol} color={toneColor(ships, tone, tones)} background={colors.bg} />),
+        createElement("span", { key: `${id}:label` }, label),
+      ]),
+    ) : null,
+    createElement(
+      "div",
+      // A soft backing so the names read over coastlines and markers.
+      { style: { display: "flex", flexWrap: "wrap", gap: "4px 14px", padding: "3px 6px", borderRadius: 4, background: withAlpha(colors.bg, 0.78) } },
+      ...items.map((item) => createElement(
         "span",
-        { key: item.id, style: { display: "inline-flex", alignItems: "center", gap: 6 } },
-        createElement("span", { style: { width: 8, height: item.round ? 8 : 3, borderRadius: item.round ? "50%" : 1, background: item.color } }),
+        {
+          key: item.id,
+          style: {
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            ...(item.id === ships?.id ? { pointerEvents: "auto", cursor: "default" } : {}),
+          },
+          ...(item.id === ships?.id ? {
+            // A mouse opens the key on hover; a touch toggles it.
+            onPointerEnter: (event: ReactPointerEvent) => {
+              if (event.pointerType === "mouse") setClassesOpen(true);
+            },
+            onPointerLeave: (event: ReactPointerEvent) => {
+              if (event.pointerType === "mouse") setClassesOpen(false);
+            },
+            onPointerDown: (event: ReactPointerEvent) => {
+              event.stopPropagation();
+              if (event.pointerType !== "mouse") setClassesOpen((open) => !open);
+            },
+          } : {}),
+        },
+        item.line
+          ? createElement("span", { style: { width: 12, height: 2, borderRadius: 1, background: item.color } })
+          : <MapIconSwatch symbol={item.symbol ?? "dot"} color={item.color} background={colors.bg} />,
         item.name,
-      ))}
-    </div>
+      )),
+    ),
   );
 }
+
+const SHIP_CLASS_KEY: { id: string; label: string; tone: SymbolTone; symbol: MapSymbolId }[] = [
+  { id: "tanker", label: "Tanker", tone: "tanker", symbol: "ship" },
+  { id: "cargo", label: "Cargo", tone: "layer", symbol: "ship" },
+  { id: "passenger", label: "Passenger", tone: "passenger", symbol: "ship" },
+  { id: "fishing", label: "Fishing", tone: "fishing", symbol: "ship-small" },
+  { id: "service", label: "Tug and special", tone: "service", symbol: "ship-small" },
+  { id: "other", label: "Other", tone: "other", symbol: "ship-other" },
+];
 
 export function WorldVenueMap(props: WorldVenueMapProps) {
   return useUiCapabilities().nativePaneChrome === true

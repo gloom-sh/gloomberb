@@ -66,6 +66,7 @@
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
     "plugins:registry:check": "bun run scripts/check-registry-plugins.ts",
     "web:proxy-hosts": "bun run scripts/generate-web-proxy-hosts.ts",
+    "map:data": "bun run scripts/generate-world-map-data.ts",
     "web:proxy-hosts:check": "bun run scripts/generate-web-proxy-hosts.ts --check",
     "typecheck": "bun run typecheck:opentui && bun run typecheck:dom && bun run typecheck:cloudflare && bun run typecheck:scripts && bun run typecheck:plugin-tests",
     "typecheck:opentui": "tsc --project tsconfig.opentui.json",

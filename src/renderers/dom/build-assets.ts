@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "fs/promises";
-import { join, relative } from "path";
+import { dirname, join, relative, resolve } from "path";
+import type { BunPlugin } from "bun";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../../components/layout/titlebar-overlay";
 
 /** Imports whose path ends with the first entry resolve to the second, relative to the view directory. */
@@ -27,6 +28,13 @@ interface ViewBundleOptions {
 }
 
 const ELECTROBUN_VIEW_DIR = join(process.cwd(), "src", "renderers", "electrobun", "view");
+
+/**
+ * Where the world map finds its land data, relative to the map's
+ * `basemap.ts`. Only view bundles define it, so the terminal binary, which
+ * never draws that map, leaves the data out.
+ */
+export const WORLD_MAP_DATA_SPECIFIER = "./natural-earth/index.chunk.js";
 const DOM_RENDERER_DIR = join(process.cwd(), "src", "renderers", "dom");
 
 export function electrobunViewPath(...parts: string[]): string {
@@ -50,6 +58,7 @@ export async function buildViewBundle({
   failureMessage,
   missingEntryMessage,
 }: ViewBundleOptions): Promise<{ script: string; stylesheet: string | null }> {
+  const chunks = new Map<string, string>();
   const result = await Bun.build({
     entrypoints: [entrypoint],
     outdir,
@@ -58,8 +67,15 @@ export async function buildViewBundle({
     splitting: false,
     sourcemap,
     minify: true,
-    define: { "process.env.NODE_ENV": "\"production\"", ...define },
-    plugins: aliasRules.length > 0 ? [electrobunViewAliasPlugin(aliasRules)] : [],
+    define: {
+      "process.env.NODE_ENV": "\"production\"",
+      __GLOOM_WORLD_MAP_DATA__: JSON.stringify(WORLD_MAP_DATA_SPECIFIER),
+      ...define,
+    },
+    plugins: [
+      lazyChunkPlugin(outdir, outdir, chunks),
+      ...(aliasRules.length > 0 ? [electrobunViewAliasPlugin(aliasRules)] : []),
+    ],
   });
 
   if (!result.success) {
@@ -69,6 +85,7 @@ export async function buildViewBundle({
 
   const script = result.outputs.find((output) => output.kind === "entry-point" && output.path.endsWith(".js"));
   if (!script) throw new Error(missingEntryMessage);
+  await buildLazyChunks(outdir, chunks, failureMessage);
 
   const stylesheet = result.outputs.find((output) => output.path.endsWith(".css"))?.path ?? null;
   if (stylesheet) await writeFile(stylesheet, withTitlebarOverlayHeight(await readFile(stylesheet, "utf8")));
@@ -120,6 +137,67 @@ ${bootstrapScript}
   </body>
 </html>
 `;
+}
+
+/**
+ * The view bundle is one file (no splitting), so a module reached through
+ * `import()` would land in it. A module named `*.chunk.ts` and imported as
+ * `import("./path/name.chunk.js")` instead ships as its own file at that path
+ * next to the importing bundle, fetched the first time it is asked for: large
+ * data only some panes draw, such as the world map's coastlines. The terminal
+ * and the tests run the source, where the same `import()` loads the module.
+ */
+function lazyChunkPlugin(rootOutdir: string, emitDir: string, chunks: Map<string, string>): BunPlugin {
+  return {
+    name: "lazy-chunks",
+    setup(build) {
+      build.onResolve({ filter: /\.chunk(\.js|\.ts)?$/ }, (args) => {
+        if (args.kind.startsWith("entry-point") || /[\\/]node_modules[\\/]/.test(args.importer)) return undefined;
+        if (args.kind !== "dynamic-import") {
+          throw new Error(`${args.path} is a lazy chunk; load it with import() (from ${args.importer})`);
+        }
+        if (!args.path.startsWith("./") || !args.path.endsWith(".chunk.js")) {
+          throw new Error(`Lazy chunk ${args.path} must be imported as "./<path>.chunk.js" (from ${args.importer})`);
+        }
+        const source = resolve(dirname(args.importer), args.path.replace(/\.js$/, ".ts"));
+        const output = resolve(emitDir, args.path);
+        if (relative(rootOutdir, output).startsWith("..")) throw new Error(`Lazy chunk ${args.path} would land outside ${rootOutdir}`);
+        const existing = chunks.get(output);
+        if (existing && existing !== source) throw new Error(`Two lazy chunks emit ${output}: ${existing} and ${source}`);
+        chunks.set(output, source);
+        return { path: args.path, external: true };
+      });
+    },
+  };
+}
+
+/** Builds each lazy chunk on its own, and the chunks those load in turn. */
+async function buildLazyChunks(rootOutdir: string, chunks: Map<string, string>, failureMessage: string): Promise<void> {
+  const built = new Set<string>();
+  let pending = [...chunks.entries()];
+  while (pending.length) {
+    const nested = new Map<string, string>();
+    for (const [output, source] of pending) {
+      if (built.has(output)) continue;
+      built.add(output);
+      const result = await Bun.build({
+        entrypoints: [source],
+        outdir: dirname(output),
+        naming: relative(dirname(output), output),
+        target: "browser",
+        format: "esm",
+        splitting: false,
+        sourcemap: "none",
+        minify: true,
+        plugins: [lazyChunkPlugin(rootOutdir, dirname(output), nested)],
+      });
+      if (!result.success) {
+        const details = result.logs.map((log) => log.message).filter(Boolean).join("\n");
+        throw new Error(`${failureMessage}: lazy chunk ${source}\n${details}`);
+      }
+    }
+    pending = [...nested.entries()];
+  }
 }
 
 function electrobunViewAliasPlugin(aliasRules: AliasRule[]) {

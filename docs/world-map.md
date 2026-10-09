@@ -16,7 +16,7 @@ Pick layers in the pane settings, grouped as ships, air, energy, ports and infra
 
 The map's table lists one layer; the bar above it switches layers and `/` searches. `Enter` opens an entity: its figures, linked tickers, chart series and, for a ship, its recent track. `d` opens the linked company's description, `g` charts the entity's series.
 
-Dense layers show counts until you zoom in (wheel, `+`, `-`). Ticker links marked inferred are sector or ownership guesses; reviewed links name the owner or operator the source itself lists.
+Dense layers show counts until you zoom in (wheel, `+`, `-`). On the desktop and the web each layer has its own icon: a ship points along its course while under way and is a dot at rest, colored by class (hover **Ships** in the legend for the key); a view holding more than about 900 of one layer's points draws them as dots until you zoom closer. Hovering a feature shows its name. Coastlines sharpen as you zoom in: closer views switch to finer outlines and load only the part in view. Ticker links marked inferred are sector or ownership guesses; reviewed links name the owner or operator the source itself lists.
 
 ## Series in G
 
@@ -25,3 +25,7 @@ Dense layers show counts until you zoom in (wheel, `+`, `-`). Ticker links marke
 ## From the shell
 
 `gloomberb fn MAP --layer vessels --json` returns a layer's table with its linked tickers; `gloomberb shot MAP ships` saves a picture of the map.
+
+## Map data
+
+Land, coastlines and country borders come from [Natural Earth](https://www.naturalearthdata.com/) (1:50m, and 1:10m when zoomed in), which is in the public domain. `bun run map:data` rebuilds them from a pinned release with `scripts/generate-world-map-data.ts`; the app ships the result and asks no outside host for map data.
