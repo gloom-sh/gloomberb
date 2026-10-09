@@ -5,9 +5,12 @@ import { useAppSelector, useOptionalPaneInstanceId } from "./app/context";
 
 type ScrollDirection = "up" | "down";
 
+/** A scroll position: rows (or cells), or device pixels where the host measures in them. */
+type ScrollTarget = { cells: number } | { pixels: number };
+
 interface PaneScrollAction {
   direction: ScrollDirection;
-  resolveTarget(scrollBox: ScrollBoxRenderable): number | null;
+  resolveTarget(scrollBox: ScrollBoxRenderable): ScrollTarget | null;
 }
 
 interface PaneScrollEntry {
@@ -57,17 +60,58 @@ function isVisibleScrollBox(scrollBox: ScrollBoxRenderable): boolean {
   return !hasHiddenAncestor(scrollBox) && !hasCollapsedBounds(scrollBox);
 }
 
-function clampScrollTop(scrollBox: ScrollBoxRenderable, target: number): number | null {
+function maxScrollTop(scrollBox: ScrollBoxRenderable): number {
   const viewportHeight = Math.max(0, scrollBox.viewport?.height ?? 0);
-  if (viewportHeight <= 0) return null;
-  const maxScrollTop = Math.max(0, scrollBox.scrollHeight - viewportHeight);
-  if (maxScrollTop <= 0) return null;
-  return Math.max(0, Math.min(maxScrollTop, target));
+  if (viewportHeight <= 0) return 0;
+  return Math.max(0, scrollBox.scrollHeight - viewportHeight);
 }
 
-function scrollTargetByDelta(scrollBox: ScrollBoxRenderable, delta: number): number | null {
-  const target = clampScrollTop(scrollBox, scrollBox.scrollTop + delta);
-  return target == null || target === scrollBox.scrollTop ? null : target;
+/**
+ * The desktop host rounds its viewport and content to whole rows, which can
+ * leave up to half a row of content past the last scrollable row. Where it
+ * also reports pixels, the ends are measured in them.
+ */
+function pixelRange(scrollBox: ScrollBoxRenderable): { top: number; max: number } | null {
+  const { scrollTopPx, scrollHeightPx, viewportPx } = scrollBox;
+  if (!scrollBox.scrollToPixels || typeof scrollTopPx !== "number" || typeof scrollHeightPx !== "number" || !viewportPx) {
+    return null;
+  }
+  return { top: scrollTopPx, max: Math.max(0, scrollHeightPx - viewportPx.height) };
+}
+
+function topTarget(scrollBox: ScrollBoxRenderable): ScrollTarget | null {
+  if ((scrollBox.viewport?.height ?? 0) <= 0) return null;
+  const pixels = pixelRange(scrollBox);
+  if (pixels) return pixels.top >= 1 ? { pixels: 0 } : null;
+  return scrollBox.scrollTop > 0 ? { cells: 0 } : null;
+}
+
+function bottomTarget(scrollBox: ScrollBoxRenderable): ScrollTarget | null {
+  const max = maxScrollTop(scrollBox);
+  // A body that overflows by less than a row is not worth capturing the keys for.
+  if (max <= 0) return null;
+  const pixels = pixelRange(scrollBox);
+  if (pixels) return pixels.max - pixels.top >= 1 ? { pixels: pixels.max } : null;
+  return max !== scrollBox.scrollTop ? { cells: max } : null;
+}
+
+function scrollTargetByDelta(scrollBox: ScrollBoxRenderable, delta: number): ScrollTarget | null {
+  if ((scrollBox.viewport?.height ?? 0) <= 0) return null;
+  const wanted = scrollBox.scrollTop + delta;
+  if (delta < 0 && wanted <= 0) return topTarget(scrollBox);
+  if (delta > 0 && wanted >= maxScrollTop(scrollBox)) return bottomTarget(scrollBox);
+  return delta === 0 ? null : { cells: wanted };
+}
+
+function applyScrollTarget(scrollBox: ScrollBoxRenderable, target: ScrollTarget): void {
+  if ("pixels" in target) {
+    scrollBox.scrollToPixels?.(target.pixels);
+    return;
+  }
+  scrollBox.scrollTo(target.cells);
+  if (scrollBox.scrollTop !== target.cells) {
+    scrollBox.scrollTop = target.cells;
+  }
 }
 
 /**
@@ -76,7 +120,7 @@ function scrollTargetByDelta(scrollBox: ScrollBoxRenderable, delta: number): num
  */
 export function scrollByLines(scrollBox: ScrollBoxRenderable, delta: number): void {
   const target = scrollTargetByDelta(scrollBox, delta);
-  if (target != null) scrollBox.scrollTop = target;
+  if (target) applyScrollTarget(scrollBox, target);
 }
 
 function arrowScrollLines(scrollBox: ScrollBoxRenderable): number {
@@ -117,20 +161,9 @@ function resolveKeyScrollAction(event: PaneScrollKeyEvent): PaneScrollAction | n
         ),
       };
     case "home":
-      return {
-        direction: "up",
-        resolveTarget: (scrollBox) => (
-          scrollBox.scrollTop > 0 ? 0 : null
-        ),
-      };
+      return { direction: "up", resolveTarget: topTarget };
     case "end":
-      return {
-        direction: "down",
-        resolveTarget: (scrollBox) => {
-          const target = clampScrollTop(scrollBox, Number.MAX_SAFE_INTEGER);
-          return target == null || target === scrollBox.scrollTop ? null : target;
-        },
-      };
+      return { direction: "down", resolveTarget: bottomTarget };
     default:
       return null;
   }
@@ -145,12 +178,12 @@ function getEntryScore(entry: PaneScrollEntry, scrollBox: ScrollBoxRenderable): 
 function findScrollableEntry(paneId: string, action: PaneScrollAction): {
   entry: PaneScrollEntry;
   scrollBox: ScrollBoxRenderable;
-  target: number;
+  target: ScrollTarget;
 } | null {
   const entries = paneScrollBoxes.get(paneId);
   if (!entries) return null;
 
-  let best: { entry: PaneScrollEntry; scrollBox: ScrollBoxRenderable; target: number; score: number } | null = null;
+  let best: { entry: PaneScrollEntry; scrollBox: ScrollBoxRenderable; target: ScrollTarget; score: number } | null = null;
   for (const entry of entries.values()) {
     const scrollBox = entry.ref.current;
     if (!scrollBox) continue;
@@ -176,17 +209,16 @@ function scrollPaneByKey(paneId: string, event: PaneScrollKeyEvent): boolean {
   const match = findScrollableEntry(paneId, action);
   if (!match) return false;
 
-  const previousTop = match.scrollBox.scrollTop;
-  match.scrollBox.scrollTo(match.target);
-  if (match.scrollBox.scrollTop !== match.target) {
-    match.scrollBox.scrollTop = match.target;
-  }
+  const { scrollBox } = match;
+  const position = () => scrollBox.scrollTopPx ?? scrollBox.scrollTop;
+  const previousTop = scrollBox.scrollTop;
+  const previousPosition = position();
+  applyScrollTarget(scrollBox, match.target);
 
-  const delta = Math.abs(match.scrollBox.scrollTop - previousTop);
-  if (delta > 0) {
-    match.entry.onScrollActivity?.({ scroll: { direction: action.direction, delta } });
-  }
-  return delta > 0;
+  if (position() === previousPosition) return false;
+  const delta = Math.max(1, Math.abs(scrollBox.scrollTop - previousTop));
+  match.entry.onScrollActivity?.({ scroll: { direction: action.direction, delta } });
+  return true;
 }
 
 export function useForwardedScrollBoxRef<T>(

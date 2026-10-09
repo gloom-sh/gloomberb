@@ -149,4 +149,14 @@ describe("desktop and web", () => {
     await press("Home");
     expect(element.scrollTop).toBe(0);
   });
+
+  test("End reaches the last pixel of a body that ends part way into a row", async () => {
+    // 35.4 rows in a 7.6 row viewport: the host rounds them to 35 and 8, so
+    // by rows alone the last 13 pixels would stay out of reach.
+    const element = await mount({}, 35.4 * CELL, 7.6 * CELL);
+    await press("End");
+    expect(element.scrollTop).toBeCloseTo(35.4 * CELL - 7.6 * CELL, 5);
+    await press("Home");
+    expect(element.scrollTop).toBe(0);
+  });
 });
