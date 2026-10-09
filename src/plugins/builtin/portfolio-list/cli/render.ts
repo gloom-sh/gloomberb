@@ -24,6 +24,7 @@ import { cliFreshnessFooter } from "../../../../cli/result";
 import { quotesFreshness } from "../../../../cli/freshness";
 import type { BrokerAccount } from "../../../../types/trading";
 import {
+  BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
   buildPortfolioAllocation,
   describeTargetSum,
@@ -507,6 +508,7 @@ async function showCollectionWithMarketData(
       notes.push(cliStyles.warning(`Total and weights exclude ${count} unpriced holding${count === 1 ? "" : "s"}: ${allocation.unpriced.join(", ")}.`));
     }
     if (cashExport?.source === "broker") notes.push(cliStyles.muted("Cash is the broker account's balance as of its last sync."));
+    if (matchedPortfolio.brokerInstanceId && !account) notes.push(cliStyles.warning(BROKER_ACCOUNT_MISSING_NOTE));
     if (cashExport && cashExport.value == null) {
       notes.push(cliStyles.warning(cashExport.currency
         ? `No ${cashExport.currency}/${currency} rate for the cash, so the total and weights are unavailable.`

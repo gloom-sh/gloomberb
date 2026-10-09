@@ -74,6 +74,7 @@ import type { ResolvedSeries } from "../../time-series/types";
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
 import { accessGateSentence } from "./access-gate";
 import { findCollection } from "../../plugins/builtin/portfolio-list/cli/render";
+import { peekCachedBrokerAccounts } from "../../plugins/builtin/portfolio-list/cached-account";
 import {
   paneEvidenceMismatches,
   paneScreenshotEvidenceHook,
@@ -625,6 +626,9 @@ export async function buildDesktopShotPayload(
     deviceScaleFactor,
     watermark,
     tickers,
+    ...(COLLECTION_PANE_IDS.has(resolved.pane.id)
+      ? { brokerAccounts: peekCachedBrokerAccounts(context.config, context.persistence?.resources) }
+      : {}),
     financials,
     ...(instrumentFinancials?.length ? { instrumentFinancials } : {}),
     ...(historyVariants?.length ? { historyVariants } : {}),

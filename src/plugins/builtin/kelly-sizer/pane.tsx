@@ -35,6 +35,7 @@ import { getSharedRegistry } from "../../registry";
 import { resolveTickerOpenTarget } from "../../../tickers/open-target";
 import { calculatePortfolioSummaryTotals } from "../portfolio-list/metrics";
 import { resolvePortfolioNetLiquidation } from "../portfolio-list/account-metrics";
+import { resolvePortfolioCash } from "../portfolio-list/allocation";
 import {
   buildTrackedCurrencies,
   getCollectionTickersFromConfig,
@@ -71,7 +72,7 @@ import {
   KellySensitivitySection,
   buildKellyResultItems,
 } from "./sections";
-import { getPortfolioPositionValue, resolveActivePortfolioId } from "./portfolio";
+import { getPortfolioPositionValue, resolveActivePortfolioId, resolveKellyBankroll } from "./portfolio";
 import { useKellyCommonAssumptions } from "./state";
 
 export function KellySizerPane({ focused, width, height }: PaneProps) {
@@ -214,9 +215,11 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     ? portfolioFinancials.get(requestedSymbol!) ?? null
     : financials;
   const { accountState } = usePortfolioAccountState(activePortfolio, { brokerAccounts, config });
+  // Cash entered by hand counts toward a manual portfolio's bankroll; a broker's is in its Net Liq.
+  const manualCash = accountState ? null : resolvePortfolioCash(activePortfolio, null);
   const trackedCurrencies = useMemo(
-    () => buildTrackedCurrencies(portfolioTickers, portfolioFinancials, accountState, config.baseCurrency),
-    [accountState, config.baseCurrency, portfolioFinancials, portfolioTickers],
+    () => buildTrackedCurrencies(portfolioTickers, portfolioFinancials, accountState, config.baseCurrency, manualCash?.currency),
+    [accountState, config.baseCurrency, manualCash?.currency, portfolioFinancials, portfolioTickers],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
   const portfolioSummary = useMemo(
@@ -237,9 +240,12 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     (value) => convertCurrency(value, accountState?.account.currency ?? "", config.baseCurrency, exchangeRates),
     accountState?.snapshotBasis,
   );
-  const sourceBankroll = netLiquidation != null && Number.isFinite(netLiquidation)
-    ? netLiquidation
-    : portfolioSummary.totalMktValue ?? 0;
+  const sourceBankroll = resolveKellyBankroll({
+    netLiquidation,
+    brokerPortfolio: !!activePortfolio?.brokerInstanceId,
+    holdings: portfolioSummary.allocationHoldings ?? [],
+    cashValue: manualCash ? convertCurrency(manualCash.amount, manualCash.currency, config.baseCurrency, exchangeRates) : null,
+  });
   const sourceCurrentValue = getPortfolioPositionValue({
     ticker,
     financials: positionFinancials,

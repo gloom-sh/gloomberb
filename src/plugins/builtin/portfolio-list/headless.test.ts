@@ -72,7 +72,11 @@ test("a broker portfolio's positions come largest first with weights and totals 
     currency: "USD",
     positions: 5,
     totals: { marketValue: 19_000, grossMarketValue: 29_000, unrealizedPnl: 9_500 },
-    notices: ["2 more positions not shown; totals include every position."],
+    notices: [
+      "2 more positions not shown; totals include every position.",
+      // No account was synced here, so the total weighs only the positions.
+      expect.stringContaining("cash and margin are unknown"),
+    ],
   });
 });
 

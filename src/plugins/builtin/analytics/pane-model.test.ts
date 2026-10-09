@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
 import type { PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { TickerRecord } from "../../../types/ticker";
@@ -6,6 +6,15 @@ import type { PricePoint } from "../../../types/financials";
 import { buildChartKey } from "../../../market-data/selectors";
 import { buildAnalyticsRiskRows, buildAnalyticsSummaryRows, buildBenchmarkReturnSeries, buildPortfolioChartTargets, buildPortfolioReturnSeries, formatHistoryValueAxis } from "./pane-model";
 import { createTestTicker } from "../../../test-support/ticker";
+import { useRegularMarketSession } from "../../../test-support/market-session";
+import {
+  MARGIN_EXCHANGE_RATES,
+  MARGIN_PORTFOLIO,
+  MARGIN_TICKERS,
+  createMarginAccount,
+  marginQuotes,
+} from "../../../test-support/margin-account";
+import { calculatePortfolioSummaryTotals } from "../portfolio-list/metrics";
 
 function riskTicker(symbol: string): TickerRecord {
   return createTestTicker(symbol, symbol, {
@@ -86,6 +95,31 @@ test("converts every account balance while keeping leverage independent of displ
 
   accountState.account.netLiquidation = 0;
   expect(rows(1).has("margin-leverage")).toBe(false);
+});
+
+describe("a margin account's summary", () => {
+  useRegularMarketSession();
+
+  const rows = (account: ReturnType<typeof createMarginAccount> | null) => new Map(buildAnalyticsSummaryRows({
+    accountState: account ? { account, sourceLabel: "Synced", sourceKind: "cloud", snapshotBasis: "marks", visibleCashBalances: [] } : null,
+    activePortfolio: MARGIN_PORTFOLIO,
+    brokerPerformance: null,
+    portfolioStats: calculatePortfolioSummaryTotals(MARGIN_TICKERS, marginQuotes(), "USD", MARGIN_EXCHANGE_RATES, true, MARGIN_PORTFOLIO.id),
+  }).map((row) => [row.id, `${row.label} ${row.value}`]));
+
+  test("states the equity, the gross and the leverage between them", () => {
+    const summary = rows(createMarginAccount());
+    expect(summary.get("net-liquidation")).toBe("Net Liq 1.00M");
+    expect(summary.get("total-value")).toBe("Gross 1.60M");
+    expect(summary.get("margin-leverage")).toBe("Margin Lev 1.6x");
+    expect(summary.get("cash")).toBe("Cash -600.0k");
+  });
+
+  test("without its account the gross is never shown as the value", () => {
+    const summary = rows(null);
+    expect(summary.get("net-liquidation")).toBe("Net Liq —");
+    expect(summary.get("total-value")).toBe("Gross 1.60M");
+  });
 });
 
 test("cash-only summary uses reported account metrics and preserves explicit zero", () => {

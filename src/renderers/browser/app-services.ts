@@ -5,6 +5,7 @@ import { createAppRuntime } from "../../core/app-runtime";
 import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "../../sources/gloomberb-cloud";
 import { AssetDataRouter } from "../../sources/provider-router";
 import { JsonPersistence } from "../../data/json-persistence";
+import { isBrokerAccountSnapshotKey } from "../../brokers/account-cache";
 import { JsonTickerRepository } from "../../data/json-ticker-repository";
 
 export function createBrowserAppServices({ config, plugins, externalPlugins }: AppServicesFactoryOptions) {
@@ -15,7 +16,8 @@ export function createBrowserAppServices({ config, plugins, externalPlugins }: A
   );
   return createAppRuntime({
     config, plugins, externalPlugins, dataProvider,
-    persistence: new JsonPersistence(localStorage),
+    // Broker account snapshots are kept with the positions, so a reload keeps the account's equity and cash.
+    persistence: new JsonPersistence(localStorage, { keepResource: isBrokerAccountSnapshotKey }),
     tickerRepository: new JsonTickerRepository(localStorage),
     configure({ pluginRegistry, newsService }) {
       dataProvider.attachRegistry(pluginRegistry);

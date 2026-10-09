@@ -511,6 +511,8 @@ export class DesktopBackend {
       case "config.import":
       case "session.set":
       case "session.delete":
+      case "resources.set":
+      case "resources.delete":
         return handleDesktopBackendRequest(this, rpc, request);
       default: {
         const exhaustive: never = request;

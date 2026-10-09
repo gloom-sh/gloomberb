@@ -2,6 +2,7 @@ import type { AppConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { convertCurrency } from "../../../utils/format";
+import { allocationTotal, type AllocationHolding } from "../portfolio-list/allocation";
 import { getCollectionTypeFromConfig } from "../portfolio-list/pane/data";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue } from "../portfolio-list/position-metrics";
 
@@ -39,6 +40,30 @@ export function getPortfolioPositionValue({
   return resolvePortfolioMarketValue(metrics, activeQuote
     ? convertCurrency(activeQuote.price, quoteCurrency, baseCurrency, exchangeRates) : null)?.gross
     ?? (metrics.positionCount > 0 ? Number.NaN : 0);
+}
+
+/**
+ * What the portfolio is worth to bet with: its equity. A broker account's is
+ * its Net Liq. Otherwise it is the priced holdings at net value plus the cash
+ * entered for the portfolio, the portfolio header's Total. A broker portfolio
+ * with neither has no known equity: its positions alone are its gross, which
+ * margin puts above the equity, so it gives no bankroll.
+ */
+export function resolveKellyBankroll({
+  netLiquidation,
+  brokerPortfolio,
+  holdings,
+  cashValue,
+}: {
+  netLiquidation: number | null;
+  brokerPortfolio: boolean;
+  holdings: readonly AllocationHolding[];
+  /** Cash entered by hand, in the bankroll currency; NaN when it cannot be converted. */
+  cashValue: number | null;
+}): number {
+  if (netLiquidation != null && Number.isFinite(netLiquidation)) return netLiquidation;
+  if (brokerPortfolio && cashValue == null) return 0;
+  return allocationTotal(holdings, cashValue) ?? 0;
 }
 
 export function resolveActivePortfolioId({

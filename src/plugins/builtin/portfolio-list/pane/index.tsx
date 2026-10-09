@@ -172,7 +172,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const flashSymbols = useQuoteFlashMap(financialsMap, valueFlashingEnabled);
 
   const accountStateInput = useMemo(() => ({ brokerAccounts, config }), [brokerAccounts, config]);
-  const { accountState, accountsError } = usePortfolioAccountState(currentPortfolio, accountStateInput);
+  const { accountState, accountsError, brokerError } = usePortfolioAccountState(currentPortfolio, accountStateInput);
+  const brokerPortfolio = isPortfolioTab && !!currentPortfolio?.brokerInstanceId;
   const portfolioTargets = currentPortfolio?.targetWeights;
   const columns = useMemo(
     () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio) }),
@@ -338,7 +339,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     currency: totalsCurrency,
     baseCurrency: config.baseCurrency,
     manualCash,
-  }), [config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, portfolioSummaryTotals, summaryAccountState, totalsCurrency]);
+    brokerPortfolio,
+  }), [brokerPortfolio, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, portfolioSummaryTotals, summaryAccountState, totalsCurrency]);
   // The header row sits in the pane's one-cell side padding, like the table.
   const summaryWidth = Math.max(0, width - 2);
   const summaryLayout = useMemo(() => layoutPortfolioSummaryHeader(summarySegments, summaryWidth, {
@@ -476,7 +478,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     accountState: summaryAccountState,
     accountStatusText: accountsError
       ? `Accounts unavailable: ${accountsError}`
-      : isPortfolioTab && currentPortfolio?.brokerInstanceId && !accountState ? "Acct missing" : undefined,
+      : brokerPortfolio ? brokerError ?? (accountState ? undefined : "Acct missing") : undefined,
     financialsMap,
     isPortfolioTab,
     refreshingSize,
@@ -485,7 +487,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }), [financialsMap, sortedTickers], [
     accountState,
     accountsError,
-    currentPortfolio?.brokerInstanceId,
+    brokerError,
+    brokerPortfolio,
     isPortfolioTab,
     portfolioSummaryTotals,
     refreshingSize,

@@ -139,6 +139,13 @@ export function resolvePortfolioNetLiquidation(
   return convertAccountValue(account.netLiquidation) + brokerSnapshotDelta(totals, account, basis, convertAccountValue).net;
 }
 
+/** Gross exposure per unit of equity; above 1 the account borrows or is short. */
+export function resolvePortfolioLeverage(grossValue: number, netLiquidation: number | null | undefined): number | null {
+  return isFiniteNumber(netLiquidation) && netLiquidation > 0 && Number.isFinite(grossValue) && grossValue >= 0
+    ? grossValue / netLiquidation
+    : null;
+}
+
 export function resolvePortfolioAccountMetrics(
   totals: PortfolioSummaryTotals,
   account?: BrokerAccount | null,
@@ -167,9 +174,17 @@ export function resolvePortfolioAccountMetrics(
       : isFiniteNumber(account?.netLiquidation)
         ? convertAccountValue(account.netLiquidation) - brokerDailyPnl
         : null;
+  // Without the broker's day, the quotes' day is still a move of the equity,
+  // which margin puts below the positions the totals divide by.
+  const quotedPreviousEquity = brokerDailyPnl == null && account && isFiniteNumber(account.netLiquidation)
+    && Number.isFinite(dailyPnl)
+    ? convertAccountValue(account.netLiquidation) + delta.net - dailyPnl
+    : null;
   const dailyPnlPct = previousNetLiquidation != null
     ? percentChange(dailyPnl, previousNetLiquidation)
-    : totals.dailyPnlPct;
+    : quotedPreviousEquity != null && quotedPreviousEquity > 0
+      ? percentChange(dailyPnl, quotedPreviousEquity)
+      : totals.dailyPnlPct;
 
   const liveUnrealizedPnl = liveTotal(totals, totals.unrealizedPnl);
   const brokerUnrealizedPnl = liveUnrealizedPnl == null && isFiniteNumber(account?.unrealizedPnl)

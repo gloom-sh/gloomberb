@@ -16,6 +16,7 @@ import {
   type CollectionMatch,
 } from "./cli/render";
 import {
+  BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
   describeTargetSum,
   formatAllocationDrift,
@@ -210,6 +211,7 @@ async function portfolioHoldings(
       ? [`${rows.length - limit} more position${rows.length - limit === 1 ? "" : "s"} not shown; totals include every position.`]
       : []),
     ...(targetNote ? [targetNote] : []),
+    ...(target.portfolio.brokerInstanceId && !resolved.account ? [BROKER_ACCOUNT_MISSING_NOTE] : []),
   ];
 
   return {

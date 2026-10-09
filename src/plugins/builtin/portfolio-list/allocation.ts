@@ -17,6 +17,9 @@ import { formatNumber } from "../../../utils/format";
 /** The cash line's symbol in targets and reports. */
 export const CASH_SYMBOL = "CASH";
 
+/** A broker portfolio without its account: margin can put its positions far above what it is worth. */
+export const BROKER_ACCOUNT_MISSING_NOTE = "The broker account has not synced on this device, so its cash and margin are unknown: the total is the positions alone, not the account's value.";
+
 /** One ticker of a portfolio, valued in the portfolio's currency. */
 export interface AllocationHolding {
   symbol: string;

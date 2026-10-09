@@ -10,6 +10,7 @@ import type { ManualChartResolution } from "../time-series/resolution";
 import type { SnapshotMarketData } from "../market-data/snapshot-provider";
 import type { InstrumentRef } from "../market-data/request-types";
 import type { TickerRecord } from "../types/ticker";
+import type { BrokerAccount } from "../types/trading";
 import type { PaneRuntimeState } from "../core/state/app/state";
 import type { RemoteUiNodeSnapshot } from "../remote/types";
 import type { DatedObservation } from "../plugins/builtin/market-valuation/series";
@@ -54,6 +55,8 @@ export interface DesktopPaneShotPayload {
   /** Label drawn at the right edge of the pane title bar; null draws nothing. */
   watermark?: string | null;
   tickers: TickerRecord[];
+  /** Broker accounts as last synced, by profile, so a broker portfolio shows its equity and cash. */
+  brokerAccounts?: Record<string, BrokerAccount[]>;
   financials: Array<[string, TickerFinancials]>;
   instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
   historyVariants?: SnapshotMarketData["historyVariants"];
