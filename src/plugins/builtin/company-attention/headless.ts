@@ -39,7 +39,8 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       const nextOffset = kind === "hiring" && "total" in data ? offset + data.companies.length < data.total ? offset + data.companies.length : null : (data as AppAttentionPayload).page?.nextOffset ?? null;
       return {
         complete: !model.preview && nextOffset === null,
-        errors: [...model.notices, ...(nextOffset !== null ? [`Additional observations available with --offset ${nextOffset}.`] : []), ...(model.preview ? ["Additional rows and history require Gloom Pro."] : [])],
+        errors: [...model.notices, ...(model.preview ? ["Additional rows and history require Gloom Pro."] : [])],
+        ...(nextOffset !== null ? { notes: [`Additional observations available with --offset ${nextOffset}.`] } : {}),
         sections: Object.entries(model.sections).map(([key, section]) => ({ title: key === "mix" ? kind === "hiring" ? "Role family" : "Countries" : key,
           columns: section.columns.map((column) => ({ key: column.id, header: column.label, align: column.align })),
           rows: section.rows.map((row) => ({ ...row.values, ...(row.url ? { sourceUrl: row.url } : {}), ...(row.details ? { evidence: row.details } : {}) })) })),

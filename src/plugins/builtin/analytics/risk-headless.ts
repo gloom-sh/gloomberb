@@ -70,14 +70,14 @@ function coverageSummary(coverage: RiskCoverage, limit = Infinity) {
   };
 }
 
-/** One line for the whole coverage in place of a notice per left-out holding. */
-function coverageError(coverage: RiskCoverage | undefined): string | null {
+/** One line for the whole coverage in place of a note per left-out holding. */
+function coverageLine(coverage: RiskCoverage | undefined): { error?: string; note?: string } {
   const shortfall = riskCoverageShortfall(coverage);
-  if (shortfall) return `Basket estimates unavailable: ${shortfall.title} ${shortfall.message}`.trim();
-  // Converted holdings are covered, not an error; only a left-out holding raises one.
+  // No estimate at all is a failure; an estimate that leaves holdings out is a caveat.
+  if (shortfall) return { error: `Basket estimates unavailable: ${shortfall.title} ${shortfall.message}`.trim() };
   return coverage?.leftOut.length
-    ? `Basket ${riskCoverageText(coverage)}; metadata.coverage lists each with its reason.`
-    : null;
+    ? { note: `Basket ${riskCoverageText(coverage)}; metadata.coverage lists each with its reason.` }
+    : {};
 }
 
 /** One view, its strongest or first rows, and the portfolio's totals instead of the model. */
@@ -241,9 +241,12 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
               : view === "factors"
                 ? covered && model.factors.every((row) => row.value != null)
                 : model.complete;
+    // A basket view with too little covered shows no estimate, and the report says why rather than leaving dashes.
+    const shortfall = BASKET_VIEWS.has(view as RiskView) ? coverageLine(model.coverage).error : undefined;
     return {
       complete,
-      errors: [...riskCoverageNotices(model.coverage), ...model.warnings],
+      errors: [...(shortfall ? [shortfall] : []), ...model.warnings],
+      notes: [...riskCoverageNotices(model.coverage), ...model.notes],
       sections: RISK_VIEWS.map((view) => ({
         title: view,
         columns: RISK_COLUMNS,
@@ -257,17 +260,16 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     if (!model?.rows) return result;
     const view = isRiskView(args.options.view) ? args.options.view : "risk";
     const { rows, notices } = compactRiskRows(model, view);
-    // Each left-out holding is in metadata.coverage; the errors keep one line for all of them.
+    // Each left-out holding is in metadata.coverage; the notes keep one line for all of them.
     const perHolding = new Set(riskCoverageNotices(model.coverage));
     const basketView = BASKET_VIEWS.has(view);
-    const coverageLine = basketView ? coverageError(model.coverage) : null;
-    const errors = [
-      ...(coverageLine ? [coverageLine] : []),
-      ...(result.errors ?? []).filter((error) => !perHolding.has(error)),
-    ];
+    const coverage = basketView ? coverageLine(model.coverage) : {};
+    const errors = [...new Set([...(coverage.error ? [coverage.error] : []), ...(result.errors ?? [])])];
+    const notes = [...(coverage.note ? [coverage.note] : []), ...(result.notes ?? []).filter((note) => !perHolding.has(note))];
     return {
       complete: result.complete,
       ...(errors.length ? { errors } : {}),
+      ...(notes.length ? { notes } : {}),
       sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow) }],
       metadata: {
         portfolio: {

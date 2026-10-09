@@ -13,9 +13,10 @@ import { formatMoverPrice, moverReferencePrice } from "../../plugins/builtin/mar
 import { loadCalendar, matchesCountry, matchesImpact, type CountryFilter, type ImpactFilter } from "../../plugins/builtin/econ/calendar-model";
 import { isoDate, requireArg, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
-import { correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
+import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
+import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
-import { EXCHANGE_OPTION, requireCliListing, type CliListing } from "../listing-arg";
+import { EXCHANGE_OPTION, listingIdentity, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
@@ -220,7 +221,18 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
     );
     const [leftSeries, rightSeries] = await Promise.all([loadSeries(leftListing!), loadSeries(rightListing!)]);
     const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
-    ctx.printResult({ data: [{ left, right, samples: sampleSize, correlation }], metadata: { range: "1Y", basis: CORRELATION_RETURN_BASIS } }, {
+    // A bare symbol names no exchange; its quote says where it lists, which sets when its daily close is taken.
+    const [leftQuote, rightQuote] = await Promise.all([leftListing!, rightListing!].map((listing) => loadListingQuote(services.dataProvider, listing)));
+    const sessionNote = mixedSessionCloseNote(
+      { symbol: leftListing!.symbol, exchange: listingIdentity(leftListing!, leftQuote).exchange, label: left },
+      { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightQuote).exchange, label: right },
+      alignDailyCloses(leftSeries.prices, rightSeries.prices).at(-1)?.dateKey,
+    );
+    ctx.printResult({
+      data: [{ left, right, samples: sampleSize, correlation }],
+      ...(sessionNote ? { warnings: [sessionNote] } : {}),
+      metadata: { range: "1Y", basis: CORRELATION_RETURN_BASIS },
+    }, {
       layout: "record",
       textColumns: [
         { key: "left", header: "Symbols", value: (row) => `${row.left} / ${row.right}` },

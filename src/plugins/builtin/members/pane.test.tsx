@@ -11,15 +11,10 @@ import { MembersPane } from "./pane";
 import { board, changes, member } from "./test-fixture";
 const tui = createOpenTuiTestHarness();
 afterEach(() => { setCloudApiFetchTransport(null); fundMembersCache.reset(); fundChangesCache.reset(); fundListCache.reset(); });
-test("partial holdings keep number columns aligned, open tickers and lazily load the change stack", async () => {
+const covered = { funds: ["IVV", "IJH", "IJR", "IWM", "IWB"].map((ticker) => ({ ticker, name: ticker, aliases: ticker === "IVV" ? ["SPY", "SPX"] : [], changes: "none" as const, asOf: "2026-10-05" })) };
+async function mountMembers(symbol: string, pins: string[] = []) {
   for (const cache of [fundMembersCache, fundChangesCache, fundListCache]) cache.attach(new MemoryPluginPersistence());
-  const calls: string[] = [], pins: string[] = [];
-  const unlisted = { ...member("PRIVATE", null, 0), symbol: null, name: "OMNIAB VESTING Prvt" };
-  const holdings = { ...board, members: [...board.members, unlisted], aggregate: { ...board.aggregate, total: 4 } };
-  const headline = "Freshworks Set to Join S&P SmallCap 600";
-  const announcements = { ...changes, changes: [{ ...changes.changes[0]!, headline, reason: headline, added: "FRSH", removed: "BLFS", daysToGo: 1, effectiveDate: "2026-10-08" }] };
-  setCloudApiFetchTransport(async (input) => { const path = new URL(String(input)).pathname; calls.push(path); return Response.json(path.endsWith("/changes") ? announcements : holdings); });
-  const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: "members", paneId: "members", binding: { kind: "fixed", symbol: "SPY" }, settings: {} }));
+  const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: "members", paneId: "members", binding: { kind: "fixed", symbol }, settings: {} }));
   function Harness() {
     const [state, setState] = useState(initial);
     const dispatch = (action: AppAction) => setState((previous) => appReducer(previous, action));
@@ -29,6 +24,15 @@ test("partial holdings keep number columns aligned, open tickers and lazily load
     </TestPaneFrame>;
   }
   await act(async () => { await tui.render(<Harness />, { width: 115, height: 22 }); });
+}
+test("partial holdings keep number columns aligned, open tickers and lazily load the change stack", async () => {
+  const calls: string[] = [], pins: string[] = [];
+  const unlisted = { ...member("PRIVATE", null, 0), symbol: null, name: "OMNIAB VESTING Prvt" };
+  const holdings = { ...board, members: [...board.members, unlisted], aggregate: { ...board.aggregate, total: 4 } };
+  const headline = "Freshworks Set to Join S&P SmallCap 600";
+  const announcements = { ...changes, changes: [{ ...changes.changes[0]!, headline, reason: headline, added: "FRSH", removed: "BLFS", daysToGo: 1, effectiveDate: "2026-10-08" }] };
+  setCloudApiFetchTransport(async (input) => { const path = new URL(String(input)).pathname; calls.push(path); return Response.json(path.endsWith("/changes") ? announcements : path.endsWith("/members") ? covered : holdings); });
+  await mountMembers("SPY", pins);
   let frame = await tui.waitForFrameToContain("Company AAA");
   expect(frame).toContain("1D 2/4");
   expect(calls.some((path) => path.endsWith("/changes"))).toBe(false);
@@ -48,4 +52,10 @@ test("partial holdings keep number columns aligned, open tickers and lazily load
   frame = await tui.waitForFrameToContain("Estimate from IVV share counts");
   expect(frame).toContain("2026-10-08");
   expect(frame.split(headline)).toHaveLength(2);
+});
+test("a fund outside the server's covered list says which funds are covered", async () => {
+  setCloudApiFetchTransport(async (input) => new URL(String(input)).pathname.endsWith("/members") ? Response.json(covered) : Response.json({ error: "Covered funds" }, { status: 404 }));
+  await mountMembers("IBIT");
+  const frame = await tui.waitForFrameToContain("IBIT is not a covered fund. Covered: IVV, IJH, IJR, IWM, IWB.");
+  expect(frame).not.toContain("not available on this server");
 });

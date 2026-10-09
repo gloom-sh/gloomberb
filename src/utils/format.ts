@@ -130,6 +130,19 @@ export function formatNumber(value: number | undefined, decimals = 2): string {
   return getNumberFormatter(decimals).format(value);
 }
 
+/**
+ * A value to a count of significant digits, so a small ratio keeps its leading
+ * digits (0.0005664, not 0.0006) while a large one reads as a plain number
+ * (1,235). Decimals follow the rounded value, so 9.9996 reads 10.00.
+ */
+export function formatSignificant(value: number | undefined, digits = 4): string {
+  if (value == null || !Number.isFinite(value)) return formatNumber(undefined);
+  if (value === 0) return getNumberFormatter(0).format(0);
+  const rounded = Number(value.toPrecision(digits));
+  const decimals = Math.min(12, Math.max(0, digits - 1 - Math.floor(Math.log10(Math.abs(rounded)))));
+  return getNumberFormatter(decimals).format(rounded);
+}
+
 /** A percentile rank with its window: "73 pctl 1Y", "-- pctl 1Y" when unranked, "73 pctl" without a window. */
 export function formatPercentileRank(value: number | null | undefined, window?: string): string {
   const rank = value == null || !Number.isFinite(value) ? "--" : value.toFixed(0);

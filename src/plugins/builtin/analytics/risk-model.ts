@@ -240,16 +240,15 @@ export function riskCoverageText(coverage: RiskCoverage | undefined): string | n
     : `covers ${coverage.unvalued ? "at most " : ""}${coveragePercent(coverage.share)}% of market value`;
   return [covers, `${holdingCount(coverage.leftOut.length)} left out`, ...(converted ? [converted] : [])].join(" · ");
 }
-/** One notice per left-out holding, largest first, after a lead line. */
+/** A reason reads as the tail of a sentence, so its first word loses its capital unless it is an acronym ("FX", "USD"). */
+const lowerFirst = (text: string) => (/^[A-Z][a-z]/.test(text) ? text[0]!.toLowerCase() + text.slice(1) : text);
+/** One sentence per left-out holding, largest first, naming the holding and why it is out. */
 export function riskCoverageNotices(coverage: RiskCoverage | undefined): string[] {
   if (!coverage?.leftOut.length) return [];
-  return [
-    `${holdingCount(coverage.leftOut.length)} left out of the basket, largest first:`,
-    ...coverage.leftOut.map(
-      (row) =>
-        `${row.symbol} (${row.share == null ? "value unknown" : `${shareText(row.share)} of market value`}): ${row.reason}`,
-    ),
-  ];
+  return coverage.leftOut.map(
+    (row) =>
+      `${row.symbol} (${row.share == null ? "value unknown" : `${shareText(row.share)} of market value`}) is excluded from the risk estimate: ${lowerFirst(row.reason.replace(/\.$/, ""))}.`,
+  );
 }
 /** Why the basket views show no estimate, when too little of the account qualifies. */
 export function riskCoverageShortfall(
@@ -436,8 +435,8 @@ export function buildPortfolioRisk(
   const closeMarked = members.filter((row) => row.markSource === "close").length;
   const converted = members.filter((row) => row.convertedFrom != null).length;
   const held = new Set(holdings.map((row) => row.id));
-  const warnings = [
-    ...market.warnings,
+  // Caveats about an estimate that was made; the warnings are what failed.
+  const notes = [
     ...(closeMarked
       ? [
           `${closeMarked} holding${closeMarked === 1 ? "" : "s"} had no current quote; weighted at the latest completed close.`,
@@ -449,6 +448,9 @@ export function buildPortfolioRisk(
           "Converted holdings are matched to the US close of the same date; where their market closes at another time, correlations and betas to US holdings read lower than they are.",
         ]
       : []),
+  ];
+  const warnings = [
+    ...market.warnings,
     // A held instrument's failure is its left-out reason; factor proxies report here.
     ...market.histories.flatMap((row) =>
       row.error && !held.has(riskInstrumentId(row.instrument))
@@ -758,6 +760,7 @@ export function buildPortfolioRisk(
       coverage.leftOut.length === 0 &&
       metrics.some((row) => row.value != null),
     warnings: [...new Set(warnings)],
+    notes,
     fetchedAt: market.fetchedAt,
   };
 }

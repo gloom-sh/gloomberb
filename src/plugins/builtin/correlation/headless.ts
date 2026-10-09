@@ -1,6 +1,7 @@
 import type { HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
-import { formatNumber } from "../../../utils/format";
+import { formatNumber, formatSignificant } from "../../../utils/format";
+import { mixedSessionCloseNote } from "../../../market-data/market/session-close-note";
 import { resolveHeadlessInstrument, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { buildCorrelationMatrix, buildCorrelationSeries, buildGeoCorrelationSeries, pairKey, type CorrelationSeries } from "./matrix/model";
 import { geoSeriesToken, loadGeoCorrelationHistory } from "./geo";
@@ -15,6 +16,20 @@ async function loadHistory(ctx: HeadlessPaneContext, key: string, range: TimeRan
   const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
   return loadCorrelationHistory(ctx.marketData, symbol, exchange ?? "", range,
     ctx.refresh ? { cacheMode: "refresh" } : undefined);
+}
+
+/**
+ * Daily closes with the exchange the symbol trades on, which the session note
+ * needs. A symbol that is not in the local data names no exchange, so its
+ * quote says where it lists; a missing quote only leaves the note out.
+ */
+async function loadListedHistory(ctx: HeadlessPaneContext, key: string, range: TimeRange) {
+  const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
+  const [points, quote] = await Promise.all([
+    loadHistory(ctx, key, range),
+    exchange ? null : (async () => ctx.marketData.getQuote(symbol, "", ctx.refresh ? { cacheMode: "refresh" } : undefined))().catch(() => null),
+  ]);
+  return { exchange: exchange || quote?.listingExchangeName || quote?.exchangeName || "", points };
 }
 
 /** A ticker's daily closes, or a map series' daily values read straight from the Cloud client. */
@@ -84,9 +99,12 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
     const symbols = [args.symbols[0]!, args.symbols[1] ?? DEFAULT_RELATIONSHIP_SECOND_SYMBOL];
     const range = (args.options.range ?? "1Y") as TimeRange;
     const correlationWindow = Number(args.options.correlationWindow ?? 120);
-    const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadHistory(ctx, symbol, range));
-    const histories = new Map(loaded.entries.map(({ symbol, data }) => [symbol, data]));
+    const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadListedHistory(ctx, symbol, range));
+    const listings = new Map(loaded.entries.map(({ symbol, data }) => [symbol, data]));
+    const histories = new Map(loaded.entries.map(({ symbol, data }) => [symbol, data.points]));
     const analysis = buildRelationshipAnalysis(histories.get(symbols[0]!) ?? [], histories.get(symbols[1]!) ?? [], correlationWindow);
+    const [left, right] = symbols.map((symbol) => ({ symbol, ...listings.get(symbol) }));
+    const sessionNote = listings.size === 2 ? mixedSessionCloseNote(left!, right!, analysis.aligned.at(-1)?.dateKey) : null;
     const unavailableSymbols = symbols.filter((symbol) => (histories.get(symbol) ?? []).filter((point) => (
       Number.isFinite(point.close) && point.close > 0 && Number.isFinite(new Date(point.date).getTime())
     )).length < 2);
@@ -101,7 +119,7 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
         { id: "correlation", label: `Rolling correlation (${correlationWindow})`, points: analysis.returns.slice(correlationWindow - 1).map(({ date }) => ({ date: date.toISOString(), value: correlations.get(date.getTime()) ?? null })) },
       ],
       stats: [
-        { key: "latestRatio", label: "Latest ratio", value: analysis.latestRatio, formatted: formatNumber(analysis.latestRatio ?? undefined, 4) },
+        { key: "latestRatio", label: "Latest ratio", value: analysis.latestRatio, formatted: formatSignificant(analysis.latestRatio ?? undefined) },
         { key: "latestCorrelation", label: `Rolling correlation (${correlationWindow})`, value: analysis.latestCorrelation, formatted: formatNumber(analysis.latestCorrelation ?? undefined, 3) },
         ...(["beta", "alpha", "rSquared"] as const).map((key) => ({
           key, label: { beta: "Beta", alpha: "Alpha", rSquared: "R squared" }[key],
@@ -117,6 +135,7 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
       metadata: {
         left: symbols[0], right: symbols[1], range, correlationWindow,
         returnAlignment: CORRELATION_RETURN_BASIS,
+        ...(sessionNote ? { notices: [sessionNote] } : {}),
         firstDate: analysis.aligned.at(0)?.dateKey ?? null,
         lastDate: analysis.aligned.at(-1)?.dateKey ?? null,
         ...(analysis.integrity ? { integrity: analysis.integrity } : {}),

@@ -79,16 +79,15 @@ test("a broker account estimates on the holdings that qualify and lists every ot
   expect(model.coverage.share).toBeCloseTo(365_500 / 468_560, 10);
   expect(riskCoverageText(model.coverage)).toBe("covers 78% of market value \u00b7 9 holdings left out");
   expect(riskCoverageNotices(model.coverage)).toEqual([
-    "9 holdings left out of the basket, largest first:",
-    "EUR2 (4.3% of market value): Foreign holdings: daily FX closes unavailable",
-    "TWD1 (4.0% of market value): Foreign holdings: daily FX closes unavailable",
-    "EUR1 (3.5% of market value): Foreign holdings: daily FX closes unavailable",
-    "GBP1 (2.7% of market value): Foreign holdings: daily FX closes unavailable",
-    "HKD1 (2.2% of market value): Foreign holdings: daily FX closes unavailable",
-    "JPY1 (2.2% of market value): Foreign holdings: daily FX closes unavailable",
-    "UNQ1 (1.7% of market value): Daily history unavailable",
-    "UNQ2 (1.1% of market value): Daily history unavailable",
-    "UNQ3 (0.4% of market value): Daily history unavailable",
+    "EUR2 (4.3% of market value) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.",
+    "TWD1 (4.0% of market value) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.",
+    "EUR1 (3.5% of market value) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.",
+    "GBP1 (2.7% of market value) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.",
+    "HKD1 (2.2% of market value) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.",
+    "JPY1 (2.2% of market value) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.",
+    "UNQ1 (1.7% of market value) is excluded from the risk estimate: daily history unavailable.",
+    "UNQ2 (1.1% of market value) is excluded from the risk estimate: daily history unavailable.",
+    "UNQ3 (0.4% of market value) is excluded from the risk estimate: daily history unavailable.",
   ]);
   // Weights renormalize over the basket; nothing left out carries one.
   const weights = new Map(model.holdings.map((row) => [row.symbol, row.weight]));
@@ -106,7 +105,7 @@ test("a broker account estimates on the holdings that qualify and lists every ot
   const bound = (await brokerModel(unvalued)).model.coverage;
   expect(bound.unvalued).toBe(1);
   expect(riskCoverageText(bound)).toBe("covers at most 78% of market value \u00b7 9 holdings left out");
-  expect(riskCoverageNotices(bound).at(-1)).toBe("UNQ3 (value unknown): Daily history unavailable");
+  expect(riskCoverageNotices(bound).at(-1)).toBe("UNQ3 (value unknown) is excluded from the risk estimate: daily history unavailable.");
 });
 
 test("foreign listings with daily FX closes enter the basket in USD and the footer says so", async () => {
@@ -129,7 +128,7 @@ test("foreign listings with daily FX closes enter the basket in USD and the foot
   expect(model.metrics.every((row) => row.value != null)).toBe(true);
   expect(model.rows.holdings.find((row) => row.label === "JPY1")?.detail).toContain("from JPY at daily FX");
   // Closes at another time than the US session read low against US holdings, and the pane says so.
-  expect(model.warnings).toContain(
+  expect(model.notes).toContain(
     "Converted holdings are matched to the US close of the same date; where their market closes at another time, correlations and betas to US holdings read lower than they are.",
   );
 });
@@ -194,7 +193,7 @@ test("only held positions marked at a close raise the close-mark warning", () =>
   // Factor proxies with no current quote never weight a holding.
   const snapshot = market(["IWM", "IWD", "IWF", "MTUM", "IEF", "HYG"]);
   const warning = (model: ReturnType<typeof buildPortfolioRisk>) =>
-    model.warnings.filter((row) => row.includes("no current quote"));
+    model.notes.filter((row) => row.includes("no current quote"));
   expect(
     warning(buildPortfolioRisk(portfolio, [holding("SPY")], snapshot)),
   ).toEqual([]);
@@ -219,6 +218,18 @@ test("a short is left out of the basket with its reason and counts in the market
   expect(model.holdings.map((row) => row.weight)).toEqual([1, null]);
   expect(model.book?.gross).toBe(330);
   expect(model.metrics[2]!.value).toBeCloseTo(0, 8);
+});
+test("a crypto holding is excluded by name with its reason, not folded into the equity basket", () => {
+  const eth = createTestTicker("ETH-USD", "Ethereum USD", {
+    exchange: "CCC",
+    portfolios: ["local"],
+    positions: [{ portfolio: "local", shares: 2, broker: "manual" }],
+  });
+  const model = buildPortfolioRisk(portfolio, [holding("SPY", 3), eth], market());
+  expect(model.holdings.map((row) => [row.symbol, row.weight])).toEqual([["SPY", 1], ["ETH-USD", null]]);
+  expect(riskCoverageNotices(model.coverage)).toEqual([
+    "ETH-USD (value unknown) is excluded from the risk estimate: crypto is not covered by the equity basket.",
+  ]);
 });
 test("imported option snapshots use signed dollar sensitivities, preserve scope and reject stale or mixed currencies", () => {
   const position = {

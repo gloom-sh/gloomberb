@@ -226,6 +226,20 @@ export function latestRegularSessionClose(
 }
 
 /**
+ * The UTC minute of the day the venue's regular session closed, for the latest
+ * session at or before `time` (20:00 UTC is 1200 while New York is on daylight
+ * time). Null for round-the-clock venues and for venues whose close hour is
+ * not listed, which `latestRegularSessionClose` would take to close at local
+ * midnight.
+ */
+export function regularSessionCloseUtcMinute(exchange: string | undefined, time: number): number | null {
+  const canonical = canonicalExchange(exchange);
+  if (REGULAR_CLOSE_MINUTES[canonical] === undefined) return null;
+  const close = latestRegularSessionClose(canonical, time);
+  return close ? Math.floor(close.close / 60_000) % 1440 : null;
+}
+
+/**
  * The open of the regular session `time` falls in, or of the latest one
  * before it: the published calendar for US venues, otherwise the venue's
  * local open on a weekday that is not a published closure. Null for

@@ -1,7 +1,8 @@
 import type { ProjectedChartPoint } from "../../../../components/chart/core/data";
 import type { ScatterChartPoint } from "../../../../components/chart/static";
 import { colors } from "../../../../theme/colors";
-import { formatNumber } from "../../../../utils/format";
+import { formatNumber, formatSignificant } from "../../../../utils/format";
+import type { CompositeAxisDomain } from "../../../../components/chart/composite/types";
 import type { StatItem } from "../../../../components/ui";
 import type {
   RelationshipAlignedPoint,
@@ -18,6 +19,20 @@ export interface MultiLineChartSeries {
 
 function formatNullableNumber(value: number | null | undefined, decimals: number): string {
   return typeof value === "number" && Number.isFinite(value) ? formatNumber(value, decimals) : "-";
+}
+
+/**
+ * A ratio's legend value at four significant digits, so a ratio of 0.000566
+ * does not read 0.001. Whole index points and correlations keep their own fixed decimals.
+ */
+export const formatRatioValue = (value: number) => formatSignificant(value);
+
+/** Ratio axis ticks need decimals that tell neighbours apart: 0.00040, 0.00045, 0.00050 where 0.001 would repeat. */
+export function formatRatioAxisValue(value: number, domain: Pick<CompositeAxisDomain, "min" | "max">): string {
+  if (Math.abs(value) >= 10) return formatNumber(value, 1);
+  const span = Math.abs(domain.max - domain.min);
+  const decimals = Number.isFinite(span) && span > 0 ? Math.min(10, Math.max(3, 1 - Math.floor(Math.log10(span)))) : 3;
+  return formatNumber(value, decimals);
 }
 
 export function buildIndexedPriceSeries(

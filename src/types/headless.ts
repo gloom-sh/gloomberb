@@ -161,7 +161,14 @@ interface HeadlessPaneResultBase {
   symbols?: string[];
   /** Missing inputs must remain visible even when other inputs returned rows. */
   unavailableSymbols?: string[];
+  /** Failures: a source that did not answer, or a value that could not be computed. */
   errors?: string[];
+  /**
+   * Caveats about a report that did load: what it leaves out, what it assumes,
+   * how a value was marked. One sentence each. They never make a report fail;
+   * `complete: false` says when the report does not cover what was asked.
+   */
+  notes?: string[];
   metadata?: Record<string, unknown>;
   /** What this load knows about its data's source and age; overrides the definition's `freshness`. */
   freshness?: HeadlessPaneFreshness;

@@ -33,13 +33,18 @@ export function syntheticPositionUnsupportedReason(ticker: TickerRecord, quoteCu
   if (positions.some((position) => position.side === "short" || position.shares < 0)) {
     return "Short positions: signed exposure history required";
   }
+  const category = (ticker.metadata.assetCategory ?? "").toUpperCase();
+  // Crypto trades every day at another close, so its daily returns do not pair with the equity factor proxies.
+  if (category.startsWith("CRYPTO") || /-[A-Z]{3,4}$/.test(ticker.metadata.ticker)) {
+    return "Crypto is not covered by the equity basket";
+  }
   // "Common Stock" is the category provider search hands a ticker added from
   // the command bar, so a plain equity must not read as unsupported.
   const equityCategories = new Set(["", "STK", "STOCK", "COMMON STOCK", "EQUITY", "ETF", "ETN", "FUND", "ADR", "REIT"]);
-  if (!equityCategories.has((ticker.metadata.assetCategory ?? "").toUpperCase())
+  if (!equityCategories.has(category)
     || positions.some((position) => position.multiplier != null && position.multiplier !== 1)
-    || /=[A-Z]+$|-[A-Z]{3,4}$|\d{6}[CP]\d{8}$/.test(ticker.metadata.ticker)) {
-    return "Unsupported asset: equity basket estimate only";
+    || /=[A-Z]+$|\d{6}[CP]\d{8}$/.test(ticker.metadata.ticker)) {
+    return "Asset type is not covered by the equity basket";
   }
   if (quoteCurrency !== "USD") return "Foreign holdings: historical FX returns required";
   return null;

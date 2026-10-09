@@ -88,7 +88,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         { key: "ivHv", header: "IV/HV", format: (value: unknown) => typeof value === "number" ? value.toFixed(2) : "--" },
       ], rows: rows.map((row) => ({ ...row })) }],
       complete: !queued.length && !universe.error, unavailableSymbols: queued,
-      errors: [universe.error, ...(queued.length ? [`Queued for backfill: ${queued.join(", ")}`] : [])].filter((value): value is string => !!value),
+      errors: [universe.error].filter((value): value is string => !!value),
+      ...(queued.length ? { notes: [`Queued for backfill: ${queued.join(", ")}.`] } : {}),
       metadata: { asOf: payload.asOf, presets: VCA_PRESETS, methodology: METHODOLOGY },
     };
   },

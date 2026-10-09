@@ -12,7 +12,7 @@ import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cachedChanges, cachedFunds, cachedMembers, loadChanges, loadFunds, loadMembers } from "./client";
-import { canonicalFund, changeColumns, changeLabel, changeReason, COVERED, decimal, DEFAULT_SORT, isTab, memberColumns, memberRows, membersTitle, percent, TABS, type MembersTab } from "./model";
+import { canonicalFund, changeColumns, changeLabel, changeReason, coveredFund, decimal, DEFAULT_SORT, isTab, memberColumns, memberRows, membersTitle, notCoveredMessage, percent, TABS, type MembersTab } from "./model";
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
 const rowKey = (row: SectionedRow<FundMember>) => row.key;
@@ -156,13 +156,20 @@ function FundPicker({ width, height, focused, choose }: Pick<PaneProps, "width" 
       onActivate={(row) => choose(row.ticker)} sortColumnId={null} sortDirection="asc" renderCell={(row, col) => ({ text: String(row[col.id as "ticker"] ?? "--") })} />}
   </PaneStatusBody>;
 }
+type FundPaneProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; requested: string };
+/** The covered list is the server's, so a fund it adds opens without an app update. A list that cannot be read leaves the fund's own load to report the failure. */
+function CoveredFund({ fund, requested, ...props }: FundPaneProps) {
+  const resource = useAsyncResource(loadFunds, { initialData: cachedFunds });
+  const funds = resource.data?.payload.funds;
+  if (funds?.length && !coveredFund(funds, fund)) return <PaneStatusBody empty emptyTitle={notCoveredMessage(requested, funds)} />;
+  return <FundView key={fund} fund={fund} {...props} />;
+}
 export function MembersPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();
   const [chosen, choose] = usePluginPaneState("fund", "");
-  const fund = canonicalFund(symbol ?? chosen);
-  const definition = COVERED.find((item) => item.ticker === fund);
-  usePaneTitle(membersTitle(symbol ?? chosen));
+  const requested = symbol ?? chosen;
+  const fund = canonicalFund(requested);
+  usePaneTitle(membersTitle(requested));
   if (!fund) return <FundPicker {...props} choose={choose} />;
-  if (!definition) return <EmptyState title="This index or fund is not covered." hint="IVV, IJH, IJR, IWM and IWB are covered. Nasdaq-100 (NDX/QQQ) is not covered." />;
-  return <FundView key={fund} fund={fund} {...props} />;
+  return <CoveredFund fund={fund} requested={requested} {...props} />;
 }

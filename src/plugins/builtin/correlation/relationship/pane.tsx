@@ -43,6 +43,8 @@ import {
   buildRelationshipRatioSeries,
   buildRelationshipScatterPointsForDate,
   buildRelationshipStatItems,
+  formatRatioAxisValue,
+  formatRatioValue,
   type MultiLineChartSeries,
 } from "./view-model";
 
@@ -99,13 +101,13 @@ const MIN_PANEL_ROWS = 3;
 
 /** Each panel's axis reads at its own precision: whole index points, a ratio, a correlation. */
 function formatAxisValue(value: number, domain: CompositeAxisDomain): string {
-  if (domain.seriesIds.includes("ratio")) return formatNumber(value, Math.abs(value) >= 10 ? 1 : 3);
+  if (domain.seriesIds.includes("ratio")) return formatRatioAxisValue(value, domain);
   if (domain.seriesIds.includes("correlation")) return formatNumber(value, 2);
   return formatNumber(value, 0);
 }
 
 function formatLegendValue(value: number, series: ResolvedSeries): string {
-  if (series.id === "ratio") return formatNumber(value, 3);
+  if (series.id === "ratio") return formatRatioValue(value);
   if (series.id === "correlation") return formatNumber(value, 2);
   return formatNumber(value, 1);
 }

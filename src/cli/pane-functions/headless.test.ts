@@ -329,6 +329,36 @@ test("headless text preserves applicable coverage notices once before the export
 });
 
 
+test("a report's caveats print as Notes, one per line, apart from the failures under Errors, and JSON carries both", async () => {
+  const definition: HeadlessPaneDefinition<"rows"> = {
+    shape: "rows", argument: { kind: "none" }, options: [], columns: [{ key: "value", header: "Value" }],
+    load: () => ({
+      rows: [{ value: 1 }], complete: false,
+      notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],
+      errors: ["Treasury yield: Internal server error"],
+    }),
+  };
+  const report = await buildHeadlessFunctionReport({
+    headless: definition, token: "notes", label: "Notes", options: {}, instance: {}, capability: { id: "notes" },
+  } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-notes") } as MarketContext, "");
+  const lines = report.text.split("\n");
+  expect(lines).toContain("Notes:");
+  expect(lines).toContain("  ETH-USD is excluded from the risk estimate.");
+  expect(lines).toContain("  1 holding had no current quote; weighted at the latest completed close.");
+  expect(lines).toContain("Errors: Treasury yield: Internal server error");
+  expect(report.data).toMatchObject({
+    complete: false, errors: ["Treasury yield: Internal server error"],
+    notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],
+  });
+  // Notes alone leave a complete report complete.
+  const noted = await buildHeadlessFunctionReport({
+    headless: { ...definition, load: () => ({ rows: [{ value: 1 }], notes: ["Matched by date."] }) }, token: "notes", label: "Notes", options: {}, instance: {}, capability: { id: "notes" },
+  } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-notes") } as MarketContext, "");
+  expect(noted.data.complete).toBe(true);
+  expect(noted.text).toContain("Notes: Matched by date.");
+  expect(noted.text).not.toContain("Errors");
+});
+
 test("series text distinguishes explicit percent, basis-point and index units without scaling exports", () => {
   const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
   const result: HeadlessSeriesResult = { series: [
