@@ -25,6 +25,7 @@ import {
   type ParsedPaneFunctionArgs,
 } from "./options";
 import {
+  capabilityHasOption,
   capabilityPaneSettings,
   getHeadlessPaneDefinition,
   getPaneFunctionCapability,
@@ -46,6 +47,8 @@ export interface ResolvedPaneFunction {
   optionSettings: Record<string, unknown>;
   capability: PaneFunctionCapability;
   options: NormalizedPaneFunctionOptions;
+  /** `--section` of a report: the table `--csv` and `--ndjson` write, when the function has no `section` option of its own. */
+  tableSection?: string | true;
 }
 
 async function buildPaneInstance(
@@ -126,12 +129,28 @@ export async function applyListingArgument(
   return { ...args, arg: listing.key, options, listing };
 }
 
+/**
+ * `--section` picks one table of a report's `--csv` or `--ndjson` output. A
+ * function that has a `section` option of its own (CALLS: which part of a
+ * transcript) keeps the flag; its report is one table, so there is nothing to
+ * pick there.
+ */
+function takeTableSection(
+  capability: PaneFunctionCapability,
+  options: ParsedPaneFunctionArgs["options"],
+): { options: ParsedPaneFunctionArgs["options"]; tableSection?: string | true } {
+  if (!("section" in options) || capabilityHasOption(capability, "section")) return { options };
+  const { section, ...rest } = options;
+  return { options: rest, tableSection: section };
+}
+
 export async function resolvePaneFunction(
   registry: PaneFunctionCatalog,
   context: MarketContext,
-  args: ParsedPaneFunctionArgs,
-  resolutionSettings: { strictHeadlessOptions?: boolean } = {},
+  parsedArgs: ParsedPaneFunctionArgs,
+  resolutionSettings: { strictHeadlessOptions?: boolean; tableSection?: boolean } = {},
 ): Promise<ResolvedPaneFunction> {
+  let args = parsedArgs;
   if (!args.target) {
     throw new Error("Usage: gloomberb fn <function-or-pane> [argument] [--key value]");
   }
@@ -152,6 +171,12 @@ export async function resolvePaneFunction(
   const createOptions = buildCreateOptions(template, args.arg);
   const headless = getHeadlessPaneDefinition(template, pane);
   const capability = getPaneFunctionCapability(template, pane);
+  let tableSection: string | true | undefined;
+  if (resolutionSettings.tableSection) {
+    const taken = takeTableSection(capability, args.options);
+    args = { ...args, options: taken.options };
+    tableSection = taken.tableSection;
+  }
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
     strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
   });
@@ -177,6 +202,7 @@ export async function resolvePaneFunction(
     optionSettings: settings,
     capability,
     options: normalizedOptions,
+    ...(tableSection !== undefined ? { tableSection } : {}),
   };
   resolved.instance = await buildPaneInstance(resolved, context, args.arg);
   return resolved;

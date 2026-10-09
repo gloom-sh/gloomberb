@@ -13,6 +13,7 @@ import {
 import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
+import { renderReportCsv, renderReportNdjson, type CliReportTables } from "./report-tables";
 
 export interface CliResult<T = unknown> {
   data: T;
@@ -21,7 +22,8 @@ export interface CliResult<T = unknown> {
   /**
    * Source, as-of and status of market data, as every `fn` report states them
    * (docs/usage.md#how-current-a-report-is): the last line of the text output
-   * and `metadata.freshness` in JSON. CSV and NDJSON stay rows only.
+   * and `metadata.freshness` in JSON. CSV and NDJSON stay rows only, unless
+   * the command passes `tables`, whose footer carries it.
    */
   freshness?: ReportFreshness;
 }
@@ -57,6 +59,11 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   summary?: (data: T) => string;
   /** Text-mode line printed first, naming what the result is about, such as the listing a symbol resolved to. */
   heading?: string;
+  /**
+   * What CSV and NDJSON write instead of the rows: a report's tables as the
+   * text view shows them, CSV with its `# section:` and closing `#` lines.
+   */
+  tables?: CliReportTables;
 }
 
 interface CliResultJsonEnvelope<T> extends Omit<CliResult<T>, "freshness"> {
@@ -333,6 +340,8 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row>,
 ): string {
+  if (renderOptions.tables && options.format === "csv") return renderReportCsv(renderOptions.tables);
+  if (renderOptions.tables && options.format === "ndjson") return renderReportNdjson(renderOptions.tables);
   const rows = asRows(result.data, options.limit, renderOptions.rows);
   if (options.format === "ndjson") {
     return rows.map((row) => JSON.stringify(row)).join("\n");

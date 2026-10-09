@@ -10,6 +10,12 @@ import {
   wrapText,
 } from "../utils/cli-output";
 
+/** `--section` of a command whose report has several tables. */
+export const TABLE_SECTION_OPTION = {
+  flags: "--section <title|n>",
+  description: "With --csv or --ndjson, write only that table, by its title or number",
+};
+
 /** Headings of `gloomberb help`, in display order. */
 export const CLI_COMMAND_GROUPS = {
   research: "Research",
@@ -29,7 +35,9 @@ const MAX_HELP_WIDTH = 100;
 const PIPED_HELP_WIDTH = 80;
 
 const GLOBAL_OPTIONS: Array<[string, string]> = [
-  ["--json, --csv, --ndjson", "Print machine-readable output instead of text"],
+  ["--json", "Print the full result as JSON"],
+  ["--csv", "Print rows as CSV under the columns the text shows; fn reports and fundamentals put each table under # section: and end with # source lines"],
+  ["--ndjson", "Print one JSON object per table row"],
   ["--limit <n>", "Show at most n rows"],
   ["--refresh", "Fetch fresh data instead of reading the cache"],
   ["--dry-run", "Preview config, cache, notes, alerts, plugin on/off, and remote changes without saving"],

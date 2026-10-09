@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { PaneScreenshotResult } from "./screenshot";
 import { buildDomPaneReportFromRender } from "./dom";
+import { renderReportCsv } from "../report-tables";
 
 test("marks rendered reports as truncated when a visible cell contains an ellipsis", () => {
   const resolved = {
@@ -77,4 +78,12 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
   expect(row).toContain("2026-10-02 14:00 UTC");
   // The pane's declaration says what the data is; a footer phrase does not turn it into a feed.
   expect(report.data.freshness).toMatchObject({ source: "Gloom Cloud", asOf: "2026-10-07T11:27:00.000Z", status: "not-a-feed" });
+  // --csv writes the same columns, the blank cell empty and each time as the instant behind it.
+  expect(renderReportCsv(report.tables).split("\n")).toEqual([
+    "TIME,HEADLINE,TICKERS,CATEGORY",
+    "2026-10-07T11:27:00.000Z,Deal,PSKY,M&A",
+    "2026-10-02T14:00:00.000Z,Sanctions,,Regulatory",
+    "",
+    "# Source: Gloom Cloud | As of 2026-10-07 11:27 UTC | Not a live feed (published stories)",
+  ]);
 });

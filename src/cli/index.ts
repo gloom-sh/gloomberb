@@ -16,6 +16,7 @@ import {
   renderCliHelp,
   renderCommandHelp,
   suggestCliCommand,
+  TABLE_SECTION_OPTION,
   type CliHelpEntry,
 } from "./help";
 import { parsePaneFunctionArgs } from "./pane-functions/options";
@@ -146,12 +147,17 @@ function createCoreCliCommands(
         options: [
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
           { flags: "--require-bot-safe", description: "Fail unless the function has a verified, complete report" },
+          {
+            ...TABLE_SECTION_OPTION,
+            description: `${TABLE_SECTION_OPTION.description} (CALLS keeps --section for the transcript part)`,
+          },
           EXCHANGE_OPTION,
         ],
         examples: [
           "fn HP AAPL",
           "fn ANR SAN:EPA",
           "fn CBR --json",
+          "fn WEI --csv --section europe > europe.csv",
           "fn 13F AAPL --view=ticker-holdings",
           "fn OVME --spot 100 --strike 100 --days 30 --volatility 25",
         ],

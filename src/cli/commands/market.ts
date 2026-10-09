@@ -14,7 +14,7 @@ import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/marke
 import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireArg, takeFlag, takeOption } from "./command-utils";
-import { CLI_COMMAND_GROUPS } from "../help";
+import { CLI_COMMAND_GROUPS, TABLE_SECTION_OPTION } from "../help";
 import {
   formatChangePercentCell,
   formatCountCell,
@@ -33,7 +33,14 @@ import {
 } from "../../plugins/builtin/research/analyst-model";
 import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
-import { renderFundamentalsReport } from "./ticker";
+import { fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
+import type { CliResultColumn } from "../result";
+import {
+  exportRowsTable,
+  reportFooterLines,
+  selectReportTables,
+  type CliReportTables,
+} from "../report-tables";
 import { historyPriceDecimals, historyRows } from "../history-rows";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { formatUtcTime } from "../../utils/utc-time";
@@ -468,11 +475,33 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 
 type FinancialsView = "statements" | "fundamentals" | "valuation";
 
+const STATEMENT_COLUMNS: CliResultColumn<ReturnType<typeof financialStatementRows>[number]>[] = [
+  { key: "date", header: "Date" },
+  { key: "revenue", header: "Revenue", align: "right", format: (value) => value == null ? "" : formatCompact(Number(value)) },
+  { key: "grossProfit", header: "Gross", align: "right", format: (value) => value == null ? "" : formatCompact(Number(value)) },
+  { key: "operatingIncome", header: "Op Inc", align: "right", format: (value) => value == null ? "" : formatCompact(Number(value)) },
+  { key: "netIncome", header: "Net Inc", align: "right", format: (value) => value == null ? "" : formatCompact(Number(value)) },
+  { key: "eps", header: "EPS", align: "right", format: (value) => value == null ? "" : formatPerShareNumber(Number(value)) },
+  { key: "currency", header: "Cur" },
+];
+
 async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], view: FinancialsView) {
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
+  const sectionFlag = args.some((arg) => arg === "--section" || arg.startsWith("--section="));
+  const section = takeOption(args, "--section");
   const commandName = view === "statements" ? "financials" : view;
+  const tabular = ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson";
+  if (sectionFlag && !tabular) ctx.fail("--section picks one table of --csv or --ndjson output.");
+  if (sectionFlag && !section?.trim()) ctx.fail("--section needs a section title or number.");
   const raw = requireArg(args[0], `Usage: gloomberb ${commandName} <symbol>`, ctx);
+  const selectTables = (tables: CliReportTables) => {
+    try {
+      return selectReportTables(tables, section);
+    } catch (error) {
+      return ctx.fail(error instanceof Error ? error.message : String(error));
+    }
+  };
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const financials = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
@@ -486,13 +515,28 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       ...financials,
     };
     if (view !== "statements") {
+      const freshness = fundamentalsFreshness(financials);
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: { ...data, fundamentals: exportedFundamentals(data.fundamentals) },
-        freshness: fundamentalsFreshness(financials),
-      }, { text: () => renderFundamentalsReport(data, view) });
+        freshness,
+      }, {
+        text: () => renderFundamentalsReport(data, view),
+        ...(tabular ? { tables: selectTables(fundamentalsReportTables(data, view, freshness)) } : {}),
+      });
       return;
     }
+    const rows = financialStatementRows(data);
+    const freshness = rowsFreshness(rows, {
+      ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null,
+    });
+    // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
+    const tables = tabular
+      ? selectTables({
+        tables: [exportRowsTable("Annual statements", STATEMENT_COLUMNS, rows)],
+        footer: reportFooterLines({ freshness }),
+      })
+      : undefined;
     ctx.printResult({
       data,
       metadata: {
@@ -503,21 +547,12 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         fundamentals: exportedFundamentals(financials.fundamentals),
         profile: financials.profile,
       },
-      freshness: rowsFreshness(financialStatementRows(data), {
-        ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null,
-      }),
+      freshness,
     }, {
       heading: listingHeading(identity),
-      rows: financialStatementRows,
-      columns: [
-        { key: "date", header: "Date" },
-        { key: "revenue", header: "Revenue", align: "right", value: (row) => row.revenue == null ? "" : formatCompact(Number(row.revenue)) },
-        { key: "grossProfit", header: "Gross", align: "right", value: (row) => row.grossProfit == null ? "" : formatCompact(Number(row.grossProfit)) },
-        { key: "operatingIncome", header: "Op Inc", align: "right", value: (row) => row.operatingIncome == null ? "" : formatCompact(Number(row.operatingIncome)) },
-        { key: "netIncome", header: "Net Inc", align: "right", value: (row) => row.netIncome == null ? "" : formatCompact(Number(row.netIncome)) },
-        { key: "eps", header: "EPS", align: "right", format: (value) => value == null ? "" : formatPerShareNumber(Number(value)) },
-        { key: "currency", header: "Cur" },
-      ],
+      rows: () => rows,
+      columns: STATEMENT_COLUMNS,
+      ...(tables && ctx.cliOptions.format === "csv" ? { tables } : {}),
     });
   });
 }
@@ -1033,7 +1068,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["financials <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["financials MSFT", "financials SAN:EPA", "financials MSFT --json"],
+      examples: ["financials MSFT", "financials SAN:EPA", "financials MSFT --json", "financials MSFT --csv > msft.csv"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "statements"),
   },
@@ -1043,8 +1078,8 @@ export const marketDataCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["fundamentals <symbol>"],
-      options: [EXCHANGE_OPTION],
-      examples: ["fundamentals NVDA", "fundamentals ASML:AMS"],
+      options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
+      examples: ["fundamentals NVDA", "fundamentals ASML:AMS", "fundamentals NVDA --csv --section fundamentals"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "fundamentals"),
   },
@@ -1055,7 +1090,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["valuation <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["valuation NVDA", "valuation BP:LSE"],
+      examples: ["valuation NVDA", "valuation BP:LSE", "valuation NVDA --csv"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "valuation"),
   },

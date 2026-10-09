@@ -134,6 +134,11 @@ function resolveOptionDef(
   ));
 }
 
+/** Whether the function has an option of its own under this name or an alias. */
+export function capabilityHasOption(capability: PaneFunctionCapability, key: string): boolean {
+  return resolveOptionDef(capability, key) !== undefined;
+}
+
 function normalizeEnumValue(option: PaneFunctionOptionDef, rawValue: string): string {
   const token = optionToken(rawValue);
   const match = option.values?.find((candidate) => (

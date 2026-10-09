@@ -2,8 +2,9 @@ import type { MarketContext } from "../types";
 import type { NormalizedPaneFunctionOptions } from "./capabilities";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildHeadlessFunctionReport } from "./headless";
-import { appendDomReportFooter, buildDomFunctionReport } from "./dom";
+import { appendDomReportFooter, buildDomFunctionReport, domReportNote } from "./dom";
 import type { ReportFreshness } from "./freshness";
+import type { CliReportTables } from "../report-tables";
 
 export type PaneFunctionReportSource = "headless" | "dom";
 
@@ -29,6 +30,8 @@ interface PaneFunctionReportData {
 export interface PaneFunctionReport {
   data: PaneFunctionReportData;
   text: string;
+  /** What `--csv` and `--ndjson` write: the text view's tables as flat rows, and the closing `#` lines. */
+  tables: CliReportTables;
 }
 
 export function resolvePaneFunctionReportSource(
@@ -61,6 +64,10 @@ export async function buildFunctionReport(
       report.data.truncated === true,
       report.data.freshness,
     );
+    report.tables = {
+      ...report.tables,
+      footer: [...report.tables.footer, `note: ${domReportNote(elapsedMs, report.data.truncated === true)}`],
+    };
   }
   return report;
 }
