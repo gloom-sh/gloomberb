@@ -101,11 +101,20 @@ function compact(value: string): string {
 }
 
 /**
- * The chokepoints' main series (one per strait, as the catalog lists them),
- * written as the short aliases G takes.
+ * The straits trade and oil markets watch, in the order CHOKE charts them.
+ * The busiest by count are local Asian straits, which say less about trade.
+ */
+export const KEY_CHOKEPOINTS = ["SUEZ", "PANAMA", "HORMUZ", "BABELMANDEB", "MALACCA", "BOSPHORUS"];
+
+/**
+ * CHOKE's series as the short aliases G takes: the key straits the index
+ * has, else the chokepoints' main series as the catalog lists them.
  */
 export async function chokepointSeriesIds(request: GeoRequest, signal?: AbortSignal): Promise<string[]> {
   const [catalog, { series }] = await Promise.all([loadGeoCatalog(request, { signal }), searchGeoSeries(request, "", signal)]);
+  const known = new Set(series.filter((hit) => hit.layer === CHOKEPOINTS_LAYER && hit.alias).map((hit) => hit.alias!.toUpperCase()));
+  const key = KEY_CHOKEPOINTS.filter((alias) => known.has(alias));
+  if (key.length >= 3) return key;
   const aliasById = new Map(series.map((hit) => [hit.id, hit.alias]));
   const main = catalog?.layers.find((layer) => layer.id === CHOKEPOINTS_LAYER)?.series ?? [];
   if (main.length) return main.map((entry) => aliasById.get(entry.id) ?? entry.id);

@@ -313,7 +313,12 @@ export function LayeredMapView({ focused, width, height, layers, tokens }: Layer
 
   const activeLinks = (openRow ? detail.data?.feature.tickers ?? openRow.tickers : selectedRow?.tickers) ?? [];
   const primaryLink = activeLinks[0] ?? null;
-  const detailSeries = detailOpen ? detail.data?.series ?? [] : [];
+  // The layer's main series (transits, port calls) lead; `g` charts the first.
+  const detailSeries = useMemo(() => {
+    const series = detailOpen ? detail.data?.series ?? [] : [];
+    const main = new Set(tableLayer.series.map((entry) => entry.id));
+    return [...series.filter((entry) => main.has(entry.id)), ...series.filter((entry) => !main.has(entry.id))];
+  }, [detail.data?.series, detailOpen, tableLayer.series]);
   const lockedLayer = states.some((state) => state.phase === "locked");
 
   const hints: PaneHint[] = [
@@ -472,6 +477,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens }: Layer
           layer={tableLayer}
           row={openRow}
           detail={detail.data}
+          series={detailSeries}
           width={listWidth}
           now={now}
           scrollRef={detailScrollRef}

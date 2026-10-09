@@ -7,13 +7,11 @@ import { buildCustomChartPreset } from "../chart-composer/presets";
 import { formatGeoSeriesExpression } from "../chart-composer/series-expression";
 import type { PluginModule } from "../plugin-module";
 import { cloudGeoRequest } from "./client";
-import { chokepointSeriesFor, chokepointSeriesIds, createGeoChartSeriesCapability } from "./geo-series";
+import { chokepointSeriesFor, chokepointSeriesIds, createGeoChartSeriesCapability, KEY_CHOKEPOINTS } from "./geo-series";
 import { mapHeadless } from "./headless";
 import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
 import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
 
-/** Asked for when the series index cannot be read, so CHOKE still opens on the main straits. */
-const MAIN_CHOKEPOINTS = ["SUEZ", "PANAMA", "HORMUZ", "BABELMANDEB", "MALACCA"];
 const CHOKE_SERIES_LIMIT = 6;
 
 const chokepointTemplate: PaneTemplateDef = {
@@ -30,7 +28,8 @@ const chokepointTemplate: PaneTemplateDef = {
     const named = typed ? await chokepointSeriesFor(cloudGeoRequest, typed) : null;
     const ids = named
       ? [named]
-      : await chokepointSeriesIds(cloudGeoRequest).then((found) => (found.length ? found : MAIN_CHOKEPOINTS)).catch(() => MAIN_CHOKEPOINTS);
+      // Without the series index, CHOKE still asks for the key straits by name.
+      : await chokepointSeriesIds(cloudGeoRequest).then((found) => (found.length ? found : KEY_CHOKEPOINTS)).catch(() => KEY_CHOKEPOINTS);
     const base = buildCustomChartPreset(ids.slice(0, CHOKE_SERIES_LIMIT).map(formatGeoSeriesExpression).join(", "));
     // Daily transits read best over a year, each strait in its own colour.
     const spec = {

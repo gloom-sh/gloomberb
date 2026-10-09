@@ -18,6 +18,8 @@ interface EntityDetailProps {
   layer: GeoLayerInfo;
   row: GeoEntityRow | null;
   detail: GeoEntityPayload | null;
+  /** The entity's series, main one first. */
+  series: readonly GeoSeriesInfo[];
   width: number;
   now: number;
   scrollRef: RefObject<ScrollBoxRenderable | null>;
@@ -26,6 +28,18 @@ interface EntityDetailProps {
 }
 
 const SHORT_KEYS = new Set(["mmsi", "imo", "iata", "icao", "id"]);
+
+/** A number stored as a code (`shipType`, `navStatus`) means nothing on its own, so the detail leaves it out. */
+function isNumericCode(key: string, value: GeoPropValue): boolean {
+  return typeof value === "number" && /(Type|Status|Code)$/.test(key);
+}
+
+/** The unit a key carries that no column format draws: metres and degrees. */
+function detailText(key: string, value: GeoPropValue, now: number): string {
+  if (typeof value === "number" && /Deg$/.test(key)) return `${Math.round(value)}°`;
+  if (typeof value === "number" && /[a-z]M$/.test(key)) return `${formatGeoValue(value, Number.isInteger(value) ? "int" : "decimal1", now)} m`;
+  return formatGeoValue(value, detailFormat(key, value), now);
+}
 
 /** Detail fields carry no column format; the server puts units in the key (`lastSeen`, `importSharePct`). */
 function detailFormat(key: string, value: GeoPropValue): GeoColumnFormat | undefined {
@@ -41,8 +55,8 @@ function detailFormat(key: string, value: GeoPropValue): GeoColumnFormat | undef
 /** `lastSeen` reads "Last seen", `mmsi` reads "MMSI". */
 function humanizeKey(key: string): string {
   if (SHORT_KEYS.has(key.toLowerCase())) return key.toUpperCase();
-  // The unit suffix is already in the value: "importSharePct" reads "Import share".
-  const words = key.replace(/(Pct|Km|Kn)$/, "")
+  // The unit suffix moves into the value: "importSharePct" reads "Import share", "lengthM" "Length".
+  const words = key.replace(/(Pct|Km|Kn|Deg|M)$/, "")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/([a-z])(\d)/g, "$1 $2")
     .replace(/[_-]+/g, " ")
@@ -80,7 +94,7 @@ function LinkRow({ label, detail, width, onPress }: { label: string; detail: str
 }
 
 /** One entity: its figures, the companies it links to, its series and the rest of its fields. */
-export function EntityDetail({ layer, row, detail, width, now, scrollRef, onOpenTicker, onOpenSeries }: EntityDetailProps) {
+export function EntityDetail({ layer, row, detail, series, width, now, scrollRef, onOpenTicker, onOpenSeries }: EntityDetailProps) {
   const props: Record<string, GeoPropValue> = { ...row?.props, ...detail?.feature.props, ...detail?.detail };
   const columns = layer.columns.filter((column) => column.key !== "label");
   const shown = new Set(["label", ...columns.map((column) => column.key)]);
@@ -89,11 +103,10 @@ export function EntityDetail({ layer, row, detail, width, now, scrollRef, onOpen
     return value ? [{ id: column.key, label: column.label, value }] : [];
   });
   const tickers = detail?.feature.tickers ?? row?.tickers ?? [];
-  const series = detail?.series ?? [];
   const track = trailSpan(detail?.trail);
   const title = row?.label ?? detail?.feature.label;
   // The stack header already names the entity, so a `name` field that repeats it is left out.
-  const rest = Object.entries(props).filter(([key, value]) => !shown.has(key) && value !== null && value !== "" && value !== title);
+  const rest = Object.entries(props).filter(([key, value]) => !shown.has(key) && value !== null && value !== "" && value !== title && !isNumericCode(key, value));
   const innerWidth = Math.max(10, width - 2);
   const labelWidth = Math.min(16, Math.max(8, ...rest.map(([key]) => displayWidth(humanizeKey(key)) + 1), track ? 6 : 0));
   return (
@@ -124,7 +137,7 @@ export function EntityDetail({ layer, row, detail, width, now, scrollRef, onOpen
           <Box flexDirection="column">
             {track ? <KeyValueRow label="Track" value={track} width={innerWidth} labelWidth={labelWidth} /> : null}
             {rest.map(([key, value]) => (
-              <KeyValueRow key={key} label={humanizeKey(key)} value={formatGeoValue(value, detailFormat(key, value), now)} width={innerWidth} labelWidth={labelWidth} />
+              <KeyValueRow key={key} label={humanizeKey(key)} value={detailText(key, value, now)} width={innerWidth} labelWidth={labelWidth} />
             ))}
           </Box>
         </Section>

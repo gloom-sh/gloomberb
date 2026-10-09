@@ -28,9 +28,9 @@ describe("map series in G", () => {
     expect(geoSeriesRange({ range: "1M", resolution: "auto" }, new Date("2026-10-09T00:00:00Z"))).toEqual({ from: "2026-09-09" });
   });
 
-  test("CHOKE charts the catalog's main series by alias, and a typed strait finds its own", async () => {
+  test("CHOKE charts the key straits by alias, and a typed strait finds its own", async () => {
     const request = createGeoFixtureRequest();
-    expect(await chokepointSeriesIds(request)).toEqual(["MALACCA", "HORMUZ", "SUEZ", "BABELMANDEB", "PANAMA"]);
+    expect(await chokepointSeriesIds(request)).toEqual(["SUEZ", "PANAMA", "HORMUZ", "BABELMANDEB", "MALACCA"]);
     expect(await chokepointSeriesFor(request, "Bab el-Mandeb")).toBe("BABELMANDEB");
     expect(await chokepointSeriesFor(request, "strait of hormuz")).toBe("HORMUZ");
     expect(await chokepointSeriesFor(request, "suez")).toBe("SUEZ");
