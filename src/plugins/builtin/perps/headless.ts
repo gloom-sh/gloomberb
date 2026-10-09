@@ -58,8 +58,12 @@ const REVISION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "fingerprint", header: "Fingerprint", format: (value) => text(value)?.slice(0, 8) || "--" },
 ];
 
+// With no market the report shows the first; a market nothing matches names the others as examples.
+const EXAMPLE_MARKETS = ["BTC", "ETH", "SOL"] as const;
+const DEFAULT_MARKET = EXAMPLE_MARKETS[0];
+
 export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
-  shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "market", description: "Underlying or canonical market identity, such as BTC or hyperliquid:xyz:TSLA." },
+  shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "market", description: `Base asset, underlying or canonical market identity, such as BTC or hyperliquid:xyz:TSLA. Defaults to ${DEFAULT_MARKET}.` },
   options: [
     { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), defaultValue: "history", description: "Per-market history or evidence." },
     { key: "days", type: "enum", settingKey: "days", values: ["1", "7", "30", "90", "365"].map((value) => ({ value })), defaultValue: "7", description: "History lookback in days." },
@@ -68,11 +72,13 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Pro history with latest-value free previews", "Rates, premiums and changes are fractions in JSON", "Open-interest history begins at first collection", "Funding APR is a simple annualization, not a forecast"] },
   describe: "Perpetual history and evidence (Pro)",
   async load(args, ctx) {
-    const search = String(Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? "BTC");
+    const requested = String(Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? "").trim();
+    const search = requested || DEFAULT_MARKET;
     const market = await fetchPerpSelection(search, ctx.apiClient);
     const selected = market.rows[0];
-    if (!selected) return { sections: [{ title: "Market", rows: [] }], errors: ["No market matches the selection"], complete: false };
-    const metadata = { marketId: selected.marketId, sourceUrl: selected.sourceUrl, observedAt: selected.observedAt, sourceAsOf: selected.sourceAsOf,
+    if (!selected) throw new Error(`No perpetual market matches "${search}". Try ${EXAMPLE_MARKETS.join(", ")}.`);
+    const defaulted = requested ? {} : { defaultArgument: DEFAULT_MARKET, notices: [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]}.`] };
+    const metadata = { ...defaulted, marketId: selected.marketId, sourceUrl: selected.sourceUrl, observedAt: selected.observedAt, sourceAsOf: selected.sourceAsOf,
       rates: "fraction", quoteCurrency: selected.quoteCurrency, oiCurrency: "USD", fundingIntervalHours: selected.fundingIntervalHours };
     // The venue's market, as last polled: not a stream, and a venue trading around the clock is stale after an hour without a poll.
     const freshness = { source: venueLabel(selected), status: "delayed" as const, asOf: selected.observedAt, maxAgeMinutes: 60 };

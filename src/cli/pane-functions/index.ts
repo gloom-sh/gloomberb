@@ -20,6 +20,7 @@ import { defaultScreenshotPath, renderDesktopShot } from "./screenshot";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
+import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 
 async function withPaneRuntime<T>(
@@ -65,6 +66,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         const unavailable = report.data.unavailableSymbols.length > 0
           ? ` Missing data for ${report.data.unavailableSymbols.join(", ")}.`
           : "";
+        const gated = incompleteReportGateMessage(resolved.token, report.data.errors);
+        if (gated) throw new Error(gated);
         throw new Error(
           `${resolved.token} did not produce a complete bot-safe report.${unavailable}`,
         );
@@ -110,7 +113,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
       ctx.printResult({ data: result }, {
         text: (data) => {
           const issues = [
-            data.empty ? "empty" : null,
+            data.render.accessGate && (data.empty || !data.usable) ? accessGateStatus(data.render.accessGate) : data.empty ? "empty" : null,
             data.complete ? null : "incomplete",
             data.semanticMismatch ? "does not match the data" : null,
             data.usable ? null : "not usable",

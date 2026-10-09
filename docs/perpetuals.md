@@ -1,12 +1,12 @@
 # Perpetual markets
 
-`PERP` opens per-market History and Evidence. An optional market or underlying selects contracts: `PERP BTC`, `PERP TSLA`, or `PERP hyperliquid:xyz:TSLA`. Stock descriptions (`DES`) and quote cards (`QQ`, when tall enough) link their matching stock perpetuals, showing mark, premium versus the underlying last price, interval-labelled funding, USD open interest and premium versus oracle.
+`PERP` opens per-market History and Evidence. An optional market or underlying selects contracts: `PERP BTC`, `PERP TSLA`, or `PERP hyperliquid:xyz:TSLA`. Without one it shows BTC. Stock descriptions (`DES`) and quote cards (`QQ`, when tall enough) link their matching stock perpetuals, showing mark, premium versus the underlying last price, interval-labelled funding, USD open interest and premium versus oracle.
 
 Stock links follow the selected listing and only appear when its underlying identity is confirmed. The same ticker on another exchange may belong to another company. A linked cross-listing still uses the perpetual's own reference listing, currency and share units for its premium.
 
 This is a **Pro dataset**. Free accounts receive a fixed preview of three markets per asset class and a latest-value stock/market preview. Full history, rankings and the complete universe require Pro. Trading and order routing belong to a separate plugin.
 
-History offers paid funding, collected open interest, mark/oracle premium and hourly candles with 1D, 7D, 30D, 90D and 365D windows. The market search accepts a base asset, underlying symbol or canonical market identity; an unqualified symbol prefers its default crypto contract, then the xyz stock contract. Use the canonical identity for another contract or venue. Evidence keeps observation time, source time, units, confidence, contract constraints and correction records. `o` opens the primary source; `d`, `f`, `g` open the underlying description, financials and chart where mapped.
+History offers paid funding, collected open interest, mark/oracle premium and hourly candles with 1D, 7D, 30D, 90D and 365D windows. The market field takes a base asset, underlying symbol or canonical market identity and shows the one market it names; it does not list partial matches. An unqualified symbol prefers its default crypto contract, then the xyz stock contract. Use the canonical identity for another contract or venue. A name no market carries shows the pane's empty state; `gloomberb fn PERP XYZZY` fails and suggests markets that work. Evidence keeps observation time, source time, units, confidence, contract constraints and correction records. `o` opens the primary source; `d`, `f`, `g` open the underlying description, financials and chart where mapped.
 
 The full market board, rankings and comparison UI belong to the external perpetuals plugin. The built-in function focuses on one market's history and evidence, and can be opened independently. There is no plugin dependency. The backend board, rankings and comparison endpoints remain available for consumers.
 
@@ -31,7 +31,7 @@ Discovery and latest values refresh roughly once a minute. Retained history is s
 ## CLI and REST
 
 ```sh
-gloomberb fn PERP --json
+gloomberb fn PERP --json   # shows BTC and says so in data.metadata.notices
 gloomberb fn PERP BTC --tab history --days 30 --json
 gloomberb fn PERP TSLA --tab evidence --json
 gloomberb shot PERP BTC --tab history --width 1280 --height 540 --output perps.png

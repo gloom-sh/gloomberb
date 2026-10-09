@@ -12,7 +12,7 @@ import {
   isDataPaneForDomFallback,
   normalizeCapabilityOptions,
 } from "./capabilities";
-import { filterPaneCatalogEntries, renderPaneCatalogReport } from "./catalog";
+import { filterPaneCatalogEntries, renderPaneCatalogReport, type PaneCatalogEntry } from "./catalog";
 import { parsePaneFunctionArgs } from "./options";
 
 const dummyPane = {
@@ -184,6 +184,35 @@ describe("pane catalog search", () => {
     ], "cash flow comparison");
 
     expect(matches.map(({ token }) => token)).toEqual(["GF", "CMP"]);
+  });
+
+  test("a phrase carried whole by a name or keyword ranks first, then one in a description, then each word somewhere", () => {
+    const entry = (token: string, description: string, keywords: string[], options: PaneCatalogEntry["capability"]["options"] = []) => ({
+      token,
+      label: token,
+      description,
+      paneId: token.toLowerCase(),
+      paneName: token,
+      shortcut: token,
+      aliases: [],
+      keywords,
+      defaultSettings: {},
+      capability: { ...capabilityFor(`${token.toLowerCase()}-pane`), aliases: keywords, options },
+    });
+    const word = (key: string, description: string) => ({ key, type: "string" as const, description });
+    const matches = filterPaneCatalogEntries([
+      // Alphabetical order puts the weakest matches first: only ranking can reorder them.
+      entry("AAA", "Money market curves.", [], [word("rate", "Policy rate"), word("funding", "Funding source")]),
+      entry("BBB", "Short rates against funding.", ["funding"]),
+      entry("CCC", "Daily funding rate by venue.", ["venues"]),
+      entry("PERP", "Perpetual funding.", ["perp", "funding rate", "open interest"]),
+      entry("ZZZ", "Unrelated.", ["rate"]),
+    ], "funding rate");
+
+    const order = matches.map(({ token }) => token);
+    expect(order.slice(0, 2)).toEqual(["PERP", "CCC"]);
+    expect(order.slice(2, 4).sort()).toEqual(["AAA", "BBB"]);
+    expect(order[4]).toBe("ZZZ");
   });
 
   test("an alias opens its function even when other functions contain the same letters", () => {

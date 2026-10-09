@@ -33,6 +33,12 @@ export function normalizeCurveRoot(value: unknown): string | null {
   return CURVE_ROOTS.some((row) => row.value === root) ? root : null;
 }
 
+/** What a root nothing lists is told, with roots that work. */
+export function unsupportedCurveRootMessage(value: unknown): string {
+  const examples = ["ES", "CL", "GC", "ZN"].filter((root) => CURVE_ROOTS.some((row) => row.value === root));
+  return `Unsupported futures root: ${String(value)}. Try ${examples.join(", ")}.`;
+}
+
 /**
  * The root for the ticker under the cursor, when CTM is opened without an
  * argument. The crypto roots are also US ticker symbols (Grayscale's mini

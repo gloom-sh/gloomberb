@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { fetchCotBoard, loadCotDetail, validateCotContract } from "./client";
-import { COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotLegendValue, cotNetPoints, cotScope } from "./model";
+import { COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotLegendValue, cotNetPoints, cotScope, cotUnknownMarketMessage } from "./model";
 import { cotModule } from "./index";
 
 function position(): CotClassSummary {
@@ -127,4 +127,10 @@ test("the class's net leads the chart series, ahead of the front price", () => {
   expect(series.map((entry) => [entry.id, entry.label, entry.panelId])).toEqual([
     ["net", "Commercial net", "net"], ["price", "Front price", "price"],
   ]);
+});
+
+test("every example an unknown market is told about opens a market", () => {
+  const [, roots, code] = cotUnknownMarketMessage("XYZZY").match(/Try (.+) or a CFTC market code such as (\w+)\./)!;
+  for (const root of roots!.split(", ")) expect(cotContractCode(root)).not.toBeNull();
+  expect(cotContractCode(code)).toBe(code!);
 });

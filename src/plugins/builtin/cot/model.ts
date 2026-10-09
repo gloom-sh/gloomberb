@@ -96,6 +96,11 @@ export function cotContractCode(value: unknown): string | null {
   const input = value.trim().toUpperCase().replace(/=F$/, "");
   return ROOTS[input === "VIX" ? "VX" : input]?.code ?? (/^[0-9A-Z]{5}[0-9A-Z+]$/.test(input) ? input : null);
 }
+/** What a market that is neither a root nor a CFTC code is told, with ones that work. */
+export function cotUnknownMarketMessage(value: unknown): string {
+  const roots = ["ES", "CL", "GC", "ZN"].filter((root) => ROOTS[root]);
+  return `Unknown market "${String(value)}". Try ${roots.join(", ")} or a CFTC market code such as ${ROOTS.GC!.code}.`;
+}
 /**
  * The code for the ticker under the cursor, when COT is opened without an
  * argument. The crypto aliases are also US ticker symbols (Grayscale's mini

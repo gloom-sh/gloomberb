@@ -61,3 +61,14 @@ test("an underlying without data and the revision payloads stay short and honest
   const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ rows: unknown[] }> };
   expect(json.sections[1]!.rows).toEqual(evidence);
 });
+
+test("a market nothing matches fails with markets that work, and no market says which one it showed", async () => {
+  const args = (argument: string | null) => createTestHeadlessArgs({ argument, rawArgument: argument ?? "", options: { tab: "history", days: "7", metric: "funding" } });
+  await expect(perpsHeadless.load(args("XYZZY"), context([]))).rejects.toThrow('No perpetual market matches "XYZZY". Try BTC, ETH, SOL.');
+
+  const shown = await perpsHeadless.load(args(null), context([market]));
+  expect(shown.metadata).toMatchObject({ defaultArgument: "BTC", notices: ["Showing BTC. Try fn PERP ETH."] });
+  expect(renderHeadlessPaneText(perpsHeadless, shown, createTestHeadlessArgs(), "PERP")).toContain("Showing BTC. Try fn PERP ETH.");
+  const named = await perpsHeadless.load(args("BTC"), context([market]));
+  expect(named.metadata).not.toHaveProperty("notices");
+});

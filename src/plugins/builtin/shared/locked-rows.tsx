@@ -20,7 +20,7 @@ export function Blurred({ children }: { children: ReactNode }) {
 export function UpgradeLabel({ text, onPress, role }: { text: string; onPress: () => void; role?: string }) {
   const colors = useThemeColors();
   return (
-    <Box flexDirection="row" gap={1} onMouseDown={onPress} data-gloom-role={role}>
+    <Box flexDirection="row" gap={1} onMouseDown={onPress} data-gloom-role={role} data-gloom-ui="pro-lock">
       <Icon name="lock" size={11} color={colors.textBright} />
       <Text fg={colors.textBright}>{text}</Text>
     </Box>

@@ -72,6 +72,7 @@ import { getCloudApiBaseUrl } from "../../api-client/request";
 import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/external-plugins";
 import type { ResolvedSeries } from "../../time-series/types";
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
+import { accessGateSentence } from "./access-gate";
 import {
   paneEvidenceMismatches,
   paneScreenshotEvidenceHook,
@@ -857,7 +858,7 @@ export function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKe
 export function shotUnusableReasonFor(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
-  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected">,
+  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected" | "accessGate">,
   unavailableSymbols: string[],
   semanticMismatch: boolean,
 ): string {
@@ -871,6 +872,7 @@ export function shotUnusableReasonFor(
     return `No intraday price history is available for ${symbol} for the requested session window.`;
   }
   if (render.loadingStateDetected) return "The pane was still loading when the screenshot was captured.";
+  if (render.accessGate) return accessGateSentence(render.accessGate);
   if (render.errorStateDetected) return "The pane rendered an error state.";
   if (render.emptyStateDetected) return "The pane rendered an empty state.";
   if (unavailableSymbols.length > 0) return `Data is unavailable for ${unavailableSymbols.join(", ")}.`;

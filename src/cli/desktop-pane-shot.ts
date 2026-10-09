@@ -15,6 +15,7 @@ import type { RemoteUiNodeSnapshot } from "../remote/types";
 import type { DatedObservation } from "../plugins/builtin/market-valuation/series";
 import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared/protocol";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../utils/http-proxy-response";
+import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { readVisibleKeyValues } from "./visible-key-values";
 import { SHOT_API_PROXY_PREFIX, SHOT_HTTP_BRIDGE_PATH, SHOT_MARKET_BRIDGE_PATH } from "./desktop-pane-shot-routes";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
@@ -118,6 +119,8 @@ export interface DesktopPaneShotRenderResult {
   errorStateMarkers: string[];
   emptyStateDetected: boolean;
   emptyStateMarkers: string[];
+  /** A wall that needs an account, or a Pro lock on part of the pane. */
+  accessGate?: PaneAccessGate | null;
   semanticUi: RemoteUiNodeSnapshot[];
 }
 
@@ -476,14 +479,22 @@ const LOADING_STATE_PATTERNS = [
   /\bRendering pane\.{3}/gi,
 ];
 
+const SIGN_IN_WALL_PATTERNS = [
+  /\bSign in to\b/gi,
+  /\bVerify your email\b/gi,
+  /\brequires signup and email verification\b/gi,
+];
+
+const PRO_WALL_PATTERNS = [
+  /\bpart of Gloom Cloud Pro\b/gi,
+];
+
 const ERROR_STATE_PATTERNS = [
   /\b[^.]{1,100} unavailable\./gi,
   /\bFailed to fetch\b/gi,
   /\bCould not load\b/gi,
-  /\bSign in to\b/gi,
-  /\bVerify your email\b/gi,
-  /\brequires signup and email verification\b/gi,
-  /\bpart of Gloom Cloud Pro\b/gi,
+  ...SIGN_IN_WALL_PATTERNS,
+  ...PRO_WALL_PATTERNS,
   /\bCloud API request failed\b/gi,
 ];
 
@@ -622,6 +633,9 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         // An empty sub-section off screen, such as a ticker's news list below
         // the fold, does not make the captured view empty.
         emptyStateDetected: [...root.querySelectorAll('[data-gloom-status="empty"]')].some(isVisible),
+        // The shared sign-in wall and the Pro lock prompt every gated pane draws.
+        accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
+          : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
         rows,
         truncated: truncationReasons.size > 0,
         truncationReasons: [...truncationReasons],
@@ -639,6 +653,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         loadingStateDetected?: boolean;
         errorStateDetected?: boolean;
         emptyStateDetected?: boolean;
+        accessGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
         truncationReasons?: string[];
@@ -652,6 +667,8 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
   const loadingStateMarkers = stateMarkers(visibleText, LOADING_STATE_PATTERNS);
   const errorStateMarkers = stateMarkers(visibleText, ERROR_STATE_PATTERNS);
   const emptyStateMarkers = stateMarkers(visibleText, EMPTY_STATE_PATTERNS);
+  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || stateMarkers(visibleText, SIGN_IN_WALL_PATTERNS).length > 0 ? "sign-in"
+    : value?.accessGate === "pro" || stateMarkers(visibleText, PRO_WALL_PATTERNS).length > 0 ? "pro" : null;
   const rows = Array.isArray(value?.rows) ? value.rows : [];
   const textShowsEllipsis = rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
   const truncationReasons = Array.isArray(value?.truncationReasons)
@@ -672,6 +689,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
     errorStateMarkers,
     emptyStateDetected: value?.emptyStateDetected === true || emptyStateMarkers.length > 0,
     emptyStateMarkers,
+    accessGate,
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };
 }

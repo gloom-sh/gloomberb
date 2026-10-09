@@ -199,6 +199,30 @@ export async function buildPaneCatalogEntries(
   return entries.sort((left, right) => left.token.localeCompare(right.token));
 }
 
+/** The phrase starting a word of the text, so "funding rate" finds "funding rates" but "rate" is not found in "separate". */
+function containsPhrase(text: string, phrase: string): boolean {
+  for (let at = text.indexOf(phrase); at >= 0; at = text.indexOf(phrase, at + 1)) {
+    if (at === 0 || !/[a-z0-9]/.test(text[at - 1]!)) return true;
+  }
+  return false;
+}
+
+// A multi-word query ranks a function carrying the whole phrase in its name or keywords first, then in its
+// description, then one matching every word somewhere; the rest rank by how many words they match.
+const PHRASE_IN_NAME_BAND = 4000;
+const PHRASE_IN_DESCRIPTION_BAND = 3000;
+const ALL_WORDS_BAND = 2000;
+const PER_MATCHED_WORD = 100;
+
+function phraseBand(entry: PaneCatalogEntry, phrase: string): number {
+  const lower = (values: Array<string | undefined>) => values
+    .filter((value): value is string => !!value).map((value) => value.toLowerCase().replace(/\s+/g, " "));
+  const names = lower([entry.token, entry.label, entry.paneName, entry.shortcut, ...entry.aliases, ...entry.keywords, ...entry.capability.aliases]);
+  if (names.some((name) => containsPhrase(name, phrase))) return PHRASE_IN_NAME_BAND;
+  const descriptions = lower([entry.description, ...entry.capability.intents]);
+  return descriptions.some((description) => containsPhrase(description, phrase)) ? PHRASE_IN_DESCRIPTION_BAND : 0;
+}
+
 function paneCatalogSearchScore(entry: PaneCatalogEntry, query: string): number {
   const terms = query.toLowerCase().split(/\s+/).map((term) => term.trim()).filter(Boolean);
   if (terms.length === 0) return 1;
@@ -253,7 +277,10 @@ function paneCatalogSearchScore(entry: PaneCatalogEntry, query: string): number 
   if (matchedTerms === 0) return 0;
   score += Math.round((matchedTerms / terms.length) * 8);
   if (entry.capability.botSafe) score += 2;
-  return score;
+  // One word has no phrase to prefer: it keeps the plain term scores.
+  if (terms.length === 1) return score;
+  const band = phraseBand(entry, terms.join(" "));
+  return score + matchedTerms * PER_MATCHED_WORD + (band || (matchedTerms === terms.length ? ALL_WORDS_BAND : 0));
 }
 
 export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {

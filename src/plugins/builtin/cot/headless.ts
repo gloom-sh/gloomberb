@@ -1,7 +1,7 @@
 import type { CotClass, CotClassSummary } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
-import { COT_MAJOR_CODES, COT_SCOPES, cotClass, cotContractCode, cotInteger, cotMarketName, cotScope } from "./model";
+import { COT_MAJOR_CODES, COT_SCOPES, cotClass, cotContractCode, cotInteger, cotMarketName, cotScope, cotUnknownMarketMessage } from "./model";
 
 const camelClass = (id: CotClass) => id.replace(/-(\w)/g, (_match, letter: string) => letter.toUpperCase());
 const rounded = (value: number | null, digits: number) => value == null ? null : Number(value.toFixed(digits));
@@ -38,7 +38,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     const family = args.options.report === "disaggregated" ? "disaggregated" : "legacy";
     if (args.argument) {
       const code = cotContractCode(args.argument);
-      if (!code) throw new Error("Use a CFTC market code or supported futures root");
+      if (!code) throw new Error(cotUnknownMarketMessage(args.argument));
       const data = await fetchCotContract(code, family, ctx.apiClient);
       const classes = data.positions.map((row) => row.id);
       return { sections: [{ title: data.contract ? cotMarketName(data.contract.marketName) : code,

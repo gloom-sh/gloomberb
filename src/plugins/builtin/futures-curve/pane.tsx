@@ -14,7 +14,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedFuturesCurve, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { curveAsOfDate, curveAxisPrice, curveChangeText, curveContractChanges, curvePrice, curveRank, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, type CurveContractChanges } from "./model";
+import { curveAsOfDate, curveAxisPrice, curveChangeText, curveContractChanges, curvePrice, curveRank, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, unsupportedCurveRootMessage, type CurveContractChanges } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 const COLUMNS: DataTableColumn[] = [
@@ -50,7 +50,7 @@ export function FuturesCurvePane(props: PaneProps) {
   const requested = pane?.settings?.root ?? pane?.params?.root ?? "ES";
   const root = normalizeCurveRoot(requested);
   return root ? <FuturesCurveView key={root} {...props} root={root} />
-    : <PaneStatusBody error={`Unsupported futures root: ${String(requested)}`} subject="futures curve" />;
+    : <PaneStatusBody error={unsupportedCurveRootMessage(requested)} subject="futures curve" />;
 }
 
 function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: string }) {

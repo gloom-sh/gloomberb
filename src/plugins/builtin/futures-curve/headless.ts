@@ -1,7 +1,11 @@
 import type { HeadlessPaneDefinition, HeadlessPaneFreshness } from "../../../types/plugin";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { curveAsOfDate, normalizeCurveRoot } from "./model";
+import { curveAsOfDate, normalizeCurveRoot, unsupportedCurveRootMessage } from "./model";
+
+/** The root a report shows when none is given. */
+const DEFAULT_ROOT = "ES";
+const EXAMPLE_ROOT = "CL";
 
 /** Percentiles read as the pane shows them, a whole rank. */
 const rank = (value: number | null) => value == null ? null : Math.round(value);
@@ -15,11 +19,11 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     values: [{ value: "curve" }, { value: "contracts", aliases: ["contract", "table"] }], defaultValue: "curve",
     pluginState: { pluginId: "market-overview", key: "tab" } },
   { key: "date", type: "string", settingKey: "asOfDate", description: "Past date (YYYY-MM-DD): the curve as the daily settlement archive held it, with the curves a week and a month before." }],
-  describe: (args) => `Futures curve ${args.argument || "ES"}`,
+  describe: (args) => `Futures curve ${args.argument || DEFAULT_ROOT}`,
   async load(args, ctx) {
-    const input = args.argument || "ES";
+    const input = args.argument || DEFAULT_ROOT;
     const root = normalizeCurveRoot(input);
-    if (!root) throw new Error(`Unsupported futures root: ${input}`);
+    if (!root) throw new Error(unsupportedCurveRootMessage(input));
     const date = curveAsOfDate(args.options.date);
     const data = date ? await loadFuturesCurveAsOf(root, date, ctx.apiClient) : await fetchFuturesCurve(root, ctx.apiClient);
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
@@ -37,7 +41,8 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,
-      metadata: { ...data, complete: data.status === "available", percentileBasis: "Same-contract observations within one year; actual sample start/end retained" },
+      metadata: { ...data, ...(args.argument ? {} : { defaultArgument: DEFAULT_ROOT, notices: [`Showing ${DEFAULT_ROOT}. Try fn CTM ${EXAMPLE_ROOT}.`] }),
+        complete: data.status === "available", percentileBasis: "Same-contract observations within one year; actual sample start/end retained" },
     };
   },
 };

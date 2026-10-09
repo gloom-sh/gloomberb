@@ -2,7 +2,7 @@ import { apiClient } from "../../../api-client";
 import type { FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import { archivedFuturesCurve, curveLookbackDate, normalizeCurveRoot } from "./model";
+import { archivedFuturesCurve, curveLookbackDate, normalizeCurveRoot, unsupportedCurveRootMessage } from "./model";
 
 export const futuresCurveCache = createPluginCache<FuturesCurvePayload>({
   kind: "futures-curve", source: "gloom-cloud", schemaVersion: 1,
@@ -51,7 +51,7 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
 
 export async function fetchFuturesCurve(root: string, client: Pick<typeof apiClient, "getCloudFuturesCurve"> = apiClient): Promise<FuturesCurvePayload> {
   const normalized = normalizeCurveRoot(root);
-  if (!normalized) throw new Error(`Unsupported futures root: ${root}`);
+  if (!normalized) throw new Error(unsupportedCurveRootMessage(root));
   try { return validateFuturesCurve(await client.getCloudFuturesCurve(normalized), normalized); }
   catch (error) { throw unavailableOnServer(error, "Futures curves are not available yet."); }
 }
@@ -71,7 +71,7 @@ export async function loadFuturesCurve(root: string, force = false): Promise<Fut
 export async function loadFuturesCurveAsOf(root: string, date: string,
   client: Pick<typeof apiClient, "getCloudFuturesCurveAsOf"> = apiClient): Promise<FuturesCurvePayload> {
   const normalized = normalizeCurveRoot(root);
-  if (!normalized) throw new Error(`Unsupported futures root: ${root}`);
+  if (!normalized) throw new Error(unsupportedCurveRootMessage(root));
   try {
     const [curve, week, month] = await Promise.all([
       client.getCloudFuturesCurveAsOf(normalized, date),
