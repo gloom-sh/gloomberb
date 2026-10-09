@@ -17,6 +17,7 @@ import {
 import { buildRows, sortRows } from "./table-model";
 import type { HolderData } from "../../../types/financials";
 import type { HolderColumnId } from "./types";
+import { SEC_FILINGS } from "../shared/report-freshness";
 
 const HOLDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Holder" },
@@ -93,6 +94,7 @@ export function createHoldersHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: { ...SEC_FILINGS, basis: "13F filings" },
     argument: {
       kind: "ticker",
       placeholder: "ticker",

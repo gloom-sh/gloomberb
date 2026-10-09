@@ -9,6 +9,7 @@ import { cliStyles, colorBySign } from "../utils/cli-output";
 import type { AppConfig } from "../types/config";
 import type { Watchlist, TickerRecord } from "../types/ticker";
 import { isFiniteNumber } from "../utils/guards";
+import { formatUtcTime } from "../utils/utc-time";
 
 export function formatSignedCurrency(value: number, currency: string): string {
   return value > 0 ? `+${formatCurrency(value, currency)}` : formatCurrency(value, currency);
@@ -87,15 +88,10 @@ export function formatPriceRange(
   return `${format(low, { fixedFractionDigits: digits })}${separator}${format(high, { fixedFractionDigits: digits })}`;
 }
 
+/** A timestamp in CLI text: UTC with the zone named, the same on every machine. */
 export function formatTimestamp(timestamp: number | undefined): string {
-  if (!timestamp) return "—";
-  return new Date(timestamp).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  if (!timestamp || !Number.isFinite(timestamp)) return "—";
+  return formatUtcTime(new Date(timestamp)) || "—";
 }
 
 export function formatBidAsk(

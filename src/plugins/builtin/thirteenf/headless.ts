@@ -44,6 +44,7 @@ import type {
   ThirteenFBrowserTab,
 } from "./types";
 import { finiteOrNull } from "../../../utils/guards";
+import { SEC_FILINGS } from "../shared/report-freshness";
 
 const money = (value: unknown) => formatMoneyCompact(finiteOrNull(value));
 const weight = (value: unknown) => formatWeightMaybe(finiteOrNull(value));
@@ -210,6 +211,7 @@ export function createThirteenFHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: { ...SEC_FILINGS, basis: "13F filings", observedKey: "filedAsOfDate" },
     argument: {
       kind: "free-text",
       placeholder: "fund, ticker, or CIK",

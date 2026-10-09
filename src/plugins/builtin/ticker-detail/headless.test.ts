@@ -76,7 +76,7 @@ test("quote comparison retains successful exchange-qualified inputs when a peer 
     }),
   } as HeadlessPaneContext;
   const result = await quoteComparisonHeadless.load(args(["ABC", "MISSING"]), ctx);
-  expect(result.rows).toEqual([{ symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD", marketCap: null, updatedAt: 123 }]);
+  expect(result.rows).toEqual([{ symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD", marketCap: null, updatedAt: 123, stale: false }]);
   expect(result.unavailableSymbols).toEqual(["MISSING"]);
   expect(result.errors).toEqual(["MISSING: No quote"]);
 });

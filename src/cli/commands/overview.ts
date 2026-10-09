@@ -115,13 +115,12 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
   });
 }
 
-function localDateTimePart(value: unknown, part: "date" | "time"): string {
+/** The UTC date, or the UTC time with its zone named, of an event's timestamp. */
+function utcDateTimePart(value: unknown, part: "date" | "time"): string {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return "";
-  const pad = (number: number) => String(number).padStart(2, "0");
-  return part === "date"
-    ? `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-    : `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const iso = date.toISOString();
+  return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC`;
 }
 
 async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -146,9 +145,9 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       }));
     ctx.printResult({ data: rows, metadata: { country, impact } }, {
       columns: [
-        // Text shows both halves of the event timestamp in local time; exports keep the source values.
-        { key: "date", header: "Date", format: (value) => localDateTimePart(value, "date") },
-        { key: "time", header: "Time", format: (_value, row) => localDateTimePart(row.date, "time") },
+        // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
+        { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
+        { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : utcDateTimePart(row.date, "time") },
         { key: "country", header: "Country" },
         { key: "impact", header: "Impact" },
         { key: "event", header: "Event" },

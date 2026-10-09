@@ -168,7 +168,7 @@ describe("headless pane printer", () => {
     };
 
     const text = renderHeadlessPaneText(definition, result, args, "News");
-    expect(text).toContain("As of: 2026-09-03 12:00 UTC");
+    expect(text.split("\n").at(-1)).toContain("As of 2026-09-03 12:00 UTC");
     expect(text).toContain("Markets open");
     expect(jsonData(definition, result)).toMatchObject({
       ok: true,
@@ -178,6 +178,25 @@ describe("headless pane printer", () => {
       },
     });
   });
+});
+
+test("every report shape ends with its source, as-of and status line, and JSON carries the same facts", async () => {
+  const results: Array<[HeadlessPaneDefinition, string]> = [
+    [{ shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [{ name: "AAPL", dataSource: "delayed", updatedAt: Date.parse("2026-10-08T19:59:00Z") }] }) }, "Delayed"],
+    [{ shape: "bundle", argument: { kind: "none" }, options: [], freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
+      load: () => ({ sections: [{ title: "Filings", rows: [{ form: "10-K", asOf: "2026-09-30" }] }] }) }, "Not a live feed (filed data)"],
+    [{ shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [{ id: "x", label: "X", points: [{ date: "2026-10-08", value: 1 }] }] }) }, "Status not reported"],
+    [{ shape: "snapshot", argument: { kind: "none" }, options: [], load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Open" }] }) }, "Status not reported"],
+  ];
+  for (const [definition, status] of results) {
+    const report = await buildHeadlessFunctionReport({
+      headless: definition, token: "TEST", label: "Test", options: {}, instance: {}, capability: { id: "test" },
+    } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-freshness") } as MarketContext, "");
+    const last = report.text.split("\n").at(-1)!.replace(/\x1b\[[0-9;]*m/g, "");
+    expect(last).toStartWith(`Source: ${definition.freshness?.source ?? "Gloom Cloud"} | As of 2026-`);
+    expect(last).toEndWith(` | ${status}`);
+    expect(report.data.freshness).toMatchObject({ source: definition.freshness?.source ?? "Gloom Cloud", asOf: expect.stringMatching(/^2026-/), retrievedAt: expect.any(String) });
+  }
 });
 
 describe("headless pane arguments and options", () => {

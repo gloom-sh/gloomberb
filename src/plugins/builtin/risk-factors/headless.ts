@@ -1,8 +1,10 @@
 import type { HeadlessBundleSection, HeadlessPaneDefinition } from "../../../types/plugin";
 import { loadRiskReportWithClient, loadRiskReportsWithClient, type RiskReportsResult } from "./data";
+import { SEC_FILINGS } from "../shared/report-freshness";
 
 export const riskFactorsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { ...SEC_FILINGS, basis: "10-K filings" },
   argument: { kind: "ticker", placeholder: "ticker", description: "Company symbol." },
   options: [
     { key: "year", type: "string", defaultValue: "latest", description: "Filing year (for example 2025), or latest discovered report." },

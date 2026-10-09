@@ -7,6 +7,8 @@ import { buildRelationshipAnalysis, DEFAULT_RELATIONSHIP_SECOND_SYMBOL } from ".
 import { paneSchemas } from "./headless-schema";
 import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "./history";
 import type { HeadlessPaneContext } from "../../../types/headless";
+import { newestReportTime } from "../../../utils/utc-time";
+import { DAILY_CLOSES } from "../shared/report-freshness";
 
 async function loadHistory(ctx: HeadlessPaneContext, key: string, range: TimeRange) {
   const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
@@ -17,6 +19,7 @@ async function loadHistory(ctx: HeadlessPaneContext, key: string, range: TimeRan
 export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["correlation-pane"],
   shape: "rows",
+  freshness: DAILY_CLOSES,
   describe: ({ symbols, options }) => `Correlation Matrix | Daily returns | ${options.rangePreset ?? "1Y"} | ${symbols.join(", ")}`,
   columns: [
     { key: "pair", header: "Pair", format: (_value, row) => `${row.left}/${row.right}` },
@@ -41,6 +44,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
         : row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
     }));
     return {
+      freshness: { asOf: newestReportTime(symbols.map((symbol) => bySymbol.get(symbol)?.prices.at(-1)?.dateKey)) },
       rows, unavailableSymbols,
       errors: [
         ...loaded.errors,
@@ -64,6 +68,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
 export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
   ...paneSchemas["relationship-graph-pane"],
   shape: "series",
+  freshness: DAILY_CLOSES,
   describe: ({ symbols, options }) => `Relationship Graph | ${symbols[0]}/${symbols[1] ?? DEFAULT_RELATIONSHIP_SECOND_SYMBOL} | ${options.range ?? "1Y"}`,
   async load(args, ctx) {
     const symbols = [args.symbols[0]!, args.symbols[1] ?? DEFAULT_RELATIONSHIP_SECOND_SYMBOL];

@@ -11,6 +11,7 @@ import {
   type CliTableColumn,
 } from "../utils/cli-output";
 import { serializeCsv } from "../utils/csv";
+import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 
 export interface CliResult<T = unknown> {
   data: T;
@@ -56,12 +57,9 @@ interface CliResultJsonEnvelope<T> extends CliResult<T> {
 
 type TextCellContext = "table" | "record";
 
-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
-const TIME_KEY = /(?:At|Time|Timestamp)$/;
+// Keys whose epoch-millisecond numbers are times rather than counts or prices.
+const TIME_KEY = /(?:At|Time|Timestamp|Updated|AsOf)$|^asOf$/;
 const IDENTIFIER_KEY = /^id$|Id$/;
-// Epoch milliseconds between 2001 and 2286, so counts and prices are never read as dates.
-const EPOCH_MS_MIN = 1e12;
-const EPOCH_MS_MAX = 1e13;
 const KEY_ACRONYMS: Record<string, string> = {
   api: "API",
   cik: "CIK",
@@ -106,13 +104,8 @@ export function humanizeCliKey(key: string): string {
     .join(" ");
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-function formatLocalDateTime(date: Date): string {
-  if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+function isTimeValue(key: string | undefined, value: number): boolean {
+  return key != null && TIME_KEY.test(key) && isEpochMilliseconds(value);
 }
 
 // Six significant digits hide float noise (0.9499999999999886) without cutting real precision;
@@ -132,16 +125,13 @@ function formatTextValue(
 ): string {
   const missing = context === "record" ? cliStyles.muted("-") : "";
   if (value == null || value === "") return missing;
-  if (value instanceof Date) return formatLocalDateTime(value);
+  // Times print in UTC with the zone named, never in the host's zone; JSON and CSV keep the raw value.
+  if (value instanceof Date) return formatUtcTime(value);
   if (typeof value === "boolean") return value ? "yes" : "no";
-  if (typeof value === "number") {
-    if (key && TIME_KEY.test(key) && value >= EPOCH_MS_MIN && value < EPOCH_MS_MAX) {
-      return formatLocalDateTime(new Date(value));
-    }
-    return formatTextNumber(value);
-  }
+  if (typeof value === "number") return isTimeValue(key, value) ? formatUtcTime(value) : formatTextNumber(value);
   if (typeof value === "string") {
-    return ISO_DATE_TIME.test(value) ? formatLocalDateTime(new Date(value)) || value : value;
+    // A date and time without a zone stays as the source wrote it: its zone is unknown.
+    return isZonedIsoDateTime(value) ? formatUtcTime(value) : value;
   }
   if (Array.isArray(value)) {
     if (value.length === 0) return context === "record" ? cliStyles.muted("none") : "";
@@ -198,9 +188,7 @@ function isEmptyTextValue(value: unknown): boolean {
 function inferTextColumns(rows: Record<string, unknown>[]): CliResultColumn<Record<string, unknown>>[] {
   return inferColumns(rows).map((column) => {
     const values = rows.map((row) => row?.[column.key]).filter((value) => !isEmptyTextValue(value));
-    const numeric = values.length > 0 && values.every((value) => typeof value === "number" && !(
-      TIME_KEY.test(column.key) && value >= EPOCH_MS_MIN && value < EPOCH_MS_MAX
-    ));
+    const numeric = values.length > 0 && values.every((value) => typeof value === "number" && !isTimeValue(column.key, value));
     return {
       ...column,
       header: humanizeCliKey(column.key),

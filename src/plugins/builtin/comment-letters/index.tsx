@@ -34,6 +34,7 @@ export const commentLettersPlugin: GloomPlugin = {
   panes: [
     {
       id: COMMENT_LETTERS_PANE_ID,
+      reportFreshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "comment letters" },
       name: "Comment Letters",
       icon: "L",
       component: CommentLettersPane,

@@ -6,6 +6,7 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["BTMM"], dataRequirements: ["Gloom Cloud money-markets endpoint"],
     limitations: ["Published daily and weekly observations", "Treasury bill discount yields", "Net liquidity is a same-date proxy"] },
   shape: "bundle", argument: { kind: "none" },
+  freshness: { source: "FRED", status: "not-a-feed", basis: "published daily and weekly data" },
   options: [{ key: "tab", type: "enum", description: "Money-market view.", values: [{ value: "rates" }, { value: "bills" }, { value: "liquidity" }], defaultValue: "rates" }],
   describe: "US money markets",
   async load(args, ctx) {

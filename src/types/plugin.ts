@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
-import type { HeadlessPaneDefinition } from "./headless";
+import type { HeadlessPaneDefinition, HeadlessPaneFreshness } from "./headless";
 
 export type {
   HeadlessBundleResult,
   HeadlessBundleSection,
+  HeadlessFreshnessStatus,
   HeadlessPaneApiClient,
   HeadlessPaneArgumentDef,
   HeadlessPaneArgumentKind,
@@ -12,6 +13,7 @@ export type {
   HeadlessPaneContext,
   HeadlessPaneDefinition,
   HeadlessPaneEntry,
+  HeadlessPaneFreshness,
   HeadlessPaneLoadArgs,
   HeadlessPaneOptionDef,
   HeadlessPaneOptionType,
@@ -124,6 +126,12 @@ export interface PaneDef {
   tickerFollower?: boolean | ((pane: PaneInstanceConfig) => boolean);
   /** Renderer-neutral data model used by CLI functions, automation, and hosted tools. */
   headless?: HeadlessPaneDefinition;
+  /**
+   * Source and status a rendered-view report (`fn` on a pane without a
+   * `headless` model) cites, when "Gloom Cloud" with the state the footer
+   * shows would be wrong: local data, a calculator, filed records.
+   */
+  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis">;
   /** Add an Excel-compatible CSV action for the pane's single active DataTable. */
   tableExport?: true;
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);

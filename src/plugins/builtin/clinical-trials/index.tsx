@@ -31,6 +31,7 @@ export const clinicalTrialsPlugin: GloomPlugin = {
   panes: [
     {
       id: CLINICAL_TRIALS_PANE_ID,
+      reportFreshness: { source: "ClinicalTrials.gov", status: "not-a-feed", basis: "registry records" },
       name: "Trials",
       icon: "C",
       component: TrialsPane,

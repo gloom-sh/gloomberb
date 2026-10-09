@@ -25,6 +25,8 @@ export interface SectorRow extends SectorDef {
   lastReportedPrice?: number | null;
   /** When the snapshot quote behind `price` was stamped; a live quote must be at least as new. */
   quoteUpdatedAt?: number | null;
+  /** Whether that quote is real-time or delayed, for the report's freshness line. */
+  quoteDataSource?: Quote["dataSource"];
   returnIntegrity?: Partial<Record<SectorReturnRange, PriceHistoryIntegrity>>;
   returnAsOfDate?: string | null;
   return1MStartDate?: string | null;

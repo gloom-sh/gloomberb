@@ -8,6 +8,7 @@ const percent = (value: unknown) => typeof value === "number" ? `${(value * 100)
 
 export const earningsRippleHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { source: "SEC filings and Gloom Cloud", status: "not-a-feed", basis: "filings and earnings calendar" },
   argument: { kind: "symbol-list", placeholder: "tickers", description: "Holdings to check against their customers' and suppliers' report dates.", minimum: 1, maximum: 60 },
   options: [],
   describe: (args) => `RIPL ${args.symbols.join(", ")}`,

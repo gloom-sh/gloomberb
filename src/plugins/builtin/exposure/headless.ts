@@ -5,7 +5,9 @@ import { DEFAULT_SCENARIO, parseCustomScenario, parseHoldings, TABS } from "./mo
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
 
 export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
-  shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "AAPL=60% NVDA=40%", description: "Tickers, signed NAV weights, PORT:<id>, or WATCH:<id>. Unweighted lists and watchlists use equal weights." },
+  shape: "bundle",
+  freshness: { status: "not-a-feed", basis: "company disclosures" },
+  argument: { kind: "free-text", optional: true, placeholder: "AAPL=60% NVDA=40%", description: "Tickers, signed NAV weights, PORT:<id>, or WATCH:<id>. Unweighted lists and watchlists use equal weights." },
   discovery: { aliases: ["EXPO"], dataRequirements: ["Gloom Cloud geographic revenue, disclosed supply chains, KPIs, guidance and credit disclosures", "Portfolio NAV for local PORT weights"],
     limitations: ["Pro: full holdings and up to four-hop paths; free: one holding, one hop", "Operating exposure estimates, never predicted stock returns", "Missing relationships and sensitivities remain unknown", "Basis and reporting period are kept separate"] },
   options: [

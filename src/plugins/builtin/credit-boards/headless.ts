@@ -8,6 +8,7 @@ export const cdxHeadless: HeadlessPaneDefinition<"rows"> = {
   discovery: { aliases: ["CDX"], dataRequirements: ["Gloom Cloud index CDS endpoint"],
     limitations: ["Daily medians of public DTCC prints on the on-the-run 5Y contract", "HY and EM quote in price"] },
   shape: "rows",
+  freshness: { source: "DTCC", status: "not-a-feed", basis: "daily medians of public trades", cadence: "daily", observedKey: "date" },
   argument: { kind: "none" },
   options: [],
   columns: [
@@ -43,6 +44,7 @@ export const sovrHeadless: HeadlessPaneDefinition<"rows"> = {
   discovery: { aliases: ["SOVR", "WCDS"], dataRequirements: ["Gloom Cloud sovereign CDS endpoint"],
     limitations: ["Daily 5Y levels from public DTCC prints; thinly traded names can miss days"] },
   shape: "rows",
+  freshness: { source: "DTCC", status: "not-a-feed", basis: "daily levels of public trades", cadence: "daily", observedKey: "date" },
   argument: { kind: "none" },
   options: [],
   columns: [

@@ -15,6 +15,7 @@ const awardRecord = (row: AwardRow) => ({ id: row.id, date: row.awardDate, dateB
 
 export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "ticker", description: "Optional verified listed-company ticker, including exchange suffix." },
+  freshness: { source: "Public procurement records", status: "not-a-feed", basis: "published awards" },
   discovery: { aliases: ["AWARDS"], dataRequirements: ["Verified Gloom Cloud account"],
     limitations: ["Pro dataset; free accounts receive a limited preview", "Published procurement records; source coverage varies by jurisdiction",
       "Currencies and prime awards, subawards and notices are separate", "Award obligations are not revenue or remaining backlog", "Unresolved recipients retain their legal names"] },

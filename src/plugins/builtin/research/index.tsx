@@ -60,6 +60,7 @@ export const researchModule: PluginModule = {
     },
     {
       id: "equity-diagnostic",
+      reportFreshness: { status: "not-a-feed", basis: "analysis of filings" },
       name: "Equity Diagnostic",
       icon: "D",
       component: EquityDiagnosticView,

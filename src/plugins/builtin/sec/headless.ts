@@ -8,6 +8,7 @@ import type { SecFilingItem } from "../../../types/data-provider";
 import { loadSecFilings } from "./client";
 import { filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
+import { SEC_FILINGS } from "../shared/report-freshness";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -49,6 +50,7 @@ export function createSecHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: { ...SEC_FILINGS, observedKey: "acceptedAt" },
     argument: {
       kind: "ticker",
       placeholder: "ticker",

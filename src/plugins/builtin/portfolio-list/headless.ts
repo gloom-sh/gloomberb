@@ -14,6 +14,7 @@ import {
   type CollectionMatch,
 } from "./cli/render";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
+import { quoteFreshnessFields } from "../shared/report-freshness";
 
 const DEFAULT_ROW_LIMIT = 50;
 const MAX_ROW_LIMIT = 200;
@@ -114,6 +115,8 @@ async function portfolioHoldings(
     .map(({ ticker, activeQuote, row }) => {
       const marketValue = finite(row.marketValue);
       return {
+        ...quoteFreshnessFields(quotes.get(ticker.metadata.ticker)),
+        updatedAt: quotes.get(ticker.metadata.ticker)?.lastUpdated ?? null,
         symbol: ticker.metadata.ticker,
         name: ticker.metadata.name ?? null,
         exchange: ticker.metadata.exchange || null,
@@ -138,6 +141,7 @@ async function portfolioHoldings(
   const broker = !!(target.portfolio.brokerId || target.portfolio.brokerInstanceId);
 
   return {
+    freshness: { source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud" },
     columns: POSITION_COLUMNS,
     rows: shown,
     complete: unavailable.length === 0,
@@ -174,6 +178,8 @@ async function watchlistHoldings(
   const rows = tickers.map((ticker) => {
     const quote = quotes.get(ticker.metadata.ticker);
     return {
+      ...quoteFreshnessFields(quote),
+      updatedAt: quote?.lastUpdated ?? null,
       symbol: ticker.metadata.ticker,
       name: ticker.metadata.name ?? null,
       exchange: ticker.metadata.exchange || null,
@@ -184,6 +190,7 @@ async function watchlistHoldings(
   });
   const shown = rows.slice(0, limit);
   return {
+    freshness: { source: "Local watchlist and Gloom Cloud" },
     columns: WATCHLIST_COLUMNS,
     rows: shown,
     metadata: {

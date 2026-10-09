@@ -24,6 +24,7 @@ import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
+import { deriveHeadlessFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -420,11 +421,17 @@ function reportTitle(definition: HeadlessPaneDefinition, args: HeadlessPaneLoadA
   return definition.describe ?? fallback;
 }
 
+/**
+ * The text form of every headless report. It always ends with the source,
+ * as-of and status line, so no pane can leave it out; a pane can only make it
+ * more accurate through its `freshness` declaration.
+ */
 export function renderHeadlessPaneText(
   definition: HeadlessPaneDefinition,
   result: HeadlessPaneResult,
   args: HeadlessPaneLoadArgs,
   fallbackTitle: string,
+  freshness: ReportFreshness = deriveHeadlessFreshness(definition, result),
 ): string {
   const lines = [cliStyles.bold(reportTitle(definition, args, fallbackTitle)), ""];
   const notices = result.metadata?.notices;
@@ -446,7 +453,8 @@ export function renderHeadlessPaneText(
       break;
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
-      lines.push(`As of: ${displayValue(snapshot.asOf)}`, "", renderRows(snapshot.items, undefined, definition.columns));
+      // The closing source line carries the snapshot's as-of, so it is not printed twice.
+      lines.push(renderRows(snapshot.items, undefined, definition.columns));
       break;
     }
     default: {
@@ -455,7 +463,7 @@ export function renderHeadlessPaneText(
     }
   }
   if (result.errors?.length) lines.push("", cliStyles.warning(`Errors: ${result.errors.join(" ")}`));
-  return lines.join("\n").trimEnd();
+  return [lines.join("\n").trimEnd(), "", cliStyles.muted(formatFreshnessLine(freshness))].join("\n");
 }
 
 function resultRowCount(definition: HeadlessPaneDefinition, result: HeadlessPaneResult): number {
@@ -487,6 +495,7 @@ export async function buildHeadlessFunctionReport(
   const symbols = loaded.result.symbols ?? loaded.args.symbols;
   const unavailableSymbols = loaded.result.unavailableSymbols ?? (rowCount === 0 ? symbols : []);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
+  const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);
   return {
     data: {
       kind: loaded.definition.shape,
@@ -499,12 +508,14 @@ export async function buildHeadlessFunctionReport(
       complete: loaded.result.complete !== false && unavailableSymbols.length === 0 && !loaded.result.errors?.length,
       unavailableSymbols,
       ...serialized,
+      freshness,
     },
     text: renderHeadlessPaneText(
       loaded.definition,
       loaded.result,
       loaded.args,
       resolved.label,
+      freshness,
     ),
   };
 }

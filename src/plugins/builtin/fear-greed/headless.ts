@@ -76,6 +76,8 @@ export function createFearGreedHeadless(
       return {
         ...projected,
         ...(result.refreshError ? { errors: [result.refreshError] } : {}),
+        // A cached index the refresh could not replace is stale; otherwise CNN's published reading.
+        freshness: { source: "CNN", status: result.stale ? "stale" : "not-a-feed", basis: "published index" },
         metadata: { fetchedAt: result.fetchedAt, stale: result.stale },
       };
     },

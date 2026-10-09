@@ -81,6 +81,8 @@ export function createMarketMoversHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    // A screener snapshot, not a real-time feed; rows keep the time of their own last price.
+    freshness: { status: "delayed" },
     argument: { kind: "none" },
     options: [{
       key: "list",

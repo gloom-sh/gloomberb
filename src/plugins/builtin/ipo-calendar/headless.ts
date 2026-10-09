@@ -104,6 +104,7 @@ function projectIpoCalendarHeadless(payload: IpoCalendarPayload, args: HeadlessP
 
 export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
+  freshness: { source: "Exchange listings", status: "not-a-feed", basis: "calendar" },
   argument: {
     kind: "free-text",
     placeholder: "company or ticker",

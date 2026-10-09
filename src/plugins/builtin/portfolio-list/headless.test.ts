@@ -77,7 +77,7 @@ test("a broker portfolio's positions come largest first with weights and totals 
 
 test("a watchlist reads by name, and an unknown id lists the ones that exist", async () => {
   const watchlist = await collectionHoldingsHeadless.load(args("tech"), context());
-  expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5 }]);
+  expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5, stale: false, updatedAt: expect.any(Number) }]);
   expect(watchlist.metadata).toMatchObject({ collection: { kind: "watchlist", id: "tech" }, tickers: 1 });
 
   await expect(collectionHoldingsHeadless.load(args("default"), context()))

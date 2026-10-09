@@ -54,6 +54,7 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
 
 export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { source: "Company filings, calls and news", status: "not-a-feed", basis: "disclosed relationships" },
   argument: { kind: "ticker", description: "Company ticker, exchange-qualified ticker, or id:<entity-id>.", placeholder: "ticker" },
   discovery: { aliases: ["SPLC", "SUPPLY"], dataRequirements: ["Gloom Cloud relationship evidence (Pro with free preview)"],
     limitations: ["Filings, company announcements, earnings calls and news where evidence is available globally", "Japan filings await an API key and Taiwan report ingestion is disabled", "English glosses are machine translations, separate from original evidence", "Absence is not proof of no relationship",

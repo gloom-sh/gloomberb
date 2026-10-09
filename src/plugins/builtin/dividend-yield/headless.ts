@@ -138,6 +138,7 @@ export function createDividendYieldHeadless(
 ): HeadlessPaneDefinition<"bundle"> {
   return {
     shape: "bundle",
+    freshness: { status: "not-a-feed", basis: "distribution history" },
     argument: {
       kind: "ticker",
       placeholder: "ticker",

@@ -1,4 +1,5 @@
-import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import type { HeadlessPaneDefinition, HeadlessPaneFreshness } from "../../../types/plugin";
+import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadFuturesCurveAsOf } from "./client";
 import { curveAsOfDate, normalizeCurveRoot } from "./model";
 
@@ -21,7 +22,14 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     if (!root) throw new Error(`Unsupported futures root: ${input}`);
     const date = curveAsOfDate(args.options.date);
     const data = date ? await loadFuturesCurveAsOf(root, date, ctx.apiClient) : await fetchFuturesCurve(root, ctx.apiClient);
+    // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
+    const quoted = data.contracts.map((row) => row.asOf);
+    const freshness: HeadlessPaneFreshness = date
+      ? { status: "not-a-feed", basis: "settlement archive", asOf: date }
+      : { ...(data.source === "cboe" ? { source: "Cboe", status: "not-a-feed", basis: "daily settlement", cadence: "daily" } as const : {}),
+        asOf: newestReportTime(quoted), oldest: oldestReportTime(quoted) };
     return {
+      freshness,
       sections: [
         { title: "Contracts", rows: data.contracts.map((row) => ({ ...row, percentile: rank(row.percentile) })) },
         { title: "Front spread", rows: [{ ...data.slope, annualizedRollYield: data.slope.annualizedRollYield == null ? null : Number(data.slope.annualizedRollYield.toFixed(2)),

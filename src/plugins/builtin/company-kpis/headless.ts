@@ -4,6 +4,7 @@ import { companyQuery, fetchCompanyData, type CompanyMode } from "./client";
 export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bundle"> {
   return {
     shape: "bundle",
+    freshness: { source: "Company filings and calls", status: "not-a-feed", basis: "reported data" },
     argument: { kind: "ticker", description: "Listed company ticker, including exchange-qualified global symbols.", placeholder: "ticker" },
     discovery: { aliases: [mode === "kpis" ? "KPIS" : "GUIDE"], dataRequirements: ["Gloom Cloud company disclosures"],
       limitations: ["Pro dataset with a fixed latest preview on Free", "Coverage follows available company disclosures; missing data is not zero", "Compare matching definition, period, currency, basis and scope", "Fiscal labels without explicit calendar dates are retained without inferred dates"] },

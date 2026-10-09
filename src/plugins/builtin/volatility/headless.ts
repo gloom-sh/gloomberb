@@ -1,6 +1,7 @@
 import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createVolatilityDependencies, loadVolatilityData, type VolatilityLoadResult } from "./client";
 import type { VolatilityData } from "./model";
+import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 
 function formattedValue(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--"; }
 function formattedPercentile(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(0) : "--"; }
@@ -53,7 +54,11 @@ export function createVolatilityHeadless(dependencies: VolatilityHeadlessDepende
     async load(args, context) {
       const result = await dependencies.load(args, context);
       context.signal.throwIfAborted();
-      return { ...projectVolatilityHeadless(result.data), errors: result.errors,
+      // Daily index closes, dated by the newest index on the board; a sparse index shows as the oldest.
+      const boardDates = result.data.board.filter((row) => row.value != null).map((row) => row.date);
+      const freshness = { source: "Cboe and FRED", status: "not-a-feed" as const, basis: "daily index closes", cadence: "daily" as const,
+        asOf: newestReportTime([...boardDates, result.data.curve.date]), oldest: oldestReportTime(boardDates) };
+      return { ...projectVolatilityHeadless(result.data), freshness, errors: result.errors,
         complete: result.phase === "ready" && !result.stale && result.data.warnings.length === 0,
         unavailableSymbols: result.data.board.filter((row) => row.value == null).map((row) => row.symbol),
         metadata: { stale: result.stale, phase: result.phase, loaded: result.loaded, total: result.total,

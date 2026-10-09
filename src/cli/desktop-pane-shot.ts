@@ -93,6 +93,8 @@ interface DesktopPaneShotRenderedCell {
   columnId?: string;
   columnLabel: string;
   text: string;
+  /** The ISO instant behind a cell whose text shortens a time ("Wed 11:27"), from the table cell's export value. */
+  instant?: string;
 }
 
 export interface DesktopPaneShotRenderedRow {
@@ -105,6 +107,8 @@ export interface DesktopPaneShotRenderedRow {
 
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
+  /** Text of the pane footers, where a pane says whether its data is live, delayed or stale. */
+  footerText?: string;
   visibleKeyValues?: Array<{ label: string; text: string }>;
   rows: DesktopPaneShotRenderedRow[];
   truncated: boolean;
@@ -569,12 +573,14 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
               ) {
                 truncationReasons.add("one or more cells are visibly clipped");
               }
+              const instant = cell.getAttribute("data-gloom-cell-instant");
               return {
                 ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
                 columnLabel: typeof semanticColumn.label === "string"
                   ? semanticColumn.label
                   : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
                 text,
+                ...(instant ? { instant } : {}),
               };
             }).filter((cell) => cell.text.length > 0);
             if (cells.length === 0) return;
@@ -605,6 +611,10 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
       }
       return {
         visibleText: root.innerText || root.textContent || "",
+        footerText: [...root.querySelectorAll('[data-gloom-role="pane-footer"]')]
+          .map((footer) => normalize(footer.innerText || footer.textContent))
+          .filter(Boolean)
+          .join(" "),
         visibleKeyValues: (${readVisibleKeyValues.toString()})(root),
         error: window.__GLOOM_CLI_SHOT_ERROR__ || "",
         loadingStateDetected: root.querySelector('[data-gloom-status="loading"]') !== null,
@@ -623,6 +633,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
     result?: {
       value?: {
         visibleText?: string;
+        footerText?: string;
         visibleKeyValues?: Array<{ label: string; text: string }>;
         error?: string;
         loadingStateDetected?: boolean;
@@ -651,6 +662,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
   }
   return {
     visibleText,
+    footerText: typeof value?.footerText === "string" ? value.footerText : "",
     visibleKeyValues: Array.isArray(value?.visibleKeyValues) ? value.visibleKeyValues : [],
     rows,
     truncated: value?.truncated === true || textShowsEllipsis,

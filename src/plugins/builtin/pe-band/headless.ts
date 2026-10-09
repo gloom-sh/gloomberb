@@ -3,6 +3,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadPeBandInputs } from "./client";
 import { formatPerShare, projectPeBand } from "./model";
+import { DAILY_CLOSES } from "../shared/report-freshness";
 
 const multiple = (value: unknown) => typeof value === "number" ? `${value.toFixed(1)}x` : "--";
 const amount = (value: unknown) => typeof value === "number" ? formatPerShare(value) : "--";
@@ -10,6 +11,7 @@ const percent = (value: unknown) => typeof value === "number" ? `${(value * 100)
 
 export const peBandHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker" },
+  freshness: { ...DAILY_CLOSES, basis: "daily closes and reported EPS" },
   describe: (args) => `PEB ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: ["Trailing EPS in the listing's own currency; weekly closes."] },
   options: [

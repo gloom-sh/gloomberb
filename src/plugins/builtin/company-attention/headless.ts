@@ -7,6 +7,9 @@ import { appsModel, hiringModel, type AttentionKind } from "./model";
 export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"bundle"> {
   return {
     shape: "bundle",
+    freshness: kind === "hiring"
+      ? { source: "Company careers sites", status: "not-a-feed", basis: "observed job postings" }
+      : { source: "App Store and Google Play charts", status: "not-a-feed", basis: "observed chart ranks" },
     argument: { kind: "ticker", optional: true, placeholder: "ticker", description: "Company ticker, including exchange for non-US listings. Omit for the global board." },
     options: [
       { key: "limit", type: "string", defaultValue: "100", description: "Rows per REST page, up to 200 for hiring and 500 for apps." },

@@ -1,9 +1,11 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCreditDocuments, fetchCreditInstrument, fetchCreditScreen } from "./client";
 import { CREDIT_TABS } from "./model";
+import { SEC_FILINGS } from "../shared/report-freshness";
 
 export const creditHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: SEC_FILINGS,
   argument: { kind: "ticker", description: "Issuer ticker, including exchange-qualified global symbols.", placeholder: "ticker" },
   discovery: { aliases: ["CRDOC"], dataRequirements: ["Gloom Cloud credit-document evidence"], limitations: [
     "Pro dataset; free accounts see a limited preview", "SEC credit documents with global issuer identifiers; other jurisdictions depend on connected sources",

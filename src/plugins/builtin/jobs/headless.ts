@@ -151,6 +151,7 @@ function companyBundle(symbol: string, state: JobsCompanyState, roleLimit: numbe
  */
 export const jobsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { source: "Company careers sites", status: "not-a-feed", basis: "observed job postings" },
   argument: {
     kind: "ticker",
     placeholder: "ticker",

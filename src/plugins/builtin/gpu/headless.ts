@@ -2,6 +2,7 @@ import type { GpuObservation } from "../../../api-client/gpu";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchGpuBoard, fetchGpuEvents, fetchGpuHistory, loadGpuEquityHistory } from "./client";
 import { GPU_TABS, gpuArgument, gpuBasisLabel, gpuChange, gpuEquityRows, gpuEventDate, gpuProvenanceLabel, gpuLabel, gpuRows, gpuSource, gpuTab } from "./model";
+import { quoteFreshnessFields } from "../shared/report-freshness";
 
 const observationRow = (row: GpuObservation) => ({ gpu: gpuLabel(row), source: gpuSource(row), basis: gpuBasisLabel(row.basis),
   price: row.pricePerGpuHr, availability: row.availability, observedAt: row.observedAt, effectiveAt: row.effectiveAt, provenance: row.provenance ?? "live", provenanceLabel: gpuProvenanceLabel(row, true),
@@ -26,9 +27,11 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
     const tab = gpuTab(args.options.tab);
     const board = await fetchGpuBoard(ctx.apiClient);
     const metadata = { asOf: board.asOf, stale: board.stale, complete: board.status === "available" && !board.access?.locked, unit: "USD/GPU-hour", access: board.access };
+    // Prices observed on providers' pages, not a feed; each board row says whether its source has gone quiet.
+    const freshness = { source: "GPU cloud providers", status: "not-a-feed" as const, basis: "observed prices" };
     if (tab === "history") {
       const history = await fetchGpuHistory({ ...(model ? { gpuModel: model } : {}), limit: 10_000 }, ctx.apiClient);
-      return { sections: [{ title: "Dated observations", columns: [...columns.filter((column) => !column.key.startsWith("change")), { key: "provenanceLabel", header: "Record" }], rows: history.points.map(observationRow) }], complete: !history.access?.locked, metadata: { ...metadata, access: history.access ?? board.access }, errors: board.gaps };
+      return { sections: [{ title: "Dated observations", columns: [...columns.filter((column) => !column.key.startsWith("change")), { key: "provenanceLabel", header: "Record" }], rows: history.points.map(observationRow) }], freshness: { ...freshness, oldest: null }, complete: !history.access?.locked, metadata: { ...metadata, access: history.access ?? board.access }, errors: board.gaps };
     }
     if (tab === "changes") {
       const payload = await fetchGpuEvents(model || undefined, ctx.apiClient);
@@ -41,7 +44,7 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
         oldPrice: event.oldPrice, newPrice: event.newPrice, changePct: event.changePct, kind: event.kind,
         oldMembers: event.oldMembers, newMembers: event.newMembers, provenance: event.provenance ?? "live",
         provenanceLabel: gpuProvenanceLabel(event, true), evidenceUrl: event.evidenceUrl ?? null, sourceUrl: event.sourceUrl ?? null,
-        oldAvailability: event.oldAvailability ?? null, newAvailability: event.newAvailability ?? null })) }], complete: !payload.access?.locked, metadata: { ...metadata, access: payload.access ?? board.access }, errors: board.gaps };
+        oldAvailability: event.oldAvailability ?? null, newAvailability: event.newAvailability ?? null })) }], freshness: { ...freshness, oldest: null }, complete: !payload.access?.locked, metadata: { ...metadata, access: payload.access ?? board.access }, errors: board.gaps };
     }
     if (tab === "equities") {
       const related = gpuEquityRows(board.rows, model || "H100");
@@ -51,6 +54,7 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
         const history = histories.find((entry) => entry.symbol === row.symbol);
         return { symbol: row.symbol, role: row.role, price: quote?.price ?? null, change1d: quote?.changePercent ?? null,
           change5d: history?.value ?? null, fiveDayAsOf: history?.asOf ?? null, quoteAsOf: quote?.lastUpdated ? new Date(quote.lastUpdated).toISOString() : null,
+          ...quoteFreshnessFields(quote),
           gpu: row.reference ? gpuLabel(row.reference) : row.gpuModel, gpuSource: row.reference ? gpuSource(row.reference) : null, gpuChange7d: row.reference?.change7d ?? null };
       }));
       return { sections: [{ title: "Related equities", columns: [
@@ -62,6 +66,6 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const rows = gpuRows(board.rows, model).map((row) => ({ ...observationRow(row), change1d: row.change1d, change7d: row.change7d,
       change30d: row.change30d, stale: row.stale, sample: row.stats ?? null }));
-    return { sections: [{ title: "GPU rental prices", columns, rows }], complete: !board.access?.locked, metadata, errors: board.gaps };
+    return { sections: [{ title: "GPU rental prices", columns, rows }], freshness, complete: !board.access?.locked, metadata, errors: board.gaps };
   },
 };

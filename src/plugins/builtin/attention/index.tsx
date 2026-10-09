@@ -7,7 +7,7 @@ import { AttentionPane } from "./pane";
 export const attentionModule: PluginModule = {
   panes: [{ id: "attention", name: "Research Attention", icon: "A", component: AttentionPane, defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 126, height: 32 }, tableExport: true, headless: attentionHeadless },
-    { id: "attention-trending", name: "Gloom Trending", icon: "A", component: TrendingPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 58, height: 12 } }],
+    { id: "attention-trending", reportFreshness: { status: "not-a-feed", basis: "hourly publication" }, name: "Gloom Trending", icon: "A", component: TrendingPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 58, height: 12 } }],
   paneTemplates: [{ id: "attention-pane", paneId: "attention", label: "Research Attention",
     description: "Pro research attention: rankings, abnormal activity, sectors, countries and privacy-qualified hourly history.",
     keywords: ["attention", "trending", "research", "activity"], shortcut: { prefix: "ATTN", argKind: "text", argPlaceholder: "TICKER", argOptional: true },

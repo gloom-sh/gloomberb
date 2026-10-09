@@ -101,6 +101,7 @@ function compactRiskRows(model: PortfolioRiskModel, view: RiskView): { rows: Ris
 
 export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { source: "Local portfolio and Gloom Cloud", status: "not-a-feed", basis: "risk model on daily closes" },
   argument: {
     kind: "free-text",
     optional: true,

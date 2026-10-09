@@ -52,6 +52,8 @@ export const cpiHeadless: HeadlessPaneDefinition<"bundle"> = {
     const headline = data.rows.find((row) => row.code === "SA0") ?? null;
     const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
     const metadata = { ...data, complete: data.status === "available" };
+    const freshness = { source: "BLS", status: "not-a-feed" as const, basis: "monthly release",
+      asOf: data.release.releasedAt, nextExpectedAt: data.release.nextReleaseAt };
     if (argument) {
       const option = cpiRowOption(argument);
       const row = option ? data.rows.find((entry) => entry.id === option.value) : null;
@@ -66,12 +68,14 @@ export const cpiHeadless: HeadlessPaneDefinition<"bundle"> = {
             rows: historyRows(row, headline) },
         ],
         errors: data.gaps,
+        freshness,
         metadata: { ...metadata, rows: [row] },
       };
     }
     return {
       sections: [{ title: header, columns: SUMMARY_COLUMNS, rows: cpiRows(data).map((row) => reportRow(row)) }],
       errors: data.gaps,
+      freshness,
       metadata,
     };
   },

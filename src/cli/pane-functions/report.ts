@@ -3,6 +3,7 @@ import type { NormalizedPaneFunctionOptions } from "./capabilities";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildHeadlessFunctionReport } from "./headless";
 import { appendDomReportFooter, buildDomFunctionReport } from "./dom";
+import type { ReportFreshness } from "./freshness";
 
 export type PaneFunctionReportSource = "headless" | "dom";
 
@@ -20,6 +21,8 @@ interface PaneFunctionReportData {
   empty: boolean;
   complete: boolean;
   unavailableSymbols: string[];
+  /** Source, as-of in UTC and live/delayed/stale/not-a-feed status; the last line of the text report. */
+  freshness: ReportFreshness;
   [key: string]: unknown;
 }
 
@@ -56,6 +59,7 @@ export async function buildFunctionReport(
       report.text,
       elapsedMs,
       report.data.truncated === true,
+      report.data.freshness,
     );
   }
   return report;

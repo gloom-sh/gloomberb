@@ -14,6 +14,7 @@ import {
 
 export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { status: "not-a-feed", basis: "screener snapshot" },
   argument: { kind: "none" },
   options: [
     {
@@ -49,6 +50,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {
+      freshness: { asOf: data.snapshot?.sourceNewestAt ?? null },
       complete: !data.nextCursor && data.warnings.length === 0,
       errors: data.warnings,
       sections: [

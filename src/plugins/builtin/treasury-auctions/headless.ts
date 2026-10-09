@@ -40,6 +40,7 @@ function createTreasuryAuctionsHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: { source: "US Treasury", status: "not-a-feed", basis: "auction results", observedKey: "auctionDate", oldest: null },
     argument: {
       kind: "free-text",
       placeholder: "search",

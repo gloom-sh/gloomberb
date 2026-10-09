@@ -396,6 +396,8 @@ Human-readable output is the default: tables fit the terminal width, and a singl
 
 Headless chart text includes a Unit column when a series supplies one; values keep that unit's scale (for example, `2.7 %` versus `270 bp`). DVD text labels cash growth, CAGR and earnings payout as percentages, while their structured `value` fields remain fractional ratios (`0.03` means 3%). `fn --csv` preserves the report fields and encodes nested sections or series as JSON cells, retaining raw numeric values alongside any separate display strings; it does not flatten or rescale those observations.
 
+CLI text prints every time in UTC with the zone named (`2026-10-09 00:08 UTC`); a date alone stays a date. JSON keeps the raw ISO or epoch values.
+
 In short DVD panes, the summary scrolls separately so cash history stays visible. Page Up/Down scroll the summary; arrows or j/k navigate history. The mouse wheel scrolls the region under the pointer.
 
 | Command | Use |
@@ -437,6 +439,19 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 `gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
 
 `gloomberb config set telemetry.crashReports false` turns off automatic crash reports, and `gloomberb config set telemetry.usage false` turns off anonymous usage counts and the command bar search log; see [Crash reports and usage counts](../README.md#crash-reports-and-usage-counts) for what each contains.
+
+### How current a report is
+
+Every `gloomberb fn` text report ends with one line naming its source, its as-of time in UTC and its status, such as `Source: Gloom Cloud | As of 2026-10-09 00:08 UTC | Delayed 10 min`; `--json` carries the same facts as `data.freshness` (`source`, `asOf`, `status`, `delayMinutes`, `retrievedAt`). The as-of is the newest observation in the data, with the oldest named when it is more than a day older; when nothing in the data is dated the line says when it was retrieved instead. The status is one of four:
+
+| Status | Meaning |
+|---|---|
+| Live (`live`) | A real-time feed: the data itself says so, such as a real-time quote or a streaming venue |
+| Delayed (`delayed`) | A feed that is not real-time, held back on purpose (with the minutes when the source states them) or a snapshot refreshed on a schedule |
+| Stale (`stale`) | The newest observation is older than its kind allows: a quote from an earlier session, a daily series more than a session behind, a release that missed its schedule. The line says how old, or how many rows are stale when only some are |
+| Not a live feed (`not-a-feed`) | Data that is not a feed: filings, fundamentals, calendars, published statistics, calculators, your own portfolio. Old data of this kind is not stale unless it missed a scheduled release |
+
+A rendered-view report (a pane without a structured report) names the pane's source; its status is the one the pane declares for its data or its own footer states, and otherwise reads "Status not reported".
 
 ## Plugins pane
 

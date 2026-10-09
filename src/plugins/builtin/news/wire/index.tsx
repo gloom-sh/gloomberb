@@ -25,6 +25,7 @@ import { NEWS_INDUSTRY_CODES, NEWS_QUERY_PRESETS, parseNewsIndustryCode } from "
 import { createRssNewsCapability } from "./rss/source";
 import { rssCliCommand } from "./rss/cli";
 import { newsFeedHeadless } from "../headless";
+import type { PaneDef } from "../../../../types/plugin";
 
 const TopPane = createNewsPresetPane({
   paneKey: "top:curated",
@@ -61,8 +62,11 @@ export const BreakingPane = createNewsPresetPane({
 
 let disposeBreakingNewsNotifications: (() => void) | null = null;
 
+// A rendered news pane is a list of published stories, dated by its newest.
+const NEWS_REPORT_FRESHNESS: PaneDef["reportFreshness"] = { status: "not-a-feed", basis: "published stories" };
+
 const newsWirePanes: PluginModule["panes"] = [
-    { id: "news-top", name: "Top News", icon: "T", component: TopPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 } },
+    { id: "news-top", reportFreshness: NEWS_REPORT_FRESHNESS, name: "Top News", icon: "T", component: TopPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 } },
     {
       id: "news-feed",
       name: "News Feed",
@@ -75,6 +79,7 @@ const newsWirePanes: PluginModule["panes"] = [
     },
     {
       id: "news-industry",
+      reportFreshness: NEWS_REPORT_FRESHNESS,
       name: TOPIC_NEWS_TITLE,
       icon: "S",
       component: IndustryPane,
@@ -85,6 +90,7 @@ const newsWirePanes: PluginModule["panes"] = [
     },
     {
       id: NEWS_STORY_PANE_ID,
+      reportFreshness: NEWS_REPORT_FRESHNESS,
       name: "Story",
       icon: "A",
       component: NewsStoryPane,
@@ -94,6 +100,7 @@ const newsWirePanes: PluginModule["panes"] = [
     },
     {
       id: "news-breaking",
+      reportFreshness: NEWS_REPORT_FRESHNESS,
       name: "Breaking News",
       icon: "!",
       component: BreakingPane,

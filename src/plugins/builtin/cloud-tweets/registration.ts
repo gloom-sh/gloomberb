@@ -28,6 +28,7 @@ export function registerTwitterFeedFeature(ctx: GloomPluginContext): void {
 
   ctx.registerPane({
     id: TWITTER_FEED_PANE_ID,
+    reportFreshness: { source: "X posts", status: "not-a-feed", basis: "posts" },
     name: "X Feed",
     icon: "X",
     component: TwitterFeedPane,

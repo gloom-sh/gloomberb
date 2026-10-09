@@ -8,6 +8,7 @@ import { parseRule } from "./rules";
 
 export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { status: "not-a-feed", basis: "backtest on daily closes", cadence: "daily", observedKey: "date", oldest: null },
   argument: { kind: "ticker", description: "Instrument to test" },
   describe: (args) => `BT ${args.symbols[0] ?? ""}`,
   discovery: {

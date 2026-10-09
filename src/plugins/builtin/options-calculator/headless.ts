@@ -39,6 +39,7 @@ function report(draft: OptionCalcDraft, valuation: OptionValuation | null,
     ],
     complete: valuation !== null && errors.length === 0,
     errors, unavailableSymbols: surface?.error && draft.symbol ? [draft.symbol] : [],
+    ...(surface ? { freshness: { source: "Your inputs and Gloom Cloud volatility" } } : {}),
     metadata: { model, inputs: draft, valuation, impliedVolatility: implied, surface, effectiveTreeSteps,
       warnings: surface?.warnings ?? [], method: model === "american" ? "CRR American tree with discrete cash dividends" : "European Black-Scholes",
       greekUnits: { delta: "underlying units per option unit", gamma: "delta per underlying price unit", theta: "currency per calendar day",
@@ -49,6 +50,7 @@ function report(draft: OptionCalcDraft, valuation: OptionValuation | null,
 
 export const optionsCalculatorHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "none" }, describe: "OVME option valuation",
+  freshness: { source: "Your inputs", status: "not-a-feed", basis: "calculator" },
   discovery: { limitations: ["Discrete dividends use days from valuation and cash per underlying unit; model values exclude fees and assignment costs."] },
   options: [
     { key: "model", type: "enum", values: [{ value: "european" }, { value: "american" }], defaultValue: "european", description: "European closed form or American CRR tree" },

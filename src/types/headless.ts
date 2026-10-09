@@ -97,6 +97,63 @@ export interface HeadlessPaneEntry {
   formatted?: string;
 }
 
+/**
+ * How current a report's data is (docs/usage.md#how-current-a-report-is):
+ * - `live`: a real-time feed, such as a streaming venue or a real-time quote.
+ * - `delayed`: a feed held back on purpose, by `delayMinutes` when known.
+ * - `stale`: a feed or scheduled release whose newest observation is older
+ *   than that kind of data allows.
+ * - `not-a-feed`: data that is not a feed at all (filings, fundamentals,
+ *   calendars, statistics releases, calculators, local portfolio data). It
+ *   never reads stale just because it is old.
+ */
+export type HeadlessFreshnessStatus = "live" | "delayed" | "stale" | "not-a-feed";
+
+/**
+ * What a report can cite about its data. Every field is optional: the report
+ * fills what is missing from the result itself (quote `dataSource`,
+ * `delayMinutes`, `stale`, `asOf`/`observedAt`/`lastUpdated` fields, the last
+ * point of each series), so a pane declares only what that would get wrong.
+ */
+export interface HeadlessPaneFreshness {
+  /**
+   * Who a reader would cite: the venue, exchange or agency for primary data
+   * ("SEC EDGAR", "Hyperliquid"), "Gloom Cloud" for aggregated market data,
+   * "Local data" or "Your inputs". Never a data vendor or an internal provider id.
+   */
+  source?: string;
+  /** Newest observation in the data. A `YYYY-MM-DD` string reads as a date without a time. */
+  asOf?: string | number | Date | null;
+  /** Oldest observation, mentioned when it is far older than `asOf`; `null` when the rows are a history. */
+  oldest?: string | number | Date | null;
+  /**
+   * The row field that says when each row was observed, when it is not one of
+   * the standard names (`asOf`, `observedAt`, `lastUpdated`...). The report is
+   * then dated by that field alone, not by metadata stamps.
+   */
+  observedKey?: string;
+  status?: HeadlessFreshnessStatus;
+  /** How far a delayed feed is held back, in minutes. */
+  delayMinutes?: number;
+  /** What not-a-feed data is, in a few words: "filed data", "monthly release", "your inputs". */
+  basis?: string;
+  /** The newest observation is stale once it is older than this many minutes. */
+  maxAgeMinutes?: number;
+  /**
+   * The rows' and metadata's own `stale` flags mean something other than "this
+   * value is out of date" (a historical marker, a cache state), so the report
+   * judges staleness from the schedule alone.
+   */
+  ignoreStaleFlags?: boolean;
+  /**
+   * `daily`: one observation per US trading day, stale once more than one
+   * completed session has passed after the newest (a day's lag is allowed).
+   */
+  cadence?: "daily";
+  /** The newest observation is stale once this time (the next scheduled release) has passed by a day. */
+  nextExpectedAt?: string | number | Date | null;
+}
+
 interface HeadlessPaneResultBase {
   /** False when usable output does not fully cover the requested inputs/depth. */
   complete?: boolean;
@@ -106,6 +163,8 @@ interface HeadlessPaneResultBase {
   unavailableSymbols?: string[];
   errors?: string[];
   metadata?: Record<string, unknown>;
+  /** What this load knows about its data's source and age; overrides the definition's `freshness`. */
+  freshness?: HeadlessPaneFreshness;
 }
 
 export interface HeadlessRowsResult extends HeadlessPaneResultBase {
@@ -185,6 +244,8 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
   description?: string;
   argument: HeadlessPaneArgumentDef;
   options: HeadlessPaneOptionDef[];
+  /** What is true of every load: its source, and whether it is a feed. */
+  freshness?: HeadlessPaneFreshness;
   columns?: HeadlessPaneColumn[];
   describe?: string | ((args: HeadlessPaneLoadArgs) => string);
   load(

@@ -39,6 +39,7 @@ export const portfolioListModule: PluginModule = {
   panes: [
     {
       id: "portfolio-list",
+      reportFreshness: { source: "Local portfolio and Gloom Cloud" },
       name: "Portfolio",
       icon: "P",
       component: PortfolioListPane,

@@ -25,10 +25,13 @@ import {
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
+import { barHistoryFreshness, barResolutionFromDates, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
 
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["financial-analysis-pane"],
   shape: "rows",
+  // Dated by the latest reported period; earlier periods are the statement's history.
+  freshness: { ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null },
   description: "Annual or quarterly financial statement rows for one ticker: the income statement, balance sheet, cash flow, or a ratio table.",
   describe: ({ symbols, options }) => `Financial Statements | ${symbols[0]} | ${options.period} | ${options.statement}`,
   async load({ symbols, options }, ctx) {
@@ -206,6 +209,7 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
           ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
           change: display.change, changePercent: display.changePercent,
           marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
+          ...quoteFreshnessFields(quote),
         };
       }),
       unavailableSymbols: loaded.unavailableSymbols, errors: loaded.errors,
@@ -239,6 +243,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       };
     }).sort((left, right) => left.date.localeCompare(right.date));
     const notice = priceHistoryIntegrityNotice(rows.filter((row) => row.integrity).length);
-    return { rows, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
+    // A bar history: dated by its last bar, stale once bars of its size stop arriving.
+    const freshness = { ...barHistoryFreshness(barResolutionFromDates(rows.map((row) => row.date))), observedKey: "date", oldest: null };
+    return { rows, freshness, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
   },
 };

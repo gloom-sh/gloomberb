@@ -38,6 +38,7 @@ function createCreditConditionsHeadless(
     options: [],
     columns: COLUMNS,
     describe: "Credit Spreads",
+    freshness: { source: "FRED", status: "not-a-feed", basis: "daily index levels", cadence: "daily", observedKey: "date" },
     async load(args, ctx) {
       const result = await dependencies.load(
         args,

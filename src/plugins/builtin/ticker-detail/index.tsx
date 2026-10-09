@@ -85,6 +85,7 @@ export const tickerDetailModule: PluginModule = {
     },
     {
       id: "returns",
+      reportFreshness: { status: "not-a-feed", basis: "price history" },
       name: "Returns",
       icon: "R",
       component: ReturnsPane,

@@ -1,10 +1,12 @@
 import type { DesktopPaneShotRenderedRow } from "../desktop-pane-shot";
-import { renderSection, renderTable } from "../../utils/cli-output";
+import { cliStyles, renderSection, renderTable } from "../../utils/cli-output";
+import { formatUtcTime } from "../../utils/utc-time";
 import type { MarketContext } from "../types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { collectShotSymbols } from "./data";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
+import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
@@ -30,6 +32,14 @@ function domCellKeys(row: DesktopPaneShotRenderedRow): string[] {
     seen.set(base, occurrence + 1);
     return occurrence === 0 ? base : `${base}#${occurrence}`;
   });
+}
+
+/**
+ * A pane may shorten a time to fit ("Wed 11:27", "Oct 2"); the report prints
+ * the instant behind it with its date and zone instead.
+ */
+function cellText(cell: DesktopPaneShotRenderedRow["cells"][number]): string {
+  return cell.instant ? formatUtcTime(cell.instant) || cell.text : cell.text;
 }
 
 function renderDomTables(rows: DesktopPaneShotRenderedRow[]): string[] {
@@ -60,7 +70,7 @@ function renderDomTables(rows: DesktopPaneShotRenderedRow[]): string[] {
       columns,
       tableRows.map((row) => {
         const keys = domCellKeys(row);
-        const textByKey = new Map(row.cells.map((cell, cellIndex) => [keys[cellIndex]!, cell.text]));
+        const textByKey = new Map(row.cells.map((cell, cellIndex) => [keys[cellIndex]!, cellText(cell)]));
         return columns.map((column) => textByKey.get(column.key) ?? "");
       }),
     );
@@ -129,6 +139,10 @@ export function buildDomPaneReportFromRender(
     textLines.push(failureReason ?? "No rendered values were available.");
   }
   if (failureReason && rows.length > 0) textLines.push("", failureReason);
+  const freshness = deriveRenderedFreshness(resolved.pane.reportFreshness, {
+    footerText: result.render.footerText ?? "",
+    cellTimes: rows.flatMap((row) => row.cells.flatMap((cell) => cell.instant ?? [])),
+  });
 
   return {
     data: {
@@ -147,6 +161,7 @@ export function buildDomPaneReportFromRender(
       truncationReasons,
       limitation: DOM_LIMITATION,
       ...(failureReason ? { reason: failureReason } : {}),
+      freshness,
     },
     text: textLines.join("\n").trimEnd(),
   };
@@ -156,12 +171,14 @@ export function appendDomReportFooter(
   text: string,
   elapsedMs: number,
   truncated: boolean,
+  freshness: ReportFreshness,
 ): string {
   const clipping = truncated ? "The rendered view is clipped." : "The rendered view may be clipped.";
   return [
     text,
     "",
     `Rendered view: values come from the visible pane. ${clipping} Render time: ${elapsedMs} ms.`,
+    cliStyles.muted(formatFreshnessLine(freshness)),
   ].join("\n");
 }
 
@@ -193,6 +210,7 @@ function failedDomReport(
       truncationReasons: [],
       limitation: DOM_LIMITATION,
       reason,
+      freshness: deriveRenderedFreshness(resolved.pane.reportFreshness, { footerText: "", cellTimes: [] }),
     },
     text: [resolved.label, "", reason].join("\n"),
   };

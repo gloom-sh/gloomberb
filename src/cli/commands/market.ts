@@ -36,6 +36,7 @@ import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "
 import { renderFundamentalsReport } from "./ticker";
 import { historyPriceDecimals, historyRows } from "../history-rows";
 import { CRYPTO_BOARD_HINT, isCryptoPairSymbol, quoteNotes } from "./crypto-hints";
+import { formatUtcTime } from "../../utils/utc-time";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
 const EXCHANGE_OPTION = {
@@ -87,7 +88,8 @@ function quoteColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS,
     { key: "currency", header: "Cur" },
-    { key: "source", header: "Source" },
+    // Whether the price is real-time or delayed: a feed state, not where it came from.
+    { key: "source", header: "Feed", format: (value: unknown) => value === "live" || value === "delayed" ? value : "" },
     { key: "updatedAt", header: "Updated" },
   ];
 }
@@ -378,7 +380,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     ctx.printResult({ data, metadata: { symbol, range, exchange, resolution } }, {
       columns: [
         intraday
-          ? { key: "date", header: "Time (UTC)", format: (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "" }
+          ? { key: "date", header: "Time", format: (value) => typeof value === "string" ? formatUtcTime(value) : "" }
           : { key: "date", header: "Date" },
         { key: "open", header: "Open", align: "right", format: price },
         { key: "high", header: "High", align: "right", format: price },
@@ -452,11 +454,11 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ctx.printResult({ data: articles, metadata: { ticker: ticker ?? null, feed: feed ?? null } }, {
       rows: newsRows,
       columns: [
-        // UTC, as the news panes print it, rather than the host zone unlabeled.
+        // UTC with the zone named, as every CLI time prints, rather than the host zone unlabeled.
         {
           key: "publishedAt",
-          header: "Published (UTC)",
-          format: (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "",
+          header: "Published",
+          format: (value) => typeof value === "string" ? formatUtcTime(value) : "",
         },
         { key: "source", header: "Source", maxWidth: 20 },
         { key: "title", header: "Title" },
@@ -632,9 +634,10 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         ...(asOf || stale ? [{
           key: "asOf",
           header: "As Of",
-          format: (value: unknown, row: { stale: boolean }) => (
-            row.stale ? cliStyles.warning(`${value ?? ""} stale`.trim()) : String(value ?? "")
-          ),
+          format: (value: unknown, row: { stale: boolean }) => {
+            const time = typeof value === "string" ? formatUtcTime(value) : "";
+            return row.stale ? cliStyles.warning(`${time} stale`.trim()) : time;
+          },
         }] : []),
       ],
     });

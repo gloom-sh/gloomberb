@@ -52,6 +52,18 @@ const defaultDependencies: Required<YieldCurveHeadlessDependencies> = {
 
 const bp = (value: number | null) => value == null ? null : Math.round(value * 100);
 
+/** The official publisher of each curve, as docs/research-data.md lists them. */
+const CURVE_PUBLISHERS: Record<CurveId, string> = {
+  us: "US Treasury",
+  "us-real": "US Treasury",
+  "us-breakeven": "US Treasury",
+  "eu-aaa": "ECB",
+  de: "Bundesbank",
+  gb: "Bank of England",
+  jp: "Japan Ministry of Finance",
+  ca: "Bank of Canada",
+};
+
 export function createYieldCurveHeadless(
   dependencies: YieldCurveHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
@@ -80,6 +92,7 @@ export function createYieldCurveHeadless(
       if (args.options.tab === "world") {
         const rows = await loadWorld(context);
         return {
+          freshness: { source: "Government bond publishers", status: "not-a-feed", basis: "daily curves" },
           columns: WORLD_COLUMNS,
           rows: rows.map((row) => ({ market: row.market, twoYear: row.twoYear, tenYear: row.tenYear, thirtyYear: row.thirtyYear,
             twosTensBasisPoints: bp(row.twosTens), tenYearChangeBasisPoints: bp(row.tenYearChange), asOf: row.asOf })),
@@ -105,6 +118,9 @@ export function createYieldCurveHeadless(
       const spread = (id: string) => bp(spreads.find((entry) => entry.id === id)?.value ?? null);
       const twosTens = spread("2s10s");
       return {
+        // Each curve is its official publisher's daily close; a past date is a historical curve, not a feed.
+        freshness: { source: CURVE_PUBLISHERS[curve], status: "not-a-feed",
+          ...(requestedDate ? { basis: "historical curve" } : { basis: "daily curve", cadence: "daily" }) },
         ...(comparePoints ? { columns: COMPARE_COLUMNS } : {}),
         rows: rows.map((point) => {
           const compare = compareAt(point.maturity);
