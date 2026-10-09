@@ -6,6 +6,7 @@ import type { CompositeAxisDomain } from "../../../components/chart/composite/ty
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
 import { formatPercentileRank } from "../../../utils/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
+import { parseReportTime } from "../../../utils/utc-time";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
 /**
@@ -189,7 +190,7 @@ const CHANGE_COLUMNS: Readonly<Record<string, CurveLookback>> = { change1w: "1W"
 
 type CurveSortKey = "symbol" | "expiration" | "price" | "change" | "openInterest" | "volume" | "percentile" | "asOf";
 
-const BASIS_COLUMNS: Readonly<Record<string, keyof ContractBasis>> = { vsSpot: "vsSpotPct", annBasis: "annualisedBasisPct" };
+const BASIS_COLUMNS: Readonly<Record<string, "vsSpotPct" | "annualisedBasisPct">> = { vsSpot: "vsSpotPct", annBasis: "annualisedBasisPct" };
 
 export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: SortDirection,
   changes?: CurveContractChanges, basis?: CurveBasisRows): FuturesContract[] {
@@ -283,22 +284,35 @@ export function annualisedBasisPct(futures: number | null | undefined, spot: num
   return (futures / spot - 1) * 365 / days * 100;
 }
 
+/** A contract that printed longer than this before the spot quote is too old to read against it. */
+const CONTRACT_PRINT_MAX_AGE_MS = 60 * 60_000;
+
 export interface ContractBasis {
   vsSpotPct: number | null;
   annualisedBasisPct: number | null;
+  /** Priced and not flagged stale, but its last print is over an hour before spot: a thin month. */
+  thin: boolean;
 }
 
-const NO_BASIS: ContractBasis = { vsSpotPct: null, annualisedBasisPct: null };
+const NO_BASIS: ContractBasis = { vsSpotPct: null, annualisedBasisPct: null, thin: false };
 
 /**
  * One contract's basis. Blank without a usable spot, and for a contract whose
  * own price is missing or stale: an old future against a live spot misleads.
+ * So does a print more than an hour older than the spot (`thin`): the server's
+ * stale flag allows two sessions, which a quote that moves all day outruns. A
+ * date-only `asOf` is UTC midnight of that date, one that cannot be read
+ * counts as old, and a print newer than the spot is never old (the spot of a
+ * delayed feed trails the futures).
  */
-export function contractBasis(row: Pick<FuturesContract, "price" | "stale" | "expiration">, spot: CurveSpot): ContractBasis {
+export function contractBasis(row: Pick<FuturesContract, "price" | "stale" | "expiration" | "asOf">, spot: CurveSpot): ContractBasis {
   if (spot.status !== "ok" || spot.asOf == null || row.stale) return NO_BASIS;
   const vs = vsSpotPct(row.price, spot.price);
   if (vs == null) return NO_BASIS;
-  return { vsSpotPct: vs, annualisedBasisPct: annualisedBasisPct(row.price, spot.price, daysToExpiry(Date.parse(spot.asOf), row.expiration)) };
+  const spotTime = Date.parse(spot.asOf);
+  const printed = parseReportTime(row.asOf)?.time ?? null;
+  if (printed == null || spotTime - printed > CONTRACT_PRINT_MAX_AGE_MS) return { ...NO_BASIS, thin: true };
+  return { vsSpotPct: vs, annualisedBasisPct: annualisedBasisPct(row.price, spot.price, daysToExpiry(spotTime, row.expiration)), thin: false };
 }
 
 /** A basis in percent, signed; one that rounds to zero stays unsigned. */
@@ -322,6 +336,18 @@ export type CurveBasisRows = ReadonlyMap<string, ContractBasis>;
 
 export function curveBasisRows(rows: readonly FuturesContract[], spot: CurveSpot | null): CurveBasisRows {
   return new Map(rows.map((row) => [row.symbol, spot ? contractBasis(row, spot) : NO_BASIS]));
+}
+
+/** The contracts a good spot left blank for their old print. */
+export function thinContractCount(basis: Iterable<ContractBasis>): number {
+  let count = 0;
+  for (const row of basis) if (row.thin) count += 1;
+  return count;
+}
+
+/** The footer warning that thin contracts have no basis: the pane's `!` notice, which keeps the footer row for the quote times. */
+export function thinContractsNotice(count: number): string {
+  return `Basis blank on ${count} thin contract${count === 1 ? "" : "s"} (last print over 1h before spot)`;
 }
 
 /** A past date for the as-of view: empty (or "latest") for the live curve, else YYYY-MM-DD no later than today. */

@@ -16,7 +16,7 @@ import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { getCachedFuturesCurve, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curvePrice, curveRank, curveSpot, curveSpotLabel, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, unsupportedCurveRootMessage, type CurveContractChanges } from "./model";
+import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curvePrice, curveRank, curveSpot, curveSpotLabel, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 const COLUMNS: DataTableColumn[] = [
@@ -119,6 +119,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   [data, colors, horizon, requestedDate]);
   const changes = useMemo<CurveContractChanges>(() => data ? curveContractChanges(data) : new Map(), [data]);
   const basis = useMemo(() => curveBasisRows(basisActive ? data?.contracts ?? [] : [], spot), [basisActive, data, spot]);
+  const thinCount = useMemo(() => thinContractCount(basis.values()), [basis]);
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.columnId, sort.direction, changes, basis), [data, sort, changes, basis]);
   // The curve tab lists the contracts the chart plots; Contracts keeps every one.
   const curveRows = useMemo(() => {
@@ -175,7 +176,9 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   };
   // A past date with no archived curve says why in the body, not behind the warning.
   const emptyPast = !!requestedDate && !!data && !data.contracts.length;
-  usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused, notices: emptyPast ? [] : data?.gaps ?? [] });
+  // Thin contracts join the data warnings: the info row has no room for them beside the quote times.
+  usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused,
+    notices: emptyPast ? [] : [...data?.gaps ?? [], ...thinCount ? [thinContractsNotice(thinCount)] : []] });
   const delay = Math.max(0, ...(data?.contracts.map((row) => row.delayMinutes ?? 0) ?? []));
   usePaneStatusFooter({ registrationId: "futures-curve", loading: resource.loading, error: resource.error,
     hints: [
@@ -201,8 +204,8 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const renderCell = useCallback((row: FuturesContract, column: DataTableColumn) => {
     if (column.id === "symbol") return { text: row.symbol };
     if (column.id === "expiry") return { text: row.expiration, color: colors.textMuted };
-    // Without the AS OF column, a stale quote shows on its price.
-    if (column.id === "price") return { text: curvePrice(row.price, root), color: curveTab && row.stale ? colors.warning : undefined };
+    // Without the AS OF column, a stale quote shows on its price, and so does a print too old for the spot.
+    if (column.id === "price") return { text: curvePrice(row.price, root), color: curveTab && (row.stale || basis.get(row.symbol)?.thin) ? colors.warning : undefined };
     if (column.id === "change") {
       const text = curveChangeText(row.change ?? null, root);
       return { text, color: text.startsWith("+") ? colors.positive : text.startsWith("-") && /[1-9]/.test(text) ? colors.negative : colors.textMuted };

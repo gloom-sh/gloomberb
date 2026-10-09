@@ -3,6 +3,7 @@ import { act, useCallback, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import type { Quote } from "../../../types/financials";
+import { colors } from "../../../theme/colors";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
@@ -149,11 +150,15 @@ describe("crypto basis against spot", () => {
   const SPOT_DAY = Date.parse(`${new Date(NOW - 2 * 60_000).toISOString().slice(0, 10)}T00:00:00Z`);
   const expiry = (days: number) => new Date(SPOT_DAY + days * 86_400_000).toISOString().slice(0, 10);
   const btc = (code: string, days: number, price: number | null, extra: Partial<FuturesContract> = {}): FuturesContract =>
-    ({ ...first, symbol: `${code}.CME`, label: code, expiration: expiry(days), price, ...extra });
+    ({ ...first, symbol: `${code}.CME`, label: code, expiration: expiry(days), price, asOf: new Date(NOW).toISOString(), ...extra });
   const BTC_CONTRACTS = [
     btc("BTCV26", 21, 80_200), btc("BTCX26", 49, 79_000), btc("BTCZ26", 77, 80_400, { stale: true }), btc("BTCF27", 112, 81_000), btc("BTCH27", 140, null),
   ];
-  const btcPayload = (): FuturesCurvePayload => ({ ...payload(BTC_CONTRACTS), root: "BTC", name: "Bitcoin", quoteUnit: "USD",
+  // Priced and not flagged stale, but printed long before the spot quote: thin months.
+  const THIN_CONTRACTS = [
+    btc("BTCJ27", 154, 81_500, { asOf: new Date(NOW - 3 * 3_600_000).toISOString() }), btc("BTCK27", 168, 82_000, { asOf: expiry(-1) }),
+  ];
+  const btcPayload = (contracts = BTC_CONTRACTS): FuturesCurvePayload => ({ ...payload(contracts), root: "BTC", name: "Bitcoin", quoteUnit: "USD",
     slope: { ...payload().slope, frontSymbol: "BTCV26.CME", nextSymbol: "BTCX26.CME" } });
   const spot = (minutesOld: number) => async (symbol: string) =>
     createTestQuote({ symbol, price: 80_000, lastUpdated: NOW - minutesOld * 60_000, marketState: "REGULAR" });
@@ -174,7 +179,47 @@ describe("crypto basis against spot", () => {
     expect(row(lines, "BTCZ26.CME")).toMatch(/80400\.00\s+--\s+--/);
     expect(row(lines, "BTCH27.CME")).toMatch(/--\s+--\s+--/);
     expect(lines.join("\n")).toMatch(/spot BTC-USD 80,000\.00 · (\d{4}-\d{2}-\d{2} )?\d{2}:\d{2} UTC/);
+    expect(lines.join("\n")).not.toContain("Basis blank:");
+  });
+
+  test("a print over an hour before the spot is blank, and a data warning counts those thin contracts", async () => {
+    spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload([...BTC_CONTRACTS, ...THIN_CONTRACTS]));
+    let lines = await render(98, 30, "curve", { root: "BTC", quote: spot(2) });
+    expect(row(lines, "BTCJ27.CME")).toMatch(/81500\.00\s+--\s+--/);
+    expect(row(lines, "BTCK27.CME")).toMatch(/82000\.00\s+--\s+--/);
+    expect(row(lines, "BTCF27.CME")).toMatch(/81000\.00\s+\+1\.25%\s+\+4\.1%/);
+    // A thin contract's price takes the warning colour a stale one does, and a current one does not.
+    const priceColor = (text: string) => tui.setup().captureSpans().lines.flatMap((line) => line.spans).find((span) => span.text.includes(text))?.fg.toInts().join(",");
+    const warning = [colors.warning.slice(1, 3), colors.warning.slice(3, 5), colors.warning.slice(5, 7)].map((part) => parseInt(part, 16)).concat(255).join(",");
+    expect(priceColor("81500.00")).toBe(warning);
+    expect(priceColor("82000.00")).toBe(warning);
+    expect(priceColor("80400.00")).toBe(warning);
+    expect(priceColor("79000.00")).not.toBe(warning);
+    // The warning is the footer's ⚠, which leaves the row to the quote times; `!` opens it. Contracts blanked
+    // for another reason (the stale and the unpriced) are not counted again.
+    expect(lines.join("\n")).toContain("⚠");
     expect(lines.join("\n")).not.toContain("Basis blank");
+    await act(async () => tui.setup().mockInput.pressKey("!"));
+    await settle();
+    expect(tui.frame()).toContain("Basis blank on 2 thin contracts (last print over 1h before spot)");
+    await tui.emitKeypress({ name: "escape" });
+    await settle();
+    // One thin contract reads in the singular, and at the default width the footer keeps the spot's time whole.
+    spy.mockRestore(); futuresCurveCache.reset();
+    spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload([BTC_CONTRACTS[0]!, BTC_CONTRACTS[1]!, THIN_CONTRACTS[0]!]));
+    lines = await render(98, 30, "curve", { root: "BTC", quote: spot(2) });
+    expect(lines.join("\n")).toMatch(/UTC\s+spot BTC-USD 80,000\.00 · \d{2}:\d{2} UTC/);
+    await act(async () => tui.setup().mockInput.pressKey("!"));
+    await settle();
+    expect(tui.frame()).toContain("Basis blank on 1 thin contract (last print over 1h before spot)");
+    await tui.emitKeypress({ name: "escape" });
+    await settle();
+    // Without a good spot the reason is the spot's, and no contract is thin.
+    spy.mockRestore(); futuresCurveCache.reset();
+    spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload([...BTC_CONTRACTS, ...THIN_CONTRACTS]));
+    lines = await render(98, 30, "curve", { root: "BTC", quote: spot(125) });
+    expect(lines.join("\n")).toContain("Basis blank: BTC-USD quote is 2h old");
+    expect(lines.join("\n")).not.toContain("⚠");
   });
 
   test("a stale or missing spot blanks every basis cell and says why", async () => {

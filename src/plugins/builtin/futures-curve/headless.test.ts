@@ -10,8 +10,8 @@ const NOW = Date.now();
 const SPOT_AT = NOW - 2 * 60_000;
 const SPOT_DAY = Date.parse(`${new Date(SPOT_AT).toISOString().slice(0, 10)}T00:00:00Z`);
 const expiry = (days: number) => new Date(SPOT_DAY + days * 86_400_000).toISOString().slice(0, 10);
-const contract = (root: string, code: string, days: number, price: number | null, stale = false): FuturesContract => ({
-  symbol: `${root}${code}.CME`, label: code, expiration: expiry(days), price, asOf: new Date(NOW).toISOString(), currency: "USD", quoteUnit: "USD",
+const contract = (root: string, code: string, days: number, price: number | null, stale = false, asOf = new Date(NOW).toISOString()): FuturesContract => ({
+  symbol: `${root}${code}.CME`, label: code, expiration: expiry(days), price, asOf, currency: "USD", quoteUnit: "USD",
   volume: 1, openInterest: 1, delayMinutes: 10, stale, percentile: 50, samples: 200, historyStart: null, historyEnd: null,
 });
 function curve(root: string, contracts: FuturesContract[]): FuturesCurvePayload {
@@ -21,7 +21,9 @@ function curve(root: string, contracts: FuturesContract[]): FuturesCurvePayload 
     slope: { frontSymbol: null, nextSymbol: null, value: null, annualizedRollYield: null, percentile: null, rollPercentile: null, samples: 0, historyStart: null, historyEnd: null, asOf: null, state: "unavailable" },
     gaps: [] };
 }
-const BTC = [contract("BTC", "V26", 21, 80_200), contract("BTC", "X26", 49, 79_000), contract("BTC", "Z26", 77, 80_400, true), contract("BTC", "F27", 112, null)];
+// Z26 is flagged stale and F27 has no price; G27 and H27 are priced and not stale but printed long before the spot.
+const BTC = [contract("BTC", "V26", 21, 80_200), contract("BTC", "X26", 49, 79_000), contract("BTC", "Z26", 77, 80_400, true), contract("BTC", "F27", 112, null),
+  contract("BTC", "G27", 126, 81_000, false, expiry(-1)), contract("BTC", "H27", 140, 81_500, false, new Date(SPOT_AT - 61 * 60_000).toISOString())];
 
 function context(options: { quote?: (symbol: string) => Promise<ReturnType<typeof createTestQuote>>; asOf?: FuturesCurveAsOfPayload } = {}) {
   const reads: string[] = [];
@@ -45,9 +47,10 @@ describe("CTM report basis", () => {
     expect(reads).toEqual(["BTC-USD"]);
     expect(rows.map((row) => [row.vsSpotPct, row.annualisedBasisPct])).toEqual([
       [0.25, Number((0.0025 * 365 / 21 * 100).toFixed(4))], [-1.25, Number((-0.0125 * 365 / 49 * 100).toFixed(4))],
-      // A stale print and a missing price are blank, not zero.
-      [null, null], [null, null],
+      // A stale print and a missing price are blank, not zero, and so is a print over an hour before the spot.
+      [null, null], [null, null], [null, null], [null, null],
     ]);
+    expect(metadata.basisBlankedThin).toBe(2);
     expect(metadata.spot).toEqual({ symbol: "BTC-USD", price: 80_000, asOf: new Date(SPOT_AT).toISOString().replace(".000Z", "Z"), status: "ok", reason: null });
     expect(metadata.notices).toEqual([expect.stringMatching(/^Basis against spot BTC-USD 80,000\.00 · /)]);
   });
@@ -59,8 +62,11 @@ describe("CTM report basis", () => {
     expect(stale.metadata.notices).toEqual(["Basis blank: BTC-USD quote is 2h old."]);
     // The curve still loads without its basis.
     const missing = await run("BTC", { quote: async () => { throw new Error("no such symbol"); } });
-    expect(missing.rows).toHaveLength(4);
+    expect(missing.rows).toHaveLength(6);
     expect(missing.rows.every((row) => row.vsSpotPct === null)).toBe(true);
+    // With no spot nothing is blanked for being thin: the reason is the spot's.
+    expect(missing.metadata.basisBlankedThin).toBe(0);
+    expect(stale.metadata.basisBlankedThin).toBe(0);
     expect(missing.metadata.spot).toEqual({ symbol: "BTC-USD", price: null, asOf: null, status: "missing", reason: "no BTC-USD quote" });
   });
 
@@ -69,11 +75,13 @@ describe("CTM report basis", () => {
     expect(es.reads).toEqual([]);
     expect(es.rows[0]).not.toHaveProperty("vsSpotPct");
     expect(es.metadata).not.toHaveProperty("spot");
+    expect(es.metadata).not.toHaveProperty("basisBlankedThin");
     const asOf: FuturesCurveAsOfPayload = { root: "BTC", name: "Bitcoin", date: expiry(-3), asOf: expiry(-3), currency: "USD", quoteUnit: "USD", archiveStart: expiry(-90), gaps: [],
       contracts: [{ contract: "BTCV26", symbol: "BTCV26.CME", label: "Oct 2026", deliveryMonth: "2026-10", expiration: expiry(21), tradeDate: expiry(-3), price: 79_500, volume: 1, openInterest: 1, asOf: `${expiry(-3)}T00:00:00.000Z`, stale: false }] };
     const past = await run("BTC", { asOf }, { date: expiry(-3) });
     expect(past.reads).toEqual([]);
     expect(past.rows[0]).not.toHaveProperty("vsSpotPct");
     expect(past.metadata).not.toHaveProperty("spot");
+    expect(past.metadata).not.toHaveProperty("basisBlankedThin");
   });
 });

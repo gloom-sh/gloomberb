@@ -1,7 +1,7 @@
 import type { HeadlessPaneDefinition, HeadlessPaneFreshness } from "../../../types/plugin";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, contractBasis, curveAsOfDate, curveSpotLabel, normalizeCurveRoot, unsupportedCurveRootMessage } from "./model";
+import { basisSpotSymbol, contractBasis, curveAsOfDate, curveSpotLabel, normalizeCurveRoot, thinContractCount, unsupportedCurveRootMessage } from "./model";
 
 /** The root a report shows when none is given. */
 const DEFAULT_ROOT = "ES";
@@ -34,6 +34,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
       date ? loadFuturesCurveAsOf(root, date, ctx.apiClient) : fetchFuturesCurve(root, ctx.apiClient),
       spotSymbol ? loadCurveSpot(spotSymbol, ctx.marketData, now) : null,
     ]);
+    const bases = spot ? data.contracts.map((row) => contractBasis(row, spot)) : [];
     const notices = [...args.argument ? [] : [`Showing ${DEFAULT_ROOT}. Try fn CTM ${EXAMPLE_ROOT}.`],
       ...spot ? [spot.status === "ok" ? `Basis against ${curveSpotLabel(spot, root, now)}.` : `Basis blank: ${spot.reason}.`] : []];
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
@@ -45,8 +46,8 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     return {
       freshness,
       sections: [
-        { title: "Contracts", rows: data.contracts.map((row) => {
-          const basis = spot ? contractBasis(row, spot) : null;
+        { title: "Contracts", rows: data.contracts.map((row, index) => {
+          const basis = bases[index];
           return { ...row, percentile: rank(row.percentile),
             ...(basis ? { vsSpotPct: basisValue(basis.vsSpotPct), annualisedBasisPct: basisValue(basis.annualisedBasisPct) } : {}) };
         }) },
@@ -55,7 +56,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,
-      metadata: { ...data, ...(spot ? { spot } : {}), ...(args.argument ? {} : { defaultArgument: DEFAULT_ROOT }),
+      metadata: { ...data, ...(spot ? { spot, basisBlankedThin: thinContractCount(bases) } : {}), ...(args.argument ? {} : { defaultArgument: DEFAULT_ROOT }),
         ...(notices.length ? { notices } : {}),
         complete: data.status === "available", percentileBasis: "Same-contract observations within one year; actual sample start/end retained" },
     };
