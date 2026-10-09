@@ -157,6 +157,10 @@ back button or clicking Back pops it. Rules:
 - A detail read as text sits in a `DetailScrollBody` whose ref is the
   stack's `detailScrollRef`, so j/k step it a line at a time and the next
   item starts at the top.
+- Any other scrolling body is a `ScrollBox`. Leaving `scrollY` out means it
+  scrolls vertically, with the wheel and, while the pane is focused, with the
+  arrows, j/k, PageUp, PageDown, Home and End; `scrollY={false}` turns that off.
+  A body does not bind those keys itself unless it wants to step by a line.
 - A detail the user reads and comes back from is the stack, not a dialog or
   a floating pane. A new pane (`pinTicker`, `createPaneFromTemplate`) is for
   something kept beside the list.
