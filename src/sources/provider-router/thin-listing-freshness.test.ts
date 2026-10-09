@@ -34,6 +34,9 @@ describe("a delayed quote's last trade age", () => {
     const americas = "2026-10-09T18:19:00Z";
     const zioc = quote("ZIOC", "LSE", "2026-10-09T11:32:00Z");
     const stuck = quote("VOD", "LSE", "2026-10-09T12:09:00Z");
+    // 19:30 New York, after the regular close at 16:00.
+    const afterHours = "2026-10-09T23:30:00Z";
+    const usPost = quote("XSD", "NASDAQ", "2026-10-09T20:10:00Z", { marketState: "POST", postMarketPrice: 527.93 });
     const rows: Row[] = [
       ["thin, 77 min, a fresh not-stale answer", london, zioc, true, true],
       ["thin, 77 min, a cache entry past its TTL", london, zioc, false, false],
@@ -53,6 +56,15 @@ describe("a delayed quote's last trade age", () => {
       ["US thin, 35 min, a fresh answer", americas, quote("CODA", "NASDAQ", "2026-10-09T17:44:00Z"), true, true],
       ["US thin, 2 h, a cache entry past its TTL", americas, quote("GEG", "NASDAQ", "2026-10-09T16:13:00Z"), false, false],
       ["TSXV thin, 77 min, a fresh answer", americas, quote("LIO", "TSXV", "2026-10-09T17:02:00Z"), true, true],
+      // 19:30 New York: a thin listing's last after-hours trade, at 16:10, is the current price.
+      ["US after-hours, 3 h, a fresh answer", afterHours, usPost, true, true],
+      ["US after-hours, 3 h, a cache entry past its TTL", afterHours, usPost, false, false],
+      ["US after-hours, 3 h, the service says stale", afterHours, { ...usPost, stale: true }, true, false],
+      ["US after-hours, 3 h, another source", afterHours, { ...usPost, providerId: "other" }, true, false],
+      ["US after-hours, 3 h, real-time", afterHours, { ...usPost, dataSource: "live" }, true, false],
+      ["US after-hours, an answer without the flag", afterHours, { ...usPost, stale: undefined }, true, false],
+      ["US after-hours label without an after-hours price", afterHours, { ...usPost, postMarketPrice: undefined }, true, false],
+      ["US after-hours label on a regular-session print", afterHours, { ...usPost, lastUpdated: at("2026-10-09T19:51:00Z") }, true, false],
       // 12:30 Hong Kong: over lunch the morning's last print stands for any source.
       ["HKEX over lunch", "2026-10-09T04:30:00Z", quote("0700", "HKEX", "2026-10-09T03:59:00Z", { providerId: "other" }), false, true],
       ["HKEX thin over lunch, traded at 10:00", "2026-10-09T04:30:00Z", quote("1234", "HKEX", "2026-10-09T02:00:00Z"), true, true],

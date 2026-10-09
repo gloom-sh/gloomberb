@@ -61,6 +61,24 @@ describe("provider-router financial quote usability", () => {
     expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated: Date.parse("2026-09-04T20:00:00Z") }, "NYSE")).toBe(true);
   });
 
+  test("keeps today's regular close before any after-hours trade, however old, but not an older one", () => {
+    // Friday 2026-10-09: the 15:51 print is the last one, and nothing has traded since the 16:00 close.
+    const close = createTestQuote({ listingExchangeName: "NYSE", marketState: "POST", dataSource: "delayed",
+      lastUpdated: Date.parse("2026-10-09T19:51:00Z") });
+    for (const now of ["2026-10-09T20:06:00Z", "2026-10-09T21:30:00Z", "2026-10-09T23:30:00Z"]) {
+      clock.mockReturnValue(Date.parse(now));
+      expect(isProviderQuoteUsableForCurrentSession(close, "NYSE"), now).toBe(true);
+      expect(isProviderQuoteUsableForCurrentSession({ ...close, marketState: "CLOSED" }, "NYSE"), now).toBe(true);
+      // With an after-hours price the print's own age counts again: 15 minutes old at 16:06, then too old.
+      expect(isProviderQuoteUsableForCurrentSession({ ...close, postMarketPrice: 101 }, "NYSE"), now).toBe(now === "2026-10-09T20:06:00Z");
+      expect(isProviderQuoteUsableForCurrentSession({ ...close, marketState: "REGULAR" }, "NYSE"), now).toBe(false);
+      expect(isProviderQuoteUsableForCurrentSession({ ...close, stale: true }, "NYSE"), now).toBe(false);
+      // Yesterday's close and this morning's pre-market print are not today's.
+      expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated: Date.parse("2026-10-08T19:51:00Z") }, "NYSE"), now).toBe(false);
+      expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated: Date.parse("2026-10-09T12:00:00Z") }, "NYSE"), now).toBe(false);
+    }
+  });
+
   test("keeps a Tokyo close through published exchange holidays", () => {
     const toyota = createTestQuote({ symbol: "7203.T", listingExchangeName: "JPX", marketState: "CLOSED",
       dataSource: "delayed", lastUpdated: Date.parse("2026-09-18T06:30:00Z") });

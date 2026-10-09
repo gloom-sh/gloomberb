@@ -87,7 +87,8 @@ describe("quote freshness", () => {
     ["PRE", "2026-09-11T13:29:59Z", true],
     ["PRE", "2026-09-11T13:30:00Z", false],
     ["POST", "2026-09-11T19:59:59Z", false],
-    ["POST", "2026-09-11T20:00:00Z", true],
+    // The 15:59:59 print is today's regular close, which is the price until an after-hours trade.
+    ["POST", "2026-09-11T20:00:00Z", false],
     ["POST", "2026-09-11T23:59:59Z", true],
     ["POST", "2026-09-12T00:00:00Z", false],
     ["PRE", "2026-09-12T12:00:00Z", false],
@@ -104,6 +105,46 @@ describe("quote freshness", () => {
     expect(isQuoteStaleForCurrentSession(input, now)).toBe(expected);
     expect(isQuoteStaleForCurrentSession({ ...input, preMarketPrice: 168, postMarketPrice: 168 }, now)).toBe(false);
     expect(isQuoteStaleForCurrentSession({ ...input, stale: true }, now)).toBe(true);
+  });
+
+  // Fri 2026-10-09 is on daylight time (UTC-4): 16:00 New York is 20:00Z.
+  const regularClosePrint = "2026-10-09T19:51:00Z";
+  type CloseRow = [what: string, now: string, fields: Partial<Quote>, stale: boolean];
+  const closeRows: CloseRow[] = [
+    ["15:51 print at 16:06", "2026-10-09T20:06:00Z", {}, false],
+    ["15:51 print at 19:30", "2026-10-09T23:30:00Z", {}, false],
+    ["15:51 print at 19:59", "2026-10-09T23:59:00Z", {}, false],
+    ["15:51 print once the day is over", "2026-10-10T00:00:00Z", {}, false],
+    ["print at the regular open", "2026-10-09T20:06:00Z", { lastUpdated: Date.parse("2026-10-09T13:30:00Z") }, false],
+    ["print at the regular close", "2026-10-09T20:06:00Z", { lastUpdated: Date.parse("2026-10-09T20:00:00Z") }, false],
+    ["print after the regular close", "2026-10-09T20:06:00Z", { lastUpdated: Date.parse("2026-10-09T20:00:00.001Z") }, true],
+    ["print from this morning's pre-market", "2026-10-09T20:06:00Z", { lastUpdated: Date.parse("2026-10-09T12:00:00Z") }, true],
+    ["print just before the regular open", "2026-10-09T20:06:00Z", { lastUpdated: Date.parse("2026-10-09T13:29:59Z") }, true],
+    ["print from yesterday's regular session", "2026-10-09T20:06:00Z", { lastUpdated: Date.parse("2026-10-08T19:51:00Z") }, true],
+    ["print from yesterday's after-hours", "2026-10-09T20:06:00Z", { lastUpdated: Date.parse("2026-10-08T21:00:00Z") }, true],
+    ["CLOSED label", "2026-10-09T20:06:00Z", { marketState: "CLOSED" }, false],
+    ["CLOSED label with an after-hours price", "2026-10-09T20:06:00Z", { marketState: "CLOSED", postMarketPrice: 168 }, true],
+    ["REGULAR label", "2026-10-09T20:06:00Z", { marketState: "REGULAR" }, true],
+    ["PRE label", "2026-10-09T20:06:00Z", { marketState: "PRE" }, true],
+    ["POSTPOST label", "2026-10-09T20:06:00Z", { marketState: "POSTPOST" }, true],
+    ["no label", "2026-10-09T20:06:00Z", { marketState: undefined }, true],
+    ["the server flagged it stale", "2026-10-09T20:06:00Z", { stale: true }, true],
+    ["a price from yesterday's after-hours", "2026-10-09T20:06:00Z", { postMarketPrice: 168, lastUpdated: Date.parse("2026-10-08T21:00:00Z") }, true],
+    // Early close: Friday 2026-11-27 closes at 13:00 New York (18:00Z, UTC-5).
+    ["early close, 12:55 print at 13:20", "2026-11-27T18:20:00Z", { lastUpdated: Date.parse("2026-11-27T17:55:00Z") }, false],
+    ["early close, 12:55 print at 16:20", "2026-11-27T21:20:00Z", { lastUpdated: Date.parse("2026-11-27T17:55:00Z") }, false],
+    ["early close, print after the close at 16:20", "2026-11-27T21:20:00Z", { lastUpdated: Date.parse("2026-11-27T18:05:00Z") }, true],
+    // Unchanged: Labor Day 2026-09-07 has no close of its own, and a Saturday has no active session.
+    ["holiday, Friday's close", "2026-09-07T20:30:00Z", { lastUpdated: Date.parse("2026-09-04T19:51:00Z") }, true],
+    ["Saturday, Friday's close", "2026-10-10T18:00:00Z", {}, false],
+  ];
+
+  test.each(closeRows)("reads a US quote with no after-hours price in the after-hours session: %s", (_what, now, fields, stale) => {
+    for (const listingExchangeName of ["NASDAQ", "NYSE", "ARCA"]) {
+      const input = quote({ symbol: "SPY", currency: "USD", listingExchangeName, exchangeName: listingExchangeName,
+        marketState: "POST", lastUpdated: Date.parse(regularClosePrint), ...fields });
+      expect(isQuoteStaleForCurrentSession(input, Date.parse(now)), listingExchangeName).toBe(stale);
+    }
   });
 
   test("recorded NasdaqGM alias preserves active-session and old-date guards", () => {

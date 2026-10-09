@@ -414,6 +414,51 @@ export function isUsPriorSessionPremarketQuote(
   return localTradingDaysBetween(canonical, timestampDate, currentDate) === 1;
 }
 
+/**
+ * After the regular close and before any after-hours trade, a US quote's last
+ * print is today's regular session, and that close is the current price: a thin
+ * listing may not trade again tonight, and for fifteen minutes after the close
+ * the delayed feed still shows the session's last minutes. The source labels
+ * the quote POST (or CLOSED) and has no after-hours price to show. The print
+ * must be from today's New York trading day, from the regular open through the
+ * regular close (the published early close included). An earlier day's print
+ * or this morning's pre-market is not today's close.
+ */
+export function isUsRegularCloseQuoteInPostSession(
+  timestampMs: number,
+  exchange: string | undefined,
+  marketState: MarketState | undefined,
+  now = Date.now(),
+): boolean {
+  const canonical = canonicalExchange(exchange);
+  if ((marketState !== "POST" && marketState !== "CLOSED") || !isUsListingExchange(canonical)) return false;
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
+  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "POST") return false;
+  const currentDate = exchangeLocalDate(canonical, now);
+  if (!currentDate || exchangeLocalDate(canonical, timestampMs) !== currentDate) return false;
+  if (!isLocalTradingDay(canonical, currentDate)) return false;
+  const published = getPublishedUsEquitySession(canonical, currentDate);
+  if (published) return published.kind === "session" && timestampMs >= published.open && timestampMs <= published.close;
+  return usSessionState(timestampMs) === "REGULAR";
+}
+
+/**
+ * Whether a US print belongs to the after-hours session in progress: today's,
+ * from the regular close. An earlier day's after-hours print is not.
+ */
+export function isUsPostSessionPrint(
+  timestampMs: number,
+  exchange: string | undefined,
+  now = Date.now(),
+): boolean {
+  const canonical = canonicalExchange(exchange);
+  if (!isUsListingExchange(canonical)) return false;
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
+  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "POST") return false;
+  const currentDate = exchangeLocalDate(canonical, now);
+  return !!currentDate && exchangeLocalDate(canonical, timestampMs) === currentDate && usSessionState(timestampMs) === "POST";
+}
+
 export function isTimestampStaleForExchangeSession(
   timestampMs: number,
   exchange?: string,

@@ -12,7 +12,9 @@ import {
   delayedFeedLagMs,
   isMiddayBreakPrint,
   isRegularSessionTime,
+  isUsPostSessionPrint,
   isUsPriorSessionPremarketQuote,
+  isUsRegularCloseQuoteInPostSession,
   latestRegularSessionOpen,
 } from "../../market-data/market/freshness";
 import {
@@ -145,14 +147,19 @@ const OPENING_AUCTION_MS = 15 * 60_000;
  * - the quote is delayed. The service bounds a delayed quote's feed age itself
  *   but not a real-time one's, so real-time quotes keep the age bound;
  * - it reports the regular session, the venue's session is in progress as
- *   the delayed feed shows it, and the trade belongs to that session.
+ *   the delayed feed shows it, and the trade belongs to that session; or it
+ *   reports a US after-hours price, the after-hours session is in progress and
+ *   the trade belongs to it.
  * The answer says nothing about how often a listing trades, so a liquid
  * listing the service wrongly vouches for is accepted too. The service's own
  * bound for liquid listings, about twenty minutes, is tighter than this one.
  */
 function isVouchedCurrentByService(quote: Quote, exchange: string | undefined, now: number): boolean {
-  if (quote.providerId !== "gloomberb-cloud" || quote.stale !== false
-    || quote.dataSource !== "delayed" || quote.marketState !== "REGULAR") return false;
+  if (quote.providerId !== "gloomberb-cloud" || quote.stale !== false || quote.dataSource !== "delayed") return false;
+  if (quote.marketState === "POST") {
+    return finitePositiveNumber(quote.postMarketPrice) && isUsPostSessionPrint(quote.lastUpdated, exchange, now);
+  }
+  if (quote.marketState !== "REGULAR") return false;
   const feedTime = now - delayedFeedLagMs(exchange);
   if (isRegularSessionTime(exchange, feedTime) !== true) return false;
   const open = latestRegularSessionOpen(exchange, feedTime);
@@ -167,6 +174,10 @@ function isActiveProviderQuoteTooOld(quote: Quote, now = Date.now(), recentAnswe
   // to age; the session-date rules bound it instead.
   const exchange = quote.listingExchangeName || quote.exchangeName;
   if (isUsPriorSessionPremarketQuote(quote.lastUpdated, exchange, quote.marketState, now)) {
+    return false;
+  }
+  // Likewise today's regular close before any after-hours trade.
+  if (quote.postMarketPrice == null && isUsRegularCloseQuoteInPostSession(quote.lastUpdated, exchange, quote.marketState, now)) {
     return false;
   }
   if (!Number.isFinite(quote.lastUpdated)) return false;

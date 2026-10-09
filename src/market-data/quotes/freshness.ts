@@ -7,6 +7,7 @@ import {
   activeUsExtendedHoursSession,
   isTimestampStaleForExchangeSession,
   isUsPriorSessionPremarketQuote,
+  isUsRegularCloseQuoteInPostSession,
 } from "../market/freshness";
 
 // Give the next regular session's NAV time to publish after its actual close.
@@ -61,6 +62,10 @@ function isQuoteMissingActiveSessionPrice(quote: Quote, now: number): boolean {
   if (!isExtendedHoursExchange(quote)) return false;
   const activeSession = activeUsExtendedHoursSession(now);
   if (!activeSession) return false;
+  // No after-hours trade yet: today's regular close is the current price.
+  if (activeSession === "POST" && quote.postMarketPrice == null && isUsRegularCloseQuoteInPostSession(
+    quote.lastUpdated, quote.listingExchangeName || quote.exchangeName, quote.marketState, now,
+  )) return false;
   if (quote.marketState !== activeSession) return true;
   if (activeSession === "POST") return quote.postMarketPrice == null;
   // No pre-market trade yet: the previous session's close is the current price.
