@@ -2,13 +2,9 @@ import type { CSSProperties } from "react";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 
 /**
- * Desktop: moves a drawn element by a cell offset on the compositor. Changing
- * only a transform on its own layer skips layout and repaint, which is what
- * keeps a drag at the display's frame rate over heavy panes.
+ * Desktop: draws a box laid out at the shell's corner at cell (x, y) with a
+ * transform, so placing it somewhere else never lays anything out.
  */
-export function slideStyle(dx: number, dy: number): CSSProperties {
-  return {
-    transform: `translate3d(${dx * WEB_CELL_WIDTH}px, ${dy * WEB_CELL_HEIGHT}px, 0)`,
-    willChange: "transform",
-  };
+export function placeStyle(x: number, y: number): CSSProperties {
+  return { transform: `translate3d(${x * WEB_CELL_WIDTH}px, ${y * WEB_CELL_HEIGHT}px, 0)` };
 }

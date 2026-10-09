@@ -58,6 +58,9 @@ export interface ShellMouseEvent {
   button?: number;
   preciseX?: number;
   preciseY?: number;
+  /** Desktop: where the browser predicts the pointer a moment later, for drawing only. */
+  predictedX?: number;
+  predictedY?: number;
   /** Whether a later handler has claimed this pointer interaction. */
   isDefaultPrevented?: () => boolean;
   stopPropagation: () => void;
@@ -75,7 +78,8 @@ export interface ShellDragRuntimeState {
   hasActiveDrag: () => boolean;
   /** Positions that follow the pointer, outside React state. */
   live: LiveDragStore;
-  setDragCursor: (next: { x: number; y: number } | null) => void;
+  /** The tiled pane whose drop grid is under the pointer. */
+  setHoverTarget: (targetId: string | null) => void;
   startDrag: (drag: DragMode) => void;
   updateDividerPreview: (next: DividerPreviewState | null) => void;
   updateDockPreview: (next: DragPreview | null) => void;
@@ -100,29 +104,41 @@ function sameDragPreview(a: DragPreview | null, b: DragPreview | null): boolean 
 
 export function useShellDragRuntimeState({
   contentHeight,
+  nativePaneChrome,
   width,
 }: {
   contentHeight: number;
+  nativePaneChrome: boolean;
   width: number;
 }): ShellDragRuntimeState {
   const dragRef = useRef<DragMode | null>(null);
   const [live] = useState(createLiveDragStore);
 
   const updateDragFloatingRect = useCallback((next: { paneId: string; rect: FloatingRect } | null) => {
-    live.set({
-      floating: next
-        ? { paneId: next.paneId, rect: constrainFloatingRectToBounds(next.rect, width, contentHeight) }
-        : null,
-    });
-  }, [contentHeight, live, width]);
+    const current = live.get();
+    const floating = next
+      ? { paneId: next.paneId, rect: constrainFloatingRectToBounds(next.rect, width, contentHeight) }
+      : null;
+    // A desktop pane on the move follows by restyling itself (`move`); its
+    // start and end, a resize and every terminal frame redraw through React.
+    const follows = nativePaneChrome
+      && floating !== null
+      && current.floating?.paneId === floating.paneId
+      && current.paneDrag?.paneId === floating.paneId;
+    if (follows) live.move({ floating });
+    else live.set({ floating });
+  }, [contentHeight, live, nativePaneChrome, width]);
 
-  const setDragCursor = useCallback((next: { x: number; y: number } | null) => {
-    live.set({ cursor: next });
+  const setHoverTarget = useCallback((targetId: string | null) => {
+    live.set({ hoverTargetId: targetId });
   }, [live]);
 
   const updateDividerPreview = useCallback((next: DividerPreviewState | null) => {
-    live.set({ divider: next });
-  }, [live]);
+    const current = live.get().divider;
+    // The desktop divider follows by restyling itself; React hears only that it started or ended.
+    if (nativePaneChrome && next && current?.pathKey === next.pathKey) live.move({ divider: next });
+    else live.set({ divider: next });
+  }, [live, nativePaneChrome]);
 
   const updateDockPreview = useCallback((next: DragPreview | null) => {
     // Recomputed on every move; only a different target is news.
@@ -147,7 +163,7 @@ export function useShellDragRuntimeState({
     dragRef,
     hasActiveDrag,
     live,
-    setDragCursor,
+    setHoverTarget,
     startDrag,
     updateDividerPreview,
     updateDockPreview,

@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useRef } from "react";
-import { Box } from "../../../../ui";
+import { Box, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
 import { resolveOccludedPaneIds } from "../pane-occlusion";
 import type {
   DockDividerLayout,
@@ -10,8 +10,7 @@ import type {
 } from "../../../../layout/pane-manager";
 import { colors } from "../../../../theme/colors";
 import { constrainFloatingRectToBounds } from "../drag";
-import { useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
-import { slideStyle } from "../drag/slide";
+import { useLiveBoxFrame, useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
 import { pathKey } from "../../window-edit/mode";
 import { FloatingPaneWrapper } from "../../floating-pane";
 import { PaneContent } from "../../pane/content";
@@ -103,6 +102,8 @@ interface PaneLayerProps {
 
 const EMPTY_OCCLUSION: ReadonlySet<string> = new Set();
 const selectFloatingDragActive = (geometry: LiveDragGeometry) => geometry.floating !== null;
+const selectNothing = () => null;
+const selectNoDrag = () => false;
 
 function usePaneQuickSettings(getPaneQuickSettings: PaneLayerProps["getPaneQuickSettings"], paneId: string) {
   return useMemo(() => getPaneQuickSettings(paneId), [getPaneQuickSettings, paneId]);
@@ -274,9 +275,11 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
 
 /**
  * A floating pane, drawn at its layout rect or where a drag has it right now.
- * On the desktop a move slides the drawn pane with a compositor transform, so
- * nothing inside it re-renders, lays out or repaints while it follows the
- * pointer; a resize redraws it at the new size.
+ * On the desktop a move never renders: the pane's layer is promoted at the
+ * press and each frame of the move only writes its transform (see
+ * `useLiveBoxFrame`), so nothing inside it re-renders, lays out or repaints
+ * until the release commits the new position. A resize, and every terminal
+ * frame, redraws it at the drag's rect.
  */
 const FloatingPaneLayer = memo(function FloatingPaneLayer({
   live,
@@ -287,31 +290,46 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
   ...frame
 }: PaneLayerProps & { rect: FloatingRect; zIndex: number; live: LiveDragStore; width: number; contentHeight: number }) {
   const paneId = frame.pane.instance.instanceId;
-  const select = useCallback((geometry: LiveDragGeometry) => (
-    geometry.floating?.paneId === paneId ? geometry.floating.rect : null
-  ), [paneId]);
-  const dragRect = useLiveDrag(live, select);
-  const preview = dragRect ? constrainFloatingRectToBounds(dragRect, width, contentHeight) : rect;
   const slide = frame.nativePaneChrome;
-  const sliding = slide && dragRect !== null && preview.width === rect.width && preview.height === rect.height;
-  const content = <FloatingPaneFrame {...frame} rect={sliding ? rect : preview} zIndex={zIndex} />;
+  const selectRedraw = useCallback((geometry: LiveDragGeometry) => {
+    if (geometry.floating?.paneId !== paneId) return null;
+    // A desktop move follows on the pane's own layer instead.
+    if (slide && geometry.paneDrag?.paneId === paneId) return null;
+    return geometry.floating.rect;
+  }, [paneId, slide]);
+  const dragRect = useLiveDrag(live, selectRedraw);
+  const layerRef = useRef<BoxRenderable | null>(null);
+  const frameOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
+    if (geometry.paneDrag?.paneId !== paneId) return null;
+    const moving = geometry.floating?.paneId === paneId ? geometry.floating.rect : null;
+    // Promoted from the press, so the first move already only slides it.
+    if (!moving) return { dx: 0, dy: 0 };
+    const at = constrainFloatingRectToBounds(moving, width, contentHeight);
+    return { dx: at.x - rect.x, dy: at.y - rect.y };
+  } : null), [contentHeight, paneId, rect.x, rect.y, slide, width]);
+  useLiveBoxFrame(live, layerRef, frameOf);
+  const preview = dragRect ? constrainFloatingRectToBounds(dragRect, width, contentHeight) : rect;
+  const content = <FloatingPaneFrame {...frame} rect={preview} zIndex={zIndex} />;
   if (!slide) return content;
   return (
     <Box
+      ref={layerRef}
       position="absolute"
       left={0}
       top={0}
       width={0}
       height={0}
       zIndex={zIndex}
-      style={sliding ? slideStyle(preview.x - rect.x, preview.y - rect.y) : undefined}
     >
       {content}
     </Box>
   );
 });
 
-/** A tiled split's divider, which follows the pointer while it is dragged. */
+/**
+ * A tiled split's divider, which follows the pointer while it is dragged: on
+ * the desktop by restyling itself each move, in the terminal by redrawing.
+ */
 const DockDividerLayer = memo(function DockDividerLayer({
   divider,
   resizing,
@@ -327,14 +345,25 @@ const DockDividerLayer = memo(function DockDividerLayer({
   actions: PaneLayerActions;
 }) {
   const dividerPathKey = pathKey(divider.path);
-  const select = useCallback((geometry: LiveDragGeometry) => (
+  const selectDragged = useCallback((geometry: LiveDragGeometry) => (
+    geometry.divider?.pathKey === dividerPathKey
+  ), [dividerPathKey]);
+  const selectRect = useCallback((geometry: LiveDragGeometry) => (
     geometry.divider?.pathKey === dividerPathKey ? geometry.divider.rect : null
   ), [dividerPathKey]);
-  const previewRect = useLiveDrag(live, select);
-  const active = previewRect !== null || resizing;
+  const dragged = useLiveDrag(live, selectDragged);
+  const previewRect = useLiveDrag(live, nativePaneChrome ? selectNothing : selectRect);
+  const boxRef = useRef<BoxRenderable | null>(null);
+  const frameOf = useMemo(() => (nativePaneChrome ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
+    const at = geometry.divider?.pathKey === dividerPathKey ? geometry.divider.rect : null;
+    return at ? { dx: at.x - divider.rect.x, dy: at.y - divider.rect.y } : null;
+  } : null), [divider.rect.x, divider.rect.y, dividerPathKey, nativePaneChrome]);
+  useLiveBoxFrame(live, boxRef, frameOf);
+  const active = dragged || resizing;
   const rect = previewRect ?? divider.rect;
   return (
     <Box
+      ref={boxRef}
       position="absolute"
       left={rect.x}
       top={rect.y}
@@ -407,7 +436,7 @@ export function ShellPaneLayers({
   // Skipping the draw is a terminal concern: desktop pane chrome is DOM, where
   // the compositor already skips covered windows, and a drag keeps everything
   // drawn so the preview never reveals a blank spot.
-  const floatingDragActive = useLiveDrag(live, selectFloatingDragActive);
+  const floatingDragActive = useLiveDrag(live, nativePaneChrome ? selectNoDrag : selectFloatingDragActive);
   const occludedPaneIds = nativePaneChrome || floatingDragActive ? EMPTY_OCCLUSION : coveredPaneIds;
   const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
 

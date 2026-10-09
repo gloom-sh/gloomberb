@@ -160,7 +160,7 @@ export function Shell({
     if (commandBarOpen) setHoveredPaneId(null);
   }, [commandBarOpen]);
 
-  const dragRuntime = useShellDragRuntimeState({ contentHeight, width });
+  const dragRuntime = useShellDragRuntimeState({ contentHeight, nativePaneChrome, width });
   const {
     cancelActiveDrag,
     hasActiveDrag,

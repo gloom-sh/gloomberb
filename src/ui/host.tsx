@@ -108,6 +108,12 @@ export interface SyntaxStyleLike {
   }): number;
 }
 
+/** Where a drag has a box this frame: an offset in cells from where it is laid out. */
+export interface LiveBoxFrame {
+  dx: number;
+  dy: number;
+}
+
 export interface BoxRenderable {
   x?: number;
   y?: number;
@@ -117,6 +123,12 @@ export interface BoxRenderable {
   absoluteY?: number;
   absoluteBounds?: { x: number; y: number; width: number; height: number };
   getBoundingClientRect?: () => { x: number; y: number; width: number; height: number };
+  /**
+   * Desktop only: draws the box at `frame` by restyling its own element, with
+   * no render, until it is called with null. The offset rides the compositor,
+   * so it costs no layout or repaint.
+   */
+  setLiveFrame?: (frame: LiveBoxFrame | null) => void;
   [key: string]: unknown;
 }
 

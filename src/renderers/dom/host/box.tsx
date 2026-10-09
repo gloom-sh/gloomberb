@@ -21,6 +21,7 @@ import {
   requestWebFrame,
 } from "./mouse";
 import { hideDragShield, showDragShield } from "./drag-shield";
+import { applyLiveFrame } from "./live-frame";
 import { cleanDomProps, commonStyle } from "./style";
 
 /** Farther than this from the pointer, in px, a predicted point is noise. */
@@ -82,7 +83,13 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       ? props.hoverBackgroundColor
       : undefined;
 
-    useImperativeHandle(ref, () => cellBoundsForElement(() => elementRef.current, () => propsRef.current) as unknown as HTMLDivElement, []);
+    useImperativeHandle(ref, () => {
+      const handle = cellBoundsForElement(() => elementRef.current, () => propsRef.current);
+      handle.setLiveFrame = (frame) => {
+        if (elementRef.current) applyLiveFrame(elementRef.current, frame, propsRef.current);
+      };
+      return handle as unknown as HTMLDivElement;
+    }, []);
 
     const cancelPendingFrame = () => {
       if (frameRef.current !== null) {
@@ -153,8 +160,13 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       /** Moved far enough to be a drag: the drag shield is up. */
       shielded: boolean;
     } | null>(null);
-    const endDocumentDragRef = useRef<(event: globalThis.MouseEvent | null, notify: boolean) => void>(() => {});
-    endDocumentDragRef.current = (event, notify) => {
+    /**
+     * Ends the press. "end" reports a release at `event` (or the last point);
+     * "cancel" reports the drag abandoned (the window lost focus or the system
+     * took the pointer), so a move can put things back.
+     */
+    const endDocumentDragRef = useRef<(event: globalThis.MouseEvent | null, outcome: "end" | "cancel") => void>(() => {});
+    endDocumentDragRef.current = (event, outcome) => {
       const session = dragSessionRef.current;
       const wasDragging = draggingRef.current;
       if (!session && !wasDragging) return;
@@ -171,7 +183,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         window.removeEventListener("blur", session.cancel);
         releasePointer(session.captured);
       }
-      if (!notify || !wasDragging) return;
+      if (!wasDragging) return;
       const point = event ?? new MouseEvent("mouseup", {
         clientX: lastPointRef.current.x,
         clientY: lastPointRef.current.y,
@@ -181,14 +193,14 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       flushPendingFrameNow();
       callMouseHandler(propsRef.current.onMouse, point, "up");
       callMouseHandler(propsRef.current.onMouseUp, point, "up");
-      callMouseHandler(propsRef.current.onMouseDragEnd, point, "drag-end");
+      callMouseHandler(propsRef.current.onMouseDragEnd, point, outcome === "cancel" ? "drag-cancel" : "drag-end");
     };
 
     useEffect(() => () => {
       cancelPendingFrame();
       pendingMoveRef.current = null;
       pendingDragRef.current = null;
-      endDocumentDragRef.current(null, true);
+      endDocumentDragRef.current(null, "end");
     }, []);
 
     const handlesWheel = typeof props.onMouseScroll === "function";
@@ -208,7 +220,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       pendingMoveRef.current = null;
       // A press that never saw mouseup (the window move took the pointer) is still tracked.
       // Finish it before the new press, so its drag-end cannot clear the drag this press starts.
-      endDocumentDragRef.current(null, true);
+      endDocumentDragRef.current(null, "end");
       callMouseHandler(propsRef.current.onMouseDown, event, "down");
       if (event.button !== 0 || (event.isPropagationStopped() && !hasDirectDrag)) return;
       if (!hasSyntheticDrag && !hasDirectDrag) return;
@@ -228,7 +240,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         lastPointRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
         // The button is up and mouseup never arrived. End the drag instead of following the cursor.
         if (moveEvent.buttons === 0) {
-          endDocumentDragRef.current(moveEvent, true);
+          endDocumentDragRef.current(moveEvent, "end");
           return;
         }
         const dx = moveEvent.clientX - originX;
@@ -247,10 +259,10 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         scheduleFrameMouseHandler(moveEvent, "drag", predictedPoint(moveEvent));
       };
       const up = (upEvent: globalThis.MouseEvent) => {
-        endDocumentDragRef.current(upEvent, true);
+        endDocumentDragRef.current(upEvent, "end");
       };
       const cancel = () => {
-        endDocumentDragRef.current(null, true);
+        endDocumentDragRef.current(null, "cancel");
       };
       dragSessionRef.current = { move, up, cancel, captured: null, pointerMoves: false, shielded: false };
       document.addEventListener("pointermove", move);

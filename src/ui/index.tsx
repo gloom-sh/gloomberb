@@ -48,6 +48,7 @@ export type {
   MediaSurfaceHandle,
   MediaSurfaceProps,
   InputRenderable,
+  LiveBoxFrame,
   NativeCursorState,
   NativeRendererHost,
   NativePostProcessFn,
