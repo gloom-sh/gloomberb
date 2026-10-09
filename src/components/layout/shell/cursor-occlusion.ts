@@ -160,15 +160,16 @@ function shouldHideCursor({
 }
 
 export function useShellCursorOcclusionGuard({
-  occlusionRects,
+  resolveOcclusionRects,
   shellRef,
 }: {
-  occlusionRects: readonly ShellCursorOcclusionRect[];
+  /** Called on every terminal frame. */
+  resolveOcclusionRects: () => readonly ShellCursorOcclusionRect[];
   shellRef: RefObject<unknown>;
 }) {
   const nativeRenderer = useNativeRenderer();
-  const stateRef = useRef({ occlusionRects, shellRef });
-  stateRef.current = { occlusionRects, shellRef };
+  const stateRef = useRef({ resolveOcclusionRects, shellRef });
+  stateRef.current = { resolveOcclusionRects, shellRef };
 
   useEffect(() => {
     if (
@@ -186,7 +187,7 @@ export function useShellCursorOcclusionGuard({
       const shellBounds = readRenderableBounds(stateRef.current.shellRef.current);
       if (!shellBounds) return;
 
-      const terminalRects = stateRef.current.occlusionRects.map((rect) => toTerminalRect(shellBounds, rect));
+      const terminalRects = stateRef.current.resolveOcclusionRects().map((rect) => toTerminalRect(shellBounds, rect));
       if (terminalRects.length === 0) return;
 
       const cursorOwnerPaneId = readRenderablePaneId(nativeRenderer.currentFocusedEditor);

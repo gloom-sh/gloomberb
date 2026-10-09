@@ -65,9 +65,8 @@ export function useShellActiveDrag({
   windowMode,
 }: UseShellActiveDragOptions) {
   const {
-    dividerPreviewRef,
-    dockPreviewRef,
     dragRef,
+    live,
     setDragCursor,
     updateDividerPreview,
     updateDockPreview,
@@ -143,7 +142,7 @@ export function useShellActiveDrag({
 
     if (event.type === "up" || event.type === "drag-end") {
       if (drag.type === "divider") {
-        const preview = dividerPreviewRef.current;
+        const preview = live.get().divider;
         if (preview) {
           const nextLayout = resizeSplitAtPath(baseLayout, drag.path, preview.ratio);
           if (windowMode) {
@@ -165,7 +164,7 @@ export function useShellActiveDrag({
             ? getRememberedFloatingRect(baseLayout, drag.paneId, width, contentHeight, pane?.def)
             : drag.origRect;
           const releaseRect = resolvePaneDragFloatingRect(drag, baseRect, preciseX, preciseShellY, width, contentHeight);
-          const nextLayout = finalizePaneDragRelease(baseLayout, drag.paneId, releaseRect, dockPreviewRef.current);
+          const nextLayout = finalizePaneDragRelease(baseLayout, drag.paneId, releaseRect, live.get().dockPreview);
           if (windowMode) {
             updateWindowModePreviewLayout(nextLayout, drag.paneId);
           } else {
@@ -188,6 +187,7 @@ export function useShellActiveDrag({
         setDragCursor(null);
       }
       dragRef.current = null;
+      live.set({ paneDrag: null });
       event.stopPropagation();
       event.preventDefault();
     }
@@ -196,11 +196,10 @@ export function useShellActiveDrag({
     bounds,
     contentHeight,
     dockGeometryOptions,
-    dividerPreviewRef,
     dockLeafLayouts,
-    dockPreviewRef,
     dragRef,
     focusPane,
+    live,
     nativePaneChrome,
     paneMap,
     persistLayout,

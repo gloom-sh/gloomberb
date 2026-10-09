@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Box, Text } from "../../../../ui";
 import type {
   DockGeometryOptions,
@@ -8,6 +9,7 @@ import type {
 } from "../../../../layout/pane-manager";
 import { colors } from "../../../../theme/colors";
 import { constrainFloatingRectToBounds } from "../drag";
+import { useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
 import {
   getFloatingResizeCornerPosition,
   type WindowEditDockMovePreview,
@@ -27,9 +29,9 @@ interface ShellWindowModeOverlaysProps {
   contentHeight: number;
   dockGeometryOptions: DockGeometryOptions;
   dockLeafLayouts: DockLeafLayout[];
-  dragFloatingRect: { paneId: string; rect: FloatingRect } | null;
   focusedPaneId: string | null;
   getPaneTitle: (pane: ResolvedPane) => string;
+  live: LiveDragStore;
   menuOpen: boolean;
   nativePaneChrome: boolean;
   nativeWindowModePanelRect: LayoutBounds | null;
@@ -64,9 +66,9 @@ export function ShellWindowModeOverlays({
   contentHeight,
   dockGeometryOptions,
   dockLeafLayouts,
-  dragFloatingRect,
   focusedPaneId,
   getPaneTitle,
+  live,
   menuOpen,
   nativePaneChrome,
   nativeWindowModePanelRect,
@@ -84,9 +86,15 @@ export function ShellWindowModeOverlays({
   const highlightedDockedLeaf = highlightedPaneId && !highlightedFloatingPane
     ? dockLeafLayouts.find((leaf) => leaf.instanceId === highlightedPaneId)
     : null;
+  // The terminal frame follows a floating pane while it moves; desktop panes draw their own.
+  const followedPaneId = !nativePaneChrome && highlightedFloatingPane ? highlightedFloatingPane.pane.instance.instanceId : null;
+  const selectDragRect = useCallback((geometry: LiveDragGeometry) => (
+    followedPaneId && geometry.floating?.paneId === followedPaneId ? geometry.floating.rect : null
+  ), [followedPaneId]);
+  const dragRect = useLiveDrag(live, selectDragRect);
   const highlightedRect = highlightedFloatingPane
-    ? dragFloatingRect?.paneId === highlightedFloatingPane.pane.instance.instanceId
-      ? constrainFloatingRectToBounds(dragFloatingRect.rect, width, contentHeight)
+    ? dragRect
+      ? constrainFloatingRectToBounds(dragRect, width, contentHeight)
       : highlightedFloatingPane.rect
     : highlightedDockedLeaf?.rect ?? null;
   const highlightedZIndex = highlightedFloatingPane
