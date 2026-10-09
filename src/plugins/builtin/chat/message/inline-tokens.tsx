@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Box, Text } from "../../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import { ExternalLinkText } from "../../../../components/ui";
 import { InlineTickerBadge } from "../../../../components/ticker/badge";
@@ -8,6 +8,7 @@ import { blendHex, colors } from "../../../../theme/colors";
 import type { ChatUserSummary } from "../../../../api-client";
 import { tokenizeInlineContent, type InlineContentToken } from "../../../../utils/inline-content-tokenizer";
 import { chatBadgeTextWidth } from "../layout";
+import type { ChatUserContextMenuEvent } from "./types";
 
 export function ResponsiveTickerBadgeText({
   text = "",
@@ -20,6 +21,7 @@ export function ResponsiveTickerBadgeText({
   onUserHover,
   onUserHoverEnd,
   onUserActivate,
+  onUserContextMenu,
 }: {
   text?: string;
   tokens?: readonly InlineContentToken[];
@@ -31,7 +33,9 @@ export function ResponsiveTickerBadgeText({
   onUserHover?: (user: ChatUserSummary) => void;
   onUserHoverEnd?: () => void;
   onUserActivate?: (user: ChatUserSummary) => void;
+  onUserContextMenu?: (user: ChatUserSummary, event: ChatUserContextMenuEvent) => void;
 }) {
+  const { nativeContextMenu } = useUiCapabilities();
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const tokens = useMemo(() => providedTokens ?? tokenizeInlineContent(text), [providedTokens, text]);
   const renderTextToken = (value: string, tokenIndex: number) => {
@@ -67,12 +71,17 @@ export function ResponsiveTickerBadgeText({
         onMouseOut={() => {
           if (user) onUserHoverEnd?.();
         }}
-        // Only a mention of someone the chat has a summary for has a card to open.
-        onMouseDown={user && onUserActivate ? (event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+        // Only a mention of someone the chat has a summary for has a card or a menu to open.
+        onMouseDown={user && onUserActivate ? (event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
           event.preventDefault?.();
           event.stopPropagation?.();
+          if (event.button === 2 && nativeContextMenu === true) return;
           onUserActivate(user);
         } : undefined}
+        {...(user && onUserContextMenu ? {
+          "data-gloom-context-menu-surface": "true",
+          onContextMenu: (event: ChatUserContextMenuEvent) => onUserContextMenu(user, event),
+        } : {})}
         style={user && onUserActivate ? { cursor: "pointer" } : undefined}
       >
         <Text fg={colors.positive} attributes={TextAttributes.BOLD}>

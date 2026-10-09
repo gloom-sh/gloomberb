@@ -3,6 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { ChatChannel, ChatUserSummary } from "../../../api-client";
 import {
   describeConversationStartError,
+  directMessageAction,
   directMessageAvailability,
   knownConversationRefusal,
 } from "./direct-messages";
@@ -71,5 +72,22 @@ describe("directMessageAvailability", () => {
     expect(knownConversationRefusal(["open_door", "closed_door"], context))
       .toBe("@closed_door only takes DMs from people they have written to first.");
     expect(knownConversationRefusal(["open_door", "unknown_name"], context)).toBeNull();
+  });
+});
+
+describe("directMessageAction", () => {
+  const context = { currentUserId: "u-self", channels: [dmWithClosed], canSend: true };
+
+  test("offers Message to someone who takes DMs, and Open DM where one is shared", () => {
+    expect(directMessageAction(open, context)).toMatchObject({ kind: "start", menuLabel: "Message @open_door", buttonLabel: "Message" });
+    // Their setting refuses new DMs, but the one you share stays open.
+    expect(directMessageAction(closed, context)).toMatchObject({ kind: "open", menuLabel: "Open DM with @closed_door", buttonLabel: "Open DM" });
+  });
+
+  test("refuses a bot and someone who takes no new DMs, and offers nothing for yourself or before you can send", () => {
+    expect(directMessageAction(bot, context)?.kind).toBe("refused");
+    expect(directMessageAction(closed, { ...context, channels: [] })?.kind).toBe("refused");
+    expect(directMessageAction({ ...open, id: "u-self" }, context)).toBeNull();
+    expect(directMessageAction(open, { ...context, canSend: false })).toBeNull();
   });
 });

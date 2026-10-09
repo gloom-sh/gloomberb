@@ -1,4 +1,4 @@
-import { Box, Text } from "../../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
@@ -73,14 +73,16 @@ export function ChatMessageHeader({
   onUserHover,
   onUserHoverEnd,
   onUserActivate,
+  onUserContextMenu,
   ...actionProps
-}: ChatMessageActionProps & Pick<ChatMessageBaseProps, "msg" | "onUserHover" | "onUserHoverEnd" | "onUserActivate"> & {
+}: ChatMessageActionProps & Pick<ChatMessageBaseProps, "msg" | "onUserHover" | "onUserHoverEnd" | "onUserActivate" | "onUserContextMenu"> & {
   /** Host row props: width, background and hover or selection hooks. */
   rowProps: Record<string, unknown>;
   /** The terminal sizes the author cell to its label. */
   fitAuthorWidth?: boolean;
 }) {
   const authorLabel = msg.user.username ?? "anon";
+  const { nativeContextMenu } = useUiCapabilities();
   return (
     <Box {...rowProps} flexDirection="row" height={1} paddingLeft={1}>
       <Box
@@ -89,11 +91,15 @@ export function ChatMessageHeader({
         onMouseOver={() => onUserHover(msg.user)}
         onMouseMove={() => onUserHover(msg.user)}
         onMouseOut={onUserHoverEnd}
-        onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+        data-gloom-context-menu-surface="true"
+        onMouseDown={(event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
           event.preventDefault?.();
           event.stopPropagation?.();
+          // A native menu opens on the right-click's contextmenu event instead.
+          if (event.button === 2 && nativeContextMenu === true) return;
           onUserActivate?.(msg.user);
         }}
+        onContextMenu={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event)}
         style={{ cursor: "pointer" }}
       >
         <Text fg={state.authorColor} attributes={state.authorAttributes}>

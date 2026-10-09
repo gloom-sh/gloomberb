@@ -844,6 +844,11 @@ export const ko: Record<string, string> = {
   "Could not start the conversation (error {status}).": "대화를 시작할 수 없습니다 (오류 {status}).",
   "Could not start the conversation. Check your connection and try again.": "대화를 시작할 수 없습니다. 연결을 확인하고 다시 시도하세요.",
   "no DMs": "DM 불가",
+  "Message @{username}": "@{username}님에게 메시지",
+  "Open DM with @{username}": "@{username}님과의 DM 열기",
+  "Message": "메시지",
+  "Open DM": "DM 열기",
+  "Show Profile": "프로필 보기",
   "Starting": "시작 중",
   "Start": "시작",
 

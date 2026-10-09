@@ -4,6 +4,7 @@ import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-ti
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
+import type { ChatUserContextMenuEvent } from "../message/types";
 import { DesktopChatMessage } from "../message/desktop";
 import { UserProfilePopover } from "../message/profile-popover";
 import { TerminalChatMessage } from "../message/terminal";
@@ -47,6 +48,10 @@ interface ChatTranscriptProps {
   /** Closes the card at once, pinned or not (a click outside it on the desktop). */
   dismissProfilePopover: () => void;
   onSetUpProfile: () => void;
+  /** Right-click on a name or @mention. */
+  onUserContextMenu: (user: ChatUserSummary, event: ChatUserContextMenuEvent) => void;
+  /** The card's "Message" action for this user, or null where none is offered. */
+  profileMessageAction: { label: string; onPress: () => void } | null;
   stickyTranscript: boolean;
   user: { id: string; username: string; emailVerified: boolean } | null;
   userByUsername: Map<string, ChatUserSummary>;
@@ -88,6 +93,8 @@ export function ChatTranscript({
   user,
   userByUsername,
   onSetUpProfile,
+  onUserContextMenu,
+  profileMessageAction,
 }: ChatTranscriptProps) {
   return (
     <>
@@ -137,6 +144,7 @@ export function ChatTranscript({
               onUserHover={showProfilePopover}
               onUserHoverEnd={scheduleProfilePopoverClose}
               onUserActivate={toggleProfilePopover}
+              onUserContextMenu={onUserContextMenu}
               beginReplyTo={beginReplyTo}
               beginEditMessage={beginEditMessage}
               jumpToMessage={jumpToMessage}
@@ -162,6 +170,7 @@ export function ChatTranscript({
               onUserHover={showProfilePopover}
               onUserHoverEnd={scheduleProfilePopoverClose}
               onUserActivate={toggleProfilePopover}
+              onUserContextMenu={onUserContextMenu}
               beginReplyTo={beginReplyTo}
               beginEditMessage={beginEditMessage}
               jumpToMessage={jumpToMessage}
@@ -182,6 +191,7 @@ export function ChatTranscript({
           onKeepOpen={cancelProfilePopoverClose}
           isOwnProfile={profilePopoverUser.id === user?.id}
           onSetUpProfile={onSetUpProfile}
+          messageAction={profileMessageAction}
         />
       )}
     </>

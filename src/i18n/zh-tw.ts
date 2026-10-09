@@ -846,6 +846,11 @@ export const zhTW: Record<string, string> = {
   "Could not start the conversation (error {status}).": "無法開始對話（錯誤 {status}）。",
   "Could not start the conversation. Check your connection and try again.": "無法開始對話。請檢查網路連線後再試一次。",
   "no DMs": "不收私訊",
+  "Message @{username}": "私訊 @{username}",
+  "Open DM with @{username}": "開啟與 @{username} 的私訊",
+  "Message": "傳私訊",
+  "Open DM": "開啟私訊",
+  "Show Profile": "查看個人資料",
   "Starting": "正在開始",
   "Start": "開始",
 

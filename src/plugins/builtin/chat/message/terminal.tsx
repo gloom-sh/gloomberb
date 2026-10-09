@@ -30,6 +30,7 @@ export function TerminalChatMessage({
   onUserHover,
   onUserHoverEnd,
   onUserActivate,
+  onUserContextMenu,
   beginReplyTo,
   beginEditMessage,
   jumpToMessage,
@@ -97,6 +98,7 @@ export function TerminalChatMessage({
           onUserHover={onUserHover}
           onUserHoverEnd={onUserHoverEnd}
           onUserActivate={onUserActivate}
+          onUserContextMenu={onUserContextMenu}
           {...actionProps}
         />
       )}
@@ -120,6 +122,7 @@ export function TerminalChatMessage({
               onUserHover={onUserHover}
               onUserHoverEnd={onUserHoverEnd}
               onUserActivate={onUserActivate}
+              onUserContextMenu={onUserContextMenu}
             />
           </Box>
           {lineIndex === 0 && state.grouped && <ChatMessageActions floating {...actionProps} />}

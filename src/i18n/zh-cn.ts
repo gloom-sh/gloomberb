@@ -846,6 +846,11 @@ export const zhCN: Record<string, string> = {
   "Could not start the conversation (error {status}).": "无法开始会话（错误 {status}）。",
   "Could not start the conversation. Check your connection and try again.": "无法开始会话。请检查网络连接后重试。",
   "no DMs": "不收私信",
+  "Message @{username}": "私信 @{username}",
+  "Open DM with @{username}": "打开与 @{username} 的私信",
+  "Message": "发私信",
+  "Open DM": "打开私信",
+  "Show Profile": "查看资料",
   "Starting": "正在开始",
   "Start": "开始",
 

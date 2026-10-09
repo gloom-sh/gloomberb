@@ -130,6 +130,7 @@ export function UserProfilePopover({
   onKeepOpen,
   isOwnProfile = false,
   onSetUpProfile,
+  messageAction,
 }: {
   user: ChatUserSummary;
   width: number;
@@ -140,6 +141,8 @@ export function UserProfilePopover({
   onKeepOpen: () => void;
   isOwnProfile?: boolean;
   onSetUpProfile?: () => void;
+  /** "Message" or "Open DM" for someone you can write to; left out for anyone else. */
+  messageAction?: { label: string; onPress: () => void } | null;
 }) {
   const popoverWidth = Math.max(24, Math.min(38, width - 4));
   const meta = [user.title, user.company].filter(Boolean).join(" · ");
@@ -179,6 +182,9 @@ export function UserProfilePopover({
       ) : null}
       {showSetupAction ? (
         <Button label="Set up profile" width={headerWidth} variant="ghost" compact stopPropagation onPress={onSetUpProfile} />
+      ) : null}
+      {messageAction ? (
+        <Button label={messageAction.label} width={headerWidth} variant="ghost" compact stopPropagation onPress={messageAction.onPress} />
       ) : null}
     </>
   );

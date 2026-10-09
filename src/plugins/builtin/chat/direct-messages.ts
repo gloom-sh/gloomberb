@@ -56,6 +56,50 @@ export function directMessageAvailability(
   return reason ? { kind: "refused", reason } : { kind: "start" };
 }
 
+export interface DirectMessageAction {
+  /**
+   * Opens the DM you already share, starts one, or cannot: their settings or
+   * the account refuse a new DM. A menu shows a refused one disabled; a card
+   * or the pane menu leaves it out.
+   */
+  kind: "open" | "start" | "refused";
+  username: string;
+  /** For a menu: "Message @name", or "Open DM with @name" when one exists. */
+  menuLabel: string;
+  /** For a button beside the name: "Message" or "Open DM". */
+  buttonLabel: string;
+}
+
+/**
+ * The "Message" action on a user's name, card or message. Null for yourself
+ * and before you can send. Refused for a bot, a bridged Discord user, and
+ * someone who takes no DMs from people they have not talked to, unless you
+ * already share one.
+ */
+export function directMessageAction(
+  user: ChatUserSummary,
+  context: { currentUserId: string | null | undefined; channels: readonly ChatChannel[]; canSend: boolean },
+): DirectMessageAction | null {
+  const username = normalizedUsername(user);
+  if (!context.canSend || !username) return null;
+  const availability = directMessageAvailability(user, context);
+  if (availability.kind === "open") {
+    return {
+      kind: "open",
+      username,
+      menuLabel: tf("Open DM with @{username}", { username }),
+      buttonLabel: t("Open DM"),
+    };
+  }
+  if (availability.kind === "self") return null;
+  return {
+    kind: availability.kind,
+    username,
+    menuLabel: tf("Message @{username}", { username }),
+    buttonLabel: t("Message"),
+  };
+}
+
 function directMessageRefusalText(username: string, reason: DirectMessageRefusal): string {
   return reason === "dms-off"
     ? tf("@{username} only takes DMs from people they have written to first.", { username })

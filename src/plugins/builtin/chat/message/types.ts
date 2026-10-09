@@ -1,6 +1,12 @@
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 
+/** The pointer event a user menu opens from. */
+export interface ChatUserContextMenuEvent {
+  preventDefault?: () => void;
+  stopPropagation?: () => void;
+}
+
 export interface ChatMessageBaseProps {
   msg: ChatMessage;
   index: number;
@@ -14,6 +20,8 @@ export interface ChatMessageBaseProps {
   onUserHover: (user: ChatUserSummary) => void;
   onUserHoverEnd: () => void;
   onUserActivate?: (user: ChatUserSummary) => void;
+  /** A right-click on a name or @mention: the user's own menu. */
+  onUserContextMenu?: (user: ChatUserSummary, event: ChatUserContextMenuEvent) => void;
   beginReplyTo: (index: number, options?: { deferFocus?: boolean }) => void;
   beginEditMessage: (index: number, options?: { deferFocus?: boolean }) => boolean;
   jumpToMessage: (messageId: string) => void;

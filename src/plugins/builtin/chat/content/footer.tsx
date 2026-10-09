@@ -45,6 +45,7 @@ export function useChatFooter({
   jumpToMessage,
   needsProfileSetup,
   openProfileSetup,
+  authorMessageAction,
 }: {
   /**
    * The composer or the New DM overlay owns the keyboard. Hints about the
@@ -83,6 +84,8 @@ export function useChatFooter({
   jumpToMessage: (messageId: string) => void;
   needsProfileSetup: boolean;
   openProfileSetup: () => void;
+  /** "Message @author" for the selected message, where its author can be written to. */
+  authorMessageAction: { label: string; run: () => void } | null;
 }) {
   const dialog = useOptionalDialog();
   const rendererHost = useRendererHost();
@@ -186,6 +189,7 @@ export function useChatFooter({
     selectedIdx,
     setChannelNotificationsEnabled,
     toggleAuthorProfile,
+    authorMessageAction,
   });
   latest.current = {
     beginEditMessage,
@@ -203,7 +207,9 @@ export function useChatFooter({
     selectedIdx,
     setChannelNotificationsEnabled,
     toggleAuthorProfile,
+    authorMessageAction,
   };
+  const authorMessageLabel = composing ? null : authorMessageAction?.label ?? null;
 
   usePaneFooter("chat", () => {
     const hints: PaneHint[] = [];
@@ -235,6 +241,11 @@ export function useChatFooter({
     }
 
     const menu: ContextMenuItem[] = [];
+    // No key of its own: a stray press would start a conversation. The pane
+    // menu (.) and a right-click on the name reach it.
+    if (authorMessageLabel) {
+      menu.push({ id: "message-author", label: authorMessageLabel, onSelect: () => latest.current.authorMessageAction?.run() });
+    }
     if (canCycleChannels) {
       menu.push(
         { id: "previous-channel", label: "Previous Channel", accelerator: "[", onSelect: () => { latest.current.cycleChannel(-1); } },
@@ -256,6 +267,7 @@ export function useChatFooter({
     return { hints, menu };
   }, [
     authorHasProfile,
+    authorMessageLabel,
     canAttachImages,
     failedSend,
     canCycleChannels,

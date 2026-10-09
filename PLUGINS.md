@@ -505,7 +505,7 @@ ctx.registerContextMenuProvider({
 });
 ```
 
-Available context kinds are `pane`, `ticker`, `link`, `editable-text`, `selected-text`, `layout`, and `app`. Return `null` or an empty array when your plugin has nothing useful for a context. Keep actions renderer-neutral: call plugin context methods such as `ctx.openCommandBar()`, `ctx.selectTicker()`, `ctx.pinTicker()`, `ctx.focusPane()`, and `ctx.notify()` instead of using renderer-specific APIs.
+Available context kinds are `pane`, `ticker`, `link`, `editable-text`, `selected-text`, `layout`, `chat-user` (a name or @mention in the chat, with its user id and username), and `app`. Return `null` or an empty array when your plugin has nothing useful for a context. Keep actions renderer-neutral: call plugin context methods such as `ctx.openCommandBar()`, `ctx.selectTicker()`, `ctx.pinTicker()`, `ctx.focusPane()`, and `ctx.notify()` instead of using renderer-specific APIs.
 
 ### Command-bar shortcut discovery
 
