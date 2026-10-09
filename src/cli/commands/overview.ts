@@ -15,7 +15,7 @@ import { isoDate, requireArg, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
-import { parsePublicTickerKey } from "../../utils/exchanges";
+import { EXCHANGE_OPTION, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
@@ -199,18 +199,26 @@ async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
-async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const left = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb correlation <symbol-a> <symbol-b>", ctx);
-  const right = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb correlation <symbol-a> <symbol-b>", ctx);
+async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  const args = [...rawArgs];
+  const exchange = takeOption(args, "--exchange");
+  const usage = "Usage: gloomberb correlation <symbol-a> <symbol-b>";
+  requireArg(args[0], usage, ctx);
+  requireArg(args[1], usage, ctx);
   await withCliServices(ctx, async (services) => {
+    // --exchange is for a symbol that names no exchange of its own.
+    const [leftListing, rightListing] = await Promise.all([args[0]!, args[1]!].map((raw) => (
+      requireCliListing(raw, exchange, services, ctx, { ownExchangeWins: true })
+    )));
+    const left = leftListing!.key;
+    const right = rightListing!.key;
     // Same daily-return model as the CORR pane: price levels of two trending
     // assets correlate spuriously, often with the opposite sign.
-    const loadSeries = async (key: string) => {
-      const parsed = parsePublicTickerKey(key);
-      const exchange = parsed.exchange ?? (await services.store.loadTicker(key))?.metadata.exchange ?? "";
-      return buildCorrelationSeries(key, await loadCorrelationHistory(services.dataProvider, parsed.symbol, exchange, "1Y"));
-    };
-    const [leftSeries, rightSeries] = await Promise.all([loadSeries(left), loadSeries(right)]);
+    const loadSeries = async (listing: CliListing) => buildCorrelationSeries(
+      listing.key,
+      await loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
+    );
+    const [leftSeries, rightSeries] = await Promise.all([loadSeries(leftListing!), loadSeries(rightListing!)]);
     const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
     ctx.printResult({ data: [{ left, right, samples: sampleSize, correlation }], metadata: { range: "1Y", basis: CORRELATION_RETURN_BASIS } }, {
       layout: "record",
@@ -291,7 +299,8 @@ export const overviewCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.research,
       usage: ["correlation <symbol-a> <symbol-b>"],
-      examples: ["correlation AAPL MSFT", "correlation GLD TLT"],
+      options: [EXCHANGE_OPTION],
+      examples: ["correlation AAPL MSFT", "correlation GLD TLT", "correlation BHP:ASX RIO:ASX"],
     },
     execute: runCorrelation,
   },

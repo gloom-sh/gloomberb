@@ -10,6 +10,7 @@ import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
+import { resolveCliListing } from "../listing-arg";
 import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
@@ -94,6 +95,37 @@ async function buildPaneInstance(
   };
 }
 
+function findPaneFunction(registry: PaneFunctionCatalog, target: string): { template?: PaneTemplateDef; pane?: PaneDef } | null {
+  const entry = buildPaneFunctionLookup(registry).get(normalizeLookupToken(target));
+  if (!entry) return null;
+  const template = "paneId" in entry && "description" in entry ? entry as PaneTemplateDef : undefined;
+  return { template, pane: template ? registry.panes.get(template.paneId) : entry as PaneDef };
+}
+
+/**
+ * `fn ANR SAN --exchange EPA` is `fn ANR SAN:EPA`: a function that takes one
+ * ticker gets the listing in its argument, and an exchange the app does not
+ * know fails with the venues the symbol trades on.
+ */
+export async function applyListingArgument(
+  registry: PaneFunctionCatalog,
+  context: MarketContext,
+  args: ParsedPaneFunctionArgs,
+): Promise<ParsedPaneFunctionArgs> {
+  const found = args.target ? findPaneFunction(registry, args.target) : null;
+  if (!found?.pane || !args.arg || /\s/.test(args.arg)) return args;
+  const headless = getHeadlessPaneDefinition(found.template, found.pane);
+  const takesOneTicker = headless ? headless.argument.kind === "ticker" : found.template?.shortcut?.argKind === "ticker";
+  // A function with an exchange option of its own (DIST) keeps it.
+  if (!takesOneTicker || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
+    return args;
+  }
+  const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
+  const listing = await resolveCliListing(args.arg, exchange, context);
+  const { exchange: _exchange, ...options } = args.options;
+  return { ...args, arg: listing.key, options };
+}
+
 export async function resolvePaneFunction(
   registry: PaneFunctionCatalog,
   context: MarketContext,
@@ -104,9 +136,8 @@ export async function resolvePaneFunction(
     throw new Error("Usage: gloomberb fn <function-or-pane> [argument] [--key value]");
   }
 
-  const lookup = buildPaneFunctionLookup(registry);
-  const entry = lookup.get(normalizeLookupToken(args.target));
-  if (!entry) {
+  const found = findPaneFunction(registry, args.target);
+  if (!found) {
     const shortcuts = [...registry.paneTemplates.values()]
       .map((template) => template.shortcut?.prefix)
       .filter((prefix): prefix is string => !!prefix)
@@ -114,10 +145,7 @@ export async function resolvePaneFunction(
     throw new Error(`Unknown function or pane "${args.target}". Try one of: ${shortcuts.slice(0, 18).join(", ")}`);
   }
 
-  const template = "paneId" in entry && "description" in entry ? entry as PaneTemplateDef : undefined;
-  const pane = template
-    ? registry.panes.get(template.paneId)
-    : entry as PaneDef;
+  const { template, pane } = found;
   if (!pane) {
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }

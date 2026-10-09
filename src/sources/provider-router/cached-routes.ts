@@ -3,6 +3,7 @@ import { CachedQuery, type CachedValue } from "../../data/cached-query";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, MarketDataRequestContext, SecFilingItem } from "../../types/data-provider";
 import type { AnalystResearchData, CorporateActionsData, HolderData } from "../../types/financials";
 import { canonicalExchange } from "../../utils/exchanges";
+import { nonUsSecListingVenue } from "../../utils/sec";
 import { shouldLogProviderError } from "../provider-errors";
 import { hasBrokerContext, withBrokerTimeout } from "./brokers";
 import { publicListingExchange } from "../listing-target";
@@ -220,9 +221,11 @@ export class ProviderRouterCachedRoutes {
       };
       case "getSecFilings": {
         const [symbol, count = 15, listingExchange, requestContext] = args as CachedAssetArgs<"getSecFilings">;
+        const exact = buildVariantKey([["exchange", canonicalExchange(listingExchange)], ["count", count]]);
         return {
           kind: "sec-filings", policy: "secFilings", entityKey: this.deps.getEntityKey(symbol, requestContext?.instrument),
-          variants: [...new Set([buildVariantKey([["exchange", canonicalExchange(listingExchange)], ["count", count]]), buildVariantKey([["count", count]]), ""])],
+          // A non-US listing never reads the bare symbol's filings: SAN in Paris is Sanofi, SAN at the SEC is Santander.
+          variants: nonUsSecListingVenue(symbol, listingExchange) ? [exact] : [...new Set([exact, buildVariantKey([["count", count]]), ""])],
           request: (provider, force) => provider.getSecFilings?.(symbol, count, listingExchange, force ? { ...requestContext, cacheMode: "refresh" } : requestContext),
           throwLastError: true, error: `No SEC filings provider available for ${symbol}`,
         };

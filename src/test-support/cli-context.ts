@@ -8,7 +8,8 @@ export interface PrintedCliResult {
 }
 
 /**
- * A command context whose `initMarketData` resolves to `market` (config, store, dataProvider, ...).
+ * A command context whose `initMarketData` resolves to `market` (config, store, dataProvider, ...),
+ * with an empty ticker store unless `market` brings one.
  * `fail` throws, every printResult call is kept in `printed`, and `closeCount` reports how many
  * times the command closed its persistence.
  */
@@ -20,7 +21,12 @@ export function createTestCliContext(
   let closed = 0;
   const context = {
     cliOptions: { ...DEFAULT_CLI_OPTIONS, ...cliOptions },
-    initMarketData: async () => ({ persistence: { close: () => { closed += 1; } }, ...market }),
+    initMarketData: async () => ({
+      persistence: { close: () => { closed += 1; } },
+      // Commands look up the saved listing of every symbol they are given.
+      store: { loadTicker: async () => null, loadAllTickers: async () => [] },
+      ...market,
+    }),
     printResult: (result: CliResult<any>, options?: CliResultRenderOptions<any, any>) => { printed.push({ result, options }); },
     fail: (message: string): never => { throw new Error(message); },
   } as unknown as CliCommandContext;

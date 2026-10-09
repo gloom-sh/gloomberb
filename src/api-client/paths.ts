@@ -4,6 +4,7 @@ import type {
   CloudTweetQueryType,
 } from "./types";
 import { isUsListingExchange, normalizeSymbol, parsePublicTickerKey, publicTickerKey } from "../utils/exchanges";
+import { nonUsSecListingVenue } from "../utils/sec";
 import type { HistoryRetention } from "../sources/history-retention";
 
 export type CloudHistoryParams = {
@@ -228,6 +229,10 @@ export function cloudCreditBoardPath(board: "cdx" | "sovr", params: { days?: num
 
 export type CloudSecFilingsParams = {
   ticker: string;
+  /** The listing's venue. Sent only for a venue outside the US, with `name`. */
+  exchange?: string;
+  /** The listing's company name, from its own quote. */
+  name?: string;
   limit?: number;
   offset?: number;
 };
@@ -343,10 +348,23 @@ export function cloudProxyStatementPath(ticker: string, year: number): string {
   return `/cloud/proxies/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/${year}`;
 }
 
+/**
+ * A US listing, or a symbol with no venue, looks up its US ticker as before.
+ * A listing elsewhere sends its bare symbol with the venue and company name:
+ * its symbol can be another company's US ticker.
+ */
 export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
-  const search = new URLSearchParams({ ticker: normalizeIssuerResearchTicker(params.ticker) });
+  const venue = nonUsSecListingVenue(params.ticker, params.exchange);
+  const search = new URLSearchParams({
+    ticker: venue ? parsePublicTickerKey(params.ticker).symbol : normalizeIssuerResearchTicker(params.ticker),
+  });
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
+  if (venue) {
+    search.set("exchange", venue);
+    const name = params.name?.trim();
+    if (name) search.set("name", name);
+  }
   return appendQuery("/cloud/sec/filings", search);
 }
 

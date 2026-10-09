@@ -3,19 +3,21 @@ import type { TickerRecord } from "../types/ticker";
 import type { TickerRepository } from "../data/ticker-repository";
 import { resolveTickerSearch, upsertTickerFromSearchResult } from "../tickers/search";
 import { canonicalExchange } from "../utils/exchanges";
+import { resolveCliListing } from "./listing-arg";
 
+/** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
   symbol: string,
   store: TickerRepository,
   dataProvider: DataProvider,
+  exchange?: string,
 ): Promise<TickerRecord> {
-  const normalized = symbol.trim().toUpperCase();
-  if (!normalized) {
+  if (!symbol.trim()) {
     throw new Error("Ticker symbol is required.");
   }
-
-  const localTicker = await store.loadTicker(normalized);
-  if (localTicker) return localTicker;
+  const listing = await resolveCliListing(symbol, exchange, { store, dataProvider });
+  if (listing.saved) return listing.saved;
+  const normalized = listing.key;
 
   const localTickers = new Map(
     (await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const),

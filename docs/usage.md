@@ -398,6 +398,8 @@ Headless chart text includes a Unit column when a series supplies one; values ke
 
 CLI text prints every time in UTC with the zone named (`2026-10-09 00:08 UTC`); a date alone stays a date. JSON keeps the raw ISO or epoch values.
 
+A symbol that trades in several places takes its exchange after a colon or with `--exchange`, in every command that takes a ticker: `gloomberb ticker SAN:EPA` and `gloomberb ticker SAN --exchange EPA` are Sanofi in Paris, while plain `SAN` is the listing you saved, or Banco Santander in New York. Codes go through the app's exchange aliases, so `SAN:XPAR` is `SAN:EPA`, and a code the app does not know fails with the exchanges the symbol trades on instead of falling back to another listing. Reports name the company and exchange they resolved to: `ticker` in its header, table commands in one line above the table, and `--json` as `symbol`, `exchange` and `name` in `metadata`. SEC filings belong to US registrants; for a listing elsewhere, `filings` shows none when the SEC knows the symbol as another company, and says which.
+
 `gloomberb fn PERP` and `fn CTM` without an argument start with a line saying which market they show, such as `Showing BTC. Try fn PERP ETH.`; `--json` carries it in `data.metadata.notices` and `data.metadata.defaultArgument`. `fn PERP`, `fn COT` and `fn CTM` fail on a name nothing matches and suggest ones that work.
 
 With `--require-bot-safe`, a report or screenshot that is incomplete because part of it needs Gloom Cloud Pro, or a sign-in, says so instead of a generic message.

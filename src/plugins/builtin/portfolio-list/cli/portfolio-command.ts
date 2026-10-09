@@ -2,6 +2,8 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
+import { takeOption } from "../../../../cli/commands/command-utils";
+import { EXCHANGE_OPTION } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
@@ -81,11 +83,11 @@ async function deletePortfolioCommand(name: string, ctx: CliCommandContext) {
   });
 }
 
-async function addTickerToPortfolioCommand(portfolioName: string, symbol: string, ctx: CliCommandContext) {
+async function addTickerToPortfolioCommand(portfolioName: string, symbol: string, exchange: string | undefined, ctx: CliCommandContext) {
   await withMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const portfolio = requireManualPortfolio(config, portfolioName);
-      const ticker = await resolveTickerForCli(symbol, store, dataProvider);
+      const ticker = await resolveTickerForCli(symbol, store, dataProvider, exchange);
       const result = addTickerToPortfolio(ticker, portfolio.id);
       if (!result.changed) {
         console.log(cliStyles.warning(`${ticker.metadata.ticker} is already in "${portfolio.name}".`));
@@ -127,6 +129,7 @@ async function setPositionCommand(
   sharesValue: string,
   avgCostValue: string,
   rawCurrency: string | undefined,
+  exchange: string | undefined,
   ctx: CliCommandContext,
 ) {
   await withMarketData(ctx, async ({ config, store, dataProvider }) => {
@@ -134,7 +137,7 @@ async function setPositionCommand(
       const portfolio = requireManualPortfolio(config, portfolioName);
       const shares = parseFiniteNumber(sharesValue, "Shares");
       const avgCost = parseFiniteNumber(avgCostValue, "Average cost");
-      const ticker = await resolveTickerForCli(symbol, store, dataProvider);
+      const ticker = await resolveTickerForCli(symbol, store, dataProvider, exchange);
       const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency);
       const result = setManualPortfolioPosition(ticker, portfolio.id, {
         shares,
@@ -171,14 +174,18 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio remove <portfolio> <symbol>",
       "portfolio position set <portfolio> <symbol> <shares> <avg-cost> [currency]",
     ],
+    options: [EXCHANGE_OPTION],
     examples: [
       "portfolio show Research",
       "portfolio add Research ASML",
+      "portfolio add Research ASML:AMS",
       "portfolio position set Research ASML 10 800 EUR",
       "portfolio show Research --csv",
     ],
   },
-  execute: async (args, ctx) => {
+  execute: async (rawArgs, ctx) => {
+    const args = [...rawArgs];
+    const exchange = takeOption(args, "--exchange");
     const action = args[0];
 
     if (!action || action === "list") {
@@ -211,7 +218,7 @@ export const portfolioCliCommand: CliCommandDef = {
       const symbol = args.at(-1);
       const name = args.slice(1, -1).join(" ");
       if (!name || !symbol) ctx.fail("Usage: gloomberb portfolio add <portfolio> <ticker>");
-      await addTickerToPortfolioCommand(name!, symbol!, ctx);
+      await addTickerToPortfolioCommand(name!, symbol!, exchange, ctx);
       return;
     }
 
@@ -233,7 +240,7 @@ export const portfolioCliCommand: CliCommandDef = {
       if (rest.length < 4) {
         ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares> <avg-cost> [currency]");
       }
-      await setPositionCommand(rest[0]!, rest[1]!, rest[2]!, rest[3]!, currency, ctx);
+      await setPositionCommand(rest[0]!, rest[1]!, rest[2]!, rest[3]!, currency, exchange, ctx);
       return;
     }
 

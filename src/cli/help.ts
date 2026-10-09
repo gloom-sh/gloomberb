@@ -95,6 +95,7 @@ export function renderCliHelp(entries: CliHelpEntry[], version: string, descript
       ["gloomberb", "Open the terminal UI"],
       ["gloomberb <command> [args]", "Run a command and print the result"],
       ["gloomberb help <command>", "Show a command's usage, options, and examples"],
+      ["gloomberb ticker SAN:EPA", "Name the listing of a symbol that trades in several places (or --exchange EPA)"],
     ], { width }),
   ];
 

@@ -23,6 +23,8 @@ import { fail, inferCliErrorOptions, printCliError } from "./errors";
 import { setCliColorEnabledOverride } from "../utils/cli-output";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
+import { takeOption } from "./commands/command-utils";
+import { EXCHANGE_OPTION } from "./listing-arg";
 import { apiCliCommand } from "./commands/api";
 import { marketDataCliCommands } from "./commands/market";
 import { overviewCliCommands } from "./commands/overview";
@@ -99,14 +101,18 @@ function createCoreCliCommands(
       help: {
         group: CLI_COMMAND_GROUPS.research,
         usage: ["ticker <symbol>"],
-        examples: ["ticker AAPL", "ticker 7203.T", "ticker AAPL --json"],
+        options: [EXCHANGE_OPTION],
+        examples: ["ticker AAPL", "ticker SAN:EPA", "ticker 7203.T", "ticker AAPL --json"],
       },
-      execute: async (args, ctx) => {
+      execute: async (rawArgs, ctx) => {
+        const args = [...rawArgs];
+        const exchange = takeOption(args, "--exchange");
         const symbol = args[0];
         if (!symbol) {
           ctx.fail("Usage: gloomberb ticker <symbol>");
         }
         await ticker(symbol!, {
+          exchange,
           initMarketData: ctx.initMarketData,
           fail: ctx.fail,
           ...(ctx.cliOptions.format === "text" ? {} : { printResult: ctx.printResult }),
@@ -140,9 +146,11 @@ function createCoreCliCommands(
         options: [
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
           { flags: "--require-bot-safe", description: "Fail unless the function has a verified, complete report" },
+          EXCHANGE_OPTION,
         ],
         examples: [
           "fn HP AAPL",
+          "fn ANR SAN:EPA",
           "fn CBR --json",
           "fn 13F AAPL --view=ticker-holdings",
           "fn OVME --spot 100 --strike 100 --days 30 --volatility 25",
@@ -168,9 +176,11 @@ function createCoreCliCommands(
           { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
           { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
+          EXCHANGE_OPTION,
         ],
         examples: [
           "shot TAS AAPL --output tape.png",
+          "shot HP BHP:ASX",
           "shot DDIS MSFT --tab history",
           "shot HP NVDA --width 1600 --theme green",
         ],

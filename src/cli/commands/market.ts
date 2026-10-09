@@ -1,6 +1,6 @@
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
-import type { EarningsEvent, QuoteBatchResult, SecFilingItem } from "../../types/data-provider";
+import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
   AnalystResearchData,
@@ -37,12 +37,22 @@ import { renderFundamentalsReport } from "./ticker";
 import { historyPriceDecimals, historyRows } from "../history-rows";
 import { CRYPTO_BOARD_HINT, isCryptoPairSymbol, quoteNotes } from "./crypto-hints";
 import { formatUtcTime } from "../../utils/utc-time";
+import {
+  EXCHANGE_OPTION,
+  listingHeading,
+  listingIdentity,
+  listingTitle,
+  listingVenues,
+  loadListingQuote,
+  requireCliListing,
+  type ListingIdentity,
+} from "../listing-arg";
+import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
+import { isUsListingExchange } from "../../utils/exchanges";
+import { nonUsSecListingVenue } from "../../utils/sec";
+import type { MarketContext } from "../types";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
-const EXCHANGE_OPTION = {
-  flags: "--exchange <code>",
-  description: "Listing exchange, for a symbol that trades in several places",
-};
 const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);
 
 type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & { error: string | null };
@@ -67,6 +77,11 @@ function normalizeSymbols(args: string[]): string[] {
     .flatMap((arg) => arg.split(","))
     .map((symbol) => symbol.trim().toUpperCase())
     .filter(Boolean);
+}
+
+/** What JSON metadata says about the listing a command resolved. */
+function listingMetadata(identity: ListingIdentity) {
+  return { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name };
 }
 
 const QUOTE_LEAD_COLUMNS = [
@@ -335,12 +350,16 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   if (symbols.length === 0) ctx.fail(`Usage: gloomberb ${commandName} <symbol...>`);
 
   await withMarketData(ctx, async (market) => {
-    const results = await market.dataProvider.getQuotesBatch(
-      symbols.map((symbol) => ({ symbol, exchange })),
-      { forceRefresh: ctx.cliOptions.refresh },
-    );
-    const data = results.map((result) => ({
+    // With several symbols, --exchange is for the ones that name no exchange of their own.
+    const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
+      symbol, exchange, market, ctx, { ownExchangeWins: symbols.length > 1 },
+    )));
+    const targets: QuoteSubscriptionTarget[] = listings.map((listing) => ({ symbol: listing.request.symbol, exchange: listing.request.exchange }));
+    const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh });
+    // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
+    const data = results.map((result, index) => ({
       target: result.target,
+      listing: listingMetadata(listingIdentity(listings[targets.indexOf(result.target)] ?? listings[index]!, result.quote)),
       quote: result.quote,
       error: errorMessage(result.error),
     }));
@@ -362,22 +381,27 @@ function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandD
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const range = parseRange(takeOption(args, "--range"), ctx);
-  const requestedExchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb history <symbol> [--range <range>]", ctx);
+  const requestedExchange = takeOption(args, "--exchange");
+  const raw = requireArg(args[0], "Usage: gloomberb history <symbol> [--range <range>]", ctx);
   await withMarketData(ctx, async (market) => {
-    const localTicker = requestedExchange ? null : await market.store.loadTicker(symbol);
-    const exchange = requestedExchange || localTicker?.metadata.exchange || "";
+    const listing = await requireCliListing(raw, requestedExchange, market, ctx);
+    const { symbol, exchange } = listing.request;
     const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
     const loaded = market.dataProvider.getPriceHistoryWithMetadata
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points) => ({ points, resolution: null }));
-    const { points, resolution } = await loaded.catch((error) => failHistory(error, symbol, ctx));
+    const [{ points, resolution }, quote] = await Promise.all([
+      loaded.catch((error) => failHistory(error, listing.key, ctx)),
+      loadListingQuote(market.dataProvider, listing),
+    ]);
+    const identity = listingIdentity(listing, quote);
     const data = historyRows(points, resolution);
-    const decimals = historyPriceDecimals(data, localTicker?.metadata.assetCategory);
+    const decimals = historyPriceDecimals(data, listing.saved?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
     // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
     const intraday = data.some((row) => row.date.length > 10);
-    ctx.printResult({ data, metadata: { symbol, range, exchange, resolution } }, {
+    ctx.printResult({ data, metadata: { ...listingMetadata(identity), range, resolution } }, {
+      heading: listingHeading(identity),
       columns: [
         intraday
           ? { key: "date", header: "Time", format: (value) => typeof value === "string" ? formatUtcTime(value) : "" }
@@ -396,16 +420,18 @@ type FinancialsView = "statements" | "fundamentals" | "valuation";
 
 async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], view: FinancialsView) {
   const args = [...rawArgs];
-  const exchange = takeOption(args, "--exchange") ?? "";
+  const exchangeOption = takeOption(args, "--exchange");
   const commandName = view === "statements" ? "financials" : view;
-  const symbol = requireArg(args[0]?.toUpperCase(), `Usage: gloomberb ${commandName} <symbol>`, ctx);
+  const raw = requireArg(args[0], `Usage: gloomberb ${commandName} <symbol>`, ctx);
   await withMarketData(ctx, async (market) => {
-    const financials = await market.dataProvider.getTickerFinancials(symbol, exchange, {
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const financials = await market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange, {
       cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
     });
+    const identity = listingIdentity(listing, financials.quote);
     const data: FinancialsCliData = {
-      symbol,
-      exchange,
+      symbol: listing.key,
+      exchange: identity.exchange,
       providerId: financials.quote?.providerId ?? null,
       ...financials,
     };
@@ -416,7 +442,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     ctx.printResult({
       data,
       metadata: {
-        symbol,
+        ...listingMetadata(identity),
         providerId: financials.quote?.providerId,
         annualStatements: financials.annualStatements.length,
         quarterlyStatements: financials.quarterlyStatements.length,
@@ -424,6 +450,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         profile: financials.profile,
       },
     }, {
+      heading: listingHeading(identity),
       rows: financialStatementRows,
       columns: [
         { key: "date", header: "Date" },
@@ -441,17 +468,28 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
 async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const feed = parseNewsFeed(takeOption(args, "--feed"));
-  const ticker = args[0]?.toUpperCase();
+  const exchangeOption = takeOption(args, "--exchange");
+  if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloomberb news <symbol> --exchange <code>");
   await withMarketData(ctx, async (market) => {
+    const listing = args[0] ? await requireCliListing(args[0], exchangeOption, market, ctx) : null;
     const limit = ctx.cliOptions.limit ?? 20;
-    const articles = await market.dataProvider.getNews({
-      feed: feed ?? (ticker ? "ticker" : "latest"),
-      // Still set for news plugins that read the deprecated scope.
-      scope: ticker ? "ticker" : "global",
-      ticker,
-      limit,
-    });
-    ctx.printResult({ data: articles, metadata: { ticker: ticker ?? null, feed: feed ?? null } }, {
+    const [articles, quote] = await Promise.all([
+      market.dataProvider.getNews({
+        feed: feed ?? (listing ? "ticker" : "latest"),
+        // Still set for news plugins that read the deprecated scope.
+        scope: listing ? "ticker" : "global",
+        ticker: listing?.request.symbol,
+        exchange: listing?.request.exchange || undefined,
+        limit,
+      }),
+      listing ? loadListingQuote(market.dataProvider, listing) : null,
+    ]);
+    const identity = listing ? listingIdentity(listing, quote) : null;
+    ctx.printResult({
+      data: articles,
+      metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null },
+    }, {
+      ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
       columns: [
         // UTC with the zone named, as every CLI time prints, rather than the host zone unlabeled.
@@ -469,22 +507,56 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   });
 }
 
+const FILING_COLUMNS = [
+  { key: "filingDate", header: "Date" },
+  { key: "form", header: "Form" },
+  { key: "companyName", header: "Company", maxWidth: 24 },
+  { key: "url", header: "URL", optional: true },
+];
+
+/** The US listing the SEC files a symbol under, from the symbol's venues: NYSE for SAN's Banco Santander. */
+async function registrantUsExchange(market: MarketContext, symbol: string, registrantName: string): Promise<string | null> {
+  const venues = (await listingVenues(symbol, market).catch(() => []))
+    .filter((venue) => !nonUsSecListingVenue(symbol, venue.exchange) && !areDifferentCompanies(venue.name, registrantName));
+  return (venues.find((venue) => isUsListingExchange(venue.exchange)) ?? venues[0])?.exchange ?? null;
+}
+
 async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.limit ?? 15, "Count", ctx);
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb filings <symbol>", ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const raw = requireArg(args[0], "Usage: gloomberb filings <symbol>", ctx);
   await withMarketData(ctx, async (market) => {
-    const filings = await market.dataProvider.getSecFilings(symbol, count, exchange);
-    ctx.printResult({ data: filings, metadata: { symbol } }, {
-      rows: filingRows,
-      columns: [
-        { key: "filingDate", header: "Date" },
-        { key: "form", header: "Form" },
-        { key: "companyName", header: "Company", maxWidth: 24 },
-        { key: "url", header: "URL", optional: true },
-      ],
-    });
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const { symbol, exchange } = listing.request;
+    // A listing outside the US sends its company to the lookup, which needs its quote first.
+    const quotePromise = loadListingQuote(market.dataProvider, listing);
+    const identity = nonUsSecListingVenue(symbol, exchange) ? listingIdentity(listing, await quotePromise) : null;
+    try {
+      const [filings, quote] = await Promise.all([
+        market.dataProvider.getSecFilings(symbol, count, exchange, identity?.name ? { listingName: identity.name } : undefined),
+        quotePromise,
+      ]);
+      const resolved = identity ?? listingIdentity(listing, quote);
+      ctx.printResult({ data: filings, metadata: listingMetadata(resolved) }, {
+        heading: listingHeading(resolved),
+        rows: filingRows,
+        columns: FILING_COLUMNS,
+        empty: `No SEC filings found for ${listingTitle(resolved)}.`,
+      });
+    } catch (error) {
+      if (!(error instanceof SecRegistrantMismatchError)) throw error;
+      // Another company's filings never show under this listing; say whose they were.
+      const message = secRegistrantMismatchMessage(
+        error.listing, error.registrantName, await registrantUsExchange(market, error.listing.symbol, error.registrantName),
+      );
+      const resolved = identity ?? listingIdentity(listing, await quotePromise);
+      ctx.printResult({
+        data: [] as SecFilingItem[],
+        metadata: { ...listingMetadata(resolved), secRegistrant: error.registrantName },
+        warnings: ctx.cliOptions.format === "text" ? undefined : [message],
+      }, { rows: filingRows, columns: FILING_COLUMNS, empty: message });
+    }
   });
 }
 
@@ -509,11 +581,17 @@ async function runHolders(
   ownerTypes?: Set<string>,
 ) {
   const args = [...rawArgs];
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), `Usage: gloomberb ${commandName} <symbol>`, ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const raw = requireArg(args[0], `Usage: gloomberb ${commandName} <symbol>`, ctx);
   await withMarketData(ctx, async (market) => {
-    const data = await market.dataProvider.getHolders(symbol, exchange);
-    ctx.printResult({ data, metadata: { symbol, summary: data.summary } }, {
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const [data, quote] = await Promise.all([
+      market.dataProvider.getHolders(listing.request.symbol, listing.request.exchange),
+      loadListingQuote(market.dataProvider, listing),
+    ]);
+    const identity = listingIdentity(listing, quote);
+    ctx.printResult({ data, metadata: { ...listingMetadata(identity), summary: data.summary } }, {
+      heading: listingHeading(identity),
       rows: (holderData) => holderRows(holderData, ownerTypes),
       columns: [
         { key: "type", header: "Type" },
@@ -526,26 +604,32 @@ async function runHolders(
       ...(commandName === "insider" && ownerTypes
         ? { summary: (holderData: HolderData) => insiderSummary(holderData, ownerTypes) }
         : {}),
-      empty: `No holders reported for ${symbol}.`,
+      empty: `No holders reported for ${listingTitle(identity)}.`,
     });
   });
 }
 
 async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb analyst <symbol>", ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const raw = requireArg(args[0], "Usage: gloomberb analyst <symbol>", ctx);
   await withMarketData(ctx, async (market) => {
-    const data = await market.dataProvider.getAnalystResearch(symbol, exchange);
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const [data, quote] = await Promise.all([
+      market.dataProvider.getAnalystResearch(listing.request.symbol, listing.request.exchange),
+      loadListingQuote(market.dataProvider, listing),
+    ]);
+    const identity = listingIdentity(listing, quote);
     ctx.printResult({
       data,
       metadata: {
-        symbol,
+        ...listingMetadata(identity),
         recommendationRating: data.recommendationRating,
         priceTarget: data.priceTarget,
         recommendations: data.recommendations,
       },
     }, {
+      heading: listingHeading(identity),
       rows: analystRows,
       summary: analystSummary,
       columns: [
@@ -561,11 +645,17 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 
 async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb events <symbol>", ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const raw = requireArg(args[0], "Usage: gloomberb events <symbol>", ctx);
   await withMarketData(ctx, async (market) => {
-    const data = await market.dataProvider.getCorporateActions(symbol, exchange);
-    ctx.printResult({ data, metadata: { symbol } }, {
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const [data, quote] = await Promise.all([
+      market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange),
+      loadListingQuote(market.dataProvider, listing),
+    ]);
+    const identity = listingIdentity(listing, quote);
+    ctx.printResult({ data, metadata: listingMetadata(identity) }, {
+      heading: listingHeading(identity),
       rows: corporateActionRows,
       columns: [
         { key: "date", header: "Date" },
@@ -579,22 +669,27 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
 async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const expiration = takeOption(args, "--expiration");
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb options <symbol> [--expiration <unix>]", ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const raw = requireArg(args[0], "Usage: gloomberb options <symbol> [--expiration <unix>]", ctx);
   await withMarketData(ctx, async (market) => {
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const { symbol, exchange } = listing.request;
     const expirationDate = expiration == null ? undefined : Number(expiration);
+    const quotePromise = loadListingQuote(market.dataProvider, listing);
     const result = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
       .load({ force: ctx.cliOptions.refresh });
     const chain = result?.value ?? await market.dataProvider.getOptionsChain(symbol, exchange, expirationDate, {
       cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
     });
+    const identity = listingIdentity(listing, await quotePromise);
     // A failed refresh falls back to the stored chain, which can be days old.
     const refreshWarning = result?.refreshError == null ? null
       : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
         + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
-    const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, exchange, Date.now());
+    const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, identity.exchange, Date.now());
     const warnings = refreshWarning ? [refreshWarning] : sessionWarning ? [sessionWarning] : undefined;
-    ctx.printResult({ data: chain, metadata: { symbol, expirations: chain.expirationDates }, warnings }, {
+    ctx.printResult({ data: chain, metadata: { ...listingMetadata(identity), expirations: chain.expirationDates }, warnings }, {
+      heading: listingHeading(identity),
       rows: optionRows,
       columns: [
         { key: "side", header: "Side" },
@@ -645,10 +740,15 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
 }
 
 async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const symbols = normalizeSymbols([...rawArgs]);
+  const args = [...rawArgs];
+  const exchangeOption = takeOption(args, "--exchange");
+  const symbols = normalizeSymbols(args);
   if (symbols.length === 0) ctx.fail("Usage: gloomberb earnings <symbol...>");
   await withCliServices(ctx, async (services) => {
-    const events = await services.dataProvider.getEarningsCalendar(symbols);
+    const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
+      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1 },
+    )));
+    const events = await services.dataProvider.getEarningsCalendar(listings.map((listing) => listing.key));
     ctx.printResult({ data: events }, {
       rows: earningsRows,
       columns: [
@@ -671,7 +771,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.research,
       usage: ["quote <symbol...>"],
       options: [EXCHANGE_OPTION],
-      examples: ["quote AAPL MSFT NVDA", "quote BTC-USD EURUSD=X", "quote AAPL --json"],
+      examples: ["quote AAPL MSFT NVDA", "quote SAN:EPA BHP:ASX", "quote BTC-USD EURUSD=X", "quote AAPL --json"],
     },
     execute: (args, ctx) => runQuote(args, ctx, "quote"),
   },
@@ -682,7 +782,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.research,
       usage: ["compare <symbol...>"],
       options: [EXCHANGE_OPTION],
-      examples: ["compare KO PEP", "compare SPY QQQ IWM --csv"],
+      examples: ["compare KO PEP", "compare SAN:EPA SAN:NYSE", "compare SPY QQQ IWM --csv"],
     },
     execute: (args, ctx) => runQuote(args, ctx, "compare"),
   },
@@ -696,7 +796,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
         { flags: "--range <range>", description: `${TIME_RANGES.join(", ")} (default 1Y)` },
         EXCHANGE_OPTION,
       ],
-      examples: ["history AAPL", "history AAPL --range 5Y --csv > aapl.csv"],
+      examples: ["history AAPL", "history BHP:ASX --range 5Y", "history AAPL --range 5Y --csv > aapl.csv"],
     },
     execute: runHistory,
   },
@@ -710,7 +810,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
         { flags: "--expiration <unix>", description: "Expiration as Unix seconds; defaults to the nearest one" },
         EXCHANGE_OPTION,
       ],
-      examples: ["options AAPL", "options AAPL --json"],
+      examples: ["options AAPL", "options AAPL:NASDAQ --json"],
     },
     execute: runOptions,
   },
@@ -748,7 +848,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["financials <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["financials MSFT", "financials MSFT --json"],
+      examples: ["financials MSFT", "financials SAN:EPA", "financials MSFT --json"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "statements"),
   },
@@ -759,7 +859,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["fundamentals <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["fundamentals NVDA"],
+      examples: ["fundamentals NVDA", "fundamentals ASML:AMS"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "fundamentals"),
   },
@@ -770,7 +870,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["valuation <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["valuation NVDA"],
+      examples: ["valuation NVDA", "valuation BP:LSE"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "valuation"),
   },
@@ -780,7 +880,8 @@ export const marketDataCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["earnings <symbol...>"],
-      examples: ["earnings AAPL MSFT GOOGL"],
+      options: [EXCHANGE_OPTION],
+      examples: ["earnings AAPL MSFT GOOGL", "earnings SAN:EPA"],
     },
     execute: runEarnings,
   },
@@ -791,7 +892,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["events <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["events KO"],
+      examples: ["events KO", "events BHP:ASX"],
     },
     execute: runEvents,
   },
@@ -802,7 +903,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["analyst <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["analyst TSLA"],
+      examples: ["analyst TSLA", "analyst SAN:EPA"],
     },
     execute: runAnalyst,
   },
@@ -813,7 +914,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["holders <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["holders AAPL"],
+      examples: ["holders AAPL", "holders SAN:EPA"],
     },
     execute: (args, ctx) => runHolders(args, ctx, "holders"),
   },
@@ -824,7 +925,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["insider <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["insider NVDA"],
+      examples: ["insider NVDA", "insider BP:LSE"],
     },
     execute: (args, ctx) => runHolders(args, ctx, "insider", new Set(["insider", "direct"])),
   },
@@ -839,7 +940,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
         title: "13F filings",
         lines: ["For each fund's reported position and its change over the quarter, run gloomberb fn 13F <symbol>."],
       }],
-      examples: ["13f AAPL"],
+      examples: ["13f AAPL", "13f BP:NYSE"],
     },
     execute: (args, ctx) => runHolders(args, ctx, "13f", new Set(["institution", "fund"])),
   },
@@ -853,7 +954,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
         { flags: "--count <n>", description: "Number of filings (default 15)" },
         EXCHANGE_OPTION,
       ],
-      examples: ["filings AAPL", "filings AAPL --count 40 --json"],
+      examples: ["filings AAPL", "filings BHP:ASX", "filings AAPL --count 40 --json"],
     },
     execute: runFilings,
   },
@@ -865,8 +966,9 @@ export const marketDataCliCommands: CliCommandDef[] = [
       usage: ["news [symbol] [--feed <feed>]"],
       options: [
         { flags: "--feed <feed>", description: "latest, top, or breaking for market news (default latest)" },
+        EXCHANGE_OPTION,
       ],
-      examples: ["news", "news TSLA", "news --feed top --limit 10"],
+      examples: ["news", "news TSLA", "news SAN:EPA", "news --feed top --limit 10"],
     },
     execute: runNews,
   },

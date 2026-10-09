@@ -3,6 +3,8 @@ import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers, findWatchlist } from "../../../../cli/helpers";
 import { slugifyName } from "../../../../utils/slugify";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
+import { takeOption } from "../../../../cli/commands/command-utils";
+import { EXCHANGE_OPTION } from "../../../../cli/listing-arg";
 import {
   cliStyles,
   renderSection,
@@ -52,13 +54,13 @@ async function deleteWatchlist(name: string, ctx: CliCommandContext) {
   });
 }
 
-async function addTickerToWatchlistCommand(watchlistName: string, symbol: string, ctx: CliCommandContext) {
+async function addTickerToWatchlistCommand(watchlistName: string, symbol: string, exchange: string | undefined, ctx: CliCommandContext) {
   await withMarketData(ctx, async ({ config, store, dataProvider }) => {
     const watchlist = findWatchlist(config, watchlistName);
     if (!watchlist) ctx.fail(`Watchlist "${watchlistName}" was not found.`);
 
     try {
-      const ticker = await resolveTickerForCli(symbol, store, dataProvider);
+      const ticker = await resolveTickerForCli(symbol, store, dataProvider, exchange);
       const result = addTickerToWatchlist(ticker, watchlist.id);
       if (!result.changed) {
         console.log(cliStyles.warning(`${ticker.metadata.ticker} is already in "${watchlist.name}".`));
@@ -156,9 +158,12 @@ export const watchlistCliCommand: CliCommandDef = {
       "watchlist add <watchlist> <symbol>",
       "watchlist remove <watchlist> <symbol>",
     ],
-    examples: ["watchlist show Growth", "watchlist create Growth", "watchlist add Growth NVDA"],
+    options: [EXCHANGE_OPTION],
+    examples: ["watchlist show Growth", "watchlist create Growth", "watchlist add Growth NVDA", "watchlist add Growth SAN:EPA"],
   },
-  execute: async (args, ctx) => {
+  execute: async (rawArgs, ctx) => {
+    const args = [...rawArgs];
+    const exchange = takeOption(args, "--exchange");
     const action = args[0];
 
     if (!action || action === "list") {
@@ -191,7 +196,7 @@ export const watchlistCliCommand: CliCommandDef = {
       const symbol = args.at(-1);
       const name = args.slice(1, -1).join(" ");
       if (!name || !symbol) ctx.fail("Usage: gloomberb watchlist add <watchlist> <ticker>");
-      await addTickerToWatchlistCommand(name!, symbol!, ctx);
+      await addTickerToWatchlistCommand(name!, symbol!, exchange, ctx);
       return;
     }
 

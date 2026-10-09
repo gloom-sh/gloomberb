@@ -48,6 +48,8 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   empty?: string;
   /** Text-mode block printed above the rows, for figures that are not rows. */
   summary?: (data: T) => string;
+  /** Text-mode line printed first, naming what the result is about, such as the listing a symbol resolved to. */
+  heading?: string;
 }
 
 interface CliResultJsonEnvelope<T> extends CliResult<T> {
@@ -319,11 +321,12 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
     return renderOptions.text(result.data);
   }
   const summary = renderOptions.summary?.(result.data) ?? "";
+  const withHeading = (text: string) => renderOptions.heading ? `${renderOptions.heading}\n${text}` : text;
   if (rows.length === 0) {
-    return summary || cliStyles.muted(renderOptions.empty ?? "No results.");
+    return withHeading(summary || cliStyles.muted(renderOptions.empty ?? "No results."));
   }
   const body = renderTextRows(rows as Row[], result.data, renderOptions);
-  return summary ? `${summary}\n\n${body}` : body;
+  return withHeading(summary ? `${summary}\n\n${body}` : body);
 }
 
 function renderTextRows<T, Row extends Record<string, unknown>>(

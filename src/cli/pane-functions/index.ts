@@ -14,7 +14,7 @@ import {
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
-import { resolvePaneFunction, type ResolvedPaneFunction } from "./resolver";
+import { applyListingArgument, resolvePaneFunction, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
 import { defaultScreenshotPath, renderDesktopShot } from "./screenshot";
 import {
@@ -34,11 +34,11 @@ async function withPaneRuntime<T>(
   }) => Promise<T>,
   settings: { strictHeadlessOptions?: boolean } = {},
 ): Promise<T> {
-  const parsed = parsePaneFunctionArgs(args, ctx.cliOptions);
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
+      const parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions));
       const resolved = await resolvePaneFunction(registry, context, parsed, settings);
       return await run({ parsed, context, registry, resolved });
     } finally {

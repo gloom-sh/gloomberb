@@ -225,6 +225,78 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   CCC: "UTC",
 };
 
+/**
+ * Venue names by canonical code, for output that names the listing a command
+ * resolved ("Euronext Paris (EPA)"). Codes whose name is the code itself
+ * (NASDAQ, BSE) are left out.
+ */
+const EXCHANGE_NAMES: Record<string, string> = {
+  NYSE: "New York Stock Exchange",
+  AMEX: "NYSE American",
+  ARCA: "NYSE Arca",
+  BATS: "Cboe BZX",
+  OTC: "OTC Markets",
+  JPX: "Tokyo Stock Exchange",
+  HKEX: "Hong Kong Stock Exchange",
+  LSE: "London Stock Exchange",
+  TSX: "Toronto Stock Exchange",
+  TSXV: "TSX Venture Exchange",
+  CSE: "Canadian Securities Exchange",
+  NEO: "Cboe Canada",
+  ASX: "Australian Securities Exchange",
+  CXA: "Cboe Australia",
+  NZX: "New Zealand Exchange",
+  SWX: "SIX Swiss Exchange",
+  XETRA: "Xetra",
+  FWB2: "Frankfurt Stock Exchange",
+  EPA: "Euronext Paris",
+  AMS: "Euronext Amsterdam",
+  BRU: "Euronext Brussels",
+  LIS: "Euronext Lisbon",
+  BIT: "Borsa Italiana",
+  MCE: "Bolsa de Madrid",
+  SFB: "Nasdaq Stockholm",
+  HEL: "Nasdaq Helsinki",
+  CPH: "Nasdaq Copenhagen",
+  OSL: "Euronext Oslo",
+  ICEX: "Nasdaq Iceland",
+  WSE: "Warsaw Stock Exchange",
+  PSE: "Prague Stock Exchange",
+  VIE: "Vienna Stock Exchange",
+  TWSE: "Taiwan Stock Exchange",
+  TPEX: "Taipei Exchange",
+  NSE: "National Stock Exchange of India",
+  BSE: "BSE India",
+  SSE: "Shanghai Stock Exchange",
+  SZSE: "Shenzhen Stock Exchange",
+  KRX: "Korea Exchange",
+  SGX: "Singapore Exchange",
+  BMV: "Mexican Stock Exchange",
+  BYMA: "Bolsas y Mercados Argentinos",
+  JSE: "Johannesburg Stock Exchange",
+  TASE: "Tel Aviv Stock Exchange",
+};
+
+const KNOWN_EXCHANGE_CODES: ReadonlySet<string> = new Set([
+  ...Object.keys(CANONICAL_EXCHANGE_ALIASES),
+  ...Object.values(CANONICAL_EXCHANGE_ALIASES),
+  ...Object.keys(EXCHANGE_TIME_ZONES),
+  ...Object.keys(EXCHANGE_NAMES),
+]);
+
+/** Whether a code (any spelling the alias table takes) names a venue the app knows. */
+export function isKnownExchangeCode(value?: string): boolean {
+  const normalized = normalizeExchange(value);
+  return !!normalized && KNOWN_EXCHANGE_CODES.has(normalized);
+}
+
+/** "Euronext Paris (EPA)" for a venue with a name, the canonical code otherwise. */
+export function exchangeLabel(value?: string): string {
+  const code = canonicalExchange(value);
+  const name = EXCHANGE_NAMES[code];
+  return name ? `${name} (${code})` : code;
+}
+
 export function normalizeSymbol(value: string): string {
   return value.trim().toUpperCase();
 }
