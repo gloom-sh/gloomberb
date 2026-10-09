@@ -44,6 +44,7 @@ export function resolveRegistryPaneQuickSettings(
   return resolved.paneDef.quickSettings.flatMap((quickSetting): ResolvedRegistryPaneQuickSetting[] => {
     const field = resolved.settingsDef.fields.find((candidate) => candidate.key === quickSetting.key);
     if (!field) return [];
+    if (quickSetting.visible && !quickSetting.visible(resolved.context)) return [];
     if (quickSetting.onValue != null) {
       if (field.type !== "select") return [];
       const onValue = quickSetting.onValue;

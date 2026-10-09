@@ -1050,6 +1050,8 @@ function LivePricesPane() {
 
 Quick settings currently support toggle fields with the `zap` icon. Unknown keys and non-toggle fields are ignored.
 
+A setting that only applies to some of what the pane shows can say where with `visible(context)`, which gets the same context as `settings`: the control is left out of the header and the pane menu where it returns false, and the field stays in the settings dialog.
+
 ### Events
 
 Subscribe to and emit app events:

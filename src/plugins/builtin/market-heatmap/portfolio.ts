@@ -51,6 +51,19 @@ export function heatmapTabId(value: string | null | undefined): HeatmapTabId {
   return "us-equity";
 }
 
+/** Pane state where the pane says which kind of list its portfolio tab shows, for the header to read. */
+export const HEATMAP_COLLECTION_KIND_STATE_KEY = "collectionKind";
+
+/**
+ * Whether Size by changes the board: the market boards and a watchlist, never
+ * a portfolio, whose holdings are always sized by position value. Until the
+ * pane has said which list its tab shows, the control stays away.
+ */
+export function heatmapSizeByApplies(universe: unknown, collectionKind: unknown): boolean {
+  return heatmapTabId(typeof universe === "string" ? universe : null) !== PORTFOLIO_HEATMAP_TAB
+    || collectionKind === "watchlist";
+}
+
 export function isRemoteHeatmapUniverse(value: HeatmapTabId): value is MarketHeatmapUniverseId {
   return value !== PORTFOLIO_HEATMAP_TAB;
 }

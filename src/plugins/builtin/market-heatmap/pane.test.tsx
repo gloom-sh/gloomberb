@@ -3,6 +3,7 @@ import { act } from "react";
 import { apiClient } from "../../../api-client";
 import type { MarketHeatmapResult } from "../../../api-client/market-discovery";
 import { createInitialState } from "../../../state/app/context";
+import { resolveRegistryPaneQuickSettings, resolveRegistryPaneSettings } from "../../registry/pane-settings";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
@@ -126,3 +127,55 @@ test("the size quick setting reads square root until the pane saves a choice", (
   expect(settings({ settings: {} }).values?.sizeBy).toBe("sqrt-market-cap");
   expect(settings({ settings: { sizeBy: "market-cap" } }).values?.sizeBy).toBe("market-cap");
 });
+
+/** Renders the portfolio tab on the list the portfolio pane shows, and returns what the pane publishes as its kind. */
+async function publishedCollectionKind(collectionId: string): Promise<unknown> {
+  const id = "market-heatmap", Pane = marketHeatmapPlugin.panes![0]!.component;
+  const config = createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: { universe: "portfolio", liveStreaming: false } });
+  config.layout.instances.push({ instanceId: "portfolio-list:main", paneId: "portfolio-list", params: { collectionId }, binding: { kind: "none" } });
+  const state = createInitialState(config);
+  state.paneState["portfolio-list:main"] = { collectionId };
+  state.focusedPaneId = id;
+  const published: Record<string, unknown> = {};
+  const dispatch = (action: any) => {
+    if (action.type === "UPDATE_PANE_STATE" && action.paneId === id) Object.assign(published, action.patch);
+  };
+  await act(async () => { await tui.render(
+    <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId={id}
+      runtime={createTestPluginRuntime({ getMarketData: () => null })} width={100} height={16}>
+      {(body) => <Pane paneId={id} paneType={id} focused {...body} />}
+    </TestPaneFrame>, { width: 100, height: 16 }); });
+  await settleFrame(tui.setup(), 4);
+  return published.collectionKind;
+}
+
+function sizeControlShown(universe: string, paneState: Record<string, unknown> = {}): boolean {
+  const pane = marketHeatmapPlugin.panes![0]!;
+  const config = createTestPaneConfig(":memory:", { instanceId: pane.id, paneId: pane.id, settings: { universe } });
+  const resolved = resolveRegistryPaneSettings({
+    config,
+    getConfigState: () => null,
+    getPaneRuntimeState: (paneId) => (paneId === pane.id ? paneState : null),
+    layout: config.layout,
+    paneDefs: new Map([[pane.id, pane]]),
+    paneOwners: new Map(),
+    resolvePaneTarget: () => pane.id,
+    requestedPaneId: pane.id,
+  });
+  return resolveRegistryPaneQuickSettings(resolved).some((setting) => setting.key === "sizeBy");
+}
+
+test("the square-root control shows on US Stocks, US ETFs and a watchlist, never on a portfolio", async () => {
+  const spy = spyOn(apiClient, "getMarketHeatmap");
+  restore = () => spy.mockRestore();
+  expect(sizeControlShown("us-equity")).toBe(true);
+  expect(sizeControlShown("us-etf")).toBe(true);
+
+  const watchlist = await publishedCollectionKind("watchlist");
+  expect(sizeControlShown("portfolio", { collectionKind: watchlist })).toBe(true);
+  const portfolio = await publishedCollectionKind("main");
+  expect(sizeControlShown("portfolio", { collectionKind: portfolio })).toBe(false);
+  // Before the pane has said which list it shows, an inert control does not flash up.
+  expect(sizeControlShown("portfolio")).toBe(false);
+});
+

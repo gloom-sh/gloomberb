@@ -154,6 +154,12 @@ export interface PaneQuickSettingDef {
    * it off picks the field's other option.
    */
   onValue?: string;
+  /**
+   * Shows the control only where it changes something, for a setting that
+   * applies to some of what the pane can show. The field stays in the
+   * settings dialog either way.
+   */
+  visible?: (context: PaneSettingsContext) => boolean;
 }
 
 export interface PaneSettingsContext {

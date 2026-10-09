@@ -29,7 +29,7 @@ import { t, tf } from "../../../i18n";
 import { priceColor } from "../../../theme/colors";
 import { clipToDisplayWidth, formatCompact, formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { useAppSelector, usePaneAppConfig, usePaneSettingValue } from "../../../state/app/context";
+import { useAppSelector, usePaneAppConfig, usePaneSettingValue, usePaneStateValue } from "../../../state/app/context";
 import { usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../market-data/hooks";
@@ -50,12 +50,14 @@ import {
   type MarketHeatmapUniverseId,
 } from "./data";
 import {
+  HEATMAP_COLLECTION_KIND_STATE_KEY,
   PORTFOLIO_HEATMAP_TAB,
   buildPortfolioHeatmapAssets,
   fallbackHeatmapCollectionId,
   heatmapCollectionLabel,
   heatmapFollowsCollection,
   heatmapSizeBy,
+  heatmapSizeByApplies,
   heatmapSizeWeight,
   heatmapTabId,
   isRemoteHeatmapUniverse,
@@ -275,6 +277,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   const linkedPortfolio = useLinkedHeatmapCollection();
   const collectionId = linkedPortfolio.collectionId ?? fallbackHeatmapCollectionId(config);
   const collectionKind = getCollectionTypeFromConfig(config, collectionId);
+  const [, publishCollectionKind] = usePaneStateValue<string>(HEATMAP_COLLECTION_KIND_STATE_KEY, "");
   const portfolioLabel = heatmapCollectionLabel(config, collectionId);
   const universeTabs = useMemo(() => [
     ...MARKET_HEATMAP_UNIVERSES.map((universe) => ({ label: universe.label, value: universe.id })),
@@ -468,6 +471,11 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     setActiveUniverse(PORTFOLIO_HEATMAP_TAB);
     setSelectedSymbol(null);
   }, [collectionId, linkPortfolio, setActiveUniverse]);
+
+  // The header shows the square-root control only where it changes the board.
+  useEffect(() => {
+    publishCollectionKind(collectionKind ?? "");
+  }, [collectionKind, publishCollectionKind]);
 
   // The financials map only reads the cache; this fills it for the list on screen.
   useEffect(() => {
@@ -715,7 +723,14 @@ export const marketHeatmapPlugin: GloomPlugin = {
       defaultFloatingSize: { width: 110, height: 36 },
       quickSettings: [
         LIVE_STREAMING_QUICK_SETTING,
-        { type: "toggle", key: SIZE_BY_SETTING_KEY, icon: "sqrt", onValue: SQRT_SIZE_VALUE, label: "Size by square root of market cap" },
+        {
+          type: "toggle",
+          key: SIZE_BY_SETTING_KEY,
+          icon: "sqrt",
+          onValue: SQRT_SIZE_VALUE,
+          label: "Size by square root of market cap",
+          visible: (context) => heatmapSizeByApplies(context.settings.universe, context.paneState[HEATMAP_COLLECTION_KIND_STATE_KEY]),
+        },
       ],
       settings: (context) => withLiveStreamingSetting({
         title: "Market Heatmap Settings",

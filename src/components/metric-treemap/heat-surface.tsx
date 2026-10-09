@@ -1,7 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
-import { blendHex, colors } from "../../theme/colors";
-import { heatmapColorDistance, resolveHeatmapSelectedTileColors, resolveHeatmapTileColors } from "../../theme/heat-colors";
+import { blendHex } from "../../theme/colors";
+import {
+  heatmapColorDistance,
+  resolveHeatmapSelectedTileColors,
+  resolveHeatmapSelectionRing,
+  resolveHeatmapTileColors,
+} from "../../theme/heat-colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { clipToDisplayWidth, padTo } from "../../utils/format";
 import type { FloatMetricTreemapTile, MetricTreemapItem } from "./layout";
@@ -237,13 +243,19 @@ const DomHeatTile = memo(function DomHeatTile({
     placedRef.current = rect;
   }
   const motion = heatTileMotion({ reducedMotion, glide, glideCount: glideRef.current.count, pulseCount });
+  const colors = useThemeColors();
+  const ring = resolveHeatmapSelectionRing(colors);
   // The colour this tile showed before, kept to fade out over the new one.
   const shownRef = useRef(background);
   const fadeRef = useRef<{ from: string; key: number } | null>(null);
+  const paletteRef = useRef(colors);
+  // A theme switch recolours every tile at once; only a move fades.
+  const themeChanged = paletteRef.current !== colors;
+  paletteRef.current = colors;
   if (shownRef.current !== background) {
     // A step too small to see snaps: a fade costs a compositor layer for its whole run.
     const visible = heatmapColorDistance(shownRef.current, background) >= VISIBLE_FADE_DISTANCE;
-    if (!motion.fadeAnimation) fadeRef.current = null;
+    if (!motion.fadeAnimation || themeChanged) fadeRef.current = null;
     else if (visible) fadeRef.current = { from: shownRef.current, key: (fadeRef.current?.key ?? 0) + 1 };
     shownRef.current = background;
   }
@@ -270,9 +282,9 @@ const DomHeatTile = memo(function DomHeatTile({
     justifyContent: "center",
     gap: 0,
     cursor: "pointer",
-    // The page's brightest text, then a hairline of the page: clear on a pink or
-    // aqua tile whether its own text is dark or light.
-    boxShadow: selected ? `inset 0 0 0 2px ${colors.textBright}, inset 0 0 0 3px ${colors.bg}` : undefined,
+    // The theme's text tone against the page, then a hairline of the page: one
+    // of the two stands out on any tile, bright or dim.
+    boxShadow: selected ? `inset 0 0 0 2px ${ring.outer}, inset 0 0 0 3px ${ring.inner}` : undefined,
     zIndex: selected ? 1 : undefined,
     ...(motion.glideAnimation
       ? {
@@ -350,6 +362,7 @@ function headerLabel(header: MetricTreemapHeader): string {
 }
 
 function DomHeader({ header, canvasWidth, canvasHeight }: { header: MetricTreemapHeader; canvasWidth: number; canvasHeight: number }) {
+  const colors = useThemeColors();
   const sector = header.level === 0 && !header.other;
   return (
     <Box
@@ -405,6 +418,7 @@ function DomTooltip<T>({ state, itemsById, otherLines }: {
   itemsById: ReadonlyMap<string, MetricTreemapItem<T>>;
   otherLines: readonly string[] | null;
 }) {
+  const colors = useThemeColors();
   if (!state) return null;
   const lines = state.id === OTHER_ID
     ? otherLines
@@ -460,6 +474,7 @@ function DomHeatTreemap<T>({
   scene, items, width, height, selectedId, onSelect, onActivate, otherTooltip, otherSummary: summarizeOther,
 }: HeatTreemapSurfaceProps<T>) {
   const reducedMotion = usePrefersReducedMotion();
+  const colors = useThemeColors();
   const itemsById = useItemsById(scene, items);
   const chartRef = useRef<{ getBoundingClientRect?: () => { x: number; y: number; width: number; height: number } } | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -546,7 +561,7 @@ function DomHeatTreemap<T>({
         )}
         {scene.tiles.map((tile) => {
           const item = itemsById.get(tile.item.id) ?? tile.item;
-          const tileColors = resolveHeatmapTileColors(item.colorValue);
+          const tileColors = resolveHeatmapTileColors(item.colorValue, colors);
           return (
             <DomHeatTile
               key={tile.item.id}
@@ -604,9 +619,11 @@ const TerminalHeatTile = memo(function TerminalHeatTile({
   selected: boolean;
   events: SurfaceEvents;
 }) {
+  // Read here, not passed down: a theme switch reaches every tile even though its props are the same.
+  const colors = useThemeColors();
   const { background, foreground } = selected
-    ? resolveHeatmapSelectedTileColors(colorValue)
-    : resolveHeatmapTileColors(colorValue);
+    ? resolveHeatmapSelectedTileColors(colorValue, colors)
+    : resolveHeatmapTileColors(colorValue, colors);
   const renderWidth = Math.max(1, width - (width >= 3 ? 1 : 0));
   const renderHeight = Math.max(1, height - (height >= 2 ? 1 : 0));
   const tier = heatTileLabelCells(renderWidth, renderHeight, label, value);
@@ -647,6 +664,7 @@ const TerminalHeatTile = memo(function TerminalHeatTile({
 function TerminalHeatTreemap<T>({
   scene, items, width, height, selectedId, onSelect, onActivate, otherSummary: summarizeOther,
 }: HeatTreemapSurfaceProps<T>) {
+  const colors = useThemeColors();
   const itemsById = useItemsById(scene, items);
   const events = useSurfaceEvents(itemsById, onSelect, onActivate);
   const other = scene.other;
@@ -708,12 +726,14 @@ function TerminalHeatTreemap<T>({
 
 /**
  * The heat map look of the treemap: optional sector and industry blocks,
- * calm tiles (ticker, then the move, as space allows), a continuous
- * pink-indigo-teal scale, and on the desktop a hover tooltip, colour fades,
- * a short pulse on a tile whose move jumps and a glide when sizes change.
+ * calm tiles (ticker, then the move, as space allows), a continuous scale
+ * from the theme's down colour to its up colour, and on the desktop a hover
+ * tooltip, colour fades, a short pulse on a tile whose move jumps and a glide
+ * when sizes change.
  */
 export function HeatTreemapSurface<T>(props: HeatTreemapSurfaceProps<T>) {
   const { nativePaneChrome } = useUiCapabilities();
+  const colors = useThemeColors();
   if (props.scene.tiles.length === 0) {
     return (
       <Box width={props.width} height={props.height} paddingX={1} paddingY={1}>
