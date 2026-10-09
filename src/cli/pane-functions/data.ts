@@ -66,20 +66,23 @@ export async function withShotPriceHistory(
 }
 
 /**
- * SEAS reads monthly closes. Captured history answers every request, so the
- * weekly seed would stand in for them and price each month at a week's close.
- * The pane's own load fetches them, tagged so no other cadence is answered.
+ * SEAS reads monthly closes, and its Weekdays tab daily ones. Captured history
+ * answers every request, so the weekly seed would stand in for them and price
+ * each month at a week's close. The pane's own load fetches the shot tab's
+ * cadence, tagged so no other cadence is answered.
  */
 export async function withShotSeasonalityHistory(
   context: MarketContext,
   instrument: InstrumentRef,
+  resolved: ResolvedPaneFunction,
   financials: TickerFinancials,
 ): Promise<TickerFinancials> {
-  const monthly = await loadSeasonalityHistory({ instrument, forceRefresh: context.refresh }, context.dataProvider);
-  if (monthly.error || monthly.stale) {
-    throw new Error(`${instrument.symbol}: ${monthly.error ?? "monthly price history is stale"}`);
+  const cadence = resolved.options.tab === "weekdays" ? "daily" : "monthly";
+  const history = await loadSeasonalityHistory({ instrument, cadence, forceRefresh: context.refresh }, context.dataProvider);
+  if (history.error || history.stale) {
+    throw new Error(`${instrument.symbol}: ${history.error ?? `${cadence} price history is stale`}`);
   }
-  return { ...financials, priceHistory: monthly.history, priceHistoryResolution: SEASONALITY_HISTORY_RESOLUTION };
+  return { ...financials, priceHistory: history.history, priceHistoryResolution: SEASONALITY_HISTORY_RESOLUTION[cadence] };
 }
 
 /** Correlation and relationship panes read daily returns at every range. */

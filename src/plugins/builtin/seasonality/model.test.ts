@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { projectSeasonality } from "./model";
+import { projectSeasonality, projectWeekdays } from "./model";
 
 const bar = (iso: string, close: number) => ({ date: new Date(`${iso}T00:00:00Z`), close });
 
@@ -60,5 +60,30 @@ describe("projectSeasonality", () => {
     // Jan runs from the Dec 28 close (100) to the Jan 25 close (99): the week of Jan 28 closes in February.
     // Stamped by its Monday, January would run from 90 to 110.
     expect(model.years.find((year) => year.year === 2019)!.months[0]).toBeCloseTo(-0.01);
+  });
+});
+
+describe("projectWeekdays", () => {
+  test("files each session under the venue's date and counts a month's place only once its start is seen", () => {
+    // Tokyo bars stamped at local midnight: Thu Feb 1 is 15:00 UTC on Wed Jan 31.
+    // Read in UTC every session would land a day early, Feb 1 under January.
+    const sessions = [["01-29", 100], ["01-30", 101], ["01-31", 100], ["02-01", 102], ["02-02", 101], ["02-05", 103],
+      ["02-06", 104], ["02-07", 102], ["02-08", 105]] as const;
+    const model = projectWeekdays(sessions.map(([day, close]) => ({ date: new Date(`2024-${day}T00:00:00+09:00`), close })),
+      { symbol: "7203", exchange: "JPX", lookbackYears: 5 });
+    expect([model.start, model.asOf]).toEqual(["2024-01-30", "2024-02-08"]);
+    // Thursday holds Feb 1 (+2%) and Feb 8 (105 / 102).
+    expect(model.weekdays.map((stat) => stat.count)).toEqual([1, 2, 2, 2, 1]);
+    expect(model.weekdays[3]!.mean).toBeCloseTo((0.02 + 105 / 102 - 1) / 2);
+    // Jan 30 could be any day of January, and Feb 8 could still be February's last
+    // session: both stay out of the split. Jan 31 is the last day; Feb 1, 2 and 5 days 1 to 3.
+    expect(model.turnOfMonth.map((stat) => stat.count)).toEqual([1, 1, 1, 1]);
+    expect(model.turnOfMonth.map((stat) => stat.mean!.toFixed(4))).toEqual(["-0.0099", "0.0200", "-0.0098", "0.0198"]);
+    expect(model.turnWindow.count).toBe(4);
+    expect(model.otherDays).toMatchObject({ count: 2, hitRate: 0.5 });
+    // Weekly bars would put a week's move under one weekday.
+    const weekly = projectWeekdays(sessions.map(([, close], index) => ({ date: new Date(Date.UTC(2024, 0, 1 + 7 * index)), close })),
+      { symbol: "X", lookbackYears: 5 });
+    expect(weekly.start).toBeNull();
   });
 });

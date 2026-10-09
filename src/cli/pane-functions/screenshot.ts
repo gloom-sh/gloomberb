@@ -580,7 +580,7 @@ export async function buildDesktopShotPayload(
     } else if (shotRatioTab(resolved)?.key === "valuation") {
       data = await withShotPeriodEndHistory(context, entry.instrument, exchange, resolved, data);
     } else if (resolved.pane.id === "seasonality") {
-      data = await withShotSeasonalityHistory(context, entry.instrument, data);
+      data = await withShotSeasonalityHistory(context, entry.instrument, resolved, data);
     } else if (requestedRange && readsDailyReturns(resolved)) {
       data = await withShotDailyReturns(context, entry.instrument, exchange, requestedRange, data);
     } else if (requestedRange) {

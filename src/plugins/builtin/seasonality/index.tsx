@@ -14,7 +14,7 @@ export const seasonalityModule: PluginModule = {
   }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({
     id: "seasonality-pane", paneId: "seasonality", label: "Seasonality",
-    description: "Monthly returns by year, each month's average and hit rate, and every year's path on one calendar.",
-    keywords: ["seas", "seasonality", "seasonal", "monthly returns", "calendar"], shortcut: "SEAS", publicShare: true,
+    description: "Monthly returns by year, each month's average and hit rate, every year's path on one calendar, and returns by weekday and turn of month.",
+    keywords: ["seas", "seasonality", "seasonal", "monthly returns", "calendar", "weekday", "day of week", "turn of month"], shortcut: "SEAS", publicShare: true,
   }), headless: seasonalityHeadless }],
 };

@@ -285,7 +285,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     docs: "HVT",
   },
   SEAS: {
-    summary: "Does this name have a calendar? Monthly returns for each year, every month's average, median and share of up years, and each year's path laid over one January-to-December axis.",
+    summary: "Does this name have a calendar? Monthly returns for each year, every month's average, median and share of up years, each year's path laid over one January-to-December axis, and each weekday's and the turn of the month's average session over five years of daily closes.",
     usage: ["SEAS AAPL"],
     keys: [],
     data: DAILY_CLOSES,

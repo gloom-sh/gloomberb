@@ -1,3 +1,4 @@
+import { calendarBarStart } from "../../../time-series/chart-data";
 import type { PricePoint } from "../../../types/financials";
 
 export const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
@@ -121,4 +122,91 @@ export function projectSeasonality(history: readonly PricePoint[], options: { sy
   })] : [];
 
   return { symbol: options.symbol, years, months, paths, averagePath, asOf: last.date };
+}
+
+export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+/** The turn of the month: a month's last session, then the next month's first three. */
+export const TURN_OF_MONTH_LABELS = ["Last day", "Day 1", "Day 2", "Day 3"] as const;
+
+export interface DailyReturnStat {
+  mean: number | null;
+  median: number | null;
+  /** Share of sessions that closed up. */
+  hitRate: number | null;
+  count: number;
+}
+
+export interface WeekdayModel {
+  symbol: string;
+  /** Monday to Friday. */
+  weekdays: DailyReturnStat[];
+  /** In TURN_OF_MONTH_LABELS order. */
+  turnOfMonth: DailyReturnStat[];
+  /** The four turn-of-month sessions pooled, against every other session whose place in its month is known. */
+  turnWindow: DailyReturnStat;
+  otherDays: DailyReturnStat;
+  /** Session dates of the first and last return counted, "YYYY-MM-DD". */
+  start: string | null;
+  asOf: string | null;
+}
+
+function returnStat(values: number[]): DailyReturnStat {
+  return { count: values.length, mean: mean(values), median: median(values),
+    hitRate: values.length ? values.filter((value) => value > 0).length / values.length : null };
+}
+
+/**
+ * Close-to-close returns of daily bars, each filed under its session date: the
+ * venue's date for a bar stamped at its open or local midnight, the label for a
+ * date-only bar at UTC midnight. A Monday after a holiday Friday runs from
+ * Thursday's close. A session's place in its month is only known once the
+ * session before the month started is in the history, and the latest session
+ * may still turn out to be its month's last, so those stay out of the
+ * turn-of-month split (but not out of the weekdays).
+ */
+export function projectWeekdays(history: readonly PricePoint[], options: { symbol: string; exchange?: string; lookbackYears: number }): WeekdayModel {
+  const sessions = new Map<string, number>();
+  for (const point of history
+    .map((entry) => ({ time: new Date(entry.date).getTime(), close: entry.close }))
+    .filter((entry) => Number.isFinite(entry.close) && entry.close > 0 && Number.isFinite(entry.time))
+    .sort((left, right) => left.time - right.time)) sessions.set(calendarBarStart(point.time, "1d", options.exchange), point.close);
+  const days = [...sessions.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const empty = returnStat([]);
+  // Weekly or monthly bars would file a week's move under one weekday.
+  if (days.length < 2 || medianGapDays(days.map(([day]) => ({ date: new Date(`${day}T00:00:00Z`) }))) > 4) {
+    return { symbol: options.symbol, weekdays: WEEKDAY_LABELS.map(() => empty), turnOfMonth: TURN_OF_MONTH_LABELS.map(() => empty),
+      turnWindow: empty, otherDays: empty, start: null, asOf: null };
+  }
+
+  const firstYear = Number(days.at(-1)![0].slice(0, 4)) - Math.max(1, options.lookbackYears) + 1;
+  const weekdays: number[][] = WEEKDAY_LABELS.map(() => []);
+  const turnOfMonth: number[][] = TURN_OF_MONTH_LABELS.map(() => []);
+  const other: number[] = [];
+  let start: string | null = null;
+  /** The session's place in its month, 1 for the first; null until a month's start is seen. */
+  let position: number | null = null;
+  for (let index = 1; index < days.length; index++) {
+    const [day, close] = days[index]!;
+    const month = day.slice(0, 7);
+    position = month !== days[index - 1]![0].slice(0, 7) ? 1 : position == null ? null : position + 1;
+    if (Number(day.slice(0, 4)) < firstYear) continue;
+    const value = close / days[index - 1]![1] - 1;
+    start ??= day;
+    const weekday = (new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7;
+    if (weekday < 5) weekdays[weekday]!.push(value);
+    const next = days[index + 1]?.[0];
+    if (next != null && next.slice(0, 7) !== month) turnOfMonth[0]!.push(value);
+    else if (position != null && position <= 3) turnOfMonth[position]!.push(value);
+    else if (next != null && position != null) other.push(value);
+  }
+
+  return {
+    symbol: options.symbol,
+    weekdays: weekdays.map(returnStat),
+    turnOfMonth: turnOfMonth.map(returnStat),
+    turnWindow: returnStat(turnOfMonth.flat()),
+    otherDays: returnStat(other),
+    start,
+    asOf: days.at(-1)![0],
+  };
 }
