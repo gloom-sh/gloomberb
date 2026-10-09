@@ -3,6 +3,7 @@ import { withDeadline } from "../utils/async-deadline";
 import {
   ApiRequestError,
   parseApiErrorCode,
+  parseApiErrorDetails,
   parseApiErrorMessage,
   parseRetryAfterMs,
   type RevisionConflictError,
@@ -391,6 +392,7 @@ export class CloudApiRequestTransport {
           res.status,
           parseRetryAfterMs(res.headers.get("Retry-After")),
           parseApiErrorCode(text),
+          parseApiErrorDetails(text),
         );
       }
 

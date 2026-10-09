@@ -39,6 +39,7 @@ import { DesktopChatDropOverlay, DesktopChatDropTarget } from "../attachments/de
 import { uploadFromTransferFile, type TransferFile } from "../attachments/transfer";
 import { readChatImageFiles } from "../attachments/files";
 import { NewDmDialog } from "./new-dm-dialog";
+import { describeConversationStartError } from "../direct-messages";
 import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../cloud/team/pane-request";
 import { teamStore } from "../../cloud/team/store";
@@ -433,16 +434,20 @@ export function ChatContent({
     return true;
   }, [channelListOpen, focusChannelSidebar, openChannelList, stackedNav]);
 
+  const showConversationFromDialog = useCallback((nextChannelId: string) => {
+    expandDirectSection();
+    selectSidebarChannel(nextChannelId);
+    setChannelListOpen(false);
+    setSidebarFocused(false);
+    closeNewDmDialog();
+  }, [closeNewDmDialog, expandDirectSection, selectSidebarChannel, setSidebarFocused]);
+
   const openConversationFromDialog = useCallback(async (usernames: string[]) => {
     const channel = usernames.length === 1
       ? await controller.openDirectChannel({ username: usernames[0] })
       : await controller.openGroupChannel({ usernames });
-    expandDirectSection();
-    selectSidebarChannel(channel.id);
-    setChannelListOpen(false);
-    setSidebarFocused(false);
-    closeNewDmDialog();
-  }, [closeNewDmDialog, controller, expandDirectSection, selectSidebarChannel, setSidebarFocused]);
+    showConversationFromDialog(channel.id);
+  }, [controller, showConversationFromDialog]);
 
   useEffect(() => {
     if (!focused && newDmOpen) {
@@ -470,6 +475,10 @@ export function ChatContent({
       controller.attachToChannel(targetChannelId, uploads);
     }).catch(() => {});
   }, [controller]);
+
+  const reportConversationStartError = useCallback((error: unknown, usernames: string[]) => {
+    notify({ body: describeConversationStartError(error, usernames, userByUsername), type: "error" });
+  }, [notify, userByUsername]);
 
   const removeDraftAttachment = useCallback((localId: string) => {
     controller.removeChannelAttachment(channelIdRef.current, localId);
@@ -535,6 +544,7 @@ export function ChatContent({
     useDefaultControllerChannel,
     draftAttachmentCount: draftAttachments.length,
     onPastedImagePaths: !nativePaneChrome && canAttach ? handlePastedImagePaths : undefined,
+    onConversationStartError: reportConversationStartError,
   });
   replaceComposerDraftRef.current = replaceComposerDraft;
 
@@ -762,7 +772,9 @@ export function ChatContent({
       height={height}
       userByUsername={userByUsername}
       currentUserId={user?.id}
+      channels={channels}
       onCancel={closeNewDmDialog}
+      onOpenChannel={showConversationFromDialog}
       onSubmit={openConversationFromDialog}
     />
   ) : null;

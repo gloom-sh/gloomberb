@@ -12,6 +12,8 @@ import type { SyncSettings, SyncSnapshot } from "../sync/types";
 
 export interface ChatUserSummary {
   id: string;
+  /** A person, a managed assistant (Gloombot), or a Discord user bridged into public channels. */
+  accountType?: "human" | "managed_llm" | "discord";
   username: string | null;
   displayName: string;
   bio?: string | null;

@@ -1,17 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, DialogFrame, ListView, TextField, type ListViewItem } from "../../../../components/ui";
+import { stepListCursor } from "../../../../components/ui/list-view";
 import { modalSurfaceStyle } from "../../../../components/ui/frame";
 import { useShortcut } from "../../../../react/input";
 import { colors, hoverBg } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../../ui";
-import type { ChatUserSummary } from "../../../../api-client";
+import type { ChatChannel, ChatUserSummary } from "../../../../api-client";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import {
   hasOnlyDmUsernameArgs,
   parseDmUsernames,
 } from "../channels";
+import {
+  describeConversationStartError,
+  directMessageAvailability,
+  knownConversationRefusal,
+  type DirectMessageAvailability,
+} from "../direct-messages";
 
 const MAX_RECENT_USERS = 6;
 const MIN_DIALOG_WIDTH = 32;
@@ -22,9 +29,10 @@ const DIALOG_CHROME_ROWS = 7;
 /** The key line under the dialog, with its spacer. */
 const DIALOG_KEYS_ROWS = 2;
 
-interface DmUserCandidate {
+export interface DmUserCandidate {
   username: string;
   displayName: string;
+  availability: DirectMessageAvailability;
 }
 
 function normalizeUsername(value: string | null | undefined): string {
@@ -36,18 +44,26 @@ function currentTokenQuery(value: string): string {
   return normalizeUsername(token);
 }
 
-function candidateUsers(
-  userByUsername: Map<string, ChatUserSummary>,
+/**
+ * Everyone the chat has seen but you, by username. A user whose settings
+ * refuse a DM from you carries that reason, so the list can show it before
+ * anything is sent; one you already share a DM with opens it.
+ */
+export function candidateUsers(
+  userByUsername: ReadonlyMap<string, ChatUserSummary>,
   currentUserId: string | null | undefined,
+  channels: readonly ChatChannel[],
 ): DmUserCandidate[] {
   const candidates = new Map<string, DmUserCandidate>();
   for (const [key, user] of userByUsername) {
-    if (currentUserId && user.id === currentUserId) continue;
+    const availability = directMessageAvailability(user, { currentUserId, channels });
+    if (availability.kind === "self") continue;
     const username = normalizeUsername(user.username ?? key);
     if (!username) continue;
     candidates.set(username, {
       username,
       displayName: user.displayName?.trim() || `@${username}`,
+      availability,
     });
   }
   return [...candidates.values()].sort((left, right) => left.username.localeCompare(right.username));
@@ -68,14 +84,19 @@ export function NewDmDialog({
   height,
   userByUsername,
   currentUserId,
+  channels,
   onCancel,
+  onOpenChannel,
   onSubmit,
 }: {
   width: number;
   height: number;
   userByUsername: Map<string, ChatUserSummary>;
   currentUserId?: string | null;
+  /** The conversations you are in, so a DM you already share opens instead of being started. */
+  channels: readonly ChatChannel[];
   onCancel: () => void;
+  onOpenChannel: (channelId: string) => void;
   onSubmit: (usernames: string[]) => Promise<void>;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -84,6 +105,8 @@ export function NewDmDialog({
   const valueRef = useRef("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  // Enter reaches both the field's submit and the dialog's key handler.
+  const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const dialogWidth = Math.max(MIN_DIALOG_WIDTH, Math.min(MAX_DIALOG_WIDTH, width - 4));
   const dialogHeight = Math.min(DIALOG_HEIGHT, Math.max(8, height - 2));
@@ -94,7 +117,10 @@ export function NewDmDialog({
   const showKeys = nativePaneChrome || dialogHeight - DIALOG_CHROME_ROWS - DIALOG_KEYS_ROWS >= 2;
   const selectedUsernames = useMemo(() => parseDmUsernames(value), [value]);
   const selectedUsernameSet = useMemo(() => new Set(selectedUsernames), [selectedUsernames]);
-  const allCandidates = useMemo(() => candidateUsers(userByUsername, currentUserId), [currentUserId, userByUsername]);
+  const allCandidates = useMemo(
+    () => candidateUsers(userByUsername, currentUserId, channels),
+    [channels, currentUserId, userByUsername],
+  );
   const query = currentTokenQuery(value);
   const visibleCandidates = useMemo(() => {
     const filtered = query
@@ -102,21 +128,38 @@ export function NewDmDialog({
       : allCandidates;
     return filtered.slice(0, MAX_RECENT_USERS);
   }, [allCandidates, query]);
-  const items = useMemo<ListViewItem[]>(() => visibleCandidates.map((candidate) => ({
-    id: candidate.username,
-    label: `@${candidate.username}`,
-    detail: candidate.displayName,
-    checked: selectedUsernameSet.has(candidate.username),
-  })), [selectedUsernameSet, visibleCandidates]);
-  const canSubmit = hasOnlyDmUsernameArgs(value) && selectedUsernames.length > 0 && !submitting;
+  const items = useMemo<ListViewItem[]>(() => visibleCandidates.map((candidate) => {
+    const refused = candidate.availability.kind === "refused";
+    return {
+      id: candidate.username,
+      label: `@${candidate.username}`,
+      detail: refused ? t("no DMs") : candidate.displayName,
+      checked: selectedUsernameSet.has(candidate.username),
+      disabled: refused,
+    };
+  }), [selectedUsernameSet, visibleCandidates]);
+  // A name the chat already knows cannot be messaged: say why as it is typed.
+  const knownRefusal = useMemo(
+    () => knownConversationRefusal(selectedUsernames, { userByUsername, currentUserId, channels }),
+    [channels, currentUserId, selectedUsernames, userByUsername],
+  );
+  const shownError = error ?? knownRefusal;
+  const canSubmit = hasOnlyDmUsernameArgs(value) && selectedUsernames.length > 0 && !submitting && !knownRefusal;
 
   useEffect(() => {
     inputRef.current?.focus?.();
   }, []);
 
+  // The cursor never rests on a user who cannot be picked.
   useEffect(() => {
-    setSelectedIndex((current) => Math.max(0, Math.min(current, Math.max(items.length - 1, 0))));
-  }, [items.length]);
+    setSelectedIndex((current) => {
+      const clamped = Math.max(0, Math.min(current, items.length - 1));
+      if (!items[clamped]?.disabled) return clamped;
+      const next = stepListCursor(items, clamped, 1);
+      return next !== clamped ? next : stepListCursor(items, clamped, -1);
+    });
+  }, [items]);
+  const highlightedItem = items[selectedIndex] && !items[selectedIndex]!.disabled ? items[selectedIndex] : undefined;
 
   const updateValue = (nextValue: string) => {
     valueRef.current = nextValue;
@@ -130,26 +173,42 @@ export function NewDmDialog({
   };
 
   const submit = async () => {
+    if (submittingRef.current) return;
     let submittedValue = valueRef.current;
     // Nothing typed yet: Enter starts with the highlighted user, as Tab would
     // have picked them.
-    const highlighted = items[selectedIndex];
-    if (highlighted && parseDmUsernames(submittedValue).length === 0 && currentTokenQuery(submittedValue) === "") {
-      submittedValue = setUsernameSelected(submittedValue, highlighted.id, true);
+    if (highlightedItem && parseDmUsernames(submittedValue).length === 0 && currentTokenQuery(submittedValue) === "") {
+      submittedValue = setUsernameSelected(submittedValue, highlightedItem.id, true);
       updateValue(submittedValue);
     }
     const submittedUsernames = parseDmUsernames(submittedValue);
-    if (!hasOnlyDmUsernameArgs(submittedValue) || submittedUsernames.length === 0 || submitting) {
+    if (!hasOnlyDmUsernameArgs(submittedValue) || submittedUsernames.length === 0) {
       setError(t("Enter at least one @username."));
       return;
     }
+    const refusal = knownConversationRefusal(submittedUsernames, { userByUsername, currentUserId, channels });
+    if (refusal) {
+      setError(refusal);
+      return;
+    }
+    const onlyUser = submittedUsernames.length === 1 ? userByUsername.get(submittedUsernames[0]!) : undefined;
+    const availability = onlyUser ? directMessageAvailability(onlyUser, { currentUserId, channels }) : null;
+    if (availability?.kind === "open") {
+      // The dialog closes with it; a second Enter in the same press opens nothing more.
+      submittingRef.current = true;
+      onOpenChannel(availability.channelId);
+      return;
+    }
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
       await onSubmit(submittedUsernames);
-    } catch {
-      setError(t("Could not start conversation."));
+    } catch (submitError) {
+      setError(describeConversationStartError(submitError, submittedUsernames, userByUsername));
       setSubmitting(false);
+    } finally {
+      submittingRef.current = false;
     }
   };
 
@@ -163,18 +222,13 @@ export function NewDmDialog({
     if (isPlainKey(event, "up", "down")) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      setSelectedIndex((current) => {
-        if (items.length === 0) return 0;
-        return event.name === "up"
-          ? Math.max(0, current - 1)
-          : Math.min(items.length - 1, current + 1);
-      });
+      setSelectedIndex((current) => (items.length === 0 ? 0 : stepListCursor(items, current, event.name === "up" ? -1 : 1)));
       return;
     }
-    if (event.name === "tab" && items[selectedIndex]) {
+    if (event.name === "tab" && highlightedItem) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      toggleCandidate(items[selectedIndex]!.id);
+      toggleCandidate(highlightedItem.id);
       return;
     }
     if (event.name === "enter" || event.name === "return") {
@@ -226,7 +280,7 @@ export function NewDmDialog({
         </Box>
         <ListView
           items={items}
-          selectedIndex={items.length > 0 ? selectedIndex : -1}
+          selectedIndex={highlightedItem ? selectedIndex : -1}
           height={Math.max(1, dialogHeight - DIALOG_CHROME_ROWS - (showKeys ? DIALOG_KEYS_ROWS : 0))}
           bgColor={colors.bg}
           selectedBgColor={colors.selected}
@@ -238,10 +292,10 @@ export function NewDmDialog({
           renderRow={(item, state) => (
             <Box flexDirection="row" width={contentWidth}>
               <Text fg={state.selected ? colors.selectedText : colors.textDim}>
-                {item.checked ? "x " : "+ "}
+                {item.disabled ? "  " : item.checked ? "x " : "+ "}
               </Text>
               <Text
-                fg={state.selected ? colors.text : colors.textMuted}
+                fg={state.selected ? colors.text : state.disabled ? colors.textDim : colors.textMuted}
                 attributes={state.selected ? TextAttributes.BOLD : 0}
               >
                 {truncateWithEllipsis(item.label, Math.max(1, contentWidth - 12))}
@@ -254,8 +308,8 @@ export function NewDmDialog({
           )}
         />
         <Box height={1} flexDirection="row">
-          {error ? (
-            <Text fg={colors.negative}>{truncateWithEllipsis(error, contentWidth)}</Text>
+          {shownError ? (
+            <Text fg={colors.negative}>{truncateWithEllipsis(shownError, contentWidth)}</Text>
           ) : (
             <Text fg={colors.textDim}>{selectedUsernames.length > 1 ? t("Group chat") : t("Direct message")}</Text>
           )}

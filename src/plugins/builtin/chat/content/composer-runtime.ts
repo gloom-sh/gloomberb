@@ -44,6 +44,7 @@ export function useChatComposerRuntime({
   useDefaultControllerChannel,
   draftAttachmentCount = 0,
   onPastedImagePaths,
+  onConversationStartError,
 }: {
   applyingExternalDraftRef: MutableRef<boolean>;
   blurInput: () => void;
@@ -74,6 +75,8 @@ export function useChatComposerRuntime({
   draftAttachmentCount?: number;
   /** Set where pasted file paths can attach (the terminal): the paths, and the text that named them. */
   onPastedImagePaths?: (paths: string[], pasted: string) => void;
+  /** A `/dm` or `/group` command the server refused, with the names it asked for. */
+  onConversationStartError?: (error: unknown, usernames: string[]) => void;
 }) {
   const replyToRef = useRef(replyTo);
   const draftAttachmentCountRef = useRef(draftAttachmentCount);
@@ -256,7 +259,7 @@ export function useChatComposerRuntime({
         if (composerCommand.draft) {
           controller.setChannelDraft(channel.id, composerCommand.draft);
         }
-      }).catch(() => {});
+      }).catch((error: unknown) => onConversationStartError?.(error, [composerCommand.username]));
       return;
     }
     if (composerCommand?.kind === "group") {
@@ -268,7 +271,7 @@ export function useChatComposerRuntime({
         channelIdRef.current = channel.id;
         onChannelChange?.(channel.id);
         clearLocalComposer();
-      }).catch(() => {});
+      }).catch((error: unknown) => onConversationStartError?.(error, composerCommand.usernames));
       return;
     }
     const sendChannelId = useDefaultControllerChannel ? channelId : channelIdRef.current;
@@ -289,6 +292,7 @@ export function useChatComposerRuntime({
     controller,
     inputValueRef,
     onChannelChange,
+    onConversationStartError,
     expandDirectSection,
     persistDraft,
     setEditingMessage,
