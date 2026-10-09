@@ -34,6 +34,9 @@ const QUOTE_SORT_COLUMN_IDS = new Set([
   "ext_hours",
   "mkt_value",
   "weight",
+  "drift",
+  "trade",
+  "trade_value",
   "day_pnl",
   "pnl",
   "pnl_pct",
@@ -153,9 +156,12 @@ export function buildTrackedCurrencies(
   financialsMap: Map<string, TickerFinancials>,
   accountState: ResolvedPortfolioAccountState | null,
   baseCurrency: string,
+  /** The currency of cash entered by hand. */
+  cashCurrency?: string,
 ): string[] {
   const currencies = new Set<string>([baseCurrency]);
   if (accountState?.account.currency) currencies.add(accountState.account.currency);
+  if (cashCurrency) currencies.add(cashCurrency);
 
   for (const ticker of tickers) {
     if (ticker.metadata.currency) {

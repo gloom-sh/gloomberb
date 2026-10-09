@@ -57,15 +57,16 @@ test("a broker portfolio's positions come largest first with weights and totals 
   const all = await collectionHoldingsHeadless.load(args(BROKER.id), context());
   // A holding without a quote has no market value and goes last, not first.
   expect(all.rows.map((row) => row.symbol)).toEqual(["MSFT", "NVDA", "TSLA", "AAPL", "1211"]);
-  expect(all.errors).toEqual(["No market value or P&L for 1211; totals leave them out."]);
+  expect(all.errors).toEqual(["No market value or P&L for 1211; totals and weights leave them out."]);
 
   const result = await collectionHoldingsHeadless.load(args(BROKER.id, { limit: 3 }), context());
 
   expect(result.rows.map((row) => row.symbol)).toEqual(["MSFT", "NVDA", "TSLA"]);
   expect(result.rows[0]).toMatchObject({ shares: 30, price: 400, marketValue: 12_000, unrealizedPnl: 3_000, priceCurrency: "USD" });
-  // A short is negative exposure and still weighs by its size.
+  // A short is negative exposure and weighs against the net total, as `portfolio show` weighs it.
   expect(result.rows[2]).toMatchObject({ shares: -20, marketValue: -5_000, unrealizedPnl: 1_000 });
-  expect(result.rows[0]!.weight).toBeCloseTo((12_000 / 29_000) * 100, 8);
+  expect(result.rows[0]!.weight).toBeCloseTo((12_000 / 19_000) * 100, 8);
+  expect(result.rows[2]!.weight).toBeCloseTo((-5_000 / 19_000) * 100, 8);
   expect(result.metadata).toMatchObject({
     collection: { kind: "portfolio", id: BROKER.id, broker: true },
     currency: "USD",

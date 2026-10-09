@@ -311,7 +311,23 @@ function sanitizePortfolios(value: unknown, fallback: Portfolio[]): Portfolio[] 
       && typeof (entry as Portfolio).name === "string"
       && typeof (entry as Portfolio).currency === "string",
     )
-    .map((entry) => ({ ...entry }));
+    .map(sanitizePortfolioAllocation);
+}
+
+/** Cash and target weights the portfolio commands write; anything else is dropped. */
+function sanitizePortfolioAllocation(entry: Portfolio): Portfolio {
+  const { cash, targetWeights, ...portfolio } = entry;
+  const next: Portfolio = { ...portfolio };
+  if (isRecord(cash) && typeof cash.amount === "number" && Number.isFinite(cash.amount)
+    && typeof cash.currency === "string" && /^[A-Z]{3}$/.test(cash.currency)) {
+    next.cash = { amount: cash.amount, currency: cash.currency };
+  }
+  if (isRecord(targetWeights)) {
+    const weights = Object.entries(targetWeights).filter((weight): weight is [string, number] =>
+      !!weight[0].trim() && typeof weight[1] === "number" && Number.isFinite(weight[1]) && weight[1] >= 0 && weight[1] <= 100);
+    if (weights.length > 0) next.targetWeights = Object.fromEntries(weights);
+  }
+  return next;
 }
 
 function sanitizeWatchlists(value: unknown, fallback: Watchlist[]): Watchlist[] {

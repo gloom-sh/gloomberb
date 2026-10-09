@@ -17,6 +17,7 @@ import {
   type BrokerSnapshotBasis,
 } from "../account-metrics";
 import { formatPortfolioAmount, type PortfolioSummaryTotals } from "./totals";
+import { formatAllocationDrift, formatAllocationWeight, type PortfolioCashLine } from "../allocation";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";
@@ -221,6 +222,7 @@ export function buildPortfolioSummarySegments({
   convertAccountValue = (value) => value,
   currency = "USD",
   baseCurrency = "USD",
+  manualCash = null,
 }: {
   totals: PortfolioSummaryTotals;
   accountState: PortfolioSummaryAccountState | null;
@@ -231,6 +233,8 @@ export function buildPortfolioSummarySegments({
   currency?: string;
   /** The app's base currency: amounts are bare only when both are USD. */
   baseCurrency?: string;
+  /** Cash entered by hand, in the totals currency, with the total it is weighed against. */
+  manualCash?: (PortfolioCashLine & { total: number | null }) | null;
 }): PortfolioSummarySegment[] {
   const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed, baseCurrency });
   if (!isPortfolioTab) {
@@ -241,7 +245,7 @@ export function buildPortfolioSummarySegments({
       ])]
       : [];
   }
-  if (!totals.hasPositions && !accountState) return [];
+  if (!totals.hasPositions && !accountState && !manualCash) return [];
 
   const candidates: PortfolioSummarySegment[] = [];
   const account = accountState?.account;
@@ -256,6 +260,14 @@ export function buildPortfolioSummarySegments({
       { text: money(convertAccountValue(value)), tone: "value", bold: true },
     ])
     : null;
+
+  // Holdings plus the cash, as weights divide by it; like Net Liq for a broker account.
+  if (manualCash) {
+    candidates.push(createSummarySegment("total", [
+      { text: "Total", tone: "label" },
+      { text: money(manualCash.total ?? Number.NaN), tone: "value", bold: true },
+    ]));
+  }
 
   if (netLiquidation != null) {
     candidates.push(createSummarySegment("netliq", [
@@ -278,6 +290,17 @@ export function buildPortfolioSummarySegments({
 
   // A broker account always states its cash, so a missing balance reads as unknown rather than zero.
   if (account) candidates.push(accountValue("cash", "Cash", account.totalCashValue ?? Number.NaN)!);
+  if (manualCash) {
+    const drift = formatAllocationDrift(manualCash.drift);
+    candidates.push(createSummarySegment("cash", [
+      { text: "Cash", tone: "label" },
+      { text: money(manualCash.value), tone: "value", bold: true },
+      ...(manualCash.weight != null ? [{ text: `(${formatAllocationWeight(manualCash.weight)})`, tone: "muted" as const }] : []),
+      ...(manualCash.targetWeight != null && manualCash.drift != null
+        ? [{ text: drift, tone: "muted" as const, color: /[1-9]/.test(drift) ? priceColor(manualCash.drift) : undefined }]
+        : []),
+    ]));
+  }
 
   candidates.push(createSummarySegment("day", [
     { text: "Day", tone: "label" },

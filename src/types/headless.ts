@@ -71,7 +71,12 @@ export interface HeadlessPaneContext {
   settings?: Record<string, unknown>;
   capabilities?: CapabilityInvoker;
   /** Read one local portfolio without passing holdings through a remote endpoint. */
-  resolvePortfolio?: (id: string) => Promise<{ portfolio: import("./ticker").Portfolio; tickers: import("./ticker").TickerRecord[] } | null>;
+  resolvePortfolio?: (id: string) => Promise<{
+    portfolio: import("./ticker").Portfolio;
+    tickers: import("./ticker").TickerRecord[];
+    /** The broker account the portfolio was last synced with, as saved on this device. */
+    account?: import("./trading").BrokerAccount | null;
+  } | null>;
   /** Read locally remembered watchlist membership. */
   resolveWatchlist?: (id: string) => Promise<import("./ticker").TickerRecord[] | null>;
   /** Resolve locally remembered exchange identities without coupling plugins to storage. */

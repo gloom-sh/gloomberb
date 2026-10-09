@@ -990,7 +990,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
 
   // Run a workspace
   PF: {
-    summary: "Your portfolio or watchlist with live quotes, P&L, weights and sparklines. Broker-synced and manual positions sit in the same table.",
+    summary: "Your portfolio or watchlist with live quotes, market value, P&L, weights of the total with cash, and sparklines. With target weights set, each holding adds its target, drift and the trade that rebalances it; broker-synced and manual positions sit in the same table.",
     usage: ["PF"],
     keys: [key("a", "dd"), OPEN, key("s", " grid")],
     data: QUOTES,

@@ -11,6 +11,7 @@
 - [CLI commands and output formats](#cli)
 - [Plugins pane](#plugins-pane)
 - [Portfolio currency](#portfolio-currency)
+- [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)
 - [Broker position sync](#broker-position-sync)
 - [Gloom Cloud sign-in](#gloom-cloud-sign-in)
 - [Debt maturities](#debt-maturities)
@@ -347,7 +348,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 
 In `PF`, `a` adds a ticker to the open manual portfolio or watchlist and `d` removes the selected one after a confirm. Removing it from a portfolio deletes its position there; its notes, alerts and other lists stay. Broker portfolios have no `d`, since the next sync would put the ticker back, and neither do team lists, which everyone on the team shares; `RW` and `RP` still edit a team list.
 
-`gloomberb fn PF <portfolio-or-watchlist> --json` returns a portfolio's positions, broker or manual, valued as `gloomberb portfolio show` values them: quantity, average cost, last price, market value and unrealized P&L in the portfolio's currency, and weight in its gross market value, largest first. `--limit` caps the rows (50 by default, at most 200); the totals always cover every position. Name the portfolio or watchlist by its ID or its name; without one it reads your first portfolio. A watchlist returns its tickers with their quotes.
+`gloomberb fn PF <portfolio-or-watchlist> --json` returns a portfolio's positions, broker or manual, valued as `gloomberb portfolio show` values them: quantity, average cost, last price, market value and unrealized P&L in the portfolio's currency, and weight of the total with cash (see [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)), largest first, then the cash line. With target weights set, each row adds its target, drift and the trade that reaches it. `--limit` caps the rows (50 by default, at most 200); the totals always cover every position. Name the portfolio or watchlist by its ID or its name; without one it reads your first portfolio. A watchlist returns its tickers with their quotes.
 
 Published layouts preserve portable pane setup and state, including searches, chart viewport, and drawings. Credentials, accounts, portfolios, and pane fields marked private stay local. Publishing copies a durable `term.gloom.sh/l/...` link for social sharing.
 
@@ -425,7 +426,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market overview data |
 | `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
 | `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
-| `gloomberb portfolio [action]` | Manage manual portfolios |
+| `gloomberb portfolio [action]` | Show a portfolio's value, weights, targets and P&L; manage manual portfolios, cash and target weights |
 | `gloomberb watchlist [action]` | Manage watchlists |
 | `gloomberb notes\|alerts [action]` | Manage local notes and alerts |
 | `gloomberb broker list [--type <broker>]` | List connected broker accounts, optionally one kind such as `ibkr` |
@@ -493,6 +494,26 @@ Official plugins, the ones published under [github.com/gloom-sh](https://github.
 ## Portfolio currency
 
 A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are in the portfolio's currency, as are `PORT` and `gloomberb portfolio show`. A broker portfolio uses its account currency. A manual portfolio uses your base currency (`config set baseCurrency`). With the default USD base, a manual portfolio takes the currency of its first position instead: a portfolio of ASX shares bought in AUD totals in AUD, and holdings added later in other currencies convert into it. Totals lead with the currency symbol, such as A$108.6k, unless both they and the base currency are USD. LAST, AVG COST and TARGET stay in the listing's currency.
+
+## Cash, target weights and rebalancing
+
+A portfolio can hold cash beside its positions and a target weight for each holding. `PF` and `gloomberb portfolio show` then show how far each holding is from its target and the trade that would bring it back.
+
+```bash
+gloomberb portfolio cash set Retirement 500000 USD     # or: cash clear Retirement
+gloomberb portfolio target set Retirement VTI 30%      # 30 and 30% are the same
+gloomberb portfolio target set Retirement CASH 25
+gloomberb portfolio target show Retirement             # or: target clear Retirement [VTI]
+gloomberb portfolio show Retirement                    # --csv and --json keep raw numbers
+```
+
+- **Cash** is one amount in one currency, converted into the portfolio's currency. A broker portfolio whose account reports its cash shows that balance instead of an amount entered by hand, so cash is never counted twice. Bare `CASH` names the cash line: `target set` takes it, while `portfolio add` and `position set` refuse it and point to `cash set`. The stock that trades under that symbol is `CASH:NASDAQ`.
+- **Weight** is a holding's net market value as a share of the total: every priced holding plus the cash. A short weighs against the total. A holding without a price is left out of the total and the weights rather than counted at zero, shows `n/a`, and `portfolio show` says how many were left out.
+- **Targets** are percents of the same total, kept per ticker symbol on the portfolio, and sync between your devices with the rest of your settings when you are signed in. They need not add up to 100%: `portfolio show` notes the sum and what is unallocated. A target can name a ticker the portfolio does not hold yet; a manual portfolio adds it, at a weight of 0%.
+- **Drift** is weight minus target in percentage points: `+2.3pp` is overweight.
+- **Trade** is what reaches the target at the current price: the value, and the units at the position's own value per unit (contract multipliers and FX included). A holding kept in whole shares trades in whole shares, rounded; fractional holdings keep four decimals, coins eight. Trades ignore fees, taxes and lot sizes.
+
+In `PF`, a portfolio with targets shows `WEIGHT`, `TGT WT`, `DRIFT` and `TRADE` after `MKT VAL`, unless the pane's columns already include target columns; `TRADE VAL` is in the pane's column settings. (`TARGET` and `TARGET%` are the analysts' price target.) With cash entered by hand the header shows `Total` and `Cash`, with the cash's weight and drift; a broker account keeps its `Net Liq` and `Cash`. `gloomberb fn PF` and `gloomberb portfolio show` report the same figures.
 
 ## Broker position sync
 

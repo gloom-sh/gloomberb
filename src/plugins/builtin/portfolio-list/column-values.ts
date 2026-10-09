@@ -17,6 +17,7 @@ import {
   formatMarketPriceWithCurrency,
   formatMarketQuantity,
   formatSignedMarketPrice,
+  withCurrencyMinorDigits,
   withStablePriceDigits,
   type MarketFormatOptions,
 } from "../../../market-data/market/format";
@@ -50,6 +51,14 @@ import {
   type PortfolioPositionPnl,
 } from "./position-metrics";
 import { isFiniteNumber } from "../../../utils/guards";
+import {
+  allocationFigures,
+  formatAllocationDrift,
+  formatAllocationWeight,
+  formatTradeUnits,
+  holdingTarget,
+  type AllocationFigures,
+} from "./allocation";
 
 export interface ColumnContext {
   activeTab?: string;
@@ -58,8 +67,14 @@ export interface ColumnContext {
   exchangeRates: Map<string, number>;
   /** Clock for quote age (per second while shown) and day-based columns. */
   now: number;
-  /** Gross market value of the collection; weights may trail it by about a second. */
+  /**
+   * The total a portfolio's weights divide by: its priced holdings at net
+   * market value plus its cash (see allocation.ts). It may trail the rows by
+   * about a second.
+   */
   portfolioTotalMarketValue?: number;
+  /** The portfolio's target weights in percent, by symbol. */
+  portfolioTargets?: Readonly<Record<string, number>>;
   supplementalVersion?: number;
   analystResearch?: Map<string, AnalystResearchData | null>;
   corporateActions?: Map<string, CorporateActionsData | null>;
@@ -202,13 +217,29 @@ function fiftyTwoWeekPosition(displayQuote: ActiveQuoteDisplay | null, quote: Ti
   return displayQuote && range ? ((displayQuote.price - range.low) / (range.high - range.low)) * 100 : null;
 }
 
-function getActiveMarketValue(
+/** The row's weight, target, drift and trade, from its own live value and the pane's total. */
+function rowAllocation(
+  ticker: TickerRecord,
   activeQuote: ActiveQuoteDisplay | null,
-  positionMetrics: ReturnType<typeof getPortfolioPositionMetrics>,
+  baseMetrics: ReturnType<typeof getPortfolioPositionMetrics>,
   toBaseQuote: (value: number) => number,
-): number | null {
-  return resolvePortfolioMarketValue(positionMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.gross ?? null;
+  ctx: ColumnContext,
+): AllocationFigures & { unpriced: boolean } {
+  const held = baseMetrics.positionCount > 0;
+  const unitPrice = activeQuote ? toBaseQuote(activeQuote.price) : null;
+  const marketValue = held ? resolvePortfolioMarketValue(baseMetrics, unitPrice)?.net ?? null : 0;
+  return {
+    ...allocationFigures(
+      { held, marketValue, units: baseMetrics.totalShares, unitPrice },
+      ctx.portfolioTotalMarketValue,
+      holdingTarget(ctx.portfolioTargets, ticker.metadata.ticker),
+    ),
+    unpriced: held && marketValue == null,
+  };
 }
+
+/** A held position without a price says so where its allocation would be. */
+const UNPRICED = "n/a";
 
 export function resolvePortfolioPriceValue(
   activeQuote: ActiveQuoteDisplay | null,
@@ -366,16 +397,39 @@ export function getColumnValue(
       return { text: positionMetrics.positionCount > 0 ? formatMarketQuantity(totalShares, { ...formatOptions, maxWidth: col.width }) : "—" };
     case "avg_cost":
       if (totalCostUnits === 0 || !Number.isFinite(totalCost)) return { text: "—" };
-      return { text: formatMarketCost(totalCost / Math.abs(totalCostUnits), { ...formatOptions, maxWidth: col.width }) };
+      // A money cost keeps its currency's minor unit, as `portfolio show` prints it: 45.50, not 45.5.
+      return { text: formatMarketCost(totalCost / Math.abs(totalCostUnits), { ...withCurrencyMinorDigits(formatOptions, positionCurrency), maxWidth: col.width }) };
     case "cost_basis":
       if (baseMetrics.positionCount === 0 || !Number.isFinite(baseMetrics.totalCost)) return { text: "—" };
       return { text: formatCompact(baseMetrics.totalCost) };
-    case "mkt_value":
-      return { text: formatCompactAmount(resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.gross ?? Number.NaN) };
+    case "mkt_value": {
+      if (baseMetrics.positionCount === 0) return { text: "—" };
+      const marketValue = resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.gross;
+      return { text: marketValue == null ? UNPRICED : formatCompactAmount(marketValue) };
+    }
     case "weight": {
-      const marketValue = getActiveMarketValue(activeQuote, baseMetrics, toBaseQuote);
-      if (marketValue == null || !ctx.portfolioTotalMarketValue) return { text: "—" };
-      return { text: formatPercentRaw((marketValue / ctx.portfolioTotalMarketValue) * 100) };
+      const allocation = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx);
+      return { text: allocation.unpriced ? UNPRICED : formatAllocationWeight(allocation.weight) };
+    }
+    case "target_weight":
+      return { text: formatAllocationWeight(holdingTarget(ctx.portfolioTargets, ticker.metadata.ticker)) };
+    case "drift": {
+      const allocation = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx);
+      if (allocation.unpriced && allocation.targetWeight != null) return { text: UNPRICED };
+      const text = formatAllocationDrift(allocation.drift);
+      return { text, color: /[1-9]/.test(text) ? priceColor(allocation.drift!) : undefined };
+    }
+    case "trade": {
+      const allocation = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx);
+      if (allocation.unpriced && allocation.targetWeight != null) return { text: UNPRICED };
+      const text = formatTradeUnits(allocation.tradeUnits, { units: totalShares, assetCategory: ticker.metadata.assetCategory });
+      return { text, color: /[1-9]/.test(text) ? priceColor(allocation.tradeUnits!) : undefined };
+    }
+    case "trade_value": {
+      const allocation = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx);
+      if (allocation.unpriced && allocation.targetWeight != null) return { text: UNPRICED };
+      const text = formatCompactAmount(allocation.tradeValue ?? undefined, { signed: true });
+      return { text, color: /[1-9]/.test(text) ? priceColor(allocation.tradeValue!) : undefined };
     }
     case "day_pnl":
       if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
@@ -548,12 +602,16 @@ export function getSortValue(
       return baseMetrics.positionCount > 0 && Number.isFinite(baseMetrics.totalCost) ? baseMetrics.totalCost : null;
     case "mkt_value":
       return resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.gross ?? null;
-    case "weight": {
-      const marketValue = getActiveMarketValue(activeQuote, baseMetrics, toBaseQuote);
-      return marketValue != null && ctx.portfolioTotalMarketValue
-        ? (marketValue / ctx.portfolioTotalMarketValue) * 100
-        : null;
-    }
+    case "weight":
+      return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).weight;
+    case "target_weight":
+      return holdingTarget(ctx.portfolioTargets, ticker.metadata.ticker) ?? null;
+    case "drift":
+      return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).drift;
+    case "trade":
+      return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).tradeUnits;
+    case "trade_value":
+      return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).tradeValue;
     case "day_pnl":
       if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
         return toBaseQuote(totalPriceUnits * activeQuote.change);

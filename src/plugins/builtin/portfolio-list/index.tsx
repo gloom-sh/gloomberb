@@ -9,6 +9,7 @@ import {
 import { portfolioCliCommand } from "./cli/portfolio-command";
 import { watchlistCliCommand } from "./cli/watchlist-command";
 import { collectionHoldingsHeadless } from "./headless";
+import { findCollection } from "./cli/render";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
@@ -30,8 +31,13 @@ function resolveCollectionIdForKind(context: PaneTemplateContext, kind: "portfol
 function createCollectionPaneInstance(
   context: PaneTemplateContext,
   kind?: "portfolio" | "watchlist",
+  argument?: string,
 ): PaneTemplateInstanceConfig | null {
-  const collectionId = kind ? resolveCollectionIdForKind(context, kind) : resolveCollectionPaneId(context);
+  // `PF Retirement` (or `shot PF Retirement`) opens the collection it names.
+  const named = argument?.trim() ? findCollection(context.config, argument) : null;
+  const collectionId = named && (!kind || named.kind === kind)
+    ? named.id
+    : kind ? resolveCollectionIdForKind(context, kind) : resolveCollectionPaneId(context);
   return collectionId ? { params: { collectionId } } : null;
 }
 
@@ -76,11 +82,15 @@ export const portfolioListModule: PluginModule = {
       paneId: "portfolio-list",
       label: "Collection Pane",
       description: "Open another pane for the current portfolio or watchlist",
-      keywords: ["portfolio", "watchlist", "collection", "pane", "list"],
+      // Phrases rather than bare words, so `fn rebalance` and `fn target` keep resolving where they did.
+      keywords: [
+        "portfolio", "watchlist", "collection", "pane", "list",
+        "portfolio rebalance", "allocation drift", "target weights", "asset allocation", "cash balance",
+      ],
       shortcut: { prefix: "PF" },
       headless: collectionHoldingsHeadless,
       canCreate: (context) => resolveCollectionPaneId(context) !== null,
-      createInstance: (context) => createCollectionPaneInstance(context),
+      createInstance: (context, options) => createCollectionPaneInstance(context, undefined, options?.arg),
     },
     {
       id: "new-portfolio-pane",

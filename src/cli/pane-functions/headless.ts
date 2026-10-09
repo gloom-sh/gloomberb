@@ -1,4 +1,5 @@
 import { getSharedRegistry } from "../../plugins/registry";
+import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
 import { parsePublicTickerKey } from "../../utils/exchanges";
 import { apiClient } from "../../api-client";
 import type { MarketContext } from "../types";
@@ -151,7 +152,9 @@ async function loadHeadlessPaneModel(
  */
 export async function loadResolvedHeadlessPaneModel(
   resolved: ResolvedPaneFunction,
-  context: Pick<MarketContext, "config" | "store" | "refresh"> & { dataProvider: HeadlessPaneContext["marketData"] },
+  context: Pick<MarketContext, "config" | "store" | "refresh"> & Partial<Pick<MarketContext, "persistence">> & {
+    dataProvider: HeadlessPaneContext["marketData"];
+  },
   rawArgument: string,
   signal: AbortSignal = new AbortController().signal,
 ): Promise<LoadedHeadlessPaneModel> {
@@ -170,7 +173,7 @@ export async function loadResolvedHeadlessPaneModel(
       const portfolio = context.config.portfolios.find(row => row.id === id);
       if (!portfolio) return null;
       const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(id));
-      return { portfolio, tickers };
+      return { portfolio, tickers, account: findCachedPortfolioAccount(context.config, portfolio, context.persistence?.resources) };
     },
     async resolveWatchlist(id) {
       if (!context.config.watchlists.some(row => row.id === id)) return null;

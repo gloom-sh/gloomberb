@@ -233,6 +233,20 @@ describe("core sync contributors", () => {
     }]);
   });
 
+  // Cash and targets are entered on one device; a pull that dropped them
+  // erased them on every other device.
+  test("a pulled portfolio keeps its cash and target weights", async () => {
+    const elsewhere = createDefaultConfig("/tmp/gloomberb-sync-cash-elsewhere");
+    elsewhere.portfolios = [{ id: "main", name: "Main", currency: "USD", cash: { amount: 25_000, currency: "EUR" }, targetWeights: { VTI: 70, CASH: 30 } }];
+    const pushed = await coreConfigSyncContributor.collect({ state: createInitialState(elsewhere) });
+
+    const config = createDefaultConfig("/tmp/gloomberb-sync-cash-here");
+    config.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, pushed);
+
+    expect(merged?.portfolios).toEqual(elsewhere.portfolios);
+  });
+
   test("does not reintroduce older unlinked broker portfolios from cloud", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-broker-identity-test");
     config.portfolios = [

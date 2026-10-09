@@ -73,6 +73,7 @@ import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/ext
 import type { ResolvedSeries } from "../../time-series/types";
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
 import { accessGateSentence } from "./access-gate";
+import { findCollection } from "../../plugins/builtin/portfolio-list/cli/render";
 import {
   paneEvidenceMismatches,
   paneScreenshotEvidenceHook,
@@ -652,8 +653,9 @@ async function collectShotSymbolsWithCollections(
   context: MarketContext,
   rawArg: string,
 ): Promise<string[]> {
-  const symbols = collectShotSymbols(resolved, rawArg);
-  if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) return symbols;
+  if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) return collectShotSymbols(resolved, rawArg);
+  // `shot PF Retirement` names a portfolio, not a ticker to fetch.
+  const symbols = rawArg.trim() && findCollection(context.config, rawArg) ? [] : collectShotSymbols(resolved, rawArg);
   const members = (await context.store.loadAllTickers())
     .filter(({ metadata }) => metadata.portfolios.length > 0 || metadata.watchlists.length > 0)
     .map(({ metadata }) => metadata.ticker);

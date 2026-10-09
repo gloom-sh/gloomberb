@@ -8,6 +8,8 @@ export interface CliTableColumn {
   maxWidth?: number;
   /** Dropped, rightmost first, before other columns are shortened to fit a terminal. */
   optional?: boolean;
+  /** Among optional columns, a higher priority is dropped sooner; equal ones go rightmost first. */
+  dropPriority?: number;
   /** False keeps the column whole when fitting, for identifiers a user types into the next command. */
   shrink?: boolean;
 }
@@ -301,7 +303,9 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
   let truncate = false;
   if (available != null && tableWidth(shown.map((entry) => entry.width)) > available) {
     while (tableWidth(shown.map((entry) => entry.width)) > available) {
-      const dropped = shown.findLast((entry) => entry.column.optional);
+      const dropped = shown.reduce<(typeof shown)[number] | undefined>((pick, entry) => (
+        entry.column.optional && (!pick || (entry.column.dropPriority ?? 0) >= (pick.column.dropPriority ?? 0)) ? entry : pick
+      ), undefined);
       if (!dropped) break;
       shown = shown.filter((entry) => entry !== dropped);
     }

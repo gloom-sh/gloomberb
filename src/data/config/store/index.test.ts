@@ -78,6 +78,21 @@ test("recent panes survive a save and reload", async () => {
   ]);
 });
 
+test("a portfolio's cash and target weights survive a save and reload, and malformed ones are dropped", async () => {
+  const dataDir = await createTempConfigDir();
+  await writeConfigJson(dataDir, createSavedConfig({
+    portfolios: [
+      { id: "main", name: "Main", currency: "USD", cash: { amount: 500_000, currency: "USD" }, targetWeights: { VTI: 60, CASH: 40 } },
+      { id: "bad", name: "Bad", currency: "USD", cash: { amount: "lots", currency: "USD" }, targetWeights: { VTI: 140, GLD: -1, BIL: "ten" } },
+    ],
+  }));
+  const loaded = await loadConfig(dataDir);
+  await saveConfig(loaded);
+  const [main, bad] = (await loadConfig(dataDir)).portfolios;
+  expect(main).toEqual({ id: "main", name: "Main", currency: "USD", cash: { amount: 500_000, currency: "USD" }, targetWeights: { VTI: 60, CASH: 40 } });
+  expect(bad).toEqual({ id: "bad", name: "Bad", currency: "USD" });
+});
+
 test("fresh installs skip plugin restoration across config reloads", async () => {
   const dataDir = await createTempConfigDir();
   const fresh = await loadConfig(dataDir);

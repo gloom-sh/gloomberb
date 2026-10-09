@@ -84,6 +84,30 @@ export function loadPersistedBrokerAccounts(
   })?.value.accounts ?? null;
 }
 
+/**
+ * The newest saved account snapshot of a profile, for readers without its
+ * adapter such as the CLI. Read only: without the adapter the current source
+ * key is unknown, so nothing is pruned.
+ */
+export function peekPersistedBrokerAccounts(
+  resources: Pick<AppResourceStorePort, "list">,
+  instance: BrokerInstanceConfig,
+): BrokerAccount[] | null {
+  const records = resources.list<PersistedBrokerAccountSnapshot>({
+    namespace: brokerAccountNamespace(instance),
+    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
+    entityKey: instance.id,
+  }, {
+    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
+    allowExpired: true,
+  });
+  const newest = records.reduce<(typeof records)[number] | null>(
+    (latest, record) => (!latest || record.fetchedAt > latest.fetchedAt ? record : latest),
+    null,
+  );
+  return newest?.value.accounts ?? null;
+}
+
 export function persistBrokerAccounts(
   resources: AppResourceStorePort,
   instance: BrokerInstanceConfig,

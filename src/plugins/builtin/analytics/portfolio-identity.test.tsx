@@ -260,7 +260,7 @@ test("actual PF rejects another account's symbol-only quote on a scoped cache mi
   const f = fixture(false, "b");
   await render(f, "b", new Map([["ACME", financials("ACME", 999)]]), false, "portfolio-list");
   const frame = tui.frame();
-  expect(frame).toContain("2.0k"); expect(frame).toContain("50.00%"); expect(frame).not.toContain("10.0k");
+  expect(frame).toContain("2.0k"); expect(frame).toContain("50.0%"); expect(frame).not.toContain("10.0k");
 });
 
 test("actual Kelly uses scoped bankroll, current holding and price without research quote overriding them", async () => {
