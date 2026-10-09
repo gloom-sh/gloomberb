@@ -200,7 +200,7 @@ export class ProviderRouterFinancialRoutes {
     const rawCached = selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, false);
     const cachedIsStale = rawCached && (brokerSourceKeys.includes(rawCached.sourceKey)
       ? isQuoteContributionStaleForCurrentSession(quoteWithFreshnessExchange(rawCached.value, exchange))
-      : !isProviderQuoteUsableForCurrentSession(rawCached.value, exchange, ticker));
+      : !isProviderQuoteUsableForCurrentSession(rawCached.value, exchange, ticker, { recentAnswer: !rawCached.stale }));
     const cached = rawCached && !cachedIsStale
       ? rawCached
       : null;
@@ -259,7 +259,7 @@ export class ProviderRouterFinancialRoutes {
       if (
         record
         && (includeStale || !record.stale)
-        && isProviderQuoteUsableForCurrentSession(record.value, exchange, ticker)
+        && isProviderQuoteUsableForCurrentSession(record.value, exchange, ticker, { recentAnswer: !record.stale })
       ) {
         return record.value;
       }

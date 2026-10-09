@@ -73,7 +73,7 @@ export class ProviderRouterPrimaryRoutes {
         if (rawValue && !context?.instrument && !providerFinancialsMatchTarget(rawValue, ticker, exchange)) continue;
         const resolvedValue = resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(rawValue));
         if (resolvedValue && !context?.instrument && !providerFinancialsMatchTarget(resolvedValue, ticker, exchange)) continue;
-        let value = resolvedValue ? dropUnusableProviderQuote(resolvedValue, exchange) : null;
+        let value = resolvedValue ? dropUnusableProviderQuote(resolvedValue, exchange, { recentAnswer: true }) : null;
         if (!value) continue;
         const sourceKey = this.options.providerSourceKey(provider);
         if (context?.statementHistory === "extended" && !hasReusableExtendedHistory(value)) {
@@ -187,7 +187,7 @@ export class ProviderRouterPrimaryRoutes {
     for (const provider of this.options.providersInPriorityOrder()) {
       try {
         const quote = await provider.getQuote(ticker, exchange, context);
-        if (!isProviderQuoteUsableForCurrentSession(quote, exchange, ticker)) continue;
+        if (!isProviderQuoteUsableForCurrentSession(quote, exchange, ticker, { recentAnswer: true })) continue;
         const sourceKey = this.options.providerSourceKey(provider);
         this.options.cacheResource(
           "quote",

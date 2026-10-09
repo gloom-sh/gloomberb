@@ -66,7 +66,7 @@ export class ProviderRouterBatchRoutes {
       const rawCached = selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, false);
       const cached = rawCached && (brokerSourceKeys.includes(rawCached.sourceKey)
         ? !isQuoteStaleForCurrentSession(quoteWithFreshnessExchange(rawCached.value, target.exchange))
-        : isProviderQuoteUsableForCurrentSession(rawCached.value, target.exchange, target.symbol))
+        : isProviderQuoteUsableForCurrentSession(rawCached.value, target.exchange, target.symbol, { recentAnswer: !rawCached.stale }))
         ? rawCached
         : null;
       if (cached && !forceRefresh && !cached.stale) {
@@ -93,7 +93,7 @@ export class ProviderRouterBatchRoutes {
       const uniqueTargets = [...providerIndexes.values()].map((bucket) => bucket[0]!.target);
       const batchResults = await batchProvider.getQuotesBatch!(uniqueTargets, options).catch(() => []);
       for (const item of batchResults) {
-        if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol)) continue;
+        if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) continue;
         const key = this.quoteBatchKey(item.target);
         const sourceKey = this.deps.providerSourceKey(batchProvider);
         for (const entry of providerIndexes.get(key) ?? []) {
@@ -162,7 +162,7 @@ export class ProviderRouterBatchRoutes {
         const key = this.cachedFinancialsBatchKey(item.target);
         let value = resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(item.financials));
         if (value && !item.target.instrument && !providerFinancialsMatchTarget(value, item.target.symbol, item.target.exchange)) continue;
-        if (value) value = dropUnusableProviderQuote(value, item.target.exchange);
+        if (value) value = dropUnusableProviderQuote(value, item.target.exchange, { recentAnswer: true });
         if (!value) continue;
         const sourceKey = this.deps.providerSourceKey(batchProvider);
         for (const entry of providerIndexes.get(key) ?? []) {
