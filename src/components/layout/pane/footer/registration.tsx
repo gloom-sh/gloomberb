@@ -66,17 +66,17 @@ export function PaneFooterProvider({
   const value = useMemo(() => ({ register, unregister }), [register, unregister]);
   const footer = useMemo(() => combinePaneFooterRegistrations(registrations), [registrations]);
 
-  const [arrowClaims, setArrowClaims] = useState<ReadonlySet<string>>(() => new Set());
-  const setArrowClaim = useCallback((id: string, claimed: boolean) => {
-    setArrowClaims((current) => {
-      if (current.has(id) === claimed) return current;
-      const next = new Set(current);
-      if (claimed) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }, []);
-  const arrowValue = useMemo(() => ({ claimed: arrowClaims.size > 0, setArrowClaim }), [arrowClaims, setArrowClaim]);
+  const [arrowClaims, setArrowClaim] = useMemberSet();
+  const [strips, setStrip] = useMemberSet();
+  const [holds, setArrowHold] = useMemberSet();
+  const arrowValue = useMemo<PaneArrowState>(() => ({
+    claimed: arrowClaims.size > 0,
+    strip: strips.size > 0,
+    held: holds.size > 0,
+    setArrowClaim,
+    setStrip,
+    setArrowHold,
+  }), [arrowClaims, holds, setArrowClaim, setArrowHold, setStrip, strips]);
 
   return (
     <PaneFooterContext.Provider value={value}>
@@ -87,27 +87,72 @@ export function PaneFooterProvider({
   );
 }
 
-const PaneArrowContext = createContext<{ claimed: boolean; setArrowClaim(id: string, claimed: boolean): void } | null>(null);
+function useMemberSet(): [ReadonlySet<string>, (id: string, member: boolean) => void] {
+  const [members, setMembers] = useState<ReadonlySet<string>>(() => new Set());
+  const setMember = useCallback((id: string, member: boolean) => {
+    setMembers((current) => {
+      if (current.has(id) === member) return current;
+      const next = new Set(current);
+      if (member) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  return [members, setMember];
+}
+
+interface PaneArrowState {
+  /** A focused tab strip owns Left, Right, h and l. */
+  claimed: boolean;
+  /** The pane has a tab strip that walks its tabs by keyboard. */
+  strip: boolean;
+  /** Content the user moved into (a chart) holds the strip's keys until Esc. */
+  held: boolean;
+  setArrowClaim(id: string, claimed: boolean): void;
+  setStrip(id: string, present: boolean): void;
+  setArrowHold(id: string, held: boolean): void;
+}
+
+const PaneArrowContext = createContext<PaneArrowState | null>(null);
+
+function usePaneArrowMember(set: ((id: string, member: boolean) => void) | undefined, member: boolean) {
+  const id = useId();
+  useEffect(() => {
+    if (!set) return;
+    set(id, member);
+    return () => set(id, false);
+  }, [id, member, set]);
+}
 
 /**
- * A focused tab strip owns Left and Right in its pane. It claims them here, so
- * a read-only chart in the same pane leaves them to the strip and the arrows
- * keep walking the tabs.
+ * A tab strip's keys. A focused strip owns Left, Right, h and l in its pane and
+ * claims them, so a chart in the same pane leaves them to it and the arrows
+ * keep walking the tabs. While content the user moved into holds them (a chart
+ * after Down, Enter or a click), the strip lets go until that content hands
+ * them back with Esc. Returns whether the strip has its keys now.
  */
-export function usePaneArrowClaim(claimed: boolean) {
+export function usePaneTabStripKeys(navigates: boolean, focused: boolean): { active: boolean; held: boolean } {
   const context = useContext(PaneArrowContext);
-  const id = useId();
-  const setArrowClaim = context?.setArrowClaim;
-  useEffect(() => {
-    if (!setArrowClaim) return;
-    setArrowClaim(id, claimed);
-    return () => setArrowClaim(id, false);
-  }, [claimed, id, setArrowClaim]);
+  const held = context?.held ?? false;
+  const active = navigates && focused && !held;
+  usePaneArrowMember(context?.setStrip, navigates);
+  usePaneArrowMember(context?.setArrowClaim, active);
+  return { active, held: navigates && held };
 }
 
 /** Whether a tab strip in this pane owns Left and Right. */
 export function usePaneArrowsClaimed(): boolean {
   return useContext(PaneArrowContext)?.claimed ?? false;
+}
+
+/** Whether this pane has a tab strip that content can hand the keys back to. */
+export function usePaneHasTabStrip(): boolean {
+  return useContext(PaneArrowContext)?.strip ?? false;
+}
+
+/** While `held`, the pane's tab strips leave Left, Right, h and l to the caller. */
+export function usePaneArrowHold(held: boolean) {
+  usePaneArrowMember(useContext(PaneArrowContext)?.setArrowHold, held);
 }
 
 export function PaneFooterScope({

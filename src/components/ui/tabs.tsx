@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { usePaneArrowClaim, usePaneMenuItems } from "../layout/pane/footer/registration";
+import { usePaneMenuItems, usePaneTabStripKeys } from "../layout/pane/footer/registration";
 import type { ContextMenuItem } from "../../types/context-menu";
 import { useShortcut } from "../../react/input";
 import { Box, ScrollBox, Text, useNativeRenderer, useUiHost } from "../../ui";
@@ -70,12 +70,16 @@ export function Tabs({
   onAdd,
   onReorder,
   onDrag,
-  focused = false,
+  focused: paneFocused = false,
   keyboardNavigation = true,
   paneMenu = true,
   scrollable = true,
   scrollId,
 }: TabsProps) {
+  // While a chart the user moved into holds the keys, the strip draws as
+  // unfocused, so it shows where the arrows went.
+  const stripKeys = usePaneTabStripKeys(keyboardNavigation, paneFocused);
+  const focused = paneFocused && !stripKeys.held;
   const language = useAppLanguage();
   const colors = useThemeColors();
   const tabs = useMemo(() => rawTabs.map((tab) => (
@@ -216,8 +220,7 @@ export function Tabs({
       event.stopPropagation();
       selectAdjacentTab(1);
     }
-  }, { enabled: focused && keyboardNavigation });
-  usePaneArrowClaim(focused && keyboardNavigation);
+  }, { enabled: stripKeys.active });
 
   if (NativeTabs) {
     return (

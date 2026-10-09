@@ -1,4 +1,3 @@
-import { usePaneArrowsClaimed } from "../../layout/pane/footer/registration";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AsciiText,
@@ -13,7 +12,7 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { useShortcut } from "../../../react/input";
-import { usePaneFooter } from "../../layout/pane/footer/registration";
+import { usePaneArrowHold, usePaneArrowsClaimed, usePaneFooter, usePaneHasTabStrip } from "../../layout/pane/footer/registration";
 import type { PaneHint } from "../../layout/pane/footer/model";
 import type { ContextMenuItem } from "../../../types/context-menu";
 import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
@@ -1990,6 +1989,8 @@ export function CompositeChart({
   const [toolSpan, setToolSpan] = useState<ChartToolSpan | null>(null);
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
   const [keyboardPlacement, setKeyboardPlacement] = useState<KeyboardToolPlacement | null>(null);
+  // Whether the user moved into the chart from the pane's tab strip; see `inside`.
+  const [entered, setEntered] = useState(false);
   const keyboardId = `composite-chart:${useId()}`;
   const paneInstanceId = useOptionalPaneInstanceId();
   const [drawings, setDrawings] = useState<readonly ChartDrawing[]>(NO_DRAWINGS);
@@ -2164,6 +2165,8 @@ export function CompositeChart({
   // Sticky while armed: the toolbar chip shows which tool owns the drag, and a
   // one-shot tool would blink off before the user could see it.
   const armTool = useCallback((tool: ChartToolKind | null) => {
+    // A tool is placed with the arrows, so picking one moves into the chart.
+    if (tool !== null) setEntered(true);
     setArmedTool((current) => current === tool ? null : tool);
     setKeyboardPlacement(null);
     if (tool === null) setSelectedDrawingId(null);
@@ -2296,10 +2299,15 @@ export function CompositeChart({
       )
       : null
   ), [baseScene, normalizedCursorTimestamp]);
+  // A press, drag or wheel on the chart moves into it, as Down or Enter do.
+  const activateFromPointer = useCallback(() => {
+    setEntered(true);
+    onActivate?.();
+  }, [onActivate]);
   const handleEmptyMouseScroll = useCallback((event: ChartMouseEvent) => {
     const scroll = event.scroll;
     if (!interactive || !navigationFrame || !scroll) return;
-    onActivate?.();
+    activateFromPointer();
     consumeChartMouseEvent(event);
     if (event.modifiers.ctrl && isVerticalWheelDirection(scroll.direction)) {
       const factor = resolveCompositeWheelZoom(scroll);
@@ -2312,10 +2320,10 @@ export function CompositeChart({
     }
     panViewportByRatio(resolveCompositeWheelPan(scroll, plotWidth * cellWidthPx));
   }, [
+    activateFromPointer,
     cellWidthPx,
     interactive,
     navigationFrame,
-    onActivate,
     panViewportByRatio,
     plotWidth,
     resetViewport,
@@ -2354,6 +2362,25 @@ export function CompositeChart({
   const arrowsClaimed = usePaneArrowsClaimed();
   const keyboardActive = focused && interactive;
   const toolsActive = keyboardActive && navigable;
+  // Under a tab strip, a chart you pan and draw on is one focus level down: the
+  // strip keeps Left, Right, h and l until Down, Enter, a click or a tool moves
+  // into the chart, and Esc or Up hands them back. A pane with no strip (G)
+  // leaves the chart its keys throughout.
+  const paneHasStrip = usePaneHasTabStrip();
+  const zoned = navigable && paneHasStrip;
+  const inside = zoned && entered;
+  usePaneArrowHold(focused && inside);
+  // The next visit to the pane or the tab starts at the strip.
+  const wasFocusedRef = useRef(focused);
+  useEffect(() => {
+    if (wasFocusedRef.current && !focused) setEntered(false);
+    wasFocusedRef.current = focused;
+  }, [focused]);
+  // A time is picked with the arrows and Enter.
+  const picking = !!timePick;
+  useEffect(() => {
+    if (picking) setEntered(true);
+  }, [picking]);
   useEffect(() => {
     if (!toolsActive) setKeyboardPlacement(null);
   }, [toolsActive]);
@@ -2371,6 +2398,21 @@ export function CompositeChart({
   // An owner that holds the cursor decides when it goes, so Esc stays the pane's.
   const clearableCursor = !!scene?.cursorDate && cursorDate === undefined;
 
+  const enterChart = () => {
+    setEntered(true);
+    // The cursor shows where the keys went, starting on the latest bar.
+    if (!scene || cursorDate !== undefined || keyboardCursorDateRef.current) return;
+    const date = resolveAdjacentCompositeCursorDate(scene, null, -1);
+    keyboardCursorDateRef.current = date;
+    updateCursor(date);
+  };
+  const leaveChart = () => {
+    setEntered(false);
+    setLegendKeyboardIndex(null);
+    if (!clearableCursor) return;
+    keyboardCursorDateRef.current = null;
+    updateCursor(null);
+  };
   const placementPanel = (panelId: string) => scene?.panels.find((panel) => panel.id === panelId) ?? null;
   const startKeyboardPlacement = () => {
     if (!scene || !armedTool) return;
@@ -2549,6 +2591,11 @@ export function CompositeChart({
       else chartActionsRef.current.pick();
       return;
     }
+    if (zoned && !entered && isPlainKey(event, "down", "return", "enter")) {
+      consume();
+      enterChart();
+      return;
+    }
     const levelKeys = toolsActive && armedTool === "level" && levelsEditable && !keyboardPlacement;
     if (levelKeys && isPlainKey(event, "return", "enter")) {
       consume();
@@ -2618,6 +2665,14 @@ export function CompositeChart({
       setLegendKeyboardIndex(null);
       return;
     }
+    // Whatever a tool or a pick held is gone by now, so Esc steps out to the
+    // strip, and so does Up: the strip sits above. Consumed, so leaving never
+    // counts toward a double-Esc close.
+    if (inside && isPlainKey(event, "escape", "up")) {
+      consume();
+      leaveChart();
+      return;
+    }
     const interaction = resolveCompositeChartInteraction(event);
     if (!interaction) return;
     const cursorInteraction = interaction === "cursor-left"
@@ -2633,9 +2688,9 @@ export function CompositeChart({
       || (interaction === "arm-level" && !levelsEditable)
       || (interaction === "delete-drawing" && !canDeleteDrawing)
       || (interaction === "cycle-colour" && !isDrawingTool(armedTool) && !selectedDrawingId)
-      // A read-only chart leaves the arrows to a focused tab strip in its pane;
-      // a chart you pan and draw on keeps them, with h/l for the tabs.
-      || ((interaction === "cursor-left" || interaction === "cursor-right") && (!scene || (arrowsClaimed && !navigable)))
+      // A focused tab strip in the pane keeps the arrows until the user moves
+      // into a chart they pan and draw on; a read-only chart never takes them.
+      || ((interaction === "cursor-left" || interaction === "cursor-right") && (!scene || (arrowsClaimed && !inside)))
       || ((interaction === "zoom-in"
         || interaction === "zoom-out"
         || interaction === "pan-left"
@@ -2719,9 +2774,16 @@ export function CompositeChart({
       onActivate?.();
       armTool(tool);
     },
+    leave: leaveChart,
   };
   const chartActionsRef = useRef(chartActions);
   chartActionsRef.current = chartActions;
+  // Inside the chart the footer names the way back first, so it never falls
+  // behind More; on the strip there is nothing to say.
+  const leaveHint = keyboardActive && inside;
+  usePaneFooter(`${keyboardId}:leave`, () => leaveHint
+    ? { order: -2, hints: [{ id: "chart-leave", key: "Esc", label: "tabs", title: "Back to Tabs", onPress: () => chartActionsRef.current.leave() }] }
+    : null, [leaveHint]);
   const armedHints = armedTool ? KEYBOARD_TOOL_HINTS[armedTool] : null;
   const placing = !!keyboardPlacement;
   const legendEntryVisible = !!legendEntry && visibleSeriesIds.has(legendEntry.id);
@@ -2847,7 +2909,7 @@ export function CompositeChart({
             accessoryWidth={legendAccessoryWidth}
             formatValue={formatValue}
             showLatestChangePercent={showLatestChangePercent}
-            onActivate={onActivate}
+            onActivate={activateFromPointer}
             onToggleSeries={onToggleSeries}
             isSeriesToggleable={isSeriesToggleable}
             keyboardIndex={legendKeyboardIndex}
@@ -2932,7 +2994,7 @@ export function CompositeChart({
           accessoryWidth={legendAccessoryWidth}
           formatValue={formatValue}
           showLatestChangePercent={showLatestChangePercent}
-          onActivate={onActivate}
+          onActivate={activateFromPointer}
           onToggleSeries={onToggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           keyboardIndex={legendKeyboardIndex}
@@ -2948,11 +3010,11 @@ export function CompositeChart({
           showColors={isDrawingTool(armedTool) || !!selectedDrawingId}
           levelTool={levelsEditable}
           onArmTool={(tool) => {
-            onActivate?.();
+            activateFromPointer();
             armTool(tool);
           }}
           onPickColor={(color) => {
-            onActivate?.();
+            activateFromPointer();
             pickDrawColor(color);
           }}
         />
@@ -2987,7 +3049,7 @@ export function CompositeChart({
           onDraw={addDrawing}
           onEditDrawing={editDrawing}
           onSelectDrawing={setSelectedDrawingId}
-          onActivate={onActivate}
+          onActivate={activateFromPointer}
           onCursorDateChange={updateCursor}
           onPanViewport={panViewport}
           onZoomViewport={zoomViewport}
