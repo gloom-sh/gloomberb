@@ -1,16 +1,6 @@
+import { useCompositePanelBitmap } from "./panel-bitmap";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import {
-  AsciiText,
-  Box,
-  ChartSurface,
-  ScrollBox,
-  Text,
-  useNativeRenderer,
-  useUiCapabilities,
-  type BoxRenderable,
-  type ChartSurfaceProps,
-  type ScrollBoxRenderable,
-} from "../../../ui";
+import { AsciiText, Box, ChartSurface, ScrollBox, Text, useNativeRenderer, useUiCapabilities, type BoxRenderable, type ChartSurfaceProps, type ScrollBoxRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { usePaneArrowHold, usePaneArrowsClaimed, usePaneFooter, usePaneHasTabStrip } from "../../layout/pane/footer/registration";
 import type { PaneHint } from "../../layout/pane/footer/model";
@@ -26,129 +16,23 @@ import { CHART_WATERMARK_ROLE } from "../../../utils/screenshot-watermark";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { downsampleCompositeChartScene } from "./downsample";
 import { reuseResolvedSeriesList } from "./panel-series";
-import {
-  consumeChartMouseEvent,
-  getGlobalMouseX,
-  getLocalPlotPointer,
-  type ChartMouseEvent,
-} from "../core/pointer";
+import { consumeChartMouseEvent, getGlobalMouseX, getLocalPlotPointer, type ChartMouseEvent } from "../core/pointer";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import { useShowChartTextFallback } from "../native/use-chart-text-fallback";
-import {
-  useStaticChartBitmapSize,
-  type StaticChartBitmapSize,
-} from "./bitmap";
-import {
-  StaticXAxisLabels,
-  StaticXMarkerLabels,
-  StaticXMarkerOverlay,
-} from "./axis-overlays";
+import { useStaticChartBitmapSize } from "./bitmap";
+import { StaticXAxisLabels, StaticXMarkerLabels, StaticXMarkerOverlay } from "./axis-overlays";
 import { PriceAxisLabels } from "./price-axis-labels";
-import {
-  compositeAxisTicks,
-  formatCompositeCursorValue,
-  formatCompositePointDetails,
-  formatCompositeSeriesValue,
-  seriesPriceReference,
-  formatCompositeTimeAxisDate,
-  type CompositeAxisValueFormatter,
-} from "./format";
-import {
-  COMPOSITE_KEYBOARD_PAN_RATIO,
-  COMPOSITE_ZOOM_STEP_FACTOR,
-  buildCompositeNavigationFrame,
-  compositeNavigationDataViewport,
-  compositeViewportPositions,
-  fitCompositeViewport,
-  panCompositeViewport,
-  resolveCompositeChartInteraction,
-  resolveCompositeWheelPan,
-  resolveCompositeWheelZoom,
-  sameCompositeViewport,
-  shouldResetCompositeViewport,
-  zoomCompositeViewport,
-  type CompositeNavigationFrame,
-  type CompositeViewportRange,
-} from "./interactions";
+import { compositeAxisTicks, formatCompositeCursorValue, formatCompositePointDetails, formatCompositeSeriesValue, seriesPriceReference, formatCompositeTimeAxisDate, type CompositeAxisValueFormatter } from "./format";
+import { COMPOSITE_KEYBOARD_PAN_RATIO, COMPOSITE_ZOOM_STEP_FACTOR, buildCompositeNavigationFrame, compositeNavigationDataViewport, compositeViewportPositions, fitCompositeViewport, panCompositeViewport, resolveCompositeChartInteraction, resolveCompositeWheelPan, resolveCompositeWheelZoom, sameCompositeViewport, shouldResetCompositeViewport, zoomCompositeViewport, type CompositeNavigationFrame, type CompositeViewportRange } from "./interactions";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
-import { renderCompositePanelBitmap } from "./rasterizer";
-import {
-  fitAxisLabels,
-  hitTestLevel,
-  levelGrabRatio,
-  levelPanel,
-  levelVectors,
-  paintLevels,
-  projectLevels,
-  roundLevelValue,
-  writeLevelText,
-  type CompositeChartLevel,
-  type CompositeChartLevels,
-  type ProjectedLevel,
-} from "./levels";
-import {
-  buildChartToolVectors,
-  CHART_DRAWING_COLORS,
-  CHART_DRAWINGS_SETTING_KEY,
-  countMeasureBars,
-  drawChartToolOverlay,
-  resolveChartToolKind,
-  resolveMeasureAxisDomain,
-  resolveMeasureDirection,
-  resolveMeasureValueAt,
-  resolveZoomTimeRange,
-  hitTestDrawings,
-  isDrawingTool,
-  nextDrawingColor,
-  parseChartDrawings,
-  resolveDrawingFromDrag,
-  resolveZoomBoxRange,
-  shiftDrawing,
-  summarizeMeasure,
-  summarizeZoomRange,
-  summarizeZoomSelection,
-  type ChartDrawing,
-  type ChartDrawingPoint,
-  type ChartToolDrag,
-  type ChartToolKind,
-} from "./tools";
-import {
-  COMPOSITE_RIGHT_OFFSET_RATIO,
-  compositeRightOffsetRatio,
-  projectCompositeTimestamp,
-  unprojectCompositeTimestamp,
-} from "./time-scale";
-import {
-  allocateCompositePanelHeights,
-  applyCompositeChartCursor,
-  buildCompositeChartScene,
-  projectCompositeValue,
-  resizeCompositePanel,
-  resolveAdjacentCompositeCursorDate,
-  resolveCompositeCursorDate,
-  unprojectCompositeValue,
-} from "./scene";
-import {
-  compositeAxisTickLabels,
-  renderCompositeAxisText,
-  renderCompositePanelText,
-} from "./text-renderer";
-import {
-  buildCompositeTimeAxisLayout,
-  buildCompositeViewportTimeAxisLayout,
-} from "./time-axis";
-import type {
-  CompositeAxisDomain,
-  CompositeChartColors,
-  CompositeChartProps,
-  CompositeChartScene,
-  CompositeChartXMarker,
-  CompositePanelScene,
-} from "./types";
+import { fitAxisLabels, hitTestLevel, levelGrabRatio, levelPanel, levelVectors, paintLevels, projectLevels, roundLevelValue, writeLevelText, type CompositeChartLevel, type CompositeChartLevels, type ProjectedLevel } from "./levels";
+import { buildChartToolVectors, CHART_DRAWING_COLORS, CHART_DRAWINGS_SETTING_KEY, countMeasureBars, drawChartToolOverlay, resolveChartToolKind, resolveMeasureAxisDomain, resolveMeasureDirection, resolveMeasureValueAt, resolveZoomTimeRange, hitTestDrawings, isDrawingTool, nextDrawingColor, parseChartDrawings, resolveDrawingFromDrag, resolveZoomBoxRange, shiftDrawing, summarizeMeasure, summarizeZoomRange, summarizeZoomSelection, type ChartDrawing, type ChartDrawingPoint, type ChartToolDrag, type ChartToolKind } from "./tools";
+import { COMPOSITE_RIGHT_OFFSET_RATIO, compositeRightOffsetRatio, projectCompositeTimestamp, unprojectCompositeTimestamp } from "./time-scale";
+import { allocateCompositePanelHeights, applyCompositeChartCursor, buildCompositeChartScene, projectCompositeValue, resizeCompositePanel, resolveAdjacentCompositeCursorDate, resolveCompositeCursorDate, unprojectCompositeValue } from "./scene";
+import { compositeAxisTickLabels, renderCompositeAxisText, renderCompositePanelText } from "./text-renderer";
+import { buildCompositeTimeAxisLayout, buildCompositeViewportTimeAxisLayout } from "./time-axis";
+import type { CompositeAxisDomain, CompositeChartColors, CompositeChartProps, CompositeChartScene, CompositeChartXMarker, CompositePanelScene } from "./types";
 
-// A short resize-only delay coalesces geometry churn without delaying
-// live-data paints or depending on a foreground animation frame.
-const DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS = 32;
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
 /** How far past the first loaded observation a backfilling chart may pan, as a fraction of the view. */
 const HISTORICAL_PADDING_RATIO = 0.5;
@@ -201,136 +85,6 @@ const webFrame = globalThis as typeof globalThis & {
   requestAnimationFrame?: (callback: () => void) => number;
   cancelAnimationFrame?: (handle: number) => void;
 };
-
-function renderPanelBitmap(
-  panel: CompositePanelScene,
-  bitmapSize: StaticChartBitmapSize,
-  colors: CompositeChartColors,
-  snapGridToRows = false,
-): NativeChartBitmap {
-  return renderCompositePanelBitmap(panel, {
-    pixelWidth: bitmapSize.pixelWidth,
-    pixelHeight: bitmapSize.pixelHeight,
-    colors,
-    snapGridToRows,
-  });
-}
-
-function useCompositePanelBitmap({
-  panel,
-  bitmapSize,
-  colors,
-  isDesktopWeb,
-}: {
-  panel: CompositePanelScene;
-  bitmapSize: StaticChartBitmapSize | null;
-  colors: CompositeChartColors;
-  isDesktopWeb: boolean;
-}): NativeChartBitmap | null {
-  const [desktopBitmap, setDesktopBitmap] = useState<NativeChartBitmap | null>(null);
-  const desktopBitmapRef = useRef<NativeChartBitmap | null>(null);
-  const desktopRenderInputRef = useRef<{
-    panel: CompositePanelScene;
-    pixelWidth: number;
-    pixelHeight: number;
-    colors: CompositeChartColors;
-  } | null>(null);
-  const desktopRequestedSizeRef = useRef<{ pixelWidth: number; pixelHeight: number } | null>(null);
-  const desktopRenderedSizeRef = useRef<{ pixelWidth: number; pixelHeight: number } | null>(null);
-  const desktopRenderTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
-  const desktopActiveRef = useRef(false);
-  const pixelWidth = bitmapSize?.pixelWidth ?? null;
-  const pixelHeight = bitmapSize?.pixelHeight ?? null;
-
-  desktopRenderInputRef.current = isDesktopWeb && pixelWidth !== null && pixelHeight !== null
-    ? { panel, pixelWidth, pixelHeight, colors }
-    : null;
-
-  // The cursor is drawn as a separate overlay, so the plot raster stays cached
-  // (and resident in the terminal) while the crosshair moves.
-  const terminalBitmap = useMemo(() => {
-    if (isDesktopWeb || !bitmapSize) return null;
-    return renderPanelBitmap(panel, bitmapSize, colors, true);
-  }, [bitmapSize, colors, isDesktopWeb, panel]);
-
-  useEffect(() => {
-    const cancelRender = () => {
-      if (desktopRenderTimerRef.current === null) return;
-      clearTimeout(desktopRenderTimerRef.current);
-      desktopRenderTimerRef.current = null;
-    };
-    const scheduleRender = (delay: number) => {
-      if (desktopRenderTimerRef.current !== null) return;
-      desktopRenderTimerRef.current = globalThis.setTimeout(() => {
-        desktopRenderTimerRef.current = null;
-        if (!desktopActiveRef.current) return;
-        const input = desktopRenderInputRef.current;
-        if (!input) return;
-        const next = renderPanelBitmap(
-          input.panel,
-          { pixelWidth: input.pixelWidth, pixelHeight: input.pixelHeight },
-          input.colors,
-        );
-        if (!desktopActiveRef.current) return;
-        desktopRenderedSizeRef.current = {
-          pixelWidth: input.pixelWidth,
-          pixelHeight: input.pixelHeight,
-        };
-        desktopBitmapRef.current = next;
-        setDesktopBitmap(next);
-      }, delay);
-    };
-
-    if (!isDesktopWeb) {
-      desktopActiveRef.current = false;
-      cancelRender();
-      desktopRequestedSizeRef.current = null;
-      desktopRenderedSizeRef.current = null;
-      return;
-    }
-    if (pixelWidth === null || pixelHeight === null) {
-      desktopActiveRef.current = false;
-      cancelRender();
-      desktopRequestedSizeRef.current = null;
-      desktopRenderedSizeRef.current = null;
-      desktopBitmapRef.current = null;
-      setDesktopBitmap((current) => current === null ? current : null);
-      return;
-    }
-
-    desktopActiveRef.current = true;
-    const nextSize = { pixelWidth, pixelHeight };
-    const requestedSize = desktopRequestedSizeRef.current;
-    const requestedSizeChanged = !requestedSize
-      || requestedSize.pixelWidth !== pixelWidth
-      || requestedSize.pixelHeight !== pixelHeight;
-    desktopRequestedSizeRef.current = nextSize;
-    const renderedSize = desktopRenderedSizeRef.current;
-    const sizeAlreadyRendered = !!renderedSize
-      && renderedSize.pixelWidth === pixelWidth
-      && renderedSize.pixelHeight === pixelHeight;
-
-    if (!desktopBitmapRef.current || sizeAlreadyRendered) {
-      if (requestedSizeChanged) cancelRender();
-      scheduleRender(0);
-      return;
-    }
-
-    if (!requestedSizeChanged || desktopRenderTimerRef.current !== null) return;
-    scheduleRender(DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS);
-  }, [colors, isDesktopWeb, panel, pixelHeight, pixelWidth]);
-
-  useEffect(() => () => {
-    desktopActiveRef.current = false;
-    if (desktopRenderTimerRef.current !== null) {
-      clearTimeout(desktopRenderTimerRef.current);
-      desktopRenderTimerRef.current = null;
-    }
-  }, []);
-
-  if (!bitmapSize) return null;
-  return isDesktopWeb ? desktopBitmap : terminalBitmap;
-}
 
 function resolvePanelCrosshair(
   panel: CompositePanelScene,
