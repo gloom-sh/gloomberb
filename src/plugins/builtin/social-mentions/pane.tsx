@@ -59,7 +59,7 @@ function DayDetail({ symbol, row, recent, width, height }: {
       { id: "ratio", label: "Vs median", value: socialRatio(row.ratio) },
       { id: "stance", label: "Stance", value: socialStance(row.stance), detail: stanceWord(row.stance) },
     ]} />
-    <ScrollBox width={width} height={nativePaneChrome ? undefined : Math.max(1, height - 3)} flexGrow={1} flexBasis={0} minHeight={0} contentOptions={{ paddingX: 1 }}>
+    <ScrollBox scrollY width={width} height={nativePaneChrome ? undefined : Math.max(1, height - 3)} flexGrow={1} flexBasis={0} minHeight={0} contentOptions={{ paddingX: 1 }}>
       <PaneStatusBody loading={posts.loading && !list.length} error={!list.length ? posts.error : null} subject="top posts"
         empty={!posts.loading && !list.length} emptyTitle="No top posts for this day.">
         <Box flexDirection="column" gap={1} width={lineWidth}>

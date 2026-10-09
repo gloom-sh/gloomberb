@@ -33,7 +33,7 @@ const LABEL_COLUMNS = new Set(["chart"]);
 function Evidence({ row, width, height }: Size & { row: AttentionRow }) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
-  return <ScrollBox width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
+  return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     {(row.details ?? Object.entries(row.values).map(([label, value]) => ({ label, value: String(value ?? "--") }))).map((entry) => <KeyValueRow key={entry.label} label={entry.label} value={entry.value} labelWidth={22} />)}
     {row.url ? <Box paddingY={1}><Text fg={colors.textMuted}>{row.url}</Text></Box> : null}
   </ScrollBox>;

@@ -58,7 +58,7 @@ function Evidence({ row, data, width, height }: { row: DetailRow; data: Attentio
   const sameDay = row.evidence.periodStart.slice(0, 10) === row.evidence.periodEnd.slice(0, 10);
   const period = sameDay ? `${hour(row.evidence.periodStart)} to ${row.evidence.periodEnd.slice(11, 16)} UTC` : `${hour(row.evidence.periodStart)} to ${date(row.evidence.periodEnd)}`;
   const latest = point?.bucketStart === row.history.at(-1)?.bucketStart;
-  return <ScrollBox width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
+  return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     <KeyValueRow label="Listing" value={row.symbol} detail={row.name ?? undefined} labelWidth={20} />
     <SectionHeading title="Publication" />
     <KeyValueRow label="Research hours" value={number(row.researchUnits)} detail={`rounded to ${data.privacy.rounding}`} labelWidth={20} />

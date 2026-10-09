@@ -27,7 +27,7 @@ function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: n
 function VolumeDetail({ row, width, height }: { row: ShortVolumeObservation; width: number; height: number }) {
   const { nativePaneChrome } = useUiCapabilities();
   // The stack title is the date, so the rows start with the figures.
-  return <ScrollBox width={width} height={nativePaneChrome ? undefined : height} flexGrow={1} flexBasis={0} minHeight={0} contentOptions={{ paddingX: 1 }}>
+  return <ScrollBox scrollY width={width} height={nativePaneChrome ? undefined : height} flexGrow={1} flexBasis={0} minHeight={0} contentOptions={{ paddingX: 1 }}>
     <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Off-exchange short ratio" value={volumePercent(row.ratioPercent)} />
     <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Short shares" value={exactQuantity(row.shortVolume)} />
     <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Exempt shares" value={exactQuantity(row.shortExemptVolume)} detail="included in short shares" />

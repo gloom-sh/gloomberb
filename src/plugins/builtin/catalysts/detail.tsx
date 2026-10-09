@@ -18,7 +18,7 @@ function Evidence({ event, width, height }: { event: CatalystEvent; width: numbe
   const facts = catalystFacts(event);
   const procedures = Array.isArray(event.metadata?.proceduralStatements) ? event.metadata.proceduralStatements.filter((value): value is string => typeof value === "string") : [];
   const documents = Array.isArray(event.metadata?.documents) ? event.metadata.documents.filter((value): value is { url: string; title?: string; label?: string } => !!value && typeof value === "object" && "url" in value && typeof value.url === "string" && /^https?:\/\//.test(value.url)) : [];
-  return <ScrollBox width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
+  return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     <KeyValueRow label="Classification" value={`${catalystLabel(event.type)} · ${catalystAgency(event.agency)} · ${event.country ?? event.jurisdiction}`} labelWidth={18} />
     <KeyValueRow label="Status" value={humanLabel(event.status)} detail={`Revision ${event.revision}`} labelWidth={18} />
     <KeyValueRow label="Announced" value={catalystDate(event, "announced")} labelWidth={18} />
