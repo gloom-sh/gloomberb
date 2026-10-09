@@ -12,11 +12,18 @@ import {
 } from "../utils/cli-output";
 import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
+import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
 
 export interface CliResult<T = unknown> {
   data: T;
   metadata?: Record<string, unknown>;
   warnings?: string[];
+  /**
+   * Source, as-of and status of market data, as every `fn` report states them
+   * (docs/usage.md#how-current-a-report-is): the last line of the text output
+   * and `metadata.freshness` in JSON. CSV and NDJSON stay rows only.
+   */
+  freshness?: ReportFreshness;
 }
 
 export interface CliErrorObject {
@@ -52,7 +59,7 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   heading?: string;
 }
 
-interface CliResultJsonEnvelope<T> extends CliResult<T> {
+interface CliResultJsonEnvelope<T> extends Omit<CliResult<T>, "freshness"> {
   ok: true;
   columns?: Array<Pick<CliResultColumn, "key" | "header" | "align" | "width">>;
 }
@@ -294,22 +301,38 @@ function overflowsTerminal<Row extends Record<string, unknown>>(rows: Row[]): bo
   return width > terminalWidth;
 }
 
+/** The closing source, as-of and status line of a text result, for output printed without `printResult`. */
+export function cliFreshnessFooter(freshness: ReportFreshness): string {
+  return cliStyles.muted(formatFreshnessLine(freshness));
+}
+
 export function serializeCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
   result: CliResult<T>,
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row> = {},
 ): string {
+  const { freshness, ...rest } = result;
   if (options.format === "json") {
     const columns = serializeColumns(renderOptions.columns);
     const envelope: CliResultJsonEnvelope<T> = {
       ok: true,
-      ...result,
+      ...rest,
+      ...(freshness ? { metadata: { ...rest.metadata, freshness } } : {}),
       data: applyLimit(result.data, options.limit),
       ...(columns?.length ? { columns } : {}),
     };
     return JSON.stringify(envelope, null, 2);
   }
+  const body = serializeCliRows(rest, options, renderOptions);
+  if (options.format !== "text" || !freshness) return body;
+  return body ? `${body}\n\n${cliFreshnessFooter(freshness)}` : cliFreshnessFooter(freshness);
+}
 
+function serializeCliRows<T, Row extends Record<string, unknown>>(
+  result: CliResult<T>,
+  options: CliGlobalOptions,
+  renderOptions: CliResultRenderOptions<T, Row>,
+): string {
   const rows = asRows(result.data, options.limit, renderOptions.rows);
   if (options.format === "ndjson") {
     return rows.map((row) => JSON.stringify(row)).join("\n");

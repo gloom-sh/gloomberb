@@ -24,6 +24,8 @@ import type { MarketContext } from "../../../../cli/types";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { toMarketDataContext } from "../../../../market-data/selectors";
+import { cliFreshnessFooter } from "../../../../cli/result";
+import { quotesFreshness } from "../../../../cli/freshness";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
 function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { currency?: string }, assetCategory?: string) {
@@ -262,6 +264,12 @@ async function showCollectionWithMarketData(
   }
 
   const quotes = await loadCollectionQuotes(filtered, collection, dataProvider);
+  // Worst of across the holdings' quotes, as the PORT and watchlist reports state it.
+  const broker = !!(matchedPortfolio?.brokerId || matchedPortfolio?.brokerInstanceId);
+  const freshness = quotesFreshness(quotes.values(), {
+    source: !isPortfolio ? "Local watchlist and Gloom Cloud"
+      : broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud",
+  });
 
   if (!structured) {
     console.log(cliStyles.bold(displayName + (isPortfolio ? ` (${currency})` : "")));
@@ -308,7 +316,7 @@ async function showCollectionWithMarketData(
         unavailableSymbols: [...new Set([...unavailablePnl, ...unavailableCost, ...unavailableMarketValue])],
         unavailableCostSymbols: [...unavailableCost], brokerPnlSymbols: [...brokerPnlSymbols],
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
-      } });
+      }, freshness });
       return;
     }
 
@@ -359,5 +367,5 @@ async function showCollectionWithMarketData(
       rows,
     ));
   }
-
+  if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
 }

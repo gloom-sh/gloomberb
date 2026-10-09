@@ -37,6 +37,14 @@ import { renderFundamentalsReport } from "./ticker";
 import { historyPriceDecimals, historyRows } from "../history-rows";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { formatUtcTime } from "../../utils/utc-time";
+import { exportedFundamentals } from "../../utils/price-earnings";
+import { fundamentalsFreshness, quotesFreshness, rowsFreshness } from "../freshness";
+import {
+  barHistoryFreshness,
+  barResolutionFromDates,
+  REPORTED_DATA,
+  SEC_FILINGS,
+} from "../../plugins/builtin/shared/report-freshness";
 import {
   EXCHANGE_OPTION,
   listingHeading,
@@ -388,7 +396,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }));
     // Text mode shows only "unavailable" in the cell; the JSON rows already carry each reason.
     const notes = ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [];
-    ctx.printResult({ data, warnings: notes.length > 0 ? notes : undefined }, {
+    ctx.printResult({
+      data,
+      warnings: notes.length > 0 ? notes : undefined,
+      freshness: quotesFreshness(data.map((row) => row.quote)),
+    }, {
       rows: quoteRows,
       columns: commandName === "compare" ? compareColumns() : quoteColumns(),
     });
@@ -423,7 +435,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
     // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
     const intraday = data.some((row) => row.date.length > 10);
-    ctx.printResult({ data, metadata: { ...listingMetadata(identity), range, resolution } }, {
+    // A bar history: dated by its last bar, stale once bars of its size stop arriving.
+    const freshness = rowsFreshness(data, {
+      ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
+      observedKey: "date",
+      oldest: null,
+    });
+    ctx.printResult({ data, metadata: { ...listingMetadata(identity), range, resolution }, freshness }, {
       heading: listingHeading(identity),
       columns: [
         intraday
@@ -459,7 +477,11 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       ...financials,
     };
     if (view !== "statements") {
-      ctx.printResult({ data }, { text: (financialsData) => renderFundamentalsReport(financialsData, view) });
+      ctx.printResult({
+        // JSON reads a multiple over a loss as null with its reason, never as a number.
+        data: { ...data, fundamentals: exportedFundamentals(data.fundamentals) },
+        freshness: fundamentalsFreshness(financials),
+      }, { text: () => renderFundamentalsReport(data, view) });
       return;
     }
     ctx.printResult({
@@ -469,9 +491,12 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         providerId: financials.quote?.providerId,
         annualStatements: financials.annualStatements.length,
         quarterlyStatements: financials.quarterlyStatements.length,
-        fundamentals: financials.fundamentals,
+        fundamentals: exportedFundamentals(financials.fundamentals),
         profile: financials.profile,
       },
+      freshness: rowsFreshness(financialStatementRows(data), {
+        ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null,
+      }),
     }, {
       heading: listingHeading(identity),
       rows: financialStatementRows,
@@ -511,6 +536,9 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ctx.printResult({
       data: articles,
       metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null },
+      freshness: rowsFreshness(newsRows(articles), {
+        status: "not-a-feed", basis: "published stories", observedKey: "publishedAt", oldest: null,
+      }),
     }, {
       ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
@@ -567,7 +595,11 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         quotePromise,
       ]);
       const resolved = identity ?? listingIdentity(listing, quote);
-      ctx.printResult({ data: filings, metadata: { ...listingMetadata(resolved), ...(form ? { form } : {}) } }, {
+      ctx.printResult({
+        data: filings,
+        metadata: { ...listingMetadata(resolved), ...(form ? { form } : {}) },
+        freshness: rowsFreshness(filingRows(filings), { ...SEC_FILINGS, observedKey: "filingDate" }),
+      }, {
         heading: listingHeading(resolved),
         rows: filingRows,
         columns: FILING_COLUMNS,
@@ -739,6 +771,9 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         priceTarget: data.priceTarget,
         recommendations: data.recommendations,
       },
+      freshness: rowsFreshness(analystRows(data), {
+        ...REPORTED_DATA, basis: "analyst ratings", observedKey: "date", oldest: null,
+      }, { stale: data.stale === true }),
     }, {
       heading: listingHeading(identity),
       rows: analystRows,
@@ -765,7 +800,13 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
       loadListingQuote(market.dataProvider, listing),
     ]);
     const identity = listingIdentity(listing, quote);
-    ctx.printResult({ data, metadata: listingMetadata(identity) }, {
+    ctx.printResult({
+      data,
+      metadata: listingMetadata(identity),
+      freshness: rowsFreshness(corporateActionRows(data), {
+        ...REPORTED_DATA, basis: "corporate actions", observedKey: "date", oldest: null,
+      }),
+    }, {
       heading: listingHeading(identity),
       rows: corporateActionRows,
       columns: [
@@ -799,7 +840,13 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
     const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, identity.exchange, Date.now());
     const warnings = refreshWarning ? [refreshWarning] : sessionWarning ? [sessionWarning] : undefined;
-    ctx.printResult({ data: chain, metadata: { ...listingMetadata(identity), expirations: chain.expirationDates }, warnings }, {
+    // Dated by the chain's last trade; a chain that failed to refresh is the stored one, stale.
+    const freshness = rowsFreshness([], { asOf: chain.asOf ?? null }, {
+      ...(chain.dataSource ? { dataSource: chain.dataSource } : {}),
+      ...(chain.delayMinutes != null ? { delayMinutes: chain.delayMinutes } : {}),
+      stale: refreshWarning != null,
+    });
+    ctx.printResult({ data: chain, metadata: { ...listingMetadata(identity), expirations: chain.expirationDates }, warnings, freshness }, {
       heading: listingHeading(identity),
       rows: optionRows,
       columns: [
@@ -860,7 +907,10 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
       symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1 },
     )));
     const events = await services.dataProvider.getEarningsCalendar(listings.map((listing) => listing.key));
-    ctx.printResult({ data: events }, {
+    ctx.printResult({
+      data: events,
+      freshness: rowsFreshness(earningsRows(events), { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
+    }, {
       rows: earningsRows,
       columns: [
         { key: "date", header: "Date" },

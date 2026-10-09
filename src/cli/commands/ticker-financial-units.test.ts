@@ -16,10 +16,10 @@ test("ticker monetary fundamentals keep reported units across foreign, minor and
       fundamentals: { eps: 2.5, revenue: 1_000_000, netIncome: 0, freeCashFlow: -25_000, financialCurrency: currency },
     };
     const text = await report(financials);
-    expect(text).toContain(`EPS ${eps}`);
-    expect(text).toContain(`Revenue 1M ${currency.trim() || "(ccy?)"}`);
-    expect(text).toContain(`Net Income 0 ${currency.trim() || "(ccy?)"}`);
-    expect(text).toContain(`Free Cash Flow -25k ${currency.trim() || "(ccy?)"}`);
+    expect(text).toContain(`EPS (TTM) ${eps}`);
+    expect(text).toContain(`Revenue (TTM) 1M ${currency.trim() || "(ccy?)"}`);
+    expect(text).toContain(`Net Income (TTM) 0 ${currency.trim() || "(ccy?)"}`);
+    expect(text).toContain(`Free Cash Flow (TTM) -25k ${currency.trim() || "(ccy?)"}`);
     expect(financials.fundamentals?.eps).toBe(2.5);
   }
 });

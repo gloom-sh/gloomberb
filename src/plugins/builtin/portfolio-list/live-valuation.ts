@@ -1,6 +1,7 @@
 import type { AnalystResearchData, Fundamentals, Quote } from "../../../types/financials";
 import { hasLikelyQuoteUnitMismatch } from "../../../utils/currency-units";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../../utils/market-capitalization";
+import { priceEarningsOnEarnings, type PriceEarnings } from "../../../utils/price-earnings";
 
 /**
  * Price-derived statistics repriced from the current quote with the base
@@ -53,13 +54,14 @@ function repriceMultiple(
   return price / perShare;
 }
 
-/** Trailing P/E over the current price. Zero or negative EPS keeps the stored multiple. */
-export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): number | undefined {
-  return repriceMultiple(fundamentals?.trailingPE, fundamentals?.eps, quote, fundamentals);
+/** Trailing P/E over the current price; not meaningful when the trailing EPS is zero or a loss. */
+export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
+  return priceEarningsOnEarnings(repriceMultiple(fundamentals?.trailingPE, fundamentals?.eps, quote, fundamentals), fundamentals?.eps);
 }
 
-export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): number | undefined {
-  return repriceMultiple(fundamentals?.forwardPE, fundamentals?.forwardEps, quote, fundamentals);
+/** Forward P/E over the current price; not meaningful when the forward EPS behind it is zero or a loss. */
+export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
+  return priceEarningsOnEarnings(repriceMultiple(fundamentals?.forwardPE, fundamentals?.forwardEps, quote, fundamentals), fundamentals?.forwardEps);
 }
 
 /** Forward dividend yield over the current price, as a ratio like the stored yield. */

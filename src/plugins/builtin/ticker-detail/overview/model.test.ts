@@ -25,7 +25,7 @@ test("summary money keeps unknown units explicit without borrowing listing curre
     EPS: "CN¥4.22", Revenue: "1.22T CNY", "Net Income": "85.7B CNY", FCF: "-96.6B CNY",
   });
   expect(overview({ financialCurrency: " ", eps: 0, revenue: 0, netIncome: NaN, freeCashFlow: Infinity }))
-    .toEqual({ EPS: "0.00 (ccy?)", Revenue: "0 (ccy?)", "Net Income": "—", FCF: "—" });
+    .toEqual({ "P/E (TTM)": "N/M", EPS: "0.00 (ccy?)", Revenue: "0 (ccy?)", "Net Income": "—", FCF: "—" });
   expect(overview({})).toEqual({});
 });
 

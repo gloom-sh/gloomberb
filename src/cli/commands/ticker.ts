@@ -1,7 +1,7 @@
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
-import { formatPriceEarnings } from "../../utils/price-earnings";
+import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../utils/market-capitalization";
 import {
   formatCompact,
@@ -52,6 +52,8 @@ import { isUsEquityTicker } from "../../utils/sec";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
 import { ListingArgError, listingIdentity, listingVenues, resolveCliListing, type CliListing } from "../listing-arg";
 import { isDepositaryReceipt } from "../../utils/depositary-receipt";
+import { cliFreshnessFooter } from "../result";
+import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -250,15 +252,17 @@ function fundamentalsMetrics(
   return [
     ["Market Cap", marketCapText],
     ["Enterprise Value", enterpriseValueText],
-    ["P/E (TTM)", formatPriceEarnings(fundamentals?.trailingPE, 2)],
-    ["Forward P/E", formatPriceEarnings(fundamentals?.forwardPE, 2)],
-    ["PEG", fundamentals?.pegRatio != null ? formatNumber(fundamentals.pegRatio, 2) : "—"],
-    ["EPS", formatReportedMoney(fundamentals?.eps, fundamentals?.financialCurrency, true)],
+    // A multiple over a loss is N/M, even beside a positive one the source served from an older period.
+    ["P/E (TTM)", formatPriceEarnings(priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps), 2)],
+    ["Forward P/E", formatPriceEarnings(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps), 2)],
+    ["PEG", formatPriceEarnings(fundamentals?.pegRatio, 2)],
+    // The flows and EPS are one trailing-twelve-month block, the same twelve months for each line.
+    ["EPS (TTM)", formatReportedMoney(fundamentals?.eps, fundamentals?.financialCurrency, true)],
     [`Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`, fundamentals?.dividendYield != null ? formatFractionPercentCell(fundamentals.dividendYield) : "—"],
-    ["Revenue", formatReportedMoney(fundamentals?.revenue, fundamentals?.financialCurrency)],
-    ["Net Income", formatReportedMoney(fundamentals?.netIncome, fundamentals?.financialCurrency)],
-    ["Operating Cash Flow", formatReportedMoney(fundamentals?.operatingCashFlow, fundamentals?.financialCurrency)],
-    ["Free Cash Flow", formatReportedMoney(fundamentals?.freeCashFlow, fundamentals?.financialCurrency)],
+    ["Revenue (TTM)", formatReportedMoney(fundamentals?.revenue, fundamentals?.financialCurrency)],
+    ["Net Income (TTM)", formatReportedMoney(fundamentals?.netIncome, fundamentals?.financialCurrency)],
+    ["Operating Cash Flow (TTM)", formatReportedMoney(fundamentals?.operatingCashFlow, fundamentals?.financialCurrency)],
+    ["Free Cash Flow (TTM)", formatReportedMoney(fundamentals?.freeCashFlow, fundamentals?.financialCurrency)],
     // Levels, not changes, so they carry no sign.
     ["Operating Margin", fundamentals?.operatingMargin != null ? formatFractionPercentCell(fundamentals.operatingMargin) : "—"],
     ["Profit Margin", fundamentals?.profitMargin != null ? formatFractionPercentCell(fundamentals.profitMargin) : "—"],
@@ -276,7 +280,7 @@ function fundamentalsMetrics(
   ];
 }
 
-const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS"]);
+const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
 
 /** Text for `gloomberb fundamentals` and `gloomberb valuation`: the ticker report's fundamentals without the rest. */
 export function renderFundamentalsReport(
@@ -554,10 +558,10 @@ function buildTickerStructuredData({
       watchlists: formatWatchlistNames(config, tickerFile.metadata.watchlists),
       positions: tickerFile.metadata.positions,
     } : null,
-    fundamentals: financials.fundamentals || priceReturns.return1Y != null || priceReturns.return3Y != null ? {
+    fundamentals: financials.fundamentals || priceReturns.return1Y != null || priceReturns.return3Y != null ? exportedFundamentals({
       ...financials.fundamentals,
       ...priceReturns,
-    } : undefined,
+    }) : undefined,
     profile: financials.profile,
     financialCurrency: financials.financialCurrency ?? null,
     latestAnnual: latestFinancialPeriod(financials.annualStatements, row => row.date) ?? null,
@@ -658,8 +662,11 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const recentNews = newsResult.status === "fulfilled" ? newsResult.value : [];
     const recentSecFilings = secFilingsResult.status === "fulfilled" ? secFilingsResult.value : [];
 
+    // The quote is the feed in this report; without one, the fundamentals date it.
+    const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
     if (dependencies.printResult) {
       dependencies.printResult({
+        freshness,
         warnings: quote ? undefined : ["Quote unavailable."],
         data: buildTickerStructuredData({
           symbol: normalized,
@@ -686,5 +693,6 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         recentNews,
         recentSecFilings,
     }));
+    if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
   });
 }

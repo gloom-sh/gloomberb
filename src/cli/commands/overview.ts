@@ -3,7 +3,7 @@ import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices } from "../context";
 import { formatCompact } from "../../utils/format";
 import {
-  fetchScreener,
+  fetchScreenerResult,
   fetchTrending,
   MARKET_SUMMARY_SYMBOLS,
   rankScreenerQuotes,
@@ -21,6 +21,9 @@ import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
 import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
+import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
+import { newestReportTime, oldestReportTime } from "../../utils/utc-time";
+import { quotesFreshness, rowsFreshness } from "../freshness";
 
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
 const BASKET_NAMES = new Map<string, string>([
@@ -78,18 +81,17 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
         trending.map(({ symbol }) => ({ symbol, exchange: "" })),
         { forceRefresh: ctx.cliOptions.refresh },
       );
-      ctx.printResult({ data: quoteRows(results), metadata: { category } }, {
+      ctx.printResult({ data: quoteRows(results), metadata: { category }, freshness: quotesFreshness(results.map((result) => result.quote)) }, {
         textColumns: MOVER_COLUMNS.filter((column) => column.key !== "volume"),
       });
     });
     return;
   }
 
-  const rows = rankScreenerQuotes(
-    category,
-    await fetchScreener(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh }),
-  );
-  ctx.printResult({ data: rows }, {
+  const screener = await fetchScreenerResult(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
+  const rows = rankScreenerQuotes(category, screener.data);
+  // A screener snapshot, as the MOST report reads it: delayed, each row dated by its own last price.
+  ctx.printResult({ data: rows, freshness: rowsFreshness(rows, { status: "delayed" }, { stale: screener.stale === true }) }, {
     columns: [
       ...MOVER_COLUMNS.slice(0, 4),
       { key: "volume", header: "Volume", align: "right", value: (row) => formatCompact(Number(row.volume)) },
@@ -104,7 +106,7 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
       symbols.map((symbol) => ({ symbol, exchange: "" })),
       { forceRefresh: ctx.cliOptions.refresh },
     );
-    ctx.printResult({ data: quoteRows(results), metadata }, {
+    ctx.printResult({ data: quoteRows(results), metadata, freshness: quotesFreshness(results.map((result) => result.quote)) }, {
       columns: [
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },
@@ -144,7 +146,11 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
         forecast: event.forecast ?? "",
         prior: event.prior ?? "",
       }));
-    ctx.printResult({ data: rows, metadata: { country, impact } }, {
+    ctx.printResult({
+      data: rows,
+      metadata: { country, impact },
+      freshness: rowsFreshness(rows, { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
+    }, {
       columns: [
         // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
         { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
@@ -167,7 +173,11 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const seriesId = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb fred <series-id> [--start <yyyy-mm-dd>]", ctx);
   const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder });
   const rows = data.observations.slice(0, ctx.cliOptions.limit ?? data.observations.length);
-  ctx.printResult({ data: rows, metadata: { info: data.info, seriesId, startDate, sortOrder } }, {
+  ctx.printResult({
+    data: rows,
+    metadata: { info: data.info, seriesId, startDate, sortOrder },
+    freshness: rowsFreshness(rows, { source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null }),
+  }, {
     textColumns: [
       { key: "date", header: "Date" },
       { key: "value", header: data.info?.units ? `Value (${data.info.units})` : "Value", align: "right" },
@@ -190,7 +200,11 @@ async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["exec
       title: data.info?.title ?? "",
     };
   }));
-  ctx.printResult({ data: results, metadata: { startDate } }, {
+  ctx.printResult({
+    data: results,
+    metadata: { startDate },
+    freshness: rowsFreshness(results, { source: "FRED", status: "not-a-feed", basis: "daily Treasury yields", observedKey: "date" }),
+  }, {
     textColumns: [
       { key: "tenor", header: "Tenor", value: (row) => YIELD_TENORS[String(row.seriesId)] ?? row.seriesId },
       { key: "value", header: "Yield %", align: "right" },
@@ -228,10 +242,18 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
       { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightQuote).exchange, label: right },
       alignDailyCloses(leftSeries.prices, rightSeries.prices).at(-1)?.dateKey,
     );
+    // The daily closes used, dated by the newest last bar as the CORR report is.
+    const lastBars = [leftSeries, rightSeries].map((series) => series.prices.at(-1)?.dateKey);
+    const freshness = rowsFreshness([], {
+      ...DAILY_CLOSES,
+      asOf: newestReportTime(lastBars),
+      oldest: oldestReportTime(lastBars),
+    });
     ctx.printResult({
       data: [{ left, right, samples: sampleSize, correlation }],
       ...(sessionNote ? { warnings: [sessionNote] } : {}),
       metadata: { range: "1Y", basis: CORRELATION_RETURN_BASIS },
+      freshness,
     }, {
       layout: "record",
       textColumns: [

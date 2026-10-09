@@ -8,6 +8,7 @@ import {
   liveTrailingPE,
   targetReferencePrice,
 } from "./live-valuation";
+import { NOT_MEANINGFUL } from "../../../utils/price-earnings";
 
 function quote(overrides: Partial<Quote> = {}): Quote {
   return {
@@ -57,9 +58,9 @@ describe("live valuation", () => {
     expect(liveTrailingPE(quote(), fundamentals)).toBeCloseTo(22);
     // The quote's own price, as served, not a separate post-market print.
     expect(liveTrailingPE(quote({ marketState: "POST", postMarketPrice: 120 }), fundamentals)).toBeCloseTo(22);
-    // Losses and zero earnings keep the stored multiple and its N/M display.
-    expect(liveTrailingPE(quote(), { ...fundamentals, trailingPE: -12, eps: -9 })).toBe(-12);
-    expect(liveTrailingPE(quote(), { ...fundamentals, eps: 0 })).toBe(20);
+    // Losses and zero earnings make it not meaningful, whatever multiple was stored beside them.
+    expect(liveTrailingPE(quote(), { ...fundamentals, trailingPE: -12, eps: -9 })).toBe(NOT_MEANINGFUL);
+    expect(liveTrailingPE(quote(), { ...fundamentals, eps: 0 })).toBe(NOT_MEANINGFUL);
     // EPS on another basis than the multiple (11x drift) and a minor-unit block stay stored.
     expect(liveTrailingPE(quote(), { ...fundamentals, eps: 0.5 })).toBe(20);
     expect(liveTrailingPE(quote({ currency: "GBP" }), { ...fundamentals, marketCapCurrency: "GBp" })).toBe(20);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { serializeCliError, serializeCliResult } from "./result";
 import type { CliGlobalOptions } from "./options";
+import type { ReportFreshness } from "./pane-functions/freshness";
 
 const baseOptions: CliGlobalOptions = {
   format: "text",
@@ -98,6 +99,21 @@ describe("serializeCliResult", () => {
       { ...baseOptions, format: "ndjson" },
     );
     expect(output).toBe('{"symbol":"AAPL"}\n{"symbol":"MSFT"}');
+  });
+
+  test("ends text with the source line, puts it in JSON metadata and keeps CSV and NDJSON rows only", () => {
+    const freshness: ReportFreshness = {
+      source: "Gloom Cloud", asOf: "2026-10-09T13:22:00.000Z", status: "delayed", delayMinutes: 15,
+      retrievedAt: "2026-10-09T13:30:00.000Z",
+    };
+    const result = { data: [{ symbol: "AAPL" }], metadata: { range: "1Y" }, freshness };
+    const line = "Source: Gloom Cloud | As of 2026-10-09 13:22 UTC | Delayed 15 min";
+    const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
+    expect(plain(serializeCliResult(result, baseOptions)).split("\n").slice(-2)).toEqual(["", line]);
+    expect(plain(serializeCliResult(result, baseOptions, { text: () => "Report" }))).toBe(`Report\n\n${line}`);
+    expect(JSON.parse(serializeCliResult(result, { ...baseOptions, format: "json" })).metadata).toEqual({ range: "1Y", freshness });
+    expect(serializeCliResult(result, { ...baseOptions, format: "csv" })).toBe("symbol\nAAPL");
+    expect(serializeCliResult(result, { ...baseOptions, format: "ndjson" })).toBe('{"symbol":"AAPL"}');
   });
 });
 

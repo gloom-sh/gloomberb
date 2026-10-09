@@ -129,7 +129,7 @@ export function buildOverviewStats({
     stats.push({ label: "EPS", value: money(fundamentals.eps, true) });
   }
   if (fundamentals?.pegRatio != null) {
-    stats.push({ label: "PEG", value: formatNumber(fundamentals.pegRatio, 2) });
+    stats.push({ label: "PEG", value: formatPriceEarnings(fundamentals.pegRatio, 2) });
   }
   // A report the payload still lists after its day has passed is not the next one.
   if (today && nextEarnings && ISO_DATE.test(nextEarnings.date) && nextEarnings.date >= today) {
