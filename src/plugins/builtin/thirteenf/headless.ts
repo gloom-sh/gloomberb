@@ -7,7 +7,16 @@ import type {
 import { formatShortDate } from "../../../utils/datetime-format";
 import { normalizeCik } from "./api";
 import { buildFundOverlap, overlapPeriod } from "./overlap";
-import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type TickerHoldings } from "./signals";
+import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type CrowdingRow, type TickerHoldings } from "./signals";
+import {
+  AS_FILED_VALUE,
+  compareCrowding,
+  crowdingForTicker,
+  cutText,
+  periodText,
+  summarizeTickerHoldings,
+  THIRTEENF_MAX_LIMIT,
+} from "./report-notes";
 import {
   loadBrowserRows,
   loadFundDetail,
@@ -66,7 +75,7 @@ const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   },
   {
     key: "tableValueTotal",
-    header: "Value",
+    header: "Value (USD)",
     align: "right",
     format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
   },
@@ -84,13 +93,13 @@ const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "issuer", header: "Issuer" },
   {
     key: "value",
-    header: "Value",
+    header: "Value (USD)",
     align: "right",
     format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
   },
   {
     key: "estimatedPnl",
-    header: "Est P&L",
+    header: "Est P&L (USD)",
     align: "right",
     format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
   },
@@ -125,7 +134,7 @@ const FILING_COLUMNS: HeadlessPaneColumn[] = [
   },
   {
     key: "tableValueTotal",
-    header: "Value",
+    header: "Value (USD)",
     align: "right",
     format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
   },
@@ -177,6 +186,30 @@ const defaultDependencies: ThirteenFHeadlessDependencies = {
   ),
   loadDetail: (cik, name, _args, ctx) => loadFundDetail(cik, name, ctx.signal),
 };
+
+const VIEW_TITLES: Record<string, string> = {
+  overlap: "13F Overlap",
+  crowding: "13F Crowding",
+  "ticker-holdings": "13F Holders",
+  byTicker: "13F Holders",
+  "by-ticker": "13F Holders",
+  holdings: "13F Holdings",
+  filings: "13F Filings",
+  performance: "13F Performance",
+  funds: "13F Funds",
+  latest: "13F Latest Filings",
+};
+
+/** The view a query resolved to and what it is about, never the bare `auto` it was asked as. */
+function thirteenFTitle(args: HeadlessPaneLoadArgs, metadata: Record<string, unknown> | undefined): string {
+  const query = typeof args.argument === "string" ? args.argument.trim() : "";
+  const view = String(metadata?.view ?? args.options.view);
+  const text = (value: unknown) => (typeof value === "string" && value ? value : "");
+  const subject = view === "overlap" && metadata?.firstFund && metadata.secondFund
+    ? `${text(metadata.firstFund)} vs ${text(metadata.secondFund)}`
+    : text(metadata?.ticker) || text(metadata?.fund) || (view === "latest" || view === "performance" ? "" : query);
+  return [VIEW_TITLES[view] ?? "13F Funds", subject].filter(Boolean).join(" | ");
+}
 
 function browserTab(view: HeadlessThirteenFView, query: string): ThirteenFBrowserTab {
   if (view === "performance" || view === "funds" || view === "latest") return view;
@@ -247,10 +280,10 @@ export function createThirteenFHeadless(
         type: "integer",
         defaultValue: 50,
         minimum: 1,
-        maximum: 200,
+        maximum: THIRTEENF_MAX_LIMIT,
       },
     ],
-    describe: (args) => `13F Funds | ${String(args.options.view)}`,
+    describe: (args, result) => thirteenFTitle(args, result?.metadata),
     async load(args, ctx) {
       const query = typeof args.argument === "string" ? args.argument.trim() : "";
       const requestedView = String(args.options.view) as HeadlessThirteenFView;
@@ -266,21 +299,23 @@ export function createThirteenFHeadless(
         const [first, second] = await Promise.all([dependencies.loadDetail(fund.cik, fund.name, args, ctx), dependencies.loadDetail(other.cik, other.name, args, ctx)]);
         const comparedPeriod = overlapPeriod(first, second);
         const rows = buildFundOverlap(first, second);
-        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "issuer", header: "Issuer" }, { key: "weight", header: "First weight", align: "right", format: weight }, { key: "comparedWeight", header: "Second weight", align: "right", format: weight }], rows: rows.slice(0, limit).map(row => ({ ...row })), errors: [...(first.warnings ?? []), ...(second.warnings ?? []), ...(!comparedPeriod ? ["No reporting quarter is loaded for both funds."] : [])], metadata: { firstFund: first.name, secondFund: second.name, firstPeriod: first.latestForm?.periodOfReport ?? null, secondPeriod: second.latestForm?.periodOfReport ?? null, comparedPeriod, truncated: rows.length > limit, notices: comparedPeriod ? [`Quarter compared: ${comparedPeriod}`] : [] } };
+        const cut = cutText(rows.length, limit, "positions");
+        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "issuer", header: "Issuer" }, { key: "weight", header: "First weight", align: "right", format: weight }, { key: "comparedWeight", header: "Second weight", align: "right", format: weight }], rows: rows.slice(0, limit).map(row => ({ ...row })), errors: [...(first.warnings ?? []), ...(second.warnings ?? []), ...(!comparedPeriod ? ["No reporting quarter is loaded for both funds."] : [])], metadata: { view, firstFund: first.name, secondFund: second.name, firstPeriod: first.latestForm?.periodOfReport ?? null, secondPeriod: second.latestForm?.periodOfReport ?? null, comparedPeriod, shown: Math.min(rows.length, limit), total: rows.length, truncated: rows.length > limit, notices: [[comparedPeriod ? `Quarter compared: ${comparedPeriod}` : "", cut].filter(Boolean).join(" | ")].filter(Boolean) } };
       }
       if (view === "crowding") {
         const { rows: sourceRows, ...metadata } = await loadCrowding(ctx.signal);
         const rank = String(args.options.rank ?? "new");
-        const rows = [...sourceRows].sort((left, right) => {
-          if (rank === "new") return right.newCount - left.newCount;
-          if (rank === "exits") return right.exitCount - left.exitCount;
-          if (left.weightChange == null) return right.weightChange == null ? 0 : 1;
-          if (right.weightChange == null) return -1;
-          return (left.weightChange - right.weightChange) * (rank === "decreases" ? 1 : -1);
-        });
-        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "issuer", header: "Issuer" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds", align: "right" }, { key: "newCount", header: "New", align: "right" }, { key: "exitCount", header: "Exits", align: "right" }, { key: "weightChange", header: "Weight change", align: "right", format: weightPoints }, { key: "comparedFunds", header: "Compared", align: "right" }, { key: "totalValue", header: "Value", align: "right", format: money }], rows: rows.slice(0, limit).map(row => ({ ...row })),
-          // The pane states the fund sample beside the table; the text report needs it too.
-          metadata: { ...metadata, view, rank, truncated: rows.length > limit, notices: [`${metadata.period}: ${metadata.loadedFunds}/${metadata.sourceFunds} ranked funds`] }, errors: metadata.warnings };
+        const ranked = [...sourceRows].sort((left, right) => compareCrowding(rank, left, right));
+        // The pane states the fund sample beside the table; the text report needs it too.
+        const sample = `${metadata.period}: ${metadata.loadedFunds}/${metadata.sourceFunds} ranked funds`;
+        const ticker = query ? query.replace(/^\$/, "").toUpperCase() : null;
+        const focus = ticker ? crowdingForTicker(ranked, ticker, rank) : null;
+        const rows: Array<CrowdingRow & { rank?: number }> = focus ? focus.rows : ranked;
+        const columns: HeadlessPaneColumn[] = [{ key: "ticker", header: "Ticker" }, { key: "issuer", header: "Issuer" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds", align: "right" }, { key: "newCount", header: "New", align: "right" }, { key: "exitCount", header: "Exits", align: "right" }, { key: "weightChange", header: "Weight change", align: "right", format: weightPoints }, { key: "comparedFunds", header: "Compared", align: "right" }, { key: "totalValue", header: "Value (USD)", align: "right", format: money }];
+        const cut = cutText(rows.length, limit, "securities");
+        return { columns: focus ? [{ key: "rank", header: "Rank", align: "right" }, ...columns] : columns, rows: rows.slice(0, limit).map(row => ({ ...row })),
+          metadata: { ...metadata, view, rank, ...(ticker ? { ticker, found: rows.length > 0, rankedSecurities: ranked.length } : {}), shown: Math.min(rows.length, limit), total: rows.length, truncated: rows.length > limit, notices: [[sample, cut].filter(Boolean).join(" | "), ...(focus ? [focus.notice] : [])] },
+          freshness: { asOf: metadata.period }, errors: metadata.warnings };
       }
       let holdings: TickerHoldings | null = null;
       if (view === "ticker-holdings") {
@@ -299,16 +334,42 @@ export function createThirteenFHeadless(
       }
       if (holdings) {
         const { rows, ...metadata } = holdings;
-        return { columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit || metadata.hasMore }, errors: metadata.warnings };
+        const offset = Number(args.options.offset ?? 0);
+        const summary = summarizeTickerHoldings({ ...metadata, offset, limit, loaded: rows });
+        return {
+          columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value (USD)", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }],
+          rows: rows.slice(0, limit).map(row => ({ ...row })),
+          metadata: {
+            ...metadata,
+            view,
+            offset,
+            shown: Math.min(rows.length, limit),
+            shownFunds: summary.shownFunds,
+            total: summary.total,
+            truncated: summary.truncated,
+            hasMore: summary.truncated,
+            nextOffset: summary.nextOffset,
+            // The value of the rows shown, not of every fund a page loaded.
+            totalValue: summary.shownValue,
+            valueScope: "shown funds",
+            valueBasis: "as reported at period end",
+            notices: summary.notices,
+          },
+          freshness: { asOf: metadata.period },
+          errors: metadata.warnings,
+        };
       }
 
       if (view === "holdings" || view === "filings") {
         const fund = await resolveFund(query, args, ctx, dependencies);
         const detail = await dependencies.loadDetail(fund.cik, fund.name, args, ctx);
+        const latestPeriod = detail.latestForm?.periodOfReport ?? null;
         if (view === "filings") {
-          const rows = sortTimelineRows(buildTimelineRows(detail.forms), DEFAULT_TIMELINE_SORT)
+          const all = sortTimelineRows(buildTimelineRows(detail.forms), DEFAULT_TIMELINE_SORT);
+          const rows = all
             .slice(0, limit)
             .map((row) => ({ ...row }));
+          const cut = cutText(all.length, limit, "filings");
           return {
             columns: FILING_COLUMNS,
             rows,
@@ -317,14 +378,21 @@ export function createThirteenFHeadless(
               view,
               cik: detail.cik,
               fund: detail.name,
-              latestPeriod: detail.latestForm?.periodOfReport ?? null,
+              latestPeriod,
+              shown: rows.length,
+              total: all.length,
+              truncated: all.length > limit,
+              notices: [[`CIK ${detail.cik}`, cut].filter(Boolean).join(" | ")],
             },
           };
         }
-        const rows = sortHoldingRows(
+        const all = sortHoldingRows(
           buildFundHoldingRows(detail),
           DEFAULT_HOLDING_SORT,
-        )
+        );
+        const previousPeriod = detail.previousForm?.periodOfReport ?? null;
+        const cut = cutText(all.length, limit, "positions, exits included");
+        const rows = all
           .slice(0, limit)
           .map((row) => ({
             ...row,
@@ -335,12 +403,21 @@ export function createThirteenFHeadless(
           columns: HOLDING_COLUMNS,
           rows,
           ...(detail.warnings?.length ? { errors: detail.warnings } : {}),
+          // Positions as of the quarter they report; the rows carry no filing date.
+          ...(latestPeriod ? { freshness: { asOf: latestPeriod } } : {}),
           metadata: {
             view,
             cik: detail.cik,
             fund: detail.name,
-            latestPeriod: detail.latestForm?.periodOfReport ?? null,
-            previousPeriod: detail.previousForm?.periodOfReport ?? null,
+            latestPeriod,
+            previousPeriod,
+            shown: rows.length,
+            total: all.length,
+            truncated: all.length > limit,
+            notices: [
+              [`CIK ${detail.cik}`, periodText(latestPeriod, hasComparable13FQuarter(detail) ? previousPeriod : null), AS_FILED_VALUE].filter(Boolean).join(" | "),
+              ...(cut ? [`${cut[0]!.toUpperCase()}${cut.slice(1)}`] : []),
+            ],
             comparisonAvailable: hasComparable13FQuarter(detail),
             currentFilings: detail.latestReport?.filings.map((form) => form.accessionNumber) ?? [],
             previousFilings: detail.previousReport?.filings.map((form) => form.accessionNumber) ?? [],
@@ -354,6 +431,7 @@ export function createThirteenFHeadless(
 
       const tab = browserTab(view === "ticker-holdings" ? requestedView : view, query);
       const result = await dependencies.loadBrowser(tab, query, limit, args, ctx);
+      const more = result.hasMore || result.rows.length > limit;
       return {
         columns: result.rows[0]?.priorReturns?.length ? [...BROWSER_COLUMNS.filter(column => !["filedAsOfDate", "tableEntryTotal"].includes(column.key)), ...result.rows[0].priorReturns.map((point, index) => ({ key: `return${index + 1}`, header: point.quarter, align: "right" as const, format: (value: unknown) => formatRawPercentMaybe(typeof value === "number" ? value : null) }))]
           : tab === "performance" ? BROWSER_COLUMNS : BROWSER_COLUMNS.filter(column => column.key !== "estQuarterReturn"),
@@ -367,6 +445,11 @@ export function createThirteenFHeadless(
           period: result.period ?? null,
           quarter: result.quarter ?? null,
           hasMore: result.hasMore ?? false,
+          shown: Math.min(result.rows.length, limit),
+          truncated: more,
+          notices: more
+            ? [[`Showing the first ${Math.min(result.rows.length, limit)}`, limit < THIRTEENF_MAX_LIMIT ? `more: --limit ${THIRTEENF_MAX_LIMIT}` : ""].filter(Boolean).join(" | ")]
+            : [],
         },
       };
     },

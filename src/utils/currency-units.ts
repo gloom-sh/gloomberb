@@ -6,6 +6,20 @@ const SUB_UNIT_CURRENCIES: Record<string, { currency: string; divisor: number }>
   ZAc: { currency: "ZAR", divisor: 100 },
 };
 
+const SUB_UNIT_NAMES: Record<string, string> = {
+  GBp: "pence",
+  GBX: "pence",
+  ILA: "agorot",
+  ZAc: "cents",
+};
+
+/** A currency code as a reader should see it; a sub-unit says which one: "GBp (pence)". */
+export function currencyUnitLabel(code?: string | null): string {
+  const raw = (code ?? "").trim();
+  const unit = SUB_UNIT_NAMES[raw];
+  return unit ? `${raw} (${unit})` : raw;
+}
+
 const LIKELY_UNIT_MISMATCH_RATIOS: Record<string, number[]> = {
   BHD: [1000],
   GBP: [100],

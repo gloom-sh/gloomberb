@@ -72,6 +72,7 @@ export function buildOverviewStats({
   baseCurrency,
   marketCapExchangeRates = new Map(),
   nextEarnings,
+  depositaryReceipt = false,
   today,
 }: {
   quote: Quote | undefined;
@@ -81,6 +82,8 @@ export function buildOverviewStats({
   toBase: CurrencyConverter;
   marketCapExchangeRates?: ReadonlyMap<string, number>;
   nextEarnings?: NextEarnings;
+  /** The listing is a depositary receipt, so its share count is in receipts. */
+  depositaryReceipt?: boolean;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;
 }): StatField[] {
@@ -105,7 +108,11 @@ export function buildOverviewStats({
     });
   }
   if (fundamentals?.sharesOutstanding) {
-    stats.push({ label: "Shares Out", value: formatCompact(fundamentals.sharesOutstanding) });
+    stats.push({
+      label: "Shares Out",
+      value: formatCompact(fundamentals.sharesOutstanding),
+      ...(depositaryReceipt ? { detail: ["ADR equivalent", "in ADRs"] } : {}),
+    });
   }
   if (finite(fundamentals?.floatShares) && fundamentals.floatShares > 0) {
     stats.push({ label: "Float", value: formatCompact(fundamentals.floatShares) });

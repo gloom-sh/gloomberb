@@ -247,7 +247,11 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;
   columns?: HeadlessPaneColumn[];
-  describe?: string | ((args: HeadlessPaneLoadArgs) => string);
+  /**
+   * The report title. A report passes the loaded result, so a title can name
+   * what the load resolved (the view an `auto` query became, a fund's name).
+   */
+  describe?: string | ((args: HeadlessPaneLoadArgs, result?: HeadlessPaneResult) => string);
   load(
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,

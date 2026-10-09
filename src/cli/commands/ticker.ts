@@ -51,6 +51,7 @@ import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isUsEquityTicker } from "../../utils/sec";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
 import { ListingArgError, listingIdentity, listingVenues, resolveCliListing, type CliListing } from "../listing-arg";
+import { isDepositaryReceipt } from "../../utils/depositary-receipt";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -241,6 +242,7 @@ function enterpriseValueCurrency(
 function fundamentalsMetrics(
   quote: TickerFinancials["quote"],
   fundamentals: TickerFinancials["fundamentals"],
+  profile: TickerFinancials["profile"],
   marketCapText: string,
   priceReturns: { return1Y?: number | null; return3Y?: number | null },
   enterpriseValueText = formatReportedMoney(fundamentals?.enterpriseValue, enterpriseValueCurrency(quote, fundamentals)),
@@ -264,7 +266,13 @@ function fundamentalsMetrics(
     ["Last Quarter Growth", fundamentals?.lastQuarterGrowth != null ? colorBySign(formatPercent(fundamentals.lastQuarterGrowth), fundamentals.lastQuarterGrowth) : "—"],
     ["1Y Return", priceReturns.return1Y != null ? colorBySign(formatPercent(priceReturns.return1Y), priceReturns.return1Y) : "—"],
     ["3Y Return", priceReturns.return3Y != null ? colorBySign(formatPercent(priceReturns.return3Y), priceReturns.return3Y) : "—"],
-    ["Shares Outstanding", formatCompact(fundamentals?.sharesOutstanding)],
+    // A receipt's count is its ordinary shares expressed in receipts, as its market cap is.
+    [
+      "Shares Outstanding",
+      fundamentals?.sharesOutstanding != null && isDepositaryReceipt({ ...quote, description: profile?.description })
+        ? `${formatCompact(fundamentals.sharesOutstanding)} (ADR equivalent)`
+        : formatCompact(fundamentals?.sharesOutstanding),
+    ],
   ];
 }
 
@@ -282,7 +290,7 @@ export function renderFundamentalsReport(
   const marketCapText = capitalization
     ? `${formatCompact(capitalization.value)} ${capitalization.currency}`
     : "—";
-  const metrics = fundamentalsMetrics(quote, fundamentals, marketCapText, computeTickerPriceReturns(financials));
+  const metrics = fundamentalsMetrics(quote, fundamentals, profile, marketCapText, computeTickerPriceReturns(financials));
   const symbol = quote?.symbol ?? financials.symbol;
   const name = quote?.name && quote.name !== symbol ? ` ${cliStyles.bold(quote.name)}` : "";
   const lines = [`${cliStyles.accent(symbol)}${name}`];
@@ -435,7 +443,7 @@ export async function buildTickerReport({
     ]);
   }
 
-  appendMetricSection(lines, "Fundamentals", fundamentalsMetrics(quote, fundamentals, marketCapText, priceReturns, enterpriseValueText));
+  appendMetricSection(lines, "Fundamentals", fundamentalsMetrics(quote, fundamentals, profile, marketCapText, priceReturns, enterpriseValueText));
 
   if (capitalization?.provenance.kind === "fundamentals") {
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));

@@ -153,10 +153,41 @@ describe("13F headless model", () => {
         return page(params.offset, 25, params.offset < 50);
       }) as never);
       const headless = createThirteenFHeadless({ loadBrowser: async () => ({ rows: [] }), loadDetail: async () => detail });
-      const result = await headless.load({ ...args("auto", 40), argument: "KO", rawArgument: "KO" }, createTestHeadlessContext());
+      const loadArgs = { ...args("auto", 40), argument: "KO", rawArgument: "KO" };
+      const result = await headless.load(loadArgs, createTestHeadlessContext());
       expect(offsets).toEqual([0, 25]);
       expect(result.rows).toHaveLength(40);
-      expect(result.metadata).toMatchObject({ view: "ticker-holdings", truncated: true });
+      // The second page loaded 50 funds; the next page starts after the 40 shown, not after the 50 loaded.
+      expect(result.metadata).toMatchObject({ view: "ticker-holdings", truncated: true, nextOffset: 40, shown: 40, total: 60 });
+      expect(result.metadata?.notices).toEqual([
+        "Period 2026-06-30 vs 2026-03-31 | 60 holders (0 new), 0 exited | Value (USD) as reported at period end, not today's price",
+        "Showing 40 of 60 funds; the 40 shown hold $4.0k | more: --offset 40 or --limit 200",
+      ]);
+      expect(typeof headless.describe === "function" ? headless.describe(loadArgs, result) : null).toBe("13F Holders | KO");
+    });
+
+    test("crowding with a ticker shows that ticker's rank, or says it is not ranked", async () => {
+      const security = (ticker: string, newCount: number) => ({ id: ticker, ticker, cusip: ticker, issuer: ticker, type: "SH", holderCount: newCount,
+        newCount, exitCount: 0, comparedFunds: newCount, totalValue: 100, weightChange: null });
+      spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => ({ quarter: "2026Q2", period: "2026-06-30", previousPeriod: "2026-03-31",
+        warnings: [], asOf: "", requestedFunds: 25, sourceFunds: 25, loadedFunds: 25,
+        rows: [security("AAA", 1), security("BBB", 3), security("CCC", 2), security("DDD", 2)] })) as never);
+      const headless = createThirteenFHeadless({ loadBrowser: async () => ({ rows: [] }), loadDetail: async () => detail });
+      const crowding = (ticker: string) => headless.load({ ...args("crowding"), argument: ticker || null, rawArgument: ticker }, createTestHeadlessContext());
+
+      const ranking = await crowding("");
+      expect(ranking.rows.map((row) => row.ticker)).toEqual(["BBB", "CCC", "DDD", "AAA"]);
+      expect(ranking.metadata?.notices).toEqual(["2026-06-30: 25/25 ranked funds"]);
+
+      const found = await crowding("$ddd");
+      // Tied on new holders with CCC, so it shares second place.
+      expect(found.rows).toEqual([expect.objectContaining({ ticker: "DDD", rank: 2 })]);
+      expect(found.metadata).toMatchObject({ ticker: "DDD", found: true, rankedSecurities: 4 });
+      expect(found.metadata?.notices).toContain("DDD ranks 2 of 4 securities by new holders | full ranking: fn 13F --view crowding");
+
+      const missing = await crowding("CAR");
+      expect(missing.rows).toEqual([]);
+      expect(missing.metadata?.notices).toContain("CAR is not in this ranking | full ranking: fn 13F --view crowding | its 13F holders: fn 13F CAR");
     });
 
     test("falls back to the holders listing for a ticker without a mapped CUSIP", async () => {

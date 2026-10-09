@@ -416,8 +416,13 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
   return lines;
 }
 
-function reportTitle(definition: HeadlessPaneDefinition, args: HeadlessPaneLoadArgs, fallback: string): string {
-  if (typeof definition.describe === "function") return definition.describe(args);
+function reportTitle(
+  definition: HeadlessPaneDefinition,
+  args: HeadlessPaneLoadArgs,
+  result: HeadlessPaneResult,
+  fallback: string,
+): string {
+  if (typeof definition.describe === "function") return definition.describe(args, result);
   return definition.describe ?? fallback;
 }
 
@@ -433,7 +438,7 @@ export function renderHeadlessPaneText(
   fallbackTitle: string,
   freshness: ReportFreshness = deriveHeadlessFreshness(definition, result),
 ): string {
-  const lines = [cliStyles.bold(reportTitle(definition, args, fallbackTitle)), ""];
+  const lines = [cliStyles.bold(reportTitle(definition, args, result, fallbackTitle)), ""];
   const notices = result.metadata?.notices;
   if (Array.isArray(notices)) {
     const textNotices = [...new Set(notices.filter((notice): notice is string => typeof notice === "string" && notice.trim().length > 0))];

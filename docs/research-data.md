@@ -200,6 +200,10 @@ Amendment status uses the existing footer. Headless reports retain the candidate
 
 HDS lists each holder's shares as of its reporting period. Mkt value is those shares at the latest price, so it differs from the value reported in the 13F filing, which is priced at the period end. The 13F pane shows the reported value.
 
+The holder list is the source's largest institutional holders, usually without a count of all holders, so the `holders`, `insider` and `13f` commands and the HDS report say "top N reported" rather than implying a full list; when the source gives a total they say "N of M holders". Their text opens with one line naming the company, listing, currency and as-of date (HDS leaves the date to its closing line): a London line's values are in pence (GBp), not pounds, and every money column names its unit. On a listing outside the US the holders are still institutional filings, mostly US 13F, priced at that listing's price; they are not the local share register, and the report says so. Many sources report no change against the prior quarter: the HDS report and pane then leave out the CHG columns and point to `fn 13F <ticker>`, which compares the filed quarters.
+
+On a US depositary receipt, shares outstanding (and the market cap built on it) is the company's share count expressed in receipts, so `ticker`, `fundamentals` and the overview mark it "ADR equivalent". A quote carries no receipt flag or ratio: the label follows the instrument type, the name, or a profile that opens by naming the security as an ADR, and is left off when none of them says so.
+
 For 13F option positions, reported values and shares refer to the underlying security. The 13F percentage is the share of reported value, not an option premium or portfolio delta. The position type remains identified in the holdings table, and exports retain this value basis.
 
 Congress research uses House Clerk and Senate eFD periodic transaction reports,

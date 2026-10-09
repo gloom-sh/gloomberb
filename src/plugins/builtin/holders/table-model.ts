@@ -20,23 +20,31 @@ export function buildRows(data: HolderData | null): HolderRow[] {
   }));
 }
 
-export function buildColumns(width: number): HolderColumn[] {
+/** Whether any holder carries the quarter's change; many sources report none. */
+export function hasHolderChanges(rows: readonly HolderRow[]): boolean {
+  return rows.some((row) => row.changeShares != null || row.changePercent != null);
+}
+
+export function buildColumns(width: number, showChange: boolean): HolderColumn[] {
   const valueWidth = 10;
   const sharesWidth = 10;
   const changeWidth = 10;
   const changePercentWidth = 8;
   const heldWidth = 7;
   const dateWidth = 10;
-  const columnCount = 7;
-  const fixedWidth = valueWidth + sharesWidth + changeWidth + changePercentWidth + heldWidth + dateWidth;
+  const columnCount = showChange ? 7 : 5;
+  const fixedWidth = valueWidth + sharesWidth + heldWidth + dateWidth
+    + (showChange ? changeWidth + changePercentWidth : 0);
   const holderWidth = Math.max(16, width - 2 - columnCount - fixedWidth);
 
   return [
     { id: "holder", label: "HOLDER", width: holderWidth, align: "left" },
     { id: "value", label: "MKT VAL", width: valueWidth, align: "right" },
     { id: "shares", label: "AMOUNT", width: sharesWidth, align: "right" },
-    { id: "changeShares", label: "CHG", width: changeWidth, align: "right" },
-    { id: "changePercent", label: "CHG%", width: changePercentWidth, align: "right" },
+    ...(showChange ? [
+      { id: "changeShares", label: "CHG", width: changeWidth, align: "right" },
+      { id: "changePercent", label: "CHG%", width: changePercentWidth, align: "right" },
+    ] satisfies HolderColumn[] : []),
     { id: "percentHeld", label: "HELD", width: heldWidth, align: "right" },
     { id: "reportDate", label: "PERIOD", width: dateWidth, align: "right" },
   ];

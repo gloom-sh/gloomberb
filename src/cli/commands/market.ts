@@ -51,6 +51,13 @@ import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentC
 import { isUsListingExchange } from "../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
+import {
+  holderListFacts,
+  holderValueBasis,
+  moneyColumnHeader,
+  nonUsHolderCaveat,
+  sharedReportDate,
+} from "../../plugins/builtin/holders/report-header";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
 const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);
@@ -590,20 +597,50 @@ async function runHolders(
       loadListingQuote(market.dataProvider, listing),
     ]);
     const identity = listingIdentity(listing, quote);
-    ctx.printResult({ data, metadata: { ...listingMetadata(identity), summary: data.summary } }, {
-      heading: listingHeading(identity),
-      rows: (holderData) => holderRows(holderData, ownerTypes),
+    const rows = holderRows(data, ownerTypes);
+    const limit = ctx.cliOptions.limit;
+    const shown = limit == null ? rows.length : Math.min(limit, rows.length);
+    const institutional = !ownerTypes?.has("insider");
+    const total = institutional ? data.summary?.institutionsCount ?? null : null;
+    const reportDate = sharedReportDate(rows);
+    const valueBasis = rows.length > 0 ? holderValueBasis(reportDate) : null;
+    const positionsBasis = rows.length > 0 ? nonUsHolderCaveat(identity.exchange || data.exchange, data.currency) : null;
+    // The heading names the listing; its unit, date and how much of the list follows on the same line.
+    const facts = holderListFacts({ currency: data.currency, asOf: data.asOf, shown, reported: rows.length, total });
+    ctx.printResult({
+      data,
+      metadata: {
+        ...listingMetadata(identity),
+        summary: data.summary,
+        currency: data.currency ?? null,
+        asOf: data.asOf ?? null,
+        shown,
+        reported: rows.length,
+        total,
+        truncated: shown < (total ?? rows.length),
+        valueBasis,
+        positionsBasis,
+      },
+    }, {
+      heading: `${listingHeading(identity)}${cliStyles.muted(facts.map((fact) => `  ·  ${fact}`).join(""))}`,
+      rows: () => rows,
       columns: [
         { key: "type", header: "Type" },
         { key: "name", header: "Holder" },
         { key: "reportDate", header: "Date" },
         { key: "shares", header: "Shares", align: "right", format: formatCountCell },
-        { key: "value", header: "Value", align: "right", value: (row) => row.value == null ? "" : formatCompact(Number(row.value)) },
+        {
+          key: "value",
+          header: moneyColumnHeader("Value", data.currency),
+          align: "right",
+          value: (row) => row.value == null ? "" : formatCompact(Number(row.value)),
+        },
         { key: "percentHeld", header: "% Held", align: "right", format: formatFractionPercentCell },
       ],
-      ...(commandName === "insider" && ownerTypes
-        ? { summary: (holderData: HolderData) => insiderSummary(holderData, ownerTypes) }
-        : {}),
+      summary: (holderData: HolderData) => [
+        [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? ""].filter(Boolean).join(" "),
+        commandName === "insider" && ownerTypes ? insiderSummary(holderData, ownerTypes) : "",
+      ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,
     });
   });

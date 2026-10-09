@@ -30,6 +30,7 @@ import {
 } from "./format";
 import {
   buildColumns,
+  hasHolderChanges,
   buildRows,
   DEFAULT_SORT,
   sortRows,
@@ -77,7 +78,9 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
   const rows = useMemo(() => buildRows(data), [data]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
-  const columns = useMemo(() => buildColumns(width), [width]);
+  // Change columns only when the source reports a change; otherwise they read "-" on every row.
+  const showChange = useMemo(() => hasHolderChanges(rows), [rows]);
+  const columns = useMemo(() => buildColumns(width, showChange), [showChange, width]);
   const selectedIdx = selectedId
     ? sortedRows.findIndex((row) => row.id === selectedId)
     : -1;
