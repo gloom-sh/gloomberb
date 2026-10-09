@@ -581,8 +581,10 @@ export function WebDialogFrame({
       </Box>
       {children}
       {footer && (
+        // Sized by its line, not one cell: a cell-high box with this padding
+        // left the key line hanging out of its bottom.
         <Box
-          height={1}
+          flexShrink={0}
           style={{
             borderTop: `1px solid ${panelBorder(colors)}`,
             paddingTop: 8,

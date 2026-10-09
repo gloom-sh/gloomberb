@@ -35,3 +35,22 @@ test("a focused list row follows the outside cursor, and checkbox rows leave Ent
   expect(enter.defaultPrevented).toBe(false);
   expect(activated).toEqual(["b", "c"]);
 });
+
+test("a list with more rows than its height scrolls them inside it, and one that fits takes only its rows", async () => {
+  const items = Array.from({ length: 6 }, (_, index) => ({ id: `u${index}`, label: `User ${index}` }));
+  const container = await renderDom(
+    <>
+      <WebListView items={items} selectedIndex={0} height={4} />
+      <WebListView items={items.slice(0, 2)} selectedIndex={0} height={4} surface="framed" />
+    </>,
+  );
+  const [crowded, roomy] = [...container.querySelectorAll<HTMLElement>('[role="listbox"]')];
+  // The rows used to keep their pitch and spill over whatever followed the list.
+  expect(crowded!.style.height).toBe("");
+  const scroller = crowded!.querySelector<HTMLElement>("[data-gloom-scrollbar-y]");
+  expect(scroller?.style.overflowY).toBe("auto");
+  expect(scroller?.style.height).toBe("72px");
+  // Two rows in a four-row height leave no empty band under them.
+  expect(roomy!.style.height).toBe("");
+  expect(roomy!.querySelector("[data-gloom-scrollbar-y]")).toBeNull();
+});
