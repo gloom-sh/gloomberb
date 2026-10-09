@@ -35,6 +35,7 @@ import { optionQuoteSide } from "../../plugins/builtin/options/market-reference"
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { renderFundamentalsReport } from "./ticker";
 import { historyPriceDecimals, historyRows } from "../history-rows";
+import { CRYPTO_BOARD_HINT, isCryptoPairSymbol, quoteNotes } from "./crypto-hints";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
 const EXCHANGE_OPTION = {
@@ -341,8 +342,19 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       quote: result.quote,
       error: errorMessage(result.error),
     }));
-    ctx.printResult({ data }, { rows: quoteRows, columns: commandName === "compare" ? compareColumns() : quoteColumns() });
+    // Text mode shows only "unavailable" in the cell; the JSON rows already carry each reason.
+    const notes = ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [];
+    ctx.printResult({ data, warnings: notes.length > 0 ? notes : undefined }, {
+      rows: quoteRows,
+      columns: commandName === "compare" ? compareColumns() : quoteColumns(),
+    });
   });
+}
+
+/** A crypto pair that will not load points at the crypto board. Structured formats keep the error as thrown. */
+function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandDef["execute"]>[1]): never {
+  if (ctx.cliOptions.format !== "text" || !isCryptoPairSymbol(symbol)) throw error;
+  return ctx.fail(errorMessage(error) ?? `No history available for ${symbol}`, CRYPTO_BOARD_HINT);
 }
 
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -354,9 +366,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const localTicker = requestedExchange ? null : await market.store.loadTicker(symbol);
     const exchange = requestedExchange || localTicker?.metadata.exchange || "";
     const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
-    const { points, resolution } = market.dataProvider.getPriceHistoryWithMetadata
-      ? await market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
-      : { points: await market.dataProvider.getPriceHistory(symbol, exchange, range, context), resolution: null };
+    const loaded = market.dataProvider.getPriceHistoryWithMetadata
+      ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
+      : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points) => ({ points, resolution: null }));
+    const { points, resolution } = await loaded.catch((error) => failHistory(error, symbol, ctx));
     const data = historyRows(points, resolution);
     const decimals = historyPriceDecimals(data, localTicker?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
