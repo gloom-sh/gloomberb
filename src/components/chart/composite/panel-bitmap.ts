@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
-import { type StaticChartBitmapSize } from "./bitmap";
+import type { StaticChartBitmapSize } from "./bitmap";
 import { renderCompositePanelBitmap } from "./rasterizer";
 import type { CompositeChartColors, CompositePanelScene } from "./types";
 
@@ -137,4 +137,3 @@ export function useCompositePanelBitmap({
   if (!bitmapSize) return null;
   return isDesktopWeb ? desktopBitmap : terminalBitmap;
 }
-

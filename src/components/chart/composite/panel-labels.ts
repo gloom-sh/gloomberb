@@ -1,7 +1,7 @@
-import { type ChartSurfaceProps } from "../../../ui";
+import type { ChartSurfaceProps } from "../../../ui";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import { compositeAxisTicks, formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
-import { type CompositeColumnLayout } from "./column-layout";
+import type { CompositeColumnLayout } from "./column-layout";
 import { projectCompositeValue, unprojectCompositeValue } from "./scene";
 import type { CompositeAxisDomain, CompositeChartScene, CompositePanelScene } from "./types";
 
@@ -105,4 +105,3 @@ export function resolveSeriesCursorYRatio(
   }
   return null;
 }
-

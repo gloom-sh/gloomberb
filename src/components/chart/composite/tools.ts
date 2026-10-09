@@ -608,4 +608,3 @@ export interface ChartToolSpan {
   startTime: number;
   color: string;
 }
-

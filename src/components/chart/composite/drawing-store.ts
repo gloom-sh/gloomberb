@@ -57,4 +57,3 @@ export function ChartDrawingStore({
 
   return null;
 }
-

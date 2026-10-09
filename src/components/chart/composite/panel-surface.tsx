@@ -51,12 +51,12 @@ import {
   type ChartDrawing,
   type ChartToolDrag,
   type ChartToolKind,
+  type ChartToolSpan,
 } from "./tools";
 import { compositeRightOffsetRatio, unprojectCompositeTimestamp } from "./time-scale";
 import { resolveCompositeCursorDate, unprojectCompositeValue } from "./scene";
 import { compositeAxisTickLabels, renderCompositeAxisText, renderCompositePanelText } from "./text-renderer";
 import type { CompositeChartColors, CompositeChartScene, CompositePanelScene } from "./types";
-
 import { useCompositePanelBitmap } from "./panel-bitmap";
 import { nextDrawingId, nextLevelId } from "./drawing-store";
 import {
@@ -68,8 +68,8 @@ import {
   type PendingWheel,
 } from "./panel-gestures";
 import { resolvePanelCrosshair, axisLabelRows, cursorAxisLabel, resolveSeriesCursorYRatio } from "./panel-labels";
-import type { ChartToolSpan } from "./tools";
-import type { KeyboardToolDrag } from "./composite-chart";
+import type { KeyboardToolDrag } from "./use-composite-chart-keyboard";
+
 const webFrame = globalThis as typeof globalThis & {
   requestAnimationFrame?: (callback: () => void) => number;
   cancelAnimationFrame?: (handle: number) => void;
@@ -874,4 +874,3 @@ export function CompositePanelSurface({
     </Box>
   );
 }
-

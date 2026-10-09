@@ -1,4 +1,4 @@
-import { type ChartMouseEvent } from "../core/pointer";
+import type { ChartMouseEvent } from "../core/pointer";
 import { compositeViewportPositions, type CompositeNavigationFrame, type CompositeViewportRange } from "./interactions";
 
 export const COMPOSITE_PANEL_ROLE = "composite-chart-panel";
@@ -57,4 +57,3 @@ export function releaseEditableFocus(event: ChartMouseEvent): void {
   if (tag !== "INPUT" && tag !== "TEXTAREA") return;
   active?.blur?.();
 }
-

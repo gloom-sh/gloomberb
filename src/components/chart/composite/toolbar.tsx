@@ -2,8 +2,8 @@ import { Box, Text } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import { CHART_DRAWING_COLORS, type ChartToolKind } from "./tools";
-
 import { CHART_TOOLS } from "./tool-catalog";
+
 /** Icon cells plus the gap between chips. */
 export const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1);
 
@@ -184,4 +184,3 @@ export function ChartToolbar({
     </Box>
   );
 }
-
