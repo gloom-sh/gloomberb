@@ -1,18 +1,23 @@
-import { Box } from "../../../../ui";
+import { Box, useUiCapabilities } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import type { DockLeafLayout } from "../../../../layout/pane-manager";
 import type { DragPreview } from "./index";
 import { useLiveDrag, useLiveHoverOverlay, type LiveDragGeometry, type LiveDragStore } from "./live";
+import { slideStyle } from "./slide";
 
 /** A docked pane on the move is drawn as an outline at its floating size, until it is over a drop target. */
 function DockedDragOutline({ live }: { live: LiveDragStore }) {
   const rect = useLiveDrag(live, selectDockedOutline);
+  const { nativePaneChrome } = useUiCapabilities();
   if (!rect) return null;
+  // The desktop slides it from the corner on the compositor; the terminal redraws it in place.
+  const slide = nativePaneChrome === true;
   return (
     <Box
       position="absolute"
-      left={rect.x}
-      top={rect.y}
+      left={slide ? 0 : rect.x}
+      top={slide ? 0 : rect.y}
+      style={slide ? slideStyle(rect.x, rect.y) : undefined}
       width={rect.width}
       height={rect.height}
       border

@@ -11,6 +11,7 @@ import type {
 import { colors } from "../../../../theme/colors";
 import { constrainFloatingRectToBounds } from "../drag";
 import { useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
+import { slideStyle } from "../drag/slide";
 import { pathKey } from "../../window-edit/mode";
 import { FloatingPaneWrapper } from "../../floating-pane";
 import { PaneContent } from "../../pane/content";
@@ -271,7 +272,12 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   );
 });
 
-/** A floating pane, drawn at its layout rect or where a drag has it right now. */
+/**
+ * A floating pane, drawn at its layout rect or where a drag has it right now.
+ * On the desktop a move slides the drawn pane with a compositor transform, so
+ * nothing inside it re-renders, lays out or repaints while it follows the
+ * pointer; a resize redraws it at the new size.
+ */
 const FloatingPaneLayer = memo(function FloatingPaneLayer({
   live,
   rect,
@@ -286,7 +292,23 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
   ), [paneId]);
   const dragRect = useLiveDrag(live, select);
   const preview = dragRect ? constrainFloatingRectToBounds(dragRect, width, contentHeight) : rect;
-  return <FloatingPaneFrame {...frame} rect={preview} zIndex={zIndex} />;
+  const slide = frame.nativePaneChrome;
+  const sliding = slide && dragRect !== null && preview.width === rect.width && preview.height === rect.height;
+  const content = <FloatingPaneFrame {...frame} rect={sliding ? rect : preview} zIndex={zIndex} />;
+  if (!slide) return content;
+  return (
+    <Box
+      position="absolute"
+      left={0}
+      top={0}
+      width={0}
+      height={0}
+      zIndex={zIndex}
+      style={sliding ? slideStyle(preview.x - rect.x, preview.y - rect.y) : undefined}
+    >
+      {content}
+    </Box>
+  );
 });
 
 /** A tiled split's divider, which follows the pointer while it is dragged. */
