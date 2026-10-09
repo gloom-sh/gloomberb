@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
-import { apiClient } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { type AppConfig, findPaneInstance, type OnboardingStage } from "../../types/config";
 import { useViewport } from "../../react/input";
 import { useKeybindings } from "../../app/keybindings";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
-import { useAppActive } from "../../state/app/activity";
 import {
   Box,
   Text,
@@ -21,15 +19,8 @@ import { useThemeColors } from "../../theme/theme-context";
 import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
-import { chatController } from "../../plugins/builtin/chat/controller";
-import {
-  type CloudBillingInterval,
-  formatCloudPrice,
-  monthsFreeYearly,
-} from "../../plugins/builtin/account-management/model";
-import { loadUpgradeOffer, proStepCopy, type UpgradeOffer } from "../../plugins/builtin/cloud/upgrade-dialog";
-import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
-import { usePlanAccess } from "../../api-client/plan-access";
+import { formatCloudPrice, monthsFreeYearly } from "../../plugins/builtin/account-management/model";
+import { proStepCopy } from "../../plugins/builtin/cloud/upgrade-dialog";
 import { Button, SegmentedControl } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import {
@@ -51,6 +42,7 @@ import { getOnboardingProgress } from "./wizard-model";
 import { useOnboardingKeyboard } from "./onboarding-keyboard";
 import { useOnboardingBrokerFields, useOnboardingBrokerForm } from "./use-onboarding-broker-form";
 import { useOnboardingProgress, useOnboardingWorkspace, useOnboardingCompletion } from "./use-onboarding-progress";
+import { useOnboardingUpgrade } from "./use-onboarding-upgrade";
 import {
   SKIP_SETUP_KEY,
   KEEP_FREE_KEY,
@@ -92,9 +84,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const progress = getOnboardingProgress(config);
   const stage = progress.stage;
   const researchOpenedRef = useRef<string | null>(null);
-  const [offer, setOffer] = useState<UpgradeOffer | null>(null);
-  const pricing = offer?.pricing ?? null;
-  const [billingInterval, setBillingInterval] = useState<CloudBillingInterval>("month");
   const [editingField, setEditingField] = useState(false);
   /** The added position the keyboard acts on once no field is being typed in. */
   const [positionCursorSymbol, setPositionCursorSymbol] = useState<string | null>(null);
@@ -206,35 +195,11 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     researchOpenedRef.current = progress.tickerSymbol;
     recordResearchActivity("ticker_saved");
   }, [stage, progress.tickerSymbol]);
-
-  const appActive = useAppActive();
-  const planAccess = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction("onboarding-pro");
-  // The price and whether this account still has its trial, asked again for
-  // whichever account reaches the step.
-  const accountId = planAccess.signedIn ? apiClient.getCurrentUser()?.id ?? null : null;
-  useEffect(() => {
-    if (stage !== "upgrade") return;
-    let live = true;
-    void loadUpgradeOffer().then((loaded) => {
-      if (live) setOffer(loaded);
-    });
-    return () => {
-      live = false;
-    };
-  }, [accountId, stage]);
-  useEffect(() => {
-    if (stage !== "upgrade" || !progress.checkoutOpenedAt || !appActive) return;
-    void apiClient.getSession()
-      .then(() => chatController.refreshSession())
-      .catch(() => {});
-  }, [appActive, progress.checkoutOpenedAt, stage]);
-
-  useEffect(() => {
-    if (stage === "upgrade" && planAccess.hasProAccess) {
-      saveProgressInBackground({ stage: "ready", accountStatus: "signed-in" });
-    }
-  }, [planAccess.hasProAccess, saveProgressInBackground, stage]);
+  const {
+    offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree,
+  } = useOnboardingUpgrade({
+    stage, progress, saveProgressInBackground, persistProgress,
+  });
 
   const movePositionCursor = useCallback((delta: number) => {
     if (positionCursorIndex < 0) return;
@@ -269,34 +234,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   useEffect(() => {
     if (stage === "account" && (account.accountSub === "signup" || account.accountSub === "login")) setEditingField(true);
   }, [account.accountSub, stage]);
-
-  const startUpgrade = useCallback(() => {
-    void openUpgrade({
-      interval: billingInterval,
-      sheet: false,
-      // Stamped once per checkout that opens, not per keypress: the repeats
-      // of a held Enter are ignored.
-      onOpening: () => {
-        void persistProgress({
-          stage: "upgrade",
-          accountStatus: progress.accountStatus,
-          checkoutOpenedAt: new Date().toISOString(),
-        }).catch(() => {});
-      },
-    });
-  }, [billingInterval, openUpgrade, persistProgress, progress.accountStatus]);
-
-  const primaryUpgradeAction = useCallback(() => {
-    if (planAccess.hasProAccess) {
-      saveProgressInBackground({ stage: "ready", accountStatus: "signed-in" });
-      return;
-    }
-    startUpgrade();
-  }, [planAccess.hasProAccess, saveProgressInBackground, startUpgrade]);
-
-  const continueFree = useCallback(() => {
-    saveProgressInBackground({ stage: "ready", accountStatus: progress.accountStatus });
-  }, [progress.accountStatus, saveProgressInBackground]);
 
   const focusedPaneId = useAppSelector((state) => state.focusedPaneId);
   const focusedInstance = focusedPaneId
