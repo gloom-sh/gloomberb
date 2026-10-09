@@ -11,6 +11,7 @@ import {
 } from "react";
 import { EmptyState } from "../../../components/ui/status";
 import { usePaneInstance } from "../../../state/app/context";
+import { useRegisterPaneScrollBox } from "../../../state/pane-scroll-registry";
 import { useRafCallback } from "../../../react/use-raf-callback";
 import { measurePerf } from "../../../utils/perf-marks";
 import type {
@@ -284,6 +285,10 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     bodyVertical.bar,
     { viewportTopInsetPx: headerPx },
   );
+  // The terminal table body is a ScrollBox the pane scroll keys already reach;
+  // this is the same for the desktop one. A table with a cursor takes the keys
+  // first, so only a table without one is scrolled by them.
+  useRegisterPaneScrollBox(scrollRef, { enabled: true });
 
   useEffect(() => {
     headerHorizontal.bar.visible = false;

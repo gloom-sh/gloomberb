@@ -672,7 +672,9 @@ export function DataTableView<
       event.preventDefault();
       return;
     }
-    if (tableProps.items.length === 0) return;
+    // Without a cursor there is nothing for these keys to move, so they stay
+    // free for the pane scroll keys to scroll the rows.
+    if (tableProps.items.length === 0 || selection.kind === "none") return;
 
     if (isPlainKey(event, "j", "down")) {
       stopTableKey(event);
