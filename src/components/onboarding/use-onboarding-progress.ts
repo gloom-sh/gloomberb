@@ -1,15 +1,15 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction, type RefObject } from "react";
 import { recordResearchActivity } from "../../api-client/research-activity";
 import { apiClient } from "../../api-client";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
-import { type AppConfig, type OnboardingProgress } from "../../types/config";
-import { useAppDispatch, useAppStateRef } from "../../state/app/context";
+import type { AppConfig, OnboardingProgress } from "../../types/config";
+import type { useAppDispatch, useAppStateRef } from "../../state/app/context";
 import { t } from "../../i18n";
 import type { PluginRegistry } from "../../plugins/registry";
 import { resolvePlanAccess } from "../../api-client/plan-access";
-import { type PortfolioSub } from "./onboarding-steps";
-import { useOnboardingPositions } from "./wizard-positions";
+import type { PortfolioSub } from "./onboarding-steps";
+import type { useOnboardingPositions } from "./wizard-positions";
 import { applyFirstRunLayout, buildFirstRunLayout, planFirstRunWatchlist } from "./first-run-workspace";
 import { buildDesk, getDesk, isDeskKey, isDeskStock, pickDeskCompany, type DeskKey } from "../../layout/desks";
 import { debugLog } from "../../utils/debug-log";
@@ -20,10 +20,9 @@ import {
   withOnboardingProgress,
   type BrokerOption,
 } from "./wizard-model";
-import type { Dispatch, SetStateAction, RefObject } from "react";
-
 
 const onboardingLog = debugLog.createLogger("onboarding");
+
 export function useOnboardingProgress({
   stateRef, dispatch,
 }: {
@@ -263,7 +262,6 @@ export function useOnboardingCompletion({
   dispatch: ReturnType<typeof useAppDispatch>;
   onComplete: (config: AppConfig) => void | Promise<void>;
 }) {
-
   const finish = useCallback(async (skipped = false) => {
     if (finishingRef.current) return;
     if (!resetBrokerSync()) return;

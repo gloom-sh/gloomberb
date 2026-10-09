@@ -39,19 +39,19 @@ import { useOnboardingBrokerSync } from "./wizard-broker-sync";
 import { useOnboardingPositions } from "./wizard-positions";
 import { DesksStep, toggleDeskChoice } from "./desks-step";
 import { getOnboardingProgress } from "./wizard-model";
-import { useOnboardingKeyboard } from "./onboarding-keyboard";
-import { useOnboardingBrokerFields, useOnboardingBrokerForm } from "./use-onboarding-broker-form";
-import { useOnboardingProgress, useOnboardingWorkspace, useOnboardingCompletion } from "./use-onboarding-progress";
-import { useOnboardingUpgrade } from "./use-onboarding-upgrade";
 import {
+  useOnboardingKeyboard,
   SKIP_SETUP_KEY,
   KEEP_FREE_KEY,
   CONNECT_BROKER_KEY,
   BROWSER_SIGN_IN_KEY,
   SKIP_DESKS_KEY,
 } from "./onboarding-keyboard";
-export { keyReachesPastOnboardingModal } from "./onboarding-keyboard";
+import { useOnboardingBrokerFields, useOnboardingBrokerForm } from "./use-onboarding-broker-form";
+import { useOnboardingProgress, useOnboardingWorkspace, useOnboardingCompletion } from "./use-onboarding-progress";
+import { useOnboardingUpgrade } from "./use-onboarding-upgrade";
 
+export { keyReachesPastOnboardingModal } from "./onboarding-keyboard";
 
 interface OnboardingWizardProps {
   pluginRegistry: PluginRegistry;
@@ -66,7 +66,7 @@ const STAGE_ACTIVITY: Partial<Record<OnboardingStage, ResearchActivity>> = {
   account: "onboarding_account_viewed",
   upgrade: "onboarding_pro_viewed",
 };
-export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete }: OnboardingWizardProps) {
+function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete }: OnboardingWizardProps) {
   const language = useAppLanguage();
   const colors = useThemeColors();
   const desktop = useUiCapabilities().nativePaneChrome === true;
@@ -268,6 +268,9 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       || progress.accountStatus === "signed-in"
     ),
   };
+  // Enter inside every form is handled once, by the shortcut below: the
+  // fields deliberately get no onSubmit, because the host input fires it in
+  // the same keystroke and the two paths used to submit twice.
   useOnboardingKeyboard({
     stage, progress, account, helpFocused, editingField, isBrokerCommitting, planAccess, continueFree,
     finish, sectionAvailability, goToSection, portfolioSub, positions, setEditingField, positionCount,
@@ -277,6 +280,32 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
     setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground,
   });
+
+  return {
+    helpFocused, stage, progress, notificationDismissShortcut, finish, notificationActionShortcut,
+    saveProgressInBackground, colors, commandBarShortcut, selectedBrokerId, brokerOptions, portfolioSub,
+    sectionAvailability, goToSection, skipSetup, isFinishing, isBrokerCommitting, desktop, positions,
+    inputRef, editingField, selectedPositionSymbol, brokerChoices, portfolioOptionIdx, setPortfolioOptionIdx,
+    chooseBroker, activeBrokerFields, brokerFieldIdx, brokerSelectIdx, setBrokerSelectIdx, brokerValues,
+    setBrokerFieldValue, isBrokerSyncing, brokerSyncError, persistenceError, positionCount,
+    openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
+    setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportHeight, continueAccount,
+    offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
+  };
+}
+
+export function OnboardingWizard(props: OnboardingWizardProps) {
+  const {
+    helpFocused, stage, progress, notificationDismissShortcut, finish, notificationActionShortcut,
+    saveProgressInBackground, colors, commandBarShortcut, selectedBrokerId, brokerOptions, portfolioSub,
+    sectionAvailability, goToSection, skipSetup, isFinishing, isBrokerCommitting, desktop, positions,
+    inputRef, editingField, selectedPositionSymbol, brokerChoices, portfolioOptionIdx, setPortfolioOptionIdx,
+    chooseBroker, activeBrokerFields, brokerFieldIdx, brokerSelectIdx, setBrokerSelectIdx, brokerValues,
+    setBrokerFieldValue, isBrokerSyncing, brokerSyncError, persistenceError, positionCount,
+    openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
+    setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportHeight, continueAccount,
+    offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
+  } = useOnboardingWizard(props);
 
   if (helpFocused) {
     return null;

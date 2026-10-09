@@ -1,22 +1,21 @@
-import { type AppConfig, type OnboardingProgress, type OnboardingStage } from "../../types/config";
-import { type BrokerConfigField } from "../../types/broker";
+import type { Dispatch, SetStateAction } from "react";
+import type { AppConfig, OnboardingProgress, OnboardingStage } from "../../types/config";
+import type { BrokerConfigField } from "../../types/broker";
 import { useShortcut, type KeyEventLike } from "../../react/input";
 import { matchKeybinding, matchesKeybindingAction, type ResolvedKeybindings } from "../../app/keybindings";
 import { isPlainKey } from "../../utils/keyboard";
 import { isCopyShortcut, isPasteShortcut } from "../../utils/selection-clipboard";
-import { type CloudBillingInterval } from "../../plugins/builtin/account-management/model";
-import { usePlanAccess } from "../../api-client/plan-access";
-import { type ListViewItem } from "../ui";
-import { type PortfolioSub } from "./onboarding-steps";
+import type { CloudBillingInterval } from "../../plugins/builtin/account-management/model";
+import type { usePlanAccess } from "../../api-client/plan-access";
+import type { ListViewItem } from "../ui";
+import type { PortfolioSub } from "./onboarding-steps";
 import { BROKER_GUIDE_KEY } from "./portfolio-step/broker-setup-panel";
 import { REMOVE_POSITION_KEY } from "./portfolio-step/positions-panel";
-import { type OnboardingSectionId } from "./onboarding-frame";
-import { useOnboardingAccount } from "./wizard-account";
-import { POSITION_FIELDS, useOnboardingPositions } from "./wizard-positions";
+import type { OnboardingSectionId } from "./onboarding-frame";
+import type { useOnboardingAccount } from "./wizard-account";
+import { POSITION_FIELDS, type useOnboardingPositions } from "./wizard-positions";
 import { toggleDeskChoice } from "./desks-step";
 import { DESKS, type DeskKey } from "../../layout/desks";
-import type { Dispatch, SetStateAction } from "react";
-
 
 /**
  * Card keys, shown on the buttons they press. Letters only act while no field
@@ -51,6 +50,7 @@ export function keyReachesPastOnboardingModal(event: KeyEventLike, keybindings: 
   }
   return action === "help";
 }
+
 export function useOnboardingKeyboard({
   stage, progress, account, helpFocused, editingField, isBrokerCommitting, planAccess, continueFree, finish,
   sectionAvailability, goToSection, portfolioSub, positions, setEditingField, positionCount,
@@ -103,7 +103,6 @@ export function useOnboardingKeyboard({
   commandBarOpen: boolean;
   saveProgressInBackground: (patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">, baseConfig?: AppConfig | undefined) => void;
 }) {
-
   const activeSection: OnboardingSectionId = stage === "portfolio" || stage === "desks"
     ? "portfolio"
     : stage === "upgrade" || (stage === "ready" && progress.accountStatus === "signed-in")

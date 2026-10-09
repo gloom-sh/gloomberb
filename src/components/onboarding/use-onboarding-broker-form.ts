@@ -1,18 +1,25 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { buildBrokerDirectory } from "../../brokers/directory";
 import { getSignedInBrokers, refreshSignedInBrokers, subscribeSignedInBrokers } from "../../brokers/signed-in/catalog";
 import { SIGNED_IN_BROKER_TYPE } from "../../brokers/signed-in/profile";
 import { resolveBrokerConfigFields, type BrokerConfigField } from "../../types/broker";
-import { useRendererHost } from "../../ui";
+import type { useRendererHost } from "../../ui";
 import { tf } from "../../i18n";
-import { useAppLanguage } from "../../i18n/react";
+import type { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
-import { type ListViewItem } from "../ui";
-import { type PortfolioSub } from "./onboarding-steps";
+import type { ListViewItem } from "../ui";
+import type { PortfolioSub } from "./onboarding-steps";
 import { brokerSetupGuideUrl } from "./portfolio-step/broker-setup-panel";
-import { useOnboardingBrokerSync } from "./wizard-broker-sync";
+import type { useOnboardingBrokerSync } from "./wizard-broker-sync";
 import { getConnectableBrokerOptions, type BrokerOption } from "./wizard-model";
-import type { Dispatch, SetStateAction } from "react";
 
 export function useOnboardingBrokerFields({
   pluginRegistry, language,
@@ -20,7 +27,6 @@ export function useOnboardingBrokerFields({
   pluginRegistry: PluginRegistry;
   language: ReturnType<typeof useAppLanguage>;
 }) {
-
   const [portfolioSub, setPortfolioSub] = useState<PortfolioSub>("positions");
   const [portfolioOptionIdx, setPortfolioOptionIdx] = useState(0);
   const [brokerValues, setBrokerValues] = useState<Record<string, Record<string, string>>>({});
@@ -32,9 +38,6 @@ export function useOnboardingBrokerFields({
     if (pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
   }, [pluginRegistry.brokers]);
   const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
-  // Enter inside every form is handled once, by the shortcut below: the
-  // fields deliberately get no onSubmit, because the host input fires it in
-  // the same keystroke and the two paths used to submit twice.
   const brokerOptions = useMemo(
     (): BrokerOption[] => getConnectableBrokerOptions(buildBrokerDirectory({
       signedIn: signedInBrokers,
@@ -94,7 +97,6 @@ export function useOnboardingBrokerForm({
   brokerSyncError: string | null;
   rendererHost: ReturnType<typeof useRendererHost>;
 }) {
-
   useEffect(() => {
     if (!selectedBrokerId) return;
     const field = activeBrokerFields[brokerFieldIdx];

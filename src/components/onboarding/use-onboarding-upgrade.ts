@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiClient } from "../../api-client";
-import { type AppConfig, type OnboardingProgress, type OnboardingStage } from "../../types/config";
+import type { AppConfig, OnboardingProgress, OnboardingStage } from "../../types/config";
 import { useAppActive } from "../../state/app/activity";
 import { chatController } from "../../plugins/builtin/chat/controller";
-import { type CloudBillingInterval } from "../../plugins/builtin/account-management/model";
+import type { CloudBillingInterval } from "../../plugins/builtin/account-management/model";
 import { loadUpgradeOffer, type UpgradeOffer } from "../../plugins/builtin/cloud/upgrade-dialog";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
 import { usePlanAccess } from "../../api-client/plan-access";
