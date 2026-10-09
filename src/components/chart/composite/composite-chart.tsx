@@ -1,3 +1,5 @@
+import { CHART_TOOL_MENU, KEYBOARD_TOOL_HINTS, ARMED_TOOL_BY_INTERACTION } from "./tool-catalog";
+import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
 import { useCompositePanelBitmap } from "./panel-bitmap";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AsciiText, Box, ChartSurface, ScrollBox, Text, useNativeRenderer, useUiCapabilities, type BoxRenderable, type ChartSurfaceProps, type ScrollBoxRenderable } from "../../../ui";
@@ -171,72 +173,6 @@ function compositeAxisLabelWidth(
 }
 
 
-const HAND_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M6.4 8V3.5a1.15 1.15 0 0 1 2.3 0V7m0-.6a1.15 1.15 0 0 1 2.3 0V8m0-.5a1.15 1.15 0 0 1 2.3 0v3.1c0 2.1-1.7 3.8-3.8 3.8H8.9c-1.2 0-2.3-.6-3-1.6L3.6 9.4a1.15 1.15 0 0 1 1.8-1.4L6.4 9.2" fill="none" stroke="#000" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const RULER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="1.4" y="4.6" width="13.2" height="6.8" rx="1.4" fill="none" stroke="#000" stroke-width="1.4"/><path d="M5 4.6v2.6M8 4.6v3.6M11 4.6v2.6" stroke="#000" stroke-width="1.3" stroke-linecap="round"/></svg>`;
-const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.4 13.6 4 9.9 10.6 3.3a1.6 1.6 0 0 1 2.3 0l0 0a1.6 1.6 0 0 1 0 2.3L6.2 12 2.4 13.6Z" fill="none" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
-const LINE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3.2 12.8 12.8 3.2" stroke="#000" stroke-width="1.6" stroke-linecap="round"/><circle cx="3.2" cy="12.8" r="2" fill="none" stroke="#000" stroke-width="1.4"/><circle cx="12.8" cy="3.2" r="2" fill="none" stroke="#000" stroke-width="1.4"/></svg>`;
-const LEVEL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M1.6 8h4.2M10.2 8h4.2" stroke="#000" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="8" r="2.2" fill="none" stroke="#000" stroke-width="1.4"/></svg>`;
-const MARQUEE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.2 6V3.4a1.2 1.2 0 0 1 1.2-1.2H6M10 2.2h2.6a1.2 1.2 0 0 1 1.2 1.2V6M13.8 10v2.6a1.2 1.2 0 0 1-1.2 1.2H10M6 13.8H3.4a1.2 1.2 0 0 1-1.2-1.2V10" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round"/></svg>`;
-
-const CHART_TOOLS: ReadonlyArray<{
-  /** null is the resting state: the pointer pans and nothing is armed. */
-  kind: ChartToolKind | null;
-  label: string;
-  shortcut: string;
-  hint: string;
-  glyph: string;
-  icon: string;
-}> = [
-  {
-    kind: null,
-    label: "Pan",
-    shortcut: "Esc",
-    hint: "Drag to move through time, the resting state of the pointer",
-    glyph: "\u2725",
-    icon: HAND_ICON,
-  },
-  {
-    kind: "measure",
-    label: "Ruler",
-    shortcut: "Shift+M",
-    hint: "Drag to measure change, percent, bars, and elapsed time",
-    glyph: "\u2194",
-    icon: RULER_ICON,
-  },
-  {
-    kind: "zoom",
-    label: "Zoom to range",
-    shortcut: "Shift+Z",
-    hint: "Drag to select a time range to zoom into",
-    glyph: "\u229e",
-    icon: MARQUEE_ICON,
-  },
-  {
-    kind: "line",
-    label: "Trend line",
-    shortcut: "Shift+D",
-    hint: "Drag a straight line, grab an end to reshape it, Backspace deletes",
-    glyph: "\u2571",
-    icon: LINE_ICON,
-  },
-  {
-    kind: "pencil",
-    label: "Freehand",
-    shortcut: "Shift+P",
-    hint: "Draw freehand, drag a shape to move it, Backspace deletes",
-    glyph: "\u223f",
-    icon: PEN_ICON,
-  },
-  {
-    kind: "level",
-    label: "Price level",
-    shortcut: "Shift+H",
-    hint: "Click to add a level every chart of this ticker shows, drag one to move it, Backspace deletes",
-    glyph: "\u2550",
-    icon: LEVEL_ICON,
-  },
-];
-
 interface ChartToolSpan {
   startXRatio: number;
   endXRatio: number;
@@ -244,29 +180,6 @@ interface ChartToolSpan {
   startTime: number;
   color: string;
 }
-
-/** Pane menu names for the tools, with the keys that pick them. */
-const CHART_TOOL_MENU: ReadonlyArray<{ kind: ChartToolKind; label: string; accelerator: string }> = [
-  { kind: "measure", label: "Ruler", accelerator: "Shift+M" },
-  { kind: "zoom", label: "Zoom to Range", accelerator: "Shift+Z" },
-  { kind: "line", label: "Trend Line", accelerator: "Shift+D" },
-  { kind: "pencil", label: "Freehand", accelerator: "Shift+P" },
-  { kind: "level", label: "Price Level", accelerator: "Shift+H" },
-];
-
-/** What Enter does next with a tool in hand, for the footer and the pane menu. */
-const KEYBOARD_TOOL_HINTS: Record<ChartToolKind, {
-  start: string;
-  startTitle: string;
-  finish: string;
-  finishTitle: string;
-}> = {
-  measure: { start: "measure", startTitle: "Start Measure", finish: "done", finishTitle: "Finish Measure" },
-  zoom: { start: "select", startTitle: "Select Range", finish: "zoom", finishTitle: "Zoom to Range" },
-  line: { start: "draw", startTitle: "Draw Line", finish: "place", finishTitle: "Place Line" },
-  pencil: { start: "draw", startTitle: "Draw Freehand", finish: "place", finishTitle: "Place Drawing" },
-  level: { start: "add level", startTitle: "Add Level", finish: "add level", finishTitle: "Add Level" },
-};
 
 /**
  * A tool placed from the keyboard: Enter anchors it at the cursor, the arrows
@@ -291,14 +204,6 @@ interface KeyboardToolDrag {
   start: ChartDrawingPoint;
   end: ChartDrawingPoint;
 }
-
-const ARMED_TOOL_BY_INTERACTION = {
-  "arm-measure": "measure",
-  "arm-zoom": "zoom",
-  "arm-line": "line",
-  "arm-pencil": "pencil",
-  "arm-level": "level",
-} as const satisfies Record<string, ChartToolKind>;
 
 const COMPOSITE_PANEL_ROLE = "composite-chart-panel";
 
@@ -339,70 +244,6 @@ function isShiftedLetter(event: { name?: string; shift?: boolean; ctrl?: boolean
   return event.name === letter.toUpperCase() || (event.shift === true && event.name === letter);
 }
 
-/** Icon cells plus the gap between chips. */
-const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1);
-
-function ChartToolChip({
-  tool,
-  active,
-  isDesktopWeb,
-  onPress,
-}: {
-  tool: (typeof CHART_TOOLS)[number];
-  active: boolean;
-  isDesktopWeb: boolean;
-  onPress: () => void;
-}) {
-  const label = `${tool.label} (${tool.shortcut}). ${tool.hint}`;
-  const color = active ? themeColors.text : themeColors.textDim;
-  return (
-    <Box
-      flexDirection="row"
-      alignItems="center"
-      justifyContent="center"
-      width={3}
-      height={1}
-      flexShrink={0}
-      backgroundColor={active ? themeColors.selected : undefined}
-      hoverBackgroundColor={hoverBg()}
-      onMouseDown={(event: ChartMouseEvent) => {
-        consumeChartMouseEvent(event);
-        onPress();
-      }}
-      cursor="pointer"
-      data-gloom-interactive="true"
-      data-gloom-role="composite-chart-tool"
-      data-gloom-label={label}
-      data-active={active ? "true" : "false"}
-      title={isDesktopWeb ? label : undefined}
-      // Cells size the terminal strip; the desktop chip sizes to its icon.
-      style={isDesktopWeb ? { width: "auto", paddingInline: 4, borderRadius: 4 } : undefined}
-    >
-      {isDesktopWeb ? (
-        <Box
-          flexShrink={0}
-          style={{
-            width: 13,
-            height: 13,
-            backgroundColor: color,
-            maskImage: svgMaskUrl(tool.icon),
-            WebkitMaskImage: svgMaskUrl(tool.icon),
-            maskSize: "contain",
-            WebkitMaskSize: "contain",
-            maskRepeat: "no-repeat",
-            WebkitMaskRepeat: "no-repeat",
-            maskPosition: "center",
-            WebkitMaskPosition: "center",
-          }}
-        />
-      ) : (
-        <Text fg={color}>{tool.glyph}</Text>
-      )}
-    </Box>
-  );
-}
-
-
 /** Blurs a focused text field, the focus change a consumed mousedown prevents. */
 function releaseEditableFocus(event: ChartMouseEvent): void {
   if (!event.target?.closest?.(`[data-gloom-role="${COMPOSITE_PANEL_ROLE}"]`)) return;
@@ -412,123 +253,6 @@ function releaseEditableFocus(event: ChartMouseEvent): void {
   const tag = active?.tagName?.toUpperCase();
   if (tag !== "INPUT" && tag !== "TEXTAREA") return;
   active?.blur?.();
-}
-
-function svgMaskUrl(svg: string): string {
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-}
-
-function ChartColorSwatch({
-  color,
-  active,
-  isDesktopWeb,
-  onPress,
-}: {
-  color: string;
-  active: boolean;
-  isDesktopWeb: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Box
-      flexDirection="row"
-      alignItems="center"
-      justifyContent="center"
-      width={2}
-      height={1}
-      flexShrink={0}
-      backgroundColor={active ? themeColors.selected : undefined}
-      hoverBackgroundColor={hoverBg()}
-      onMouseDown={(event: ChartMouseEvent) => {
-        consumeChartMouseEvent(event);
-        onPress();
-      }}
-      cursor="pointer"
-      data-gloom-interactive="true"
-      data-gloom-role="composite-chart-color"
-      data-gloom-label={`Drawing colour ${color}`}
-      data-active={active ? "true" : "false"}
-      style={isDesktopWeb
-        ? {
-          width: 14,
-          height: 14,
-          borderRadius: 999,
-          backgroundColor: color,
-          border: `1.5px solid ${active ? themeColors.text : "transparent"}`,
-        }
-        : undefined}
-    >
-      {isDesktopWeb ? null : <Text fg={color}>{active ? "\u25c9" : "\u25cf"}</Text>}
-    </Box>
-  );
-}
-
-function ChartToolbar({
-  armedTool,
-  isDesktopWeb,
-  left,
-  top,
-  drawColor,
-  showColors,
-  levelTool,
-  onArmTool,
-  onPickColor,
-}: {
-  armedTool: ChartToolKind | null;
-  isDesktopWeb: boolean;
-  left: number;
-  top: number;
-  drawColor: string;
-  showColors: boolean;
-  /** The chart's levels can be edited here. */
-  levelTool: boolean;
-  onArmTool: (tool: ChartToolKind | null) => void;
-  onPickColor: (color: string) => void;
-}) {
-  return (
-    <Box
-      position="absolute"
-      left={left}
-      top={top}
-      height={1}
-      flexDirection="row"
-      gap={1}
-      zIndex={30}
-      backgroundColor={themeColors.bg}
-      style={isDesktopWeb
-        ? {
-          gap: 3,
-          padding: 3,
-          borderRadius: 7,
-          backgroundColor: `color-mix(in srgb, ${themeColors.bg} 78%, transparent)`,
-          backdropFilter: "blur(6px)",
-          width: "auto",
-          height: "auto",
-        }
-        : undefined}
-      data-gloom-role="composite-chart-toolbar"
-    >
-      {CHART_TOOLS.filter((tool) => levelTool || tool.kind !== "level").map((tool) => (
-        <ChartToolChip
-          key={tool.kind ?? "pan"}
-          tool={tool}
-          active={armedTool === tool.kind}
-          isDesktopWeb={isDesktopWeb}
-          onPress={() => onArmTool(tool.kind)}
-        />
-      ))}
-      {/* Colours only take space while something can use them. */}
-      {showColors ? CHART_DRAWING_COLORS.map((color) => (
-        <ChartColorSwatch
-          key={color}
-          color={color}
-          active={color === drawColor}
-          isDesktopWeb={isDesktopWeb}
-          onPress={() => onPickColor(color)}
-        />
-      )) : null}
-    </Box>
-  );
 }
 
 function resolveSeriesCursorYRatio(
