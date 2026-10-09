@@ -9,6 +9,7 @@ import { Box, Text } from "../../../../ui";
 import { makeAccountProfile } from "../test-harness";
 import { useChatProfilePopover } from "../profile-popover";
 import {
+  PROFILE_POPOVER_CLOSE_DELAY_MS,
   hasPublicChatProfileInfo,
   shouldOfferChatProfileSetup,
 } from "./profile-popover";
@@ -73,7 +74,7 @@ describe("profile popover", () => {
     const run = async (action: (hook: ProfilePopoverHook) => void) => {
       await act(async () => {
         action(popover!);
-        await new Promise((resolve) => setTimeout(resolve, 60));
+        await new Promise((resolve) => setTimeout(resolve, PROFILE_POPOVER_CLOSE_DELAY_MS + 20));
       });
       await act(async () => {
         await tui.setup().renderOnce();

@@ -5,8 +5,13 @@ import { colors } from "../../../../theme/colors";
 import type { ChatUserSummary, PublicPortfolioAnalytics } from "../../../../api-client";
 import { displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
+import type { ChatUserAnchor } from "./types";
 
-export const PROFILE_POPOVER_CLOSE_DELAY_MS = 40;
+/**
+ * How long a card the pointer left stays: long enough to move from the name
+ * onto the card beside it, whose own hover then keeps it open.
+ */
+export const PROFILE_POPOVER_CLOSE_DELAY_MS = 250;
 
 function hasPortfolioAnalytics(analytics: PublicPortfolioAnalytics | null | undefined): boolean {
   return Boolean(
@@ -155,6 +160,7 @@ function NameCardRow({ user, width }: { user: ChatUserSummary; width: number }) 
 
 export function UserProfilePopover({
   user,
+  anchor = null,
   width,
   onClose,
   onDismiss = onClose,
@@ -165,11 +171,18 @@ export function UserProfilePopover({
   messageRefusal,
 }: {
   user: ChatUserSummary;
+  /**
+   * The name or @mention it opened from. The desktop and the web place the
+   * card just below it, or above it near the pane's foot; without one, and in
+   * the terminal, it sits in the pane's top-right corner.
+   */
+  anchor?: ChatUserAnchor;
   width: number;
   /** The pointer left the card. */
   onClose: () => void;
   /** A click outside the card or Esc closes it, even a pinned one. */
   onDismiss?: () => void;
+  /** The pointer came onto the card: it stays open while it is used. */
   onKeepOpen: () => void;
   isOwnProfile?: boolean;
   onSetUpProfile?: () => void;
@@ -248,20 +261,26 @@ export function UserProfilePopover({
   );
 
   if (nativePaneChrome) {
-    // The kit popover, anchored to the chat pane's top-right corner where the
-    // terminal card sits. It stays open while the pointer is over it.
+    // The kit popover, beside the name it opened from so the pointer reaches
+    // it in one short move, and inside the pane. Opened with no name (the
+    // keyboard on a message that is not on screen), it takes the pane's
+    // top-right corner like the terminal card. It stays open while pointed at.
     return (
       <Box position="absolute" top={1} right={2} width={1} height={0}>
         <Popover
           open
           onOpenChange={(open) => { if (!open) onDismiss(); }}
           trigger={<Box width={1} height={0} />}
-          placement="bottom-end"
+          anchor={anchor}
+          boundary="pane"
+          placement={anchor ? "bottom-start" : "bottom-end"}
           minWidth={0}
           focusOnOpen={false}
           label="User profile"
+          onPointerEnter={onKeepOpen}
+          onPointerLeave={onClose}
         >
-          <Box flexDirection="column" width={headerWidth} onMouseMove={onKeepOpen} onMouseOut={onClose}>
+          <Box flexDirection="column" width={headerWidth}>
             {content}
           </Box>
         </Popover>
@@ -280,6 +299,7 @@ export function UserProfilePopover({
       border
       borderColor={colors.borderFocused}
       paddingX={1}
+      onMouseOver={onKeepOpen}
       onMouseMove={onKeepOpen}
       onMouseOut={onClose}
       style={{ zIndex: 4 }}

@@ -1,4 +1,5 @@
-import { Box, Text, useUiCapabilities } from "../../../../ui";
+import { useRef } from "react";
+import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
@@ -83,13 +84,16 @@ export function ChatMessageHeader({
 }) {
   const authorLabel = msg.user.username ?? "anon";
   const { nativeContextMenu } = useUiCapabilities();
+  // The card opens beside the name the pointer is on.
+  const nameRef = useRef<BoxRenderable | null>(null);
   return (
     <Box {...rowProps} flexDirection="row" height={1} paddingLeft={1}>
       <Box
+        ref={nameRef}
         width={fitAuthorWidth ? authorLabel.length : undefined}
         height={1}
-        onMouseOver={() => onUserHover(msg.user)}
-        onMouseMove={() => onUserHover(msg.user)}
+        onMouseOver={() => onUserHover(msg.user, nameRef.current)}
+        onMouseMove={() => onUserHover(msg.user, nameRef.current)}
         onMouseOut={onUserHoverEnd}
         data-gloom-context-menu-surface="true"
         onMouseDown={(event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
@@ -97,9 +101,9 @@ export function ChatMessageHeader({
           event.stopPropagation?.();
           // A native menu opens on the right-click's contextmenu event instead.
           if (event.button === 2 && nativeContextMenu === true) return;
-          onUserActivate?.(msg.user);
+          onUserActivate?.(msg.user, nameRef.current);
         }}
-        onContextMenu={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event)}
+        onContextMenu={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event, nameRef.current)}
         style={{ cursor: "pointer" }}
       >
         <Text fg={state.authorColor} attributes={state.authorAttributes}>

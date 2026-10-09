@@ -1214,7 +1214,7 @@ Table header labels are uppercased by the kit; `SectionHeading` titles use title
 
 A pane that computes an answer from inputs (a calculator, a sizer) puts its mode switches in a `QueryBar` (inline filters) and its inputs in a `FieldGrid`: one aligned sheet of label, value and unit cells. The pane owns which field is active; while one is being edited the grid walks its cells with Tab and leaves on Esc. Icon-only actions use `IconButton` with a name from the shared icon set; never draw an SVG or glyph button yourself.
 
-Every menu, dropdown and pop-up list uses `MenuPopover` (or `Menu` inside a `Popover`): filter menus, select fields, multi-selects, suggestions and the pane menu share one look and keyboard model. There is no other floating surface; extend these rather than positioning an absolute box.
+Every menu, dropdown and pop-up list uses `MenuPopover` (or `Menu` inside a `Popover`): filter menus, select fields, multi-selects, suggestions and the pane menu share one look and keyboard model. There is no other floating surface; extend these rather than positioning an absolute box. A card that opens beside something on the page, such as a name under the pointer, passes that element's `Box` ref as the `Popover`'s `anchor` (below it, above it when there is no room, `boundary="pane"` to stay inside the pane) and keeps itself open with `onPointerEnter` and `onPointerLeave`.
 
 `PaneStatusBody` replaces the body only when the caller passes a loading, error, or empty state. Preserve existing data during refresh by passing `loading={loading && !data}` and `error={!data ? error : null}`. Use `Notice` for inline refresh errors. It supports centered states, custom loading labels, and retry `actions`:
 
