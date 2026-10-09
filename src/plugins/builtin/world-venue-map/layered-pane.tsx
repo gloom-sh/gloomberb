@@ -53,6 +53,7 @@ import {
   formatGeoValue,
   formatTickerLinks,
   isChangeColumn,
+  LAYERS_SETTING_KEY,
   readVenuesSetting,
   sameGeoView,
   tickerLinkKey,
@@ -71,6 +72,8 @@ interface LayeredMapViewProps extends PaneProps {
   layers: GeoLayerInfo[];
   /** The layer ids or groups the pane was asked for. */
   tokens: readonly string[];
+  /** A plain MAP: venues show unless the pane turned them off. */
+  plain?: boolean;
 }
 
 interface OpenEntity {
@@ -165,7 +168,7 @@ const SelectedEntityHeader = memo(function SelectedEntityHeader({
   );
 });
 
-export function LayeredMapView({ focused, width, height, layers, tokens }: LayeredMapViewProps) {
+export function LayeredMapView({ focused, width, height, layers, tokens, plain = false }: LayeredMapViewProps) {
   const colors = useThemeColors();
   const dark = relativeLuminance(colors.text) > relativeLuminance(colors.bg);
   const { nativePaneChrome } = useUiCapabilities();
@@ -174,7 +177,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens }: Layer
   const { hasProAccess } = usePlanAccess();
   const upgrade = useCloudUpgradeAction("map-layers");
   const [venuesSetting] = usePaneSettingValue<boolean | undefined>(VENUES_SETTING_KEY, undefined);
-  const venuesOn = readVenuesSetting({ [VENUES_SETTING_KEY]: venuesSetting }, layers.length);
+  const venuesOn = readVenuesSetting(plain ? { [VENUES_SETTING_KEY]: venuesSetting } : { [VENUES_SETTING_KEY]: venuesSetting, [LAYERS_SETTING_KEY]: tokens }, layers.length);
   const { data: venueData } = useAsyncResource(venuesOn ? loadWorldVenues : null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {

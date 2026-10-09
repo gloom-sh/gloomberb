@@ -138,9 +138,13 @@ export function tilesInView(tiles: readonly DetailTile[], view: GeoBox, margin =
   return tiles.filter(({ box }) => box[0] < east && box[2] > west && box[1] < north && box[3] > south);
 }
 
+/** A country name at its label point, with the web-map zoom it first shows at and its rank. */
+export type CountryLabel = readonly [name: string, longitude: number, latitude: number, minZoom: number, rank: number];
+
 /** What `natural-earth/index.chunk.ts` exports. */
 interface BasemapIndex {
   loadWorld: () => Promise<BasemapChunk>;
+  loadLabels: () => Promise<{ COUNTRY_LABELS: readonly CountryLabel[] }>;
   DETAIL_TILES: readonly DetailTile[];
 }
 
@@ -173,6 +177,20 @@ export function loadWorldBasemap(): Promise<BasemapPaths> {
       throw error;
     });
   return worldPaths;
+}
+
+let countryLabels: Promise<readonly CountryLabel[]> | null = null;
+
+/** Country names, most prominent first; a lazy chunk like the land. */
+export function loadCountryLabels(): Promise<readonly CountryLabel[]> {
+  countryLabels ??= loadIndex()
+    .then((index) => index.loadLabels())
+    .then((chunk) => chunk.COUNTRY_LABELS)
+    .catch((error: unknown) => {
+      countryLabels = null;
+      throw error;
+    });
+  return countryLabels;
 }
 
 export function loadDetailIndex(): Promise<readonly DetailTile[]> {

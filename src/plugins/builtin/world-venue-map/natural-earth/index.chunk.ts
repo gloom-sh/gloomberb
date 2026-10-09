@@ -4,6 +4,9 @@ import type { DetailTile } from "../basemap";
 /** @knipignore Loaded through the map's data specifier, which only view builds define (see ../basemap.ts). */
 export const loadWorld = () => import("./world-50m.chunk.js");
 
+/** @knipignore Loaded through the map's data specifier, which only view builds define (see ../basemap.ts). */
+export const loadLabels = () => import("./labels.chunk.js");
+
 export const DETAIL_TILES: readonly DetailTile[] = [
   { id: "w090s60", box: [-90.005, -60, -74.995, -44.995], load: () => import("./tiles/w090s60.chunk.js") },
   { id: "w075s60", box: [-75.005, -60, -59.995, -44.995], load: () => import("./tiles/w075s60.chunk.js") },

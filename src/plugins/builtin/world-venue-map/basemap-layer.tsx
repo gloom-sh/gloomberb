@@ -24,6 +24,8 @@ export interface BasemapPalette {
   land: string;
   coast: string;
   border: string;
+  /** Country names. */
+  label: string;
 }
 
 interface BasemapLayerProps {

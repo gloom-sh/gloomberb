@@ -1,21 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import type { GeoLayerInfo } from "../../../api-client/geo";
 import {
+  activeLayerTokens,
   applyMapSetting,
   buildMapSettingsDef,
   geoViewForViewport,
   LAYERS_SETTING_KEY,
   parseMapPreset,
+  readVenuesSetting,
   resolveActiveLayers,
   VENUES_SETTING_KEY,
   WORLD_GEO_VIEW,
 } from "./layers";
 import { DEFAULT_WORLD_MAP_VIEWPORT } from "./model";
 
-function layer(id: string, group: string, cadence: GeoLayerInfo["cadence"] = "static"): GeoLayerInfo {
+function layer(id: string, group: string, cadence: GeoLayerInfo["cadence"] = "static", extra: Partial<GeoLayerInfo> = {}): GeoLayerInfo {
   return {
     id, name: id, group, geometry: "point", cadence, refreshSeconds: cadence === "live" ? 30 : null, asOf: null, count: null,
-    status: "ok", access: "free", columns: [{ key: "label", label: "Name" }], series: [], defaultVisible: false,
+    status: "ok", access: "free", columns: [{ key: "label", label: "Name" }], series: [], defaultVisible: false, ...extra,
   };
 }
 
@@ -36,6 +38,8 @@ describe("map layers", () => {
     expect(parseMapPreset("ships")).toEqual({ layers: ["ships"], venues: false });
     expect(parseMapPreset("ports, airports venues")).toEqual({ layers: ["ports", "airports"], venues: true });
     expect(parseMapPreset("  ")).toBeNull();
+    // One word keeps the venue map without layers.
+    expect(parseMapPreset("venues")).toEqual({ layers: [], venues: true });
 
     expect(resolveActiveLayers(["energy"], catalog).map((entry) => entry.id)).toEqual(["pipelines", "oil-gas-fields", "terminals"]);
     expect(resolveActiveLayers(["ships"], catalog).map((entry) => entry.id)).toEqual(["chokepoints", "vessels", "tankers-live"]);
@@ -80,5 +84,34 @@ describe("map layers", () => {
     expect(east - west).toBeLessThan(120);
     // Edges snap to half degrees, so small pans reuse the same request.
     expect(view.bbox.every((edge) => Number.isInteger(edge * 2))).toBe(true);
+  });
+
+  test("a plain MAP shows venues under the server's default layers; a chosen map keeps what it chose", () => {
+    const withDefaults = [
+      layer("chokepoints", "ships", "daily", { defaultVisible: true }),
+      layer("vessels", "ships", "live", { defaultVisible: true }),
+      layer("flights", "air", "live", { defaultVisible: true }),
+      layer("ports", "ports", "daily", { defaultVisible: true, status: "unavailable" }),
+    ];
+    // At most two defaults, never one that cannot serve.
+    expect(activeLayerTokens({}, withDefaults)).toEqual(["chokepoints", "vessels"]);
+    expect(readVenuesSetting({}, 2)).toBe(true);
+    // Without a catalog, or with no defaults, the plain map is the venue map.
+    expect(activeLayerTokens({}, null)).toEqual([]);
+    expect(activeLayerTokens({}, catalog)).toEqual([]);
+    // Saved choices stay as they were: a preset, `MAP venues`, a picker edit.
+    expect(activeLayerTokens({ [LAYERS_SETTING_KEY]: ["ships"], [VENUES_SETTING_KEY]: false }, withDefaults)).toEqual(["ships"]);
+    expect(readVenuesSetting({ [LAYERS_SETTING_KEY]: ["ships"], [VENUES_SETTING_KEY]: false }, 2)).toBe(false);
+    expect(activeLayerTokens({ [LAYERS_SETTING_KEY]: [], [VENUES_SETTING_KEY]: true }, withDefaults)).toEqual([]);
+    expect(activeLayerTokens({ [VENUES_SETTING_KEY]: true }, withDefaults)).toEqual([]);
+
+    // The picker shows what a plain map draws, and the first edit writes it down.
+    const def = buildMapSettingsDef({}, withDefaults)!;
+    expect(def.values?.["layers:ships"]).toEqual(["chokepoints", "vessels"]);
+    expect(def.values?.[VENUES_SETTING_KEY]).toBe(true);
+    expect(applyMapSetting({}, VENUES_SETTING_KEY, false, withDefaults))
+      .toEqual({ [LAYERS_SETTING_KEY]: ["chokepoints", "vessels"], [VENUES_SETTING_KEY]: false });
+    expect(applyMapSetting({}, "layers:ships", ["chokepoints"], withDefaults))
+      .toEqual({ [LAYERS_SETTING_KEY]: ["chokepoints"], [VENUES_SETTING_KEY]: true });
   });
 });

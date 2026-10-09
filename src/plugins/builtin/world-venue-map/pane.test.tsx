@@ -74,4 +74,16 @@ describe("world map layers", () => {
     expect(frame).toContain("ZIM");
     expect(frame).not.toContain("XNYS");
   });
+
+  test("a plain MAP opens the world map with the default layers; `MAP venues` stays the venue map", async () => {
+    serve("fixture");
+    await mount({});
+    const plain = await tui.waitForFrameToContain("Suez Canal");
+    expect(plain).toContain("CHOKEPOINT");
+
+    await mount({ layers: [], venues: true });
+    const venuesOnly = await tui.waitForFrameToContain("XNYS");
+    expect(venuesOnly).toContain("VENUE");
+    expect(venuesOnly).not.toContain("Suez Canal");
+  });
 });

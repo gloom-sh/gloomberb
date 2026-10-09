@@ -220,7 +220,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `TBO` | TheBuildout infrastructure intelligence |
 | `CG` | Congress trading disclosures |
 | `WEI` | Global equity indices |
-| `MAP` | Live world venue map with local market status and clocks |
+| `MAP` | World map with trading venues, country names and layers (`MAP venues` for venues alone) |
 | `TAS <ticker>` | Time and sales: trade prints, observed-window VWAP and large prints |
 | `QR <ticker>` | Quote recap: NBBO history with sizes, venues and spread (the same pane on its NBBO tab) |
 | `EM <ticker>` / `EEO <ticker>` | EPS estimate revisions, current analyst breadth and surprises; `--period YYYY-MM-DD --frequency quarterly` pins a fiscal period |
