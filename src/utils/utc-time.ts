@@ -48,14 +48,14 @@ export function parseReportTime(value: unknown): ReportTime | null {
 }
 
 /**
- * `2026-10-09 00:08 UTC`. A date-only value, or an instant at exactly UTC
- * midnight (how daily observations are stamped), prints as `2026-10-09`.
+ * `2026-10-09 00:08 UTC`. Only an explicitly date-only value prints
+ * as `2026-10-09`; midnight instants keep their time and zone.
  */
 export function formatUtcTime(value: ReportTime | Date | number | string): string {
   const parsed = typeof value === "object" && !(value instanceof Date) ? value : parseReportTime(value);
   if (!parsed) return typeof value === "string" ? value : "";
   const iso = new Date(parsed.time).toISOString();
-  if (parsed.dateOnly || iso.endsWith("T00:00:00.000Z")) return iso.slice(0, 10);
+  if (parsed.dateOnly) return iso.slice(0, 10);
   return `${iso.slice(0, 16).replace("T", " ")} UTC`;
 }
 

@@ -58,7 +58,7 @@ interface CliResultJsonEnvelope<T> extends CliResult<T> {
 type TextCellContext = "table" | "record";
 
 // Keys whose epoch-millisecond numbers are times rather than counts or prices.
-const TIME_KEY = /(?:At|Time|Timestamp|Updated|AsOf)$|^asOf$/;
+const TIME_KEY = /(?:At|Time|Timestamp|Updated|AsOf)$|^(?:asOf|timestamp)$/;
 const IDENTIFIER_KEY = /^id$|Id$/;
 const KEY_ACRONYMS: Record<string, string> = {
   api: "API",

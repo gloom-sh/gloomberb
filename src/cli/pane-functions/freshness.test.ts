@@ -42,6 +42,48 @@ describe("report freshness", () => {
       .toBe("Source: BLS | As of 2026-09-11 12:30 UTC | Stale (27 days old)");
   });
 
+  test("published-data metadata flags apply only without row flags and can be ignored", () => {
+    const definition = rows({ status: "not-a-feed", basis: "published data" });
+    const old = { observedAt: "2020-01-01" };
+    const resolve = (data: HeadlessPaneResult, ignoreStaleFlags = false) => deriveHeadlessFreshness(
+      { ...definition, freshness: { ...definition.freshness, ignoreStaleFlags } }, data, NOW,
+    );
+    expect(resolve({ rows: [old] }).status).toBe("not-a-feed");
+    expect(resolve({ rows: [old], metadata: { stale: true } }).status).toBe("stale");
+    expect(resolve({ rows: [old], metadata: { stale: true } }, true).status).toBe("not-a-feed");
+    expect(resolve({ rows: [{ ...old, stale: false }], metadata: { stale: true } }).status).toBe("not-a-feed");
+    expect(resolve({ rows: [{ ...old, stale: true }], metadata: { stale: false } }).status).toBe("stale");
+    expect(resolve({ rows: [{ ...old, stale: true }, { ...old, stale: false }], metadata: { stale: true } }))
+      .toMatchObject({ status: "stale", staleCount: 1, observationCount: 2 });
+    expect(resolve({ rows: [{ ...old, stale: true }], metadata: { stale: true } }, true).status).toBe("not-a-feed");
+  });
+
+  test("canonical timestamps are observations and future declarations are not", () => {
+    const timestamp = "2026-10-09T00:00:00Z";
+    for (const value of [timestamp, Date.parse(timestamp), new Date(timestamp)]) {
+      expect(deriveHeadlessFreshness(rows(), { rows: [{ timestamp: value }] }, NOW).asOf).toBe("2026-10-09T00:00:00.000Z");
+      expect(deriveHeadlessFreshness(rows(), { rows: [], metadata: { timestamp: value } }, NOW).asOf).toBe("2026-10-09T00:00:00.000Z");
+    }
+    expect(deriveHeadlessFreshness(rows({ asOf: "2027-01-01", nextExpectedAt: "2027-01-01" }), { rows: [{ timestamp }] }, NOW).asOf)
+      .toBe("2026-10-09T00:00:00.000Z");
+    expect(deriveHeadlessFreshness(rows({ asOf: "2027-01-01" }), { rows: [] }, NOW).asOf).toBeNull();
+    expect(deriveHeadlessFreshness(rows({ asOf: NOW + 60_000 }), { rows: [] }, NOW).asOf).toBe("2026-10-09T05:01:00.000Z");
+  });
+
+  test("receipt and refresh timestamps cannot supersede a price observation", () => {
+    const quoteTime = "2026-10-09T02:00:00Z";
+    const result = { rows: [{ quoteTime, updatedAt: NOW, receivedAt: NOW, generatedAt: NOW }],
+      metadata: { updatedAt: NOW, receivedAt: NOW, generatedAt: NOW } };
+    expect(deriveHeadlessFreshness(rows({ status: "delayed", maxAgeMinutes: 60 }), result, NOW))
+      .toMatchObject({ asOf: "2026-10-09T02:00:00.000Z", status: "stale", ageMinutes: 180 });
+    expect(deriveHeadlessFreshness(rows(), { rows: [{ lastUpdated: Date.parse(quoteTime), receivedAt: NOW }], metadata: { generatedAt: NOW } }, NOW).asOf)
+      .toBe("2026-10-09T02:00:00.000Z");
+    expect(deriveHeadlessFreshness(rows(), { rows: [{ receivedAt: NOW }], metadata: { generatedAt: NOW } }, NOW).asOf).toBeNull();
+    // CRYP's summary as-of is the newest asset quote, not generatedAt; keep genuine summaries.
+    expect(deriveHeadlessFreshness(rows(), { rows: [{ quoteTime }], metadata: { asOf: "2026-10-09T03:00:00Z", generatedAt: NOW } }, NOW).asOf)
+      .toBe("2026-10-09T03:00:00.000Z");
+  });
+
   test("a daily series may lag one completed session and no more", () => {
     const daily = { shape: "series" as const, freshness: { status: "not-a-feed" as const, basis: "daily closes", cadence: "daily" as const } };
     const series = (date: string) => ({ series: [{ id: "spy", label: "SPY", points: [{ date, close: 1 }] }] });

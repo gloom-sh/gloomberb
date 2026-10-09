@@ -87,6 +87,26 @@ describe("headless pane printer", () => {
     });
   });
 
+  test("report rows keep midnight instants while calendar series dates stay short", () => {
+    const definition: HeadlessPaneDefinition<"rows"> = {
+      shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [] }),
+    };
+    const result: HeadlessRowsResult = { rows: [
+      { name: "Date", observedAt: new Date("2026-10-09T00:00:00Z") },
+      { name: "ISO", observedAt: "2026-10-09T00:00:00Z" },
+      { name: "Calendar", observedAt: "2026-10-09" },
+    ] };
+    const lines = renderHeadlessPaneText(definition, result, args, "Times").split("\n");
+    expect(lines.find((line) => line.startsWith("Date"))).toContain("2026-10-09 00:00 UTC");
+    expect(lines.find((line) => line.startsWith("ISO"))).toContain("2026-10-09 00:00 UTC");
+    expect(lines.find((line) => line.startsWith("Calendar"))?.trim()).toEndWith("2026-10-09");
+    const series: HeadlessPaneDefinition<"series"> = {
+      shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }),
+    };
+    const text = renderHeadlessPaneText(series, { series: [{ id: "daily", label: "Daily", points: [{ date: "2026-10-09", close: 1 }] }] }, args, "Series");
+    expect(text.split("\n").find((line) => line.startsWith("Daily"))).not.toContain("UTC");
+  });
+
   test("renders bundle row and entry sections", () => {
     const definition: HeadlessPaneDefinition<"bundle"> = {
       shape: "bundle",

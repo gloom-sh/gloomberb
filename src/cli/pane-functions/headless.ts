@@ -24,6 +24,7 @@ import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
+import { formatUtcTime } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 
 interface SerializableHeadlessColumn {
@@ -327,8 +328,7 @@ function float32Shortest(value: number): number | null {
 
 function displayTime(time: number): string {
   if (!Number.isFinite(time)) return "-";
-  const iso = new Date(time).toISOString();
-  return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : `${iso.slice(0, 16).replace("T", " ")} UTC`;
+  return formatUtcTime(new Date(time));
 }
 
 const CALENDAR_RESOLUTIONS = new Set(["1d", "1wk", "1mo"]);
@@ -340,7 +340,7 @@ function seriesPointDate(series: HeadlessSeries, date: HeadlessSeries["points"][
   const resolved = series as HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis">>;
   return resolved.historyResolution && CALENDAR_RESOLUTIONS.has(resolved.historyResolution)
     ? observationDate(time, resolved)
-    : displayTime(time);
+    : formatUtcTime({ time, dateOnly: typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) });
 }
 
 function seriesValue(series: HeadlessSeries, value: number | null): string {

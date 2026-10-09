@@ -44,9 +44,11 @@ const DEFAULT_REPORT_SOURCE = "Gloom Cloud";
 
 /** Top-level row and metadata keys that say when a value was observed. */
 const OBSERVATION_KEYS = [
-  "asOf", "asOfDate", "observedAt", "lastUpdated", "updatedAt", "quoteTime",
-  "quoteAsOf", "priceAsOf", "sourceAsOf", "lastTradeTime",
+  "asOf", "asOfDate", "observedAt", "quoteTime",
+  "quoteAsOf", "priceAsOf", "sourceAsOf", "lastTradeTime", "timestamp",
 ];
+// Updates can be refresh stamps; use them only when there is no explicit observation.
+const UPDATE_KEYS = ["lastUpdated", "updatedAt"];
 // A stamp a little ahead of this clock is skew; further ahead it is a schedule, not an observation.
 const FUTURE_TOLERANCE_MS = 10 * 60_000;
 const OLDEST_GAP_MS = 24 * 60 * 60_000;
@@ -142,7 +144,8 @@ function collect(
   for (const row of resultRecords(definition, result)) {
     if (!isRecord(row)) continue;
     readFeedSignals(row, signals);
-    const time = observedTime(row, now, rowKeys);
+    const time = observedTime(row, now, rowKeys)
+      ?? (observedKey ? null : observedTime(row, now, UPDATE_KEYS));
     if (!ignoreStaleFlags) readUnitStale(row, time, signals);
     if (time) observations.units.push(time);
   }
@@ -158,7 +161,10 @@ function collect(
   if (isRecord(result.metadata)) {
     readFeedSignals(result.metadata, signals);
     if (result.metadata.stale === true && !ignoreStaleFlags) signals.stale = true;
-    const time = observedKey ? null : observedTime(result.metadata, now);
+    // An explicit summary as-of can be a real observation (CRYP's newest quote).
+    // A summary update stamp must not supersede dated rows.
+    const time = observedKey ? null : observedTime(result.metadata, now)
+      ?? (observations.units.length ? null : observedTime(result.metadata, now, UPDATE_KEYS));
     if (time) observations.extra.push(time);
   }
   if (definition.shape === "snapshot" && !observedKey) {
@@ -231,7 +237,7 @@ interface FreshnessInputs {
 }
 
 function resolveFreshness({ declared, signals, observations, now }: FreshnessInputs): ReportFreshness {
-  const declaredAsOf = declared.asOf != null ? parseReportTime(declared.asOf) : null;
+  const declaredAsOf = observedTime({ asOf: declared.asOf }, now, ["asOf"]);
   const asOf = declaredAsOf ?? newest([...observations.units, ...observations.extra]);
   // A loader that dates its data itself also says how old the oldest part is, or nothing;
   // `oldest: null` says the rows are a history, whose first entry is not stale data.
@@ -244,10 +250,10 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   let staleAt: ReportTime | null = null;
   let partial: { staleCount: number; observationCount: number; feed?: "live" | "delayed" } | null = null;
   if (declared.status === "not-a-feed") {
-    // Old filed or published data is not stale; only a schedule it missed makes it so,
-    // or rows that check their own schedule and say they are stale.
+    // Age alone does not make filed or published data stale. Honor explicit flags,
+    // with row-level flags outranking the metadata summary, or a missed schedule.
     const staleRows = signals.staleTimes.length;
-    if (late || (staleRows > 0 && staleRows === signals.flagged)) {
+    if (late || (signals.flagged > 0 ? staleRows === signals.flagged : signals.stale)) {
       status = "stale";
       staleAt = asOf;
     } else if (staleRows > 0) {
