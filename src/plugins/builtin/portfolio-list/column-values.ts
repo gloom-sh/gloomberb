@@ -22,6 +22,7 @@ import {
 } from "../../../market-data/market/format";
 import {
   getActiveQuoteDisplay,
+  getOpenExtendedSessionDisplay,
   marketChangeColor,
   marketPriceColor,
   marketStateDot,
@@ -324,18 +325,11 @@ export function getColumnValue(
       const dividendYield = liveDividendYield(quote, fundamentals);
       return { text: dividendYield != null ? `${(dividendYield * 100).toFixed(2)}%` : "—" };
     }
-    case "ext_hours":
-      if ((quote?.marketState === "PRE" || quote?.marketState === "PREPRE") && quote.preMarketPrice != null) {
-        const changePercent = quote.preMarketChangePercent;
-        if (!isFiniteNumber(changePercent)) return { text: "—" };
-        return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
-      }
-      if ((quote?.marketState === "POST" || quote?.marketState === "POSTPOST") && quote.postMarketPrice != null) {
-        const changePercent = quote.postMarketChangePercent;
-        if (!isFiniteNumber(changePercent)) return { text: "—" };
-        return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
-      }
-      return { text: "—" };
+    case "ext_hours": {
+      const changePercent = getOpenExtendedSessionDisplay(quote)?.changePercent;
+      if (!isFiniteNumber(changePercent)) return { text: "—" };
+      return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
+    }
     case "side":
       return { text: positionSideLabel(ticker, ctx.activeTab) ?? "—" };
     case "shares":
@@ -512,13 +506,7 @@ export function getSortValue(
     case "dividend_yield":
       return liveDividendYield(quote, fundamentals) ?? null;
     case "ext_hours":
-      if ((quote?.marketState === "PRE" || quote?.marketState === "PREPRE") && quote.preMarketPrice != null) {
-        return quote.preMarketChangePercent ?? null;
-      }
-      if ((quote?.marketState === "POST" || quote?.marketState === "POSTPOST") && quote.postMarketPrice != null) {
-        return quote.postMarketChangePercent ?? null;
-      }
-      return null;
+      return getOpenExtendedSessionDisplay(quote)?.changePercent ?? null;
     case "side":
       return positionSideLabel(ticker, ctx.activeTab);
     case "shares":

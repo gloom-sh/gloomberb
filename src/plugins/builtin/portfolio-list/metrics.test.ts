@@ -608,7 +608,10 @@ test("portfolio daily P&L and extended-hours returns use distinct reference clos
   expect(getColumnValue(column("day_pnl"), ticker, financials, defaultColumnContext).text).toBe("—");
   expect(getSortValue(column("day_pnl"), ticker, financials, defaultColumnContext)).toBeNull();
   expect(calculatePortfolioSummaryTotals([ticker], new Map([["AAPL", financials]]), "USD", new Map([["USD", 1]]), true, "main").dailyPnl).toBeNaN();
+  // The after-hours move alone still gives its percent; without it there is no close to measure from.
   delete financials.quote!.postMarketChangePercent;
+  expect(getColumnValue(column("ext_hours"), ticker, financials, defaultColumnContext).text).toBe("+0.05%");
+  delete financials.quote!.postMarketChange;
   expect(getColumnValue(column("ext_hours"), ticker, financials, defaultColumnContext).text).toBe("—");
   expect(getSortValue(column("ext_hours"), ticker, financials, defaultColumnContext)).toBeNull();
 });

@@ -20,7 +20,12 @@ import {
   wrapText,
   type CliStatEntry,
 } from "../../utils/cli-output";
-import { exchangeShortName, marketStateLabel } from "../../market-data/market/status";
+import {
+  exchangeShortName,
+  getExtendedSessionDisplay,
+  getRegularSessionDisplay,
+  marketStateLabel,
+} from "../../market-data/market/status";
 import type { AppConfig } from "../../types/config";
 import type { FinancialStatement, TickerFinancials } from "../../types/financials";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
@@ -380,9 +385,18 @@ export async function buildTickerReport({
     : formatReportedMoney(enterpriseValue, evCurrency);
 
   if (quote) {
+    // As the Overview reads it: the regular session, then the extended-hours print against its close.
+    const session = getRegularSessionDisplay(quote)!;
+    const extended = getExtendedSessionDisplay(quote);
+    const extendedRow = (kind: "PRE" | "POST") => extended?.session === kind
+      ? colorBySign(
+        `${formatMarketPriceWithCurrency(extended.price, quote.currency, quoteOptions)} (${formatPercentRaw(extended.changePercent)})`,
+        extended.change,
+      )
+      : "—";
     appendMetricSection(lines, "Quote", [
-      ["Last", colorBySign(formatMarketPriceWithCurrency(quote.price, quote.currency, quoteOptions), quote.change)],
-      ["Change", colorBySign(`${formatMarketChangeWithCurrency(quote.change, quote.currency, quoteOptions, quote.price)} (${formatPercentRaw(quote.changePercent)})`, quote.change)],
+      ["Last", colorBySign(formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions), session.change)],
+      ["Change", colorBySign(`${formatMarketChangeWithCurrency(session.change, quote.currency, quoteOptions, session.price)} (${formatPercentRaw(session.changePercent)})`, session.change)],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       ["Day Range", quote.low != null || quote.high != null
         ? formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)
@@ -396,18 +410,8 @@ export async function buildTickerReport({
     ]);
 
     appendMetricSection(lines, "Extended Hours", [
-      ["Pre-Market", quote.preMarketPrice != null
-        ? colorBySign(
-          `${formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, quoteOptions)} (${formatPercentRaw(quote.preMarketChangePercent)})`,
-          quote.preMarketChange ?? 0,
-        )
-        : "—"],
-      ["After Hours", quote.postMarketPrice != null
-        ? colorBySign(
-          `${formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, quoteOptions)} (${formatPercentRaw(quote.postMarketChangePercent)})`,
-          quote.postMarketChange ?? 0,
-        )
-        : "—"],
+      ["Pre-Market", extendedRow("PRE")],
+      ["After Hours", extendedRow("POST")],
     ]);
   }
 

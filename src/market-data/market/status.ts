@@ -229,6 +229,11 @@ export function getExtendedSessionDisplay(quote: Quote | null | undefined): Exte
   return { session: "POST", price, change, changePercent: (change / close) * 100 };
 }
 
+/** The extended display only while its session is open: the pre-market or the after-hours session. */
+export function getOpenExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
+  return quote?.marketState === "PRE" || quote?.marketState === "POST" ? getExtendedSessionDisplay(quote) : null;
+}
+
 /**
  * The move a board of tiles colors by: the open pre-market or after-hours
  * session's, from the regular close, otherwise the day's regular session.
@@ -236,10 +241,5 @@ export function getExtendedSessionDisplay(quote: Quote | null | undefined): Exte
 export function getSessionMoveDisplay(
   quote: Quote | null | undefined,
 ): (ActiveQuoteDisplay & { session?: ExtendedSession }) | null {
-  if (!quote) return null;
-  if (quote.marketState === "PRE" || quote.marketState === "POST") {
-    const extended = getExtendedSessionDisplay(quote);
-    if (extended) return extended;
-  }
-  return getRegularSessionDisplay(quote);
+  return getOpenExtendedSessionDisplay(quote) ?? getRegularSessionDisplay(quote);
 }
