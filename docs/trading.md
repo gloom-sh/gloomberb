@@ -16,3 +16,7 @@ Turning trading off in Brokers blocks preview, placement, replacement and cancel
 For a read-only report, use `gloomberb fn broker-orders --profile 1 --account 1`. Profile and account numbers select the current broker list; they are not account identifiers. Omit an ordinal only when one choice exists. The report does not place, modify or cancel orders.
 
 The shared request currently represents one contract and BUY or SELL, with numeric session order handles plus optional native broker identifiers. It does not express option legs, explicit opening/closing intent or sell-short/buy-to-cover intent. Broker plugins must reject unsupported requests. The ticket does not infer final status from disappearance from open orders, and individual-fill reconciliation depends on what the adapter supplies.
+
+A rejected order offers **Edit order**, retaining its fields for another review. A filled order offers **New order**. Refresh remains available; an UNKNOWN outcome makes it the primary action and never offers a retry.
+
+These screenshots use a synthetic broker and contain no real account data: [entry](screenshots/broker-ticket/simulation-wide.png), [review](screenshots/broker-ticket/review-wide.png), [LIVE confirmation at 90 by 30](screenshots/broker-ticket/live-confirm-tui-90x30.png), [unknown outcome](screenshots/broker-ticket/unknown-wide.png), and [Orders](screenshots/broker-ticket/orders-wide.png).
