@@ -1,4 +1,4 @@
-import { memo, Profiler, useCallback, type ReactNode } from "react";
+import { memo, Profiler, useCallback, useMemo, type ReactNode } from "react";
 import { useAppLanguage } from "../../../i18n/react";
 import { isPerfTraceEnabled, recordPerfSample } from "../../../utils/perf-marks";
 import { PaneInViewProvider } from "../../../state/app/activity";
@@ -41,6 +41,13 @@ interface PaneContentProps {
   onClose?: (paneId: string) => void;
   /** Takes the pane out of its layout; the failure card offers it. Keep it stable: the content is memoized. */
   closePane?: (paneId: string) => void;
+  /**
+   * Desktop: lays the content out at `width` by `height` instead of filling
+   * the pane, while a resize sizes the pane's frame ahead of it. The content,
+   * and whatever measures it, then lays out again only when it renders at a
+   * new size.
+   */
+  pinned?: boolean;
 }
 
 export const PaneContent = memo(function PaneContent({
@@ -54,15 +61,33 @@ export const PaneContent = memo(function PaneContent({
   inView = true,
   onClose,
   closePane,
+  pinned = false,
 }: PaneContentProps) {
-  useAppLanguage();
-  useThemeColors();
+  // The pane reads text and colors while it renders, so either redraws it.
+  const language = useAppLanguage();
+  const theme = useThemeColors();
   const close = useCallback(() => {
     onClose?.(paneId);
   }, [onClose, paneId]);
   const closeFailedPane = useCallback(() => {
     closePane?.(paneId);
   }, [closePane, paneId]);
+  // Built again only when what the pane is given changes: pinning or
+  // unpinning the content box does not render the pane.
+  const body = useMemo(() => (
+    <PaneErrorBoundary paneType={paneType} title={title} onClose={closePane ? closeFailedPane : undefined}>
+      <PaneRenderTrace paneId={paneId} paneType={paneType}>
+        <Component
+          paneId={paneId}
+          paneType={paneType}
+          focused={focused}
+          width={width}
+          height={height}
+          close={onClose ? close : undefined}
+        />
+      </PaneRenderTrace>
+    </PaneErrorBoundary>
+  ), [Component, close, closeFailedPane, closePane, focused, height, language, onClose, paneId, paneType, theme, title, width]);
 
   return (
     <PaneInstanceProvider paneId={paneId}>
@@ -70,26 +95,15 @@ export const PaneContent = memo(function PaneContent({
         <PaneKeyboardScrollController paneId={paneId} focused={focused} />
         <Box
           flexDirection="column"
-          flexGrow={1}
-          flexShrink={1}
-          flexBasis={0}
+          {...(pinned
+            ? { width, height, flexGrow: 0, flexShrink: 0 }
+            : { flexGrow: 1, flexShrink: 1, flexBasis: 0 })}
           minWidth={0}
           minHeight={0}
           overflow="hidden"
           data-gloom-role="pane-content"
         >
-          <PaneErrorBoundary paneType={paneType} title={title} onClose={closePane ? closeFailedPane : undefined}>
-            <PaneRenderTrace paneId={paneId} paneType={paneType}>
-              <Component
-                paneId={paneId}
-                paneType={paneType}
-                focused={focused}
-                width={width}
-                height={height}
-                close={onClose ? close : undefined}
-              />
-            </PaneRenderTrace>
-          </PaneErrorBoundary>
+          {body}
         </Box>
       </PaneInViewProvider>
     </PaneInstanceProvider>

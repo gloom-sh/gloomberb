@@ -18,6 +18,7 @@ import type { LayoutConfig } from "../../../../types/config";
 import {
   constrainFloatingRectToBounds,
   makeSnapGuides,
+  sameRect,
   type DragPreview,
   type PaneDragRectState,
 } from "./index";
@@ -86,10 +87,6 @@ export interface ShellDragRuntimeState {
   updateDragFloatingRect: (next: { paneId: string; rect: FloatingRect } | null) => void;
 }
 
-function sameRect(a: LayoutBounds, b: LayoutBounds): boolean {
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
-}
-
 function sameDragPreview(a: DragPreview | null, b: DragPreview | null): boolean {
   if (a === b) return true;
   if (!a || !b || a.kind !== b.kind || !sameRect(a.rect, b.rect)) return false;
@@ -119,12 +116,12 @@ export function useShellDragRuntimeState({
     const floating = next
       ? { paneId: next.paneId, rect: constrainFloatingRectToBounds(next.rect, width, contentHeight) }
       : null;
-    // A desktop pane on the move follows by restyling itself (`move`); its
-    // start and end, a resize and every terminal frame redraw through React.
+    // A desktop pane being moved or resized follows by restyling itself
+    // (`move`); its start and end, and every terminal frame, redraw through React.
     const follows = nativePaneChrome
       && floating !== null
       && current.floating?.paneId === floating.paneId
-      && current.paneDrag?.paneId === floating.paneId;
+      && (current.paneDrag?.paneId === floating.paneId || current.paneResize?.paneId === floating.paneId);
     if (follows) live.move({ floating });
     else live.set({ floating });
   }, [contentHeight, live, nativePaneChrome, width]);
@@ -148,7 +145,10 @@ export function useShellDragRuntimeState({
 
   const startDrag = useCallback((drag: DragMode) => {
     dragRef.current = drag;
-    live.set({ paneDrag: drag.type === "pane-drag" ? { paneId: drag.paneId, mode: drag.mode } : null });
+    live.set({
+      paneDrag: drag.type === "pane-drag" ? { paneId: drag.paneId, mode: drag.mode } : null,
+      paneResize: drag.type === "float-resize" ? { paneId: drag.paneId } : null,
+    });
   }, [live]);
 
   const cancelActiveDrag = useCallback(() => {

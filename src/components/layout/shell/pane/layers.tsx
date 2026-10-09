@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useMemo, useRef, type RefObject } from "react";
 import { Box, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
 import { resolveOccludedPaneIds } from "../pane-occlusion";
 import type {
@@ -9,8 +9,8 @@ import type {
   ResolvedPane,
 } from "../../../../layout/pane-manager";
 import { colors } from "../../../../theme/colors";
-import { constrainFloatingRectToBounds } from "../drag";
-import { useLiveBoxFrame, useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
+import { constrainFloatingRectToBounds, sameRect } from "../drag";
+import { useLiveBoxFrame, useLiveDrag, useLiveResizeRect, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
 import { pathKey } from "../../window-edit/mode";
 import { FloatingPaneWrapper } from "../../floating-pane";
 import { PaneContent } from "../../pane/content";
@@ -207,7 +207,16 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   getPaneQuickSettings,
   actions,
   zIndex,
-}: PaneLayerProps & { rect: FloatingRect; zIndex: number }) {
+  frameRef,
+  contentPinned = false,
+}: PaneLayerProps & {
+  rect: FloatingRect;
+  zIndex: number;
+  /** Desktop: the frame a resize sizes outside React. */
+  frameRef?: RefObject<BoxRenderable | null>;
+  /** Desktop: a resize is under way, so the content keeps the size it last rendered at. */
+  contentPinned?: boolean;
+}) {
   const paneId = pane.instance.instanceId;
   const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
   const nativeMove = nativePaneChrome && movable;
@@ -252,6 +261,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
             onResizeMouseDown={nativeMove ? (event) => actions.floatResizeStart(paneId, rect, event) : undefined}
             onResizeMouseDrag={nativeMove ? actions.drag : undefined}
             onResizeMouseDragEnd={nativeMove ? actions.drag : undefined}
+            frameRef={frameRef}
           >
             <PaneFooterKeys paneId={paneId} footer={footer} focused={focused} />
             <PaneContent
@@ -265,6 +275,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
               inView={inView}
               onClose={actions.close}
               closePane={actions.close}
+              pinned={contentPinned}
             />
           </FloatingPaneWrapper>
         );
@@ -278,8 +289,11 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
  * On the desktop a move never renders: the pane's layer is promoted at the
  * press and each frame of the move only writes its transform (see
  * `useLiveBoxFrame`), so nothing inside it re-renders, lays out or repaints
- * until the release commits the new position. A resize, and every terminal
- * frame, redraws it at the drag's rect.
+ * until the release commits the new position. A resize writes the frame's
+ * size the same way, on the same layer, and the header, body and footer
+ * stretch with it; the content keeps its size and renders at the new one a
+ * few times a second (`useLiveResizeRect`). Every terminal frame redraws it
+ * at the drag's rect.
  */
 const FloatingPaneLayer = memo(function FloatingPaneLayer({
   live,
@@ -293,13 +307,20 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
   const slide = frame.nativePaneChrome;
   const selectRedraw = useCallback((geometry: LiveDragGeometry) => {
     if (geometry.floating?.paneId !== paneId) return null;
-    // A desktop move follows on the pane's own layer instead.
-    if (slide && geometry.paneDrag?.paneId === paneId) return null;
+    // A desktop move or resize follows by restyling the pane instead.
+    if (slide && (geometry.paneDrag?.paneId === paneId || geometry.paneResize?.paneId === paneId)) return null;
     return geometry.floating.rect;
   }, [paneId, slide]);
   const dragRect = useLiveDrag(live, selectRedraw);
+  const selectResizing = useCallback((geometry: LiveDragGeometry) => (
+    slide && geometry.paneResize?.paneId === paneId
+  ), [paneId, slide]);
+  const resizing = useLiveDrag(live, selectResizing);
   const layerRef = useRef<BoxRenderable | null>(null);
   const frameOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
+    // A resize keeps the pane on its own layer too: the panes it uncovers or
+    // covers never repaint, only the pane does.
+    if (geometry.paneResize?.paneId === paneId) return { dx: 0, dy: 0 };
     if (geometry.paneDrag?.paneId !== paneId) return null;
     const moving = geometry.floating?.paneId === paneId ? geometry.floating.rect : null;
     // Promoted from the press, so the first move already only slides it.
@@ -308,8 +329,28 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
     return { dx: at.x - rect.x, dy: at.y - rect.y };
   } : null), [contentHeight, paneId, rect.x, rect.y, slide, width]);
   useLiveBoxFrame(live, layerRef, frameOf);
-  const preview = dragRect ? constrainFloatingRectToBounds(dragRect, width, contentHeight) : rect;
-  const content = <FloatingPaneFrame {...frame} rect={preview} zIndex={zIndex} />;
+  const frameRef = useRef<BoxRenderable | null>(null);
+  const sizeOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
+    if (geometry.paneResize?.paneId !== paneId || geometry.floating?.paneId !== paneId) return null;
+    const at = constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight);
+    return { width: at.width, height: at.height };
+  } : null), [contentHeight, paneId, slide, width]);
+  useLiveBoxFrame(live, frameRef, sizeOf);
+  const resizeRect = useLiveResizeRect(live, paneId, slide);
+  const preview = dragRect
+    ? constrainFloatingRectToBounds(dragRect, width, contentHeight)
+    : resizeRect && !sameRect(resizeRect, rect)
+      ? constrainFloatingRectToBounds(resizeRect, width, contentHeight)
+      : rect;
+  const content = (
+    <FloatingPaneFrame
+      {...frame}
+      rect={preview}
+      zIndex={zIndex}
+      frameRef={slide ? frameRef : undefined}
+      contentPinned={resizing}
+    />
+  );
   if (!slide) return content;
   return (
     <Box

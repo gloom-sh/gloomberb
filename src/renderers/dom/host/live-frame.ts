@@ -18,7 +18,9 @@ const ANIMATION_CARRIES_SLIDE = typeof navigator !== "undefined"
 
 const slides = new WeakMap<HTMLElement, Animation>();
 
+/** A style value as React writes it: a bare number is pixels. */
 function renderedValue(value: unknown): string {
+  if (typeof value === "number") return `${value}px`;
   return typeof value === "string" ? value : "";
 }
 
@@ -36,7 +38,8 @@ function slide(element: HTMLElement, transform: string): void {
 /**
  * Draws a box where a drag has it this frame by restyling its element,
  * outside React: an offset on its own compositor layer, with no layout or
- * repaint. `null` hands the properties back to what React last rendered.
+ * repaint, and a size, which lays out only the box's subtree. `null` hands
+ * the properties back to what React last rendered.
  */
 export function applyLiveFrame(element: HTMLElement, frame: LiveBoxFrame | null, props: Record<string, unknown>): void {
   const style = element.style;
@@ -46,9 +49,14 @@ export function applyLiveFrame(element: HTMLElement, frame: LiveBoxFrame | null,
     slides.delete(element);
     style.transform = renderedValue(rendered.transform);
     style.willChange = renderedValue(rendered.willChange);
+    style.width = renderedValue(rendered.width);
+    style.height = renderedValue(rendered.height);
     return;
   }
+  if (frame.width !== undefined) style.width = `${frame.width * WEB_CELL_WIDTH}px`;
+  if (frame.height !== undefined) style.height = `${frame.height * WEB_CELL_HEIGHT}px`;
+  if (frame.dx === undefined && frame.dy === undefined) return;
   // Promoted once, before the first frame of the drag.
   if (style.willChange !== "transform") style.willChange = "transform";
-  slide(element, `translate3d(${frame.dx * WEB_CELL_WIDTH}px, ${frame.dy * WEB_CELL_HEIGHT}px, 0)`);
+  slide(element, `translate3d(${(frame.dx ?? 0) * WEB_CELL_WIDTH}px, ${(frame.dy ?? 0) * WEB_CELL_HEIGHT}px, 0)`);
 }

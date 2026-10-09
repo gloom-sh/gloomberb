@@ -248,7 +248,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         if (current && !current.shielded) {
           if (dx * dx + dy * dy < 9) return;
           current.shielded = true;
-          showDragShield();
+          showDragShield(elementRef.current);
           // Captured once it is a drag (a click keeps its usual target), the
           // moves skip hit testing and leave every other element's hover state
           // alone: nothing under the pointer restyles or repaints while a pane,

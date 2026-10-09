@@ -219,7 +219,7 @@ export function useShellActiveDrag({
         setHoverTarget(null);
       }
       dragRef.current = null;
-      live.set({ paneDrag: null });
+      live.set({ paneDrag: null, paneResize: null });
       event.stopPropagation();
       event.preventDefault();
     }

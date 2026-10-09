@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import { act, Profiler } from "react";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { createDomTestHarness } from "../../../renderers/dom/test-utils";
@@ -21,7 +21,12 @@ function registry(): PluginRegistry {
   return {
     panes: new Map([
       ["portfolio-list", { id: "portfolio-list", name: "Portfolio List", component: body("Portfolio Body"), defaultPosition: "left" }],
-      ["ticker-detail", { id: "ticker-detail", name: "Ticker Research", component: body("Research Body"), defaultPosition: "right" }],
+      ["ticker-detail", {
+        id: "ticker-detail",
+        name: "Ticker Research",
+        component: ({ width, height }: { width: number; height: number }) => <Text>{`Research ${width}x${height}`}</Text>,
+        defaultPosition: "right",
+      }],
     ]),
     paneTemplates: new Map(),
     commands: new Map(),
@@ -95,6 +100,7 @@ function floatingParts(container: HTMLElement) {
     // The layer a desktop move slides: the pane's frame is laid out inside it.
     layer: pane.parentElement as HTMLElement,
     title: pane.querySelector("[data-gloom-role=pane-title]") as HTMLElement,
+    handle: pane.querySelector("[data-gloom-role=resize-handle]") as HTMLElement,
   };
 }
 
@@ -164,6 +170,92 @@ test.each([
 
   await act(async () => { cancel(); await frame(); });
   expect(layer.style.transform).toBe("");
+  await act(async () => { pointer("up", testWindow.document as unknown as EventTarget, end.x, end.y); await frame(); });
+  expect(actions.filter((action) => action.type === "UPDATE_LAYOUT")).toHaveLength(0);
+});
+
+/** The width, in cells, the floating pane's content was last rendered at. */
+function contentWidth(pane: HTMLElement): number | undefined {
+  const match = /Research ([\d.]+)x/.exec(pane.textContent ?? "");
+  return match ? Number(match[1]) : undefined;
+}
+
+/** Presses the floating pane's corner and moves the pointer 2 cells right and 1 down per step, waiting out a frame per step. */
+async function dragCorner(container: HTMLElement, steps: number, wait: () => Promise<unknown> = frame) {
+  const { handle } = floatingParts(container);
+  const doc = testWindow.document as unknown as EventTarget;
+  await act(async () => { pointer("down", handle, 400, 300); });
+  for (let step = 1; step <= steps; step += 1) {
+    await act(async () => {
+      pointer("move", doc, 400 + step * 16, 300 + step * 18);
+      await wait();
+    });
+  }
+  return { end: { x: 400 + steps * 16, y: 300 + steps * 18 } };
+}
+
+test("a desktop pane resize sizes only its frame, renders its content a few times a second and commits once", async () => {
+  const { container, actions, commits } = await renderDesktopShell();
+  const { pane } = floatingParts(container);
+  const header = pane.querySelector("[data-gloom-role=pane-header]") as HTMLElement;
+  const content = pane.querySelector("[data-gloom-role=pane-content]") as HTMLElement;
+  const doc = testWindow.document as unknown as EventTarget;
+  // 40 by 12 cells of 8 by 18 px.
+  expect({ width: pane.style.width, height: pane.style.height }).toEqual({ width: "320px", height: "216px" });
+  expect(contentWidth(pane)).toBe(40);
+  // Fake time drives the frames too, so the content's catch-up comes exactly when it is due.
+  jest.useFakeTimers();
+  try {
+    const wait = async () => { jest.advanceTimersByTime(10); };
+    await dragCorner(container, 1, wait);
+    const rendersBefore = commits();
+    for (let step = 2; step <= 4; step += 1) {
+      await act(async () => { pointer("move", doc, 400 + step * 16, 300 + step * 18); await wait(); });
+    }
+    // Every move sized the frame and rendered nothing; the header stretches
+    // with it, and the content keeps the size it rendered at.
+    expect(commits()).toBe(rendersBefore);
+    expect({ width: pane.style.width, height: pane.style.height }).toEqual({ width: "384px", height: "288px" });
+    expect(header.style.width).toBe("");
+    expect(contentWidth(pane)).toBe(40);
+    expect(content.style.width).toBe("320px");
+
+    // The content catches up once, at the size the frame has now.
+    await act(async () => { jest.advanceTimersByTime(100); });
+    expect(commits()).toBe(rendersBefore + 1);
+    expect(contentWidth(pane)).toBe(48);
+    expect(content.style.width).toBe("384px");
+    expect(pane.style.width).toBe("384px");
+
+    await act(async () => { pointer("up", doc, 464, 372); await wait(); });
+  } finally {
+    jest.useRealTimers();
+  }
+  // The content fills its pane again.
+  expect(content.style.width).toBe("");
+  const updates = actions.filter((action) => action.type === "UPDATE_LAYOUT");
+  expect(updates).toHaveLength(1);
+  const floating = (updates[0]!.layout as LayoutConfig).floating.find((entry) => entry.instanceId === "ticker-detail:main");
+  expect(floating).toMatchObject({ x: 10, y: 4, width: 48 });
+  expect(floating!.height).toBeCloseTo(16);
+});
+
+test.each([
+  ["Escape", () => testWindow.dispatchEvent(new testWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true }) as unknown as Event)],
+  ["the window losing focus", () => testWindow.dispatchEvent(new testWindow.Event("blur") as unknown as Event)],
+  ["a cancelled pointer", () => pointer("cancel", testWindow.document as unknown as EventTarget, 464, 372)],
+])("%s puts a resizing pane back at its size", async (_name, cancel) => {
+  const { container, actions } = await renderDesktopShell();
+  const { pane } = floatingParts(container);
+  const { end } = await dragCorner(container, 4);
+  // Long enough for the content to have caught up.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)); });
+  expect(pane.style.width).toBe("384px");
+  expect(contentWidth(pane)).toBe(48);
+
+  await act(async () => { cancel(); await frame(); });
+  expect({ width: pane.style.width, height: pane.style.height }).toEqual({ width: "320px", height: "216px" });
+  expect(contentWidth(pane)).toBe(40);
   await act(async () => { pointer("up", testWindow.document as unknown as EventTarget, end.x, end.y); await frame(); });
   expect(actions.filter((action) => action.type === "UPDATE_LAYOUT")).toHaveLength(0);
 });

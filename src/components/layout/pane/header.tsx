@@ -174,10 +174,11 @@ export function PaneHeader({
 
   if (nativePaneChrome) {
     const ruleColor = visuallyFocused ? colors.borderFocused : colors.border;
+    // No width of its own: it stretches across its pane, so it follows a
+    // frame a resize sizes outside React.
     return (
       <Box
         height={titleBar?.rows ?? nativePaneHeaderRows()}
-        width={width}
         backgroundColor={backgroundColor}
         flexDirection="row"
         data-gloom-role="pane-header"

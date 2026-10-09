@@ -63,6 +63,10 @@ const DOCK_DIVIDER_SIZE = 1;
 export const PANE_DRAG_THRESHOLD = 2;
 export const PRECISE_PANE_DRAG_THRESHOLD = 0.15;
 
+export function sameRect(a: LayoutBounds, b: LayoutBounds): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
 export function pointInRect(rect: LayoutBounds, x: number, y: number): boolean {
   return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
 }
