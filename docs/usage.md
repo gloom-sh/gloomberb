@@ -398,7 +398,9 @@ Headless chart text includes a Unit column when a series supplies one; values ke
 
 CLI text prints every time in UTC with the zone named (`2026-10-09 00:08 UTC`); a date alone stays a date. JSON keeps the raw ISO or epoch values.
 
-A `fn` report whose argument is optional says so when it fell back to a default: `gloomberb fn PERP` starts with `Showing BTC. Try fn PERP ETH.`, and `--json` carries the note in `data.metadata.notices` and the default in `data.metadata.defaultArgument`. An argument nothing matches fails with a few that work. With `--require-bot-safe`, a report or screenshot that is incomplete because part of it needs Gloom Cloud Pro, or a sign-in, says so instead of a generic message.
+`gloomberb fn PERP` and `fn CTM` without an argument start with a line saying which market they show, such as `Showing BTC. Try fn PERP ETH.`; `--json` carries it in `data.metadata.notices` and `data.metadata.defaultArgument`. `fn PERP`, `fn COT` and `fn CTM` fail on a name nothing matches and suggest ones that work.
+
+With `--require-bot-safe`, a report or screenshot that is incomplete because part of it needs Gloom Cloud Pro, or a sign-in, says so instead of a generic message.
 
 In short DVD panes, the summary scrolls separately so cash history stays visible. Page Up/Down scroll the summary; arrows or j/k navigate history. The mouse wheel scrolls the region under the pointer.
 

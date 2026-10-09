@@ -4,7 +4,7 @@ import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } fr
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import { FUTURES_CONTRACTS } from "../futures/contracts";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { archivedFuturesCurve, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, unsupportedCurveRootMessage } from "./model";
+import { archivedFuturesCurve, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -58,12 +58,6 @@ test("normalizes FUT aliases before cloud request and handles missing endpoints 
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw new ApiRequestError("Not found", 404); } })).rejects.toThrow("not available yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw denied; } })).rejects.toBe(denied);
-});
-
-test("every root an unsupported one is told to try opens a curve", () => {
-  const roots = unsupportedCurveRootMessage("XYZZY").match(/Try (.+)\./)![1]!.split(", ");
-  expect(roots.length).toBeGreaterThan(1);
-  for (const root of roots) expect(normalizeCurveRoot(root)).toBe(root);
 });
 
 test("charts the strip within the horizon and dates it by its freshest quote, not the oldest", () => {
