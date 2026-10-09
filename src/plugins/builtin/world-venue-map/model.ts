@@ -97,6 +97,9 @@ export function clampWorldMapViewport(
   if (zoom <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
 
   const { availableWidth, effectiveHeight, latitudeSpan } = mapExtent(width, height, yUnitAspect);
+  // A plot with no area yet (a pane mid-layout) says nothing about what fits:
+  // keep the centre rather than resetting it to the middle of the world.
+  if (availableWidth <= 0 || effectiveHeight <= 0) return { ...viewport, zoom };
   const scale = fittedWorldMapScale(width, height, yUnitAspect) * zoom;
   const halfLongitude = availableWidth / (2 * scale);
   const halfLatitude = effectiveHeight / (2 * scale);
@@ -113,6 +116,19 @@ export function clampWorldMapViewport(
     centerLatitude: halfLatitude < latitudeSpan / 2
       ? clamp(viewport.centerLatitude, minLatitude, maxLatitude)
       : DEFAULT_WORLD_MAP_VIEWPORT.centerLatitude,
+  };
+}
+
+/** A viewport read back from saved pane state, or null when it is not one. */
+export function savedWorldMapViewport(value: unknown, maxZoom = MAX_WORLD_MAP_ZOOM): WorldMapViewport | null {
+  if (!value || typeof value !== "object") return null;
+  const { zoom, centerLongitude, centerLatitude } = value as Partial<WorldMapViewport>;
+  if (![zoom, centerLongitude, centerLatitude].every((part) => typeof part === "number" && Number.isFinite(part))) return null;
+  if (zoom! <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
+  return {
+    zoom: Math.min(zoom!, maxZoom),
+    centerLongitude: clamp(centerLongitude!, -180, 180),
+    centerLatitude: clamp(centerLatitude!, MIN_LATITUDE, MAX_LATITUDE),
   };
 }
 

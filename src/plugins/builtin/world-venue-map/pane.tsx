@@ -119,6 +119,7 @@ function VenueMapView({ focused, width, height }: PaneProps) {
 
   const { nativePaneChrome } = useUiCapabilities();
   const [storedSidebarWidth, setStoredSidebarWidth] = usePluginPaneState<number | null>("sidebarWidth", null);
+  const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
   const [draggedSidebarWidth, setDraggedSidebarWidth] = useState<number | null>(null);
   const horizontal = shouldShowPaneSidebar(data?.venues.length ?? 0, width, height);
   // Venue names need more room than a conversation list, so the width the pane
@@ -208,7 +209,7 @@ function VenueMapView({ focused, width, height }: PaneProps) {
   }
 
   const map = (
-    <Box flexDirection="column" width={mapWidth} height={mapSectionHeight} overflow="hidden">
+    <Box key="map" flexDirection="column" width={mapWidth} height={mapSectionHeight} overflow="hidden">
       <SelectedVenueHeader venue={selectedVenue} checkedAt={data.checkedAt} now={now} width={mapWidth} />
       <WorldVenueMap
         venues={venues}
@@ -216,6 +217,8 @@ function VenueMapView({ focused, width, height }: PaneProps) {
         width={mapWidth}
         height={mapHeight}
         onSelect={(venue) => setSelectedMic(venue.mic)}
+        savedViewport={savedViewport}
+        onViewportSettled={setSavedViewport}
       />
     </Box>
   );

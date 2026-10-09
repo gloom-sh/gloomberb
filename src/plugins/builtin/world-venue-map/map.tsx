@@ -16,6 +16,7 @@ import {
   MAX_WORLD_MAP_ZOOM,
   panWorldMapViewport,
   projectWorldPoint,
+  savedWorldMapViewport,
   unprojectWorldPoint,
   zoomWorldMapViewport,
   type WorldMapPoint,
@@ -52,6 +53,13 @@ interface WorldVenueMapProps {
   focus?: WorldMapFocus | null;
   /** How far the map may zoom; geo layers go closer than venues. */
   maxZoom?: number;
+  /**
+   * Where the map was when this pane last drew it (saved pane state). A pane
+   * docked, undocked, popped out or reloaded mounts a new map; it opens here.
+   */
+  savedViewport?: unknown;
+  /** The view once it has rested for a moment, for the pane to keep. */
+  onViewportSettled?: (viewport: WorldMapViewport) => void;
 }
 
 function clusterVenue(cluster: WorldVenueCluster, selectedMic: string | null): CloudWorldVenuePayload {
@@ -306,6 +314,18 @@ const MAP_CLICK_HIT_PX = 14;
 const MAP_DOUBLE_CLICK_ZOOM = 1.8;
 /** Share of the plot a selected venue may sit inside before the map pans to it. */
 const MAP_FOLLOW_MARGIN = 0.06;
+/** How long the view rests before the pane keeps it. */
+const VIEWPORT_SETTLE_MS = 400;
+
+/**
+ * Whether a map of this many cells can be drawn. A pane mid-layout (a new
+ * window, a dock move) can hand the map a width of one cell for a frame; a
+ * projection from that has no scale, and a focus applied to it loses its
+ * centre.
+ */
+function mapHasArea(width: number, height: number): boolean {
+  return width > 2 && height > 1;
+}
 
 function wheelZoomFactor(event: WheelEvent): number {
   const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
@@ -386,7 +406,10 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
   const maxZoom = props.maxZoom ?? MAX_WORLD_MAP_ZOOM;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const surfaceSize = useElementSize(surfaceRef);
-  const [viewport, setViewport] = useState<WorldMapViewport>(DEFAULT_WORLD_MAP_VIEWPORT);
+  const [viewport, setViewport] = useState<WorldMapViewport>(
+    () => savedWorldMapViewport(props.savedViewport, maxZoom) ?? DEFAULT_WORLD_MAP_VIEWPORT,
+  );
+  const sized = mapHasArea(props.width, props.height);
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const [dragging, setDragging] = useState(false);
@@ -464,24 +487,39 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
   const onViewChange = props.onViewChange;
   const reportedViewRef = useRef<GeoView | null>(null);
   useEffect(() => {
-    if (!onViewChange) return;
+    if (!onViewChange || !sized) return;
     const next = geoViewForViewport(viewport, props.width, plotHeight);
     if (reportedViewRef.current && sameGeoView(reportedViewRef.current, next)) return;
     reportedViewRef.current = next;
     onViewChange(next);
-  }, [onViewChange, plotHeight, props.width, viewport]);
+  }, [onViewChange, plotHeight, props.width, sized, viewport]);
 
-  // A new focus (an entity picked in the table) centres the map on it.
+  // The pane keeps the view once it rests, so a remount opens where this left off.
+  const onViewportSettled = props.onViewportSettled;
+  const settledViewportRef = useRef(viewport);
+  useEffect(() => {
+    if (!onViewportSettled || settledViewportRef.current === viewport) return;
+    const timer = setTimeout(() => {
+      settledViewportRef.current = viewport;
+      onViewportSettled(viewport);
+    }, VIEWPORT_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [onViewportSettled, viewport]);
+
+  // A new focus (an entity picked in the table) centres the map on it, once
+  // the map has an area to centre it in.
   const focusKey = props.focus?.key ?? null;
+  const appliedFocusRef = useRef<string | null>(null);
   useEffect(() => {
     const focus = props.focus;
-    if (!focus) return;
+    if (!focus || !sized || appliedFocusRef.current === focus.key) return;
+    appliedFocusRef.current = focus.key;
     setViewport((current) => {
       const zoom = Math.max(current.zoom, focus.zoom ?? 1);
       if (zoom <= 1) return current;
       return clampWorldMapViewport({ zoom, centerLongitude: focus.longitude, centerLatitude: focus.latitude }, props.width, plotHeight, 1, maxZoom);
     });
-  }, [focusKey]);
+  }, [focusKey, sized]);
 
   const selectedVenue = props.venues.find((venue) => venue.mic === props.selectedMic) ?? null;
   const selectedVenueRef = useRef(selectedVenue);
@@ -637,60 +675,62 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
           background: colors.bg,
         }}
       >
-        <svg
-          viewBox={`0 0 ${props.width} ${plotHeight}`}
-          width="100%"
-          height="100%"
-          aria-hidden="true"
-          style={{ display: "block", background: colors.bg, pointerEvents: "none" }}
-        >
-          <BasemapLayer matrix={matrix} view={view} pxPerDegree={pxPerDegree} palette={palette} />
-          {props.overlay ? (
-            <GeoSvgLayers
-              overlay={props.overlay}
-              matrix={matrix}
-              project={project}
-              view={view}
-              unitPx={unitPx}
-              mapWidthPx={surfaceSize?.width ?? props.width * 8}
-              background={colors.bg}
-              selectedColor={colors.selectedText}
-              textColor={colors.textBright}
-              tones={tones}
-              hovered={hovered?.hit ?? null}
-            />
-          ) : null}
-          {clusters.map((cluster) => {
-            const selected = isSelectedCluster(cluster, props.selectedMic);
-            const venue = clusterVenue(cluster, props.selectedMic);
-            const radius = Math.max(0.55, Math.min(1.5, 0.45 + Math.sqrt(cluster.venues.length) * 0.22));
-            return (
-              <g key={cluster.id}>
-                <title>{`${cluster.venues.length} venue${cluster.venues.length === 1 ? "" : "s"} near ${venue.city}: ${cluster.venues.map((item) => `${item.mic} ${item.name}`).join(", ")}`}</title>
-                <circle
-                  cx={cluster.x}
-                  cy={cluster.y}
-                  r={radius + (selected ? 0.24 : 0)}
-                  fill={cluster.isOpen ? colors.positive : colors.textMuted}
-                  stroke={selected ? colors.selectedText : colors.bg}
-                  strokeWidth={selected ? 0.35 : 0.16}
-                  vectorEffect="non-scaling-stroke"
-                />
-                {cluster.venues.length > 1 ? createElement("text", {
-                  x: cluster.x,
-                  y: cluster.y,
-                  fill: colors.bg,
-                  dy: "0.34em",
-                  fontSize: Math.max(0.62, Math.min(0.95, radius * 0.78)),
-                  fontWeight: "700",
-                  fontFamily: "inherit",
-                  textAnchor: "middle",
-                  pointerEvents: "none",
-                }, cluster.venues.length) : null}
-              </g>
-            );
-          })}
-        </svg>
+        {sized ? (
+          <svg
+            viewBox={`0 0 ${props.width} ${plotHeight}`}
+            width="100%"
+            height="100%"
+            aria-hidden="true"
+            style={{ display: "block", background: colors.bg, pointerEvents: "none" }}
+          >
+            <BasemapLayer matrix={matrix} view={view} pxPerDegree={pxPerDegree} palette={palette} />
+            {props.overlay ? (
+              <GeoSvgLayers
+                overlay={props.overlay}
+                matrix={matrix}
+                project={project}
+                view={view}
+                unitPx={unitPx}
+                mapWidthPx={surfaceSize?.width ?? props.width * 8}
+                background={colors.bg}
+                selectedColor={colors.selectedText}
+                textColor={colors.textBright}
+                tones={tones}
+                hovered={hovered?.hit ?? null}
+              />
+            ) : null}
+            {clusters.map((cluster) => {
+              const selected = isSelectedCluster(cluster, props.selectedMic);
+              const venue = clusterVenue(cluster, props.selectedMic);
+              const radius = Math.max(0.55, Math.min(1.5, 0.45 + Math.sqrt(cluster.venues.length) * 0.22));
+              return (
+                <g key={cluster.id}>
+                  <title>{`${cluster.venues.length} venue${cluster.venues.length === 1 ? "" : "s"} near ${venue.city}: ${cluster.venues.map((item) => `${item.mic} ${item.name}`).join(", ")}`}</title>
+                  <circle
+                    cx={cluster.x}
+                    cy={cluster.y}
+                    r={radius + (selected ? 0.24 : 0)}
+                    fill={cluster.isOpen ? colors.positive : colors.textMuted}
+                    stroke={selected ? colors.selectedText : colors.bg}
+                    strokeWidth={selected ? 0.35 : 0.16}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {cluster.venues.length > 1 ? createElement("text", {
+                    x: cluster.x,
+                    y: cluster.y,
+                    fill: colors.bg,
+                    dy: "0.34em",
+                    fontSize: Math.max(0.62, Math.min(0.95, radius * 0.78)),
+                    fontWeight: "700",
+                    fontFamily: "inherit",
+                    textAnchor: "middle",
+                    pointerEvents: "none",
+                  }, cluster.venues.length) : null}
+                </g>
+              );
+            })}
+          </svg>
+        ) : null}
         {tooltip && hovered ? (
           <MapTooltip
             title={tooltip.title}
@@ -700,7 +740,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
             width={surfaceSize?.width ?? 0}
           />
         ) : null}
-        {props.overlay ? <GeoLegend overlay={props.overlay} venues={props.venues.length > 0} tones={tones} /> : null}
+        {props.overlay && sized ? <GeoLegend overlay={props.overlay} venues={props.venues.length > 0} tones={tones} /> : null}
       </div>
     </Box>
   );

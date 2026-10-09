@@ -214,6 +214,8 @@ export function LayeredMapView({ focused, width, height, layers, tokens }: Layer
   const [selectedMic, setSelectedMic] = useState<string | null>(null);
   const [headerSubject, setHeaderSubject] = useState<"entity" | "venue">("entity");
   const [focus, setFocus] = useState<WorldMapFocus | null>(null);
+  // Kept per pane, so docking, undocking, popping out or reloading reopens the map where it was.
+  const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
@@ -497,7 +499,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens }: Layer
   );
 
   const map = (
-    <Box flexDirection="column" width={mapWidth} height={mapSectionHeight} overflow="hidden">
+    <Box key="map" flexDirection="column" width={mapWidth} height={mapSectionHeight} overflow="hidden">
       {headerSubject === "venue" && selectedVenue && venueData ? (
         <SelectedVenueHeader venue={selectedVenue} checkedAt={venueData.checkedAt} now={now} width={mapWidth} />
       ) : (
@@ -517,6 +519,8 @@ export function LayeredMapView({ focused, width, height, layers, tokens }: Layer
         onSelectGeo={onSelectGeo}
         onViewChange={onViewChange}
         focus={focus}
+        savedViewport={savedViewport}
+        onViewportSettled={setSavedViewport}
       />
     </Box>
   );

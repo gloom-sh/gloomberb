@@ -357,7 +357,8 @@ export function GeoSvgLayers({ overlay, matrix, project, view, unitPx, mapWidthP
   const selectedLayer = overlay.selected ? overlay.layers.find((layer) => layer.id === overlay.selected!.layerId) ?? null : null;
   const selectedFeature = selectedLayer?.features.find((feature) => feature.id === overlay.selected!.id) ?? null;
   const pxPerDegree = matrix.a * unitPx;
-  const iconScale = { [ICON_SCALE_VAR]: 1 / Math.max(pxPerDegree, Number.EPSILON) } as CSSProperties;
+  // A map with no scale draws nothing; never hand the icons a counter-scale of 1/epsilon.
+  const iconScale = { [ICON_SCALE_VAR]: pxPerDegree > 0 && Number.isFinite(pxPerDegree) ? 1 / pxPerDegree : 0 } as CSSProperties;
   const trailPath = overlay.trail && overlay.trail.length > 1 ? degreePath([overlay.trail], false) : null;
   const points = new Map(overlay.layers.filter((layer) => layer.geometry === "point").map((layer) => {
     const landmark = layer.features.length > 0 && MAP_SYMBOLS[featureSymbol(layer.id, layer.features[0]!).id].landmark === true;
