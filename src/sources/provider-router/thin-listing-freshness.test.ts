@@ -52,7 +52,7 @@ describe("a delayed quote's last trade age", () => {
       ["thin, last trade yesterday", london, quote("ZIOC", "LSE", "2026-10-08T15:35:00Z"), true, false],
       ["thin, a trade before today's open", london, quote("ZIOC", "LSE", "2026-10-09T06:30:00Z"), true, false],
       ["thin, traded in the opening auction", london, quote("ZIOC", "LSE", "2026-10-09T06:55:00Z"), true, true],
-      ["a venue without session hours", london, quote("ABC", "TASE", "2026-10-09T11:32:00Z"), true, false],
+      ["a venue without session hours", london, quote("ABC", "MCE", "2026-10-09T11:32:00Z"), true, false],
       ["US thin, 35 min, a fresh answer", americas, quote("CODA", "NASDAQ", "2026-10-09T17:44:00Z"), true, true],
       ["US thin, 2 h, a cache entry past its TTL", americas, quote("GEG", "NASDAQ", "2026-10-09T16:13:00Z"), false, false],
       ["TSXV thin, 77 min, a fresh answer", americas, quote("LIO", "TSXV", "2026-10-09T17:02:00Z"), true, true],

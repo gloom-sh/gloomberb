@@ -61,6 +61,8 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   B3: 10 * 60,
   BYMA: 11 * 60,
   JSE: 9 * 60,
+  // The opening auction ends at 10:00 and the feed stamps its first bar 09:59.
+  TASE: 9 * 60 + 59,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
 // early would let a copy fetched during the auction pass as final.
@@ -74,7 +76,20 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   JPX: 15 * 60 + 30, HKEX: 16 * 60 + 10, TWSE: 14 * 60 + 30, TPEX: 14 * 60 + 30,
   NSE: 16 * 60, BSE: 16 * 60, ASX: 16 * 60 + 15, SGX: 17 * 60 + 20, KRX: 16 * 60, KOSDAQ: 16 * 60,
   NZX: 17 * 60, SSE: 15 * 60 + 30, SZSE: 15 * 60 + 30,
-  BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15, TASE: 17 * 60 + 40,
+  BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15,
+  // Monday to Thursday: trading at last ends 17:30, after the closing auction.
+  // Not later: a complete 5-minute copy ends with its 17:09 bar, which must
+  // reach the close less the half hour a history copy may lag.
+  TASE: 17 * 60 + 30,
+};
+// Venues whose regular session ends earlier on one weekday every week, as
+// local minutes by weekday (0 is Sunday); the other days close as above. TASE
+// has traded Monday to Friday since January 2026, and on Fridays trading at
+// last ends 13:50 (closing auction 13:44 to 13:45). A complete 5-minute copy
+// ends with its 13:29 bar. Holidays and the shortened days around Sukkot and
+// Pesach are not weekly and are not listed.
+const WEEKDAY_CLOSE_MINUTES: Record<string, Partial<Record<number, number>>> = {
+  TASE: { 5: 13 * 60 + 50 },
 };
 // Venues that pause at midday, as local minutes [start, end), with a zone for
 // those the session tables above do not cover. Jakarta pauses longer on Fridays.
@@ -212,6 +227,12 @@ function localWeekday(date: string): number | null {
   return day == null ? null : new Date(day * MS_PER_DAY).getUTCDay();
 }
 
+/** The local close of the venue's regular session on `date`, in minutes of the day. */
+function regularCloseMinutes(exchange: string, date: string): number | undefined {
+  const weekday = localWeekday(date);
+  return (weekday == null ? undefined : WEEKDAY_CLOSE_MINUTES[exchange]?.[weekday]) ?? REGULAR_CLOSE_MINUTES[exchange];
+}
+
 /** The zone a venue's session dates are read in, or null when unknown. */
 export function sessionCalendarTimeZone(exchange: string | undefined): string | null {
   const canonical = canonicalExchange(exchange);
@@ -241,7 +262,7 @@ export function latestRegularSessionClose(
     if (published) {
       if (published.kind === "session") close = published.close;
     } else if (isLocalTradingDay(canonical, date)) {
-      const minutes = REGULAR_CLOSE_MINUTES[canonical] ?? 24 * 60;
+      const minutes = regularCloseMinutes(canonical, date) ?? 24 * 60;
       close = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
         Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
     }
