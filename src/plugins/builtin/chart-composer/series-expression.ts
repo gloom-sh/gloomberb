@@ -33,6 +33,14 @@ export const CHART_FIELD_IDS = {
   evEbitda: "valuation.evEbitda",
 } as const;
 
+/** Series of things with a place (chokepoint transits, port calls), served with the map's layers. */
+export const GEO_SERIES_CAPABILITY_ID = "geo-series";
+
+/** `GEO:<series id or short alias>`, e.g. `GEO:SUEZ`. */
+export function formatGeoSeriesExpression(seriesId: string): string {
+  return `GEO:${seriesId}`;
+}
+
 export type ParsedSeriesExpression =
   | { kind: "security"; symbol: string; exchange?: string; fieldId: string; label?: string }
   | { kind: "economic"; provider: "fred"; seriesId: string; label?: string }
@@ -94,6 +102,12 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
     const seriesId = trimmed.slice(separator + 1);
     return isValidChartCapabilityId(capabilityId) && isValidChartSeriesId(seriesId)
       ? { kind: "capability", capabilityId, seriesId }
+      : null;
+  }
+  if (parts[0]?.trim().toUpperCase() === "GEO") {
+    const seriesId = trimmed.slice(trimmed.indexOf(":") + 1).trim();
+    return parts.length >= 2 && isValidChartSeriesId(seriesId)
+      ? { kind: "capability", capabilityId: GEO_SERIES_CAPABILITY_ID, seriesId }
       : null;
   }
   if (parts[0]?.trim().toUpperCase() === "FRED") {
@@ -160,7 +174,7 @@ export function parseChartExpression(value: string): ParsedSeriesExpression[] {
     if (parsed) return parsed;
     const display = leg.trim() || "empty series";
     throw new Error(
-      `Invalid chart series "${display}". Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series, or CAP:capability-id:series-id.`,
+      `Invalid chart series "${display}". Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series, GEO:series, or CAP:capability-id:series-id.`,
     );
   });
 }
@@ -168,7 +182,9 @@ export function parseChartExpression(value: string): ParsedSeriesExpression[] {
 export function formatSeriesExpression(series: ChartSeriesSpec): string {
   if (series.source.kind === "economic") return `FRED:${series.source.seriesId}`;
   if (series.source.kind === "capability") {
-    return `CAP:${series.source.capabilityId}:${series.source.seriesId}`;
+    return series.source.capabilityId === GEO_SERIES_CAPABILITY_ID
+      ? formatGeoSeriesExpression(series.source.seriesId)
+      : `CAP:${series.source.capabilityId}:${series.source.seriesId}`;
   }
   return `${publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange)}:${series.source.fieldId}`;
 }

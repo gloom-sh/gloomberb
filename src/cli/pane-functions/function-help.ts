@@ -114,8 +114,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["GIP"],
   },
   G: {
-    summary: "Chart any series together: prices, statement lines, valuation multiples, FRED series, indicators and formulas. Series read SYMBOL:field or FRED:series.",
-    usage: ["G", "G NVDA:revenue, NVDA:net_income"],
+    summary: "Chart any series together: prices, statement lines, valuation multiples, FRED series, map series such as chokepoint transits, indicators and formulas. Series read SYMBOL:field, FRED:series or GEO:series.",
+    usage: ["G", "G NVDA:revenue, NVDA:net_income", "G XOM, GEO:HORMUZ"],
     keys: CHART_KEYS,
     data: { free: "Prices 15 minutes delayed, other series as published", pro: "Prices real-time for US listings, other series as published" },
     bloomberg: ["G"],
@@ -809,10 +809,17 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["IPO"],
   },
   MAP: {
-    summary: "Trading venues around the world with open or closed status, local time and time to the next session change.",
-    usage: ["MAP"],
-    keys: [SEARCH, key("+", " zoom in"), key("-", " zoom out")],
-    data: same("Live, from exchange calendars"),
+    summary: "Trading venues around the world with open or closed status, local time and time to the next session change. Layers add ships, chokepoints, ports, pipelines, fields, LNG terminals and airports to the same map, each with a table of what is in view and the companies it links to.",
+    usage: ["MAP", "MAP ships", "MAP energy", "MAP air", "MAP ports"],
+    keys: [SEARCH, OPEN, key("d", "es"), key("+", " zoom in")],
+    data: same("Venues live from exchange calendars; ships live, chokepoints and ports daily, the rest reference data"),
+    bloomberg: [],
+  },
+  CHOKE: {
+    summary: "Daily vessel transits through the main shipping chokepoints charted together, or one of them by name, as series you can mix with anything else in G.",
+    usage: ["CHOKE", "CHOKE SUEZ"],
+    keys: CHART_KEYS,
+    data: same("Daily"),
     bloomberg: [],
   },
 

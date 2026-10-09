@@ -434,6 +434,11 @@ export class CloudDataApi {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
   }
 
+  /** Geo layers (the map's layers, entities and series); one prefix-scoped method, like EQS. */
+  geo<T>(path: string, init?: RequestInit): Promise<T> {
+    return this.request<T>(`/cloud/geo/${path}`, init);
+  }
+
   /** Credit-document paths stay with their pane; keep the shared client small. */
   creditDocuments<T>(path: string): Promise<T> {
     return this.request<T>(`/cloud/credit-documents/${path}`);

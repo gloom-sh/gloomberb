@@ -3,7 +3,9 @@ import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/f
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
 import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from "../../../time-series/market";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
-import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
+import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSpec, ChartSpec, ChartViewportSpec } from "../../../time-series/types";
+import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
+import { GEO_SERIES_CAPABILITY_ID } from "./series-expression";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
 import { intersectChartResolutionSupport, isIntradayResolution, normalizeChartResolutionSupport, type ManualChartResolution } from "../../../time-series/resolution";
 import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
@@ -34,6 +36,23 @@ export interface ChartPaneModel extends HeadlessSeriesResult {
       requestedSession: string | null;
       unavailableReason: string | null;
     }>;
+  };
+}
+
+/**
+ * Map series read straight from the Cloud client, so a report or screenshot
+ * charts them where plugin capability handlers are not running; every other
+ * capability series goes through the registry as before.
+ */
+function headlessCapabilityResolver(context: HeadlessPaneContext) {
+  const registry = context.capabilities ? createChartSeriesResolver(context.capabilities) : null;
+  return async (source: CapabilitySeriesSource, viewport: ChartViewportSpec, spec: ChartSeriesSpec) => {
+    if (source.capabilityId === GEO_SERIES_CAPABILITY_ID) {
+      const request = <T,>(path: string, init?: RequestInit) => context.apiClient.geo<T>(path, { ...init, signal: init?.signal ?? context.signal });
+      return resolveGeoChartSeries(request, source.seriesId, viewport, context.signal);
+    }
+    if (!registry) throw new Error(`Chart series capability "${source.capabilityId}" is unavailable. Enable its plugin or provider.`);
+    return registry(source, viewport, spec);
   };
 }
 
@@ -101,7 +120,7 @@ export async function loadChartPaneModel(
         if (!primary || rank < primary.rank) primaryHistories.set(key, { key: variantKey, rank });
       }
     },
-    ...(context.capabilities ? { resolveCapabilitySeries: createChartSeriesResolver(context.capabilities) } : {}),
+    resolveCapabilitySeries: headlessCapabilityResolver(context),
     loadFredSeries: async (request) => ({
       data: await context.apiClient.getCloudFredSeries(request.seriesId, {
         startDate: request.startDate,

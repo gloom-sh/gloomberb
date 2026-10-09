@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   formatSeriesExpression,
+  GEO_SERIES_CAPABILITY_ID,
   parseChartExpression,
   parseSeriesExpression,
   resolveChartFieldAlias,
@@ -53,6 +54,16 @@ describe("chart composer expressions", () => {
       { kind: "economic", provider: "fred", seriesId: "CPIAUCSL" },
     ]);
     expect(resolveChartFieldAlias("EV / EBITDA")).toBe("valuation.evEbitda");
+  });
+
+  test("reads map series as GEO legs beside tickers and writes them back the same way", () => {
+    const [stock, transits] = parseChartExpression("XOM, geo:HORMUZ");
+    expect(stock).toEqual({ kind: "security", symbol: "XOM", fieldId: "market.ohlcv" });
+    expect(transits).toEqual({ kind: "capability", capabilityId: GEO_SERIES_CAPABILITY_ID, seriesId: "HORMUZ" });
+    expect(formatSeriesExpression(buildSeriesSpec(transits!, 1))).toBe("GEO:HORMUZ");
+    expect(parseSeriesExpression("GEO:chokepoints.suez.transits")).toMatchObject({ seriesId: "chokepoints.suez.transits" });
+    expect(parseSeriesExpression("GEO:")).toBeNull();
+    expect(parseSeriesExpression("GEO:a b")).toBeNull();
   });
 
   test("rejects an invalid leg instead of silently building a partial chart", () => {

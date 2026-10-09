@@ -1,5 +1,50 @@
+import { peekGeoCatalog } from "../../../api-client/geo";
+import { SERIES_COLORS } from "../../../time-series/resolve";
+import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
+import type { PaneTemplateDef } from "../../../types/plugin";
+import { chartHeadless } from "../chart-composer/headless";
+import { buildCustomChartPreset } from "../chart-composer/presets";
+import { formatGeoSeriesExpression } from "../chart-composer/series-expression";
 import type { PluginModule } from "../plugin-module";
+import { cloudGeoRequest } from "./client";
+import { chokepointSeriesFor, chokepointSeriesIds, createGeoChartSeriesCapability } from "./geo-series";
+import { mapHeadless } from "./headless";
+import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
 import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
+
+/** Asked for when the series index cannot be read, so CHOKE still opens on the main straits. */
+const MAIN_CHOKEPOINTS = ["SUEZ", "PANAMA", "HORMUZ", "BABELMANDEB", "MALACCA"];
+const CHOKE_SERIES_LIMIT = 6;
+
+const chokepointTemplate: PaneTemplateDef = {
+  id: "chokepoint-chart-pane",
+  paneId: CHART_COMPOSER_PANE_ID,
+  headless: { ...chartHeadless("chart-composer-pane"), description: "Daily vessel transits through the main shipping chokepoints, or one chokepoint by name." },
+  label: "Chokepoint Transits",
+  description: "Chart daily vessel transits through the main shipping chokepoints, or one of them.",
+  keywords: ["chokepoint", "chokepoints", "transits", "suez", "panama", "hormuz", "malacca", "shipping", "strait", "canal"],
+  shortcut: { prefix: "CHOKE", argPlaceholder: "chokepoint", argKind: "text", argOptional: true },
+  canCreate: () => true,
+  createInstance: async (_context, options) => {
+    const typed = options?.arg?.trim();
+    const named = typed ? await chokepointSeriesFor(cloudGeoRequest, typed) : null;
+    const ids = named
+      ? [named]
+      : await chokepointSeriesIds(cloudGeoRequest).then((found) => (found.length ? found : MAIN_CHOKEPOINTS)).catch(() => MAIN_CHOKEPOINTS);
+    const base = buildCustomChartPreset(ids.slice(0, CHOKE_SERIES_LIMIT).map(formatGeoSeriesExpression).join(", "));
+    // Daily transits read best over a year, each strait in its own colour.
+    const spec = {
+      ...base,
+      viewport: { ...base.viewport, range: "1Y" as const },
+      series: base.series.map((series, index) => ({ ...series, color: series.color ?? SERIES_COLORS[index % SERIES_COLORS.length]! })),
+    };
+    return {
+      title: named ? `G ${named} transits` : "G Chokepoint transits",
+      placement: "floating",
+      settings: { chartSpec: spec },
+    };
+  },
+};
 
 export const worldVenueMapModule: PluginModule = {
   panes: [
@@ -11,6 +56,8 @@ export const worldVenueMapModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 124, height: 36 },
+      // The layer picker comes from the server's catalog; without one the pane keeps its old settings.
+      settings: (context) => buildMapSettingsDef(context.settings, peekGeoCatalog()?.layers) ?? { fields: [] },
     },
   ],
   paneTemplates: [
@@ -18,10 +65,27 @@ export const worldVenueMapModule: PluginModule = {
       id: "world-venue-map-pane",
       paneId: WORLD_VENUE_MAP_PANE_ID,
       label: "World Venue Map",
-      description: "Live trading venue status, local time, and exchange locations around the world.",
-      keywords: ["world", "map", "venue", "venues", "exchange", "mic", "market hours", "open markets"],
-      shortcut: { prefix: "MAP" },
-      createInstance: () => ({ placement: "floating" }),
+      description: "Trading venues with live status and local time; ships, ports, energy and airports as layers on the same map.",
+      keywords: ["world", "map", "venue", "venues", "exchange", "mic", "market hours", "open markets", "ships", "vessels", "ports", "chokepoints", "pipelines", "airports", "energy", "layers"],
+      shortcut: {
+        prefix: "MAP",
+        argPlaceholder: "layers",
+        argKind: "text",
+        argOptional: true,
+        argOptions: () => MAP_PRESET_OPTIONS,
+      },
+      headless: mapHeadless,
+      createInstance: (_context, options) => {
+        const preset = parseMapPreset(options?.arg ?? options?.values?.layers);
+        if (!preset) return { placement: "floating" };
+        return {
+          title: `Map · ${preset.layers.map(groupTitle).join(", ")}`,
+          placement: "floating",
+          settings: { layers: preset.layers, venues: preset.venues },
+        };
+      },
     },
+    chokepointTemplate,
   ],
+  capabilities: [createGeoChartSeriesCapability()],
 };

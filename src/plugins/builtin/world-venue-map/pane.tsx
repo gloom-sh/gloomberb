@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiClient, type CloudWorldVenueMapPayload, type CloudWorldVenuePayload } from "../../../api-client";
+import type { CloudWorldVenuePayload } from "../../../api-client";
 import {
   DataTableView,
   EmptyState,
@@ -17,19 +17,20 @@ import {
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
-import { useAsyncResource, usePluginPaneState } from "../../../public/react";
+import { useAsyncResource, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { loadWorldVenues } from "./client";
+import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
+import { LayeredMapView } from "./layered-pane";
+import { LAYERS_SETTING_KEY, parseLayerTokens, resolveActiveLayers } from "./layers";
 import { WorldVenueMap } from "./map";
-import {
-  filterWorldVenues,
-  formatVenueCountdown,
-  formatVenueLocalTime,
-  venueRemainingSeconds,
-} from "./model";
+import { filterWorldVenues, formatVenueLocalTime } from "./model";
+import { useGeoCatalog } from "./use-geo";
+import { SelectedVenueHeader } from "./venue-header";
 
-export const WORLD_VENUE_MAP_PANE_ID = "world-venue-map";
+export { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 
 type VenueColumnId = "status" | "mic" | "name" | "time";
 type VenueColumn = DataTableColumn & { id: VenueColumnId };
@@ -45,41 +46,25 @@ function venueColumns(width: number): VenueColumn[] {
   ];
 }
 
-function SelectedVenueHeader({
-  venue,
-  checkedAt,
-  now,
-  width,
-}: {
-  venue: CloudWorldVenuePayload | null;
-  checkedAt: number;
-  now: number;
-  width: number;
-}) {
-  if (!venue) return <Box height={2} />;
-  const remaining = formatVenueCountdown(venueRemainingSeconds(venue, checkedAt, now));
-  const state = venue.isOpen ? "OPEN" : "CLOSED";
-  const transition = remaining ? `${venue.isOpen ? "closes" : "opens"} ${remaining}` : "";
-  return (
-    <Box flexDirection="column" height={2} width={width} paddingX={1}>
-      <Box flexDirection="row" justifyContent="space-between" width="100%">
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{venue.mic}</Text>
-        <Text fg={venue.isOpen ? colors.positive : colors.textDim}>{state}</Text>
-      </Box>
-      <Text fg={colors.textMuted}>
-        {`${venue.city}, ${venue.country} · ${formatVenueLocalTime(venue.timezone, now)}${transition ? ` · ${transition}` : ""}`}
-      </Text>
-    </Box>
-  );
+/**
+ * One map for anything with a place. Venues are the default layer; geo layers
+ * come from the server's catalog, so a server without them leaves the venue
+ * map exactly as it was.
+ */
+export function WorldVenueMapPane(props: PaneProps) {
+  const [layerSetting] = usePaneSettingValue<unknown>(LAYERS_SETTING_KEY, null);
+  const tokens = useMemo(() => parseLayerTokens(layerSetting), [layerSetting]);
+  const { catalog, settled } = useGeoCatalog();
+  const layers = useMemo(() => resolveActiveLayers(tokens, catalog?.layers), [catalog, tokens]);
+  if (layers.length) return <LayeredMapView {...props} layers={layers} tokens={tokens} />;
+  // A preset waits for the catalog rather than flashing the venue map first.
+  if (tokens.length && !settled) {
+    return <PaneStatusBody loading align="center" width={props.width} height={props.height} loadingLabel="Loading map layers..." />;
+  }
+  return <VenueMapView {...props} />;
 }
 
-async function loadWorldVenues(): Promise<CloudWorldVenueMapPayload> {
-  const response = await apiClient.getCloudWorldVenues();
-  if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
-  return response.stale ? { ...response.data, stale: true } : response.data;
-}
-
-export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
+function VenueMapView({ focused, width, height }: PaneProps) {
   // A background refresh keeps the venues on screen, so loading only shows before the first answer.
   const { data, loading, error, load } = useAsyncResource(loadWorldVenues);
   const [query, setQuery] = useState("");

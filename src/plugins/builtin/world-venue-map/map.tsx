@@ -21,6 +21,16 @@ import {
   type WorldVenueCluster,
 } from "./model";
 import { WORLD_OUTLINES } from "./world-outlines";
+import { drawGeoBitmap, GeoSvgLayers, hitTestGeo, rasterGeoCells, type GeoHit, type GeoMapOverlay } from "./geo-draw";
+import { geoViewForViewport, sameGeoView, WORLD_GEO_VIEW, type GeoView } from "./layers";
+
+/** Where the map should look: a new key centres it, at least at `zoom`. */
+export interface WorldMapFocus {
+  key: string;
+  longitude: number;
+  latitude: number;
+  zoom?: number;
+}
 
 interface WorldVenueMapProps {
   venues: readonly CloudWorldVenuePayload[];
@@ -28,6 +38,14 @@ interface WorldVenueMapProps {
   width: number;
   height: number;
   onSelect: (venue: CloudWorldVenuePayload) => void;
+  /** Geo layers drawn on the same projection; without them the map is the venue map alone. */
+  overlay?: GeoMapOverlay;
+  onSelectGeo?: (hit: Extract<GeoHit, { kind: "feature" }>) => void;
+  /** The area and zoom in view, as the layers request it. */
+  onViewChange?: (view: GeoView) => void;
+  focus?: WorldMapFocus | null;
+  /** How far the map may zoom; geo layers go closer than venues. */
+  maxZoom?: number;
 }
 
 function clusterVenue(cluster: WorldVenueCluster, selectedMic: string | null): CloudWorldVenuePayload {
@@ -117,10 +135,14 @@ function renderWorldBitmap(
   width: number,
   height: number,
   colors: ReturnType<typeof useThemeColors>,
+  overlay?: GeoMapOverlay,
 ): NativeChartBitmap {
   const bitmap = { width, height, pixels: new Uint8Array(width * height * 4) };
   fillOpaque(bitmap.pixels, parseHex(colors.bg));
   drawWorldOutlines(bitmap.pixels, width, height, parseHex(colors.textDim, 0.62), Math.max(1, width / 900));
+  if (overlay) {
+    drawGeoBitmap(bitmap, overlay, (longitude, latitude) => projectWorldPoint(longitude, latitude, width, height), colors.selectedText);
+  }
 
   const clusters = clusterWorldVenues(venues, width, height);
   for (const cluster of clusters) {
@@ -151,6 +173,7 @@ function renderAsciiMap(
   width: number,
   height: number,
   cellAspect: number,
+  overlay?: GeoMapOverlay,
 ): string[] {
   const grid = Array.from({ length: height }, () => Array.from({ length: width }, () => " "));
   for (const outline of WORLD_OUTLINES) {
@@ -161,6 +184,8 @@ function renderAsciiMap(
       if (grid[y]?.[x] === " ") grid[y]![x] = ".";
     }
   }
+  const project = (longitude: number, latitude: number) => projectWorldPoint(longitude, latitude, width, height, cellAspect);
+  if (overlay) rasterGeoCells(grid, overlay, project);
   for (const cluster of clusterWorldVenues(venues, width, height, cellAspect)) {
     const x = Math.round(cluster.x);
     const y = Math.round(cluster.y);
@@ -169,6 +194,11 @@ function renderAsciiMap(
       : cluster.venues.length > 1
         ? String(Math.min(cluster.venues.length, 9))
         : cluster.isOpen ? "O" : "o";
+  }
+  if (overlay?.selected) {
+    const point = project(overlay.selected.longitude, overlay.selected.latitude);
+    const row = grid[Math.round(point.y)];
+    if (row && Math.round(point.x) >= 0 && Math.round(point.x) < width) row[Math.round(point.x)] = "@";
   }
   return grid.map((row) => row.join(""));
 }
@@ -194,7 +224,7 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
       cellHeightPx,
       pixelRatio,
     });
-    return renderWorldBitmap(props.venues, props.selectedMic, size.pixelWidth, size.pixelHeight, colors);
+    return renderWorldBitmap(props.venues, props.selectedMic, size.pixelWidth, size.pixelHeight, colors, props.overlay);
   }, [
     cellHeightPx,
     cellWidthPx,
@@ -202,6 +232,7 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
     nativeCharts,
     pixelRatio,
     props.height,
+    props.overlay,
     props.selectedMic,
     props.venues,
     props.width,
@@ -217,13 +248,31 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
     [cellAspect, props.height, props.venues, props.width],
   );
   const ascii = useMemo(
-    () => renderAsciiMap(props.venues, props.selectedMic, props.width, props.height, cellAspect),
-    [cellAspect, props.height, props.selectedMic, props.venues, props.width],
+    () => renderAsciiMap(props.venues, props.selectedMic, props.width, props.height, cellAspect, props.overlay),
+    [cellAspect, props.height, props.overlay, props.selectedMic, props.venues, props.width],
   );
+
+  // The terminal map never pans or zooms, so it always covers the world.
+  const onViewChange = props.onViewChange;
+  useEffect(() => {
+    onViewChange?.(WORLD_GEO_VIEW);
+  }, [onViewChange]);
 
   const selectAt = (event: ChartMouseEvent) => {
     const pointer = getLocalPlotPointer(event, surfaceRef.current, renderer);
     if (!pointer) return;
+    if (props.overlay) {
+      const hit = hitTestGeo(
+        props.overlay,
+        { x: pointer.cellX, y: pointer.cellY },
+        (longitude, latitude) => projectWorldPoint(longitude, latitude, props.width, props.height, cellAspect),
+        2.5,
+      );
+      if (hit?.kind === "feature") {
+        props.onSelectGeo?.(hit);
+        return;
+      }
+    }
     const cluster = closestWorldVenueCluster(clusters, pointer.cellX, pointer.cellY, 4);
     if (cluster) props.onSelect(clusterVenue(cluster, props.selectedMic));
   };
@@ -285,6 +334,7 @@ function clientDeltaToMapDelta(
 
 function DesktopWorldVenueMap(props: WorldVenueMapProps) {
   const colors = useThemeColors();
+  const maxZoom = props.maxZoom ?? MAX_WORLD_MAP_ZOOM;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState<WorldMapViewport>(DEFAULT_WORLD_MAP_VIEWPORT);
   const viewportRef = useRef(viewport);
@@ -323,12 +373,64 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     }).join(" ");
   }), [plotHeight, props.width, viewport]);
 
+  const project = useCallback(
+    (longitude: number, latitude: number) => projectWorldPoint(longitude, latitude, props.width, plotHeight, 1, viewport),
+    [plotHeight, props.width, viewport],
+  );
+  const baseProject = useCallback(
+    (longitude: number, latitude: number) => projectWorldPoint(longitude, latitude, props.width, plotHeight),
+    [plotHeight, props.width],
+  );
+  // The projection is linear, so the view is the whole-world drawing scaled and
+  // moved: panning changes one transform instead of every feature path.
+  const overlayTransform = useMemo(() => {
+    const origin = project(0, 0);
+    const east = project(10, 0);
+    const baseOrigin = baseProject(0, 0);
+    const baseEast = baseProject(10, 0);
+    const scale = (east.x - origin.x) / Math.max(baseEast.x - baseOrigin.x, Number.EPSILON);
+    return `translate(${(origin.x - scale * baseOrigin.x).toFixed(3)} ${(origin.y - scale * baseOrigin.y).toFixed(3)}) scale(${scale.toFixed(5)})`;
+  }, [baseProject, project]);
+
   const selectAt = useCallback((point: WorldMapPoint, element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
     const hit = rect.height <= 0 ? 2.4 : (MAP_CLICK_HIT_PX / rect.height) * plotHeight;
+    if (props.overlay) {
+      const geoHit = hitTestGeo(props.overlay, point, project, Math.max(1.2, hit * 0.8));
+      if (geoHit?.kind === "cluster") {
+        setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, project(geoHit.cluster.lon, geoHit.cluster.lat), 2.5, 1, maxZoom));
+        return;
+      }
+      if (geoHit?.kind === "feature") {
+        props.onSelectGeo?.(geoHit);
+        return;
+      }
+    }
     const cluster = closestWorldVenueCluster(clusters, point.x, point.y, Math.max(1.6, hit));
     if (cluster) props.onSelect(clusterVenue(cluster, props.selectedMic));
-  }, [clusters, plotHeight, props]);
+  }, [clusters, maxZoom, plotHeight, project, props]);
+
+  const onViewChange = props.onViewChange;
+  const reportedViewRef = useRef<GeoView | null>(null);
+  useEffect(() => {
+    if (!onViewChange) return;
+    const next = geoViewForViewport(viewport, props.width, plotHeight);
+    if (reportedViewRef.current && sameGeoView(reportedViewRef.current, next)) return;
+    reportedViewRef.current = next;
+    onViewChange(next);
+  }, [onViewChange, plotHeight, props.width, viewport]);
+
+  // A new focus (an entity picked in the table) centres the map on it.
+  const focusKey = props.focus?.key ?? null;
+  useEffect(() => {
+    const focus = props.focus;
+    if (!focus) return;
+    setViewport((current) => {
+      const zoom = Math.max(current.zoom, focus.zoom ?? 1);
+      if (zoom <= 1) return current;
+      return clampWorldMapViewport({ zoom, centerLongitude: focus.longitude, centerLatitude: focus.latitude }, props.width, plotHeight, 1, maxZoom);
+    });
+  }, [focusKey]);
 
   const selectedVenue = props.venues.find((venue) => venue.mic === props.selectedMic) ?? null;
   const selectedVenueRef = useRef(selectedVenue);
@@ -346,9 +448,9 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
       const venue = selectedVenueRef.current;
       const anchor = venue ? projectWorldPoint(venue.longitude, venue.latitude, props.width, plotHeight, 1, current) : null;
       const point = anchor && insidePlot(anchor) ? anchor : { x: props.width / 2, y: plotHeight / 2 };
-      return zoomWorldMapViewport(current, props.width, plotHeight, point, factor);
+      return zoomWorldMapViewport(current, props.width, plotHeight, point, factor, 1, maxZoom);
     });
-  }, [insidePlot, plotHeight, props.width]);
+  }, [insidePlot, maxZoom, plotHeight, props.width]);
 
   // A venue picked in the table pans a zoomed map to it when it is out of view.
   // Only a new selection moves the map, so a drag away from it stays put.
@@ -359,11 +461,11 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
       if (current.zoom <= 1) return current;
       const point = projectWorldPoint(venue.longitude, venue.latitude, props.width, plotHeight, 1, current);
       if (insidePlot(point)) return current;
-      return clampWorldMapViewport({ ...current, centerLongitude: venue.longitude, centerLatitude: venue.latitude }, props.width, plotHeight);
+      return clampWorldMapViewport({ ...current, centerLongitude: venue.longitude, centerLatitude: venue.latitude }, props.width, plotHeight, 1, maxZoom);
     });
   }, [props.selectedMic]);
 
-  const atMaxZoom = viewport.zoom >= MAX_WORLD_MAP_ZOOM;
+  const atMaxZoom = viewport.zoom >= maxZoom;
   usePaneFooter("world-venue-map:zoom", () => ({
     hints: [
       { id: "zoom-in", key: "+", label: " zoom in", title: "Zoom In", onPress: () => zoomBy(MAP_DOUBLE_CLICK_ZOOM), disabled: atMaxZoom },
@@ -384,11 +486,11 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
       event.stopPropagation();
       const point = clientToMapPoint(event, element, props.width, plotHeight);
       const factor = wheelZoomFactor(event);
-      setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, factor));
+      setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, factor, 1, maxZoom));
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
-  }, [plotHeight, props.width]);
+  }, [maxZoom, plotHeight, props.width]);
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
@@ -439,13 +541,13 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
           drag.lastX = event.clientX;
           drag.lastY = event.clientY;
           setDragging(true);
-          setViewport((current) => panWorldMapViewport(current, props.width, plotHeight, delta.x, delta.y));
+          setViewport((current) => panWorldMapViewport(current, props.width, plotHeight, delta.x, delta.y, 1, maxZoom));
         }}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onDoubleClick={(event) => {
           const point = clientToMapPoint(event, event.currentTarget, props.width, plotHeight);
-          setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, MAP_DOUBLE_CLICK_ZOOM));
+          setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, MAP_DOUBLE_CLICK_ZOOM, 1, maxZoom));
         }}
         style={{
           position: "relative",
@@ -478,6 +580,17 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
               vectorEffect="non-scaling-stroke"
             />
           ))}
+          {props.overlay ? (
+            <GeoSvgLayers
+              overlay={props.overlay}
+              baseProject={baseProject}
+              project={project}
+              transform={overlayTransform}
+              mapWidth={props.width}
+              background={colors.bg}
+              selectedColor={colors.selectedText}
+            />
+          ) : null}
           {clusters.map((cluster) => {
             const selected = isSelectedCluster(cluster, props.selectedMic);
             const venue = clusterVenue(cluster, props.selectedMic);
@@ -509,8 +622,46 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
             );
           })}
         </svg>
+        {props.overlay ? <GeoLegend overlay={props.overlay} venues={props.venues.length > 0} /> : null}
       </div>
     </Box>
+  );
+}
+
+/** Which colour is which layer, once there is more than one on the map. */
+function GeoLegend({ overlay, venues }: { overlay: GeoMapOverlay; venues: boolean }) {
+  const colors = useThemeColors();
+  const items = [
+    ...(venues ? [{ id: "venues", name: "Venues", color: colors.positive, round: true }] : []),
+    // Only what is drawn: a layer below its zoom or unable to serve has no colour to explain.
+    ...overlay.layers
+      .filter((layer) => layer.features.length > 0 || layer.clusters.length > 0)
+      .map((layer) => ({ id: layer.id, name: layer.name, color: layer.color, round: layer.geometry === "point" })),
+  ];
+  if (items.length < 2) return null;
+  return (
+    <div
+      data-gloom-role="geo-legend"
+      style={{
+        position: "absolute",
+        left: 10,
+        bottom: 8,
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "4px 14px",
+        color: colors.textDim,
+        fontSize: "0.85em",
+        pointerEvents: "none",
+      }}
+    >
+      {/* DOM spans, built with createElement like the SVG text above: this branch only runs on the desktop and the web. */}
+      {items.map((item) => createElement(
+        "span",
+        { key: item.id, style: { display: "inline-flex", alignItems: "center", gap: 6 } },
+        createElement("span", { style: { width: 8, height: item.round ? 8 : 3, borderRadius: item.round ? "50%" : 1, background: item.color } }),
+        item.name,
+      ))}
+    </div>
   );
 }
 

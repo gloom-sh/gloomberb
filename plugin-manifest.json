@@ -211,7 +211,9 @@
           "world-indices",
           "world-venue-map"
         ],
-        "capabilities": [],
+        "capabilities": [
+          "geo-series"
+        ],
         "broker": false
       }
     },
