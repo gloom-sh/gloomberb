@@ -35,14 +35,18 @@ export function EmptyState({ title, message, hint, actions, status = "empty" }: 
 export interface NoticeProps {
   children: ReactNode;
   tone?: "muted" | "positive" | "warning" | "negative";
+  variant?: "inline" | "callout";
 }
 
 /** Inline feedback leaves existing content visible, including stale data after a refresh failure. */
-export function Notice({ children, tone = "warning" }: NoticeProps) {
+export function Notice({ children, tone = "warning", variant = "inline" }: NoticeProps) {
   const colors = useThemeColors();
+  const native = useUiCapabilities().nativePaneChrome;
+  const callout = variant === "callout";
+  const color = tone === "muted" ? colors.textDim : colors[tone];
   return (
-    <Box data-gloom-status={tone === "negative" ? "error" : "notice"} data-gloom-ui="notice">
-      <Text fg={tone === "muted" ? colors.textDim : colors[tone]} wrapText>{children}</Text>
+    <Box flexDirection="row" gap={callout ? 1 : 0} paddingX={callout ? 1 : 0} paddingY={callout && native ? 0.35 : 0} backgroundColor={callout ? colors.panel : undefined} border={callout ? ["left"] : undefined} borderColor={color} data-gloom-status={tone === "negative" ? "error" : "notice"} data-gloom-ui="notice">
+      {callout ? <Text fg={color}>!</Text> : null}<Box flexGrow={1} minWidth={0}><Text fg={color} wrapText>{children}</Text></Box>
     </Box>
   );
 }

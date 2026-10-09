@@ -70,6 +70,8 @@ export interface HeadlessPaneContext {
   /** Effective instance settings, after template creation and option normalization. */
   settings?: Record<string, unknown>;
   capabilities?: CapabilityInvoker;
+  /** Locally registered broker adapters. Reports may read account data; they never submit orders. */
+  resolveBroker?: (brokerType: string) => import("./broker").BrokerAdapter | null;
   /** Read one local portfolio without passing holdings through a remote endpoint. */
   resolvePortfolio?: (id: string) => Promise<{
     portfolio: import("./ticker").Portfolio;

@@ -1,6 +1,7 @@
 import { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { TickerRepository } from "../../data/ticker-repository";
 import type { AppConfig } from "../../types/config";
+import type { BrokerAdapter } from "../../types/broker";
 import type { DataProvider } from "../../types/data-provider";
 import type { PersistedResourceValue } from "../../types/persistence";
 import type {
@@ -20,6 +21,7 @@ export interface PaneDiscoveryOptions {
   tickerRepository?: TickerRepository;
   panes?: Map<string, PaneDef>;
   paneTemplates?: Map<string, PaneTemplateDef>;
+  brokers?: Map<string, BrokerAdapter>;
 }
 
 /** Throws only if a plugin actually reaches for a dependency discovery has no answer for. */
@@ -43,10 +45,12 @@ export function createPaneDiscoveryContext(options: PaneDiscoveryOptions): Gloom
 } {
   const panes = options.panes ?? new Map<string, PaneDef>();
   const paneTemplates = options.paneTemplates ?? new Map<string, PaneTemplateDef>();
+  const brokers = options.brokers ?? new Map<string, BrokerAdapter>();
   return {
     ...buildDiscoveryContext({
       panes,
       paneTemplates,
+      brokers,
       getConfig: options.getConfig,
       marketData: options.marketData ?? unavailable<DataProvider>("Market data"),
       tickerRepository: options.tickerRepository ?? unavailable<TickerRepository>("The ticker repository"),
@@ -60,6 +64,7 @@ export function createPaneDiscoveryContext(options: PaneDiscoveryOptions): Gloom
 function buildDiscoveryContext({
   panes,
   paneTemplates,
+  brokers,
   getConfig,
   marketData,
   tickerRepository,
@@ -67,6 +72,7 @@ function buildDiscoveryContext({
 }: {
   panes: Map<string, PaneDef>;
   paneTemplates: Map<string, PaneTemplateDef>;
+  brokers: Map<string, BrokerAdapter>;
   getConfig: () => AppConfig;
   marketData: DataProvider;
   tickerRepository: TickerRepository;
@@ -84,7 +90,8 @@ function buildDiscoveryContext({
     registerCommand: () => {},
     registerCommandBarSearchProvider: () => () => {},
     registerColumn: () => {},
-    registerBroker: () => {},
+    registerBroker: (broker) => { brokers.set(broker.id, broker); },
+    getBrokerAdapter: (brokerType) => brokers.get(brokerType) ?? null,
     registerCapability: () => {},
     registerTickerResearchTab: () => {},
     registerShortcut: () => {},
@@ -154,10 +161,15 @@ function buildDiscoveryContext({
 
 export async function createPaneCatalog(context: MarketContext, plugins: GloomPlugin[]): Promise<PaneFunctionCatalog> {
   const setupPlugins: GloomPlugin[] = [];
+  const brokers = new Map<string, BrokerAdapter>();
+  const previousResolver = context.resolveBroker;
+  const resolveBroker = (brokerType: string) => brokers.get(brokerType) ?? null;
+  context.resolveBroker = resolveBroker;
   const { panes, paneTemplates, ...discoveryContext } = createPaneDiscoveryContext({
     getConfig: () => context.config,
     marketData: context.dataProvider,
     tickerRepository: context.store,
+    brokers,
   });
 
   const destroy = () => {
@@ -165,6 +177,8 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     for (const plugin of setupPlugins.splice(0).reverse()) {
       try { plugin.dispose?.(); } catch (error) { failure ??= error; }
     }
+    brokers.clear();
+    if (context.resolveBroker === resolveBroker) context.resolveBroker = previousResolver;
     if (failure) throw failure;
   };
 

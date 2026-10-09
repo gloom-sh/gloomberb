@@ -55,10 +55,11 @@ export interface KeyValueRowProps {
   width?: number;
   labelWidth?: number;
   emphasis?: boolean;
+  align?: "left" | "right";
 }
 
 /** Aligned labels and values; a bounded row reserves room for an optional detail. */
-export function KeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true }: KeyValueRowProps) {
+export function KeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, align = "left" }: KeyValueRowProps) {
   const colors = useThemeColors();
   const rowWidth = width === undefined ? undefined : Math.max(0, Math.floor(width));
   const preferredLabelWidth = Math.max(0, labelWidth ?? (rowWidth === undefined ? 14 : Math.min(12, Math.max(8, Math.floor(rowWidth * 0.32)))));
@@ -73,7 +74,7 @@ export function KeyValueRow({ label, value, detail, tone, color, width, labelWid
       <Box width={labelColumns} flexShrink={0} overflow="hidden">
         <Text fg={colors.textDim}>{t(label)}</Text>
       </Box>
-      <Box width={valueWidth} flexShrink={0} overflow="hidden">
+      <Box width={valueWidth} flexShrink={0} overflow="hidden" alignItems={align === "right" ? "flex-end" : undefined}>
         <Text fg={color ?? statToneColor(tone, colors) ?? colors.text} attributes={emphasis ? TextAttributes.BOLD : undefined}>
           {valueWidth === undefined ? value : truncateToDisplayWidth(value, valueWidth)}
         </Text>

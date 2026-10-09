@@ -3,6 +3,29 @@ import type { BrokerContractRef } from "./instrument";
 type BrokerOrderAction = "BUY" | "SELL";
 export type BrokerOrderType = "MKT" | "LMT" | "STP" | "STP LMT";
 
+/** Explicit account classification for order confirmation. Missing values are treated as unknown. */
+export type BrokerTradingMode = "simulation" | "live" | "unknown";
+
+/** Synchronous ticket metadata. Adapters may vary this by contract and order type. */
+export interface BrokerTradingCapabilities {
+  enabled: boolean;
+  disabledReason?: string;
+  orderTypes: BrokerOrderType[];
+  tif: string[];
+  extendedHours?: boolean;
+  /** When set, extended hours are available only for these time-in-force values. */
+  extendedHoursTif?: string[];
+  fractionalQuantity?: boolean;
+  /** Explicitly permits sells beyond a known long position. Omission blocks short sales. */
+  shortSelling?: boolean;
+  minQuantity?: number;
+  quantityStep?: number;
+  priceDecimals?: number;
+  modify?: boolean;
+  cancel?: boolean;
+  executionKind?: "fills" | "order-summaries";
+}
+
 export interface BrokerCashBalance {
   currency: string;
   quantity: number;
@@ -13,6 +36,9 @@ export interface BrokerCashBalance {
 export interface BrokerAccount {
   accountId: string;
   name: string;
+  tradingMode?: BrokerTradingMode;
+  /** Broker-reported account classification, such as Cash or Margin. Omit when unavailable. */
+  accountType?: string;
   currency?: string;
   /** "cloud" is a connection held by the user's Gloom Cloud account. */
   source?: "gateway" | "flex" | "cloud";
@@ -78,6 +104,15 @@ export interface BrokerOrderRequest {
 }
 
 export interface BrokerOrderPreview {
+  currency?: string;
+  estimatedCost?: number;
+  fees?: number;
+  buyingPowerBefore?: number;
+  buyingPowerAfter?: number;
+  buyingPowerImpact?: number;
+  warnings?: string[];
+  /** Blocking broker validation errors. A ticket must not submit when these are present. */
+  errors?: string[];
   initMarginBefore?: number;
   initMarginAfter?: number;
   maintMarginBefore?: number;
@@ -91,6 +126,8 @@ export interface BrokerOrderPreview {
 
 export interface BrokerOrder {
   orderId: number;
+  /** Broker-native identity, scoped to profile and account. Numeric orderId remains the mutation handle. */
+  brokerOrderId?: string;
   brokerInstanceId?: string;
   accountId?: string;
   status: string;
@@ -114,6 +151,7 @@ export interface BrokerExecution {
   execId: string;
   brokerInstanceId?: string;
   orderId?: number;
+  brokerOrderId?: string;
   accountId?: string;
   side: string;
   shares: number;

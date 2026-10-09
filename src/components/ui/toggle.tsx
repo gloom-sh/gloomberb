@@ -9,6 +9,7 @@ interface SegmentedControlOption {
   label: string;
   value: string;
   disabled?: boolean;
+  tone?: "positive" | "negative";
 }
 
 export interface SegmentedControlProps {
@@ -21,6 +22,7 @@ export interface SegmentedControlProps {
   shortcutScope?: string;
   width?: number | "100%";
   wrap?: boolean;
+  size?: "default" | "large";
 }
 
 export function SegmentedControl({
@@ -32,6 +34,7 @@ export function SegmentedControl({
   shortcutScope,
   width,
   wrap = false,
+  size = "default",
 }: SegmentedControlProps) {
   const colors = useThemeColors();
   const ui = useUiHost();
@@ -84,6 +87,7 @@ export function SegmentedControl({
         focused={focused}
         width={width}
         wrap={wrap}
+        size={size}
       />
     );
   }
@@ -100,7 +104,9 @@ export function SegmentedControl({
         return (
           <Box
             key={option.value}
-            backgroundColor={active ? (focused ? colors.borderFocused : colors.selected) : colors.panel}
+            flexGrow={size === "large" ? 1 : undefined}
+            justifyContent="center"
+            backgroundColor={active && option.tone ? colors[option.tone] : active ? (focused ? colors.borderFocused : colors.selected) : colors.panel}
             onMouseDown={() => {
               if (!option.disabled) onChange?.(option.value);
             }}
@@ -109,7 +115,7 @@ export function SegmentedControl({
             <Text
               // The focused fill is the primary button's, so its text is too:
               // selected text on it is unreadable in the white theme.
-              fg={option.disabled ? colors.textMuted : active ? (focused ? colors.bg : colors.selectedText) : colors.textDim}
+              fg={option.disabled ? colors.textMuted : active && option.tone ? colors.bg : option.tone ? colors[option.tone] : active ? (focused ? colors.bg : colors.selectedText) : colors.textDim}
               attributes={active ? TextAttributes.BOLD : 0}
             >
               {` ${option.label} `}

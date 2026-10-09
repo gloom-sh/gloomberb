@@ -37,6 +37,7 @@ export function WebButton({
   expanded,
   onPress,
   variant = "secondary",
+  tone,
   disabled = false,
   active = false,
   shortcut,
@@ -48,7 +49,7 @@ export function WebButton({
   title,
 }: ButtonProps) {
   const colors = useThemeColors();
-  const palette = buttonPalette({ variant, active, disabled }, colors);
+  const palette = buttonPalette({ variant, active, disabled, tone }, colors);
 
   return (
     <button
@@ -465,6 +466,7 @@ export function WebSegmentedControl({
   focused,
   width,
   wrap = false,
+  size = "default",
 }: SegmentedControlProps) {
   const colors = useThemeColors();
   const enabled = options.filter((option) => !option.disabled);
@@ -482,7 +484,7 @@ export function WebSegmentedControl({
       flexDirection="row"
       flexWrap={wrap ? "wrap" : "nowrap"}
       width={width}
-      height={wrap ? undefined : 1}
+      height={wrap ? undefined : size === "large" ? 2 : 1}
       alignItems="center"
       backgroundColor={panelFill(colors)}
       role="radiogroup"
@@ -500,7 +502,8 @@ export function WebSegmentedControl({
             flexDirection="row"
             alignItems="center"
             justifyContent="center"
-            backgroundColor={active ? colors.selected : "transparent"}
+            flexGrow={size === "large" ? 1 : undefined}
+            backgroundColor={active && option.tone ? colors[option.tone] : active ? colors.selected : "transparent"}
             onMouseDown={() => {
               if (!option.disabled) onChange?.(option.value);
             }}
@@ -532,9 +535,9 @@ export function WebSegmentedControl({
             }}
           >
             <Text
-              fg={option.disabled ? colors.textMuted : active ? colors.selectedText : colors.textDim}
+              fg={option.disabled ? colors.textMuted : active && option.tone ? colors.bg : option.tone ? colors[option.tone] : active ? colors.selectedText : colors.textDim}
               attributes={active ? TextAttributes.BOLD : 0}
-              style={{ lineHeight: "normal" }}
+              style={{ lineHeight: "normal", fontSize: size === "large" ? "15px" : undefined, fontWeight: size === "large" ? 700 : undefined }}
             >
               {option.label}
             </Text>
