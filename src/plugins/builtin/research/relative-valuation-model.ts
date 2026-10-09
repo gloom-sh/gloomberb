@@ -1,5 +1,6 @@
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
+import { reportedEnterpriseValue } from "../../../utils/fundamentals";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
 export const RELATIVE_VALUATION_STALE_QUOTE_NOTICE = "Quote stale: quote-based values unavailable";
@@ -10,6 +11,7 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
   const fundamentals = financials?.fundamentals;
   const quoteStale = quote?.stale === true;
   const capitalization = selectMarketCapitalization(quoteStale ? undefined : quote, fundamentals);
+  const enterpriseValue = reportedEnterpriseValue(fundamentals);
   const compatibleCurrency = !!fundamentals?.financialCurrency && !!quote?.currency
     && fundamentals.financialCurrency === quote.currency;
   const reportedMultiples = {
@@ -50,8 +52,8 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
     evSales: !compatibleCurrency ? null
       : fundamentals?.enterpriseToRevenue != null && Number.isFinite(fundamentals.enterpriseToRevenue)
         ? fundamentals.enterpriseToRevenue
-        : fundamentals?.enterpriseValue != null && fundamentals.revenue != null && fundamentals.revenue > 0
-          ? fundamentals.enterpriseValue / fundamentals.revenue : null,
+        : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
+          ? enterpriseValue / fundamentals.revenue : null,
     fcfYield: capitalization && fundamentals?.financialCurrency === capitalization.currency
       && fundamentals.freeCashFlow != null && Number.isFinite(fundamentals.freeCashFlow) && capitalization.value > 0
       ? fundamentals.freeCashFlow / capitalization.value : null,

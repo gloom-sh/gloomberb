@@ -1,5 +1,6 @@
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
+import { fundamentalsCurrency, reportedEnterpriseValue } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../utils/market-capitalization";
@@ -289,7 +290,8 @@ function fundamentalsMetrics(
   profile: TickerFinancials["profile"],
   marketCap: MetricFigure,
   priceReturns: { return1Y?: number | null; return3Y?: number | null },
-  enterpriseValue = reportedMoney(fundamentals?.enterpriseValue, enterpriseValueCurrency(quote, fundamentals)),
+  reportingCurrency: string | undefined,
+  enterpriseValue = reportedMoney(reportedEnterpriseValue(fundamentals), enterpriseValueCurrency(quote, fundamentals)),
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
@@ -301,15 +303,15 @@ function fundamentalsMetrics(
     { label: "Forward P/E", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)) },
     { label: "PEG", ...multipleFigure(fundamentals?.pegRatio) },
     // The flows and EPS are one trailing-twelve-month block, the same twelve months for each line.
-    { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.financialCurrency, true) },
+    { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, reportingCurrency, true) },
     {
       label: `Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`,
       ...percentFigure(fundamentals?.dividendYield, formatFractionPercentCell),
     },
-    { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, fundamentals?.financialCurrency) },
-    { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, fundamentals?.financialCurrency) },
-    { label: "Operating Cash Flow (TTM)", ...reportedMoney(fundamentals?.operatingCashFlow, fundamentals?.financialCurrency) },
-    { label: "Free Cash Flow (TTM)", ...reportedMoney(fundamentals?.freeCashFlow, fundamentals?.financialCurrency) },
+    { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, reportingCurrency) },
+    { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, reportingCurrency) },
+    { label: "Operating Cash Flow (TTM)", ...reportedMoney(fundamentals?.operatingCashFlow, reportingCurrency) },
+    { label: "Free Cash Flow (TTM)", ...reportedMoney(fundamentals?.freeCashFlow, reportingCurrency) },
     // Levels, not changes, so they carry no sign.
     { label: "Operating Margin", ...percentFigure(fundamentals?.operatingMargin, formatFractionPercentCell) },
     { label: "Profit Margin", ...percentFigure(fundamentals?.profitMargin, formatFractionPercentCell) },
@@ -342,7 +344,7 @@ function fundamentalsReportMetrics(financials: FundamentalsReportData, view: "fu
   const marketCap: MetricFigure = capitalization
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
-  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials));
+  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials));
   return (view === "valuation"
     ? metrics.filter(({ label }) => VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield"))
     : metrics).filter((metric) => metric.text !== "—");
@@ -500,10 +502,10 @@ export async function buildTickerReport({
       : `${formatCompact(capitalization.value)} ${capitalization.currency}`
     : "—";
   // Shown in the same currency as the market cap, so the two can be compared.
-  const enterpriseValue = fundamentals?.enterpriseValue;
+  const enterpriseValue = reportedEnterpriseValue(fundamentals);
   const evCurrency = enterpriseValueCurrency(quote, fundamentals);
   // A minor unit such as GBp stays as reported: the converter would read it as the major currency.
-  const convertedEnterpriseValue = enterpriseValue != null && Number.isFinite(enterpriseValue) && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
+  const convertedEnterpriseValue = enterpriseValue != null && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
     ? await toBase(enterpriseValue, evCurrency) : Number.NaN;
   const enterpriseValueText = Number.isFinite(convertedEnterpriseValue)
     ? `${formatCompact(convertedEnterpriseValue)} ${config.baseCurrency}`
@@ -540,7 +542,7 @@ export async function buildTickerReport({
     ]);
   }
 
-  appendMetricSection(lines, "Fundamentals", metricLines(fundamentalsMetrics(quote, fundamentals, profile, { text: marketCapText }, priceReturns, { text: enterpriseValueText })));
+  appendMetricSection(lines, "Fundamentals", metricLines(fundamentalsMetrics(quote, fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText })));
 
   if (capitalization?.provenance.kind === "fundamentals") {
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));

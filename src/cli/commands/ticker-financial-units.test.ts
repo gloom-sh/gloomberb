@@ -66,6 +66,43 @@ test("enterprise value is shown in the market cap's currency, converted or label
     .toContain("Enterprise Value 3.85T USD");
 });
 
+test("a zero enterprise value is a gap, not a value, while a negative one is kept", async () => {
+  const withEnterpriseValue = (enterpriseValue: number): TickerFinancials => ({ quote, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { marketCap: 100e9, marketCapCurrency: "USD", enterpriseValue, revenue: 50e9, financialCurrency: "USD" },
+  });
+  const valuation = (financials: TickerFinancials) => renderFundamentalsReport({ ...financials, symbol: "UNITTEST" }, "valuation")
+    .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  for (const enterpriseValue of [0, Number.NaN]) {
+    const financials = withEnterpriseValue(enterpriseValue);
+    expect(await report(financials)).not.toContain("Enterprise Value");
+    expect(valuation(financials)).not.toContain("Enterprise Value");
+    expect(valuation(financials)).toContain("Market Cap 100B USD");
+  }
+  expect(await report(withEnterpriseValue(-5e9))).toContain("Enterprise Value -5B USD");
+  expect(valuation(withEnterpriseValue(-5e9))).toContain("Enterprise Value -5B USD");
+});
+
+test("trailing figures use the fundamentals' currency, then the statements' reporting currency, never the quote's", async () => {
+  const fundamentals = { eps: 31.43, revenue: 202.08e9, netIncome: 46.98e9, operatingCashFlow: 42.43e9, freeCashFlow: 36.96e9 };
+  const reportedIn = (financialCurrency: string | undefined, fundamentalsCurrency?: string): TickerFinancials => ({
+    quote: { ...quote, currency: "GBP" }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { ...fundamentals, financialCurrency: fundamentalsCurrency }, financialCurrency,
+  });
+  // Intl joins a currency code to its amount with a no-break space.
+  const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "").replace(/\u00a0/g, " ").replace(/ {2,}/g, " ");
+  const fromStatements = plain(await report(reportedIn("ZAR")));
+  expect(fromStatements).toContain("EPS (TTM) ZAR 31.43");
+  expect(fromStatements).toContain("Revenue (TTM) 202.08B ZAR");
+  expect(fromStatements).toContain("Net Income (TTM) 46.98B ZAR");
+  expect(fromStatements).toContain("Operating Cash Flow (TTM) 42.43B ZAR");
+  expect(fromStatements).toContain("Free Cash Flow (TTM) 36.96B ZAR");
+  expect(fromStatements).not.toContain("(ccy?)");
+  expect(plain(renderFundamentalsReport({ ...reportedIn("ZAR"), symbol: "UNITTEST" }, "valuation"))).toContain("EPS (TTM) ZAR 31.43");
+  expect(plain(await report(reportedIn("ZAR", "USD")))).toContain("Revenue (TTM) 202.08B USD");
+  // Nothing declares a currency: the GBP quote must not stand in for it.
+  expect(plain(await report(reportedIn(undefined)))).toContain("Revenue (TTM) 202.08B (ccy?)");
+});
+
 test("a pence-quoted range shares one decimal count, other ranges are unchanged", async () => {
   const pence = { ...quote, currency: "GBP", instrumentType: "EQUITY", providerPriceDivisor: 100, price: 35.32, low: 35.1, high: 35.4871, low52w: 25.5377, high52w: 37.585 };
   const london = await report({ quote: pence, annualStatements: [], quarterlyStatements: [], priceHistory: [] });

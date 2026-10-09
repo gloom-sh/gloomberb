@@ -22,6 +22,7 @@ import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types"
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../portfolio-list/position-metrics";
 import { liveDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../portfolio-list/live-valuation";
 import { formatReportedMoney } from "../../../../utils/reported-money";
+import { reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 
@@ -178,10 +179,11 @@ export function buildOverviewStats({
       valueColor: priceColor(fundamentals.revenueGrowth),
     });
   }
+  const enterpriseValue = reportedEnterpriseValue(fundamentals);
   if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
-  } else if (fundamentals?.enterpriseValue != null) {
-    stats.push({ label: "EV", value: formatCompactCurrency(fundamentals.enterpriseValue, quoteCurrency) });
+  } else if (enterpriseValue != null) {
+    stats.push({ label: "EV", value: formatCompactCurrency(enterpriseValue, quoteCurrency) });
   }
   if (finite(fundamentals?.beta)) {
     stats.push({ label: "Beta", value: formatNumber(fundamentals.beta, 2), link: RELATIONSHIP_GRAPH });
