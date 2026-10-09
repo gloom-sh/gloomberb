@@ -32,6 +32,7 @@ import { contextMenuDivider, type ContextMenuItem } from "../../types/context-me
 import { useKeybindings } from "../../app/keybindings";
 import { useDialogState } from "../../ui/dialog";
 import { getShortcutDisplayMode } from "../../utils/shortcut-labels";
+import { fireAndForget } from "../../utils/fire-and-forget";
 import {
   inputCaptureAllowsPaneManagementShortcut,
   modalSurfaceOwnsKey,
@@ -142,7 +143,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       if (takeDoubleEscapeClose(doubleEscapeState, desktopWindowBridge.paneId, Date.now())) {
         event.preventDefault();
         event.stopPropagation();
-        if (!locked) void desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId);
+        if (!locked) fireAndForget(desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId), "desktop.closeDetachedPane");
       }
       return;
     }
@@ -170,7 +171,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
       return;
     }
-    void desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId);
+    fireAndForget(desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId), "desktop.closeDetachedPane");
   }, [desktopWindowBridge, locked, pluginRegistry]);
 
   const startWindowDrag = useCallback(() => {
@@ -212,7 +213,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   }, [desktopWindowBridge.paneId, focusPane, pluginRegistry]);
 
   const dockPane = desktopWindowBridge.dockDetachedPane
-    ? () => { void desktopWindowBridge.dockDetachedPane?.(desktopWindowBridge.paneId); }
+    ? () => { fireAndForget(desktopWindowBridge.dockDetachedPane?.(desktopWindowBridge.paneId), "desktop.dockDetachedPane"); }
     : null;
 
   /** The same menu as a pane in the main window, minus what a window cannot do. */

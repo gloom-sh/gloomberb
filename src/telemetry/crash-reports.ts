@@ -6,6 +6,7 @@ import {
   type CrashReportsPayload,
 } from "../api-client";
 import type { TelemetryConfig } from "../types/config";
+import { isSleepRpcTimeout } from "../utils/rpc-timeout-error";
 import { VERSION } from "../version";
 
 /**
@@ -172,10 +173,12 @@ function toReportError(error: unknown, context: CrashReportContext): PendingErro
 /**
  * Queues one error. Safe to call from any error handler: it never throws,
  * never awaits, and drops the error when reporting is off, already seen this
- * session, or over the session cap.
+ * session, or over the session cap. A desktop request timeout that fired
+ * after the machine slept is not an error at all and is dropped too.
  */
 export function reportCrash(error: unknown, context: CrashReportContext): void {
   try {
+    if (isSleepRpcTimeout(error)) return;
     if (host && !host.isEnabled()) return;
     if (accepted >= MAX_ERRORS_PER_SESSION) return;
     const entry = toReportError(error, context);
