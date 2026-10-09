@@ -122,6 +122,7 @@ import type {
   CloudEconEventPayload,
   CloudEquityDiagnosticMode,
   CloudEquityDiagnosticResult,
+  CloudFredSeriesCatalogPayload,
   CloudFredSeriesPayload,
   CloudShillerPayload,
   CloudFinancialsPayload,
@@ -423,6 +424,11 @@ export class CloudDataApi {
       cloudFredSeriesPath(seriesId, params),
       options.signal ? { signal: options.signal } : undefined,
     );
+  }
+
+  /** Every series `getCloudFredSeries` serves. A server older than the list answers 404. */
+  async getCloudFredSeriesCatalog(): Promise<CloudFredSeriesCatalogPayload> {
+    return this.request<CloudFredSeriesCatalogPayload>("/cloud/econ/series");
   }
 
   async getCloudShiller(): Promise<CloudShillerPayload> {

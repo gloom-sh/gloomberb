@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
-import type { HeadlessPaneDefinition, HeadlessPaneFreshness } from "./headless";
+import type { HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionDef } from "./headless";
 
 export type {
   HeadlessBundleResult,
@@ -132,6 +132,18 @@ export interface PaneDef {
    * shows would be wrong: local data, a calculator, filed records.
    */
   reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis">;
+  /**
+   * Options a rendered-view report takes (`fn FXC --currencies USD,ZAR`):
+   * each sets the pane setting of its key, is checked by its `normalize`, and
+   * is listed with its example by `gloomberb catalog`.
+   */
+  reportOptions?: readonly PaneReportOptionDef[];
+  /**
+   * Lines a rendered-view report prints above its table, from the settings it
+   * ran with: what the default view leaves out and how to see more. `--json`
+   * carries them in `data.metadata.notices`.
+   */
+  reportNotices?(settings: Readonly<Record<string, unknown>>): string[];
   /** Add an Excel-compatible CSV action for the pane's single active DataTable. */
   tableExport?: true;
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);
@@ -142,6 +154,16 @@ export interface PaneDef {
    * toggle field in settings, or a two-option select field when `onValue` is set.
    */
   quickSettings?: readonly PaneQuickSettingDef[];
+}
+
+/** An option of a rendered-view report, which sets the pane setting of its key. */
+export interface PaneReportOptionDef extends Omit<HeadlessPaneOptionDef, "settingKey" | "pluginState"> {
+  /** The value's name in the catalog's flag, `--currencies <codes>`; the type when absent. */
+  placeholder?: string;
+  /** The option in use as typed after the function, such as `--currencies USD,ZAR,NGN`; the catalog shows it as an example. */
+  example?: string;
+  /** Checks a typed value and returns it as the pane reads it; throws an Error that names what is wrong. */
+  normalize?(value: string): string;
 }
 
 export interface PaneQuickSettingDef {

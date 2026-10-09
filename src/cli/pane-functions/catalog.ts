@@ -320,7 +320,8 @@ function optionChoices(option: PaneFunctionOptionDef): string[] {
 
 function optionFlags(option: PaneFunctionOptionDef): string {
   const choices = optionChoices(option).join("|");
-  return `--${option.key} <${choices && choices.length <= MAX_INLINE_CHOICES ? choices : option.values?.length ? "value" : option.type}>`;
+  const value = choices && choices.length <= MAX_INLINE_CHOICES ? choices : option.values?.length ? "value" : option.placeholder ?? option.type;
+  return `--${option.key} <${value}>`;
 }
 
 function optionDescription(option: PaneFunctionOptionDef): string {
@@ -365,7 +366,12 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   }
 
   lines.push("", renderSection("Examples"));
-  if (capability.reportReadiness !== "unsupported") lines.push(...wrapCommandLine(`gloomberb fn ${invocation}`, width));
+  if (capability.reportReadiness !== "unsupported") {
+    lines.push(...wrapCommandLine(`gloomberb fn ${invocation}`, width));
+    for (const option of capability.options) {
+      if (option.example) lines.push(...wrapCommandLine(`gloomberb fn ${invocation} ${option.example}`, width));
+    }
+  }
   lines.push(...wrapCommandLine(`gloomberb shot ${invocation} --output ${entry.token.toLowerCase()}.png`, width));
   return lines.join("\n");
 }

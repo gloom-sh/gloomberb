@@ -67,7 +67,7 @@ export function parseArgumentsOption(value: string): Record<string, string> {
   return pairs;
 }
 
-export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: number } = {}): ParsedPaneFunctionArgs {
+export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: number; tail?: number } = {}): ParsedPaneFunctionArgs {
   const positionals: string[] = [];
   const options: Record<string, string | true> = {};
   let outputPath: string | null = null;
@@ -127,9 +127,11 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
 
   const target = positionals[0]?.trim() ?? "";
   const arg = positionals.slice(1).join(" ").trim();
-  // The outer CLI parser consumes --limit before fn/shot sees its arguments.
-  // Restore it for the pane's own schema and loader, including bounds checks.
+  // The outer CLI parser consumes --limit and --tail before fn/shot sees its arguments.
+  // Restore them for the pane's own schema and loader, including bounds checks,
+  // so a function without a tail option says so instead of ignoring it.
   if (globalOptions.limit != null) options.limit = String(globalOptions.limit);
+  if (globalOptions.tail != null) options.tail = String(globalOptions.tail);
   return { target, arg, options, outputPath, width, height, theme, scale, watermark, requireBotSafe };
 }
 

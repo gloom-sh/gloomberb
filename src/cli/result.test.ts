@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { serializeCliError, serializeCliResult } from "./result";
+import { serializeCliError, serializeCliResult, type CliResultRenderOptions } from "./result";
 import type { CliGlobalOptions } from "./options";
 import type { ReportFreshness } from "./pane-functions/freshness";
 
@@ -13,15 +13,29 @@ const baseOptions: CliGlobalOptions = {
 };
 
 describe("serializeCliResult", () => {
-  test("renders limited JSON result envelopes", () => {
-    const output = serializeCliResult(
-      { data: [{ symbol: "AAPL" }, { symbol: "MSFT" }] },
-      { ...baseOptions, format: "json", limit: 1 },
-    );
-    expect(JSON.parse(output)).toEqual({
-      ok: true,
-      data: [{ symbol: "AAPL" }],
+  test("--limit keeps the first rows and says when they are a series' oldest; --tail keeps the newest in printed order", () => {
+    const ascending = [{ date: "2026-10-05" }, { date: "2026-10-06" }, { date: "2026-10-07" }, { date: "2026-10-08" }];
+    const descending = [...ascending].reverse();
+    const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
+    const dates = (data: unknown[], options: Partial<CliGlobalOptions>, render: CliResultRenderOptions = { dateKey: "date" }) => {
+      const envelope = JSON.parse(serializeCliResult({ data }, { ...baseOptions, format: "json", ...options }, render));
+      return { dates: envelope.data.map((row: { date: string }) => row.date), rows: envelope.metadata?.rows };
+    };
+
+    const note = "showing the oldest 2 of 4 rows; --tail 2 for the latest";
+    expect(dates(ascending, { limit: 2 })).toEqual({
+      dates: ["2026-10-05", "2026-10-06"], rows: { shown: 2, total: 4, kept: "oldest", note },
     });
+    expect(plain(serializeCliResult({ data: ascending }, { ...baseOptions, limit: 2 }, { dateKey: "date" })).split("\n").at(-1)).toBe(note);
+    expect(dates(ascending, { tail: 2 })).toEqual({ dates: ["2026-10-07", "2026-10-08"], rows: { shown: 2, total: 4, kept: "newest" } });
+    // Newest first, the newest are the first rows: --tail and --limit agree, and nothing needs saying.
+    expect(dates(descending, { tail: 2 })).toEqual({ dates: ["2026-10-08", "2026-10-07"], rows: { shown: 2, total: 4, kept: "newest" } });
+    expect(dates(descending, { limit: 2 }).dates).toEqual(["2026-10-08", "2026-10-07"]);
+    expect(serializeCliResult({ data: descending }, { ...baseOptions, limit: 2 }, { dateKey: "date" })).not.toContain("--tail");
+    // A list with no dates: the last rows, and a command's own default cut.
+    expect(dates(ascending, { tail: 1 }, {}).dates).toEqual(["2026-10-08"]);
+    expect(dates(ascending, {}, { dateKey: "date", defaultLimit: 3 }).rows).toMatchObject({ shown: 3, total: 4, kept: "oldest" });
+    expect(dates(ascending, {}).rows).toBeUndefined();
   });
 
   test("includes display column metadata in JSON envelopes", () => {

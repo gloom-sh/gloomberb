@@ -735,6 +735,7 @@ class GloomApiClient {
   getCloudEarningsCalendar = this.data.getCloudEarningsCalendar.bind(this.data);
   getCloudEarningsHistory = this.data.getCloudEarningsHistory.bind(this.data);
   getCloudFredSeries = this.data.getCloudFredSeries.bind(this.data);
+  getCloudFredSeriesCatalog = this.data.getCloudFredSeriesCatalog.bind(this.data);
   getCloudCryptoMarkets = this.data.getCloudCryptoMarkets.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);

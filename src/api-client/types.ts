@@ -408,6 +408,11 @@ export interface CloudFredSeriesPayload {
   coverage?: { observations: "available"; info: "available" | "unavailable" };
 }
 
+/** The FRED series Gloom Cloud serves, from `GET /cloud/econ/series`; any other id is refused. */
+export interface CloudFredSeriesCatalogPayload {
+  series: Array<{ id: string; title?: string | null; group?: string | null }>;
+}
+
 /**
  * One month of Robert Shiller's dataset. FRED carries no long-run S&P earnings,
  * so this is what every earnings-based valuation ratio is built from.

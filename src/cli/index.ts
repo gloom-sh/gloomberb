@@ -21,7 +21,7 @@ import {
 } from "./help";
 import { parsePaneFunctionArgs } from "./pane-functions/options";
 import { checkCliCommandOptions } from "./command-options";
-import { fail, inferCliErrorOptions, printCliError } from "./errors";
+import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
 import { setCliColorEnabledOverride } from "../utils/cli-output";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
@@ -336,7 +336,7 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   try {
     parsed = parseCliGlobalArgs(args);
   } catch (error) {
-    printCliError(error, inferCliErrorOptions(args));
+    printCliError(asUsageError(error), inferCliErrorOptions(args));
     process.exitCode = 1;
     return { kind: "handled" };
   }

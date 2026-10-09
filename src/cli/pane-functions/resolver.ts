@@ -180,12 +180,10 @@ export async function resolvePaneFunction(
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
     strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
   });
-  const settings = capability.botSafe
-    ? {
-      ...optionSettings(args.options),
-      ...capabilityPaneSettings(capability, normalizedOptions),
-    }
-    : optionSettings(args.options);
+  const settings = {
+    ...optionSettings(args.options),
+    ...capabilityPaneSettings(capability, normalizedOptions),
+  };
   if (args.requireBotSafe) {
     validateTickerCardinality(capability, createOptions);
   }

@@ -388,6 +388,8 @@ A pane with `headless` automatically gets:
 
 The definition is the only structured report contract. Optional `discovery` metadata supplies semantic aliases, a stable capability ID, limitations, and screenshot readiness; the catalog derives argument cardinality and options directly. No central pane capability map or report switch is needed.
 
+A pane without `headless` still answers `fn` and `shot` as a rendered view, read from the drawn pane. Every `--key value` becomes the pane setting of that key. To document and check the settings that matter, list them in the `PaneDef`'s `reportOptions` (the option schema above, plus `placeholder` for the value's name in the catalog, an `example` such as `--currencies USD,ZAR,NGN`, and `normalize(value)`, which returns the setting or throws an `Error` naming what is wrong). `reportNotices(settings)` returns lines the report prints above its table, such as what the default view leaves out; `--json` carries them in `data.metadata.notices`. FXC's `--currencies` is the example.
+
 ### Definition contract
 
 ```typescript

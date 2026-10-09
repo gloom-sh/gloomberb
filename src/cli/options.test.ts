@@ -39,7 +39,11 @@ describe("parseCliGlobalArgs", () => {
     expect(parsed.help).toBe(false);
   });
 
-  test("rejects invalid limits", () => {
+  test("takes --tail like --limit, and rejects bad counts or both together", () => {
+    expect(parseCliGlobalArgs(["history", "ZAR=X", "--tail", "2"]).options).toMatchObject({ tail: 2 });
+    expect(parseCliGlobalArgs(["history", "ZAR=X", "--tail=5"]).options.limit).toBeUndefined();
     expect(() => parseCliGlobalArgs(["quote", "AAPL", "--limit=0"])).toThrow("--limit");
+    expect(() => parseCliGlobalArgs(["history", "AAPL", "--tail", "x"])).toThrow("--tail must be a positive integer");
+    expect(() => parseCliGlobalArgs(["history", "AAPL", "--tail", "2", "--limit", "2"])).toThrow("not both");
   });
 });

@@ -14,6 +14,7 @@ import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
 import { renderReportCsv, renderReportNdjson, type CliReportTables } from "./report-tables";
+import { windowRows, type RowWindow, type RowWindowOptions } from "./row-window";
 
 export interface CliResult<T = unknown> {
   data: T;
@@ -60,6 +61,15 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   /** Text-mode line printed first, naming what the result is about, such as the listing a symbol resolved to. */
   heading?: string;
   /**
+   * The row key holding each row's date, which makes the rows a dated series:
+   * `--tail` keeps the newest rows whichever way the series runs, and a
+   * `--limit` that keeps the oldest says so, under the text table and as
+   * `metadata.rows` in JSON.
+   */
+  dateKey?: string;
+  /** How many rows to show when neither `--limit` nor `--tail` is given; every row when absent. */
+  defaultLimit?: number;
+  /**
    * What CSV and NDJSON write instead of the rows: a report's tables as the
    * text view shows them, CSV with its `# section:` and closing `#` lines.
    */
@@ -89,14 +99,28 @@ const KEY_ACRONYMS: Record<string, string> = {
   usd: "USD",
 };
 
-function applyLimit<T>(data: T, limit?: number): T {
-  if (!Array.isArray(data) || limit == null) return data;
-  return data.slice(0, limit) as T;
+function rowWindowOptions(options: CliGlobalOptions, renderOptions: Pick<CliResultRenderOptions, "defaultLimit">): RowWindowOptions {
+  return options.tail != null ? { tail: options.tail } : { limit: options.limit ?? renderOptions.defaultLimit };
 }
 
-function asRows<T, Row>(data: T, limit?: number, rows?: (data: T) => Row[]): Row[] {
-  const resolvedRows = rows ? rows(data) : (Array.isArray(data) ? data : [data]) as Row[];
-  return limit == null ? resolvedRows : resolvedRows.slice(0, limit);
+function windowed<Row>(
+  rows: readonly Row[],
+  options: CliGlobalOptions,
+  renderOptions: Pick<CliResultRenderOptions, "dateKey" | "defaultLimit">,
+): RowWindow<Row> {
+  const { dateKey } = renderOptions;
+  const dateOf = dateKey ? (row: Row) => (isPlainObject(row) ? row[dateKey] : undefined) : undefined;
+  return windowRows(rows, rowWindowOptions(options, renderOptions), dateOf);
+}
+
+function asRows<T, Row>(data: T, rows?: (data: T) => Row[]): Row[] {
+  return rows ? rows(data) : (Array.isArray(data) ? data : [data]) as Row[];
+}
+
+/** What JSON says about rows the window cut, under `metadata.rows`. */
+function cutMetadata(window: RowWindow<unknown>) {
+  if (window.rows.length >= window.total) return null;
+  return { shown: window.rows.length, total: window.total, kept: window.kept, ...(window.note ? { note: window.note } : {}) };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -321,11 +345,13 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
   const { freshness, ...rest } = result;
   if (options.format === "json") {
     const columns = serializeColumns(renderOptions.columns);
+    const window = Array.isArray(result.data) ? windowed(result.data as unknown[], options, renderOptions) : null;
+    const cut = window ? cutMetadata(window) : null;
     const envelope: CliResultJsonEnvelope<T> = {
       ok: true,
       ...rest,
-      ...(freshness ? { metadata: { ...rest.metadata, freshness } } : {}),
-      data: applyLimit(result.data, options.limit),
+      ...(freshness || cut ? { metadata: { ...rest.metadata, ...(freshness ? { freshness } : {}), ...(cut ? { rows: cut } : {}) } } : {}),
+      data: window ? window.rows as T : result.data,
       ...(columns?.length ? { columns } : {}),
     };
     return JSON.stringify(envelope, null, 2);
@@ -342,7 +368,8 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
 ): string {
   if (renderOptions.tables && options.format === "csv") return renderReportCsv(renderOptions.tables);
   if (renderOptions.tables && options.format === "ndjson") return renderReportNdjson(renderOptions.tables);
-  const rows = asRows(result.data, options.limit, renderOptions.rows);
+  const window = windowed(asRows(result.data, renderOptions.rows), options, renderOptions);
+  const rows = window.rows;
   if (options.format === "ndjson") {
     return rows.map((row) => JSON.stringify(row)).join("\n");
   }
@@ -357,7 +384,8 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   if (rows.length === 0) {
     return withHeading(summary || cliStyles.muted(renderOptions.empty ?? "No results."));
   }
-  const body = renderTextRows(rows as Row[], result.data, renderOptions);
+  const table = renderTextRows(rows as Row[], result.data, renderOptions);
+  const body = window.note ? `${table}\n${cliStyles.muted(window.note)}` : table;
   return withHeading(summary ? `${summary}\n\n${body}` : body);
 }
 

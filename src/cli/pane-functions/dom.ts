@@ -109,6 +109,7 @@ function domReportTables(
   title: string,
   freshness: ReportFreshness,
   incomplete: boolean | string,
+  notices: readonly string[],
 ): CliReportTables {
   const tables = domTables(rows);
   return {
@@ -117,7 +118,7 @@ function domReportTables(
       table.columns.map((column) => column.header),
       table.rows.map((cells) => table.columns.map((column) => cells.get(column.key))),
     )),
-    footer: reportFooterLines({ freshness, incomplete }),
+    footer: reportFooterLines({ freshness, incomplete, notes: notices }),
   };
 }
 
@@ -169,7 +170,9 @@ export function buildDomPaneReportFromRender(
   }
   const failureReason = renderedFailureReason(result, rows);
   const unavailableSymbols = failureReason && result.symbols.length > 0 ? result.symbols : [];
-  const textLines = [resolved.label, ""];
+  // What the view leaves out and how to see more, such as FXC's other currencies.
+  const notices = resolved.pane.reportNotices?.(resolved.instance.settings ?? {}) ?? [];
+  const textLines = [resolved.label, "", ...notices, ...(notices.length > 0 ? [""] : [])];
   if (hasStructuredRows) {
     textLines.push(...renderDomTables(rows));
   } else if (result.render.visibleText) {
@@ -201,6 +204,7 @@ export function buildDomPaneReportFromRender(
       truncationReasons,
       limitation: DOM_LIMITATION,
       ...(failureReason ? { reason: failureReason } : {}),
+      ...(notices.length > 0 ? { metadata: { notices } } : {}),
       freshness,
     },
     text: textLines.join("\n").trimEnd(),
@@ -209,6 +213,7 @@ export function buildDomPaneReportFromRender(
       resolved.label,
       freshness,
       !complete && (failureReason ?? (truncationReasons.length > 0 ? truncationReasons.join("; ") : true)),
+      notices,
     ),
   };
 }

@@ -1,4 +1,5 @@
 import { apiClient } from "../../api-client";
+import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices } from "../context";
 import { formatCompact } from "../../utils/format";
@@ -19,7 +20,7 @@ import {
   type CountryFilter,
   type ImpactFilter,
 } from "../../plugins/builtin/econ/calendar-model";
-import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeOption } from "./command-utils";
+import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
@@ -169,7 +170,6 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     const rows = events
       .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact))
       .sort((left, right) => left.date.getTime() - right.date.getTime())
-      .slice(0, ctx.cliOptions.limit ?? 50)
       .map((event) => ({
         date: isoDate(event.date),
         time: event.time,
@@ -185,6 +185,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       metadata: { country, impact },
       freshness: rowsFreshness(rows, { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
     }, {
+      dateKey: "date",
+      defaultLimit: 50,
       columns: [
         // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
         { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
@@ -200,18 +202,76 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   });
 }
 
+const FRED_USAGE = "fred <series-id> [--start <yyyy-mm-dd>] [--sort desc|asc]";
+const FRED_LIST_USAGE = "fred --list [filter]";
+
+/** `--start`, checked here: Gloom Cloud cannot read anything but yyyy-mm-dd. */
+function parseStartDate(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): string {
+  if (value == null) return "2021-01-01";
+  const date = value.trim();
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
+  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
+    ctx.fail(`--start takes a date as yyyy-mm-dd, got "${value}".`);
+  }
+  return date;
+}
+
+/** Gloom Cloud serves a curated set of FRED series and answers 400 for any other id. */
+function isUnsupportedSeries(error: unknown): boolean {
+  if (!(error instanceof ApiRequestError) || error.status !== 400) return false;
+  const message = typeof error.details?.message === "string" ? error.details.message : error.message;
+  return error.details?.code === "unsupported_series" || /^Unsupported FRED series\b/i.test(message);
+}
+
+async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  let catalog;
+  try {
+    catalog = await apiClient.getCloudFredSeriesCatalog();
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) ctx.fail("The list of supported FRED series is not available yet.");
+    throw error;
+  }
+  const terms = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = catalog.series
+    .map((series) => ({ id: series.id, title: series.title?.trim() ?? "", group: series.group?.trim() ?? "" }))
+    .filter((series) => {
+      const text = `${series.id} ${series.title} ${series.group}`.toLowerCase();
+      return terms.every((term) => text.includes(term));
+    });
+  ctx.printResult({ data: rows, metadata: { filter: filter || null, total: catalog.series.length } }, {
+    columns: [
+      { key: "id", header: "ID", shrink: false },
+      { key: "title", header: "Title" },
+      { key: "group", header: "Group" },
+    ],
+    empty: filter ? `No supported FRED series match "${filter}". Run gloomberb fred --list to see them all.` : "No FRED series are listed.",
+  });
+}
+
 async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const startDate = takeOption(args, "--start") ?? "2021-01-01";
-  const sortOrder = (takeOption(args, "--sort") ?? "desc") as "asc" | "desc";
-  const seriesId = requireOneArg(args, "fred <series-id> [--start <yyyy-mm-dd>]", "series", ctx).toUpperCase();
-  const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder });
-  const rows = data.observations.slice(0, ctx.cliOptions.limit ?? data.observations.length);
+  const list = takeFlag(args, "--list");
+  const start = takeOption(args, "--start");
+  const sort = takeOption(args, "--sort");
+  if (list) {
+    if (start != null || sort != null) ctx.fail("--list takes a filter, not --start or --sort.", `Usage: gloomberb ${FRED_LIST_USAGE}`);
+    return runFredList(args.join(" ").trim(), ctx);
+  }
+  const startDate = parseStartDate(start, ctx);
+  const sortOrder = (sort ?? "desc").trim().toLowerCase();
+  if (sortOrder !== "asc" && sortOrder !== "desc") ctx.fail(`Unknown sort order "${sort}".`, "Use desc (newest first) or asc.");
+  const seriesId = requireOneArg(args, FRED_USAGE, "series", ctx).toUpperCase();
+  const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder }).catch((error: unknown) => {
+    if (isUnsupportedSeries(error)) ctx.fail(`Unsupported FRED series ${seriesId}. List supported series with: gloomberb fred --list`);
+    throw error;
+  });
+  const rows = data.observations;
   ctx.printResult({
     data: rows,
     metadata: { info: data.info, seriesId, startDate, sortOrder },
     freshness: rowsFreshness(rows, { source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null }),
   }, {
+    dateKey: "date",
     textColumns: [
       { key: "date", header: "Date" },
       { key: "value", header: data.info?.units ? `Value (${data.info.units})` : "Value", align: "right" },
@@ -223,7 +283,7 @@ const YIELD_TENORS: Record<string, string> = { DGS3MO: "3M", DGS2: "2Y", DGS10: 
 
 async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const startDate = takeOption(args, "--start") ?? "2021-01-01";
+  const startDate = parseStartDate(takeOption(args, "--start"), ctx);
   rejectArgs(args, "yield-curve [--start <yyyy-mm-dd>]", ctx);
   const series = Object.keys(YIELD_TENORS);
   const results = await Promise.all(series.map(async (seriesId) => {
@@ -350,15 +410,22 @@ export const overviewCliCommands: CliCommandDef[] = [
   },
   {
     name: "fred",
-    description: "Fetch a FRED economic series (needs a Gloom Cloud sign-in)",
+    description: "Fetch a FRED economic series, or list the ones served",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["fred <series-id> [--start <yyyy-mm-dd>]"],
+      usage: [FRED_USAGE, FRED_LIST_USAGE],
       options: [
         START_OPTION,
         { flags: "--sort <order>", description: "desc for newest first (default) or asc" },
+        { flags: "--list", description: "List the series Gloom Cloud serves (ID, title, group); words after it filter the list" },
       ],
-      examples: ["fred CPIAUCSL", "fred UNRATE --start 2020-01-01 --csv"],
+      sections: [{
+        title: "Series",
+        lines: [
+          "Gloom Cloud serves a curated set of FRED series and needs no sign-in for them. gloomberb fred --list prints them; any other ID fails with that pointer.",
+        ],
+      }],
+      examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred --list", "fred --list fx"],
     },
     execute: runFred,
   },

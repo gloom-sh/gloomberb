@@ -65,6 +65,7 @@ import {
 } from "../../plugins/builtin/shared/report-freshness";
 import {
   EXCHANGE_OPTION,
+  isNoProviderError,
   listingHeading,
   listingIdentity,
   listingTitle,
@@ -72,6 +73,7 @@ import {
   loadForListing,
   loadListingQuote,
   notTradedMessage,
+  otherListingsMessage,
   requireCliListing,
   type CliListing,
   type ListingIdentity,
@@ -81,6 +83,8 @@ import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
+import { windowRows } from "../row-window";
+import { crossRate, describeFxRate, isUsableRate, parseFxRequest } from "../fx-pair";
 import {
   holderListFacts,
   holderShareBasisMarker,
@@ -412,11 +416,19 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const targets: QuoteSubscriptionTarget[] = listings.map((listing) => ({ symbol: listing.request.symbol, exchange: listing.request.exchange }));
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
-    // A listing with no quote on an exchange its symbol is not listed on says so; venues are only looked up for those.
-    const notTraded = await Promise.all(results.map((result, index) => (
-      result.quote ? null : notTradedMessage(listingOf(result, index), market)
-    )));
-    if (listings.length === 1 && notTraded[0]) ctx.fail(notTraded[0]);
+    // A listing with no quote on an exchange its symbol is not listed on says so, and a bare
+    // symbol no source quotes names its other listings; venues are only looked up for those.
+    const request = { command: commandName, noun: "quote" };
+    const unquoted = await Promise.all(results.map(async (result, index) => {
+      if (result.quote) return null;
+      const listing = listingOf(result, index);
+      const notTraded = await notTradedMessage(listing, market);
+      if (notTraded) return { message: notTraded, details: undefined, oneLine: notTraded };
+      const other = isNoProviderError(result.error) ? await otherListingsMessage(listing, market, request) : null;
+      return other && { ...other, oneLine: `${other.message} Other listings: ${other.others.join(", ")}.` };
+    }));
+    if (listings.length === 1 && unquoted[0]) ctx.fail(unquoted[0].message, unquoted[0].details);
+    const notTraded = unquoted.map((entry) => entry?.oneLine ?? null);
     // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
     const data = results.map((result, index) => ({
       target: result.target,
@@ -461,7 +473,9 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points) => ({ points, resolution: null }));
     const [{ points, resolution }, quote] = await Promise.all([
-      loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0)
+      loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, {
+        command: range === "1Y" ? "history" : `history --range ${range}`, noun: "history",
+      })
         .catch((error) => failHistory(error, listing.key, ctx)),
       loadListingQuote(market.dataProvider, listing),
     ]);
@@ -515,6 +529,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       freshness,
     }, {
       heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
+      dateKey: "date",
       textColumns: [...priceColumns, flagColumn],
       // Every exported row says its currency and bar size, so it survives head and concatenation.
       columns: [
@@ -560,7 +575,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const financials = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
-    ));
+    ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
     const identity = listingIdentity(listing, financials.quote);
     const data: FinancialsCliData = {
       symbol: listing.key,
@@ -619,7 +634,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   rejectExtraArgs(args, 1, { usage: "news [symbol] [--feed <feed>]", takes: "one symbol at most", advice: "Run it once per symbol." }, ctx);
   await withMarketData(ctx, async (market) => {
     const listing = args[0] ? await requireCliListing(args[0], exchangeOption, market, ctx) : null;
-    const limit = ctx.cliOptions.limit ?? 20;
+    // Stories come newest first, so the newest n are the first n either way.
+    const limit = ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 20;
     const loadNews = () => market.dataProvider.getNews({
       feed: feed ?? (listing ? "ticker" : "latest"),
       // Still set for news plugins that read the deprecated scope.
@@ -674,7 +690,8 @@ async function registrantUsExchange(market: MarketContext, symbol: string, regis
 
 async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.limit ?? 15, "Count", ctx);
+  // Filings come newest first, so --tail asks for the same first n as --limit.
+  const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 15, "Count", ctx);
   const exchangeOption = takeOption(args, "--exchange");
   const form = takeOption(args, "--form")?.trim() || null;
   const raw = requireOneArg(args, "filings <symbol> [--count <n>] [--form <form>]", "symbol", ctx);
@@ -804,13 +821,13 @@ async function runHolders(
         listing, market, ctx,
         () => market.dataProvider.getHolders(listing.request.symbol, listing.request.exchange),
         (found) => found.holders.length === 0,
+        { command: commandName, noun: "holder data" },
       ),
       loadListingQuote(market.dataProvider, listing),
     ]);
     const identity = listingIdentity(listing, quote);
     const rows = holderRows(data, ownerTypes);
-    const limit = ctx.cliOptions.limit;
-    const shown = limit == null ? rows.length : Math.min(limit, rows.length);
+    const shown = windowRows(rows, ctx.cliOptions).rows.length;
     const institutional = !ownerTypes?.has("insider");
     const total = institutional ? data.summary?.institutionsCount ?? null : null;
     const reportDate = sharedReportDate(rows);
@@ -878,7 +895,10 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const [data, quote] = await Promise.all([
-      loadForListing(listing, market, ctx, () => market.dataProvider.getAnalystResearch(listing.request.symbol, listing.request.exchange)),
+      loadForListing(
+        listing, market, ctx, () => market.dataProvider.getAnalystResearch(listing.request.symbol, listing.request.exchange),
+        undefined, { command: "analyst", noun: "analyst research" },
+      ),
       loadListingQuote(market.dataProvider, listing),
     ]);
     const identity = listingIdentity(listing, quote);
@@ -915,7 +935,10 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const [data, quote] = await Promise.all([
-      loadForListing(listing, market, ctx, () => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange)),
+      loadForListing(
+        listing, market, ctx, () => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange),
+        undefined, { command: "events", noun: "corporate events" },
+      ),
       loadListingQuote(market.dataProvider, listing),
     ]);
     const identity = listingIdentity(listing, quote);
@@ -956,7 +979,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
         }),
       };
-    });
+    }, undefined, { command: "options", noun: "options chain" });
     const identity = listingIdentity(listing, await quotePromise);
     // A failed refresh falls back to the stored chain, which can be days old.
     const refreshWarning = result?.refreshError == null ? null
@@ -988,36 +1011,47 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
-const FX_USAGE = "fx <currency>";
+const FX_USAGE = "fx <currency> | fx <base>/<quote>";
 
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const currency = requireOneArg(rawArgs.map((arg) => arg.trim().toUpperCase()), FX_USAGE, "currency", ctx);
+  const raw = requireOneArg(rawArgs, FX_USAGE, "currency or pair", ctx);
   await withMarketData(ctx, async (market) => {
-    const baseCurrency = market.config.baseCurrency.trim().toUpperCase();
+    const request = parseFxRequest(raw, market.config.baseCurrency);
+    if ("error" in request) return ctx.fail(request.error, `Usage: gloomberb ${FX_USAGE}`);
+    const { currency, baseCurrency } = request;
+    const pair = `${currency}/${baseCurrency}`;
     const load = (code: string) => market.dataProvider.getCachedQuery("getExchangeRate", [code])
       .load({ force: ctx.cliOptions.refresh }).catch(() => null);
-    const legs = currency === baseCurrency ? [] : await Promise.all([load(currency), load(baseCurrency)]);
-    const [from, base] = legs;
-    const rate = currency === baseCurrency ? 1 : from && base ? from.value / base.value : Number.NaN;
-    if (!Number.isFinite(rate) || rate <= 0) ctx.fail(`Exchange rate unavailable for ${currency}/${baseCurrency}`);
+    // Every rate is a cross of two USD legs; a code priced in itself needs none.
+    const codes = currency === baseCurrency ? [] : [currency, baseCurrency];
+    const legs = await Promise.all(codes.map(load));
+    const missing = codes.filter((_code, index) => !isUsableRate(legs[index]?.value));
+    if (missing.length > 0) {
+      ctx.fail(
+        `Exchange rate unavailable for ${missing.join(" and ")}.`,
+        `${pair} is crossed from each currency's USD rate, and none came back for ${missing.join(" or ")}. Check the ISO code.`,
+      );
+    }
+    const rate = codes.length === 0 ? 1 : crossRate(legs[0]?.value, legs[1]?.value);
     // A cross rate is only as current as its older leg.
     const observed = legs.flatMap((leg) => leg?.asOf ?? []);
     const asOf = observed.length > 0 ? new Date(Math.min(...observed)).toISOString() : null;
     const stale = legs.some((leg) => leg != null && (leg.staleAt <= Date.now() || leg.refreshError != null));
-    ctx.printResult({ data: [{ currency, baseCurrency, rate, asOf, stale }] }, {
-      layout: "record",
+    const row = { currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate };
+    ctx.printResult({ data: [row] }, {
+      text: () => {
+        const time = asOf ? `As of ${formatUtcTime(asOf)}` : "";
+        const when = stale ? cliStyles.warning(time ? `${time}, stale` : "Stale") : time && cliStyles.muted(time);
+        return [describeFxRate(request, rate), when].filter(Boolean).join("\n");
+      },
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },
         { key: "rate", header: "Rate", align: "right" },
-        ...(asOf || stale ? [{
-          key: "asOf",
-          header: "As Of",
-          format: (value: unknown, row: { stale: boolean }) => {
-            const time = typeof value === "string" ? formatUtcTime(value) : "";
-            return row.stale ? cliStyles.warning(`${time} stale`.trim()) : time;
-          },
-        }] : []),
+        { key: "asOf", header: "As Of" },
+        { key: "stale", header: "Stale" },
+        { key: "pair", header: "Pair" },
+        { key: "inverse", header: "Inverse", align: "right" },
       ],
     });
   });
@@ -1094,7 +1128,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
           "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every exported row (--csv, --ndjson, --json) carries currency, interval and flag.",
         ],
       }],
-      examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history AAPL --range 5Y --csv > aapl.csv"],
+      examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history ZAR=X --tail 5", "history AAPL --range 5Y --csv > aapl.csv"],
     },
     unknownOptionHint: (flag) => DATE_WINDOW_OPTIONS.has(flag)
       ? `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`
@@ -1280,11 +1314,18 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   },
   {
     name: "fx",
-    description: "Convert a currency into your base currency",
+    description: "Convert a currency into your base currency, or quote a pair such as USD/NGN",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: [FX_USAGE],
-      examples: ["fx EUR", "fx JPY --json"],
+      usage: ["fx <currency>", "fx <base>/<quote>"],
+      sections: [{
+        title: "Direction",
+        lines: [
+          "A bare code is one unit of it in your base currency. A pair reads as markets quote it: USD/NGN is how many NGN one USD buys. Two codes neither of which is USD, such as ZAR/NGN, cross through their USD rates.",
+          "The answer states both directions: 1 NGN = 0.000752791 USD  (USD/NGN 1328.39). --json, --csv and --ndjson carry rate (base currency per currency), pair, inverse, asOf and stale.",
+        ],
+      }],
+      examples: ["fx EUR", "fx NGN", "fx USD/NGN", "fx ZAR/NGN", "fx JPY --json"],
     },
     execute: runFx,
   },

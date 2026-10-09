@@ -156,31 +156,92 @@ export async function failIfNotTraded(
   if (message) ctx.fail(message);
 }
 
+/** What a command asked a listing for, to name it when the listing has none: `history` asks for "history". */
+export interface ListingDataRequest {
+  /** The command a retry runs, with any options to repeat: `history`, `history --range 5Y`. */
+  command: string;
+  /** What the listing has none of: "history", "a quote". */
+  noun: string;
+}
+
+/** The router's answer when no source serves a symbol: "No history provider available for 2222". */
+export function isNoProviderError(error: unknown): boolean {
+  return /\bprovider available for\b/i.test(error instanceof Error ? error.message : String(error ?? ""));
+}
+
+const MAX_OTHER_LISTINGS = 5;
+
+/**
+ * For a bare symbol whose request found no source: the listing it went to and
+ * the symbol's other listings, each with the command that asks for it, such
+ * as "2222 resolved to Kotobuki Spirits Co., Ltd. (JPX), which has no
+ * history." and "2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb history
+ * 2222:TADAWUL)". Null when the symbol named its exchange or has no other
+ * listing. It searches, so ask only after a request failed.
+ */
+export async function otherListingsMessage(
+  listing: Pick<CliListing, "symbol" | "exchange"> & Partial<Pick<CliListing, "saved">>,
+  deps: ListingDeps,
+  request: ListingDataRequest,
+): Promise<{ message: string; details: string; others: string[] } | null> {
+  if (listing.exchange) return null;
+  const venues = await listingVenues(listing.symbol, deps).catch(() => []);
+  // A bare symbol goes to its saved listing, else to the one search lists first.
+  const savedExchange = canonicalExchange(listing.saved?.metadata.exchange);
+  const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : venues[0]);
+  const others = venues.filter((venue) => venue !== resolved && venue.exchange !== savedExchange);
+  if (others.length === 0 || (!resolved && !savedExchange)) return null;
+  const exchange = resolved?.exchange ?? savedExchange;
+  const name = resolved?.name || listing.saved?.metadata.name?.trim() || "";
+  const [command, ...options] = request.command.split(" ");
+  const retry = (key: string) => ["gloomberb", command, key, ...options].join(" ");
+  const lines = others.slice(0, MAX_OTHER_LISTINGS).map((venue) => {
+    const key = `${listing.symbol}:${venue.exchange}`;
+    return `${key}${venue.name ? ` ${venue.name}` : ""} (try: ${retry(key)})`;
+  });
+  if (others.length > MAX_OTHER_LISTINGS) lines.push(`and ${others.length - MAX_OTHER_LISTINGS} more: gloomberb search ${listing.symbol}`);
+  return {
+    message: `${listing.symbol} resolved to ${name ? `${name} (${exchange})` : exchange}, which has no ${request.noun}.`,
+    details: lines.length === 1 ? `Other listings: ${lines[0]}` : ["Other listings:", ...lines.map((line) => `  ${line}`)].join("\n"),
+    others: others.map((venue) => `${listing.symbol}:${venue.exchange}`),
+  };
+}
+
 /**
  * A data request for the listings a command named. When it throws, or `isMiss`
  * calls what it returned empty, and a listing's exchange is one its symbol does
  * not trade on, the command ends in that message instead of the request's own
- * "unavailable". A request that succeeds costs no extra lookup.
+ * "unavailable". With `request`, a bare symbol no source serves ends naming
+ * its other listings (`otherListingsMessage`). A request that succeeds costs no
+ * extra lookup.
  */
 export async function loadForListing<T>(
-  listings: Pick<ListingArg, "symbol" | "exchange"> | readonly Pick<ListingArg, "symbol" | "exchange">[],
+  listings: ListingForLoad | readonly ListingForLoad[],
   deps: ListingDeps,
   ctx: Pick<CliCommandContext, "fail">,
   load: () => Promise<T>,
   isMiss?: (value: T) => boolean,
+  request?: ListingDataRequest,
 ): Promise<T> {
-  const named = ("symbol" in listings ? [listings] : listings).filter((listing) => listing.exchange);
+  const all = "symbol" in listings ? [listings] : listings;
+  const named = all.filter((listing) => listing.exchange);
   const checkVenues = () => Promise.all(named.map((listing) => failIfNotTraded(listing, deps, ctx)));
   let value: T;
   try {
     value = await load();
   } catch (error) {
     await checkVenues();
+    if (request && all.length === 1 && isNoProviderError(error)) {
+      const other = await otherListingsMessage(all[0]!, deps, request);
+      if (other) ctx.fail(other.message, other.details);
+    }
     throw error;
   }
   if (isMiss?.(value)) await checkVenues();
   return value;
 }
+
+type ListingForLoad = Pick<ListingArg, "symbol" | "exchange"> & Partial<Pick<CliListing, "saved">>;
 
 /** The saved ticker for a listing: under its own key, or a saved symbol whose venue it is. */
 export async function loadSavedListing(store: ListingStore, listing: ListingArg): Promise<TickerRecord | null> {

@@ -3,13 +3,15 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneOptionDef,
   PaneDef,
+  PaneReportOptionDef,
   PaneTemplateDef,
 } from "../../types/plugin";
 
 export type PaneFunctionReadiness = "ready" | "partial" | "live-dom" | "unsupported";
 type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
 type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
-export type PaneFunctionOptionDef = HeadlessPaneOptionDef;
+/** A headless option, or a rendered view's, which may name its value, show an example and check what is typed. */
+export type PaneFunctionOptionDef = HeadlessPaneOptionDef & Pick<PaneReportOptionDef, "placeholder" | "example" | "normalize">;
 export type NormalizedPaneFunctionOptions = Record<string, string | number | boolean>;
 
 export interface PaneFunctionCapability {
@@ -64,7 +66,7 @@ function fallbackCapability(
     limitations: [dataPane
       ? RENDERED_VIEW_LIMITATION
       : "This pane is an interactive surface and does not expose a data report."],
-    options: [],
+    options: [...(pane.reportOptions ?? [])],
   };
 }
 
@@ -159,6 +161,7 @@ function normalizeOptionValue(option: PaneFunctionOptionDef, rawValue: string | 
     throw new Error(`Invalid --${option.key} value "${rawValue}". Use true or false.`);
   }
   if (rawValue === true) throw new Error(`--${option.key} requires a value.`);
+  if (option.normalize) return option.normalize(rawValue);
   if (option.type === "enum") return normalizeEnumValue(option, rawValue);
   if (option.type === "integer") {
     const value = Number(rawValue);
@@ -180,7 +183,11 @@ export function normalizeCapabilityOptions(
   settings: { strict?: boolean } = {},
 ): NormalizedPaneFunctionOptions {
   if (!capability.botSafe) {
-    return Object.fromEntries(Object.entries(options).map(([key, value]) => [key, value]));
+    // A rendered view takes any pane setting; the options it declares are checked.
+    return Object.fromEntries(Object.entries(options).map(([key, value]) => {
+      const option = resolveOptionDef(capability, key);
+      return option ? [option.key, normalizeOptionValue(option, value)] : [key, value];
+    }));
   }
 
   const normalized: Record<string, string | number | boolean> = {};

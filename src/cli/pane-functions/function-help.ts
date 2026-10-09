@@ -691,7 +691,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["IMAP"],
   },
   FXC: {
-    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings.",
+    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings or with --currencies from the command line (gloomberb fn FXC --currencies USD,ZAR,NGN).",
     usage: ["FXC"],
     keys: [],
     data: FX,

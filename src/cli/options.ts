@@ -5,6 +5,8 @@ export interface CliGlobalOptions {
   quiet: boolean;
   color: boolean | null;
   limit?: number;
+  /** `--tail <n>`: the newest n rows of a dated series, in their printed order. Never set with `limit`. */
+  tail?: number;
   refresh: boolean;
   dryRun: boolean;
   yes: boolean;
@@ -32,11 +34,11 @@ export const DEFAULT_CLI_OPTIONS: CliGlobalOptions = {
   yes: false,
 };
 
-function parseLimit(value: string | undefined): number {
-  if (!value) throw new Error("Missing value for --limit.");
+function parseRowCount(flag: "--limit" | "--tail", value: string | undefined): number {
+  if (!value) throw new Error(`Missing value for ${flag}.`);
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error("--limit must be a positive integer.");
+    throw new Error(`${flag} must be a positive integer.`);
   }
   return parsed;
 }
@@ -94,16 +96,23 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
       options.yes = true;
       continue;
     }
-    if (arg === "--limit") {
+    if (arg === "--limit" || arg === "--tail") {
       index += 1;
-      options.limit = parseLimit(rawArgs[index]);
+      options[arg === "--limit" ? "limit" : "tail"] = parseRowCount(arg, rawArgs[index]);
       continue;
     }
     if (arg.startsWith("--limit=")) {
-      options.limit = parseLimit(arg.slice("--limit=".length));
+      options.limit = parseRowCount("--limit", arg.slice("--limit=".length));
+      continue;
+    }
+    if (arg.startsWith("--tail=")) {
+      options.tail = parseRowCount("--tail", arg.slice("--tail=".length));
       continue;
     }
     args.push(arg);
+  }
+  if (options.limit != null && options.tail != null) {
+    throw new Error("Use --limit or --tail, not both: --limit keeps the first rows, --tail the newest.");
   }
 
   return { args, options, help, literalStart: literalStart ?? args.length };
