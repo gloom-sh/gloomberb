@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
 import { apiClient } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
-import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
-import { saveConfigImmediately } from "../../state/config-save-scheduler";
-import { type AppConfig, findPaneInstance, type OnboardingProgress, type OnboardingStage } from "../../types/config";
+import { type AppConfig, findPaneInstance, type OnboardingStage } from "../../types/config";
 import { useViewport } from "../../react/input";
 import { useKeybindings } from "../../app/keybindings";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
@@ -31,7 +29,7 @@ import {
 } from "../../plugins/builtin/account-management/model";
 import { loadUpgradeOffer, proStepCopy, type UpgradeOffer } from "../../plugins/builtin/cloud/upgrade-dialog";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
-import { resolvePlanAccess, usePlanAccess } from "../../api-client/plan-access";
+import { usePlanAccess } from "../../api-client/plan-access";
 import { Button, SegmentedControl } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import {
@@ -48,18 +46,11 @@ import {
 import { useOnboardingAccount } from "./wizard-account";
 import { useOnboardingBrokerSync } from "./wizard-broker-sync";
 import { useOnboardingPositions } from "./wizard-positions";
-import { applyFirstRunLayout, buildFirstRunLayout, planFirstRunWatchlist } from "./first-run-workspace";
 import { DesksStep, toggleDeskChoice } from "./desks-step";
-import { buildDesk, getDesk, isDeskKey, isDeskStock, pickDeskCompany, type DeskKey } from "../../layout/desks";
-import { debugLog } from "../../utils/debug-log";
-import {
-  getOnboardingProgress,
-  pickLargestBrokerPosition,
-  pickLargestPosition,
-  withOnboardingProgress,
-} from "./wizard-model";
+import { getOnboardingProgress } from "./wizard-model";
 import { useOnboardingKeyboard } from "./onboarding-keyboard";
 import { useOnboardingBrokerFields, useOnboardingBrokerForm } from "./use-onboarding-broker-form";
+import { useOnboardingProgress, useOnboardingWorkspace, useOnboardingCompletion } from "./use-onboarding-progress";
 import {
   SKIP_SETUP_KEY,
   KEEP_FREE_KEY,
@@ -69,8 +60,6 @@ import {
 } from "./onboarding-keyboard";
 export { keyReachesPastOnboardingModal } from "./onboarding-keyboard";
 
-
-const onboardingLog = debugLog.createLogger("onboarding");
 
 interface OnboardingWizardProps {
   pluginRegistry: PluginRegistry;
@@ -102,8 +91,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const config = useAppSelector((state) => state.config);
   const progress = getOnboardingProgress(config);
   const stage = progress.stage;
-  const [persistenceError, setPersistenceError] = useState<string | null>(null);
-  const [isFinishing, setIsFinishing] = useState(false);
   const researchOpenedRef = useRef<string | null>(null);
   const [offer, setOffer] = useState<UpgradeOffer | null>(null);
   const pricing = offer?.pricing ?? null;
@@ -111,13 +98,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const [editingField, setEditingField] = useState(false);
   /** The added position the keyboard acts on once no field is being typed in. */
   const [positionCursorSymbol, setPositionCursorSymbol] = useState<string | null>(null);
-  const [chosenDesks, setChosenDesks] = useState<DeskKey[]>([]);
-  const [deskCursor, setDeskCursor] = useState(0);
-  const [buildingDesks, setBuildingDesks] = useState(false);
   const inputRef = useRef<InputRenderable>(null);
-  const progressSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const finishingRef = useRef(false);
-  const buildingDesksRef = useRef(false);
   const {
     portfolioSub, setPortfolioSub, portfolioOptionIdx, setPortfolioOptionIdx, brokerValues, setBrokerValues,
     selectedBrokerId, setSelectedBrokerId, brokerFieldIdx, setBrokerFieldIdx, brokerSelectIdx,
@@ -125,42 +106,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   } = useOnboardingBrokerFields({
     pluginRegistry, language,
   });
-
-  const persistProgress = useCallback(async (
-    patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">,
-    baseConfig?: AppConfig,
-  ): Promise<AppConfig> => {
-    if (finishingRef.current) return stateRef.current.config;
-    setPersistenceError(null);
-    const operation = progressSaveQueueRef.current
-      .catch(() => {})
-      .then(async () => {
-        if (finishingRef.current) return stateRef.current.config;
-        const nextConfig = withOnboardingProgress(baseConfig ?? stateRef.current.config, patch);
-        try {
-          await saveConfigImmediately(nextConfig);
-          dispatch({
-            type: "SET_ONBOARDING_STATE",
-            complete: false,
-            progress: nextConfig.onboardingProgress,
-          });
-          return nextConfig;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          setPersistenceError(message || t("Unable to save onboarding progress."));
-          throw error;
-        }
-      });
-    progressSaveQueueRef.current = operation.then(() => {}, () => {});
-    return operation;
-  }, [dispatch, stateRef]);
-
-  const saveProgressInBackground = useCallback((
-    patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">,
-    baseConfig?: AppConfig,
-  ) => {
-    void persistProgress(patch, baseConfig).catch(() => {});
-  }, [persistProgress]);
+  const {
+    persistenceError, setPersistenceError, isFinishing, setIsFinishing, progressSaveQueueRef, finishingRef,
+    persistProgress, saveProgressInBackground,
+  } = useOnboardingProgress({
+    stateRef, dispatch,
+  });
 
   // Pro follows sign-in directly. Email verification continues in the status
   // bar, so an unread inbox never stalls the first session.
@@ -195,152 +146,13 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   useEffect(() => {
     if (stage === "portfolio" && portfolioSub === "positions") setEditingField(true);
   }, [portfolioSub, stage]);
-
-  /**
-   * Seeds the watchlist and swaps Home for the first-run workspace built
-   * around `symbol`, with the picked desks as tabs right after it. The config
-   * comes back for the caller to persist with its own progress patch.
-   */
-  const buildFirstRunWorkspace = useCallback(async (
-    baseConfig: AppConfig,
-    symbol: string,
-    portfolioId: string,
-    desks: readonly DeskKey[],
-  ): Promise<AppConfig> => {
-    let config = baseConfig;
-    let watchlistId = config.watchlists[0]?.id;
-    if (!watchlistId) {
-      watchlistId = "watchlist";
-      config = { ...config, watchlists: [{ id: watchlistId, name: "Watchlist" }] };
-    }
-    const plan = planFirstRunWatchlist(stateRef.current.tickers, watchlistId, portfolioId);
-    for (const metadata of plan.create) {
-      try {
-        const ticker = await pluginRegistry.tickerRepository.createTicker(metadata);
-        dispatch({ type: "UPDATE_TICKER", ticker });
-        pluginRegistry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });
-      } catch (error) {
-        onboardingLog.error("First-run watchlist seed failed", { symbol: metadata.ticker, error: String(error) });
-      }
-    }
-    for (const ticker of plan.update) {
-      try {
-        await pluginRegistry.tickerRepository.saveTicker(ticker);
-        dispatch({ type: "UPDATE_TICKER", ticker });
-      } catch (error) {
-        onboardingLog.error("First-run watchlist update failed", { symbol: ticker.metadata.ticker, error: String(error) });
-      }
-    }
-    const home = buildFirstRunLayout({
-      symbol,
-      portfolioId,
-      watchlistId,
-      hasPane: (paneId) => pluginRegistry.panes?.has(paneId) ?? false,
-    });
-    const workspace = applyFirstRunLayout(config, home);
-    if (desks.length === 0) return workspace;
-    const { tickers, financials } = stateRef.current;
-    const held = [...tickers.values()]
-      .filter((ticker) => ticker.metadata.portfolios.includes(portfolioId))
-      .map((ticker) => ticker.metadata.ticker);
-    const company = pickDeskCompany([symbol, ...held], (candidate) => (
-      isDeskStock(tickers.get(candidate), financials.get(candidate))
-    ));
-    const pro = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess;
-    // A desk that fails to build is left out; it never holds up the first run.
-    const deskTabs = await Promise.all(desks.map((key) => (
-      buildDesk(getDesk(key), { catalog: pluginRegistry, config: workspace, company, pro }).catch((error) => {
-        onboardingLog.error("Desk build failed", { desk: key, error: String(error) });
-        return null;
-      })
-    )));
-    const tabs = deskTabs.filter((tab) => tab !== null);
-    return { ...workspace, layouts: [workspace.layouts[0]!, ...tabs, ...workspace.layouts.slice(1)] };
-  }, [dispatch, pluginRegistry, stateRef]);
-
-  const commitWorkspaceProgress = useCallback(async (
-    nextConfig: AppConfig,
-    patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">,
-  ) => {
-    const withProgress = withOnboardingProgress(nextConfig, patch);
-    await saveConfigImmediately(withProgress);
-    dispatch({ type: "SET_CONFIG", config: withProgress });
-    pluginRegistry.events.emit("config:changed", { config: withProgress });
-  }, [dispatch, pluginRegistry.events]);
-
-  const continueFromPositions = useCallback(() => {
-    const largest = pickLargestPosition(positions.positions);
-    if (!largest) {
-      positions.focusField(0);
-      return;
-    }
-    setEditingField(false);
-    saveProgressInBackground({
-      stage: "desks",
-      path: "manual",
-      portfolioId: positions.portfolioId,
-      tickerSymbol: largest.symbol,
-      positionsImported: positions.positions.length,
-      brokerName: undefined,
-    });
-  }, [positions, saveProgressInBackground]);
-
-  /**
-   * Leaves "What do you trade?": builds the workspace with the picked desks as
-   * tabs (none when skipped, which is today's workspace) and moves on.
-   */
-  const finishDesks = useCallback((desks: readonly DeskKey[]) => {
-    if (buildingDesksRef.current) return;
-    const { tickerSymbol, portfolioId } = getOnboardingProgress(stateRef.current.config);
-    if (!tickerSymbol) {
-      saveProgressInBackground({ stage: "portfolio" });
-      return;
-    }
-    buildingDesksRef.current = true;
-    setBuildingDesks(true);
-    setPersistenceError(null);
-    void (async () => {
-      try {
-        const nextConfig = await buildFirstRunWorkspace(
-          stateRef.current.config,
-          tickerSymbol,
-          portfolioId ?? positions.portfolioId,
-          desks,
-        );
-        if (finishingRef.current) return;
-        await commitWorkspaceProgress(nextConfig, { stage: "research", desks: [...desks] });
-      } catch (error) {
-        setPersistenceError(error instanceof Error ? error.message : String(error));
-      } finally {
-        buildingDesksRef.current = false;
-        setBuildingDesks(false);
-      }
-    })();
-  }, [buildFirstRunWorkspace, commitWorkspaceProgress, positions.portfolioId, saveProgressInBackground, stateRef]);
-
-  const handleBrokerSynced = useCallback(async (
-    result: SyncBrokerInstanceResult,
-    syncedConfig: AppConfig,
-  ) => {
-    if (finishingRef.current) return;
-    const tickerSymbol = pickLargestBrokerPosition(result.positions)?.ticker
-      ?? result.addedTickers[0]?.metadata.ticker
-      ?? result.updatedTickers[0]?.metadata.ticker;
-    const brokerName = brokerOptions.find((option) => option.id === selectedBrokerId)?.name;
-    const portfolioId = tickerSymbol ? (result.portfolioIds[0] ?? "main") : "main";
-    dispatch({ type: "SET_TICKERS", tickers: result.tickers });
-    // The workspace is built once the desks are picked.
-    await commitWorkspaceProgress(syncedConfig, {
-      stage: tickerSymbol ? "desks" : "portfolio",
-      path: "broker",
-      portfolioId,
-      tickerSymbol,
-      brokerName,
-      positionsImported: result.positions.length,
-    });
-    setEditingField(false);
-    setPortfolioSub("positions");
-  }, [brokerOptions, commitWorkspaceProgress, dispatch, selectedBrokerId]);
+  const {
+    chosenDesks, setChosenDesks, deskCursor, setDeskCursor, buildingDesks, continueFromPositions,
+    finishDesks, handleBrokerSynced,
+  } = useOnboardingWorkspace({
+    stateRef, pluginRegistry, dispatch, positions, setEditingField, saveProgressInBackground,
+    setPersistenceError, finishingRef, brokerOptions, selectedBrokerId, setPortfolioSub,
+  });
 
   const {
     isBrokerSyncing,
@@ -361,36 +173,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     setEditingField,
     setPortfolioSub,
   });
-
-  const finish = useCallback(async (skipped = false) => {
-    if (finishingRef.current) return;
-    if (!resetBrokerSync()) return;
-    finishingRef.current = true;
-    setIsFinishing(true);
-    setPersistenceError(null);
-    try {
-      await progressSaveQueueRef.current.catch(() => {});
-      const desks = getOnboardingProgress(stateRef.current.config).desks?.filter(isDeskKey);
-      const nextConfig: AppConfig = {
-        ...stateRef.current.config,
-        onboardingComplete: true,
-        onboardingProgress: undefined,
-      };
-      await saveConfigImmediately(nextConfig);
-      dispatch({
-        type: "SET_ONBOARDING_STATE",
-        complete: true,
-        progress: undefined,
-      });
-      recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed", undefined, undefined, { desks });
-      await Promise.resolve(onComplete(nextConfig));
-    } catch (error) {
-      setPersistenceError(error instanceof Error ? error.message : String(error));
-      finishingRef.current = false;
-      setIsFinishing(false);
-    }
-  }, [dispatch, onComplete, resetBrokerSync, stateRef]);
-  const skipSetup = useCallback(() => { void finish(true); }, [finish]);
+  const {
+    finish, skipSetup,
+  } = useOnboardingCompletion({
+    finishingRef, resetBrokerSync, setIsFinishing, setPersistenceError, progressSaveQueueRef, stateRef,
+    dispatch, onComplete,
+  });
   const {
     setBrokerFieldValue, chooseBroker, openBrokerConnect, submitBrokerField, continuePortfolio,
     backPortfolio, openBrokerGuide,
