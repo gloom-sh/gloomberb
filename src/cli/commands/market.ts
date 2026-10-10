@@ -10,8 +10,15 @@ import type {
   TickerFinancials,
 } from "../../types/financials";
 import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
-import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
-import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
+import {
+  EXTENDED_SESSION_LABELS,
+  getExtendedSessionDisplay,
+  getQuoteSessionFields,
+  getRegularSessionDisplay,
+  marketStateLabel,
+  type ExtendedSession,
+} from "../../market-data/market/status";
+import { formatCompact, formatDistributionAmount, formatPercent, formatPercentRaw } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, rejectExtraArgs, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import type { BuiltinCliCommandDef } from "../command-options";
@@ -164,13 +171,38 @@ const QUOTE_LEAD_COLUMNS = [
     key: "price",
     header: "Last",
     align: "right" as const,
-    format: (value: unknown, row: ReturnType<typeof quoteRows>[number]) => (
+    format: (value: unknown, row: QuoteRow) => (
       row.error && !value ? cliStyles.danger("unavailable") : String(value ?? "")
     ),
   },
   { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
+  // Text drops a column no row fills, so a table without an extended print stays as narrow as before.
+  extendedColumn("PRE"),
+  extendedColumn("POST"),
   { key: "session", header: "Session" },
 ];
+
+type QuoteRow = ReturnType<typeof quoteRows>[number];
+
+/** The pre-market or after-hours print and its move from the regular close, in its own column. */
+function extendedColumn(session: ExtendedSession) {
+  return {
+    key: session === "PRE" ? "preMarket" : "afterHours",
+    header: EXTENDED_SESSION_LABELS[session],
+    align: "right" as const,
+    value: (row: QuoteRow) => row.extendedSession === session && row.extendedPrice
+      ? [row.extendedPrice, row.extendedChangePercent == null ? "" : formatPercentRaw(row.extendedChangePercent)].join(" ").trim()
+      : "",
+    format: (value: unknown, row: QuoteRow) => (
+      value ? [row.extendedPrice, formatChangePercentCell(row.extendedChangePercent)].join(" ").trim() : ""
+    ),
+  };
+}
+
+/** A percent to two decimals, as the table prints it. */
+function roundedPercent(value: number | undefined): number | null {
+  return value == null ? null : Number(value.toFixed(2));
+}
 
 function quoteColumns() {
   return [
@@ -178,7 +210,8 @@ function quoteColumns() {
     { key: "currency", header: "Cur" },
     // Whether the price is real-time or delayed: a feed state, not where it came from.
     { key: "source", header: "Feed", format: (value: unknown) => value === "live" || value === "delayed" ? value : "" },
-    { key: "updatedAt", header: "Updated" },
+    // In a narrow terminal the closing line's as-of stands in for each row's.
+    { key: "updatedAt", header: "Updated", optional: true },
   ];
 }
 
@@ -186,8 +219,9 @@ function compareColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS,
     { key: "previousClose", header: "Prev Close", align: "right" as const },
-    { key: "dayRange", header: "Day Range", align: "right" as const },
-    { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell },
+    // A narrow terminal drops these before it cuts the names short.
+    { key: "dayRange", header: "Day Range", align: "right" as const, optional: true, dropPriority: 1 },
+    { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
     { key: "currency", header: "Cur" },
   ];
 }
@@ -200,8 +234,10 @@ function errorMessage(error: unknown): string | null {
 function quoteRows(results: QuoteCliRecord[]) {
   return results.map((result) => {
     const quote = result.quote;
-    // Same price and move as the quote monitor: the live session's print against the daily reference.
-    const display = getActiveQuoteDisplay(quote);
+    // Last and Chg% are the regular session, as `ticker` and the quote monitor read it; a
+    // pre-market or after-hours print is its own column, measured from that session's close.
+    const display = getRegularSessionDisplay(quote);
+    const extended = getExtendedSessionDisplay(quote);
     // An index level is in points, not in the currency its members trade in.
     const indexPoints = quote?.instrumentType?.trim().toUpperCase() === "INDEX";
     // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
@@ -223,9 +259,14 @@ function quoteRows(results: QuoteCliRecord[]) {
       priceBasis: quote?.priceBasis ?? null,
       instrumentType: quote?.instrumentType ?? null,
       change: display?.change ?? null,
-      changePercent: display?.changePercent == null ? null : Number(display.changePercent.toFixed(2)),
+      changePercent: roundedPercent(display?.changePercent),
+      extendedSession: extended?.session ?? null,
+      extendedPrice: price(extended?.price),
+      rawExtendedPrice: extended?.price ?? null,
+      extendedChange: extended?.change ?? null,
+      extendedChangePercent: roundedPercent(extended?.changePercent),
       session: quote?.marketState ? marketStateLabel(quote.marketState) : "",
-      // The close the shown move is measured from; a pre-market move starts at the last close.
+      // The close the shown move is measured from: the one before the session Last is.
       previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
       dayRange: quote?.low != null && quote.high != null
         ? indexPoints ? `${price(quote.low)}-${price(quote.high)}` : formatPriceRange(quote.low, quote.high, quote.currency, options, "-")
@@ -427,6 +468,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const data = results.map((result, index) => ({
       target: result.target,
       listing: listingMetadata(listingIdentity(listingOf(result, index), result.quote)),
+      // The figures the table shows, beside the quote as the source sent it.
+      ...getQuoteSessionFields(result.quote),
       quote: result.quote,
       error: notTraded[index] ?? errorMessage(result.error),
     }));

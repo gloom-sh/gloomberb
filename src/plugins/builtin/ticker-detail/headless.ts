@@ -1,6 +1,6 @@
 import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
-import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
@@ -195,18 +195,34 @@ function quoteAmount(value: unknown, row: Record<string, unknown>, signed = fals
   return amount === "—" ? amount : `${signed && value >= 0 ? "+" : ""}${amount}`;
 }
 
+function percentCell(value: unknown): string {
+  return formatPercentRaw(typeof value === "number" && Number.isFinite(value) ? value : undefined);
+}
+
+const QUOTE_MONITOR_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "symbol", header: "Ticker" },
+  { key: "name", header: "Name" },
+  { key: "price", header: "Last", align: "right", format: (value, row) => quoteAmount(value, row) },
+  { key: "change", header: "Change", align: "right", format: (value, row) => quoteAmount(value, row, true) },
+  { key: "changePercent", header: "Change %", align: "right", format: percentCell },
+];
+
+/** The pre-market or after-hours print and its move from the regular close, for the rows that have one. */
+function extendedSessionColumn(session: ExtendedSession): HeadlessPaneColumn {
+  return {
+    key: "extendedPrice", header: EXTENDED_SESSION_LABELS[session], align: "right",
+    format: (value, row) => row.extendedSession === session
+      ? `${quoteAmount(value, row)} ${percentCell(row.extendedChangePercent)}`
+      : "—",
+  };
+}
+
 export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["quote-monitor-pane"],
   shape: "rows",
-  description: "Current quotes for one or more tickers: name, last price, change and percent change.",
+  description: "Current quotes for one or more tickers: name, the regular session's last price, change and percent change, and any pre-market or after-hours print.",
   describe: ({ symbols }) => `Quote Monitor | ${symbols.join(", ")}`,
-  columns: [
-    { key: "symbol", header: "Ticker" },
-    { key: "name", header: "Name" },
-    { key: "price", header: "Last", align: "right", format: (value, row) => quoteAmount(value, row) },
-    { key: "change", header: "Change", align: "right", format: (value, row) => quoteAmount(value, row, true) },
-    { key: "changePercent", header: "Change %", align: "right", format: (value) => formatPercentRaw(typeof value === "number" && Number.isFinite(value) ? value : undefined) },
-  ],
+  columns: QUOTE_MONITOR_COLUMNS,
   async load({ symbols }, ctx) {
     const loaded = await loadHeadlessSymbols(symbols, ctx, async (key) => {
       const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
@@ -215,19 +231,25 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
       if (!hasValidQuoteObservationTime(quote)) throw new Error(`Quote observation time is unavailable for ${key}`);
       return quote;
     });
+    const rows = loaded.entries.map(({ symbol, data: quote }) => {
+      // As the pane's cards show them: the regular session, then any extended print from its close.
+      const { price, change, changePercent, ...extended } = getQuoteSessionFields(quote);
+      return {
+        symbol, name: quote.name ?? "", price, currency: quote.currency,
+        ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
+        ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
+        change, changePercent, ...extended,
+        marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
+        ...quoteFreshnessFields(quote),
+      };
+    });
+    // An extended column only when a row has a print for it, so a closed board stays as narrow as before.
+    const extendedColumns = (["PRE", "POST"] as const)
+      .filter((session) => rows.some((row) => row.extendedSession === session))
+      .map(extendedSessionColumn);
     return {
-      rows: loaded.entries.map(({ symbol, data: quote }) => {
-        // The pane's cards show the live session's print, so the rows do too.
-        const display = getActiveQuoteDisplay(quote)!;
-        return {
-          symbol, name: quote.name ?? "", price: display.price, currency: quote.currency,
-          ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
-          ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
-          change: display.change, changePercent: display.changePercent,
-          marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
-          ...quoteFreshnessFields(quote),
-        };
-      }),
+      rows,
+      ...(extendedColumns.length > 0 ? { columns: [...QUOTE_MONITOR_COLUMNS, ...extendedColumns] } : {}),
       unavailableSymbols: loaded.unavailableSymbols, errors: loaded.errors,
     };
   },

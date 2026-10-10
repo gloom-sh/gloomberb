@@ -24,6 +24,9 @@ export interface ActiveQuoteDisplay {
 
 export type ExtendedSession = "PRE" | "POST";
 
+/** What reports call each extended session's line or column. */
+export const EXTENDED_SESSION_LABELS: Record<ExtendedSession, string> = { PRE: "Pre-Market", POST: "After Hours" };
+
 export interface ExtendedSessionDisplay extends ActiveQuoteDisplay {
   session: ExtendedSession;
 }
@@ -276,6 +279,27 @@ export function getExtendedSessionDisplay(quote: Quote | null | undefined): Exte
   if (!isPositive(price) || (state !== "POST" && price === close)) return null;
   const change = price - close;
   return { session: "POST", price, change, changePercent: (change / close) * 100 };
+}
+
+/**
+ * A quote's headline and extended print as flat figures, for a report row or
+ * an export: price, change and changePercent are the regular session's
+ * (getRegularSessionDisplay), the extended fields the pre-market or
+ * after-hours print measured from its close (getExtendedSessionDisplay), all
+ * null when there is none.
+ */
+export function getQuoteSessionFields(quote: Quote | null | undefined) {
+  const headline = getRegularSessionDisplay(quote);
+  const extended = getExtendedSessionDisplay(quote);
+  return {
+    price: headline?.price ?? null,
+    change: headline?.change ?? null,
+    changePercent: headline?.changePercent ?? null,
+    extendedSession: extended?.session ?? null,
+    extendedPrice: extended?.price ?? null,
+    extendedChange: extended?.change ?? null,
+    extendedChangePercent: extended?.changePercent ?? null,
+  };
 }
 
 /** The extended display only while its session is open: the pre-market or the after-hours session. */

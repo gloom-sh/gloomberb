@@ -22,8 +22,10 @@ import {
   type CliStatEntry,
 } from "../../utils/cli-output";
 import {
+  EXTENDED_SESSION_LABELS,
   exchangeShortName,
   getExtendedSessionDisplay,
+  getQuoteSessionFields,
   getRegularSessionDisplay,
   marketStateLabel,
 } from "../../market-data/market/status";
@@ -550,8 +552,8 @@ export async function buildTickerReport({
     ]);
 
     appendMetricSection(lines, "Extended Hours", [
-      ["Pre-Market", extendedRow("PRE")],
-      ["After Hours", extendedRow("POST")],
+      [EXTENDED_SESSION_LABELS.PRE, extendedRow("PRE")],
+      [EXTENDED_SESSION_LABELS.POST, extendedRow("POST")],
     ]);
   }
 
@@ -640,10 +642,9 @@ function buildTickerStructuredData({
       symbol: quote.symbol,
       instrumentType: quote.instrumentType,
       name: quote.name,
-      price: quote.price,
+      // Last and Change as the text report reads them, then the extended print from that close.
+      ...getQuoteSessionFields(quote),
       priceBasis: quote.priceBasis ?? null,
-      change: quote.change,
-      changePercent: quote.changePercent,
       currency: quote.currency,
       marketCap: quote.marketCap ?? null,
       volume: quote.volume ?? null,
