@@ -584,6 +584,12 @@ Sign in with email and password, or pick `Log In with QR Code` from the command 
 
 Claude Code, Cursor and most recent clients sign in through your browser on first use, so they need no key. Codex, and clients without a browser, use a key: `k` creates one through your Gloom Cloud account (Pro) and fills it into every snippet. The key is shown once and saved nowhere, so copy it before you close the dialog. Keys made here get Read access; to choose another level or revoke a key, use Cloud settings, Agents on gloom.sh.
 
+## Remote control from an assistant
+
+An assistant connected to the Gloom Cloud MCP with Terminal control (Cloud settings, Agents) can drive this app while it is open and signed in: read what is on screen, open and arrange panes, navigate tickers, switch layouts, everything the local remote API offers. It needs no setup in the app.
+
+The first time an assistant asks, a prompt names it: `s` allows it for this session, `a` always, `n` or Esc denies. Plugin actions, button presses, commands and anything that reaches an outside service (an order, a transfer, a message) then ask on every call, with what the call will do and its key arguments; `y` allows that one call, and one left unanswered for 60 seconds is denied. Deleting a layout asks too, since it cannot be undone. While an assistant works, its name shows in the status bar; a click opens Account Management on the Agents tab, where `r` revokes it so its next call asks again. Revoking its key or disconnecting it in Cloud settings does the same. Credentials in the configuration never leave the app.
+
 ## Chat
 
 `CHAT [channel]` opens a channel. When the pane is too narrow or short for the channel list beside it, the list and the open channel take turns: Back, Esc, Backspace, Left or the mouse back button return to the list, and Enter, Right or a click opens a channel. Pointing at a name or an @mention shows that person's card: their public profile if they made it public, otherwise their name and @username. On the desktop and the web the card opens just below the name, so the pointer can move straight onto it; in the terminal it sits in the chat's top-right corner. It stays open while the pointer is on it. Someone else's card has Message (Open DM when you already share one); a card with only a name says why instead when they take no DM from you. A click on the name keeps the card open until Esc, a click outside it or a second click; `p` shows the card of the selected message's author.
