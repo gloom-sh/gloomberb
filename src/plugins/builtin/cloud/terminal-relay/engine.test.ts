@@ -29,7 +29,7 @@ interface Harness {
   results(): Array<Record<string, unknown>>;
 }
 
-const CLAUDE = { id: "oauth:client-1", name: "Claude Code" };
+const ASSISTANT = { id: "oauth:client-1", name: "Desk assistant" };
 
 function harness(options: {
   handle?: (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
@@ -85,7 +85,7 @@ function harness(options: {
     approvals,
     confirmations,
     call(id, tool, input = {}, extra = {}) {
-      engine.receive("terminal.call", { id, tool, input, client: CLAUDE, ...extra });
+      engine.receive("terminal.call", { id, tool, input, client: ASSISTANT, ...extra });
     },
     results: () => sent.filter((frame) => frame.type === "terminal.result"),
   };
@@ -129,7 +129,7 @@ describe("terminal relay engine", () => {
 
   test("an external-side-effect call needs a fresh in-app Allow, whatever the server claims", async () => {
     const h = harness();
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     const order = { capabilityId: "broker.ibkr", operationId: "placeOrder", payload: { symbol: "NVDA", side: "buy", quantity: 10 } };
     h.call("c1", "capability.invoke", order, { confirmed: true, approved: true, policy: "allow" });
     await settle();
@@ -156,7 +156,7 @@ describe("terminal relay engine", () => {
 
   test("an unanswered confirmation is denied after its window and never runs", async () => {
     const h = harness({ confirmWindowMs: 30 });
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     h.call("c1", "capability.invoke", { capabilityId: "x", operationId: "send" });
     await new Promise((resolve) => setTimeout(resolve, 60));
     h.confirmations[0]?.answer("allow");
@@ -167,7 +167,7 @@ describe("terminal relay engine", () => {
 
   test("nothing runs after the server cancels, a revoke, or a lost connection", async () => {
     const h = harness();
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     const action = { capabilityId: "x", operationId: "transfer" };
 
     h.call("c1", "capability.invoke", action);
@@ -178,12 +178,12 @@ describe("terminal relay engine", () => {
 
     h.call("c2", "capability.invoke", action);
     await settle();
-    h.engine.receive("terminal.revoke", { clientId: CLAUDE.id });
+    h.engine.receive("terminal.revoke", { clientId: ASSISTANT.id });
     h.confirmations[1]!.answer("allow");
     await settle();
     expect(h.results().find((frame) => frame.id === "c2")).toMatchObject({ ok: false, error: { code: "revoked" } });
 
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     h.call("c3", "capability.invoke", action);
     await settle();
     h.engine.disconnected();
@@ -197,7 +197,7 @@ describe("terminal relay engine", () => {
 
   test("a replayed call id runs once", async () => {
     const h = harness();
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     h.call("c1", "layout.new", { name: "Semis" });
     h.call("c1", "layout.new", { name: "Semis" });
     await settle();
@@ -211,7 +211,7 @@ describe("terminal relay engine", () => {
       executionBudgetMs: 30,
       handle: async (request) => (request.type === "call" ? new Promise(() => {}) : { ok: true, data: [] }),
     });
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     h.call("c1", "capability.invoke", { capabilityId: "x", operationId: "y" });
     await new Promise((resolve) => setTimeout(resolve, 60));
     // Still waiting on the person: the operation budget has not started.
@@ -227,7 +227,7 @@ describe("terminal relay engine", () => {
     delete table["pane.show"];
     try {
       const h = harness();
-      h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+      h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
       h.call("c1", "pane.show", { paneId: "quote" });
       await settle();
       expect(h.confirmations).toHaveLength(1);
@@ -239,7 +239,7 @@ describe("terminal relay engine", () => {
 
   test("semantic UI: scrolling runs, pressing asks, and the relay's own prompt is out of reach", async () => {
     const h = harness();
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     h.call("c1", "ui.invoke", { nodeId: "ui:2", action: "scrollBy", input: { delta: 3 } });
     await settle();
     expect(ran(h, "ui.invoke")).toBe(1);
@@ -259,7 +259,7 @@ describe("terminal relay engine", () => {
 
   test("configuration leaves the app without credentials, and they cannot be written back", async () => {
     const h = harness();
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     h.call("c1", "get_resource", { resource: "app://config" });
     await settle();
     const config = (h.results()[0]!.data as { items: Array<Record<string, any>> }).items[0]!;
@@ -275,7 +275,7 @@ describe("terminal relay engine", () => {
 
   test("a tool this app did not generate is refused", async () => {
     const h = harness();
-    h.grants.decide(CLAUDE.id, CLAUDE.name, "always");
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     h.call("c1", "shell.exec", { command: "rm -rf ~" });
     await settle();
     expect(h.results()[0]).toMatchObject({ ok: false, error: { code: "not_allowed" } });

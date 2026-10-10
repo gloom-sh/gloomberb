@@ -30,7 +30,7 @@ test("round trip over the Cloud socket: negotiate, announce, run a relayed call,
   const handled: RemoteControlRequest[] = [];
   const grants = new TerminalRelayGrants();
   grants.attach(persistence());
-  grants.decide("key:k1", "Codex", "always");
+  grants.decide("key:k1", "Research agent", "always");
   const engine = new TerminalRelayEngine({
     handle: async (request) => {
       handled.push(request);
@@ -62,7 +62,7 @@ test("round trip over the Cloud socket: negotiate, announce, run a relayed call,
   expect(hello.device.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["pane.show", "capability.invoke", "snapshot"]));
   expect(next.sent.indexOf(features)).toBeLessThan(next.sent.indexOf(hello));
 
-  next.receive({ type: "terminal.call", data: { id: "call-1", tool: "pane.focus", input: { paneId: "quote:main" }, client: { id: "key:k1", name: "Codex" } } });
+  next.receive({ type: "terminal.call", data: { id: "call-1", tool: "pane.focus", input: { paneId: "quote:main" }, client: { id: "key:k1", name: "Research agent" } } });
   await new Promise((resolve) => setTimeout(resolve, 5));
   expect(handled).toEqual([{ type: "call", operation: "pane.focus", input: { paneId: "quote:main" }, include: [] }]);
   expect(next.sent.find((frame) => frame.type === "terminal.result")).toMatchObject({ id: "call-1", ok: true });
