@@ -6,6 +6,7 @@ import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import type { AppAction, AppContextStoreValue } from "../../../state/app/context";
 import { runAutomated } from "../../../telemetry/usage-counts";
+import { currentTelemetryConfig, reportTelemetryConfig } from "../../../telemetry/live-config";
 import { VERSION } from "../../../version";
 import { CommandBarHarness, createCommandBarTestControls, settleFrame } from "./test-harness";
 
@@ -14,8 +15,11 @@ const originalWebSocket = globalThis.WebSocket;
 /** The environment switches that turn every report off; a developer's shell may set one. */
 const OPT_OUT_ENV = ["GLOOMBERB_NO_TELEMETRY", "DO_NOT_TRACK"] as const;
 const originalOptOutEnv = OPT_OUT_ENV.map((name) => process.env[name]);
+let originalTelemetry: ReturnType<typeof currentTelemetryConfig>;
 
 beforeEach(() => {
+  originalTelemetry = currentTelemetryConfig(undefined);
+  reportTelemetryConfig(undefined);
   for (const name of OPT_OUT_ENV) delete process.env[name];
   apiClient.dispose();
   // The header subscribes to SPY. A real socket rejects this test's fake token
@@ -34,6 +38,8 @@ afterEach(async () => {
   apiClient.setSessionToken(null);
   apiClient.dispose();
   globalThis.WebSocket = originalWebSocket;
+  // The real Usage Counts command updates the process-wide live config too.
+  reportTelemetryConfig(originalTelemetry?.telemetry);
   OPT_OUT_ENV.forEach((name, index) => {
     const value = originalOptOutEnv[index];
     if (value === undefined) delete process.env[name];

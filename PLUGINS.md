@@ -27,16 +27,18 @@ gloomberb plugin disable my-plugin
 
 Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder. A new Linux install without `~/.gloomberb` uses `~/.local/share/gloomberb/plugins/` (see [Where your data lives](docs/installation.md#where-your-data-lives)); `gloomberb plugins` prints the folder in use.
 
-A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) is installed at
-the tag and commit the registry reviewed, not at whatever the default branch
-holds that day, and `update` moves it to the next reviewed one. A plugin
-installed from a repository the registry does not list follows the remote's
-default branch instead. A plugin that builds on another, such as IBKR Gateway
-on Interactive Brokers, brings that one along from the registry, from the
-Plugins pane and the CLI alike.
+A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) uses the
+registry's published tag or commit when available. If the registry supplies a
+commit hash, the installer checks that the checkout matches it. `update` uses
+the same pin. A registry listing does not mean a plugin has been reviewed or
+endorsed unless explicitly stated. Without a registry pin, including when
+the registry cannot be read and there is no cached listing, installation and
+updates follow the remote's default branch. A plugin that builds on another,
+such as IBKR Gateway on Interactive Brokers, brings that one along from the
+registry, from the Plugins pane and the CLI alike.
 
-Either way the Plugins pane says when an update is waiting. For a listed
-plugin that is the reviewed commit; for an unlisted one, including a private
+Either way the Plugins pane says when an update is waiting. For a pinned
+plugin that is the registry's commit; otherwise, including for a private
 repository, the pane asks the checkout's own remote where its default branch
 is, which is exactly where `update` would land it. `gloomberb plugins --check`
 answers the same question from the terminal. The check needs whatever
@@ -122,7 +124,7 @@ The plugin API changes by these rules:
   plugin the registry lists, at the ref it would install, against every pull
   request.
 
-`update` only moves a plugin forward. When the registry's reviewed tag is older
+`update` only moves a plugin forward. When the registry's published tag is older
 than what is checked out (an install from the default branch can be ahead of
 the newest tag), the plugin is kept as it is and the reason is shown. After an
 update of a plugin split across several files, the pane asks for a restart

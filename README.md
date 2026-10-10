@@ -4,7 +4,7 @@
 
 # Gloomberb
 
-**Open-source finance terminal. Fast, keyboard-driven, and extensible.**
+**Open-source finance terminal. Keyboard-driven and extensible.**
 
 Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 
@@ -29,13 +29,23 @@ Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 - **Follow markets:** news, global indices, FX, economic events, and market scanners.
 - **Manage your workspace:** portfolios, watchlists, broker connections, alerts, notes, and AI tools.
 
-The desktop app and TUI share the command language and plugin system. The [browser app](https://term.gloom.sh) offers a smaller feature set and requires a free Gloom Cloud account: free market data is rate-limited and delayed by 15 minutes; Pro provides realtime data. See [browser features and limits](docs/browser.md).
+The desktop app and TUI share the command language and plugin system. The [browser app](https://term.gloom.sh) opens a six-pane research workspace without an account. Some panes require a free, verified Gloom Cloud account; others require Pro. See [browser features and limits](docs/browser.md).
+
+## What is open and what is not
+
+The app, including the TUI, desktop app, web client and plugin API, is [MIT licensed](LICENSE). It talks to the Gloom Cloud API by default for market data, news, filings and AI. Gloom Cloud is a hosted service and is not open source. Plugins can bring other data providers.
+
+The free tier works without paying, with rate limits, equity and options quotes delayed by 15 minutes, and news delayed by 12 hours. Real-time data and more datasets are part of the paid Gloom Cloud Pro plan, which funds the project.
+
+## What it is not
+
+Gloomberb is not a Bloomberg replacement: it has no Bloomberg chat network, fixed-income reference database or direct exchange feeds.
 
 ## Install
 
 ### Desktop
 
-On **macOS (Apple Silicon)**:
+The desktop app is built with Electrobun. On **macOS (Apple Silicon only)**, install with [Homebrew](https://brew.sh):
 
 ```bash
 brew install --cask gloomberb
@@ -43,25 +53,35 @@ brew install --cask gloomberb
 
 On **Windows 11**, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe). It supports x64, and ARM64 through x64 emulation.
 
-Both desktop installers include the `gloomberb` terminal command.
+Both desktop installers include the `gloomberb` terminal command and its runtime.
 
 ### Terminal
 
-On **macOS or Linux**:
+The standalone TUI is a Bun-compiled single binary and uses [OpenTUI](https://opentui.com/). It does not need a separate Bun installation. On **macOS or Linux**, with `curl`, `gzip` and `sha256sum` or `shasum` available:
 
 ```bash
 curl -fsSL gloom.sh/install | bash
 ```
 
-On Apple Silicon Macs, this installs the desktop app and TUI. On Intel Macs and Linux, it installs the standalone TUI.
+The [install script](scripts/install.sh) downloads a binary or app archive from [GitHub Releases](https://github.com/gloom-sh/gloomberb/releases/latest), checks its SHA-256 against the release asset digest when available, and warns if no checksum is available. It uses `sudo` only if an install directory is not writable.
 
-Or install with [Bun](https://bun.sh) on macOS, Linux, or Windows x64:
+On Apple Silicon Macs, it installs the desktop app in `/Applications` and links the TUI into `~/.local/bin`. On Intel Macs and Linux, it installs the standalone TUI in `~/.local/bin`. `GLOOMBERB_INSTALL_DIR` changes the command's destination; `GLOOMBERB_APP_DIR` changes the Mac app's destination.
+
+For a manual **Linux** install, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary, unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloomberb`.
+
+Or, with [Bun](https://bun.sh) installed on macOS, Linux or Windows x64, run once or install globally:
 
 ```bash
+bunx gloomberb
+# or
 bun install -g gloomberb
 ```
 
+On startup, the app clones missing official plugins from GitHub once a local profile exists. This needs Git and network access. Packaged apps use their bundled Bun runtime to install plugin dependencies. See [plugin installation](PLUGINS.md).
+
 Run `gloomberb` to launch. For graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm. See the [installation guide](docs/installation.md) for direct downloads, install locations, and updates.
+
+Uninstall with `brew uninstall --cask gloomberb`, `bun remove -g gloomberb`, or Windows Installed apps. For script or manual installs, remove `~/.local/bin/gloomberb` (or your chosen command path) and `/Applications/Gloomberb.app` if installed. Your [profile data](docs/installation.md#where-your-data-lives) stays on disk.
 
 ## Start
 
@@ -117,7 +137,15 @@ See the [plugin development guide](PLUGINS.md), [TV setup](docs/usage.md#live-tv
 
 Available in English, Spanish, Simplified Chinese, Traditional Chinese, Japanese, and Korean. Use `LANG` in the command bar to switch; see [language settings](docs/usage.md#localized-interface).
 
-[MIT licensed](LICENSE). Built with [OpenTUI](https://opentui.com/).
+## How it is built
+
+One Bun and React codebase runs the OpenTUI terminal app, Electrobun desktop app and browser client. Terminal releases cover macOS and Linux on x64 and ARM64, and Windows on x64. Desktop releases cover macOS on Apple Silicon and Windows x64, including Windows ARM64 through emulation.
+
+As of 10 October 2026, the suite contains 6,956 test cases across 1,088 test files.
+
+Six [CI workflows](.github/workflows) cover verification, Windows builds, terminal performance, pane pointer interactions, Homebrew packaging and releases. Pull requests run typechecks, unused-code checks, tests, builds and plugin compatibility checks; see [Contributing](CONTRIBUTING.md#checks).
+
+AI coding tools are used, and every change goes through review and the test suite.
 
 ## Crash reports and usage counts
 
@@ -128,6 +156,8 @@ The app also counts how often you open each function, from the command bar, a me
 Neither contains anything from your workspace: no tickers, arguments, portfolios, watchlists, layouts, settings or queries. Both carry a random install id stored in `install-id` in the data folder, `~/.gloomberb` by default (in the browser, in local storage).
 
 The usage setting also covers command bar searches. When you are signed in, a search you finish in the command bar (you pause typing or run something, never each keystroke) is stored with your account to improve search: its text, the AI suggestions it got and the result you picked. Searches are deleted with your account.
+
+The usage setting also covers research milestones, such as opening research, viewing a tab, saving a ticker, onboarding steps and upgrade actions. Signed-in activity is linked to your account. The browser uses an anonymous visitor ID; the desktop app can continue an ID passed by the website. Events include feature, tab and onboarding desk IDs, prompt interactions, campaign attribution, referrer URLs and experiment assignments, but not the ticker you saved or the contents of your research.
 
 To turn either off, run `Crash Reports` or `Usage Counts` from the command bar, or:
 

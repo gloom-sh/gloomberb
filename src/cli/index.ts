@@ -22,7 +22,7 @@ import {
 import { parsePaneFunctionArgs } from "./pane-functions/options";
 import { checkCliCommandOptions } from "./command-options";
 import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
-import { setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
+import { cliStyles, setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
 import { requireOneArg, takeOption } from "./commands/command-utils";
@@ -224,6 +224,7 @@ function createCoreCliCommands(
         if (!ref) {
           fail("Usage: gloomberb install <user/repo>");
         }
+        console.error(cliStyles.warning("Runs with your full permissions. Read the source first."));
         await installListedPlugin(ref);
       },
     },
