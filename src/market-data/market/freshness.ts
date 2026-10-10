@@ -469,20 +469,35 @@ export function isUsRegularCloseQuoteInPostSession(
 }
 
 /**
- * Whether a US print belongs to the after-hours session in progress: today's,
- * from the regular close. An earlier day's after-hours print is not.
+ * Whether a US print belongs to the extended-hours session the source labels,
+ * or to the regular session it extends. POST, after today's regular close (a
+ * published early close included) and before 20:00: a print from today's
+ * regular session or its after-hours. PRE, before today's open: a print from
+ * the previous regular session or since, so its after-hours or this morning's
+ * pre-market. An earlier print is not, and neither is any print on a day
+ * without a session.
  */
-export function isUsPostSessionPrint(
+export function isUsExtendedHoursSessionPrint(
   timestampMs: number,
   exchange: string | undefined,
+  marketState: MarketState | undefined,
   now = Date.now(),
 ): boolean {
   const canonical = canonicalExchange(exchange);
-  if (!isUsListingExchange(canonical)) return false;
+  if ((marketState !== "PRE" && marketState !== "POST") || !isUsListingExchange(canonical)) return false;
   if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
-  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "POST") return false;
-  const currentDate = exchangeLocalDate(canonical, now);
-  return !!currentDate && exchangeLocalDate(canonical, timestampMs) === currentDate && usSessionState(timestampMs) === "POST";
+  if (!Number.isFinite(new Date(now).getTime())) return false;
+  const today = exchangeLocalDate(canonical, now);
+  const close = latestRegularSessionClose(canonical, now);
+  if (!today || !close || !isLocalTradingDay(canonical, today)) return false;
+  const session = usSessionState(now);
+  const closedToday = close.date === today;
+  if (marketState === "POST" ? !closedToday || (session !== "REGULAR" && session !== "POST") : closedToday || session !== "PRE") {
+    return false;
+  }
+  // The open of the session that closed last: today's after the close, the previous one before the open.
+  const open = latestRegularSessionOpen(canonical, close.close);
+  return open != null && timestampMs >= open;
 }
 
 export function isTimestampStaleForExchangeSession(
