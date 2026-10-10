@@ -753,6 +753,19 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   box-shadow: inset 1px 0 0 var(--qb-hairline);
 }
 .gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
+/* A long inline choice (an expiry strip) scrolls by itself, as the terminal's
+   does, so its label and the controls beside it stay in view. */
+.gloom-qb-filters[data-strip="true"],
+.gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; min-width: 0; }
+.gloom-qb-inline[data-strip="true"] .gloom-qb-segments {
+  flex: 0 1 auto;
+  min-width: 12ch;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.gloom-qb-inline[data-strip="true"] .gloom-qb-segments::-webkit-scrollbar { display: none; }
+.gloom-qb-inline[data-strip="true"] .gloom-qb-segments > button { flex: none; white-space: nowrap; }
+.gloom-qb-filters[data-strip="true"] > :not([data-strip="true"]) { flex: none; }
 .gloom-qb-view button {
   height: 100%;
   padding: 0 8px;

@@ -10,6 +10,53 @@ import { WebIcon } from "./icons";
 
 /** Input width of a text filter that names none, in cells (the terminal's default). */
 const DEFAULT_TEXT_FIELD_CELLS = 20;
+/** Beyond this many choices an inline filter is a strip that scrolls by itself, as the terminal's does. */
+const STRIP_OPTION_LIMIT = 6;
+
+function isStrip(item: HostQueryBarItem): boolean {
+  return item.kind === "select" && item.inline === true && item.options.length > STRIP_OPTION_LIMIT;
+}
+
+/**
+ * The choices of an inline filter. A long one (expiries, chart ranges) is a
+ * strip that scrolls on its own, so the label and the controls beside it stay
+ * in view while it brings the chosen one into view.
+ */
+function InlineChoices({ item }: { item: HostQueryBarItem }) {
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const strip = isStrip(item);
+  const overflow = useHorizontalOverflow(stripRef, [item.options.length, strip]);
+  return (
+    <div className="gloom-qb-inline" data-item-id={item.id} data-narrowing={item.narrowing ? "true" : undefined}
+      data-strip={strip ? "true" : undefined}>
+      <span className="gloom-qb-label">{item.label}</span>
+      <div
+        ref={stripRef}
+        className="gloom-qb-view gloom-qb-segments"
+        role="radiogroup"
+        aria-label={item.label}
+        style={strip ? overflow.maskStyle : undefined}
+        onWheel={strip ? overflow.onWheel : undefined}
+      >
+        {item.options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={option.selected}
+            disabled={option.disabled}
+            title={option.hint ? `${option.label} (${option.hint})` : undefined}
+            data-active={option.selected ? "true" : undefined}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => item.onSelect(option.value)}
+          >
+            <span className="gloom-qb-text">{option.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function Chevron() {
   return <span className="gloom-qb-chevron"><WebIcon name="chevron-down" size={9} /></span>;
@@ -87,30 +134,7 @@ function FilterChip({ item, open, onOpenChange }: { item: HostQueryBarItem; open
   useEffect(() => {
     if (open) triggerRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [open]);
-  if (item.kind === "select" && item.inline) {
-    return (
-      <div className="gloom-qb-inline" data-item-id={item.id} data-narrowing={item.narrowing ? "true" : undefined}>
-        <span className="gloom-qb-label">{item.label}</span>
-        <div className="gloom-qb-view gloom-qb-segments" role="radiogroup" aria-label={item.label}>
-          {item.options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={option.selected}
-              disabled={option.disabled}
-              title={option.hint ? `${option.label} (${option.hint})` : undefined}
-              data-active={option.selected ? "true" : undefined}
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => item.onSelect(option.value)}
-            >
-              <span className="gloom-qb-text">{option.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (item.kind === "select" && item.inline) return <InlineChoices item={item} />;
   if (item.kind === "toggle") {
     return (
       <button
@@ -190,16 +214,15 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, openRequest
   const overflow = useHorizontalOverflow(scrollRef, [items.length, !!search, !!view, !!onClearAll, meta]);
   const searchRef = useRef<HTMLDivElement | null>(null);
   // When an inline choice or the view changes (a shortcut, the next expiry),
-  // bring the new selection into a scrolled bar. On mount only an inline
-  // choice in a bar without a search: an expiry chosen far down the strip is
-  // what the pane shows, but a view at the right edge must not scroll the
-  // search away when the pane opens.
+  // bring the new selection into a scrolled bar. On mount only a strip that
+  // scrolls by itself shows its choice: an expiry chosen far down the strip
+  // is what the pane shows, but scrolling the whole bar to a view at the right
+  // edge would hide the search when the pane opens.
   const selectionKey = [
     ...items.filter((item) => item.inline).map((item) => `${item.id}=${item.options.find((option) => option.selected)?.value ?? ""}`),
     `view=${view?.value ?? ""}`,
   ].join("|");
   const previousSelectionKey = useRef<string | null>(null);
-  const hasSearch = !!search;
   useEffect(() => {
     const previous = previousSelectionKey.current;
     previousSelectionKey.current = selectionKey;
@@ -209,10 +232,11 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, openRequest
     if (!bar) return;
     for (const entry of selectionKey.split("|")) {
       const [id, value] = entry.split("=") as [string, string];
-      if (before ? before.get(id) === value : id === "view" || hasSearch) continue;
+      if (before?.get(id) === value) continue;
       const group = id === "view"
         ? bar.querySelector(":scope > .gloom-qb-view")
         : [...bar.querySelectorAll("[data-item-id]")].find((item) => item.getAttribute("data-item-id") === id);
+      if (!before && group?.getAttribute("data-strip") !== "true") continue;
       group?.querySelector<HTMLElement>("button[data-active=true]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     }
   }, [selectionKey]);
@@ -283,7 +307,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, openRequest
       )}
       {searchNode}
       {items.length > 0 && (
-        <div className="gloom-qb-filters">
+        <div className="gloom-qb-filters" data-strip={items.some(isStrip) ? "true" : undefined}>
           {items.map((item) => (
             <FilterChip key={item.id} item={item} open={openId === item.id} onOpenChange={(open) => setOpen(item.id, open)} />
           ))}
