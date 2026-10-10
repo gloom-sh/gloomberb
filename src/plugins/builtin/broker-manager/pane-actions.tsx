@@ -115,7 +115,8 @@ export function useBrokerManagerActions({
       try {
         setBusy(t("Connecting…"));
         // A connected broker is connected again only by a new sign-in: this renews it before the broker ends it.
-        const renew = selectedRow.state === "connected";
+        // A row that says when the sign-in ends is renewable before this session's first sync too.
+        const renew = selectedRow.state === "connected" || selectedRow.signInEndsAt !== null;
         if (!await requestBrokerSignIn(broker, { renew })) {
           // Backing out of a renewal leaves the broker connected, for now.
           setMessage(infoMessage(renew

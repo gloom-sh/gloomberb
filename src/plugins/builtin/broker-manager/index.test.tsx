@@ -461,32 +461,40 @@ describe("BrokersPane", () => {
     expect(frame()).toContain("signed-in-new");
   }, 15_000);
 
-  test("c on a connected broker asks for a new sign-in, and on any other state for a plain connect", async () => {
+  test("c renews a sign-in the pane knows is connected or ending, and is a plain connect otherwise", async () => {
     const calls: string[] = [];
     const asked: Array<{ renew?: boolean }> = [];
+    const connectedAt = new Date(Date.now() - 6.5 * 24 * 3_600_000).toISOString();
+    let connection: Record<string, unknown> = { status: "connected", connectedAt };
     spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
-    spies.push(spyOn(apiClient, "brokerRequest").mockImplementation((async () => ({ accounts: [], positions: [] })) as typeof apiClient.brokerRequest));
+    spies.push(spyOn(apiClient, "brokerRequest").mockImplementation((async (_broker: string, path: string) => (
+      path === "" ? connection : { accounts: [], positions: [] }
+    )) as typeof apiClient.brokerRequest));
     spies.push(spyOn(signInDialog, "requestBrokerSignIn").mockImplementation(async (_broker, options) => {
       asked.push({ renew: options?.renew });
       return false;
     }));
     const profile = (id: string): BrokerInstanceConfig => ({ id, brokerType: "signed-in", label: id, connectionMode: "ibkr", config: {}, enabled: true });
-    // One adapter that has synced (connected) and one that has not.
+    // One adapter that has synced this session (connected) and a new one for each profile that has not.
     const syncedAdapter = createSignedInBrokerAdapter({ findBroker: () => null });
     await syncedAdapter.listAccounts!(profile("synced"));
+    const ending = { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 5 * 3_600_000).toISOString(), expiresSoon: true };
 
-    for (const [id, message, expected] of [
-      ["synced", "sign-in was not renewed.", true],
-      ["fresh", "was not connected.", false],
+    for (const [id, answer, renews] of [
+      ["synced", { status: "connected", connectedAt }, true],
+      ["flagged", ending, true],
+      ["plain", { status: "connected", connectedAt }, false],
     ] as const) {
       asked.length = 0;
+      connection = answer;
       const adapter = id === "synced" ? syncedAdapter : createSignedInBrokerAdapter({ findBroker: () => null });
       await tui.render(<Harness calls={calls} instances={[profile(id)]} adapters={[testBroker, adapter]} height={30} />, { width: 92, height: 30 });
       await settle();
+      await settle();
       await pressKey("c");
       await settle();
-      expect(asked).toEqual([{ renew: expected }]);
-      expect(frame()).toContain(message);
+      expect(asked).toEqual([{ renew: renews }]);
+      expect(frame()).toContain(renews ? "sign-in was not renewed." : "was not connected.");
     }
   });
 
