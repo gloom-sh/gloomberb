@@ -5,6 +5,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { createSignedInBrokerAdapter } from "../../../brokers/signed-in/adapter";
 import { refreshSignedInBrokers, resetSignedInBrokerCatalog } from "../../../brokers/signed-in/catalog";
 import type { SignedInBroker } from "../../../brokers/signed-in/client";
+import * as signInDialog from "../../../brokers/signed-in/sign-in-dialog";
 import { FormModalHost } from "../../../components/form-modal";
 import type { PluginRegistry } from "../../registry";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -178,23 +179,17 @@ const ROBINHOOD: SignedInBroker = {
   capabilities: { history: true, executions: true, orders: false, singleConnection: true },
 };
 
-/**
- * Gloom Cloud: signed in, two signed-in brokers (one also on this device), and
- * a code that connects or never does. Nothing is connected when the step
- * opens, and a code that connects is used as soon as it is handed out.
- */
+/** Gloom Cloud: signed in, two signed-in brokers (one also on this device), and a code that connects or never does. */
 async function fakeCloud({ connects }: { connects: boolean }) {
-  let codeIssued = false;
   spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
   spies.push(spyOn(apiClient, "brokerRequest").mockImplementation((async (broker: string, path: string) => {
     if (broker === "connectors") {
       return { connectors: [ROBINHOOD, { ...ROBINHOOD, id: "test-broker", name: "Test Broker" }] };
     }
     if (path === "/connect") {
-      codeIssued = true;
       return { connectUrl: "https://gloom.sh/connect/K7QM", code: "K7QM", expiresAt: new Date(Date.now() + 60_000).toISOString() };
     }
-    return { status: connects && codeIssued ? "connected" : "not_connected" };
+    return { status: connects ? "connected" : "not_connected" };
   }) as typeof apiClient.brokerRequest));
   await refreshSignedInBrokers({ force: true });
 }
@@ -466,28 +461,32 @@ describe("BrokersPane", () => {
     expect(frame()).toContain("signed-in-new");
   }, 15_000);
 
-  test("a sign-in the broker is about to end shows when on its row and in its detail, and an older server shows nothing", async () => {
-    const signedIn: BrokerInstanceConfig = { id: "signed-in-ibkr", brokerType: "signed-in", label: "Brokerage", connectionMode: "ibkr", config: {}, enabled: true };
-    const connectedAt = new Date(Date.now() - 6.5 * 24 * 3_600_000).toISOString();
-    const answers: Record<string, Record<string, unknown>> = {
-      soon: { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 5 * 3_600_000).toISOString(), expiresSoon: true },
-      later: { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 5 * 24 * 3_600_000).toISOString(), expiresSoon: false },
-      older: { status: "connected", connectedAt },
-    };
-    let answer = answers.soon!;
+  test("c on a connected broker asks for a new sign-in, and on any other state for a plain connect", async () => {
+    const calls: string[] = [];
+    const asked: Array<{ renew?: boolean }> = [];
     spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
-    spies.push(spyOn(apiClient, "brokerRequest").mockImplementation((async () => answer) as typeof apiClient.brokerRequest));
+    spies.push(spyOn(apiClient, "brokerRequest").mockImplementation((async () => ({ accounts: [], positions: [] })) as typeof apiClient.brokerRequest));
+    spies.push(spyOn(signInDialog, "requestBrokerSignIn").mockImplementation(async (_broker, options) => {
+      asked.push({ renew: options?.renew });
+      return false;
+    }));
+    const profile = (id: string): BrokerInstanceConfig => ({ id, brokerType: "signed-in", label: id, connectionMode: "ibkr", config: {}, enabled: true });
+    // One adapter that has synced (connected) and one that has not.
+    const syncedAdapter = createSignedInBrokerAdapter({ findBroker: () => null });
+    await syncedAdapter.listAccounts!(profile("synced"));
 
-    for (const [name, expectEnd] of [["soon", true], ["later", false], ["older", false]] as const) {
-      answer = answers[name]!;
-      await tui.render(<Harness calls={[]} instances={[signedIn]} height={30} />, { width: 92, height: 30 });
+    for (const [id, message, expected] of [
+      ["synced", "sign-in was not renewed.", true],
+      ["fresh", "was not connected.", false],
+    ] as const) {
+      asked.length = 0;
+      const adapter = id === "synced" ? syncedAdapter : createSignedInBrokerAdapter({ findBroker: () => null });
+      await tui.render(<Harness calls={calls} instances={[profile(id)]} adapters={[testBroker, adapter]} height={30} />, { width: 92, height: 30 });
       await settle();
+      await pressKey("c");
       await settle();
-      expect(frameLine("Brokerage").includes("Ends ")).toBe(expectEnd);
-
-      await pressKey("RETURN");
-      await settle();
-      expect(frame().includes("Sign-in ends ")).toBe(expectEnd);
+      expect(asked).toEqual([{ renew: expected }]);
+      expect(frame()).toContain(message);
     }
   });
 

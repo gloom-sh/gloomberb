@@ -66,7 +66,7 @@ describe("BrokerSignInController", () => {
     expect(polls).toBe(3);
   });
 
-  describe("a broker that is already connected", () => {
+  describe("renewing a broker that is already connected", () => {
     const FIRST = "2026-10-01T09:00:00.000Z";
     const RENEWED = "2026-10-08T09:00:00.000Z";
 
@@ -86,7 +86,7 @@ describe("BrokerSignInController", () => {
           if (starts >= 3) connectedAt = RENEWED;
           return { status: "connected", connectedAt };
         },
-      }));
+      }), { renew: true });
       const phases: string[] = [];
       controller.subscribe((snapshot) => phases.push(snapshot.phase));
       const connected = settle(controller, (snapshot) => snapshot.phase === "connected");
@@ -108,7 +108,7 @@ describe("BrokerSignInController", () => {
         // Yields to timers, so the test can cancel between polls.
         delay: () => new Promise((resolve) => setTimeout(resolve, 1)),
       });
-      const controller = new BrokerSignInController(IBKR, false, io);
+      const controller = new BrokerSignInController(IBKR, false, io, { renew: true });
       controller.start();
       await settle(controller, (snapshot) => snapshot.phase === "waiting");
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -129,12 +129,27 @@ describe("BrokerSignInController", () => {
           if (reads === 1) throw new Error("offline");
           return { status: "connected", connectedAt: reads >= 5 ? RENEWED : FIRST };
         },
-      }));
+      }), { renew: true });
       const connected = settle(controller, (snapshot) => snapshot.phase === "connected");
       controller.start();
       await connected;
       expect(reads).toBe(5);
     });
+  });
+
+  test("a broker that is already connected is done at once unless the sign-in is a renewal", async () => {
+    let reads = 0;
+    const controller = new BrokerSignInController(IBKR, false, fakeIo({
+      fetchConnection: async () => {
+        reads += 1;
+        return { status: "connected", connectedAt: "2026-10-01T09:00:00.000Z" };
+      },
+    }));
+    const connected = settle(controller, (snapshot) => snapshot.phase === "connected");
+    controller.start();
+    await connected;
+    // The first poll, with no read of the connection before a code exists.
+    expect(reads).toBe(1);
   });
 
   test("asking for trading still finishes when the user grants only reading", async () => {
@@ -233,8 +248,8 @@ describe("runBrokerSignIn", () => {
           calls.push("gloom");
           return options.signInSucceeds ?? true;
         },
-        connectBroker: async (broker: SignedInBroker, write: boolean) => {
-          calls.push(`${broker.id}:${write ? "write" : "read"}`);
+        connectBroker: async (broker: SignedInBroker, write: boolean, renew: boolean) => {
+          calls.push(`${broker.id}:${write ? "write" : "read"}${renew ? ":renew" : ""}`);
           return outcomes.shift() ?? "cancelled";
         },
       },
@@ -253,6 +268,12 @@ describe("runBrokerSignIn", () => {
     const forced = steps({ signedIn: true, outcomes: ["connected"] });
     await runBrokerSignIn(TRADING, false, forced.steps);
     expect(forced.calls).toEqual(["ibkr:read"]);
+  });
+
+  test("a renewal stays a renewal through the retry after Gloom signs in again", async () => {
+    const renewed = steps({ signedIn: true, outcomes: ["signed-out", "connected"] });
+    expect(await runBrokerSignIn(IBKR, undefined, renewed.steps, { renew: true })).toBe(true);
+    expect(renewed.calls).toEqual(["ibkr:read:renew", "gloom", "ibkr:read:renew"]);
   });
 
   test("signs in to Gloom first when there is no session", async () => {

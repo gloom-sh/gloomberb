@@ -114,9 +114,11 @@ export function useBrokerManagerActions({
       const broker = signedInBrokerForProfile(selectedRow.instance, selectedRow.brokerName);
       try {
         setBusy(t("Connecting…"));
-        if (!await requestBrokerSignIn(broker)) {
+        // A connected broker is connected again only by a new sign-in: this renews it before the broker ends it.
+        const renew = selectedRow.state === "connected";
+        if (!await requestBrokerSignIn(broker, { renew })) {
           // Backing out of a renewal leaves the broker connected, for now.
-          setMessage(infoMessage(selectedRow.state === "connected"
+          setMessage(infoMessage(renew
             ? tf("{broker} sign-in was not renewed.", { broker: broker.name })
             : tf("{broker} was not connected.", { broker: broker.name })));
           return;
