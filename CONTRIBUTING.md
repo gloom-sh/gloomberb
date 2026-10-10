@@ -121,6 +121,8 @@ Tests run on `bun test` and sit next to the code they cover as `*.test.ts` or `*
 
 Built-in code under `src/` imports the host by relative path (`../../../ui`, `../../../components`, `../../../public/react`, `../../../theme/colors`). The `gloomberb/*` specifiers are the external-plugin API: Bun on Linux resolves them as a package self-reference, so typecheck and tests pass, but the Windows desktop bundle cannot resolve them and the Windows verify workflow on `main` fails. `src/architecture/import-boundaries.test.ts` fails on a `gloomberb` or `gloomberb/*` import in built-in code.
 
+Core code outside `src/plugins/builtin/` should not import a specific built-in plugin. `src/architecture/core-builtin-boundary.test.ts` checks runtime sources, including type imports and dynamic imports, against `src/architecture/core-builtin-allowlist.json` and fails on new or stale file/plugin pairs. Move shared code to `src/<area>/` or `src/plugins/builtin/shared`; run `bun scripts/update-core-builtin-allowlist.ts` after removing an edge so the allowlist shrinks. If a new edge is necessary, regenerate the allowlist and explain why in the PR.
+
 ### One component for every renderer
 
 A pane is one component that renders in the terminal, the desktop app and the web. Import UI from the kit and the plugin runtime, never from OpenTUI, Electrobun or the DOM directly; `src/architecture/import-boundaries.test.ts` fails when a renderer package is imported outside `src/renderers/`. On the desktop and the web, draw lines, markers, shapes and overlays with real DOM, CSS, canvas or SVG; drawing with terminal cell characters is for the terminal renderer only. Never fix a chart by turning off the kitty graphics renderer: keep kitty support and fix the cause.
