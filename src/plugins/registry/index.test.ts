@@ -3,14 +3,18 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { assetDataProvider } from "../../capabilities";
 import { AppPersistence } from "../../data/app-persistence";
 import { TickerRepository } from "../../data/ticker-repository";
-import { createDefaultConfig } from "../../types/config";
+import { createDefaultConfig, createPaneInstance } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { GloomPlugin, GloomPluginContext } from "../../types/plugin";
 import {
   applicationPlugin,
-  macroPlugin,
+  creditPlugin,
+  earningsPlugin,
   portfolioPlugin,
+  ratesMacroPlugin,
 } from "../builtin/composite-plugins";
+import { resolveShellVisibleLayout } from "../../components/layout/shell/visible-layout";
+import { expandBuiltinPluginGroups } from "../ownership";
 import { composeBuiltinPlugin } from "../builtin/plugin-module";
 import { useAssetData, usePluginAppActions } from "../runtime";
 import { usePluginRenderContext } from "../runtime/context";
@@ -162,7 +166,6 @@ describe("built-in composite plugin ownership", () => {
     const registry = createRegistry();
     await registry.register(portfolioPlugin);
     await registry.register(applicationPlugin);
-    await registry.register(macroPlugin);
 
     expect(registry.getPluginPaneIds("portfolio")).toEqual(expect.arrayContaining([
       "portfolio-list",
@@ -174,11 +177,6 @@ describe("built-in composite plugin ownership", () => {
       "changelog",
       "connections",
     ]));
-    expect(registry.getPluginPaneIds("macro")).toEqual(expect.arrayContaining([
-      "econ-calendar",
-      "yield-curve",
-      "earnings-calendar",
-    ]));
     expect(registry.getPanePluginId("analytics")).toBe("portfolio");
     expect(registry.getPanePluginId("help")).toBe("application");
     expect(registry.getPanePluginId("connections")).toBe("application");
@@ -186,6 +184,46 @@ describe("built-in composite plugin ownership", () => {
     expect(registry.allPlugins.has("analytics")).toBe(false);
     expect(registry.allPlugins.has("kelly-sizer")).toBe(false);
     expect(registry.allPlugins.has("changelog")).toBe(false);
+  });
+});
+
+describe("Macro's successors", () => {
+  test("keep the state Macro saved, and each hides only its own panes", async () => {
+    const disabledPlugins: string[] = [];
+    const pluginConfig: Record<string, Record<string, unknown>> = { macro: { "yield-curve:forward": "1y" } };
+    const registry = createRegistry();
+    registry.bindHost({
+      getConfig: () => ({ ...createDefaultConfig("/tmp/gloomberb-macro-split-test"), pluginConfig, disabledPlugins }),
+      setPluginConfigValue: async (pluginId, key, value) => {
+        pluginConfig[pluginId] = { ...(pluginConfig[pluginId] ?? {}), [key]: value };
+      },
+    });
+    currentPersistence!.pluginState.set("macro", "resume:credit:tab", "sovereign");
+    for (const plugin of [ratesMacroPlugin, creditPlugin, earningsPlugin]) await registry.register(plugin);
+
+    // Pane state, slots and persistence resolve their namespace the same way.
+    for (const pluginId of ["rates-macro", "credit", "earnings"]) {
+      expect(registry.getConfigState(pluginId, "yield-curve:forward")).toBe("1y");
+      expect(registry.getResumeState(pluginId, "credit:tab")).toBe("sovereign");
+    }
+    await registry.setConfigState("credit", "cds:tenor", "5y");
+    expect(Object.keys(pluginConfig)).toEqual(["macro"]);
+
+    const instances = ["econ-calendar", "yield-curve", "cds", "earnings-calendar"]
+      .map((paneId) => createPaneInstance(paneId, { instanceId: `${paneId}:main`, binding: { kind: "none" } }));
+    const layout = {
+      dockRoot: null,
+      instances,
+      floating: instances.map((instance, index) => ({ instanceId: instance.instanceId, x: index, y: 0, width: 40, height: 10, zIndex: index })),
+      detached: [],
+    };
+    const visiblePanes = (disabled: readonly string[]) => {
+      const disabledPaneIds = new Set(disabled.flatMap((pluginId) => registry.getPluginPaneIds(pluginId)));
+      return resolveShellVisibleLayout(layout, disabledPaneIds, registry.panes).instances.map((instance) => instance.paneId);
+    };
+    expect(visiblePanes(["credit"])).toEqual(["econ-calendar", "yield-curve", "earnings-calendar"]);
+    expect(visiblePanes(["earnings"])).toEqual(["econ-calendar", "yield-curve", "cds"]);
+    expect(visiblePanes(expandBuiltinPluginGroups(["macro"]))).toEqual([]);
   });
 });
 

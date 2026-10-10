@@ -11,7 +11,6 @@ import {
   coreConfigSyncContributor,
 } from "./core-contributors";
 import { setSyncedProfileAnalytics } from "./profile-analytics";
-import { setBuiltinPluginGroupsForTests } from "../plugins/ownership";
 import { createTestTicker } from "../test-support/ticker";
 import { createTestFinancials } from "../test-support/data-provider";
 
@@ -97,7 +96,7 @@ describe("core sync contributors", () => {
     const layouts = config.layouts.map((savedLayout) => savedLayout);
 
     const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, {
-      disabledPlugins: ["analytics", "kelly-sizer", "changelog", "macro-tv"],
+      disabledPlugins: ["analytics", "kelly-sizer", "changelog"],
       pluginConfig: {
         analytics: { metric: "beta", shared: "legacy" },
         portfolio: { shared: "canonical" },
@@ -108,7 +107,7 @@ describe("core sync contributors", () => {
       activeLayoutIndex: config.activeLayoutIndex,
     });
 
-    expect(merged?.disabledPlugins).toEqual(["portfolio", "macro"]);
+    expect(merged?.disabledPlugins).toEqual(["portfolio"]);
     expect(merged?.pluginConfig).toEqual({
       portfolio: { metric: "beta", shared: "canonical" },
       application: { section: "shortcuts" },
@@ -195,25 +194,30 @@ describe("core sync contributors", () => {
     }
   });
 
-  test("a retired plugin id round-trips through sync with older apps as its group", async () => {
-    setBuiltinPluginGroupsForTests({ macro: ["rates-macro", "credit", "earnings"] });
-    try {
-      const config = createDefaultConfig("/tmp/gloomberb-sync-group-test");
-      // An older app pushes Macro off, under the module id it once had or its own.
-      for (const pushed of [["macro"], ["macro-tv"]]) {
-        const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, { disabledPlugins: pushed });
-        expect(merged?.disabledPlugins).toEqual(["rates-macro", "credit", "earnings"]);
-        // All of it off goes back out as the one id the older app knows.
-        const payload = await coreConfigSyncContributor.collect({ state: createInitialState(merged!) }) as any;
-        expect(payload.disabledPlugins).toEqual(["macro"]);
-      }
+  test("Macro round-trips through sync with apps from before it was split", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-group-test");
+    const pull = (disabledPlugins: string[]) => (
+      __syncContributorInternalsForTests.mergeConfigPayload(config, { disabledPlugins })?.disabledPlugins
+    );
+    const push = async (disabledPlugins: string[]) => (
+      (await coreConfigSyncContributor.collect({ state: createInitialState({ ...config, disabledPlugins }) }) as any).disabledPlugins
+    );
+    const all = ["rates-macro", "credit", "earnings"];
 
-      config.disabledPlugins = ["credit"];
-      const partial = await coreConfigSyncContributor.collect({ state: createInitialState(config) }) as any;
-      expect(partial.disabledPlugins).toEqual(["credit"]);
-    } finally {
-      setBuiltinPluginGroupsForTests(null);
-    }
+    // An older app turns Macro off, under its own id or the one TV had inside it.
+    expect(pull(["macro"])).toEqual(all);
+    expect(pull(["macro-tv"])).toEqual(all);
+    // A module that was once a plugin of its own stays with the successor holding it.
+    expect(pull(["earnings-calendar"])).toEqual(["earnings"]);
+    // Turning Macro off there over one successor already off here.
+    expect(pull(["credit", "macro"])).toEqual(["credit", "rates-macro", "earnings"]);
+
+    // All three off goes out as the one id the older app knows; fewer go out as themselves.
+    expect(await push(all)).toEqual(["macro"]);
+    expect(await push(["credit"])).toEqual(["credit"]);
+    expect(await push(["credit", "earnings"])).toEqual(["credit", "earnings"]);
+    // So turning Macro back on there drops `macro`, and all three come back.
+    expect(pull((await push(all)).filter((pluginId: string) => pluginId !== "macro"))).toEqual([]);
   });
 
   test("preserves local broker identity when applying sanitized portfolios", () => {

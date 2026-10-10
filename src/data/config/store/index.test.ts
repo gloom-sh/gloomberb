@@ -813,7 +813,11 @@ describe("loadConfig", () => {
       // rather than the built-in that used to contain it.
       "market-heatmap",
       "fear-greed",
-      "macro",
+      // The earnings calendar went to Earnings when Macro was split, while TV
+      // left for its own repository, so turning it off still means all of Macro.
+      "earnings",
+      "rates-macro",
+      "credit",
       "ibkr",
       "broker",
       "portfolio",
@@ -853,7 +857,7 @@ describe("loadConfig", () => {
     await usePluginCheckouts();
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({ configVersion: 22, disabledPlugins: ["macro"] }));
-    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["macro", "ipo-calendar"]);
+    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["rates-macro", "credit", "earnings", "ipo-calendar"]);
 
     // Saved at 23 by a build that absorbed only the Market Overview modules.
     const afterMarketOverview = await createTempConfigDir();
@@ -862,12 +866,12 @@ describe("loadConfig", () => {
       disabledPlugins: ["macro"],
       seededPlugins: ["absorbed:market-heatmap", "absorbed:market-halts", "absorbed:fear-greed"],
     }));
-    expect((await loadConfig(afterMarketOverview)).disabledPlugins).toEqual(["macro", "ipo-calendar"]);
+    expect((await loadConfig(afterMarketOverview)).disabledPlugins).toEqual(["rates-macro", "credit", "earnings", "ipo-calendar"]);
 
     await usePluginCheckouts("gloom-ipo-calendar");
     const installed = await createTempConfigDir();
     await writeConfigJson(installed, createSavedConfig({ configVersion: 22, disabledPlugins: ["macro"] }));
-    expect((await loadConfig(installed)).disabledPlugins).toEqual(["macro"]);
+    expect((await loadConfig(installed)).disabledPlugins).toEqual(["rates-macro", "credit", "earnings"]);
   });
 
   test("migrates grouped built-in plugin config keys", async () => {
