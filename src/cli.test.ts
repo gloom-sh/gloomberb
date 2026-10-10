@@ -339,7 +339,8 @@ describe("CLI search helpers", () => {
     expect(report).toContain("MSTR");
     expect(report).toContain("MicroStrategy Incorporated");
     expect(report).toContain("Saved");
-    expect(report).toContain("gloom");
+    // Where a row came from is a saved ticker or a broker, never the data service's internal id.
+    expect(report).not.toContain("gloom");
   });
 
   test("renders an empty state when no search results match", () => {

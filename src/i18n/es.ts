@@ -120,6 +120,7 @@ export const es: Record<string, string> = {
   "Portfolio": "Cartera",
   "Primary Listing": "Cotización principal",
   "Other Listings": "Otras cotizaciones",
+  "Related": "Relacionados",
   "Saved Layouts": "Diseños guardados",
   "Saved": "Guardados",
   "Search Results": "Resultados de búsqueda",

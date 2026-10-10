@@ -704,6 +704,38 @@ describe("ticker-search utilities", () => {
     });
   });
 
+  describe("themes and several words", () => {
+    const build = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
+      query,
+      tickers: new Map<string, TickerRecord>(),
+      providerResults,
+      totalLimit: 10,
+    }).map((item) => `${item.symbol}:${item.category}`);
+    const lithium = { searchKeywords: ["lithium"] };
+    const rows = [
+      makeSearchResult("LAC", "Lithium Americas Corp.", { exchange: "NYSE", type: "EQUITY" }),
+      makeSearchResult("ALB", "Albemarle Corporation", { exchange: "NYSE", type: "EQUITY", ...lithium }),
+      makeSearchResult("LIT", "Global X Lithium & Battery Tech ETF", { exchange: "ARCA", type: "ETF", ...lithium }),
+      makeSearchResult("SQM", "Sociedad Química y Minera de Chile S.A.", { exchange: "NYSE", type: "EQUITY", ...lithium }),
+      makeSearchResult("COPX", "Global X Copper Miners ETF", { exchange: "ARCA", type: "ETF" }),
+    ];
+
+    test("a company sent with a theme answers to it after the names, as related; older servers' rows are dropped", () => {
+      expect(build("lithium", rows)).toEqual([
+        "LAC:Primary Listing", "LIT:Funds & Derivatives", "ALB:Related", "SQM:Related",
+      ]);
+      expect(build("lithium etf", rows)).toEqual(["LIT:Funds & Derivatives"]);
+      expect(build("lithium", rows.map(({ searchKeywords: _keywords, ...row }) => row))).toEqual([
+        "LAC:Primary Listing", "LIT:Funds & Derivatives",
+      ]);
+    });
+
+    test("several words match on all of them in any order, never on some", () => {
+      expect(build("miners copper", rows)).toEqual(["COPX:Funds & Derivatives"]);
+      expect(build("copper lithium", rows)).toEqual([]);
+    });
+  });
+
   describe("provider popularity", () => {
     // Cloud responses with recorded search scores on 2026-09-23.
     const listing = (symbol: string, name: string, exchange: string, popularity?: number, type = "EQUITY") =>

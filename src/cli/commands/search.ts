@@ -53,6 +53,11 @@ export async function searchCandidatesForCli({
   }
 }
 
+/** "Saved", or the broker a row came from; never the data service's internal id. */
+function searchSourceLabel(candidate: TickerSearchCandidate): string {
+  return candidate.kind === "ticker" ? "Saved" : candidate.result?.brokerLabel || "";
+}
+
 function resolveSearchName(candidate: TickerSearchCandidate): string {
   return candidate.detail.split(" | ")[0] || candidate.detail || "—";
 }
@@ -71,9 +76,7 @@ function searchCandidateRows(candidates: TickerSearchCandidate[]) {
       || candidate.result?.brokerContract?.secType
       || candidate.ticker?.metadata.assetCategory
       || "",
-    source: candidate.kind === "ticker"
-      ? "Saved"
-      : candidate.result?.brokerLabel || candidate.result?.providerId || "Provider",
+    source: searchSourceLabel(candidate),
     providerId: candidate.result?.providerId ?? "",
     saved: candidate.kind === "ticker",
   }));
@@ -106,6 +109,8 @@ export function buildSearchReport({
   }
 
   const categories = Array.from(new Set(candidates.map((candidate) => candidate.category)));
+  // Where a row came from, only when one is saved or from a broker.
+  const showSource = candidates.some((candidate) => searchSourceLabel(candidate));
   for (const category of categories) {
     const categoryRows = candidates.filter((candidate) => candidate.category === category);
     lines.push("");
@@ -116,7 +121,7 @@ export function buildSearchReport({
         { header: "Name" },
         { header: "Exchange" },
         { header: "Type" },
-        { header: "Source" },
+        ...(showSource ? [{ header: "Source" }] : []),
       ],
       categoryRows.map((candidate) => [
         candidate.label,
@@ -130,9 +135,7 @@ export function buildSearchReport({
           || candidate.result?.brokerContract?.secType
           || candidate.ticker?.metadata.assetCategory
           || "—",
-        candidate.kind === "ticker"
-          ? "Saved"
-          : candidate.result?.brokerLabel || candidate.result?.providerId || "Provider",
+        ...(showSource ? [searchSourceLabel(candidate) || "—"] : []),
       ]),
     ));
   }

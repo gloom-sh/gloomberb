@@ -216,7 +216,12 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       const aliases = getItemSearchAliases(item);
       const aliasScore = (exactListingSymbol ? [...aliases, exactListingSymbol] : aliases)
         .reduce((best, alias) => Math.max(best, scoreSearchAlias(intent, alias)), 0);
-      const textScore = labelScore + detailScore + aliasScore
+      // Several words match on all of them, in any order, across the name, type,
+      // venue and the themes the row answers to; a theme alone ranks after a name.
+      const keywordScore = scoreAllWords(intent, [...(item.searchKeywords ?? [])]) > 0 ? KEYWORD_MATCH_SCORE : 0;
+      const wordsScore = labelScore + detailScore + aliasScore > 0 ? 0
+        : scoreAllWords(intent, [item.label, item.detail, item.right ?? "", ...(item.searchKeywords ?? [])]);
+      const textScore = labelScore + detailScore + aliasScore + Math.max(keywordScore, wordsScore)
         + (isQualifiedTickerQuery(query) && matchesQualifiedTicker(item, query) ? 100_000 : 0);
       const saved = isSavedSearchItem(item);
       const explicitIntentScore = scoreAssetPreference(intent, item.instrumentClass)
@@ -492,6 +497,38 @@ function getItemSearchAliases(item: Pick<TickerSearchRankableItem, "label"> & Pa
     ? item.searchAliases
     : buildSymbolAliases(item.symbol || item.label);
   return aliases.length > 0 ? aliases : [item.label];
+}
+
+/** A row that answers only to a theme it was sent with (`searchKeywords`), below any name match. */
+const KEYWORD_MATCH_SCORE = 500;
+/** Every query word found somewhere in the row, in any order. */
+const ALL_WORDS_SCORE = 2_200;
+
+/**
+ * ALL_WORDS_SCORE when every word of the query (exchange and asset words
+ * aside) starts a word of some field: "miners copper" finds "Copper Miners
+ * ETF", "lithium" finds a row sent with the lithium theme. Zero otherwise.
+ */
+function scoreAllWords(intent: SearchQueryIntent, fields: readonly string[]): number {
+  const terms = intent.companyQuery.split(" ").filter(Boolean);
+  if (terms.length === 0) return 0;
+  const words = fields.flatMap((field) => normalizeSearchText(field).split(" ").filter(Boolean));
+  return terms.every((term) => words.some((word) => word.startsWith(term))) ? ALL_WORDS_SCORE : 0;
+}
+
+/**
+ * Whether a row is in an answer for a theme it was sent with, not for its
+ * name: the name lacks some of the query's words (Albemarle for "lithium",
+ * Southern Copper for "copper miners").
+ */
+export function answersOnlyByKeyword(
+  item: Pick<TickerSearchRankableItem, "label" | "detail"> & Partial<TickerSearchRankableItem>,
+  query: string,
+): boolean {
+  if (!item.searchKeywords?.length) return false;
+  const terms = analyzeSearchQuery(query).companyQuery.split(" ").filter(Boolean);
+  const words = [item.label, item.detail].flatMap((field) => normalizeSearchText(field).split(" ").filter(Boolean));
+  return terms.length > 0 && !terms.every((term) => words.some((word) => word.startsWith(term)));
 }
 
 function maxScoreForQueries(

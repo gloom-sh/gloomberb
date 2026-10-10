@@ -9,6 +9,7 @@ import { assetClassMarketSymbol, parseAssetClassQuery } from "./asset-classes";
 import { searchContractKey, searchInstrumentKey } from "./identity";
 import { tickerInstrumentLabel } from "../instrument-label";
 import {
+  answersOnlyByKeyword,
   buildSymbolAliases,
   classifyInstrumentKind,
   findExactTickerSearchMatch,
@@ -178,6 +179,7 @@ function createProviderTickerSearchCandidates(
       instrumentClass: classifyInstrumentKind(result.brokerContract?.secType || result.type),
       instrumentType: result.brokerContract?.secType || result.type,
       searchAliases: buildSearchResultAliases(result),
+      ...(searchResultKeywords(result) ? { searchKeywords: searchResultKeywords(result) } : {}),
       result,
     }];
   });
@@ -251,7 +253,7 @@ export function buildTickerSearchCandidates({
   );
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
   const ranked = rankTickerSearchItems([...localItems, ...providerItems], query);
-  return limitTickerSearchCandidates(assignTickerSearchCategories(ranked), totalLimit, localLimit);
+  return limitTickerSearchCandidates(assignTickerSearchCategories(ranked, query), totalLimit, localLimit);
 }
 
 interface ResolveTickerSearchOptions {
@@ -589,10 +591,22 @@ function getProviderHintScore(result: InstrumentSearchResult, preferredExchange?
   return getProviderHintRichness(result) + (matchesPreferredExchange ? 10_000 : 0);
 }
 
-function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[]): T[] {
+/** Older servers send none; anything malformed is ignored. */
+function searchResultKeywords(result: InstrumentSearchResult): string[] | undefined {
+  const keywords = Array.isArray(result.searchKeywords)
+    ? result.searchKeywords.filter((keyword): keyword is string => typeof keyword === "string" && !!keyword.trim())
+    : [];
+  return keywords.length > 0 ? keywords : undefined;
+}
+
+function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
   let assignedPrimaryListing = false;
 
   return items.map((item) => {
+    // A company the theme's funds hold is not another listing of the one searched for.
+    if (!item.saved && item.kind === "search" && item.instrumentClass === "equity" && answersOnlyByKeyword(item, query)) {
+      return { ...item, category: "Related" };
+    }
     if (item.saved || item.kind === "ticker") {
       if (item.instrumentClass !== "fund" && item.instrumentClass !== "derivative") {
         assignedPrimaryListing = true;
