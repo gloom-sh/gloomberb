@@ -7,6 +7,7 @@
  *   const data = await client.fetch("https://api.example.com/data");
  */
 
+import { abortError, signalWithTimeout } from "./async-deadline";
 import { httpFetch } from "./http-transport";
 
 const DEFAULT_REQUESTS_PER_MINUTE = 30;
@@ -17,9 +18,9 @@ const BACKOFF_BASE_MS = 1_000;
 export interface ThrottledFetchOptions {
   /** Max requests per minute per host. Default: 30 */
   requestsPerMinute?: number;
-  /** Max retries on 429 or 5xx. Default: 2 */
+  /** Max retries on 429, 5xx, timeouts and network errors. Default: 2 */
   maxRetries?: number;
-  /** Request timeout in ms. Default: 10000 */
+  /** Timeout of each attempt in ms, also when the caller passes a signal. Default: 10000 */
   timeoutMs?: number;
   /** Initial retry backoff in ms. Default: 1000 */
   backoffBaseMs?: number;
@@ -103,20 +104,47 @@ export function createThrottledFetch(
     return Math.max(retryAfterMs, backoff);
   }
 
-  function isRetryableFetchError(
-    error: unknown,
-    retryAbortError: boolean,
-  ): boolean {
+  // Retry rule: a timeout or network error is retried while retries remain,
+  // unless the caller's own signal has aborted. Once the caller aborted, the
+  // request ends with their abort reason: no further attempt and no backoff,
+  // including while waiting on the rate limit or a backoff. An AbortError that
+  // is not the caller's can only come from the attempt's timeout (or the
+  // transport giving up), so it counts as a timeout.
+  function isRetryableFetchError(error: unknown): boolean {
     const detail =
       error instanceof Error
         ? `${error.name} ${error.message} ${String((error as { code?: unknown }).code ?? "")}`
         : String(error);
-    return (
-      /TimeoutError|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket connection|socket hang up|fetch failed|network connection|connection closed/i.test(
-        detail,
-      ) ||
-      (retryAbortError && /AbortError/i.test(detail))
+    return /TimeoutError|AbortError|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket connection|socket hang up|fetch failed|network connection|connection closed/i.test(
+      detail,
     );
+  }
+
+  function abortReason(signal: AbortSignal): unknown {
+    return signal.reason ?? abortError("The operation was aborted.");
+  }
+
+  function throwIfAborted(signal: AbortSignal | null | undefined): void {
+    if (signal?.aborted) throw abortReason(signal);
+  }
+
+  /** Waits `ms`, or rejects with the caller's abort reason as soon as the signal fires. */
+  function wait(ms: number, signal: AbortSignal | null | undefined): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortReason(signal));
+        return;
+      }
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(abortReason(signal!));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   async function executeRequest(
@@ -124,12 +152,15 @@ export function createThrottledFetch(
     init: RequestInit | undefined,
     retriesLeft: number,
   ): Promise<Response> {
+    const callerSignal = init?.signal;
+    throwIfAborted(callerSignal);
+
     const host = getHost(url);
 
     // Wait for rate limit window
     const delay = getDelayMs(host);
     if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await wait(delay, callerSignal);
     }
 
     recordRequest(host);
@@ -140,17 +171,16 @@ export function createThrottledFetch(
         ...defaultHeaders,
         ...((init?.headers as Record<string, string>) ?? {}),
       },
-      signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+      signal: signalWithTimeout(callerSignal ?? undefined, timeoutMs),
     };
 
     let resp: Response;
     try {
       resp = await fetchTransport(url, mergedInit);
     } catch (error) {
-      if (retriesLeft > 0 && isRetryableFetchError(error, !init?.signal)) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, getBackoffMs(retriesLeft)),
-        );
+      throwIfAborted(callerSignal);
+      if (retriesLeft > 0 && isRetryableFetchError(error)) {
+        await wait(getBackoffMs(retriesLeft), callerSignal);
         return executeRequest(url, init, retriesLeft - 1);
       }
       throw error;
@@ -158,11 +188,10 @@ export function createThrottledFetch(
 
     // Retry on 429 or 5xx
     if ((resp.status === 429 || resp.status >= 500) && retriesLeft > 0) {
-      await new Promise((resolve) =>
-        setTimeout(
-          resolve,
-          getBackoffMs(retriesLeft, resp.headers.get("retry-after")),
-        ),
+      throwIfAborted(callerSignal);
+      await wait(
+        getBackoffMs(retriesLeft, resp.headers.get("retry-after")),
+        callerSignal,
       );
       return executeRequest(url, init, retriesLeft - 1);
     }
