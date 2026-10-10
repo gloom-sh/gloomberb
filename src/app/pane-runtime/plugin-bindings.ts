@@ -34,15 +34,16 @@ import {
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
 } from "../../layout/ticker-navigation";
-import type {
-  AppAction,
-  AppState,
+import {
+  resolveTickerForPane,
+  type AppAction,
+  type AppState,
 } from "../../state/app/context";
 import type {
   LayoutConfig,
   PaneInstanceConfig,
 } from "../../types/config";
-import { TICKER_RESEARCH_PANE_ID } from "../../types/config";
+import { findPaneInstance, TICKER_RESEARCH_PANE_ID } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type {
   PaneDef,
@@ -258,6 +259,15 @@ export function bindAppPanePluginRegistry({
       const instanceId = resolvePaneTarget(paneId);
       if (!instanceId || !isPaneInLayout(stateRef.current.config.layout, instanceId)) {
         showPane(paneId);
+        return;
+      }
+      // In the layout but hidden with its plugin, as the research pane that
+      // follows a list is while Ticker Research is off.
+      const paneType = findPaneInstance(stateRef.current.config.layout, instanceId)?.paneId;
+      const owner = paneType ? pluginRegistry.getDisabledPaneOwner(paneType, stateRef.current.config.disabledPlugins) : null;
+      if (owner) {
+        const what = resolveTickerForPane(stateRef.current, instanceId) ?? pluginRegistry.panes.get(paneType!)?.name ?? paneType!;
+        notifyPluginOff(pluginRegistry, new PluginOffError(owner, what), () => pluginRegistry.focusPane(paneId, layout));
         return;
       }
 
