@@ -123,6 +123,7 @@ import type {
   CloudRiskReportPayload,
   CloudCorporateActionsPayload,
   CloudEconEventPayload,
+  CloudMacroReleaseDaysPayload,
   CloudEquityDiagnosticMode,
   CloudEquityDiagnosticResult,
   CloudFredSeriesCatalogPayload,
@@ -416,6 +417,10 @@ export class CloudDataApi {
 
   async getCloudEconomicCalendar(): Promise<CloudEconEventPayload[]> {
     return this.request<CloudEconEventPayload[]>("/cloud/econ/calendar");
+  }
+
+  async getCloudMacroReleaseDays(): Promise<CloudMacroReleaseDaysPayload> {
+    return this.request<CloudMacroReleaseDaysPayload>("/cloud/econ/release-days");
   }
 
   async getCloudFredSeries(

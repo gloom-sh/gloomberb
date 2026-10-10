@@ -1,3 +1,5 @@
+import { apiClient, type CloudMacroReleaseDaysPayload } from "../../../api-client";
+import { createPluginCache } from "../../../data/plugin-cache";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
@@ -6,6 +8,28 @@ import type { PricePoint } from "../../../types/financials";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 import { resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { bundledMacroReleases, mergeMacroReleases, type MacroReleaseList } from "./releases";
+
+export const macroReleaseCache = createPluginCache<CloudMacroReleaseDaysPayload>({
+  kind: "macro-release-days", source: "gloom-cloud", schemaVersion: 1,
+  // A release lands at 8:30 or 14:00 ET; the last list read is kept for a terminal that goes offline.
+  policy: { staleMs: 30 * 60_000, expireMs: 90 * 86_400_000 },
+});
+
+/**
+ * The bundled list, extended by the server's when it reaches further. A
+ * failed read keeps the last list read; with none, the bundled list alone.
+ */
+export async function loadMacroReleases(options: { force?: boolean } = {},
+  read: () => Promise<CloudMacroReleaseDaysPayload> = () => apiClient.getCloudMacroReleaseDays()): Promise<MacroReleaseList> {
+  const floor = bundledMacroReleases();
+  try {
+    const result = await macroReleaseCache.load("release-days", read, { force: options.force });
+    return mergeMacroReleases(floor, result.data);
+  } catch {
+    return floor;
+  }
+}
 
 export interface MacroDayHistory {
   history: PricePoint[];

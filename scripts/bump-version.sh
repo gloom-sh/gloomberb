@@ -61,6 +61,9 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
+# MDAY falls back on the release days bundled with the app; a release does not ship an old list unnoticed.
+bun scripts/update-macro-releases.ts --check
+
 CURRENT_VERSION="$(bun -e 'const pkg = JSON.parse(await Bun.file("package.json").text()); console.log(pkg.version);')"
 if [[ "$VERSION" == "$CURRENT_VERSION" ]]; then
   echo "error: version $VERSION is already current" >&2

@@ -9,9 +9,9 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { loadMacroDayHistory } from "./client";
+import { loadMacroDayHistory, loadMacroReleases } from "./client";
 import { projectMacroDays, type MacroDayEvent, type MacroDayModel } from "./model";
-import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, type MacroEventKind } from "./releases";
+import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, staleMacroReleasesNotice, type MacroEventKind } from "./releases";
 
 export const LOOKBACK_OPTIONS = [{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }, { value: "3", label: "3Y" }, { value: "5", label: "5Y" }];
 const RELEASE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_EVENT_KINDS.map((kind) => ({ value: kind, label: MACRO_EVENT_LABELS[kind] }))];
@@ -64,22 +64,26 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   const loader = useCallback(async (force: boolean) => {
     controller.current?.abort();
     controller.current = new AbortController();
-    const snapshot = await loadMacroDayHistory({ instrument: instrument!, forceRefresh: force, signal: controller.current.signal });
+    const [snapshot, releases] = await Promise.all([
+      loadMacroDayHistory({ instrument: instrument!, forceRefresh: force, signal: controller.current.signal }),
+      loadMacroReleases({ force }),
+    ]);
     if (!snapshot.history.length && snapshot.error) throw new Error(snapshot.error);
-    return snapshot;
+    return { ...snapshot, releases };
   }, [instrumentKey]);
   const history = useAsyncResource(instrument ? loader : null);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);
   usePaneRefreshKey(() => { void history.reload(); }, { focused });
 
-  const model = useMemo(() => history.data ? projectMacroDays(history.data.history, { symbol: symbol ?? "", lookbackYears: Number(lookback) || 5 }) : null,
-    [history.data, lookback, symbol]);
+  const model = useMemo(() => history.data ? projectMacroDays(history.data.history, { symbol: symbol ?? "", lookbackYears: Number(lookback) || 5,
+    releases: history.data.releases.releases, coveredThrough: history.data.releases.coveredThrough }) : null, [history.data, lookback, symbol]);
+  const releasesNotice = history.data ? staleMacroReleasesNotice(history.data.releases) : null;
   const rows = useMemo(() => model ? model.events.filter((event) => release === "all" || event.kind === release) : [], [model, release]);
   const stats = useMemo(() => model?.events.length ? figures(model, release) : [], [model, release]);
 
   usePaneNoticeFooter({ registrationId: "macro-day-notices", focused,
-    notices: [...new Set([identityError, history.error, history.data?.error].filter((value): value is string => !!value))] });
+    notices: [...new Set([identityError, history.error, history.data?.error, releasesNotice].filter((value): value is string => !!value))] });
   usePaneFooter("macro-day", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
