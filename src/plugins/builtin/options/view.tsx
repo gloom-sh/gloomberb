@@ -6,6 +6,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
+import { expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, missingExpiryText, readOptionExpiration } from "../../../utils/option-expiry";
 import { canonicalTickerKey } from "../../../utils/exchanges";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
 import {
@@ -89,6 +90,10 @@ const EXPIRY_NEXT_KEY = "]";
 /** Switches the cursor row between its call and its put, as clicking either side does. */
 const SIDE_KEY = "x";
 
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function formatRatio(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
 }
@@ -165,7 +170,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     [savedTicker, boundSymbol, fallbackExchange, fallbackCurrency]);
   const { createPaneFromTemplate } = usePluginAppActions();
   const liveStreaming = useLiveStreamingSetting();
-  const [seededExpiration] = usePaneSettingValue<number | undefined>("expiration", undefined);
+  // A number from the app, or the date or seconds `fn OMON --expiration` took as text.
+  const [seededSetting] = usePaneSettingValue<unknown>("expiration", undefined);
   const [expirationTargetKey] = usePaneSettingValue<string | null>("expirationTargetKey", null);
   const updatePaneSettings = useUpdatePaneSettings();
   const [calcSide, setCalcSide] = useState<OptionSide | null>(null);
@@ -228,6 +234,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const initialExpiration = initialChain?.expirationDates.reduce((best, expiration) => (
     parsed && Math.abs(expiration - parsed.expTs) < Math.abs(best - parsed.expTs) ? expiration : best
   ), initialChain.expirationDates[0]!);
+  // A typed date names a day; the catalogue's stamp for that day is the expiry.
+  const seededDate = readOptionExpiration(seededSetting);
+  const seededExpiration = seededDate == null ? undefined
+    : findListedExpiry(seededDate, initialChain?.expirationDates ?? []) ?? seededDate;
   const selectedExpiration = expirationTargetKey == null || expirationTargetKey === selectionTargetKey
     ? seededExpiration ?? initialExpiration : initialExpiration;
   const viewportKey = `${effectiveTicker}:${selectedExpiration ?? "initial"}`;
@@ -313,7 +323,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     || (expirationChainEntry?.phase === "refreshing" && strikeChain === null);
   // Refresh failures keep a ready entry with last-good data and an error.
   // Surface that warning even when the cached chain is still usable.
-  const error = (expirationUnavailable ? "Selected expiration unavailable." : null)
+  // The body names the dates nearest the one asked for; the footer only flags it.
+  const unavailableExpiry = expirationUnavailable && selectedExpiration != null
+    ? sentenceCase(missingExpiryText(selectedExpiration, availableExpirations)) : null;
+  const error = (expirationUnavailable ? `Expiry ${expiryIsoDate(selectedExpiration!)} unavailable` : null)
     ?? initialChainEntry?.error?.message ?? expirationChainEntry?.error?.message
     ?? (initialChainEntry?.phase === "error" || expirationChainEntry?.phase === "error"
       ? "Failed to load options" : null);
@@ -373,6 +386,37 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     notices: strikeWindowResult.fallback === "no-delta"
       ? ["The delta window needs a current underlying quote; showing every strike."]
       : strikeWindowResult.fallback === "no-price" ? ["No price to centre the strike window on; showing every strike."] : [] });
+  // What the chain shows, in every renderer and in its reports: the expiry
+  // and its days left from the chain's as-of, beside the chain's own feed.
+  // Published ahead of the strike window, so a report names the expiry first.
+  const asOfChain = strikeChain ?? chain;
+  const chainAsOfMs = asOfChain?.asOf ? Date.parse(asOfChain.asOf) : Number.NaN;
+  const expiryAsOfMs = Number.isFinite(chainAsOfMs) ? chainAsOfMs : Date.now();
+  const expiryDate = selectedExpiration == null ? "" : expiryIsoDate(selectedExpiration);
+  const expiryDays = selectedExpiration == null ? "" : formatDaysToExpiry(selectedExpiration, expiryAsOfMs);
+  useRemoteUiNode(expiryDate && chain ? {
+    role: "report-notice",
+    label: "Expiry",
+    getMetadata: () => ({
+      text: `Expiry ${expiryDate} (${expiryDays})`,
+      key: "expiry",
+      value: { date: expiryDate, daysToExpiry: daysToExpiry(selectedExpiration!, expiryAsOfMs) },
+    }),
+  } : null);
+  // A refresh that failed keeps the last chain, which is then stale.
+  const asOfEntry = strikeChain == null ? null : strikeChain === expirationChain ? expirationChainEntry : initialChainEntry;
+  const chainDelay = asOfChain?.delayMinutes ?? 0;
+  const chainStatus = asOfEntry?.error != null ? "stale" as const
+    : asOfChain?.dataSource ?? (chainDelay > 0 ? "delayed" as const : undefined);
+  useRemoteUiNode(asOfChain ? {
+    role: "report-freshness",
+    label: "Chain freshness",
+    getMetadata: () => ({
+      ...(asOfChain.asOf ? { asOf: asOfChain.asOf } : {}),
+      ...(chainStatus ? { status: chainStatus } : {}),
+      ...(chainDelay > 0 ? { delayMinutes: chainDelay } : {}),
+    }),
+  } : null);
   // A report of the pane (`gloomberb fn OMON`) says how many strikes it lists of how many the expiry has.
   useRemoteUiNode(strikeChain ? {
     role: "report-notice",
@@ -727,7 +771,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     : 0;
   // The root insets the terminal body, so the band gets the width inside it.
   const statWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
-  const statItems = optionsSummaryItems({
+  const figures = optionsSummaryItems({
     spot: spotItem(underlying, isOpt ? undefined : ticker.metadata.assetCategory),
     summary, enrichment, currency: underlying?.quote?.currency || ticker.metadata.currency || "",
     ivRank: showIvRank ? { stats: ivRank } : null,
@@ -736,8 +780,23 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // Slope or IVR detail is the widest cell and would otherwise halve the
   // columns and push the chain down; the detail is cut short instead.
   const statRowBudget = width >= 110 ? 3 : width >= 65 ? 4 : 6;
-  const statColumns = Math.max(statGridColumns(statItems, statWidth), Math.ceil(statItems.length / statRowBudget));
+  const figureColumns = Math.max(statGridColumns(figures, statWidth), Math.ceil(figures.length / statRowBudget));
+  // The expiry leads the band, since the strip above can scroll it out of
+  // view. It joins the figures as one more cell where the row budget leaves a
+  // cell wide enough for all of it, and otherwise takes a row of its own so no
+  // figure is squeezed. Sized for four-digit days, so the band does not
+  // reflow as the chain's as-of arrives or the expiry steps.
+  const expiryItem: StatItem = { id: "expiry", label: "Expiry", value: expiryDate, detail: `(${expiryDays})` };
+  const cellColumns = Math.max(figureColumns, Math.ceil((figures.length + 1) / statRowBudget));
+  const expiryCells = Math.max(...figures.map((item) => item.label.length), expiryItem.label.length) + 1
+    + expiryDate.length + 2 + "(9999d)".length;
+  const expiryInline = Math.floor((statWidth - 2 * (cellColumns - 1)) / cellColumns) >= expiryCells;
+  const statColumns = expiryInline ? cellColumns : figureColumns;
+  const statItems = [expiryInline ? expiryItem : { ...expiryItem, wide: true }, ...figures];
   const summaryRowCount = Math.min(statGridRows(statItems, statWidth, statColumns), Math.max(0, height - 6));
+  // A short band gives up figures from the end; the expiry stays.
+  const shownStatItems = summaryRowCount === 0 ? []
+    : [statItems[0]!, ...figures.slice(0, summaryRowCount * statColumns - (expiryInline ? 1 : statColumns))];
   // No term here follows the selection or the load, so an empty cold-expiry
   // response cannot resize the table: growing it during loading would turn a
   // clamped scroll into apparent user navigation.
@@ -751,7 +810,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       <QueryBar width={Math.max(1, width - 2)} filters={queryFilters} />
 
       {summaryRowCount > 0 && (
-        <StatGrid items={statItems.slice(0, summaryRowCount * statColumns)} width={statWidth} columns={statColumns} />
+        <StatGrid items={shownStatItems} width={statWidth} columns={statColumns} />
       )}
 
       {isOpt && parsed && (
@@ -792,8 +851,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         getItemKey={(row) => String(row.strike)}
         renderCell={renderCell}
         selectedTextOverridesCellColor
-        emptyStateTitle={error && !strikeChain ? "Selected expiration unavailable." : strikesLoading ? "Loading strikes..."
-          : strikeWindowResult.total > 0 ? "No strikes in this window." : "No strikes available."}
+        emptyStateTitle={unavailableExpiry ?? (error && !strikeChain ? "Selected expiration unavailable." : strikesLoading ? "Loading strikes..."
+          : strikeWindowResult.total > 0 ? "No strikes in this window." : "No strikes available.")}
         reportEveryRow
         rootWidth={Math.max(1, width - 2 + inset * 2)}
         rootHeight={tableHeight}

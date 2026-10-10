@@ -4,6 +4,7 @@ import { assessPaneScreenshot, type PaneScreenshotResult } from "./screenshot";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import { buildDomPaneReportFromRender } from "./dom";
 import { renderReportCsv } from "../report-tables";
+import { formatFreshnessLine } from "./freshness";
 
 test("marks rendered reports as truncated when a visible cell contains an ellipsis", () => {
   const resolved = {
@@ -146,4 +147,40 @@ test("an OMON shot names the rows its image cuts and how many strikes the window
   expect(shot.notices).toEqual([notice]);
   expect(shot.rowCount).toBe(3);
   expect(shot.render.truncationReasons).toEqual(["rows above and below the rendered viewport are cut"]);
+});
+
+test("states the expiry a rendered OMON shows and dates the report by the chain behind it", () => {
+  const resolved = {
+    token: "OMON", label: "Options", options: { expiration: "2028-01-21" }, capability: { id: "options-pane" }, pane: { id: "options" },
+  } as unknown as ResolvedPaneFunction;
+  const screenshot = {
+    symbols: ["AAPL"],
+    render: {
+      visibleText: "",
+      // The capture keeps only warnings in the footer, so it never says delayed here.
+      footerText: "",
+      rows: [{ tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "STRIKE", text: "340" }] }],
+      semanticUi: [
+        { id: "ui:1", role: "report-notice", actions: [], metadata: {
+          text: "Expiry 2028-01-21 (469d)", key: "expiry", value: { date: "2028-01-21", daysToExpiry: 469 },
+        } },
+        { id: "ui:2", role: "report-freshness", actions: [], metadata: {
+          asOf: "2026-10-09T19:59:59.999Z", status: "delayed", delayMinutes: 15,
+        } },
+      ],
+      truncated: false,
+      truncationReasons: [],
+      loadingStateDetected: false,
+      errorStateDetected: false,
+      errorStateMarkers: [],
+      emptyStateDetected: false,
+      emptyStateMarkers: [],
+    },
+  } as unknown as PaneScreenshotResult;
+
+  const report = buildDomPaneReportFromRender(resolved, screenshot);
+  expect(report.text.split("\n").slice(0, 3)).toEqual(["Options", "", "Expiry 2028-01-21 (469d)"]);
+  expect(report.data.metadata).toMatchObject({ expiry: { date: "2028-01-21", daysToExpiry: 469 } });
+  expect(formatFreshnessLine(report.data.freshness)).toBe("Source: Gloom Cloud | As of 2026-10-09 19:59 UTC | Delayed 15 min");
+  expect(renderReportCsv(report.tables)).toContain("# note: Expiry 2028-01-21 (469d)");
 });

@@ -524,6 +524,8 @@ const EMPTY_STATE_PATTERNS = [
   /\bNo transcribed calls(?: for [^.]+)? yet\b/gi,
   /\bNo short interest (?:data|found)\b/gi,
   /\bNo (?:House PTR |insider )?(?:trades|members|transactions|filings)\b/gi,
+  // OMON on an expiry the chain does not list, with the dates nearest it.
+  /\bNo (?:option contracts returned for )?expiry \d{4}-\d{2}-\d{2}(?:; (?:available|nearest others): \d{4}-\d{2}-\d{2}(?:, \d{4}-\d{2}-\d{2})*(?: \(\+\d+ more\))?|; the chain lists no expiries)?/gi,
 ];
 
 function stateMarkers(text: string, patterns: RegExp[]): string[] {

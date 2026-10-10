@@ -8,19 +8,9 @@ import {
   formatOptionIvCell,
   missingExpiryMessage,
   optionRows,
-  parseOptionExpiration,
 } from "./options-chain";
 
 const at = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
-
-test("--expiration reads a calendar date as UTC midnight and Unix seconds as they are", () => {
-  expect(parseOptionExpiration("2028-01-21")).toBe(1832025600);
-  expect(parseOptionExpiration("1832025600")).toBe(1832025600);
-  // The calendar has no 30 February; the Date constructor would roll it into March.
-  for (const bad of ["2028-02-30", "2028-1-21", "2028/01/21", "21-01-2028", "1.8e9", "-5", "0", "", "soon", "1832025600000"]) {
-    expect(parseOptionExpiration(bad)).toBeNull();
-  }
-});
 
 test("a missing expiry names the listed dates nearest the one asked for, in date order", () => {
   const listed = ["2026-10-16", "2027-01-15", "2027-12-17", "2028-03-17", "2028-06-16", "2028-12-15", "2029-01-19"].map(at);

@@ -8,7 +8,7 @@ import { collectShotSymbols } from "./data";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
-import { renderedReportNotices } from "./report-notices";
+import { renderedReportFreshness, renderedReportNotices } from "./report-notices";
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
@@ -181,7 +181,9 @@ export function buildDomPaneReportFromRender(
     textLines.push(failureReason ?? "No rendered values were available.");
   }
   if (failureReason && rows.length > 0) textLines.push("", failureReason);
-  const freshness = deriveRenderedFreshness(resolved.pane.reportFreshness, {
+  // A pane that knows its feed dates the report; the footer and cell times fill in the rest.
+  const declared = { ...resolved.pane.reportFreshness, ...renderedReportFreshness(result.render.semanticUi ?? []) };
+  const freshness = deriveRenderedFreshness(declared, {
     footerText: result.render.footerText ?? "",
     cellTimes: rows.flatMap((row) => row.cells.flatMap((cell) => cell.instant ?? [])),
   });

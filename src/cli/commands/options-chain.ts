@@ -6,51 +6,22 @@ import { isFiniteNumber } from "../../utils/guards";
 import { calculateOptionGreeks, solveChainVolatilities } from "../../plugins/builtin/options/analytics";
 import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
+import { expiryIsoDate, missingExpiryText, parseOptionExpiration } from "../../utils/option-expiry";
 
 export const OPTIONS_USAGE = "options <symbol> [--expiration <YYYY-MM-DD|unix>]";
 
-// 9999-12-31 in Unix seconds; a longer number is milliseconds or a typo.
-const MAX_UNIX_SECONDS = 253_402_300_799;
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const UNIX_SECONDS = /^\d{1,12}$/;
-
-/** Chain timestamps encode an expiry calendar date in UTC, so a date is its UTC midnight. */
-function utcDate(seconds: number): string {
-  const date = new Date(seconds * 1000);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
-}
-
-/**
- * `--expiration` as the Unix seconds a chain request takes: `2028-01-21` is that
- * date at 00:00 UTC, a bare integer is already Unix seconds. Anything else,
- * including a date the calendar does not have, is null.
- */
-export function parseOptionExpiration(raw: string): number | null {
-  const text = raw.trim();
-  const date = ISO_DATE.exec(text);
-  if (date) {
-    const [year, month, day] = [Number(date[1]), Number(date[2]), Number(date[3])];
-    const at = new Date(Date.UTC(year, month - 1, day));
-    const real = at.getUTCFullYear() === year && at.getUTCMonth() === month - 1 && at.getUTCDate() === day;
-    return real && at.getTime() > 0 ? at.getTime() / 1000 : null;
-  }
-  if (!UNIX_SECONDS.test(text)) return null;
-  const seconds = Number(text);
-  return seconds > 0 && seconds <= MAX_UNIX_SECONDS ? seconds : null;
-}
+export { parseOptionExpiration };
 
 /** Whether the chain holds contracts of the requested expiry, matched by UTC calendar date as the chain stamps them. */
 export function chainHasExpiry(chain: OptionsChain, requested: number): boolean {
-  const date = utcDate(requested);
-  return [...chain.calls, ...chain.puts].some((contract) => utcDate(contract.expiration) === date);
+  const date = expiryIsoDate(requested);
+  return [...chain.calls, ...chain.puts].some((contract) => expiryIsoDate(contract.expiration) === date);
 }
 
 /** Every listed expiry as a unique, ascending UTC date. */
 function listedDates(expirations: readonly number[]): string[] {
-  return [...new Set(expirations.map((expiration) => utcDate(expiration)).filter(Boolean))].sort();
+  return [...new Set(expirations.map((expiration) => expiryIsoDate(expiration)).filter(Boolean))].sort();
 }
-
-const NEAREST_EXPIRIES = 4;
 
 /**
  * Why a chain request for one expiry came back without contracts, and which
@@ -62,18 +33,10 @@ export function missingExpiryMessage(
   requested: number,
   expirations: readonly number[],
 ): { message: string; details?: string } {
-  const date = utcDate(requested);
-  const dates = listedDates(expirations);
-  if (dates.length === 0) return { message: `no expiry ${date} for ${symbol}; the chain lists no expiries` };
-  const others = dates.filter((listed) => listed !== date);
-  const distance = (listed: string) => Math.abs(Date.parse(listed) - Date.parse(date));
-  const nearest = [...others].sort((left, right) => distance(left) - distance(right) || left.localeCompare(right))
-    .slice(0, NEAREST_EXPIRIES).sort();
-  const more = others.length > nearest.length ? ` (+${others.length - nearest.length} more)` : "";
-  const message = dates.includes(date)
-    ? `no option contracts returned for ${symbol} expiry ${date}; nearest others: ${nearest.join(", ")}${more}`
-    : `no expiry ${date} for ${symbol}; available: ${nearest.join(", ")}${more}`;
-  return { message, details: `Run gloomberb options ${symbol} to list every expiry (--json carries them too).` };
+  return {
+    message: missingExpiryText(requested, expirations, symbol),
+    details: `Run gloomberb options ${symbol} to list every expiry (--json carries them too).`,
+  };
 }
 
 const EXPIRY_LIST_LIMIT = 40;
@@ -186,7 +149,7 @@ export function optionRows(chain: OptionsChain) {
       openInterest: contract.openInterest,
       iv: modeled.iv ?? null,
       delta: modeled.delta ?? null,
-      expiration: utcDate(contract.expiration),
+      expiration: expiryIsoDate(contract.expiration),
     };
   });
 }

@@ -190,27 +190,30 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, openRequest
   const overflow = useHorizontalOverflow(scrollRef, [items.length, !!search, !!view, !!onClearAll, meta]);
   const searchRef = useRef<HTMLDivElement | null>(null);
   // When an inline choice or the view changes (a shortcut, the next expiry),
-  // bring the new selection into a scrolled bar. Not on mount: a view at the
-  // right edge must not scroll the search away when the pane opens.
+  // bring the new selection into a scrolled bar. On mount only an inline
+  // choice in a bar without a search: an expiry chosen far down the strip is
+  // what the pane shows, but a view at the right edge must not scroll the
+  // search away when the pane opens.
   const selectionKey = [
     ...items.filter((item) => item.inline).map((item) => `${item.id}=${item.options.find((option) => option.selected)?.value ?? ""}`),
     `view=${view?.value ?? ""}`,
   ].join("|");
-  const previousSelectionKey = useRef(selectionKey);
+  const previousSelectionKey = useRef<string | null>(null);
+  const hasSearch = !!search;
   useEffect(() => {
     const previous = previousSelectionKey.current;
     previousSelectionKey.current = selectionKey;
     if (previous === selectionKey) return;
-    const before = new Map(previous.split("|").map((entry) => entry.split("=") as [string, string]));
+    const before = previous == null ? null : new Map(previous.split("|").map((entry) => entry.split("=") as [string, string]));
     const bar = scrollRef.current;
     if (!bar) return;
     for (const entry of selectionKey.split("|")) {
       const [id, value] = entry.split("=") as [string, string];
-      if (before.get(id) === value) continue;
+      if (before ? before.get(id) === value : id === "view" || hasSearch) continue;
       const group = id === "view"
         ? bar.querySelector(":scope > .gloom-qb-view")
-        : bar.querySelector(`[data-item-id="${CSS.escape(id)}"]`);
-      group?.querySelector<HTMLElement>("button[data-active=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        : [...bar.querySelectorAll("[data-item-id]")].find((item) => item.getAttribute("data-item-id") === id);
+      group?.querySelector<HTMLElement>("button[data-active=true]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     }
   }, [selectionKey]);
   useEffect(() => {

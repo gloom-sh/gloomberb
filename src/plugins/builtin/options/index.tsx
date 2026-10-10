@@ -1,9 +1,10 @@
-import type { PaneSettingsDef, TickerResearchTabProps } from "../../../types/plugin";
+import type { PaneReportOptionDef, PaneSettingsDef, TickerResearchTabProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import type { OptionsViewProps } from "./types";
 import { OptionsView } from "./view";
 import { isKnownMutualFund } from "../../../tickers/instrument-kind";
+import { expiryIsoDate, OPTION_EXPIRATION_FORMAT, parseOptionExpiration, readOptionExpiration } from "../../../utils/option-expiry";
 
 /** The registered chain shows IV rank; isolated view renders stay offline. */
 function OptionsPane(props: OptionsViewProps) {
@@ -79,6 +80,20 @@ function optionsSettings(settings: Record<string, unknown>): PaneSettingsDef {
   };
 }
 
+/** `fn OMON AAPL --expiration 2028-01-21`: the expiry the chain opens at, as the pane setting a handoff sets. */
+const EXPIRATION_REPORT_OPTION: PaneReportOptionDef = {
+  key: "expiration",
+  type: "string",
+  placeholder: "YYYY-MM-DD|unix",
+  description: `The expiry to show, as ${OPTION_EXPIRATION_FORMAT}. Without it, the nearest one.`,
+  example: "--expiration 2028-01-21",
+  normalize: (value) => {
+    const expiration = parseOptionExpiration(value);
+    if (expiration == null) throw new Error(`Invalid --expiration "${value}". Use ${OPTION_EXPIRATION_FORMAT}.`);
+    return expiryIsoDate(expiration);
+  },
+};
+
 export const optionsModule: PluginModule = {
   panes: [
     {
@@ -93,7 +108,7 @@ export const optionsModule: PluginModule = {
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(optionsSettings(context.settings), context.settings),
       tableExport: true,
-      reportOptions: [{
+      reportOptions: [EXPIRATION_REPORT_OPTION, {
         key: STRIKE_WINDOW_SETTING,
         aliases: ["delta"],
         type: "string",
@@ -122,8 +137,10 @@ export const optionsModule: PluginModule = {
       description: "Options chain for the selected ticker.",
       keywords: ["options", "chain", "calls", "puts", "omon"],
       shortcut: "OMON",
-      settings: (_symbol, _context, options) => options?.values?.expiration
-        ? { expiration: Number(options.values.expiration), expirationTargetKey: null } : {},
+      settings: (_symbol, _context, options) => {
+        const expiration = readOptionExpiration(options?.values?.expiration);
+        return expiration == null ? {} : { expiration, expirationTargetKey: null };
+      },
       publicShare: true,
     }),
   ],

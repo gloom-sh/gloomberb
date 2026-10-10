@@ -224,7 +224,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   OMON: {
     summary: "Calls and puts by expiry with bid, ask, spread, volume, open interest, implied volatility, Greeks and extrinsic per year. "
       + "The Strikes filter lists every strike, a count either side of the money, or a delta band such as .70 to .90 for deep in-the-money LEAPS.",
-    usage: ["OMON NVDA"],
+    usage: ["OMON NVDA", "gloomberb fn OMON NVDA --expiration 2028-01-21"],
     keys: [key("c", "alc"), key("a", "dd to OSA"), key("s", "urface")],
     data: OPTIONS,
     bloomberg: ["OMON"],

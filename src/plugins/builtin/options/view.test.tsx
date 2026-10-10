@@ -15,6 +15,8 @@ import { formatExpDate } from "../../../utils/options";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { OptionsView } from "./view";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
+import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
+import { renderedReportFreshness, renderedReportNotices } from "../../../cli/pane-functions/report-notices";
 
 const TEST_PANE_ID = "ticker-detail:options-test";
 
@@ -238,6 +240,27 @@ test("keeps table geometry and scroll steady while a cold expiry loads", async (
   expect(tableHeight()).toBe(before);
   expect(tui.frame()).not.toContain("Loading strikes");
   expect((tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).scrollTop).toBeGreaterThan(0);
+});
+
+test("a typed expiry date opens that expiry, and its report names it with the chain's as-of and delay", async () => {
+  const chain: OptionsChain = { ...makeChain([100, 101], 101, [1_781_049_600, 1_782_345_600]),
+    asOf: "2026-06-01T20:00:00.000Z", dataSource: "delayed", delayMinutes: 15 };
+  const provider = createTestDataProvider({ getOptionsChain: async () => chain });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  const registry = createRemoteUiRegistry();
+  // `fn OMON --expiration 2026-06-25` leaves the date as text in the pane setting.
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} settings={{ expiration: "2026-06-25" }} />
+    </RemoteUiRegistryProvider>, { width: 124, height: 16 });
+  });
+  await renderSettled();
+  expect(tui.frame()).toMatch(/Expiry\s+2026-06-25\s+\(24d\)/);
+  expect(tui.frame()).not.toContain("NaN");
+  const report = renderedReportNotices(registry.snapshot());
+  expect(report.notices[0]).toBe("Expiry 2026-06-25 (24d)");
+  expect(report.facts.expiry).toEqual({ date: "2026-06-25", daysToExpiry: 24 });
+  expect(renderedReportFreshness(registry.snapshot())).toEqual({ asOf: "2026-06-01T20:00:00.000Z", status: "delayed", delayMinutes: 15 });
 });
 
 test("shows the spot, volatility statistics and the mirrored default fields", async () => {
