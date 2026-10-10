@@ -14,6 +14,7 @@ import { requestFunctionHelp, useFunctionHelpHost } from "../plugins/builtin/hel
 import { buildRegistryHelpIndex, helpFunctionForPane } from "../plugins/builtin/help/function-index";
 import { recordFunctionOpen } from "../telemetry/usage-counts";
 import { isMoveDownShortcut, isMoveUpShortcut } from "../components/command-bar/keyboard-handlers";
+import { pressStarPromptKey } from "./star-prompt/runtime";
 import {
   copyActiveSelection,
   isCopyShortcut,
@@ -154,10 +155,19 @@ export function useAppGlobalShortcuts({
     }
 
     // Toasts float above everything, so their keys work over a dialog too.
+    // The status bar's star line answers the same keys once no toast does,
+    // but only over the workspace itself.
     if (action === "notification-action" || action === "notification-dismiss") {
-      const handled = action === "notification-action"
+      const toastHandled = action === "notification-action"
         ? toastHost.activateNewest?.() === true
         : toastHost.dismissNewest?.() === true;
+      const handled = toastHandled || (
+        !dialogOpen
+        && !state.commandBarOpen
+        && !state.inputCaptured
+        && !isDetachedWindow
+        && pressStarPromptKey(action === "notification-action" ? "open" : "dismiss")
+      );
       if (handled) {
         event.preventDefault();
         event.stopPropagation();

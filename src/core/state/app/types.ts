@@ -1,5 +1,5 @@
 import type { BrokerAccount } from "../../../types/trading";
-import type { AppConfig, KeybindingsConfig, LayoutConfig, LayoutOrigin, OnboardingProgress } from "../../../types/config";
+import type { AppConfig, KeybindingsConfig, LayoutConfig, LayoutOrigin, OnboardingProgress, StarPromptConfig } from "../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
@@ -99,6 +99,8 @@ export interface AppState {
 export type AppAction =
   | { type: "SET_CONFIG"; config: AppConfig }
   | { type: "SET_KEYBINDINGS"; keybindings: KeybindingsConfig | undefined }
+  /** Only the star prompt's own record, so a background write never touches layouts or a theme preview. */
+  | { type: "SET_STAR_PROMPT"; starPrompt: StarPromptConfig | undefined }
   | {
       type: "SET_ONBOARDING_STATE";
       complete: boolean;

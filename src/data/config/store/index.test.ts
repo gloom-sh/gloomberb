@@ -93,6 +93,22 @@ test("a portfolio's cash and target weights survive a save and reload, and malfo
   expect(bad).toEqual({ id: "bad", name: "Bad", currency: "USD" });
 });
 
+test("the star prompt's record and off switch survive a save and reload, and junk is dropped", async () => {
+  const dataDir = await createTempConfigDir();
+  await writeConfigJson(dataDir, createSavedConfig({
+    starPrompt: { enabled: false, days: ["2026-10-01", "2026-10-01", "yesterday", 3, "2026-10-02"], outcome: "starred" },
+  }));
+  const loaded = await loadConfig(dataDir);
+  expect(loaded.starPrompt).toEqual({ enabled: false, days: ["2026-10-01", "2026-10-02"] });
+
+  await saveConfig({ ...loaded, starPrompt: { shownAt: "2026-10-03T09:00:00.000Z", outcome: "dismissed" } });
+  expect((await loadConfig(dataDir)).starPrompt).toEqual({ shownAt: "2026-10-03T09:00:00.000Z", outcome: "dismissed" });
+
+  await saveConfig({ ...loaded, starPrompt: {} });
+  const saved = JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")) as Record<string, unknown>;
+  expect("starPrompt" in saved).toBe(false);
+});
+
 test("fresh installs skip plugin restoration across config reloads", async () => {
   const dataDir = await createTempConfigDir();
   const fresh = await loadConfig(dataDir);

@@ -53,6 +53,7 @@ import {
   useClaimedStatusWidgetColumns,
   usePublishStatusWidgetRoom,
 } from "./status-widget-space";
+import { StarPromptStatusLine } from "../../app/star-prompt/status-line";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
 type HoveredControl = string | null;
@@ -498,6 +499,7 @@ function TerminalStatusBar({
       {showTidyWindows && <TerminalTidyWindows {...props} />}
       <Box flexGrow={1} minWidth={0} />
       <StatusBarSummary nativePaneChrome={false} {...props} />
+      <StarPromptStatusLine />
       <PluginSlot name="status:widget" />
       <StatusBarFeedback nativePaneChrome={false} {...props} />
     </Box>

@@ -230,6 +230,21 @@ export interface TelemetryConfig {
 }
 
 /**
+ * The one-time line in the terminal's status bar asking to star Gloomberb on
+ * GitHub. Absent means on and not shown yet. Kept on this machine only.
+ */
+export interface StarPromptConfig {
+  /** `false` turns the line off; absent means on. */
+  enabled?: boolean;
+  /** Local days (`YYYY-MM-DD`) the terminal app was opened on, oldest first, until the line shows. */
+  days?: string[];
+  /** When the line showed. Once set it never shows again. */
+  shownAt?: string;
+  /** How it ended: the repository was opened, the line was dismissed, or it timed out. */
+  outcome?: "opened" | "dismissed" | "expired";
+}
+
+/**
  * One recent command-bar run: `id` is `pane-template:<templateId>`, `label`
  * its name when it ran, and `arg` a ticker it ran with (never free text).
  */
@@ -281,6 +296,7 @@ export interface AppConfig {
   /** Key overrides for this machine. Absent means every default applies. */
   keybindings?: KeybindingsConfig;
   telemetry?: TelemetryConfig;
+  starPrompt?: StarPromptConfig;
 }
 
 export const TICKER_RESEARCH_PANE_ID = "ticker-research";

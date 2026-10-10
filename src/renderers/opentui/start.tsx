@@ -38,6 +38,8 @@ import {
 import { currentTelemetryConfig } from "../../telemetry/live-config";
 import { flushUsageCounts, installUsageCounter, usageCountsEnabled } from "../../telemetry/usage-counts";
 import { attentionCountsEnabled, installAttentionCounter } from "../../telemetry/attention-counts";
+import { starPromptEnvironmentAllows } from "../../app/star-prompt/model";
+import { allowStarPrompt } from "../../app/star-prompt/runtime";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -121,6 +123,11 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
       officialPluginIds: loadOfficialPluginIds,
     });
     const stopAttention = installAttentionCounter(() => attentionCountsEnabled(currentTelemetryConfig(config), process.env));
+    allowStarPrompt(starPromptEnvironmentAllows({
+      env: process.env,
+      stdinIsTTY: process.stdin.isTTY,
+      stdoutIsTTY: process.stdout.isTTY,
+    }));
     host = await measurePerfAsync("startup.opentui.create-host", () => createOpenTuiHost());
     const renderer = host.renderer;
     renderer.once("destroy", stopAttention);

@@ -25,10 +25,23 @@ const TELEMETRY_CONFIG_KEYS = {
   "telemetry.attention": "attention",
 } as const satisfies Record<string, keyof TelemetryConfig>;
 type TelemetryConfigKey = keyof typeof TELEMETRY_CONFIG_KEYS;
-const EDITABLE_CONFIG_KEYS = ["baseCurrency", "refreshIntervalMinutes", "theme", "valueFlashingEnabled", ...Object.keys(TELEMETRY_CONFIG_KEYS)];
+/** The one-time GitHub star line in the terminal's status bar. */
+const STAR_PROMPT_CONFIG_KEY = "starPrompt.enabled";
+const EDITABLE_CONFIG_KEYS = [
+  "baseCurrency",
+  "refreshIntervalMinutes",
+  "theme",
+  "valueFlashingEnabled",
+  ...Object.keys(TELEMETRY_CONFIG_KEYS),
+  STAR_PROMPT_CONFIG_KEY,
+];
 
 function isTelemetryConfigKey(key: string): key is TelemetryConfigKey {
   return Object.prototype.hasOwnProperty.call(TELEMETRY_CONFIG_KEYS, key);
+}
+
+function isBooleanConfigKey(key: string): boolean {
+  return key === "valueFlashingEnabled" || key === STAR_PROMPT_CONFIG_KEY || isTelemetryConfigKey(key);
 }
 
 function describeConfigValue(value: unknown): string {
@@ -173,6 +186,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "config set theme <id>",
         "config set telemetry.crashReports false",
         "config set telemetry.usage false",
+        "config set starPrompt.enabled false",
         "config get keybindings",
         "config set keybindings.actions.<action> <keys>|null|default",
         "config set keybindings.commands.<keys> <command>|null",
@@ -233,6 +247,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           "telemetry.crashReports": context.config.telemetry?.crashReports !== false,
           "telemetry.usage": context.config.telemetry?.usage !== false,
           "telemetry.attention": context.config.telemetry?.attention === true,
+          [STAR_PROMPT_CONFIG_KEY]: context.config.starPrompt?.enabled !== false,
         };
 
         if (action === "list") {
@@ -288,7 +303,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           if (!EDITABLE_CONFIG_KEYS.includes(key)) {
             ctx.fail(`Config key "${key}" is not editable from the CLI.`, `Editable keys: ${EDITABLE_CONFIG_KEYS.join(", ")}, keybindings.*`);
           }
-          if (isTelemetryConfigKey(key) && value !== "true" && value !== "false") {
+          if ((isTelemetryConfigKey(key) || key === STAR_PROMPT_CONFIG_KEY) && value !== "true" && value !== "false") {
             ctx.fail(`Usage: gloomberb config set ${key} true|false`);
           }
           // A display name may come unquoted: config set theme White Phosphor.
@@ -296,12 +311,14 @@ export function createSystemCliCommands(): CliCommandDef[] {
             ? requireThemeId(args.slice(2).join(" "))
             : key === "refreshIntervalMinutes"
               ? Number(value)
-              : key === "valueFlashingEnabled" || isTelemetryConfigKey(key)
+              : isBooleanConfigKey(key)
                 ? value === "true"
                 : value;
           const nextConfig = isTelemetryConfigKey(key)
             ? { ...context.config, telemetry: { ...context.config.telemetry, [TELEMETRY_CONFIG_KEYS[key]]: parsedValue as boolean } }
-            : { ...context.config, [key]: parsedValue };
+            : key === STAR_PROMPT_CONFIG_KEY
+              ? { ...context.config, starPrompt: { ...context.config.starPrompt, enabled: parsedValue as boolean } }
+              : { ...context.config, [key]: parsedValue };
           if (!ctx.cliOptions.dryRun) await saveConfig(nextConfig);
           ctx.printResult({
             data: {
