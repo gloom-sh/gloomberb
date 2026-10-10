@@ -1446,6 +1446,11 @@ export const ko: Record<string, string> = {
   "Connected! Positions will sync automatically.": "연결되었습니다. 포지션이 자동으로 동기화됩니다.",
   "No connectable brokers are installed.": "연결할 수 있는 브로커가 설치되어 있지 않습니다.",
   "{broker} was not connected.": "{broker}이(가) 연결되지 않았습니다.",
+  "Ends {date}": "{date} 종료",
+  "Ended {date}": "{date} 종료됨",
+  "Sign-in ends {when}": "로그인이 {when}에 종료됩니다",
+  "Sign-in ended {when}": "로그인이 {when}에 종료되었습니다",
+  "{broker} sign-in was not renewed.": "{broker} 로그인이 갱신되지 않았습니다.",
 
   // ── Company picker ───────────────────────────────────────────
   "Which companies do you follow?": "어떤 기업을 팔로우하시나요?",

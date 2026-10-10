@@ -588,6 +588,7 @@ Press `a` in the **Brokers** pane (`BR`), or run **Add Broker Account**, to conn
 
 Each broker is a plugin with its own repository, installed on first launch and updatable on its own. Manage them from the plugin directory, or with `gloomberb install gloom-sh/gloom-public` and friends.
 
+- Interactive Brokers opens a browser sign-in page through Gloom, and ends that sign-in seven days after you approve it, however often it syncs. A day before, the profile's status in `BR` shows when it ends; press `c` to sign in again and the seven days start over. A sign-in that has ended shows Interactive Brokers' own reason.
 - Robinhood opens a browser sign-in page. Gloomberb uses only the read-only account and equity-position tools from the Robinhood Trading MCP server.
 - Public needs an API secret from Public API settings. Gloomberb creates a short-lived access token and uses only the account and portfolio endpoints.
 - SimpleFIN needs a one-time setup token from SimpleFIN Bridge. Gloomberb exchanges the token and imports only accounts that contain holdings.

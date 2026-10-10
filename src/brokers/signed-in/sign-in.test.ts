@@ -66,6 +66,77 @@ describe("BrokerSignInController", () => {
     expect(polls).toBe(3);
   });
 
+  describe("a broker that is already connected", () => {
+    const FIRST = "2026-10-01T09:00:00.000Z";
+    const RENEWED = "2026-10-08T09:00:00.000Z";
+
+    test("is not done until Gloom stamps a newer sign-in, however many codes it takes", async () => {
+      let connectedAt = FIRST;
+      let reads = 0;
+      let starts = 0;
+      const controller = new BrokerSignInController(IBKR, false, fakeIo({
+        // Short codes: the first two expire while the user is still away.
+        start: async () => {
+          starts += 1;
+          return { connectUrl: `https://gloom.sh/connect/t${starts}`, code: `CODE${starts}`, expiresAt: new Date(1_000_000 + starts * 5_000).toISOString() };
+        },
+        fetchConnection: async () => {
+          reads += 1;
+          // The sign-in lands during the third code.
+          if (starts >= 3) connectedAt = RENEWED;
+          return { status: "connected", connectedAt };
+        },
+      }));
+      const phases: string[] = [];
+      controller.subscribe((snapshot) => phases.push(snapshot.phase));
+      const connected = settle(controller, (snapshot) => snapshot.phase === "connected");
+      controller.start();
+      await connected;
+      expect(starts).toBe(3);
+      expect(reads).toBeGreaterThan(4);
+      // Waiting for the whole time before it, with no connected in between.
+      expect(phases.indexOf("connected")).toBe(phases.length - 1);
+    });
+
+    test("cancelling leaves it as it was and stops asking", async () => {
+      let reads = 0;
+      const io: BrokerSignInIo = fakeIo({
+        fetchConnection: async () => {
+          reads += 1;
+          return { status: "connected", connectedAt: FIRST };
+        },
+        // Yields to timers, so the test can cancel between polls.
+        delay: () => new Promise((resolve) => setTimeout(resolve, 1)),
+      });
+      const controller = new BrokerSignInController(IBKR, false, io);
+      controller.start();
+      await settle(controller, (snapshot) => snapshot.phase === "waiting");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(reads).toBeGreaterThan(3);
+      controller.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const readsAtCancel = reads;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(controller.getSnapshot().phase).toBe("waiting");
+      expect(reads).toBe(readsAtCancel);
+    });
+
+    test("a first read that failed lets the first poll stand in for it", async () => {
+      let reads = 0;
+      const controller = new BrokerSignInController(IBKR, false, fakeIo({
+        fetchConnection: async () => {
+          reads += 1;
+          if (reads === 1) throw new Error("offline");
+          return { status: "connected", connectedAt: reads >= 5 ? RENEWED : FIRST };
+        },
+      }));
+      const connected = settle(controller, (snapshot) => snapshot.phase === "connected");
+      controller.start();
+      await connected;
+      expect(reads).toBe(5);
+    });
+  });
+
   test("asking for trading still finishes when the user grants only reading", async () => {
     const writes: boolean[] = [];
     let polls = 0;

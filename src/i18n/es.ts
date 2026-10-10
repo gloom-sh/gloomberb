@@ -1452,6 +1452,11 @@ export const es: Record<string, string> = {
   "Connected! Positions will sync automatically.": "¡Conectado! Las posiciones se sincronizarán solas.",
   "No connectable brokers are installed.": "No hay brókers conectables instalados.",
   "{broker} was not connected.": "{broker} no se conectó.",
+  "Ends {date}": "Termina el {date}",
+  "Ended {date}": "Terminó el {date}",
+  "Sign-in ends {when}": "El inicio de sesión termina {when}",
+  "Sign-in ended {when}": "El inicio de sesión terminó {when}",
+  "{broker} sign-in was not renewed.": "No se renovó el inicio de sesión de {broker}.",
 
   // ── Company picker ───────────────────────────────────────────
   "Which companies do you follow?": "¿Qué empresas sigues?",

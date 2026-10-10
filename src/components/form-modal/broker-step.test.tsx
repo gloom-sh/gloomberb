@@ -41,14 +41,20 @@ describe("broker connect step", () => {
   }
 
   /**
-   * Gloom Cloud for the connect: `connect` answers each code request, and the
-   * connection reads connected from the first poll, two seconds in.
+   * Gloom Cloud for the connect: `connect` answers each code request. The
+   * account holds nothing when the step opens, and the user signs in at once
+   * once a code was handed out, so the connection reads connected from the
+   * first poll, two seconds in.
    */
   function fakeCloud({ signedIn, connect }: { signedIn: () => boolean; connect: () => unknown }) {
+    let codeIssued = false;
     spy(spyOn(apiClient, "isSignedIn").mockImplementation(signedIn));
-    spy(spyOn(apiClient, "brokerRequest").mockImplementation((async (_broker: string, path: string) => (
-      path === "/connect" ? connect() : { status: "connected" }
-    )) as typeof apiClient.brokerRequest));
+    spy(spyOn(apiClient, "brokerRequest").mockImplementation((async (_broker: string, path: string) => {
+      if (path !== "/connect") return { status: codeIssued ? "connected" : "not_connected" };
+      const code = connect();
+      codeIssued = true;
+      return code;
+    }) as typeof apiClient.brokerRequest));
   }
 
   function codeFor(code: string) {

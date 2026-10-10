@@ -178,17 +178,23 @@ const ROBINHOOD: SignedInBroker = {
   capabilities: { history: true, executions: true, orders: false, singleConnection: true },
 };
 
-/** Gloom Cloud: signed in, two signed-in brokers (one also on this device), and a code that connects or never does. */
+/**
+ * Gloom Cloud: signed in, two signed-in brokers (one also on this device), and
+ * a code that connects or never does. Nothing is connected when the step
+ * opens, and a code that connects is used as soon as it is handed out.
+ */
 async function fakeCloud({ connects }: { connects: boolean }) {
+  let codeIssued = false;
   spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
   spies.push(spyOn(apiClient, "brokerRequest").mockImplementation((async (broker: string, path: string) => {
     if (broker === "connectors") {
       return { connectors: [ROBINHOOD, { ...ROBINHOOD, id: "test-broker", name: "Test Broker" }] };
     }
     if (path === "/connect") {
+      codeIssued = true;
       return { connectUrl: "https://gloom.sh/connect/K7QM", code: "K7QM", expiresAt: new Date(Date.now() + 60_000).toISOString() };
     }
-    return { status: connects ? "connected" : "not_connected" };
+    return { status: connects && codeIssued ? "connected" : "not_connected" };
   }) as typeof apiClient.brokerRequest));
   await refreshSignedInBrokers({ force: true });
 }
@@ -459,6 +465,31 @@ describe("BrokersPane", () => {
     await pressKey("RETURN");
     expect(frame()).toContain("signed-in-new");
   }, 15_000);
+
+  test("a sign-in the broker is about to end shows when on its row and in its detail, and an older server shows nothing", async () => {
+    const signedIn: BrokerInstanceConfig = { id: "signed-in-ibkr", brokerType: "signed-in", label: "Brokerage", connectionMode: "ibkr", config: {}, enabled: true };
+    const connectedAt = new Date(Date.now() - 6.5 * 24 * 3_600_000).toISOString();
+    const answers: Record<string, Record<string, unknown>> = {
+      soon: { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 5 * 3_600_000).toISOString(), expiresSoon: true },
+      later: { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 5 * 24 * 3_600_000).toISOString(), expiresSoon: false },
+      older: { status: "connected", connectedAt },
+    };
+    let answer = answers.soon!;
+    spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
+    spies.push(spyOn(apiClient, "brokerRequest").mockImplementation((async () => answer) as typeof apiClient.brokerRequest));
+
+    for (const [name, expectEnd] of [["soon", true], ["later", false], ["older", false]] as const) {
+      answer = answers[name]!;
+      await tui.render(<Harness calls={[]} instances={[signedIn]} height={30} />, { width: 92, height: 30 });
+      await settle();
+      await settle();
+      expect(frameLine("Brokerage").includes("Ends ")).toBe(expectEnd);
+
+      await pressKey("RETURN");
+      await settle();
+      expect(frame().includes("Sign-in ends ")).toBe(expectEnd);
+    }
+  });
 
   // The command bar's Add Broker Account and the File menu's go through here.
   test("Add Broker Account shows the pane and starts its add flow", async () => {

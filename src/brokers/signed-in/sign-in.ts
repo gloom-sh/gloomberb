@@ -24,9 +24,12 @@ export interface BrokerSignInSnapshot {
   error: string | null;
 }
 
+/** What a read of the account's connection tells the flow. */
+export type BrokerConnectionRead = Pick<SignedInBrokerConnection, "status"> & { connectedAt?: string | null };
+
 export interface BrokerSignInIo {
   start(brokerId: string, write: boolean): Promise<{ connectUrl: string; code: string; expiresAt: string }>;
-  fetchConnection(brokerId: string): Promise<Pick<SignedInBrokerConnection, "status">>;
+  fetchConnection(brokerId: string): Promise<BrokerConnectionRead>;
   now(): number;
   delay(ms: number): Promise<void>;
 }
@@ -58,10 +61,34 @@ function codeDeadline(expiresAt: string, now: number): number {
   return Number.isFinite(parsed) && parsed > now ? parsed : now + DEFAULT_CODE_TTL_MS;
 }
 
+function stamp(value: string | null | undefined): number | null {
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Whether `now` shows a sign-in made after `before` was read. Connected is not
+ * enough: a broker that was connected when the flow began stays connected
+ * while the user signs in again, until Gloom stamps the new sign-in. Both
+ * reads are Gloom's, so a device clock that runs fast or slow cannot matter.
+ */
+function signedInSince(before: BrokerConnectionRead, now: BrokerConnectionRead): boolean {
+  if (now.status !== "connected") return false;
+  if (before.status !== "connected") return true;
+  const at = stamp(now.connectedAt);
+  const was = stamp(before.connectedAt);
+  return at !== null && (was === null || at > was);
+}
+
 export class BrokerSignInController {
   private readonly io: BrokerSignInIo;
   private readonly listeners = new Set<(snapshot: BrokerSignInSnapshot) => void>();
   private generation = 0;
+  /**
+   * The account's connection as first seen. It outlives a restarted code, so a
+   * sign-in finished while "r" asked for a new one still counts.
+   */
+  private before: BrokerConnectionRead | null = null;
   private snapshot: BrokerSignInSnapshot = { phase: "starting", connectUrl: null, code: null, error: null };
 
   constructor(
@@ -102,6 +129,14 @@ export class BrokerSignInController {
   private async run(generation: number): Promise<void> {
     const stale = () => this.generation !== generation;
     let retryMs = POLL_INTERVAL_MS;
+    // Read before a code exists, so nothing the user does can come first. A
+    // failed read leaves the first poll to stand in for it: no sign-in finishes
+    // within a poll interval.
+    if (!this.before) {
+      const read = await this.io.fetchConnection(this.broker.id).catch(() => null);
+      if (stale()) return;
+      this.before ??= read;
+    }
     // Each iteration is one code: start, poll until connected, and loop again
     // when the code expired so the link refreshes instead of dead-ending.
     while (!stale()) {
@@ -132,8 +167,10 @@ export class BrokerSignInController {
         await this.io.delay(POLL_INTERVAL_MS);
         if (stale()) return;
         try {
-          // Connected is enough: a user who declined trading still gets a read-only connection.
-          if ((await this.io.fetchConnection(this.broker.id)).status === "connected") {
+          const connection = await this.io.fetchConnection(this.broker.id);
+          this.before ??= connection;
+          // A new connection is enough: a user who declined trading still gets a read-only one.
+          if (signedInSince(this.before, connection)) {
             if (!stale()) this.update({ phase: "connected", error: null });
             this.generation += 1;
             return;

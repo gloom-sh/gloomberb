@@ -115,7 +115,10 @@ export function useBrokerManagerActions({
       try {
         setBusy(t("Connecting…"));
         if (!await requestBrokerSignIn(broker)) {
-          setMessage(infoMessage(tf("{broker} was not connected.", { broker: broker.name })));
+          // Backing out of a renewal leaves the broker connected, for now.
+          setMessage(infoMessage(selectedRow.state === "connected"
+            ? tf("{broker} sign-in was not renewed.", { broker: broker.name })
+            : tf("{broker} was not connected.", { broker: broker.name })));
           return;
         }
         await syncBrokerInstance(selectedRow.id);
