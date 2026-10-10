@@ -54,6 +54,7 @@ import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../uti
 import { failIfNotTraded, ListingArgError, listingIdentity, resolveCliListing, type CliListing } from "../listing-arg";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
 import { cliFreshnessFooter } from "../result";
+import { providerMissReason } from "../../sources/provider-errors";
 import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
 import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
@@ -430,6 +431,7 @@ export async function buildTickerReport({
   config,
   toBase,
   notes,
+  quoteNote,
   recentNews = [],
   recentSecFilings = [],
 }: {
@@ -441,6 +443,8 @@ export async function buildTickerReport({
   config: AppConfig;
   toBase: (value: number, fromCurrency: string) => Promise<number>;
   notes?: string;
+  /** Why there is no quote, when a source said; "Quote unavailable." otherwise. */
+  quoteNote?: string;
   recentNews?: NewsArticle[];
   recentSecFilings?: SecFilingItem[];
 }): Promise<string> {
@@ -455,7 +459,7 @@ export async function buildTickerReport({
   const lines: string[] = [];
 
   lines.push(`${cliStyles.accent(quote?.symbol ?? symbol)} ${cliStyles.bold(name)}`);
-  if (!quote) lines.push(cliStyles.muted("Quote unavailable."));
+  if (!quote) lines.push(cliStyles.muted(quoteNote ?? QUOTE_UNAVAILABLE));
 
   const summaryParts = [
     listingVenueLabel(listingExchange, quote, financials, tickerFile) || undefined,
@@ -682,6 +686,18 @@ function buildTickerStructuredData({
   };
 }
 
+const QUOTE_UNAVAILABLE = "Quote unavailable.";
+
+/** Asks for the quote the report lacks once more, for the reason the data service gave when it had none. */
+async function quoteUnavailableNote(dataProvider: MarketContext["dataProvider"], symbol: string, exchange: string): Promise<string> {
+  try {
+    await dataProvider.getQuote(symbol, exchange);
+  } catch (error) {
+    return providerMissReason(error) ?? QUOTE_UNAVAILABLE;
+  }
+  return QUOTE_UNAVAILABLE;
+}
+
 export async function ticker(symbol: string, dependencies: TickerCommandDependencies = {}) {
   const initMarketDataFn = dependencies.initMarketData ?? initMarketData;
   const failCommand = dependencies.fail ?? fail;
@@ -754,10 +770,11 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
 
     // The quote is the feed in this report; without one, the fundamentals date it.
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
+    const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
     if (dependencies.printResult) {
       dependencies.printResult({
         freshness,
-        warnings: quote ? undefined : ["Quote unavailable."],
+        warnings: quote ? undefined : [quoteNote!],
         data: buildTickerStructuredData({
           symbol: normalized,
           listing,
@@ -780,6 +797,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         config,
         toBase,
         notes,
+        quoteNote,
         recentNews,
         recentSecFilings,
     }));

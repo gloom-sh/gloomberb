@@ -4,7 +4,7 @@ import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider
 import type { AnalystResearchData, CorporateActionsData, HolderData } from "../../types/financials";
 import { canonicalExchange } from "../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../utils/sec";
-import { shouldLogProviderError } from "../provider-errors";
+import { noProviderError, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
 import { hasBrokerContext, withBrokerTimeout } from "./brokers";
 import { publicListingExchange } from "../listing-target";
 import { buildVariantKey, compactUrl, listCachedResources, resolveCachePolicy, type ProviderRouterCachePolicyKey } from "./cache";
@@ -111,6 +111,7 @@ export class ProviderRouterCachedRoutes {
         let best: CachedValue<unknown> | null = null;
         let bestRank = -1;
         let lastError: unknown;
+        const misses: ProviderMissNote = {};
         for (const provider of providers) {
           try {
             const request = route.request(provider, force);
@@ -123,6 +124,7 @@ export class ProviderRouterCachedRoutes {
             if (rank > bestRank) { best = result; bestRank = rank; }
           } catch (error) {
             lastError = error;
+            noteProviderMiss(misses, error);
             if (shouldLogProviderError(error)) this.deps.logProviderError(`${provider.id} failed: ${error}`);
           }
         }
@@ -133,7 +135,7 @@ export class ProviderRouterCachedRoutes {
           const policy = resolveCachePolicy(undefined, route.policy);
           return { value: route.empty(), fetchedAt, staleAt: fetchedAt + policy.staleMs, expiresAt: fetchedAt + policy.expireMs, source: "" };
         }
-        throw new Error(route.error);
+        throw noProviderError(route.error, misses);
       },
     });
     this.queries.set(key, query);

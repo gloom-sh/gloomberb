@@ -78,6 +78,7 @@ import {
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
+import { providerMissReason } from "../../sources/provider-errors";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
@@ -1020,13 +1021,21 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     if ("error" in request) return ctx.fail(request.error, `Usage: gloomberb ${FX_USAGE}`);
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
+    const reasons = new Map<string, string>();
     const load = (code: string) => market.dataProvider.getCachedQuery("getExchangeRate", [code])
-      .load({ force: ctx.cliOptions.refresh }).catch(() => null);
+      .load({ force: ctx.cliOptions.refresh }).catch((error) => {
+        const reason = providerMissReason(error);
+        if (reason) reasons.set(code, reason);
+        return null;
+      });
     // Every rate is a cross of two USD legs; a code priced in itself needs none.
     const codes = currency === baseCurrency ? [] : [currency, baseCurrency];
     const legs = await Promise.all(codes.map(load));
     const missing = codes.filter((_code, index) => !isUsableRate(legs[index]?.value));
     if (missing.length > 0) {
+      // A reason the data service gave for the first missing leg says more than the generic line.
+      const reason = missing.map((code) => reasons.get(code)).find(Boolean);
+      if (reason) ctx.fail(reason);
       ctx.fail(
         `Exchange rate unavailable for ${missing.join(" and ")}.`,
         `${pair} is crossed from each currency's USD rate, and none came back for ${missing.join(" or ")}. Check the ISO code.`,

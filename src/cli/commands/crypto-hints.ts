@@ -42,11 +42,15 @@ interface QuoteNoteResult {
   error: string | null;
 }
 
-/** The router words a failure as "<reason> for <symbol>"; drop the symbol so equal reasons group. */
+/**
+ * The router words a failure as "<reason> for <symbol>"; drop the symbol so equal reasons group.
+ * Any other line, such as a sentence the data service wrote, is kept as it reads.
+ */
 function failureReason(message: string, symbol: string): string {
-  const line = (message.split("\n")[0] ?? "").trim().replace(/\.+$/, "");
+  const line = (message.split("\n")[0] ?? "").trim();
+  const bare = line.replace(/\.+$/, "");
   const suffix = ` for ${symbol}`;
-  return line.toLowerCase().endsWith(suffix.toLowerCase()) ? line.slice(0, -suffix.length) : line;
+  return bare.toLowerCase().endsWith(suffix.toLowerCase()) ? bare.slice(0, -suffix.length) : line;
 }
 
 /**
@@ -63,7 +67,7 @@ export function quoteNotes(results: QuoteNoteResult[], options: { exchange?: str
     if (!symbols.includes(result.target.symbol)) failures.set(reason, [...symbols, result.target.symbol]);
   }
   const notes = [...failures].map(([reason, symbols]) => (
-    `${symbols.join(", ")}: ${reason}${symbols.some(isCryptoPairSymbol) ? `. ${CRYPTO_BOARD_HINT}` : ""}`
+    `${symbols.join(", ")}: ${reason}${symbols.some(isCryptoPairSymbol) ? `${/[.!?]$/.test(reason) ? "" : "."} ${CRYPTO_BOARD_HINT}` : ""}`
   ));
   if (!options.exchange) {
     for (const result of results) {

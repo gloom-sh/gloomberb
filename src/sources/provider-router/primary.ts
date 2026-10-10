@@ -4,7 +4,7 @@ import type { MarketDataRequestContext } from "../../types/data-provider";
 import type { Quote, TickerFinancials } from "../../types/financials";
 import { normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
 import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
-import { shouldLogProviderError } from "../provider-errors";
+import { noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
 import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
 import {
   dropUnusableProviderQuote,
@@ -61,6 +61,7 @@ export class ProviderRouterPrimaryRoutes {
     ticker: string,
     exchange?: string,
     context?: MarketDataRequestContext,
+    misses?: ProviderMissNote,
   ): Promise<SourceResult<TickerFinancials> | null> {
     const entityKey = this.options.getEntityKey(ticker, context?.instrument);
     const variantKey = financialHistoryVariants(this.options.getTickerVariantCandidates(exchange), context)[0] ?? "";
@@ -131,6 +132,7 @@ export class ProviderRouterPrimaryRoutes {
           if (!needsFinancialProfile(primaryResult.value) && (context?.statementHistory === "extended" ? primaryResult.value.statementHistory?.status === "available" : hasDetailedStatementRows(primaryResult.value) && hasDeepStatementHistory(primaryResult.value))) return primaryResult;
         }
       } catch (error) {
+        noteProviderMiss(misses, error);
         if (shouldLogProviderError(error)) {
           this.options.logProviderError(`${provider.id} failed: ${error}`);
         }
@@ -181,6 +183,7 @@ export class ProviderRouterPrimaryRoutes {
     ticker: string,
     exchange?: string,
     context?: MarketDataRequestContext,
+    misses?: ProviderMissNote,
   ): Promise<SourceResult<Quote> | null> {
     const entityKey = this.options.getEntityKey(ticker, context?.instrument);
     const variantKey = this.options.getTickerVariantCandidates(exchange)[0] ?? "";
@@ -199,6 +202,7 @@ export class ProviderRouterPrimaryRoutes {
         );
         return { sourceKey, value: quote };
       } catch (error) {
+        noteProviderMiss(misses, error);
         if (shouldLogProviderError(error)) {
           this.options.logProviderError(`${provider.id} failed: ${error}`);
         }

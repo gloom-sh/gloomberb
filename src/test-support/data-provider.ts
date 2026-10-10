@@ -1,3 +1,4 @@
+import { createProviderMiss } from "../sources/provider-errors";
 import type { DataProvider } from "../types/data-provider";
 import type { InstrumentSearchResult } from "../types/instrument";
 import type { Quote, TickerFinancials } from "../types/financials";
@@ -49,3 +50,20 @@ export const fallbackProvider: DataProvider = createTestDataProvider({
   getTickerFinancials: async () => createTestFinancials(),
   getQuote: async () => createTestQuote(),
 });
+
+/**
+ * A source that has nothing for any request, the way Gloom Cloud answers an empty status.
+ * `reason` is the sentence the service gave for it; without one the miss is bare.
+ */
+export function createEmptyAnswerProvider(reason?: string, overrides: Partial<DataProvider> = {}): DataProvider {
+  const miss = () => Promise.reject(createProviderMiss("NOT_FOUND", reason));
+  return createTestDataProvider({
+    id: "empty-answer",
+    priority: 100,
+    getQuote: miss,
+    getTickerFinancials: miss,
+    getExchangeRate: miss,
+    getExchangeRateSnapshot: miss,
+    ...overrides,
+  });
+}

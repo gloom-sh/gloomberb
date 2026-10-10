@@ -3,6 +3,7 @@ import { createDefaultConfig } from "../../types/config";
 import type { Quote } from "../../types/financials";
 import type { CliCommandContext } from "../../types/plugin";
 import { createTestCliContext } from "../../test-support/cli-context";
+import { quoteNotes } from "./crypto-hints";
 import { marketDataCliCommands } from "./market";
 
 const config = createDefaultConfig("/tmp/gloom-crypto-hints-test");
@@ -43,6 +44,13 @@ test("a failed quote says why in text mode, and points crypto pairs at the crypt
   const json = await runQuote(["BTC-USD"], { "BTC-USD": none }, { format: "json" });
   expect(json.warnings).toBeUndefined();
   expect((json.data as Array<{ error: string }>)[0]!.error).toBe(`${none} for BTC-USD`);
+});
+
+test("a sentence the data service wrote keeps its own ending, before the crypto board pointer too", () => {
+  const note = (symbol: string, error: string) => quoteNotes([{ target: { symbol }, quote: null, error }]);
+  expect(note("XAU/USD", "Spot gold is not quoted; GC=F is the front-month future.")).toEqual(["XAU/USD: Spot gold is not quoted; GC=F is the front-month future."]);
+  expect(note("BTC-USD", "Not listed on this feed.")).toEqual([`BTC-USD: Not listed on this feed. ${HINT}`]);
+  expect(note("BTC-USD", "Not listed on this feed")).toEqual([`BTC-USD: Not listed on this feed. ${HINT}`]);
 });
 
 test("history keeps its error and adds the crypto board pointer only for crypto pairs in text mode", async () => {

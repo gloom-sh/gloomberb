@@ -4,7 +4,7 @@ import type { NewsCapability } from "../../capabilities";
 import { apiClient, type CloudNewsPayload } from "../../api-client";
 import { cloudNewsParams } from "./news";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
-import { ProviderMissError } from "../provider-errors";
+import { ProviderMissError, providerMissReason } from "../provider-errors";
 import { verifiedUser } from "../../test-support/cloud-api";
 
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
@@ -128,6 +128,40 @@ describe("GloomberbCloudProvider", () => {
       expect(results.every((result) => result.quote === null && result.error instanceof ProviderMissError)).toBe(true);
       provider.subscribeQuotes(targets, () => { throw new Error("ambiguous listing delivered"); })();
     }
+  });
+
+  test("an empty answer carries the service's reason into the provider miss, cleaned, or none when it gave none", async () => {
+    const provider = new GloomberbCloudProvider();
+    const sentence = "Spot gold is not quoted; GC=F is the front-month future.";
+    const fixtures: Array<[string, unknown, string | undefined]> = [
+      ["present", sentence, sentence],
+      ["absent", undefined, undefined],
+      ["blank", "  \n ", undefined],
+      ["multi-line", `  ${sentence}\r\nSecond line\u001b[31m.\n`, `${sentence} Second line.`],
+      ["over-long", `${sentence} ${"More detail. ".repeat(40)}`, `${sentence} ${"More detail. ".repeat(40)}`.slice(0, 199).trimEnd() + "…"],
+    ];
+    for (const [name, message, expected] of fixtures) {
+      const empty = { status: "empty" as const, data: null, reasonCode: "NOT_FOUND", ...(message === undefined ? {} : { message: message as string }) };
+      apiClient.getCloudQuote = async () => empty;
+      apiClient.getCloudExchangeRate = async () => empty;
+      apiClient.getCloudQuotesBatch = async () => ({ status: "partial", data: { items: [{ symbol: "XAU/USD", exchange: "", ...empty }] } });
+      apiClient.getCloudFinancialsBatch = apiClient.getCloudQuotesBatch as unknown as typeof apiClient.getCloudFinancialsBatch;
+      const misses = [
+        await provider.getQuote("XAU/USD").catch((error) => error),
+        await provider.getExchangeRateSnapshot("XAU").catch((error) => error),
+        (await provider.getQuotesBatch([{ symbol: "XAU/USD" }]))[0]!.error,
+        (await provider.getTickerFinancialsBatch([{ symbol: "XAU/USD" }]))[0]!.error,
+      ];
+      for (const miss of misses) {
+        expect([name, miss instanceof ProviderMissError]).toEqual([name, true]);
+        expect([name, providerMissReason(miss)]).toEqual([name, expected]);
+      }
+    }
+    // An error status is a failure, not an empty answer: its text is not offered as a reason.
+    apiClient.getCloudQuote = async () => ({ status: "error", data: null, reasonCode: "UPSTREAM", message: sentence });
+    const failure = await provider.getQuote("XAU/USD").catch((error) => error);
+    expect(failure).not.toBeInstanceOf(ProviderMissError);
+    expect(failure.message).toBe("UPSTREAM");
   });
 
   test("uses host venue aliases at the cloud boundary without losing suffix or non-equity identity", async () => {

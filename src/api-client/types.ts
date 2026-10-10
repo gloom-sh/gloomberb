@@ -1324,6 +1324,8 @@ export interface CloudMarketResponse<T> {
   status: CloudMarketStatus;
   data: T | null;
   reasonCode?: string;
+  /** Untrusted, human-readable reason the answer is empty. Cleaned before it is shown. */
+  message?: string;
   asOf?: string;
   staleAt?: string;
   stale?: boolean;
@@ -1367,6 +1369,8 @@ export interface CloudMarketBatchItem<T> {
   status: CloudMarketStatus;
   data: T | null;
   reasonCode?: string;
+  /** Untrusted, human-readable reason this item is empty. Cleaned before it is shown. */
+  message?: string;
   stale?: boolean;
 }
 

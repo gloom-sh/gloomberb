@@ -317,7 +317,7 @@ export function mapBatchError<T>(
   fallbackMessage: string,
 ): Error {
   if (isEmptyCloudStatus(item.status)) {
-    return createProviderMiss(item.reasonCode ?? fallbackMessage);
+    return createProviderMiss(item.reasonCode ?? fallbackMessage, item.message);
   }
   return new Error(item.reasonCode ?? fallbackMessage);
 }
