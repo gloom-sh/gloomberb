@@ -10,6 +10,8 @@ interface FxRateMetadata {
   staleAt?: number;
   expiresAt?: number;
   source?: string;
+  /** How far the snapshot runs behind the market, as the source states it; 0 is real-time. */
+  delayMinutes?: number;
 }
 
 export function isUsableCachedExchangeRate(rate: number | null, currency: string,
@@ -47,8 +49,9 @@ export function exchangeRateMetadata(value: unknown, currency: string, now = Dat
   const expiresAt = Math.min(fetchedAt === undefined ? Infinity : fetchedAt + MAX_FX_OBSERVATION_AGE_MS,
     asOf === undefined ? Infinity : asOf + MAX_FX_OBSERVATION_AGE_MS);
   if (expiresAt <= now) return fail();
-  const delay = typeof data.delayMinutes === "number" && Number.isFinite(data.delayMinutes) && data.delayMinutes >= 0
-    ? Math.min(data.delayMinutes, 15) * 60_000 : 0;
+  const delayMinutes = typeof data.delayMinutes === "number" && Number.isFinite(data.delayMinutes) && data.delayMinutes >= 0
+    ? data.delayMinutes : undefined;
+  const delay = Math.min(delayMinutes ?? 0, 15) * 60_000;
   const staleAt = Math.min(declaredStaleAt ?? Infinity,
     fetchedAt === undefined ? Infinity : fxFreshUntil(fetchedAt, FX_FRESH_MS),
     asOf === undefined ? Infinity : fxFreshUntil(asOf, FX_FRESH_MS + delay),
@@ -59,5 +62,6 @@ export function exchangeRateMetadata(value: unknown, currency: string, now = Dat
     ...(Number.isFinite(expiresAt) ? { expiresAt } : {}),
     ...(Number.isFinite(staleAt) ? { staleAt } : {}),
     ...(typeof data.source === "string" ? { source: data.source } : {}),
+    ...(delayMinutes !== undefined ? { delayMinutes } : {}),
   };
 }

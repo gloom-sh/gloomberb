@@ -11,6 +11,8 @@ export interface CachedValue<T> {
   source: string;
   /** Source observation time, when supplied; fetchedAt remains retrieval time. */
   asOf?: number;
+  /** How far a delayed source runs behind the market, in minutes; 0 for a real-time one. */
+  delayMinutes?: number;
   refreshError?: unknown;
 }
 

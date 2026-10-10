@@ -80,7 +80,7 @@ import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { formatUtcTime } from "../../utils/utc-time";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
-import { fundamentalsFreshness, quotesFreshness, rowsFreshness } from "../freshness";
+import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness } from "../freshness";
 import {
   barHistoryFreshness,
   barResolutionFromDates,
@@ -1263,12 +1263,16 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const asOf = observed.length > 0 ? new Date(Math.min(...observed)).toISOString() : null;
     const stale = legs.some((leg) => leg != null && (leg.staleAt <= Date.now() || leg.refreshError != null));
     const row = { currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate };
-    ctx.printResult({ data: [row] }, {
-      text: () => {
-        const time = asOf ? `As of ${formatUtcTime(asOf)}` : "";
-        const when = stale ? cliStyles.warning(time ? `${time}, stale` : "Stale") : time && cliStyles.muted(time);
-        return [describeFxRate(request, rate), when].filter(Boolean).join("\n");
-      },
+    // The closing line dates the rate, and says when it is stale, as `fn FXC` does.
+    const freshness = fxPairFreshness(new Map(codes.flatMap((code, index) => {
+      const leg = legs[index];
+      return leg ? [[code, {
+        rate: leg.value,
+        timing: { asOf: leg.asOf, staleAt: leg.staleAt, error: leg.refreshError, delayMinutes: leg.delayMinutes },
+      }] as const] : [];
+    })));
+    ctx.printResult({ data: [row], freshness }, {
+      text: () => describeFxRate(request, rate),
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },

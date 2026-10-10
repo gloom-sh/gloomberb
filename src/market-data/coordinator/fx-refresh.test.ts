@@ -13,7 +13,7 @@ for (const cachedRouter of [false, true]) {
     const snapshot = (rate: number, asOf: number): ExchangeRateSnapshot => ({
       rate, fromCurrency: "EUR", toCurrency: "USD", source: "controlled-fx",
       asOf: new Date(asOf).toISOString(), fetchedAt: new Date(asOf).toISOString(),
-      staleAt: new Date(asOf + 3_600_000).toISOString(), stale: false,
+      staleAt: new Date(asOf + 3_600_000).toISOString(), stale: false, delayMinutes: 15,
     });
     const pending = Promise.withResolvers<ExchangeRateSnapshot>();
     let calls = 0;
@@ -43,11 +43,14 @@ for (const cachedRouter of [false, true]) {
       expect((await firstRefresh).data).toBe(1.2);
       expect((await secondRefresh).data).toBe(1.2);
       expect(coordinator.getFxEntry("EUR").asOf).toBe(secondTime);
+      // The delay the service states is the entry's, for the report that dates the rate.
+      expect(coordinator.getFxEntry("EUR").delayMinutes).toBe(15);
 
       fail = true;
       const failed = await coordinator.loadFxRate("EUR", { forceRefresh: true });
       expect(failed.data ?? failed.lastGoodData).toBe(1.2);
       expect(failed.asOf).toBe(secondTime);
+      expect(failed.delayMinutes).toBe(15);
       expect(failed.fetchedAt).toBe(secondTime);
       expect(failed.error).not.toBeNull();
       expect(calls).toBe(3);

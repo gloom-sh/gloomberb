@@ -32,6 +32,8 @@ export interface QueryEntry<T> {
   /** Accepted source response order in this runtime, preserved through cache projections. */
   responseSequence?: number;
   asOf?: number;
+  /** Exchange rates: how far the snapshot runs behind the market, in minutes; 0 for a real-time one. */
+  delayMinutes?: number;
   staleAt: number | null;
   error: { reasonCode: string; message: string } | null;
   attempts: ProviderAttempt[];

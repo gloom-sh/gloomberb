@@ -3,16 +3,16 @@ import { deriveRenderedFreshness, formatFreshnessLine } from "../../../cli/pane-
 import type { QueryEntry } from "../../../market-data/result-types";
 import { createTestQuote } from "../../../test-support/data-provider";
 import type { Quote } from "../../../types/financials";
-import { fxRateObservations } from "./freshness";
+import { fxRateObservations } from "../shared/fx-rate-freshness";
 import { fxLegs, liveFxLegEntry } from "./live-legs";
 
 const at = (iso: string) => Date.parse(iso);
 
-/** A rate loaded from the data service: dated by its observation, current until its own schedule says not. */
+/** A rate loaded from the data service: dated by its observation, held back 15 minutes, current until its own schedule says not. */
 function snapshot(asOf: string | null, overrides: Partial<QueryEntry<number>> = {}): QueryEntry<number> {
   return {
     phase: "ready", data: 1, lastGoodData: 1, source: "gloom", fetchedAt: at("2026-10-10T18:40:00Z"),
-    ...(asOf ? { asOf: at(asOf) } : {}), staleAt: at("2026-10-20T00:00:00Z"), error: null, attempts: [], ...overrides,
+    ...(asOf ? { asOf: at(asOf) } : {}), delayMinutes: 15, staleAt: at("2026-10-20T00:00:00Z"), error: null, attempts: [], ...overrides,
   };
 }
 
@@ -54,9 +54,9 @@ test("over a weekend the matrix is Friday's close, whatever quiet ticks the pair
     CAD: snapshot("2026-10-10T04:21:11Z"),
     GBP: snapshot("2026-10-10T14:50:28Z"),
   });
-  expect(line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
+  expect(line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
   // The newest observation stays as it was; only the wording dates it by the close.
-  expect(freshness).toMatchObject({ status: "delayed", asOf: "2026-10-10T14:50:28.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
+  expect(freshness).toMatchObject({ status: "delayed", delayMinutes: 15, asOf: "2026-10-10T14:50:28.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
 });
 
 test("on a weekday it is dated by the newest pair quote, with the feed's delay and the market open", () => {
@@ -71,7 +71,7 @@ test("on a weekday it is dated by the newest pair quote, with the feed's delay a
   expect(reportLine(now, { EUR: eurLive.entry, JPY: jpyLive.entry }, { EUR: eurLive.quote, JPY: jpyLive.quote }).line)
     .toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · live · markets open");
   expect(reportLine(now, { EUR: eurLive.entry, JPY: snapshot("2026-10-14T13:50:00Z") }, { EUR: eurLive.quote }).line)
-    .toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · delayed · markets open");
+    .toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · 15 min delayed · markets open");
 });
 
 test("a leg that has gone stale makes the matrix partly stale, with the share", () => {
@@ -95,8 +95,7 @@ test("a leg that has gone stale makes the matrix partly stale, with the share", 
 test("a currency with no pair quote in the matrix is dated by its loaded rate, in the same line", () => {
   // The coordinator streams pairs for 25 currencies; SAR and NGN are not among
   // them, so their rate is the loaded snapshot unless a pair quote arrives:
-  // delayed with no length stated, dated by its own observation. The streamed
-  // euro sets the delay the line states.
+  // dated by its own observation, held back as the data service says.
   const now = "2026-10-14T14:00:00Z";
   const eur = leg("EUR", "2026-10-14T13:59:41Z");
   const sar = snapshot("2026-10-14T13:20:00Z");
@@ -106,9 +105,23 @@ test("a currency with no pair quote in the matrix is dated by its loaded rate, i
   // Alone, on a weekend, it is dated by the close like any other pair.
   expect(reportLine("2026-10-10T18:45:00Z", {
     SAR: snapshot("2026-10-10T03:09:15Z"), NGN: snapshot("2026-10-10T03:09:13Z"),
-  }).line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
+  }).line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
   // A rate the matrix cannot draw is no observation, and the base currency has none.
   expect(fxRateObservations(["USD", "SAR", "NGN"], new Map([["SAR", 0.2663]]), (currency) => ({ entry: snapshot("2026-10-10T03:09:15Z"), legQuote: null }), at("2026-10-10T18:45:00Z")))
     .toHaveLength(1);
   expect(reportLine("2026-10-10T18:45:00Z", {}).line).toContain("status not reported");
+});
+
+test("a loaded rate says how long it is held back as the data service stated it", () => {
+  const now = "2026-10-14T14:00:00Z";
+  const asOf = "2026-10-14T13:50:00Z";
+  const line = (...delays: Array<number | undefined>) => reportLine(now, Object.fromEntries(
+    delays.map((delayMinutes, index) => [["SAR", "NGN"][index]!, snapshot(asOf, { delayMinutes })]),
+  )).line;
+  // A real-time account's rates are live, from the snapshot as from a pair quote.
+  expect(line(0, 0)).toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:50 UTC · live · markets open");
+  // Rates that differ read as a range, as for quotes of several venues.
+  expect(line(15, 20)).toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:50 UTC · 15-20 min delayed · markets open");
+  // An entry kept from before the delay was stored does not say: delayed, no length.
+  expect(line(undefined)).toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:50 UTC · delayed · markets open");
 });

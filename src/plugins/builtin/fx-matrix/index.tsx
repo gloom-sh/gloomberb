@@ -20,6 +20,7 @@ import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { useAssetData } from "../../runtime";
 import { summarizeFxRates, fxStatusLabel } from "../../../utils/fx-status";
 import type { PluginModule } from "../plugin-module";
+import { fxRateObservations } from "../shared/fx-rate-freshness";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
@@ -28,7 +29,6 @@ import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, ty
 import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { FX_MATRIX_REPORT_OPTIONS, fxMatrixReportNotices, fxMatrixSettings } from "./settings";
 import { createFxExportMetadata } from "./export";
-import { fxRateObservations } from "./freshness";
 
 const FX_MATRIX_PANE_ID = "fx-matrix";
 /** Stable identity: a fresh literal here would reload the board every render. */
