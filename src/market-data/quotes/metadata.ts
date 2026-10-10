@@ -38,6 +38,18 @@ function metadataExchange(value?: string): string {
   return exchange === "NY MERCANTILE" ? "NYMEX" : exchange;
 }
 
+/**
+ * The pair an FX symbol names, base then quote: EURUSD for EUR/USD and
+ * EURUSD=X, USDJPY for USD/JPY, USDJPY=X and JPY=X, the dollar pair's short
+ * spelling.
+ */
+function currencyPairCode(symbol: string): string | null {
+  const pair = /^([A-Z]{3})\/([A-Z]{3})$/.exec(symbol) ?? /^([A-Z]{3})([A-Z]{3})=X$/.exec(symbol);
+  if (pair) return `${pair[1]}${pair[2]}`;
+  const dollarPair = /^([A-Z]{3})=X$/.exec(symbol);
+  return dollarPair ? `USD${dollarPair[1]}` : null;
+}
+
 /** Qualified listings must agree; provider suffix spellings use the existing exact-listing normalizer. */
 export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: string, exchange?: string): boolean {
   const target = parsePublicTickerKey(symbol);
@@ -48,6 +60,10 @@ export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: stri
   if (symbolExchange && actualExchange && symbolExchange !== actualExchange) return false;
   if (requestedExchange && actualExchange !== requestedExchange) return false;
   if (target.symbol === actual.symbol) return true;
+  // Gloom Cloud answers a currency pair in one spelling however it was asked
+  // for: EUR/USD comes back as EURUSD=X on its currency venue.
+  const pair = actualExchange === "CCY" ? currencyPairCode(actual.symbol) : null;
+  if (pair && pair === currencyPairCode(target.symbol)) return true;
   const listing = requestedExchange || actualExchange;
   if (!listing) return false;
   const candidates = getListingSymbolsToTry(target.symbol, listing, { exactExchange: true });

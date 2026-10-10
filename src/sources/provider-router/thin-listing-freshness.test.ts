@@ -37,6 +37,7 @@ describe("a delayed quote's last trade age", () => {
     // 19:30 New York, after the regular close at 16:00.
     const afterHours = "2026-10-09T23:30:00Z";
     const usPost = quote("XSD", "NASDAQ", "2026-10-09T20:10:00Z", { marketState: "POST", postMarketPrice: 527.93 });
+    const sar = quote("SAR=X", "CCY", "2026-10-09T12:08:00Z", { instrumentType: "CURRENCY", currency: "SAR" });
     const rows: Row[] = [
       ["thin, 77 min, a fresh not-stale answer", london, zioc, true, true],
       ["thin, 77 min, a cache entry past its TTL", london, zioc, false, false],
@@ -67,6 +68,13 @@ describe("a delayed quote's last trade age", () => {
       // 12:30 Hong Kong: over lunch the morning's last print stands for any source.
       ["HKEX over lunch", "2026-10-09T04:30:00Z", quote("0700", "HKEX", "2026-10-09T03:59:00Z", { providerId: "other" }), false, true],
       ["HKEX thin over lunch, traded at 10:00", "2026-10-09T04:30:00Z", quote("1234", "HKEX", "2026-10-09T02:00:00Z"), true, true],
+      // A currency pair has no session hours here; the service judges it against how often it prints.
+      ["SAR=X, 2 h, a fresh not-stale answer", "2026-10-09T14:08:00Z", sar, true, true],
+      ["SAR=X, 2 h, a cache entry past its TTL", "2026-10-09T14:08:00Z", sar, false, false],
+      ["SAR=X, 2 h, the service says stale", "2026-10-09T14:08:00Z", { ...sar, stale: true }, true, false],
+      ["SAR=X, 2 h, another source", "2026-10-09T14:08:00Z", { ...sar, providerId: "other" }, true, false],
+      ["EURUSD=X on Saturday, Friday's close", "2026-10-10T01:30:00Z",
+        quote("EURUSD=X", "CCY", "2026-10-09T21:29:00Z", { marketState: "CLOSED", instrumentType: "CURRENCY" }), false, true],
     ];
     for (const [what, now, observed, recentAnswer, usable] of rows) {
       clock.mockReturnValue(at(now));
@@ -179,6 +187,23 @@ describe("thinly traded listings through the router", () => {
     clock.mockReturnValue(now + 6 * minutes);
     expect((await router.getQuotesBatch([target]))[0]?.quote).toBeNull();
     await expect(router.getQuote("ZIOC", "LSE")).rejects.toThrow("No quote provider");
+  });
+
+  test("a currency pair asked for as BASE/QUOTE takes the service's answer in its own spelling", async () => {
+    clock.mockReturnValue(at("2026-10-10T01:30:00Z"));
+    const pair = (symbol: string) => quote(symbol, "CCY", "2026-10-09T21:29:00Z", { marketState: "CLOSED", instrumentType: "CURRENCY" });
+    const answers: Array<[string, string, boolean]> = [
+      ["EUR/USD", "EURUSD=X", true],
+      ["USD/CHF", "USDCHF=X", true],
+      ["USD/JPY", "JPY=X", true],
+      ["GBP/USD", "EURUSD=X", false],
+      ["JPY/USD", "JPY=X", false],
+    ];
+    for (const [asked, answered, served] of answers) {
+      const { router } = source("gloomberb-cloud", pair(answered));
+      const result = (await router.getQuotesBatch([{ symbol: asked, exchange: "" }]))[0]?.quote;
+      expect(result?.symbol ?? null, `${asked} answered as ${answered}`).toBe(served ? answered : null);
+    }
   });
 
   test("another source's thin quote keeps the age bound, and is served as the last known price", async () => {

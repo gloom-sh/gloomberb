@@ -6,7 +6,7 @@ import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "..
 import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../../utils/fundamentals";
 import { hasValidQuoteObservationTime, isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
-import { parsePublicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import {
   activeUsMarketSession,
   delayedFeedLagMs,
@@ -147,7 +147,8 @@ const OPENING_AUCTION_MS = 15 * 60_000;
  * - the quote is delayed. The service bounds a delayed quote's feed age itself
  *   but not a real-time one's, so real-time quotes keep the age bound;
  * - it reports the regular session, the venue's session is in progress as
- *   the delayed feed shows it, and the trade belongs to that session; or
+ *   the delayed feed shows it, and the trade belongs to that session; a
+ *   currency pair's session is the service's to judge; or
  * - it reports a US extended-hours session and the trade is no older than
  *   the regular session that session extends: after the close, today's
  *   regular session or its after-hours; before the open, the previous
@@ -163,6 +164,10 @@ function isVouchedCurrentByService(quote: Quote, exchange: string | undefined, n
     return isUsExtendedHoursSessionPrint(quote.lastUpdated, exchange, quote.marketState, now);
   }
   if (quote.marketState !== "REGULAR") return false;
+  // A currency pair trades around the clock through the week, and the service
+  // measures its silence against how often that pair prints: a pegged or
+  // exotic pair such as SAR=X goes hours without a print while its feed is fine.
+  if (canonicalExchange(exchange) === "CCY") return true;
   const feedTime = now - delayedFeedLagMs(exchange);
   if (isRegularSessionTime(exchange, feedTime) !== true) return false;
   const open = latestRegularSessionOpen(exchange, feedTime);
