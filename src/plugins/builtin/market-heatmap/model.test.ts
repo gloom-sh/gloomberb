@@ -91,6 +91,23 @@ test("the board's caption dates the session and the snapshot in New York time, t
   expect(heatmapBoardCaption(closed, { now: saturday, maxWidth: 4 })).toBeNull();
 });
 
+test("a board of a completed session is as of its close when the server gives it, an early close included", () => {
+  const saturday = Date.parse("2026-10-10T10:00:00Z");
+  const closed = { topCount: 500, regularSessionDate: "2026-10-09", fetchedAt: Date.parse("2026-10-10T09:58:32Z"),
+    regularSessionClosedAt: Date.parse("2026-10-09T20:00:00Z") };
+  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago" })).toBe("top 500 · Oct 9 session · as of 16:00 ET · checked 2m ago");
+  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", failed: true, maxWidth: 45 })).toBe("top 500 · Oct 9 session · checked 2m ago");
+  // The day after Thanksgiving closes at 13:00, in standard time.
+  expect(heatmapBoardCaption({ topCount: 100, regularSessionDate: "2026-11-27", fetchedAt: Date.parse("2026-11-28T15:00:00Z"),
+    regularSessionClosedAt: Date.parse("2026-11-27T18:00:00Z") }, { now: Date.parse("2026-11-28T15:01:00Z") }))
+    .toBe("top 100 · Nov 27 session · as of 13:00 ET");
+  // An older server, or a snapshot that names no session, keeps the snapshot's time.
+  for (const board of [{ ...closed, regularSessionClosedAt: undefined }, { ...closed, regularSessionClosedAt: null }]) {
+    expect(heatmapBoardCaption(board, { now: saturday })).toBe("top 500 · Oct 9 session · snapshot Oct 10 05:58 ET");
+  }
+  expect(heatmapBoardCaption({ ...closed, regularSessionDate: null }, { now: saturday })).toBe("top 500 · snapshot 05:58 ET");
+});
+
 test("a saved name count is read from the dialog's text or a number, and anything else is all 500", () => {
   expect([heatmapNameCount("100"), heatmapNameCount(150), heatmapNameCount("500")]).toEqual([100, 150, 500]);
   expect([heatmapNameCount(undefined), heatmapNameCount("250"), heatmapNameCount(""), heatmapNameCount("top")]).toEqual([500, 500, 500, 500]);

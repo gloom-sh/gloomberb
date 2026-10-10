@@ -598,6 +598,24 @@ test("the last session's move travels with its close and is never carried from a
     price: 167, regularClose: undefined, regularChange: undefined, regularChangePercent: undefined });
 });
 
+test("whether the open session has printed travels with the price it describes, and only through that session", () => {
+  const now = Date.parse("2026-10-08T23:00:00Z");
+  const base = { symbol: "NVDA", providerId: "gloomberb-cloud", dataSource: "live" as const, marketState: "POST" as const,
+    price: 230.48, currency: "USD", previousClose: 237.47, change: -6.99, changePercent: -2.9435,
+    listingExchangeName: "NASDAQ", lastUpdated: now, extendedSessionPrint: false };
+  const quiet = normalizeQuoteContribution(base)!;
+  expect(resolveCanonicalQuote({ cloud: quiet }, now).quote).toMatchObject({ marketState: "POST", extendedSessionPrint: false });
+  // A tick that does not say leaves it unknown; one that does replaces it.
+  expect(mergeQuoteContribution(quiet, { ...base, extendedSessionPrint: undefined, price: 231 }).extendedSessionPrint).toBeUndefined();
+  expect(mergeQuoteContribution(quiet, { ...base, extendedSessionPrint: true, price: 231 }).extendedSessionPrint).toBe(true);
+  // Another provider's price is not described by it.
+  const live = { symbol: "NVDA", providerId: "ibkr", dataSource: "live" as const, price: 231, currency: "USD",
+    change: 0.52, changePercent: 0.2, lastUpdated: now + 1000 };
+  expect(resolveCanonicalQuote({ cloud: quiet, ibkr: live }, now + 1000).quote).toMatchObject({ price: 231, extendedSessionPrint: undefined });
+  // Outside the pre-market and after hours there is nothing to say.
+  expect(normalizeQuoteContribution({ ...base, marketState: "CLOSED" })!.extendedSessionPrint).toBeUndefined();
+});
+
 test("a different price provider cannot inherit a closing-price anchor", () => {
   const now = Date.parse("2026-09-10T20:30:00Z");
   const result = resolveCanonicalQuote({

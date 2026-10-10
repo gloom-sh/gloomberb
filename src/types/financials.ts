@@ -100,6 +100,14 @@ export interface Quote extends DepositaryReceiptFacts {
   postMarketPrice?: number;
   postMarketChange?: number;
   postMarketChangePercent?: number;
+  /**
+   * Whether the quote holds a trade from the pre-market or after-hours
+   * session in progress (marketState PRE or POST). False when nothing has
+   * traded in it yet: the extended fields, or the price, are then the regular
+   * price carried forward, and their flat move is no move. Absent in the other
+   * sessions and when the source does not say.
+   */
+  extendedSessionPrint?: boolean;
   bid?: number;
   ask?: number;
   bidSize?: number;

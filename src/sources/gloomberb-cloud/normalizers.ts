@@ -119,6 +119,7 @@ export function mapQuote(
       quote.postMarketChange,
       divisor,
     ),
+    extendedSessionPrint: typeof quote.extendedSessionPrint === "boolean" ? quote.extendedSessionPrint : undefined,
     listingExchangeName,
     listingExchangeFullName,
     exchangeName: listingExchangeName,
