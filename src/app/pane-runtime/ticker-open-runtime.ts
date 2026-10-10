@@ -8,6 +8,7 @@ import {
   isPaneDocked,
 } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
+import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { findFixedTickerPaneForSymbol } from "../../layout/ticker-navigation";
 import type { AppAction, AppState } from "../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID, normalizePaneId } from "../../types/config";
@@ -98,10 +99,23 @@ export function useAppTickerOpenRuntime({
     }
   }, [dispatch, pluginRegistry.events, stateRef]);
 
+  /**
+   * A ticker opens in a pane of its plugin, which is added hidden while that
+   * plugin is off, so the open is refused with an offer to turn it on.
+   */
+  const refuseWhileOwnerOff = useCallback((symbol: string, options: PinTickerOptions | undefined, reopen: () => void) => {
+    const paneType = normalizePaneId(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
+    const owner = pluginRegistry.getDisabledPaneOwner(paneType, stateRef.current.config.disabledPlugins);
+    if (!owner) return false;
+    notifyPluginOff(pluginRegistry, new PluginOffError(owner, symbol), reopen);
+    return true;
+  }, [pluginRegistry, stateRef]);
+
   const placePinnedTickerTarget = useCallback((target: TickerOpenTarget, options?: PinTickerOptions) => {
     const paneType = normalizePaneId(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
     const paneDef = pluginRegistry.panes.get(paneType);
     if (!paneDef) return;
+    if (refuseWhileOwnerOff(target.symbol, options, () => placePinnedTickerTarget(target, options))) return;
 
     publishTickerOpenTarget(target);
     const symbol = target.symbol;
@@ -182,10 +196,13 @@ export function useAppTickerOpenRuntime({
     persistLayout,
     pluginRegistry,
     publishTickerOpenTarget,
+    refuseWhileOwnerOff,
     stateRef,
   ]);
 
   const openPinnedTicker = useCallback(async (rawSymbol: string, options?: PinTickerOptions) => {
+    // Before resolving, so a refused open adds no ticker either.
+    if (refuseWhileOwnerOff(rawSymbol, options, () => { void openPinnedTicker(rawSymbol, options); })) return;
     const recordAttention = captureAttentionAction();
     const selectedTicker = options?.instrument !== undefined && (options.instrument || options.listing) ? await tickerRepository.loadTicker(rawSymbol) : null;
     const target = selectedTicker
@@ -197,7 +214,7 @@ export function useAppTickerOpenRuntime({
     if (action && pluginRegistry.panes.has(options?.paneType ?? TICKER_RESEARCH_PANE_ID)) {
       recordAttention(publicTickerKey(target.symbol, target.listing?.exchange ?? target.ticker.metadata.exchange), action);
     }
-  }, [placePinnedTickerTarget, pluginRegistry, resolveOpenTickerTarget, tickerRepository]);
+  }, [placePinnedTickerTarget, pluginRegistry, refuseWhileOwnerOff, resolveOpenTickerTarget, tickerRepository]);
 
   return {
     openPinnedTicker,

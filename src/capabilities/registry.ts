@@ -159,7 +159,14 @@ export class CapabilityRegistry {
 
   private resolveOperation(capabilityId: string, operationId: string, options: { renderer?: boolean }) {
     const entry = this.capabilities.get(capabilityId);
-    if (!entry || !this.isEnabled(entry)) throw new Error(`Capability "${capabilityId}" is not available.`);
+    if (!entry || !this.isEnabled(entry)) {
+      const pluginName = entry && this.options.isPluginEnabled?.(entry.pluginId) === false
+        ? this.options.pluginName?.(entry.pluginId)
+        : undefined;
+      throw new Error(pluginName
+        ? `Turn on ${pluginName} to use ${entry!.capability.name}.`
+        : `Capability "${capabilityId}" is not available.`);
+    }
     const operation = entry.capability.operations[operationId];
     if (!operation) throw new Error(`Capability operation "${capabilityId}.${operationId}" is not available.`);
     if (options.renderer && operation.rendererSafe !== true) {

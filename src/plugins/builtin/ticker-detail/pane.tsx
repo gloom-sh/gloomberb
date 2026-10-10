@@ -256,11 +256,10 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     : null;
   usePaneMenuItems("ticker-research:company-research", () => {
     if (!companySymbol || !dialog) return null;
-    const choices = COMPANY_RESEARCH.filter((item) => {
-      if (!registry) return true;
-      const owner = registry.getPaneTemplatePluginId?.(item.id);
-      return registry.paneTemplates?.has(item.id) && (!owner || !disabledPlugins.includes(owner));
-    });
+    const choices = COMPANY_RESEARCH.filter((item) => (
+      !registry
+      || (registry.paneTemplates?.has(item.id) && !registry.getDisabledPaneTemplateOwner?.(item.id, disabledPlugins))
+    ));
     if (!choices.length) return null;
     return [{ id: "company-research", label: t("Company Research…"), onSelect: () => {
       void dialog.prompt<string>({

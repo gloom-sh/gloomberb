@@ -66,6 +66,8 @@ export interface PluginHostActions {
   watchNewsQuery(query: NewsQuery, listener: (state: NewsQueryState) => void): () => void;
 
   notify(notification: AppNotificationRequest): AppNotificationDelivery | void;
+  /** Switches a plugin on or off the way the Plugins pane does. Not on the plugin API. */
+  setPluginEnabled(pluginId: string, enabled: boolean): void;
   getPaneRuntimeState(paneId: string): PaneRuntimeState | null;
   updatePaneRuntimeState(paneId: string, patch: Partial<PaneRuntimeState>): void;
   applyPaneSettingValue(paneId: string, field: PaneSettingField, value: unknown): Promise<void>;
@@ -115,6 +117,7 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
     registerNewsCapability: () => () => {},
     watchNewsQuery: () => () => {},
     notify: () => {},
+    setPluginEnabled: () => {},
     getPaneRuntimeState: () => null,
     updatePaneRuntimeState: () => {},
     applyPaneSettingValue: async () => {},

@@ -180,10 +180,10 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
     const registry = getSharedRegistry();
     const symbols = list ? memberSymbols(list.members) : [];
     if (!list || !symbols.length || !dialog || !registry) return null;
-    const destinations = MEMBER_DESTINATIONS.filter((destination) => {
-      const owner = registry.getPaneTemplatePluginId?.(destination.templateId);
-      return registry.paneTemplates.has(destination.templateId) && (!owner || !disabledPlugins.includes(owner));
-    });
+    const destinations = MEMBER_DESTINATIONS.filter((destination) => (
+      registry.paneTemplates.has(destination.templateId)
+      && !registry.getDisabledPaneTemplateOwner?.(destination.templateId, disabledPlugins)
+    ));
     const choices = memberDestinationChoices(symbols, destinations);
     const text = memberListText(list, symbols.length);
     const openIn = () => {

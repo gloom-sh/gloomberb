@@ -15,6 +15,7 @@ import { openTeamPane } from "../../plugins/builtin/cloud/team/pane-request";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { getShare } from "../../shares/api";
 import { openPaneShare } from "../../shares/pane";
+import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { materializeMarketplaceLayout } from "../../shares/portable-layout";
 
 type CloudDeepLinkRoute = {
@@ -564,6 +565,10 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
       return;
     case "open-share":
       void handleOpenShare(action, options.pluginRegistry).catch((error) => {
+        if (error instanceof PluginOffError) {
+          notifyPluginOff(options.pluginRegistry, error, () => handleDesktopDeepLink(rawUrl, options));
+          return;
+        }
         notifyError(options.pluginRegistry, error instanceof Error ? error.message : "Could not open shared pane.");
       });
       return;

@@ -25,6 +25,7 @@ import {
   removePane,
 } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
+import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { reportCrash } from "../../telemetry/crash-reports";
 import { recordFunctionOpen, usageFunctionForPane } from "../../telemetry/usage-counts";
 import { captureAttentionAction } from "../../telemetry/attention-counts";
@@ -129,7 +130,25 @@ export function bindAppPanePluginRegistry({
   switchTickerResearchTab,
   tickerRepository,
 }: BindAppPanePluginRegistryOptions): void {
+  const setPluginEnabled = (pluginId: string, enabled: boolean) => {
+    const current = stateRef.current.config;
+    const disabled = current.disabledPlugins ?? [];
+    // A second "Turn on" from an older toast must not switch it back off.
+    if (disabled.includes(pluginId) !== enabled) return;
+    if (!enabled) {
+      for (const paneId of pluginRegistry.getPluginPaneIds(pluginId)) pluginRegistry.hidePane(paneId);
+    }
+    dispatch({ type: "TOGGLE_PLUGIN", pluginId });
+    persistConfig({
+      ...current,
+      disabledPlugins: enabled
+        ? disabled.filter((entry) => entry !== pluginId)
+        : [...disabled, pluginId],
+    });
+  };
+
   pluginRegistry.bindHost({
+    setPluginEnabled,
     selectTicker: (symbol, paneId) => selectTickerInPane(symbol, paneId),
     switchPanel: (panel) => {
       if (isDetachedWindow) return;
@@ -196,10 +215,9 @@ export function bindAppPanePluginRegistry({
       const sharedPane = materialized.layout.instances[0];
       if (!sharedPane) throw new Error("This shared pane is invalid.");
       const paneDef = pluginRegistry.panes.get(sharedPane.paneId);
-      const ownerId = pluginRegistry.getPanePluginId(sharedPane.paneId);
-      if (!paneDef || (ownerId && stateRef.current.config.disabledPlugins.includes(ownerId))) {
-        throw new Error("This shared pane is unavailable in this version of Gloomberb.");
-      }
+      if (!paneDef) throw new Error("This shared pane is unavailable in this version of Gloomberb.");
+      const owner = pluginRegistry.getDisabledPaneOwner(sharedPane.paneId, stateRef.current.config.disabledPlugins);
+      if (owner) throw new PluginOffError(owner, "this shared pane");
       const instance = buildPaneInstance(sharedPane.paneId, sharedPane);
       if (!instance) throw new Error("This shared pane could not be created.");
       dispatch({
@@ -254,6 +272,12 @@ export function bindAppPanePluginRegistry({
     },
     navigateTicker: (rawSymbol, options) => {
       if (isDetachedWindow) return;
+      // Navigation lands in a research pane, which stays hidden while its plugin is off.
+      const researchOwner = pluginRegistry.getDisabledPaneOwner(TICKER_RESEARCH_PANE_ID, stateRef.current.config.disabledPlugins);
+      if (researchOwner) {
+        notifyPluginOff(pluginRegistry, new PluginOffError(researchOwner, rawSymbol), () => pluginRegistry.navigateTicker(rawSymbol, options));
+        return;
+      }
       const recordAttention = captureAttentionAction();
       recordFunctionOpen(usageFunctionForPane(pluginRegistry, TICKER_RESEARCH_PANE_ID));
       const sourcePaneId = options?.sourcePaneId ?? stateRef.current.focusedPaneId;
@@ -466,19 +490,6 @@ export function bindAppPanePluginRegistry({
     notify: (notification) => {
       pluginRegistry.notify(notification);
     },
-    setPluginEnabled: (pluginId, enabled) => {
-      const current = stateRef.current.config;
-      if (!enabled) {
-        for (const paneId of pluginRegistry.getPluginPaneIds(pluginId)) pluginRegistry.hidePane(paneId);
-      }
-      dispatch({ type: "TOGGLE_PLUGIN", pluginId });
-      const disabled = current.disabledPlugins ?? [];
-      persistConfig({
-        ...current,
-        disabledPlugins: enabled
-          ? disabled.filter((entry) => entry !== pluginId)
-          : [...disabled, pluginId],
-      });
-    },
+    setPluginEnabled,
   });
 }

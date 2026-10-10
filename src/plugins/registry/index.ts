@@ -82,6 +82,12 @@ interface PluginRegistryOptions {
 }
 
 export type { WindowEditMode } from "./host-actions";
+
+/** A switched-off plugin, named for a "Turn on" offer. */
+export interface DisabledPluginOwner {
+  id: string;
+  name: string;
+}
 export {
   getSharedMarketData,
   getSharedRegistry,
@@ -173,6 +179,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
     bindSharedRegistry(this, marketData);
     this.capabilities = new CapabilityRegistry({
       isPluginEnabled: (pluginId) => !this.getConfig().disabledPlugins.includes(pluginId),
+      pluginName: (pluginId) => this.plugins.get(pluginId)?.name,
       isCapabilityEnabled: (capability, pluginId) => {
         const disabledSources = this.getConfig().disabledSources ?? [];
         return !disabledSources.includes(capability.sourceId ?? capability.id) && !this.getConfig().disabledPlugins.includes(pluginId);
@@ -411,6 +418,33 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   getPaneTemplatePluginId(templateId: string): string | undefined {
     return this.contributions.paneTemplatesMap.owners.get(templateId);
+  }
+
+  /**
+   * The plugin that owns this pane type when it is switched off. A pane of a
+   * switched-off plugin stays hidden, so callers offer to turn it on instead
+   * of adding one.
+   */
+  getDisabledPaneOwner(
+    paneType: string,
+    disabledPlugins: readonly string[] = this.getConfig().disabledPlugins,
+  ): DisabledPluginOwner | null {
+    return this.disabledOwner(this.getPanePluginId(paneType), disabledPlugins);
+  }
+
+  /** The same for a template: its own plugin, or the one owning the pane it opens. */
+  getDisabledPaneTemplateOwner(
+    templateId: string,
+    disabledPlugins: readonly string[] = this.getConfig().disabledPlugins,
+  ): DisabledPluginOwner | null {
+    const paneType = this.paneTemplates.get(templateId)?.paneId;
+    return this.disabledOwner(this.getPaneTemplatePluginId(templateId), disabledPlugins)
+      ?? (paneType ? this.getDisabledPaneOwner(paneType, disabledPlugins) : null);
+  }
+
+  private disabledOwner(pluginId: string | undefined, disabledPlugins: readonly string[]): DisabledPluginOwner | null {
+    if (!pluginId || !disabledPlugins.includes(pluginId)) return null;
+    return { id: pluginId, name: this.plugins.get(pluginId)?.name ?? pluginId };
   }
 
   getBrokerPluginId(brokerType: string): string | undefined {
