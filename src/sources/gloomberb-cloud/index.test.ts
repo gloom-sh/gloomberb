@@ -191,6 +191,37 @@ describe("GloomberbCloudProvider", () => {
     }
   });
 
+  test("asks for a Hong Kong listing by its four-digit code, as brokers report it without the zeros", async () => {
+    // IBKR reports Tencent as 700 on SEHK; Cloud only knows 0700.
+    const requests: Array<[string, string, string | undefined]> = [];
+    const quote = (symbol: string) => ({ symbol, price: 424.8, currency: "HKD", change: 0, changePercent: 0, lastUpdated: 1, listingExchangeName: "HKEX" });
+    apiClient.getCloudQuote = async (symbol, exchange) => {
+      requests.push(["quote", symbol, exchange]);
+      return { status: "success", data: quote(symbol) };
+    };
+    apiClient.getCloudQuotesBatch = async (targets) => {
+      for (const target of targets) requests.push(["batch", target.symbol, target.exchange]);
+      return { status: "success", data: { items: targets.map((target) => ({ ...target, status: "success" as const, data: quote(target.symbol) })) } };
+    };
+    apiClient.getCloudHistory = async (symbol, exchange) => {
+      requests.push(["history", symbol, exchange]);
+      return { status: "success", data: [{ date: "2026-10-09", close: 424.8 }] };
+    };
+    const provider = new GloomberbCloudProvider();
+    expect((await provider.getQuote("700", "SEHK")).price).toBe(424.8);
+    const targets = [{ symbol: "700", exchange: "SEHK" }, { symbol: "1211", exchange: "HKEX" }, { symbol: "7203", exchange: "TSEJ" }];
+    const batch = await provider.getQuotesBatch(targets);
+    // The four-digit answer still lands on the target that asked for 700.
+    expect(batch.find((result) => result.target === targets[0])?.quote?.price).toBe(424.8);
+    expect(batch.every((result) => result.quote)).toBe(true);
+    expect(await provider.getPriceHistory("5", "SEHK", "1M")).toHaveLength(1);
+    expect(requests).toEqual([
+      ["quote", "0700", "HKEX"],
+      ["batch", "0700", "HKEX"], ["batch", "1211", "HKEX"], ["batch", "7203", "JPX"],
+      ["history", "0005", "HKEX"],
+    ]);
+  });
+
   test("rejects contradictory qualified listings before quote, research, history or auth transport", async () => {
     let calls = 0;
     apiClient.ensureVerifiedSession = async () => { calls++; return verifiedUser; };

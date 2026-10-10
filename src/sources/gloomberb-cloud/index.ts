@@ -45,7 +45,7 @@ import { nonUsSecListingVenue } from "../../utils/sec";
 import { publicListingTarget } from "../listing-target";
 import { canonicalHistoryInterval, HistoryRetentionError, parseHistoryRecoveryCandidate, parseHistoryRetention, type HistoryRetention } from "../history-retention";
 import { getRouterEntityKey } from "../provider-router/cache";
-import { tickerHasListingSuffix } from "../listing-symbols";
+import { hongKongListingCode, tickerHasListingSuffix } from "../listing-symbols";
 import { parseSecAcceptanceTime } from "../sec-edgar/acceptance-time";
 import { hasMalformedIntradayHistory } from "../../time-series/history-quality";
 import {
@@ -237,7 +237,7 @@ function cloudHistoryResolution(interval: string): ManualChartResolution | null 
 }
 
 function quoteTargetKey(symbol: string, exchange?: string): string {
-  const target = publicListingTarget(symbol, exchange);
+  const target = cloudInstrumentTarget(symbol, exchange);
   const base = target.exchange && tickerHasListingSuffix(target.symbol) ? target.symbol.slice(0, target.symbol.indexOf(".")) : target.symbol;
   return canonicalTickerKey(base, target.exchange);
 }
@@ -251,7 +251,14 @@ function cloudResponseTargetKey(key: string, requested: Set<string>): string | u
     ? symbol : undefined;
 }
 
-const cloudInstrumentTarget = publicListingTarget;
+/**
+ * The listing as Gloom Cloud knows it. A Hong Kong code goes out with its four
+ * digits: Cloud has no 700 or 5 on HKEX, only 0700 and 0005.
+ */
+function cloudInstrumentTarget(symbol: string, exchange?: string) {
+  const target = publicListingTarget(symbol, exchange);
+  return target.exchange ? { ...target, symbol: hongKongListingCode(target.symbol, target.exchange) } : target;
+}
 
 function cloudHistoryRecovery(
   context: MarketDataRequestContext | undefined,

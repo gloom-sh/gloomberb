@@ -143,11 +143,17 @@ export function listingSuffixExchange(ticker: string): string | undefined {
   return venues.size === 1 ? [...venues][0] : undefined;
 }
 
+/**
+ * A Hong Kong listing's four-digit code. Brokers such as Interactive Brokers
+ * report Tencent as 700 and HSBC as 5; the exchange and market data know
+ * them as 0700 and 0005.
+ */
+export function hongKongListingCode(ticker: string, exchange: string): string {
+  return isHongKongExchange(exchange) && /^\d+$/.test(ticker) ? ticker.padStart(4, "0") : ticker;
+}
+
 function normalizeListingTicker(ticker: string, exchange: string): string {
-  if (isHongKongExchange(exchange) && /^\d+$/.test(ticker)) {
-    return ticker.padStart(4, "0");
-  }
-  return ticker.replace(/ /g, "-");
+  return hongKongListingCode(ticker, exchange).replace(/ /g, "-");
 }
 
 function isHongKongExchange(exchange: string): boolean {
