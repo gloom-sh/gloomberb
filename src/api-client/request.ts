@@ -16,7 +16,8 @@ import {
 } from "../core/connection-health";
 import { SESSION_COOKIE_NAMES } from "./session-cookie";
 
-const DEFAULT_API_URL = "https://api.gloom.sh";
+/** The public Gloom Cloud API, which the web app's same-origin `/api` path forwards to. */
+export const DEFAULT_API_URL = "https://api.gloom.sh";
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS = 45_000;
 // Research may fill missing sections after a primary read; quote/history reads remain latency bounded.

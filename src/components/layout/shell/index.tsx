@@ -60,6 +60,7 @@ import {
 } from "./layout-state";
 import { AuthDialogHost } from "../../../plugins/builtin/cloud/auth-dialog";
 import { DeviceSignInDialogHost } from "../../../plugins/builtin/cloud/device-signin-dialog";
+import { McpConnectDialogHost } from "../../../plugins/builtin/cloud/mcp-connect/dialog";
 import { BrokerSignInDialogHost } from "../../../brokers/signed-in/sign-in-dialog";
 import { FeedbackDialogHost } from "../../feedback-dialog";
 import { FormModalHost } from "../../form-modal";
@@ -803,6 +804,7 @@ export function Shell({
       <DeviceSignInDialogHost />
       <BrokerSignInDialogHost />
       <AuthDialogHost />
+      <McpConnectDialogHost />
       <FeedbackDialogHost />
       {dataProvider && tickerRepository && (
         <FormModalHost dataProvider={dataProvider} pluginRegistry={pluginRegistry} tickerRepository={tickerRepository} />

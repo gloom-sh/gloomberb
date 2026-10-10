@@ -245,6 +245,22 @@ export interface CloudPricing {
   yearly: CloudPricingTier;
 }
 
+/**
+ * What an MCP key reaches beyond market data: `data` is market and filing
+ * tools only, `read` adds notes, teams and collections, `write` lets the agent
+ * save notes and change collection items.
+ */
+export type McpKeyScope = "data" | "read" | "write";
+
+/**
+ * A key just created with `POST /account/mcp/keys`. `token` is the secret,
+ * which the server never returns again: show it once, never store it.
+ */
+export interface CreatedMcpKey {
+  token: string;
+  apiKey: { id: string; name: string; scope: McpKeyScope };
+}
+
 /** The account's private calendar feed link (`/account/calendar-feed`). */
 export interface CalendarFeed {
   url: string;

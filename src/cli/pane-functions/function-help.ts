@@ -38,12 +38,13 @@ export interface FunctionHelp {
   data: FunctionFreshness | null;
   /** The Bloomberg mnemonics it stands in for; empty when Bloomberg has none. */
   bloomberg: readonly string[];
-  /** The docs entry when it is filed under another mnemonic (BTST under BT). */
+  /** The docs entry when it is filed under another mnemonic (BTST under BT), or the full URL of a page of its own. */
   docs?: string;
 }
 
-/** The docs page's anchor for a mnemonic, as the page builds heading ids. */
+/** The docs page's anchor for a mnemonic, as the page builds heading ids, or a full docs URL as is. */
 export function functionDocsUrl(code: string): string {
+  if (code.startsWith("https://")) return code;
   const anchor = code.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return anchor ? `${FUNCTION_DOCS_URL}#${anchor}` : FUNCTION_DOCS_URL;
 }
@@ -1127,6 +1128,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [],
     data: null,
     bloomberg: [],
+  },
+  MCP: {
+    summary: "Connects Claude Code, Codex, Cursor or any MCP client to Gloom's research tools: the command to copy, or a key to create.",
+    usage: ["MCP"],
+    keys: [key("c", "opy"), key("←/→", " client"), key("k", "ey")],
+    data: null,
+    bloomberg: [],
+    docs: "https://gloom.sh/docs/mcp",
   },
   BR: {
     summary: "Broker profiles, account sync and connection status. Every broker is a plugin you install first.",

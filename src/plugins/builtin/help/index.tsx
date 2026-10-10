@@ -153,6 +153,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       entry("des", ["DES", "<ticker>"], "Open security details for a specific ticker."),
       entry("help-card", ["HELP", "<function>"], "Open a function's help card: what it shows, its keys, how fresh its data is. HELP HELP reaches support."),
       entry("upgrade", ["UPGRADE"], tf("Go Pro for real-time data at gloom.sh/cloud, free for {days} days.", { days: trialDays })),
+      entry("mcp", ["MCP"], "Connect Claude Code, Codex, Cursor or any MCP client to Gloom's research tools."),
       entry("move", ["Up/Down", "Ctrl+P/N"], "Move through command bar results."),
       entry("page", ["PageUp/PageDown", "Ctrl+Home/End"], "Jump a page, or to the first or last result."),
       entry("run", ["Enter", "Shift+Enter"], "Run the selected result or its secondary action."),

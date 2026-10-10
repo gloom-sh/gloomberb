@@ -11,8 +11,10 @@ import type {
   CloudBrowserHandoffResponse,
   CloudPricing,
   CloudVerificationResponse,
+  CreatedMcpKey,
   DeviceAuthStartResponse,
   DeviceAuthTokenResponse,
+  McpKeyScope,
   PersistedAuthUser,
 } from "./types";
 
@@ -267,6 +269,19 @@ export class CloudAuthApi {
       { method: "POST", body: JSON.stringify({}) },
     );
     return result.feed;
+  }
+
+  /**
+   * Creates an MCP key for an agent, the same call as Cloud settings, Agents.
+   * Needs Pro (402 otherwise) and fails with 409 at the per-account limit. The
+   * token in the answer is never returned again, so callers show it once and
+   * keep it out of logs and storage.
+   */
+  async createMcpKey(input: { name: string; scope: McpKeyScope }): Promise<CreatedMcpKey> {
+    return this.options.request<CreatedMcpKey>("/account/mcp/keys", {
+      method: "POST",
+      body: JSON.stringify({ name: input.name, scope: input.scope }),
+    });
   }
 
   /** A new calendar feed link; the old one stops working. */

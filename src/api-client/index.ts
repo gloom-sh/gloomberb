@@ -443,6 +443,7 @@ class GloomApiClient {
   getCalendarFeed = this.auth.getCalendarFeed.bind(this.auth);
   ensureCalendarFeed = this.auth.ensureCalendarFeed.bind(this.auth);
   rotateCalendarFeed = this.auth.rotateCalendarFeed.bind(this.auth);
+  createMcpKey = this.auth.createMcpKey.bind(this.auth);
 
   async getSyncSnapshot(): Promise<CloudSyncSnapshotResponse> {
     return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", { method: "GET" });

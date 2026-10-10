@@ -14,6 +14,7 @@
 - [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)
 - [Broker position sync](#broker-position-sync)
 - [Gloom Cloud sign-in](#gloom-cloud-sign-in)
+- [Connect an AI assistant (MCP)](#connect-an-ai-assistant-mcp)
 - [Debt maturities](#debt-maturities)
 - [Theses](#theses)
 - [Interface language](#localized-interface)
@@ -349,6 +350,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `CONN` | Connection health |
 | `POLL` | Political polls from VoteHub ([Polls plugin](https://github.com/gloom-sh/gloom-polls)) |
 | `UPGRADE` | Account upgrade |
+| `MCP` | Connect Claude Code, Codex, Cursor or another MCP client to Gloom |
 | `CR` | Cycle chart renderer |
 | `LANG <locale>` | Change interface language (`auto`, `en`, `es`, `zh-CN`, `zh-TW`, `ja`, or `ko`) |
 | `PL <plugin>` | Manage plugins |
@@ -575,6 +577,12 @@ An independent current bond quote must declare its own price basis. A percent-of
 ## Gloom Cloud sign-in
 
 Sign in with email and password, or pick `Log In with QR Code` from the command bar and scan the code with the Gloomberb mobile companion app to sign the terminal in without typing. The onboarding wizard offers the same QR option as the recommended path, with email and password as the alternative.
+
+## Connect an AI assistant (MCP)
+
+`MCP` opens a short setup for the [Gloom MCP server](https://gloom.sh/docs/mcp); typing mcp, claude, codex or cursor in the command bar finds it too, and so does `ACM` > Advanced > Assistants (MCP). Pick the client and copy its one command or config with `c` or Copy.
+
+Claude Code, Cursor and most recent clients sign in through your browser on first use, so they need no key. Codex, and clients without a browser, use a key: `k` creates one through your Gloom Cloud account (Pro) and fills it into every snippet. The key is shown once and saved nowhere, so copy it before you close the dialog. Keys made here get Read access; to choose another level or revoke a key, use Cloud settings, Agents on gloom.sh.
 
 ## Chat
 

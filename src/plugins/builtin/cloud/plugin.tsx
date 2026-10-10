@@ -14,6 +14,7 @@ import { askgConversationListStore } from "./askg/conversation-store";
 import { ASKG_PANE_ID, ASKGPane } from "./askg/pane";
 import { askGloomQuestion } from "./askg/pending-question";
 import { registerCloudAuthCommands } from "./auth-commands";
+import { registerMcpConnectCommand } from "./mcp-connect/command";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
 import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
 import { registerTrialOfferCommand, TrialOfferStatusWidget } from "./trial-offer-status-widget";
@@ -39,7 +40,7 @@ function createCloudDataModule(): PluginModule {
   };
 }
 
-/** Sign-in and upgrade commands, and the email verification, upgrade and trial prompts. */
+/** Sign-in, upgrade and MCP setup commands, and the email verification, upgrade and trial prompts. */
 const cloudAccountModule: PluginModule = {
   slots: {
     "status:widget": () => (
@@ -54,6 +55,7 @@ const cloudAccountModule: PluginModule = {
     registerCloudAuthCommands(ctx);
     registerCloudUpgradeCommand(ctx);
     registerTrialOfferCommand(ctx);
+    registerMcpConnectCommand(ctx);
   },
 };
 
