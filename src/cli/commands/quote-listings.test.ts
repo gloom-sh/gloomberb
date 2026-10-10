@@ -7,14 +7,22 @@ import { marketDataCliCommands } from "./market";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 
-/** A quote source that answers only the listing keys in `quoted`, and records what each batch asked for. */
-function venueSource(symbol: string, venues: string[], quoted: Record<string, ReturnType<typeof createTestQuote>>) {
+/**
+ * A quote source that answers only the listing keys in `quoted`, and records what each batch asked for.
+ * Search lists the symbol on each venue under the company in `names`, else one fund.
+ */
+function venueSource(
+  symbol: string,
+  venues: string[],
+  quoted: Record<string, ReturnType<typeof createTestQuote>>,
+  names: Record<string, string> = {},
+) {
   const batches: string[][] = [];
   let searches = 0;
   const dataProvider = createTestDataProvider({
     search: async () => {
       searches += 1;
-      return venues.map((exchange) => ({ providerId: "test", symbol, name: `${symbol} Fund`, exchange, type: "ETF", currency: "EUR" }));
+      return venues.map((exchange) => ({ providerId: "test", symbol, name: names[exchange] ?? `${symbol} Fund`, exchange, type: "ETF", currency: "EUR" }));
     },
     getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
       batches.push(targets.map((target) => target.symbol));
@@ -68,6 +76,35 @@ test("a bare symbol with no quote is asked on the venue it resolved to, then its
   const quotedBare = venueSource("CSPX", ["XETRA"], { CSPX: quote });
   await runQuote(["CSPX"], quotedBare);
   expect(quotedBare.searches()).toBe(0);
+
+  // With no quote anywhere, one company's listings name the venue it resolved to and the others to try.
+  const unquoted = await runQuote(["CSPX"], venueSource("CSPX", ["XETRA", "LSE"], {}));
+  expect(unquoted.failure?.message).toBe("CSPX resolved to CSPX Fund (XETRA), which has no quote.");
+  expect(unquoted.failure?.details).toContain("CSPX:LSE CSPX Fund (try: gloomberb quote CSPX:LSE)");
+});
+
+test("a code several companies list is never quoted on one of them: it asks for an exchange, and only its row fails", async () => {
+  const quote = createTestQuote({ symbol: "2222", currency: "JPY" });
+  const names = { JPX: "Kotobuki Spirits Co., Ltd.", TADAWUL: "Saudi Arabian Oil Co." };
+  // Both listings have a quote, and the first in search order is not the answer.
+  const source = venueSource("2222", ["JPX", "TADAWUL"], { "2222:JPX": quote, "2222:TADAWUL": { ...quote, price: 2 }, CSPX: quote }, names);
+
+  const alone = await runQuote(["2222"], source);
+  expect(alone.failure?.message).toBe("Choose an exchange for 2222.");
+  expect(alone.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloomberb quote 2222:JPX)");
+  expect(alone.failure?.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb quote 2222:TADAWUL)");
+  // No listing was asked for its quote.
+  expect(source.batches).toEqual([["2222"]]);
+
+  // Beside others it is one failed row; the rest still print.
+  const several = await runQuote(["2222", "CSPX"], source);
+  expect(several.failure).toBeNull();
+  expect(several.rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["2222", true], ["CSPX", false]]);
+  expect((several.rows[0] as { error?: string }).error).toBe("Choose an exchange for 2222. Listings: 2222:JPX, 2222:TADAWUL.");
+  expect(several.warnings.join("\n")).not.toContain("2222 ->");
+
+  // A named listing is its own answer.
+  expect((await runQuote(["2222:TADAWUL"], source)).rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["2222:TADAWUL", false]]);
 });
 
 test("a bare symbol the service read on its home listing abroad names the venue, without a search", async () => {

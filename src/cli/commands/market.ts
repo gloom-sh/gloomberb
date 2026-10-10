@@ -561,8 +561,9 @@ interface QuoteAnswer {
  * One symbol's row of `quote` and `compare`. A listing on an exchange its symbol
  * is not listed on says so. A bare symbol the data service read on its home
  * listing abroad names that venue (SXR8 -> XETRA). One no source quotes is
- * quoted on its listings (`quoteBareListing`), else names them; a bare index
- * root (VIX) also names its index (^VIX). Venues are only looked up for a
+ * quoted on its listings (`quoteBareListing`), else names them, or asks for an
+ * exchange when several companies list it (2222); a bare index root (VIX) also
+ * names its index (^VIX). Venues are only looked up for a
  * symbol with no quote, so a request that succeeds costs no search.
  */
 async function answerQuote(
@@ -594,7 +595,7 @@ async function answerQuote(
   const details = [other?.details, indexLine].filter(Boolean).join("\n");
   const oneLine = [
     message,
-    other ? `Other listings: ${other.others.join(", ")}.` : "",
+    other ? `${other.heading}: ${other.listings.join(", ")}.` : "",
     indexLine ?? "",
   ].filter(Boolean).join(" ");
   return { result, listing, failure: { message, details, oneLine }, notes: [] };
