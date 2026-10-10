@@ -25,6 +25,7 @@ import {
   INDEX_SHORT,
   TABS,
   createRows,
+  moverExtendedSessions,
   overlayMarketMoverQuotes,
   resolveSummarySymbols,
   resolveTabs,
@@ -42,6 +43,7 @@ import { isSessionTab, resolveActiveTab, usSessionAt, type UsSession } from "./s
 import { SessionMoversBody } from "./session-body";
 import { marketMoversHeadless } from "./headless";
 import { buildMarketMoverColumns, renderMarketMoverCell } from "./table";
+import type { ExtendedSession } from "../../../market-data/market/status";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   useLiveStreamingSetting,
@@ -188,8 +190,13 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
     }),
     [freshnessNow, liveQuoteEntries, quoteTargets, subscriptionStartedAt],
   );
-  const columns = useMemo(() => buildMarketMoverColumns(width), [width]);
   const rankedRows = useMemo(() => createRows(resolvedQuotes), [resolvedQuotes]);
+  // A pre-market or after-hours column only while a row has such a print.
+  const extendedSessionsKey = moverExtendedSessions(rankedRows).join(",");
+  const columns = useMemo(
+    () => buildMarketMoverColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
+    [extendedSessionsKey, width],
+  );
   const rows = useMemo(() => sortRows(rankedRows, sortPreference), [rankedRows, sortPreference]);
   const selectedIdx = selectedSymbol
     ? rows.findIndex((row) => moverKey(row) === selectedSymbol)

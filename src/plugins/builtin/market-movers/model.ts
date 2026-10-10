@@ -1,5 +1,13 @@
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { overlayScreenerQuoteEntries } from "../../../market-data/quotes/screener-live-quotes";
+import {
+  getExtendedSessionDisplay,
+  getRegularSessionDisplay,
+  type ExtendedSession,
+  type ExtendedSessionDisplay,
+} from "../../../market-data/market/status";
+import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { isFiniteNumber } from "../../../utils/guards";
 import type { Quote } from "../../../types/financials";
 import type { CloudSessionMoversCategory } from "../../../api-client/market-movers";
 import type { QueryEntry } from "../../../market-data/result-types";
@@ -37,12 +45,20 @@ type MarketMoverColumnId =
   | "name"
   | "price"
   | "changePercent"
+  | "preMarket"
+  | "afterHours"
   | "volume"
   | "volumeRatio"
   | "range"
   | "marketCap";
 export type MarketMoverColumn = DataTableColumn & { id: MarketMoverColumnId };
-export type MarketMoverRow = ScreenerQuote & { rank: number };
+/**
+ * A list row. Price and change are the regular session's, as `ticker` reads
+ * them; a row whose quote has a pre-market or after-hours print carries it in
+ * `extended`, measured from that session's close.
+ */
+export type MoverQuote = ScreenerQuote & { extended?: ExtendedSessionDisplay | null };
+export type MarketMoverRow = MoverQuote & { rank: number };
 
 export interface MarketMoverSortPreference {
   columnId: MarketMoverColumnId | null;
@@ -96,6 +112,9 @@ function getSortValue(
       return row.price;
     case "changePercent":
       return row.changePercent;
+    case "preMarket":
+    case "afterHours":
+      return moverExtendedMove(row, columnId === "preMarket" ? "PRE" : "POST");
     case "volume":
       return row.volume;
     case "volumeRatio":
@@ -123,7 +142,17 @@ export function sortRows(
 /** A row is rebuilt only when its quote or rank moved, so unchanged rows skip the render. */
 const moverRows = new WeakMap<ScreenerQuote, MarketMoverRow>();
 
-export function createRows(quotes: ScreenerQuote[]): MarketMoverRow[] {
+/** The extended print's move from the close, when the row has one for `session`. */
+export function moverExtendedMove(row: MoverQuote, session: ExtendedSession): number | null {
+  return row.extended?.session === session && isFiniteNumber(row.extended.changePercent) ? row.extended.changePercent : null;
+}
+
+/** The extended sessions some row has a print for, in the order their columns go. */
+export function moverExtendedSessions(rows: readonly MoverQuote[]): ExtendedSession[] {
+  return (["PRE", "POST"] as const).filter((session) => rows.some((row) => row.extended?.session === session));
+}
+
+export function createRows(quotes: readonly MoverQuote[]): MarketMoverRow[] {
   return quotes.map((quote, index) => {
     const cached = moverRows.get(quote);
     if (cached?.rank === index + 1) return cached;
@@ -137,26 +166,36 @@ export function createRows(quotes: ScreenerQuote[]): MarketMoverRow[] {
   });
 }
 
-export function summaryQuoteFromQuote(
-  symbol: string,
-  quote: { name?: string; price: number; change: number; changePercent: number },
-): MarketSummaryQuote {
+/** An index in the summary strip, at its regular session's level and move. */
+export function summaryQuoteFromQuote(symbol: string, quote: Quote): MarketSummaryQuote {
+  const headline = getRegularSessionDisplay(quote)!;
   return {
     symbol,
     name: quote.name ?? symbol,
-    price: quote.price,
-    change: quote.change,
-    changePercent: quote.changePercent,
+    price: headline.price,
+    change: headline.change ?? Number.NaN,
+    changePercent: headline.changePercent ?? Number.NaN,
   };
 }
 
-export function screenerQuoteFromQuote(symbol: string, quote: { name?: string; price?: number; change?: number; changePercent?: number; volume?: number; currency?: string; exchangeName?: string; listingExchangeName?: string; lastUpdated?: number; previousClose?: number }): ScreenerQuote {
+/** The extended print beside a quote's regular session, or null; a non-finite price is none. */
+function moverExtended(quote: Quote): ExtendedSessionDisplay | null {
+  const extended = getExtendedSessionDisplay(quote);
+  return extended && isFiniteNumber(extended.price) ? extended : null;
+}
+
+/**
+ * A trending row from its quote: Last and Chg% are the regular session, as
+ * `ticker` reads it, and a pre-market or after-hours print rides beside them.
+ */
+export function screenerQuoteFromQuote(symbol: string, quote: Quote): MoverQuote {
+  const headline = getRegularSessionDisplay(quote)!;
   return {
     symbol,
     name: quote.name ?? symbol,
-    price: screenerNumber(quote.price),
-    change: screenerNumber(quote.change),
-    changePercent: screenerNumber(quote.changePercent),
+    price: screenerNumber(headline.price),
+    change: screenerNumber(headline.change),
+    changePercent: screenerNumber(headline.changePercent),
     volume: screenerVolume(quote.volume),
     avgVolume: null,
     volumeRatio: null,
@@ -169,6 +208,7 @@ export function screenerQuoteFromQuote(symbol: string, quote: { name?: string; p
     exchange: quote.listingExchangeName ?? quote.exchangeName ?? "",
     lastUpdated: quote.lastUpdated,
     previousClose: screenerNumber(quote.previousClose) ?? undefined,
+    extended: moverExtended(quote),
   };
 }
 
@@ -198,21 +238,35 @@ export function formatMoverPrice(price: number | null, currency: string, referen
 }
 
 /** Keyed by the overlaid row, which the shared overlay keeps while its quote holds. */
-const convertedOverlays = new WeakMap<ScreenerQuote, ScreenerQuote>();
+const convertedOverlays = new WeakMap<ScreenerQuote, MoverQuote>();
 
-/** Range endpoints and the previous close belong to the original screener price denomination. */
+/**
+ * Live quotes on the list's rows, which keep the list's order. Price and
+ * change are the regular session's, as `ticker` reads them, so after the
+ * close they hold at it and a pre-market or after-hours print is the row's
+ * `extended`. Range endpoints and the previous close belong to the original
+ * screener price denomination.
+ */
 export function overlayMarketMoverQuotes(
-  rows: readonly ScreenerQuote[],
+  rows: readonly MoverQuote[],
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
-): ScreenerQuote[] {
+): MoverQuote[] {
   return overlayScreenerQuoteEntries(rows, entries).map((row, index) => {
     const original = rows[index]!;
     if (row === original) return row;
     const cached = convertedOverlays.get(row);
     if (cached) return cached;
     const convert = (value: number | undefined) => convertScreenerPriceUnit(value, original.currency, row.currency);
+    const quote = resolveEntryData(entries.get(buildQuoteKey({ symbol: row.symbol, exchange: row.exchange })));
+    const headline = quote ? getRegularSessionDisplay(quote) : null;
     const converted = {
       ...row,
+      ...(quote && headline ? {
+        price: headline.price,
+        change: isFiniteNumber(headline.change) ? headline.change : null,
+        changePercent: isFiniteNumber(headline.changePercent) ? headline.changePercent : null,
+        extended: moverExtended(quote),
+      } : {}),
       fiftyTwoWeekLow: convert(original.fiftyTwoWeekLow),
       fiftyTwoWeekHigh: convert(original.fiftyTwoWeekHigh),
       dayLow: convert(original.dayLow),

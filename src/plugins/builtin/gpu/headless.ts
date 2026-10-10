@@ -3,6 +3,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchGpuBoard, fetchGpuEvents, fetchGpuHistory, loadGpuEquityHistory } from "./client";
 import { GPU_TABS, gpuArgument, gpuBasisLabel, gpuChange, gpuEquityRows, gpuEventDate, gpuProvenanceLabel, gpuLabel, gpuRows, gpuSource, gpuTab } from "./model";
 import { quoteFreshnessFields } from "../shared/report-freshness";
+import { getRegularSessionDisplay } from "../../../market-data/market/status";
 
 const observationRow = (row: GpuObservation) => ({ gpu: gpuLabel(row), source: gpuSource(row), basis: gpuBasisLabel(row.basis),
   price: row.pricePerGpuHr, availability: row.availability, observedAt: row.observedAt, effectiveAt: row.effectiveAt, provenance: row.provenance ?? "live", provenanceLabel: gpuProvenanceLabel(row, true),
@@ -55,7 +56,9 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
       const rows = await Promise.all(related.map(async (row) => {
         const quote = await ctx.marketData.getQuote(row.symbol, row.exchange).catch(() => null);
         const history = histories.find((entry) => entry.symbol === row.symbol);
-        return { symbol: row.symbol, role: row.role, price: quote?.price ?? null, change1d: quote?.changePercent ?? null,
+        // The regular session's last and move, as the pane's board shows them.
+        const headline = getRegularSessionDisplay(quote);
+        return { symbol: row.symbol, role: row.role, price: headline?.price ?? null, change1d: headline?.changePercent ?? null,
           change5d: history?.value ?? null, fiveDayAsOf: history?.asOf ?? null, quoteAsOf: quote?.lastUpdated ? new Date(quote.lastUpdated).toISOString() : null,
           ...quoteFreshnessFields(quote),
           gpu: row.reference ? gpuLabel(row.reference) : row.gpuModel, gpuSource: row.reference ? gpuSource(row.reference) : null, gpuChange7d: row.reference?.change7d ?? null };

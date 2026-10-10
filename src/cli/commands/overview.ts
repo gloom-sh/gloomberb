@@ -11,6 +11,7 @@ import {
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
 import { formatMoverPrice, moverReferencePrice } from "../../plugins/builtin/market-movers/model";
+import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
 import {
   COUNTRY_CYCLE,
   FILTER_CYCLE,
@@ -41,20 +42,43 @@ const BASKET_NAMES = new Map<string, string>([
   ...SECTOR_COLLECTIONS.flatMap((collection) => collection.items.map((item) => [item.etf, item.name] as const)),
 ]);
 // Priced like the MOST pane. Index and yield levels (^GSPC, ^TNX) carry no currency sign.
-const PRICE_COLUMN = { key: "price", header: "Last", align: "right" as const,
-  format: (value: unknown, row: Record<string, unknown>) => typeof value === "number"
+function formatRowPrice(value: unknown, row: Record<string, unknown>): string {
+  return typeof value === "number"
     ? formatMoverPrice(
       value,
       typeof row.currency === "string" && !String(row.symbol ?? "").startsWith("^") ? row.currency : "",
       moverReferencePrice(row as Parameters<typeof moverReferencePrice>[0]),
-    ) : "" };
+    ) : "";
+}
+const PRICE_COLUMN = { key: "price", header: "Last", align: "right" as const, format: formatRowPrice };
+
+/**
+ * A pre-market or after-hours print and its move from the regular close, as
+ * `quote` gives it, in its own column beside Last and Chg%. Text drops a
+ * column no row fills, so a table without an extended print stays as before.
+ */
+function extendedColumn(session: ExtendedSession) {
+  return {
+    key: session === "PRE" ? "preMarket" : "afterHours",
+    header: EXTENDED_SESSION_LABELS[session],
+    align: "right" as const,
+    value: (row: Record<string, unknown>) => row.extendedSession === session ? row.extendedPrice : null,
+    format: (value: unknown, row: Record<string, unknown>) => typeof value === "number"
+      ? [formatRowPrice(value, row), formatChangePercentCell(row.extendedChangePercent)].join(" ").trim()
+      : "",
+  };
+}
+const EXTENDED_COLUMNS = [extendedColumn("PRE"), extendedColumn("POST")];
+// A narrow terminal drops these before it cuts the names short.
+const MARKET_CAP_CELL = { key: "marketCap", header: "Mkt Cap", align: "right" as const, optional: true, dropPriority: 1 };
 const MOVER_COLUMNS = [
   { key: "symbol", header: "Symbol" },
   { key: "name", header: "Name" },
   PRICE_COLUMN,
   { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
+  ...EXTENDED_COLUMNS,
   { key: "volume", header: "Volume", align: "right" as const, format: formatCompactCell },
-  { key: "marketCap", header: "Mkt Cap", align: "right" as const, format: formatCompactCell },
+  { ...MARKET_CAP_CELL, format: formatCompactCell },
 ];
 const START_OPTION = { flags: "--start <yyyy-mm-dd>", description: "First observation date (default 2021-01-01)" };
 
@@ -80,15 +104,27 @@ function rejectArgs(args: readonly string[], usage: string, ctx: Parameters<CliC
   rejectExtraArgs(args, 0, { usage, takes: "no arguments", advice }, ctx);
 }
 
+/** A percent to two decimals, as the table prints it. */
+function roundedPercent(value: number | null): number | null {
+  return value == null ? null : Number(value.toFixed(2));
+}
+
 function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/data-provider").AssetDataProvider["getQuotesBatch"]>>>) {
   return results.map((result) => {
     const quote = result.quote;
+    // Last and Chg% are the regular session, as `ticker` reads it; a pre-market or
+    // after-hours print is its own column, measured from that session's close.
+    const session = getQuoteSessionFields(quote);
     return {
       symbol: result.target.symbol,
       name: quote?.name || BASKET_NAMES.get(result.target.symbol) || "",
-      price: quote?.price ?? null,
-      change: quote?.change ?? null,
-      changePercent: quote?.changePercent == null ? null : Number(quote.changePercent.toFixed(2)),
+      price: session.price,
+      change: session.change,
+      changePercent: roundedPercent(session.changePercent),
+      extendedSession: session.extendedSession,
+      extendedPrice: session.extendedPrice,
+      extendedChange: session.extendedChange,
+      extendedChangePercent: roundedPercent(session.extendedChangePercent),
       currency: quote?.currency ?? "",
       providerId: quote?.providerId ?? "",
       marketCap: quote?.marketCap ?? null,
@@ -137,7 +173,8 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
         { key: "name", header: "Name" },
         PRICE_COLUMN,
         { key: "changePercent", header: "Chg%", align: "right", format: formatChangePercentCell },
-        { key: "marketCap", header: "Mkt Cap", align: "right", value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
+        ...EXTENDED_COLUMNS,
+        { ...MARKET_CAP_CELL, value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
       ],
     });
   });

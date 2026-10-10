@@ -4,7 +4,11 @@ import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import type { QuoteBatchResult } from "../../../types/data-provider";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import { getExtendedSessionDisplay, getRegularSessionDisplay } from "../../../market-data/market/status";
+import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
 import { worldIndicesHeadless } from "./headless";
+import { WORLD_INDICES } from "./indices";
+import { renderWorldIndexCell, type WorldIndexColumn } from "./table";
 
 afterEach(() => setCliColorEnabledOverride(null));
 
@@ -43,4 +47,27 @@ test("a load that failed is an error, not a gap in what the feed carries", async
   expect(text).toContain("Errors: DX-Y.NYB: request timed out");
   expect(dxy).not.toContain("not available from the feed");
   expect(result.unavailableSymbols).toBeUndefined();
+});
+
+test("WEI and its board headline the regular session's close and move, as `ticker` does", async () => {
+  const quotes = sessionQuotes("^GSPC", { instrumentType: "INDEX" });
+  for (const state of ["weekend", "afterHours", "preMarket", "regular"] as const) {
+    const quote = quotes[state];
+    const marketData = createTestDataProvider({
+      getQuotesBatch: async (targets: Array<{ symbol: string }>): Promise<QuoteBatchResult[]> => targets.map((target) => ({
+        target: { symbol: target.symbol, exchange: "" }, quote: target.symbol === "^GSPC" ? quote : null,
+      })),
+    });
+    const result = await worldIndicesHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ marketData }));
+    const spx = (result.sections as Array<{ rows: Array<Record<string, unknown>> }>)[0]!.rows[0]!;
+    const headline = getRegularSessionDisplay(quote)!;
+    const extended = getExtendedSessionDisplay(quote);
+    expect(spx).toMatchObject({ price: headline.price, change: headline.change, changePercent: headline.changePercent,
+      extendedSession: extended?.session ?? null, extendedPrice: extended?.price ?? null });
+
+    const board = new Map([["^GSPC", { quote, loading: false, error: null, stale: false }]]);
+    const cell = (id: WorldIndexColumn["id"]) => renderWorldIndexCell({ type: "row", entry: WORLD_INDICES[0]! }, { id, label: "", width: 12, align: "right" }, board);
+    expect(cell("price").value).toBe(headline.price);
+    expect(cell("changePercent").value).toBe(headline.changePercent);
+  }
 });

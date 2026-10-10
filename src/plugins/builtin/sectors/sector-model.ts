@@ -1,8 +1,15 @@
 import type { DataTableColumn } from "../../../components";
+import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
 import type { PricePoint, Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { getPricePointTimestamp } from "../../../utils/price-history";
 import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
+import {
+  getExtendedSessionDisplay,
+  getRegularSessionDisplay,
+  marketStateLabel,
+  type ExtendedSession,
+} from "../../../market-data/market/status";
 import {
   getSectorCollection,
   type SectorCollectionId,
@@ -12,8 +19,21 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_COLLECTION_ID: SectorCollectionId = "sectors";
 
-export interface SectorRow extends SectorDef {
+/**
+ * The pre-market or after-hours print beside a row's regular close, measured
+ * from that close (getExtendedSessionDisplay); all null without one.
+ */
+export interface SectorExtendedFields {
+  extendedSession?: ExtendedSession | null;
+  extendedPrice?: number | null;
+  extendedChange?: number | null;
+  extendedChangePercent?: number | null;
+}
+
+export interface SectorRow extends SectorDef, SectorExtendedFields {
+  /** The regular session's price: its close once it is over, never an extended print. */
   price: number | null;
+  /** The regular session's move, as `ticker` reports it. */
   changePercent: number | null;
   return1M: number | null;
   return1Y: number | null;
@@ -33,7 +53,7 @@ export interface SectorRow extends SectorDef {
   return1YStartDate?: string | null;
 }
 
-type SectorColumnId = "name" | "etf" | "price" | "changePercent" | "return1M" | "return1Y" | "bar";
+type SectorColumnId = "name" | "etf" | "price" | "changePercent" | "preMarket" | "afterHours" | "return1M" | "return1Y" | "bar";
 export type SectorColumn = DataTableColumn & { id: SectorColumnId };
 export type SectorRowsByCollection = Record<SectorCollectionId, SectorRow[]>;
 export type SectorRefreshByCollection = Partial<Record<SectorCollectionId, number>>;
@@ -47,6 +67,45 @@ export const DEFAULT_SORT_PREFERENCE: SectorSortPreference = {
   columnId: "changePercent",
   direction: "desc",
 };
+
+const NO_EXTENDED_PRINT: Required<SectorExtendedFields> = {
+  extendedSession: null,
+  extendedPrice: null,
+  extendedChange: null,
+  extendedChangePercent: null,
+};
+
+/** A quote's pre-market or after-hours print, from the regular close a row shows, as row fields. */
+export function sectorExtendedFields(quote: Quote | null | undefined): Required<SectorExtendedFields> {
+  const extended = getExtendedSessionDisplay(quote);
+  if (!extended || !Number.isFinite(extended.price)) return NO_EXTENDED_PRINT;
+  return {
+    extendedSession: extended.session,
+    extendedPrice: extended.price,
+    extendedChange: Number.isFinite(extended.change) ? extended.change! : null,
+    extendedChangePercent: Number.isFinite(extended.changePercent) ? extended.changePercent! : null,
+  };
+}
+
+function extendedFieldsOf(row: SectorExtendedFields | undefined): Required<SectorExtendedFields> {
+  return {
+    extendedSession: row?.extendedSession ?? null,
+    extendedPrice: row?.extendedPrice ?? null,
+    extendedChange: row?.extendedChange ?? null,
+    extendedChangePercent: row?.extendedChangePercent ?? null,
+  };
+}
+
+function sameExtended(left: SectorExtendedFields, right: SectorExtendedFields): boolean {
+  return (left.extendedSession ?? null) === (right.extendedSession ?? null)
+    && (left.extendedPrice ?? null) === (right.extendedPrice ?? null)
+    && (left.extendedChangePercent ?? null) === (right.extendedChangePercent ?? null);
+}
+
+/** The extended sessions some row has a print for, in the order their columns go. */
+export function sectorExtendedSessions(rows: readonly SectorExtendedFields[]): ExtendedSession[] {
+  return (["PRE", "POST"] as const).filter((session) => rows.some((row) => row.extendedSession === session));
+}
 
 /** Full length at a 5% session move, which covers all but crash days. */
 const MOVE_BAR_FULL_SCALE_PERCENT = 5;
@@ -99,6 +158,7 @@ export function normalizeRowsForCollection(
       quoteIssue: existing?.quoteIssue ?? null,
       lastReportedPrice: existing?.lastReportedPrice ?? null,
       quoteUpdatedAt: existing?.quoteUpdatedAt ?? null,
+      ...extendedFieldsOf(existing),
       returnIntegrity: existing?.returnIntegrity ?? {},
       returnAsOfDate: existing?.returnAsOfDate ?? null,
       return1MStartDate: existing?.return1MStartDate ?? null,
@@ -138,6 +198,7 @@ const UNAVAILABLE_SECTOR_ROW: Partial<SectorRow> = {
   lastReportedPrice: null,
   quoteUpdatedAt: null,
   returnIntegrity: {},
+  ...NO_EXTENDED_PRINT,
 };
 
 function sameSectorRow(left: SectorRow, right: SectorRow): boolean {
@@ -276,33 +337,49 @@ export function sectorRowIssues(row: SectorRow): string[] {
   return issues;
 }
 
-export function buildSectorColumns(width: number): SectorColumn[] {
-  const etfWidth = 4;
-  const priceWidth = 8;
-  const changeWidth = 8;
-  const returnWidth = 8;
-  const showBar = width >= 67;
-  const compactBar = width < 82;
-  const barWidth = showBar
-    ? compactBar ? 6 : Math.max(8, Math.min(18, Math.floor(width * 0.16)))
-    : 0;
-  const columnCount = showBar ? 7 : 6;
-  const fixedWidth = etfWidth + priceWidth + changeWidth + returnWidth * 2 + barWidth;
-  const nameWidth = Math.max(10, Math.min(22, width - 2 - columnCount - fixedWidth));
+const EXTENDED_COLUMN_WIDTH = 9;
+/** The longest name in either collection ("Consumer Staples"), which a narrow pane keeps whole as long as it can. */
+const FULL_NAME_WIDTH = 16;
 
-  const columns: SectorColumn[] = [
-    { id: "name", label: "SECTOR", width: nameWidth, align: "left", flexGrow: 1 },
-    { id: "etf", label: "ETF", width: etfWidth, align: "left" },
-    { id: "price", label: "LAST", width: priceWidth, align: "right" },
-    { id: "changePercent", label: "1D", width: changeWidth, align: "right" },
-    { id: "return1M", label: "1M", width: returnWidth, align: "right" },
-    { id: "return1Y", label: "1Y", width: returnWidth, align: "right" },
+/**
+ * The board's columns at `width`. A pre-market or after-hours column follows
+ * 1D for each session in `extendedSessions`. A narrow pane gives up the move
+ * bar first, then that column, before it cuts a sector's name.
+ */
+export function buildSectorColumns(width: number, extendedSessions: readonly ExtendedSession[] = []): SectorColumn[] {
+  const lead: SectorColumn[] = [
+    { id: "etf", label: "ETF", width: 4, align: "left" },
+    { id: "price", label: "LAST", width: 8, align: "right" },
+    { id: "changePercent", label: "1D", width: 8, align: "right" },
   ];
-  if (showBar) {
-    // Labelled with the window it encodes: it sits after 1Y but tracks 1D.
-    columns.push({ id: "bar", label: "1D MOVE", width: barWidth, align: "left" });
-  }
-  return columns;
+  const returns: SectorColumn[] = [
+    { id: "return1M", label: "1M", width: 8, align: "right" },
+    { id: "return1Y", label: "1Y", width: 8, align: "right" },
+  ];
+  const extendedColumns = extendedSessions.map((session): SectorColumn => ({
+    id: session === "PRE" ? "preMarket" : "afterHours",
+    // Named for the session it trades in, as the header labels it.
+    label: marketStateLabel(session),
+    width: EXTENDED_COLUMN_WIDTH,
+    align: "right",
+  }));
+  // Measured the way the table draws them (a header and its sort mark widen a
+  // column, gaps between them); the name adds its own width and a gap.
+  const nameRoom = (columns: SectorColumn[]) => width - getTableWidth(columns) - 1;
+  const shownExtended = extendedColumns.length > 0 && nameRoom([...lead, ...extendedColumns, ...returns]) >= FULL_NAME_WIDTH
+    ? extendedColumns
+    : [];
+  const extendedWidth = shownExtended.reduce((total, column) => total + tableColumnWidth(column) + 1, 0);
+  const barWidth = width - extendedWidth < 82 ? 6 : Math.max(8, Math.min(18, Math.floor(width * 0.16)));
+  // Labelled with the window it encodes: it sits after 1Y but tracks 1D.
+  const bar: SectorColumn = { id: "bar", label: "1D MOVE", width: barWidth, align: "left" };
+  const withBar = [...lead, ...shownExtended, ...returns, bar];
+  const showBar = width - extendedWidth >= 67 && nameRoom(withBar) >= FULL_NAME_WIDTH;
+  const columns = showBar ? withBar : [...lead, ...shownExtended, ...returns];
+  return [
+    { id: "name", label: "SECTOR", width: Math.max(10, Math.min(22, nameRoom(columns))), align: "left", flexGrow: 1 },
+    ...columns,
+  ];
 }
 
 function getSortValue(columnId: SectorColumnId, row: SectorRow): string | number | null {
@@ -315,6 +392,9 @@ function getSortValue(columnId: SectorColumnId, row: SectorRow): string | number
       return row.price;
     case "changePercent":
       return row.changePercent;
+    case "preMarket":
+    case "afterHours":
+      return row.extendedSession === (columnId === "preMarket" ? "PRE" : "POST") ? row.extendedChangePercent ?? null : null;
     case "return1M":
       return row.return1M;
     case "return1Y":
@@ -338,6 +418,8 @@ export function nextSortPreference(current: SectorSortPreference, columnId: stri
     return {
       columnId: typedColumnId,
       direction: typedColumnId === "changePercent"
+        || typedColumnId === "preMarket"
+        || typedColumnId === "afterHours"
         || typedColumnId === "return1M"
         || typedColumnId === "return1Y"
         || typedColumnId === "bar"
@@ -373,15 +455,28 @@ export function sectorQuoteSessionDate(quote: Quote): string | null {
 /**
  * A live quote extends a loaded row only inside the session its returns are
  * measured to. Every fund shares that session, so a pre-market print (the
- * next session) or a quote older than the snapshot leaves the row alone and
- * the board keeps ranking on one completed session. The 1M and 1Y returns
- * keep their baselines: the row's own return and price imply the start close.
+ * next session) or a quote older than the snapshot leaves the row's price
+ * alone and the board keeps ranking on one completed session. The 1M and 1Y
+ * returns keep their baselines: the row's own return and price imply the
+ * start close.
  */
 function isLiveSectorQuote(row: SectorRow, quote: Quote | null | undefined): quote is Quote {
-  if (!quote || quote.stale === true || !finitePositive(quote.price)) return false;
-  if (!finitePositive(row.price) || !row.returnAsOfDate) return false;
-  if (row.quoteUpdatedAt != null && quote.lastUpdated < row.quoteUpdatedAt) return false;
+  if (!isCurrentSectorQuote(row, quote) || !finitePositive(getRegularSessionDisplay(quote)?.price)) return false;
   return sectorQuoteSessionDate(quote) === row.returnAsOfDate;
+}
+
+/** A usable quote no older than the snapshot behind a loaded row. */
+function isCurrentSectorQuote(row: SectorRow, quote: Quote | null | undefined): quote is Quote {
+  if (!quote || quote.stale === true) return false;
+  if (!finitePositive(row.price) || !row.returnAsOfDate) return false;
+  return row.quoteUpdatedAt == null || quote.lastUpdated >= row.quoteUpdatedAt;
+}
+
+/** A pre-market print of the session after the row's, which moves only the extended column. */
+function isNextPreMarketQuote(row: SectorRow, quote: Quote): boolean {
+  if (quote.marketState !== "PRE" && quote.marketState !== "PREPRE") return false;
+  const session = sectorQuoteSessionDate(quote);
+  return !!session && !!row.returnAsOfDate && session > row.returnAsOfDate;
 }
 
 /**
@@ -402,18 +497,32 @@ export function sectorRowFollowsQuote(row: SectorRow, quote: Quote): boolean {
   return quote.marketState === "PRE" || quote.marketState === "PREPRE";
 }
 
+/**
+ * A row with the feed's quote on it. Price and 1D are the regular session,
+ * as `ticker` reads them, so they hold at the close; a pre-market or
+ * after-hours print moves only the extended column, measured from that close.
+ */
 export function overlayLiveSectorQuote(row: SectorRow, quote: Quote | null | undefined): SectorRow {
-  if (!isLiveSectorQuote(row, quote) || row.price == null) return row;
-  const changePercent = Number.isFinite(quote.changePercent) ? quote.changePercent : row.changePercent;
-  if (quote.price === row.price && changePercent === row.changePercent) return row;
-  const scale = quote.price / row.price;
-  const rescale = (value: number | null) => (value == null ? null : ((1 + value / 100) * scale - 1) * 100);
+  if (!isCurrentSectorQuote(row, quote) || row.price == null) return row;
+  if (!isLiveSectorQuote(row, quote)) {
+    if (!isNextPreMarketQuote(row, quote)) return row;
+    const extended = sectorExtendedFields(quote);
+    return sameExtended(extended, row) ? row : { ...row, ...extended };
+  }
+  const headline = getRegularSessionDisplay(quote)!;
+  const extended = sectorExtendedFields(quote);
+  const changePercent = Number.isFinite(headline.changePercent) ? headline.changePercent! : row.changePercent;
+  if (headline.price === row.price && changePercent === row.changePercent && sameExtended(extended, row)) return row;
+  const scale = headline.price / row.price;
+  // A held close leaves the returns exactly as they were.
+  const rescale = (value: number | null) => (value == null || scale === 1 ? value : ((1 + value / 100) * scale - 1) * 100);
   return {
     ...row,
-    price: quote.price,
-    lastReportedPrice: quote.price,
+    price: headline.price,
+    lastReportedPrice: headline.price,
     changePercent,
     return1M: rescale(row.return1M),
     return1Y: rescale(row.return1Y),
+    ...extended,
   };
 }

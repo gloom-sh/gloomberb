@@ -96,7 +96,7 @@ test("every column PF declares is a field of its position rows, the listing incl
 
 test("a watchlist reads by name, and an unknown id lists the ones that exist", async () => {
   const watchlist = await collectionHoldingsHeadless.load(args("tech"), context());
-  expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5, stale: false, updatedAt: expect.any(Number) }]);
+  expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5, extendedSession: null, extendedPrice: null, extendedChange: null, extendedChangePercent: null, stale: false, updatedAt: expect.any(Number) }]);
   expect(watchlist.metadata).toMatchObject({ collection: { kind: "watchlist", id: "tech" }, tickers: 1 });
 
   await expect(collectionHoldingsHeadless.load(args("default"), context()))

@@ -1,10 +1,12 @@
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint, Quote } from "../../../types/financials";
 import type { SectorDef } from "./sector-data";
+import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import {
   computeTrailingReturn,
   historySessionBefore,
   latestHistoryDate,
+  sectorExtendedFields,
   sectorReturnTargetDate,
   sectorQuoteSessionDate,
   sectorReturnStartDate,
@@ -41,6 +43,8 @@ export async function loadSectorRows(
     sector.etf,
     await provider.getPriceHistory(sector.etf, "", "1Y").catch(() => []),
   ] as const)));
+  // The quotes as sent carry any pre-market or after-hours print, for its own column.
+  const sentQuotes = new Map(quotes);
   for (const [symbol, quote] of quotes) {
     if (quote) quotes.set(symbol, completedSessionQuote(quote, histories.get(symbol) ?? []));
   }
@@ -52,7 +56,10 @@ export async function loadSectorRows(
     let history: PricePoint[] = histories.get(sector.etf) ?? [];
     const quote = quotes.get(sector.etf) ?? null;
     if (!quote && history.length === 0) return { etf: sector.etf, row: null };
-    const lastReportedPrice = quote && Number.isFinite(quote.price) && quote.price > 0 ? quote.price : null;
+    // Price and 1D are the regular session, as `ticker` reads them: after the close
+    // its close and move, with an extended print in its own column.
+    const headline = getRegularSessionDisplay(quote);
+    const lastReportedPrice = headline && Number.isFinite(headline.price) && headline.price > 0 ? headline.price : null;
     const sessionDate = quoteDates.get(sector.etf) ?? null;
     const priceIssue = !quote || lastReportedPrice == null ? "quote unavailable"
       : !sessionDate ? "quote session unknown"
@@ -60,7 +67,7 @@ export async function loadSectorRows(
       : sessionDate !== asOfDate ? `quote from ${sessionDate}; shared session is ${asOfDate}`
       : null;
     const price = priceIssue ? null : lastReportedPrice;
-    const changePercent = price != null && Number.isFinite(quote?.changePercent) ? quote!.changePercent : null;
+    const changePercent = price != null && Number.isFinite(headline?.changePercent) ? headline!.changePercent! : null;
     const quoteIssue = priceIssue ?? (changePercent == null ? "1D change unavailable" : null);
     // A strict trailing request may begin after the prior year's weekend or
     // holiday. Ask for a small boundary buffer when the provider supports it.
@@ -89,6 +96,7 @@ export async function loadSectorRows(
         quoteUpdatedAt: quote && Number.isFinite(quote.lastUpdated) ? quote.lastUpdated : null,
         quoteDataSource: quote?.dataSource,
         changePercent,
+        ...sectorExtendedFields(price == null ? null : sentQuotes.get(sector.etf)),
         return1M: month?.value ?? null,
         return1Y: year?.value ?? null,
         returnAsOfDate: asOfDate,

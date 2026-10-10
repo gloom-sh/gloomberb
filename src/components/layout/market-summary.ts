@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { priceColor } from "../../theme/colors";
+import { priceColor, type ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { useAppVisible } from "../../state/app/activity";
 import { useAppSelector } from "../../state/app/context";
@@ -10,7 +10,8 @@ import { useQuoteStreaming } from "../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { formatPercentRaw } from "../../utils/format";
 import { formatMarketPrice, liveQuoteFormatOptions } from "../../market-data/market/format";
-import { getActiveQuoteDisplay, marketStateColor, marketStateCountdown, marketStateLabel } from "../../market-data/market/status";
+import { getSessionMoveDisplay, marketStateColor, marketStateCountdown, marketStateLabel } from "../../market-data/market/status";
+import type { Quote } from "../../types/financials";
 
 /**
  * SPY rides the shared feed. The snapshot poll only runs while the feed has
@@ -76,6 +77,25 @@ export function resolveMarketSummaryFit(options: {
   return { showBaseCurrency, showCountdown, showState, showSpy };
 }
 
+/**
+ * SPY in the header's one slot, beside the market state: the live quote while
+ * the regular session trades, and once it is over its close and the move to
+ * it, as `ticker SPY` headlines them. While a pre-market or after-hours
+ * session is open (PRE-MKT, AFTER-HRS) the slot is that session's print and
+ * its move from the close, so the figure is the session the label names.
+ */
+export function spySummary(quote: Quote | null | undefined, colors: ThemeColors): Pick<MarketSummary, "spyColor" | "spyText"> {
+  const display = getSessionMoveDisplay(quote);
+  // Fixed decimals and a percent slot as wide as "+0.53%", so a streamed tick
+  // never slides the market-state label or re-fits the cluster.
+  return {
+    spyColor: display?.change != null ? priceColor(display.change, colors) : colors.textDim,
+    spyText: display
+      ? `SPY ${formatMarketPrice(display.price, liveQuoteFormatOptions(quote, quote?.currency, "ETF"))} ${formatPercentRaw(display.changePercent).padStart(6)}`
+      : "SPY —",
+  };
+}
+
 export function useMarketSummary(): MarketSummary {
   const colors = useThemeColors();
   const appActive = useAppVisible();
@@ -112,13 +132,7 @@ export function useMarketSummary(): MarketSummary {
     return () => { clearInterval(id); };
   }, [appActive]);
 
-  const activeSpyQuote = getActiveQuoteDisplay(spyQuote);
-  const spyColor = activeSpyQuote?.change != null ? priceColor(activeSpyQuote.change, colors) : colors.textDim;
-  // Fixed decimals and a percent slot as wide as "+0.53%", so a streamed tick
-  // never slides the market-state label or re-fits the cluster.
-  const spyText = activeSpyQuote
-    ? `SPY ${formatMarketPrice(activeSpyQuote.price, liveQuoteFormatOptions(spyQuote, spyQuote?.currency, "ETF"))} ${formatPercentRaw(activeSpyQuote.changePercent).padStart(6)}`
-    : "SPY —";
+  const { spyColor, spyText } = spySummary(spyQuote, colors);
 
   const mktCountdown = mktState ? marketStateCountdown(mktState, now) : null;
   const marketLabelShort = mktState ? t(marketStateLabel(mktState)) : "";
