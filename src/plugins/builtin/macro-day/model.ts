@@ -1,10 +1,20 @@
+import type { EarningsTiming } from "../../../api-client/earnings";
 import type { PricePoint } from "../../../types/financials";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
-import { MACRO_EVENT_KINDS, type MacroEventKind, type MacroRelease } from "./releases";
+import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, type MacroEventKind, type MacroRelease } from "./releases";
 
 const DAY_MS = 86_400_000;
 /** Longest calendar gap between two closes that is still one session apart: Thursday to Monday over a Friday holiday. */
 const MAX_SESSION_GAP_DAYS = 4;
+
+/** One of the ticker's own earnings reports, reduced to what dates its reaction. */
+export interface MacroDayEarningsReport {
+  /** Report date, New York. */
+  date: string;
+  timing: EarningsTiming | null;
+  /** The session the earnings history measures the report's move on, once the report is priced. */
+  reactionSession?: string | null;
+}
 
 export interface MacroDayEvent {
   kind: MacroEventKind;
@@ -12,6 +22,8 @@ export interface MacroDayEvent {
   date: string;
   /** The session whose close carries the reaction: the release day, or the next session when the market was shut. */
   session: string;
+  /** The session is also the reaction session of the ticker's own earnings report: the move is the report's, not the release's. */
+  earnings: boolean;
   /** Close before the release to the session's close. */
   move: number;
   /** |move| over the normal day's average |move|. */
@@ -32,14 +44,21 @@ export interface MacroDayModel {
   symbol: string;
   /** Newest first. */
   events: MacroDayEvent[];
+  /** Without the earnings days. */
   byKind: Record<MacroEventKind, MacroDayStats>;
-  /** Every release day of the three kinds together; a day with two releases counts once. */
+  /** Every release day of the three kinds together, without the earnings days; a day with two releases counts once. */
   allEvents: MacroDayStats;
-  /** Sessions with no release of the three kinds. */
+  /** Release days that are the ticker's earnings reaction, which no other figure counts; a day with two releases counts once. */
+  earnings: MacroDayStats;
+  /** Sessions with no release of the three kinds, and none of the earnings days among them. */
   normal: MacroDayStats;
   start: string | null;
   asOf: string | null;
 }
+
+/** The release's name, with the earnings marker on a day that is the ticker's own report reaction. */
+export const macroDayEventLabel = (event: Pick<MacroDayEvent, "kind" | "earnings">) =>
+  event.earnings ? `${MACRO_EVENT_LABELS[event.kind]} (earnings)` : MACRO_EVENT_LABELS[event.kind];
 
 /** Daily labels at UTC midnight name that date; any other stamp reads in New York. */
 function sessionDate(time: number): string {
@@ -60,13 +79,36 @@ function stats(moves: number[], normalAbs: number | null): MacroDayStats {
 }
 
 /**
+ * The sessions whose close carries a report's reaction, on the history's own
+ * calendar. A priced report names its session in the earnings history. Any
+ * other reads as the earnings history reads it: before the open and during
+ * the session react the same day, after the close the next session. A report
+ * with no time on record may have reacted on either, so both count.
+ */
+function earningsReactionSessions(reports: readonly MacroDayEarningsReport[], sessions: readonly string[]): Set<string> {
+  const reacted = new Set<string>();
+  for (const report of reports) {
+    if (report.reactionSession) { reacted.add(report.reactionSession); continue; }
+    const sameDay = report.timing === "bmo" || report.timing === "dmh";
+    const afterClose = report.timing === "amc";
+    const same = sessions.find((date) => date >= report.date);
+    const next = sessions.find((date) => date > report.date);
+    if (!afterClose && same) reacted.add(same);
+    if (!sameDay && next) reacted.add(next);
+  }
+  return reacted;
+}
+
+/**
  * Close to close on the release day: 8:30 ET releases land before the open
  * and 14:00 FOMC statements before the close, so the release day's close
  * carries either. A release on a weekday the market was shut (Good Friday)
  * is read on the next session, from the close before the release. A release
  * whose close-to-close would span a gap in the history is left out rather
  * than read across it. A lone missing bar on the release day itself cannot
- * be told from a holiday and is read on the next session.
+ * be told from a holiday and is read on the next session. A release whose
+ * session is also the reaction to the ticker's own earnings is kept, marked,
+ * and counted in neither the release figures nor the normal days.
  */
 export function projectMacroDays(history: readonly PricePoint[], options: {
   symbol: string;
@@ -74,6 +116,8 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   releases: readonly MacroRelease[];
   /** The release list's last covered day. */
   coveredThrough: string;
+  /** The ticker's own earnings reports; none when they could not be read. */
+  earnings?: readonly MacroDayEarningsReport[];
 }): MacroDayModel {
   const { coveredThrough } = options;
   const byDate = new Map<string, number>();
@@ -86,7 +130,7 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   const last = sessions.at(-1) ?? null;
   const empty = (): MacroDayStats => stats([], null);
   if (!last) return { symbol: options.symbol, events: [], byKind: { cpi: empty(), jobs: empty(), fomc: empty() },
-    allEvents: empty(), normal: empty(), start: null, asOf: null };
+    allEvents: empty(), earnings: empty(), normal: empty(), start: null, asOf: null };
 
   // Sessions after the published lists end may be unlisted release days, so they are left out of both sides.
   const end = last < coveredThrough ? last : coveredThrough;
@@ -105,7 +149,7 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   }
 
   const reactionSessions = new Set<string>();
-  const found: Omit<MacroDayEvent, "multiple">[] = [];
+  const found: Omit<MacroDayEvent, "multiple" | "earnings">[] = [];
   for (const release of options.releases) {
     if (release.date <= start || release.date > end || !isWeekday(release.date)) continue;
     const at = sessions.findIndex((date) => date >= release.date);
@@ -120,12 +164,14 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   const normalMoves = [...moves].filter(([date]) => !reactionSessions.has(date)).map(([, move]) => move);
   const normal = stats(normalMoves, null);
   const normalAbs = normal.meanAbs;
-  const events = found.map((event) => ({ ...event, multiple: normalAbs ? Math.abs(event.move) / normalAbs : null }))
+  const reacted = earningsReactionSessions(options.earnings ?? [], sessions);
+  const events = found.map((event) => ({ ...event, earnings: reacted.has(event.session), multiple: normalAbs ? Math.abs(event.move) / normalAbs : null }))
     .sort((left, right) => right.date.localeCompare(left.date) || left.kind.localeCompare(right.kind));
   const byKind = Object.fromEntries(MACRO_EVENT_KINDS.map((kind) =>
-    [kind, stats(events.filter((event) => event.kind === kind).map((event) => event.move), normalAbs)])) as Record<MacroEventKind, MacroDayStats>;
-  const allEvents = stats([...reactionSessions].map((session) => moves.get(session)!), normalAbs);
-  return { symbol: options.symbol, events, byKind, allEvents, normal, start, asOf: end };
+    [kind, stats(events.filter((event) => event.kind === kind && !event.earnings).map((event) => event.move), normalAbs)])) as Record<MacroEventKind, MacroDayStats>;
+  const sessionMoves = (flagged: boolean) => [...reactionSessions].filter((session) => reacted.has(session) === flagged).map((session) => moves.get(session)!);
+  return { symbol: options.symbol, events, byKind, allEvents: stats(sessionMoves(false), normalAbs), earnings: stats(sessionMoves(true), normalAbs),
+    normal, start, asOf: end };
 }
 
 /**
