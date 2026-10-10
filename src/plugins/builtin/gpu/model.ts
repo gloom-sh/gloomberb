@@ -32,16 +32,25 @@ const PROVIDER_NAMES: Record<string, string> = {
   scaleway: "Scaleway", horizon: "Horizon", verda: "Verda", latitude: "Latitude", imwt: "IMWT",
 };
 
+/**
+ * The provider-class rows are chain-linked list indexes, not raw medians. Servers that predate the
+ * rename still send "list median"; both strings read as the index.
+ */
+const LIST_INDEX_PROVIDER = /^(Hyperscaler|Neocloud) list (?:index|median)$/;
+
 /** Cloud operators are the product being compared. The data collection intermediary stays invisible. */
 export function gpuSource(row: Pick<GpuObservation, "source" | "provider" | "skuKey">): string {
+  const listIndex = LIST_INDEX_PROVIDER.exec(row.provider);
+  if (listIndex) return `${listIndex[1]} list index`;
   if (row.source === "vast" || row.source === "vast-ai") return "Marketplace ask median";
   if (row.source === "akash") return "Decentralized ask median";
   if (row.source === "runpod") return /community/i.test(`${row.provider} ${row.skuKey}`) ? "Community cloud asks" : "Secure cloud asks";
   return PROVIDER_NAMES[row.provider.toLowerCase()] ?? row.provider;
 }
 
-/** A source inside its basis section: the section already says list or ask, so a median drops the word. */
-export const gpuShortSource = (row: Pick<GpuObservation, "source" | "provider" | "skuKey">) => gpuSource(row).replace(/ (?:list|ask) median$/, " median");
+/** A source inside its basis section: the section already says list or ask, so an index or median drops the word. */
+export const gpuShortSource = (row: Pick<GpuObservation, "source" | "provider" | "skuKey">) =>
+  gpuSource(row).replace(/ list index$/, " index").replace(/ ask median$/, " median");
 
 export function gpuTime(value: string | null | undefined, compact = false): string {
   if (!value) return "-";
@@ -73,7 +82,7 @@ export function gpuBasisColor(basis: GpuBasis): string {
 export const gpuVariant = (row: Pick<GpuObservation, "formFactor" | "memoryGb">): string[] =>
   [row.formFactor, row.memoryGb ? `${row.memoryGb}GB` : null].filter((part): part is string => !!part);
 
-/** Medians lead their section: provider-class medians and the marketplace offer medians. */
+/** Indexes and medians lead their section: the provider-class list indexes and the marketplace offer medians. */
 export const gpuHeadline = (row: Pick<GpuObservation, "providerClass" | "source">) =>
   !row.source.startsWith("ref-") && (row.providerClass === "aggregate" || row.source === "vast" || row.source === "vast-ai" || row.source === "akash");
 
@@ -320,7 +329,7 @@ export function gpuEquityRows(rows: readonly GpuBoardRow[], selectedModel: strin
     const aggregates = candidates.filter((row) => row.providerClass === "aggregate").sort((a, b) =>
       Number(b.formFactor === "SXM") - Number(a.formFactor === "SXM") || (b.stats?.n ?? 0) - (a.stats?.n ?? 0) || (b.memoryGb ?? 0) - (a.memoryGb ?? 0));
     const reference = "provider" in equity ? candidates.find((row) => gpuSource(row) === equity.provider)
-      : aggregates.find((row) => row.provider === "Neocloud list median") ?? aggregates[0];
+      : aggregates.find((row) => row.provider.startsWith("Neocloud")) ?? aggregates[0];
     return { ...equity, gpuModel: model, reference: reference ?? null };
   });
 }

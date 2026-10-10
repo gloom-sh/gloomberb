@@ -1,16 +1,16 @@
 # GPU rental prices
 
-`GPU` opens GPU Rental Prices. `GPU H100` or `GPU B200` selects a GPU model. Board shows published rental rates, History charts dated observations, Changes records price, availability and list-median membership changes, and Equities shows related shares. Full data and history require Pro; free accounts receive a preview. The standard pane refresh reads the latest stored data; the footer shows its observation time, stale status and current failures.
+`GPU` opens GPU Rental Prices. `GPU H100` or `GPU B200` selects a GPU model. Board shows published rental rates, History charts dated observations, Changes records price, availability and list-index membership changes, and Equities shows related shares. Full data and history require Pro; free accounts receive a preview. The standard pane refresh reads the latest stored data; the footer shows its observation time, stale status and current failures.
 
 ## Reading the board
 
-With one GPU model selected, the band above the board places every basis on one dollar axis: the thin line spans the lowest to the highest quote, the thick band holds the middle half, the white tick marks the median, and a ring marks the selected row's price. The count beside each basis is the number of quotes; provider-class medians are left out of the band because their constituents already appear in it. Choosing All GPUs hides the band.
+With one GPU model selected, the band above the board places every basis on one dollar axis: the thin line spans the lowest to the highest quote, the thick band holds the middle half, the white tick marks the median, and a ring marks the selected row's price. The count beside each basis is the number of quotes; provider-class indexes are left out of the band because their constituents already appear in it. Choosing All GPUs hides the band.
 
-Rows are grouped by GPU model and basis, with the provider-class medians and the marketplace offer medians leading each section in bold, followed by their sample size. Form factor and memory appear as chips, and availability as a dot: green when offers are reported available, amber when a pooled supply is low, grey when the provider reports none. Range shows the interquartile range for marketplace medians and the lowest to highest constituent for list medians.
+Rows are grouped by GPU model and basis, with the provider-class list indexes and the marketplace offer medians leading each section in bold, followed by their sample size. Form factor and memory appear as chips, and availability as a dot: green when offers are reported available, amber when a pooled supply is low, grey when the provider reports none. Range shows the interquartile range for marketplace medians and the lowest to highest constituent for list indexes. See [List indexes](#list-indexes) for what the provider-class rows are.
 
-When a series has no observation within the comparison window, its change column reads `-`, even when older historical observations exist. Once any 1D, 7D or 30D figure exists, those columns appear, and the medians of the selected model gain a one-month sparkline. Only those few medians fetch history for the board.
+When a series has no observation within the comparison window, its change column reads `-`, even when older historical observations exist. Once any 1D, 7D or 30D figure exists, those columns appear, and the indexes and medians of the selected model gain a one-month sparkline. Only those few rows fetch history for the board.
 
-History lists the selected model\'s series, with a separate Reference group for anonymised third-party indices. The chart draws the chosen series as a step line together with list medians and available reference indices, starting at the first plotted observation with a small amount of trailing space. Markers identify actual observations in the selected series; amber Archived markers identify reconstructed rate cards. No synthetic daily observations are inserted; a series with fewer than three observations shows that history is still being collected. The table under the chart groups consecutive equal prices within the same record type and ends at the last observation, so hourly snapshots of an unchanged rate read as one row. Archived, Published and Observed records remain distinguishable.
+History lists the selected model\'s series, with a separate Reference group for anonymised third-party indices. The chart draws the chosen series as a step line together with list indexes and available reference indices, starting at the first plotted observation with a small amount of trailing space. Markers identify actual observations in the selected series; amber Archived markers identify reconstructed rate cards. No synthetic daily observations are inserted; a series with fewer than three observations shows that history is still being collected. The table under the chart groups consecutive equal prices within the same record type and ends at the last observation, so hourly snapshots of an unchanged rate read as one row. Archived, Published and Observed records remain distinguishable.
 
 Changes groups price and availability moves by their evidence date, newest first, with the old and new price and the move coloured by its sign. Equities groups related shares into chip makers, hyperscalers, neoclouds, and hosts and builders, with each share's GPU price series, its seven-day move and a one-month price sparkline.
 
@@ -22,11 +22,11 @@ Changes groups price and availability moves by their evidence date, newest first
 | Provider-declared spot | A provider's published interruptible rate or spot meter. AWS's regional feed is a single-provider clearing proxy. |
 | Ask | A posted marketplace offer. It does not establish a completed rental; availability and offer counts reflect the returned offers. |
 | Reserved | A published rate requiring a commitment, kept separate from on-demand rates. |
-| Reference | Anonymised third-party reference index, not a provider offer or Gloom median. |
+| Reference | Anonymised third-party reference index, not a provider offer or a Gloom list index or median. |
 
 Narrow panes abbreviate List price to List, Provider-declared spot to Spot, and Reserved to Rsvd.
 
-Reference index (third party), anonymised: published values are stored unchanged in USD per GPU-hour and shown with distinct, muted chart colours. They do not enter Gloom\'s rental-price medians. Reference A supplies a rolling three-month daily window across five public GPU types; Reference B supplies seven-day anonymous chart cards across seven GPU series. Collection is disabled by default; older data requiring login is not accessed. Source hosts and fetch timestamps stay private on the server, with no vendor links in panes, exports or headless output. Full stored reference history requires Pro; free access previews latest values only.
+Reference index (third party), anonymised: published values are stored unchanged in USD per GPU-hour and shown with distinct, muted chart colours. They do not enter Gloom\'s list indexes or medians. Reference A supplies a rolling three-month daily window across five public GPU types; Reference B supplies seven-day anonymous chart cards across seven GPU series. Collection is disabled by default; older data requiring login is not accessed. Source hosts and fetch timestamps stay private on the server, with no vendor links in panes, exports or headless output. Full stored reference history requires Pro; free access previews latest values only.
 
 ## Normalization
 
@@ -36,7 +36,11 @@ Each provider contributes one price per GPU variant and basis. Flagship eight-GP
 
 AWS spot uses the median across reporting regions for an instance, retaining the region count, minimum and maximum. Instances with the same GPU variant are reduced to one provider observation. Aggregated cloud offers use the underlying cloud where it is identified. Availability is shown only when supplied.
 
-Hyperscaler and neocloud list medians are separate, with provider count, minimum, maximum and constituents retained. Membership changes are chained using continuing providers and recorded in Changes to avoid a jump caused only by adding or removing a provider. The chained value can differ from the current raw median, which is also retained. Marketplace ask quantiles are separate from list medians.
+Hyperscaler and neocloud list indexes are separate, with provider count, minimum, maximum and constituents retained. Marketplace ask quantiles are separate from the list indexes.
+
+### List indexes
+
+The Hyperscaler and Neocloud rows on the Board are list indexes, not plain medians. Each is the median of those providers' list prices for one GPU variant, linked over time with a continuity factor. When a provider joins or leaves, the factor is set from the providers that stay, so the index does not jump, and the change is recorded in Changes. The raw median of today's providers is kept in the row's stats (`rawMedian`, with `chainFactor`) and can differ slightly from the index, and from any single provider's price. Marketplace rows are plain medians of the offers returned.
 
 GCP's **Price (USD)** header supplies list prices and **Current Spot pricing** supplies spot prices; DWS and commitment columns are excluded. Missing list cells remain unavailable. Nebius uses the column whose published effective date has arrived, evaluated in UTC. Together uses its GPU Clusters table.
 

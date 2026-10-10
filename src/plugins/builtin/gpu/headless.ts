@@ -19,14 +19,17 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "GPU", description: "GPU model, such as H100 or B200." },
   options: [{ key: "tab", type: "enum", values: GPU_TABS.map(({ value }) => ({ value })), defaultValue: "board", description: "Board, sourced history, dated changes or related equities." }],
   discovery: { aliases: ["GPU"], dataRequirements: ["GPU rental price observations"],
-    limitations: ["List prices, provider-declared spot and asks are distinct bases", "1D/7D/30D need sufficient observation history; unavailable changes remain null"] },
+    limitations: ["List prices, provider-declared spot and asks are distinct bases",
+      "Hyperscaler and Neocloud rows are list indexes: the median of the providers' list prices linked over time, so a provider joining or leaving causes no jump; sample.rawMedian is the raw median of today's providers and can differ slightly",
+      "1D/7D/30D need sufficient observation history; unavailable changes remain null"] },
   describe: "GPU rental prices in USD per GPU-hour",
   async load(args, ctx) {
     const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
     const model = gpuArgument(argument);
     const tab = gpuTab(args.options.tab);
     const board = await fetchGpuBoard(ctx.apiClient);
-    const metadata = { asOf: board.asOf, stale: board.stale, complete: board.status === "available" && !board.access?.locked, unit: "USD/GPU-hour", access: board.access };
+    const metadata = { asOf: board.asOf, stale: board.stale, complete: board.status === "available" && !board.access?.locked, unit: "USD/GPU-hour", access: board.access,
+      methodology: "docs/gpu-rental-prices.md#list-indexes" };
     // Prices observed on providers' pages, not a feed; each board row says whether its source has gone quiet.
     const freshness = { source: "GPU cloud providers", status: "not-a-feed" as const, basis: "observed prices" };
     if (tab === "history") {

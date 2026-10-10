@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { equityFiveDayReturn, gpuAxisLabels, gpuBoardSections, gpuChangeWindows, gpuEquityRows, gpuHistorySeries, gpuHistoryChart, gpuHistoryViewport, gpuEventDate, gpuEventSections, gpuPricePeriods, gpuPriceLadder, gpuSource, gpuSparklineSeries } from "./model";
+import { equityFiveDayReturn, gpuAxisLabels, gpuBoardSections, gpuChangeWindows, gpuEquityRows, gpuHistorySeries, gpuHistoryChart, gpuHistoryViewport, gpuEventDate, gpuEventSections, gpuPricePeriods, gpuPriceLadder, gpuShortSource, gpuSource, gpuSparklineSeries } from "./model";
 import { gpuEvent, gpuRow } from "./test-fixture";
 
 describe("GPU observation charts", () => {
@@ -34,7 +34,7 @@ describe("GPU observation charts", () => {
 
   test("the viewport starts at the first plotted point, including older peers, with bounded trailing padding", () => {
     const row = gpuRow();
-    const peer = gpuRow({ source: "aggregate-hyperscaler", provider: "Hyperscaler list median", providerClass: "aggregate" });
+    const peer = gpuRow({ source: "aggregate-hyperscaler", provider: "Hyperscaler list index", providerClass: "aggregate" });
     const own = [0, 1, 2].map((hour) => gpuRow({ observedAt: `2026-10-03T${19 + hour}:00:00.000Z` }));
     const chart = gpuHistoryChart([row], own, { selected: "#fff", marker: "#0f0" });
     expect(gpuHistoryViewport(chart)).toEqual({ start: new Date(own[0]!.observedAt), end: new Date("2026-10-03T21:06:00.000Z") });
@@ -106,14 +106,14 @@ test("collection intermediaries cannot become the cloud provider displayed besid
 
 test("equities use the representative neocloud SXM series while cloud and AMD references keep their own scope", () => {
   const flagship = gpuRow({
-    source: "aggregate-neocloud", provider: "Neocloud list median", providerClass: "aggregate",
+    source: "aggregate-neocloud", provider: "Neocloud list index", providerClass: "aggregate",
     skuKey: "h100-sxm-80", stats: { n: 6, min: 2.5, max: 6 }, change7d: -3,
   });
   const pcie = gpuRow({ ...flagship, id: undefined, skuKey: "h100-pcie-80", formFactor: "PCIe", stats: { n: 1, min: 2, max: 2 }, change7d: 8 });
-  const hyperscaler = gpuRow({ source: "aggregate-hyperscaler", provider: "Hyperscaler list median", providerClass: "aggregate", stats: { n: 9, min: 4, max: 10 } });
+  const hyperscaler = gpuRow({ source: "aggregate-hyperscaler", provider: "Hyperscaler list index", providerClass: "aggregate", stats: { n: 9, min: 4, max: 10 } });
   const azure = gpuRow();
   const aws = gpuRow({ source: "aws-list", provider: "AWS", change7d: 2 });
-  const amd = gpuRow({ source: "aggregate-neocloud", provider: "Neocloud list median", providerClass: "aggregate", gpuModel: "MI300X", skuKey: "mi300x-oam-192", formFactor: "OAM", memoryGb: 192 });
+  const amd = gpuRow({ source: "aggregate-neocloud", provider: "Neocloud list index", providerClass: "aggregate", gpuModel: "MI300X", skuKey: "mi300x-oam-192", formFactor: "OAM", memoryGb: 192 });
   const amdNew = gpuRow({ ...amd, id: undefined, gpuModel: "MI355X", skuKey: "mi355x-oam-288", memoryGb: 288 });
   const rows = [pcie, hyperscaler, azure, aws, amd, amdNew, flagship];
   const references = new Map(gpuEquityRows(rows, "H100").map((row) => [row.symbol, row.reference?.id]));
@@ -126,13 +126,32 @@ test("equities use the representative neocloud SXM series while cloud and AMD re
   expect(selectedAmd.find((row) => row.symbol === "NVDA")?.reference?.id).toBe(flagship.id);
 });
 
+test("provider-class rows read as list indexes whether the server still says list median or already says list index", () => {
+  for (const provider of ["Hyperscaler list median", "Hyperscaler list index"]) {
+    const row = gpuRow({ source: "aggregate-hyperscaler", provider, providerClass: "aggregate" });
+    expect(gpuSource(row)).toBe("Hyperscaler list index");
+    expect(gpuShortSource(row)).toBe("Hyperscaler index");
+  }
+  expect(gpuShortSource(gpuRow({ source: "aggregate-neocloud", provider: "Neocloud list median", providerClass: "aggregate" }))).toBe("Neocloud index");
+  expect(gpuShortSource(gpuRow({ source: "vast", provider: "Marketplace asks", providerClass: "marketplace", basis: "ask" }))).toBe("Marketplace median");
+});
+
+test("equities find the neocloud index under either server label instead of falling back to the first aggregate", () => {
+  const hyperscaler = gpuRow({ source: "aggregate-hyperscaler", provider: "Hyperscaler list index", providerClass: "aggregate", skuKey: "h", stats: { n: 9, min: 4, max: 10 } });
+  for (const provider of ["Neocloud list index", "Neocloud list median"]) {
+    const neocloud = gpuRow({ source: "aggregate-neocloud", provider, providerClass: "aggregate", skuKey: "n", formFactor: "PCIe", stats: { n: 2, min: 3, max: 4 } });
+    const nvda = gpuEquityRows([hyperscaler, neocloud], "H100").find((row) => row.symbol === "NVDA");
+    expect(nvda?.reference?.id).toBe(neocloud.id);
+  }
+});
+
 describe("GPU board layout", () => {
-  test("sections run by model then basis, medians lead each section, and the licensed index never reaches the board", () => {
+  test("sections run by model then basis, indexes and medians lead each section, and the licensed index never reaches the board", () => {
     const rows = [
       gpuRow({ source: "shadeform", provider: "lambda", providerClass: "marketplace", basis: "ask", skuKey: "lambda-ask" }),
       gpuRow({ source: "vast", provider: "Marketplace asks", providerClass: "marketplace", basis: "ask", skuKey: "vast-ask" }),
       gpuRow({ source: "aws-list", provider: "AWS", skuKey: "aws" }),
-      gpuRow({ source: "aggregate", provider: "Neocloud list median", providerClass: "aggregate", skuKey: "neo" }),
+      gpuRow({ source: "aggregate", provider: "Neocloud list index", providerClass: "aggregate", skuKey: "neo" }),
       gpuRow({ source: "aws-spot", provider: "AWS", basis: "spot", skuKey: "aws-spot" }),
       gpuRow({ source: "licensed", provider: "Index", basis: "index", skuKey: "index" }),
       gpuRow({ gpuModel: "B200", source: "aws-list", provider: "AWS", skuKey: "b200" }),
