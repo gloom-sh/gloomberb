@@ -154,3 +154,59 @@ test.each(["floating", "docked", "only-floating"])("ticker research opens visibl
   if (mode !== "docked") expect(layout.floating.map((pane) => pane.instanceId)).toContain(source.instanceId);
   else expect(getDockedPaneIds(layout)).toContain(source.instanceId);
 });
+
+// With Ticker Research off, its pane would be added and then hidden.
+test("opening a ticker while its pane's plugin is off offers to turn it on instead", async () => {
+  const config = createDefaultConfig(":memory:");
+  config.disabledPlugins = ["ticker-research"];
+  const stateRef = { current: createInitialState(config) };
+  stateRef.current.tickers.set("AAPL", createTestTicker("AAPL", "Apple", { exchange: "NASDAQ" }));
+  const notifications: Array<{ body: string; action?: { label: string; onClick: () => void } }> = [];
+  const enabled: string[] = [];
+  const layouts: string[][] = [];
+  let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
+  function Harness() {
+    runtime = useAppTickerOpenRuntime({
+      stateRef,
+      dataProvider: createTestDataProvider(),
+      tickerRepository: { loadTicker: async () => null } as any,
+      dispatch() {},
+      pluginRegistry: {
+        panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]),
+        events: { emit() {} },
+        getTermSize: () => ({ width: 120, height: 40 }),
+        getDisabledPaneOwner: (_paneType: string, disabled: readonly string[]) => (
+          disabled.includes("ticker-research") ? { id: "ticker-research", name: "Ticker Research" } : null
+        ),
+        notify: (notification: (typeof notifications)[number]) => { notifications.push(notification); },
+        setPluginEnabled: (pluginId: string) => {
+          enabled.push(pluginId);
+          stateRef.current = { ...stateRef.current, config: { ...stateRef.current.config, disabledPlugins: [] } };
+        },
+      } as any,
+      buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-detail:opened" }),
+      persistLayout: (layout) => {
+        layouts.push(layout.instances.map((pane) => pane.instanceId));
+        stateRef.current.config.layout = layout;
+      },
+      activatePane() {},
+      focusVisiblePane() {},
+    });
+    return <text>Research</text>;
+  }
+  const rendered = await tui.render(<Harness />);
+  await act(async () => { await rendered.renderOnce(); });
+
+  await act(async () => { await runtime.openPinnedTicker("AAPL"); });
+  expect(layouts).toEqual([]);
+  expect(notifications).toHaveLength(1);
+  expect(notifications[0]).toMatchObject({ body: "Turn on Ticker Research to open AAPL.", action: { label: "Turn on" } });
+
+  // The button turns it on and opens what was asked for.
+  await act(async () => {
+    notifications[0]!.action!.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(enabled).toEqual(["ticker-research"]);
+  expect(layouts.at(-1)).toContain("ticker-detail:opened");
+});

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, findPaneInstance, type LayoutConfig } from "../../../types/config";
 import { createInitialState, type AppState } from "../../../state/app/context";
-import type { PluginRegistry } from "../../../plugins/registry";
 import { PANE_LOCK_SETTING_KEY } from "../../../pane-settings";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput, resolveTickerInputOrThrow, resolveTickerListInput } from "./ops";
@@ -9,6 +8,10 @@ import type { TickerRecord } from "../../../types/ticker";
 import { bringToFront } from "../../../layout/pane-manager/floating-actions";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import { createTestTicker } from "../../../test-support/ticker";
+import { AppPersistence } from "../../../data/app-persistence";
+import { TickerRepository } from "../../../data/ticker-repository";
+import { PluginRegistry } from "../../../plugins/registry";
+import { PluginOffError } from "../../../plugins/plugin-off";
 
 type TemplateDeps = Parameters<typeof createPaneTemplateOrThrow>[2];
 
@@ -113,6 +116,38 @@ test("command ticker resolution persists the verified future without switching t
 });
 
 describe("createPaneTemplateOrThrow", () => {
+  // CHOKE belongs to one plugin and opens a chart, a pane of another: with
+  // that one off, the chart would be added and then hidden.
+  test("refuses a template whose pane belongs to a switched-off plugin, naming it", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const registry = new PluginRegistry(createTestDataProvider(), new TickerRepository(persistence.tickers), persistence);
+    try {
+      const state = createInitialState({ ...createDefaultConfig(":memory:"), disabledPlugins: ["charts"] });
+      registry.bindHost({ getConfig: () => state.config });
+      await registry.register({
+        id: "maps", name: "Maps", version: "1.0.0",
+        paneTemplates: [{ id: "choke", paneId: "chart", label: "Chokepoints", description: "Chokepoints" }],
+      });
+      await registry.register({
+        id: "charts", name: "Charts", version: "1.0.0",
+        panes: [{ id: "chart", name: "Chart", component: () => null, defaultPosition: "right" }],
+      });
+      const built: string[] = [];
+      const opening = createPaneTemplateOrThrow("choke", undefined, {
+        ...workflowDeps(state, {}),
+        pluginRegistry: registry,
+        buildPaneInstance: (paneId) => { built.push(paneId); return null; },
+        placePaneInstance: () => {},
+      });
+      await expect(opening).rejects.toBeInstanceOf(PluginOffError);
+      await expect(opening).rejects.toMatchObject({ plugin: { id: "charts" }, message: "Turn on Charts to open Chokepoints." });
+      expect(built).toEqual([]);
+    } finally {
+      registry.destroy();
+      persistence.close();
+    }
+  });
+
   test("treats createInstance null as cancellation and does not create a pane", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");
     const state = createInitialState(config);
