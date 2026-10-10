@@ -77,6 +77,8 @@ const TOOL_TITLES: Record<string, string> = {
   "hiring.momentum": "Hiring momentum",
   "apps.rank_history": "App rankings",
   "apps.attention": "App attention",
+  "watchlist.add": "Add to watchlist",
+  "watchlist.remove": "Remove from watchlist",
   [SCRIPT_TOOL_NAME]: "Script",
 };
 

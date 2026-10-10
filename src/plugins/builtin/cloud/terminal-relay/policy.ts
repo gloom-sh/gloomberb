@@ -51,6 +51,14 @@ export const TERMINAL_RELAY_OPERATION_POLICY: Readonly<Record<string, TerminalRe
   "ticker.pin": { policy: "allow", reason: OPEN },
   "ticker.select": { policy: "allow", reason: OPEN },
   "ticker.switchTab": { policy: "allow", reason: OPEN },
+  "watchlist.add": {
+    policy: "confirm",
+    reason: "Changes the person's own watchlist, which syncs to their other devices; asks each time, naming the list, ticker and exchange.",
+  },
+  "watchlist.remove": {
+    policy: "confirm",
+    reason: "Takes a ticker off the person's own watchlist; asks each time, naming the list, ticker and exchange.",
+  },
   "layout.switch": { policy: "allow", reason: ARRANGE },
   "layout.new": { policy: "allow", reason: "Adds a blank layout." },
   "layout.rename": { policy: "allow", reason: "Renames a layout; renaming back restores it." },

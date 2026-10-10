@@ -1,5 +1,6 @@
 import { stableStringify } from "../../../../utils/hash";
 import type {
+  RemoteCallContext,
   RemoteControlRequest,
   RemoteControlResponse,
   RemoteJsonPatchOperation,
@@ -9,6 +10,7 @@ import type { JsonValue, ToolResultStatus } from "./protocol";
 
 export type InProcessRemoteControlHandler = (
   request: RemoteControlRequest,
+  context?: RemoteCallContext,
 ) => Promise<RemoteControlResponse>;
 
 interface UndoResourceSnapshot {

@@ -4,7 +4,7 @@ import {
   type ASKGToolResultOutcome,
   type ASKGTransport,
 } from "../../../../api-client/askg";
-import type { ASKGToolExecutor } from "./executor";
+import type { ASKGToolExecutor, ASKGToolPreview } from "./executor";
 import {
   activeTurn,
   askgReducer,
@@ -384,12 +384,30 @@ export class ASKGSessionController {
 
     try {
       let confirmed = false;
+      let confirmedChange: string | undefined;
       if (requiresLocalConfirmation(call)) {
-        this.dispatch({ type: "tool-awaiting-confirmation", toolCallId: call.toolCallId });
-        confirmed = await new Promise<boolean>((resolve) => {
-          this.confirmations.set(call.toolCallId, resolve);
-        });
-        if (this.abandonedCalls.delete(call.toolCallId)) return;
+        const preview = await this.previewCall(call, signal);
+        // The turn ended or moved on while the app looked.
+        if (signal?.aborted || this.toolRowStatus(call.toolCallId) !== "pending") return;
+        if (preview?.kind === "refusal") {
+          await this.deliver(failure(preview.message));
+          return;
+        }
+        if (preview?.kind === "change") confirmedChange = preview.confirmKey;
+        // Nothing to approve: the operation re-checks and asks in the app itself if that changed.
+        if (preview?.kind === "no-change") {
+          confirmed = true;
+        } else {
+          this.dispatch({
+            type: "tool-awaiting-confirmation",
+            toolCallId: call.toolCallId,
+            ...(preview?.kind === "change" ? { preview: preview.summary } : {}),
+          });
+          confirmed = await new Promise<boolean>((resolve) => {
+            this.confirmations.set(call.toolCallId, resolve);
+          });
+          if (this.abandonedCalls.delete(call.toolCallId)) return;
+        }
         if (!confirmed) {
           await this.deliver({
             turnId: call.turnId,
@@ -413,6 +431,7 @@ export class ASKGSessionController {
       }
       const payload = await executor.execute(call, {
         confirmed: confirmed || !requiresLocalConfirmation(call),
+        ...(confirmedChange ? { confirmedChange } : {}),
         ...(signal ? { signal } : {}),
       });
       await this.deliver(payload);
@@ -423,6 +442,28 @@ export class ASKGSessionController {
     } finally {
       this.confirmations.delete(call.toolCallId);
     }
+  }
+
+  /**
+   * The operation's own account of a call that needs approval, when it has
+   * one. Null keeps the server's description.
+   */
+  private async previewCall(call: ASKGToolCallEvent, signal?: AbortSignal): Promise<ASKGToolPreview | null> {
+    try {
+      const manifest = this.manifest ?? await this.options.loadManifest();
+      this.manifest = manifest;
+      return await this.options.getExecutor(manifest)?.preview?.(call, signal) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private toolRowStatus(toolCallId: string): string | undefined {
+    for (const turn of this.state.turns) {
+      const row = turn.tools.find((entry) => entry.toolCallId === toolCallId);
+      if (row) return row.status;
+    }
+    return undefined;
   }
 
   /** Records a tool result locally, then posts it to the turn loop. */

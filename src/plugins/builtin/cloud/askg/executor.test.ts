@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { MarketContext } from "../../../../cli/types";
 import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
-import type { RemoteControlResponse } from "../../../../remote/types";
+import type { RemoteCallContext, RemoteControlResponse } from "../../../../remote/types";
 import { createDefaultConfig } from "../../../../types/config";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../../../types/plugin";
 import {
@@ -62,9 +62,20 @@ function call(
   };
 }
 
+const watchlistAddManifest: ClientToolManifest = {
+  name: "watchlist.add",
+  source: "remote-op",
+  title: "Watchlist: Add",
+  description: "Add a ticker to a watchlist.",
+  writeTier: "user-data",
+  inputSchema: { type: "object" },
+  confirm: "always",
+  timeoutMs: 10_000,
+};
+
 function executor(options: {
   manifests?: ClientToolManifest[];
-  remoteHandler?: (request: unknown) => Promise<RemoteControlResponse>;
+  remoteHandler?: (request: unknown, context?: RemoteCallContext) => Promise<RemoteControlResponse>;
   headlessExecutor?: Parameters<typeof createASKGToolExecutor>[0]["headlessExecutor"];
 }) {
   return createASKGToolExecutor({
@@ -77,6 +88,30 @@ function executor(options: {
 }
 
 describe("ASKG delegated tool executor", () => {
+  test("previews a confirmed write from its dry run, and hands the approved key to the app", async () => {
+    const requests: Array<{ request: unknown; confirmed?: string }> = [];
+    const tools = executor({
+      manifests: [watchlistAddManifest],
+      remoteHandler: async (request, context) => {
+        requests.push({ request, ...(context?.confirmed ? { confirmed: context.confirmed } : {}) });
+        return (request as { dryRun?: boolean }).dryRun
+          ? { ok: true, data: { changes: true, summary: "Add MSFT (NASDAQ) to Tech", confirmKey: "add|tech|MSFT" } }
+          : { ok: true, data: { changed: true, outcome: "added" } };
+      },
+    });
+    const watchlistCall = call(watchlistAddManifest, { args: { symbol: "MSFT", watchlist: "tech" }, requiresConfirmation: true });
+
+    expect(await tools.preview!(watchlistCall)).toEqual({ kind: "change", summary: "Add MSFT (NASDAQ) to Tech", confirmKey: "add|tech|MSFT" });
+    expect(await tools.execute(watchlistCall, { confirmed: true, confirmedChange: "add|tech|MSFT" })).toMatchObject({ status: "ok" });
+    // Unapproved, the key never reaches the app.
+    expect(await tools.execute(watchlistCall, { confirmedChange: "add|tech|MSFT" })).toMatchObject({ status: "denied" });
+
+    expect(requests).toEqual([
+      { request: { type: "call", operation: "watchlist.add", input: { symbol: "MSFT", watchlist: "tech" }, dryRun: true, include: [] } },
+      { request: { type: "call", operation: "watchlist.add", input: { symbol: "MSFT", watchlist: "tech" } }, confirmed: "add|tech|MSFT" },
+    ]);
+  });
+
   test("denies a server tier that does not match the advertised tier", async () => {
     let executions = 0;
     const tools = executor({

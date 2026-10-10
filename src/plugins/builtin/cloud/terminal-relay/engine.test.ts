@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { RemoteControlRequest, RemoteControlResponse } from "../../../../remote/types";
+import type { RemoteCallContext, RemoteControlRequest, RemoteControlResponse } from "../../../../remote/types";
 import type { PluginPersistence } from "../../../../types/plugin";
 import { TerminalRelayEngine, type ConfirmationAnswer, type ApprovalAnswer } from "./engine";
 import { TerminalRelayGrants } from "./grants";
+import { terminalRelayToolDescriptors } from "./manifest";
 import { TERMINAL_RELAY_OPERATION_POLICY, type TerminalRelayPolicyEntry } from "./policy";
 import { REDACTED } from "./redact";
 
@@ -23,6 +24,7 @@ interface Harness {
   grants: TerminalRelayGrants;
   sent: Array<Record<string, unknown>>;
   handled: RemoteControlRequest[];
+  contexts: Array<RemoteCallContext | undefined>;
   approvals: Array<(answer: ApprovalAnswer) => void>;
   confirmations: Array<{ title: string; lines: Array<{ label: string; value: string }>; answer: (answer: ConfirmationAnswer) => void }>;
   call(id: string, tool: string, input?: Record<string, unknown>, extra?: Record<string, unknown>): void;
@@ -32,20 +34,22 @@ interface Harness {
 const ASSISTANT = { id: "oauth:client-1", name: "Desk assistant" };
 
 function harness(options: {
-  handle?: (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
+  handle?: (request: RemoteControlRequest, context?: RemoteCallContext) => Promise<RemoteControlResponse>;
   confirmWindowMs?: number;
   executionBudgetMs?: number;
 } = {}): Harness {
   const sent: Array<Record<string, unknown>> = [];
   const handled: RemoteControlRequest[] = [];
+  const contexts: Harness["contexts"] = [];
   const approvals: Harness["approvals"] = [];
   const confirmations: Harness["confirmations"] = [];
   const grants = new TerminalRelayGrants();
   grants.attach(memoryPersistence());
   const engine = new TerminalRelayEngine({
-    handle: async (request) => {
+    handle: async (request, context) => {
       handled.push(request);
-      if (options.handle) return options.handle(request);
+      contexts.push(context);
+      if (options.handle) return options.handle(request, context);
       if (request.type === "get" && request.resource === "ui://tree") {
         return { ok: true, data: [
           { id: "ui:1", role: "button", label: "Submit order", actions: ["press"] },
@@ -93,6 +97,7 @@ function harness(options: {
     grants,
     sent,
     handled,
+    contexts,
     approvals,
     confirmations,
     call(id, tool, input = {}, extra = {}) {
@@ -163,6 +168,54 @@ describe("terminal relay engine", () => {
     h.confirmations[1]!.answer("allow");
     await settle();
     expect(ran(h, "capability.invoke")).toBe(1);
+  });
+
+  test("a watchlist change is confirmed on every call, naming what its dry run resolved", async () => {
+    expect(terminalRelayToolDescriptors().filter(({ name }) => name.startsWith("watchlist.")).map(({ name, policy, writeTier }) => [name, policy, writeTier]))
+      .toEqual([["watchlist.add", "confirm", "user-data"], ["watchlist.remove", "confirm", "user-data"]]);
+    const h = harness({
+      handle: async (request) => {
+        if (request.type !== "call") return { ok: true, data: [] };
+        if (request.input && (request.input as { watchlist?: string }).watchlist === "Desk") {
+          return { ok: false, error: { code: "remote_error", message: "Refused: \"Desk\" is a team watchlist." } };
+        }
+        return request.dryRun
+          ? { ok: true, data: {
+            changes: true,
+            summary: "Add MSFT (NASDAQ) to Tech",
+            confirmKey: "add|tech|MSFT",
+            lines: [{ label: "Watchlist", value: "Tech" }, { label: "Ticker", value: "MSFT" }, { label: "Exchange", value: "NASDAQ" }],
+          } }
+          : { ok: true, data: { changed: true, outcome: "added", message: "Added MSFT (NASDAQ) to Tech." } };
+      },
+    });
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
+    const writes = () => h.handled.filter((request) => request.type === "call" && !request.dryRun);
+
+    h.call("c1", "watchlist.add", { symbol: "MSFT", watchlist: "Tech" });
+    await settle();
+    expect(h.confirmations.map(({ title, lines }) => ({ title, lines }))).toEqual([{
+      title: "Add MSFT (NASDAQ) to Tech",
+      lines: [{ label: "Watchlist", value: "Tech" }, { label: "Ticker", value: "MSFT" }, { label: "Exchange", value: "NASDAQ" }],
+    }]);
+    expect(writes()).toHaveLength(0);
+    h.confirmations[0]!.answer("allow");
+    await settle();
+    expect(writes()).toHaveLength(1);
+    expect(h.contexts.at(-1)).toMatchObject({ confirmed: "add|tech|MSFT" });
+    expect(h.results()[0]).toMatchObject({ ok: true, data: { items: [{ outcome: "added" }] } });
+
+    // Allowed once is not allowed again.
+    h.call("c2", "watchlist.add", { symbol: "MSFT", watchlist: "Tech" });
+    await settle();
+    expect(h.confirmations).toHaveLength(2);
+
+    // A refusal is the answer: nothing to allow, nothing runs.
+    h.call("c3", "watchlist.add", { symbol: "MSFT", watchlist: "Desk" });
+    await settle();
+    expect(h.confirmations).toHaveLength(2);
+    expect(h.results().find((frame) => frame.id === "c3")).toMatchObject({ ok: false, error: { message: "Refused: \"Desk\" is a team watchlist." } });
+    expect(writes()).toHaveLength(1);
   });
 
   test("an unanswered confirmation is denied after its window and never runs", async () => {
