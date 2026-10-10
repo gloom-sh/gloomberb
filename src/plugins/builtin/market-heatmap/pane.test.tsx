@@ -2,6 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
 import type { MarketHeatmapResult } from "../../../api-client/market-discovery";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../../remote/semantic-tree";
 import { createInitialState } from "../../../state/app/context";
 import { resolveRegistryPaneQuickSettings, resolveRegistryPaneSettings } from "../../registry/pane-settings";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -179,3 +180,39 @@ test("the square-root control shows on US Stocks, US ETFs and a watchlist, never
   expect(sizeControlShown("portfolio")).toBe(false);
 });
 
+
+/** Renders the pane on a tab and returns the chart-data evidence it publishes for `gloomberb shot`. */
+async function publishedEvidence(universe: string): Promise<Record<string, unknown> | undefined> {
+  const id = "market-heatmap", Pane = marketHeatmapPlugin.panes![0]!.component;
+  const registry = createRemoteUiRegistry();
+  const state = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: { universe, liveStreaming: false } }));
+  state.focusedPaneId = id;
+  await act(async () => { await tui.render(
+    <RemoteUiRegistryProvider registry={registry}>
+      <TestPaneFrame state={state} dispatch={() => {}} paneId={id} pluginId={id}
+        runtime={createTestPluginRuntime({ getMarketData: () => null })} width={100} height={20}>
+        {(body) => <Pane paneId={id} paneType={id} focused {...body} />}
+      </TestPaneFrame>
+    </RemoteUiRegistryProvider>, { width: 100, height: 20 }); });
+  await settleFrame(tui.setup(), 8);
+  return registry.snapshot().find((node) => node.role === "chart-data" && node.metadata?.kind === "market-heatmap")?.metadata;
+}
+
+test("the pane publishes the tiles and sectors it drew, and nothing complete without a board", async () => {
+  const stock = (symbol: string, sector: string, size: number) => ({
+    symbol, name: symbol, price: 100, change: 1, changePercent: 1, hasChange: true, size, sizeKind: "market-cap" as const,
+    volume: 1_000, currency: "USD", exchange: "NASDAQ", sector, industry: null, marketState: null, source: "gloom" as const,
+  });
+  const result: MarketHeatmapResult = { universe: "us-equity", source: "gloom", fetchedAt: Date.now(), assets: [
+    stock("AAAA", "Technology", 400), stock("BBBB", "Technology", 200), stock("CCCC", "Energy", 300),
+  ] };
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: result });
+  restore = () => api.mockRestore();
+  expect(await publishedEvidence("us-equity")).toMatchObject({ complete: true, plottedValueCount: 3, tiles: 3, sectors: 2, moved: 3, tab: "us-equity" });
+
+  api.mockRejectedValue(new Error("down"));
+  resetMarketHeatmapCache();
+  expect(await publishedEvidence("us-etf")).toMatchObject({ complete: false, plottedValueCount: 0, tab: "us-etf" });
+  // A portfolio without positions is an empty board, not a pending one.
+  expect(await publishedEvidence("portfolio")).toMatchObject({ complete: false, plottedValueCount: 0, tab: "portfolio", ready: true });
+});

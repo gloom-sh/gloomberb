@@ -79,6 +79,7 @@ import {
   rankHeatmapQuoteWeights,
   useSettledValue,
 } from "./live";
+import { useMarketHeatmapEvidence } from "./evidence";
 import { marketHeatmapHeadless } from "./headless";
 import { heatmapMove, resolveHeatmapGrouping, sizeWeightedMove, type HeatmapGrouping } from "./model";
 import {
@@ -389,6 +390,14 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   );
   const paintItems = useMemo(() => buildPaintItems(paintAssets), [paintAssets]);
   const visibleTiles = scene.tiles;
+  useMarketHeatmapEvidence({
+    tab: activeUniverse,
+    tiles: visibleTiles,
+    assets: paintAssets,
+    grouped: grouping !== "flat",
+    loading: !portfolioTab && loading,
+    retained: !portfolioTab && (stale || loadError != null),
+  });
   const selectedTileIndex = selectedSymbol ? visibleTiles.findIndex((tile) => tile.item.id === selectedSymbol) : -1;
   const activeIdx = selectedTileIndex >= 0 ? selectedTileIndex : (visibleTiles.length > 0 ? 0 : -1);
   const activeSymbol = activeIdx >= 0 ? visibleTiles[activeIdx]!.item.id : null;
