@@ -86,16 +86,10 @@ test("rebinding from the help pane captures the next chord, shows the way back, 
   expect(text).toContain("Ctrl+Shift+Y");
   expect(text).toContain("custom, default `");
   expect(text).toContain("Bound to Ctrl+Shift+Y.");
-  // The table commits a cursor step at once only after a pause; steps in a
-  // burst collapse into one commit 150ms later, and the keys below act on the
-  // committed row. [0] is offered for a customised row only, so it shows which
-  // row is committed: wait for each step to land instead of pressing on.
+  // The table commits a step at once only after a pause, so the key pressed
+  // right after one still acts on the row under the cursor.
   await tui.emitKeypress({ name: "k" });
-  await tui.waitForFrameToExclude("[0]default", WAIT_ATTEMPTS);
   await tui.emitKeypress({ name: "j" });
-  await tui.waitForFrameToContain("[0]default", WAIT_ATTEMPTS);
-  expect(tui.frame()).toContain("custom, default `");
-
   await tui.emitKeypress({ name: "0" });
   await frame();
   expect(latestState?.config.keybindings).toBeUndefined();

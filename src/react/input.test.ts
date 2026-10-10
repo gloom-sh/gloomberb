@@ -151,6 +151,31 @@ describe("shortcut registry", () => {
   });
 });
 
+describe("before-dispatch listeners", () => {
+  test("run inside the flush, ahead of every handler and the check of which are enabled", () => {
+    const calls: string[] = [];
+    let enabled = false;
+    const registry = createShortcutRegistry({
+      flushSync: (run) => {
+        calls.push("flush-start");
+        run();
+        calls.push("flush-end");
+      },
+    });
+    registerShortcut(registry, () => calls.push("capture"), { phase: "capture", isEnabled: () => enabled });
+    const remove = registry.beforeDispatch(() => {
+      calls.push("listener");
+      enabled = true;
+    });
+
+    registry.dispatch(keyEvent());
+    remove();
+    registry.dispatch(keyEvent());
+
+    expect(calls).toEqual(["flush-start", "listener", "flush-end", "capture", "capture"]);
+  });
+});
+
 describe("modal and fallback phases", () => {
   test("a capture handler runs before a scoped handler that registered after it", () => {
     const registry = createShortcutRegistry();

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { act, useState } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../renderers/opentui/test-utils";
@@ -7,6 +7,7 @@ import {
   PaneInstanceProvider,
   createInitialState,
 } from "../../state/app/context";
+import { useShortcut } from "../../react/input";
 import { PaneKeyboardScrollController } from "../../state/pane-scroll-registry";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
@@ -42,11 +43,17 @@ function Harness({ onCursor = () => {} }: { onCursor?: () => void }) {
   const [selectedIndex, setSelectedIndex] = useState(1);
   const [cursorIndex, setCursorIndex] = useState(1);
   const [activatedTitle, setActivatedTitle] = useState("");
+  const [actedTitles, setActedTitles] = useState<string[]>([]);
   const state = createInitialState(
     createDefaultConfig("/tmp/gloomberb-data-table-view-test"),
   );
   const selectedTitle = rows[selectedIndex]?.title ?? "none";
   const cursorTitle = rows[cursorIndex]?.title ?? "none";
+  // Action keys read the committed selection from this render, the way panes do.
+  const recordAction = () => setActedTitles((titles) => [...titles, selectedTitle]);
+  useShortcut((event) => {
+    if (event.name === "y") recordAction();
+  }, { phase: "before" });
 
   return (
     <AppContext value={createStaticAppStore(state)}>
@@ -66,6 +73,11 @@ function Harness({ onCursor = () => {} }: { onCursor?: () => void }) {
           onActivate={(row) => {
             if (row.type === "row") setActivatedTitle(row.title);
           }}
+          onRootKeyDown={(event) => {
+            if (event.name !== "x") return;
+            recordAction();
+            return true;
+          }}
           columns={columns}
           items={rows}
           sortColumnId={null}
@@ -81,7 +93,7 @@ function Harness({ onCursor = () => {} }: { onCursor?: () => void }) {
           emptyStateTitle="No rows"
           rootAfter={
             <Box height={1}>
-              <Text>{`cursor=${cursorTitle} selected=${selectedTitle} activated=${activatedTitle}`}</Text>
+              <Text>{`cursor=${cursorTitle} selected=${selectedTitle} activated=${activatedTitle} acted=${actedTitles.join(",")}`}</Text>
             </Box>
           }
         />
@@ -275,6 +287,28 @@ describe("DataTableView", () => {
     await emitKeypress({ name: "enter", sequence: "\r", defaultPrevented: true });
     await renderSettled();
     expect(tui.frame()).toContain("cursor=Second row selected=First row activated=First row");
+  });
+
+  test("an action key pressed while a cursor step is pending acts on the cursor row", async () => {
+    await tui.render(<Harness />, { width: 100, height: 12 });
+    await renderSettled();
+
+    jest.useFakeTimers();
+    try {
+      // The first step commits at once; the step back sits in the commit window.
+      await emitKeypress({ name: "down", sequence: "\u001B[B" });
+      await emitKeypress({ name: "up", sequence: "\u001B[A" });
+      await renderSettled();
+      expect(tui.frame()).toContain("cursor=First row selected=Second row");
+
+      // One handler runs before the table's own and one is the table's.
+      await emitKeypress({ name: "y", sequence: "y" });
+      await emitKeypress({ name: "x", sequence: "x" });
+      await renderSettled();
+      expect(tui.frame()).toContain("selected=First row activated= acted=First row,First row");
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("does no cursor or scroll work when navigation is already at an edge", async () => {

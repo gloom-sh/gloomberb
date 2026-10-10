@@ -57,7 +57,18 @@ interface ShortcutEntry extends ShortcutRegistration {
 
 export interface ShortcutRegistry {
   register(registration: ShortcutRegistration): () => void;
+  /**
+   * Runs `listener` for every key, before any handler is picked for it. State
+   * it sets has rendered by the time the handlers run (when the host can
+   * flush), so they read it instead of what the last frame held.
+   */
+  beforeDispatch(listener: (event: KeyEventLike) => void): () => void;
   dispatch(event: KeyEventLike): void;
+}
+
+export interface ShortcutRegistryOptions {
+  /** The renderer's synchronous render flush, which `beforeDispatch` listeners run inside. */
+  flushSync?: (run: () => void) => void;
 }
 
 const SHORTCUT_PHASES: ReadonlyArray<ShortcutEntry["phase"]> = [
@@ -88,9 +99,10 @@ function orderShortcutEntries(entries: ShortcutEntry[]): ShortcutEntry[] {
   });
 }
 
-export function createShortcutRegistry(): ShortcutRegistry {
+export function createShortcutRegistry({ flushSync }: ShortcutRegistryOptions = {}): ShortcutRegistry {
   let nextOrder = 1;
   const entries = new Map<number, ShortcutEntry>();
+  const beforeListeners = new Set<(event: KeyEventLike) => void>();
 
   return {
     register(registration) {
@@ -104,7 +116,20 @@ export function createShortcutRegistry(): ShortcutRegistry {
         entries.delete(order);
       };
     },
+    beforeDispatch(listener) {
+      beforeListeners.add(listener);
+      return () => {
+        beforeListeners.delete(listener);
+      };
+    },
     dispatch(event) {
+      if (beforeListeners.size > 0) {
+        const run = () => {
+          for (const listener of [...beforeListeners]) listener(event);
+        };
+        if (flushSync) flushSync(run);
+        else run();
+      }
       const eligible = orderShortcutEntries(
         [...entries.values()].filter((entry) => (
           entry.isEnabled() && shouldDeliverShortcut(event, entry.allowsEditable())
@@ -151,11 +176,24 @@ export function useRegisteredShortcut(
   }), [options?.phase, options?.scope, registry]);
 }
 
+export function useRegisteredBeforeShortcut(
+  registry: ShortcutRegistry,
+  listener: (event: KeyEventLike) => void,
+): void {
+  const listenerRef = useRef(listener);
+  listenerRef.current = listener;
+  useLayoutEffect(
+    () => registry.beforeDispatch((event) => listenerRef.current(event)),
+    [registry],
+  );
+}
+
 export interface InputHost {
   useShortcut(
     handler: (event: KeyEventLike) => void,
     options?: ShortcutOptions,
   ): void;
+  useBeforeShortcut(listener: (event: KeyEventLike) => void): void;
   useViewport(): { width: number; height: number };
 }
 
@@ -184,6 +222,15 @@ export function useShortcut(
   options?: ShortcutOptions,
 ): void {
   useInputHost().useShortcut(handler, options);
+}
+
+/**
+ * Runs before every key reaches any shortcut handler, whatever its phase or
+ * scope, for state the handlers read: set it here and it has rendered by the
+ * time they run. Not for acting on the key.
+ */
+export function useBeforeShortcut(listener: (event: KeyEventLike) => void): void {
+  useInputHost().useBeforeShortcut(listener);
 }
 
 export function shouldDeliverShortcut(

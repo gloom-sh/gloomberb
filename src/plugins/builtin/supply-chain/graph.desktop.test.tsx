@@ -14,7 +14,7 @@ test("desktop graph keeps real SVG connections, dims lower confidence and mouse-
   const data = graphPayload(), centered: string[] = [], visible: string[][] = [];
   data.links[1]!.confidence = .3;
   const container = await render(<UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
-    <InputHostProvider host={{ useShortcut() {}, useViewport: () => ({ width: 120, height: 24 }) }}>
+    <InputHostProvider host={{ useShortcut() {}, useBeforeShortcut() {}, useViewport: () => ({ width: 120, height: 24 }) }}>
       <SupplyGraph data={data} width={120} height={24} focused={false} selectedId={null} selectedPath={null} collapsed={[]} onSelect={() => {}} onRecenter={entity => centered.push(entity.id)} onVisible={ids => visible.push(ids)} />
     </InputHostProvider>
   </UiHostProvider>);
