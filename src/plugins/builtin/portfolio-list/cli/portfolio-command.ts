@@ -11,7 +11,7 @@ import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { TickerRepository } from "../../../../data/ticker-repository";
-import { canonicalExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
+import { canonicalTickerKey, parsePublicTickerKey } from "../../../../utils/exchanges";
 import {
   addTickerToPortfolio,
   adoptFirstPositionCurrency,
@@ -38,7 +38,6 @@ import {
 } from "../allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
 import {
-  describeTicker,
   failPortfolioCommand,
   isCashArgument,
   listingFields,
@@ -204,12 +203,19 @@ async function setPositionCommand(
       await store.saveTicker(result.ticker);
       const adopted = firstPosition ? adoptFirstPositionCurrency(config, portfolio.id, currency) : null;
       if (adopted) await saveConfig(adopted);
-      console.log(cliStyles.success(`Set position for ${describeTicker(result.ticker)} in "${portfolio.name}".`));
-      console.log(renderStats([
-        ["Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })],
-        ["Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })],
-        ["Currency", currency],
-      ]));
+      const saved = savedListingName(result.ticker);
+      ctx.printResult({
+        data: { changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency },
+      }, {
+        text: () => [
+          cliStyles.success(`Set position for ${saved.label} in "${portfolio.name}".`),
+          renderStats([
+            ["Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })],
+            ["Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })],
+            ["Currency", currency],
+          ]),
+        ].join("\n"),
+      });
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to set position for ${symbol} in "${portfolioName}".`);
     }
@@ -275,7 +281,8 @@ async function clearCashCommand(name: string, ctx: CliCommandContext) {
   });
 }
 
-function printTargetSumNote(config: AppConfig, portfolioId: string, tickers: readonly TickerRecord[]) {
+/** The note under a target change when the targets do not add up to the whole portfolio, else null. */
+function targetSumNote(config: AppConfig, portfolioId: string, tickers: readonly TickerRecord[]): string | null {
   const portfolio = config.portfolios.find((entry) => entry.id === portfolioId);
   const listed = new Set([CASH_SYMBOL, ...tickers.filter((ticker) => ticker.metadata.portfolios.includes(portfolioId)).map((ticker) => ticker.metadata.ticker)]);
   let sum: number | null = null;
@@ -283,23 +290,31 @@ function printTargetSumNote(config: AppConfig, portfolioId: string, tickers: rea
     if (listed.has(symbol)) sum = (sum ?? 0) + weight;
   }
   const note = describeTargetSum(sum);
-  if (note) console.log(cliStyles.muted(note));
+  return note ? cliStyles.muted(note) : null;
 }
 
-/** The portfolio's own ticker for a symbol, without a search when it is already listed. */
+/**
+ * The portfolio's own row for a listing, without a search when it is already
+ * listed. A named exchange (SAN:EPA, or SAN --exchange EPA) matches only a row
+ * on that venue, whatever key the row is saved under: a bare SAN row is one
+ * listing, Paris or New York, never both. A bare SAN takes the row saved under
+ * that key, else any row of the symbol.
+ */
 async function findListedTicker(store: TickerRepository, portfolio: Portfolio, symbol: string, exchange?: string): Promise<TickerRecord | null> {
   const listing = parseListingArg(symbol, exchange);
-  const typed = symbol.trim().toUpperCase();
   const listed = (await store.loadAllTickers()).filter((ticker) => ticker.metadata.portfolios.includes(portfolio.id));
+  const savedAs = (ticker: TickerRecord, key: string) => ticker.metadata.ticker.toUpperCase() === key;
+  if (!listing.exchange) {
+    const sameSymbol = listed.filter((ticker) => parsePublicTickerKey(ticker.metadata.ticker).symbol === listing.symbol);
+    return sameSymbol.find((ticker) => savedAs(ticker, listing.symbol)) ?? sameSymbol[0] ?? null;
+  }
+  const onVenue = listed.filter((ticker) => canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange) === listing.key);
   // The key as saved (VTI:XMEX), else the same listing under another spelling of its venue (VTI:BMV).
-  return listed.find((ticker) => [typed, listing.key].includes(ticker.metadata.ticker.toUpperCase()))
-    ?? listed.find((ticker) => {
-      const saved = parsePublicTickerKey(ticker.metadata.ticker);
-      return saved.symbol === listing.symbol
-        && (!listing.exchange || canonicalExchange(saved.exchange ?? ticker.metadata.exchange) === listing.exchange);
-    })
-    ?? null;
+  return onVenue.find((ticker) => savedAs(ticker, listing.key)) ?? onVenue[0] ?? null;
 }
+
+/** What a target command reports for the cash line, in the fields a listing has. */
+const CASH_LISTING = { key: CASH_SYMBOL, symbol: CASH_SYMBOL, exchange: "", name: null };
 
 async function setTargetCommand(rest: string[], exchange: string | undefined, ctx: CliCommandContext) {
   const rawWeight = rest.at(-1);
@@ -313,8 +328,12 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
       if (isCashArgument(symbol, exchange)) {
         const next = setPortfolioTargetWeight(config, portfolio.id, CASH_SYMBOL, weight);
         await saveConfig(next);
-        console.log(cliStyles.success(`Set the cash target in "${portfolio.name}" to ${formatAllocationWeight(weight)}.`));
-        printTargetSumNote(next, portfolio.id, await store.loadAllTickers());
+        const note = targetSumNote(next, portfolio.id, await store.loadAllTickers());
+        ctx.printResult({
+          data: { changed: true, ...listingFields(CASH_LISTING), portfolio: portfolio.name, targetWeight: weight },
+        }, {
+          text: () => [cliStyles.success(`Set the cash target in "${portfolio.name}" to ${formatAllocationWeight(weight)}.`), note].filter(Boolean).join("\n"),
+        });
         return;
       }
       let ticker = await findListedTicker(store, portfolio, symbol, exchange);
@@ -324,7 +343,7 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
         if (!resolved.metadata.portfolios.includes(portfolio.id)) {
           if (!isManualPortfolio(portfolio)) {
             throw new PortfolioCliError(
-              `${describeTicker(resolved)} is not in "${portfolio.name}".`,
+              `${savedListingName(resolved).label} is not in "${portfolio.name}".`,
               "A broker portfolio lists what the broker holds; set targets on its holdings.",
             );
           }
@@ -338,9 +357,17 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
       }
       const next = setPortfolioTargetWeight(config, portfolio.id, ticker.metadata.ticker, weight);
       await saveConfig(next);
-      if (added) console.log(cliStyles.success(`Added ${describeTicker(ticker)} to "${portfolio.name}".`));
-      console.log(cliStyles.success(`Set the target for ${describeTicker(ticker)} in "${portfolio.name}" to ${formatAllocationWeight(weight)}.`));
-      printTargetSumNote(next, portfolio.id, await store.loadAllTickers());
+      const saved = savedListingName(ticker);
+      const note = targetSumNote(next, portfolio.id, await store.loadAllTickers());
+      ctx.printResult({
+        data: { changed: true, ...listingFields(saved), portfolio: portfolio.name, targetWeight: weight, added },
+      }, {
+        text: () => [
+          added ? cliStyles.success(`Added ${saved.label} to "${portfolio.name}".`) : null,
+          cliStyles.success(`Set the target for ${saved.label} in "${portfolio.name}" to ${formatAllocationWeight(weight)}.`),
+          note,
+        ].filter(Boolean).join("\n"),
+      });
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to set the target for ${symbol} in "${name}".`);
     }
@@ -355,21 +382,28 @@ async function clearTargetCommand(rest: string[], exchange: string | undefined, 
       const whole = config.portfolios.some((entry) => [entry.id, entry.name].some((value) => value.toLowerCase() === rest.join(" ").trim().toLowerCase()));
       const portfolio = requirePortfolio(config, whole ? rest.join(" ") : rest.slice(0, -1).join(" "));
       const rawSymbol = whole ? undefined : rest.at(-1);
-      const symbol = rawSymbol == null ? undefined
-        : isCashArgument(rawSymbol, exchange) ? CASH_SYMBOL
-          : (await findListedTicker(store, portfolio, rawSymbol, exchange))?.metadata.ticker ?? parseListingArg(rawSymbol, exchange).key;
+      const cash = rawSymbol != null && isCashArgument(rawSymbol, exchange);
+      const listing = rawSymbol == null || cash ? null : parseListingArg(rawSymbol, exchange);
+      // The row the listing is: the portfolio's own, else any saved one; a target is kept under that row's key.
+      const ticker = listing ? await findListedTicker(store, portfolio, rawSymbol!, exchange) ?? await loadSavedListing(store, listing) : null;
+      const saved = ticker ? savedListingName(ticker) : null;
+      const symbol = cash ? CASH_SYMBOL : ticker?.metadata.ticker ?? listing?.key;
       const { config: next, removed } = clearPortfolioTargetWeights(config, portfolio.id, symbol);
+      const fields = cash ? listingFields(CASH_LISTING) : saved ? listingFields(saved) : listing ? listingFields({ ...listing, name: null }) : {};
+      const named = saved?.label ?? listing?.key ?? CASH_SYMBOL;
+      const data = { changed: removed.length > 0, ...fields, portfolio: portfolio.name, removedTargets: removed.length };
       if (removed.length === 0) {
-        console.log(cliStyles.warning(symbol ? `"${portfolio.name}" has no target for ${symbol}.` : `"${portfolio.name}" has no targets.`));
+        ctx.printResult({ data }, { text: () => cliStyles.warning(symbol ? `"${portfolio.name}" has no target for ${named}.` : `"${portfolio.name}" has no targets.`) });
         return;
       }
       await saveConfig(next);
-      if (symbol) {
-        const ticker = symbol === CASH_SYMBOL ? null : await store.loadTicker(symbol);
-        console.log(cliStyles.success(`Cleared the ${symbol === CASH_SYMBOL ? "cash target" : `target for ${ticker ? describeTicker(ticker) : symbol}`} in "${portfolio.name}".`));
-      } else {
-        console.log(cliStyles.success(`Cleared ${removed.length} target${removed.length === 1 ? "" : "s"} in "${portfolio.name}".`));
-      }
+      ctx.printResult({ data }, {
+        text: () => cliStyles.success(
+          symbol
+            ? `Cleared the ${cash ? "cash target" : `target for ${named}`} in "${portfolio.name}".`
+            : `Cleared ${removed.length} target${removed.length === 1 ? "" : "s"} in "${portfolio.name}".`,
+        ),
+      });
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to clear targets in "${rest.join(" ")}".`);
     }
@@ -407,7 +441,8 @@ async function showTargetsCommand(name: string, ctx: CliCommandContext) {
         [{ header: "Ticker" }, { header: "Name" }, { header: "Target", align: "right" }],
         rows.map((row) => [row.symbol, row.listed ? row.name ?? "" : cliStyles.muted("not in this portfolio"), formatAllocationWeight(row.targetWeight)]),
       ));
-      printTargetSumNote(config, portfolio.id, tickers);
+      const note = targetSumNote(config, portfolio.id, tickers);
+      if (note) console.log(note);
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to show targets for "${name}".`);
     }

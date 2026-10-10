@@ -1,8 +1,6 @@
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext } from "../../../../types/plugin";
-import type { TickerRecord } from "../../../../types/ticker";
 import { parseListingArg, type SavedListingName } from "../../../../cli/listing-arg";
-import { isUsListingExchange } from "../../../../utils/exchanges";
 import { findPortfolio, isManualPortfolio } from "../mutations";
 import { CASH_SYMBOL } from "../allocation";
 
@@ -23,8 +21,8 @@ export function failPortfolioCommand(ctx: CliCommandContext, error: unknown, fal
   return ctx.fail(fallback);
 }
 
-/** What add and remove report about the listing they changed, as JSON and as the sentence's subject. */
-export function listingFields(saved: SavedListingName) {
+/** What every collection command reports about the listing it changed, as JSON and as the sentence's subject. */
+export function listingFields(saved: Pick<SavedListingName, "key" | "symbol" | "exchange" | "name">) {
   return { listing: saved.key, symbol: saved.symbol, exchange: saved.exchange || null, name: saved.name };
 }
 
@@ -71,16 +69,4 @@ export function rejectCashSymbol(symbol: string, exchange: string | undefined, p
     "CASH is the portfolio's cash line, not a ticker.",
     `Record cash with: gloomberb portfolio cash set "${portfolioName}" <amount> [currency]. For the stock that trades as CASH, name its exchange: CASH:NASDAQ.`,
   );
-}
-
-/** `VTI (Vanguard Total Stock Market ETF)`, with the venue and currency for a listing outside the US. */
-export function describeTicker(ticker: TickerRecord): string {
-  const { ticker: symbol, name, exchange, currency } = ticker.metadata;
-  const foreign = !!exchange && !isUsListingExchange(exchange);
-  const details = [
-    name?.trim(),
-    foreign ? exchange : undefined,
-    foreign && currency && currency.toUpperCase() !== "USD" ? currency.toUpperCase() : undefined,
-  ].filter((part): part is string => !!part);
-  return details.length > 0 ? `${symbol} (${details.join(", ")})` : symbol;
 }

@@ -187,7 +187,7 @@ describe("CLI portfolio commands", () => {
     });
 
     const first = await captureConsole(() => runCli(["portfolio", "position", "set", "Research", "NVDA", "10", "400"]));
-    expect(first.stdout).toContain('Set position for NVDA (NVIDIA Corporation) in "Research".');
+    expect(first.stdout).toContain('Set position for NVDA:NASDAQ (NVIDIA Corporation) in "Research".');
     expect(first.stdout).toContain("Shares");
     expect(first.stdout).toContain("10");
 
