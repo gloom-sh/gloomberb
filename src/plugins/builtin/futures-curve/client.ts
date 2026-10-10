@@ -13,13 +13,21 @@ const finiteOrNull = (value: unknown) => value === null || typeof value === "num
 const timestamp = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
 const date = (value: unknown) => timestamp(value) && new Date(value as string).toISOString().slice(0, 10) === value;
 const rank = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+const optionalDate = (value: unknown) => value === undefined || value === null || date(value);
+const positiveNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0;
+/** Contract terms the pane computes with; a curve from before the server sent them has none. */
+const validSpec = (spec: unknown) => spec === undefined || spec === null || typeof spec === "object"
+  && typeof (spec as Record<string, unknown>).unit === "string" && typeof (spec as Record<string, unknown>).size === "string"
+  && ["tick", "tickValue", "pointValue"].every((key) => positiveNumber((spec as Record<string, unknown>)[key]))
+  && ["physical", "cash"].includes(String((spec as Record<string, unknown>).settlement));
 
 export function validateFuturesCurve(data: FuturesCurvePayload, root: string): FuturesCurvePayload {
   if (!data || data.root !== root || !Array.isArray(data.contracts) || !Array.isArray(data.ghosts)
     || !Array.isArray(data.gaps) || !data.gaps.every((gap) => typeof gap === "string")
     || !data.catalogue || !data.slope || !timestamp(data.fetchedAt)
     || data.asOf !== null && !timestamp(data.asOf)
-    || !["gloom", "cboe"].includes(data.source) || !["available", "partial", "unavailable"].includes(data.status)) {
+    || !["gloom", "cboe"].includes(data.source) || !["available", "partial", "unavailable"].includes(data.status)
+    || !optionalDate(data.settlementDate) || !validSpec(data.spec)) {
     throw new Error("The server returned an invalid futures curve");
   }
   const symbols = new Set<string>();
@@ -30,7 +38,9 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
       || typeof row.currency !== "string"
       || !rank(row.percentile) || !Number.isInteger(row.samples) || row.samples < 0
       || row.asOf !== null && !timestamp(row.asOf)
-      || ![row.volume, row.openInterest, row.delayMinutes].every((value) => finiteOrNull(value) && (value === null || value >= 0))) {
+      || ![row.volume, row.openInterest, row.delayMinutes].every((value) => finiteOrNull(value) && (value === null || value >= 0))
+      || row.settlement !== undefined && !finiteOrNull(row.settlement) || !optionalDate(row.lastTrade) || !optionalDate(row.firstNotice)
+      || row.inDelivery !== undefined && typeof row.inDelivery !== "boolean") {
       throw new Error("The server returned an invalid futures contract");
     }
     symbols.add(row.symbol);
@@ -80,7 +90,9 @@ export async function loadFuturesCurveAsOf(root: string, date: string,
       client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 30)).catch(() => null),
     ]);
     if (!curve || curve.root !== normalized || !Array.isArray(curve.contracts) || !Array.isArray(curve.gaps)
-      || curve.contracts.some((row) => !row || typeof row.symbol !== "string" || !Number.isFinite(row.price))) {
+      || curve.contracts.some((row) => !row || typeof row.symbol !== "string" || !Number.isFinite(row.price)
+        || row.settled !== undefined && typeof row.settled !== "boolean" || !optionalDate(row.firstNotice) || !optionalDate(row.lastTrade))
+      || !validSpec(curve.spec)) {
       throw new Error("The server returned an invalid past futures curve");
     }
     return archivedFuturesCurve(normalized, curve, { "1W": week, "1M": month }, new Date().toISOString());
