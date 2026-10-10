@@ -133,6 +133,13 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   XJSE: "JSE",
   TLV: "TASE",
   XTAE: "TASE",
+  TADAWUL: "TADAWUL",
+  XSAU: "TADAWUL",
+  QE: "QE",
+  QSE: "QE",
+  DSMD: "QE",
+  DFM: "DFM",
+  XDFM: "DFM",
   CCC: "CCC",
 };
 
@@ -222,6 +229,9 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   BYMA: "America/Argentina/Buenos_Aires",
   JSE: "Africa/Johannesburg",
   TASE: "Asia/Jerusalem",
+  TADAWUL: "Asia/Riyadh",
+  QE: "Asia/Qatar",
+  DFM: "Asia/Dubai",
   CCC: "UTC",
 };
 
@@ -275,6 +285,9 @@ const EXCHANGE_NAMES: Record<string, string> = {
   BYMA: "Bolsas y Mercados Argentinos",
   JSE: "Johannesburg Stock Exchange",
   TASE: "Tel Aviv Stock Exchange",
+  TADAWUL: "Saudi Exchange",
+  QE: "Qatar Stock Exchange",
+  DFM: "Dubai Financial Market",
 };
 
 const KNOWN_EXCHANGE_CODES: ReadonlySet<string> = new Set([

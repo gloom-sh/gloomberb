@@ -68,6 +68,9 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   JSE: 9 * 60,
   // The opening auction ends at 10:00 and the feed stamps its first bar 09:59.
   TASE: 9 * 60 + 59,
+  TADAWUL: 10 * 60,
+  QE: 9 * 60 + 30,
+  DFM: 10 * 60,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
 // early would let a copy fetched during the auction pass as final.
@@ -86,7 +89,24 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   // Not later: a complete 5-minute copy ends with its 17:09 bar, which must
   // reach the close less the half hour a history copy may lag.
   TASE: 17 * 60 + 30,
+  // Continuous trading to 15:00, the closing auction to 15:10 and trading at
+  // last to 15:20. A complete 5-minute copy ends with its 14:55 bar.
+  TADAWUL: 15 * 60 + 20,
+  // Continuous trading to 13:00, the closing auction to 13:10 and trading at
+  // last to 13:15. A complete 5-minute copy ends with its 13:05 or 13:10 bar.
+  QE: 13 * 60 + 15,
+  // Continuous trading to 14:45, the closing auction to 14:55 and trading at
+  // the close to 15:00. A complete 5-minute copy ends with its 14:55 bar.
+  DFM: 15 * 60,
 };
+// Venues whose week is not Monday to Friday, as their days off (0 is Sunday).
+// Tadawul and Qatar trade Sunday to Thursday. Dubai's DFM has traded Monday to
+// Friday since 2022, like the venues not listed here.
+const WEEKEND_DAYS: Record<string, readonly number[]> = {
+  TADAWUL: [5, 6],
+  QE: [5, 6],
+};
+const DEFAULT_WEEKEND_DAYS: readonly number[] = [0, 6];
 // Venues whose regular session ends earlier on one weekday every week, as
 // local minutes by weekday (0 is Sunday); the other days close as above. TASE
 // has traded Monday to Friday since January 2026, and on Fridays trading at
@@ -209,12 +229,17 @@ function isPublishedClosure(exchange: string, date: string): boolean {
   return getPublishedUsEquityCalendarDay(exchange, date) === "closed";
 }
 
-function isLocalTradingDay(exchange: string, date: string): boolean {
-  const weekday = localWeekday(date);
-  return weekday != null && weekday !== 0 && weekday !== 6 && !isPublishedClosure(exchange, date);
+/** Whether `weekday` (0 is Sunday) is in the venue's trading week. */
+function isTradingWeekday(exchange: string, weekday: number): boolean {
+  return !(WEEKEND_DAYS[exchange] ?? DEFAULT_WEEKEND_DAYS).includes(weekday);
 }
 
-/** Weekdays in (earlier, later], less published closures for venues with a calendar. */
+function isLocalTradingDay(exchange: string, date: string): boolean {
+  const weekday = localWeekday(date);
+  return weekday != null && isTradingWeekday(exchange, weekday) && !isPublishedClosure(exchange, date);
+}
+
+/** Days of the venue's trading week in (earlier, later], less published closures for venues with a calendar. */
 function localTradingDaysBetween(exchange: string, earlierDate: string, laterDate: string): number {
   const earlierDay = isoLocalDateToUtcDay(earlierDate);
   const laterDay = isoLocalDateToUtcDay(laterDate);
@@ -247,9 +272,9 @@ export function sessionCalendarTimeZone(exchange: string | undefined): string | 
 
 /**
  * The latest regular session that closed at or before `time`: the published
- * calendar for US venues, otherwise local weekdays less published closures. A
- * venue without a known close hour is taken to close at local midnight. Null
- * for round-the-clock and unknown venues.
+ * calendar for US venues, otherwise the days of the venue's trading week less
+ * published closures. A venue without a known close hour is taken to close at
+ * local midnight. Null for round-the-clock and unknown venues.
  */
 export function latestRegularSessionClose(
   exchange: string | undefined,
@@ -293,8 +318,8 @@ export function regularSessionCloseUtcMinute(exchange: string | undefined, time:
 /**
  * The open of the regular session `time` falls in, or of the latest one
  * before it: the published calendar for US venues, otherwise the venue's
- * local open on a weekday that is not a published closure. Null for
- * round-the-clock venues and venues without a known open hour.
+ * local open on a day of its trading week that is not a published closure.
+ * Null for round-the-clock venues and venues without a known open hour.
  */
 export function latestRegularSessionOpen(exchange: string | undefined, time: number): number | null {
   const canonical = canonicalExchange(exchange);
@@ -323,8 +348,9 @@ export function latestRegularSessionOpen(exchange: string | undefined, time: num
 /**
  * The open of the first regular session after `time`, with its local date and
  * the venue's zone: the published calendar for US venues, otherwise the
- * venue's local open on the next weekday that is not a published closure. Null
- * for round-the-clock venues and venues without a known open hour.
+ * venue's local open on the next day of its trading week that is not a
+ * published closure. Null for round-the-clock venues and venues without a
+ * known open hour.
  */
 export function nextRegularSessionOpen(
   exchange: string | undefined,
@@ -368,7 +394,7 @@ export function isRegularSessionTime(exchange: string | undefined, time: number)
 /**
  * True when the venue's full-day closures for the year of `date` are
  * published: US venues, JPX, NSE, BSE, SSE, SZSE, KRX, KOSDAQ, TWSE, TPEX,
- * HKEX, SGX and ASX. Elsewhere a local holiday reads as a weekday.
+ * HKEX, SGX and ASX. Elsewhere a local holiday reads as a trading day.
  */
 export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
   const canonical = canonicalExchange(exchange);
@@ -404,7 +430,7 @@ export function isMiddayBreakPrint(
   if (!pause || !timeZone || !Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now) return false;
   const { year, month, day } = zonedDateTimeParts(now, timeZone);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  if (weekday === 0 || weekday === 6) return false;
+  if (!isTradingWeekday(canonical, weekday)) return false;
   const [start, end] = weekday === 5 && pause.friday ? pause.friday : pause.weekdays;
   const at = (minutes: number) => zonedWallClockToUtcMs(timeZone, year, month, day, Math.floor(minutes / 60), minutes % 60, 0);
   const breakStart = at(start);
