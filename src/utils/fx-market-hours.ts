@@ -44,6 +44,16 @@ export function latestFxWeekClose(time: number): number | null {
 }
 
 /**
+ * When the closure the market is in began (Friday 17:00 New York time); null
+ * while it trades. That is `latestFxWeekClose` for every moment the week is
+ * shut, since a closure never lasts to the next Friday, daylight saving weeks
+ * included.
+ */
+export function currentFxClosureStart(time: number): number | null {
+  return isFxMarketOpen(time) ? null : latestFxWeekClose(time);
+}
+
+/**
  * When an FX observation has aged `windowMs`, counting only time the market
  * is open. Friday's last print stays current over the weekend, while a rate
  * that stopped updating during the week still goes stale on schedule.

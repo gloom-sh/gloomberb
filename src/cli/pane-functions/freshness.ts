@@ -358,14 +358,20 @@ export function deriveHeadlessFreshness(
 /**
  * A rendered view has no structured data: the source is the pane's
  * declaration, the times are the cells that carry an instant, and the state
- * is what the pane's own footer says, or not reported.
+ * is what the pane's own footer says, or not reported. A pane that dates its
+ * figures itself publishes `observed` records, read as a headless report's
+ * rows are: quote or rate times, feed, delay, stale flags and venue sessions.
  */
 export function deriveRenderedFreshness(
   declared: HeadlessPaneFreshness | undefined,
-  input: { footerText: string; cellTimes: unknown[] },
+  input: { footerText: string; cellTimes: unknown[]; observed?: readonly Record<string, unknown>[] },
   now = Date.now(),
 ): ReportFreshness {
-  const signals = emptySignals();
+  const merged = mergeDeclarations(declared);
+  const observed = input.observed?.length
+    ? collect({ shape: "rows" }, { rows: input.observed as HeadlessPaneRow[] }, now, merged)
+    : null;
+  const signals = observed?.signals ?? emptySignals();
   const footer = input.footerText;
   const delayed = /\b(\d+)\s*(?:m|min|minutes?)\s+delayed\b/i.exec(footer);
   if (delayed) {
@@ -380,10 +386,10 @@ export function deriveRenderedFreshness(
     .map((value) => parseReportTime(value))
     .filter((time): time is ReportTime => time != null && time.time <= now + FUTURE_TOLERANCE_MS);
   return resolveFreshness({
-    declared: mergeDeclarations(declared),
+    declared: merged,
     signals,
     // Rendered rows are often a history (a news list, a filing feed), so only the newest is cited.
-    observations: { units: [], extra: units },
+    observations: { units: observed?.observations.units ?? [], extra: [...(observed?.observations.extra ?? []), ...units] },
     now,
   });
 }

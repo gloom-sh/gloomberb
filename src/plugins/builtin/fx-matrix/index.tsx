@@ -12,6 +12,7 @@ import { CountryFlag } from "../../../components/ui/country-flag";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { resolveEntryData } from "../../../market-data/selectors";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -27,6 +28,7 @@ import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, ty
 import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { FX_MATRIX_REPORT_OPTIONS, fxMatrixReportNotices, fxMatrixSettings } from "./settings";
 import { createFxExportMetadata } from "./export";
+import { fxRateObservations } from "./freshness";
 
 const FX_MATRIX_PANE_ID = "fx-matrix";
 /** Stable identity: a fresh literal here would reload the board every render. */
@@ -114,6 +116,23 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       ? { ...entry, error: entry.error ? { ...entry.error } : null }
       : undefined] as const;
   }));
+  // A report or capture of the board is dated by the rates it draws: when each
+  // was observed, whether it is delayed or stale, and where the FX market
+  // stands. The pane draws none of this; its footer keeps its own status.
+  useRemoteUiNode({
+    role: "report-freshness",
+    label: "Rate freshness",
+    getMetadata: () => {
+      const legQuotes = new Map(legs.map((leg) => [leg.currency, resolveEntryData(legEntries.get(fxLegQuoteKey(leg)))] as const));
+      return {
+        observations: fxRateObservations(currencies, rates, (currency) => ({
+          entry: rateEntries.get(currency),
+          // Only a rate that is the pair quote's own says what that quote says.
+          legQuote: liveEntries.has(currency) ? legQuotes.get(currency) : null,
+        })),
+      };
+    },
+  });
   const status = summarizeFxRates(currencies, rates, (currency) => rateEntries.get(currency));
   const statusText = fxStatusLabel(status);
   const snapshotFetchedAt = summarizeFxRates(currencies, snapshotRates, (currency) => (

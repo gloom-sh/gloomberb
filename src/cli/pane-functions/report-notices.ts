@@ -1,6 +1,6 @@
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import type { HeadlessFreshnessStatus, HeadlessPaneFreshness } from "../../types/headless";
-import { isFiniteNumber } from "../../utils/guards";
+import { isFiniteNumber, isRecord } from "../../utils/guards";
 
 export interface RenderedReportNotices {
   /** Lines a report prints under its title, such as "21 of 145 strikes". */
@@ -33,7 +33,8 @@ const FRESHNESS_STATUSES: readonly HeadlessFreshnessStatus[] = ["live", "delayed
  * node it publishes: `{ asOf?, status?, delayMinutes? }`. A capture keeps no
  * footer status and few cells carry a time, so a pane that knows its feed
  * (OMON's chain) dates the report here, as the plain command over the same
- * data does.
+ * data does. A pane whose figures come from several dated quotes (FXC's pair
+ * rates) publishes them instead, see `renderedReportObservations`.
  */
 export function renderedReportFreshness(
   semanticUi: readonly RemoteUiNodeSnapshot[],
@@ -46,4 +47,17 @@ export function renderedReportFreshness(
     ...(FRESHNESS_STATUSES.includes(status as HeadlessFreshnessStatus) ? { status: status as HeadlessFreshnessStatus } : {}),
     ...(isFiniteNumber(delayMinutes) && delayMinutes > 0 ? { delayMinutes } : {}),
   };
+}
+
+/**
+ * The dated observations a rendered pane's figures come from, from the
+ * `observations` its `report-freshness` node publishes: one record per quote
+ * or rate, in the fields of a headless report's rows (`quoteTime`,
+ * `dataSource`, `delayMinutes`, `stale`, `sessionExchange`, `marketState`).
+ * The report reads them as it reads those rows, so it says what the newest is,
+ * how far the feed is held back, which are stale and where the market stands.
+ */
+export function renderedReportObservations(semanticUi: readonly RemoteUiNodeSnapshot[]): Record<string, unknown>[] {
+  const observations = semanticUi.find((node) => node.role === "report-freshness")?.metadata?.observations;
+  return Array.isArray(observations) ? observations.filter(isRecord) : [];
 }

@@ -8,7 +8,7 @@ import { collectShotSymbols } from "./data";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
-import { renderedReportFreshness, renderedReportNotices } from "./report-notices";
+import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
@@ -186,6 +186,7 @@ export function buildDomPaneReportFromRender(
   const freshness = deriveRenderedFreshness(declared, {
     footerText: result.render.footerText ?? "",
     cellTimes: rows.flatMap((row) => row.cells.flatMap((cell) => cell.instant ?? [])),
+    observed: renderedReportObservations(result.render.semanticUi ?? []),
   });
 
   const complete = failureReason === null && !truncated;

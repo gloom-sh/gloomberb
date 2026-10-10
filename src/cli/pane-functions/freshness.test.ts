@@ -60,6 +60,28 @@ describe("report freshness", () => {
       .toBe("Source: Gloom Cloud · Fri 9 Oct 02:00 UTC · stale (3 hours old)");
   });
 
+  test("a currency pair is closed from Friday 17:00 New York, and its weekend ticks read as that Friday's close", () => {
+    const pair = (lastUpdated: string, marketState = "CLOSED") => ({
+      dataSource: "delayed", delayMinutes: 15, stale: false, sessionExchange: "CCY", marketState, lastUpdated: Date.parse(lastUpdated),
+    });
+    const at = (now: string, ...pairs: ReturnType<typeof pair>[]) => formatFreshnessLine(
+      deriveHeadlessFreshness(rows(), { rows: pairs }, Date.parse(now)),
+    );
+    // Saturday afternoon: a major's last print, then a quiet tick the next morning.
+    expect(at("2026-10-10T18:45:00Z", pair("2026-10-09T21:29:00Z")))
+      .toBe("Source: Gloom Cloud · Fri 9 Oct close · 15 min delayed · markets closed");
+    expect(at("2026-10-10T18:45:00Z", pair("2026-10-09T21:29:00Z"), pair("2026-10-10T14:50:28Z")))
+      .toBe("Source: Gloom Cloud · Fri 9 Oct close · 15 min delayed · markets closed");
+    // A pair that last printed before the final trading day is no close; the line dates it.
+    expect(at("2026-10-10T18:45:00Z", pair("2026-10-07T15:00:00Z")))
+      .toBe("Source: Gloom Cloud · Wed 7 Oct 15:00 UTC · 15 min delayed · markets closed");
+    // A closed state on a day the FX week trades (a holiday) keeps the day of the print.
+    expect(at("2026-10-13T12:00:00Z", pair("2026-10-13T09:30:00Z")))
+      .toBe("Source: Gloom Cloud · Tue 13 Oct close · 15 min delayed · markets closed");
+    expect(at("2026-10-14T14:00:00Z", pair("2026-10-14T13:59:00Z", "REGULAR")))
+      .toBe("Source: Gloom Cloud · Wed 14 Oct 13:59 UTC · 15 min delayed · markets open");
+  });
+
   test("filed data is never stale for its age, only for a release it missed", () => {
     const filings = rows({ source: "SEC EDGAR", status: "not-a-feed", basis: "filed data", observedKey: "filedAt", oldest: null });
     expect(line(filings, { rows: [{ filedAt: "2025-02-01" }, { filedAt: "2019-03-01" }] }))

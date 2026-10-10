@@ -95,7 +95,7 @@ import {
   withShotPriceHistory,
   withShotSeasonalityHistory,
 } from "./data";
-import { renderedReportFreshness, renderedReportNotices } from "./report-notices";
+import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
 import { deriveRenderedFreshness, statusLineVariants, type ReportFreshness } from "./freshness";
 import { quotesFreshness } from "../freshness";
 import {
@@ -747,10 +747,15 @@ function shotFreshness(
     ...(payload.instrumentFinancials ?? []).map(({ financials }) => financials.quote),
     ...bridgedQuotes,
   ];
-  const quoted = declared.status ? undefined : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now);
+  // A pane that publishes the observations behind its figures (FXC's rates) dates itself.
+  const observed = renderedReportObservations(render.semanticUi ?? []);
+  const quoted = declared.status || observed.length > 0
+    ? undefined
+    : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now);
   return quoted ?? deriveRenderedFreshness(declared, {
     footerText: render.footerText ?? "",
     cellTimes: render.rows.flatMap((row) => row.cells.flatMap((cell) => (cell.instant ? [cell.instant] : []))),
+    observed,
   }, now);
 }
 
