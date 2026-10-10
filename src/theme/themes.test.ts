@@ -16,7 +16,7 @@ import {
   paneTitleText,
 } from "./colors";
 import { contrastRatio } from "./color-utils";
-import { DEFAULT_THEME, getThemeIds, isDarkTheme, themes } from "./themes";
+import { DEFAULT_THEME, getThemeIds, isDarkTheme, resolveThemeId, themes } from "./themes";
 
 const BODY_TEXT_MIN = 4.5;
 const SUBTLE_TEXT_MIN = 3.6;
@@ -43,7 +43,32 @@ afterEach(() => {
 describe("theme appearance", () => {
   test("reads every light theme as light and everything else as dark", () => {
     const light = getThemeIds().filter((id) => !isDarkTheme(id)).sort();
-    expect(light).toEqual(["github-light", "gruvbox-light", "nord-light", "paper", "solarized-light"]);
+    expect(light).toEqual(["colorblind-light", "github-light", "gruvbox-light", "nord-light", "paper", "solarized-light"]);
+  });
+});
+
+/**
+ * One lookup for `config set theme`, `shot --theme` and the picker's
+ * vocabulary: what the picker shows (the name) has to work where the id does.
+ */
+describe("theme lookup", () => {
+  test("takes an id or a display name in any case and spelling of spaces", () => {
+    for (const input of ["paper", "Paper", " PAPER ", "White Phosphor", "white_phosphor", "solarized light", "Tokyo Night"]) {
+      expect(resolveThemeId(input).ok).toBe(true);
+    }
+    expect(resolveThemeId("White Phosphor")).toEqual({ ok: true, id: "white" });
+    expect(resolveThemeId("Solarized Dark")).toEqual({ ok: true, id: "solarized" });
+  });
+
+  test("suggests the closest id for a typo, and nothing for a guess", () => {
+    expect(resolveThemeId("colourblind")).toEqual({ ok: false, suggestion: "colorblind" });
+    expect(resolveThemeId("solarised-light")).toEqual({ ok: false, suggestion: "solarized-light" });
+    expect(resolveThemeId("Catppucin Mocha")).toEqual({ ok: false, suggestion: "catppuccin" });
+    // Part of exactly one name, but not of several.
+    expect(resolveThemeId("contrast")).toEqual({ ok: false, suggestion: "high-contrast" });
+    expect(resolveThemeId("phosphor")).toEqual({ ok: false, suggestion: null });
+    expect(resolveThemeId("nosuchtheme")).toEqual({ ok: false, suggestion: null });
+    expect(resolveThemeId("")).toEqual({ ok: false, suggestion: null });
   });
 });
 

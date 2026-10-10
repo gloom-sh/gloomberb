@@ -23,6 +23,26 @@ import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
+import { debugLog } from "../../../utils/debug-log";
+import { DEFAULT_THEME, themes } from "../../../theme/themes";
+
+const configLog = debugLog.createLogger("config");
+const reportedUnknownThemes = new Set<string>();
+
+/**
+ * A theme id this build does not know is kept, not replaced: a newer build on
+ * another device may have saved it, and writing the default back would undo
+ * that choice everywhere through sync. The app draws the default meanwhile,
+ * and says so once.
+ */
+function sanitizeTheme(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  if (!themes[value] && !reportedUnknownThemes.has(value)) {
+    reportedUnknownThemes.add(value);
+    configLog.warn(`Unknown theme "${value}" in config; showing ${DEFAULT_THEME}. gloomberb config themes lists the ids.`);
+  }
+  return value;
+}
 
 export function normalizeLoadedConfig(
   saved: Record<string, unknown>,
@@ -66,7 +86,7 @@ export function normalizeLoadedConfig(
     ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
-    theme: typeof candidate.theme === "string" ? candidate.theme : defaults.theme,
+    theme: sanitizeTheme(candidate.theme, defaults.theme),
     chartPreferences: sanitizeChartPreferences(candidate.chartPreferences, defaults.chartPreferences),
     valueFlashingEnabled: typeof candidate.valueFlashingEnabled === "boolean" ? candidate.valueFlashingEnabled : defaults.valueFlashingEnabled,
     fontSize: sanitizeFontSize(candidate.fontSize, defaults.fontSize),

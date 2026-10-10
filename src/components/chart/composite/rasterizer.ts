@@ -17,6 +17,7 @@ import { compositeGridRatios } from "./format";
 import { projectCompositeValue } from "./scene";
 import { paintVolumeProfile } from "./volume-profile-paint";
 import { paintExtendedHours } from "./session-shading";
+import type { SeriesLineCue } from "./series-cues";
 import type {
   CompositeAxisDomain,
   CompositeChartColors,
@@ -168,6 +169,55 @@ function fillBand(
   }
 }
 
+/**
+ * Strokes a line's segments with a dash pattern that runs on along the whole
+ * line, so a dense series with segments shorter than one dash still shows the
+ * pattern rather than restarting it at every point.
+ */
+class DashedStroke {
+  private index = 0;
+  private remaining: number;
+
+  constructor(
+    private readonly data: Uint8Array,
+    private readonly width: number,
+    private readonly height: number,
+    private readonly color: RgbaColor,
+    private readonly cue: SeriesLineCue,
+  ) {
+    this.remaining = cue.dash[0] ?? 0;
+  }
+
+  segment(x0: number, y0: number, x1: number, y1: number): void {
+    const { dash, thickness } = this.cue;
+    const length = Math.hypot(x1 - x0, y1 - y0);
+    if (dash.length === 0 || length === 0) {
+      drawLine(this.data, this.width, this.height, x0, y0, x1, y1, this.color, thickness);
+      return;
+    }
+    let travelled = 0;
+    while (travelled < length) {
+      const run = Math.min(this.remaining, length - travelled);
+      if (this.index % 2 === 0) {
+        const from = travelled / length;
+        const to = (travelled + run) / length;
+        drawLine(
+          this.data, this.width, this.height,
+          x0 + (x1 - x0) * from, y0 + (y1 - y0) * from,
+          x0 + (x1 - x0) * to, y0 + (y1 - y0) * to,
+          this.color, thickness,
+        );
+      }
+      travelled += run;
+      this.remaining -= run;
+      if (this.remaining <= 0) {
+        this.index = (this.index + 1) % dash.length;
+        this.remaining = dash[this.index]!;
+      }
+    }
+  }
+}
+
 function drawConnectedSeries(
   data: Uint8Array,
   width: number,
@@ -176,6 +226,7 @@ function drawConnectedSeries(
   domain: CompositeAxisDomain,
   color: RgbaColor,
   area: boolean,
+  cue?: SeriesLineCue,
 ): void {
   const points = series.points.map((point) => pixelPoint(point, width, height));
   if (points.length === 0) return;
@@ -184,11 +235,19 @@ function drawConnectedSeries(
 
   if (area) fillAreaGradient(data, width, height, series, points, baseline, step, color);
 
+  const stroke = cue ? new DashedStroke(data, width, height, color, cue) : null;
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1]!;
     const current = points[index]!;
     if (series.points[index]?.breakBefore) continue;
-    if (step) {
+    if (stroke) {
+      if (step) {
+        stroke.segment(previous.x, previous.y, current.x, previous.y);
+        stroke.segment(current.x, previous.y, current.x, current.y);
+      } else {
+        stroke.segment(previous.x, previous.y, current.x, current.y);
+      }
+    } else if (step) {
       drawLine(data, width, height, previous.x, previous.y, current.x, previous.y, color, 1.4);
       drawLine(data, width, height, current.x, previous.y, current.x, current.y, color, 1.4);
     } else {
@@ -459,6 +518,7 @@ export function renderCompositePanelBitmap(
     if (!domain) continue;
     const color = parseHex(series.source.color);
     const negativeColor = series.source.negativeColor ? parseHex(series.source.negativeColor) : color;
+    const cue = panel.lineCues?.get(series.source.id);
     switch (series.source.style) {
       case "columns":
         drawColumns(
@@ -475,11 +535,11 @@ export function renderCompositePanelBitmap(
         );
         break;
       case "area":
-        drawConnectedSeries(data, width, height, series, domain, color, true);
+        drawConnectedSeries(data, width, height, series, domain, color, true, cue);
         break;
       case "band":
         fillBand(data, width, height, series, domain, color);
-        drawConnectedSeries(data, width, height, series, domain, color, false);
+        drawConnectedSeries(data, width, height, series, domain, color, false, cue);
         break;
       case "points":
         for (const point of series.points) {
@@ -494,7 +554,7 @@ export function renderCompositePanelBitmap(
         break;
       case "line":
       case "step":
-        drawConnectedSeries(data, width, height, series, domain, color, false);
+        drawConnectedSeries(data, width, height, series, domain, color, false, cue);
         break;
     }
   }

@@ -173,10 +173,10 @@ test("the detail charts the selected class's net and the front price over every 
   await settle();
 
   let lines = tui.frame().split("\n");
-  const legend = lines.findIndex((line) => line.includes("● Noncommercial net +159,000"));
+  const legend = lines.findIndex((line) => line.includes("• Noncommercial net +159,000"));
   const header = lines.findIndex((line) => line.includes("CLASS"));
   expect(legend).toBeGreaterThan(0);
-  expect(lines[legend]).toContain("● Front price");
+  expect(lines[legend]).toContain("+ Front price");
   // The chart sits between the legend and the table, and the table keeps every class.
   expect(header).toBeGreaterThan(legend + 6);
   expect(lines.slice(header + 1).filter((line) => /Noncommercial|Commercial|Nonreportable/.test(line))).toHaveLength(3);
@@ -184,8 +184,8 @@ test("the detail charts the selected class's net and the front price over every 
   // The chart follows the selected class.
   await press("down");
   lines = tui.frame().split("\n");
-  expect(lines.some((line) => line.includes("● Commercial net -151,000"))).toBe(true);
-  expect(lines.some((line) => line.includes("● Noncommercial net"))).toBe(false);
+  expect(lines.some((line) => line.includes("• Commercial net -151,000"))).toBe(true);
+  expect(lines.some((line) => line.includes("• Noncommercial net"))).toBe(false);
 });
 
 test("a short detail keeps the class rows and folds the chart into a strip", async () => {

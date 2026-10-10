@@ -7,8 +7,15 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import { formatCompositePointDetails, formatCompositeSeriesValue, seriesPriceReference } from "./format";
 import type { CompositeChartProps, CompositeChartScene } from "./types";
+import { seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
 
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
+const NO_LINE_CUES: ReadonlyMap<string, SeriesLineCue> = new Map();
+/** The dot every legend entry had before lines carried cues, and still has where they do not. */
+const DOT_MARKER = "● ";
+/** Cells the desktop and web marker takes: an 8px dot, or a 16px line sample, plus its margin. */
+const DOM_DOT_CELLS = 2;
+const DOM_LINE_CELLS = 3;
 
 function legendValue(
   series: ResolvedSeries,
@@ -50,6 +57,8 @@ export function CompositeLegend({
   scene,
   series,
   visibleSeriesIds,
+  lineCues = NO_LINE_CUES,
+  cellPlot = false,
   width,
   accessory,
   accessoryWidth,
@@ -63,6 +72,10 @@ export function CompositeLegend({
   scene: CompositeChartScene | null;
   series: ResolvedSeries[];
   visibleSeriesIds: ReadonlySet<string>;
+  /** Each line's cue on a chart that draws several; a chart with one keeps its dot. */
+  lineCues?: ReadonlyMap<string, SeriesLineCue>;
+  /** The plot is cell text, so a line's cue is its mark rather than its dash. */
+  cellPlot?: boolean;
   width: number;
   accessory: CompositeChartProps["legendAccessory"];
   accessoryWidth: CompositeChartProps["legendAccessoryWidth"];
@@ -79,6 +92,9 @@ export function CompositeLegend({
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
   );
   const entries = series.map((entry) => {
+    const cue = lineCues.get(entry.id) ?? null;
+    const marker = cue ? `${cellPlot ? cue.glyph : cue.sample} ` : DOT_MARKER;
+    const markerWidth = isDesktopWeb ? cue ? DOM_LINE_CELLS : DOM_DOT_CELLS : displayWidth(marker);
     const toggleable = !!onToggleSeries && (isSeriesToggleable?.(entry) ?? true);
     const cursorValue = cursorValueById.get(entry.id);
     const changeText = showLatestChangePercent
@@ -107,10 +123,13 @@ export function CompositeLegend({
     const text = [label, valueText].filter(Boolean).join(" ");
     return {
       entry,
+      cue,
+      marker,
+      markerWidth,
       label,
       compactLabel,
       text,
-      width: Math.max(1, displayWidth(text)) + 2,
+      width: Math.max(1, displayWidth(text)) + markerWidth,
       labelWidth,
       valueText,
       toggleable,
@@ -122,7 +141,7 @@ export function CompositeLegend({
     target.label = label;
     target.labelWidth = labelWidth;
     target.text = [truncateToDisplayWidth(label, labelWidth), target.valueText].filter(Boolean).join(" ");
-    target.width = Math.max(1, displayWidth(target.text)) + 2;
+    target.width = Math.max(1, displayWidth(target.text)) + target.markerWidth;
   };
   const measureSeriesWidth = () => entries.reduce(
     (total, entry, index) => total + entry.width + (index > 0 ? 1 : 0),
@@ -146,7 +165,7 @@ export function CompositeLegend({
   const minimumSeriesWidth = entries.reduce((total, entry, index) => {
     const text = [truncateToDisplayWidth(entry.compactLabel, Math.min(8, displayWidth(entry.compactLabel))), entry.valueText]
       .filter(Boolean).join(" ");
-    return total + Math.max(1, displayWidth(text)) + 2 + (index > 0 ? 1 : 0);
+    return total + Math.max(1, displayWidth(text)) + entry.markerWidth + (index > 0 ? 1 : 0);
   }, 0);
   if (minimumSeriesWidth <= widthBeforeAccessory) {
     while (measureSeriesWidth() > widthBeforeAccessory) {
@@ -247,7 +266,7 @@ export function CompositeLegend({
           data-gloom-role="composite-chart-legend-scroll"
         >
           <Box flexDirection="row" width={desiredSeriesWidth} height={1} gap={1}>
-            {entries.map(({ entry, text, toggleable, tooltip, width: entryWidth }, index) => {
+            {entries.map(({ entry, cue, marker, text, toggleable, tooltip, width: entryWidth }, index) => {
               const entryVisible = visibleSeriesIds.has(entry.id);
               return (
               <Box
@@ -274,7 +293,21 @@ export function CompositeLegend({
                 data-visible={entryVisible ? "true" : "false"}
                 title={isDesktopWeb ? tooltip : undefined}
               >
-                {isDesktopWeb ? (
+                {isDesktopWeb && cue ? (
+                  // The line as the plot strokes it: solid, dashed, dotted or heavy.
+                  <Box
+                    flexShrink={0}
+                    style={{
+                      width: 16,
+                      height: Math.max(2, Math.round(cue.thickness)),
+                      marginInlineEnd: 6,
+                      background: seriesCueCssBackground(cue, entry.color),
+                      opacity: entryVisible ? 1 : 0.35,
+                    }}
+                    data-gloom-role="composite-chart-legend-marker"
+                    data-gloom-cue={cue.id}
+                  />
+                ) : isDesktopWeb ? (
                   <Box
                     flexShrink={0}
                     style={{
@@ -288,7 +321,7 @@ export function CompositeLegend({
                     data-gloom-role="composite-chart-legend-marker"
                   />
                 ) : (
-                  <Text fg={entryVisible ? entry.color : themeColors.textMuted}>● </Text>
+                  <Text fg={entryVisible ? entry.color : themeColors.textMuted}>{marker}</Text>
                 )}
                 {/* The filled/hollow marker already says whether a series is
                     shown; the word only repeated it in every legend slot. */}

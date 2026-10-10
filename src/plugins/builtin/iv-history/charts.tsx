@@ -3,7 +3,8 @@ import { CompositeChart } from "../../../components";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { formatCompositeSeriesValue } from "../../../components/chart/composite/format";
 import { staticSeries } from "../../../components/chart/static/series";
-import { useThemeColors } from "../../../theme/theme-context";
+import { useThemeColors, useThemeId } from "../../../theme/theme-context";
+import { themeSeriesColors } from "../../../theme/series-colors";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { formatPoints } from "./format";
 import type { DatedValue, IvHistoryModel } from "./model";
@@ -13,6 +14,11 @@ const PANELS = [{ id: "vol", height: 3 }, { id: "spread", height: 1 }];
 const IV90_COLOR = "#4c9aff";
 /** The quote capture point must stand apart from the amber IV30 line it continues. */
 const QUOTE_COLOR = "#c084fc";
+/**
+ * Palette slots for a theme with its own series colours (the colour-blind
+ * ones), where the up colour HV takes elsewhere is the same blue as IV90.
+ */
+const THEMED_SLOTS = { iv30: 1, iv90: 0, hv: 2, quote: 5 } as const;
 
 function volSeries(id: string, label: string, color: string, points: readonly DatedValue[], panelId: string,
   style: ResolvedSeries["style"] = "line"): ResolvedSeries {
@@ -40,9 +46,13 @@ function ivHistorySeries(model: IvHistoryModel, colors: { iv30: string; iv90: st
 
 export function IvHistoryChart({ model, width, height, hvLabel, focused = false }: { model: IvHistoryModel; width: number; height: number; hvLabel: string; focused?: boolean }) {
   const colors = useThemeColors();
+  const themed = themeSeriesColors(useThemeId());
   const palette = resolveChartPalette(colors);
-  const series = useMemo(() => ivHistorySeries(model, { iv30: colors.warning, iv90: IV90_COLOR, hv: colors.positive,
-    quote: QUOTE_COLOR, spread: colors.textDim }, hvLabel), [model, colors, hvLabel]);
+  const series = useMemo(() => ivHistorySeries(model, themed
+    ? { iv30: themed[THEMED_SLOTS.iv30]!, iv90: themed[THEMED_SLOTS.iv90]!, hv: themed[THEMED_SLOTS.hv]!,
+      quote: themed[THEMED_SLOTS.quote]!, spread: colors.textDim }
+    : { iv30: colors.warning, iv90: IV90_COLOR, hv: colors.positive, quote: QUOTE_COLOR, spread: colors.textDim },
+  hvLabel), [model, colors, themed, hvLabel]);
   return <CompositeChart series={series} panels={PANELS} width={width} height={height} focused={focused} navigable={false} showLegend showTimeAxis formatValue={formatLegendValue}
     remoteKind="implied-volatility-history"
     colors={{ background: palette.bgColor, grid: palette.gridColor, crosshair: palette.crosshairColor, text: colors.text,

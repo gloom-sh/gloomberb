@@ -176,7 +176,7 @@ function createCoreCliCommands(
           { flags: "--output <path>", description: "PNG to write; defaults to gloomberb-<function>-<argument>.png in this folder" },
           { flags: "--width <px>", description: "Image width, 720 to 2400 (default 1280)" },
           { flags: "--height <px>", description: "Image height, 360 to 1800 (default 720)" },
-          { flags: "--theme <id>", description: "Render with another theme, such as amber or green" },
+          { flags: "--theme <id>", description: "Render with another theme, such as amber or colorblind; gloomberb config themes lists them" },
           { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
           { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },

@@ -10,7 +10,9 @@ import { CompositeLegend } from "./legend";
 import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
 import { AsciiText, Box, ChartSurface, Text, useUiCapabilities } from "../../../ui";
 import { useOptionalPaneInstanceId } from "../../../state/app/context";
-import { useThemeColors } from "../../../theme/theme-context";
+import { useThemeColors, useThemeId } from "../../../theme/theme-context";
+import { themedSeriesColor, themeSeriesColors } from "../../../theme/series-colors";
+import { assignSeriesLineCues } from "./series-cues";
 import { chartSurfaceBackground, usePaneSurface } from "../../layout/pane/surface";
 import { CHART_WATERMARK_ROLE } from "../../../utils/screenshot-watermark";
 import type { ResolvedSeries } from "../../../time-series/types";
@@ -56,7 +58,28 @@ function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number 
 }
 
 const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
-export function CompositeChart({
+
+/** Default-palette series in the theme's own palette, where it has one; the same list otherwise. */
+function useThemedSeriesList(list: ResolvedSeries[], themeId: string): ResolvedSeries[];
+function useThemedSeriesList(list: ResolvedSeries[] | undefined, themeId: string): ResolvedSeries[] | undefined;
+function useThemedSeriesList(list: ResolvedSeries[] | undefined, themeId: string): ResolvedSeries[] | undefined {
+  return useMemo(() => {
+    if (!list || !themeSeriesColors(themeId)) return list;
+    return list.map((entry) => {
+      const color = themedSeriesColor(entry.color, themeId);
+      return color === entry.color ? entry : { ...entry, color };
+    });
+  }, [list, themeId]);
+}
+
+export function CompositeChart(props: CompositeChartProps) {
+  const themeId = useThemeId();
+  const series = useThemedSeriesList(props.series, themeId);
+  const legendSeries = useThemedSeriesList(props.legendSeries, themeId);
+  return <ThemedCompositeChart {...props} series={series} legendSeries={legendSeries} />;
+}
+
+function ThemedCompositeChart({
   series,
   legendSeries,
   timelineSeries,
@@ -155,6 +178,17 @@ export function CompositeChart({
     () => new Set(visibleSeries.map((entry) => entry.id)),
     [visibleSeries],
   );
+  // Assigned over the legend's list, hidden lines included, so toggling one
+  // never restyles the rest.
+  const cueSource = legendSeries ?? stableSeries;
+  const cueKey = cueSource.map((entry) => `${entry.id}\u0000${entry.style}\u0000${entry.profile ? 1 : 0}`).join("\u0001");
+  const cueSourceRef = useRef(cueSource);
+  cueSourceRef.current = cueSource;
+  // Keyed by ids and styles: a live tick hands over new series objects.
+  const lineCues = useMemo(() => {
+    void cueKey;
+    return assignSeriesLineCues(cueSourceRef.current);
+  }, [cueKey]);
   const {
     navigationFrame, activeUserViewport, effectiveViewport,
     panViewport, panViewportByRatio, zoomViewport, setViewportRange, resetViewport,
@@ -239,8 +273,11 @@ export function CompositeChart({
       plotHeight,
     );
     // Terminal labels snap to rows; a fractional viewport places them exactly.
-    return projectedScene.panels.map((panel) => resizeCompositePanel(panel, panelHeights.get(panel.id) ?? 1, !fractionalViewport));
-  }, [fractionalViewport, panels, plotHeight, projectedScene]);
+    return projectedScene.panels.map((panel) => {
+      const resized = resizeCompositePanel(panel, panelHeights.get(panel.id) ?? 1, !fractionalViewport);
+      return lineCues.size > 0 ? { ...resized, lineCues } : resized;
+    });
+  }, [fractionalViewport, lineCues, panels, plotHeight, projectedScene]);
   // Static overview charts also pin the latest price with cursor precision.
   const includeCursorLabels = interactive || cursorDate !== undefined || !!scenePanels?.some((panel) => panel.lastPrice);
   const resolvedAxisWidth = useMemo(() => maximumAxisWidth === 0 ? 0 : Math.min(
@@ -479,6 +516,8 @@ export function CompositeChart({
           scene={scene}
           series={visibleLegendSeries}
           visibleSeriesIds={visibleSeriesIds}
+          lineCues={lineCues}
+          cellPlot={showTextFallback && !isDesktopWeb}
           width={totalWidth}
           accessory={legendAccessory}
           accessoryWidth={legendAccessoryWidth}

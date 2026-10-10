@@ -1,5 +1,5 @@
 import { peekGeoCatalog } from "../../../api-client/geo";
-import { SERIES_COLORS } from "../../../time-series/resolve";
+import { SERIES_COLORS } from "../../../theme/series-colors";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import type { PaneTemplateDef } from "../../../types/plugin";
 import { chartHeadless } from "../chart-composer/headless";

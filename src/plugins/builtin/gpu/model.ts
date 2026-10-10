@@ -1,6 +1,6 @@
 import type { GpuBasis, GpuBoardRow, GpuEvent, GpuObservation } from "../../../api-client/gpu";
 import { staticSeries } from "../../../components/chart/static/series";
-import { SERIES_COLORS } from "../../../time-series/resolve";
+import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
 

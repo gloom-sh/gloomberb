@@ -1,5 +1,5 @@
 import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
-import { SERIES_COLORS } from "../../../time-series/resolve";
+import { SERIES_COLORS } from "../../../theme/series-colors";
 import { revenueAmount } from "../revenue-breakdown/model";
 import { activeRelationship, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, trustTier } from "./trust";
 

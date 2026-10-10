@@ -74,7 +74,7 @@ test("a default-size pane body (118 cells in the terminal) puts the metrics besi
   const { row, line } = metricsHeaderRow(frame);
   expect(row).toBeGreaterThanOrEqual(0);
   // Side by side: the chart legend and the table header share a row, the table right of the chart.
-  expect(line.indexOf("● Buy & hold")).toBeGreaterThanOrEqual(0);
+  expect(line.indexOf("• Buy & hold")).toBeGreaterThanOrEqual(0);
   expect(line.indexOf("METRIC")).toBeGreaterThan(118 - 50 - 1);
   // Every metric row fits beside the chart.
   expect(frame).toContain("Average hold (sessions)");
@@ -91,8 +91,8 @@ test("a short stacked pane sizes the chart with the kit: the legend names the li
   const frame = await renderPane(60, 16);
   const lines = frame.split("\n");
   const { row } = metricsHeaderRow(frame);
-  expect(lines.slice(0, row).join("\n")).toContain("● Buy & hold");
-  expect(lines.slice(0, row).join("\n")).toContain("● Strategy");
+  expect(lines.slice(0, row).join("\n")).toContain("• Buy & hold");
+  expect(lines.slice(0, row).join("\n")).toContain("+ Strategy");
   // The table keeps its header and four metrics under the chart.
   for (const label of ["Total return", "CAGR", "Volatility (ann.)", "Sharpe (0% cash)"]) {
     expect(lines.slice(row).join("\n")).toContain(label);

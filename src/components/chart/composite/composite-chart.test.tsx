@@ -532,6 +532,30 @@ describe("CompositeChart", () => {
     expect(tui.frame()).toContain("OTHER Revenue");
   });
 
+  test("tells lines apart by more than colour, and leaves a one-line chart as it was", async () => {
+    const price = series("price", "main", "left", "USD", [100, 103, 101, 104, 102]);
+    const revenue = { ...series("revenue", "main", "right", "%", [8, 4, 7, 3, 6]), style: "line" as const, interpolation: "none" as const };
+    await tui.render(
+      <CompositeChart width={58} height={10} series={[price, revenue]} panels={[{ id: "main" }]} />,
+      { width: 60, height: 12 },
+    );
+    await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+    // The cell plot has no colour of its own: each line draws with the mark its legend entry shows.
+    let lines = tui.frame().split("\n");
+    expect(lines[0]).toContain("\u2022 ACME Price");
+    expect(lines[0]).toContain("+ OTHER Revenue");
+    expect(lines.slice(1).join("\n")).toContain("+");
+
+    await tui.render(
+      <CompositeChart width={58} height={10} series={[price]} panels={[{ id: "main" }]} />,
+      { width: 60, height: 12 },
+    );
+    await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+    lines = tui.frame().split("\n");
+    expect(lines[0]).toContain("\u25cf ACME Price");
+    expect(lines.slice(1).join("\n")).not.toContain("+");
+  });
+
   test("uses buffered market anchors so closed sessions do not create chart holes", async () => {
     const candles = twoSessionCandles();
     const currentSession = {

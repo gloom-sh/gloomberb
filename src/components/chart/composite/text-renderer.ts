@@ -5,6 +5,7 @@ import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column
 import { projectCompositeValue } from "./scene";
 import { writeVolumeProfileText } from "./volume-profile-paint";
 import { writeSessionBreaksText } from "./session-shading";
+import type { SeriesLineCue } from "./series-cues";
 import type {
   CompositeAxisDomain,
   CompositePanelScene,
@@ -59,19 +60,23 @@ function renderLineLike(
   series: CompositeProjectedSeries,
   width: number,
   height: number,
+  cue?: SeriesLineCue,
 ): void {
   const points = series.points.map((point) => ({ ...cellPoint(point, width, height), point }));
   if (points.length === 0) return;
   const step = series.source.style === "step" || series.source.interpolation === "step-after";
+  // Beside other lines, each line keeps its own mark the whole way, steps
+  // included, since cell text has no colour of its own here.
+  const mark = cue && cue.id !== "solid" ? cue.glyph : null;
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1]!;
     const current = points[index]!;
     if (current.point.breakBefore) continue;
     if (step) {
-      drawLine(rows, previous.x, previous.y, current.x, previous.y, "─");
-      drawLine(rows, current.x, previous.y, current.x, current.y, "│");
+      drawLine(rows, previous.x, previous.y, current.x, previous.y, mark ?? "─");
+      drawLine(rows, current.x, previous.y, current.x, current.y, mark ?? "│");
     } else {
-      drawLine(rows, previous.x, previous.y, current.x, current.y, "•");
+      drawLine(rows, previous.x, previous.y, current.x, current.y, mark ?? "•");
     }
   }
   for (let index = 0; index < points.length; index += 1) {
@@ -102,6 +107,7 @@ function renderArea(
   domain: CompositeAxisDomain,
   width: number,
   height: number,
+  cue?: SeriesLineCue,
 ): void {
   const baseline = valueRow(0, domain, height) ?? height - 1;
   const points = series.points.map((point) => cellPoint(point, width, height));
@@ -110,7 +116,7 @@ function renderArea(
     const bottom = Math.max(point.y, baseline);
     for (let row = top; row <= bottom; row += 1) setCell(rows, point.x, row, "░");
   }
-  renderLineLike(rows, series, width, height);
+  renderLineLike(rows, series, width, height, cue);
 }
 
 /** A band's range as shade between its points' low and high rows, under its line. */
@@ -120,6 +126,7 @@ function renderBand(
   domain: CompositeAxisDomain,
   width: number,
   height: number,
+  cue?: SeriesLineCue,
 ): void {
   const edges = series.points.map((projected) => {
     const { high, low } = projected.point;
@@ -150,7 +157,7 @@ function renderBand(
       shade(x, previous.top + (current.top - previous.top) * t, previous.bottom + (current.bottom - previous.bottom) * t);
     }
   }
-  renderLineLike(rows, series, width, height);
+  renderLineLike(rows, series, width, height, cue);
 }
 
 function renderColumns(
@@ -267,15 +274,16 @@ export function renderCompositePanelText(
   for (const series of orderedSeries) {
     const domain = panel.axes[series.source.axis];
     if (!domain) continue;
+    const cue = panel.lineCues?.get(series.source.id);
     switch (series.source.style) {
       case "columns":
         renderColumns(rows, series, domain, plotWidth, height, columnLayout);
         break;
       case "area":
-        renderArea(rows, series, domain, plotWidth, height);
+        renderArea(rows, series, domain, plotWidth, height, cue);
         break;
       case "band":
-        renderBand(rows, series, domain, plotWidth, height);
+        renderBand(rows, series, domain, plotWidth, height, cue);
         break;
       case "candles":
       case "ohlc":
@@ -284,7 +292,7 @@ export function renderCompositePanelText(
         break;
       case "line":
       case "step":
-        renderLineLike(rows, series, plotWidth, height);
+        renderLineLike(rows, series, plotWidth, height, cue);
         break;
       case "points":
         renderPoints(rows, series, plotWidth, height);

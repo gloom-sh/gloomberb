@@ -18,7 +18,7 @@ import {
   type HttpProxyRequestEnvelope,
   type HttpProxyResponseEnvelope,
 } from "../../utils/http-proxy-response";
-import { getTheme, getThemeIds } from "../../theme/themes";
+import { requireThemeId } from "../commands/themes";
 import { isRecord } from "../../utils/guards";
 
 const DEFAULT_SHOT_DEVICE_SCALE_FACTOR = 2;
@@ -493,7 +493,7 @@ export async function buildDesktopShotPayload(
   };
   const config = stripDesktopShotCredentials<AppConfig>({
     ...context.config,
-    ...(theme ? { theme: resolveShotTheme(theme) } : {}),
+    ...(theme ? { theme: requireThemeId(theme) } : {}),
     layout,
     layouts: [{
       name: "CLI Shot",
@@ -664,17 +664,6 @@ async function collectShotSymbolsWithCollections(
     .filter(({ metadata }) => metadata.portfolios.length > 0 || metadata.watchlists.length > 0)
     .map(({ metadata }) => metadata.ticker);
   return [...new Set([...symbols, ...members])];
-}
-
-function resolveShotTheme(requested: string): string {
-  const normalized = requested.trim().toLowerCase().replace(/[\s_]+/g, "-");
-  const ids = getThemeIds();
-  const match = ids.find((id) => id.toLowerCase() === normalized)
-    ?? ids.find((id) => getTheme(id).name.toLowerCase().replace(/[\s_]+/g, "-") === normalized);
-  if (!match) {
-    throw new Error(`Unknown theme "${requested}". Available themes: ${ids.join(", ")}`);
-  }
-  return match;
 }
 
 function shotPriceHistoryRange(resolved: ResolvedPaneFunction): TimeRange | null {

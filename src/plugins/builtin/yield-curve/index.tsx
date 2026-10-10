@@ -18,7 +18,7 @@ import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { formatPercentileRank } from "../../../utils/format";
-import { SERIES_COLORS } from "../../../time-series/resolve";
+import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { CurveSeries } from "../../../components/chart/curve";
 import { yieldCurveHeadless } from "./headless";
 import {

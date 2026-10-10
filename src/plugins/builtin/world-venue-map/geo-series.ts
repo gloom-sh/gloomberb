@@ -13,7 +13,7 @@ import {
 } from "../../../api-client/geo";
 import { chartSeriesProvider, type ChartSeriesCapability, type ChartSeriesCatalogItem } from "../../../capabilities";
 import { subtractTimeRange } from "../../../time-series/date-window";
-import { SERIES_COLORS } from "../../../time-series/resolve";
+import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { ChartViewportSpec, ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import { GEO_SERIES_CAPABILITY_ID } from "../chart-composer/series-expression";
 import { cloudGeoRequest } from "./client";

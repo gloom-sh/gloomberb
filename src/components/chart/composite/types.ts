@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { CompositeChartLevels } from "./levels";
+import type { SeriesLineCue } from "./series-cues";
 import type {
   ChartPanelSpec,
   PanelScale,
@@ -134,6 +135,8 @@ export interface CompositePanelScene {
   extendedHours?: readonly CompositeExtendedHoursSpan[];
   /** The previous session's close on a one-day chart, drawn as a dotted reference line. */
   priorClose?: { axis: CompositeAxisSide; value: number; yRatio: number };
+  /** How each line tells itself apart besides colour, by series id; absent on a chart with one line. */
+  lineCues?: ReadonlyMap<string, SeriesLineCue>;
 }
 
 export interface CompositeCursorValue {
