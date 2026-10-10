@@ -18,6 +18,8 @@ import { OptionsScenarioPane } from "./pane";
 import { type SavedScenarioStrategy } from "./state";
 import { formatHedgePrice, scenarioHedgeBudget } from "./hedge";
 import { createTestPaneConfig } from "../../../test-support/pane";
+import { createTestTicker } from "../../../test-support/ticker";
+import type { TickerRecord } from "../../../types/ticker";
 
 const ID = "options-scenario:test";
 const PLUGIN = "ticker-research";
@@ -41,9 +43,10 @@ function configFor(settings: Record<string, unknown> = {}, paneState: Record<str
   return config;
 }
 
-function Harness({ config }: { config: AppConfig }) {
+function Harness({ config, tickers = [] }: { config: AppConfig; tickers?: TickerRecord[] }) {
   const initial = createInitialState(config);
   initial.focusedPaneId = ID;
+  initial.tickers = new Map(tickers.map((ticker) => [ticker.metadata.ticker, ticker]));
   const [state, dispatch] = useReducer(appReducer, initial);
   useEffect(() => { latestState = state; }, [state]);
   return <AppContext value={createStaticAppStore(state, dispatch)}><PaneInstanceProvider paneId={ID}>
@@ -63,10 +66,10 @@ async function frame() {
   await act(async () => { await tui.setup().renderOnce(); });
 }
 
-async function mount(config = configFor(), restoredRuntime?: PluginRuntimeAccess) {
+async function mount(config = configFor(), restoredRuntime?: PluginRuntimeAccess, tickers?: TickerRecord[]) {
   registry = createRemoteUiRegistry();
   runtime = restoredRuntime ?? createStatefulTestPluginRuntime();
-  await act(async () => { await tui.render(<Harness config={config} />, { width: WIDTH, height: HEIGHT }); });
+  await act(async () => { await tui.render(<Harness config={config} tickers={tickers} />, { width: WIDTH, height: HEIGHT }); });
   await frame(); await frame();
 }
 
@@ -223,6 +226,20 @@ test("a strategy seeded from older quotes names the last print beside the spot t
     // Float noise at the flat origin is not a red -0.00.
     expect(tui.frame()).toMatch(/P&L +0\.00 +USD/);
   } finally { WIDTH = 100; }
+});
+
+test("a pane bound to a listing key reads the market for the bare symbol and keeps the listing", async () => {
+  // OMON opens OSA on "SPY:ARCX". The pane has no ticker record yet, then one keyed by the listing; the loader names the bare symbol.
+  const market = { ...closeMarket(), symbol: "SPY", exchange: "ARCA" };
+  for (const tickers of [[], [createTestTicker("SPY:ARCX", "SPY", { exchange: "ARCA" })]]) {
+    const config = configFor({ ...SEEDED, symbol: "SPY:ARCX", strategy: "vertical", scenarioMarketSnapshot: market });
+    config.layouts[0]!.layout.instances[0]!.binding = { kind: "fixed", symbol: "SPY:ARCX" };
+    await mount(config, undefined, tickers);
+    expect(tui.frame()).not.toContain("does not match");
+    expect(evidence().scenario!.position).toMatchObject({ symbol: "SPY", exchange: "ARCA" });
+    expect(evidence().scenario!.position.spot).toBeCloseTo(100, 2);
+    await tui.destroy();
+  }
 });
 
 test("a hedge budget shows the report's sizing under the scenario figures, and says why it cannot size", async () => {

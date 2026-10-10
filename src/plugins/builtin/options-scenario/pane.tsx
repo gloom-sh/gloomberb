@@ -28,6 +28,7 @@ import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrat
 import { useScenarioEvidence } from "./evidence";
 import { hedgeStatItems, scenarioHedgeBudget, type HedgeQuote } from "./hedge";
 import { readOptionExpiration } from "../../../utils/option-expiry";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 const EMPTY_ERRORS: string[] = [];
 const TABS = [{ value: "payoff", label: "Payoff" }, { value: "grid", label: "P&L grid" }, { value: "legs", label: "Legs" }];
@@ -47,8 +48,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const [snapshotErrors] = usePaneSettingValue<string[]>("scenarioSnapshotErrors", EMPTY_ERRORS);
   const [frozenMarket] = usePaneSettingValue<ScenarioMarketSnapshot | null>("scenarioMarketSnapshot", null);
   const target = resolveOptionsTarget(ticker);
-  const underlying = target?.effectiveTicker ?? symbol ?? String(settings.symbol ?? "");
-  const exchange = target?.effectiveExchange || undefined;
+  // A listing is keyed "SPY:ARCX", both in the pane's binding and in the ticker record opened under it: split either.
+  const listed = parsePublicTickerKey(target?.effectiveTicker ?? symbol ?? String(settings.symbol ?? ""));
+  const underlying = listed.symbol;
+  const exchange = listed.exchange || target?.effectiveExchange || undefined;
   // A strategy seeded for an expiry (`OSA SPY --strategy put --expiration 2027-01-15`) opens that expiry's chain.
   const [expiration, setExpiration] = usePluginPaneState<number | null>("chainExpiration", readOptionExpiration(settings.expiration));
   const [tab, setTab] = usePluginPaneState("activeTabId", "payoff");
@@ -66,9 +69,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const loadMarket = useCallback(async (force: boolean) => {
     controller.current?.abort();
     const abort = new AbortController(); controller.current = abort;
-    return loadScenarioMarket({ instrument: { symbol: underlying, exchange: target?.effectiveExchange },
+    return loadScenarioMarket({ instrument: { symbol: underlying, exchange },
       expiration: expiration ?? undefined, forceRefresh: force, signal: abort.signal });
-  }, [underlying, target?.effectiveExchange, expiration]);
+  }, [underlying, exchange, expiration]);
   // Fully specified calculations and screenshot snapshots never need a quote refresh.
   const needsMarket = !frozen && (!["spot", "rate", "dividendYield"].every((key) => settings[key] != null && settings[key] !== "") || detail === "chain");
   const resource = useAsyncResource(underlying && needsMarket ? loadMarket : null);
