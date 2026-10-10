@@ -17,6 +17,8 @@ import { loadIvHistory } from "./client";
 import { formatRank, formatStat, statSource } from "./format";
 import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory } from "./model";
 
+/** Pane borders, the footer's padding and its [s]urface hint. */
+const FOOTER_RESERVE = 16;
 const LOOKBACKS = [{ value: "1Y", label: "1Y" }, { value: "2Y", label: "2Y" }, { value: "ALL", label: "All" }];
 const HV_OPTIONS = HV_WINDOWS.map((window) => ({ value: String(window), label: `HV ${window}` }));
 const STAT_COLUMNS: DataTableColumn[] = [
@@ -80,14 +82,19 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     else return;
     event.preventDefault(); event.stopPropagation();
   }, { enabled: focused });
+  // In a pane too narrow for the whole footer, the history start drops its prefix.
+  const sinceText = model?.since ? `trade closes since ${model.since}` : null;
+  const footerText = [sinceText, model?.oneYearNote, model?.asOf].filter(Boolean).join(" ");
+  const since = sinceText && footerText.length + FOOTER_RESERVE > width ? `since ${model!.since}` : sinceText;
   usePaneFooter("iv-history", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-    ...(model?.since ? [{ id: "since", parts: [{ text: `trade closes since ${model.since}`, tone: "muted" as const }] }] : []),
+    ...(since ? [{ id: "since", parts: [{ text: since, tone: "muted" as const }] }] : []),
+    ...(model?.oneYearNote ? [{ id: "one-year", parts: [{ text: model.oneYearNote, tone: "muted" as const }] }] : []),
     ...(model?.asOf ? [{ id: "date", parts: [{ text: model.asOf, tone: "muted" as const }] }] : []),
   ], hints: [
     // Lookback (y) and realized window (w) keep their keys; the query bar shows them.
     ...(symbol ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
-  ] }), [resource.loading, model?.since, model?.asOf, lookback, hvWindow, symbol]);
+  ] }), [resource.loading, since, model?.oneYearNote, model?.asOf, lookback, hvWindow, symbol]);
 
   const statsHeight = model ? model.stats.length + 1 : 0;
   const statSelection = statSelectionValue ?? model?.stats[0]?.id ?? "";
@@ -120,6 +127,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
           getItemKey={(row) => row.id} emptyStateTitle="No statistics." sortColumnId={null} sortDirection="asc"
           selection={{ kind: "id", selectedId: statSelection, getId: (row) => row.id, onChange: (id) => setStatSelection(id) }}
           getExportMetadata={() => [["symbol", model.symbol], ["as of", model.asOf], ["history since", model.since],
+            ...(model.oneYearNote ? [["IV1Y", model.oneYearNote]] : []),
             ["IV", "ATM, constant maturity, annualized"], ["HV", `${hvWindow}-session close-to-close`], ["warnings", ...notices]]}
           renderCell={(row, column) => statCell(row, column.id)} />
         <IvHistoryChart model={model} width={width} height={Math.max(6, height - 1 - statsHeight)} hvLabel={`HV ${hvWindow}`} focused={focused} />

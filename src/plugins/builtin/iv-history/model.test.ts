@@ -52,7 +52,7 @@ describe("IV history against realized", () => {
   });
   test("a newer quote reading gets its own unranked row, never called live", () => {
     expect(stat("iv30-quote")).toMatchObject({ label: "IV 30d quote", value: 0.22, date: "2026-09-23", method: "quote-mid", rank: null, percentile: null });
-    expect(model.stats.map((row) => row.id)).toEqual(["iv30", "iv30-quote", "iv90", "hv", "spread", "term"]);
+    expect(model.stats.map((row) => row.id)).toEqual(["iv30", "iv30-quote", "iv90", "iv365", "hv", "spread", "term"]);
     expect([stat("iv30-quote"), stat("hv"), stat("spread")].map((row) => statSource(row))).toEqual(["quote", "closes", "close"]);
   });
   test("a constant series ranks mid without a range", () => {
@@ -62,6 +62,39 @@ describe("IV history against realized", () => {
   test("coverage states become warnings", () => {
     expect(projectIvHistory(payload([], { status: "queued" }), []).warnings.join(" ")).toContain("queued");
     expect(projectIvHistory(payload([], { status: "backfilling" }), prices(dates)).warnings[0]).toContain("backfilling");
+  });
+});
+
+describe("the one-year tenor", () => {
+  const dates = sessions(300);
+  const stats = (percentile: number | null, samples: number, date = dates.at(-1)!) => ({ value: 0.27, date, method: "trade-close" as const,
+    rank: percentile, percentile, low: 0.2, high: 0.3, samples, windowStart: dates[0]!, minSamples: 60, rankNote: null });
+  /** IV30 every session; IV1Y from session `from` on, every other session. */
+  const series = (from: number) => dates.map((date, index) => ({ ...point(date, 0.2), iv365: index >= from && index % 2 === 0 ? 0.27 : null }));
+  const project = (from: number, iv365: ReturnType<typeof stats> | null, coverage: Partial<NonNullable<IvHistoryPayload["coverage"]>> = {}) =>
+    projectIvHistory(payload(series(from), {
+      stats: { iv30: null, iv90: null, iv365 },
+      coverage: { source: "seed", addedAt: "", backfilledThrough: dates.at(-1)!, since: dates[0]!, ...coverage },
+    }), prices(dates), { lookback: "ALL" });
+
+  test("a short 1Y history says where it starts and how deep it is, without a rank", () => {
+    const model = project(250, stats(null, 24), { iv365Since: dates[250] });
+    expect(model.oneYearNote).toBe(`IV1Y from ${dates[250]}, 25 sessions`);
+    expect(model.iv365).toHaveLength(25);
+    expect(model.stats.find((row) => row.id === "iv365")).toMatchObject({ label: "IV 1Y ATM", value: 0.27, rank: null, samples: 24 });
+  });
+  test("a ranked 1Y history is noted only when it starts later than the rest", () => {
+    expect(project(0, stats(55, 140)).oneYearNote).toBeNull();
+    expect(project(40, stats(55, 120), { iv365Since: dates[40] }).oneYearNote).toBe(`IV1Y from ${dates[40]}`);
+  });
+  test("with no 1Y close, a stored quote gives the level unranked and the footer says so", () => {
+    const model = projectIvHistory(payload(series(Number.POSITIVE_INFINITY), {
+      stats: { iv30: null, iv90: null, iv365: null },
+      latest: { date: "2026-09-23", method: "quote-mid", capturedAt: "", spot: 100, iv7: null, iv30: 0.2, iv60: null, iv90: 0.21, iv180: null, iv365: 0.26 },
+    }), prices(dates));
+    expect(model.oneYearNote).toBe("no IV1Y history yet");
+    expect(model.iv365).toEqual([]);
+    expect(model.stats.find((row) => row.id === "iv365")).toMatchObject({ value: 0.26, date: "2026-09-23", method: "quote-mid", rank: null, percentile: null });
   });
 });
 
@@ -83,7 +116,14 @@ test("rich and cheap follow the IV percentile", () => {
     skew: { date: "2026-09-23", put25: 0.36, call25: 0.29, skew: 0.07 },
   };
   const [projected] = projectRichCheap([row, { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null }], new Map([["AAPL", 0.25]]));
-  expect(projected).toMatchObject({ iv30: 0.32, rankDate: "2026-09-22", verdict: "rich", skew: 0.07 });
+  expect(projected).toMatchObject({ iv30: 0.32, rankDate: "2026-09-22", verdict: "rich", skew: 0.07, iv1y: null, iv1yPercentile: null });
+  // IVP1Y shows only when the 1Y series was ranked on the close IVR and IVP are.
+  const oneYear = (date: string) => ({ ...row, latest: { ...row.latest!, iv365: 0.28 },
+    iv365: { ...row.iv30!, value: 0.27, percentile: 35, date } });
+  expect(projectRichCheap([oneYear("2026-09-22")])[0]).toMatchObject({ iv1y: 0.28, iv1yPercentile: 35 });
+  expect(projectRichCheap([oneYear("2026-09-19")])[0]).toMatchObject({ iv1y: 0.28, iv1yPercentile: null });
+  // A percentile never stands without the IV1Y it describes.
+  expect(projectRichCheap([{ ...oneYear("2026-09-22"), latest: row.latest }])[0]).toMatchObject({ iv1y: null, iv1yPercentile: null });
   expect(projected!.termSlope).toBeCloseTo(0.02);
   expect(projected!.ivHv).toBeCloseTo(1.28);
 });

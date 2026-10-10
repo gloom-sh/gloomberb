@@ -33,6 +33,10 @@ export interface IvStats {
   high: number | null;
   samples: number;
   windowStart: string | null;
+  /** Prior sessions the rank needs: 120, or 60 for IV1Y. Absent from older servers. */
+  minSamples?: number;
+  /** Why rank or percentile is empty, when one is. */
+  rankNote?: string | null;
 }
 interface IvReading {
   date: string;
@@ -51,8 +55,12 @@ export interface IvHistoryPayload {
   symbol: string;
   asOf: string;
   status: IvCoverageStatus;
-  coverage: { source: "seed" | "demand"; addedAt: string; backfilledThrough: string | null; since: string | null } | null;
-  stats: { iv30: IvStats | null; iv90: IvStats | null };
+  coverage: {
+    source: "seed" | "demand"; addedAt: string; backfilledThrough: string | null; since: string | null;
+    /** First trade close with a one-year reading; the 1Y series starts later and is sparser. */
+    iv365Since?: string | null;
+  } | null;
+  stats: { iv30: IvStats | null; iv90: IvStats | null; iv365?: IvStats | null };
   latest: IvReading | null;
   series: IvPoint[];
   warnings: string[];
@@ -62,6 +70,8 @@ export interface IvScreenRow {
   status: "ready" | "queued";
   iv30: IvStats | null;
   iv90: IvStats | null;
+  iv365?: IvStats | null;
+  iv365Since?: string | null;
   latest: IvReading | null;
   skew: { date: string; put25: number; call25: number; skew: number } | null;
 }
