@@ -425,6 +425,8 @@ class GloomApiClient {
   async recordExperimentExposure(payload: {
     eventId: string; surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; experiment: string; variant?: string;
+    /** Where the experiment showed, by a content-free id like an upgrade placement. */
+    placement?: string;
   }, signal?: AbortSignal): Promise<import("./web-experiments").ExperimentAnswer> {
     return this.request("/activity/research", {
       method: "POST",

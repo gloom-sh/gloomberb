@@ -21,6 +21,8 @@ import {
   monthsFreeYearly,
   trialDaysOf,
 } from "../account-management/model";
+import { useUpgradePersonalization } from "./upgrade-personalization";
+import { upgradeTickerList } from "./upgrade-tickers";
 
 const CONTENT_WIDTH = 64;
 /** Border plus padding the terminal dialog host draws around the content. */
@@ -113,6 +115,13 @@ export function proStepCopy(offer: UpgradeOffer | null): ProStepCopy {
   };
 }
 
+/** The Pro step's first feature; with tickers it names the account's own holdings. */
+export function proStepRealtimeTitle(tickers: readonly string[] | null): string {
+  return tickers?.length
+    ? tf("Real-time quotes for {tickers}", { tickers: upgradeTickerList(tickers) })
+    : t("Real-time market data");
+}
+
 /** Ranked like the onboarding Pro step: the data first, then what reads it. */
 const PRO_FEATURES: Array<{ label: string; value: string }> = [
   { label: "Real-time data", value: "Free runs 15 min behind on quotes, 12 h on news" },
@@ -120,6 +129,20 @@ const PRO_FEATURES: Array<{ label: string; value: string }> = [
   { label: "Ask Gloom, MCP", value: "The Pro model, and Gloom's tools in your agents" },
   { label: "Flow and X", value: "Options flow, the X feed and sentiment" },
 ];
+
+/**
+ * The feature list, translated. With tickers (the `upgrade_personalized`
+ * arm) the real-time row names the account's own tickers; without
+ * them it is exactly the generic list.
+ */
+export function proFeatureRows(tickers: readonly string[] | null): Array<{ label: string; value: string }> {
+  return PRO_FEATURES.map((feature, index) => ({
+    label: feature.label,
+    value: index === 0 && tickers?.length
+      ? tf("{tickers} quotes, not 15 min behind", { tickers: upgradeTickerList(tickers) })
+      : t(feature.value),
+  }));
+}
 
 /** Pricing and this account's trial and billing state; never rejects, unknowns come back null. */
 export async function loadUpgradeOffer(): Promise<UpgradeOffer> {
@@ -150,6 +173,7 @@ function UpgradeDialog({
   useAppLanguage();
   const [interval, setBillingInterval] = useState<CloudBillingInterval>(initialInterval);
   const [offer, setOffer] = useState<UpgradeOffer | null>(null);
+  const personalTickers = useUpgradePersonalization("upgrade-sheet", offer !== null && !offer.paymentFailed);
 
   useEffect(() => {
     let live = true;
@@ -204,11 +228,11 @@ function UpgradeDialog({
               shortcutScope={dialogId}
             />
             <Box height={1} />
-            {PRO_FEATURES.map((feature) => (
+            {proFeatureRows(personalTickers).map((feature) => (
               <KeyValueRow
                 key={feature.label}
                 label={feature.label}
-                value={t(feature.value)}
+                value={feature.value}
                 labelWidth={FEATURE_LABEL_WIDTH}
                 width={width}
                 emphasis={false}

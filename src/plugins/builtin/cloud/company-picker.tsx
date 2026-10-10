@@ -44,6 +44,7 @@ import { useToastHost } from "../../../ui/toast";
 import { debugLog } from "../../../utils/debug-log";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { PluginRegistry } from "../../registry";
+import { STARTER_SYMBOLS } from "./starter-symbols";
 
 const log = debugLog.createLogger("company-picker");
 
@@ -55,15 +56,6 @@ const SEEDED_LIST_MIN_STARTERS = 7;
 const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_RESULTS = 6;
 const GRID_COLUMNS = 4;
-
-/**
- * Every ticker the app seeds: `DEFAULT_WATCHLIST_TICKERS` in
- * src/state/app/bootstrap.ts and `FIRST_RUN_WATCHLIST` in
- * src/components/onboarding/first-run-workspace.ts. A test keeps them equal.
- */
-export const STARTER_SYMBOLS: ReadonlySet<string> = new Set([
-  "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "BRK.B", "JPM", "V", "BTC-USD", "ETH-USD", "SPY", "QQQ",
-]);
 
 type Suggestion = Pick<TickerMetadata, "ticker" | "name" | "exchange" | "assetCategory" | "currency">;
 

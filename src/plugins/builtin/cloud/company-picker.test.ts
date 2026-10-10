@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { FIRST_RUN_WATCHLIST } from "../../../components/onboarding/first-run-workspace";
 import { DEFAULT_WATCHLIST_TICKERS } from "../../../state/app/bootstrap";
 import type { TickerRecord } from "../../../types/ticker";
-import { isNewAccount, needsCompanyPicks, planCompanyPicks, STARTER_SYMBOLS } from "./company-picker";
+import { isNewAccount, needsCompanyPicks, planCompanyPicks } from "./company-picker";
+import { STARTER_SYMBOLS } from "./starter-symbols";
 
 function ticker(symbol: string, lists: { watchlists?: string[]; portfolios?: string[] } = {}): TickerRecord {
   return {

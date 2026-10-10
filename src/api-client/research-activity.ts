@@ -3,6 +3,7 @@ import { getCurrentPluginTarget } from "../plugins/current-target";
 import type { DesktopDeepLinkBridge } from "../types/desktop-deeplink";
 import { exposeExperiment, storedExperimentAssignments } from "./web-experiments";
 import { createWallExperimentSession, type WallExperiment, type WallExperimentContext, type WallTeaserVariant } from "./wall-experiments";
+import { createUpgradeExperimentSession, UPGRADE_PERSONALIZED, type UpgradeExperimentContext, type UpgradePersonalizedVariant } from "./upgrade-experiment";
 import { hasProAccess } from "./plan-rules";
 import { withDeadline } from "../utils/async-deadline";
 
@@ -38,6 +39,7 @@ let anonymousId: string | undefined;
 let attribution: Record<string, string> = {};
 const wallExperiment = createWallExperimentSession();
 const signinWallExperiment = createWallExperimentSession("wall_teaser_signin");
+const upgradeExperiment = createUpgradeExperimentSession();
 const WALL_VIEWS_SESSION_KEY = "gloomberb.wall-teaser.views";
 
 const ATTRIBUTION_STORAGE_KEY = "gloomberb.web.attribution";
@@ -521,6 +523,35 @@ export function exposeWallTeaser(experiment: WallExperiment = "wall_teaser"): Pr
       experiment,
       variant,
     }, controller.signal), 3_000, "Wall experiment request timed out", (error) => controller.abort(error));
+  });
+}
+
+function upgradeExperimentContext(): UpgradeExperimentContext {
+  const { accountId, pro, optedOut, automated, session } = wallExperimentContext();
+  return { accountId, pro, optedOut, automated, session };
+}
+
+/** The `upgrade_personalized` arm this session already has, without asking; see upgrade-experiment.ts. */
+export function knownUpgradePersonalized(): UpgradePersonalizedVariant | null | undefined {
+  return upgradeExperiment.known(upgradeExperimentContext());
+}
+
+/**
+ * Asks for the `upgrade_personalized` arm when an upgrade surface is shown to
+ * a free account that has tickers to name, once per account and session. The
+ * request says where it showed and nothing about the holdings.
+ */
+export function exposeUpgradePersonalized(placement: string): Promise<UpgradePersonalizedVariant | null> {
+  const context = upgradeExperimentContext();
+  const surface = getCurrentPluginTarget();
+  return upgradeExperiment.expose(context, () => {
+    const controller = new AbortController();
+    return withDeadline(apiClient.recordExperimentExposure({
+      eventId: crypto.randomUUID(),
+      surface,
+      experiment: UPGRADE_PERSONALIZED,
+      ...(ACTIVITY_ID.test(placement) ? { placement } : {}),
+    }, controller.signal), 3_000, "Upgrade experiment request timed out", (error) => controller.abort(error));
   });
 }
 

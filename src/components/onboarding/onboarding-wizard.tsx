@@ -20,7 +20,7 @@ import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { formatCloudPrice, monthsFreeYearly } from "../../plugins/builtin/account-management/model";
-import { proStepCopy } from "../../plugins/builtin/cloud/upgrade-dialog";
+import { proStepCopy, proStepRealtimeTitle } from "../../plugins/builtin/cloud/upgrade-dialog";
 import { Button, SegmentedControl } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import {
@@ -195,12 +195,6 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     researchOpenedRef.current = progress.tickerSymbol;
     recordResearchActivity("ticker_saved");
   }, [stage, progress.tickerSymbol]);
-  const {
-    offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree,
-  } = useOnboardingUpgrade({
-    stage, progress, saveProgressInBackground, persistProgress,
-  });
-
   const movePositionCursor = useCallback((delta: number) => {
     if (positionCursorIndex < 0) return;
     const next = Math.max(0, Math.min(positionCount - 1, positionCursorIndex + delta));
@@ -240,6 +234,12 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     ? findPaneInstance(config.layout, focusedPaneId)
     : null;
   const helpFocused = focusedInstance?.paneId === "help";
+  const {
+    offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree, personalTickers,
+  } = useOnboardingUpgrade({
+    stage, progress, saveProgressInBackground, persistProgress,
+    shown: !helpFocused && !dialogOpen && !commandBarOpen,
+  });
 
   const goToSection = useCallback((section: OnboardingSectionId) => {
     if (finishingRef.current || isBrokerCommitting) return;
@@ -291,6 +291,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
+    personalTickers,
   };
 }
 
@@ -305,6 +306,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
+    personalTickers,
   } = useOnboardingWizard(props);
 
   if (helpFocused) {
@@ -639,7 +641,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
         {/* Ranked: the data itself first, then what reads it. */}
         <Box flexDirection="column" style={desktop ? { marginTop: ONBOARDING_DESKTOP.afterHeader, gap: 10 } : undefined}>
           <OnboardingFeature
-            title={t("Real-time market data")}
+            title={proStepRealtimeTitle(personalTickers)}
             description={t("Free is 15 minutes behind on quotes and 12 hours on news.")}
           />
           <OnboardingFeature
