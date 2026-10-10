@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { exportConfig, importConfig, loadConfig, sanitizeLayout, saveConfig } from "./index";
@@ -58,6 +58,37 @@ function createSavedConfig(overrides: Record<string, unknown> = {}): Record<stri
 async function writeConfigJson(dataDir: string, config: Record<string, unknown>): Promise<void> {
   await writeFile(join(dataDir, "config.json"), JSON.stringify(config), "utf-8");
 }
+
+test("parallel saves land one after another, in the same millisecond too", async () => {
+  const dataDir = await createTempConfigDir();
+  const loaded = await loadConfig(dataDir);
+  const now = spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+  try {
+    await Promise.all([
+      saveConfig({ ...loaded, theme: "first" }),
+      saveConfig({ ...loaded, theme: "second" }),
+      saveConfig({ ...loaded, theme: "third" }),
+    ]);
+  } finally {
+    now.mockRestore();
+  }
+  expect((await loadConfig(dataDir)).theme).toBe("third");
+  expect(await readdir(dataDir)).toEqual(["config.json"]);
+});
+
+test("a failed save rejects its caller, leaves no temp file and does not block the next save", async () => {
+  const dataDir = await createTempConfigDir();
+  const loaded = await loadConfig(dataDir);
+  // A directory where the file belongs makes the final rename fail.
+  await mkdir(join(dataDir, "config.json"));
+  await expect(saveConfig({ ...loaded, theme: "lost" })).rejects.toThrow();
+  expect(await readdir(dataDir)).toEqual(["config.json"]);
+
+  await rm(join(dataDir, "config.json"), { recursive: true });
+  await saveConfig({ ...loaded, theme: "kept" });
+  expect((await loadConfig(dataDir)).theme).toBe("kept");
+  expect(await readdir(dataDir)).toEqual(["config.json"]);
+});
 
 test("recent panes survive a save and reload", async () => {
   const dataDir = await createTempConfigDir();
