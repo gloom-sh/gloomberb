@@ -669,5 +669,11 @@ function buildSearchResultAliases(result: InstrumentSearchResult): string[] {
   if (result.brokerContract?.symbol) {
     for (const alias of buildSymbolAliases(result.brokerContract.symbol)) aliases.add(alias);
   }
+  // Older servers send none. Anything else malformed is ignored.
+  if (Array.isArray(result.searchAliases)) {
+    for (const alias of result.searchAliases) {
+      if (typeof alias === "string" && alias.trim()) aliases.add(alias.trim());
+    }
+  }
   return [...aliases];
 }

@@ -675,6 +675,35 @@ describe("ticker-search utilities", () => {
     ])).toEqual(["NESN", "NESTLEIND"]);
   });
 
+  describe("trade-name aliases", () => {
+    const build = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
+      query,
+      tickers: new Map<string, TickerRecord>(),
+      providerResults,
+      totalLimit: 10,
+    }).map((item) => `${item.symbol}:${item.exchangeLabel}`);
+
+    test("a row filed under a trade name matches it and leads; without the alias its legal name is dropped", () => {
+      const home = makeSearchResult("2222", "Saudi Arabian Oil Co.", { exchange: "TADAWUL", type: "Common Stock" });
+      const subsidiary = makeSearchResult("2223", "Saudi Aramco Base Oil Company", { exchange: "TADAWUL", type: "Common Stock" });
+      expect(build("Aramco", [subsidiary, { ...home, searchAliases: ["Aramco", "Saudi Aramco"] }]))
+        .toEqual(["2222:TADAWUL", "2223:TADAWUL"]);
+      // Older servers send no aliases: only the namesake subsidiary matches.
+      expect(build("Aramco", [subsidiary, home])).toEqual(["2223:TADAWUL"]);
+    });
+
+    test("rows sharing a trade name keep the server's order, ahead of lookalike names", () => {
+      const alphabet = (symbol: string, share: string) => makeSearchResult(symbol, `Alphabet Inc. Class ${share} Common Stock`,
+        { searchAliases: ["Google"] });
+      const rows = [
+        alphabet("GOOGL", "A"),
+        alphabet("GOOG", "C"),
+        makeSearchResult("GOOGL", "Google Inc.", { exchange: "BYMA", type: "Depositary Receipt" }),
+      ];
+      expect(build("Google", rows)).toEqual(["GOOGL:NASDAQ", "GOOG:NASDAQ", "GOOGL:BYMA"]);
+    });
+  });
+
   describe("provider popularity", () => {
     // Cloud responses with recorded search scores on 2026-09-23.
     const listing = (symbol: string, name: string, exchange: string, popularity?: number, type = "EQUITY") =>

@@ -285,6 +285,13 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
     const aSaved = isSavedSearchItem(a.item);
     const bSaved = isSavedSearchItem(b.item);
     if (aSaved !== bSaved) return aSaved ? -1 : 1;
+    // Rows that answer to the same typed name (GOOGL and GOOG for "Google")
+    // keep the order the server gave them rather than the shorter symbol first.
+    if (a.symbolMatchRank === 2) {
+      const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
+      const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
+      if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
+    }
     if (a.item.label.length !== b.item.label.length) return a.item.label.length - b.item.label.length;
     return a.index - b.index;
   };

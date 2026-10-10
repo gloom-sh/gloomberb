@@ -59,4 +59,8 @@ export interface InstrumentSearchResult {
   /** How often the listing is searched, higher is more (the search service score,
    * sent by newer cloud servers). Only comparable within one response. */
   popularity?: number;
+  /** Trade names the row answers to ("Aramco" for Saudi Arabian Oil Co.), sent by
+   * newer cloud servers on a row a trade-name query added. The legal name does not
+   * contain them, so search matches the query against them too. */
+  searchAliases?: string[];
 }
