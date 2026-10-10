@@ -185,6 +185,36 @@ function moverExtended(quote: Quote): ExtendedSessionDisplay | null {
 }
 
 /**
+ * A listed row as `ticker` reads its quote: Last and Chg% are the regular
+ * session's close and move, and a pre-market or after-hours print is its
+ * `extended`, measured from that close. The list ranked it by its live print
+ * first, so its place stays. A row without its quote's sessions (an older
+ * server) reads as it came.
+ */
+export function moverRegularSession({ sessions, ...row }: ScreenerQuote): MoverQuote {
+  if (!sessions || row.price == null) return row;
+  const quote: Quote = {
+    symbol: row.symbol,
+    price: row.price,
+    change: row.change ?? Number.NaN,
+    changePercent: row.changePercent ?? Number.NaN,
+    previousClose: row.previousClose,
+    currency: row.currency,
+    lastUpdated: row.lastUpdated ?? Number.NaN,
+    listingExchangeName: row.exchange || undefined,
+    ...sessions,
+  };
+  const headline = getRegularSessionDisplay(quote)!;
+  return {
+    ...row,
+    price: screenerNumber(headline.price),
+    change: screenerNumber(headline.change),
+    changePercent: screenerNumber(headline.changePercent),
+    extended: moverExtended(quote),
+  };
+}
+
+/**
  * A trending row from its quote: Last and Chg% are the regular session, as
  * `ticker` reads it, and a pre-market or after-hours print rides beside them.
  */

@@ -1427,13 +1427,27 @@ export interface CloudMarketBatchPayload<T> {
 
 export type CloudMarketScreenerCategory = "gainers" | "losers" | "most-active";
 
-export interface CloudMarketScreenerItem {
+/**
+ * A movers row's quote sessions, under the quote's field names and meaning:
+ * the session it was read in, the day its change is dated to, the last
+ * completed regular session's close and move, and an open pre-market or
+ * after-hours print with its move from that close. Older servers send none.
+ */
+export type CloudMoverSessionFields = Partial<Pick<Quote,
+  | "marketState" | "changeSessionDate"
+  | "regularClose" | "regularCloseSessionDate" | "regularChange" | "regularChangePercent"
+  | "preMarketPrice" | "preMarketChange" | "preMarketChangePercent"
+  | "postMarketPrice" | "postMarketChange" | "postMarketChangePercent">>;
+
+/** price, change and changePercent are the live print the list is ranked by; the session fields say how it reads. */
+export interface CloudMarketScreenerItem extends CloudMoverSessionFields {
   rank: number;
   symbol: string;
   name: string;
   price: number;
   change: number;
   changePercent: number;
+  previousClose?: number;
   volume: number;
   /** Available average volume for this listing, independent of public ranking membership. */
   avgVolume?: number;

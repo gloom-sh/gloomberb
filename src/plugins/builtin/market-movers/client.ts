@@ -5,18 +5,19 @@ import type {
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
 import type { DataProvider } from "../../../types/data-provider";
-import { CATEGORY_MAP, screenerQuoteFromQuote, type ScreenerTabId } from "./model";
+import { CATEGORY_MAP, moverRegularSession, screenerQuoteFromQuote, type MoverQuote, type ScreenerTabId } from "./model";
 import {
   fetchPreferredMarketMovers,
   fetchTrending,
   type MarketMoversResult,
   type PreferredMoversOptions,
-  type ScreenerQuote,
   type TrendingSymbol,
 } from "./screener";
 
 export interface MarketMoverTabResult extends MarketMoversResult {
   tab: ScreenerTabId;
+  /** In the list's order; Last and Chg% the regular session, as `ticker` reads them. */
+  quotes: MoverQuote[];
 }
 
 export interface MarketMoverTabDependencies {
@@ -36,9 +37,9 @@ const defaultDependencies: MarketMoverTabDependencies = {
 async function hydrateTrending(
   trending: readonly TrendingSymbol[],
   provider: DataProvider | null,
-): Promise<ScreenerQuote[]> {
+): Promise<MoverQuote[]> {
   const symbols = trending.slice(0, 25).map(({ symbol }) => symbol);
-  const bySymbol = new Map<string, ScreenerQuote>();
+  const bySymbol = new Map<string, MoverQuote>();
   if (!provider) return [];
   if (provider.getQuotesBatch) {
     const results = await provider.getQuotesBatch(
@@ -79,7 +80,8 @@ export async function loadMarketMoverTab(
     };
   }
   const result = await dependencies.fetchPreferred(CATEGORY_MAP[tab], 25, options);
-  return { ...result, tab };
+  // Ranked by the live print first, so reading each row's regular session keeps its place.
+  return { ...result, quotes: result.quotes.map(moverRegularSession), tab };
 }
 
 /** The server refused the list for the account's plan. */
