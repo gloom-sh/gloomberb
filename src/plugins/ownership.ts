@@ -97,8 +97,8 @@ function normalizeBuiltinDisabledPluginId(pluginId: string): string {
 
 /**
  * Rewrites retired module ids to the plugin that holds the module now. Group
- * ids are left as they are: the configuration migrations read them before
- * `decodeBuiltinDisabledPluginIds` expands them.
+ * ids are left as they are: the configuration migrations after this one read
+ * them before `expandBuiltinPluginGroups` runs.
  */
 export function normalizeBuiltinDisabledPluginIds(pluginIds: readonly string[]): string[] {
   return [...new Set(
@@ -109,21 +109,27 @@ export function normalizeBuiltinDisabledPluginIds(pluginIds: readonly string[]):
 }
 
 /**
- * `disabledPlugins` as saved or synced, in the ids the registry knows: retired
- * module ids become their plugin and group ids become every member. Applied
- * on every load and pull; it only ever adds switched-off plugins, and running
- * it twice changes nothing.
+ * `disabledPlugins` as saved, in the ids the registry knows: a retired group
+ * id becomes every member. Applied on every load, after the migrations; it
+ * only ever adds switched-off plugins, and running it twice changes nothing.
+ */
+export function expandBuiltinPluginGroups(pluginIds: readonly string[]): string[] {
+  return [...new Set(pluginIds.flatMap((pluginId) => builtinPluginGroupMembers(pluginId) ?? [pluginId]))];
+}
+
+/**
+ * `disabledPlugins` as pulled. Another device may run an app from before
+ * modules were merged or plugins split, so retired module ids are rewritten
+ * as the migrations would, then groups expanded.
  */
 export function decodeBuiltinDisabledPluginIds(pluginIds: readonly string[]): string[] {
-  return [...new Set(
-    normalizeBuiltinDisabledPluginIds(pluginIds).flatMap((pluginId) => builtinPluginGroupMembers(pluginId) ?? [pluginId]),
-  )];
+  return expandBuiltinPluginGroups(normalizeBuiltinDisabledPluginIds(pluginIds));
 }
 
 /**
  * `disabledPlugins` as written to disk and pushed: a group whose members are
  * all off is written as its retired id alone, where its first member stood,
- * and a group partly off as the members that are. Decoding the result gives
+ * and a group partly off as the members that are. Expanding the result gives
  * the list back.
  */
 export function encodeBuiltinDisabledPluginIds(pluginIds: readonly string[]): string[] {

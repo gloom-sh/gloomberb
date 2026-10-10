@@ -21,7 +21,7 @@ import { isLanguagePreference } from "../../../i18n/languages";
 import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
-import { decodeBuiltinDisabledPluginIds, encodeBuiltinDisabledPluginIds } from "../../../plugins/ownership";
+import { encodeBuiltinDisabledPluginIds, expandBuiltinPluginGroups } from "../../../plugins/ownership";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
 import { debugLog } from "../../../utils/debug-log";
@@ -64,7 +64,7 @@ export function normalizeLoadedConfig(
   ));
 
   // After the migrations, which read retired group ids as they were saved.
-  const disabledPlugins = decodeBuiltinDisabledPluginIds(
+  const disabledPlugins = expandBuiltinPluginGroups(
     sanitizeUniqueStringList(candidate.disabledPlugins ?? defaults.disabledPlugins),
   );
   const onboardingProgress = sanitizeOnboardingProgress(candidate.onboardingProgress);

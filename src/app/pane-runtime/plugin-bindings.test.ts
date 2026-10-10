@@ -25,7 +25,9 @@ function bindPortablePaneRuntime(disabledPlugins: string[] = [], options: { isDe
   const shown: string[] = [];
   const pluginRegistry = {
     panes: new Map<string, PaneDef>([[paneDef.id, paneDef], ["brokers", { ...paneDef, id: "brokers", name: "Brokers" }]]),
-    getPanePluginId: () => "prediction-markets",
+    getDisabledPaneOwner: (_paneId: string, disabled: readonly string[]) => (
+      disabled.includes("prediction-markets") ? { id: "prediction-markets", name: "Prediction Markets" } : null
+    ),
     getTermSize: () => ({ width: 120, height: 40 }),
     commands: new Map([["set-alert", { id: "set-alert", label: "Add Alert", wizard: [{ key: "symbol", label: "Symbol" }] }]]),
     notify: (notification: { body?: string }) => notes.push(notification.body ?? ""),
@@ -116,7 +118,7 @@ describe("portable pane runtime", () => {
   test("rejects panes owned by a disabled plugin", async () => {
     const runtime = bindPortablePaneRuntime(["prediction-markets"]);
     await expect(runtime.pluginRegistry.openPortablePaneShareAsync(portablePane)).rejects.toThrow(
-      "unavailable",
+      "Turn on Prediction Markets to open this shared pane.",
     );
     expect(runtime.built).toHaveLength(0);
   });

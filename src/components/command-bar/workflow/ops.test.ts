@@ -37,6 +37,7 @@ function templateDeps(
       paneTemplates: new Map([[template.id, template]]),
       panes: new Map([[pane.id, pane]]),
       getPaneTemplatePluginId: () => undefined,
+      getDisabledPaneTemplateOwner: () => null,
       events: { emit: () => {} },
       ...registry,
     }),
