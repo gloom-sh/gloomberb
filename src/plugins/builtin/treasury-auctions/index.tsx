@@ -40,7 +40,7 @@ export const treasuryAuctionsModule: PluginModule = {
       id: TREASURY_FISCAL_DATA_CONNECTION_ID,
       name: "Treasury Fiscal Data",
       kind: "api",
-      ownerId: "macro",
+      ownerId: "credit",
       priority: 300,
       detail: "fiscaldata.treasury.gov",
     });

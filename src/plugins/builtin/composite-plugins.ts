@@ -86,9 +86,11 @@ import { tickerDetailModule } from "./ticker-detail";
 import { macroSharedResourcesModule } from "./macro-resources";
 import {
   applicationPluginMeta,
-  macroPluginMeta,
+  creditPluginMeta,
+  earningsPluginMeta,
   marketOverviewPluginMeta,
   portfolioPluginMeta,
+  ratesMacroPluginMeta,
   tickerResearchPluginMeta,
 } from "./builtin-plugin-meta";
 
@@ -185,10 +187,11 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
   ],
 });
 
-export const macroPlugin = composeBuiltinPlugin({
-  ...macroPluginMeta,
-  description: "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, Treasury auctions, and earnings.",
+export const ratesMacroPlugin = composeBuiltinPlugin({
+  ...ratesMacroPluginMeta,
   modules: [
+    // The FRED cache the other panes and the chart composer read too. Every
+    // plugin is set up whether or not it is switched on, so it stays attached.
     macroSharedResourcesModule,
     economicCalendarModule,
     econStatisticsModule,
@@ -196,15 +199,24 @@ export const macroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,
-    bondCalculatorModule,
     centralBankRatesModule,
     volatilityModule,
-    creditConditionsModule,
     marketValuationModule,
+  ],
+});
+
+export const creditPlugin = composeBuiltinPlugin({
+  ...creditPluginMeta,
+  modules: [
     cdsModule,
     creditBoardsModule,
+    creditConditionsModule,
     treasuryAuctionsModule,
-    earningsModule,
-    earningsCallsModule,
+    bondCalculatorModule,
   ],
+});
+
+export const earningsPlugin = composeBuiltinPlugin({
+  ...earningsPluginMeta,
+  modules: [earningsModule, earningsCallsModule],
 });

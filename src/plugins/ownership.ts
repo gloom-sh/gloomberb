@@ -50,7 +50,12 @@ const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
  * state moved to: once a plugin is split, a module's state stays where it was
  * while its switch belongs to the successor that holds the module now.
  */
-const BUILTIN_DISABLED_PLUGIN_ALIASES: Record<string, string> = {};
+const BUILTIN_DISABLED_PLUGIN_ALIASES: Record<string, string> = {
+  "earnings-calendar": "earnings",
+  "earnings-calls": "earnings",
+  // `macro-tv` keeps meaning all of Macro: TV left for its own repository, so
+  // no successor holds it, and turning it off was turning Macro off.
+};
 
 /**
  * Retired built-in plugin ids that now stand for a group of built-ins in
@@ -60,7 +65,9 @@ const BUILTIN_DISABLED_PLUGIN_ALIASES: Record<string, string> = {};
  * older app shows it off exactly then, and turning it back on there brings
  * them all back.
  */
-const BUILTIN_PLUGIN_GROUPS: Readonly<Record<string, readonly string[]>> = {};
+const BUILTIN_PLUGIN_GROUPS: Readonly<Record<string, readonly string[]>> = {
+  macro: ["rates-macro", "credit", "earnings"],
+};
 
 let pluginGroups = BUILTIN_PLUGIN_GROUPS;
 

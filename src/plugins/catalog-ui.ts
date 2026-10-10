@@ -17,9 +17,11 @@ import { openFdaPlugin } from "./builtin/openfda";
 import {
   applicationPlugin,
   brokerPlugin,
-  macroPlugin,
+  creditPlugin,
+  earningsPlugin,
   marketOverviewPlugin,
   portfolioPlugin,
+  ratesMacroPlugin,
   tickerResearchPlugin,
 } from "./builtin/composite-plugins";
 
@@ -41,7 +43,9 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   clinicalTrialsPlugin,
   commentLettersPlugin,
   openFdaPlugin,
-  macroPlugin,
+  ratesMacroPlugin,
+  creditPlugin,
+  earningsPlugin,
   alertsPlugin,
   researchSearchPlugin,
 ];

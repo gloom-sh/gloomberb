@@ -84,6 +84,27 @@
       }
     },
     {
+      "id": "credit",
+      "name": "Credit & Bonds",
+      "description": "Single-name, index and sovereign CDS, credit spreads, Treasury auctions, and a bond calculator.",
+      "categories": [
+        "macro",
+        "markets"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "bond-calculator",
+          "cds",
+          "cdx-board",
+          "credit-conditions",
+          "treasury-auctions"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "custom-view",
       "name": "Custom Views",
       "description": "Tables built from any data function: columns, a filter, a sort. Made by the agent, shared with a team.",
@@ -115,6 +136,24 @@
       }
     },
     {
+      "id": "earnings",
+      "name": "Earnings",
+      "description": "Earnings calendar with surprises and implied moves, and earnings call transcripts.",
+      "categories": [
+        "research",
+        "markets"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "earnings-calendar",
+          "earnings-calls"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "gloomberb-cloud",
       "name": "Gloom Cloud",
       "description": "Free market, macro, and chat services. Chat requires signup.",
@@ -141,39 +180,6 @@
           "cloud.team",
           "cloud.views",
           "news.gloomberb-cloud"
-        ],
-        "broker": false
-      }
-    },
-    {
-      "id": "macro",
-      "name": "Macro",
-      "description": "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, Treasury auctions, and earnings.",
-      "categories": [
-        "macro"
-      ],
-      "toggleable": true,
-      "contributes": {
-        "panes": [
-          "bond-calculator",
-          "cds",
-          "cdx-board",
-          "central-bank-rates",
-          "cpi",
-          "credit-conditions",
-          "earnings-calendar",
-          "earnings-calls",
-          "econ-calendar",
-          "econ-statistics",
-          "market-valuation",
-          "money-markets",
-          "rate-path",
-          "treasury-auctions",
-          "volatility-term-structure",
-          "yield-curve"
-        ],
-        "capabilities": [
-          "market-valuation"
         ],
         "broker": false
       }
@@ -299,6 +305,32 @@
           "portfolio-list"
         ],
         "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "rates-macro",
+      "name": "Rates & Macro",
+      "description": "Economic calendar and statistics, consumer prices, yield curve, rate path, money markets, central bank rates, volatility, and market valuation.",
+      "categories": [
+        "macro"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "central-bank-rates",
+          "cpi",
+          "econ-calendar",
+          "econ-statistics",
+          "market-valuation",
+          "money-markets",
+          "rate-path",
+          "volatility-term-structure",
+          "yield-curve"
+        ],
+        "capabilities": [
+          "market-valuation"
+        ],
         "broker": false
       }
     },

@@ -94,7 +94,8 @@ import { moneyMarketsModule } from "./builtin/money-markets";
 import { ratePathModule } from "./builtin/rate-path";
 import {
   applicationPluginMeta,
-  macroPluginMeta,
+  creditPluginMeta,
+  ratesMacroPluginMeta,
   marketOverviewPluginMeta,
   newsPluginMeta,
   portfolioPluginMeta,
@@ -188,9 +189,11 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
   ],
 });
 
-const browserMacroPlugin = composeBuiltinPlugin({
-  ...macroPluginMeta,
-  description: "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, and Treasury auctions.",
+// The same panes as on the terminal. The web app has never carried the
+// earnings calendar, and runs the call transcripts with Ticker Research, so
+// Earnings has no browser build.
+const browserRatesMacroPlugin = composeBuiltinPlugin({
+  ...ratesMacroPluginMeta,
   modules: [
     macroSharedResourcesModule,
     economicCalendarModule,
@@ -199,14 +202,20 @@ const browserMacroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,
-    bondCalculatorModule,
     centralBankRatesModule,
     volatilityModule,
-    creditConditionsModule,
     marketValuationModule,
+  ],
+});
+
+const browserCreditPlugin = composeBuiltinPlugin({
+  ...creditPluginMeta,
+  modules: [
     cdsModule,
     creditBoardsModule,
+    creditConditionsModule,
     treasuryAuctionsModule,
+    bondCalculatorModule,
   ],
 });
 
@@ -230,7 +239,8 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   clinicalTrialsPlugin,
   commentLettersPlugin,
   openFdaPlugin,
-  browserMacroPlugin,
+  browserRatesMacroPlugin,
+  browserCreditPlugin,
   alertsPlugin,
   researchSearchPlugin,
 ];
