@@ -301,7 +301,6 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     nativePaneChrome,
     palette,
     rowWidth,
-    trailingWidth,
   ]);
 
   return (
