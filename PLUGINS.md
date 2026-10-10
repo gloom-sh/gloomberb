@@ -221,6 +221,8 @@ An external plugin is a directory in `~/.gloomberb/plugins/`:
 
 Plugin IDs must not reuse current or retired built-in IDs. Retired module IDs remain reserved so saved configuration can be migrated safely to their current owning plugin.
 
+`ticker-research`, `macro` and `market-overview` are retired too: each now names the group of built-ins it was split into. In `disabledPlugins` the old id stands for all of its successors, and `gloomberb plugin enable|disable <id>` switches them together.
+
 A plugin that changes its id keeps the state its users already have by declaring the old one as `stateId`:
 
 ```typescript
