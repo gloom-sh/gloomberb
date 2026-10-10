@@ -628,7 +628,12 @@ Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Ja
 
 ## Market and macro plugins
 
-Macro is now three plugins you can switch separately in `PL`: Rates & Macro (ECO, ECST, CPI, GC, WIRP, BTMM, CBR, VIX, VOLS, VAL), Credit & Bonds (CDS, CDX, SOVR, CRD, AUCT, YAS) and Earnings (ERN, EVTS, CALLS). Panes, shortcuts, settings and saved state are unchanged. If Macro was switched off, all three start off; `gloomberb plugin disable macro` and `gloomberb plugin enable macro` switch all three at once. An older Gloomberb signed in to the same account shows Macro off only while all three are off.
+Macro and Market Overview are split into smaller plugins you can switch separately in `PL`, with the same panes, shortcuts, settings and saved state:
+
+- Macro became Rates & Macro (ECO, ECST, CPI, GC, WIRP, BTMM, CBR, VIX, VOLS, VAL), Credit & Bonds (CDS, CDX, SOVR, CRD, AUCT, YAS) and Earnings (ERN, EVTS, CALLS).
+- Market Overview became Global Markets (WEI, MAP, CHOKE, BI, THEM, FXC, RRG), Screeners & Movers (EQS, MOST, HILO, FLOW), Futures & Commodities (FUT, CTM, COT, DOE, NGS), Crypto & Perps (CRYP, PERP), Alt Data (ATTN and the Gloom Trending pane, GPU, POWER) and Quant (CORR, GR).
+
+If Macro or Market Overview was switched off, all of its successors start off, and `gloomberb plugin disable macro` or `gloomberb plugin enable market-overview` switches them together. An older Gloomberb signed in to the same account shows the old plugin off only while all of its successors are off.
 
 Polls lives in its own repository rather than inside the app. It reads one third-party site directly, so the plugin can ship a fix the day that site changes instead of waiting for an app release.
 
