@@ -30,23 +30,27 @@ interface ParsedLine {
   indent?: number;
 }
 
+// A backslash escapes the punctuation markdown would read ("\\*" is a star), and
+// an italic span may hold a bold one ("*covers **96%** of value*").
 const INLINE_RE =
-  /(\*\*(?<bold>[^*]+)\*\*|(?<!\*)\*(?!\*)(?<italic>[^*]+)\*(?!\*)|`(?<code>[^`]+)`|~~(?<strike>[^~]+)~~)/g;
+  /(\\(?<escaped>[\\`*_~#>[\]()-])|\*\*(?<bold>[^*]+)\*\*|(?<!\*)\*(?!\*)(?<italic>(?:[^*]|\*\*[^*]+\*\*)+?)\*(?!\*)|`(?<code>[^`]+)`|~~(?<strike>[^~]+)~~)/g;
 
 function parseInlineMarkdown(text: string): StyledSegment[] {
   const segments: StyledSegment[] = [];
   let cursor = 0;
 
-  INLINE_RE.lastIndex = 0;
+  const pattern = new RegExp(INLINE_RE.source, "g");
   let match: RegExpExecArray | null;
-  while ((match = INLINE_RE.exec(text)) !== null) {
+  while ((match = pattern.exec(text)) !== null) {
     if (match.index > cursor) {
       segments.push({ text: text.slice(cursor, match.index) });
     }
-    if (match.groups?.bold != null) {
+    if (match.groups?.escaped != null) {
+      segments.push({ text: match.groups.escaped });
+    } else if (match.groups?.bold != null) {
       segments.push({ text: match.groups.bold, bold: true });
     } else if (match.groups?.italic != null) {
-      segments.push({ text: match.groups.italic, italic: true });
+      for (const inner of parseInlineMarkdown(match.groups.italic)) segments.push({ ...inner, italic: true });
     } else if (match.groups?.code != null) {
       segments.push({ text: match.groups.code, code: true });
     } else if (match.groups?.strike != null) {

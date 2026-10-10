@@ -3,17 +3,16 @@ import type {
   ASKGConversationDetail,
   ASKGConversationTool,
 } from "../../../../api-client/askg";
-import {
-  SCRIPT_TOOL_NAME,
-  type ASKGFeedback,
-  type ASKGLimits,
-  type ASKGSseEvent,
-  type ASKGToolCallEvent,
-  type JsonValue,
-  type ToolManifestSource,
-  type ToolResultPayload,
-  type ToolResultStatus,
-  type WriteTier,
+import type {
+  ASKGFeedback,
+  ASKGLimits,
+  ASKGSseEvent,
+  ASKGToolCallEvent,
+  JsonValue,
+  ToolManifestSource,
+  ToolResultPayload,
+  ToolResultStatus,
+  WriteTier,
 } from "./protocol";
 import { capToolNote } from "./notes";
 
@@ -36,6 +35,8 @@ export interface ASKGToolRow {
   name: string;
   /** One line rendering of the call arguments, e.g. `NVDA · range=5Y`. */
   argumentSummary: string;
+  /** The arguments themselves, when known, so the row can name what it read. */
+  args?: Record<string, JsonValue>;
   writeTier: WriteTier;
   /** Server tools are executed by the platform and marked as run by Gloom. */
   origin: "client" | "server";
@@ -191,6 +192,7 @@ function rowFromToolCall(event: ASKGToolCallEvent): ASKGToolRow {
     toolCallId: event.toolCallId,
     name: event.name,
     argumentSummary: summarizeToolArguments(event.args),
+    args: event.args,
     writeTier: event.writeTier,
     origin: "client",
     status: requiresLocalConfirmation(event) ? "awaiting-confirmation" : "pending",
@@ -251,6 +253,12 @@ function appendToolRow(turn: ASKGTurn, row: ASKGToolRow): ASKGTurn {
   return { ...turn, tools };
 }
 
+/** A refusal at the daily cap means none are left, whatever the count read earlier. */
+function withQuotaSpent(state: ASKGConversationState, code: ASKGClientErrorCode): ASKGConversationState {
+  if (code !== "daily_turn_cap" || !state.limits) return state;
+  return { ...state, limits: { ...state.limits, turnsRemainingToday: 0 } };
+}
+
 function applyEvent(
   state: ASKGConversationState,
   event: ASKGSseEvent,
@@ -260,7 +268,11 @@ function applyEvent(
   const next = { ...state, lastSeq: event.seq };
 
   switch (event.type) {
-    case "session":
+    case "session": {
+      const turn = next.turns[next.turns.length - 1];
+      // The limits were read when the session opened; every turn the platform
+      // admits since then uses one of the questions they counted.
+      const admitted = !!turn && !turn.remoteTurnId && !!next.limits;
       return patchTurn(
         {
           ...next,
@@ -268,10 +280,17 @@ function applyEvent(
           model: event.model,
           // A turn that named no conversation learns here where it was filed.
           conversationId: event.conversationId ?? next.conversationId,
+          ...(admitted && next.limits ? {
+            limits: {
+              ...next.limits,
+              turnsRemainingToday: Math.max(0, next.limits.turnsRemainingToday - 1),
+            },
+          } : {}),
         },
         null,
-        (turn) => (turn.remoteTurnId ? turn : { ...turn, remoteTurnId: event.turnId }),
+        (current) => (current.remoteTurnId ? current : { ...current, remoteTurnId: event.turnId }),
       );
+    }
     case "text-delta":
       return patchTurn(next, event.turnId, (turn) => ({
         ...turn,
@@ -313,7 +332,7 @@ function applyEvent(
     case "tool-result-ack":
       return next;
     case "error":
-      return patchTurn(next, event.turnId ?? null, (turn) => ({
+      return patchTurn(withQuotaSpent(next, event.code), event.turnId ?? null, (turn) => ({
         ...turn,
         status: "error",
         error: {
@@ -427,7 +446,7 @@ export function askgReducer(
     case "undo":
       return patchToolRow(state, action.toolCallId, (row) => ({ ...row, undo: action.undo }));
     case "turn-failed":
-      return patchTurn(state, action.turnId, (turn) => ({
+      return patchTurn(withQuotaSpent(state, action.error.code), action.turnId, (turn) => ({
         ...turn,
         status: "error",
         error: action.error,
@@ -488,6 +507,7 @@ function rowFromStoredTool(tool: ASKGConversationTool): ASKGToolRow {
     argumentSummary: tool.args
       ? summarizeToolArguments(tool.args as Record<string, JsonValue>)
       : (tool.note ?? ""),
+    ...(tool.args ? { args: tool.args as Record<string, JsonValue> } : {}),
     writeTier: "read",
     origin: tool.origin,
     status: (tool.status as ASKGToolRowStatus) ?? "ok",
@@ -786,64 +806,27 @@ export function canRetryASKGError(error: ASKGErrorState): boolean {
   return !UNRETRYABLE_ERROR_CODES.has(error.code);
 }
 
+/** "12s", "8 min", "22 h": a wait a person can picture. */
+function waitText(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  if (seconds < 90) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return `${minutes} min`;
+  return `${Math.round(minutes / 60)} h`;
+}
+
 /** Specific, actionable one line description of a failure. */
 export function describeASKGError(error: ASKGErrorState): string {
   const title = ERROR_TITLES[error.code] ?? "Ask Gloom failed";
-  const retry = error.retryAfterMs && error.retryAfterMs > 0
-    ? ` Try again in ${Math.max(1, Math.round(error.retryAfterMs / 1000))}s.`
-    : "";
-  const detail = error.message.trim();
+  const wait = error.retryAfterMs && error.retryAfterMs > 0 ? waitText(error.retryAfterMs) : null;
+  // The cap has one thing to say: none left, and when there will be more.
+  if (error.code === "daily_turn_cap") {
+    return `No questions left today.${wait ? ` More in ${wait}.` : ""}`;
+  }
+  const retry = wait ? ` Try again in ${wait}.` : "";
+  // A machine code the platform appends ("daily_turn_cap") is not for people.
+  const detail = error.message.replace(/\s*\b[a-z]+(?:_[a-z]+)+\b\.?/g, "").trim();
   return detail && detail.toLowerCase() !== title.toLowerCase()
     ? `${title}: ${detail}${retry}`
     : `${title}.${retry}`;
-}
-
-/**
- * The server running a script of tool calls in one step. Each call it made
- * has its own row above it, so this row only reports how the script ended.
- */
-function isScriptRow(row: Pick<ASKGToolRow, "name" | "origin">): boolean {
-  return row.origin === "server" && row.name === SCRIPT_TOOL_NAME;
-}
-
-/**
- * The label and one-line summary a timeline row leads with. A script has no
- * arguments worth showing: a clean run puts its note ("3 calls, 1.2 s") on
- * the line, and any other outcome leaves the note to the line below, which
- * wraps, so it is said once and in full.
- */
-export function toolRowHeadline(row: ASKGToolRow): { label: string; summary: string } {
-  if (!isScriptRow(row)) return { label: row.name, summary: row.argumentSummary };
-  return { label: "Script", summary: row.status === "ok" ? row.note ?? "" : "" };
-}
-
-/** Wording for the tool row status column. */
-export function describeToolStatus(row: ASKGToolRow): string {
-  // A script counts calls, not rows, and its note already says how many.
-  if (isScriptRow(row)) {
-    if (row.status === "ok") return "done";
-    if (row.status === "partial") return "partial";
-  }
-  switch (row.status) {
-    case "pending":
-      return "queued";
-    case "awaiting-confirmation":
-      return "needs approval";
-    case "running":
-      return "running";
-    case "ok":
-      return row.rowCount === undefined
-        ? "done"
-        : `${row.rowCount} ${row.rowCount === 1 ? "row" : "rows"}`;
-    case "partial":
-      return row.rowCount === undefined ? "partial" : `${row.rowCount} rows · partial`;
-    case "denied":
-      return "declined";
-    case "timeout":
-      return "timed out";
-    case "cancelled":
-      return "cancelled";
-    case "error":
-      return "failed";
-  }
 }

@@ -1,13 +1,14 @@
 import { CLOUD_PLAN_KEY } from "../../shared/cloud-upgrade";
-import { ActionRow } from "../../../../components/ui/action-row";
 import { getCurrentPluginTarget } from "../../../current-target";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { apiClient } from "../../../../api-client";
 import {
@@ -23,18 +24,15 @@ import {
 import {
   Button,
   ChoiceDialog,
-  DataTableView,
+  Divider,
   EmptyState,
   getPaneSidebarWidth,
   IconButton,
   MessageComposer,
   Prose,
-  QueryBar,
   shouldShowPaneSidebar,
   Spinner,
   usePaneFooter,
-  type DataTableCell,
-  type DataTableColumn,
   type PaneHint,
 } from "../../../../components";
 import { MarkdownText } from "../../../../components/markdown-text";
@@ -47,16 +45,20 @@ import {
 } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { useRemoteControlHandler } from "../../../../remote/app-host";
-import { colors } from "../../../../theme/colors";
+import { useThemeColors } from "../../../../theme/theme-context";
 import type { PaneProps } from "../../../../types/plugin";
+import type { ContextMenuItem } from "../../../../types/context-menu";
+import type { AppConfig } from "../../../../types/config";
+import type { TickerRecord } from "../../../../types/ticker";
 import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
 import { countEscapeTowardClose } from "../../../../utils/double-escape-close";
 import { isPlainKey } from "../../../../utils/keyboard";
-import { truncateWithEllipsis } from "../../../../utils/text-wrap";
+import { truncateWithEllipsis, wrapTextLines } from "../../../../utils/text-wrap";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
 import { usePlanAccess } from "../../../../api-client/plan-access";
 import { SignInWall } from "../auth-actions";
 import { afterLayout, revealInScrollBox } from "../../../../components/ui/reveal-in-scroll-box";
+import { describePortfolioTab } from "../../analytics/portfolio-selection";
 import { ASKGSessionController, type ASKGControllerManifest } from "./controller";
 import {
   createASKGRendererToolExecutor,
@@ -78,25 +80,34 @@ import {
   canRateTurn,
   canRetryASKGError,
   describeASKGError,
-  describeToolStatus,
   formatCellValue,
   isTurnRunning,
   pendingConfirmation,
-  rowSymbol,
   toolResultTables,
-  toolRowHeadline,
   type ASKGConversationState,
-  type ASKGResultTable,
   type ASKGToolRow,
   type ASKGTurn,
   type ASKGTurnFeedback,
 } from "./model";
 import type { ASKGFeedbackRating, ASKGFeedbackReason, JsonValue } from "./protocol";
+import { describeToolRow, toolTitle, type ToolDisplayContext } from "./tool-display";
+import {
+  canUndo,
+  ToolResultDetail,
+  toolGroupId,
+  TurnTools,
+  turnTimelineIds,
+  UNDO_KEY,
+} from "./tool-timeline";
 
 export const ASKG_PANE_ID = "askg";
 
 const CLIENT_VERSION = "1";
 const MIN_DETAIL_HEIGHT = 8;
+/** The composer grows with the question up to this many lines, then scrolls. */
+const MAX_COMPOSER_LINES = 6;
+/** The daily allowance is news only once it runs low. */
+const LOW_QUOTA = 20;
 
 function clientKind(): "tui" | "desktop" | "web" {
   const target = getCurrentPluginTarget();
@@ -110,24 +121,6 @@ function tierLabel(row: ASKGToolRow): string | null {
   return "broker";
 }
 
-function statusColor(row: ASKGToolRow): string {
-  switch (row.status) {
-    case "ok":
-      return colors.textDim;
-    case "partial":
-    case "awaiting-confirmation":
-      return colors.warning;
-    case "error":
-    case "timeout":
-      return colors.negative;
-    case "denied":
-    case "cancelled":
-      return colors.textMuted;
-    default:
-      return colors.textDim;
-  }
-}
-
 function previewLines(preview: JsonValue | undefined): string[] {
   if (preview == null) return [];
   if (typeof preview === "string") return preview.split("\n");
@@ -136,14 +129,39 @@ function previewLines(preview: JsonValue | undefined): string[] {
   return Object.entries(preview).map(([key, value]) => `${key}: ${formatCellValue(value)}`);
 }
 
-/** Undo a write; not `u`, which installs an app update whenever one is waiting. */
-const UNDO_KEY = "z";
-
 /** Upgrade from a Pro-only answer, on the key every Pro prompt uses. */
 const UPGRADE_KEY = CLOUD_PLAN_KEY;
 
-function canUndo(row: ASKGToolRow): boolean {
-  return !!row.undoToken && (!row.undo || row.undo.status === "available");
+/**
+ * Three questions a first look can send with one click, worded for what the
+ * profile holds: a portfolio, a ticker on screen, a watchlist.
+ */
+function askgExampleQuestions({
+  config,
+  tickers,
+  activeSymbol,
+}: {
+  config: Pick<AppConfig, "watchlists">;
+  tickers: Iterable<TickerRecord>;
+  activeSymbol: string | null;
+}): string[] {
+  let holding: string | null = null;
+  let watched = false;
+  for (const ticker of tickers) {
+    if (!holding && ticker.metadata.positions.some((position) => position.shares !== 0)) holding = ticker.metadata.ticker;
+    if (ticker.metadata.watchlists.length > 0) watched = true;
+  }
+  const symbol = activeSymbol ?? holding ?? "NVDA";
+  // Short enough to read whole in a phone-wide pane.
+  return [
+    holding ? "How is my portfolio doing today?" : "What moved the market today?",
+    `What moved ${symbol} today?`,
+    holding
+      ? "Which holdings report earnings this week?"
+      : watched && config.watchlists.length > 0
+        ? "Which watchlist names report this week?"
+        : "What is on this week's economic calendar?",
+  ];
 }
 
 /** Rate the answer the keyboard is on: the selected one, else the latest. */
@@ -213,6 +231,7 @@ function AnswerFeedback({
   onReason: (reason: ASKGFeedbackReason) => void;
   onShare: () => void;
 }) {
+  const colors = useThemeColors();
   const rating = feedback?.rating ?? null;
   const sharing = feedback?.pending === "share";
   return (
@@ -274,95 +293,6 @@ function AnswerFeedback({
   );
 }
 
-export function ToolTimelineRow({
-  row,
-  width,
-  selected,
-  expanded,
-  selectedRowRef,
-  onSelect,
-  onToggle,
-  onUndo,
-}: {
-  row: ASKGToolRow;
-  width: number;
-  selected: boolean;
-  expanded: boolean;
-  /** Takes the row while it is selected, so the transcript can scroll to it. */
-  selectedRowRef: (node: BoxRenderable | null) => void;
-  onSelect: () => void;
-  onToggle: () => void;
-  onUndo: () => void;
-}) {
-  const hasRows = row.result !== undefined;
-  const marker = hasRows ? (expanded ? "▾" : "▸") : "·";
-  const tier = tierLabel(row);
-  const status = describeToolStatus(row);
-  const { label, summary } = toolRowHeadline(row);
-  const undoLabel = row.undo?.status === "running"
-    ? "undoing…"
-    : row.undo?.status === "done"
-      ? "undone"
-      : row.undo?.status === "failed"
-        ? "undo failed"
-        : row.undoToken
-          ? "undo"
-          : null;
-  // The row lays its parts out with a one-cell gap between each: marker, name,
-  // "  " + summary, spacer, tier, status, server mark. A summary that leaves no
-  // room for them pushes the row onto two lines, over the note below it.
-  const parts = [marker, label, "  ", "", ...(tier ? [`${tier}  `] : []), status, ...(row.origin === "server" ? [" · Gloom"] : [])];
-  const fixedWidth = parts.reduce((total, part) => total + part.length, 0) + parts.length;
-  const summaryWidth = Math.max(6, width - fixedWidth);
-
-  return (
-    <Box ref={selected ? selectedRowRef : undefined} flexDirection="column">
-      <ActionRow
-        label={label}
-        expanded={hasRows ? expanded : undefined}
-        active={selected}
-        width={width}
-        onPress={() => { onSelect(); onToggle(); }}
-      >
-        {summary ? (
-          <Text fg={colors.textDim}>{`  ${truncateWithEllipsis(summary, summaryWidth)}`}</Text>
-        ) : null}
-        <Box flexGrow={1} />
-        {tier ? <Text fg={row.writeTier === "ui-write" ? colors.textMuted : colors.warning}>{`${tier}  `}</Text> : null}
-        {row.status === "running" || row.status === "pending" ? (
-          <Spinner label={status} />
-        ) : (
-          <Text fg={statusColor(row)}>{status}</Text>
-        )}
-        {row.origin === "server" ? <Text fg={colors.textMuted}> · Gloom</Text> : null}
-      </ActionRow>
-      {undoLabel ? (
-        <Box flexDirection="row" height={1} paddingLeft={2}>
-          <Button
-            label={undoLabel}
-            variant={row.undo?.status === "failed" ? "danger" : "ghost"}
-            compact
-            disabled={!!row.undo && row.undo.status !== "available"}
-            shortcut={selected && canUndo(row) ? UNDO_KEY : undefined}
-            onPress={onUndo}
-          />
-          {row.undo?.note ? <Text fg={colors.textMuted}>{`  ${row.undo.note}`}</Text> : null}
-        </Box>
-      ) : null}
-      {row.note && row.status !== "ok" ? (
-        <Box flexDirection="column" paddingLeft={2}>
-          <Prose
-            text={row.note}
-            width={Math.max(10, width - 3)}
-            color={statusColor(row)}
-            figures={false}
-          />
-        </Box>
-      ) : null}
-    </Box>
-  );
-}
-
 /** Rows the confirmation block reserves for the dry run preview. */
 const MAX_PREVIEW_LINES = 4;
 
@@ -381,6 +311,7 @@ function ConfirmationPrompt({
   onApprove: () => void;
   onDecline: () => void;
 }) {
+  const colors = useThemeColors();
   const lines = previewLines(row.preview).slice(0, MAX_PREVIEW_LINES);
   return (
     <Box
@@ -391,9 +322,9 @@ function ConfirmationPrompt({
       backgroundColor={colors.panel}
     >
       <Box flexDirection="row" height={1}>
-        <Text fg={colors.warning} attributes={TextAttributes.BOLD}>{`Approve ${row.name}?`}</Text>
+        <Text fg={colors.warning} attributes={TextAttributes.BOLD}>{`Approve ${toolTitle(row.name)}?`}</Text>
         <Text fg={colors.textDim}>
-          {`  writes ${tierLabel(row) ?? "data"}${row.argumentSummary ? ` · ${row.argumentSummary}` : ""}`}
+          {`  changes ${tierLabel(row) ?? "data"}${row.argumentSummary ? ` · ${row.argumentSummary}` : ""}`}
         </Text>
       </Box>
       {lines.map((line, index) => (
@@ -410,124 +341,38 @@ function ConfirmationPrompt({
   );
 }
 
-function ToolResultDetail({
-  row,
+/** The first look: what to ask, and three questions that ask themselves. */
+function ASKGWelcome({
+  examples,
   width,
-  height,
-  focused,
-  openPaneShortcut,
-  onOpenSymbol,
-  onOpenPane,
+  selectedIndex,
+  onAsk,
 }: {
-  row: ASKGToolRow;
+  examples: string[];
   width: number;
-  height: number;
-  /** The rows have the keyboard: j/k walk them and Enter opens one. */
-  focused: boolean;
-  openPaneShortcut?: string;
-  onOpenSymbol: (symbol: string) => void;
-  onOpenPane: () => void;
+  selectedIndex: number | null;
+  onAsk: (question: string) => void;
 }) {
-  const tables = useMemo<ASKGResultTable[]>(() => toolResultTables(row.result), [row.result]);
-  const [tableIndex, setTableIndex] = useState(0);
-  const [rowIndex, setRowIndex] = useState(0);
-  useEffect(() => {
-    setTableIndex(0);
-  }, [row.toolCallId]);
-  useEffect(() => {
-    setRowIndex(0);
-  }, [row.toolCallId, tableIndex]);
-  const table = tables[Math.min(tableIndex, tables.length - 1)] ?? null;
-  const paneTarget = useMemo(() => resolveToolPaneTarget(row.name), [row.name]);
-
-  const columns = useMemo<DataTableColumn[]>(() => (
-    (table?.columns ?? []).map((column) => ({
-      id: column.key,
-      label: column.header,
-      width: column.width ?? Math.max(column.header.length + 2, 10),
-      align: column.align === "right" ? "right" : "left",
-      flexGrow: 1,
-    }))
-  ), [table]);
-
-  const renderCell = useCallback((
-    item: Record<string, JsonValue>,
-    column: DataTableColumn,
-  ): DataTableCell => {
-    const value = formatCellValue(item[column.id]);
-    const symbol = rowSymbol(item);
-    return {
-      text: value,
-      color: symbol && (column.id === "symbol" || column.id === "ticker")
-        ? colors.textBright
-        : colors.text,
-    };
-  }, []);
-
-  const headerHeight = 1 + (tables.length > 1 ? 1 : 0);
-  // The timeline row above already names the tool and its arguments, so the
-  // detail header carries what the row cannot: shape, size, and cost.
-  const metadata = [
-    table?.title,
-    row.rowCount !== undefined ? `${row.rowCount} ${row.rowCount === 1 ? "row" : "rows"}` : null,
-    row.elapsedMs !== undefined ? `${row.elapsedMs}ms` : null,
-    row.truncated ? "truncated" : null,
-  ].filter(Boolean).join(" · ");
+  const { nativePaneChrome } = useUiCapabilities();
   return (
-    <Box flexDirection="column" flexShrink={0} width={width} height={height}>
-      <Box flexDirection="row" height={1} paddingX={1}>
-        <Text fg={colors.textDim}>
-          {truncateWithEllipsis(metadata, Math.max(10, width - 16))}
-        </Text>
-        <Box flexGrow={1} />
-        {paneTarget ? (
-          <Button label="Open pane" variant="ghost" compact shortcut={openPaneShortcut} onPress={onOpenPane} />
-        ) : null}
+    <Box flexDirection="column" paddingTop={1}>
+      <EmptyState
+        title="Ask about your portfolio, a ticker or the market."
+        hint="Gloom reads your panes and data to answer, and lists each source it used."
+      />
+      {/* The empty state's actions: each sends its question. A terminal
+          button has no border, so a blank row keeps the three apart. */}
+      <Box flexDirection="column" alignItems="flex-start" paddingTop={1} gap={nativePaneChrome ? 0.5 : 1}>
+        {examples.map((question, index) => (
+          <Button
+            key={question}
+            label={truncateWithEllipsis(question, Math.max(10, width - 4))}
+            variant="ghost"
+            active={selectedIndex === index}
+            onPress={() => onAsk(question)}
+          />
+        ))}
       </Box>
-      {tables.length > 1 ? (
-        <QueryBar
-          width={width}
-          filters={[{
-            id: "section",
-            label: "Section",
-            inline: true,
-            value: String(tableIndex),
-            options: tables.map((entry, index) => ({
-              value: String(index),
-              label: entry.title ?? `Section ${index + 1}`,
-            })),
-            onChange: (value: string) => setTableIndex(Number(value)),
-          }]}
-        />
-      ) : null}
-      {table && table.rows.length > 0 ? (
-        <DataTableView<Record<string, JsonValue>>
-          focused={focused}
-          // A row cursor only while the rows have the keyboard; the pointer
-          // opens a row as it always has.
-          selection={focused
-            ? { kind: "index", selectedIndex: rowIndex, onChange: (index) => setRowIndex(index) }
-            : { kind: "none" }}
-          rootWidth={width}
-          rootHeight={Math.max(3, height - headerHeight)}
-          columns={columns}
-          items={table.rows}
-          sortColumnId={null}
-          sortDirection="asc"
-          onHeaderClick={() => {}}
-          getItemKey={(_item, index) => String(index)}
-          renderCell={renderCell}
-          onActivate={(item) => {
-            const symbol = rowSymbol(item);
-            if (symbol) onOpenSymbol(symbol);
-          }}
-          emptyStateTitle="No rows returned"
-        />
-      ) : (
-        <Box paddingX={1}>
-          <Text fg={colors.textMuted}>{row.note ?? "This tool returned no rows."}</Text>
-        </Box>
-      )}
     </Box>
   );
 }
@@ -535,18 +380,15 @@ function ToolResultDetail({
 function TurnView({
   turn,
   width,
-  selectedStopId,
-  expandedToolCallId,
-  selectedRowRef,
   latest,
   rateable,
+  feedbackSelected,
   feedbackKeysShown,
   feedbackFollowUpOpen,
+  selectedRowRef,
   catalog,
   openTicker,
-  onSelectTool,
-  onToggleTool,
-  onUndo,
+  tools,
   onRetry,
   onUpgrade,
   onRate,
@@ -555,27 +397,26 @@ function TurnView({
 }: {
   turn: ASKGTurn;
   width: number;
-  /** A tool call id, or the answer's own stop. */
-  selectedStopId: string | null;
-  expandedToolCallId: string | null;
-  selectedRowRef: (node: BoxRenderable | null) => void;
   /** The last turn: its Retry and Upgrade answer the pane's keys. */
   latest: boolean;
   /** The answer shows the rating control. */
   rateable: boolean;
+  /** The keyboard is on this answer's rating. */
+  feedbackSelected: boolean;
   feedbackKeysShown: boolean;
   feedbackFollowUpOpen: boolean;
+  selectedRowRef: (node: BoxRenderable | null) => void;
   catalog: ReturnType<typeof useInlineTickers>["catalog"];
   openTicker: (symbol: string) => void;
-  onSelectTool: (toolCallId: string) => void;
-  onToggleTool: (toolCallId: string) => void;
-  onUndo: (toolCallId: string) => void;
+  /** The turn's tool timeline. */
+  tools: ReactNode;
   onRetry: () => void;
   onUpgrade: () => void;
   onRate: (rating: ASKGFeedbackRating) => void;
   onReason: (reason: ASKGFeedbackReason) => void;
   onShare: () => void;
 }) {
+  const colors = useThemeColors();
   return (
     <Box flexDirection="column" paddingTop={1}>
       <Prose
@@ -585,23 +426,7 @@ function TurnView({
         figures={false}
         attributes={TextAttributes.BOLD}
       />
-      {turn.tools.length > 0 ? (
-        <Box flexDirection="column" paddingTop={1}>
-          {turn.tools.map((row) => (
-            <ToolTimelineRow
-              key={row.toolCallId}
-              row={row}
-              width={width}
-              selected={row.toolCallId === selectedStopId}
-              expanded={row.toolCallId === expandedToolCallId}
-              selectedRowRef={selectedRowRef}
-              onSelect={() => onSelectTool(row.toolCallId)}
-              onToggle={() => onToggleTool(row.toolCallId)}
-              onUndo={() => onUndo(row.toolCallId)}
-            />
-          ))}
-        </Box>
-      ) : null}
+      {tools}
       {turn.answer ? (
         <Box paddingTop={1}>
           <MarkdownText
@@ -621,12 +446,18 @@ function TurnView({
           width={width}
           keysShown={feedbackKeysShown}
           followUpOpen={feedbackFollowUpOpen}
-          selected={selectedStopId === answerStopId(turn.id)}
+          selected={feedbackSelected}
           selectedRowRef={selectedRowRef}
           onRate={onRate}
           onReason={onReason}
           onShare={onShare}
         />
+      ) : null}
+      {turn.status === "cancelled" ? (
+        <Box flexDirection="row" paddingTop={1} gap={2}>
+          <Text fg={colors.textMuted}>Stopped.</Text>
+          {latest ? <Button label="Ask again" variant="ghost" compact shortcut="r" onPress={onRetry} /> : null}
+        </Box>
       ) : null}
       {turn.error ? (
         <Box flexDirection="column" paddingTop={1}>
@@ -635,15 +466,17 @@ function TurnView({
           <Prose
             text={describeASKGError(turn.error)}
             width={width}
-            color={colors.negative}
+            // Running out of questions is a state, said again in the footer, not a failure.
+            color={turn.error.code === "daily_turn_cap" ? colors.textDim : colors.negative}
             figures={false}
           />
+          {/* A row of its own, so the desktop draws a button rather than a bar. */}
           {turn.error.code === "tier_required" ? (
-            <Box paddingTop={1}>
+            <Box flexDirection="row" paddingTop={1}>
               <Button label="Upgrade to Pro" variant="primary" shortcut={latest ? UPGRADE_KEY : undefined} onPress={onUpgrade} />
             </Box>
           ) : canRetryASKGError(turn.error) ? (
-            <Box paddingTop={1}>
+            <Box flexDirection="row" paddingTop={1}>
               <Button label="Retry" variant="primary" shortcut={latest ? "r" : undefined} onPress={onRetry} />
             </Box>
           ) : null}
@@ -726,14 +559,20 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   const [inputValue, setInputValue] = useState("");
   const [inputFocused, setInputFocused] = useState(false);
-  // A tool row's call id, or an answer's rating (`answerStopId`).
-  const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
+  // A tool row or a turn's folded calls; j/k walk them.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedToolCallId, setExpandedToolCallId] = useState<string | null>(null);
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
   // The answer whose thumbs down shows its reasons and the send action.
   const [feedbackFollowUpTurnId, setFeedbackFollowUpTurnId] = useState<string | null>(null);
+  // The example question the keyboard is on while the pane is empty.
+  const [exampleIndex, setExampleIndex] = useState<number | null>(null);
   const inputRef = useRef<TextareaRenderable | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
+  const queuedQuestionRef = useRef<string | null>(null);
+  // The conversation list is a drawer: open only while it has the keyboard or
+  // the pointer, so it never takes the left of the pane unasked.
   const [sidebarFocused, setSidebarFocused] = useState(false);
   // The row the keyboard is on while the sidebar has focus. Arrows move it and
   // Enter opens it, so walking the list does not load a transcript per keypress.
@@ -754,40 +593,60 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     askgConversationListStore.ensureLoaded();
   }, [planAccess.emailVerified]);
 
-  // The same gate chat uses: at least two things to switch between, in a pane
-  // wide enough to spare the width. One conversation is the one on screen.
-  const showSidebar = shouldShowPaneSidebar(
-    conversations.conversations.length,
-    width,
-    height,
-  );
-  const sidebarWidth = showSidebar
-    ? getPaneSidebarWidth(width, !!nativePaneChrome, conversations.width)
-    : 0;
+  // Any stored conversation is worth going back to, including the only one
+  // when it is not the one on screen. A pane too narrow for the list beside
+  // the answer shows it in the answer's place until one is picked.
+  const listRoom = conversations.conversations.length > 0 && height >= 8;
+  const listBeside = shouldShowPaneSidebar(conversations.conversations.length, width, height, 1);
+  const showSidebar = listRoom && sidebarFocused;
+  const listCoversBody = showSidebar && !listBeside;
+  const sidebarWidth = !showSidebar
+    ? 0
+    : listCoversBody
+      ? width
+      : getPaneSidebarWidth(width, !!nativePaneChrome, conversations.width);
 
   const running = isTurnRunning(state);
   const confirmation = pendingConfirmation(state);
-  const timelineRows = useMemo(
+
+  // Names the profile gives the ids tools take, so a row reads "Interactive
+  // Brokers U1234567" rather than the id Gloom passed.
+  const displayContext = useMemo<ToolDisplayContext>(() => ({
+    collectionName: (id: string) => {
+      const portfolio = config.portfolios.find((entry) => entry.id === id);
+      if (portfolio) return describePortfolioTab(portfolio, config.brokerInstances);
+      return config.watchlists.find((entry) => entry.id === id)?.name ?? null;
+    },
+    toolTitle: (name: string) => resolveToolPaneTarget(name)?.label ?? null,
+  }), [config.brokerInstances, config.portfolios, config.watchlists]);
+
+  // What j/k walk: each turn's tool rows (or their fold), then its answer's rating.
+  const timelineIds = useMemo(
+    () => state.turns.flatMap((turn) => [
+      ...turnTimelineIds(turn, openGroups),
+      ...(canRateTurn(state, turn) ? [answerStopId(turn.id)] : []),
+    ]),
+    [openGroups, state],
+  );
+  const toolRows = useMemo(
     () => state.turns.flatMap((turn) => turn.tools),
     [state.turns],
   );
-  // What j/k walk: each turn's tool rows, then its answer's rating.
-  const timelineStops = useMemo(
-    () => state.turns.flatMap((turn) => [
-      ...turn.tools.map((row) => ({ id: row.toolCallId, turnId: turn.id, row })),
-      ...(canRateTurn(state, turn) ? [{ id: answerStopId(turn.id), turnId: turn.id, row: null }] : []),
-    ]),
-    [state],
-  );
   const expandedRow = useMemo(
-    () => timelineRows.find((row) => row.toolCallId === expandedToolCallId) ?? null,
-    [expandedToolCallId, timelineRows],
+    () => toolRows.find((row) => row.toolCallId === expandedToolCallId) ?? null,
+    [expandedToolCallId, toolRows],
   );
+  const selectedRow = toolRows.find((row) => row.toolCallId === selectedId) ?? null;
+  const selectedGroupTurn = selectedId?.startsWith("group:")
+    ? state.turns.find((turn) => toolGroupId(turn.id) === selectedId) ?? null
+    : null;
   // The last question is the one a retry would repeat; an older failure is
   // already history the user moved past.
   const retryableTurn = useMemo(() => {
     const turn = activeTurn(state);
-    if (!turn || turn.status !== "error" || !turn.error) return null;
+    if (!turn) return null;
+    if (turn.status === "cancelled") return turn;
+    if (turn.status !== "error" || !turn.error) return null;
     return canRetryASKGError(turn.error) ? turn : null;
   }, [state]);
   const needsUpgrade = useMemo(() => {
@@ -795,13 +654,64 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     return turn?.status === "error" && turn.error?.code === "tier_required";
   }, [state]);
 
+  const examples = useMemo(() => {
+    const appState = getAppStateRef.current();
+    return askgExampleQuestions({
+      config: appState.config,
+      tickers: appState.tickers.values(),
+      activeSymbol,
+    });
+  }, [activeSymbol, config.portfolios, config.watchlists]);
+
   const ask = useCallback((question: string) => {
     const trimmed = question.trim();
     if (!trimmed) return;
     void controller.ask(trimmed);
   }, [controller]);
 
+  const focusInput = useCallback(() => {
+    setInputFocused(true);
+    setExampleIndex(null);
+    setResultFocused(false);
+    setSidebarFocused(false);
+    setSidebarCursorId(null);
+    dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
+    inputRef.current?.focus?.();
+  }, [dispatch]);
+
+  const blurInput = useCallback(() => {
+    setInputFocused(false);
+    dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
+  }, [dispatch]);
+
+  const focusedRef = useRef(focused);
+  focusedRef.current = focused;
+
+  // Asking from anywhere but the composer (an example, Retry) hands the
+  // keyboard back to it, so what is typed next is the follow-up and never a
+  // string of shortcuts. A click on the desktop would otherwise leave the
+  // keyboard on the button it pressed.
+  const askAndCompose = useCallback((question: string) => {
+    ask(question);
+    if (focusedRef.current) focusInput();
+  }, [ask, focusInput]);
+  const retryAndCompose = useCallback((turnId: string) => {
+    void controller.retryTurn(turnId);
+    if (focusedRef.current) focusInput();
+  }, [controller, focusInput]);
+
+  const resetTimeline = useCallback(() => {
+    setSelectedId(null);
+    setExpandedToolCallId(null);
+    setOpenGroups(new Set());
+    setExampleIndex(null);
+    setFeedbackFollowUpTurnId(null);
+  }, []);
+
   const openConversation = useCallback(async (conversationId: string) => {
+    setSidebarFocused(false);
+    setSidebarCursorId(null);
+    if (focusedRef.current) focusInput();
     if (conversationId === state.conversationId) return;
     const conversation = await apiClient.askg.loadConversation(conversationId);
     // A row the sidebar still shows may be gone; the refresh drops it.
@@ -809,18 +719,16 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       void askgConversationListStore.refresh();
       return;
     }
-    setSelectedStopId(null);
-    setExpandedToolCallId(null);
-    setFeedbackFollowUpTurnId(null);
+    resetTimeline();
     controller.openConversation(conversation);
-  }, [controller, state.conversationId]);
+  }, [controller, focusInput, resetTimeline, state.conversationId]);
 
   const newConversation = useCallback(() => {
-    setSelectedStopId(null);
-    setExpandedToolCallId(null);
-    setFeedbackFollowUpTurnId(null);
+    resetTimeline();
+    askgConversationListStore.rememberOpen(null);
     controller.startConversation();
-  }, [controller]);
+    if (focusedRef.current) focusInput();
+  }, [controller, focusInput, resetTimeline]);
 
   // A transcript has no undo, so it is never one click from gone.
   const deleteConversation = useCallback(async (conversationId: string): Promise<boolean> => {
@@ -835,21 +743,24 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       width: 48,
     });
     if (!confirmed) return false;
-    if (conversationId === state.conversationId) controller.startConversation();
+    if (conversationId === state.conversationId) {
+      resetTimeline();
+      controller.startConversation();
+    }
     void askgConversationListStore.delete(conversationId);
     return true;
-  }, [controller, conversations.conversations, dialog, state.conversationId]);
+  }, [controller, conversations.conversations, dialog, resetTimeline, state.conversationId]);
 
-  const focusInput = useCallback(() => {
-    setInputFocused(true);
-    dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
-    inputRef.current?.focus?.();
-  }, [dispatch]);
-
-  const blurInput = useCallback(() => {
-    setInputFocused(false);
-    dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
-  }, [dispatch]);
+  // Typing lands in the composer as soon as the pane has the keyboard: when it
+  // opens, when it is focused again, once the account is ready. Only this
+  // pane's own focus moves it, so no other pane loses the keyboard.
+  const keyboardReady = focused && planAccess.emailVerified;
+  const wasReadyRef = useRef(false);
+  useEffect(() => {
+    const gained = keyboardReady && !wasReadyRef.current;
+    wasReadyRef.current = keyboardReady;
+    if (gained && !confirmation) focusInput();
+  }, [confirmation, focusInput, keyboardReady]);
 
   useEffect(() => {
     if (!focused && inputFocused) blurInput();
@@ -861,15 +772,39 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   // A question typed at the command bar, either opening this pane or landing
   // in the conversation already open here.
-  useEffect(() => subscribeASKGQuestions(setQueuedQuestion), []);
+  useEffect(() => subscribeASKGQuestions((question) => {
+    queuedQuestionRef.current = question;
+    setQueuedQuestion(question);
+  }), []);
 
   useEffect(() => {
     // The restored cloud session arrives after the first render, so a question
     // that beat it waits instead of being dropped.
     if (!queuedQuestion || !planAccess.emailVerified) return;
     setQueuedQuestion(null);
+    queuedQuestionRef.current = null;
     ask(queuedQuestion);
   }, [ask, planAccess.emailVerified, queuedQuestion]);
+
+  // Closing the pane is two Escs away, so the conversation it showed comes
+  // back with the next one this session opens. A question typed with the
+  // command that opened it starts a new one instead.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !planAccess.emailVerified) return;
+    restoredRef.current = true;
+    const remembered = askgConversationListStore.rememberedOpen();
+    if (!remembered || queuedQuestionRef.current || controller.getState().turns.length > 0) return;
+    void apiClient.askg.loadConversation(remembered).then((conversation) => {
+      const current = controller.getState();
+      if (!conversation || current.turns.length > 0 || current.conversationId) return;
+      controller.openConversation(conversation);
+    }).catch(() => {});
+  }, [controller, planAccess.emailVerified]);
+
+  useEffect(() => {
+    if (state.conversationId) askgConversationListStore.rememberOpen(state.conversationId);
+  }, [state.conversationId]);
 
   // A rating changes a turn but not what was said, so it leaves the view on
   // the answer being rated instead of pulling it to the newest one.
@@ -905,23 +840,46 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   // A list that shrank below the point of switching leaves nothing to focus.
   useEffect(() => {
-    if (!showSidebar && sidebarFocused) {
+    if (!listRoom && sidebarFocused) {
       setSidebarFocused(false);
       setSidebarCursorId(null);
     }
-  }, [showSidebar, sidebarFocused]);
+  }, [listRoom, sidebarFocused]);
 
-  // The answer that follows a question owns the keyboard (cancel, the tool
-  // rows, retry), so sending leaves the composer; Enter comes back to it.
+  const readDraft = useCallback(
+    () => inputRef.current?.editBuffer.getText() ?? inputValue,
+    [inputValue],
+  );
+
+  // The question stays in the composer while Gloom answers, and goes once it
+  // is asked; the composer keeps the keyboard for the next one.
   const submitInput = useCallback(() => {
-    const value = inputRef.current?.editBuffer.getText() ?? inputValue;
-    const trimmed = value.trim();
-    if (!trimmed) return;
+    const trimmed = readDraft().trim();
+    if (!trimmed || isTurnRunning(controller.getState())) return;
     setInputValue("");
     inputRef.current?.editBuffer.setText?.("");
-    blurInput();
+    resetTimeline();
     ask(trimmed);
-  }, [ask, blurInput, inputValue]);
+  }, [ask, controller, readDraft, resetTimeline]);
+
+  // The terminal textarea reports edits only through `onContentChange`, and
+  // the composer grows with what it holds, so the pane binds whichever
+  // textarea is mounted after each render.
+  const boundTextareaRef = useRef<TextareaRenderable | null>(null);
+  useLayoutEffect(() => {
+    const textarea = inputRef.current;
+    const bound = boundTextareaRef.current;
+    if (textarea === bound) return;
+    if (bound) bound.onContentChange = undefined;
+    boundTextareaRef.current = textarea;
+    if (!textarea) return;
+    textarea.onContentChange = () => setInputValue(textarea.editBuffer.getText());
+  });
+  useLayoutEffect(() => () => {
+    const bound = boundTextareaRef.current;
+    boundTextareaRef.current = null;
+    if (bound) bound.onContentChange = undefined;
+  }, []);
 
   const toggleExpanded = useCallback((toolCallId: string) => {
     setExpandedToolCallId((current) => (current === toolCallId ? null : toolCallId));
@@ -930,15 +888,24 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (!expandedToolCallId) setResultFocused(false);
   }, [expandedToolCallId]);
 
+  const toggleGroup = useCallback((groupId: string) => {
+    setOpenGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }, []);
+
   const moveSelection = useCallback((direction: -1 | 1) => {
-    if (timelineStops.length === 0) return;
-    const index = timelineStops.findIndex((stop) => stop.id === selectedStopId);
+    if (timelineIds.length === 0) return;
+    const index = timelineIds.indexOf(selectedId ?? "");
     // Selection starts at the newest row: that is the answer being read.
     const nextIndex = index < 0
-      ? timelineStops.length - 1
-      : (index + direction + timelineStops.length) % timelineStops.length;
-    setSelectedStopId(timelineStops[nextIndex]?.id ?? null);
-  }, [selectedStopId, timelineStops]);
+      ? timelineIds.length - 1
+      : (index + direction + timelineIds.length) % timelineIds.length;
+    setSelectedId(timelineIds[nextIndex] ?? null);
+  }, [selectedId, timelineIds]);
 
   // The selected row follows the keyboard into view in a long conversation.
   const selectedRowNodeRef = useRef<BoxRenderable | null>(null);
@@ -946,9 +913,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     selectedRowNodeRef.current = node;
   }, []);
   useEffect(() => {
-    if (!selectedStopId) return;
+    if (!selectedId) return;
     return afterLayout(() => revealInScrollBox(scrollRef.current, selectedRowNodeRef.current));
-  }, [selectedStopId, feedbackFollowUpTurnId]);
+  }, [expandedToolCallId, feedbackFollowUpTurnId, openGroups, selectedId]);
 
   const openPaneForTool = useCallback((row: ASKGToolRow) => {
     const target = resolveToolPaneTarget(row.name);
@@ -967,10 +934,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [pinTicker]);
 
   // A write waiting on the user owns the keyboard, so the answer never gets
-  // typed into the composer instead.
+  // typed into the composer instead; once it is answered the composer has it back.
+  const hadConfirmationRef = useRef(false);
   useEffect(() => {
+    const had = hadConfirmationRef.current;
+    hadConfirmationRef.current = !!confirmation;
     if (confirmation && inputFocused) blurInput();
-  }, [blurInput, confirmation, inputFocused]);
+    if (had && !confirmation && focusedRef.current) focusInput();
+  }, [blurInput, confirmation, focusInput, inputFocused]);
 
   const leaveSidebar = useCallback(() => {
     setSidebarFocused(false);
@@ -988,10 +959,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [conversations.conversations, sidebarCursorId]);
 
   const focusSidebar = useCallback(() => {
+    if (!listRoom) return;
+    if (inputFocused) blurInput();
     setResultFocused(false);
     setSidebarFocused(true);
-    setSidebarCursorId(state.conversationId);
-  }, [state.conversationId]);
+    // The list opens on the conversation on screen, else on the newest one.
+    setSidebarCursorId(state.conversationId ?? conversations.conversations[0]?.id ?? null);
+  }, [blurInput, conversations.conversations, inputFocused, listRoom, state.conversationId]);
 
   // The row the sidebar's keyboard is on, or the open conversation.
   const sidebarTargetId = sidebarCursorId ?? state.conversationId;
@@ -1005,7 +979,6 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       if (deleted) setSidebarCursorId(neighbor);
     });
   }, [conversations.conversations, deleteConversation, sidebarTargetId]);
-
 
   const answerTexts = useMemo(
     () => state.turns.map((turn) => turn.answer).filter(Boolean),
@@ -1040,18 +1013,19 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   const upgrade = useCallback(() => openCommandBar("Upgrade to Pro"), [openCommandBar]);
 
-  const selectedRow = timelineRows.find((row) => row.toolCallId === selectedStopId) ?? null;
-
-  // The answer `g` and `b` rate: the selected one, or the answer of the
-  // selected tool row, else the newest answer, which is the one being read.
+  // The answer `g` and `b` rate: the one the keyboard is on (its rating, its
+  // tool rows or their fold), else the newest answer, which is the one being read.
   const feedbackTarget = useMemo<ASKGTurn | null>(() => {
-    const stop = timelineStops.find((entry) => entry.id === selectedStopId);
-    if (stop) {
-      const turn = state.turns.find((entry) => entry.id === stop.turnId);
-      return turn && canRateTurn(state, turn) ? turn : null;
+    if (selectedId) {
+      const turn = state.turns.find((entry) => (
+        selectedId === answerStopId(entry.id)
+        || selectedId === toolGroupId(entry.id)
+        || entry.tools.some((row) => row.toolCallId === selectedId)
+      ));
+      if (turn) return canRateTurn(state, turn) ? turn : null;
     }
     return state.turns.findLast((turn) => canRateTurn(state, turn)) ?? null;
-  }, [selectedStopId, state, timelineStops]);
+  }, [selectedId, state]);
   // Open until the thumb changes, the answer is sent, or Esc.
   const feedbackFollowUp = useMemo<ASKGTurn | null>(() => {
     const turn = state.turns.find((entry) => entry.id === feedbackFollowUpTurnId);
@@ -1061,34 +1035,50 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [feedbackFollowUpTurnId, state]);
 
   // A second thumbs down on the same answer opens or closes its reasons, so
-  // they are always one press away and never in the way. Rating moves the
-  // keyboard to the answer, which also scrolls its reasons into view.
+  // they are always one press away and never in the way. A thumbs down hands
+  // the keyboard to the answer, so its reasons answer 1 to 4 straight away.
   const rateAnswer = useCallback((turn: ASKGTurn, rating: ASKGFeedbackRating) => {
-    setSelectedStopId(answerStopId(turn.id));
+    setSelectedId(answerStopId(turn.id));
     const current = turn.feedback?.rating ?? null;
     if (rating === "down") {
+      if (inputFocused) blurInput();
       setFeedbackFollowUpTurnId((open) => (current === "down" && open === turn.id ? null : turn.id));
     } else {
       setFeedbackFollowUpTurnId((open) => (open === turn.id ? null : open));
+      if (inputFocused) inputRef.current?.focus?.();
     }
     if (current === rating) return;
     void controller.rateAnswer(turn.id, rating);
-  }, [controller]);
+  }, [blurInput, controller, inputFocused]);
   const chooseFeedbackReason = useCallback((turn: ASKGTurn, reason: ASKGFeedbackReason) => {
+    if (inputFocused) inputRef.current?.focus?.();
     if (turn.feedback?.reason === reason) return;
     void controller.chooseFeedbackReason(turn.id, reason);
-  }, [controller]);
+  }, [controller, inputFocused]);
   const shareAnswer = useCallback((turn: ASKGTurn) => {
+    if (inputFocused) inputRef.current?.focus?.();
     void controller.shareAnswer(turn.id);
-  }, [controller]);
+  }, [controller, inputFocused]);
+
+  const expandedTables = useMemo(() => toolResultTables(expandedRow?.result), [expandedRow?.result]);
+  const expandedHasRows = expandedTables.some((table) => table.rows.length > 0);
+  // The panel is as tall as its longest table needs (divider, heading, the
+  // section bar, column header and rows), up to half the pane.
+  const expandedNeed = 3 + (expandedTables.length > 1 ? 1 : 0)
+    + Math.max(0, ...expandedTables.map((table) => table.rows.length));
   const confirmationHeight = confirmation ? confirmationBlockHeight(confirmation) : 0;
-  const composerHeight = nativePaneChrome ? 3 : 2;
+  const draftLines = useMemo(() => {
+    const textWidth = Math.max(8, width - sidebarWidth - (nativePaneChrome ? 6 : 5));
+    return Math.min(MAX_COMPOSER_LINES, Math.max(1, wrapTextLines(inputValue, textWidth).length));
+  }, [inputValue, nativePaneChrome, sidebarWidth, width]);
+  const composerHeight = nativePaneChrome ? draftLines + 2 : draftLines;
+  const composerBlockHeight = nativePaneChrome ? composerHeight : composerHeight + 2;
   // The conversation keeps a readable slice no matter what else is open.
-  const detailBudget = height - composerHeight - confirmationHeight - 6;
-  const detailHeight = expandedRow && detailBudget >= MIN_DETAIL_HEIGHT
-    ? Math.min(Math.floor(height / 2), detailBudget)
+  const detailBudget = height - composerBlockHeight - confirmationHeight - 6;
+  const detailHeight = expandedRow && expandedHasRows && detailBudget >= MIN_DETAIL_HEIGHT
+    ? Math.min(Math.floor(height / 2), detailBudget, Math.max(MIN_DETAIL_HEIGHT, expandedNeed))
     : 0;
-  const resultActive = resultFocused && !!expandedRow && detailHeight > 0 && !inputFocused && !(sidebarFocused && showSidebar);
+  const resultActive = resultFocused && !!expandedRow && detailHeight > 0 && !inputFocused && !showSidebar;
   // `o` opens the pane of the result the rows belong to, else the selected row's.
   const paneRow = resultActive ? expandedRow : selectedRow;
   const canOpenPane = !!paneRow && !!resolveToolPaneTarget(paneRow.name);
@@ -1099,6 +1089,29 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     toggleExpanded(row.toolCallId);
     setResultFocused(expanding && toolResultTables(row.result).some((table) => table.rows.length > 0));
   }, [expandedToolCallId, toggleExpanded]);
+
+  // A click opens or closes a row without taking the keyboard from the
+  // composer: the next thing typed is still the follow-up.
+  const pressRow = useCallback((toolCallId: string) => {
+    setSelectedId(toolCallId);
+    toggleExpanded(toolCallId);
+    if (inputFocused) inputRef.current?.focus?.();
+  }, [inputFocused, toggleExpanded]);
+  const pressGroup = useCallback((groupId: string) => {
+    setSelectedId(groupId);
+    toggleGroup(groupId);
+    if (inputFocused) inputRef.current?.focus?.();
+  }, [inputFocused, toggleGroup]);
+
+  // Leaves the composer for the timeline, on the newest row (or the last example).
+  const enterTimeline = useCallback(() => {
+    blurInput();
+    if (state.turns.length === 0) {
+      setExampleIndex(examples.length - 1);
+      return;
+    }
+    if (!selectedId && timelineIds.length > 0) setSelectedId(timelineIds[timelineIds.length - 1] ?? null);
+  }, [blurInput, examples.length, selectedId, state.turns.length, timelineIds]);
 
   useShortcut((event) => {
     // Behind the sign-in wall the keys are the wall's (Enter logs in).
@@ -1121,15 +1134,17 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     }
     // The sidebar owns the keyboard while it has focus, so the same arrows
     // that walk the tool timeline walk the conversation list instead.
-    if (sidebarFocused && showSidebar) {
+    if (showSidebar) {
       if (isPlainKey(event, "escape", "right")) {
         consume();
         leaveSidebar();
+        focusInput();
       } else if (isPlainKey(event, "enter", "return")) {
         consume();
         const target = sidebarTargetId;
         leaveSidebar();
         if (target) void openConversation(target);
+        else focusInput();
       } else if (isPlainKey(event, "j", "down")) {
         consume();
         moveSidebarCursor(1);
@@ -1148,12 +1163,22 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       return;
     }
     if (inputFocused) {
+      const empty = !readDraft().trim();
       if (isPlainKey(event, "escape")) {
         consume();
         // Leaving an empty composer counts toward a double-Esc close; a draft does not.
-        const value = inputRef.current?.editBuffer.getText() ?? inputValue;
-        if (!value.trim()) countEscapeTowardClose(event);
+        if (empty) countEscapeTowardClose(event);
         blurInput();
+        return;
+      }
+      if (empty && isPlainKey(event, "up")) {
+        consume();
+        enterTimeline();
+        return;
+      }
+      if (empty && isPlainKey(event, "left") && listRoom) {
+        consume();
+        focusSidebar();
       }
       return;
     }
@@ -1189,7 +1214,33 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       rateAnswer(feedbackTarget, event.name === GOOD_ANSWER_KEY ? "up" : "down");
       return;
     }
-    if (isPlainKey(event, "left") && showSidebar) {
+    if (state.turns.length === 0) {
+      if (isPlainKey(event, "j", "down")) {
+        consume();
+        setExampleIndex((index) => (index === null || index >= examples.length - 1 ? null : index + 1));
+        if (exampleIndex === examples.length - 1) focusInput();
+        return;
+      }
+      if (isPlainKey(event, "k", "up")) {
+        consume();
+        setExampleIndex((index) => (index === null ? examples.length - 1 : Math.max(0, index - 1)));
+        return;
+      }
+      if (isPlainKey(event, "enter", "return") && exampleIndex !== null) {
+        consume();
+        const question = examples[exampleIndex];
+        setExampleIndex(null);
+        if (question) askAndCompose(question);
+        return;
+      }
+    }
+    if (isPlainKey(event, "escape") && (selectedId || exampleIndex !== null)) {
+      consume();
+      setSelectedId(null);
+      setExampleIndex(null);
+      return;
+    }
+    if (isPlainKey(event, "left") && listRoom) {
       consume();
       focusSidebar();
       return;
@@ -1199,16 +1250,20 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       focusInput();
       return;
     }
-    // With tool rows or rateable answers the arrows walk them; without, they
-    // scroll the answer.
-    if (isPlainKey(event, "j", "down") && timelineStops.length > 0) {
+    // With tool rows the arrows walk them; without, they scroll the answer.
+    if (isPlainKey(event, "j", "down") && timelineIds.length > 0) {
       consume();
       moveSelection(1);
       return;
     }
-    if (isPlainKey(event, "k", "up") && timelineStops.length > 0) {
+    if (isPlainKey(event, "k", "up") && timelineIds.length > 0) {
       consume();
       moveSelection(-1);
+      return;
+    }
+    if (isPlainKey(event, "x") && selectedGroupTurn && !resultActive) {
+      consume();
+      toggleGroup(toolGroupId(selectedGroupTurn.id));
       return;
     }
     if (isPlainKey(event, "x") && expandTarget) {
@@ -1231,6 +1286,11 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       void chooseAnswerTicker();
       return;
     }
+    if (isPlainKey(event, "n") && state.turns.length > 0 && !confirmation) {
+      consume();
+      newConversation();
+      return;
+    }
     if (event.name === UPGRADE_KEY && !event.ctrl && !event.meta && !event.alt && needsUpgrade) {
       consume();
       upgrade();
@@ -1238,7 +1298,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     }
     if (isPlainKey(event, "r") && retryableTurn) {
       consume();
-      void controller.retryTurn(retryableTurn.id);
+      retryAndCompose(retryableTurn.id);
       return;
     }
     if (isPlainKey(event, "c") && running) {
@@ -1247,9 +1307,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     }
   }, { allowEditable: true });
 
-
-  // Hints name only what the current focus takes: the composer takes letters,
-  // the sidebar its own list keys, and the timeline everything else.
+  // Hints follow the keyboard: the composer keeps only the conversation's own
+  // actions (each one also a click), the sidebar its list keys, and the
+  // timeline everything else.
   const hints = useMemo<PaneHint[]>(() => {
     const list: PaneHint[] = [];
     if (!planAccess.emailVerified) return list;
@@ -1259,52 +1319,63 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         { id: "decline", key: "n", label: "o decline", title: "Decline", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, false) },
       );
     }
-    if (inputFocused) return list;
-    if (showSidebar && sidebarFocused) {
+    if (showSidebar) {
       // While a write waits, n answers it.
       if (!confirmation) list.push({ id: "new", key: "n", label: "ew conversation", onPress: () => { leaveSidebar(); newConversation(); } });
       if (sidebarTargetId) list.push({ id: "delete", key: "d", label: "elete", onPress: deleteSidebarConversation });
       return list;
     }
-    if (running) list.push({ id: "cancel", key: "c", label: "ancel", onPress: () => controller.cancel() });
-    if (retryableTurn) list.push({ id: "retry", key: "r", label: "etry", onPress: () => void controller.retryTurn(retryableTurn.id) });
+    if (running) list.push({ id: "cancel", key: "c", label: "ancel", title: "Stop Answer", onPress: () => controller.cancel() });
+    if (retryableTurn) list.push({ id: "retry", key: "r", label: retryableTurn.status === "cancelled" ? " ask again" : "etry", title: "Ask Again", onPress: () => retryAndCompose(retryableTurn.id) });
     if (needsUpgrade) list.push({ id: "upgrade", key: UPGRADE_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade });
-    if (resultActive) list.push({ id: "result-back", key: "Esc", label: "timeline", title: "Back to Timeline", onPress: () => setResultFocused(false) });
-    if (expandTarget) {
-      const expanded = expandTarget.toolCallId === expandedToolCallId;
-      list.push({
-        id: "expand",
-        key: "x",
-        label: expanded ? " collapse" : "pand rows",
-        title: expanded ? "Collapse Rows" : "Expand Rows",
-        onPress: () => toggleResult(expandTarget),
-      });
-    }
-    if (paneRow && canOpenPane) list.push({ id: "open-pane", key: "o", label: "pen pane", onPress: () => openPaneForTool(paneRow) });
-    if (selectedRow && canUndo(selectedRow)) {
-      list.push({ id: "undo", key: UNDO_KEY, label: " undo", title: "Undo", onPress: () => void controller.undo(selectedRow.toolCallId) });
-    }
-    // An open thumbs down takes the keys for its reasons and the send; the
-    // thumbs keep working, they just leave the footer room for these.
-    if (feedbackFollowUp) {
-      for (const entry of FEEDBACK_REASONS) {
+    if (!inputFocused) {
+      if (resultActive) list.push({ id: "result-back", key: "Esc", label: "timeline", title: "Back to Timeline", onPress: () => setResultFocused(false) });
+      if (selectedGroupTurn && !resultActive) {
+        const open = openGroups.has(toolGroupId(selectedGroupTurn.id));
         list.push({
-          id: `feedback-${entry.reason}`,
-          key: entry.key,
-          label: entry.hint,
-          title: entry.title,
-          onPress: () => chooseFeedbackReason(feedbackFollowUp, entry.reason),
+          id: "expand",
+          key: "x",
+          label: open ? " fold calls" : " show calls",
+          title: open ? "Fold Calls" : "Show Calls",
+          onPress: () => toggleGroup(toolGroupId(selectedGroupTurn.id)),
+        });
+      } else if (expandTarget) {
+        const expanded = expandTarget.toolCallId === expandedToolCallId;
+        list.push({
+          id: "expand",
+          key: "x",
+          label: expanded ? " collapse" : "pand",
+          title: expanded ? "Collapse Row" : "Expand Row",
+          onPress: () => toggleResult(expandTarget),
         });
       }
-      list.push({ id: "feedback-share", key: SHARE_ANSWER_KEY, label: "end", title: "Send This Answer to Gloom", onPress: () => shareAnswer(feedbackFollowUp) });
-    } else if (feedbackTarget) {
-      list.push(
-        { id: "feedback-good", key: GOOD_ANSWER_KEY, label: "ood", title: "Good Answer", onPress: () => rateAnswer(feedbackTarget, "up") },
-        { id: "feedback-bad", key: BAD_ANSWER_KEY, label: "ad", title: "Bad Answer", onPress: () => rateAnswer(feedbackTarget, "down") },
-      );
+      if (paneRow && canOpenPane) list.push({ id: "open-pane", key: "o", label: "pen pane", onPress: () => openPaneForTool(paneRow) });
+      if (selectedRow && canUndo(selectedRow)) {
+        list.push({ id: "undo", key: UNDO_KEY, label: " undo", title: "Undo", onPress: () => void controller.undo(selectedRow.toolCallId) });
+      }
+      // An open thumbs down takes the keys for its reasons and the send; the
+      // thumbs keep working, they just leave the footer room for these.
+      if (feedbackFollowUp) {
+        for (const entry of FEEDBACK_REASONS) {
+          list.push({
+            id: `feedback-${entry.reason}`,
+            key: entry.key,
+            label: entry.hint,
+            title: entry.title,
+            onPress: () => chooseFeedbackReason(feedbackFollowUp, entry.reason),
+          });
+        }
+        list.push({ id: "feedback-share", key: SHARE_ANSWER_KEY, label: "end", title: "Send This Answer to Gloom", onPress: () => shareAnswer(feedbackFollowUp) });
+      } else if (feedbackTarget) {
+        list.push(
+          { id: "feedback-good", key: GOOD_ANSWER_KEY, label: "ood", title: "Good Answer", onPress: () => rateAnswer(feedbackTarget, "up") },
+          { id: "feedback-bad", key: BAD_ANSWER_KEY, label: "ad", title: "Bad Answer", onPress: () => rateAnswer(feedbackTarget, "down") },
+        );
+      }
+      if (answerTickers.length > 0) list.push({ id: "tickers", key: "t", label: "ickers", onPress: () => void chooseAnswerTicker() });
     }
-    if (answerTickers.length > 0) list.push({ id: "tickers", key: "t", label: "ickers", onPress: () => void chooseAnswerTicker() });
-    if (showSidebar) list.push({ id: "conversations", key: "←", label: " conversations", onPress: focusSidebar });
+    if (state.turns.length > 0 && !confirmation) list.push({ id: "new", key: "n", label: "ew", title: "New Conversation", onPress: newConversation });
+    if (listRoom) list.push({ id: "conversations", key: "←", label: " conversations", title: "Conversations", onPress: focusSidebar });
     return list;
   }, [
     planAccess.emailVerified,
@@ -1322,43 +1393,59 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     focusSidebar,
     inputFocused,
     leaveSidebar,
+    listRoom,
     needsUpgrade,
     newConversation,
+    openGroups,
     openPaneForTool,
     paneRow,
     rateAnswer,
     resultActive,
+    retryAndCompose,
     retryableTurn,
     running,
+    selectedGroupTurn,
     selectedRow,
     shareAnswer,
     showSidebar,
-    sidebarFocused,
     sidebarTargetId,
+    state.turns.length,
+    toggleGroup,
     toggleResult,
     upgrade,
   ]);
 
+  const quota = state.limits && state.limits.turnsRemainingToday >= 0
+    ? state.limits.turnsRemainingToday
+    : null;
   usePaneFooter(`askg:${paneId}`, () => ({
     info: [
       ...(running
-        ? [{ id: "streaming", parts: [{ text: "Streaming", tone: "positive" as const, bold: true }] }]
+        ? [{ id: "streaming", parts: [{ text: "Answering", tone: "muted" as const }] }]
         : []),
       ...(confirmation
         ? [{ id: "confirm", parts: [{ text: "Waiting for approval", tone: "warning" as const }] }]
         : []),
-      ...(state.limits && state.limits.turnsRemainingToday >= 0 && !running
+      // The answer that hit the cap already says so.
+      ...(quota !== null && quota <= LOW_QUOTA && activeTurn(state)?.error?.code !== "daily_turn_cap"
         ? [{
           id: "quota",
           parts: [{
-            text: `${state.limits.turnsRemainingToday} questions left today`,
-            tone: "muted" as const,
+            text: quota === 0 ? "No questions left today" : `${quota} ${quota === 1 ? "question" : "questions"} left today`,
+            tone: quota === 0 ? "warning" as const : "muted" as const,
           }],
         }]
         : []),
     ],
     hints,
-  }), [confirmation, hints, running, state.limits]);
+    menu: state.turns.length === 0 && planAccess.emailVerified
+      ? examples.map((question, index): ContextMenuItem => ({
+        id: `example-${index}`,
+        label: `Ask: ${question}`,
+        onSelect: () => askAndCompose(question),
+      }))
+      : [],
+  }), [askAndCompose, confirmation, examples, hints, planAccess.emailVerified, quota, running, state]);
 
   if (!planAccess.emailVerified) {
     return (
@@ -1370,9 +1457,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     );
   }
 
-  const bodyWidth = Math.max(24, width - sidebarWidth);
+  const bodyWidth = listCoversBody ? width : Math.max(24, width - sidebarWidth);
   const contentWidth = Math.max(24, bodyWidth - (nativePaneChrome ? 2 : 4));
   const lastTurnId = activeTurn(state)?.id ?? null;
+  const placeholder = running
+    ? "Gloom is answering…"
+    : state.turns.length > 0
+      ? "Ask a follow-up…"
+      : "Ask Gloom a question…";
 
   return (
     <Box
@@ -1383,26 +1475,28 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     >
       {showSidebar ? (
         <ASKGConversationSidebar
-          activeConversationId={
-            sidebarFocused ? sidebarCursorId ?? state.conversationId : state.conversationId
-          }
+          activeConversationId={sidebarCursorId ?? state.conversationId}
           width={sidebarWidth}
           paneWidth={width}
           height={height}
           focused={focused}
-          keyboardFocused={focused && sidebarFocused}
+          keyboardFocused={focused}
           onSelect={(conversationId) => void openConversation(conversationId)}
           onFocusRequest={() => {
             if (inputFocused) blurInput();
             setResultFocused(false);
             setSidebarFocused(true);
           }}
-          onNewConversation={newConversation}
+          onNewConversation={() => {
+            leaveSidebar();
+            newConversation();
+          }}
           onDelete={(conversationId) => void deleteConversation(conversationId)}
         />
       ) : null}
 
       <Box
+        visible={!listCoversBody}
         flexDirection="column"
         width={nativePaneChrome ? undefined : bodyWidth}
         height={nativePaneChrome ? "100%" : height}
@@ -1416,31 +1510,43 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       >
       <ScrollBox ref={scrollRef} flexGrow={1} minHeight={0} scrollY focusable={false} paddingX={1}>
         {state.turns.length === 0 ? (
-          <EmptyState
-            title="Ask about anything on screen."
-            hint="Gloom reads your panes to answer, and shows every tool it used."
+          <ASKGWelcome
+            examples={examples}
+            width={contentWidth}
+            selectedIndex={inputFocused ? null : exampleIndex}
+            onAsk={askAndCompose}
           />
         ) : state.turns.map((turn) => (
           <TurnView
             key={turn.id}
             turn={turn}
             width={contentWidth}
-            selectedStopId={selectedStopId}
-            expandedToolCallId={expandedToolCallId}
-            selectedRowRef={selectedRowRef}
             latest={turn.id === lastTurnId}
             rateable={canRateTurn(state, turn)}
-            feedbackKeysShown={focused && !inputFocused && !(sidebarFocused && showSidebar) && feedbackTarget?.id === turn.id}
+            feedbackSelected={selectedId === answerStopId(turn.id)}
+            feedbackKeysShown={focused && !inputFocused && !showSidebar && feedbackTarget?.id === turn.id}
             feedbackFollowUpOpen={feedbackFollowUp?.id === turn.id}
+            selectedRowRef={selectedRowRef}
             catalog={catalog}
             openTicker={openTicker}
-            onSelectTool={setSelectedStopId}
-            onToggleTool={toggleExpanded}
-            onUndo={(toolCallId) => void controller.undo(toolCallId)}
-            onRetry={() => void controller.retryTurn(turn.id)}
+            tools={(
+              <TurnTools
+                turn={turn}
+                width={contentWidth}
+                context={displayContext}
+                selectedId={selectedId}
+                expandedToolCallId={expandedToolCallId}
+                openGroups={openGroups}
+                selectedRowRef={selectedRowRef}
+                onPressRow={pressRow}
+                onPressGroup={pressGroup}
+                onUndo={(toolCallId) => void controller.undo(toolCallId)}
+              />
+            )}
+            onRetry={() => retryAndCompose(turn.id)}
             onUpgrade={upgrade}
             // The controls keep their press from the column behind them, so
-            // they hand the keyboard back to the answer themselves.
+            // they close the list themselves.
             onRate={(rating) => {
               leaveSidebar();
               rateAnswer(turn, rating);
@@ -1467,22 +1573,27 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       ) : null}
 
       {expandedRow && detailHeight > 0 ? (
-        <ToolResultDetail
-          row={expandedRow}
-          width={nativePaneChrome ? width : width - 2}
-          height={detailHeight}
-          focused={focused && resultActive}
-          openPaneShortcut={paneRow?.toolCallId === expandedRow.toolCallId && canOpenPane ? "o" : undefined}
-          onOpenSymbol={openSymbol}
-          onOpenPane={() => openPaneForTool(expandedRow)}
-        />
+        <Box flexDirection="column" flexShrink={0}>
+          <Divider />
+          <ToolResultDetail
+            row={expandedRow}
+            view={describeToolRow(expandedRow, displayContext)}
+            width={nativePaneChrome ? bodyWidth : bodyWidth - 2}
+            height={detailHeight - 1}
+            focused={focused && resultActive}
+            canOpenPane={!!resolveToolPaneTarget(expandedRow.name)}
+            openPaneShortcut={paneRow?.toolCallId === expandedRow.toolCallId && canOpenPane ? "o" : undefined}
+            onOpenSymbol={openSymbol}
+            onOpenPane={() => openPaneForTool(expandedRow)}
+          />
+        </Box>
       ) : null}
 
       <MessageComposer
         inputRef={inputRef}
         initialValue={inputValue}
         focused={inputFocused && focused}
-        placeholder={activeTurn(state) && running ? "Gloom is answering…" : "Ask Gloom a question…"}
+        placeholder={placeholder}
         width="100%"
         height={composerHeight}
         terminalPrefix=" > "
@@ -1492,6 +1603,8 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         keyBindings={[
           { name: "return", action: "submit" },
           { name: "linefeed", action: "submit" },
+          { name: "return", shift: true, action: "newline" },
+          { name: "linefeed", shift: true, action: "newline" },
         ]}
         onSubmit={submitInput}
         wrapText

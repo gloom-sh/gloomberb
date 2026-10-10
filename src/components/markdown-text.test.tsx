@@ -106,3 +106,17 @@ describe("MarkdownText tables", () => {
     expect(lines).toEqual(["Compare JEPQ | QQQ on yield", "---"]);
   });
 });
+
+describe("MarkdownText inline marks", () => {
+  test("an escaped star prints as a star, and an italic line keeps the bold inside it", async () => {
+    const lines = await render([
+      "\\*ASML is excluded from the basket.",
+      "*Risk covers **96.9%** of portfolio value.*",
+    ].join("\n"), 60);
+
+    expect(lines).toEqual([
+      "*ASML is excluded from the basket.",
+      "Risk covers 96.9% of portfolio value.",
+    ]);
+  });
+});

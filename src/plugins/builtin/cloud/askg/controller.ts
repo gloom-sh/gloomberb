@@ -331,14 +331,14 @@ export class ASKGSessionController {
   }
 
   /**
-   * Asks a failed question again. The failed turn is dropped rather than kept
-   * above the retry, so a transcript reads as the conversation the user had
-   * rather than as a list of attempts.
+   * Asks a failed or stopped question again. The attempt is dropped rather
+   * than kept above the retry, so a transcript reads as the conversation the
+   * user had rather than as a list of attempts.
    */
   async retryTurn(turnId: string): Promise<void> {
     if (this.disposed || isTurnRunning(this.state)) return;
     const turn = this.state.turns.find((entry) => entry.id === turnId);
-    if (!turn || turn.status !== "error") return;
+    if (!turn || (turn.status !== "error" && turn.status !== "cancelled")) return;
     this.dispatch({ type: "drop-turn", turnId });
     await this.ask(turn.prompt);
   }

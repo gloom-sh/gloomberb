@@ -577,7 +577,13 @@ The unread count in the status bar opens Unread Chat (also in the command bar): 
 
 ## Ask Gloom
 
-Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or `g` and `b` for the answer the keyboard is on: the newest, or the one `j`/`k` moved to. A thumbs down offers why (`1` wrong, `2` too slow, `3` missing data, `4` other) and `Send this answer to Gloom` (`s`), which sends your question, the answer as written (it can mention your holdings) and which tools ran, not the data the tools returned; without it only the thumb and the reason are kept. Esc closes the reasons, and your rating shows again when you reopen the conversation.
+`ASKG` opens Ask Gloom, and `ASKG <question>` asks straight away. The question field has the keyboard as soon as the pane opens or is focused, so you can type at once; Enter asks, Shift+Enter starts a new line, and the field grows with the question. An empty pane offers three questions written for what your profile holds; a click, or Up then Enter, asks one.
+
+Under each question, every source Gloom used is one line: what it read, the portfolio or symbol it read it for, how many rows came back and how long it took. A result with gaps says the main one in a line below (`3 of 94 positions had no price`); a click or `x` opens the row with everything it reported and its rows at the bottom of the pane, and `o` opens the pane it came from. A failed source says why in one line. An answer that used more than three sources folds them into one line that a click or `x` opens.
+
+Esc leaves the question field for the answer: `j`/`k` walk the sources, `t` lists the tickers in the answer, `c` stops an answer that is still coming, and `r` asks a failed or stopped question again. Enter goes back to the field. `n` starts a new conversation and Left (or Left in an empty field) lists earlier ones, beside the answer when the pane is wide enough and in its place when it is not. Closing the pane keeps the conversation: opening Ask Gloom again in the same session shows it, unless you open it with a question, which starts a new one. The remaining daily questions show in the footer once 20 or fewer are left.
+
+Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or, once Esc has left the question field, `g` and `b` for the answer the keyboard is on: the newest, or the one `j`/`k` moved to. A thumbs down offers why (`1` wrong, `2` too slow, `3` missing data, `4` other) and `Send this answer to Gloom` (`s`), which sends your question, the answer as written (it can mention your holdings) and which tools ran, not the data the tools returned; without it only the thumb and the reason are kept. Esc closes the reasons, and your rating shows again when you reopen the conversation.
 
 ## Debt maturities
 

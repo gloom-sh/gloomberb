@@ -22,13 +22,13 @@ const AT = "2026-09-20T10:00:00.000Z";
 
 const feedbackBodies: Array<Record<string, unknown>> = [];
 
-function Pane() {
+function Pane({ focused = true }: { focused?: boolean } = {}) {
   const [state, dispatch] = useReducer(appReducer, undefined, () => {
     const initial = createInitialState(createTestPaneConfig("/tmp/unused-askg-desktop-test", {
       instanceId: PANE_ID,
       paneId: "askg",
     }));
-    initial.focusedPaneId = PANE_ID;
+    initial.focusedPaneId = focused ? PANE_ID : null;
     return initial;
   });
   return (
@@ -36,7 +36,7 @@ function Pane() {
       <WebInputHostProvider>
         <WebDialogHostProvider>
           <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()} width={110} height={30}>
-            {(body) => <ASKGPane paneId={PANE_ID} paneType="askg" focused width={body.width} height={body.height} />}
+            {(body) => <ASKGPane paneId={PANE_ID} paneType="askg" focused={focused} width={body.width} height={body.height} />}
           </TestPaneFrame>
         </WebDialogHostProvider>
       </WebInputHostProvider>
@@ -126,6 +126,8 @@ function buttonNamed(root: Element, name: string): Element | undefined {
 test("on the desktop and the web the thumbs, reasons and send answer the mouse and the keys", async () => {
   const container = await dom.render(<Pane />);
   await settle();
+  // The conversation list opens when asked: Left in the empty question field.
+  await press("ArrowLeft");
   await click(container.querySelector('[data-gloom-role="pane-sidebar-item"][aria-label="Nvidia margins"]'));
   expect(container.textContent).toContain("Holding above 70%.");
 
@@ -148,4 +150,20 @@ test("on the desktop and the web the thumbs, reasons and send answer the mouse a
   await press("g");
   expect(feedbackBodies.at(-1)).toEqual({ rating: "up", reason: null });
   expect(buttonNamed(container, "Good answer")?.getAttribute("aria-pressed")).toBe("true");
+});
+
+test("on the desktop and the web the question field has the keyboard as soon as the pane opens", async () => {
+  const container = await dom.render(<Pane />);
+  await settle();
+  const field = container.querySelector('[data-gloom-role="desktop-message-composer"] textarea');
+  expect(field).not.toBeNull();
+  expect(dom.window.document.activeElement as unknown).toBe(field);
+});
+
+test("on the desktop and the web a pane opened in the background leaves the keyboard where it was", async () => {
+  const container = await dom.render(<Pane focused={false} />);
+  await settle();
+  const field = container.querySelector('[data-gloom-role="desktop-message-composer"] textarea');
+  expect(field).not.toBeNull();
+  expect(dom.window.document.activeElement as unknown).not.toBe(field);
 });
