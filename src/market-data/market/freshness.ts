@@ -258,7 +258,7 @@ function isPublishedClosure(exchange: string, date: string): boolean {
 }
 
 /** Whether `weekday` (0 is Sunday) is in the venue's trading week. */
-function isTradingWeekday(exchange: string, weekday: number, weekendDays?: readonly number[]): boolean {
+export function isTradingWeekday(exchange: string, weekday: number, weekendDays?: readonly number[]): boolean {
   return !(weekendDays ?? WEEKEND_DAYS[exchange] ?? DEFAULT_WEEKEND_DAYS).includes(weekday);
 }
 
