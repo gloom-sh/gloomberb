@@ -1,6 +1,17 @@
 import type { IvMethod } from "./client";
 import type { IvStatRow, IvStatUnit, RichCheap, RichCheapDates } from "./model";
 
+/**
+ * VCA's sign conventions, and what VIX is beside an at-the-money IV30, one
+ * line each: under the table, in the shot and in the report's notes. The skew
+ * is the stored 25-delta put and call IVs at a 30-day constant maturity, from
+ * the latest quote capture; both differences are decimal IV shown in points.
+ */
+export const VCA_DEFINITIONS = [
+  "25D skew: 30-day 25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer. 30-90: IV30 minus IV90.",
+  "VIX is Cboe's 30-day S&P 500 implied vol from the whole SPX strike strip, skew included; IV30 here is at the money, so VIX usually reads higher.",
+] as const;
+
 export const formatVol = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(1)}%`;
 export const formatPoints = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "--" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}`;

@@ -12,6 +12,8 @@ const DAY_MS = 86_400_000;
 
 /** How `--expiration` is written, for usage lines and errors. */
 export const OPTION_EXPIRATION_FORMAT = "YYYY-MM-DD (2028-01-21) or Unix seconds (1832025600)";
+/** The value's name in a catalog flag, `--expiration <YYYY-MM-DD|unix>`. */
+export const OPTION_EXPIRATION_PLACEHOLDER = "YYYY-MM-DD|unix";
 
 /** The expiry's calendar date, `2028-01-21`; empty for a stamp that is not a time. */
 export function expiryIsoDate(seconds: number): string {
@@ -36,6 +38,16 @@ export function parseOptionExpiration(raw: string): number | null {
   if (!UNIX_SECONDS.test(text)) return null;
   const seconds = Number(text);
   return seconds > 0 && seconds <= MAX_UNIX_SECONDS ? seconds : null;
+}
+
+/**
+ * A pane function's typed expiry flag as the Unix seconds `parseOptionExpiration`
+ * reads; throws an Error naming both accepted forms.
+ */
+export function expirationOptionSeconds(value: string, flag = "expiration"): number {
+  const expiration = parseOptionExpiration(value);
+  if (expiration == null) throw new Error(`Invalid --${flag} "${value}". Use ${OPTION_EXPIRATION_FORMAT}.`);
+  return expiration;
 }
 
 /** A stored or typed expiry setting (seconds, or text `parseOptionExpiration` reads) as Unix seconds; null when it is neither. */
@@ -71,6 +83,20 @@ const NEAREST_EXPIRIES = 4;
  * unlisted LEAPS date points at the neighbours to pick. `listed` says the date
  * itself is listed (its chain came back empty); `more` counts the rest.
  */
+function expiryChoices(requested: number, expirations: readonly number[]) {
+  const { nearest, more, ...rest } = nearestListedExpiries(requested, expirations);
+  return { ...rest, choices: `${nearest.join(", ")}${more > 0 ? ` (+${more} more)` : ""}` };
+}
+
+/**
+ * Why a requested expiry is not in a catalogue, for a line that already names
+ * the date: `not listed; nearest: 2027-12-17, 2028-01-21, … (+20 more)`.
+ */
+export function unlistedExpiryText(requested: number, expirations: readonly number[]): string {
+  const { total, choices } = expiryChoices(requested, expirations);
+  return total === 0 ? "not listed; the chain lists no expiries" : `not listed; nearest: ${choices}`;
+}
+
 function nearestListedExpiries(
   requested: number,
   expirations: readonly number[],
@@ -91,10 +117,9 @@ function nearestListedExpiries(
  * `subject` names the underlying where nothing else on screen does.
  */
 export function missingExpiryText(requested: number, expirations: readonly number[], subject?: string): string {
-  const { date, listed, nearest, more, total } = nearestListedExpiries(requested, expirations);
+  const { date, listed, total, choices } = expiryChoices(requested, expirations);
   const of = subject ? ` for ${subject}` : "";
   if (total === 0) return `no expiry ${date}${of}; the chain lists no expiries`;
-  const choices = `${nearest.join(", ")}${more > 0 ? ` (+${more} more)` : ""}`;
   return listed
     ? `no option contracts returned for${subject ? ` ${subject}` : ""} expiry ${date}; nearest others: ${choices}`
     : `no expiry ${date}${of}; available: ${choices}`;

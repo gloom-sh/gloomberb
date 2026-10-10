@@ -21,8 +21,9 @@ import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from ".
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
-import { loadScenarioMarket, scenarioPositionFromSettings, scenarioControlsFromSettings, type ScenarioMarketSnapshot } from "./client";
-import { buildScenario, type ScenarioLeg, type ScenarioPosition, type ScenarioControls, validatePosition } from "./model";
+import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, type ScenarioMarketSnapshot } from "./client";
+import { buildScenario, currencyLabel, scenarioCurrency, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
+  type ScenarioControls, validatePosition } from "./model";
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
 import { useScenarioEvidence } from "./evidence";
 
@@ -98,7 +99,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     if (!follow || !storedPosition) return null;
     const spotQuote = resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: underlying, exchange: exchange ?? "" })));
     if (!spotQuote || spotQuote.stale || !(spotQuote.price > 0) || !Number.isFinite(spotQuote.price)
-      || (spotQuote.currency && storedPosition.currency !== "UNKNOWN" && spotQuote.currency !== storedPosition.currency)) return null;
+      || (spotQuote.currency && storedPosition.currency !== UNKNOWN_CURRENCY && spotQuote.currency !== storedPosition.currency)) return null;
     const freshness = { now: Math.max(freshnessNow, Date.now()), subscriptionStartedAt };
     const mids = new Map<string, number>();
     let delayed = spotQuote.dataSource !== "live";
@@ -132,7 +133,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   }, [frozen, position, controls, seeded.error, controlState, baseControls.error]);
   const scenario = result.scenario;
   const error = localError ?? result.error;
-  const baseline = (): ScenarioPosition => position ?? { symbol: underlying, exchange, currency: String(settings.currency ?? (market?.currency || "UNKNOWN")),
+  const baseline = (): ScenarioPosition => position ?? { symbol: underlying, exchange,
+    currency: scenarioCurrency(settings.currency, market?.currency || ticker?.metadata.currency, exchange ?? market?.exchange),
     spot: Number.isFinite(explicitSpot) ? explicitSpot : market?.spot ?? NaN,
     rate: settings.rate != null ? Number(settings.rate) / 100 : market?.rate ?? NaN,
     dividendYield: settings.dividendYield != null ? Number(settings.dividendYield) / 100 : market?.dividendYield ?? NaN,
@@ -238,11 +240,13 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const tabsFocused = focused && !volActive && !detail;
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true });
   const risk = scenario?.expiryRisk;
+  // Value and P&L add every contract; spot and entry prices are per share.
+  const valueUnit = scenario ? `${currencyLabel(scenario.position.currency)} ${scenarioValueUnit(scenario.position)}` : "";
   const stats: StatItem[] = scenario ? [
-    { id: "pnl", label: "P&L", value: money(scenario.valuation.pnl), detail: scenario.position.currency,
+    { id: "pnl", label: "P&L", value: money(scenario.valuation.pnl), detail: valueUnit,
       tone: cents(scenario.valuation.pnl) >= 0 ? "positive" : "negative" },
-    { id: "spot", label: "Spot", value: money(scenario.position.spot) },
-    { id: "value", label: "Value", value: money(scenario.valuation.price) },
+    { id: "spot", label: "Spot", value: money(scenario.position.spot), detail: "per share" },
+    { id: "value", label: "Value", value: money(scenario.valuation.price), detail: valueUnit },
     { id: "max-profit", label: "Max profit", value: risk?.unlimitedProfit ? "Unlimited" : money(risk?.maxProfit ?? null) },
     { id: "max-loss", label: "Max loss", value: risk?.unlimitedLoss ? "Unlimited" : money(risk?.maxLoss ?? null) },
     { id: "breakevens", label: "Breakevens", value: risk?.breakevens.map(money).join(", ") || "--" },
@@ -256,7 +260,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const bodyHeight = Math.max(3, height - tabRows - (scenario ? 1 + statGridRows(stats, width) : 0));
   const legColumns: DataTableColumn[] = [{ id: "quantity", label: "Contracts", width: 10, align: "right" },
     { id: "side", label: "Option", width: 7, align: "left" }, { id: "strike", label: "Strike", width: 11, align: "right" },
-    { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / unit", width: 13, align: "right" },
+    { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / share", width: 14, align: "right" },
     { id: "volatility", label: "IV %", width: 9, align: "right" }, { id: "multiplier", label: "Units", width: 7, align: "right" }];
   const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} focused={tabsFocused} />
     : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width}

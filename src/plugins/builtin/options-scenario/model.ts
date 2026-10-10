@@ -1,5 +1,6 @@
 import { daysToExpiryFrom, valueOption, type OptionValuation } from "../shared/volatility";
 import { isFiniteNumber } from "../../../utils/guards";
+import { isUsListingExchange } from "../../../utils/exchanges";
 
 const DAY_MS = 86_400_000;
 const MAX_DATE_MS = Date.UTC(9999, 11, 31);
@@ -127,6 +128,32 @@ export function validateScenarioInputs(position: ScenarioPosition): string | nul
     }
   }
   return null;
+}
+
+/** The stored stand-in for a currency nothing names; shown as `currency unknown`. */
+export const UNKNOWN_CURRENCY = "UNKNOWN";
+export const currencyLabel = (currency: string) => currency === UNKNOWN_CURRENCY ? "currency unknown" : currency;
+
+/**
+ * The position's currency: the one typed, else the underlying's quote
+ * currency, else USD for a US listing (a bare symbol is one, as Gloom Cloud
+ * lists only US options). A listing abroad with no quote stays unknown.
+ */
+export function scenarioCurrency(typed: unknown, quoted: string | null | undefined, exchange: string | undefined): string {
+  const explicit = typed == null ? "" : String(typed).trim().toUpperCase();
+  if (explicit) return explicit;
+  if (quoted?.trim()) return quoted.trim().toUpperCase();
+  return !exchange || isUsListingExchange(exchange) ? "USD" : UNKNOWN_CURRENCY;
+}
+
+/**
+ * What the position's money figures (value, P&L, risk, Greeks in currency) are
+ * for: they add every contract times its multiplier, while entry prices and
+ * spot are per share. One contract reads `per contract`.
+ */
+export function scenarioValueUnit(position: Pick<ScenarioPosition, "legs">): string {
+  const contracts = position.legs.reduce((sum, leg) => sum + Math.abs(leg.quantity), 0);
+  return contracts === 1 ? "per contract" : `for ${contracts.toLocaleString("en-US")} contracts`;
 }
 
 /** Also validates restored persistence values at the model boundary. */

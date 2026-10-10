@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
-import { daysToExpiryFrom, optionDelta, valueOption } from "../shared/volatility";
+import { daysToExpiryFrom, optionDelta, valueOption, type SmileFit } from "../shared/volatility";
 import {
   buildSurfaceExpiry, buildSurfaceGrid, cleanSurfaceQuotes, DEFAULT_SURFACE_SETTINGS,
-  evaluateSurfaceSmile, surfaceSheetSnapshot, surfaceTreasuryRate, windowSurfaceGrid, type SurfaceSnapshot,
+  evaluateSurfaceSmile, pendingSurfaceExpiry, surfaceExpirySkew, surfaceSheetSnapshot, surfaceTreasuryRate, windowSurfaceGrid,
+  type SurfaceExpiry, type SurfacePoint, type SurfaceSnapshot,
 } from "./model";
+import { skewGap, surfaceSkewRow } from "./tables";
 
 const now = Date.UTC(2026, 8, 22, 14);
 const expiration = Date.UTC(2026, 11, 18) / 1000;
@@ -240,4 +242,47 @@ test("the delta axis centres ATM on the delta-neutral straddle strike, between 4
   expect(atm).toBeCloseTo(expiry.forward! * Math.exp(0.3 * 0.3 * expiry.years / 2), 1);
   expect(put45).toBeLessThan(atm!);
   expect(call45).toBeGreaterThan(atm!);
+});
+
+describe("25-delta skew", () => {
+  // An SVI fit that prices every quoted strike but turns negative in total
+  // variance far past them (rho near -1, a below zero), as live fits can.
+  const fit: SmileFit = { method: "svi", years: 0.2, residual: 0, points: [], droppedPoints: 0, slopes: [], fallbackReason: null,
+    parameters: { a: -0.0005, b: 0.05, rho: -0.999, m: 0, sigma: 0.1 } };
+  const fitted = (strikes: number[]): SurfaceExpiry => {
+    // q = r makes the forward the spot, so delta and the smile read on the same strikes.
+    const expiry: SurfaceExpiry = { ...pendingSurfaceExpiry(expiration, now), state: "ready", years: 0.2, rate: 0.04,
+      dividendYield: 0.04, forward: 100, fit, points: strikes.map((strike) => ({ strike }) as SurfacePoint) };
+    expiry.atmIV = evaluateSurfaceSmile(expiry, 100);
+    return expiry;
+  };
+  const deltaCells = (expiry: SurfaceExpiry) => buildSurfaceGrid({ symbol: "AAPL", spot: 100, expiries: [expiry] } as SurfaceSnapshot,
+    { axis: "delta" }).rows[0]!.cells.map((cell) => cell.volatility);
+
+  test("a quoted expiry gets the 25-delta wings the Table's delta columns show, even where the fit fails far out", () => {
+    const expiry = fitted([70, 80, 90, 95, 100, 105, 110, 120, 130]);
+    const skew = surfaceExpirySkew(expiry, 100);
+    const [, put25, , call25] = deltaCells(expiry);
+    expect(skew.put25).toBeCloseTo(put25!, 8);
+    expect(skew.call25).toBeCloseTo(call25!, 8);
+    expect(skew.riskReversal).toBeCloseTo(call25! - put25!, 8);
+    expect(skew.riskReversal!).toBeLessThan(0);
+    expect(skew.butterfly).toBeCloseTo((put25! + call25!) / 2 - expiry.atmIV!, 8);
+    expect(surfaceSkewRow({ ...expiry, skew }).gap).toBeNull();
+  });
+
+  test("quotes that stop short of a 25-delta strike say which wing is missing instead of extrapolating", () => {
+    const expiry = fitted([70, 80, 90, 95, 100, 101]);
+    const skew = surfaceExpirySkew(expiry, 100);
+    expect(skew.put25).not.toBeNull();
+    expect([skew.call25, skew.riskReversal, skew.butterfly]).toEqual([null, null, null]);
+    expect(surfaceSkewRow({ ...expiry, skew })).toMatchObject({ gap: "no 25D call", moneynessGap: "not quoted" });
+    expect(skewGap({ ...expiry, fit: null, skew })).toBe("no smile fit");
+  });
+
+  test("the ATM slope out of an expiry under a week away is left out, and says so", () => {
+    const slope = (days: number) => surfaceSkewRow({ ...fitted([90, 100, 110]), years: days / 365, termSlope: 3.79 });
+    expect(slope(3)).toMatchObject({ termSlope: null, termSlopeHidden: true });
+    expect(slope(7)).toMatchObject({ termSlope: 3.79, termSlopeHidden: false });
+  });
 });

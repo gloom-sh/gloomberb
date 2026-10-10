@@ -3,7 +3,7 @@ import {
   daysToExpiryFrom, detectButterflyArbitrage, detectCalendarArbitrage, evaluateSmile, expectedMove,
   extractImpliedForward, fitVolatilitySmile, FIXED_VOLATILITY_TENORS,
   interpolateTotalVariance, logForwardMoneyness, optionDelta, optionMid,
-  smileSkew, solveImpliedVolatility, valueOption, volatilityTermSlope,
+  solveImpliedVolatility, valueOption, volatilityTermSlope,
   type ExpectedMove, type ImpliedForward, type OptionSide, type SkewMetrics, type SmileFit,
 } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
@@ -354,16 +354,7 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
   const smile = (strike: number) => evaluateSurfaceSmile(result, strike);
   for (const point of result.points) point.fitResidual = point.volatility - (smile(point.strike) ?? point.volatility);
   result.atmIV = smile(spot);
-  const skew = smileSkew({ spot, years: result.years, rate: rate.rate, dividendYield: result.dividendYield },
-    (strike) => evaluateSmile(fit, logForwardMoneyness(strike, forward)!));
-  const putCovered = deltaStrike(result, spot, -0.25) != null;
-  const callCovered = deltaStrike(result, spot, 0.25) != null;
-  const moneynessCovered = smile(spot * 0.9) != null && smile(spot * 1.1) != null;
-  result.skew = { ...skew, atm: result.atmIV, put25: putCovered ? skew.put25 : null, call25: callCovered ? skew.call25 : null,
-    putCallSkew: putCovered && callCovered ? skew.putCallSkew : null,
-    riskReversal: putCovered && callCovered ? skew.riskReversal : null,
-    butterfly: putCovered && callCovered && result.atmIV != null ? skew.butterfly : null,
-    moneynessSkew: moneynessCovered ? skew.moneynessSkew : null };
+  result.skew = surfaceExpirySkew(result, spot);
   result.expectedMove = expectedMove(cleaned.calls, cleaned.puts, spot, result.years, result.atmIV);
   const calls = result.points.map((point) => ({ strike: point.strike, callPrice: valueOption({
     side: "call", spot: forward, strike: point.strike,
@@ -374,6 +365,27 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
   if (fit.fallbackReason) result.warnings.push(fit.fallbackReason);
   result.state = "ready";
   return result;
+}
+
+/**
+ * A fitted expiry's skew in decimal IV: RR is the 25-delta call minus put, BF
+ * their average minus ATM, 90/110 the IV at 90% of spot minus 110%. The
+ * 25-delta strikes are found on the fit inside the quoted strikes, as the
+ * Table's delta columns find them, so a fit that cannot price a far wing it
+ * was never quoted at does not blank a quoted expiry's skew.
+ */
+export function surfaceExpirySkew(expiry: SurfaceExpiry, spot: number): SkewMetrics {
+  const smile = (strike: number) => evaluateSurfaceSmile(expiry, strike);
+  const at = (delta: number) => {
+    const strike = deltaStrike(expiry, spot, delta);
+    return strike == null ? null : smile(strike);
+  };
+  const put25 = at(-0.25), call25 = at(0.25), atm = expiry.atmIV;
+  const low = smile(spot * 0.9), high = smile(spot * 1.1);
+  const both = put25 != null && call25 != null;
+  return { atm, put25, call25, putCallSkew: both ? put25 - call25 : null, riskReversal: both ? call25 - put25 : null,
+    butterfly: both && atm != null ? (put25 + call25) / 2 - atm : null,
+    moneynessSkew: low != null && high != null ? low - high : null };
 }
 
 export function surfaceCalendarWarnings(expiries: readonly SurfaceExpiry[]): string[] {

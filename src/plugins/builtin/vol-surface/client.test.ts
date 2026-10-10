@@ -4,6 +4,8 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import type { OptionsChain } from "../../../types/financials";
 import { createSurfaceDependencies, loadVolatilitySurface, selectSurfaceExpiries, type SurfaceLoaderDependencies } from "./client";
 import type { SurfaceSnapshot } from "./model";
+import { selectSurfaceExpiry } from "./tables";
+import { findListedExpiry, parseOptionExpiration } from "../../../utils/option-expiry";
 
 const now = Date.UTC(2026, 8, 22, 14);
 const expirations = Array.from({ length: 22 }, (_, index) => Date.UTC(2026, 9, index + 1) / 1000);
@@ -53,11 +55,30 @@ describe("surface loader", () => {
     expect(result.expiries.map((expiry) => expiry.expiration)).toEqual([...sample, pin].sort((a, b) => a - b));
     expect(result.requested).toBe(4);
     expect(result.loaded).toBe(4);
-    expect(result.failures).toContainEqual({ expiration: missing, message: "Selected expiration unavailable in the current option catalogue" });
+    // An unlisted date names the listed ones around it.
+    expect(result.failures).toContainEqual({ expiration: missing,
+      message: "not listed; nearest: 2026-10-19, 2026-10-20, 2026-10-21, 2026-10-22 (+18 more)" });
     expect(calls.filter((expiration) => expiration === pin)).toHaveLength(1);
     expect(calls).not.toContain(missing);
     expect(calls.some((expiration) => Number.isNaN(expiration))).toBe(false);
     coordinator.destroy();
+  });
+
+  test("a typed date pins the expiry listed later that day, the one OMON picks", async () => {
+    // A source that stamps each expiry at the New York close, 20:00 UTC, not at midnight.
+    const stamped = expirations.map((expiration) => expiration + 20 * 3600);
+    const calls: (number | undefined)[] = [];
+    const deps: SurfaceLoaderDependencies = { now: () => now, loadYieldCurve: async () => curve,
+      loadOptions: async (request) => { calls.push(request.expirationDate); return ready(emptyChain(stamped)); } };
+    const typed = parseOptionExpiration("2026-10-20")!;
+    const listed = Date.UTC(2026, 9, 20, 20) / 1000;
+    // OMON opens a typed date at the listed stamp of its calendar day.
+    expect(findListedExpiry(typed, stamped)).toBe(listed);
+    const result = await loadVolatilitySurface({ instrument: { symbol: "AAPL" }, spot: 100, limit: 1, requiredExpiries: [typed] }, deps);
+    expect(result.failures).toEqual([]);
+    expect(calls).toContain(listed);
+    expect(calls).not.toContain(typed);
+    expect(selectSurfaceExpiry(result, typed)?.expiration).toBe(listed);
   });
 
   test("caps default catalogue, publishes partial failures and bounds concurrency at four", async () => {

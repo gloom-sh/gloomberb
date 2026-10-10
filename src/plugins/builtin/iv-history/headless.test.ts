@@ -3,6 +3,7 @@ import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
 import type { IvMethod, IvScreenPayload, IvScreenRow } from "./client";
+import { VCA_DEFINITIONS } from "./format";
 import { ivScreenHeadless } from "./headless";
 
 const reading = (date: string, method: IvMethod, iv30: number) => ({
@@ -85,8 +86,12 @@ describe("VCA dates", () => {
   test("skew from an older capture than the reading is dated", async () => {
     const stale = { ...row("NVDA", reading("2026-10-09", "trade-close", 0.293), "2026-10-09"),
       skew: { date: "2026-10-08", put25: 0.3, call25: 0.28, skew: 0.02 } };
-    const { keys, cell } = await load([stale]);
+    const { keys, cell, result } = await load([stale]);
     expect(keys).toContain("skewDate");
     expect(cell("skewDate", 0)).toBe("2026-10-08");
+    // Puts at 30% against calls at 28% read +2.0, and the report says which side is subtracted and in what unit.
+    expect(cell("skew", 0)).toBe("+2.0");
+    expect(result.notes).toEqual([...VCA_DEFINITIONS]);
+    expect(result.notes?.[0]).toContain("25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer");
   });
 });

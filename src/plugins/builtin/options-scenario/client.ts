@@ -5,10 +5,11 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { expiryIsoDate, findListedExpiry, missingExpiryText } from "../../../utils/option-expiry";
 import { surfaceTreasuryRate } from "../vol-surface/model";
 import { daysToExpiryFrom, extractImpliedForward, optionMid, solveImpliedVolatility } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
-import { parseLegs, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
+import { parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 
@@ -26,6 +27,8 @@ export interface ScenarioMarketSnapshot {
   underlyingQuote: Quote | null;
   rateAsOf: string[];
   warnings: string[];
+  /** Why the requested expiry has no chain, naming the listed dates nearest it. */
+  missingExpiry?: string;
 }
 
 export interface ScenarioLoaderDependencies {
@@ -99,15 +102,31 @@ export async function loadScenarioMarket(
   const validDividend = symbolMatches(financialsSymbol, symbol) && !fundamentals?.stale && !financialsEntry?.error
     && typeof fundamentals?.dividendYield === "number" && Number.isFinite(fundamentals.dividendYield) && fundamentals.dividendYield >= 0;
   if (!validDividend) warnings.push("Dividend yield unavailable; supply an explicit assumption");
-  const chainEntry = entry(chainResult, "Options chain");
+  let chainEntry = entry(chainResult, "Options chain");
   let chain = chainEntry ? resolveEntryValue(chainEntry) : null;
   if (chain && !symbolMatches(chain.underlyingSymbol, symbol)) {
     warnings.push("Options chain does not match the requested ticker"); chain = null;
   }
   const expirationDates = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
     positive(expiration) && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
-  if (chain && request.expiration != null && (!expirationDates.includes(request.expiration)
-    || [...chain.calls, ...chain.puts].some((contract) => contract.expiration !== request.expiration))) {
+  // A typed date is that day's UTC midnight; the chain's own stamp for the
+  // expiry is matched by calendar date, as OMON matches it.
+  const listedExpiration = request.expiration == null ? undefined : findListedExpiry(request.expiration, expirationDates);
+  const onExpiry = (value: OptionsChain, expiration: number) => [...value.calls, ...value.puts]
+    .every((contract) => expiryIsoDate(contract.expiration) === expiryIsoDate(expiration));
+  if (chain && listedExpiration != null && listedExpiration !== request.expiration && !chain.calls.length && !chain.puts.length) {
+    // A source that keys chains by its exact stamp answered the midnight request empty.
+    chainEntry = await abortable(dependencies.loadOptions({ instrument: request.instrument, expirationDate: listedExpiration }, options)
+      .catch((error: unknown) => { warnings.push(`Options chain: ${errorMessage(error)}`); return null; }), request.signal, CANCELLED);
+    if (request.signal?.aborted) throw abortError(CANCELLED);
+    if (chainEntry?.error) warnings.push(`Options chain: ${chainEntry.error.message}`);
+    chain = chainEntry ? resolveEntryValue(chainEntry) : null;
+  }
+  let missingExpiry: string | undefined;
+  if (chain && request.expiration != null && listedExpiration == null) {
+    missingExpiry = sentence(missingExpiryText(request.expiration, expirationDates, symbol));
+    warnings.push(missingExpiry); chain = null;
+  } else if (chain && listedExpiration != null && !onExpiry(chain, listedExpiration)) {
     warnings.push("Selected expiration unavailable in the returned options chain"); chain = null;
   }
   if (!chain) warnings.push("Options chain unavailable");
@@ -117,14 +136,21 @@ export async function loadScenarioMarket(
   if (curveResult.status === "rejected") warnings.push(`Treasury: ${errorMessage(curveResult.reason)}`);
   const rate = surfaceTreasuryRate(curve, rateExpiration == null ? NaN : daysToExpiryFrom(rateExpiration, now) / 365);
   warnings.push(...rate.warnings);
+  // A currency does not go stale with its quote: the listing's quote, its snapshot, or its contracts name it.
+  const currency = [symbolMatches(quote?.symbol, symbol) ? quote?.currency : undefined,
+    symbolMatches(financialsSymbol, symbol) ? financials?.quote?.currency : undefined,
+    chain?.calls[0]?.currency, chain?.puts[0]?.currency].find((value) => !!value?.trim())?.trim().toUpperCase() ?? "";
   return {
-    symbol, exchange: request.instrument.exchange, spot: quoteCurrent ? quote!.price : null, currency: quoteCurrent ? quote!.currency : "",
+    symbol, exchange: request.instrument.exchange, spot: quoteCurrent ? quote!.price : null, currency,
     asOf: quoteCurrent && positive(quote!.lastUpdated) ? quote!.lastUpdated : now,
     chain, expirationDates, rate: rate.rate, dividendYield: validDividend ? fundamentals!.dividendYield! : null,
     source: quoteCurrent ? quoteEntry?.source ?? quote!.providerId ?? null : null,
     underlyingQuote: quoteCurrent ? quote : null, rateAsOf: rate.asOf, warnings: [...new Set(warnings)],
+    ...(missingExpiry ? { missingExpiry } : {}),
   };
 }
+
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 function supplied(value: unknown): boolean { return value != null && value !== ""; }
 
@@ -177,7 +203,9 @@ export function scenarioPositionFromSettings(
   let legs = legText.trim() ? parseLegs(legText) : [];
   if (!legs.length && supplied(settings.strategy)) {
     if (settings.strategy !== "vertical" && settings.strategy !== "straddle") throw new Error("strategy must be vertical or straddle");
-    if (!market?.chain || market.warnings.includes("Options chain is stale")) throw new Error("A current options chain is required to seed a strategy");
+    if (!market?.chain || market.warnings.includes("Options chain is stale")) {
+      throw new Error(market?.missingExpiry ?? "A current options chain is required to seed a strategy");
+    }
     if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
     // Leg IVs are solved at the market's own spot and time, never at a what-if override.
     const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate } : null;
@@ -198,7 +226,7 @@ export function scenarioPositionFromSettings(
   if (dividendYield == null) throw new Error("Dividend yield unavailable; supply --dividend-yield as an annual percentage");
   const position: ScenarioPosition = {
     symbol, exchange: exchange ?? market?.exchange,
-    currency: String(settings.currency ?? market?.currency ?? "").trim().toUpperCase() || "UNKNOWN",
+    currency: scenarioCurrency(settings.currency, market?.currency, exchange ?? market?.exchange),
     spot, rate, dividendYield, asOf: dateSetting(settings, "asOf") ?? market?.asOf ?? Date.now(), legs,
   };
   const error = validatePosition(position);

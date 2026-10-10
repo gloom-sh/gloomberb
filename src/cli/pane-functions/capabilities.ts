@@ -3,7 +3,6 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneOptionDef,
   PaneDef,
-  PaneReportOptionDef,
   PaneTemplateDef,
 } from "../../types/plugin";
 
@@ -11,7 +10,7 @@ export type PaneFunctionReadiness = "ready" | "partial" | "live-dom" | "unsuppor
 type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
 type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
 /** A headless option, or a rendered view's, which may name its value, show an example and check what is typed. */
-export type PaneFunctionOptionDef = HeadlessPaneOptionDef & Pick<PaneReportOptionDef, "placeholder" | "example" | "normalize">;
+export type PaneFunctionOptionDef = HeadlessPaneOptionDef;
 export type NormalizedPaneFunctionOptions = Record<string, string | number | boolean>;
 
 export interface PaneFunctionCapability {

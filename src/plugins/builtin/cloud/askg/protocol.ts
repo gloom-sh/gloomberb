@@ -105,7 +105,7 @@ type ToolManifestShape = HeadlessPaneShape;
 export type ToolManifestArgument = HeadlessPaneArgumentDef;
 
 /** Serializable headless option declaration. */
-export type ToolManifestOption = Omit<HeadlessPaneOptionDef, "settingKey" | "pluginState">;
+export type ToolManifestOption = Omit<HeadlessPaneOptionDef, "settingKey" | "pluginState" | "normalize">;
 
 /** Serializable headless column declaration. */
 export type ToolManifestColumn = Omit<HeadlessPaneColumn, "format">;

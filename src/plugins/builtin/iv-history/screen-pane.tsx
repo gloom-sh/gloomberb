@@ -4,11 +4,12 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneCollection, usePaneSettingValue, usePluginAppActions, useTickers } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
+import { Box, Text } from "../../../ui";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
-import { formatPoints, formatRank, formatVol, readingLabel, sharedDates, shortDate, verdictLabel } from "./format";
+import { formatPoints, formatRank, formatVol, readingLabel, sharedDates, shortDate, VCA_DEFINITIONS, verdictLabel } from "./format";
 import { projectRichCheap, type RichCheapRow, richCheapDates, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 
@@ -118,6 +119,8 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     }
   };
   const custom = scope === "custom";
+  // The skew's sign and VIX beside IV30 are units of the figures above them, so they stay under the table.
+  const definitions = useMemo(() => VCA_DEFINITIONS.flatMap((line) => wrapTextLines(line, Math.max(1, width - 2))), [width]);
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     <QueryBar width={width} filters={[
       { id: "universe", label: "Universe", value: VCA_SCOPE_OPTIONS.some((option) => option.value === scope) ? scope : "etfs",
@@ -127,7 +130,8 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
         onChange: setSymbolsText }] : []),
     ]} />
     <PaneStatusBody subject="volatility rich/cheap" loading={resource.loading && !resource.data} error={universe.error && !universe.instruments.length ? universe.error : !resource.data ? resource.error : null}>
-      <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} items={rows} rootWidth={width} rootHeight={Math.max(2, height - 1)}
+      <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} items={rows} rootWidth={width}
+        rootHeight={Math.max(2, height - 1 - definitions.length)}
         getItemKey={(row) => row.symbol} sortColumnId={sort.columnId} sortDirection={sort.direction} emptyStateTitle="No symbols to screen."
         onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id as SortId, { firstDirection: "desc" }))}
         selection={{ kind: "id", selectedId: selected ?? rows[0]?.symbol ?? "", getId: (row) => row.symbol, onChange: (id) => setSelected(id) }}
@@ -135,6 +139,9 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
         getExportMetadata={() => [["universe", universe.label], ["as of", fullDatesText || undefined],
           ["IV", "30-day ATM, annualized"], ["IV1Y", "one-year ATM, annualized"], ["rank window", "prior 52 weeks of trade-close readings"], ["HV", `${HV_WINDOW}-session close-to-close`]]}
         renderCell={(row, column) => cell(row, column.id)} />
+      <Box flexDirection="column" paddingX={1} height={definitions.length} flexShrink={0}>
+        {definitions.map((line, index) => <Text key={index} fg={colors.textDim}>{line}</Text>)}
+      </Box>
     </PaneStatusBody>
   </Box>;
 }

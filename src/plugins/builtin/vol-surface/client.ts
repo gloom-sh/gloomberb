@@ -12,6 +12,7 @@ import {
 } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
+import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
 const SURFACE_LOAD_CONCURRENCY = 4;
@@ -198,13 +199,16 @@ export async function loadVolatilitySurface(
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
     catalogue = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
       Number.isFinite(expiration) && expiration > 0 && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
+    // A typed date is that day's UTC midnight; the catalogue's stamp for the
+    // same expiry is matched by calendar date, as OMON matches it.
     const required = [...new Set([...(request.requiredExpiries ?? []), ...(request.expiries ?? [])]
-      .filter((expiration) => Number.isFinite(expiration) && expiration > 0))];
+      .filter((expiration) => Number.isFinite(expiration) && expiration > 0)
+      .map((expiration) => findListedExpiry(expiration, catalogue) ?? expiration))];
     const listed = new Set(catalogue);
     selected = [...new Set([...request.expiries ? [] : selectSurfaceExpiries(catalogue, limit, now),
       ...required.filter((expiration) => listed.has(expiration))])].sort((a, b) => a - b);
     requiredFailures = required.filter((expiration) => !listed.has(expiration)).map((expiration) => ({
-      expiration, message: "Selected expiration unavailable in the current option catalogue",
+      expiration, message: unlistedExpiryText(expiration, catalogue),
     }));
     if (chain && catalogue.length === 0) catalogueError ??= "No unexpired option expiries available";
   } catch (error) {

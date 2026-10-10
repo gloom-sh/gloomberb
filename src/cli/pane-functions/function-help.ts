@@ -263,14 +263,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   OSA: {
     summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise.",
-    usage: ["OSA AAPL"],
+    usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15"],
     keys: [key("a", "dd leg"), key("c", "hain"), key("d", "ate"), key("v", "ol shift")],
     data: OPTIONS,
     bloomberg: ["OSA"],
   },
   OVDV: {
     summary: "The implied volatility surface fitted from option quotes: 3D sheet, table, smiles, ATM term structure, 25-delta skew and forwards, live or on stored daily closes.",
-    usage: ["OVDV NVDA"],
+    usage: ["OVDV NVDA", "gloomberb fn OVDV NVDA --tab skew --expiration 2027-01-15"],
     keys: [key("v", "iew"), key("c", "hain"), key("m", "ore expiries"), key("t", " stored dates")],
     data: { free: `${DELAYED}; stored dates at the close`, pro: "Real-time; stored dates at the close" },
     bloomberg: ["OVDV"],

@@ -2,7 +2,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadRealizedVolatilities } from "./client";
-import { formatPoints, formatRank, formatStat, formatVol, readingLabel, sharedDates, verdictLabel } from "./format";
+import { formatPoints, formatRank, formatStat, formatVol, readingLabel, sharedDates, VCA_DEFINITIONS, verdictLabel } from "./format";
 import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 
@@ -101,7 +101,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
       ], rows: rows.map((row) => ({ ...row })) }],
       complete: !queued.length && !universe.error, unavailableSymbols: queued,
       errors: [universe.error].filter((value): value is string => !!value),
-      ...(queued.length ? { notes: [`Queued for backfill: ${queued.join(", ")}.`] } : {}),
+      notes: [...queued.length ? [`Queued for backfill: ${queued.join(", ")}.`] : [], ...VCA_DEFINITIONS],
       metadata: { presets: VCA_PRESETS, methodology: METHODOLOGY },
     };
   },

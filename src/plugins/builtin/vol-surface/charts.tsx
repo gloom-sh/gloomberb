@@ -6,10 +6,8 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text } from "../../../ui";
 import { evaluateSmile, optionDelta } from "../shared/volatility";
 import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
+import { expiryLabel, formatPrice } from "./tables";
 
-export const formatIv = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(2)}%`;
-export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
-export const expiryLabel = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
 const point = (x: number, y: number): ProjectedChartPoint => ({ date: new Date(Math.round(x * 1_000_000)), open: y, high: y, low: y, close: y, volume: 0 });
 
 export function SmileChart({ snapshot, expiry, overlay, axis, width, height, focused = false }: {

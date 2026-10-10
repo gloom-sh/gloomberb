@@ -189,6 +189,7 @@ export function expectedMove(
     sigmaPercent: sigma != null && Number.isFinite(sigma) ? sigma / spot * 100 : null, strike: atm?.strike ?? null };
 }
 
+/** 25-delta and 90/110 skew in decimal annualized IV; OVDV reads them on each expiry's fitted smile. */
 export interface SkewMetrics {
   put25: number | null;
   call25: number | null;
@@ -197,52 +198,6 @@ export interface SkewMetrics {
   riskReversal: number | null;
   butterfly: number | null;
   moneynessSkew: number | null;
-}
-
-/** Smile accepts absolute strike. All differences are in decimal annualized IV. */
-export function smileSkew(input: Omit<VolatilityInputs, "volatility">, smile: (strike: number) => number | null): SkewMetrics {
-  if (!validInputs({ ...input, volatility: 1 })) {
-    return { atm: null, put25: null, call25: null, putCallSkew: null,
-      riskReversal: null, butterfly: null, moneynessSkew: null };
-  }
-  const atm = smile(input.spot);
-  const deltaVol = (side: OptionSide, target: number): number | null => {
-    if (!positive(input.spot) || !positive(input.years)) return null;
-    const center = Math.log(input.spot);
-    let radius = 1;
-    let low = center - radius;
-    let high = center + radius;
-    const at = (logStrike: number) => {
-      const strike = Math.exp(logStrike);
-      const volatility = smile(strike);
-      return volatility == null ? null : optionDelta({ ...input, volatility }, strike, side);
-    };
-    let a = at(low), b = at(high);
-    // Wide or strongly carried smiles can put a wing beyond twenty times spot.
-    // Expand until a root is bracketed; a missing smile observation stays missing.
-    for (let i = 0; i < 10 && a != null && b != null && (a < target || b > target); i += 1) {
-      radius *= 2;
-      low = center - radius;
-      high = center + radius;
-      a = at(low);
-      b = at(high);
-    }
-    if (a == null || b == null || a < target || b > target) return null;
-    for (let i = 0; i < 80; i += 1) {
-      const mid = (low + high) / 2;
-      const delta = at(mid);
-      if (delta == null) return null;
-      if (delta > target) low = mid; else high = mid;
-    }
-    return smile(Math.exp((low + high) / 2));
-  };
-  const put25 = deltaVol("put", -0.25), call25 = deltaVol("call", 0.25);
-  const low = smile(input.spot * 0.9), high = smile(input.spot * 1.1);
-  const both = put25 != null && call25 != null;
-  return { atm, put25, call25, putCallSkew: both ? put25 - call25 : null,
-    riskReversal: both ? call25 - put25 : null,
-    butterfly: both && atm != null ? (call25 + put25) / 2 - atm : null,
-    moneynessSkew: low != null && high != null ? low - high : null };
 }
 
 /** Decimal IV change per year between two tenors. */

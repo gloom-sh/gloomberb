@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { paneSchemas as chartSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { paneSchemas as correlationSchemas } from "../../plugins/builtin/correlation/headless-schema";
 import { paneSchemas as researchSchemas } from "../../plugins/builtin/research/headless-schema";
+import { optionsPositioningHeadless } from "../../plugins/builtin/options-positioning/headless";
+import { optionsScenarioHeadless } from "../../plugins/builtin/options-scenario/headless";
 import { thirteenFHeadless } from "../../plugins/builtin/thirteenf/headless";
+import { volSurfaceHeadless } from "../../plugins/builtin/vol-surface/headless";
 import { paneSchemas as tickerSchemas } from "../../plugins/builtin/ticker-detail/headless-schema";
 import type { HeadlessPaneDefinition } from "../../types/headless";
 import { parseCliGlobalArgs } from "../options";
@@ -100,6 +103,23 @@ describe("pane function capabilities", () => {
     });
     expect(isDataPaneForDomFallback(dummyPane)).toBe(true);
     expect(isDataPaneForDomFallback(helpPane)).toBe(false);
+  });
+
+  test("every expiry option takes a date or Unix seconds and names both forms when it cannot read one", () => {
+    const options: Array<[string, HeadlessPaneDefinition, string, string | number]> = [
+      ["vol-surface", volSurfaceHeadless, "expiration", 1799971200],
+      ["options-scenario", optionsScenarioHeadless, "expiration", 1799971200],
+      ["options-positioning", optionsPositioningHeadless("strikes"), "expiry", "2027-01-15"],
+    ];
+    for (const [id, headless, key, read] of options) {
+      const capability = getPaneFunctionCapability({ id, paneId: dummyPane.id, label: id, description: id, headless }, dummyPane);
+      expect(normalizeCapabilityOptions(capability, { [key]: "2027-01-15" })[key]).toBe(read);
+      expect(normalizeCapabilityOptions(capability, { [key]: "1799971200" })[key]).toBe(read);
+      for (const bad of ["2027-02-30", "15/01/2027", "1799971200000"]) {
+        expect(() => normalizeCapabilityOptions(capability, { [key]: bad }))
+          .toThrow(`Invalid --${key} "${bad}". Use YYYY-MM-DD (2028-01-21) or Unix seconds (1832025600).`);
+      }
+    }
   });
 
   test("rejects financial statement options on a price comparison", () => {

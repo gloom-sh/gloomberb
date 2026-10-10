@@ -74,6 +74,7 @@ function projectOptions(options: HeadlessPaneDefinition["options"]): ToolManifes
   return options.map(({
     settingKey: _settingKey,
     pluginState: _pluginState,
+    normalize: _normalize,
     values,
     aliases,
     defaultValue,

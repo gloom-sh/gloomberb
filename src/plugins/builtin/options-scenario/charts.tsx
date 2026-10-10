@@ -3,7 +3,7 @@ import { StaticChartSurface, type StaticChartOverlay } from "../../../components
 import { Box, Text } from "../../../ui";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
-import type { buildScenario } from "./model";
+import { currencyLabel, scenarioValueUnit, type buildScenario } from "./model";
 
 export function ScenarioPayoffChart({ scenario, width, height, focused = false }: {
   scenario: ReturnType<typeof buildScenario>; width: number; height: number; focused?: boolean;
@@ -28,7 +28,7 @@ export function ScenarioPayoffChart({ scenario, width, height, focused = false }
     <Box height={1} paddingX={1} flexDirection="row" gap={3}>
       <Text fg={colors.warning}>{`${scenario.expiryRisk.reason ? "First expiry" : "Expiry"} ${date(scenario.expiryDate)}`}</Text>
       <Text fg={colors.borderFocused}>{`Selected ${date(scenario.controls.date)}`}</Text>
-      <Text fg={colors.textDim}>{`P&L ${scenario.position.currency}`}</Text>
+      <Text fg={colors.textDim}>{`P&L ${currencyLabel(scenario.position.currency)} ${scenarioValueUnit(scenario.position)}`}</Text>
     </Box>
     <StaticChartSurface points={points} overlays={overlays} calendarSpaced
       width={width} height={Math.max(2, height - 1)} colors={{ ...resolveChartPalette(colors), lineColor: colors.warning }}

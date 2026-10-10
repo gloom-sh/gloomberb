@@ -3,6 +3,8 @@ import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import type { SurfaceExpiry, SurfaceGrid, SurfaceSnapshot } from "./model";
 import { isFiniteNumber, isRecord } from "../../../utils/guards";
+import { expiryIsoDate } from "../../../utils/option-expiry";
+import { surfaceSkewRow } from "./tables";
 
 export interface VolSurfaceEvidenceInput {
   snapshot: SurfaceSnapshot | null | undefined;
@@ -88,11 +90,12 @@ export function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolS
   const term = view === "term" ? (snapshot?.expiries ?? []).filter((expiry) => iv(expiry.atmIV))
     .map((expiry) => ({ expiration: expiry.expiration, years: expiry.years, atm: expiry.atmIV!,
       put25: expiry.skew.put25, call25: expiry.skew.call25 })) : [];
-  const table = view === "skew" || view === "forwards" ? (snapshot?.expiries ?? []).map((expiry) => ({
-    expiration: expiry.expiration,
-    values: view === "forwards" ? [expiry.forward, expiry.dividendYield, expiry.rate]
-      : [expiry.skew.put25, expiry.skew.call25, expiry.skew.riskReversal, expiry.skew.butterfly, expiry.skew.moneynessSkew, expiry.termSlope],
-  })) : [];
+  const table = view === "skew" || view === "forwards" ? (snapshot?.expiries ?? []).map((expiry) => {
+    // The slope the table leaves out under a week to expiry is not a rendered observation.
+    const skew = surfaceSkewRow(expiry);
+    return { expiration: expiry.expiration, values: view === "forwards" ? [expiry.forward, expiry.dividendYield, expiry.rate]
+      : [skew.put25, skew.call25, skew.riskReversal, skew.butterfly, skew.moneynessSkew, skew.termSlope] };
+  }) : [];
   const counts = grid ? gridCounts(grid.values) : { values: 0, quads: 0 };
   const plottedValueCount = grid ? counts.values : smile ? smile.points.length : term.length
     || table.reduce((total, row) => total + row.values.filter(isFiniteNumber).length, 0);
@@ -186,7 +189,9 @@ export const volSurfaceScreenshotEvidence: PaneScreenshotEvidenceHook<VolSurface
     if (evidence.ivSource !== (resolved.options.ivSource ?? "recomputed")) mismatches.push("rendered volatility source does not match");
     if (evidence.priceSide !== (resolved.options.priceSide ?? "mid")) mismatches.push("rendered option quote side does not match");
     const expiration = resolved.instance?.settings?.expiration;
-    if (expiration != null && Number(expiration) !== evidence.selectedExpiration) mismatches.push("rendered volatility expiry does not match");
+    // A typed date names the listed expiry of that calendar day, whatever its stamp's time.
+    if (expiration != null && (evidence.selectedExpiration == null
+      || expiryIsoDate(Number(expiration)) !== expiryIsoDate(evidence.selectedExpiration))) mismatches.push("rendered volatility expiry does not match");
     return mismatches;
   },
   unavailable(evidence, { resolved, payload }) {
