@@ -71,6 +71,7 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   TADAWUL: 10 * 60,
   QE: 9 * 60 + 30,
   DFM: 10 * 60,
+  MSX: 10 * 60,
   KUWAIT: 9 * 60,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
@@ -99,6 +100,10 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   // Continuous trading to 14:45, the closing auction to 14:55 and trading at
   // the close to 15:00. A complete 5-minute copy ends with its 14:55 bar.
   DFM: 15 * 60,
+  // The Muscat Stock Exchange since 1 Jun 2026: continuous trading to 14:45,
+  // the closing auction to 14:55 and trade at last to 15:00. A complete
+  // 5-minute copy ends with its 14:55 bar.
+  MSX: 15 * 60,
   // Boursa Kuwait: continuous trading to 13:00, the closing auction to 13:10
   // and trade at last to 13:15. Not later than the auction's end: a complete
   // 5-minute copy ends with its 12:40 bar (the source still closes its
@@ -112,6 +117,8 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
 const WEEKEND_DAYS: Record<string, readonly number[]> = {
   TADAWUL: [5, 6],
   QE: [5, 6],
+  // The Muscat Stock Exchange trades Sunday to Thursday.
+  MSX: [5, 6],
   KUWAIT: [5, 6],
 };
 const DEFAULT_WEEKEND_DAYS: readonly number[] = [0, 6];

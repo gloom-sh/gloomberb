@@ -21,6 +21,7 @@ const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   SFB: ".ST", Stockholm: ".ST", OMX: ".ST", CPH: ".CO", HEX: ".HE", HEL: ".HE", OSE: ".OL", OSL: ".OL", OMXNO: ".OL", ICEX: ".IC",
   VSE: ".VI", WSE: ".WA", GPW: ".WA", PRA: ".PR", BUX: ".BD", ATHEX: ".AT", BVB: ".RO", BIST: ".IS",
   TASE: ".TA",
+  MSX: ".OM",
   JSE: ".JO",
   BVMF: ".SA", MEXI: ".MX", BYMA: ".BA", BCS: ".SN",
   TADAWUL: ".SR", QE: ".QA", DFM: ".AE", KUWAIT: ".KW",

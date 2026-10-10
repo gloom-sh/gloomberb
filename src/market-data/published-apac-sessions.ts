@@ -9,6 +9,8 @@
 //   and https://www.hkex.com.hk/-/media/HKEX-Market/Services/Circulars-and-Notices/Participant-and-Members-Circulars/SEHK/2026/ce_SEHK_CT_077_2026.pdf
 // SGX closes on Singapore's gazetted public holidays, one on a Sunday moving to the Monday:
 //   https://www.sgx.com/stock-exchange/trading and https://www.mom.gov.sg/employment-practices/public-holidays
+// MSX closes on the holidays its site lists (msx.om exchange holidays, read 10 Oct 2026).
+//   Its week is Sunday to Thursday.
 // ASX: https://www.asx.com.au/markets/market-resources/trading-hours-calendar/cash-market-trading-hours/trading-calendar
 const KRX_CLOSURES: Record<number, readonly string[]> = {
   2026: [
@@ -47,6 +49,9 @@ export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, rea
   SGX: {
     2026: ["01-01", "02-17", "02-18", "04-03", "05-01", "05-27", "06-01", "08-10", "11-09", "12-25"],
     2027: ["01-01", "02-08", "03-10", "03-26", "05-17", "05-20", "08-09", "10-28"],
+  },
+  MSX: {
+    2026: ["01-15", "01-18", "03-19", "03-22", "03-23", "05-26", "05-27", "05-28", "06-18", "08-27", "11-25", "11-26"],
   },
   ASX: {
     2026: ["01-01", "01-26", "04-03", "04-06", "06-08", "12-25", "12-28"],

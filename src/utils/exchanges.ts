@@ -140,6 +140,12 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   DSMD: "QE",
   DFM: "DFM",
   XDFM: "DFM",
+  // The Muscat Stock Exchange, which Gloom Cloud names MSX.
+  MSX: "MSX",
+  XMUS: "MSX",
+  MSM: "MSX",
+  MUSCAT: "MSX",
+  OMAN: "MSX",
   // Boursa Kuwait, which Gloom Cloud names KUWAIT.
   KUWAIT: "KUWAIT",
   XKUW: "KUWAIT",
@@ -237,6 +243,7 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   TADAWUL: "Asia/Riyadh",
   QE: "Asia/Qatar",
   DFM: "Asia/Dubai",
+  MSX: "Asia/Muscat",
   KUWAIT: "Asia/Kuwait",
   CCC: "UTC",
 };
@@ -294,6 +301,7 @@ const EXCHANGE_NAMES: Record<string, string> = {
   TADAWUL: "Saudi Exchange",
   QE: "Qatar Stock Exchange",
   DFM: "Dubai Financial Market",
+  MSX: "Muscat Stock Exchange",
   KUWAIT: "Boursa Kuwait",
 };
 
