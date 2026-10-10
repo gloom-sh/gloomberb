@@ -78,6 +78,24 @@ test("history leaves an explicit break across an unobserved week", () => {
   ]);
 });
 
+test("the report prints shares as the pane does, and a remote share with the roles it is measured on", async () => {
+  const payload = fixture();
+  payload.latest = { ...payload.latest!, remoteShare: 1, remoteKnown: 5 };
+  const api = { getCloudHiring: async () => payload };
+  const report = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: api as never }));
+  const text = (title: string, key: string, index = 0) => {
+    const section = report.sections.find((entry) => entry.title === title)!;
+    const column = section.columns!.find((entry) => entry.key === key)!;
+    const row = section.rows![index]!;
+    return (column.textFormat ?? column.format)!(row[key], row);
+  };
+  // 0.30454545... of the roles, and NET's 16.2% of 401 roles with a stated work mode.
+  expect(text("Role family", "share")).toBe("30.5");
+  expect(text("peers", "remote", 2)).toBe("16% of 401 known");
+  expect(text("peers", "remote", 0)).toBe("100% of 185 known");
+  expect(hiringModel(payload).figures.find((figure) => figure.label === "Remote")).toMatchObject({ value: "100%", detail: "of 5 known" });
+});
+
 test("headless pages expose continuation and never claim a truncated report is complete", async () => {
   const payload = structuredClone(realApps) as AppAttentionPayload;
   payload.page = { offset: 0, limit: 100, total: 250, nextOffset: 100 };

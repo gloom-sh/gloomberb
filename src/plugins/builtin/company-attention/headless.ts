@@ -1,8 +1,22 @@
-import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
+import type { DataTableColumn } from "../../../components";
 import type { AppAttentionPayload, AppChart } from "../../../api-client/app-attention";
 import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
 import { fetchAppRank, fetchAttention } from "./client";
-import { appsModel, hiringModel, type AttentionKind } from "./model";
+import { appsModel, attentionNumber, hiringModel, remoteText, type AttentionKind } from "./model";
+
+/**
+ * Numbers print as the pane draws them: shares to a tenth, ratings and
+ * z-scores to a hundredth, counts whole, and a remote share with the roles it
+ * is measured on. Exports keep the full value.
+ */
+function reportColumn(column: DataTableColumn): HeadlessPaneColumn {
+  if (column.align !== "right") return { key: column.id, header: column.label, align: column.align };
+  const format = (value: unknown) => typeof value === "number" ? attentionNumber(column.id, value) : value == null ? "-" : String(value);
+  return { key: column.id, header: column.label, align: column.align, format,
+    ...(column.id === "remote" ? { textFormat: (value: unknown, row: HeadlessPaneRow) => typeof value === "number"
+      ? remoteText(value, typeof row.remoteKnown === "number" ? row.remoteKnown : null) ?? "-" : "-" } : {}) };
+}
 
 export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"bundle"> {
   return {
@@ -42,7 +56,7 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
         errors: [...model.notices, ...(model.preview ? ["Additional rows and history require Gloom Pro."] : [])],
         ...(nextOffset !== null ? { notes: [`Additional observations available with --offset ${nextOffset}.`] } : {}),
         sections: Object.entries(model.sections).map(([key, section]) => ({ title: key === "mix" ? kind === "hiring" ? "Role family" : "Countries" : key,
-          columns: section.columns.map((column) => ({ key: column.id, header: column.label, align: column.align })),
+          columns: section.columns.map(reportColumn), empty: section.empty,
           rows: section.rows.map((row) => ({ ...row.values, ...(row.url ? { sourceUrl: row.url } : {}), ...(row.details ? { evidence: row.details } : {}) })) })),
         metadata: { nextOffset, asOf: model.asOf, preview: model.preview, lockedRows: model.locked, unit: model.chart.unit, provenance: data },
       };

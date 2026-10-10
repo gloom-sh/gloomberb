@@ -248,6 +248,7 @@ function serializeBundleSection(
       title: section.title,
       columns: serializableColumns(columns),
       rows: section.rows,
+      ...(section.empty && section.rows.length === 0 ? { empty: section.empty } : {}),
     };
   }
   return { title: section.title, entries: section.entries };
@@ -374,8 +375,9 @@ function renderRows(
   rows: HeadlessPaneRow[],
   ownColumns: HeadlessPaneColumn[] | undefined,
   fallbackColumns: HeadlessPaneColumn[] | undefined,
+  empty?: string,
 ): string {
-  if (rows.length === 0) return "No data.";
+  if (rows.length === 0) return empty ?? "No data.";
   const columns = columnsFor(rows, ownColumns, fallbackColumns);
   return renderTable(
     columns.map((column) => ({
@@ -409,7 +411,7 @@ function renderBundle(
     ...(index > 0 ? [""] : []),
     renderSection(section.title),
     "rows" in section && section.rows
-      ? renderRows(section.rows, section.columns, definition.columns)
+      ? renderRows(section.rows, section.columns, definition.columns, section.empty)
       : renderEntries(section.entries),
   ]);
 }

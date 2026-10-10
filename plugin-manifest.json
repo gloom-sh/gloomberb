@@ -106,7 +106,7 @@
           {
             "code": "JOBS",
             "name": "Hiring",
-            "description": "Hiring read from the company's own careers system: open roles over time, by function and location, new roles, pay ranges. Alone, every covered company ranked.",
+            "description": "Pro hiring read from the company's own careers system: open roles over time, by function and location, new roles, pay ranges. Alone, every covered company ranked.",
             "access": "pro"
           },
           {

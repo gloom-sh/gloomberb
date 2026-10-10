@@ -18,14 +18,11 @@ import { humanLabel, listingCell, missingCell, shareCell, signedColor, toneColor
 import { AppRankView } from "./app-rank";
 import { useAttentionEvidence } from "./evidence";
 import { cachedAttention, fetchAttention, loadAttention, validateAttention, type AttentionPayload } from "./client";
-import { appsModel, attentionSeries, count, hiringModel, sortAttentionRows, type AttentionKind, type AttentionRow, type AttentionTab } from "./model";
+import { appsModel, attentionNumber, attentionSeries, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionRow, type AttentionTab } from "./model";
 
 type Size = Pick<PaneProps, "width" | "height" | "focused">;
 const rowId = (row: AttentionRow) => row.id;
 const rowDate = (row: AttentionRow) => row.date ? new Date(row.date) : null;
-/** Decimals per column: percentages and scores to one place, ratings and z-scores to two, counts whole. */
-const DECIMALS: Record<string, number> = { score: 1, remote: 1, share: 1, confidence: 0, velocity: 2, rating: 2, drift: 2, z: 2, change: 1 };
-const SIGNED_COLUMNS = new Set(["net", "change", "velocity", "drift", "growth"]);
 const SIGNAL_TONES: Record<string, StateTone> = { Surge: "positive", Freeze: "negative", Stale: "warning", Collecting: "muted", Uncovered: "muted", Ok: "text" };
 /** Columns left out while every row reads the same default: a first capture has no weekly change yet. */
 const QUIET_COLUMNS: Record<string, readonly string[]> = { net: [""], z: [""], change: [""], velocity: [""], drift: [""], growth: [""], added: [""], removed: [""], coverage: ["complete"], spread: [""] };
@@ -156,7 +153,8 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
         detailContent={openCompany ? <PaneFooterScope active><AttentionView key={openCompany} kind={kind} symbol={openCompany} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : app ? <AppRankView focus={app} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} /> : evidence ? <Evidence row={evidence} width={width} height={bodyHeight - 1} focused={focused} /> : null}
         rootContent={<DataTableView columns={columns} items={rows} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
           rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns} query={query} figures={model.figures}
-            chart={tab === "chart" ? { series, ...chartSelection, formatValue: (value) => kind === "hiring" ? count(value) : value.toFixed(1), empty: series.length ? undefined : model.preview ? "Full history requires Pro." : "Collecting history", remoteKind: `${kind}-history` } : null} />}
+            chart={tab === "chart" ? { series, ...chartSelection, formatValue: (value) => kind === "hiring" ? count(value) : value.toFixed(1), empty: series.length ? undefined : model.preview ? "Full history requires Pro."
+              : model.chart.since ? `Collecting history since ${model.chart.since.slice(0, 10)}` : "Collecting history", remoteKind: `${kind}-history` } : null} />}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }} getItemKey={rowId}
           sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((old) => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
           onActivate={(row) => row.id.startsWith("locked:") ? void upgrade() : row.app ? setOpenApp(row.id) : row.symbol && row.symbol !== symbol && (tab === "peers" || !symbol) ? setOpenCompany(row.symbol) : row.details ? setOpenEvidence(row.id) : row.url ? void host.openExternal(row.url) : undefined}
@@ -170,8 +168,11 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
             if (column.id === "symbol" && typeof value === "string") return listingCell(value, colors, state.selected);
             if (column.id === "signal" && typeof value === "string") return { text: value, color: toneColor(SIGNAL_TONES[value] ?? "text", colors), keepColorWhenSelected: value === "Surge" || value === "Freeze" };
             const numeric = typeof value === "number";
-            const decimals = DECIMALS[column.id] ?? 0;
-            const text = numeric ? `${SIGNED_COLUMNS.has(column.id) && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}` : LABEL_COLUMNS.has(column.id) ? humanLabel(value) : column.id === "title" ? value.trim() : value;
+            if (column.id === "remote" && numeric) {
+              const known = row.values.remoteKnown;
+              return { text: remoteText(value, typeof known === "number" ? known : null) ?? "", value, color: colors.text };
+            }
+            const text = numeric ? attentionNumber(column.id, value) : LABEL_COLUMNS.has(column.id) ? humanLabel(value) : column.id === "title" ? value.trim() : value;
             if (column.id === "share" && numeric && tab === "mix") return { ...shareCell(text, maxShare ? value / maxShare : null, column.width, colors, state.selected), value };
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };

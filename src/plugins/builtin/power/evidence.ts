@@ -2,7 +2,7 @@ import type { PowerBoard, PowerHistory } from "../../../api-client/power";
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
-import { fetchPowerBoard, fetchAllPowerHistory, validatePowerBoard, validatePowerHistory } from "./client";
+import { fetchPowerBoard, fetchAllPowerHistory, fetchPowerTickerScopes, validatePowerBoard, validatePowerHistory } from "./client";
 import { otherRows, powerTab, projectRows } from "./model";
 import { powerQuery } from "./query";
 interface PowerEvidence {
@@ -29,7 +29,11 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
     const filter = powerQuery({ ...settings, ...resolved.options, tab }, symbol);
     const board = await fetchPowerBoard({ ...filter, limit: 100 });
     const history = tab === "history" ? await fetchAllPowerHistory(filter) : undefined;
-    return { settings: { powerSnapshot: { board, ...(history ? { history } : {}) } }, financials: [] };
+    // A ticker with nothing on this tab: the counts that say where its records are, captured with the rest.
+    const empty = !!symbol && tab !== "coverage" && !(tab === "history" ? history?.points.length : tab === "outcomes" ? board.rates.length
+      : tab === "utilities" ? board.exposure.length : board.projects.length);
+    const tickerScopes = empty && symbol ? await fetchPowerTickerScopes(symbol, tab, String(settings.context ?? resolved.options.context ?? "capacity")) : undefined;
+    return { settings: { powerSnapshot: { board, ...(history ? { history } : {}), ...(tickerScopes ? { tickerScopes } : {}) } }, financials: [] };
   },
   read(value) {
     if (!isRecord(value) || value.kind !== "power" || value.version !== 1 || value.complete !== true || !isRecord(value.board)

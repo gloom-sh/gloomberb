@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { equityFiveDayReturn, gpuAxisLabels, gpuBoardSections, gpuChangeWindows, gpuEquityRows, gpuHistorySeries, gpuHistoryChart, gpuHistoryViewport, gpuEventDate, gpuEventSections, gpuPricePeriods, gpuPriceLadder, gpuShortSource, gpuSource, gpuSparklineSeries } from "./model";
+import { equityFiveDayReturn, gpuAxisLabels, gpuBoardSections, gpuChangeWindows, gpuEquityGap, gpuEquityRows, gpuFamilies, gpuFamily, gpuHistorySeries, gpuHistoryChart, gpuHistoryViewport, gpuEventDate, gpuEventSections, gpuPricePeriods, gpuPriceLadder, gpuPreviewRows, gpuShortSource, gpuSource, gpuSparklineSeries } from "./model";
 import { gpuEvent, gpuRow } from "./test-fixture";
 
 describe("GPU observation charts", () => {
@@ -124,6 +124,38 @@ test("equities use the representative neocloud SXM series while cloud and AMD re
   const selectedAmd = gpuEquityRows(rows, "MI355X");
   expect(selectedAmd.find((row) => row.symbol === "AMD")?.reference?.id).toBe(amdNew.id);
   expect(selectedAmd.find((row) => row.symbol === "NVDA")?.reference?.id).toBe(flagship.id);
+});
+
+test("a typed GPU name reads as its family whatever its case, spacing, dashes or variant words", () => {
+  const families = gpuFamilies([gpuRow({ gpuModel: "A10" })]);
+  for (const typed of ["H100", "h100", "H-100", "h 100", "H100 80GB SXM", "h100-sxm", "H100SXM", "H1"]) expect(gpuFamily(typed, families)).toBe("H100");
+  // A whole name never reads as the longer one it begins.
+  expect(gpuFamily("A10", families)).toBe("A10");
+  expect(gpuFamily("a100", families)).toBe("A100");
+  expect(gpuFamily("rtx-pro-6000", families)).toBe("RTX PRO 6000");
+  expect(gpuFamily("RTX", families)).toBe("RTX PRO 6000");
+  expect(gpuFamily("B2", families)).toBe("B200");
+  expect(gpuFamily("gb300 nvl72", families)).toBe("GB300");
+  expect(gpuFamily("X100", families)).toBeNull();
+  expect(gpuFamily("  ", families)).toBeNull();
+});
+
+test("a free board without the GPU asked for reads its free preview rows, and each share says why it has no figure", () => {
+  const neocloud = gpuRow({ source: "aggregate", skuKey: "neocloud:H100:80:SXM", provider: "Neocloud list index", providerClass: "aggregate", pricePerGpuHr: 4.2 });
+  const preview = gpuPreviewRows([
+    { ...neocloud, pricePerGpuHr: 4.4, observedAt: "2026-10-02T19:00:00.000Z" }, neocloud,
+    gpuRow({ source: "ref-a", skuKey: "h100-sxm", provider: "Reference index A, H100 SXM", basis: "reference", provenance: "reference", memoryGb: null }),
+  ]);
+  // One row per series, the latest price, references left to the history.
+  expect(preview.map((row) => [row.id, row.pricePerGpuHr, row.changesLocked])).toEqual([["aggregate:neocloud:H100:80:SXM", 4.2, true]]);
+  const rows = gpuEquityRows(preview, "H100", true);
+  const nvda = rows.find((row) => row.symbol === "NVDA")!;
+  expect(nvda.reference?.id).toBe("aggregate:neocloud:H100:80:SXM");
+  const amzn = rows.find((row) => row.symbol === "AMZN")!;
+  expect([amzn.gap, gpuEquityGap(amzn)]).toEqual(["pro", "AWS H100 list"]);
+  // A full board that lists no such series says so, instead of a blank.
+  const full = gpuEquityRows(preview, "H100", false).find((row) => row.symbol === "AMZN")!;
+  expect([full.gap, gpuEquityGap(full)]).toEqual(["unlisted", "No AWS H100 list"]);
 });
 
 test("provider-class rows read as list indexes whether the server still says list median or already says list index", () => {

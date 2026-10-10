@@ -224,6 +224,8 @@ export type HeadlessBundleSection =
     title: string;
     columns?: HeadlessPaneColumn[];
     rows: HeadlessPaneRow[];
+    /** What the report says when `rows` is empty, in place of "No data.": why there are none, and what to run instead. */
+    empty?: string;
     entries?: never;
   }
   | {

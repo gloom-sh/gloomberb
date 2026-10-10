@@ -10,7 +10,10 @@ export const powerModule: PluginModule = {
     description: "Pro: interconnection queues, historical MW and outcomes, datacenter loads, utility exposure and generation capacity, with primary evidence.",
     keywords: ["power", "electricity", "interconnection", "grid", "datacenter", "utility", "renewables", "storage", "capacity"],
     shortcut: { prefix: "POWER", argKind: "text", argPlaceholder: "ticker", argOptional: true }, headless: powerHeadless,
-    createInstance: (_context, options) => ({ placement: "floating", params: { symbol: options?.symbol ?? options?.arg?.trim().toUpperCase() ?? "" } }) }],
+    createInstance: (_context, options) => {
+      const symbol = options?.symbol ?? options?.arg?.trim().toUpperCase() ?? "";
+      return { placement: "floating", params: { symbol }, ...(symbol ? { title: `POWER ${symbol}` } : {}) };
+    } }],
   setup(ctx) { for (const cache of [powerBoardCache, powerHistoryCache, powerDetailCache]) cache.attach(ctx.persistence); },
   dispose() { for (const cache of [powerBoardCache, powerHistoryCache, powerDetailCache]) cache.reset(); },
 };
