@@ -2,7 +2,7 @@ import type { PricePoint, TickerFinancials } from "../types/financials";
 import { canonicalExchange, resolveExchangeTimeZone } from "./exchanges";
 import { isRoundTheClockCoin } from "./crypto-pair";
 import { isCurrencyPairListing, latestFxWeekClose } from "./fx-market-hours";
-import { hasPublishedSessionCalendar, isRegularSessionTime, isTimestampStaleForExchangeSession, latestRegularSessionClose, latestRegularSessionOpen, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { hasPublishedSessionCalendar, historySourceWeekendDays, isRegularSessionTime, isTimestampStaleForExchangeSession, latestRegularSessionClose, latestRegularSessionOpen, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
@@ -218,16 +218,38 @@ export function isPriceHistoryStaleForCurrentWindow(
   const allowedLag = allowedBarLagMs(intervalMs);
   if (age <= allowedLag) return false;
   const exchange = options.exchange || "NASDAQ";
+  if (!isBehindLatestSession(latestTime, now, exchange, allowedLag)) return false;
+  // A venue whose chart source files another week (DFM's Sunday to Thursday)
+  // may end on the last session that week has: current under either week.
+  // Bars of a day that week lacks (a DFM Friday) answer to the venue's own.
+  const sourceWeekendDays = historySourceWeekendDays(exchange);
+  const timeZone = sessionCalendarTimeZone(exchange);
+  const latestWeekday = timeZone ? zonedWeekday(latestTime, timeZone) : null;
+  if (!sourceWeekendDays || latestWeekday == null || sourceWeekendDays.includes(latestWeekday)) return true;
+  return isBehindLatestSession(latestTime, now, exchange, allowedLag, sourceWeekendDays);
+}
+
+/**
+ * Whether bars ending at `latestTime`, older than one bar's lag, are behind
+ * the venue's sessions; `weekendDays` replaces the venue's days off.
+ */
+function isBehindLatestSession(
+  latestTime: number,
+  now: number,
+  exchange: string,
+  allowedLag: number,
+  weekendDays?: readonly number[],
+): boolean {
   // Bars that reach the close of the venue's latest session stay current
   // once it has closed, so a closed market keeps its last session until the
   // next one opens. A copy taken earlier in that session is still behind.
   // Asked before the quote rule below, which reads any US bar dated before
   // today as behind from 04:00 ET: right for a last price, wrong for bars
   // waiting for the next session's first one.
-  const regularSession = isRegularSessionTime(exchange, now);
+  const regularSession = isRegularSessionTime(exchange, now, weekendDays);
   if (regularSession !== null) {
-    const open = latestRegularSessionOpen(exchange, now);
-    const close = latestRegularSessionClose(exchange, now)?.close;
+    const open = latestRegularSessionOpen(exchange, now, weekendDays);
+    const close = latestRegularSessionClose(exchange, now, weekendDays)?.close;
     if (open !== null && close !== undefined && latestTime >= close - allowedLag) {
       if (!regularSession && close > open && latestTime >= open) return false;
       // After the next open they answer until its first delayed bar is due.
@@ -236,13 +258,18 @@ export function isPriceHistoryStaleForCurrentWindow(
   }
   if (
     resolveExchangeTimeZone(exchange)
-    && isTimestampStaleForExchangeSession(latestTime, exchange, now)
+    && isTimestampStaleForExchangeSession(latestTime, exchange, now, undefined, weekendDays)
   ) {
     return true;
   }
   const hasExchangeSession = Boolean(resolveExchangeTimeZone(exchange));
-  if (age <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) return hasExchangeSession;
+  if (now - latestTime <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) return hasExchangeSession;
   return !hasExchangeSession;
+}
+
+function zonedWeekday(time: number, timeZone: string): number {
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
 // Sources finish the closing auction and late prints some minutes after the

@@ -676,8 +676,9 @@ export class ProviderRouterHistoryRoutes {
       const behind = isRoundTheClockCoin(target.symbol, target.exchange || request.target.exchange)
         && [...attempts.outcomes.values()].some((outcome) => outcome.outcome === "stale");
       if (behind) throw new Error(`Latest history for ${target.symbol} is behind`);
-      // The service has no listing for the symbol: say it is not a ticker, not that no source answered.
-      throw noProviderError(request.missingProviderError, { notFound: attempts.misses.notFound }, request.target.symbol);
+      // A reason the service gave ("ADX listings have daily bars only.") says why; one that has no
+      // listing for the symbol says it is not a ticker; otherwise no source answered.
+      throw noProviderError(request.missingProviderError, attempts.misses, request.target.symbol);
     }
     return withReportedGaps(providerResult?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) });
   }

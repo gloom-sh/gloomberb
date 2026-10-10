@@ -49,7 +49,11 @@ const ROWS: Record<Venue, Row[]> = {
   ],
   DFM: [
     ["Saturday, Friday's session", "2026-10-10T12:00", "2026-10-09", null, true],
-    ["Saturday, Thursday's session: Friday is missing", "2026-10-10T12:00", "2026-10-08", null, false],
+    // The chart source files DFM Sunday to Thursday and has no Friday bars.
+    ["Friday in session, Thursday's session: the chart source's last", "2026-10-09T12:00", "2026-10-08", null, true],
+    ["Saturday, Thursday's session: the chart source's last", "2026-10-10T12:00", "2026-10-08", null, true],
+    ["Saturday, Wednesday's session: Thursday is missing", "2026-10-10T12:00", "2026-10-07", null, false],
+    ["Friday in session, bars that stopped at 10:30", "2026-10-09T12:00", "2026-10-09", "10:30", false],
     ["Sunday, closed, Friday's session", "2026-10-11T12:00", "2026-10-09", null, true],
     ["Monday before the open, Friday's session", "2026-10-12T09:00", "2026-10-09", null, true],
     ["Tuesday after the close", "2026-10-06T16:00", "2026-10-06", null, true],

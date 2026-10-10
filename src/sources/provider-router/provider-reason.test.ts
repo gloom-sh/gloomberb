@@ -19,6 +19,16 @@ test("a reason the provider gave replaces the generic no-provider wording on eve
   expect(providerMissReason(failures[2])).toBe(REASON);
 });
 
+test("history says why the service has none, as it wrote it", async () => {
+  const daily = "ADX listings have daily bars only.";
+  const miss = () => Promise.reject(createProviderMiss("UNSUPPORTED_RANGE", daily));
+  const router = new AssetDataRouter(null, [createEmptyAnswerProvider(daily, {
+    getPriceHistory: miss, getPriceHistoryWithMetadata: miss,
+  })]);
+  await expect(router.getPriceHistory("ALDAR", "ADX", "1D")).rejects.toThrow(daily);
+  await expect(router.getPriceHistoryWithMetadata("ALDAR", "ADX", "1D")).rejects.toThrow(daily);
+});
+
 test("without a reason the generic wording stays as it was", async () => {
   const router = new AssetDataRouter(null, [createEmptyAnswerProvider()]);
   await expect(router.getQuote("XAU/USD")).rejects.toThrow("No quote provider available for XAU/USD");

@@ -258,6 +258,41 @@ describe("TASE history between sessions", () => {
   });
 });
 
+describe("DFM history between sessions", () => {
+  // Dubai is UTC+4 and trades Monday to Friday, 10:00 to 15:00 (06:00Z to 11:00Z). The chart source
+  // files DFM Sunday to Thursday and has no Friday bars. A complete 5-minute copy ends with its 14:55
+  // bar, an hourly one with its 14:00 bar.
+  const stale = (last: string, at: string, interval: "5m" | "1h" = "5m") =>
+    isPriceHistoryStaleForCurrentWindow([{ date: new Date(last), close: 11 }], Date.parse(at),
+      { exchange: "DFM", symbol: "EMAAR", intervalMs: priceHistoryIntervalMs(interval) });
+  const THURSDAY = { "5m": "2026-10-08T10:55:00Z", "1h": "2026-10-08T10:00:00Z" } as const;
+  const FRIDAY = { "5m": "2026-10-09T10:55:00Z", "1h": "2026-10-09T10:00:00Z" } as const;
+  // Friday 12:00 and 16:00, Saturday, Sunday, and Monday 09:00 before the open.
+  const BETWEEN = ["2026-10-09T08:00:00Z", "2026-10-09T12:00:00Z", "2026-10-10T08:00:00Z", "2026-10-11T08:00:00Z",
+    "2026-10-12T05:00:00Z"];
+
+  test("Thursday's session, the chart source's last, answers from Friday's open until Monday's", () => {
+    for (const interval of ["5m", "1h"] as const) {
+      for (const at of BETWEEN) expect(stale(THURSDAY[interval], at, interval), `${interval} ${at}`).toBe(false);
+    }
+  });
+
+  test("Friday's bars, from a source that has them, answer to the venue's own week", () => {
+    for (const interval of ["5m", "1h"] as const) {
+      for (const at of BETWEEN.slice(2)) expect(stale(FRIDAY[interval], at, interval), `${interval} ${at}`).toBe(false);
+    }
+    // Friday's copy that stopped at 10:30 is behind at noon and after the close.
+    expect(stale("2026-10-09T06:30:00Z", "2026-10-09T08:00:00Z")).toBe(true);
+    expect(stale("2026-10-09T06:30:00Z", "2026-10-09T12:00:00Z")).toBe(true);
+  });
+
+  test("a session missing from the chart source's week is still behind", () => {
+    // Wednesday's session on Friday and on Saturday: Thursday is missing.
+    expect(stale("2026-10-07T10:55:00Z", "2026-10-09T08:00:00Z")).toBe(true);
+    expect(stale("2026-10-07T10:55:00Z", "2026-10-10T08:00:00Z")).toBe(true);
+  });
+});
+
 describe("round-the-clock coin history", () => {
   // 07:29Z on a Friday: the US market closed 11 hours ago and opens in six.
   const now = Date.parse("2026-10-09T07:29:00Z");
