@@ -584,7 +584,9 @@ export async function buildDesktopShotPayload(
       ?? data.quote?.listingExchangeName
       ?? data.quote?.exchangeName
       ?? "";
-    const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day";
+    const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day"
+      // KELLY's History tab reads monthly returns off five years of daily closes.
+      || resolved.pane.id === "kelly-sizer";
     if (fiveYearsDaily || resolved.pane.id === "iv-screen" || resolved.pane.id === "short-watch"
       || resolved.pane.id === "backtest" || resolved.pane.id === OPTIONS_PANE_ID) {
       // Generic 5Y snapshots can contain weekly bars. The snapshot provider

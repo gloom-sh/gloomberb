@@ -13,10 +13,24 @@ import { colors, priceColor } from "../../../theme/colors";
 import { Box } from "../../../ui";
 import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
 import type { KellySizingResult, SensitivityGrid } from "./types";
+import type { KellyHistoryInputs } from "./history";
 import { formatPct, formatSignedPct } from "./view";
 
 /** The longest result label ("Full growth"), which sets the band's label column. */
 const RESULT_LABEL_CHARS = 11;
+
+/** The inputs History reads off the ticker's monthly returns, ahead of the sizes. */
+export function buildKellyHistoryItems(inputs: KellyHistoryInputs): StatItem[] {
+  const payoff = inputs.downsideReturn < 0 ? inputs.upsideReturn / -inputs.downsideReturn : null;
+  return [
+    // The dates take a row of their own so a narrow pane never cuts them.
+    { id: "window", label: "Window", value: `${inputs.start} to ${inputs.end}`, detail: `${inputs.periods} monthly returns`, wide: true },
+    { id: "winRate", label: "Win rate", value: formatPct(inputs.winProbability, 1), detail: `${inputs.wins}/${inputs.periods}` },
+    { id: "avgGain", label: "Avg gain", value: formatSignedPct(inputs.upsideReturn), color: priceColor(inputs.upsideReturn) },
+    { id: "avgLoss", label: "Avg loss", value: formatSignedPct(inputs.downsideReturn), color: priceColor(inputs.downsideReturn) },
+    { id: "payoff", label: "Payoff", value: payoff == null ? "—" : `${formatNumber(payoff, 2)}x` },
+  ];
+}
 
 /**
  * The sizing result as one band under the inputs, laid out in the FieldGrid's

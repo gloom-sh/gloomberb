@@ -105,12 +105,20 @@ export interface SensitivityGrid {
   cells: SensitivityGridCell[][];
 }
 
-export const KELLY_MODES: Array<{ id: KellySizingMode; label: string }> = [
+const KELLY_MODES: Array<{ id: KellySizingMode; label: string }> = [
   { id: "binary", label: "Binary" },
   { id: "scenario", label: "Scenario" },
   { id: "risk-budget", label: "Risk" },
   { id: "prediction-market", label: "Market" },
   { id: "asymmetric", label: "Asym" },
+];
+
+/** The pane's tabs: the sizing modes, and History, which reads a binary bet off the ticker's monthly returns. */
+export type KellyPaneMode = KellySizingMode | "history";
+
+export const KELLY_PANE_MODES: Array<{ id: KellyPaneMode; label: string }> = [
+  ...KELLY_MODES,
+  { id: "history", label: "History" },
 ];
 
 export const DEFAULT_KELLY_COMMON_ASSUMPTIONS: KellyCommonAssumptions = {
