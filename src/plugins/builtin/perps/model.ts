@@ -116,12 +116,13 @@ const PERP_COLUMNS: Record<PerpColumnId, DataTableColumn> = {
   value: { id: "value", label: "Value %", width: 10, align: "right" },
 };
 // Columns in reading order, then the order a narrow pane gives them up in.
-export const BOARD_COLUMNS: PerpColumnId[] = ["market", "venue", "markPrice", "fundingRate", "fundingApr", "premium", "openInterestUsd", "oiChange24h", "longShare", "priceChange24h", "observedAt"];
+export const BOARD_COLUMNS: PerpColumnId[] = ["market", "venue", "markPrice", "fundingRate", "premium", "openInterestUsd", "oiChange24h", "longShare", "fundingApr", "priceChange24h", "observedAt"];
 // The venue goes last: the same market trades on several, and only the venue tells those rows apart. The long share
-// gives way before every figure a 100-column pane already showed, so it never pushes one of those off.
-const BOARD_DROPS: PerpColumnId[] = ["observedAt", "priceChange24h", "fundingApr", "longShare", "oiChange24h", "premium", "markPrice", "openInterestUsd", "venue"];
-export const COMPARE_COLUMNS: PerpColumnId[] = ["venue", "symbol", "markPrice", "fundingRate", "fundingRate8h", "fundingApr", "premium", "openInterestUsd", "oiChange24h", "longShare", "observedAt"];
-const COMPARE_DROPS: PerpColumnId[] = ["observedAt", "oiChange24h", "fundingApr", "longShare", "fundingRate", "premium", "markPrice", "openInterestUsd", "symbol"];
+// is what the board and the comparison are read for, so a 100-column pane keeps it and the annualised funding, which
+// only restates the funding rate, goes first (the 24h OI change next on the board, the per-interval rate on Compare).
+const BOARD_DROPS: PerpColumnId[] = ["observedAt", "fundingApr", "priceChange24h", "oiChange24h", "longShare", "premium", "markPrice", "openInterestUsd", "venue"];
+export const COMPARE_COLUMNS: PerpColumnId[] = ["venue", "symbol", "markPrice", "fundingRate", "fundingRate8h", "premium", "openInterestUsd", "oiChange24h", "longShare", "fundingApr", "observedAt"];
+const COMPARE_DROPS: PerpColumnId[] = ["observedAt", "fundingApr", "oiChange24h", "fundingRate", "longShare", "premium", "markPrice", "openInterestUsd", "symbol"];
 export const RANKING_COLUMNS: PerpColumnId[] = ["market", "venue", "value", "openInterestUsd"];
 
 /** The columns that fit the pane, the least read going first; before the last of them goes, a long market name gives up its tail. */

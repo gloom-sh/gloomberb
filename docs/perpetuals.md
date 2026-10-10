@@ -4,7 +4,7 @@
 
 Stock links follow the selected listing and only appear when its underlying identity is confirmed. The same ticker on another exchange may belong to another company. A linked cross-listing still uses the perpetual's own reference listing, currency and share units for its premium.
 
-**Board** lists markets by venue: mark, funding per interval, APR, premium, USD open interest and its 24h change, the share of accounts net long (Long %), the 24h price move and when it was observed. Filter by asset class and venue, sort by open interest, funding, OI change, premium or long share, and search by market. The venue filter offers the venues in the result.
+**Board** lists markets by venue: mark, funding per interval, premium, USD open interest and its 24h change, the share of accounts net long (Long %), APR, the 24h price move and when it was observed. Filter by asset class and venue, sort by open interest, funding, OI change, premium or long share, and search by market. The venue filter offers the venues in the result.
 
 **Rankings** shows five lists of up to ten markets: highest and lowest 8h funding, 24h OI surges, premium dislocations and closed-market dislocations.
 

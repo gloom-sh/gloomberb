@@ -53,11 +53,13 @@ test("a narrow pane gives up figures before the venue, which alone tells one mar
   expect(ids(compareColumns(44))).toEqual(["venue", "symbol", "fundingRate8h"]);
 });
 
-test("the long share joins the board and compare without pushing off what a 100-column pane showed, and its history reads in points", () => {
+test("a 100-column board and comparison keep the long share, which the annualised funding follows, and its history reads in points", () => {
   const ids = (columns: ReturnType<typeof boardColumns>) => columns.map((column) => column.id);
-  expect(ids(boardColumns(100))).toEqual(["market", "venue", "markPrice", "fundingRate", "premium", "openInterestUsd", "oiChange24h"]);
-  expect(ids(compareColumns(100))).toEqual(["venue", "symbol", "markPrice", "fundingRate", "fundingRate8h", "premium", "openInterestUsd"]);
-  expect(ids(compareColumns(110))).toContain("longShare");
+  expect(ids(boardColumns(100))).toEqual(["market", "venue", "markPrice", "fundingRate", "premium", "openInterestUsd", "longShare"]);
+  expect(ids(compareColumns(100))).toEqual(["venue", "symbol", "markPrice", "fundingRate8h", "premium", "openInterestUsd", "longShare"]);
+  // Wide enough for all of them, the annualised funding follows the long share and the observation time stays last.
+  expect(ids(boardColumns(200)).slice(-4)).toEqual(["longShare", "fundingApr", "priceChange24h", "observedAt"]);
+  expect(ids(compareColumns(200)).slice(-3)).toEqual(["longShare", "fundingApr", "observedAt"]);
   expect(perpCellText(venueRow("binance", { longShortRatio: longShort() }), "longShare")).toBe("61.8%");
   // A venue that publishes none, and a server older than the series, show a dash, never a number.
   expect(perpCellText(perpRow({ longShortRatio: null, longShortRatioReason: "unsupported" }), "longShare")).toBe("--");
