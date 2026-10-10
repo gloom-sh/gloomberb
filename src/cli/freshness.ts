@@ -25,17 +25,20 @@ export function rowsFreshness(
 }
 
 /** One row per quote shown, as `fn` quote reports carry them: live, delayed or stale for its session. */
-function quoteFreshnessRow(quote: Quote): HeadlessPaneRow {
-  return { ...quoteFreshnessFields(quote), updatedAt: quote.lastUpdated };
+function quoteFreshnessRow(quote: Quote, now: number): HeadlessPaneRow {
+  return { ...quoteFreshnessFields(quote, now), updatedAt: quote.lastUpdated };
 }
 
-/** Worst of across the quotes shown, dated by the newest. Quotes that failed to load say nothing. */
+/**
+ * Worst of across the quotes shown, dated by the newest, with their delay and
+ * where their markets stand. Quotes that failed to load say nothing.
+ */
 export function quotesFreshness(
   quotes: Iterable<Quote | null | undefined>,
   declared?: HeadlessPaneFreshness,
   now = Date.now(),
 ): ReportFreshness | undefined {
-  const rows = [...quotes].filter((quote): quote is Quote => quote != null).map(quoteFreshnessRow);
+  const rows = [...quotes].filter((quote): quote is Quote => quote != null).map((quote) => quoteFreshnessRow(quote, now));
   return rows.length > 0 ? rowsFreshness(rows, declared, undefined, now) : undefined;
 }
 

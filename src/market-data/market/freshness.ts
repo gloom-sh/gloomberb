@@ -321,6 +321,39 @@ export function latestRegularSessionOpen(exchange: string | undefined, time: num
 }
 
 /**
+ * The open of the first regular session after `time`, with its local date and
+ * the venue's zone: the published calendar for US venues, otherwise the
+ * venue's local open on the next weekday that is not a published closure. Null
+ * for round-the-clock venues and venues without a known open hour.
+ */
+export function nextRegularSessionOpen(
+  exchange: string | undefined,
+  time: number,
+): { date: string; open: number; timeZone: string } | null {
+  const canonical = canonicalExchange(exchange);
+  const timeZone = sessionCalendarTimeZone(canonical);
+  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
+  const minutes = REGULAR_OPEN_MINUTES[canonical];
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
+  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
+    const date = new Date((today + offset) * MS_PER_DAY).toISOString().slice(0, 10);
+    const published = getPublishedUsEquitySession(canonical, date);
+    let open: number | null = null;
+    if (published) {
+      if (published.kind === "session") open = published.open;
+    } else if (minutes === undefined) {
+      return null;
+    } else if (isLocalTradingDay(canonical, date)) {
+      open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
+        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
+    }
+    if (open != null && open > time) return { date, open, timeZone };
+  }
+  return null;
+}
+
+/**
  * Whether `time` is inside a regular session: at or after its open and
  * before its close. Null for venues without known hours.
  */

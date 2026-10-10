@@ -55,6 +55,11 @@ export interface DesktopPaneShotPayload {
   deviceScaleFactor?: number;
   /** Label drawn at the right edge of the pane title bar; null draws nothing. */
   watermark?: string | null;
+  /**
+   * The pane footer keeps a row for the capture's dated status line, filled
+   * once the pane has loaded. Absent for `--no-status` and for reports.
+   */
+  statusLine?: boolean;
   tickers: TickerRecord[];
   /** Broker accounts as last synced, by profile, so a broker portfolio shows its equity and cash. */
   brokerAccounts?: Record<string, BrokerAccount[]>;
@@ -134,7 +139,15 @@ export interface DesktopPaneShotRenderResult {
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
   semanticUi: RemoteUiNodeSnapshot[];
+  /** The status line drawn in the capture's footer, as it fit the width. */
+  statusLine?: string | null;
 }
+
+/**
+ * The status line variants for a capture, longest first, worked out from what
+ * the pane rendered; null leaves the footer row empty.
+ */
+type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => readonly string[] | null | Promise<readonly string[] | null>;
 
 type CdpResponse = {
   id?: number;
@@ -172,7 +185,7 @@ export async function renderDesktopPaneScreenshot(
   payload: DesktopPaneShotPayload,
   outputPath: string,
   apiProxy: DesktopPaneShotApiProxy,
-  options: { captureImage?: boolean; bridge?: DesktopPaneShotBridge } = {},
+  options: { captureImage?: boolean; bridge?: DesktopPaneShotBridge; statusLine?: ShotStatusLine } = {},
 ): Promise<DesktopPaneShotRenderResult> {
   const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
   let server: ReturnType<typeof Bun.serve> | null = null;
@@ -191,6 +204,7 @@ export async function renderDesktopPaneScreenshot(
       deviceScaleFactor: payload.deviceScaleFactor ?? DEFAULT_DEVICE_SCALE_FACTOR,
       userDataDir: join(tempDir, "chrome-profile"),
       captureImage: options.captureImage !== false,
+      statusLine: payload.statusLine ? options.statusLine : undefined,
     });
   } finally {
     server?.stop(true);
@@ -411,6 +425,7 @@ async function capturePageScreenshot({
   deviceScaleFactor,
   userDataDir,
   captureImage,
+  statusLine,
 }: {
   chrome: string;
   url: string;
@@ -420,6 +435,7 @@ async function capturePageScreenshot({
   deviceScaleFactor: number;
   userDataDir: string;
   captureImage: boolean;
+  statusLine?: ShotStatusLine;
 }): Promise<DesktopPaneShotRenderResult> {
   await mkdir(userDataDir, { recursive: true });
   const port = 43000 + Math.floor(Math.random() * 10000);
@@ -466,6 +482,10 @@ async function capturePageScreenshot({
     });
     await waitForShotReady(session);
     const rendered = await readRenderedPaneState(session);
+    if (captureImage && statusLine) {
+      const variants = await statusLine(rendered);
+      rendered.statusLine = variants?.length ? await fitShotStatusLine(session, variants) : null;
+    }
     if (captureImage) {
       const screenshot = await session.send("Page.captureScreenshot", {
         format: "png",
@@ -742,6 +762,20 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
     accessGate,
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };
+}
+
+/** Draws the first variant that fits the pane footer, and returns what it drew. */
+async function fitShotStatusLine(session: CdpSession, variants: readonly string[]): Promise<string | null> {
+  const result = await session.send("Runtime.evaluate", {
+    expression: `(() => {
+      const fit = window.__GLOOM_CLI_SHOT_FIT_STATUS__;
+      return fit ? fit(${JSON.stringify(variants)}) : null;
+    })()`,
+    awaitPromise: true,
+    returnByValue: true,
+  }) as { result?: { value?: unknown } };
+  const value = result.result?.value;
+  return typeof value === "string" ? value : null;
 }
 
 async function waitForPageWebSocket(port: number, targetUrl: string): Promise<string> {

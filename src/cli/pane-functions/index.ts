@@ -118,6 +118,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
         theme: parsed.theme,
         scale: parsed.scale,
         watermark: parsed.watermark,
+        statusLine: parsed.status !== false,
         options: parsed.options,
       });
       if (parsed.requireBotSafe && !result.usable) {
@@ -137,6 +138,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
             ["Rows", String(data.rowCount)],
             ["Status", issues.length > 0 ? cliStyles.warning(issues.join(", ")) : cliStyles.success("complete")],
           ];
+          if (data.render.statusLine) stats.push(["Status line", data.render.statusLine]);
           if (data.unusableReason) stats.push(["Reason", data.unusableReason]);
           if (data.notices?.length) stats.push(["Notes", data.notices.join(" ")]);
           if (data.unavailableSymbols.length > 0) stats.push(["No data for", data.unavailableSymbols.join(", ")]);

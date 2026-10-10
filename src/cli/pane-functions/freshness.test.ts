@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneDefinition, HeadlessPaneResult } from "../../types/plugin";
-import { deriveHeadlessFreshness, formatFreshnessLine } from "./freshness";
+import { cloudNewsFreshness } from "../../plugins/builtin/shared/report-freshness";
+import { delayLength, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, statusLineVariants } from "./freshness";
 
 const NOW = Date.parse("2026-10-09T05:00:00Z"); // Friday, before the US open
 const rows = (freshness?: HeadlessPaneDefinition["freshness"]) => ({ shape: "rows" as const, ...(freshness ? { freshness } : {}) });
@@ -9,15 +10,43 @@ const line = (definition: Pick<HeadlessPaneDefinition, "shape" | "freshness">, r
 );
 
 describe("report freshness", () => {
+  test("says how long a delay is in minutes or hours, as a range when rows differ", () => {
+    expect([15, 20, 60, 90, 720, 3 * 24 * 60].map(delayLength)).toEqual(["15 min", "20 min", "1 h", "90 min", "12 h", "3 days"]);
+    const delayed = (delayMinutes: number) => ({ dataSource: "delayed", delayMinutes, lastUpdated: NOW - 20 * 60_000 });
+    expect(line(rows(), { rows: [delayed(15), delayed(20)] })).toBe("Source: Gloom Cloud · Fri 9 Oct 04:40 UTC · 15-20 min delayed");
+    // News held back for an account without real-time access says how far; with it, the wire is live.
+    const stories = { rows: [{ publishedAt: "2026-10-08T16:30:00Z" }, { publishedAt: "2026-10-08T15:00:00Z" }] };
+    expect(line(rows(cloudNewsFreshness(false)), stories)).toBe("Source: Gloom Cloud · Thu 8 Oct 16:30 UTC · 12 h delayed");
+    expect(line(rows(cloudNewsFreshness(true)), stories)).toBe("Source: Gloom Cloud · Thu 8 Oct 16:30 UTC · live");
+    expect(line(rows(), { rows: [{ dataSource: "delayed", lastUpdated: NOW - 60_000 }] }))
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 04:59 UTC · delayed");
+  });
+
+  test("a narrow capture keeps the date and the delay, shortening the rest first", () => {
+    const freshness = deriveHeadlessFreshness(rows(), { rows: [
+      { dataSource: "delayed", delayMinutes: 15, stale: false, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") },
+      { dataSource: "delayed", delayMinutes: 20, stale: true, sessionExchange: "ASX", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-07T05:10:00Z") },
+    ] }, Date.parse("2026-10-10T13:00:00Z"));
+    expect(formatStatusLine(freshness))
+      .toBe("Fri 9 Oct close (oldest Wed 7 Oct) · 15-20 min delayed, 1 of 2 stale · markets closed until Mon");
+    expect(statusLineVariants(freshness)).toEqual([
+      "Fri 9 Oct close (oldest Wed 7 Oct) · 15-20 min delayed, 1 of 2 stale · markets closed until Mon",
+      "Fri 9 Oct close (oldest Wed 7 Oct) · 15-20 min delayed, 1 of 2 stale · reopens Mon",
+      "Fri 9 Oct close · 15-20 min delayed, 1 of 2 stale · reopens Mon",
+      "Fri 9 Oct close · 15-20 min delayed, 1 stale · reopens Mon",
+      "Fri 9 Oct close · 15-20 min delayed, 1 stale",
+    ]);
+  });
+
   test("is live only when the data says so, and the worst row decides", () => {
     const live = { dataSource: "live", lastUpdated: NOW - 60_000 };
     expect(line(rows(), { rows: [live, live] }))
-      .toBe("Source: Gloom Cloud | As of 2026-10-09 04:59 UTC | Live");
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 04:59 UTC · live");
     expect(line(rows(), { rows: [live, { dataSource: "delayed", delayMinutes: 15, lastUpdated: NOW - 20 * 60_000 }] }))
-      .toBe("Source: Gloom Cloud | As of 2026-10-09 04:59 UTC | Delayed 15 min");
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 04:59 UTC · 15 min delayed");
     // A dated row with no feed signal is not called live.
     expect(line(rows(), { rows: [{ price: 1, lastUpdated: NOW - 60_000 }] }))
-      .toBe("Source: Gloom Cloud | As of 2026-10-09 04:59 UTC | Status not reported");
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 04:59 UTC · status not reported");
   });
 
   test("a partly stale board names the share; a wholly stale one says how old it is", () => {
@@ -26,20 +55,20 @@ describe("report freshness", () => {
     const partly = deriveHeadlessFreshness(rows(), { rows: [fresh, fresh, old], metadata: { stale: true } }, NOW);
     expect(partly).toMatchObject({ status: "stale", feed: "delayed", delayMinutes: 10, staleCount: 1, observationCount: 3, oldest: "2026-09-15T16:40:00.000Z" });
     expect(formatFreshnessLine(partly))
-      .toBe("Source: Gloom Cloud | As of 2026-10-09 04:50 UTC (oldest 2026-09-15) | Delayed 10 min, 1 of 3 stale");
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 04:50 UTC (oldest Tue 15 Sep) · 10 min delayed, 1 of 3 stale");
     expect(line(rows({ status: "delayed", maxAgeMinutes: 60 }), { rows: [{ quoteTime: "2026-10-09T02:00:00Z" }] }))
-      .toBe("Source: Gloom Cloud | As of 2026-10-09 02:00 UTC | Stale (3 hours old)");
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 02:00 UTC · stale (3 hours old)");
   });
 
   test("filed data is never stale for its age, only for a release it missed", () => {
     const filings = rows({ source: "SEC EDGAR", status: "not-a-feed", basis: "filed data", observedKey: "filedAt", oldest: null });
     expect(line(filings, { rows: [{ filedAt: "2025-02-01" }, { filedAt: "2019-03-01" }] }))
-      .toBe("Source: SEC EDGAR | As of 2025-02-01 | Not a live feed (filed data)");
+      .toBe("Source: SEC EDGAR · Sat 1 Feb 2025 · not a live feed (filed data)");
     const release = { source: "BLS", status: "not-a-feed" as const, basis: "monthly release", asOf: "2026-09-11T12:30:00Z" };
     expect(line(rows(), { rows: [], freshness: { ...release, nextExpectedAt: "2026-10-14T12:30:00Z" } }))
-      .toBe("Source: BLS | As of 2026-09-11 12:30 UTC | Not a live feed (monthly release)");
+      .toBe("Source: BLS · Fri 11 Sep 12:30 UTC · not a live feed (monthly release)");
     expect(line(rows(), { rows: [], freshness: { ...release, nextExpectedAt: "2026-10-07T12:30:00Z" } }))
-      .toBe("Source: BLS | As of 2026-09-11 12:30 UTC | Stale (27 days old)");
+      .toBe("Source: BLS · Fri 11 Sep 12:30 UTC · stale (27 days old)");
   });
 
   test("published-data metadata flags apply only without row flags and can be ignored", () => {
@@ -94,7 +123,7 @@ describe("report freshness", () => {
 
   test("without a dated observation it cites the retrieval time instead of inventing an as-of", () => {
     expect(line(rows({ source: "Your inputs", status: "not-a-feed", basis: "calculator" }), { rows: [{ value: 1 }] }))
-      .toBe("Source: Your inputs | Retrieved 2026-10-09 05:00 UTC | Not a live feed (calculator)");
+      .toBe("Source: Your inputs · retrieved Fri 9 Oct 05:00 UTC · not a live feed (calculator)");
   });
 
   test("prints the same UTC times whatever the host's zone", async () => {
@@ -118,6 +147,6 @@ describe("report freshness", () => {
     expect(tokyo).toBe(losAngeles);
     expect(tokyo).toContain("2026-10-08 23:59 UTC");
     expect(tokyo).toContain("2026-10-07 11:27 UTC");
-    expect(tokyo).toContain("As of 2026-10-08 23:59 UTC");
+    expect(tokyo).toContain("Thu 8 Oct 23:59 UTC");
   });
 });

@@ -239,7 +239,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues; a market opens its Pro history and evidence; free preview |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap; stablecoins on their own tab |
-| `ECO` | Economic events and releases |
+| `ECO` | Economic events and releases, grouped by day and timed in UTC |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC [curve] [YYYY-MM-DD]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve and a World tab; CLI also accepts `--curve`, `--date`, `--compare 1Y` and `--tab world` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
@@ -498,18 +498,28 @@ A report with several tables, such as `WEI` by region or a bundle of sections, w
 
 ### How current a report is
 
-Every `gloomberb fn` text report ends with one line naming its source, its as-of time in UTC and its status, such as `Source: Gloom Cloud | As of 2026-10-09 00:08 UTC | Delayed 10 min`; `--json` carries the same facts as `data.freshness` (`source`, `asOf`, `status`, `delayMinutes`, `retrievedAt`). The plain commands that print market data end the same way, with the facts in `metadata.freshness` under `--json`: `quote`, `compare`, `ticker`, `history`, `financials`, `fundamentals`, `valuation`, `options`, `news`, `filings`, `analyst`, `events`, `earnings`, `movers`, `indices`, `sectors`, `econ`, `fred`, `yield-curve`, `correlation`, and `portfolio show` / `watchlist show`. `--csv` ends `fn` reports, `financials`, `fundamentals` and `valuation` with the same line as a `#` comment after the rows ([CSV and NDJSON from reports](#csv-and-ndjson-from-reports)); for other commands `--csv` and `--ndjson` stay rows only. `fundamentals` and `valuation` are dated by when their figures were observed and name the newest statement period those figures run through, such as `Not a live feed (reported through 2026-06-30)`. The as-of is the newest observation in the data, with the oldest named when it is more than a day older; when nothing in the data is dated the line says when it was retrieved instead. The status is one of four:
+Every `gloomberb fn` text report ends with one line naming its source and saying, in words, how current its data is: when it is from, how far it is held back, and where its markets stand, such as `Source: Gloom Cloud · Fri 9 Oct close · 15 min delayed · markets closed until Mon`. The plain commands that print market data end the same way: `quote`, `compare`, `ticker`, `history`, `financials`, `fundamentals`, `valuation`, `options`, `news`, `filings`, `analyst`, `events`, `earnings`, `movers`, `indices`, `sectors`, `econ`, `fred`, `yield-curve`, `correlation`, and `portfolio show` / `watchlist show`. `--json` carries the same facts as `data.freshness` for `fn` and `metadata.freshness` for the plain commands (`source`, `asOf`, `status`, `delayMinutes`, `retrievedAt`, and `asOfClose`, `market`, `minDelayMinutes`, `oldest` when they apply). `--csv` ends `fn` reports, `financials`, `fundamentals` and `valuation` with the same line as a `#` comment after the rows ([CSV and NDJSON from reports](#csv-and-ndjson-from-reports)); for other commands `--csv` and `--ndjson` stay rows only.
+
+The line has up to three parts after the source:
+
+- **When.** The newest observation, in UTC with the zone named (`Sat 10 Oct 00:15 UTC`), or a date for daily data (`Fri 9 Oct`), with the year when it is not this year. Quotes whose markets have closed since read as that session's close (`Fri 9 Oct close`), after-hours prints included. The oldest is named when it is more than a day older (`(oldest Thu 8 Oct)`); when nothing in the data is dated the line says when it was retrieved instead. `fundamentals` and `valuation` are dated by when their figures were observed and name the newest statement period those figures run through, such as `not a live feed (reported through 2026-06-30)`.
+- **How current.** One of the four states below. A delay says its length in minutes or hours, from the data: a delayed quote by how far its venue's delayed feed runs behind (15 min, 20 min for ASX, KRX, KOSDAQ, TWSE, TPEX, SGX and NZX), a range when the rows differ (`15-20 min delayed`), news by the 12 hours it is held back without real-time access (`12 h delayed`), and a feed that states its own delay by that. Real-time data says `live`.
+- **Markets.** For quotes, where their venues stand now, from the exchange calendars (weekends and published holidays): `markets open`, `pre-market, opens 13:30 UTC`, `after hours`, or `markets closed until Mon`, the reopening as a UTC time when it is later the same day and as the venue's weekday otherwise. Crypto trades around the clock and never reads closed; a board whose venues disagree, such as Tokyo open and New York closed, leaves this part out, as does a venue whose reopening is not known.
+
+The status is one of four:
 
 | Status | Meaning |
 |---|---|
 | Live (`live`) | A real-time feed: the data itself says so, such as a real-time quote or a streaming venue |
-| Delayed (`delayed`) | A feed that is not real-time, held back on purpose (with the minutes when the source states them) or a snapshot refreshed on a schedule |
+| Delayed (`delayed`) | A feed that is not real-time, held back on purpose (with its length when the data states it) or a snapshot refreshed on a schedule |
 | Stale (`stale`) | The newest observation is older than its kind allows: a quote from an earlier session, a daily series more than a session behind, a release that missed its schedule. The line says how old, or how many rows are stale when only some are |
 | Not a live feed (`not-a-feed`) | Data that is not a feed: filings, fundamentals, calendars, published statistics, calculators, your own portfolio. Old data of this kind is not stale unless it missed a scheduled release |
 
 A report that loaded can still carry caveats: what it leaves out, what it assumes, how a value was marked. The text report prints them under `Notes:`, one per line, and keeps `Errors:` for what failed, such as a source that did not answer. `--json` carries both as `data.notes` and `data.errors`; a note never marks a report incomplete.
 
-A rendered-view report (a pane without a structured report) names the pane's source; its status is the one the pane declares for its data or its own footer states, and otherwise reads "Status not reported".
+A rendered-view report (a pane without a structured report) names the pane's source; its status is the one the pane declares for its data or its own footer states, and otherwise reads "status not reported".
+
+`gloomberb shot` draws the same line, without the source, in the pane footer of the image: `Fri 9 Oct close · 15 min delayed · markets closed until Mon`. It sits inside the requested size (the pane's body gives up its last row for it) and is worked out the same way, from the quotes the pane shows, or from what the pane says its data is (a news pane's delay, a calendar, filings). In a narrow image the line keeps the date and the delay and shortens the rest first (`reopens Mon`), then leaves out the oldest observation, the stale total and the market part, and as a last resort cuts the middle. The shot's verification output prints it as `Status line`, and `--json` carries it as `render.statusLine` with the facts as `freshness`. `--no-status` leaves it out and renders the image exactly as before.
 
 ## Plugins pane
 

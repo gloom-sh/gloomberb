@@ -121,7 +121,7 @@ describe("serializeCliResult", () => {
       retrievedAt: "2026-10-09T13:30:00.000Z",
     };
     const result = { data: [{ symbol: "AAPL" }], metadata: { range: "1Y" }, freshness };
-    const line = "Source: Gloom Cloud | As of 2026-10-09 13:22 UTC | Delayed 15 min";
+    const line = "Source: Gloom Cloud · Fri 9 Oct 13:22 UTC · 15 min delayed";
     const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
     expect(plain(serializeCliResult(result, baseOptions)).split("\n").slice(-2)).toEqual(["", line]);
     expect(plain(serializeCliResult(result, baseOptions, { text: () => "Report" }))).toBe(`Report\n\n${line}`);

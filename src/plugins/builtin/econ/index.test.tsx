@@ -125,28 +125,24 @@ describe("EconCalendarPane", () => {
     expect(frame).not.toContain("Release 0 m/m");
   });
 
-  // The payload's `time` is the UTC clock; rows group by local day. The test
-  // runs in whatever zone the process has, so it places the release on the far
-  // side of local midnight from its UTC day: 00:30 tomorrow east of UTC, 23:30
-  // today west of it. Changing process.env.TZ here would leak into later files.
-  test("shows a release at its local time under its local day", async () => {
+  // Rows group by UTC day and print the UTC clock, as `gloomberb econ` does,
+  // whatever zone the process runs in. The release sits at 23:30 UTC, which is
+  // after local midnight east of UTC; the test cannot change process.env.TZ
+  // without leaking into later files, so it checks the zone it has.
+  test("shows a release at its UTC time under its UTC day, with the zone in the header", async () => {
     const now = new Date();
-    const eastOfUtc = now.getTimezoneOffset() <= 0;
-    const at = eastOfUtc
-      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 30)
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 30);
+    const at = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 30));
     const iso = at.toISOString();
-    const utcClock = iso.slice(11, 16);
     const localClock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const separator = `${eastOfUtc ? "TOMORROW" : "TODAY"} · ${days[at.getDay()]} ${months[at.getMonth()]} ${at.getDate()}`;
+    const separator = `TODAY · ${days[at.getUTCDay()]} ${months[at.getUTCMonth()]} ${at.getUTCDate()}`;
 
     const persistence = new MemoryPluginPersistence();
     persistence.seedResource("calendar", "global", [{
       id: "au",
       date: iso,
-      time: utcClock,
+      time: "23:30",
       country: "AU",
       event: "Flash Manufacturing PMI",
       impact: "medium",
@@ -157,8 +153,9 @@ describe("EconCalendarPane", () => {
     attachEconCalendarPersistence(persistence);
     const frame = await renderPane(110);
 
+    expect(frame).toContain("TIME (UTC)");
+    expect(frame).toContain("23:30");
+    if (localClock !== "23:30") expect(frame).not.toContain(localClock);
     expect(frame).toContain(separator);
-    expect(frame).toContain(localClock);
-    if (utcClock !== localClock) expect(frame).not.toContain(utcClock);
   });
 });

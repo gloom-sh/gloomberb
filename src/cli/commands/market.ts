@@ -81,6 +81,8 @@ import { fundamentalsFreshness, quotesFreshness, rowsFreshness } from "../freshn
 import {
   barHistoryFreshness,
   barResolutionFromDates,
+  cloudNewsFreshness,
+  cloudRealtimeAccess,
   REPORTED_DATA,
   SEC_FILINGS,
 } from "../../plugins/builtin/shared/report-freshness";
@@ -689,9 +691,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ctx.printResult({
       data: articles,
       metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null },
-      freshness: rowsFreshness(newsRows(articles), {
-        status: "not-a-feed", basis: "published stories", observedKey: "publishedAt", oldest: null,
-      }),
+      freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
     }, {
       ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,

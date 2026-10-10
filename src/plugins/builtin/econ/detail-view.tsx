@@ -29,7 +29,7 @@ import { Box, Text } from "../../../ui";
 import { displayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
-import { actualColor, timeLabel } from "./calendar-model";
+import { actualColor, CALENDAR_TIME_ZONE_LABEL, timeLabel } from "./calendar-model";
 import type { EconEvent } from "./types";
 
 interface EconDetailViewProps {
@@ -195,7 +195,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     ...(event.actual ? [{ id: "actual", label: "Actual", value: event.actual, color: actualColor(event.actual, event.forecast) }] : []),
     ...(event.forecast ? [{ id: "forecast", label: "Forecast", value: event.forecast }] : []),
     ...(event.prior ? [{ id: "prior", label: "Prior", value: event.prior }] : []),
-    { id: "time", label: "Release", value: timeLabel(event.date) },
+    { id: "time", label: "Release", value: `${timeLabel(event.date)} ${CALENDAR_TIME_ZONE_LABEL}` },
   ];
 
   const projected = useMemo(
