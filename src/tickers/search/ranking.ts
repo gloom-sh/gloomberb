@@ -3,6 +3,7 @@ import type {
   TickerSearchRankableItem,
 } from "./types";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
+import { currencyPairCode } from "../../utils/currency-pair";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
 
@@ -121,15 +122,8 @@ export function isExplicitMarketSymbol(symbol: string): boolean {
   return /[=^]/.test(symbol) || /^[A-Z]{3}\/[A-Z]{3}$/i.test(symbol.trim());
 }
 
-function forexPair(symbol: string): string | null {
-  if (/^[A-Z]{3}\/[A-Z]{3}$/.test(symbol)) return symbol.replace("/", "");
-  if (/^[A-Z]{6}=X$/.test(symbol)) return symbol.slice(0, -2);
-  if (/^[A-Z]{3}=X$/.test(symbol)) return `USD${symbol.slice(0, -2)}`;
-  return null;
-}
-
 export function getForexQuoteCurrency(symbol: string): string | undefined {
-  return forexPair(parsePublicTickerKey(normalizeTickerSymbol(symbol)).symbol)?.slice(3);
+  return currencyPairCode(normalizeTickerSymbol(symbol))?.slice(3);
 }
 
 /** Venue and market syntax must survive exact matching. Only explicit FX forms are equivalent. */
@@ -145,12 +139,14 @@ function matchesQualifiedTicker(
   const exchanges = [candidate.exchange, item.exchangeLabel, item.primaryExchangeLabel, item.right]
     .filter((value): value is string => !!value);
   if (requested.exchange) {
-    return candidate.symbol === requested.symbol
+    // EURUSD:CCY and EURUSD:FX name the pair listed as EURUSD=X on CCY.
+    const pair = currencyPairCode(requested.symbol, requested.exchange);
+    return (candidate.symbol === requested.symbol || (pair != null && currencyPairCode(candidate.symbol) === pair))
       && exchanges.some((exchange) => canonicalExchange(exchange) === requested.exchange);
   }
   if (isExplicitMarketSymbol(requested.symbol)) {
-    const pair = forexPair(requested.symbol);
-    return candidate.symbol === requested.symbol || (pair != null && forexPair(candidate.symbol) === pair);
+    const pair = currencyPairCode(requested.symbol);
+    return candidate.symbol === requested.symbol || (pair != null && currencyPairCode(candidate.symbol) === pair);
   }
   return exchanges.some((exchange) => getListingSymbol(candidate.symbol, exchange).toUpperCase() === normalized);
 }
@@ -427,7 +423,7 @@ export function buildSymbolAliases(symbol: string): string[] {
   const normalizedSymbol = normalizeTickerSymbol(symbol);
   if (!normalizedSymbol) return [];
   if (isExplicitMarketSymbol(normalizedSymbol)) {
-    const pair = forexPair(normalizedSymbol);
+    const pair = currencyPairCode(normalizedSymbol);
     return pair
       ? [...new Set([normalizedSymbol, `${pair}=X`, `${pair.slice(0, 3)}/${pair.slice(3)}`])]
       : [normalizedSymbol];

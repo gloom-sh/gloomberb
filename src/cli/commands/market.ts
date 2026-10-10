@@ -576,7 +576,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const identity = listingIdentity(listing, quote);
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
     const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
-    const unit = historyUnit(listing.symbol, listed ?? quote);
+    const unit = historyUnit(listing.key, listed ?? quote);
     const data = historyRows(points, resolution, unit.currency);
     const interval = data[0]?.interval ?? null;
     const decimals = historyPriceDecimals(data, listing.saved?.metadata.assetCategory);

@@ -8,6 +8,7 @@ import {
   RANGE_HISTORY_RESOLUTION,
   type ManualChartResolution,
 } from "../time-series/resolution";
+import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel } from "../utils/currency-units";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
@@ -196,15 +197,16 @@ export interface HistoryUnit {
 }
 
 /**
- * What the prices are in. An FX pair is named by its symbol (ZAR=X is ZAR per
- * USD, EURUSD=X is USD per EUR), an index is in points, and anything else is
- * in the currency its quote states, a sub-unit named as such. Without one the
- * unit is unknown rather than guessed from the exchange.
+ * What the prices are in. An FX pair is named by its listing (ZAR=X is ZAR per
+ * USD; EURUSD=X, EUR/USD and EURUSD:CCY are USD per EUR), an index is in
+ * points, and anything else is in the currency its quote states, a sub-unit
+ * named as such. Without one the unit is unknown rather than guessed from the
+ * exchange.
  */
-export function historyUnit(symbol: string, quote: { currency?: string; instrumentType?: string } | null | undefined): HistoryUnit {
-  const pair = /^([A-Z]{3})([A-Z]{3})?=X$/.exec(symbol.trim().toUpperCase());
+export function historyUnit(listing: string, quote: { currency?: string; instrumentType?: string } | null | undefined): HistoryUnit {
+  const pair = currencyPairCode(listing.trim().toUpperCase());
   if (pair) {
-    const [base, counter] = pair[2] ? [pair[1]!, pair[2]] : ["USD", pair[1]!];
+    const [base, counter] = [pair.slice(0, 3), pair.slice(3)];
     return { kind: "pair", currency: counter, unit: `${counter} per ${base}` };
   }
   if (quote?.instrumentType?.trim().toUpperCase() === "INDEX") return { kind: "points", currency: null, unit: "index points" };

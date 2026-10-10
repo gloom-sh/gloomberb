@@ -208,6 +208,17 @@ describe("ticker-search utilities", () => {
     expect(findExactTickerSearchMatch([{ label: "JPY/USD" }], "JPY=X")).toBeNull();
   });
 
+  test("a pair named on its currency venue opens the pair search lists there", async () => {
+    for (const [query, symbol] of [["EURUSD:CCY", "EURUSD=X"], ["EURUSD:FX", "EURUSD=X"], ["USDJPY:FX", "JPY=X"], ["EURGBP:CCY", "EURGBP=X"]]) {
+      const dataProvider = makeDataProvider([
+        makeSearchResult(symbol!, "Currency Pair", { exchange: "CCY", type: "CURRENCY" }),
+        makeSearchResult(query!.split(":")[0]!, "Lookalike Fund", { exchange: "LSE", type: "ETF" }),
+      ]);
+      expect(await resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider }), query)
+        .toMatchObject({ kind: "provider", symbol, result: { exchange: "CCY" } });
+    }
+  });
+
   test("retains the quote currency of FX catalogue rows and reuses saved qualified futures", async () => {
     for (const symbol of ["JPY=X", "USDJPY=X", "USD/JPY", "EUR/JPY"]) {
       expect(await resolveTickerSearch({

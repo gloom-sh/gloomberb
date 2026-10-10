@@ -139,6 +139,12 @@ test("a colon dropdown is one exact venue per row, narrowed by the exchange pref
   expect(venueDropdownResults("NET", items, "N").map((item) => item.right)).toEqual(["NYSE"]);
   expect(venueDropdownResults("NET", items, "X").map((item) => item.right)).toEqual(["LSE", "NYSE"]);
   expect(venueDropdownResults("NET", items, "LON").map((item) => item.right)).toEqual(["LSE"]);
+  // EURUSD:FX and EURUSD:CCY pick the pair search lists on the currency venue.
+  const pairs = [resultItem("eurusd", "EURUSD=X", "CCY", "search"), resultItem("fund", "EURUSD", "LSE", "search")];
+  for (const suffix of ["FX", "CCY", ""]) {
+    expect(venueDropdownResults("EURUSD", pairs, suffix).map((item) => item.id), suffix).toEqual(suffix ? ["eurusd"] : ["eurusd", "fund"]);
+  }
+  expect(venueDropdownResults("USDJPY", [resultItem("jpy", "JPY=X", "CCY", "search")], "FX").map((item) => item.id)).toEqual(["jpy"]);
 });
 
 test("plain exact-symbol search retains venue choices while deduplicating the same listing", () => {

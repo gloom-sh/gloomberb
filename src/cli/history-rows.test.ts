@@ -67,7 +67,9 @@ describe("history rows", () => {
 
   test("prices are in the quote's currency, an FX pair's counter currency, or index points, and never a guessed one", () => {
     expect(historyUnit("ZAR=X", null)).toEqual({ kind: "pair", currency: "ZAR", unit: "ZAR per USD" });
-    expect(historyUnit("EURUSD=X", { currency: "USD" })).toEqual({ kind: "pair", currency: "USD", unit: "USD per EUR" });
+    for (const listing of ["EURUSD=X", "EUR/USD", "EURUSD:CCY"]) {
+      expect(historyUnit(listing, { currency: "USD" })).toEqual({ kind: "pair", currency: "USD", unit: "USD per EUR" });
+    }
     expect(historyUnit("LUMI.TA", { currency: "ILA" }).unit).toBe("ILA (agorot, 1/100 ILS)");
     expect(historyUnit("^GSPC", { currency: "USD", instrumentType: "INDEX" })).toEqual({ kind: "points", currency: null, unit: "index points" });
     expect(historyUnit("LUMI.TA", null)).toEqual({ kind: "unknown", currency: null, unit: null });
