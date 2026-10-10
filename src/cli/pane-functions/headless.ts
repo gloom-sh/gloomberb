@@ -560,8 +560,8 @@ function reportTitle(
 /** One message stays on the label's line; several each get a line of their own, so none runs into the next. */
 function renderMessages(label: string, messages: readonly string[]): string[] {
   return messages.length === 1
-    ? [cliStyles.warning(`${label}: ${messages[0]}`)]
-    : [cliStyles.warning(`${label}:`), ...messages.map((message) => `  ${message}`)];
+    ? [cliStyles.warning(wrapToTerminal(`${label}: ${messages[0]}`))]
+    : [cliStyles.warning(`${label}:`), ...messages.map((message) => wrapToTerminal(`  ${message}`))];
 }
 
 /**

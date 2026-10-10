@@ -24,6 +24,7 @@ import {
 } from "./headless";
 import { deriveHeadlessFreshness } from "./freshness";
 import { renderReportCsv, selectReportTables } from "../report-tables";
+import { setCliWidthOverride } from "../../utils/cli-output";
 
 const args: HeadlessPaneLoadArgs = {
   rawArgument: "",
@@ -58,6 +59,29 @@ describe("headless pane printer", () => {
     expect(report.data).toMatchObject({
       symbols: ["SPY"], unavailableSymbols: ["SPY"], empty: true, complete: false,
     });
+  });
+
+  test("--width wraps the notes, errors and source line under a table, and a column marked whole is never cut", () => {
+    const definition: HeadlessPaneDefinition<"rows"> = {
+      shape: "rows", argument: { kind: "none" }, options: [],
+      freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
+      columns: [{ key: "name", header: "Name" }, { key: "time", header: "Updated", shrink: false }],
+      load: () => ({ rows: [] }),
+    };
+    const result: HeadlessRowsResult = {
+      rows: [{ name: "A long index name that will not fit beside the time", time: "2026-10-09 20:15 UTC" }],
+      notes: ["A note of more than one line when the terminal is only forty columns wide."],
+      errors: ["Three words of error text that also run past forty columns of width"],
+    };
+    setCliWidthOverride(40);
+    try {
+      const lines = renderHeadlessPaneText(definition, result, args, "Board").split("\n");
+      expect(lines.every((line) => line.length <= 40)).toBe(true);
+      expect(lines.find((line) => line.startsWith("A long"))).toMatch(/…\s+2026-10-09 20:15 UTC$/);
+      expect(lines.filter((line) => line.startsWith("Notes:") || line.includes("terminal is only"))).toHaveLength(2);
+    } finally {
+      setCliWidthOverride(null);
+    }
   });
 
   test("renders rows as aligned text and preserves raw values in JSON", () => {
