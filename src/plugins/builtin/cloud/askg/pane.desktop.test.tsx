@@ -136,7 +136,7 @@ test("on the desktop and the web the thumbs, reasons and send answer the mouse a
   await click(down);
   expect(feedbackBodies).toEqual([{ rating: "down", reason: null }]);
   expect(buttonNamed(container, "Bad answer")?.getAttribute("aria-pressed")).toBe("true");
-  expect(container.textContent).toContain("Never your account data, positions or tool results.");
+  expect(container.textContent).toContain("Sends your question, this answer as written (it can mention your holdings) and which tools ran, not the data they returned.");
 
   await press("2");
   expect(feedbackBodies.at(-1)).toEqual({ rating: "down", reason: "slow" });

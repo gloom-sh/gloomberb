@@ -577,7 +577,7 @@ The unread count in the status bar opens Unread Chat (also in the command bar): 
 
 ## Ask Gloom
 
-Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or `g` and `b` for the answer the keyboard is on: the newest, or the one `j`/`k` moved to. A thumbs down offers why (`1` wrong, `2` too slow, `3` missing data, `4` other) and `Send this answer to Gloom` (`s`), which sends your question, the answer and which tools ran, never your account data, positions or tool results; without it only the thumb and the reason are kept. Esc closes the reasons, and your rating shows again when you reopen the conversation.
+Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or `g` and `b` for the answer the keyboard is on: the newest, or the one `j`/`k` moved to. A thumbs down offers why (`1` wrong, `2` too slow, `3` missing data, `4` other) and `Send this answer to Gloom` (`s`), which sends your question, the answer as written (it can mention your holdings) and which tools ran, not the data the tools returned; without it only the thumb and the reason are kept. Esc closes the reasons, and your rating shows again when you reopen the conversation.
 
 ## Debt maturities
 

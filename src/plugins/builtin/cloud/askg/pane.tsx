@@ -160,8 +160,12 @@ const FEEDBACK_REASONS: ReadonlyArray<{ reason: ASKGFeedbackReason; label: strin
   { reason: "other", label: "Other", hint: "other", title: "Reason: Other", key: "4" },
 ];
 
-/** Exactly what the send carries, and what it never does. */
-const SHARE_DISCLOSURE = "Sends your question, this answer and which tools ran. Never your account data, positions or tool results.";
+/**
+ * Exactly what the send carries. The answer goes as written, so whatever it
+ * says about the person's holdings goes with it; the rows the tools returned
+ * never do. A consent line must not promise less than what is sent.
+ */
+const SHARE_DISCLOSURE = "Sends your question, this answer as written (it can mention your holdings) and which tools ran, not the data they returned.";
 
 /** True when the only thing that changed between two transcripts is a rating. */
 function onlyFeedbackChanged(previous: readonly ASKGTurn[], next: readonly ASKGTurn[]): boolean {

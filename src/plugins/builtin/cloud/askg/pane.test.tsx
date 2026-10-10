@@ -485,7 +485,7 @@ describe("ASKGPane answer ratings", () => {
     expect(followUp).toContain("Send this answer to Gloom");
     // The line wraps; what it promises is the point, not where it breaks.
     const disclosure = followUp.replace(/[\s│]+/g, " ");
-    expect(disclosure).toContain("Sends your question, this answer and which tools ran. Never your account data, positions or tool results.");
+    expect(disclosure).toContain("Sends your question, this answer as written (it can mention your holdings) and which tools ran, not the data they returned.");
     expect(followUp).toContain("[1]wrong [2]slow [3]missing [4]other [s]end");
 
     await tui.emitKeypress({ name: "3" });
