@@ -232,6 +232,22 @@ async function waitForFrame(text: string, attempts = 60): Promise<string> {
   throw new Error(`Timed out waiting for "${text}".`);
 }
 
+/**
+ * Waits for something the wizard finishes in the background: it saves the
+ * config to disk before it completes, and that write takes as long as the
+ * runner lets it, not a fixed number of ticks.
+ */
+async function waitUntil(condition: () => boolean, description: string, timeoutMs = 4_000): Promise<void> {
+  const deadline = performance.now() + timeoutMs;
+  for (let step = 0; !condition(); step += 1) {
+    if (performance.now() > deadline) throw new Error(`Timed out waiting for ${description}.\n${tui.frame()}`);
+    await act(async () => {
+      await Bun.sleep(step < 5 ? 0 : 10);
+      await tui.setup().renderOnce();
+    });
+  }
+}
+
 let expectedPositionCount = 0;
 
 /**
@@ -460,7 +476,6 @@ describe("OnboardingWizard", () => {
     apiClient.recordResearchActivity = (async (payload) => { sent.push(payload); }) as typeof apiClient.recordResearchActivity;
     apiClient.setSessionToken("onboarding-desks-session");
     apiClient.restoreCachedUser({ id: "user-desks", email: "desks@example.com", emailVerified: true, plan: "free" });
-    let completed = false;
     await tui.render(
       <WizardHarness
         config={{
@@ -468,16 +483,14 @@ describe("OnboardingWizard", () => {
           onboardingProgress: { version: 1, stage: "ready", accountStatus: "signed-in", tickerSymbol: "AAPL", desks: ["options", "active"] },
         }}
         pluginRegistry={createPluginRegistry()}
-        onComplete={() => { completed = true; }}
       />,
       { width: 100, height: 32 },
     );
     await tui.setup().renderOnce();
     await pressEnter();
-    for (let index = 0; index < 20 && !completed; index += 1) {
-      await act(async () => { await Bun.sleep(0); await tui.setup().renderOnce(); });
-    }
-    expect(sent.find((payload) => payload.event === "onboarding_completed")?.desks).toEqual(["options", "active"]);
+    const completedEvent = () => sent.find((payload) => payload.event === "onboarding_completed");
+    await waitUntil(() => completedEvent() !== undefined, "the onboarding_completed milestone");
+    expect(completedEvent()?.desks).toEqual(["options", "active"]);
   });
 
   test("cannot be skipped or continued before the first position", async () => {
@@ -1058,12 +1071,7 @@ describe("OnboardingWizard", () => {
     expect(form).toContain("b: sign in with the browser instead");
 
     await emitKeypress({ name: "f10" });
-    for (let index = 0; index < 30 && !completed; index += 1) {
-      await act(async () => {
-        await Bun.sleep(0);
-        await tui.setup().renderOnce();
-      });
-    }
+    await waitUntil(() => completed !== null, "onboarding to complete");
     expect(completed?.onboardingComplete).toBe(true);
     expect(completed?.onboardingProgress).toBeUndefined();
   });
@@ -1136,12 +1144,7 @@ describe("OnboardingWizard", () => {
     expect(tui.frame()).toContain("Your workspace is ready");
 
     await pressEnter();
-    for (let index = 0; index < 20 && !completed; index += 1) {
-      await act(async () => {
-        await Bun.sleep(0);
-        await tui.setup().renderOnce();
-      });
-    }
+    await waitUntil(() => completed !== null, "onboarding to complete");
 
     expect(completed).not.toBeNull();
     expect(completed?.onboardingComplete).toBe(true);
@@ -1171,12 +1174,7 @@ describe("OnboardingWizard", () => {
       { name: "return", sequence: "\r" },
     ]);
 
-    for (let index = 0; index < 30 && !completed; index += 1) {
-      await act(async () => {
-        await Bun.sleep(0);
-        await tui.setup().renderOnce();
-      });
-    }
+    await waitUntil(() => completed !== null, "onboarding to complete");
 
     expect(completed?.onboardingComplete).toBe(true);
     expect(completed?.onboardingProgress).toBeUndefined();
