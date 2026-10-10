@@ -5,6 +5,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
 import { formatCompact } from "../../../utils/format";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
+import { formatCarryPercent } from "./carry";
 import type {
   OptionColumn,
   OptionFieldId,
@@ -36,7 +37,7 @@ const MONEYNESS_MAX_TINT = 0.42;
 export const OPTION_FIELD_DEFS: OptionFieldDef[] = [
   { id: "bid", label: "Bid", header: "BID", width: 7, description: "Best bid price." },
   { id: "ask", label: "Ask", header: "ASK", width: 7, description: "Best ask price." },
-  { id: "spread", label: "Spread", header: "SPRD", width: 6, description: "Bid/ask width as a share of the midpoint, the comparable liquidity read across strikes." },
+  { id: "spread", label: "Spread %", header: "SPRD%", width: 6, description: "Bid/ask width as a percent of the midpoint, the comparable liquidity read across strikes." },
   { id: "last", label: "Last", header: "LAST", width: 7, description: "Last traded price." },
   { id: "delta", label: "Delta", header: "Δ", width: 6, description: "Price sensitivity to a $1 move in the underlying." },
   { id: "gamma", label: "Gamma", header: "Γ", width: 7, description: "Delta sensitivity to a $1 move in the underlying." },
@@ -46,13 +47,48 @@ export const OPTION_FIELD_DEFS: OptionFieldDef[] = [
   { id: "iv", label: "Implied volatility", header: "IV", width: 6, description: "Volatility implied by the contract price." },
   { id: "volume", label: "Volume", header: "VOL", width: 6, description: "Contracts traded in the current session." },
   { id: "openInterest", label: "Open interest", header: "OI", width: 6, description: "Outstanding open contracts." },
+  {
+    id: "extrinsicPerYear",
+    label: "Extrinsic per year",
+    header: "EXT/Y",
+    width: 7,
+    description: "Time value (midpoint less intrinsic) as a percent of spot, divided by years to expiry: the yearly cost of holding the contract instead of the stock.",
+  },
 ];
 
 export const DEFAULT_OPTION_FIELD_IDS: OptionFieldId[] = ["bid", "ask", "last", "iv", "delta", "volume", "openInterest"];
 
 const OPTION_FIELDS_BY_ID = new Map(OPTION_FIELD_DEFS.map((field) => [field.id, field]));
 
+function optionFieldToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_%/-]+/g, "");
+}
+
+/** Each field by its id, label and header as typed, any case: `openInterest`, `oi`, `sprd%`, `ext/y`. */
+const OPTION_FIELDS_BY_TOKEN = new Map(OPTION_FIELD_DEFS.flatMap((field) => [
+  [optionFieldToken(field.id), field.id],
+  [optionFieldToken(field.label), field.id],
+  [optionFieldToken(field.header), field.id],
+] as const));
+
+/**
+ * `fn OMON --columns bid,ask,spread,extrinsicPerYear`: the fields mirrored
+ * around the strike, in order, as the pane setting stores them. An unknown
+ * field fails, naming the ones there are.
+ */
+export function normalizeOptionColumnsOption(raw: string): string {
+  const tokens = raw.split(/[\s,]+/).filter(Boolean);
+  const unknown = tokens.filter((token) => !OPTION_FIELDS_BY_TOKEN.has(optionFieldToken(token)));
+  if (tokens.length === 0 || unknown.length > 0) {
+    throw new Error(`${unknown.length > 0 ? `Unknown option column ${unknown.join(", ")}` : "No option columns given"}. `
+      + `Use: ${OPTION_FIELD_DEFS.map((field) => field.id).join(", ")}.`);
+  }
+  return resolveOptionFieldIds(tokens.map((token) => OPTION_FIELDS_BY_TOKEN.get(optionFieldToken(token))!)).join(",");
+}
+
 export function resolveOptionFieldIds(value: unknown): OptionFieldId[] {
+  // A report's --columns arrives as the comma-separated text it was typed as.
+  if (typeof value === "string") value = value.split(",");
   if (!Array.isArray(value)) return [...DEFAULT_OPTION_FIELD_IDS];
   const seen = new Set<OptionFieldId>();
   const fields = value.filter((id): id is OptionFieldId => {
@@ -165,7 +201,7 @@ function optionColumnRole(column: Pick<OptionColumn, "field" | "side">): OptionC
   if (column.field === "strike") return "strike";
   if (column.field === "iv") return "iv";
   if (column.field === "volume" || column.field === "openInterest") return "activity";
-  if (column.field === "bid" || column.field === "ask" || column.field === "spread") return "price";
+  if (column.field === "bid" || column.field === "ask" || column.field === "spread" || column.field === "extrinsicPerYear") return "price";
   return column.side ?? "strike";
 }
 
@@ -274,6 +310,8 @@ function formatOptionContractCell(
       return formatGreek(greeks?.vegaPerPoint);
     case "rho":
       return formatGreek(greeks?.rhoPerPoint);
+    case "extrinsicPerYear":
+      return formatCarryPercent(column.side === "call" ? row.callExtrinsicPerYear : row.putExtrinsicPerYear);
     case "strike":
       return formatStrikeLabel(contract.strike);
   }

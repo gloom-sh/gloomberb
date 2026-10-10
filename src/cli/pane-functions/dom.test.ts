@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ResolvedPaneFunction } from "./resolver";
-import type { PaneScreenshotResult } from "./screenshot";
+import { assessPaneScreenshot, type PaneScreenshotResult } from "./screenshot";
+import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import { buildDomPaneReportFromRender } from "./dom";
 import { renderReportCsv } from "../report-tables";
 
@@ -86,4 +87,63 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
     "",
     "# Source: Gloom Cloud | As of 2026-10-07 11:27 UTC | Not a live feed (published stories)",
   ]);
+});
+
+/**
+ * An OMON capture of a 10-strike window centred on the money: the viewport
+ * shows three rows, the table publishes all five it lists, and the pane says
+ * how many of the expiry's strikes those are.
+ */
+function omonCapture() {
+  const row = (strike: number, rowIndex: number) => ({
+    tableIndex: 0, rowIndex, key: String(strike), selected: strike === 720,
+    cells: [{ columnId: "callDelta", columnLabel: "C Δ", text: ".600" }, { columnId: "strike", columnLabel: "STRIKE", text: String(strike) }],
+  });
+  const notice = "5 of 145 strikes, 2 either side of the money (700 to 740). --strikes all lists every strike.";
+  return {
+    resolved: {
+      token: "OMON", label: "Options", options: { strikes: "2" },
+      pane: { id: "options" }, capability: { id: "options-pane", screenshotReadiness: "live-dom" },
+    } as unknown as ResolvedPaneFunction,
+    notice,
+    render: {
+      visibleText: "OMON META Strikes ±2 710 720 730",
+      rows: [710, 720, 730].map(row),
+      reportRows: [700, 710, 720, 730, 740].map(row),
+      truncated: true,
+      truncationReasons: ["rows above and below the rendered viewport are cut"],
+      reportTruncationReasons: [],
+      loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+      emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [],
+      semanticUi: [{
+        id: "ui:1", role: "report-notice", actions: [],
+        metadata: { text: notice, key: "strikes", value: { window: "2", shown: 5, total: 145 } },
+      }],
+    },
+  };
+}
+
+test("an OMON report reads every strike of its window past the viewport, and says how many of the expiry's it lists", () => {
+  const { resolved, render, notice } = omonCapture();
+  const report = buildDomPaneReportFromRender(resolved, { symbols: ["META"], render } as unknown as PaneScreenshotResult);
+  expect(report.data).toMatchObject({
+    rowCount: 5, complete: true, truncated: false, truncationReasons: [],
+    metadata: { strikes: { window: "2", shown: 5, total: 145 }, notices: [notice] },
+  });
+  expect((report.data.rows as Array<{ key: string }>).map((row) => row.key)).toEqual(["700", "710", "720", "730", "740"]);
+  expect(report.text).toContain(notice);
+
+  // A table read from the viewport alone stays incomplete, and says which side was cut.
+  const viewportOnly = { ...render, reportRows: undefined, reportTruncationReasons: undefined };
+  const clipped = buildDomPaneReportFromRender(resolved, { symbols: ["META"], render: viewportOnly } as unknown as PaneScreenshotResult);
+  expect(clipped.data).toMatchObject({ rowCount: 3, complete: false, truncationReasons: ["rows above and below the rendered viewport are cut"] });
+});
+
+test("an OMON shot names the rows its image cuts and how many strikes the window lists", () => {
+  const { resolved, render, notice } = omonCapture();
+  const shot = assessPaneScreenshot(resolved, { financials: [["META", {}]] } as unknown as DesktopPaneShotPayload,
+    render as DesktopPaneShotRenderResult, "META", "/tmp/omon-shot-test.png");
+  expect(shot.notices).toEqual([notice]);
+  expect(shot.rowCount).toBe(3);
+  expect(shot.render.truncationReasons).toEqual(["rows above and below the rendered viewport are cut"]);
 });

@@ -72,6 +72,7 @@ function OptionsHarness({
   width = 122,
   height = 14,
   nestedInTabs = false,
+  settings,
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
@@ -81,11 +82,13 @@ function OptionsHarness({
   width?: number;
   height?: number;
   nestedInTabs?: boolean;
+  settings?: Record<string, unknown>;
 }) {
   const config = createTestPaneConfig("/tmp/gloomberb-options-test", {
     instanceId: TEST_PANE_ID,
     paneId: "ticker-detail",
     binding: { kind: "fixed", symbol: ticker.metadata.ticker },
+    ...(settings ? { settings } : {}),
   });
 
   const [persistedState, dispatch] = useReducer(appReducer, config, createInitialState);
@@ -185,6 +188,24 @@ test("defaults the table around the nearest strike to the current quote", async 
   const frame = tui.frame();
   expect(frame).toContain("120");
   expect(frame).not.toContain(" 50 ");
+});
+
+test("lists only the strikes in the saved window, and the query bar says a window narrows the chain", async () => {
+  const strikes = Array.from({ length: 25 }, (_, index) => 50 + index * 5);
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async () => makeChain(strikes, 120),
+  })));
+  await act(async () => {
+    await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={121.2} height={16} settings={{ strikes: "1" }} />, { width: 124, height: 16 });
+  });
+  await renderSettled();
+
+  const frame = tui.frame();
+  expect(frame).toContain("Strikes ±1");
+  await exportPaneTable(TEST_PANE_ID, "window.csv");
+  const [header, ...rows] = takeSavedTextFile()!.text.trim().split(/\r?\n/).map((line) => line.split(","));
+  const strike = header!.indexOf("STRIKE");
+  expect(rows.map((row) => row[strike])).toEqual(["115", "120", "125"]);
 });
 
 test("keeps table geometry and scroll steady while a cold expiry loads", async () => {

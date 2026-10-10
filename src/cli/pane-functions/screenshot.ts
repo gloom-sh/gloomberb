@@ -93,6 +93,7 @@ import {
   withShotPriceHistory,
   withShotSeasonalityHistory,
 } from "./data";
+import { renderedReportNotices } from "./report-notices";
 import {
   financialRatioRenderMismatches,
   financialRatioShotEvidence,
@@ -426,6 +427,8 @@ export interface PaneScreenshotResult {
   usable: boolean;
   unusableReason: string | null;
   dataEvidence: PaneScreenshotDataEvidence | null;
+  /** What the pane says its view leaves out, such as OMON's "21 of 145 strikes". */
+  notices?: string[];
   outputPath: string;
   render: DesktopPaneShotRenderResult & {
     expectedText: string[];
@@ -796,6 +799,7 @@ export function assessPaneScreenshot(
   const unusableReason = usable
     ? null
     : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch);
+  const { notices } = renderedReportNotices(render.semanticUi ?? []);
   return {
     kind: "pane-screenshot",
     target: resolved.token,
@@ -816,6 +820,7 @@ export function assessPaneScreenshot(
     usable,
     unusableReason,
     dataEvidence,
+    ...(notices.length > 0 ? { notices } : {}),
     outputPath,
     render: {
       ...stripDesktopShotCredentials(render),

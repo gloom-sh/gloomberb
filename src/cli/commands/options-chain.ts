@@ -1,4 +1,6 @@
-import type { OptionContract, OptionsChain } from "../../types/financials";
+import type { OptionContract, OptionsChain, Quote } from "../../types/financials";
+import type { DataProvider } from "../../types/data-provider";
+import type { CliListing } from "../listing-arg";
 import { cliStyles, cliTerminalWidth, wrapText } from "../../utils/cli-output";
 import { isFiniteNumber } from "../../utils/guards";
 import { calculateOptionGreeks, solveChainVolatilities } from "../../plugins/builtin/options/analytics";
@@ -138,6 +140,25 @@ function optionModelFigures(chain: OptionsChain, inputs: OptionModelInputs): Map
     }
   }
   return figures;
+}
+
+/** Spot and dividend yield for IV and delta, read from the underlying the way the options pane does; missing ones stay missing. */
+export async function loadOptionModelInputs(
+  dataProvider: Pick<DataProvider, "getTickerFinancials">,
+  listing: CliListing,
+  quote: Promise<Quote | null>,
+  refresh: boolean,
+): Promise<OptionModelInputs> {
+  const financials = await Promise.resolve().then(() => dataProvider.getTickerFinancials(
+    listing.request.symbol, listing.request.exchange, { cacheMode: refresh ? "refresh" : "default" },
+  )).catch(() => null);
+  const current = [await quote, financials?.quote]
+    .find((candidate) => candidate && candidate.stale !== true && isFiniteNumber(candidate.price) && candidate.price > 0);
+  const dividendYield = financials?.fundamentals?.dividendYield;
+  return {
+    ...(current ? { spot: current.price } : {}),
+    ...(isFiniteNumber(dividendYield) && dividendYield >= 0 ? { dividendYield } : {}),
+  };
 }
 
 /** The chain with each contract's modeled `iv` and `delta` added; every provider field is kept. */

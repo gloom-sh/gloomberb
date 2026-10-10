@@ -14,7 +14,8 @@ export type OptionFieldId =
   | "rho"
   | "iv"
   | "volume"
-  | "openInterest";
+  | "openInterest"
+  | "extrinsicPerYear";
 
 type OptionColumnId = "strike" | `${OptionSide}${Capitalize<OptionFieldId>}`;
 
@@ -32,6 +33,9 @@ export interface OptionTableRow {
   impliedVolatility?: number;
   callGreeks?: OptionValuation;
   putGreeks?: OptionValuation;
+  /** Time value as a share of spot per year (see `carry.ts`); null when it cannot be read. */
+  callExtrinsicPerYear?: number | null;
+  putExtrinsicPerYear?: number | null;
   isPositionStrike: boolean;
 }
 

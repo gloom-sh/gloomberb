@@ -602,6 +602,18 @@ In the regular session, streamed trades move Last and volume, and each applied q
 
 The OMON surface shortcut and OVDV chain shortcut preserve ticker scope and selected expiry. A selected listed expiry is pinned in addition to OVDV's representative geometric sample, so daily listings omitted from the default sample still open at the requested date. Removed catalogue dates remain unavailable.
 
+### OMON strike window and carry
+
+**Strikes** picks which strikes of the selected expiry the chain lists. `All` (the default, and what a layout saved before the setting shows) lists every strike. A count, such as `±10`, keeps the strike nearest the money and that many on each side; the money is the held contract's strike on an option ticker, else the underlying's price. A delta band, such as `.70-.90`, keeps each strike whose call or put has an absolute delta in the band, so it lists in-the-money calls below spot and in-the-money puts above it; a delta that prints as the band's edge (`.700`) is in it. The held contract's strike is always kept. The window is read when a chain snapshot arrives, from that snapshot's quotes and the underlying's price at that moment, so streamed quotes never move strikes in or out under the cursor; the next snapshot (every 15 seconds for a real-time chain in session) reads it again. A delta band needs a current underlying quote and a count needs a price: without one the chain lists every strike and the footer says why. The chip in the bar shows a reset while a window narrows the chain.
+
+**Spread %** is the bid/ask width over the midpoint, `(ask - bid) / ((bid + ask) / 2)`, for a two-sided quote; a zero bid, a missing ask or a crossed quote has none. **Extrinsic per year** (`EXT/Y`) is what holding the contract costs in time value, against holding the underlying:
+
+- intrinsic is `max(0, spot - strike)` for a call and `max(0, strike - spot)` for a put;
+- extrinsic is the midpoint of a two-sided quote less intrinsic, per share;
+- extrinsic per year is extrinsic divided by spot, divided by the years to expiry: calendar days to the 16:00 New York close on the expiry date over 365, from the instant the Greeks are valued at.
+
+A midpoint below intrinsic, which a wide deep in-the-money quote can have, gives a negative figure rather than zero. Without a two-sided quote or a current underlying price there is no figure, and under a day from expiry there is no yearly figure: cents of time value over hours annualise to noise. `gloomberb options --leaps` ranks by the same figure, computed by the same code, as do its spread % and delta.
+
 ### VIX curve and cross-asset volatility board
 
 `VIX` combines three views: a dated cash-index tenor curve, FRED VIX/3M history with its ratio, and the cross-asset board. `VOLS` opens the board directly. The views persist independently per pane. These are published index levels and daily closes; the cash-tenor curve is not a VIX futures curve.

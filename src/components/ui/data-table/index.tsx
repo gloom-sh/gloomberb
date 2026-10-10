@@ -27,6 +27,8 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   const renderer = useRendererHost();
   const propsRef = useRef(props);
   propsRef.current = props;
+  // The semantic snapshot can be taken every frame; the rows are rebuilt only when what they are drawn from changes.
+  const reportedRowsRef = useRef<{ source: readonly unknown[]; rows: ReturnType<typeof reportedRows> } | null>(null);
 
   useEffect(() => {
     if (!paneId || !renderer.saveTextFile) return;
@@ -90,6 +92,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       columns: props.columns.map((column) => ({ id: column.id, label: column.label })),
       rowCount: props.items.length,
       selectedId: firstSelectedId(props),
+      ...(props.reportEveryRow ? { rows: cachedReportedRows(props, reportedRowsRef) } : {}),
     }),
   });
   // Header labels read the same in every table whatever case a pane wrote
@@ -117,6 +120,41 @@ function resolveTableIndex<T, C extends DataTableColumn>(
   // `id` reads the same key the snapshot publishes as `selectedId`.
   const key = (item: T, index: number) => props.getItemKey(item, index);
   return resolveRemoteItemIndex(input, props.items, { id: key, key });
+}
+
+/**
+ * Every row as a report reads it: the key, whether it is selected and each
+ * column's text, the same text the cells draw. Captured with the semantic
+ * snapshot, so a row scrolled out of the viewport still reaches the report.
+ */
+function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>) {
+  const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
+  return props.items.map((item, index) => {
+    const selected = props.isSelected(item, index);
+    const section = props.renderSectionHeader?.(item, index);
+    const cells = section
+      ? [{ columnLabel: "Row", text: normalize(section.text) }]
+      : props.columns.map((column) => ({
+        columnId: column.id,
+        columnLabel: column.label,
+        text: normalize(props.renderCell(item, column, index, { selected }).text),
+      }));
+    return { key: props.getItemKey(item, index), selected, cells: cells.filter((cell) => cell.text.length > 0) };
+  });
+}
+
+function cachedReportedRows<T, C extends DataTableColumn>(
+  props: DataTableProps<T, C>,
+  cache: { current: { source: readonly unknown[]; rows: ReturnType<typeof reportedRows> } | null },
+) {
+  const source = [props.items, props.columns, props.renderCell, props.isSelected, props.renderSectionHeader];
+  const cached = cache.current;
+  if (cached && cached.source.length === source.length && cached.source.every((value, index) => value === source[index])) {
+    return cached.rows;
+  }
+  const rows = reportedRows(props);
+  cache.current = { source, rows };
+  return rows;
 }
 
 function firstSelectedId<T, C extends DataTableColumn>(props: DataTableProps<T, C>): string | null {

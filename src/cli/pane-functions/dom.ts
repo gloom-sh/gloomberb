@@ -8,6 +8,7 @@ import { collectShotSymbols } from "./data";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
+import { renderedReportNotices } from "./report-notices";
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
@@ -16,12 +17,6 @@ const DOM_LIMITATION =
 
 function rowsContainEllipsis(rows: DesktopPaneShotRenderedRow[]): boolean {
   return rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
-}
-
-function isDomReportTruncated(
-  render: Pick<PaneScreenshotResult["render"], "rows" | "truncated">,
-): boolean {
-  return render.truncated || rowsContainEllipsis(render.rows);
 }
 
 /** Column identity per cell; a repeated label within one row stays distinct. */
@@ -139,8 +134,10 @@ function renderedFailureReason(
   return null;
 }
 
+/** The rows a report reads: every row of a table that publishes them all, else what the viewport shows. */
 function reportRows(result: PaneScreenshotResult): DesktopPaneShotRenderedRow[] {
-  if (result.render.rows.length > 0) return result.render.rows;
+  const rows = result.render.reportRows ?? result.render.rows;
+  if (rows.length > 0) return rows;
   if (
     result.render.loadingStateDetected
     || result.render.errorStateDetected
@@ -162,16 +159,19 @@ export function buildDomPaneReportFromRender(
   result: PaneScreenshotResult,
 ): PaneFunctionReport {
   const rows = reportRows(result);
-  const hasStructuredRows = result.render.rows.length > 0;
-  const truncated = isDomReportTruncated({ ...result.render, rows });
-  const truncationReasons = [...result.render.truncationReasons];
+  const hasStructuredRows = (result.render.reportRows ?? result.render.rows).length > 0;
+  // A table that reported every row is whole, whatever the viewport cut from the capture.
+  const truncationReasons = [...(result.render.reportTruncationReasons ?? result.render.truncationReasons)];
   if (rowsContainEllipsis(rows) && !truncationReasons.includes("one or more cells are visibly clipped")) {
     truncationReasons.push("one or more cells are visibly clipped");
   }
+  const truncated = truncationReasons.length > 0
+    || (result.render.reportTruncationReasons ? false : result.render.truncated);
   const failureReason = renderedFailureReason(result, rows);
   const unavailableSymbols = failureReason && result.symbols.length > 0 ? result.symbols : [];
-  // What the view leaves out and how to see more, such as FXC's other currencies.
-  const notices = resolved.pane.reportNotices?.(resolved.instance.settings ?? {}) ?? [];
+  // What the view leaves out and how to see more: FXC's other currencies, OMON's strikes outside its window.
+  const rendered = renderedReportNotices(result.render.semanticUi ?? []);
+  const notices = [...(resolved.pane.reportNotices?.(resolved.instance.settings ?? {}) ?? []), ...rendered.notices];
   const textLines = [resolved.label, "", ...notices, ...(notices.length > 0 ? [""] : [])];
   if (hasStructuredRows) {
     textLines.push(...renderDomTables(rows));
@@ -204,7 +204,7 @@ export function buildDomPaneReportFromRender(
       truncationReasons,
       limitation: DOM_LIMITATION,
       ...(failureReason ? { reason: failureReason } : {}),
-      ...(notices.length > 0 ? { metadata: { notices } } : {}),
+      ...(notices.length > 0 ? { metadata: { ...rendered.facts, notices } } : {}),
       freshness,
     },
     text: textLines.join("\n").trimEnd(),

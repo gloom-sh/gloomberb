@@ -22,15 +22,36 @@ import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
 } from "../../../state/hooks/live-streaming";
-import { OPTION_FIELD_DEFS, resolveOptionFieldIds } from "./table";
+import { OPTION_FIELD_DEFS, normalizeOptionColumnsOption, resolveOptionFieldIds } from "./table";
+import {
+  STRIKE_WINDOW_PRESETS,
+  STRIKE_WINDOW_SETTING,
+  normalizeStrikeWindowOption,
+  resolveStrikeWindow,
+  strikeWindowShortLabel,
+  strikeWindowValue,
+} from "./strike-window";
 
 function optionsSettings(settings: Record<string, unknown>): PaneSettingsDef {
+  const strikeWindow = resolveStrikeWindow(settings[STRIKE_WINDOW_SETTING]);
+  const strikeWindowText = strikeWindowValue(strikeWindow);
+  const strikeWindowOptions = STRIKE_WINDOW_PRESETS.map(({ value, label, description }) => ({ value, label, description }));
   return {
     title: "Options Settings",
     values: {
       optionColumnIds: resolveOptionFieldIds(settings.optionColumnIds),
+      [STRIKE_WINDOW_SETTING]: strikeWindowText,
     },
     fields: [
+      {
+        key: STRIKE_WINDOW_SETTING,
+        label: "Strikes",
+        description: "Which strikes the chain lists: all of them, a count either side of the money, or those whose call or put delta falls in a band.",
+        type: "select",
+        // A window typed on the command line that no preset matches stays selectable.
+        options: strikeWindowOptions.some((option) => option.value === strikeWindowText) ? strikeWindowOptions
+          : [...strikeWindowOptions, { value: strikeWindowText, label: strikeWindowShortLabel(strikeWindow), description: "Set from the command line." }],
+      },
       {
         key: "optionColumnIds",
         label: "Columns",
@@ -72,6 +93,24 @@ export const optionsModule: PluginModule = {
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(optionsSettings(context.settings), context.settings),
       tableExport: true,
+      reportOptions: [{
+        key: STRIKE_WINDOW_SETTING,
+        aliases: ["delta"],
+        type: "string",
+        placeholder: "all|count|delta band",
+        description: "Strikes to list: all (the default), a count either side of the money such as 10, "
+          + "or a call or put delta band such as 0.70-0.90. --delta 0.70-0.90 reads the same",
+        example: "--strikes 0.70-0.90",
+        normalize: normalizeStrikeWindowOption,
+      }, {
+        key: "columns",
+        settingKey: "optionColumnIds",
+        type: "string",
+        placeholder: "fields",
+        description: `Fields mirrored around the strike, in order, as the Columns setting picks them: ${OPTION_FIELD_DEFS.map((field) => field.id).join(", ")}`,
+        example: "--columns bid,ask,spread,delta,openInterest,extrinsicPerYear",
+        normalize: normalizeOptionColumnsOption,
+      }],
     },
   ],
 

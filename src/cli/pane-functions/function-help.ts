@@ -222,7 +222,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["EQS"],
   },
   OMON: {
-    summary: "Calls and puts by expiry with bid, ask, volume, open interest, implied volatility and Greeks.",
+    summary: "Calls and puts by expiry with bid, ask, spread, volume, open interest, implied volatility, Greeks and extrinsic per year. "
+      + "The Strikes filter lists every strike, a count either side of the money, or a delta band such as .70 to .90 for deep in-the-money LEAPS.",
     usage: ["OMON NVDA"],
     keys: [key("c", "alc"), key("a", "dd to OSA"), key("s", "urface")],
     data: OPTIONS,

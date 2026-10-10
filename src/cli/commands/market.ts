@@ -1,13 +1,12 @@
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
-import type { DataProvider, EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
+import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
   AnalystResearchData,
   CorporateActionsData,
   HolderData,
   OptionsChain,
-  Quote,
   TickerFinancials,
 } from "../../types/financials";
 import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
@@ -39,6 +38,7 @@ import {
   chainHasExpiry,
   chainWithModelFigures,
   formatExpiryList,
+  loadOptionModelInputs,
   formatOptionDeltaCell,
   formatOptionIvCell,
   formatOptionQuoteCell,
@@ -47,8 +47,8 @@ import {
   OPTIONS_USAGE,
   optionRows,
   parseOptionExpiration,
-  type OptionModelInputs,
 } from "./options-chain";
+import { DEFAULT_LEAPS_CRITERIA, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions } from "./options-leaps";
 import type { CliResultColumn } from "../result";
 import {
   exportRowsTable,
@@ -958,29 +958,25 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
   });
 }
 
-/** Spot and dividend yield for IV and delta, read from the underlying the way the options pane does; missing ones stay missing. */
-async function loadOptionModelInputs(
-  dataProvider: Pick<DataProvider, "getTickerFinancials">,
-  listing: CliListing,
-  quote: Promise<Quote | null>,
-  refresh: boolean,
-): Promise<OptionModelInputs> {
-  const financials = await Promise.resolve().then(() => dataProvider.getTickerFinancials(
-    listing.request.symbol, listing.request.exchange, { cacheMode: refresh ? "refresh" : "default" },
-  )).catch(() => null);
-  const current = [await quote, financials?.quote]
-    .find((candidate) => candidate && candidate.stale !== true && isFiniteNumber(candidate.price) && candidate.price > 0);
-  const dividendYield = financials?.fundamentals?.dividendYield;
-  return {
-    ...(current ? { spot: current.price } : {}),
-    ...(isFiniteNumber(dividendYield) && dividendYield >= 0 ? { dividendYield } : {}),
-  };
-}
-
 async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
+  const leapsOptions = takeLeapsOptions(args);
   const expiration = takeOption(args, "--expiration");
   const exchangeOption = takeOption(args, "--exchange");
+  if (leapsOptions.leaps) {
+    if (expiration != null || rawArgs.includes("--expiration")) {
+      ctx.fail("--leaps reads every expiry more than a year out; drop --expiration.", `Usage: gloomberb ${LEAPS_USAGE}`);
+    }
+    const criteria = parseLeapsCriteria(leapsOptions.raw);
+    if ("error" in criteria) ctx.fail(criteria.error, `Usage: gloomberb ${LEAPS_USAGE}`);
+    const symbols = normalizeSymbols(args);
+    if (symbols.length === 0) ctx.fail("--leaps needs at least one symbol.", `Usage: gloomberb ${LEAPS_USAGE}`);
+    await withMarketData(ctx, (market) => runLeapsScreen(symbols, exchangeOption, criteria, market, ctx));
+    return;
+  }
+  if (leapsOptions.given.length > 0) {
+    ctx.fail(`${leapsOptions.given.join(", ")} only ${leapsOptions.given.length > 1 ? "apply" : "applies"} with --leaps.`, `Usage: gloomberb ${LEAPS_USAGE}`);
+  }
   const raw = requireOneArg(args, OPTIONS_USAGE, "symbol", ctx);
   let expirationDate: number | undefined;
   if (expiration != null || rawArgs.includes("--expiration")) {
@@ -1203,18 +1199,46 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   },
   {
     name: "options",
-    description: "Fetch an options chain",
+    description: "Fetch an options chain, or rank LEAPS across symbols",
     help: {
       group: CLI_COMMAND_GROUPS.research,
-      usage: [OPTIONS_USAGE],
+      usage: [OPTIONS_USAGE, LEAPS_USAGE],
       options: [
         {
           flags: "--expiration <YYYY-MM-DD|unix>",
           description: "Expiration as a date (2028-01-21) or Unix seconds; defaults to the nearest one, and lists the others",
         },
         EXCHANGE_OPTION,
+        { flags: "--leaps", description: "Rank contracts more than a year out across the symbols given, as a stock replacement" },
+        { flags: "--side <calls|puts>", description: `With --leaps: the side to rank (default ${DEFAULT_LEAPS_CRITERIA.side}s)` },
+        {
+          flags: "--delta <low-high>",
+          description: `With --leaps: absolute delta band (default ${DEFAULT_LEAPS_CRITERIA.minDelta.toFixed(2)}-${DEFAULT_LEAPS_CRITERIA.maxDelta.toFixed(2)})`,
+        },
+        {
+          flags: "--max-spread <percent>",
+          description: `With --leaps: widest bid/ask spread, in percent of the midpoint (default ${DEFAULT_LEAPS_CRITERIA.maxSpreadPercent})`,
+        },
+        { flags: "--min-oi <contracts>", description: `With --leaps: least open interest (default ${DEFAULT_LEAPS_CRITERIA.minOpenInterest})` },
+        {
+          flags: "--sort <order>",
+          description: "With --leaps: carry (extrinsic per year, lowest first; the default), spread, oi, delta, expiry or symbol",
+        },
       ],
-      examples: ["options AAPL", "options AAPL --expiration 2028-01-21", "options AAPL:NASDAQ --json"],
+      sections: [{
+        title: "LEAPS",
+        lines: [
+          "--leaps reads every expiry more than a year out for each symbol and keeps the liquid contracts in the delta band, ranked by extrinsic per year: time value (midpoint less intrinsic) as a percent of spot, per year to expiry.",
+          "A symbol without LEAPS, a quote or a chain is named in a warning and the others still rank. docs/research-data.md defines each figure.",
+        ],
+      }],
+      examples: [
+        "options AAPL",
+        "options AAPL --expiration 2028-01-21",
+        "options AAPL:NASDAQ --json",
+        "options AAPL MSFT NVDA GOOGL AMZN META --leaps",
+        "options SPY QQQ --leaps --side puts --delta 0.20-0.40 --csv",
+      ],
     },
     execute: runOptions,
   },

@@ -156,8 +156,12 @@ export interface PaneDef {
   quickSettings?: readonly PaneQuickSettingDef[];
 }
 
-/** An option of a rendered-view report, which sets the pane setting of its key. */
-export interface PaneReportOptionDef extends Omit<HeadlessPaneOptionDef, "settingKey" | "pluginState"> {
+/**
+ * An option of a rendered-view report, which sets the pane setting of its key,
+ * or of `settingKey` when the flag reads better than the setting's name
+ * (`--columns` for `optionColumnIds`).
+ */
+export interface PaneReportOptionDef extends Omit<HeadlessPaneOptionDef, "pluginState"> {
   /** The value's name in the catalog's flag, `--currencies <codes>`; the type when absent. */
   placeholder?: string;
   /** The option in use as typed after the function, such as `--currencies USD,ZAR,NGN`; the catalog shows it as an example. */

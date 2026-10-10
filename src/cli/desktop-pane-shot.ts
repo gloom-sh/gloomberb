@@ -18,6 +18,7 @@ import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../utils/http-proxy-response";
 import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { readVisibleKeyValues } from "./visible-key-values";
+import { scrollTruncationReasons } from "./scroll-truncation";
 import { SHOT_API_PROXY_PREFIX, SHOT_HTTP_BRIDGE_PATH, SHOT_MARKET_BRIDGE_PATH } from "./desktop-pane-shot-routes";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import {
@@ -111,6 +112,14 @@ export interface DesktopPaneShotRenderedRow {
 
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
+  /**
+   * The rows a report reads, when a table reports every row (an option chain's
+   * strike window) rather than those in the viewport; `rows` stays what the
+   * capture shows. Absent when every table is read from the viewport.
+   */
+  reportRows?: DesktopPaneShotRenderedRow[];
+  /** `truncationReasons` without the cuts of tables whose every row is in `reportRows`. */
+  reportTruncationReasons?: string[];
   /** Text of the pane footers, where a pane says whether its data is live, delayed or stale. */
   footerText?: string;
   visibleKeyValues?: Array<{ label: string; text: string }>;
@@ -541,26 +550,39 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
       const semanticTables = semanticUi.filter((node) => node && node.role === "table");
       const rows = [];
       const truncationReasons = new Set();
+      const scrollReasons = (${scrollTruncationReasons.toString()});
+      const visibleTables = [...root.querySelectorAll('[data-gloom-role="data-table"]')].filter(isVisible);
+      // A table that publishes every row has nothing cut from a report, whatever the viewport shows.
+      const reportedRowsOf = (tableIndex) => {
+        const metadata = semanticTables[tableIndex] && semanticTables[tableIndex].metadata;
+        return metadata && Array.isArray(metadata.rows) ? metadata.rows : null;
+      };
+      const reportedTables = new Set(visibleTables.filter((_table, tableIndex) => reportedRowsOf(tableIndex)));
+      const reportRows = [];
+      const reportTruncationReasons = new Set();
+      const inReportedTable = (element) => {
+        const table = element.closest('[data-gloom-role="data-table"]');
+        return !!table && reportedTables.has(table);
+      };
       const markScrollTruncation = (element) => {
         if (!(element instanceof HTMLElement) || !isVisible(element)) return;
-        if (
-          element.getAttribute("data-gloom-scrollbar-y") === "visible"
-          || element.scrollHeight > element.clientHeight + 1
-        ) {
-          truncationReasons.add("rows extend below the rendered viewport");
-        }
-        if (
-          element.getAttribute("data-gloom-scrollbar-x") === "visible"
-          || element.scrollWidth > element.clientWidth + 1
-        ) {
-          truncationReasons.add("columns extend beyond the rendered viewport");
-        }
+        const reasons = scrollReasons({
+          scrollTop: element.scrollTop,
+          scrollHeight: element.scrollHeight,
+          clientHeight: element.clientHeight,
+          scrollLeft: element.scrollLeft,
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth,
+          scrollbarY: element.getAttribute("data-gloom-scrollbar-y") === "visible",
+          scrollbarX: element.getAttribute("data-gloom-scrollbar-x") === "visible",
+        });
+        reasons.forEach((reason) => truncationReasons.add(reason));
+        if (!inReportedTable(element)) reasons.forEach((reason) => reportTruncationReasons.add(reason));
       };
       [...root.querySelectorAll(
         '[data-gloom-scrollbar-x="visible"], [data-gloom-scrollbar-y="visible"], [data-gloom-role="data-table-body-scroll"]',
       )].forEach(markScrollTruncation);
-      [...root.querySelectorAll('[data-gloom-role="data-table"]')]
-        .filter(isVisible)
+      visibleTables
         .forEach((table, tableIndex) => {
           const tableMetadata = semanticTables[tableIndex] && semanticTables[tableIndex].metadata || {};
           const semanticColumns = Array.isArray(tableMetadata.columns) ? tableMetadata.columns : [];
@@ -586,6 +608,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
                 ))
               ) {
                 truncationReasons.add("one or more cells are visibly clipped");
+                if (!reportedTables.has(table)) reportTruncationReasons.add("one or more cells are visibly clipped");
               }
               const instant = cell.getAttribute("data-gloom-cell-instant");
               return {
@@ -598,11 +621,26 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
               };
             }).filter((cell) => cell.text.length > 0);
             if (cells.length === 0) return;
-            rows.push({
+            const captured = {
               tableIndex,
               rowIndex,
               ...(rowKey ? { key: rowKey } : {}),
               selected: row.getAttribute("data-selected") === "true",
+              cells,
+            };
+            rows.push(captured);
+            if (!reportedTables.has(table)) reportRows.push(captured);
+          });
+          const reported = reportedRowsOf(tableIndex);
+          if (!reported) return;
+          reported.forEach((row, rowIndex) => {
+            const cells = Array.isArray(row && row.cells) ? row.cells.filter((cell) => cell && cell.text) : [];
+            if (cells.length === 0) return;
+            reportRows.push({
+              tableIndex,
+              rowIndex,
+              ...(typeof row.key === "string" ? { key: row.key } : {}),
+              selected: row.selected === true,
               cells,
             });
           });
@@ -642,6 +680,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         rows,
         truncated: truncationReasons.size > 0,
         truncationReasons: [...truncationReasons],
+        ...(reportedTables.size > 0 ? { reportRows, reportTruncationReasons: [...reportTruncationReasons] } : {}),
         semanticUi,
       };
     })()`,
@@ -660,6 +699,8 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
         truncationReasons?: string[];
+        reportRows?: DesktopPaneShotRenderedRow[];
+        reportTruncationReasons?: string[];
         semanticUi?: RemoteUiNodeSnapshot[];
       };
     };
@@ -687,6 +728,10 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
     rows,
     truncated: value?.truncated === true || textShowsEllipsis,
     truncationReasons,
+    ...(Array.isArray(value?.reportRows) ? {
+      reportRows: value.reportRows,
+      reportTruncationReasons: (value.reportTruncationReasons ?? []).filter((reason): reason is string => typeof reason === "string"),
+    } : {}),
     loadingStateDetected: value?.loadingStateDetected === true || loadingStateMarkers.length > 0,
     errorStateDetected: value?.errorStateDetected === true || errorStateMarkers.length > 0,
     errorStateMarkers,

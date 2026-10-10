@@ -138,6 +138,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
             ["Status", issues.length > 0 ? cliStyles.warning(issues.join(", ")) : cliStyles.success("complete")],
           ];
           if (data.unusableReason) stats.push(["Reason", data.unusableReason]);
+          if (data.notices?.length) stats.push(["Notes", data.notices.join(" ")]);
           if (data.unavailableSymbols.length > 0) stats.push(["No data for", data.unavailableSymbols.join(", ")]);
           if (data.render.emptyStateMarkers.length > 0) stats.push(["Empty states", data.render.emptyStateMarkers.join(", ")]);
           if (data.render.missingExpectedText.length > 0) stats.push(["Missing text", data.render.missingExpectedText.join(", ")]);

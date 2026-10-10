@@ -67,6 +67,19 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { IvStats } from "../iv-history/client";
 import { useIvRank } from "../iv-history/rank";
 import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/live-session";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { optionCarry } from "./carry";
+import {
+  ALL_STRIKES,
+  STRIKE_WINDOW_PRESETS,
+  STRIKE_WINDOW_SETTING,
+  applyStrikeWindow,
+  chainDeltasByStrike,
+  resolveStrikeWindow,
+  strikeWindowNotice,
+  strikeWindowShortLabel,
+  strikeWindowValue,
+} from "./strike-window";
 
 /** The summary strip and analytics recompute from live quotes at most this often. */
 const OPTIONS_SUMMARY_THROTTLE_MS = 1_000;
@@ -207,6 +220,9 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const [chainRefreshMinutes] = usePaneSettingValue<string>("chainRefreshMinutes", "");
   const [storedOptionFieldIds] = usePaneSettingValue<OptionFieldId[]>("optionColumnIds", DEFAULT_OPTION_FIELD_IDS);
   const optionFieldIds = useMemo(() => resolveOptionFieldIds(storedOptionFieldIds), [storedOptionFieldIds]);
+  const [storedStrikeWindow] = usePaneSettingValue<unknown>(STRIKE_WINDOW_SETTING, ALL_STRIKES);
+  const strikeWindow = useMemo(() => resolveStrikeWindow(storedStrikeWindow), [storedStrikeWindow]);
+  const strikeWindowText = strikeWindowValue(strikeWindow);
   const initialChainEntry = useOptionsQuery(baseRequest);
   const initialChain = useResolvedEntryValue(initialChainEntry);
   const initialExpiration = initialChain?.expirationDates.reduce((best, expiration) => (
@@ -257,7 +273,24 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const expirationPickRef = useRef<(value: string) => void>(() => {});
   const { nativePaneChrome } = useUiCapabilities();
   const selectedExpirationIndex = selectedExpiration == null ? -1 : expirationDates.indexOf(selectedExpiration);
-  const expirationFilters = useMemo<QueryBarFilter[]>(() => [{
+  const strikeWindowOptions = useMemo(() => {
+    const presets = STRIKE_WINDOW_PRESETS.map(({ value, label, short, description }) => ({ value, label, short, description }));
+    // A window typed on the command line that no preset matches still reads on the chip.
+    if (presets.some((preset) => preset.value === strikeWindowText)) return presets;
+    const label = strikeWindowShortLabel(resolveStrikeWindow(strikeWindowText));
+    return [...presets, { value: strikeWindowText, label, short: label, description: "Set from the command line." }];
+  }, [strikeWindowText]);
+  // The window chip leads: the expiry strip after it can run past the edge of the bar.
+  const queryFilters = useMemo<QueryBarFilter[]>(() => [{
+    id: "strikes",
+    label: "Strikes",
+    title: "Strikes",
+    value: strikeWindowText,
+    // Every strike is the default, so any window narrows the chain and the chip says so.
+    defaultValue: ALL_STRIKES,
+    options: strikeWindowOptions,
+    onChange: (value: string) => updatePaneSettings({ [STRIKE_WINDOW_SETTING]: value }),
+  }, {
     id: "expiration",
     label: "Exp",
     inline: true,
@@ -272,7 +305,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
           : index === selectedExpirationIndex + 1 ? EXPIRY_NEXT_KEY : undefined,
     })),
     onChange: (value: string) => expirationPickRef.current(value),
-  }], [expirationDates, selectedExpiration, selectedExpirationIndex]);
+  }], [expirationDates, selectedExpiration, selectedExpirationIndex, strikeWindowOptions, strikeWindowText, updatePaneSettings]);
   // A scheduled refresh of a chain already on screen is quiet: the in-session
   // cadence would otherwise blink the footer every few seconds.
   const loading = (initialChainEntry?.phase === "loading" || initialChainEntry?.phase === "refreshing") && !chain
@@ -316,9 +349,45 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
 
   useEffect(() => {
     userSelectedStrikeRef.current = false;
-  }, [selectedExpiration]);
+  }, [selectedExpiration, strikeWindowText]);
 
-  const strikes = useMemo(() => strikeChain ? buildStrikeList(strikeChain) : [], [strikeChain]);
+  const allStrikes = useMemo(() => strikeChain ? buildStrikeList(strikeChain) : [], [strikeChain]);
+  // The window is read once per chain snapshot, and again when a price first
+  // arrives, so streamed quotes never move strikes in or out under the cursor.
+  const underlyingPrice = underlying?.quote?.price;
+  const windowCenter = useMemo(
+    () => resolveDefaultStrikeTarget(parsed?.strike, underlyingPrice),
+    [strikeChain, parsed?.strike, underlyingPrice == null],
+  );
+  const windowSpot = useMemo(() => spot, [strikeChain, spot == null]);
+  const windowDeltas = useMemo(
+    () => strikeWindow.kind === "delta" && strikeChain ? chainDeltasByStrike(strikeChain, windowSpot, dividendYield) : null,
+    [dividendYield, strikeChain, strikeWindow.kind, windowSpot],
+  );
+  const strikeWindowResult = useMemo(
+    () => applyStrikeWindow(allStrikes, strikeWindow, { center: windowCenter, deltas: windowDeltas, keep: parsed?.strike ?? null }),
+    [allStrikes, parsed?.strike, strikeWindow, windowCenter, windowDeltas],
+  );
+  const strikes = strikeWindowResult.strikes;
+  usePaneNoticeFooter({ registrationId: "options-strike-window", focused,
+    notices: strikeWindowResult.fallback === "no-delta"
+      ? ["The delta window needs a current underlying quote; showing every strike."]
+      : strikeWindowResult.fallback === "no-price" ? ["No price to centre the strike window on; showing every strike."] : [] });
+  // A report of the pane (`gloomberb fn OMON`) says how many strikes it lists of how many the expiry has.
+  useRemoteUiNode(strikeChain ? {
+    role: "report-notice",
+    label: "Strike window",
+    getMetadata: () => ({
+      text: strikeWindowNotice(strikeWindow, strikeWindowResult),
+      key: "strikes",
+      value: {
+        window: strikeWindowText,
+        shown: strikeWindowResult.strikes.length,
+        total: strikeWindowResult.total,
+        ...(strikeWindowResult.fallback ? { fallback: strikeWindowResult.fallback } : {}),
+      },
+    }),
+  } : null);
   const selectedStrikeIdx = selectedContract ? strikes.indexOf(selectedContract.strike) : strikeIdx;
   // The snapshot's contracts decide which symbols stream; they do not change
   // with the stream itself, so the subscription is stable between refreshes.
@@ -395,6 +464,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       impliedVolatility: volatilities?.byStrike.get(strike),
       callGreeks: volatilities ? calculateOptionGreeks(call, "call", spot, dividendYield, volatilities) : undefined,
       putGreeks: volatilities ? calculateOptionGreeks(put, "put", spot, dividendYield, volatilities) : undefined,
+      callExtrinsicPerYear: call && volatilities ? optionCarry(call, "call", spot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
+      putExtrinsicPerYear: put && volatilities ? optionCarry(put, "put", spot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
       isPositionStrike: !!parsed && strike === parsed.strike,
     };
   }), [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes, volatilities]);
@@ -677,7 +748,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={nativePaneChrome ? 0 : 1}>
-      <QueryBar width={Math.max(1, width - 2)} filters={expirationFilters} />
+      <QueryBar width={Math.max(1, width - 2)} filters={queryFilters} />
 
       {summaryRowCount > 0 && (
         <StatGrid items={statItems.slice(0, summaryRowCount * statColumns)} width={statWidth} columns={statColumns} />
@@ -721,7 +792,9 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         getItemKey={(row) => String(row.strike)}
         renderCell={renderCell}
         selectedTextOverridesCellColor
-        emptyStateTitle={error && !strikeChain ? "Selected expiration unavailable." : strikesLoading ? "Loading strikes..." : "No strikes available."}
+        emptyStateTitle={error && !strikeChain ? "Selected expiration unavailable." : strikesLoading ? "Loading strikes..."
+          : strikeWindowResult.total > 0 ? "No strikes in this window." : "No strikes available."}
+        reportEveryRow
         rootWidth={Math.max(1, width - 2 + inset * 2)}
         rootHeight={tableHeight}
         columnGap={0}
