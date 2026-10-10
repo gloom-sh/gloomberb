@@ -23,6 +23,7 @@
 - [Options scenarios](#options-scenarios)
 - [Option valuation models](#option-valuation-models)
 - [Relative rotation](#relative-rotation)
+- [Position sizing: KELLY](#position-sizing-kelly)
 - [Portfolio risk: PORT and MARS](#portfolio-risk-depth-port-and-mars)
 - [Equity criteria screener](#equity-criteria-screener)
 - [Backtest](#backtest)
@@ -754,6 +755,12 @@ momentum history. Click column headers to sort. Missing aligned histories remain
 in the table with unavailable values and a footer notice. CSV export uses the
 pane menu. `gloomberb fn RRG --benchmark SPY:NYSEARCA --trail 6 --json` returns
 metrics, dated trails, rank sample counts and data limitations.
+
+## Position sizing: KELLY
+
+`KELLY <ticker>` sizes a position with the Kelly criterion. Binary, Scenario, Risk, Market and Asym take your own probabilities and payoffs; History reads them off the ticker's own daily closes: the share of up months, the mean gain of the up months and the mean loss of the down months, over non-overlapping 21-session returns counted back from the last close, for the last five years (`Years` sets one to five). Those are sized as a binary bet, so full Kelly is the fraction of bankroll that maximizes expected log growth for that win rate and payoff. Past months are not a forecast, and fewer than six of them give no inputs.
+
+`gloomberb fn KELLY LIT` prints History's inputs (window and its dates, win rate, average gain and loss, payoff ratio, edge a month) and full, half and quarter Kelly as a share of bankroll. `--bankroll 250000` (or `250k`, `1.5m`) sizes each in your base currency, with whole shares when the quote is in that currency, and `--years 1` shortens the window. `gloomberb shot KELLY LIT --bankroll 250000` opens the pane on History with that bankroll.
 
 ## Portfolio risk depth: PORT and MARS
 
