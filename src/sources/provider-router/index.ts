@@ -109,7 +109,7 @@ export class AssetDataRouter implements DataProvider {
       getQuote: (ticker, exchange, context) => this.financialRoutes.getQuote(ticker, exchange, context),
       getTickerFinancials: (ticker, exchange, context) => this.financialRoutes.getTickerFinancials(ticker, exchange, context),
     });
-    this.historyRoutes = new ProviderRouterHistoryRoutes(routeDeps);
+    this.historyRoutes = new ProviderRouterHistoryRoutes({ ...routeDeps, revalidatesInBackground: () => this.revalidateInBackground });
     this.newsRoutes = new ProviderRouterNewsRoutes({
       newsSourcesInPriorityOrder: () => this.newsSourcesInPriorityOrder(),
       logProviderError: (message) => providerLog.error(message),

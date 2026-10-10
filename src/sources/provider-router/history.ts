@@ -289,8 +289,13 @@ function calendarRecheckMarkerKey(request: HistoryRequestDescriptor) {
     variantKey: request.identity.variantKey, sourceKey: "router" };
 }
 
+interface HistoryRouteDeps extends ProviderRouterCoreDeps {
+  /** False in a short-lived process that must await refreshes of stale copies. */
+  revalidatesInBackground?(): boolean;
+}
+
 export class ProviderRouterHistoryRoutes {
-  constructor(private readonly deps: ProviderRouterCoreDeps) {}
+  constructor(private readonly deps: HistoryRouteDeps) {}
   private readonly historyRefreshInFlight = new Map<string, Promise<unknown>>();
   private readonly calendarRecheckAt = new Map<string, number>();
 
@@ -560,8 +565,9 @@ export class ProviderRouterHistoryRoutes {
       || hasRangeBarSize(record.value.points, request.requestedRange));
     // A background revalidation cannot correct bars from before a close in
     // time: a one-shot CLI exits first, and this caller keeps the old bars.
-    // Broader variants answer the same way. A current copy under another key
-    // (such as the refetch of this range) answers first. Next come copies
+    // That holds for daily bars and for intraday bars that stop short of the
+    // close. Broader variants answer the same way. A current copy under
+    // another key (such as the refetch of this range) answers first. Next come copies
     // fetched after the latest settled close that are behind, due a re-check
     // or not, the one reaching furthest first. A copy fetched before that close
     // answers only when no later copy exists: its latest bar may be the session
@@ -609,12 +615,16 @@ export class ProviderRouterHistoryRoutes {
     if (cachedBeforeClose) this.markCalendarChecked(request, now);
     const usableCached = hasUsablePriceHistory(cachedValue.points) && cached && !cached.expired && !cachedHistoryStale
       && !cachedBeforeClose;
-    if (usableCached && !forceRefresh) {
+    // A copy behind or before the latest session is re-checked on the paced
+    // schedule above, not on its short TTL: the source is likely to answer
+    // the same. A short-lived process (the CLI) closes its store before a
+    // background refresh lands, so it refetches a copy past its TTL before
+    // answering and falls back to that copy.
+    const refreshDue = !!cached?.stale && servedState === "current";
+    const awaitRefresh = refreshDue && !(this.deps.revalidatesInBackground?.() ?? true);
+    if (usableCached && !forceRefresh && !awaitRefresh) {
       const exactHit = request.exactCacheVariantKeys.includes(cached.variantKey);
-      // A copy behind or before the latest session is re-checked on the
-      // paced schedule above, not on its short TTL: the source is likely to
-      // answer the same.
-      if (cached.stale && servedState === "current") {
+      if (refreshDue) {
         scheduleRouterRevalidation(this.historyRefreshInFlight, request.identity.revalidationKey, () => this.refreshHistory(request));
       }
       return exactHit || !request.requestedRange
