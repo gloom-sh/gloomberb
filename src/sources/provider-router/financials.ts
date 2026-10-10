@@ -4,7 +4,7 @@ import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
 import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../../utils/fundamentals";
-import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
+import { hasValidQuoteObservationTime, isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import { parsePublicTickerKey } from "../../utils/exchanges";
 import {
@@ -224,19 +224,38 @@ export function isProviderQuoteUsableForCurrentSession(
   const normalized = quoteWithFreshnessExchange(quote, exchange);
   if (isQuoteStaleForCurrentSession(normalized)) return false;
   if (isActiveProviderQuoteTooOld(normalized, Date.now(), options.recentAnswer === true)) return false;
+  return hasQuotedPrice(normalized);
+}
+
+function hasQuotedPrice(quote: Quote): boolean {
   // Futures may trade or settle at zero or negative prices. Require explicit
   // source type metadata; an alias alone cannot establish the price domain.
-  const futures = ["FUT", "FUTURE", "FUTURES"].includes(normalized.instrumentType?.trim().toUpperCase() ?? "");
+  const futures = ["FUT", "FUTURE", "FUTURES"].includes(quote.instrumentType?.trim().toUpperCase() ?? "");
   return [
-    normalized.price,
-    normalized.preMarketPrice,
-    normalized.postMarketPrice,
-    normalized.bid,
-    normalized.ask,
-    normalized.mark,
+    quote.price,
+    quote.preMarketPrice,
+    quote.postMarketPrice,
+    quote.bid,
+    quote.ask,
+    quote.mark,
   ].some((value) => futures
     ? typeof value === "number" && Number.isFinite(value)
     : finitePositiveNumber(value));
+}
+
+/**
+ * A source's answer for the target that is priced and dated but not current
+ * for its session, flagged stale: the last price there is, for when no source
+ * has a current one. It keeps its own observation time, which dates it
+ * wherever it is shown, and the flag keeps it out of anything that needs a
+ * current price. Null for an answer that names another listing, carries no
+ * price or no valid time.
+ */
+export function lastKnownProviderQuote(quote: Quote | null | undefined, exchange?: string, symbol?: string): Quote | null {
+  if (!providerQuoteMatchesTarget(quote, symbol, exchange)) return null;
+  const normalized = quoteWithFreshnessExchange(quote, exchange);
+  if (!hasValidQuoteObservationTime(normalized) || !hasQuotedPrice(normalized)) return null;
+  return { ...quote, stale: true };
 }
 
 export function providerFinancialsMatchTarget(value: TickerFinancials, symbol: string, exchange?: string): boolean {

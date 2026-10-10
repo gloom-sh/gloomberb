@@ -299,7 +299,7 @@ describe("GloomberbCloudProvider", () => {
     expect([batchCalls, streamCalls, authCalls]).toEqual([2, 1, 1]);
   });
 
-  test("stale items in a successful quote batch cannot bypass single-quote freshness checks", async () => {
+  test("stale items in a successful quote batch and a stale single quote cannot pass as current", async () => {
     const targets = [{ symbol: "VOD", exchange: "NASDAQ" }, { symbol: "VOD:XLON", exchange: "LSE" }];
     const quote = { symbol: "VOD", price: 118, currency: "GBp", change: 1, changePercent: 0.85, lastUpdated: 1, stale: false };
     for (const status of ["success", "partial"] as const) {
@@ -315,7 +315,8 @@ describe("GloomberbCloudProvider", () => {
       expect(results[0]?.error?.message).toContain("stale");
       expect(results[1]?.target).toBe(targets[0]!);
       expect(results[1]?.quote).toMatchObject({ symbol: "VOD", currency: "USD", price: 15 });
-      await expect(provider.getQuote("VOD:XLON", "LSE")).rejects.toThrow("stale");
+      // A single stale answer comes back as the last price the service has, flagged stale.
+      expect(await provider.getQuote("VOD:XLON", "LSE")).toMatchObject({ price: 1.18, stale: true });
     }
   });
 

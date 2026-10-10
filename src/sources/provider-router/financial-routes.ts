@@ -32,7 +32,7 @@ import {
   type CachedFinancialsReadOptions,
   type CachedFinancialsSelection,
 } from "./financials";
-import type { ProviderRouterPrimaryRoutes } from "./primary";
+import type { ProviderQuoteMissNote, ProviderRouterPrimaryRoutes } from "./primary";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
 
 export interface ProviderRouterFinancialRouteDeps extends Pick<
@@ -223,12 +223,15 @@ export class ProviderRouterFinancialRoutes {
       );
     }
 
-    const misses: ProviderMissNote = {};
+    const misses: ProviderQuoteMissNote = {};
     const providerQuote = await this.deps.primaryRoutes.fetchProviderQuote(ticker, exchange, context, misses);
     if (providerQuote) {
       return providerQuote.value;
     }
     if (cached) return cached.value;
+    // No source has a current quote: the last price one answered with, flagged
+    // stale and dated by its own time, rather than none.
+    if (misses.lastKnownQuote) return misses.lastKnownQuote;
     throw noProviderError(`No quote provider available for ${ticker}`, misses);
   }
 

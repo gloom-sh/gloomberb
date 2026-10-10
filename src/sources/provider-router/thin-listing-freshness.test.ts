@@ -181,9 +181,13 @@ describe("thinly traded listings through the router", () => {
     await expect(router.getQuote("ZIOC", "LSE")).rejects.toThrow("No quote provider");
   });
 
-  test("another source's thin quote keeps the age bound", async () => {
-    const { router } = source("other", { ...zioc, providerId: "other" });
-    expect((await router.getQuotesBatch([target]))[0]?.quote).toBeNull();
-    await expect(router.getQuote("ZIOC", "LSE")).rejects.toThrow("No quote provider");
+  test("another source's thin quote keeps the age bound, and is served as the last known price", async () => {
+    const { router, state } = source("other", { ...zioc, providerId: "other" });
+    // No source has a current quote: the answer comes back flagged stale, and is not kept.
+    expect((await router.getQuotesBatch([target]))[0]?.quote).toMatchObject({ price: 0.0325, lastUpdated: zioc.lastUpdated, stale: true });
+    expect(await router.getQuote("ZIOC", "LSE")).toMatchObject({ price: 0.0325, stale: true });
+    const asked = state.asked;
+    await router.getQuote("ZIOC", "LSE");
+    expect(state.asked).toBe(asked + 1);
   });
 });

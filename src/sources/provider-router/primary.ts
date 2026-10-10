@@ -14,11 +14,18 @@ import {
   needsFinancialProfile,
   profileForSameListing,
   isProviderQuoteUsableForCurrentSession,
+  lastKnownProviderQuote,
   providerFinancialsMatchTarget,
   mergeMissingStatementArrays,
   mergeFinancials,
 } from "./financials";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
+
+/** What the providers of one quote request said when none had a current quote. */
+export interface ProviderQuoteMissNote extends ProviderMissNote {
+  /** The newest priced answer for the target that was not current for its session, flagged stale. */
+  lastKnownQuote?: Quote;
+}
 
 export class ProviderRouterPrimaryRoutes {
   constructor(private readonly options: ProviderRouterCoreDeps) {}
@@ -183,14 +190,20 @@ export class ProviderRouterPrimaryRoutes {
     ticker: string,
     exchange?: string,
     context?: MarketDataRequestContext,
-    misses?: ProviderMissNote,
+    misses?: ProviderQuoteMissNote,
   ): Promise<SourceResult<Quote> | null> {
     const entityKey = this.options.getEntityKey(ticker, context?.instrument);
     const variantKey = this.options.getTickerVariantCandidates(exchange)[0] ?? "";
     for (const provider of this.options.providersInPriorityOrder()) {
       try {
         const quote = await provider.getQuote(ticker, exchange, context);
-        if (!isProviderQuoteUsableForCurrentSession(quote, exchange, ticker, { recentAnswer: true })) continue;
+        if (!isProviderQuoteUsableForCurrentSession(quote, exchange, ticker, { recentAnswer: true })) {
+          const lastKnown = misses && lastKnownProviderQuote(quote, exchange, ticker);
+          if (lastKnown && (misses.lastKnownQuote?.lastUpdated ?? -Infinity) < lastKnown.lastUpdated) {
+            misses.lastKnownQuote = lastKnown;
+          }
+          continue;
+        }
         const sourceKey = this.options.providerSourceKey(provider);
         this.options.cacheResource(
           "quote",

@@ -411,13 +411,14 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     return withCloudFallback(
       async () => {
         const response = await apiClient.getCloudQuote(target.symbol, target.exchange);
-        if (isStaleCloudResponse(response)) {
-          throw createProviderMiss(`Cloud quotes are stale for ${ticker}`);
-        }
-        return retainRequestedQuoteSymbol(mapQuote(
+        const quote = retainRequestedQuoteSymbol(mapQuote(
           unwrapRequiredCloudResponse(response, `Cloud quotes are unavailable for ${ticker}`),
           response.providerMeta,
         ), ticker);
+        // A stale answer is the last price the service has. It stays flagged, so
+        // no freshness check passes it and only a request with no current quote
+        // from any source falls back to it.
+        return isStaleCloudResponse(response) ? { ...quote, stale: true } : quote;
       },
       `Cloud quotes are unavailable for ${ticker}`,
     );

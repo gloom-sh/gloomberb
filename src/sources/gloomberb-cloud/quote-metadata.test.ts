@@ -5,13 +5,14 @@ import { createGloomberbCloudProvider } from "./index";
 let quoteSpy: ReturnType<typeof spyOn> | undefined;
 afterEach(() => { quoteSpy?.mockRestore(); quoteSpy = undefined; });
 
-test("static quote metadata preserves source facts while stale prices remain rejected", async () => {
+test("static quote metadata preserves source facts while a stale price stays flagged", async () => {
   const raw: CloudQuotePayload = { symbol: "EURUSD=X", listingExchangeName: "CCY", currency: "USD", instrumentType: "CURRENCY",
     price: 1.1602274179458618, change: -0.001077882, changePercent: -0.0928, lastUpdated: Date.parse("2026-09-11T21:29Z"),
     receivedAt: Date.parse("2026-09-12T03:48Z"), stale: true };
   quoteSpy = spyOn(apiClient, "getCloudQuote").mockResolvedValue({ status: "success", data: raw, stale: true });
   const provider = createGloomberbCloudProvider();
-  await expect(provider.getQuote("EURUSD=X")).rejects.toThrow("stale");
+  // The price comes back only as the last known one, flagged stale.
+  expect(await provider.getQuote("EURUSD=X")).toMatchObject({ price: raw.price, stale: true });
   expect(await provider.getQuoteMetadata!("EURUSD=X")).toEqual({ symbol: "EURUSD=X", listingExchangeName: "CCY", currency: "USD", instrumentType: "CURRENCY",
     source: { providerId: "gloomberb-cloud", lastUpdated: raw.lastUpdated, stale: true, provenance: undefined } });
   expect(raw.price).toBe(1.1602274179458618);
