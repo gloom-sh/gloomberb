@@ -8,18 +8,23 @@ import type { ASKGToolExecutor } from "./executor";
 import {
   activeTurn,
   askgReducer,
+  canRateTurn,
   EMPTY_ASKG_CONVERSATION,
   isTurnRunning,
   requiresLocalConfirmation,
   type ASKGAction,
   type ASKGConversationState,
   type ASKGErrorState,
+  type ASKGTurnFeedback,
 } from "./model";
 import {
   ASKG_CLIENT_CAPABILITIES,
   ASKG_PROTOCOL_VERSION,
   type ASKGCapabilities,
   type ASKGClientDescriptor,
+  type ASKGFeedbackRating,
+  type ASKGFeedbackReason,
+  type ASKGFeedbackRequest,
   type ASKGSessionContext,
   type ASKGSessionStartResponse,
   type ASKGSseEvent,
@@ -104,6 +109,16 @@ function turnCapabilities(session: ASKGSessionStartResponse): ASKGCapabilities |
   return session.capabilities?.scripts === 1 ? { scripts: 1 } : null;
 }
 
+/**
+ * Refusals that say ratings cannot work from here at all: signed out, no plan
+ * that reaches Ask Gloom, or a protocol this build does not speak. The control
+ * goes away rather than failing on every click.
+ */
+function feedbackUnavailable(error: unknown): boolean {
+  return error instanceof ASKGTransportError
+    && (error.code === "unauthorized" || error.code === "tier_required" || error.code === "protocol");
+}
+
 function errorState(error: unknown): ASKGErrorState {
   if (error instanceof ASKGTransportError) {
     return {
@@ -136,6 +151,10 @@ export class ASKGSessionController {
   private readonly abandonedCalls = new Set<string>();
   private readonly toolTasks = new Set<Promise<void>>();
   private turnAbort: AbortController | null = null;
+  /** Ratings of one answer go out in the order they were made. */
+  private readonly feedbackQueues = new Map<string, Promise<void>>();
+  /** The latest rating request per answer; an older answer never wins. */
+  private readonly feedbackVersions = new Map<string, number>();
   private disposed = false;
   private readonly now: () => number;
   private readonly createId: () => string;
@@ -188,6 +207,7 @@ export class ASKGSessionController {
         model: session.model,
         limits: session.limits,
         acceptedTools: session.acceptedTools,
+        feedback: session.capabilities?.feedback === 1,
       });
       return session;
     })();
@@ -443,6 +463,94 @@ export class ASKGSessionController {
   private abandonPendingConfirmations(): void {
     for (const toolCallId of this.confirmations.keys()) this.abandonedCalls.add(toolCallId);
     this.rejectPendingConfirmations();
+  }
+
+  /**
+   * Rates one answer. The control shows the choice at once; a refusal puts the
+   * previous one back without a word, because a rating is not worth an error.
+   * A thumbs down keeps the reason it already had, a thumbs up drops it.
+   */
+  rateAnswer(turnId: string, rating: ASKGFeedbackRating): Promise<void> {
+    const current = this.state.turns.find((turn) => turn.id === turnId)?.feedback;
+    const reason = rating === "down" && current?.rating === "down" ? current.reason : null;
+    return this.sendFeedback(turnId, { rating, reason }, {
+      rating,
+      reason,
+      shared: current?.shared ?? false,
+      pending: "rating",
+    });
+  }
+
+  /** Says why an answer got a thumbs down. */
+  chooseFeedbackReason(turnId: string, reason: ASKGFeedbackReason): Promise<void> {
+    const current = this.state.turns.find((turn) => turn.id === turnId)?.feedback;
+    return this.sendFeedback(turnId, { rating: "down", reason }, {
+      rating: "down",
+      reason,
+      shared: current?.shared ?? false,
+      pending: "rating",
+    });
+  }
+
+  /**
+   * Sends one answer to Gloom with its rating. Only the consent travels: the
+   * platform copies the question, the answer and which tools ran from its own
+   * transcript, so nothing else on this machine can go with it.
+   */
+  shareAnswer(turnId: string): Promise<void> {
+    const current = this.state.turns.find((turn) => turn.id === turnId)?.feedback;
+    if (!current?.rating || current.shared) return Promise.resolve();
+    return this.sendFeedback(
+      turnId,
+      { rating: current.rating, reason: current.reason, share: true },
+      { rating: current.rating, reason: current.reason, shared: false, pending: "share" },
+    );
+  }
+
+  private sendFeedback(
+    turnId: string,
+    request: ASKGFeedbackRequest,
+    optimistic: ASKGTurnFeedback,
+  ): Promise<void> {
+    const turn = this.state.turns.find((entry) => entry.id === turnId);
+    if (this.disposed || !turn || !canRateTurn(this.state, turn) || !turn.remoteTurnId) {
+      return Promise.resolve();
+    }
+    const remoteTurnId = turn.remoteTurnId;
+    const previous = turn.feedback ? { ...turn.feedback, pending: null } : null;
+    const version = (this.feedbackVersions.get(turnId) ?? 0) + 1;
+    this.feedbackVersions.set(turnId, version);
+    this.dispatch({ type: "feedback", turnId, feedback: optimistic });
+
+    const send = async () => {
+      const latest = () => this.feedbackVersions.get(turnId) === version;
+      try {
+        const stored = await this.options.transport.sendFeedback(remoteTurnId, request);
+        if (!latest()) return;
+        if (!stored) {
+          // No answer of this person's under that id: nothing here can rate it.
+          this.dispatch({ type: "feedback", turnId, feedback: previous });
+          this.dispatch({ type: "feedback-unavailable" });
+          return;
+        }
+        this.dispatch({
+          type: "feedback",
+          turnId,
+          feedback: {
+            ...stored,
+            pending: null,
+            ...(request.share && !stored.shared ? { shareFailed: true } : {}),
+          },
+        });
+      } catch (error) {
+        if (!latest()) return;
+        this.dispatch({ type: "feedback", turnId, feedback: previous });
+        if (feedbackUnavailable(error)) this.dispatch({ type: "feedback-unavailable" });
+      }
+    };
+    const queued = (this.feedbackQueues.get(turnId) ?? Promise.resolve()).then(send);
+    this.feedbackQueues.set(turnId, queued);
+    return queued;
   }
 
   setExpanded(toolCallId: string, expanded: boolean): void {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   askgReducer,
+  canRateTurn,
   canRetryASKGError,
   describeASKGError,
   describeToolStatus,
@@ -493,5 +494,60 @@ describe("stored conversations", () => {
     const started = askgReducer(opened, { type: "conversation-started" });
     expect(started.conversationId).toBeNull();
     expect(started.turns).toEqual([]);
+  });
+
+  test("a reopened conversation shows the ratings it was given, on a server that takes them", () => {
+    const at = "2026-09-20T10:00:00.000Z";
+    const conversation = {
+      id: "conv-3",
+      title: null,
+      messageCount: 6,
+      lastMessageAt: at,
+      createdAt: at,
+      updatedAt: at,
+      messages: [
+        { seq: 1, role: "user" as const, text: "q1", tools: [], turnId: "t1", createdAt: at },
+        {
+          seq: 2,
+          role: "assistant" as const,
+          text: "a1",
+          tools: [],
+          turnId: "t1",
+          createdAt: at,
+          feedback: { rating: "down" as const, reason: "wrong" as const, shared: true },
+        },
+        { seq: 3, role: "user" as const, text: "q2", tools: [], turnId: "t2", createdAt: at },
+        { seq: 4, role: "assistant" as const, text: "a2", tools: [], turnId: "t2", createdAt: at, feedback: null },
+        { seq: 5, role: "user" as const, text: "q3", tools: [], turnId: "t3", createdAt: at },
+        // An unknown thumb from a newer server is no rating rather than a wrong one.
+        {
+          seq: 6,
+          role: "assistant" as const,
+          text: "a3",
+          tools: [],
+          turnId: "t3",
+          createdAt: at,
+          feedback: { rating: "meh", reason: null, shared: false } as never,
+        },
+      ],
+    };
+
+    const older = askgReducer(EMPTY_ASKG_CONVERSATION, { type: "conversation-opened", conversation });
+    expect(older.feedbackAvailable).toBe(false);
+    expect(older.turns.some((turn) => canRateTurn(older, turn))).toBe(false);
+
+    const opened = askgReducer(EMPTY_ASKG_CONVERSATION, {
+      type: "conversation-opened",
+      conversation: { ...conversation, capabilities: { feedback: 1 } },
+    });
+    expect(opened.feedbackAvailable).toBe(true);
+    expect(opened.turns.map((turn) => turn.feedback)).toEqual([
+      { rating: "down", reason: "wrong", shared: true, pending: null },
+      undefined,
+      undefined,
+    ]);
+    expect(opened.turns.every((turn) => canRateTurn(opened, turn))).toBe(true);
+    // Starting over keeps what the server said about ratings; only the turns go.
+    expect(askgReducer(opened, { type: "conversation-started" }).feedbackAvailable).toBe(true);
   });
 });

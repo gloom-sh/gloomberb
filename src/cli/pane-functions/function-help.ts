@@ -591,7 +591,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   ASKG: {
     summary: "Ask a question about what is on screen and watch the tools Gloom runs to answer it.",
     usage: ["ASKG why is NVDA down today"],
-    keys: [key("n", "ew conversation"), key("t", "ickers"), key("o", "pen pane")],
+    keys: [key("n", "ew conversation"), key("g", "ood answer"), key("b", "ad answer"), key("t", "ickers"), key("o", "pen pane")],
     data: null,
     bloomberg: ["ASKB"],
   },

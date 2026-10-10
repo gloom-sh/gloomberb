@@ -26,6 +26,7 @@ import {
   DataTableView,
   EmptyState,
   getPaneSidebarWidth,
+  IconButton,
   MessageComposer,
   Prose,
   QueryBar,
@@ -74,6 +75,7 @@ import { ASKGConversationSidebar } from "./sidebar";
 import { ASKGUndoManager } from "./undo";
 import {
   activeTurn,
+  canRateTurn,
   canRetryASKGError,
   describeASKGError,
   describeToolStatus,
@@ -87,8 +89,9 @@ import {
   type ASKGResultTable,
   type ASKGToolRow,
   type ASKGTurn,
+  type ASKGTurnFeedback,
 } from "./model";
-import type { JsonValue } from "./protocol";
+import type { ASKGFeedbackRating, ASKGFeedbackReason, JsonValue } from "./protocol";
 
 export const ASKG_PANE_ID = "askg";
 
@@ -141,6 +144,130 @@ const UPGRADE_KEY = CLOUD_PLAN_KEY;
 
 function canUndo(row: ASKGToolRow): boolean {
   return !!row.undoToken && (!row.undo || row.undo.status === "available");
+}
+
+/** Rate the answer the keyboard is on: the selected one, else the latest. */
+const GOOD_ANSWER_KEY = "g";
+const BAD_ANSWER_KEY = "b";
+/** Send the answer a thumbs down is open on. */
+const SHARE_ANSWER_KEY = "s";
+
+/** `hint` is the footer's short form; the row and the pane menu say it in full. */
+const FEEDBACK_REASONS: ReadonlyArray<{ reason: ASKGFeedbackReason; label: string; hint: string; title: string; key: string }> = [
+  { reason: "wrong", label: "Wrong", hint: "wrong", title: "Reason: Wrong", key: "1" },
+  { reason: "slow", label: "Too slow", hint: "slow", title: "Reason: Too Slow", key: "2" },
+  { reason: "missing_data", label: "Missing data", hint: "missing", title: "Reason: Missing Data", key: "3" },
+  { reason: "other", label: "Other", hint: "other", title: "Reason: Other", key: "4" },
+];
+
+/** Exactly what the send carries, and what it never does. */
+const SHARE_DISCLOSURE = "Sends your question, this answer and which tools ran. Never your account data, positions or tool results.";
+
+/** True when the only thing that changed between two transcripts is a rating. */
+function onlyFeedbackChanged(previous: readonly ASKGTurn[], next: readonly ASKGTurn[]): boolean {
+  if (previous === next || previous.length !== next.length) return false;
+  return previous.every((turn, index) => {
+    const other = next[index];
+    if (!other) return false;
+    if (turn === other) return true;
+    const { feedback: _before, ...rest } = turn;
+    const { feedback: _after, ...otherRest } = other;
+    return (Object.keys(rest) as Array<keyof typeof rest>).every((key) => rest[key] === otherRest[key]);
+  });
+}
+
+/** The timeline stop an answer's rating sits on, beside the tool rows. */
+function answerStopId(turnId: string): string {
+  return `answer:${turnId}`;
+}
+
+/**
+ * The rating under a finished answer: two quiet thumbs, and after a thumbs
+ * down the reasons and the one action that sends the answer, with a line that
+ * says what goes and what never does. Keys show beside the thumbs on the
+ * answer the keyboard would rate.
+ */
+function AnswerFeedback({
+  feedback,
+  width,
+  keysShown,
+  followUpOpen,
+  selected,
+  selectedRowRef,
+  onRate,
+  onReason,
+  onShare,
+}: {
+  feedback: ASKGTurnFeedback | undefined;
+  width: number;
+  /** This is the answer `g` and `b` rate. */
+  keysShown: boolean;
+  followUpOpen: boolean;
+  selected: boolean;
+  selectedRowRef: (node: BoxRenderable | null) => void;
+  onRate: (rating: ASKGFeedbackRating) => void;
+  onReason: (reason: ASKGFeedbackReason) => void;
+  onShare: () => void;
+}) {
+  const rating = feedback?.rating ?? null;
+  const sharing = feedback?.pending === "share";
+  return (
+    <Box ref={selected ? selectedRowRef : undefined} flexDirection="column" paddingTop={1}>
+      <Box flexDirection="row" height={1} alignItems="center">
+        <IconButton
+          icon="thumbs-up"
+          label="Good answer"
+          shortcut={keysShown ? GOOD_ANSWER_KEY : undefined}
+          pressed={rating === "up"}
+          onPress={() => onRate("up")}
+        />
+        {keysShown ? <Text fg={colors.textMuted}>{`${GOOD_ANSWER_KEY} `}</Text> : null}
+        <IconButton
+          icon="thumbs-down"
+          label="Bad answer"
+          shortcut={keysShown ? BAD_ANSWER_KEY : undefined}
+          pressed={rating === "down"}
+          onPress={() => onRate("down")}
+        />
+        {keysShown ? <Text fg={colors.textMuted}>{BAD_ANSWER_KEY}</Text> : null}
+        {feedback?.shared ? <Text fg={colors.textMuted}>{"  Sent to Gloom"}</Text> : null}
+      </Box>
+      {followUpOpen ? (
+        <Box flexDirection="column" paddingLeft={1}>
+          <Box flexDirection="row" flexWrap="wrap">
+            {FEEDBACK_REASONS.map((entry) => (
+              <Box key={entry.reason} flexDirection="row" height={1} marginRight={2}>
+                <Button
+                  label={entry.label}
+                  variant="ghost"
+                  compact
+                  active={feedback?.reason === entry.reason}
+                  shortcut={entry.key}
+                  onPress={() => onReason(entry.reason)}
+                />
+              </Box>
+            ))}
+          </Box>
+          <Box flexDirection="row" height={1}>
+            <Button
+              label={sharing ? "Sending\u2026" : "Send this answer to Gloom"}
+              variant="secondary"
+              compact
+              disabled={sharing}
+              shortcut={SHARE_ANSWER_KEY}
+              onPress={onShare}
+            />
+          </Box>
+          <Prose
+            text={feedback?.shareFailed ? "Could not send: Gloom no longer has this answer." : SHARE_DISCLOSURE}
+            width={Math.max(10, width - 1)}
+            color={colors.textMuted}
+            figures={false}
+          />
+        </Box>
+      ) : null}
+    </Box>
+  );
 }
 
 export function ToolTimelineRow({
@@ -404,10 +531,13 @@ function ToolResultDetail({
 function TurnView({
   turn,
   width,
-  selectedToolCallId,
+  selectedStopId,
   expandedToolCallId,
   selectedRowRef,
   latest,
+  rateable,
+  feedbackKeysShown,
+  feedbackFollowUpOpen,
   catalog,
   openTicker,
   onSelectTool,
@@ -415,14 +545,22 @@ function TurnView({
   onUndo,
   onRetry,
   onUpgrade,
+  onRate,
+  onReason,
+  onShare,
 }: {
   turn: ASKGTurn;
   width: number;
-  selectedToolCallId: string | null;
+  /** A tool call id, or the answer's own stop. */
+  selectedStopId: string | null;
   expandedToolCallId: string | null;
   selectedRowRef: (node: BoxRenderable | null) => void;
   /** The last turn: its Retry and Upgrade answer the pane's keys. */
   latest: boolean;
+  /** The answer shows the rating control. */
+  rateable: boolean;
+  feedbackKeysShown: boolean;
+  feedbackFollowUpOpen: boolean;
   catalog: ReturnType<typeof useInlineTickers>["catalog"];
   openTicker: (symbol: string) => void;
   onSelectTool: (toolCallId: string) => void;
@@ -430,6 +568,9 @@ function TurnView({
   onUndo: (toolCallId: string) => void;
   onRetry: () => void;
   onUpgrade: () => void;
+  onRate: (rating: ASKGFeedbackRating) => void;
+  onReason: (reason: ASKGFeedbackReason) => void;
+  onShare: () => void;
 }) {
   return (
     <Box flexDirection="column" paddingTop={1}>
@@ -447,7 +588,7 @@ function TurnView({
               key={row.toolCallId}
               row={row}
               width={width}
-              selected={row.toolCallId === selectedToolCallId}
+              selected={row.toolCallId === selectedStopId}
               expanded={row.toolCallId === expandedToolCallId}
               selectedRowRef={selectedRowRef}
               onSelect={() => onSelectTool(row.toolCallId)}
@@ -469,6 +610,19 @@ function TurnView({
         </Box>
       ) : turn.status === "streaming" && turn.tools.length === 0 ? (
         <Box paddingTop={1}><Spinner label="Gloom is thinking…" /></Box>
+      ) : null}
+      {rateable ? (
+        <AnswerFeedback
+          feedback={turn.feedback}
+          width={width}
+          keysShown={feedbackKeysShown}
+          followUpOpen={feedbackFollowUpOpen}
+          selected={selectedStopId === answerStopId(turn.id)}
+          selectedRowRef={selectedRowRef}
+          onRate={onRate}
+          onReason={onReason}
+          onShare={onShare}
+        />
       ) : null}
       {turn.error ? (
         <Box flexDirection="column" paddingTop={1}>
@@ -568,8 +722,11 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   const [inputValue, setInputValue] = useState("");
   const [inputFocused, setInputFocused] = useState(false);
-  const [selectedToolCallId, setSelectedToolCallId] = useState<string | null>(null);
+  // A tool row's call id, or an answer's rating (`answerStopId`).
+  const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [expandedToolCallId, setExpandedToolCallId] = useState<string | null>(null);
+  // The answer whose thumbs down shows its reasons and the send action.
+  const [feedbackFollowUpTurnId, setFeedbackFollowUpTurnId] = useState<string | null>(null);
   const inputRef = useRef<TextareaRenderable | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
@@ -610,6 +767,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     () => state.turns.flatMap((turn) => turn.tools),
     [state.turns],
   );
+  // What j/k walk: each turn's tool rows, then its answer's rating.
+  const timelineStops = useMemo(
+    () => state.turns.flatMap((turn) => [
+      ...turn.tools.map((row) => ({ id: row.toolCallId, turnId: turn.id, row })),
+      ...(canRateTurn(state, turn) ? [{ id: answerStopId(turn.id), turnId: turn.id, row: null }] : []),
+    ]),
+    [state],
+  );
   const expandedRow = useMemo(
     () => timelineRows.find((row) => row.toolCallId === expandedToolCallId) ?? null,
     [expandedToolCallId, timelineRows],
@@ -640,14 +805,16 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       void askgConversationListStore.refresh();
       return;
     }
-    setSelectedToolCallId(null);
+    setSelectedStopId(null);
     setExpandedToolCallId(null);
+    setFeedbackFollowUpTurnId(null);
     controller.openConversation(conversation);
   }, [controller, state.conversationId]);
 
   const newConversation = useCallback(() => {
-    setSelectedToolCallId(null);
+    setSelectedStopId(null);
     setExpandedToolCallId(null);
+    setFeedbackFollowUpTurnId(null);
     controller.startConversation();
   }, [controller]);
 
@@ -700,7 +867,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     ask(queuedQuestion);
   }, [ask, planAccess.emailVerified, queuedQuestion]);
 
+  // A rating changes a turn but not what was said, so it leaves the view on
+  // the answer being rated instead of pulling it to the newest one.
+  const scrolledTurnsRef = useRef(state.turns);
   useEffect(() => {
+    const previous = scrolledTurnsRef.current;
+    scrolledTurnsRef.current = state.turns;
+    if (onlyFeedbackChanged(previous, state.turns)) return;
     const scroll = scrollRef.current;
     if (!scroll?.viewport) return;
     scroll.scrollTo({ x: 0, y: Math.max(0, scroll.scrollHeight - scroll.viewport.height) });
@@ -754,14 +927,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [expandedToolCallId]);
 
   const moveSelection = useCallback((direction: -1 | 1) => {
-    if (timelineRows.length === 0) return;
-    const index = timelineRows.findIndex((row) => row.toolCallId === selectedToolCallId);
+    if (timelineStops.length === 0) return;
+    const index = timelineStops.findIndex((stop) => stop.id === selectedStopId);
     // Selection starts at the newest row: that is the answer being read.
     const nextIndex = index < 0
-      ? timelineRows.length - 1
-      : (index + direction + timelineRows.length) % timelineRows.length;
-    setSelectedToolCallId(timelineRows[nextIndex]?.toolCallId ?? null);
-  }, [selectedToolCallId, timelineRows]);
+      ? timelineStops.length - 1
+      : (index + direction + timelineStops.length) % timelineStops.length;
+    setSelectedStopId(timelineStops[nextIndex]?.id ?? null);
+  }, [selectedStopId, timelineStops]);
 
   // The selected row follows the keyboard into view in a long conversation.
   const selectedRowNodeRef = useRef<BoxRenderable | null>(null);
@@ -769,9 +942,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     selectedRowNodeRef.current = node;
   }, []);
   useEffect(() => {
-    if (!selectedToolCallId) return;
+    if (!selectedStopId) return;
     return afterLayout(() => revealInScrollBox(scrollRef.current, selectedRowNodeRef.current));
-  }, [selectedToolCallId]);
+  }, [selectedStopId, feedbackFollowUpTurnId]);
 
   const openPaneForTool = useCallback((row: ASKGToolRow) => {
     const target = resolveToolPaneTarget(row.name);
@@ -863,7 +1036,47 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   const upgrade = useCallback(() => openCommandBar("Upgrade to Pro"), [openCommandBar]);
 
-  const selectedRow = timelineRows.find((row) => row.toolCallId === selectedToolCallId) ?? null;
+  const selectedRow = timelineRows.find((row) => row.toolCallId === selectedStopId) ?? null;
+
+  // The answer `g` and `b` rate: the selected one, or the answer of the
+  // selected tool row, else the newest answer, which is the one being read.
+  const feedbackTarget = useMemo<ASKGTurn | null>(() => {
+    const stop = timelineStops.find((entry) => entry.id === selectedStopId);
+    if (stop) {
+      const turn = state.turns.find((entry) => entry.id === stop.turnId);
+      return turn && canRateTurn(state, turn) ? turn : null;
+    }
+    return state.turns.findLast((turn) => canRateTurn(state, turn)) ?? null;
+  }, [selectedStopId, state, timelineStops]);
+  // Open until the thumb changes, the answer is sent, or Esc.
+  const feedbackFollowUp = useMemo<ASKGTurn | null>(() => {
+    const turn = state.turns.find((entry) => entry.id === feedbackFollowUpTurnId);
+    return turn && canRateTurn(state, turn) && turn.feedback?.rating === "down" && !turn.feedback.shared
+      ? turn
+      : null;
+  }, [feedbackFollowUpTurnId, state]);
+
+  // A second thumbs down on the same answer opens or closes its reasons, so
+  // they are always one press away and never in the way. Rating moves the
+  // keyboard to the answer, which also scrolls its reasons into view.
+  const rateAnswer = useCallback((turn: ASKGTurn, rating: ASKGFeedbackRating) => {
+    setSelectedStopId(answerStopId(turn.id));
+    const current = turn.feedback?.rating ?? null;
+    if (rating === "down") {
+      setFeedbackFollowUpTurnId((open) => (current === "down" && open === turn.id ? null : turn.id));
+    } else {
+      setFeedbackFollowUpTurnId((open) => (open === turn.id ? null : open));
+    }
+    if (current === rating) return;
+    void controller.rateAnswer(turn.id, rating);
+  }, [controller]);
+  const chooseFeedbackReason = useCallback((turn: ASKGTurn, reason: ASKGFeedbackReason) => {
+    if (turn.feedback?.reason === reason) return;
+    void controller.chooseFeedbackReason(turn.id, reason);
+  }, [controller]);
+  const shareAnswer = useCallback((turn: ASKGTurn) => {
+    void controller.shareAnswer(turn.id);
+  }, [controller]);
   const confirmationHeight = confirmation ? confirmationBlockHeight(confirmation) : 0;
   const composerHeight = nativePaneChrome ? 3 : 2;
   // The conversation keeps a readable slice no matter what else is open.
@@ -949,6 +1162,29 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       // The result table walks and opens its own rows.
       if (isPlainKey(event, "j", "k", "up", "down", "enter", "return", "home", "end", "pageup", "pagedown")) return;
     }
+    if (feedbackFollowUp) {
+      if (isPlainKey(event, "escape")) {
+        consume();
+        setFeedbackFollowUpTurnId(null);
+        return;
+      }
+      const reason = FEEDBACK_REASONS.find((entry) => isPlainKey(event, entry.key));
+      if (reason) {
+        consume();
+        chooseFeedbackReason(feedbackFollowUp, reason.reason);
+        return;
+      }
+      if (isPlainKey(event, SHARE_ANSWER_KEY)) {
+        consume();
+        shareAnswer(feedbackFollowUp);
+        return;
+      }
+    }
+    if (isPlainKey(event, GOOD_ANSWER_KEY, BAD_ANSWER_KEY) && feedbackTarget) {
+      consume();
+      rateAnswer(feedbackTarget, event.name === GOOD_ANSWER_KEY ? "up" : "down");
+      return;
+    }
     if (isPlainKey(event, "left") && showSidebar) {
       consume();
       focusSidebar();
@@ -959,13 +1195,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       focusInput();
       return;
     }
-    // With tool rows the arrows walk them; without, they scroll the answer.
-    if (isPlainKey(event, "j", "down") && timelineRows.length > 0) {
+    // With tool rows or rateable answers the arrows walk them; without, they
+    // scroll the answer.
+    if (isPlainKey(event, "j", "down") && timelineStops.length > 0) {
       consume();
       moveSelection(1);
       return;
     }
-    if (isPlainKey(event, "k", "up") && timelineRows.length > 0) {
+    if (isPlainKey(event, "k", "up") && timelineStops.length > 0) {
       consume();
       moveSelection(-1);
       return;
@@ -1043,6 +1280,25 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (selectedRow && canUndo(selectedRow)) {
       list.push({ id: "undo", key: UNDO_KEY, label: " undo", title: "Undo", onPress: () => void controller.undo(selectedRow.toolCallId) });
     }
+    // An open thumbs down takes the keys for its reasons and the send; the
+    // thumbs keep working, they just leave the footer room for these.
+    if (feedbackFollowUp) {
+      for (const entry of FEEDBACK_REASONS) {
+        list.push({
+          id: `feedback-${entry.reason}`,
+          key: entry.key,
+          label: entry.hint,
+          title: entry.title,
+          onPress: () => chooseFeedbackReason(feedbackFollowUp, entry.reason),
+        });
+      }
+      list.push({ id: "feedback-share", key: SHARE_ANSWER_KEY, label: "end", title: "Send This Answer to Gloom", onPress: () => shareAnswer(feedbackFollowUp) });
+    } else if (feedbackTarget) {
+      list.push(
+        { id: "feedback-good", key: GOOD_ANSWER_KEY, label: "ood", title: "Good Answer", onPress: () => rateAnswer(feedbackTarget, "up") },
+        { id: "feedback-bad", key: BAD_ANSWER_KEY, label: "ad", title: "Bad Answer", onPress: () => rateAnswer(feedbackTarget, "down") },
+      );
+    }
     if (answerTickers.length > 0) list.push({ id: "tickers", key: "t", label: "ickers", onPress: () => void chooseAnswerTicker() });
     if (showSidebar) list.push({ id: "conversations", key: "←", label: " conversations", onPress: focusSidebar });
     return list;
@@ -1051,11 +1307,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     answerTickers.length,
     canOpenPane,
     chooseAnswerTicker,
+    chooseFeedbackReason,
     confirmation,
     controller,
     deleteSidebarConversation,
     expandTarget,
     expandedToolCallId,
+    feedbackFollowUp,
+    feedbackTarget,
     focusSidebar,
     inputFocused,
     leaveSidebar,
@@ -1063,10 +1322,12 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     newConversation,
     openPaneForTool,
     paneRow,
+    rateAnswer,
     resultActive,
     retryableTurn,
     running,
     selectedRow,
+    shareAnswer,
     showSidebar,
     sidebarFocused,
     sidebarTargetId,
@@ -1160,17 +1421,34 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
             key={turn.id}
             turn={turn}
             width={contentWidth}
-            selectedToolCallId={selectedToolCallId}
+            selectedStopId={selectedStopId}
             expandedToolCallId={expandedToolCallId}
             selectedRowRef={selectedRowRef}
             latest={turn.id === lastTurnId}
+            rateable={canRateTurn(state, turn)}
+            feedbackKeysShown={focused && !inputFocused && !(sidebarFocused && showSidebar) && feedbackTarget?.id === turn.id}
+            feedbackFollowUpOpen={feedbackFollowUp?.id === turn.id}
             catalog={catalog}
             openTicker={openTicker}
-            onSelectTool={setSelectedToolCallId}
+            onSelectTool={setSelectedStopId}
             onToggleTool={toggleExpanded}
             onUndo={(toolCallId) => void controller.undo(toolCallId)}
             onRetry={() => void controller.retryTurn(turn.id)}
             onUpgrade={upgrade}
+            // The controls keep their press from the column behind them, so
+            // they hand the keyboard back to the answer themselves.
+            onRate={(rating) => {
+              leaveSidebar();
+              rateAnswer(turn, rating);
+            }}
+            onReason={(reason) => {
+              leaveSidebar();
+              chooseFeedbackReason(turn, reason);
+            }}
+            onShare={() => {
+              leaveSidebar();
+              shareAnswer(turn);
+            }}
           />
         ))}
       </ScrollBox>

@@ -88,6 +88,20 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M2 9.1 4.7 6.6l1.6 1.5 1.8-2 2.4 2.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
+  // A hand with the thumb raised, on the 24-unit grid; the thumbs down is the
+  // same hand turned over.
+  "thumbs-up": (
+    <g transform="scale(0.5)">
+      <rect x="3" y="10" width="4" height="10" rx="1" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M7 10l3.5-6.5a1.8 1.8 0 0 1 3.3 1.2L13 9.5h5.6a2 2 0 0 1 2 2.4l-1.4 6.5a2 2 0 0 1-2 1.6H7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  ),
+  "thumbs-down": (
+    <g transform="scale(0.5) rotate(180 12 12)">
+      <rect x="3" y="10" width="4" height="10" rx="1" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M7 10l3.5-6.5a1.8 1.8 0 0 1 3.3 1.2L13 9.5h5.6a2 2 0 0 1 2 2.4l-1.4 6.5a2 2 0 0 1-2 1.6H7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />

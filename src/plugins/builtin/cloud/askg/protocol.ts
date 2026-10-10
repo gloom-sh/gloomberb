@@ -34,10 +34,42 @@ export const SCRIPT_TOOL_NAME = "run_script";
 export interface ASKGCapabilities {
   /** 1: the turn may answer by running scripts of tool calls. */
   scripts?: 1;
+  /**
+   * 1: answers can be rated. Only the session start carries it; a turn never
+   * repeats it, and a reopened conversation says it on its own response.
+   */
+  feedback?: 1;
 }
 
 /** What this build offers at session start. */
-export const ASKG_CLIENT_CAPABILITIES: ASKGCapabilities = { scripts: 1 };
+export const ASKG_CLIENT_CAPABILITIES: ASKGCapabilities = { scripts: 1, feedback: 1 };
+
+/** A thumbs up or down on one answer. */
+export type ASKGFeedbackRating = "up" | "down";
+
+/** Why a thumbs down, from a fixed list: a rating never carries text. */
+export type ASKGFeedbackReason = "wrong" | "slow" | "missing_data" | "other";
+
+/** Body of `PUT /askg/turns/:turnId/feedback`. Rating again overwrites. */
+export interface ASKGFeedbackRequest {
+  rating: ASKGFeedbackRating;
+  /** Only with a thumbs down. */
+  reason?: ASKGFeedbackReason | null;
+  /**
+   * The person agreed to send this answer. The request carries the consent,
+   * not the text: the platform copies the question, the answer and the names
+   * of the tools that ran from its own transcript, and nothing else.
+   */
+  share?: boolean;
+}
+
+/** A rating as stored: the route's answer, and what a reopened answer carries. */
+export interface ASKGFeedback {
+  rating: ASKGFeedbackRating;
+  reason: ASKGFeedbackReason | null;
+  /** The answer was sent. Sending is one way: a later rating keeps it sent. */
+  shared: boolean;
+}
 
 /** JSON value accepted on the ASKG wire. */
 export type JsonValue =

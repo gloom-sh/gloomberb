@@ -23,6 +23,7 @@ const WIDE_PANE_WIDTH = 96;
 
 const requests: string[] = [];
 const sessionBodies: Array<Record<string, unknown>> = [];
+const feedbackBodies: Array<Record<string, unknown>> = [];
 let configPortfolios: Array<{ id: string; name: string; currency: string; brokerInstanceId?: string }> = [];
 let sessionStatus = 200;
 let storedConversations: Array<Record<string, unknown>> = [];
@@ -90,6 +91,7 @@ function transcript(id: string, question: string, answer: string) {
 beforeEach(() => {
   requests.length = 0;
   sessionBodies.length = 0;
+  feedbackBodies.length = 0;
   configPortfolios = [];
   sessionStatus = 200;
   storedConversations = [];
@@ -127,6 +129,19 @@ beforeEach(() => {
         model: "gloom-1",
         promptVersion: "v1",
         expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (parsed.pathname.startsWith("/askg/turns/") && init?.method === "PUT") {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      feedbackBodies.push(body);
+      // Like the route: the stored rating, and once sent always sent.
+      const shared = body.share === true || feedbackBodies.some((entry) => entry.share === true);
+      return new Response(JSON.stringify({
+        turnId: decodeURIComponent(parsed.pathname.split("/")[3] ?? ""),
+        rating: body.rating,
+        reason: body.reason ?? null,
+        shared,
+        updatedAt: "2026-09-20T10:01:00.000Z",
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
     if (parsed.pathname === "/askg/conversations") {
@@ -401,5 +416,158 @@ describe("ASKGPane conversations", () => {
     expect(frame).not.toContain("About 4.2%");
     expect(frame).toContain("Ask about anything on screen");
     expect(frame).toContain("Bond returns");
+  });
+});
+
+describe("ASKGPane answer ratings", () => {
+  const ANSWER = "Holding above 70%.";
+
+  /** Opens a stored conversation whose answers the server says can be rated. */
+  async function openRateable(
+    feedback: Record<string, unknown> | null = null,
+    rateable = true,
+    earlier: Array<Record<string, unknown>> = [],
+  ): Promise<string> {
+    const base = transcript("conv-2", "how are Nvidia margins", ANSWER);
+    const stored = { ...base, messages: [...earlier, ...(base.messages as Array<Record<string, unknown>>)] };
+    storedConversations = [
+      conversation("conv-1", "Bond returns"),
+      conversation("conv-2", "Nvidia margins"),
+    ];
+    storedTranscripts = {
+      "conv-2": {
+        ...stored,
+        ...(rateable ? { capabilities: { feedback: 1 } } : {}),
+        messages: (stored.messages as Array<Record<string, unknown>>).map((message) => (
+          message.role === "assistant" && rateable ? { ...message, feedback } : message
+        )),
+      },
+    };
+    await renderPane(WIDE_PANE_WIDTH);
+    await tui.emitKeypress({ name: "escape" });
+    await tui.emitKeypress({ name: "left" });
+    await tui.emitKeypress({ name: "down" });
+    await tui.emitKeypress({ name: "down" });
+    await tui.emitKeypress({ name: "return" });
+    await flush();
+    return tui.frame();
+  }
+
+  test("an older server gets no control and no request", async () => {
+    const frame = await openRateable(null, false);
+    expect(frame).toContain(ANSWER);
+    expect(frame).not.toContain("+1");
+    expect(frame).not.toContain("[g]ood");
+
+    await tui.emitKeypress({ name: "b" });
+    await flush();
+    expect(feedbackBodies).toEqual([]);
+  });
+
+  test("the keyboard rates the answer, picks a reason and sends it", async () => {
+    const frame = await openRateable();
+    // The thumbs sit under the answer, keyed while it is the one being rated.
+    expect(frame).toContain("+1 g");
+    expect(frame).toContain("-1 b");
+    expect(frame).toContain("[g]ood");
+    expect(frame).toContain("[b]ad");
+    expect(frame).not.toContain("Send this answer to Gloom");
+
+    await tui.emitKeypress({ name: "b" });
+    await flush();
+    expect(feedbackBodies).toEqual([{ rating: "down", reason: null }]);
+    expect(requests).toContain("PUT /askg/turns/turn-a/feedback");
+    const followUp = tui.frame();
+    expect(followUp).toContain("Wrong");
+    expect(followUp).toContain("Too slow");
+    expect(followUp).toContain("Missing data");
+    expect(followUp).toContain("Other");
+    expect(followUp).toContain("Send this answer to Gloom");
+    // The line wraps; what it promises is the point, not where it breaks.
+    const disclosure = followUp.replace(/[\s│]+/g, " ");
+    expect(disclosure).toContain("Sends your question, this answer and which tools ran. Never your account data, positions or tool results.");
+    expect(followUp).toContain("[1]wrong [2]slow [3]missing [4]other [s]end");
+
+    await tui.emitKeypress({ name: "3" });
+    await flush();
+    expect(feedbackBodies.at(-1)).toEqual({ rating: "down", reason: "missing_data" });
+
+    await tui.emitKeypress({ name: "s" });
+    await flush();
+    expect(feedbackBodies.at(-1)).toEqual({ rating: "down", reason: "missing_data", share: true });
+    const sent = tui.frame();
+    expect(sent).toContain("Sent to Gloom");
+    expect(sent).not.toContain("Send this answer to Gloom");
+  });
+
+  test("Esc closes the reasons without sending, and a thumbs up needs nothing more", async () => {
+    await openRateable();
+    await tui.emitKeypress({ name: "b" });
+    await flush();
+    expect(tui.frame()).toContain("Send this answer to Gloom");
+
+    await tui.emitKeypress({ name: "escape" });
+    await flush();
+    expect(tui.frame()).not.toContain("Send this answer to Gloom");
+
+    await tui.emitKeypress({ name: "g" });
+    await flush();
+    expect(feedbackBodies).toEqual([
+      { rating: "down", reason: null },
+      { rating: "up", reason: null },
+    ]);
+    expect(tui.frame()).not.toContain("Wrong");
+  });
+
+  test("the mouse rates, picks a reason and sends", async () => {
+    await openRateable();
+    await tui.clickFrameText("+1");
+    await flush();
+    expect(feedbackBodies).toEqual([{ rating: "up", reason: null }]);
+
+    await tui.clickFrameText("-1");
+    await flush();
+    expect(feedbackBodies.at(-1)).toEqual({ rating: "down", reason: null });
+
+    await tui.clickFrameText("Too slow");
+    await flush();
+    expect(feedbackBodies.at(-1)).toEqual({ rating: "down", reason: "slow" });
+
+    await tui.clickFrameText("Send this answer to Gloom");
+    await flush();
+    expect(feedbackBodies.at(-1)).toEqual({ rating: "down", reason: "slow", share: true });
+    expect(tui.frame()).toContain("Sent to Gloom");
+  });
+
+  test("j and k walk to an earlier answer, and the keys rate the answer they are on", async () => {
+    const at = "2026-09-20T09:00:00.000Z";
+    await openRateable(null, true, [
+      { seq: -1, role: "user", text: "and AMD margins", tools: [], turnId: "turn-0", createdAt: at },
+      { seq: 0, role: "assistant", text: "Around 50%.", tools: [], turnId: "turn-0", createdAt: at, feedback: null },
+    ]);
+    const keyed = (frame: string) => frame.split("\n").filter((line) => line.includes("+1 g")).length;
+    // Only the newest answer shows the keys until the keyboard moves.
+    expect(keyed(tui.frame())).toBe(1);
+    expect(tui.frame().indexOf("+1 g")).toBeGreaterThan(tui.frame().indexOf("Holding above 70%."));
+
+    await tui.emitKeypress({ name: "k" });
+    await tui.emitKeypress({ name: "k" });
+    await flush();
+    const moved = tui.frame();
+    expect(keyed(moved)).toBe(1);
+    expect(moved.indexOf("+1 g")).toBeLessThan(moved.indexOf("Holding above 70%."));
+
+    await tui.emitKeypress({ name: "g" });
+    await flush();
+    expect(requests).toContain("PUT /askg/turns/turn-0/feedback");
+    expect(requests).not.toContain("PUT /askg/turns/turn-a/feedback");
+  });
+
+  test("a rating given before shows when the conversation is opened again", async () => {
+    const frame = await openRateable({ rating: "down", reason: "wrong", shared: true });
+    expect(frame).toContain("Sent to Gloom");
+    // A sent answer offers no second send.
+    expect(frame).not.toContain("Send this answer to Gloom");
+    expect(feedbackBodies).toEqual([]);
   });
 });

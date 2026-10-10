@@ -575,6 +575,10 @@ A message can carry up to four images: PNG, JPEG, WebP or GIF, up to 5 MB each. 
 
 The unread count in the status bar opens Unread Chat (also in the command bar): one row per channel with unread messages, and the count of a channel that mentions you in green. Counts are your account's, the same on every device. A row shows the latest unread message, one that mentions you first, only when the messages after the last one you read are already on this device, so a row can have a count and no message. Opening a row shows that channel in your chat pane; the list itself marks nothing read.
 
+## Ask Gloom
+
+Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or `g` and `b` for the answer the keyboard is on: the newest, or the one `j`/`k` moved to. A thumbs down offers why (`1` wrong, `2` too slow, `3` missing data, `4` other) and `Send this answer to Gloom` (`s`), which sends your question, the answer and which tools ran, never your account data, positions or tool results; without it only the thumb and the reason are kept. Esc closes the reasons, and your rating shows again when you reopen the conversation.
+
 ## Debt maturities
 
 `DDIS MSFT` opens the issuer's latest coherent principal maturity schedule. Maturities shows six relative fiscal buckets, including an open-ended Thereafter bucket, alongside the total and the shares due in the next twelve months and three years. Select a bucket for its exact amount and SEC fact. History shows the last ten years of annual filing cohorts; select an observation to inspect its filing. Filing shows currency, source concepts, interest expense, the borrowing-cost proxy when supported, and percentile coverage. `o` opens the selected filing.

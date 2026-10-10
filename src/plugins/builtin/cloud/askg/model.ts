@@ -5,6 +5,7 @@ import type {
 } from "../../../../api-client/askg";
 import {
   SCRIPT_TOOL_NAME,
+  type ASKGFeedback,
   type ASKGLimits,
   type ASKGSseEvent,
   type ASKGToolCallEvent,
@@ -67,6 +68,14 @@ export interface ASKGErrorState {
   retryAfterMs?: number;
 }
 
+/** The person's rating of one answer, as the control shows it. */
+export interface ASKGTurnFeedback extends ASKGFeedback {
+  /** A request is out: the control already shows the choice it carries. */
+  pending: "rating" | "share" | null;
+  /** Asked to send, and the server had no answer left to send. */
+  shareFailed?: boolean;
+}
+
 export interface ASKGTurn {
   id: string;
   /** Server turn id, known once the stream announces itself. */
@@ -77,6 +86,8 @@ export interface ASKGTurn {
   status: ASKGTurnStatus;
   error: ASKGErrorState | null;
   startedAt: number;
+  /** Absent until rated, here or on a stored conversation. */
+  feedback?: ASKGTurnFeedback;
 }
 
 export interface ASKGConversationState {
@@ -90,6 +101,11 @@ export interface ASKGConversationState {
   turns: ASKGTurn[];
   /** Highest applied `seq`, so a resumed stream skips replayed events. */
   lastSeq: number;
+  /**
+   * The server takes answer ratings: a session or a reopened conversation
+   * said so. Until then, and on an older server, no answer shows the control.
+   */
+  feedbackAvailable: boolean;
 }
 
 export const EMPTY_ASKG_CONVERSATION: ASKGConversationState = {
@@ -100,6 +116,7 @@ export const EMPTY_ASKG_CONVERSATION: ASKGConversationState = {
   acceptedTools: [],
   turns: [],
   lastSeq: 0,
+  feedbackAvailable: false,
 };
 
 export type ASKGAction =
@@ -109,8 +126,12 @@ export type ASKGAction =
     model: string;
     limits: ASKGLimits;
     acceptedTools: string[];
+    /** The session accepted answer ratings. */
+    feedback: boolean;
   }
   | { type: "prompt"; turnId: string; prompt: string; at: number }
+  | { type: "feedback"; turnId: string; feedback: ASKGTurnFeedback | null }
+  | { type: "feedback-unavailable" }
   | { type: "event"; event: ASKGSseEvent }
   | { type: "tool-awaiting-confirmation"; toolCallId: string }
   | { type: "tool-running"; toolCallId: string }
@@ -345,7 +366,21 @@ export function askgReducer(
         model: action.model,
         limits: action.limits,
         acceptedTools: action.acceptedTools,
+        feedbackAvailable: action.feedback,
       };
+    case "feedback": {
+      const index = state.turns.findIndex((turn) => turn.id === action.turnId);
+      const turn = state.turns[index];
+      if (!turn) return state;
+      const next: ASKGTurn = { ...turn };
+      if (action.feedback) next.feedback = action.feedback;
+      else delete next.feedback;
+      const turns = [...state.turns];
+      turns[index] = next;
+      return { ...state, turns };
+    }
+    case "feedback-unavailable":
+      return state.feedbackAvailable ? { ...state, feedbackAvailable: false } : state;
     case "prompt":
       return {
         ...state,
@@ -423,6 +458,9 @@ export function askgReducer(
         conversationId: action.conversation.id,
         turns: turnsFromConversation(action.conversation),
         lastSeq: 0,
+        // No session may be open yet, so the stored conversation says it too.
+        feedbackAvailable: state.feedbackAvailable
+          || action.conversation.capabilities?.feedback === 1,
       };
     case "conversation-started":
       return { ...state, conversationId: null, turns: [], lastSeq: 0 };
@@ -433,6 +471,7 @@ export function askgReducer(
         model: state.model,
         limits: state.limits,
         acceptedTools: state.acceptedTools,
+        feedbackAvailable: state.feedbackAvailable,
       };
   }
 }
@@ -458,6 +497,31 @@ function rowFromStoredTool(tool: ASKGConversationTool): ASKGToolRow {
     ...(tool.note ? { note: capToolNote(tool.note) } : {}),
     expanded: false,
   };
+}
+
+/** A stored rating, read defensively: an unknown thumb is no rating. */
+function storedFeedback(
+  feedback: ASKGFeedback | null | undefined,
+): ASKGTurnFeedback | null {
+  if (!feedback || (feedback.rating !== "up" && feedback.rating !== "down")) return null;
+  return {
+    rating: feedback.rating,
+    reason: feedback.rating === "down" ? feedback.reason ?? null : null,
+    shared: feedback.shared === true,
+    pending: null,
+  };
+}
+
+/**
+ * Whether an answer shows the rating control: a finished answer with text,
+ * filed under a server turn id, on a server that takes ratings. A failed,
+ * cancelled or still streaming turn has nothing to rate.
+ */
+export function canRateTurn(state: ASKGConversationState, turn: ASKGTurn): boolean {
+  return state.feedbackAvailable
+    && turn.status === "complete"
+    && !!turn.remoteTurnId
+    && turn.answer.trim().length > 0;
 }
 
 /**
@@ -489,6 +553,7 @@ export function turnsFromConversation(
     // still shows rather than being dropped on the floor.
     const turn = turns[turns.length - 1];
     const tools = message.tools.map(rowFromStoredTool);
+    const feedback = storedFeedback(message.feedback);
     if (!turn || turn.answer) {
       turns.push({
         id: `stored:${conversation.id}:${message.seq}`,
@@ -499,10 +564,18 @@ export function turnsFromConversation(
         status: "complete",
         error: null,
         startedAt,
+        ...(feedback ? { feedback } : {}),
       });
       continue;
     }
-    turns[turns.length - 1] = { ...turn, answer: message.text, tools };
+    turns[turns.length - 1] = {
+      ...turn,
+      // The answer's id is the one the rating was filed under.
+      remoteTurnId: message.turnId ?? turn.remoteTurnId,
+      answer: message.text,
+      tools,
+      ...(feedback ? { feedback } : {}),
+    };
   }
   return turns;
 }
