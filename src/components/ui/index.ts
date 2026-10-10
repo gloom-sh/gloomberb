@@ -5,7 +5,7 @@ export type { ListViewItem, ListViewProps, ListRowState } from "./list-view";
 export { DataTable } from "./data-table";
 export type { DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange } from "./data-table";
 
-export { Button } from "./button";
+export { Button, terminalButtonColumns } from "./button";
 export { Icon, IconButton, ICON_GLYPHS } from "./icon";
 export type { IconButtonPressEvent, IconButtonProps, IconName, IconProps } from "./icon";
 export { ActionRow } from "./action-row";

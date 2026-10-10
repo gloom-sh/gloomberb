@@ -4,6 +4,7 @@ import { type ComponentType, type ReactNode } from "react";
 import type { ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
+import { displayWidth } from "../../utils/format";
 import { useRemoteUiNode, useRemoteUiScope } from "../../remote/semantic-tree";
 import { useScopedButtonAction } from "./action-scope";
 
@@ -64,6 +65,15 @@ function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: 
     default:
       return { bg: colors.panel, fg: colors.text };
   }
+}
+
+/**
+ * Terminal cells a button takes: the padded label, then its key. For a row that
+ * has to know whether its buttons fit before it lays them out.
+ */
+export function terminalButtonColumns({ label, displayLabel, shortcut, compact = false }: Pick<ButtonProps, "label" | "displayLabel" | "shortcut" | "compact">): number {
+  const text = displayLabel ?? t(label);
+  return displayWidth(compact ? text : ` ${text} `) + (shortcut ? 1 + displayWidth(shortcut) : 0);
 }
 
 export function Button({
