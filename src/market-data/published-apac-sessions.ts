@@ -5,6 +5,8 @@
 // KRX, also KOSDAQ: http://open.krx.co.kr/contents/MKD/01/0110/01100305/MKD01100305.jsp
 // TWSE, whose closures TPEx shares: https://www.twse.com.tw/en/trading/holiday.html
 //   (2027 not yet published; 12 and 13 Feb 2026 are clearing-only days without trading)
+// BHB closes on the dates its own daily closes skip in 2026, which match the holidays it lists
+//   (some moved, as its list warns), and on National Day, 16 and 17 Dec. Its week is Sunday to Thursday.
 // HKEX: https://www.hkex.com.hk/-/media/HKEX-Market/Services/Circulars-and-Notices/Participant-and-Members-Circulars/SEHK/2025/ce_SEHK_CT_075_2025.pdf
 //   and https://www.hkex.com.hk/-/media/HKEX-Market/Services/Circulars-and-Notices/Participant-and-Members-Circulars/SEHK/2026/ce_SEHK_CT_077_2026.pdf
 // SGX closes on Singapore's gazetted public holidays, one on a Sunday moving to the Monday:
@@ -34,6 +36,12 @@ export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, rea
   KOSDAQ: KRX_CLOSURES,
   TWSE: TWSE_CLOSURES,
   TPEX: TWSE_CLOSURES,
+  BHB: {
+    2026: [
+      "01-01", "03-22", "03-23", "03-24", "05-03", "05-26", "05-27", "05-28", "05-31", "06-16", "06-25", "06-28",
+      "08-25", "12-16", "12-17",
+    ],
+  },
   HKEX: {
     2026: [
       "01-01", "02-17", "02-18", "02-19", "04-03", "04-06", "04-07", "05-01", "05-25",
