@@ -808,7 +808,9 @@ describe("loadConfig", () => {
 
     expect(config.disabledPlugins).toEqual([
       "ticker-research",
-      "market-overview",
+      // World indices went to Global Markets when Market Overview was split,
+      // so it no longer turns off the rest of Market Overview either.
+      "global-markets",
       // Their own built-ins now, so a legacy id means the plugin of that name
       // rather than the built-in that used to contain it.
       "market-heatmap",
@@ -821,8 +823,7 @@ describe("loadConfig", () => {
       "ibkr",
       "broker",
       "portfolio",
-      // Built in again, and off like the rest of Market Overview and Macro.
-      "market-halts",
+      // Built in again, and off like the rest of Macro.
       "ipo-calendar",
     ]);
   });
@@ -839,17 +840,19 @@ describe("loadConfig", () => {
     const saved = createSavedConfig({ configVersion: 22, disabledPlugins: ["market-overview"] });
     await writeConfigJson(dataDir, saved);
 
+    const marketOverview = ["global-markets", "screeners", "futures-commodities", "crypto", "alt-data", "quant"];
     const migrated = await loadConfig(dataDir);
-    expect(migrated.disabledPlugins).toEqual(["market-overview", "market-halts", "fear-greed"]);
+    expect(migrated.disabledPlugins).toEqual([...marketOverview, "market-halts", "fear-greed"]);
     // The web bundled all three whatever Market Overview said.
-    expect(normalizeLoadedConfig(saved, dataDir).config.disabledPlugins).toEqual(["market-overview"]);
+    expect(normalizeLoadedConfig(saved, dataDir).config.disabledPlugins).toEqual(marketOverview);
 
     // Switched on since, then saved by an older build, which writes its own
     // configVersion back: the migration runs again but leaves them on.
-    await saveConfig({ ...migrated, disabledPlugins: ["market-overview"] });
+    await saveConfig({ ...migrated, disabledPlugins: marketOverview });
     const persisted = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as Record<string, unknown>;
+    expect(persisted.disabledPlugins).toEqual(["market-overview"]);
     await writeConfigJson(dataDir, { ...persisted, configVersion: 22 });
-    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["market-overview"]);
+    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(marketOverview);
   });
 
   /** The IPO Calendar was a Macro module, then a plugin the seeder skipped while Macro was off. */

@@ -7,11 +7,18 @@ import { createDefaultConfig, createPaneInstance } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { GloomPlugin, GloomPluginContext } from "../../types/plugin";
 import {
+  altDataPlugin,
   applicationPlugin,
   creditPlugin,
+  cryptoPlugin,
   earningsPlugin,
+  futuresCommoditiesPlugin,
+  globalMarketsPlugin,
   portfolioPlugin,
+  quantPlugin,
   ratesMacroPlugin,
+  screenersPlugin,
+  tickerResearchPlugin,
 } from "../builtin/composite-plugins";
 import { resolveShellVisibleLayout } from "../../components/layout/shell/visible-layout";
 import { expandBuiltinPluginGroups } from "../ownership";
@@ -224,6 +231,49 @@ describe("Macro's successors", () => {
     expect(visiblePanes(["credit"])).toEqual(["econ-calendar", "yield-curve", "earnings-calendar"]);
     expect(visiblePanes(["earnings"])).toEqual(["econ-calendar", "yield-curve", "cds"]);
     expect(visiblePanes(expandBuiltinPluginGroups(["macro"]))).toEqual([]);
+  });
+});
+
+describe("Market Overview's successors", () => {
+  test("keep its state, each hides only its own panes, and CHOKE answers to Global Markets", async () => {
+    const pluginConfig: Record<string, Record<string, unknown>> = {
+      "market-overview": { "map:layer": "ships" },
+      "ticker-research": { priceLevels: "kept" },
+    };
+    const registry = createRegistry();
+    registry.bindHost({ getConfig: () => ({ ...createDefaultConfig("/tmp/gloomberb-market-overview-split-test"), pluginConfig }) });
+    for (const plugin of [tickerResearchPlugin, globalMarketsPlugin, screenersPlugin, futuresCommoditiesPlugin, cryptoPlugin, altDataPlugin, quantPlugin]) {
+      await registry.register(plugin);
+    }
+
+    for (const pluginId of ["global-markets", "screeners", "futures-commodities", "crypto"]) {
+      expect(registry.getConfigState(pluginId, "map:layer")).toBe("ships");
+    }
+    // Alt Data and Quant already sit in the namespace their Ticker Research
+    // modules will bring; their Market Overview modules keep theirs, which
+    // the attention pane test checks where it renders.
+    for (const pluginId of ["alt-data", "quant"]) {
+      expect(registry.getConfigState(pluginId, "priceLevels")).toBe("kept");
+    }
+
+    const paneIds = ["world-venue-map", "world-indices", "equity-screener", "futures", "crypto-board", "attention", "correlation"];
+    const instances = paneIds.map((paneId) => createPaneInstance(paneId, { instanceId: `${paneId}:main`, binding: { kind: "none" } }));
+    const layout = {
+      dockRoot: null,
+      instances,
+      floating: instances.map((instance, index) => ({ instanceId: instance.instanceId, x: index, y: 0, width: 40, height: 10, zIndex: index })),
+      detached: [],
+    };
+    const visiblePanes = (disabled: readonly string[]) => {
+      const disabledPaneIds = new Set(disabled.flatMap((pluginId) => registry.getPluginPaneIds(pluginId)));
+      return resolveShellVisibleLayout(layout, disabledPaneIds, registry.panes).instances.map((instance) => instance.paneId);
+    };
+    expect(visiblePanes(["global-markets"])).toEqual(["equity-screener", "futures", "crypto-board", "attention", "correlation"]);
+    expect(visiblePanes(expandBuiltinPluginGroups(["market-overview"]))).toEqual([]);
+
+    // The template is Global Markets', the chart it opens Ticker Research's.
+    expect(registry.getDisabledPaneTemplateOwner("chokepoint-chart-pane", ["global-markets"])).toEqual({ id: "global-markets", name: "Global Markets" });
+    expect(registry.getDisabledPaneTemplateOwner("chokepoint-chart-pane", ["ticker-research"])).toEqual({ id: "ticker-research", name: "Ticker Research" });
   });
 });
 

@@ -10,6 +10,7 @@ import type { AttentionPayload } from "../../../api-client/attention";
 import { attentionCache } from "./client";
 import { AttentionPane } from "./pane";
 import { attentionFixture, attentionPreview } from "./test-fixture";
+import { altDataPlugin } from "../composite-plugins";
 const tui = createOpenTuiTestHarness();
 afterEach(() => { apiClient.setSessionToken(null); setCloudApiFetchTransport(null); attentionCache.reset(); });
 async function mount(data: AttentionPayload, settings: Record<string, unknown> = {}, respond?: (url: string) => AttentionPayload) {
@@ -72,4 +73,29 @@ test("group selection opens its exact country and does not expose unrelated tick
   const ranking = await tui.waitForFrameToContain("NVIDIA");
   expect(ranking).not.toContain("ASUS fixture");
   expect(ranking).not.toContain("Sony Group");
+});
+
+// Alt Data's own namespace is Ticker Research's, for the modules it takes
+// over from there; the attention pane keeps the one it saved under in Market
+// Overview.
+test("inside Alt Data, opens on the tab it saved under Market Overview", async () => {
+  const data = attentionFixture();
+  attentionCache.attach(new MemoryPluginPersistence());
+  apiClient.setSessionToken("isolated-attention-test");
+  apiClient.restoreCachedUser({ id: "isolated-test", name: "Test", emailVerified: true, plan: "pro" });
+  setCloudApiFetchTransport(async () => Response.json(data));
+  const id = "attention:saved";
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-attention-test", { paneId: "attention", instanceId: id, binding: { kind: "none" } }));
+  state.paneState[id] = { pluginState: { "market-overview": { "attention:tab": "countries" } } };
+  const AltDataAttentionPane = altDataPlugin.panes!.find((pane) => pane.id === "attention")!.component;
+  await act(async () => {
+    await tui.render(
+      <TestPaneFrame state={state} paneId={id} pluginId="ticker-research" runtime={createTestPluginRuntime()} width={90} height={23}>
+        {(body) => <AltDataAttentionPane paneId={id} paneType="attention" {...body} focused />}
+      </TestPaneFrame>,
+      { width: 90, height: 23 },
+    );
+  });
+  const frame = await tui.waitForFrameToContain("GROUP");
+  expect(frame).not.toContain("NVIDIA");
 });

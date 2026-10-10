@@ -220,6 +220,24 @@ describe("core sync contributors", () => {
     expect(pull((await push(all)).filter((pluginId: string) => pluginId !== "macro"))).toEqual([]);
   });
 
+  test("Market Overview round-trips through sync with apps from before it was split", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-market-overview-test");
+    const pull = (disabledPlugins: string[]) => (
+      __syncContributorInternalsForTests.mergeConfigPayload(config, { disabledPlugins })?.disabledPlugins
+    );
+    const push = async (disabledPlugins: string[]) => (
+      (await coreConfigSyncContributor.collect({ state: createInitialState({ ...config, disabledPlugins }) }) as any).disabledPlugins
+    );
+    const all = ["global-markets", "screeners", "futures-commodities", "crypto", "alt-data", "quant"];
+
+    expect(pull(["market-overview"])).toEqual(all);
+    expect(pull(["world-indices", "market-movers"])).toEqual(["global-markets", "screeners"]);
+    expect(pull(["quant", "market-overview"])).toEqual(["quant", ...all.slice(0, 5)]);
+    expect(await push(all)).toEqual(["market-overview"]);
+    expect(await push(["global-markets"])).toEqual(["global-markets"]);
+    expect(pull((await push([...all, "news"])).filter((pluginId: string) => pluginId !== "market-overview"))).toEqual(["news"]);
+  });
+
   test("preserves local broker identity when applying sanitized portfolios", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-broker-identity-test");
     config.portfolios = [{

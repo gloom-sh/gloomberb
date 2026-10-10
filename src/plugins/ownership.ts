@@ -100,6 +100,11 @@ function normalizeBuiltinPluginOwnerId(pluginId: string): string {
   return BUILTIN_PLUGIN_OWNER_ALIASES[pluginId] ?? pluginId;
 }
 
+/** Every retired built-in module id, for checks that each still lands on the right plugin. */
+export function retiredBuiltinModuleIds(): string[] {
+  return Object.keys(BUILTIN_PLUGIN_OWNER_ALIASES);
+}
+
 export function isReservedBuiltinPluginId(pluginId: string): boolean {
   return Object.prototype.hasOwnProperty.call(BUILTIN_PLUGIN_OWNER_ALIASES, pluginId)
     || builtinPluginGroupMembers(pluginId) !== null;
