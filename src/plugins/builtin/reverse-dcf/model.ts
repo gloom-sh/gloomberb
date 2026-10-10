@@ -1,4 +1,5 @@
 import type { TickerFinancials } from "../../../types/financials";
+import { reportedEnterpriseValue } from "../../../utils/fundamentals";
 
 /** Years of explicit growth before the terminal value. */
 export const FORECAST_YEARS = 10;
@@ -65,7 +66,7 @@ function pastFcfGrowth(financials: TickerFinancials): ReverseDcfModel["pastGrowt
 export function projectReverseDcf(financials: TickerFinancials | null, options: { symbol: string; discountRate: number }): ReverseDcfModel {
   const fundamentals = financials?.fundamentals;
   const currency = fundamentals?.financialCurrency ?? financials?.financialCurrency ?? null;
-  const enterpriseValue = fundamentals?.enterpriseValue ?? null;
+  const enterpriseValue = reportedEnterpriseValue(fundamentals) ?? null;
   const freeCashFlow = fundamentals?.freeCashFlow ?? null;
   const empty: ReverseDcfModel = { symbol: options.symbol, currency, enterpriseValue, freeCashFlow, fcfYield: null, implied: null,
     pastGrowth: financials ? pastFcfGrowth(financials) : null, sensitivity: [], error: null };

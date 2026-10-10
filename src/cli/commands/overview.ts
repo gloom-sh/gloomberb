@@ -1,25 +1,38 @@
 import { apiClient } from "../../api-client";
+import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices } from "../context";
 import { formatCompact } from "../../utils/format";
 import {
-  fetchScreener,
+  fetchScreenerResult,
   fetchTrending,
   MARKET_SUMMARY_SYMBOLS,
   rankScreenerQuotes,
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
 import { formatMoverPrice, moverReferencePrice } from "../../plugins/builtin/market-movers/model";
-import { loadCalendar, matchesCountry, matchesImpact, type CountryFilter, type ImpactFilter } from "../../plugins/builtin/econ/calendar-model";
-import { isoDate, requireArg, takeOption } from "./command-utils";
+import {
+  COUNTRY_CYCLE,
+  FILTER_CYCLE,
+  loadCalendar,
+  matchesCountry,
+  matchesImpact,
+  type CountryFilter,
+  type ImpactFilter,
+} from "../../plugins/builtin/econ/calendar-model";
+import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
-import { correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
+import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
+import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
-import { parsePublicTickerKey } from "../../utils/exchanges";
+import { EXCHANGE_OPTION, listingIdentity, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
 import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
+import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
+import { newestReportTime, oldestReportTime } from "../../utils/utc-time";
+import { quotesFreshness, rowsFreshness } from "../freshness";
 
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
 const BASKET_NAMES = new Map<string, string>([
@@ -44,11 +57,26 @@ const MOVER_COLUMNS = [
 ];
 const START_OPTION = { flags: "--start <yyyy-mm-dd>", description: "First observation date (default 2021-01-01)" };
 
-function screenerCategory(value: string | undefined): ScreenerCategory | "trending" {
-  if (value === "losers") return "day_losers";
-  if (value === "active" || value === "most-active") return "most_actives";
-  if (value === "trending") return "trending";
-  return "day_gainers";
+const MOVER_LISTS: Record<string, ScreenerCategory | "trending"> = {
+  gainers: "day_gainers",
+  losers: "day_losers",
+  active: "most_actives",
+  "most-active": "most_actives",
+  trending: "trending",
+};
+const MOVERS_USAGE = "movers [gainers|losers|active|trending]";
+
+function screenerCategory(args: readonly string[], ctx: Parameters<CliCommandDef["execute"]>[1]): ScreenerCategory | "trending" {
+  rejectExtraArgs(args, 1, { usage: MOVERS_USAGE, takes: "one list" }, ctx);
+  const list = args[0]?.toLowerCase() ?? "gainers";
+  const category = MOVER_LISTS[list];
+  if (!category) ctx.fail(`Unknown list "${args[0]}".`, "Use gainers, losers, active or trending.");
+  return category;
+}
+
+/** A command that takes no arguments fails on one, rather than answering as if it were not there. */
+function rejectArgs(args: readonly string[], usage: string, ctx: Parameters<CliCommandDef["execute"]>[1], advice?: string): void {
+  rejectExtraArgs(args, 0, { usage, takes: "no arguments", advice }, ctx);
 }
 
 function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/data-provider").AssetDataProvider["getQuotesBatch"]>>>) {
@@ -68,7 +96,7 @@ function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/d
 }
 
 async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const category = screenerCategory(args[0]);
+  const category = screenerCategory(args, ctx);
   const limit = ctx.cliOptions.limit ?? 25;
   if (category === "trending") {
     await withCliServices(ctx, async (services) => {
@@ -77,18 +105,17 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
         trending.map(({ symbol }) => ({ symbol, exchange: "" })),
         { forceRefresh: ctx.cliOptions.refresh },
       );
-      ctx.printResult({ data: quoteRows(results), metadata: { category } }, {
+      ctx.printResult({ data: quoteRows(results), metadata: { category }, freshness: quotesFreshness(results.map((result) => result.quote)) }, {
         textColumns: MOVER_COLUMNS.filter((column) => column.key !== "volume"),
       });
     });
     return;
   }
 
-  const rows = rankScreenerQuotes(
-    category,
-    await fetchScreener(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh }),
-  );
-  ctx.printResult({ data: rows }, {
+  const screener = await fetchScreenerResult(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
+  const rows = rankScreenerQuotes(category, screener.data);
+  // A screener snapshot, as the MOST report reads it: delayed, each row dated by its own last price.
+  ctx.printResult({ data: rows, freshness: rowsFreshness(rows, { status: "delayed" }, { stale: screener.stale === true }) }, {
     columns: [
       ...MOVER_COLUMNS.slice(0, 4),
       { key: "volume", header: "Volume", align: "right", value: (row) => formatCompact(Number(row.volume)) },
@@ -103,7 +130,7 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
       symbols.map((symbol) => ({ symbol, exchange: "" })),
       { forceRefresh: ctx.cliOptions.refresh },
     );
-    ctx.printResult({ data: quoteRows(results), metadata }, {
+    ctx.printResult({ data: quoteRows(results), metadata, freshness: quotesFreshness(results.map((result) => result.quote)) }, {
       columns: [
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },
@@ -115,25 +142,34 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
   });
 }
 
-function localDateTimePart(value: unknown, part: "date" | "time"): string {
+/** The UTC date, or the UTC time with its zone named, of an event's timestamp. */
+function utcDateTimePart(value: unknown, part: "date" | "time"): string {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return "";
-  const pad = (number: number) => String(number).padStart(2, "0");
-  return part === "date"
-    ? `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-    : `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const iso = date.toISOString();
+  return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC`;
+}
+
+const ECON_USAGE = "econ [--country <region>] [--impact <level>]";
+
+/** One of a filter's values, matched without regard to case; anything else fails with the list. */
+function parseFilter<T extends string>(value: string | undefined, values: readonly T[], label: string, ctx: Parameters<CliCommandDef["execute"]>[1]): T {
+  if (value == null) return values[0]!;
+  const match = values.find((candidate) => candidate.toLowerCase() === value.trim().toLowerCase());
+  if (!match) ctx.fail(`Unknown ${label} "${value}".`, `Use ${values.join(", ")}.`);
+  return match;
 }
 
 async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const rawArgs = [...args];
-  const country = (takeOption(rawArgs, "--country") ?? "all") as CountryFilter;
-  const impact = (takeOption(rawArgs, "--impact") ?? "all") as ImpactFilter;
+  const country: CountryFilter = parseFilter(takeOption(rawArgs, "--country"), COUNTRY_CYCLE, "country", ctx);
+  const impact: ImpactFilter = parseFilter(takeOption(rawArgs, "--impact"), FILTER_CYCLE, "impact", ctx);
+  rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country and --impact.");
   await withCliServices(ctx, async (services) => {
     const { data: events } = await loadCalendar(ctx.cliOptions.refresh);
     const rows = events
       .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact))
       .sort((left, right) => left.date.getTime() - right.date.getTime())
-      .slice(0, ctx.cliOptions.limit ?? 50)
       .map((event) => ({
         date: isoDate(event.date),
         time: event.time,
@@ -144,11 +180,17 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
         forecast: event.forecast ?? "",
         prior: event.prior ?? "",
       }));
-    ctx.printResult({ data: rows, metadata: { country, impact } }, {
+    ctx.printResult({
+      data: rows,
+      metadata: { country, impact },
+      freshness: rowsFreshness(rows, { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
+    }, {
+      dateKey: "date",
+      defaultLimit: 50,
       columns: [
-        // Text shows both halves of the event timestamp in local time; exports keep the source values.
-        { key: "date", header: "Date", format: (value) => localDateTimePart(value, "date") },
-        { key: "time", header: "Time", format: (_value, row) => localDateTimePart(row.date, "time") },
+        // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
+        { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
+        { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : utcDateTimePart(row.date, "time") },
         { key: "country", header: "Country" },
         { key: "impact", header: "Impact" },
         { key: "event", header: "Event" },
@@ -160,14 +202,76 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   });
 }
 
+const FRED_USAGE = "fred <series-id> [--start <yyyy-mm-dd>] [--sort desc|asc]";
+const FRED_LIST_USAGE = "fred --list [filter]";
+
+/** `--start`, checked here: Gloom Cloud cannot read anything but yyyy-mm-dd. */
+function parseStartDate(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): string {
+  if (value == null) return "2021-01-01";
+  const date = value.trim();
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
+  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
+    ctx.fail(`--start takes a date as yyyy-mm-dd, got "${value}".`);
+  }
+  return date;
+}
+
+/** Gloom Cloud serves a curated set of FRED series and answers 400 for any other id. */
+function isUnsupportedSeries(error: unknown): boolean {
+  if (!(error instanceof ApiRequestError) || error.status !== 400) return false;
+  const message = typeof error.details?.message === "string" ? error.details.message : error.message;
+  return error.details?.code === "unsupported_series" || /^Unsupported FRED series\b/i.test(message);
+}
+
+async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  let catalog;
+  try {
+    catalog = await apiClient.getCloudFredSeriesCatalog();
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) ctx.fail("The list of supported FRED series is not available yet.");
+    throw error;
+  }
+  const terms = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = catalog.series
+    .map((series) => ({ id: series.id, title: series.title?.trim() ?? "", group: series.group?.trim() ?? "" }))
+    .filter((series) => {
+      const text = `${series.id} ${series.title} ${series.group}`.toLowerCase();
+      return terms.every((term) => text.includes(term));
+    });
+  ctx.printResult({ data: rows, metadata: { filter: filter || null, total: catalog.series.length } }, {
+    columns: [
+      { key: "id", header: "ID", shrink: false },
+      { key: "title", header: "Title" },
+      { key: "group", header: "Group" },
+    ],
+    empty: filter ? `No supported FRED series match "${filter}". Run gloomberb fred --list to see them all.` : "No FRED series are listed.",
+  });
+}
+
 async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const startDate = takeOption(args, "--start") ?? "2021-01-01";
-  const sortOrder = (takeOption(args, "--sort") ?? "desc") as "asc" | "desc";
-  const seriesId = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb fred <series-id> [--start <yyyy-mm-dd>]", ctx);
-  const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder });
-  const rows = data.observations.slice(0, ctx.cliOptions.limit ?? data.observations.length);
-  ctx.printResult({ data: rows, metadata: { info: data.info, seriesId, startDate, sortOrder } }, {
+  const list = takeFlag(args, "--list");
+  const start = takeOption(args, "--start");
+  const sort = takeOption(args, "--sort");
+  if (list) {
+    if (start != null || sort != null) ctx.fail("--list takes a filter, not --start or --sort.", `Usage: gloomberb ${FRED_LIST_USAGE}`);
+    return runFredList(args.join(" ").trim(), ctx);
+  }
+  const startDate = parseStartDate(start, ctx);
+  const sortOrder = (sort ?? "desc").trim().toLowerCase();
+  if (sortOrder !== "asc" && sortOrder !== "desc") ctx.fail(`Unknown sort order "${sort}".`, "Use desc (newest first) or asc.");
+  const seriesId = requireOneArg(args, FRED_USAGE, "series", ctx).toUpperCase();
+  const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder }).catch((error: unknown) => {
+    if (isUnsupportedSeries(error)) ctx.fail(`Unsupported FRED series ${seriesId}. List supported series with: gloomberb fred --list`);
+    throw error;
+  });
+  const rows = data.observations;
+  ctx.printResult({
+    data: rows,
+    metadata: { info: data.info, seriesId, startDate, sortOrder },
+    freshness: rowsFreshness(rows, { source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null }),
+  }, {
+    dateKey: "date",
     textColumns: [
       { key: "date", header: "Date" },
       { key: "value", header: data.info?.units ? `Value (${data.info.units})` : "Value", align: "right" },
@@ -177,8 +281,10 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
 
 const YIELD_TENORS: Record<string, string> = { DGS3MO: "3M", DGS2: "2Y", DGS10: "10Y", DGS30: "30Y" };
 
-async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const startDate = takeOption(args, "--start") ?? "2021-01-01";
+async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  const args = [...rawArgs];
+  const startDate = parseStartDate(takeOption(args, "--start"), ctx);
+  rejectArgs(args, "yield-curve [--start <yyyy-mm-dd>]", ctx);
   const series = Object.keys(YIELD_TENORS);
   const results = await Promise.all(series.map(async (seriesId) => {
     const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder: "desc" });
@@ -190,7 +296,11 @@ async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["exec
       title: data.info?.title ?? "",
     };
   }));
-  ctx.printResult({ data: results, metadata: { startDate } }, {
+  ctx.printResult({
+    data: results,
+    metadata: { startDate },
+    freshness: rowsFreshness(results, { source: "FRED", status: "not-a-feed", basis: "daily Treasury yields", observedKey: "date" }),
+  }, {
     textColumns: [
       { key: "tenor", header: "Tenor", value: (row) => YIELD_TENORS[String(row.seriesId)] ?? row.seriesId },
       { key: "value", header: "Yield %", align: "right" },
@@ -200,20 +310,51 @@ async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
-async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const left = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb correlation <symbol-a> <symbol-b>", ctx);
-  const right = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb correlation <symbol-a> <symbol-b>", ctx);
+async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  const args = [...rawArgs];
+  const exchange = takeOption(args, "--exchange");
+  const usage = "correlation <symbol-a> <symbol-b>";
+  requireArg(args[0], `Usage: gloomberb ${usage}`, ctx);
+  requireArg(args[1], `Usage: gloomberb ${usage}`, ctx);
+  rejectExtraArgs(args, 2, { usage, takes: "two symbols", advice: "Run it once per pair." }, ctx);
   await withCliServices(ctx, async (services) => {
+    // --exchange is for a symbol that names no exchange of its own.
+    const [leftListing, rightListing] = await Promise.all([args[0]!, args[1]!].map((raw) => (
+      requireCliListing(raw, exchange, services, ctx, { ownExchangeWins: true })
+    )));
+    const left = leftListing!.key;
+    const right = rightListing!.key;
     // Same daily-return model as the CORR pane: price levels of two trending
     // assets correlate spuriously, often with the opposite sign.
-    const loadSeries = async (key: string) => {
-      const parsed = parsePublicTickerKey(key);
-      const exchange = parsed.exchange ?? (await services.store.loadTicker(key))?.metadata.exchange ?? "";
-      return buildCorrelationSeries(key, await loadCorrelationHistory(services.dataProvider, parsed.symbol, exchange, "1Y"));
-    };
-    const [leftSeries, rightSeries] = await Promise.all([loadSeries(left), loadSeries(right)]);
+    const loadSeries = async (listing: CliListing) => buildCorrelationSeries(
+      listing.key,
+      await loadForListing(
+        listing, services, ctx,
+        () => loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
+      ),
+    );
+    const [leftSeries, rightSeries] = await Promise.all([loadSeries(leftListing!), loadSeries(rightListing!)]);
     const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
-    ctx.printResult({ data: [{ left, right, samples: sampleSize, correlation }], metadata: { range: "1Y", basis: CORRELATION_RETURN_BASIS } }, {
+    // A bare symbol names no exchange; its quote says where it lists, which sets when its daily close is taken.
+    const [leftQuote, rightQuote] = await Promise.all([leftListing!, rightListing!].map((listing) => loadListingQuote(services.dataProvider, listing)));
+    const sessionNote = mixedSessionCloseNote(
+      { symbol: leftListing!.symbol, exchange: listingIdentity(leftListing!, leftQuote).exchange, label: left },
+      { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightQuote).exchange, label: right },
+      alignDailyCloses(leftSeries.prices, rightSeries.prices).at(-1)?.dateKey,
+    );
+    // The daily closes used, dated by the newest last bar as the CORR report is.
+    const lastBars = [leftSeries, rightSeries].map((series) => series.prices.at(-1)?.dateKey);
+    const freshness = rowsFreshness([], {
+      ...DAILY_CLOSES,
+      asOf: newestReportTime(lastBars),
+      oldest: oldestReportTime(lastBars),
+    });
+    ctx.printResult({
+      data: [{ left, right, samples: sampleSize, correlation }],
+      ...(sessionNote ? { warnings: [sessionNote] } : {}),
+      metadata: { range: "1Y", basis: CORRELATION_RETURN_BASIS },
+      freshness,
+    }, {
       layout: "record",
       textColumns: [
         { key: "left", header: "Symbols", value: (row) => `${row.left} / ${row.right}` },
@@ -230,7 +371,7 @@ export const overviewCliCommands: CliCommandDef[] = [
     description: "Show gainers, losers, most active, or trending stocks",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["movers [gainers|losers|active|trending]"],
+      usage: [MOVERS_USAGE],
       examples: ["movers", "movers losers --limit 10", "movers trending"],
     },
     execute: runMoverCommand,
@@ -239,20 +380,26 @@ export const overviewCliCommands: CliCommandDef[] = [
     name: "indices",
     description: "Show the major US stock indices",
     help: { group: CLI_COMMAND_GROUPS.markets, usage: ["indices"] },
-    execute: (_args, ctx) => runQuoteBasket([...MARKET_SUMMARY_SYMBOLS], ctx, { group: "indices" }),
+    execute: (args, ctx) => {
+      rejectArgs(args, "indices", ctx);
+      return runQuoteBasket([...MARKET_SUMMARY_SYMBOLS], ctx, { group: "indices" });
+    },
   },
   {
     name: "sectors",
     description: "Show the SPDR sector ETFs",
     help: { group: CLI_COMMAND_GROUPS.markets, usage: ["sectors"] },
-    execute: (_args, ctx) => runQuoteBasket(getSectorCollection("sectors").items.map((item) => item.etf), ctx, { group: "sectors" }),
+    execute: (args, ctx) => {
+      rejectArgs(args, "sectors", ctx);
+      return runQuoteBasket(getSectorCollection("sectors").items.map((item) => item.etf), ctx, { group: "sectors" });
+    },
   },
   {
     name: "econ",
     description: "List upcoming economic calendar events",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["econ [--country <region>] [--impact <level>]"],
+      usage: [ECON_USAGE],
       options: [
         { flags: "--country <region>", description: "US, G7, EU, or all (default all)" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
@@ -263,15 +410,22 @@ export const overviewCliCommands: CliCommandDef[] = [
   },
   {
     name: "fred",
-    description: "Fetch a FRED economic series (needs a Gloom Cloud sign-in)",
+    description: "Fetch a FRED economic series, or list the ones served",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["fred <series-id> [--start <yyyy-mm-dd>]"],
+      usage: [FRED_USAGE, FRED_LIST_USAGE],
       options: [
         START_OPTION,
         { flags: "--sort <order>", description: "desc for newest first (default) or asc" },
+        { flags: "--list", description: "List the series Gloom Cloud serves (ID, title, group); words after it filter the list" },
       ],
-      examples: ["fred CPIAUCSL", "fred UNRATE --start 2020-01-01 --csv"],
+      sections: [{
+        title: "Series",
+        lines: [
+          "Gloom Cloud serves a curated set of FRED series and needs no sign-in for them. gloomberb fred --list prints them; any other ID fails with that pointer.",
+        ],
+      }],
+      examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred --list", "fred --list fx"],
     },
     execute: runFred,
   },
@@ -292,7 +446,8 @@ export const overviewCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.research,
       usage: ["correlation <symbol-a> <symbol-b>"],
-      examples: ["correlation AAPL MSFT", "correlation GLD TLT"],
+      options: [EXCHANGE_OPTION],
+      examples: ["correlation AAPL MSFT", "correlation GLD TLT", "correlation BHP:ASX RIO:ASX"],
     },
     execute: runCorrelation,
   },

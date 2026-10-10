@@ -16,13 +16,17 @@ import {
   renderCliHelp,
   renderCommandHelp,
   suggestCliCommand,
+  TABLE_SECTION_OPTION,
   type CliHelpEntry,
 } from "./help";
 import { parsePaneFunctionArgs } from "./pane-functions/options";
-import { fail, inferCliErrorOptions, printCliError } from "./errors";
+import { checkCliCommandOptions } from "./command-options";
+import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
 import { setCliColorEnabledOverride } from "../utils/cli-output";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
+import { requireOneArg, takeOption } from "./commands/command-utils";
+import { EXCHANGE_OPTION } from "./listing-arg";
 import { apiCliCommand } from "./commands/api";
 import { marketDataCliCommands } from "./commands/market";
 import { overviewCliCommands } from "./commands/overview";
@@ -99,14 +103,15 @@ function createCoreCliCommands(
       help: {
         group: CLI_COMMAND_GROUPS.research,
         usage: ["ticker <symbol>"],
-        examples: ["ticker AAPL", "ticker 7203.T", "ticker AAPL --json"],
+        options: [EXCHANGE_OPTION],
+        examples: ["ticker AAPL", "ticker SAN:EPA", "ticker 7203.T", "ticker AAPL --json"],
       },
-      execute: async (args, ctx) => {
-        const symbol = args[0];
-        if (!symbol) {
-          ctx.fail("Usage: gloomberb ticker <symbol>");
-        }
-        await ticker(symbol!, {
+      execute: async (rawArgs, ctx) => {
+        const args = [...rawArgs];
+        const exchange = takeOption(args, "--exchange");
+        const symbol = requireOneArg(args, "ticker <symbol>", "symbol", ctx);
+        await ticker(symbol, {
+          exchange,
           initMarketData: ctx.initMarketData,
           fail: ctx.fail,
           ...(ctx.cliOptions.format === "text" ? {} : { printResult: ctx.printResult }),
@@ -122,7 +127,7 @@ function createCoreCliCommands(
         usage: ["catalog [query] [--all] [--bot-safe]"],
         options: [
           { flags: "--all", description: "List every match instead of the first 25" },
-          { flags: "--bot-safe", description: "Only functions with a verified unattended report" },
+          { flags: "--bot-safe, --botsafe", description: "Only functions with a verified unattended report" },
         ],
         examples: ["catalog", "catalog options", "catalog HP"],
       },
@@ -140,10 +145,17 @@ function createCoreCliCommands(
         options: [
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
           { flags: "--require-bot-safe", description: "Fail unless the function has a verified, complete report" },
+          {
+            ...TABLE_SECTION_OPTION,
+            description: `${TABLE_SECTION_OPTION.description} (CALLS keeps --section for the transcript part)`,
+          },
+          EXCHANGE_OPTION,
         ],
         examples: [
           "fn HP AAPL",
+          "fn ANR SAN:EPA",
           "fn CBR --json",
+          "fn WEI --csv --section europe > europe.csv",
           "fn 13F AAPL --view=ticker-holdings",
           "fn OVME --spot 100 --strike 100 --days 30 --volatility 25",
         ],
@@ -168,9 +180,11 @@ function createCoreCliCommands(
           { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
           { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
+          EXCHANGE_OPTION,
         ],
         examples: [
           "shot TAS AAPL --output tape.png",
+          "shot HP BHP:ASX",
           "shot DDIS MSFT --tab history",
           "shot HP NVDA --width 1600 --theme green",
         ],
@@ -322,7 +336,7 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   try {
     parsed = parseCliGlobalArgs(args);
   } catch (error) {
-    printCliError(error, inferCliErrorOptions(args));
+    printCliError(asUsageError(error), inferCliErrorOptions(args));
     process.exitCode = 1;
     return { kind: "handled" };
   }
@@ -344,6 +358,7 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   const target = helpOnly ? registry.lookup.get("help")! : resolved;
   const commandArgs = helpOnly ? [resolved.command.name] : parsed.args.slice(1);
   try {
+    if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
     const result = await target.command.execute(
       commandArgs,
       createCliCommandContext(target.ownerId, registry, parsed.options),

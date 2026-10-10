@@ -27,6 +27,8 @@ interface RegisteredCliCommand {
   command: CliCommandDef;
   ownerId: string;
   source: "core" | "plugin";
+  /** Core or a built-in plugin: its declared options are the only ones it takes. External plugins are not held to theirs. */
+  builtin: boolean;
 }
 
 export interface CliCommandRegistry {
@@ -80,6 +82,7 @@ export function buildCliCommandRegistry({
     command: CliCommandDef,
     ownerId: string,
     source: "core" | "plugin",
+    builtin: boolean,
   ) => {
     const tokens = new Set([
       validateCommandToken(command.name, ownerId, source),
@@ -95,7 +98,7 @@ export function buildCliCommandRegistry({
       );
     }
 
-    const entry: RegisteredCliCommand = { command, ownerId, source };
+    const entry: RegisteredCliCommand = { command, ownerId, source, builtin };
     allCommands.push(entry);
     for (const token of tokens) {
       allTokens.set(token, entry);
@@ -103,7 +106,7 @@ export function buildCliCommandRegistry({
   };
 
   for (const command of coreCommands) {
-    registerCommand(command, "core", "core");
+    registerCommand(command, "core", "core", true);
   }
 
   const loadablePlugins: GloomPlugin[] = [];
@@ -117,7 +120,7 @@ export function buildCliCommandRegistry({
     }
     loadablePlugins.push(entry.plugin);
     for (const command of entry.plugin.cliCommands ?? []) {
-      registerCommand(command, entry.plugin.id, "plugin");
+      registerCommand(command, entry.plugin.id, "plugin", entry.source === "builtin");
     }
   }
 

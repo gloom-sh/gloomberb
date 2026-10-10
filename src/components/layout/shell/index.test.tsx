@@ -471,21 +471,33 @@ describe("Shell", () => {
     expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
   });
 
-  test("updates the floating pane preview before mouse release", async () => {
+  test("moves the floating pane with the pointer without redrawing the layout behind it", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-live-floating-drag-test");
     const floatingLayout = cloneLayout(config.layout);
     floatingLayout.dockRoot = { kind: "pane", instanceId: "portfolio-list:main" };
     floatingLayout.floating = [{ instanceId: "ticker-detail:main", x: 8, y: 2, width: 32, height: 10, zIndex: 75 }];
+    // Every pane's chrome reads its quick settings when it renders.
+    const chromeRenders: string[] = [];
+    const registry = createShellPluginRegistry();
+    (registry as { resolvePaneQuickSettings?: (paneId: string) => [] }).resolvePaneQuickSettings = (paneId) => {
+      chromeRenders.push(paneId);
+      return [];
+    };
     await renderShell(
       createShellStateWithLayout(config, floatingLayout, "ticker-detail:main"),
-      { width: 80, height: 18 },
+      { registry, width: 80, height: 18 },
     );
 
     await act(async () => {
       await tui.setup().mockMouse.pressDown(10, 3);
       await tui.setup().renderOnce();
-      await tui.setup().mockMouse.moveTo(16, 6);
-      await tui.setup().renderOnce();
+    });
+    chromeRenders.length = 0;
+    await act(async () => {
+      for (const [x, y] of [[12, 4], [14, 5], [16, 6]] as const) {
+        await tui.setup().mockMouse.moveTo(x, y);
+        await tui.setup().renderOnce();
+      }
       await tui.setup().renderOnce();
     });
 
@@ -493,6 +505,9 @@ describe("Shell", () => {
     const rows = frame.split("\n");
     expect(rows[2]?.indexOf(":: Main Portfolio") ?? -1).toBeLessThan(0);
     expect(rows[5]?.indexOf(":: Main Portfolio")).toBeGreaterThanOrEqual(14);
+    // A move redraws the dragged pane only: re-rendering every pane per
+    // pointer move is what made drags lag behind the pointer.
+    expect(chromeRenders).not.toContain("portfolio-list:main");
 
     await act(async () => {
       await tui.setup().mockMouse.release(16, 6);

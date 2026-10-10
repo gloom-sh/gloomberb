@@ -4,7 +4,8 @@ import {
   SESSION_SAVE_DEBOUNCE_MS,
 } from "../../../../state/persist-scheduler";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "../backend-rpc";
-import { MemoryResourceStore } from "../../../../data/memory-resource-store";
+import { WriteThroughResourceStore } from "../../../../data/memory-resource-store";
+import { isBrokerAccountSnapshotKey } from "../../../../brokers/account-cache";
 
 class RemoteSessionStore {
   private snapshot = getElectrobunBackendInitSnapshot()?.sessionSnapshot ?? null;
@@ -123,9 +124,21 @@ class RemotePluginStateStore {
   }
 }
 
+/**
+ * Caches stay in the view's memory, except broker account snapshots: the Bun
+ * process saves those in the cache database, as the terminal does, so a
+ * broker portfolio opens with its last known equity and cash.
+ */
+function createViewResourceStore(): WriteThroughResourceStore {
+  return new WriteThroughResourceStore(getElectrobunBackendInitSnapshot()?.savedResources ?? [], {
+    set: (record) => void backendRequest("resources.set", { record }).catch(() => {}),
+    delete: (key) => void backendRequest("resources.delete", { key }).catch(() => {}),
+  }, isBrokerAccountSnapshotKey);
+}
+
 export class RemotePersistence {
   readonly tickers = {};
-  readonly resources = new MemoryResourceStore();
+  readonly resources = createViewResourceStore();
   readonly pluginState = new RemotePluginStateStore(getElectrobunBackendInitSnapshot()?.pluginState ?? {});
   readonly sessions = new RemoteSessionStore();
 

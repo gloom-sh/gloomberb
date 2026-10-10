@@ -182,5 +182,7 @@ export function collectShotSymbols(resolved: ResolvedPaneFunction, rawArg: strin
   if (resolved.capability.id === "security-relationship" && symbols.length === 1) {
     symbols = [...symbols, "SPY"];
   }
-  return [...new Set(symbols.map(cleanTickerInput).filter(Boolean))];
+  // Entries a ticker list keeps as typed (CORR's GEO:HORMUZ) are not tickers to fetch.
+  const keep = resolved.template?.shortcut?.keepArgToken;
+  return [...new Set(symbols.filter((symbol) => !keep?.(symbol)).map(cleanTickerInput).filter(Boolean))];
 }

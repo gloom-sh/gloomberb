@@ -2,6 +2,7 @@ import { RGBA, StyledText as OpenTuiStyledText, SyntaxStyle, TextAttributes as O
 import { createElement, forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
 import { TextAttributes, type UiHost, type TextProps } from "../../ui/host";
 import { renderAsciiText } from "../../ui/ascii-font";
+import { scrollBoxScrollsVertically } from "../../ui/scroll-box-axis";
 import { OpenTuiImageSurface } from "./image/surface";
 import { OpenTuiChartSurface } from "./chart-surface";
 
@@ -141,7 +142,12 @@ function mapTextContent(content: unknown): unknown {
 }
 
 const OpenTuiBox = createOpenTuiPrimitive("box");
-const OpenTuiScrollBox = createOpenTuiPrimitive("scrollbox");
+const OpenTuiScrollBoxPrimitive = createOpenTuiPrimitive("scrollbox");
+// The native box scrolls vertically unless scrollY is false; the shared rule
+// also keeps the one-row horizontal strips from scrolling on that axis.
+const OpenTuiScrollBox = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiScrollBox(props, ref) {
+  return createElement(OpenTuiScrollBoxPrimitive, { ...props, scrollY: scrollBoxScrollsVertically(props), ref });
+});
 const OpenTuiInput = createOpenTuiPrimitive("input");
 const OpenTuiTextarea = createOpenTuiPrimitive("textarea");
 const OpenTuiMediaSurface = createOpenTuiPrimitive("box");

@@ -15,6 +15,7 @@ import {
   formatDoeVsFive,
   formatDoeVsYear,
 } from "./model";
+import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 
 const text = (value: unknown) => typeof value === "string" ? value : "--";
 
@@ -60,6 +61,10 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
     describe: "EIA weekly petroleum and natural gas storage",
     async load(args) {
       const data = await fetchDoeBoard();
+      // EIA's weekly reports; once the next one is a day overdue the tables have missed it.
+      const freshness = { source: "EIA", status: "not-a-feed" as const, basis: "weekly release",
+        asOf: newestReportTime(data.reports.map((report) => report.releasedAt)),
+        nextExpectedAt: oldestReportTime(data.reports.map((report) => report.nextReleaseAt)) };
       const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
       if (argument) {
         const option = doeSeriesOption(argument);
@@ -75,6 +80,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
               rows: seasonalRows(row) },
           ],
           errors: data.gaps,
+          freshness,
           metadata: { ...data, series: [row], complete: data.status === "available" },
         };
       }
@@ -86,6 +92,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
           rows: doeRows(data, tab).map(reportRow),
         })),
         errors: data.gaps,
+        freshness,
         metadata: { ...data, complete: data.status === "available" },
       };
     },

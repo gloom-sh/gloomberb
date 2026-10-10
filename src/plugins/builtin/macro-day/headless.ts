@@ -11,6 +11,8 @@ const share = (value: unknown) => typeof value === "number" ? `${Math.round(valu
 
 export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker" },
+  // Dated by the maintained release list as much as by the closes, so no session schedule applies.
+  freshness: { status: "not-a-feed", basis: "release-day study on daily closes" },
   describe: (args) => `MDAY ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: [
     "US listings; close-to-close on the release day.",

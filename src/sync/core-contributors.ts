@@ -102,6 +102,10 @@ function sanitizePortfolio(portfolio: Portfolio): Portfolio {
     currency: portfolio.currency,
     brokerId: portfolio.brokerId,
     lastSyncedAt: portfolio.lastSyncedAt,
+    // Cash and targets are the user's own entries: a pulled portfolio without
+    // them would erase them on this device.
+    ...(portfolio.cash ? { cash: { ...portfolio.cash } } : {}),
+    ...(portfolio.targetWeights ? { targetWeights: { ...portfolio.targetWeights } } : {}),
   };
 }
 

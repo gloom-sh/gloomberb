@@ -5,18 +5,53 @@ import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
 import { formatPercentileRank } from "../../../utils/format";
+import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
+import { parseReportTime } from "../../../utils/utc-time";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
+/**
+ * CME crypto futures have a curve but no FUT board row, so their name and tick
+ * live here rather than in the catalogue the board lists. Outright ticks:
+ * BTC $5, ETH $0.50, SOL $0.05, XRP $0.0005 (each $25 a contract).
+ */
+const CRYPTO_CURVE_ROOTS: readonly { code: string; name: string; tick: number }[] = [
+  { code: "BTC", name: "Bitcoin", tick: 5 }, { code: "ETH", name: "Ether", tick: 0.5 },
+  { code: "SOL", name: "Solana", tick: 0.05 }, { code: "XRP", name: "XRP", tick: 0.0005 },
+];
+const rootLabel = (code: string, name: string) => name === code ? code : `${code} ${name}`;
+
 export const CURVE_ROOTS = [
-  ...FUTURES_CONTRACTS.filter((row) => row.curve !== false).map((row) => ({ value: row.code, label: `${row.code} ${row.name}` })),
+  ...FUTURES_CONTRACTS.filter((row) => row.curve !== false).map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
   { value: "VX", label: "VX VIX Futures" },
+  ...CRYPTO_CURVE_ROOTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
 ];
 
+/** A root typed as an argument, a stored pane setting or a request: every listed root, crypto included. */
 export function normalizeCurveRoot(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const raw = value.trim().toUpperCase().replace(/=F$/, "");
   const root = raw === "VIX" ? "VX" : raw;
   return CURVE_ROOTS.some((row) => row.value === root) ? root : null;
+}
+
+/** What a root nothing lists is told, with roots that work. */
+export function unsupportedCurveRootMessage(value: unknown): string {
+  const examples = ["ES", "CL", "GC", "ZN"].filter((root) => CURVE_ROOTS.some((row) => row.value === root));
+  return `Unsupported futures root: ${String(value)}. Try ${examples.join(", ")}.`;
+}
+
+/**
+ * The root for the ticker under the cursor, when CTM is opened without an
+ * argument. The crypto roots are also US ticker symbols (Grayscale's mini
+ * trusts are BTC and ETH), so a bare one is the equity's, never the future's:
+ * only a futures symbol (BTC=F) or a coin pair (BTC-USD) names the crypto curve.
+ */
+export function curveRootForTicker(ticker: unknown): string | null {
+  if (typeof ticker !== "string") return null;
+  const coin = cryptoPairCoin(ticker);
+  if (coin) return CRYPTO_CURVE_ROOTS.some((row) => row.code === coin) ? coin : null;
+  const root = normalizeCurveRoot(ticker);
+  return root && CRYPTO_CURVE_ROOTS.some((row) => row.code === root) && !isFuturesSymbol(ticker) ? null : root;
 }
 
 /**
@@ -32,7 +67,7 @@ function curvePriceDecimals(root: string): number {
   const rateTick = RATE_TICKS[root];
   if (rateTick != null) return tickDecimals(rateTick);
   if (root === "VX") return 4;
-  const tick = FUTURES_CONTRACTS.find((row) => row.code === root)?.tick;
+  const tick = FUTURES_CONTRACTS.find((row) => row.code === root)?.tick ?? CRYPTO_CURVE_ROOTS.find((row) => row.code === root)?.tick;
   return tick == null ? 5 : Math.max(2, tickDecimals(tick));
 }
 
@@ -155,16 +190,165 @@ const CHANGE_COLUMNS: Readonly<Record<string, CurveLookback>> = { change1w: "1W"
 
 type CurveSortKey = "symbol" | "expiration" | "price" | "change" | "openInterest" | "volume" | "percentile" | "asOf";
 
+const BASIS_COLUMNS: Readonly<Record<string, "vsSpotPct" | "annualisedBasisPct">> = { vsSpot: "vsSpotPct", annBasis: "annualisedBasisPct" };
+
 export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: SortDirection,
-  changes?: CurveContractChanges): FuturesContract[] {
+  changes?: CurveContractChanges, basis?: CurveBasisRows): FuturesContract[] {
   const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", change: "change", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
   const key = keys[id] ?? "expiration";
   const lookback = CHANGE_COLUMNS[id];
-  const value = (row: FuturesContract) => lookback ? changes?.get(row.symbol)?.[lookback] ?? null : row[key] ?? null;
+  const basisKey = BASIS_COLUMNS[id];
+  const value = (row: FuturesContract) => lookback ? changes?.get(row.symbol)?.[lookback] ?? null
+    : basisKey ? basis?.get(row.symbol)?.[basisKey] ?? null : row[key] ?? null;
   return [...rows].sort((a, b) => compareSortValues(value(a), value(b), direction));
 }
 
 const DAY_MS = 86_400_000;
+
+/**
+ * The quote each crypto root's basis is measured against: the terminal's USD
+ * pair, the same quote every other pane shows, not the CME reference rate, so
+ * a small gap to settlement is expected. A root missing here has no basis
+ * columns; add its spot symbol to give it some.
+ */
+const BASIS_SPOT_SYMBOLS: ReadonlyMap<string, string> = new Map([
+  ["BTC", "BTC-USD"], ["ETH", "ETH-USD"], ["SOL", "SOL-USD"], ["XRP", "XRP-USD"],
+]);
+
+export function basisSpotSymbol(root: string): string | null {
+  return BASIS_SPOT_SYMBOLS.get(root) ?? null;
+}
+
+/** Crypto trades around the clock, so a spot quote older than this no longer prices a live future. */
+const SPOT_STALE_MS = 10 * 60_000;
+/** A free account's quote is held back on purpose; that delay is not staleness, so it is allowed on top. */
+const DELAYED_SPOT_MS = 15 * 60_000;
+
+/** The spot a curve's basis uses, or why there is none. `asOf` is the quote's own time, never the fetch's. */
+export interface CurveSpot {
+  symbol: string;
+  price: number | null;
+  /** UTC ISO instant of the quote. */
+  asOf: string | null;
+  status: "ok" | "stale" | "missing";
+  reason: string | null;
+}
+
+export interface SpotQuote {
+  price: number;
+  lastUpdated: number;
+  stale?: boolean;
+  dataSource?: string;
+}
+
+const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
+
+function quoteAge(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
+/** Judges one spot quote at `now`: usable, older than the rule allows, or absent. */
+export function curveSpot(symbol: string, quote: SpotQuote | null | undefined, now: number): CurveSpot {
+  if (!quote || !positive(quote.price)) return { symbol, price: null, asOf: null, status: "missing", reason: `no ${symbol} quote` };
+  const time = quote.lastUpdated;
+  if (!Number.isFinite(time) || time <= 0) {
+    return { symbol, price: quote.price, asOf: null, status: "stale", reason: `${symbol} quote has no time` };
+  }
+  const asOf = new Date(time).toISOString().replace(".000Z", "Z");
+  const age = now - time;
+  const limit = SPOT_STALE_MS + (quote.dataSource === "delayed" ? DELAYED_SPOT_MS : 0);
+  if (age > limit) return { symbol, price: quote.price, asOf, status: "stale", reason: `${symbol} quote is ${quoteAge(age)} old` };
+  if (quote.stale === true) return { symbol, price: quote.price, asOf, status: "stale", reason: `${symbol} quote is stale` };
+  return { symbol, price: quote.price, asOf, status: "ok", reason: null };
+}
+
+/** How far the contract trades over (positive) or under spot, in percent. */
+export function vsSpotPct(futures: number | null | undefined, spot: number | null | undefined): number | null {
+  return positive(futures) && positive(spot) ? (futures / spot - 1) * 100 : null;
+}
+
+/** Calendar days from the UTC date of the spot's timestamp to the contract's expiration date. */
+export function daysToExpiry(spotTime: number, expiration: string): number | null {
+  const expiry = Date.parse(`${expiration}T00:00:00Z`);
+  if (!Number.isFinite(spotTime) || !Number.isFinite(expiry)) return null;
+  const spotDay = Date.parse(`${new Date(spotTime).toISOString().slice(0, 10)}T00:00:00Z`);
+  return Math.round((expiry - spotDay) / DAY_MS);
+}
+
+/** The premium over spot as a yearly rate, on a 365-day year. Blank on or past expiry, where it has no meaning. */
+export function annualisedBasisPct(futures: number | null | undefined, spot: number | null | undefined, days: number | null): number | null {
+  if (!positive(futures) || !positive(spot) || days == null || !Number.isFinite(days) || days <= 0) return null;
+  return (futures / spot - 1) * 365 / days * 100;
+}
+
+/** A contract that printed longer than this before the spot quote is too old to read against it. */
+const CONTRACT_PRINT_MAX_AGE_MS = 60 * 60_000;
+
+export interface ContractBasis {
+  vsSpotPct: number | null;
+  annualisedBasisPct: number | null;
+  /** Priced and not flagged stale, but its last print is over an hour before spot: a thin month. */
+  thin: boolean;
+}
+
+const NO_BASIS: ContractBasis = { vsSpotPct: null, annualisedBasisPct: null, thin: false };
+
+/**
+ * One contract's basis. Blank without a usable spot, and for a contract whose
+ * own price is missing or stale: an old future against a live spot misleads.
+ * So does a print more than an hour older than the spot (`thin`): the server's
+ * stale flag allows two sessions, which a quote that moves all day outruns. A
+ * date-only `asOf` is UTC midnight of that date, one that cannot be read
+ * counts as old, and a print newer than the spot is never old (the spot of a
+ * delayed feed trails the futures).
+ */
+export function contractBasis(row: Pick<FuturesContract, "price" | "stale" | "expiration" | "asOf">, spot: CurveSpot): ContractBasis {
+  if (spot.status !== "ok" || spot.asOf == null || row.stale) return NO_BASIS;
+  const vs = vsSpotPct(row.price, spot.price);
+  if (vs == null) return NO_BASIS;
+  const spotTime = Date.parse(spot.asOf);
+  const printed = parseReportTime(row.asOf)?.time ?? null;
+  if (printed == null || spotTime - printed > CONTRACT_PRINT_MAX_AGE_MS) return { ...NO_BASIS, thin: true };
+  return { vsSpotPct: vs, annualisedBasisPct: annualisedBasisPct(row.price, spot.price, daysToExpiry(spotTime, row.expiration)), thin: false };
+}
+
+/** A basis in percent, signed; one that rounds to zero stays unsigned. */
+export function curveBasisPercent(value: number | null, decimals: number): string {
+  if (value == null) return "--";
+  const text = Math.abs(value).toFixed(decimals);
+  return /[1-9]/.test(text) ? `${value > 0 ? "+" : "-"}${text}%` : `${text}%`;
+}
+
+/** The footer's spot: `spot BTC-USD 67,250.10 · 07:25 UTC`, with the date when the quote is not from today. */
+export function curveSpotLabel(spot: CurveSpot, root: string, now: number): string {
+  const decimals = curvePriceDecimals(root);
+  const price = spot.price == null ? "--" : spot.price.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  const stamp = curveTimestamp(spot.asOf);
+  const today = new Date(now).toISOString().slice(0, 10);
+  return `spot ${spot.symbol} ${price} · ${spot.asOf?.startsWith(today) ? stamp.slice(11) : stamp} UTC`;
+}
+
+/** The basis columns' sort values, which live beside the contract rather than on it. */
+export type CurveBasisRows = ReadonlyMap<string, ContractBasis>;
+
+export function curveBasisRows(rows: readonly FuturesContract[], spot: CurveSpot | null): CurveBasisRows {
+  return new Map(rows.map((row) => [row.symbol, spot ? contractBasis(row, spot) : NO_BASIS]));
+}
+
+/** The contracts a good spot left blank for their old print. */
+export function thinContractCount(basis: Iterable<ContractBasis>): number {
+  let count = 0;
+  for (const row of basis) if (row.thin) count += 1;
+  return count;
+}
+
+/** The footer warning that thin contracts have no basis: the pane's `!` notice, which keeps the footer row for the quote times. */
+export function thinContractsNotice(count: number): string {
+  return `Basis blank on ${count} thin contract${count === 1 ? "" : "s"} (last print over 1h before spot)`;
+}
 
 /** A past date for the as-of view: empty (or "latest") for the live curve, else YYYY-MM-DD no later than today. */
 export function curveAsOfDate(value: unknown, now = new Date()): string {

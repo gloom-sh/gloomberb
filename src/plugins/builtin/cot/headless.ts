@@ -1,7 +1,7 @@
 import type { CotClass, CotClassSummary } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
-import { COT_MAJOR_CODES, COT_SCOPES, cotClass, cotContractCode, cotInteger, cotMarketName, cotScope } from "./model";
+import { COT_MAJOR_CODES, COT_SCOPES, cotClass, cotContractCode, cotInteger, cotMarketName, cotScope, cotUnknownMarketMessage } from "./model";
 
 const camelClass = (id: CotClass) => id.replace(/-(\w)/g, (_match, letter: string) => letter.toUpperCase());
 const rounded = (value: number | null, digits: number) => value == null ? null : Number(value.toFixed(digits));
@@ -25,7 +25,10 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
-  shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "code or root", description: "CFTC market code or verified futures root; omit for the extremes board." },
+  shape: "bundle",
+  // Tuesday positions published the Friday after; two weeks without a new report means one was missed.
+  freshness: { source: "CFTC", status: "not-a-feed", basis: "weekly report", maxAgeMinutes: 14 * 24 * 60 },
+  argument: { kind: "free-text", optional: true, placeholder: "code or root", description: "CFTC market code or verified futures root; omit for the extremes board." },
   options: [{ key: "report", type: "enum", values: [{ value: "legacy" }, { value: "disaggregated" }], defaultValue: "legacy", description: "CFTC report family." },
     { key: "traderClass", type: "enum", values: ["noncommercial", "commercial", "producer", "swap", "managed-money", "other-reportable", "nonreportable"].map((value) => ({ value })), description: "Trader class for the extremes board; defaults by report family." },
     { key: "scope", type: "enum", values: COT_SCOPES.map(({ value }) => ({ value })), defaultValue: "major", description: "Markets on the extremes board, as in the pane." }],
@@ -35,7 +38,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     const family = args.options.report === "disaggregated" ? "disaggregated" : "legacy";
     if (args.argument) {
       const code = cotContractCode(args.argument);
-      if (!code) throw new Error("Use a CFTC market code or supported futures root");
+      if (!code) throw new Error(cotUnknownMarketMessage(args.argument));
       const data = await fetchCotContract(code, family, ctx.apiClient);
       const classes = data.positions.map((row) => row.id);
       return { sections: [{ title: data.contract ? cotMarketName(data.contract.marketName) : code,

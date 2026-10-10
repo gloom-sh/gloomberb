@@ -22,9 +22,10 @@ export type ChatMessageOrigin = "app" | "discord";
 
 export interface ChatUserSummary {
   id: string;
+  /** A person, a managed assistant (Gloombot), or a Discord user bridged into public channels. */
+  accountType?: ChatAccountType;
   username: string | null;
   displayName: string;
-  accountType?: ChatAccountType;
   bio?: string | null;
   company?: string | null;
   title?: string | null;
@@ -425,6 +426,11 @@ export interface CloudFredSeriesPayload {
   fetchedAt?: string;
   stale?: boolean;
   coverage?: { observations: "available"; info: "available" | "unavailable" };
+}
+
+/** The FRED series Gloom Cloud serves, from `GET /cloud/econ/series`; any other id is refused. */
+export interface CloudFredSeriesCatalogPayload {
+  series: Array<{ id: string; title?: string | null; group?: string | null }>;
 }
 
 /**
@@ -1338,6 +1344,8 @@ export interface CloudMarketResponse<T> {
   status: CloudMarketStatus;
   data: T | null;
   reasonCode?: string;
+  /** Untrusted, human-readable reason the answer is empty. Cleaned before it is shown. */
+  message?: string;
   asOf?: string;
   staleAt?: string;
   stale?: boolean;
@@ -1381,6 +1389,8 @@ export interface CloudMarketBatchItem<T> {
   status: CloudMarketStatus;
   data: T | null;
   reasonCode?: string;
+  /** Untrusted, human-readable reason this item is empty. Cleaned before it is shown. */
+  message?: string;
   stale?: boolean;
 }
 

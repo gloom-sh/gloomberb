@@ -157,6 +157,10 @@ back button or clicking Back pops it. Rules:
 - A detail read as text sits in a `DetailScrollBody` whose ref is the
   stack's `detailScrollRef`, so j/k step it a line at a time and the next
   item starts at the top.
+- Any other scrolling body is a `ScrollBox`. Leaving `scrollY` out means it
+  scrolls vertically, with the wheel and, while the pane is focused, with the
+  arrows, j/k, PageUp, PageDown, Home and End; `scrollY={false}` turns that off.
+  A body does not bind those keys itself unless it wants to step by a line.
 - A detail the user reads and comes back from is the stack, not a dialog or
   a floating pane. A new pane (`pinTicker`, `createPaneFromTemplate`) is for
   something kept beside the list.
@@ -265,6 +269,10 @@ header, with the detail's height.
   draws `strip` as the first row of the body. Subtract `rows`. Never in the
   footer. Register `null` while a sign-in wall or any state makes every tab
   show the same thing.
+- A chart you pan and draw on sits one level below a tab strip: the strip
+  keeps Left, Right, `h` and `l`; Down, Enter, a click or a chart tool moves
+  into the chart, and Esc or Up hands the keys back, with `[Esc]tabs` in the
+  footer while inside. `Tabs` and `CompositeChart` do this; a pane adds nothing.
 - A strip inside content that already has a title-bar strip (a Ticker
   Research tab, a stack detail) becomes a `QueryBar` view (`usePaneTabs`
   with `queryBarWidth`) or inline filter on the desktop; the terminal keeps
@@ -417,7 +425,7 @@ header, with the detail's height.
 8. Forms use kit fields, one Save per form at its bottom, Enter/Esc, busy and result in the footer, destructive actions confirmed.
 9. Per-instance configuration is a pane setting; important toggles are `quickSettings`.
 10. Methodology and usage text is in `docs/`.
-11. Data panes have a `headless` definition; fetching is in `client.ts`.
+11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
 14. On the desktop tables and charts fill with flex, not terminal row arithmetic; nothing ends in a dead band above the footer.

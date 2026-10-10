@@ -1,4 +1,4 @@
-import { Box, Text, useRendererHost, useUiCapabilities } from "../../../../ui";
+import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import { PageStackView } from "../../../../components/ui";
 import { type ScrollBoxRenderable, type TextareaRenderable } from "../../../../ui";
@@ -36,11 +36,18 @@ import { useChatComposerRuntime } from "./composer-runtime";
 import { runDiscordCommand } from "../discord-command";
 import type { DiscordComposerCommand } from "../composer-commands";
 import { useChatMessageSelection } from "./selection-runtime";
-import type { ChatAttachment, ChatMessage } from "../../../../api-client";
+import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 import { DesktopChatDropOverlay, DesktopChatDropTarget } from "../attachments/desktop";
 import { uploadFromTransferFile, type TransferFile } from "../attachments/transfer";
 import { readChatImageFiles } from "../attachments/files";
 import { NewDmDialog } from "./new-dm-dialog";
+import {
+  describeConversationStartError,
+  directMessageAction,
+  findDirectChannelWith,
+} from "../direct-messages";
+import type { ChatUserAnchor, ChatUserContextMenuEvent } from "../message/types";
+import type { ContextMenuItem } from "../../../../types/context-menu";
 import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../cloud/team/pane-request";
 import { teamStore } from "../../cloud/team/store";
@@ -284,22 +291,29 @@ export function ChatContent({
     dismissProfilePopover,
     hoverProfilePopover,
     ownProfileConfigured,
+    profilePopoverAnchor,
     profilePopoverUser,
     scheduleProfilePopoverClose,
     showProfilePopover,
     toggleProfilePopover,
   } = useChatProfilePopover(focused ? user?.id : undefined);
 
-  const showUserProfilePopover = useCallback((targetUser: Parameters<typeof showProfilePopover>[0]) => {
-    showProfilePopover(targetUser, { ownProfile: targetUser.id === user?.id });
-  }, [showProfilePopover, user?.id]);
+  // `p` on the selected message: the card opens just below that message.
+  const selectedMessageId = messages[selectedIdx]?.id ?? null;
+  const showUserProfilePopover = useCallback((targetUser: ChatUserSummary) => {
+    const element = selectedMessageId ? messageElementsRef.current.get(selectedMessageId) : null;
+    showProfilePopover(targetUser, {
+      ownProfile: targetUser.id === user?.id,
+      anchor: (element as ChatUserAnchor | undefined) ?? null,
+    });
+  }, [selectedMessageId, showProfilePopover, user?.id]);
 
-  const hoverUserProfile = useCallback((targetUser: Parameters<typeof showProfilePopover>[0]) => {
-    hoverProfilePopover(targetUser, { ownProfile: targetUser.id === user?.id });
+  const hoverUserProfile = useCallback((targetUser: ChatUserSummary, anchor?: ChatUserAnchor) => {
+    hoverProfilePopover(targetUser, { ownProfile: targetUser.id === user?.id, anchor });
   }, [hoverProfilePopover, user?.id]);
 
-  const toggleUserProfile = useCallback((targetUser: Parameters<typeof showProfilePopover>[0]) => {
-    toggleProfilePopover(targetUser, { ownProfile: targetUser.id === user?.id });
+  const toggleUserProfile = useCallback((targetUser: ChatUserSummary, anchor?: ChatUserAnchor) => {
+    toggleProfilePopover(targetUser, { ownProfile: targetUser.id === user?.id, anchor });
   }, [toggleProfilePopover, user?.id]);
 
   const openProfileSetup = useCallback(() => {
@@ -436,17 +450,6 @@ export function ChatContent({
     return true;
   }, [channelListOpen, focusChannelSidebar, openChannelList, stackedNav]);
 
-  const openConversationFromDialog = useCallback(async (usernames: string[]) => {
-    const channel = usernames.length === 1
-      ? await controller.openDirectChannel({ username: usernames[0] })
-      : await controller.openGroupChannel({ usernames });
-    expandDirectSection();
-    selectSidebarChannel(channel.id);
-    setChannelListOpen(false);
-    setSidebarFocused(false);
-    closeNewDmDialog();
-  }, [closeNewDmDialog, controller, expandDirectSection, selectSidebarChannel, setSidebarFocused]);
-
   useEffect(() => {
     if (!focused && newDmOpen) {
       closeNewDmDialog();
@@ -477,6 +480,10 @@ export function ChatContent({
       controller.attachToChannel(targetChannelId, uploads);
     }).catch(() => {});
   }, [controller]);
+
+  const reportConversationStartError = useCallback((error: unknown, usernames: string[]) => {
+    notify({ body: describeConversationStartError(error, usernames, userByUsername), type: "error" });
+  }, [notify, userByUsername]);
 
   const removeDraftAttachment = useCallback((localId: string) => {
     controller.removeChannelAttachment(channelIdRef.current, localId);
@@ -542,9 +549,95 @@ export function ChatContent({
     useDefaultControllerChannel,
     draftAttachmentCount: draftAttachments.length,
     onPastedImagePaths: !nativePaneChrome && canAttach ? handlePastedImagePaths : undefined,
+    onConversationStartError: reportConversationStartError,
     onDiscordCommand: handleDiscordCommand,
   });
   replaceComposerDraftRef.current = replaceComposerDraft;
+
+  // A conversation just opened or started: selected in the sidebar, with the
+  // composer ready to write in.
+  const showConversation = useCallback((nextChannelId: string) => {
+    expandDirectSection();
+    selectSidebarChannel(nextChannelId);
+    setChannelListOpen(false);
+    setSidebarFocused(false);
+    closeNewDmDialog();
+    closeProfilePopover();
+    if (canSend) focusComposer();
+  }, [canSend, closeNewDmDialog, closeProfilePopover, expandDirectSection, focusComposer, selectSidebarChannel, setSidebarFocused]);
+
+  const openConversationFromDialog = useCallback(async (usernames: string[]) => {
+    const channel = usernames.length === 1
+      ? await controller.openDirectChannel({ username: usernames[0] })
+      : await controller.openGroupChannel({ usernames });
+    showConversation(channel.id);
+  }, [controller, showConversation]);
+
+  const directMessageContext = useMemo(
+    () => ({ currentUserId: user?.id, channels, canSend }),
+    [canSend, channels, user?.id],
+  );
+
+  /** "Message @name": opens the DM you share, or starts one and opens it. */
+  const messageUser = useCallback(async (target: ChatUserSummary) => {
+    const action = directMessageAction(target, directMessageContext);
+    if (!action || action.kind === "refused") return;
+    const existing = action.kind === "open" ? findDirectChannelWith(channels, target) : null;
+    if (existing) {
+      showConversation(existing.id);
+      return;
+    }
+    try {
+      const channel = await controller.openDirectChannel({ username: action.username });
+      showConversation(channel.id);
+    } catch (error) {
+      notify({ body: describeConversationStartError(error, [action.username], userByUsername), type: "error" });
+    }
+  }, [channels, controller, directMessageContext, notify, showConversation, userByUsername]);
+
+  const pinUserProfile = useCallback((target: ChatUserSummary, anchor?: ChatUserAnchor) => {
+    showProfilePopover(target, { ownProfile: target.id === user?.id, pin: true, anchor });
+  }, [showProfilePopover, user?.id]);
+
+  const { showContextMenu } = useContextMenu();
+  const openUserContextMenu = useCallback((target: ChatUserSummary, event: ChatUserContextMenuEvent, anchor?: ChatUserAnchor) => {
+    const items: ContextMenuItem[] = [];
+    const action = directMessageAction(target, directMessageContext);
+    // Shown grayed out where their settings refuse it, so the menu does not just vanish.
+    if (action) {
+      items.push({
+        id: "chat-user:message",
+        label: action.menuLabel,
+        enabled: action.kind !== "refused",
+        onSelect: () => { void messageUser(target); },
+      });
+    }
+    items.push({ id: "chat-user:profile", label: "Show Profile", onSelect: () => pinUserProfile(target, anchor) });
+    void showContextMenu({ kind: "chat-user", userId: target.id, username: target.username }, items, event);
+  }, [directMessageContext, messageUser, pinUserProfile, showContextMenu]);
+  // Messages are memoized; they keep one handler that runs the latest menu.
+  const openUserContextMenuRef = useRef(openUserContextMenu);
+  openUserContextMenuRef.current = openUserContextMenu;
+  const onUserContextMenu = useCallback((target: ChatUserSummary, event: ChatUserContextMenuEvent, anchor?: ChatUserAnchor) => {
+    openUserContextMenuRef.current(target, event, anchor);
+  }, []);
+
+  const profileDirectMessage = useMemo(() => (
+    profilePopoverUser ? directMessageAction(profilePopoverUser, directMessageContext) : null
+  ), [directMessageContext, profilePopoverUser]);
+  const profileMessageAction = useMemo(() => {
+    if (!profileDirectMessage || profileDirectMessage.kind === "refused" || !profilePopoverUser) return null;
+    const target = profilePopoverUser;
+    return { label: profileDirectMessage.buttonLabel, onPress: () => { void messageUser(target); } };
+  }, [messageUser, profileDirectMessage, profilePopoverUser]);
+
+  const selectedMessageAuthor = selectionActive && !sidebarFocused ? messages[selectedIdx]?.user ?? null : null;
+  const authorMessageAction = useMemo(() => {
+    const action = selectedMessageAuthor ? directMessageAction(selectedMessageAuthor, directMessageContext) : null;
+    if (!action || action.kind === "refused" || !selectedMessageAuthor) return null;
+    const target = selectedMessageAuthor;
+    return { label: action.menuLabel, run: () => { void messageUser(target); } };
+  }, [directMessageContext, messageUser, selectedMessageAuthor]);
 
   const moveMentionSelection = useCallback((direction: "up" | "down") => {
     if (mentionSuggestions.length === 0) return false;
@@ -712,7 +805,6 @@ export function ChatContent({
     catalog,
     openTicker,
     openAttachPicker: canAttach && nativePaneChrome ? () => attachPickerRef.current?.() : null,
-    currentUserId: user?.id,
     profilePopoverUser,
     showProfilePopover: showUserProfilePopover,
     closeProfilePopover,
@@ -729,6 +821,7 @@ export function ChatContent({
     jumpToMessage,
     needsProfileSetup: !!user?.id && ownProfileConfigured === false,
     openProfileSetup,
+    authorMessageAction,
   });
 
   const chatContentBg = focused && showChannelSidebar && !sidebarFocused
@@ -770,7 +863,9 @@ export function ChatContent({
       height={height}
       userByUsername={userByUsername}
       currentUserId={user?.id}
+      channels={channels}
       onCancel={closeNewDmDialog}
+      onOpenChannel={showConversation}
       onSubmit={openConversationFromDialog}
     />
   ) : null;
@@ -817,6 +912,7 @@ export function ChatContent({
         latestEditableMessageId={latestEditableMessageId}
         openTicker={openTicker}
         profilePopoverUser={profilePopoverUser}
+        profilePopoverAnchor={profilePopoverAnchor}
         registerMessageElement={registerMessageElement}
         scheduleProfilePopoverClose={scheduleProfilePopoverClose}
         scrollRef={scrollRef}
@@ -829,6 +925,9 @@ export function ChatContent({
         user={user}
         userByUsername={userByUsername}
         onSetUpProfile={openProfileSetup}
+        onUserContextMenu={onUserContextMenu}
+        profileMessageAction={profileMessageAction}
+        profileMessageRefusal={profileDirectMessage?.refusal ?? null}
       />
 
       {stackedNav ? null : newDmDialog}

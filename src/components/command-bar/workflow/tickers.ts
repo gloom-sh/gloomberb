@@ -233,12 +233,18 @@ export async function resolveTickerListInput(
   rawInput: string,
   collectionId: string | null,
   deps: SharedWorkflowDeps,
+  keepToken?: (token: string) => boolean,
 ): Promise<string[]> {
   const tokens = parseTickerListInput(rawInput);
   const symbols: string[] = [];
   const seen = new Set<string>();
 
   for (const token of tokens) {
+    if (keepToken?.(token)) {
+      if (!seen.has(token)) symbols.push(token);
+      seen.add(token);
+      continue;
+    }
     const resolvedTicker = await resolveTickerInputOrThrow(token, null, collectionId, deps, { preserveListingKey: true });
     const symbol = resolvedTicker.symbol;
 

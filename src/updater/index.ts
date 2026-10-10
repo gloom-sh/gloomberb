@@ -1,7 +1,7 @@
 import { compareSemver } from "../utils/semver";
 import { GITHUB_LATEST_RELEASE_API_URL } from "./github-releases";
 
-function getRuntimeProcess(): Pick<NodeJS.Process, "platform" | "arch" | "argv" | "execPath"> | null {
+function getRuntimeProcess(): Pick<NodeJS.Process, "platform" | "arch" | "argv" | "execPath" | "getBuiltinModule"> | null {
   return (globalThis as { process?: NodeJS.Process }).process ?? null;
 }
 
@@ -414,17 +414,15 @@ export async function performUpdate(
   let unlinkUpdatePath: ((path: string) => void) | null = null;
 
   try {
-    const fsModulePath = "fs";
-    const zlibModulePath = "zlib";
-    const cryptoModulePath = "crypto";
-    const {
-      renameSync,
-      unlinkSync,
-      chmodSync,
-    } = await import(fsModulePath) as typeof import("fs");
+    // Not import(): Bun folds even a specifier held in a variable and bundles
+    // browser polyfills for all three into the web and desktop view builds,
+    // which never reach this path. Self-update only runs in the compiled
+    // terminal binary, where the process is always there.
+    const runtime = getRuntimeProcess()!;
+    const { renameSync, unlinkSync, chmodSync } = runtime.getBuiltinModule("fs");
     unlinkUpdatePath = unlinkSync;
-    const { gunzipSync } = await import(zlibModulePath) as typeof import("zlib");
-    const { createHash } = await import(cryptoModulePath) as typeof import("crypto");
+    const { gunzipSync } = runtime.getBuiltinModule("zlib");
+    const { createHash } = runtime.getBuiltinModule("crypto");
 
     onProgress({ phase: "downloading", percent: 0 });
 

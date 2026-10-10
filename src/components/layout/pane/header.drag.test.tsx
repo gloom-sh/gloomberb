@@ -7,6 +7,8 @@ import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 import { WebBox } from "../../../renderers/dom/host/box";
 import { WebSpan, WebText } from "../../../renderers/dom/host/text";
 import { WebIcon, WebIconButton } from "../../../renderers/dom/desktop/icons";
+import { WebTabs } from "../../../renderers/dom/host/tabs";
+import { WebInputHostProvider } from "../../../renderers/dom/input-host";
 import { PaneHeader } from "./header";
 
 const { window: testWindow, render: renderDom } = createDomTestHarness({ withUi: false });
@@ -26,6 +28,7 @@ function desktopUi(): UiHost {
     Span: WebSpan,
     Icon: WebIcon,
     IconButton: WebIconButton,
+    Tabs: WebTabs,
     SpinnerMark: () => null,
   } as unknown as UiHost;
 }
@@ -67,6 +70,48 @@ test("a docked pane moves from its grip and its title, and a fullscreen one move
   await act(async () => press(fullscreen.querySelector("[data-gloom-role='pane-title']") as HTMLElement));
   expect(paneDrags).toEqual(["pane", "pane"]);
   expect(windowDrags).toBe(1);
+});
+
+test("a press anywhere on the bar outside its controls drags the pane to the release", async () => {
+  const seen: string[] = [];
+  const container = await renderDom(
+    <UiHostProvider ui={desktopUi()} renderer={noopRendererHost}><WebInputHostProvider>
+      <PaneHeader
+        title="Sectors"
+        width={80}
+        focused
+        floating
+        showActions
+        tabs={{ tabs: [{ value: "a", label: "Sectors" }, { value: "b", label: "Industries" }], activeValue: "a", onSelect: () => seen.push("select") }}
+        onHeaderMouseDown={() => seen.push("down")}
+        onHeaderMouseDrag={(event: { type: string }) => seen.push(event.type)}
+        onHeaderMouseDragEnd={(event: { type: string }) => seen.push(event.type)}
+        onActionMouseDown={() => seen.push("menu")}
+      />
+    </WebInputHostProvider></UiHostProvider>,
+  );
+  const header = container.querySelector("[data-gloom-role='pane-header']") as HTMLElement;
+  const mouse = (type: string, target: { dispatchEvent: (event: unknown) => unknown }, clientX: number) => {
+    target.dispatchEvent(new testWindow.MouseEvent(type, { bubbles: true, button: 0, buttons: type === "mouseup" ? 0 : 1, clientX, clientY: 8 }));
+  };
+  const dragFrom = async (target: HTMLElement) => {
+    await act(async () => mouse("mousedown", target, 300));
+    await act(async () => {
+      mouse("mousemove", testWindow.document as never, 360);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    await act(async () => mouse("mouseup", testWindow.document as never, 360));
+  };
+
+  // The browser hands a press on the bar's empty space or padding to the bar
+  // itself, not to the title or the grip.
+  await dragFrom(header);
+  expect(seen).toEqual(["down", "drag", "drag-end"]);
+
+  seen.length = 0;
+  await dragFrom(container.querySelector("[data-gloom-role='tab-button']") as HTMLElement);
+  await dragFrom(container.querySelector("[data-gloom-role='pane-action'] button") as HTMLElement);
+  expect(seen).not.toContain("down");
 });
 
 test("a floating pane still moves from its title", async () => {

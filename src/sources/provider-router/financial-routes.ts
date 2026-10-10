@@ -15,6 +15,7 @@ import {
   selectCachedResource,
   sortCachedRecords,
 } from "./cache";
+import { noProviderError, type ProviderMissNote } from "../provider-errors";
 import { withBrokerTimeout } from "./brokers";
 import {
   hasMeaningfulProfile,
@@ -178,13 +179,14 @@ export class ProviderRouterFinancialRoutes {
     }
 
     const brokerResult = await withBrokerTimeout(this.deps.primaryRoutes.fetchBrokerFinancials(ticker, exchange, context));
-    const fallback = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context);
+    const misses: ProviderMissNote = {};
+    const fallback = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context, misses);
     const merged = mergeFinancials(brokerResult?.value ?? null, fallback?.value ?? null);
     if (isOptionTicker && !merged?.quote) {
       return quoteOnlyFinancials(merged);
     }
     if (!merged) {
-      throw new Error(`No provider available for ${ticker}`);
+      throw noProviderError(`No provider available for ${ticker}`, misses);
     }
     return merged;
   }
@@ -200,7 +202,7 @@ export class ProviderRouterFinancialRoutes {
     const rawCached = selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, false);
     const cachedIsStale = rawCached && (brokerSourceKeys.includes(rawCached.sourceKey)
       ? isQuoteContributionStaleForCurrentSession(quoteWithFreshnessExchange(rawCached.value, exchange))
-      : !isProviderQuoteUsableForCurrentSession(rawCached.value, exchange, ticker));
+      : !isProviderQuoteUsableForCurrentSession(rawCached.value, exchange, ticker, { recentAnswer: !rawCached.stale }));
     const cached = rawCached && !cachedIsStale
       ? rawCached
       : null;
@@ -221,12 +223,13 @@ export class ProviderRouterFinancialRoutes {
       );
     }
 
-    const providerQuote = await this.deps.primaryRoutes.fetchProviderQuote(ticker, exchange, context);
+    const misses: ProviderMissNote = {};
+    const providerQuote = await this.deps.primaryRoutes.fetchProviderQuote(ticker, exchange, context, misses);
     if (providerQuote) {
       return providerQuote.value;
     }
     if (cached) return cached.value;
-    throw new Error(`No quote provider available for ${ticker}`);
+    throw noProviderError(`No quote provider available for ${ticker}`, misses);
   }
 
   private async getProviderReferenceQuote(
@@ -259,7 +262,7 @@ export class ProviderRouterFinancialRoutes {
       if (
         record
         && (includeStale || !record.stale)
-        && isProviderQuoteUsableForCurrentSession(record.value, exchange, ticker)
+        && isProviderQuoteUsableForCurrentSession(record.value, exchange, ticker, { recentAnswer: !record.stale })
       ) {
         return record.value;
       }

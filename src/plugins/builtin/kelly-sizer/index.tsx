@@ -15,6 +15,7 @@ export const positionSizerModule: PluginModule = {
   panes: [
     {
       id: KELLY_PANE_ID,
+      reportFreshness: { source: "Your inputs and Gloom Cloud", status: "not-a-feed", basis: "position sizing" },
       name: "Position Sizer",
       icon: "K",
       component: KellySizerPane,

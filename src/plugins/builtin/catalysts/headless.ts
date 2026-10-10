@@ -5,7 +5,9 @@ import { catalystCell, catalystChangeText, catalystDate, catalystQuery, catalyst
 
 function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
   return {
-    shape: "bundle", argument: { kind: "ticker", optional: !litigation, description: litigation ? "Company ticker, including exchange-qualified international listings." : "Optional ticker; omit for market-wide events." },
+    shape: "bundle",
+    freshness: { source: litigation ? "Court and agency dockets" : "Regulator, court and trade records", status: "not-a-feed", basis: "published records" },
+    argument: { kind: "ticker", optional: !litigation, description: litigation ? "Company ticker, including exchange-qualified international listings." : "Optional ticker; omit for market-wide events." },
     options: [
       { key: "tab", type: "enum", values: [{ value: "calendar" }, { value: "changes" }], defaultValue: "calendar", description: "Dated events or observed revisions." },
       { key: "type", type: "enum", values: CATALYST_TYPES.map((value) => ({ value })), description: "Event type." },

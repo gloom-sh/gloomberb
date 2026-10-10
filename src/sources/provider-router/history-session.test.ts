@@ -87,12 +87,13 @@ test("session completion and next due bar expire fresh cache records without rel
   } finally { store.close(); }
 });
 
-test("sessionless caches, foreign assets and contradictory session records cannot borrow regular equity freshness", async () => {
+test("sessionless caches, foreign assets and contradictory session records never carry an equity session", async () => {
   setSystemTime(PREOPEN);
-  for (const [symbol, exchange, metadata] of [
-    ["AAPL", "NASDAQ", undefined], ["AAPL", "NASDAQ", session({ symbol: "MSFT" })],
-    ["AAPL", "NASDAQ", session({ interval: "5min" })], ["AAPL", "NASDAQ", session({ exchange: "NYSE" })],
-    ["BTC-USD", "CCC", session()], ["EURUSD=X", "CCY", session()], ["VOD.L", "LSE", session()],
+  for (const [symbol, exchange, metadata, answers] of [
+    // Sessionless bars that reach a US listing's last close answer the pre-market, and claim no session.
+    ["AAPL", "NASDAQ", undefined, true], ["AAPL", "NASDAQ", session({ symbol: "MSFT" }), false],
+    ["AAPL", "NASDAQ", session({ interval: "5min" }), false], ["AAPL", "NASDAQ", session({ exchange: "NYSE" }), false],
+    ["BTC-USD", "CCC", session(), false], ["EURUSD=X", "CCY", session(), false], ["VOD.L", "LSE", session(), false],
   ] as const) {
     const calls: string[] = [], store = new AppPersistence(createTempDbPath("regular-unknown"));
     try {
@@ -100,7 +101,9 @@ test("sessionless caches, foreign assets and contradictory session records canno
       store.resources.set({ namespace: "market", kind: "price-history", entityKey: symbol, variantKey: variant, sourceKey: "provider:gloomberb-cloud" },
         { points: points("2026-09-18T19:45:00Z"), resolution: "15m" }, { cachePolicy: policy });
       const router = new AssetDataRouter(provider(() => ({ points: points(), resolution: "15m", session: metadata }), calls), [], store.resources);
-      await expect(router.getPriceHistoryForResolutionWithMetadata(symbol, exchange, "1M", "15m")).rejects.toThrow();
+      const resolution = router.getPriceHistoryForResolutionWithMetadata(symbol, exchange, "1M", "15m");
+      if (answers) expect((await resolution).session).toBeUndefined();
+      else await expect(resolution).rejects.toThrow();
       expect(calls).toEqual(["resolution"]);
       const historical = await router.getDetailedPriceHistoryWithMetadata(symbol, exchange, start, new Date("2026-09-21T20:00:00Z"), "15m");
       expect(historical.points).toEqual(metadata ? [] : points());
@@ -117,11 +120,11 @@ test("source switching and broker contract fallback never transplant an equity s
     const first = new AssetDataRouter(provider(() => proof, calls, "first"), [], store.resources);
     expect((await read(first)).session).toEqual(proof.session);
     const second = new AssetDataRouter(provider(() => ({ points: points(), resolution: "15m" }), calls, "second"), [], store.resources);
-    expect((await read(second)).points).toHaveLength(0);
+    expect((await read(second)).session).toBeUndefined();
     const brokerFallback = new AssetDataRouter(provider(() => proof, calls, "first"), [], store.resources);
     expect((await brokerFallback.getDetailedPriceHistoryWithMetadata("AAPL", "NASDAQ", start, new Date(), "15m", {
       instrument: { brokerId: "ibkr", symbol: "AAPL", secType: "OPT", conId: 17 },
-    })).points).toHaveLength(0);
+    })).session).toBeUndefined();
     expect(calls).toEqual(["detail", "detail", "detail"]);
   } finally { store.close(); }
 });

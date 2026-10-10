@@ -12,6 +12,7 @@ import { ThesisTickerTab } from "./ticker-tab";
 export const thesisModule: PluginModule = {
   panes: [{
     id: THESIS_PANE_ID,
+    reportFreshness: { source: "Your theses", status: "not-a-feed", basis: "your theses" },
     name: "Theses",
     icon: "Θ",
     component: ThesisBoardPane,

@@ -27,6 +27,7 @@ import { PRICE_SPARKLINE_COLUMN_ID, PriceSparkline } from "../price-sparkline/vi
 import { DataTableView, type DataTableKeyEvent, type DataTableSelection } from "../data-table/view";
 import type { QuoteFlashDirection } from "../quote-flash";
 import { objectVersion } from "../../utils/object-version";
+import { getCompletedRegularSessionDisplay } from "../../market-data/market/status";
 import { usePaneFooter } from "../layout/pane/footer";
 
 export interface TickerTableCell {
@@ -107,7 +108,18 @@ const FLASHABLE_QUOTE_COLUMN_IDS = new Set([
   "mark_delta",
 ]);
 
+// After the regular close, and in the pre-market with the last session's close
+// and move, these three hold that close and its move while only the extended
+// print ticks (see the portfolio column values), so a tick does not flash them.
+const STEADY_AFTER_CLOSE_QUOTE_COLUMN_IDS = new Set(["price", "change", "change_pct"]);
+
 const EMPTY_FLASH_SYMBOLS = new Map<string, QuoteFlashDirection>();
+
+/** Whether a tick on this row dims the cell: the quote columns it can move. */
+export function flashesOnQuoteTick(columnId: string, quote: TickerFinancials["quote"]): boolean {
+  if (!FLASHABLE_QUOTE_COLUMN_IDS.has(columnId)) return false;
+  return !STEADY_AFTER_CLOSE_QUOTE_COLUMN_IDS.has(columnId) || !getCompletedRegularSessionDisplay(quote);
+}
 
 type TableMouseEvent = {
   button?: number;
@@ -247,7 +259,7 @@ export function TickerListTableView({
 
     const { text, color } = resolveCellRef.current.resolve(column, ticker, financials);
     const shouldFlash = flashSymbolsRef.current.has(ticker.metadata.ticker)
-      && FLASHABLE_QUOTE_COLUMN_IDS.has(column.id);
+      && flashesOnQuoteTick(column.id, financials?.quote);
     return {
       text,
       color: color || (rowState.selected ? colors.selectedText : undefined),

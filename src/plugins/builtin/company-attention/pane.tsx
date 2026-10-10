@@ -33,7 +33,7 @@ const LABEL_COLUMNS = new Set(["chart"]);
 function Evidence({ row, width, height }: Size & { row: AttentionRow }) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
-  return <ScrollBox width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
+  return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     {(row.details ?? Object.entries(row.values).map(([label, value]) => ({ label, value: String(value ?? "--") }))).map((entry) => <KeyValueRow key={entry.label} label={entry.label} value={entry.value} labelWidth={22} />)}
     {row.url ? <Box paddingY={1}><Text fg={colors.textMuted}>{row.url}</Text></Box> : null}
   </ScrollBox>;
@@ -172,7 +172,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
             const numeric = typeof value === "number";
             const decimals = DECIMALS[column.id] ?? 0;
             const text = numeric ? `${SIGNED_COLUMNS.has(column.id) && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}` : LABEL_COLUMNS.has(column.id) ? humanLabel(value) : column.id === "title" ? value.trim() : value;
-            if (column.id === "share" && numeric && tab === "mix") return { ...shareCell(text, maxShare ? value / maxShare : null, column.width, colors, state.selected, desktop), value };
+            if (column.id === "share" && numeric && tab === "mix") return { ...shareCell(text, maxShare ? value / maxShare : null, column.width, colors, state.selected), value };
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };
           }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${kind}:${symbol}:${tab}:${mix}:${country}:${chart}`}

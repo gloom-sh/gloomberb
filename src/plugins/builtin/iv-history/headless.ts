@@ -11,6 +11,7 @@ const percent = (value: unknown) => typeof value === "number" ? formatVol(value)
 
 export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "US option underlying" },
+  freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily", observedKey: "date", oldest: null },
   describe: (args) => `HIVG ${args.symbols[0] ?? ""}`,
   discovery: { aliases: ["HIVG"], screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
     limitations: ["History starts February 2024 (OPRA daily trade closes)", "Rank and percentile use trade-close readings only"] },
@@ -57,6 +58,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
 
 export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily" },
   argument: { kind: "symbol-list", optional: true, maximum: VCA_LIMIT, description: "US option underlyings; defaults to index and sector ETFs." },
   options: [{ key: "preset", type: "enum", values: [{ value: "etfs" }, { value: "megacaps" }], defaultValue: "etfs", description: "Preset when no symbols are given" }],
   describe: "Volatility rich/cheap",
@@ -86,7 +88,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         { key: "ivHv", header: "IV/HV", format: (value: unknown) => typeof value === "number" ? value.toFixed(2) : "--" },
       ], rows: rows.map((row) => ({ ...row })) }],
       complete: !queued.length && !universe.error, unavailableSymbols: queued,
-      errors: [universe.error, ...(queued.length ? [`Queued for backfill: ${queued.join(", ")}`] : [])].filter((value): value is string => !!value),
+      errors: [universe.error].filter((value): value is string => !!value),
+      ...(queued.length ? { notes: [`Queued for backfill: ${queued.join(", ")}.`] } : {}),
       metadata: { asOf: payload.asOf, presets: VCA_PRESETS, methodology: METHODOLOGY },
     };
   },

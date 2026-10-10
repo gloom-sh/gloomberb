@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
-  computeReturns,
   correlateDailyCloses,
   dailyCloses,
+  dailyValues,
   pearsonCorrelation,
 } from "./compute";
+import { geoSeriesToken } from "./geo";
 
 describe("cross-market return alignment", () => {
   test("uses matching return intervals across weekends, exchange holidays, and missing sessions", () => {
@@ -39,17 +40,30 @@ describe("cross-market return alignment", () => {
   });
 });
 
-describe("computeReturns", () => {
-  test("computes simple returns", () => {
-    const returns = computeReturns([100, 110, 105, 115]);
-    expect(returns).toHaveLength(3);
-    expect(returns[0]).toBeCloseTo(0.1, 5);
-    expect(returns[1]).toBeCloseTo(-0.0455, 3);
-    expect(returns[2]).toBeCloseTo(0.0952, 3);
+describe("map series in the matrix", () => {
+  test("pairs a daily count's level change with stock returns over the same shared dates, keeping zero counts", () => {
+    const weekdays = ["2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09", "2026-01-12"];
+    const stock = dailyCloses(weekdays.map((date, i) => ({
+      date: new Date(date), close: [100, 110, 99, 118.8, 112.86, 124.146, 99.3168][i]!,
+    })));
+    // Level changes between weekdays are 100x the stock's returns (+10%, -10%, +20%, -5%, +10%, -20%).
+    // Weekend counts must not enter either interval, and zero is a count, not a gap.
+    const transits = dailyValues([
+      ...weekdays.map((date, i) => ({ date: new Date(date), value: [0, 10, 0, 20, 15, 25, 5][i]! })),
+      ...["2026-01-03", "2026-01-04", "2026-01-10", "2026-01-11"].map((date, i) => ({ date: new Date(date), value: [40, 0, 3, 60][i]! })),
+      { date: new Date("2026-01-13"), value: null },
+    ]);
+    const result = correlateDailyCloses(stock, transits, 5, "return", "difference");
+    expect(result.sampleSize).toBe(6);
+    expect(result.correlation).toBeCloseTo(1, 10);
+    // A return basis would divide by the zero counts and lose those intervals.
+    expect(correlateDailyCloses(stock, transits, 5, "return", "return").sampleSize).toBe(4);
   });
 
-  test("skips zero or invalid previous closes", () => {
-    expect(computeReturns([0, 10, 20, Number.NaN, 30])).toEqual([1]);
+  test("reads GEO entries as map series and leaves tickers alone", () => {
+    expect(geoSeriesToken("GEO:HORMUZ")).toBe("HORMUZ");
+    expect(geoSeriesToken(" geo:suez.tanker ")).toBe("suez.tanker");
+    for (const entry of ["GEO", "GEO:", "FRO", "BRK.B", "SHEL:LSE", "FRED:DGS10"]) expect(geoSeriesToken(entry)).toBeNull();
   });
 });
 

@@ -388,7 +388,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
   async togglePaneQuickSetting(paneId: string, key: string): Promise<void> {
     const quickSetting = this.resolvePaneQuickSettings(paneId).find((setting) => setting.key === key);
     if (!quickSetting) return;
-    await this.applyPaneSettingValue(paneId, quickSetting.field, !quickSetting.value);
+    await this.applyPaneSettingValue(paneId, quickSetting.field, quickSetting.nextValue);
   }
 
   getCommandPluginId(commandId: string): string | undefined {

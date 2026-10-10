@@ -1,5 +1,6 @@
 import type { MarketState } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
+import { hasPublishedApacCalendar, isPublishedApacClosure } from "../published-apac-sessions";
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
 import { hasPublishedNseCalendar, isPublishedNseClosure } from "../published-nse-sessions";
@@ -11,6 +12,9 @@ const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const OVERNIGHT_CLOSE_MAX_AGE_MS = 20 * 60 * 60 * 1000;
 const ALWAYS_OPEN_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+// Spring Festival can put the previous session twelve calendar days back
+// (TWSE, February 2026).
+const SESSION_LOOKBACK_DAYS = 14;
 const REGULAR_OPEN_MINUTES: Record<string, number> = {
   NASDAQ: 9 * 60 + 30,
   NYSE: 9 * 60 + 30,
@@ -57,6 +61,8 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   B3: 10 * 60,
   BYMA: 11 * 60,
   JSE: 9 * 60,
+  // The opening auction ends at 10:00 and the feed stamps its first bar 09:59.
+  TASE: 9 * 60 + 59,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
 // early would let a copy fetched during the auction pass as final.
@@ -70,8 +76,43 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   JPX: 15 * 60 + 30, HKEX: 16 * 60 + 10, TWSE: 14 * 60 + 30, TPEX: 14 * 60 + 30,
   NSE: 16 * 60, BSE: 16 * 60, ASX: 16 * 60 + 15, SGX: 17 * 60 + 20, KRX: 16 * 60, KOSDAQ: 16 * 60,
   NZX: 17 * 60, SSE: 15 * 60 + 30, SZSE: 15 * 60 + 30,
-  BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15, TASE: 17 * 60 + 40,
+  BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15,
+  // Monday to Thursday: trading at last ends 17:30, after the closing auction.
+  // Not later: a complete 5-minute copy ends with its 17:09 bar, which must
+  // reach the close less the half hour a history copy may lag.
+  TASE: 17 * 60 + 30,
 };
+// Venues whose regular session ends earlier on one weekday every week, as
+// local minutes by weekday (0 is Sunday); the other days close as above. TASE
+// has traded Monday to Friday since January 2026, and on Fridays trading at
+// last ends 13:50 (closing auction 13:44 to 13:45). A complete 5-minute copy
+// ends with its 13:29 bar. Holidays and the shortened days around Sukkot and
+// Pesach are not weekly and are not listed.
+const WEEKDAY_CLOSE_MINUTES: Record<string, Partial<Record<number, number>>> = {
+  TASE: { 5: 13 * 60 + 50 },
+};
+// Venues that pause at midday, as local minutes [start, end), with a zone for
+// those the session tables above do not cover. Jakarta pauses longer on Fridays.
+const MIDDAY_BREAKS: Record<string, {
+  timeZone?: string;
+  weekdays: readonly [number, number];
+  friday?: readonly [number, number];
+}> = {
+  HKEX: { weekdays: [12 * 60, 13 * 60] },
+  SGX: { weekdays: [12 * 60, 13 * 60] },
+  SSE: { weekdays: [11 * 60 + 30, 13 * 60] },
+  SZSE: { weekdays: [11 * 60 + 30, 13 * 60] },
+  JPX: { weekdays: [11 * 60 + 30, 12 * 60 + 30] },
+  BURSAMY: { timeZone: "Asia/Kuala_Lumpur", weekdays: [12 * 60 + 30, 14 * 60 + 30] },
+  JAKARTA: { timeZone: "Asia/Jakarta", weekdays: [12 * 60, 13 * 60 + 30], friday: [11 * 60 + 30, 14 * 60] },
+};
+// A morning print this close to the break is its last one, and afternoon
+// prints are due this long after the feed's lag has passed the reopening.
+const MIDDAY_BREAK_MARGIN_MS = 5 * 60_000;
+// How far the delayed feed runs behind each venue's trades.
+const DELAYED_FEED_LAG_MS = 15 * 60_000;
+const SLOWER_DELAYED_FEED_LAG_MS = 20 * 60_000;
+const SLOWER_DELAYED_FEEDS = new Set(["ASX", "KRX", "KOSDAQ", "TWSE", "TPEX", "SGX", "NZX"]);
 const exchangeLocalTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const usSessionFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
@@ -159,6 +200,7 @@ function isPublishedClosure(exchange: string, date: string): boolean {
   if (exchange === "JPX") return isPublishedJpxClosure(date);
   if (exchange === "NSE" || exchange === "BSE") return isPublishedNseClosure(date);
   if (exchange === "SSE" || exchange === "SZSE") return isPublishedCnClosure(date);
+  if (isPublishedApacClosure(exchange, date)) return true;
   return getPublishedUsEquityCalendarDay(exchange, date) === "closed";
 }
 
@@ -185,6 +227,12 @@ function localWeekday(date: string): number | null {
   return day == null ? null : new Date(day * MS_PER_DAY).getUTCDay();
 }
 
+/** The local close of the venue's regular session on `date`, in minutes of the day. */
+function regularCloseMinutes(exchange: string, date: string): number | undefined {
+  const weekday = localWeekday(date);
+  return (weekday == null ? undefined : WEEKDAY_CLOSE_MINUTES[exchange]?.[weekday]) ?? REGULAR_CLOSE_MINUTES[exchange];
+}
+
 /** The zone a venue's session dates are read in, or null when unknown. */
 export function sessionCalendarTimeZone(exchange: string | undefined): string | null {
   const canonical = canonicalExchange(exchange);
@@ -207,22 +255,34 @@ export function latestRegularSessionClose(
   if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  // Spring Festival can put the previous session eleven calendar days back.
-  const lookback = (canonical === "SSE" || canonical === "SZSE") && hasPublishedCnCalendar(year) ? 14 : 10;
-  for (let offset = 0; offset <= lookback; offset++) {
+  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
     const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
     const published = getPublishedUsEquitySession(canonical, date);
     let close: number | null = null;
     if (published) {
       if (published.kind === "session") close = published.close;
     } else if (isLocalTradingDay(canonical, date)) {
-      const minutes = REGULAR_CLOSE_MINUTES[canonical] ?? 24 * 60;
+      const minutes = regularCloseMinutes(canonical, date) ?? 24 * 60;
       close = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
         Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
     }
     if (close != null && close <= time) return { date, close, timeZone };
   }
   return null;
+}
+
+/**
+ * The UTC minute of the day the venue's regular session closed, for the latest
+ * session at or before `time` (20:00 UTC is 1200 while New York is on daylight
+ * time). Null for round-the-clock venues and for venues whose close hour is
+ * not listed, which `latestRegularSessionClose` would take to close at local
+ * midnight.
+ */
+export function regularSessionCloseUtcMinute(exchange: string | undefined, time: number): number | null {
+  const canonical = canonicalExchange(exchange);
+  if (REGULAR_CLOSE_MINUTES[canonical] === undefined) return null;
+  const close = latestRegularSessionClose(canonical, time);
+  return close ? Math.floor(close.close / 60_000) % 1440 : null;
 }
 
 /**
@@ -238,8 +298,7 @@ export function latestRegularSessionOpen(exchange: string | undefined, time: num
   const minutes = REGULAR_OPEN_MINUTES[canonical];
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  const lookback = (canonical === "SSE" || canonical === "SZSE") && hasPublishedCnCalendar(year) ? 14 : 10;
-  for (let offset = 0; offset <= lookback; offset++) {
+  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
     const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
     const published = getPublishedUsEquitySession(canonical, date);
     let open: number | null = null;
@@ -270,7 +329,8 @@ export function isRegularSessionTime(exchange: string | undefined, time: number)
 
 /**
  * True when the venue's full-day closures for the year of `date` are
- * published: US venues, JPX, NSE, BSE, SSE and SZSE. Elsewhere a local holiday reads as a weekday.
+ * published: US venues, JPX, NSE, BSE, SSE, SZSE, KRX, KOSDAQ, TWSE, TPEX,
+ * HKEX, SGX and ASX. Elsewhere a local holiday reads as a weekday.
  */
 export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
   const canonical = canonicalExchange(exchange);
@@ -278,7 +338,40 @@ export function hasPublishedSessionCalendar(exchange: string | undefined, date: 
   if (canonical === "JPX") return hasPublishedJpxCalendar(year);
   if (canonical === "NSE" || canonical === "BSE") return hasPublishedNseCalendar(year);
   if (canonical === "SSE" || canonical === "SZSE") return hasPublishedCnCalendar(year);
+  if (hasPublishedApacCalendar(canonical, year)) return true;
   return !!getPublishedUsEquityCalendarYears(canonical)?.includes(year);
+}
+
+/** How far the delayed feed runs behind the venue's trades. */
+export function delayedFeedLagMs(exchange: string | undefined): number {
+  return SLOWER_DELAYED_FEEDS.has(canonicalExchange(exchange)) ? SLOWER_DELAYED_FEED_LAG_MS : DELAYED_FEED_LAG_MS;
+}
+
+/**
+ * Whether a print is still the current price because the venue is paused at
+ * midday: `now` falls in the break, or within the feed's lag plus five
+ * minutes after it, and the print is the morning's last, no earlier than five
+ * minutes before the break started. An earlier morning print means the feed
+ * stopped before the break.
+ */
+export function isMiddayBreakPrint(
+  timestampMs: number,
+  exchange: string | undefined,
+  now: number,
+  feedLagMs: number,
+): boolean {
+  const canonical = canonicalExchange(exchange);
+  const pause = MIDDAY_BREAKS[canonical];
+  const timeZone = pause?.timeZone ?? EXCHANGE_TIME_ZONES[canonical];
+  if (!pause || !timeZone || !Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now) return false;
+  const { year, month, day } = zonedDateTimeParts(now, timeZone);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  if (weekday === 0 || weekday === 6) return false;
+  const [start, end] = weekday === 5 && pause.friday ? pause.friday : pause.weekdays;
+  const at = (minutes: number) => zonedWallClockToUtcMs(timeZone, year, month, day, Math.floor(minutes / 60), minutes % 60, 0);
+  const breakStart = at(start);
+  return now >= breakStart && now <= at(end) + feedLagMs + MIDDAY_BREAK_MARGIN_MS
+    && timestampMs >= breakStart - MIDDAY_BREAK_MARGIN_MS;
 }
 
 function usSessionState(timestampMs: number): UsSessionState {
@@ -340,6 +433,51 @@ export function isUsPriorSessionPremarketQuote(
   const printSession = usSessionState(timestampMs);
   if (printSession !== "REGULAR" && printSession !== "POST" && printSession !== "POSTPOST") return false;
   return localTradingDaysBetween(canonical, timestampDate, currentDate) === 1;
+}
+
+/**
+ * After the regular close and before any after-hours trade, a US quote's last
+ * print is today's regular session, and that close is the current price: a thin
+ * listing may not trade again tonight, and for fifteen minutes after the close
+ * the delayed feed still shows the session's last minutes. The source labels
+ * the quote POST (or CLOSED) and has no after-hours price to show. The print
+ * must be from today's New York trading day, from the regular open through the
+ * regular close (the published early close included). An earlier day's print
+ * or this morning's pre-market is not today's close.
+ */
+export function isUsRegularCloseQuoteInPostSession(
+  timestampMs: number,
+  exchange: string | undefined,
+  marketState: MarketState | undefined,
+  now = Date.now(),
+): boolean {
+  const canonical = canonicalExchange(exchange);
+  if ((marketState !== "POST" && marketState !== "CLOSED") || !isUsListingExchange(canonical)) return false;
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
+  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "POST") return false;
+  const currentDate = exchangeLocalDate(canonical, now);
+  if (!currentDate || exchangeLocalDate(canonical, timestampMs) !== currentDate) return false;
+  if (!isLocalTradingDay(canonical, currentDate)) return false;
+  const published = getPublishedUsEquitySession(canonical, currentDate);
+  if (published) return published.kind === "session" && timestampMs >= published.open && timestampMs <= published.close;
+  return usSessionState(timestampMs) === "REGULAR";
+}
+
+/**
+ * Whether a US print belongs to the after-hours session in progress: today's,
+ * from the regular close. An earlier day's after-hours print is not.
+ */
+export function isUsPostSessionPrint(
+  timestampMs: number,
+  exchange: string | undefined,
+  now = Date.now(),
+): boolean {
+  const canonical = canonicalExchange(exchange);
+  if (!isUsListingExchange(canonical)) return false;
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
+  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "POST") return false;
+  const currentDate = exchangeLocalDate(canonical, now);
+  return !!currentDate && exchangeLocalDate(canonical, timestampMs) === currentDate && usSessionState(timestampMs) === "POST";
 }
 
 export function isTimestampStaleForExchangeSession(

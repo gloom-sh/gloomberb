@@ -177,6 +177,8 @@ export function mergeQuoteContribution(
     priceBasis: next.priceBasis,
     regularClose: next.regularClose,
     regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
+    regularChange: next.regularClose != null ? next.regularChange : undefined,
+    regularChangePercent: next.regularClose != null ? next.regularChangePercent : undefined,
   };
 
   if (isOtherTradingDay(current, next)) {

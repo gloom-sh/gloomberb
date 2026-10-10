@@ -7,6 +7,12 @@ export interface RangeTrackProps {
   /** Cells the track spans. */
   width: number;
   markerColor: string;
+  /**
+   * Mark a value past either end with an arrow at that end (a square on the
+   * desktop) instead of pinning the dot there, so it does not read as the low
+   * or the high itself.
+   */
+  outside?: boolean;
 }
 
 /**
@@ -14,9 +20,10 @@ export interface RangeTrackProps {
  * a rule with a dot on it. The caller draws the endpoints. The terminal draws
  * a box-drawing rule; the desktop draws a real line and dot, never glyphs.
  */
-export function RangeTrack({ position, width, markerColor }: RangeTrackProps) {
+export function RangeTrack({ position, width, markerColor, outside = false }: RangeTrackProps) {
   const colors = useThemeColors();
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
+  const past = !outside ? null : position < 0 ? "below" : position > 1 ? "above" : null;
   const at = position > 0 ? Math.min(1, position) : 0;
   if (width <= 0) return null;
   if (isDesktopWeb) {
@@ -29,7 +36,7 @@ export function RangeTrack({ position, width, markerColor }: RangeTrackProps) {
           width: "8px",
           height: "8px",
           marginLeft: "-4px",
-          borderRadius: "50%",
+          borderRadius: past ? "1px" : "50%",
           backgroundColor: markerColor,
         }} />
       </Box>
@@ -39,7 +46,7 @@ export function RangeTrack({ position, width, markerColor }: RangeTrackProps) {
   return (
     <Box width={width} height={1} flexShrink={0} flexDirection="row">
       <Text fg={colors.border}>{"─".repeat(marker)}</Text>
-      <Text fg={markerColor}>●</Text>
+      <Text fg={markerColor}>{past === "below" ? "◂" : past === "above" ? "▸" : "●"}</Text>
       <Text fg={colors.border}>{"─".repeat(width - marker - 1)}</Text>
     </Box>
   );

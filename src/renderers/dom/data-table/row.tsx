@@ -353,6 +353,8 @@ function WebDataTableRowInner<
           <div
             key={column.id}
             data-gloom-role="data-table-cell"
+            // The instant behind a shortened time ("Wed 11:27"), so a rendered-view report can print it whole.
+            data-gloom-cell-instant={cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? cell.value.toISOString() : undefined}
             style={{
               minWidth: 0,
               position: freezeFirstColumn && columnIndex === 0 ? "sticky" : undefined,

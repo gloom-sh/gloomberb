@@ -1,28 +1,36 @@
 # Perpetual markets
 
-`PERP` opens per-market History and Evidence. An optional market or underlying selects contracts: `PERP BTC`, `PERP TSLA`, or `PERP hyperliquid:xyz:TSLA`. Stock descriptions (`DES`) and quote cards (`QQ`, when tall enough) link their matching stock perpetuals, showing mark, premium versus the underlying last price, interval-labelled funding, USD open interest and premium versus oracle.
+`PERP` opens the Board. Its tabs are Board, Rankings, Compare, History and Evidence. A market or underlying opens that market's History: `PERP BTC`, `PERP TSLA`, or `PERP hyperliquid:xyz:TSLA`. Stock descriptions (`DES`) and quote cards (`QQ`, when tall enough) link their matching stock perpetuals, showing mark, premium versus the underlying last price, interval-labelled funding, USD open interest and premium versus oracle.
 
 Stock links follow the selected listing and only appear when its underlying identity is confirmed. The same ticker on another exchange may belong to another company. A linked cross-listing still uses the perpetual's own reference listing, currency and share units for its premium.
 
-This is a **Pro dataset**. Free accounts receive a fixed preview of three markets per asset class and a latest-value stock/market preview. Full history, rankings and the complete universe require Pro. Trading and order routing belong to a separate plugin.
+**Board** lists markets by venue: mark, funding per interval, APR, premium, USD open interest and its 24h change, the share of accounts net long (Long %), the 24h price move and when it was observed. Filter by asset class and venue, sort by open interest, funding, OI change, premium or long share, and search by market. The venue filter offers the venues in the result.
 
-History offers paid funding, collected open interest, mark/oracle premium and hourly candles with 1D, 7D, 30D, 90D and 365D windows. The market search accepts a base asset, underlying symbol or canonical market identity; an unqualified symbol prefers its default crypto contract, then the xyz stock contract. Use the canonical identity for another contract or venue. Evidence keeps observation time, source time, units, confidence, contract constraints and correction records. `o` opens the primary source; `d`, `f`, `g` open the underlying description, financials and chart where mapped.
+**Rankings** shows five lists of up to ten markets: highest and lowest 8h funding, 24h OI surges, premium dislocations and closed-market dislocations.
 
-The full market board, rankings and comparison UI belong to the external perpetuals plugin. The built-in function focuses on one market's history and evidence, and can be opened independently. There is no plugin dependency. The backend board, rankings and comparison endpoints remain available for consumers.
+**Compare** shows one base asset on every venue that lists it, including each venue's Long %, so accounts' positioning on Binance, Bybit and OKX reads side by side. The search takes the asset. The spread line is the highest minus the lowest 8h funding in percentage points, naming both venues, and the contract when a venue lists several. With one venue there is no spread.
+
+Enter on a Board, Rankings or Compare row opens that market in History. Switching to History or Evidence takes the selected row; switching to Compare takes its base asset.
+
+This is a **Pro dataset**. Free accounts see a fixed preview: three markets per asset class on the Board, which is also all Compare can show, three per ranking, and latest values for any one market. The lock line says how many more markets Pro shows. Full history, rankings and the complete universe require Pro. Trading and order routing belong to a separate plugin.
+
+History offers paid funding, collected open interest, mark/oracle premium, hourly candles and the long/short account share (L/S) with 1D, 7D, 30D, 90D and 365D windows. The market field takes a base asset, underlying symbol or canonical market identity and shows the one market it names; it does not list partial matches. An unqualified symbol prefers its default crypto contract, then the xyz stock contract. Use the canonical identity for another contract or venue. A name no market carries shows the pane's empty state; `gloomberb fn PERP XYZZY` fails and suggests markets that work. Evidence keeps observation time, source time, units, confidence, contract constraints and correction records. `o` opens the primary source; `d`, `f`, `g` open the underlying description, financials and chart where mapped.
 
 `a` opens the existing event-alert form with the market prefilled. Choose funding per eight hours, 24h open-interest change, premium versus oracle, or closed-market premium, then an above/below threshold in percent. The alert uses the existing cloud rule synchronization, crossing, cooldown and delivery history. Delivery requires Pro. Delisted or stale contracts are excluded from rankings and alerts.
 
-History keeps the same figures for every series: the series itself, its change over the range, the mark and open interest. When every point of a series shares one observation basis, the legend names it and the table leaves the column out. Evidence groups the market, funding, open interest, the listed underlying (for stock perpetuals) and the contract terms.
+History keeps the same figures for every series: the series itself, its change over the range, the mark and open interest. L/S shows the latest long share, the long/short ratio and the 24h change in percentage points once history reaches back a day; its table adds the short share and the ratio. When every point of a series shares one observation basis, the legend names it and the table leaves the column out. Evidence groups the market, funding, open interest, positioning (the long/short reading), the listed underlying (for stock perpetuals) and the contract terms.
 
 ## Coverage and interpretation
 
-The initial enabled venue is Hyperliquid: the default crypto perpetual universe plus every public HIP-3 dex returned by discovery, including stock, index, energy, metal and FX contracts. Classification is conservative; unclassified contracts retain their identity. Availability of a perpetual does not establish eligibility to trade it or ownership of its referenced asset. The venue name in Evidence identifies the contract's trading venue, not a routing data provider.
+The enabled venues are Hyperliquid, Binance, Bybit and OKX. Hyperliquid carries its default crypto perpetuals plus every public HIP-3 dex returned by discovery, including stock, index, energy, metal and FX contracts. Binance, Bybit and OKX carry their crypto perpetuals and the commodity and equity perpetuals they list, as the board shows. Classification is conservative; unclassified contracts retain their identity. Availability of a perpetual does not establish eligibility to trade it or ownership of its referenced asset. The venue name in Evidence identifies the contract's trading venue, not a routing data provider.
 
-Adapters for Binance, Bybit, OKX, Deribit, Coinbase International, Kraken and dYdX are disabled by default pending venue terms and redistribution review. The comparison endpoint uses whatever venues the backend enables. A single row means only one comparable contract has been collected; it is not a cross-venue spread. Inverse, linear and quanto contracts and their collateral currencies remain distinct. Stablecoin quote currencies are not silently converted into fiat prices.
+Adapters for Deribit, Coinbase International, Kraken and dYdX stay off until they are enabled. Compare shows every enabled venue that lists the asset. A single row means only one comparable contract has been collected; it is not a cross-venue spread. Inverse, linear and quanto contracts and their collateral currencies remain distinct. Stablecoin quote currencies are not silently converted into fiat prices.
 
 Funding rates are fractions in REST/JSON and percentages in the pane. Raw funding always carries its interval and current/last-paid/continuous basis. Eight-hour funding is `raw × 8 / intervalHours`. Simple APR is `raw × 24 × 365 / intervalHours`; neither measure compounds nor predicts future realized yield. Predicted funding remains separate and unavailable when not reported. History explicitly distinguishes source-paid funding from collected current-rate snapshots and normalizes each observation using its own interval.
 
 Open interest is shown in base units and USD. The board's 1h/24h percentage changes compare **base open interest from Gloom's own snapshots**, so mark-price moves cannot manufacture an OI surge. A rolling five-minute OI baseline cache supports those 1h/24h comparisons independently of the retained history sampling tier. USD notional changes are separate JSON fields. A missing sufficient-age baseline remains null. Funding and candles backfill only history the API actually exposes; source hourly funding and candle records are retained separately at their actual timestamps. No historical OI is inferred from candles or fabricated before collection began.
+
+Long % is the venue's own share of all accounts on the contract that are net long, in that venue's hourly bucket. Binance and Bybit publish the long and short shares; OKX publishes only the long/short ratio, so its shares are derived as `ratio / (1 + ratio)` and Evidence says so. The definitions are each venue's, so the same figure on two venues is a comparison of crowds, not one market-wide number. Shares can sum to less than 100% when a venue counts flat accounts. Hyperliquid, Binance coin-margined contracts and Bybit USDC contracts publish no per-contract account ratio and show `--`; Evidence gives the reason. Binance and Bybit stamp a closed hour; OKX stamps the hour still forming, and its newest value can change until that hour closes. Venues are not aligned by timestamp: Evidence shows each reading's bucket time. Binance publishes no bucket for an hour without activity, and a reading more than three hours old is dimmed as stale. The latest reading is part of the free preview; its history is Pro, begins at Gloom's first collection, and History says "Collecting" until it has points to draw.
 
 Oracle premium is `mark / oracle - 1`. Underlying premiums use the mapped equity's separately dated last price, the contract price multiplier and compatible currencies. Closed-market premium appears only with a known closed or extended underlying session. A stale, missing or mismatched reference yields null. A perpetual mark can move while the underlying exchange is closed; its premium is not a forecast of the next opening price. The Evidence view states the underlying session and reference date.
 
@@ -31,10 +39,15 @@ Discovery and latest values refresh roughly once a minute. Retained history is s
 ## CLI and REST
 
 ```sh
-gloomberb fn PERP --json
+gloomberb fn PERP                 # the board
+gloomberb fn PERP --asset-class crypto --venue bybit --sort funding
+gloomberb fn PERP --asset-class crypto --sort long-short
+gloomberb fn PERP --tab rankings
+gloomberb fn PERP ETH --tab compare --json
+gloomberb fn PERP --tab history --json   # shows BTC and says so in data.metadata.notices
 gloomberb fn PERP BTC --tab history --days 30 --json
 gloomberb fn PERP TSLA --tab evidence --json
-gloomberb shot PERP BTC --tab history --width 1280 --height 540 --output perps.png
+gloomberb shot PERP --tab board --width 1280 --height 540 --output perps.png
 ```
 
 The pane-function REST interface exposes the same headless bundle and options. Cloud dataset routes are `/cloud/perps/board`, `/history`, `/rankings`, `/compare?baseAsset=BTC`, `/market?marketId=...`, and `/equity/:symbol`. History takes `marketId`, ISO `from`/`to`, `resolution=auto|minute|hour|day`, and `limit`. The `minute` resolution returns retained sampled detail; it does not promise an observation every minute. JSON preserves canonical market identity, confidence, flags, source links, observation timestamps, raw rates and intervals, currencies, preview locks and correction provenance.

@@ -1,4 +1,5 @@
 import type { AppResourceStorePort } from "../core/app-service-ports";
+import type { CachedResourceRecord, ResourceCacheKey } from "../data/resource-store";
 import type { BrokerAdapter } from "../types/broker";
 import type { BrokerInstanceConfig } from "../types/config";
 import type { CachePolicy } from "../types/persistence";
@@ -19,6 +20,50 @@ interface PersistedBrokerAccountSnapshot {
 
 function brokerAccountNamespace(instance: BrokerInstanceConfig): string {
   return `plugin:${instance.brokerType}`;
+}
+
+/** A saved account snapshot, which a renderer without the cache database has to keep elsewhere. */
+export function isBrokerAccountSnapshotKey(key: Pick<ResourceCacheKey, "namespace" | "kind">): boolean {
+  return key.kind === BROKER_ACCOUNT_SNAPSHOT_KIND && key.namespace.startsWith("plugin:");
+}
+
+/**
+ * Saves an account snapshot written by a process without the cache database
+ * (the desktop view), keeping its own times. Anything else is refused.
+ */
+export function saveBrokerAccountRecord(
+  resources: Pick<AppResourceStorePort, "set">,
+  record: CachedResourceRecord | null | undefined,
+): boolean {
+  if (!record || typeof record.namespace !== "string" || typeof record.entityKey !== "string"
+    || !isBrokerAccountSnapshotKey(record)
+    || ![record.fetchedAt, record.staleAt, record.expiresAt].every(Number.isFinite)) return false;
+  resources.set(record, record.value, {
+    schemaVersion: record.schemaVersion,
+    provenance: record.provenance,
+    fetchedAt: record.fetchedAt,
+    cachePolicy: { staleMs: record.staleAt - record.fetchedAt, expireMs: record.expiresAt - record.fetchedAt },
+  });
+  return true;
+}
+
+export function deleteBrokerAccountRecord(resources: Pick<AppResourceStorePort, "delete">, key: ResourceCacheKey): void {
+  if (isBrokerAccountSnapshotKey(key)) resources.delete(key);
+}
+
+/** Every unexpired account snapshot saved for these profiles, as stored. */
+export function listPersistedBrokerAccountRecords(
+  resources: Pick<AppResourceStorePort, "list">,
+  brokerInstances: readonly BrokerInstanceConfig[],
+): CachedResourceRecord[] {
+  return brokerInstances.flatMap((instance) => resources.list<PersistedBrokerAccountSnapshot>({
+    namespace: brokerAccountNamespace(instance),
+    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
+    entityKey: instance.id,
+  }, {
+    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
+    touch: false,
+  }));
 }
 
 export function getBrokerAccountCacheSourceKey(
@@ -82,6 +127,30 @@ export function loadPersistedBrokerAccounts(
   }, {
     schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
   })?.value.accounts ?? null;
+}
+
+/**
+ * The newest saved account snapshot of a profile, for readers without its
+ * adapter such as the CLI. Read only: without the adapter the current source
+ * key is unknown, so nothing is pruned.
+ */
+export function peekPersistedBrokerAccounts(
+  resources: Pick<AppResourceStorePort, "list">,
+  instance: BrokerInstanceConfig,
+): BrokerAccount[] | null {
+  const records = resources.list<PersistedBrokerAccountSnapshot>({
+    namespace: brokerAccountNamespace(instance),
+    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
+    entityKey: instance.id,
+  }, {
+    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
+    allowExpired: true,
+  });
+  const newest = records.reduce<(typeof records)[number] | null>(
+    (latest, record) => (!latest || record.fetchedAt > latest.fetchedAt ? record : latest),
+    null,
+  );
+  return newest?.value.accounts ?? null;
 }
 
 export function persistBrokerAccounts(

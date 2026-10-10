@@ -11,7 +11,7 @@ import {
   TextAttributes,
   type ScrollBoxRenderable,
 } from "../../../ui";
-import { truncateTextSegments, truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth, truncateTextSegments, truncateToDisplayWidth } from "../../../utils/format";
 import { Spinner } from "../../ui";
 import { useCommandBarPalette } from "../panel/palette";
 import { getRowPresentation } from "../view-model";
@@ -37,6 +37,9 @@ export type CommandBarListScrollEvent = {
 
 /** Columns every row gives up to the badge column, badge or not. */
 const BADGE_INDENT = BADGE_COLUMN_WIDTH + BADGE_GAP;
+const NAME_GAP = 2;
+/** Below this a name is a few letters and an ellipsis, which tells nobody apart. */
+const MIN_NAME_WIDTH = 6;
 
 interface CommandBarListItemRowProps {
   item: ResultItem;
@@ -79,7 +82,12 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   const labelColumnWidth = Math.max(1, labelWidth - BADGE_INDENT);
   // A long title stops one cell short of the right column, so its ellipsis
   // never runs into the date or shortcut sitting there.
-  const label = truncateToDisplayWidth(presentation.label, Math.max(1, labelColumnWidth - (trailingWidth > 0 ? 1 : 0)));
+  const labelSpace = Math.max(1, labelColumnWidth - (trailingWidth > 0 ? 1 : 0));
+  const label = truncateToDisplayWidth(presentation.label, labelSpace);
+  // The name gives way before the symbol: it shrinks to its ellipsis and drops
+  // out once fewer than a few characters of it would show.
+  const nameSpace = labelSpace - displayWidth(label) - NAME_GAP;
+  const name = item.name && nameSpace >= MIN_NAME_WIDTH ? truncateToDisplayWidth(item.name, nameSpace) : "";
   // "current" outranks the shortcut on the right; otherwise a badge lifted from
   // `right` must not be repeated there.
   const trailing = badgeConsumesRight(item) && !item.current
@@ -152,10 +160,15 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
         <Box width={BADGE_INDENT} flexDirection="row">
           {badge && <CommandBarRowBadge text={badge.text} tone={badge.tone} width={BADGE_COLUMN_WIDTH} />}
         </Box>
-        <Box width={labelColumnWidth}>
+        <Box width={labelColumnWidth} flexDirection="row">
           <Text fg={isSelected ? palette.selectedText : presentation.primaryMuted ? palette.subtle : palette.text}>
             {label}
           </Text>
+          {name && (
+            <Text fg={isSelected ? palette.selectedText : palette.subtle}>
+              {" ".repeat(NAME_GAP) + name}
+            </Text>
+          )}
         </Box>
         <Box width={trailingWidth}>
           <Text

@@ -12,11 +12,13 @@ import { displayWidth, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
 import {
   resolvePortfolioAccountMetrics,
+  resolvePortfolioLeverage,
   resolvePortfolioMarketValue,
   resolvePortfolioNetLiquidation,
   type BrokerSnapshotBasis,
 } from "../account-metrics";
 import { formatPortfolioAmount, type PortfolioSummaryTotals } from "./totals";
+import { formatAllocationDrift, formatAllocationWeight, type PortfolioCashLine } from "../allocation";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";
@@ -221,16 +223,22 @@ export function buildPortfolioSummarySegments({
   convertAccountValue = (value) => value,
   currency = "USD",
   baseCurrency = "USD",
+  manualCash = null,
+  brokerPortfolio = false,
 }: {
   totals: PortfolioSummaryTotals;
   accountState: PortfolioSummaryAccountState | null;
   isPortfolioTab?: boolean;
+  /** Synced from a broker, so it is worth its account's equity even while the account is missing. */
+  brokerPortfolio?: boolean;
   /** Into the totals currency. */
   convertAccountValue?: (value: number) => number;
   /** The totals currency. */
   currency?: string;
   /** The app's base currency: amounts are bare only when both are USD. */
   baseCurrency?: string;
+  /** Cash entered by hand, in the totals currency, with the total it is weighed against. */
+  manualCash?: (PortfolioCashLine & { total: number | null }) | null;
 }): PortfolioSummarySegment[] {
   const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed, baseCurrency });
   if (!isPortfolioTab) {
@@ -241,10 +249,13 @@ export function buildPortfolioSummarySegments({
       ])]
       : [];
   }
-  if (!totals.hasPositions && !accountState) return [];
+  if (!totals.hasPositions && !accountState && !manualCash) return [];
 
   const candidates: PortfolioSummarySegment[] = [];
   const account = accountState?.account;
+  // A broker account is worth its equity. Its positions alone are its gross,
+  // which margin or shorts put above it, so that sum never reads as its value.
+  const broker = brokerPortfolio || !!account;
   const basis = accountState?.snapshotBasis;
   const accountMetrics = resolvePortfolioAccountMetrics(totals, account, convertAccountValue, basis);
   const totalMarketValue = resolvePortfolioMarketValue(totals, account, convertAccountValue, basis);
@@ -257,15 +268,25 @@ export function buildPortfolioSummarySegments({
     ])
     : null;
 
-  if (netLiquidation != null) {
+  // Holdings plus the cash, as weights divide by it; like Net Liq for a broker account.
+  if (manualCash) {
+    candidates.push(createSummarySegment("total", [
+      { text: "Total", tone: "label" },
+      { text: money(manualCash.total ?? Number.NaN), tone: "value", bold: true },
+    ]));
+  }
+
+  // Unknown without the account, so it reads as missing rather than disappearing,
+  // unless cash entered by hand gives the Total above in its place.
+  if (broker && (netLiquidation != null || !manualCash)) {
     candidates.push(createSummarySegment("netliq", [
       { text: "Net Liq", tone: "label" },
-      { text: money(netLiquidation), tone: "value", bold: true },
+      { text: money(netLiquidation ?? Number.NaN), tone: "value", bold: true },
     ]));
   }
 
   candidates.push(createSummarySegment("val", [
-    { text: totals.hasShorts ? "Gross" : "Val", tone: "label" },
+    { text: broker || totals.hasShorts ? "Gross" : "Val", tone: "label" },
     { text: money(totalMarketValue), tone: "value", bold: true },
   ]));
 
@@ -277,7 +298,18 @@ export function buildPortfolioSummarySegments({
   }
 
   // A broker account always states its cash, so a missing balance reads as unknown rather than zero.
-  if (account) candidates.push(accountValue("cash", "Cash", account.totalCashValue ?? Number.NaN)!);
+  if (broker && !manualCash) candidates.push(accountValue("cash", "Cash", account?.totalCashValue ?? Number.NaN)!);
+  if (manualCash) {
+    const drift = formatAllocationDrift(manualCash.drift);
+    candidates.push(createSummarySegment("cash", [
+      { text: "Cash", tone: "label" },
+      { text: money(manualCash.value), tone: "value", bold: true },
+      ...(manualCash.weight != null ? [{ text: `(${formatAllocationWeight(manualCash.weight)})`, tone: "muted" as const }] : []),
+      ...(manualCash.targetWeight != null && manualCash.drift != null
+        ? [{ text: drift, tone: "muted" as const, color: /[1-9]/.test(drift) ? priceColor(manualCash.drift) : undefined }]
+        : []),
+    ]));
+  }
 
   candidates.push(createSummarySegment("day", [
     { text: "Day", tone: "label" },
@@ -295,6 +327,14 @@ export function buildPortfolioSummarySegments({
 
   if (!account) return candidates;
 
+  const leverage = resolvePortfolioLeverage(totalMarketValue, netLiquidation);
+  // Only while the account borrows or is short enough to read above 1.0x, as the analytics pane rounds it.
+  const lev = leverage != null && leverage >= 1.05
+    ? createSummarySegment("lev", [
+      { text: "Lev", tone: "label" },
+      { text: `${leverage.toFixed(1)}x`, tone: "value", bold: true },
+    ])
+    : null;
   const realized = accountMetrics.realizedPnl != null
     ? createSummarySegment("realized", [
       { text: "Realized", tone: "label" },
@@ -304,6 +344,7 @@ export function buildPortfolioSummarySegments({
   return [
     ...candidates,
     ...[
+      lev,
       realized,
       accountValue("settled", "Settled", account.settledCash),
       accountValue("avail", "Avail", account.availableFunds),

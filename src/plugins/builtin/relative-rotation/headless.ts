@@ -8,6 +8,8 @@ const fixed = (value: unknown, digits: number) =>
 
 export const rotationHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  // Weekly trails: a week without a new close, plus a few days' grace, has stopped updating.
+  freshness: { status: "not-a-feed", basis: "weekly closes", maxAgeMinutes: 10 * 24 * 60 },
   argument: {
     kind: "symbol-list",
     optional: true,

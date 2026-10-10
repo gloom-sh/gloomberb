@@ -179,13 +179,34 @@ function fredSeries(id: string, asOf: Date): CloudFredSeriesPayload {
 }
 
 /**
+ * Daily closes of the pair that prices `currency` against the dollar, every
+ * weekday as FX trades, wobbling around the rate the endpoint reports.
+ */
+function fxPairHistory(symbol: string, asOf: Date): CloudMarketResponse<CloudPricePointPayload[]> | null {
+  const currency = symbol.replace(/(USD)?=X$/, "");
+  const rate = BROKER_FX_RATES[currency];
+  if (rate == null) return null;
+  const usdQuoted = symbol.endsWith("USD=X");
+  const data: CloudPricePointPayload[] = [];
+  const today = Date.parse(asOf.toISOString().slice(0, 10));
+  for (let day = today - 240 * 86_400_000; day < today; day += 86_400_000) {
+    if ([0, 6].includes(new Date(day).getUTCDay())) continue;
+    const usdPerUnit = rate * (1 + Math.sin(data.length / 5) / 100);
+    const close = usdQuoted ? usdPerUnit : 1 / usdPerUnit;
+    data.push({ date: new Date(day).toISOString(), open: close, high: close, low: close, close });
+  }
+  return { status: "success", data, providerMeta: { servedResolution: "1d", normalizedSymbol: symbol } };
+}
+
+/**
  * Cloud responses for the broker account: US listings and the factor proxies
  * quote and keep daily history, foreign listings quote in their own currency,
- * the uncovered holdings have neither.
+ * the uncovered holdings have neither. Daily FX history exists only with `fx`.
  */
 export function brokerRiskClient(
   asOf: Date = now,
   holdings: readonly BrokerFixtureHolding[] = brokerFixtureHoldings(),
+  { fx = false }: { fx?: boolean } = {},
 ) {
   const bySymbol = new Map(holdings.map((holding) => [normalizeSymbol(holding.symbol), holding]));
   const find = (symbol: string) => bySymbol.get(normalizeSymbol(symbol));
@@ -217,6 +238,9 @@ export function brokerRiskClient(
     },
     getCloudHistory: async (symbol: string, exchange: string) => {
       calls.histories.push(symbol);
+      if (symbol.endsWith("=X"))
+        return (fx && fxPairHistory(symbol, asOf)) ||
+          { status: "empty" as const, data: null, reasonCode: "Daily history unavailable" };
       const holding = find(symbol);
       if (holding && holding.price == null)
         return { status: "empty" as const, data: null, reasonCode: "Daily history unavailable" };

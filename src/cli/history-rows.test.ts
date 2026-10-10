@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { cleanFloat32Price, historyPriceDecimals, historyRows } from "./history-rows";
+import { cleanFloat32Price, historyFlagNote, historyNotes, historyPriceDecimals, historyRows, historyUnit } from "./history-rows";
+import { pricePointValues } from "../utils/price-history-integrity";
 
 const daily = (bars: number[][]) => historyRows(bars.map(([open, high, low, close], index) => ({
   date: new Date(Date.UTC(2026, 0, index + 1)), open, high, low, close: close!,
@@ -29,6 +30,47 @@ describe("history rows", () => {
       .toEqual(["2026-09-21", "2026-09-22", "2026-09-23"]);
     expect(historyRows([{ date: new Date("2026-09-22T15:00:00Z"), close: 1 }, { date: new Date("2026-09-22T15:15:00Z"), close: 1 }], null)[1]!.date)
       .toBe("2026-09-22T15:15:00Z");
+  });
+
+  test("a bar HP blanks is blanked the same way and says which prices disagree", () => {
+    // SBK.JO 2025-10-09 as served: the low is above the open.
+    const points = [
+      { date: new Date("2025-10-09"), open: 245.86, high: 253.3, low: 246.23, close: 252.46, volume: 3018311 },
+      { date: new Date("2025-10-10"), open: 249, high: 248, low: 247, close: 250, volume: 1 },
+      { date: new Date("2025-10-13"), open: 255, high: 255.97, low: 251.07, close: 254.02, volume: 1854180 },
+    ];
+    const rows = historyRows(points, "1d", "ZAR");
+    expect(rows.map((row) => row.flag)).toEqual(["low>open", "high<open,high<close", null]);
+    for (const [index, row] of rows.entries()) {
+      const { open, high, low, close, volume } = pricePointValues(points[index]!);
+      expect([row.open, row.high, row.low, row.close, row.volume]).toEqual([open, high, low, close, volume]);
+    }
+    expect(rows[2]).toMatchObject({ close: 254.02, currency: "ZAR", interval: "1d" });
+    expect(historyFlagNote(rows)).toBe("2 of 3 bars have high below open or close, or low above open or close in the source data; their prices are left blank");
+    expect(historyFlagNote([rows[2]!])).toBeNull();
+  });
+
+  test("notes bars coarser than the range is served in, or a first bar well after the start asked for", () => {
+    const now = Date.parse("2026-10-09T12:00:00Z");
+    // A listing younger than the range starts late; weekends and a holiday at the start do not.
+    expect(historyNotes("5Y", "1wk", "2023-09-11", now)).toEqual(["Asked 5Y, data starts 2023-09-11 (first available bar)"]);
+    expect(historyNotes("1Y", "1d", "2025-10-13", now)).toEqual([]);
+    expect(historyNotes("5Y", "1wk", "2021-10-25", now)).toEqual([]);
+    // ALL has no start to miss, and monthly is what it is served in.
+    expect(historyNotes("ALL", "1mo", "1976-12-01", now)).toEqual([]);
+    expect(historyNotes("1Y", "1mo", "2025-10-01", now)).toEqual(["Asked 1Y, got monthly bars from 2025-10"]);
+    // Without a declared size, the bars' spacing says what they are.
+    const weekly = historyRows([0, 7, 14].map((day) => ({ date: new Date(Date.UTC(2026, 0, 5 + day)), close: 1 })), null);
+    expect(weekly[0]!.interval).toBe("1wk");
+    expect(historyNotes("6M", weekly[0]!.interval, weekly[0]!.date, now)).toContain("Asked 6M, got weekly bars from 2026-01-05");
+  });
+
+  test("prices are in the quote's currency, an FX pair's counter currency, or index points, and never a guessed one", () => {
+    expect(historyUnit("ZAR=X", null)).toEqual({ kind: "pair", currency: "ZAR", unit: "ZAR per USD" });
+    expect(historyUnit("EURUSD=X", { currency: "USD" })).toEqual({ kind: "pair", currency: "USD", unit: "USD per EUR" });
+    expect(historyUnit("LUMI.TA", { currency: "ILA" }).unit).toBe("ILA (agorot, 1/100 ILS)");
+    expect(historyUnit("^GSPC", { currency: "USD", instrumentType: "INDEX" })).toEqual({ kind: "points", currency: null, unit: "index points" });
+    expect(historyUnit("LUMI.TA", null)).toEqual({ kind: "unknown", currency: null, unit: null });
   });
 
   test("one decimal count per table that neither pads BTC nor zeroes sub-cent coins", () => {

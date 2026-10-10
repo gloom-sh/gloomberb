@@ -9,6 +9,7 @@ import { Box, Text } from "../../../../ui";
 import { makeAccountProfile } from "../test-harness";
 import { useChatProfilePopover } from "../profile-popover";
 import {
+  PROFILE_POPOVER_CLOSE_DELAY_MS,
   hasPublicChatProfileInfo,
   shouldOfferChatProfileSetup,
 } from "./profile-popover";
@@ -65,7 +66,7 @@ function PopoverStateHarness({ onReady }: { onReady: (popover: ProfilePopoverHoo
 }
 
 describe("profile popover", () => {
-  test("a click pins a card that pointing at other names leaves alone, and never opens an empty one", async () => {
+  test("a click pins a card that pointing at other names leaves alone, a private profile's included", async () => {
     let popover: ProfilePopoverHook | null = null;
     await act(async () => {
       await tui.render(<PopoverStateHarness onReady={(next) => { popover = next; }} />, { width: 50, height: 2 });
@@ -73,7 +74,7 @@ describe("profile popover", () => {
     const run = async (action: (hook: ProfilePopoverHook) => void) => {
       await act(async () => {
         action(popover!);
-        await new Promise((resolve) => setTimeout(resolve, 60));
+        await new Promise((resolve) => setTimeout(resolve, PROFILE_POPOVER_CLOSE_DELAY_MS + 20));
       });
       await act(async () => {
         await tui.setup().renderOnce();
@@ -85,6 +86,8 @@ describe("profile popover", () => {
     const bob = makeUser({ id: "u2", username: "bob", bio: "Credit" });
     const privateUser = makeUser({ id: "u3", username: "eve", profilePublic: false, bio: null });
 
+    // Someone with nothing public still has a card: their name and a way to write to them.
+    expect(await run((hook) => hook.toggleProfilePopover(privateUser))).toContain("card:eve");
     expect(await run((hook) => hook.toggleProfilePopover(privateUser))).toContain("no card");
     expect(await run((hook) => hook.toggleProfilePopover(ada))).toContain("card:ada");
     expect(await run((hook) => {

@@ -1,4 +1,4 @@
-import type { FundChange, FundMember } from "../../../api-client/members";
+import type { FundChange, FundMember, MemberFundsPayload } from "../../../api-client/members";
 import type { DataTableColumn } from "../../../components";
 import { buildSectionedRows, type SectionedRow } from "../../../components/data-table/sections";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -6,8 +6,16 @@ import { compareSortValues, type SortPreference } from "../../../utils/sort-valu
 export type MembersTab = "members" | "movers" | "changes";
 export const TABS = [{ value: "members", label: "Members" }, { value: "movers", label: "Movers" }, { value: "changes", label: "Changes" }];
 export const isTab = (value: unknown): value is MembersTab => TABS.some((tab) => tab.value === value);
-export const COVERED = [{ ticker: "IVV", name: "S&P 500" }, { ticker: "IJH", name: "S&P 400" }, { ticker: "IJR", name: "S&P 600" }, { ticker: "IWM", name: "Russell 2000" }, { ticker: "IWB", name: "Russell 1000" }];
+const COVERED = [{ ticker: "IVV", name: "S&P 500" }, { ticker: "IJH", name: "S&P 400" }, { ticker: "IJR", name: "S&P 600" }, { ticker: "IWM", name: "Russell 2000" }, { ticker: "IWB", name: "Russell 1000" }];
 export function canonicalFund(input: string) { const symbol = input.split(":")[0]!.trim().toUpperCase(); return ["SPX", "SPY", "^GSPC"].includes(symbol) ? "IVV" : symbol; }
+/** The covered fund the user asked for, by ticker or by an alias such as SPX, or undefined when it is not covered. */
+export function coveredFund(funds: MemberFundsPayload["funds"], input: string) {
+  const symbol = canonicalFund(input);
+  return funds.find((fund) => fund.ticker === symbol || fund.aliases.some((alias) => alias.toUpperCase() === symbol));
+}
+export function notCoveredMessage(input: string, funds: MemberFundsPayload["funds"]) {
+  return `${input.split(":")[0]!.trim().toUpperCase()} is not a covered fund. Covered: ${funds.map((fund) => fund.ticker).join(", ")}.`;
+}
 export function membersTitle(input: string) {
   const requested = input.split(":")[0]!.trim().toUpperCase();
   const fund = canonicalFund(requested);

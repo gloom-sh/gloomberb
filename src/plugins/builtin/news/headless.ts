@@ -81,6 +81,8 @@ function projectNewsHeadless(
   return {
     asOf: now.toISOString(),
     items,
+    // Published stories, dated by the newest; the list is a history, so its last story is not stale data.
+    freshness: { status: "not-a-feed", basis: "published stories", observedKey: "publishedAt", oldest: null },
     metadata: {
       nextCursor: response.nextCursor,
       sentiment,

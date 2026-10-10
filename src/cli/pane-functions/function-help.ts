@@ -81,6 +81,8 @@ const SEARCH = key("/", "search");
 const OPEN_SOURCE = key("o", "pen source");
 const POP_OUT = key("p", "op out");
 const STEP = key("←/→", " step");
+/** THEM and MEMB members: open them in RRG, CORR, SIW or RIPL, or save them as a watchlist. */
+const MEMBERS_MENU = key(".", " open members in, save as watchlist");
 const CHART_KEYS = [key("s", "eries"), key("i", "ndicators"), key("t", "imeframe"), key("f", "ormulas")];
 
 export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
@@ -114,8 +116,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["GIP"],
   },
   G: {
-    summary: "Chart any series together: prices, statement lines, valuation multiples, FRED series, indicators and formulas. Series read SYMBOL:field or FRED:series.",
-    usage: ["G", "G NVDA:revenue, NVDA:net_income"],
+    summary: "Chart any series together: prices, statement lines, valuation multiples, FRED series, map series such as chokepoint transits, indicators and formulas. Series read SYMBOL:field, FRED:series or GEO:series.",
+    usage: ["G", "G NVDA:revenue, NVDA:net_income", "G XOM, GEO:HORMUZ"],
     keys: CHART_KEYS,
     data: { free: "Prices 15 minutes delayed, other series as published", pro: "Prices real-time for US listings, other series as published" },
     bloomberg: ["G"],
@@ -292,9 +294,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["SEAS"],
   },
   RIPL: {
-    summary: "Which of my holdings are tied to a company that reports soon? Customers your holdings name in their filings, and suppliers whose filings name your holdings, with the disclosed revenue share, by report date.",
+    summary: "Which of my holdings are tied to a company that reports soon? Customers your holdings name in their filings, and suppliers whose filings name your holdings, with the disclosed revenue share, by report date. With Pro, the 2 hops tab adds a supplier's supplier or a customer's customer, the company in between and each hop's share.",
     usage: ["RIPL", "RIPL CRUS QRVO"],
-    keys: [key("Enter", " supply chain"), key("e", "arnings")],
+    keys: [TABS, key("Enter", " supply chain, the route on 2 hops"), key("e", "arnings")],
     data: ON_RELEASE,
     bloomberg: [],
   },
@@ -663,14 +665,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   MEMB: {
     summary: "ETF holdings with weights, shares, member returns, daily contributions and index changes. SPX and SPY use IVV holdings.",
     usage: ["MEMB", "MEMB SPY", "MEMB IWM"],
-    keys: [TABS, OPEN],
+    keys: [TABS, OPEN, MEMBERS_MENU],
     data: same("Dated fund holdings and partial delayed member returns. Nasdaq-100 is not covered."),
     bloomberg: ["MEMB", "MRR", "IMOV"],
   },
   THEM: {
     summary: "Curated thematic baskets with equal-weight returns and breadth. Open a theme to see its members, leaders and laggards. The Themes tab of BI.",
     usage: ["THEM", "THEM nuclear"],
-    keys: [TABS, OPEN, key("Esc", "back")],
+    keys: [TABS, OPEN, key("Esc", "back"), MEMBERS_MENU],
     data: same("Updated every 15 minutes"),
     bloomberg: ["IMAP", "custom baskets"],
   },
@@ -682,24 +684,24 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["RRG"],
   },
   HM: {
-    summary: "The largest US stocks and ETFs as a treemap sized by market cap or assets and colored by the day's move.",
+    summary: "The largest US stocks and ETFs as a treemap sized by the square root of market cap or assets, or by plain market cap in its settings, and colored by the day's move.",
     usage: ["HM"],
     keys: [OPEN],
     data: QUOTES,
     bloomberg: ["IMAP"],
   },
   FXC: {
-    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings.",
+    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings or with --currencies from the command line (gloomberb fn FXC --currencies USD,ZAR,NGN).",
     usage: ["FXC"],
     keys: [],
     data: FX,
     bloomberg: ["FXC"],
   },
   PERP: {
-    summary: "Perpetual funding, open interest and premiums across crypto and stock, index, commodity and FX contracts. Per-market History and Evidence. Pro history with a latest-value free preview.",
+    summary: "Perpetual funding, open interest and premiums across venues, for crypto and stock, index, commodity and FX contracts: a board, rankings, one asset across venues, and a market's History and Evidence.",
     usage: ["PERP", "PERP BTC", "PERP TSLA"],
-    keys: [TABS, SEARCH, OPEN_SOURCE, key("a", "lert"), key("e", "vidence"), key("d", "es"), key("f", "a"), key("g", "raph")],
-    data: { free: "Latest market values", pro: "Observed funding, open interest and stored history; source timestamps retained" },
+    keys: [TABS, OPEN, SEARCH, key("e", "vidence"), key("a", "lert")],
+    data: { free: "A fixed preview and any one market's latest values", pro: "Every market, full rankings and stored history; source timestamps retained" },
     bloomberg: [],
   },
   CRYP: {
@@ -717,8 +719,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["GLCO"],
   },
   CTM: {
-    summary: "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest and volume.",
-    usage: ["CTM GC"],
+    summary: "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest and volume. Takes a FUT root, VX or a CME crypto root (BTC, ETH, SOL, XRP), which also shows each contract's premium to spot and annualised basis against the USD pair quote.",
+    usage: ["CTM GC", "CTM BTC"],
     keys: [key("d", "ate"), key("c", "urrent"), STEP],
     data: same("Delayed, usually 10 minutes; VIX at settlement"),
     bloomberg: ["CTM", "CT"],
@@ -731,8 +733,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   COT: {
-    summary: "CFTC Commitments of Traders: net positioning by trader class, the weekly change, and one- and three-year percentiles. Pass a root like CL to chart it under the front-month price.",
-    usage: ["COT", "COT CL"],
+    summary: "CFTC Commitments of Traders: net positioning by trader class, the weekly change, and one- and three-year percentiles. Pass a root like CL or BTC (also ETH, MBT, MET, SOL, XRP) for one market, charted under its front-month price where there is one.",
+    usage: ["COT", "COT CL", "COT BTC"],
     keys: [key("c", "lass"), key("s", "cope"), SEARCH],
     data: same("Weekly: Tuesday positions, out on Friday"),
     bloomberg: ["COT"],
@@ -809,10 +811,17 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["IPO"],
   },
   MAP: {
-    summary: "Trading venues around the world with open or closed status, local time and time to the next session change.",
-    usage: ["MAP"],
-    keys: [SEARCH, key("+", " zoom in"), key("-", " zoom out")],
-    data: same("Live, from exchange calendars"),
+    summary: "Trading venues around the world with open or closed status, local time and time to the next session change. Layers add ships, chokepoints, ports, pipelines, fields, LNG terminals and airports to the same map, each with a table of what is in view and the companies it links to.",
+    usage: ["MAP", "MAP ships", "MAP energy", "MAP air", "MAP ports"],
+    keys: [SEARCH, OPEN, key("d", "es"), key("+", " zoom in")],
+    data: same("Venues live from exchange calendars; ships live, chokepoints and ports daily, the rest reference data"),
+    bloomberg: [],
+  },
+  CHOKE: {
+    summary: "Daily vessel transits through the main shipping chokepoints charted together, or one of them by name, as series you can mix with anything else in G.",
+    usage: ["CHOKE", "CHOKE SUEZ"],
+    keys: CHART_KEYS,
+    data: same("Daily"),
     bloomberg: [],
   },
 
@@ -953,10 +962,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   HDS: {
-    summary: "Institutional holders as a table (value, shares, change, percent held) or as an ownership treemap.",
-    usage: ["HDS NVDA"],
-    keys: [TABS, key("o", "pen 13F")],
-    data: same("Quarterly, as 13Fs are filed"),
+    summary: "Institutional holders as a table (value, shares, change, percent held) or as an ownership treemap, and the 13D/G tab: 13D and 13G beneficial owners over 5%, activists and passive stakes, with percent of class, its change and each filer's 13F move.",
+    usage: ["HDS NVDA", "HDS CAR"],
+    keys: [TABS, OPEN, key("o", "pen 13F or filing")],
+    data: same("13F quarterly as filed; 13D and 13G as filed"),
     bloomberg: ["HDS"],
   },
   "13F": {
@@ -983,7 +992,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
 
   // Run a workspace
   PF: {
-    summary: "Your portfolio or watchlist with live quotes, P&L, weights and sparklines. Broker-synced and manual positions sit in the same table.",
+    summary: "Your portfolio or watchlist with live quotes, market value, P&L, weights of the total with cash, and sparklines. With target weights set, each holding adds its target, drift and the trade that rebalances it; broker-synced and manual positions sit in the same table.",
     usage: ["PF"],
     keys: [key("a", "dd"), OPEN, key("s", " grid")],
     data: QUOTES,

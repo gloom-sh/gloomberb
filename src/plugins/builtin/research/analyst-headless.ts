@@ -21,6 +21,7 @@ import {
   targetUpside,
   type RatingColumnId,
 } from "./analyst-model";
+import { REPORTED_DATA } from "../shared/report-freshness";
 
 const RATING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
@@ -109,6 +110,7 @@ export function createAnalystResearchHeadless(
 ): HeadlessPaneDefinition<"bundle"> {
   return {
     shape: "bundle",
+    freshness: { ...REPORTED_DATA, basis: "analyst ratings" },
     argument: {
       kind: "ticker",
       placeholder: "ticker",
@@ -161,6 +163,7 @@ export function createAnalystResearchHeadless(
       return {
         sections,
         errors: data.stale ? ["Analyst research is stale"] : undefined,
+        ...(data.stale ? { freshness: { status: "stale" as const } } : {}),
         metadata: {
           symbol: data.symbol || symbol,
           name: data.name ?? null,

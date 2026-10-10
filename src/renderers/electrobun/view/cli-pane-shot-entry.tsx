@@ -397,6 +397,9 @@ function HydratePayload({
       tickers: new Map(payload.tickers.map((ticker) => [ticker.metadata.ticker, ticker])),
     });
     dispatch({ type: "HYDRATE_FINANCIALS", financials: new Map(payload.financials) });
+    for (const [instanceId, accounts] of Object.entries(payload.brokerAccounts ?? {})) {
+      dispatch({ type: "SET_BROKER_ACCOUNTS", instanceId, accounts });
+    }
     dispatch({ type: "SET_INITIALIZED" });
 
     return waitForShotReadiness();
@@ -443,6 +446,7 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
         component={pane.component}
         paneId={instance.instanceId}
         paneType={instance.paneId}
+        title={title}
         focused
         width={bodyFrame.width ?? 1}
         height={bodyFrame.height ?? 1}

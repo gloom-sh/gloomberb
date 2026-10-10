@@ -29,7 +29,11 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     // One decimal count per column, as the pane shows it, so sub-penny prints align.
     const price = fixedPrice(tapePriceDigits(data.trades.map((row) => row.price)));
     const trades = newestFirst(data.trades).slice(0, Number(args.options.limit ?? 100)).map((row) => ({ ...row, conditions: row.conditions.join(" ") }));
-    return { sections: [
+    // SIP prints, real-time or fifteen minutes delayed by entitlement, dated by the newest print.
+    const freshness = data.feed === "sip"
+      ? { status: "live" as const, cadence: "daily" as const }
+      : { status: "delayed" as const, delayMinutes: Math.round(data.delaySeconds / 60), cadence: "daily" as const };
+    return { freshness, sections: [
       { title: "Observed window", columns: formattedColumns(window, { vwap: price, low: price, high: price }), rows: window },
       { title: "Regular session", columns: formattedColumns([data.session], { high: price, low: price }), rows: [data.session] },
       { title: "Trades", columns: formattedColumns(trades, { price }), rows: trades },

@@ -1,4 +1,4 @@
-import { formatPriceEarnings } from "../../../utils/price-earnings";
+import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { useCallback, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
@@ -198,9 +198,9 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "marketCap":
         return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: colors.textDim };
       case "trailingPE":
-        return { text: formatPriceEarnings(row.reportedMultiples.trailingPE), color: colors.text };
+        return { text: formatPriceEarnings(row.notMeaningful.trailingPE ? NOT_MEANINGFUL : row.reportedMultiples.trailingPE), color: colors.text };
       case "forwardPE":
-        return { text: formatPriceEarnings(row.reportedMultiples.forwardPE), color: colors.text };
+        return { text: formatPriceEarnings(row.notMeaningful.forwardPE ? NOT_MEANINGFUL : row.reportedMultiples.forwardPE), color: colors.text };
       case "evSales":
         return { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
       case "fcfYield":

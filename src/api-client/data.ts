@@ -30,6 +30,7 @@ import type { MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
+import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./beneficial-owners";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
 import type { FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
@@ -37,6 +38,7 @@ import type { DoeBoardPayload } from "./doe";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery } from "./gpu";
 import type { CpiBoardPayload } from "./cpi";
 import type { TapeSnapshot } from "./tape";
+import { signalWithTimeout } from "../utils/async-deadline";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsHistoryPayload } from "./earnings";
@@ -70,6 +72,7 @@ import {
   cloudProxyStatementsPath,
   cloudExchangeRatePath,
   cloudSec13FPath,
+  cloudSecBeneficialOwnersPath,
   cloudSecFilingContentPath,
   cloudSecFilingDocumentsPath,
   cloudSecFilingsPath,
@@ -119,6 +122,7 @@ import type {
   CloudEconEventPayload,
   CloudEquityDiagnosticMode,
   CloudEquityDiagnosticResult,
+  CloudFredSeriesCatalogPayload,
   CloudFredSeriesPayload,
   CloudShillerPayload,
   CloudFinancialsPayload,
@@ -422,6 +426,11 @@ export class CloudDataApi {
     );
   }
 
+  /** Every series `getCloudFredSeries` serves. A server older than the list answers 404. */
+  async getCloudFredSeriesCatalog(): Promise<CloudFredSeriesCatalogPayload> {
+    return this.request<CloudFredSeriesCatalogPayload>("/cloud/econ/series");
+  }
+
   async getCloudShiller(): Promise<CloudShillerPayload> {
     return this.request<CloudShillerPayload>(cloudShillerPath());
   }
@@ -432,6 +441,11 @@ export class CloudDataApi {
 
   async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
+  }
+
+  /** Geo layers (the map's layers, entities and series); one prefix-scoped method, like EQS. */
+  geo<T>(path: string, init?: RequestInit): Promise<T> {
+    return this.request<T>(`/cloud/geo/${path}`, init);
   }
 
   /** Credit-document paths stay with their pane; keep the shared client small. */
@@ -572,7 +586,7 @@ export class CloudDataApi {
   }
 
   async getCloudTape(symbol: string, exchange: string, signal?: AbortSignal): Promise<TapeSnapshot> {
-    return this.request<TapeSnapshot>(`/cloud/tape/${encodeURIComponent(symbol)}?exchange=${encodeURIComponent(exchange)}`, { signal: signal ?? AbortSignal.timeout(30_000) });
+    return this.request<TapeSnapshot>(`/cloud/tape/${encodeURIComponent(symbol)}?exchange=${encodeURIComponent(exchange)}`, { signal: signalWithTimeout(signal, 30_000) });
   }
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {
@@ -628,29 +642,29 @@ export class CloudDataApi {
     }
     const text = query.toString();
     const suffix = text ? `?${text}` : "";
-    return this.request<MnaDealsPayload>(`/cloud/mna/deals${suffix}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+    return this.request<MnaDealsPayload>(`/cloud/mna/deals${suffix}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getCloudMnaDeal(id: string, options?: { signal?: AbortSignal }): Promise<MnaDealPayload> {
-    return this.request<MnaDealPayload>(`/cloud/mna/deals/${encodeURIComponent(id)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+    return this.request<MnaDealPayload>(`/cloud/mna/deals/${encodeURIComponent(id)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   // Public records about companies in difficulty. The answers are unchecked
   // JSON: the distress tab's parsers validate them before anything is drawn.
   async getPublicDistressFilings(params: DistressFilingsParams, options?: { signal?: AbortSignal }): Promise<unknown> {
-    return this.request<unknown>(`/public/events${distressQuery(params)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+    return this.request<unknown>(`/public/events${distressQuery(params)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getPublicGoingConcern(params: GoingConcernParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
-    return this.request<unknown>(`/public/going-concern${distressQuery(params)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+    return this.request<unknown>(`/public/going-concern${distressQuery(params)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getPublicDistressDesignations(params: DistressDesignationsParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
-    return this.request<unknown>(`/public/distress-designations${distressQuery(params)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+    return this.request<unknown>(`/public/distress-designations${distressQuery(params)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getPublicInsolvencyNotices(params: InsolvencyNoticesParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
-    return this.request<unknown>(`/public/insolvency-notices${distressQuery(params)}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+    return this.request<unknown>(`/public/insolvency-notices${distressQuery(params)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getCloudIpoCalendar(params: IpoCalendarParams = {}, options?: { signal?: AbortSignal }): Promise<IpoCalendarPayload> {
@@ -660,7 +674,7 @@ export class CloudDataApi {
     }
     const text = query.toString();
     const suffix = text ? `?${text}` : "";
-    return this.request<IpoCalendarPayload>(`/cloud/ipo/calendar${suffix}`, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+    return this.request<IpoCalendarPayload>(`/cloud/ipo/calendar${suffix}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getCloudShortVolume(symbol: string, scope: ShortVolumeScope = "nms"): Promise<ShortVolumePayload> {
@@ -793,6 +807,16 @@ export class CloudDataApi {
     params: CloudSecFilingsParams,
   ): Promise<CloudSecFilingsResponse> {
     return this.request<CloudSecFilingsResponse>(cloudSecFilingsPath(params));
+  }
+
+  /** Schedule 13D/13G reports about an issuer. Unknown tickers answer 404; no reports is an empty `owners`. */
+  async getCloudSecBeneficialOwners(
+    params: CloudBeneficialOwnersParams,
+    options?: { signal?: AbortSignal },
+  ): Promise<BeneficialOwnersPayload> {
+    return this.request<BeneficialOwnersPayload>(cloudSecBeneficialOwnersPath(params), {
+      signal: options?.signal,
+    });
   }
 
   async getCloudSecFilingDocuments(

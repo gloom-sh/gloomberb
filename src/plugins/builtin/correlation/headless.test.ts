@@ -47,6 +47,22 @@ test("relationship supplies the default benchmark, ratio history, rolling correl
   expect(result.unavailableSymbols).toEqual([]);
 });
 
+test("relationship notes mixed session closes only, and keeps a small ratio's digits in its figure", async () => {
+  const ctx = {
+    ...context(),
+    resolveInstrument: async (key: string) => ({ symbol: key, exchange: key === "BTC-USD" ? "CCC" : "NASDAQ" }),
+    marketData: createTestDataProvider({
+      getPriceHistory: async (symbol) => [100, 110, 105, 115, 111, 118, 130].map((close, index) => ({
+        date: new Date(Date.UTC(2026, 0, index + 1)), close: close * (symbol === "BTC-USD" ? 150_000 : 1),
+      })),
+    }),
+  } as HeadlessPaneContext;
+  const mixed = await relationshipHeadless.load(args(["IBIT", "BTC-USD"]), ctx);
+  expect(mixed.metadata?.notices).toEqual(["IBIT closes 21:00 UTC; BTC-USD bar is 00:00 UTC (3 h offset). Daily pairs are matched by date."]);
+  expect(statEntries(mixed).find((stat) => stat.key === "latestRatio")?.formatted).toBe("0.000006667");
+  expect((await relationshipHeadless.load(args(["IBIT", "MSFT"]), ctx)).metadata?.notices).toBeUndefined();
+});
+
 test("one usable pair cannot make a matrix with disjoint histories look complete", async () => {
   const result = await correlationHeadless.load(args(["ABC", "DEF", "SPY"]), context("", true));
   expect(result.rows[0]!.correlation).toBeCloseTo(1);

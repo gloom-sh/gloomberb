@@ -1,5 +1,9 @@
 import { getCloudApiBaseUrl } from "../../../api-client/request";
+import { RpcTimeoutError } from "../../../utils/rpc-timeout-error";
 import type { DesktopBackendRequestMethod } from "../shared/protocol";
+
+/** How long the view waits for the Bun process to answer one request. */
+export const RPC_MAX_REQUEST_TIME_MS = 120_000;
 
 /** What Electrobun's request timer rejects with: no method, request id or caller. */
 const ELECTROBUN_REQUEST_TIMEOUT_MESSAGE = "RPC request timed out.";
@@ -16,7 +20,9 @@ const ELECTROBUN_REQUEST_TIMEOUT_MESSAGE = "RPC request timed out.";
  * from the user's config (a broker gateway, a feed, a plugin endpoint) and is
  * only called external. Never the payload, rest of the path, query or headers.
  * Elapsed time is rounded to 10 s because crash reports are deduplicated per
- * session on the message.
+ * session on the message. The error keeps its message and `Error` type, and
+ * carries the elapsed time so a timer that fired long after its limit (the
+ * machine slept) can be told from a request that really stalled.
  */
 export async function nameRpcTimeout<T>(
   method: DesktopBackendRequestMethod,
@@ -28,8 +34,13 @@ export async function nameRpcTimeout<T>(
     return await request();
   } catch (error) {
     if (!(error instanceof Error) || error.message !== ELECTROBUN_REQUEST_TIMEOUT_MESSAGE) throw error;
-    const seconds = Math.round((performance.now() - startedAt) / 10_000) * 10;
-    throw new Error(`RPC request timed out: ${describeRequest(method, payload)} after ~${seconds}s`, { cause: error });
+    const elapsedMs = performance.now() - startedAt;
+    const seconds = Math.round(elapsedMs / 10_000) * 10;
+    throw new RpcTimeoutError(`RPC request timed out: ${describeRequest(method, payload)} after ~${seconds}s`, {
+      elapsedMs,
+      limitMs: RPC_MAX_REQUEST_TIME_MS,
+      cause: error,
+    });
   }
 }
 

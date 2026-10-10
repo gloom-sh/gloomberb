@@ -252,7 +252,7 @@ async function resolvePaneTemplateOptions(
     const rawInput = resolvedOptions?.arg ?? resolvedOptions?.values?.tickers ?? "";
     const symbols = !String(rawInput).trim() && template.shortcut?.openWithoutArg
       ? []
-      : await resolveTickerListInput(rawInput, baseContext.activeCollectionId, deps);
+      : await resolveTickerListInput(rawInput, baseContext.activeCollectionId, deps, template.shortcut?.keepArgToken);
     resolvedOptions = {
       ...resolvedOptions,
       arg: rawInput,

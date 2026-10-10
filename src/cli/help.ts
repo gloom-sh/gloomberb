@@ -10,6 +10,12 @@ import {
   wrapText,
 } from "../utils/cli-output";
 
+/** `--section` of a command whose report has several tables. */
+export const TABLE_SECTION_OPTION = {
+  flags: "--section <title|n>",
+  description: "With --csv or --ndjson, write only that table, by its title or number",
+};
+
 /** Headings of `gloomberb help`, in display order. */
 export const CLI_COMMAND_GROUPS = {
   research: "Research",
@@ -29,8 +35,11 @@ const MAX_HELP_WIDTH = 100;
 const PIPED_HELP_WIDTH = 80;
 
 const GLOBAL_OPTIONS: Array<[string, string]> = [
-  ["--json, --csv, --ndjson", "Print machine-readable output instead of text"],
-  ["--limit <n>", "Show at most n rows"],
+  ["--json", "Print the full result as JSON"],
+  ["--csv", "Print rows as CSV under the columns the text shows; fn reports and fundamentals put each table under # section: and end with # source lines"],
+  ["--ndjson", "Print one JSON object per table row"],
+  ["--limit <n>", "Show at most n rows, the first n as printed"],
+  ["--tail <n>", "Show the newest n rows of a dated series (history, fred, econ) in their printed order, or the last n of another list"],
   ["--refresh", "Fetch fresh data instead of reading the cache"],
   ["--dry-run", "Preview config, cache, notes, alerts, plugin on/off, and remote changes without saving"],
   ["-q, --quiet", "Print no results or errors in text mode, for commands that print results"],
@@ -95,6 +104,7 @@ export function renderCliHelp(entries: CliHelpEntry[], version: string, descript
       ["gloomberb", "Open the terminal UI"],
       ["gloomberb <command> [args]", "Run a command and print the result"],
       ["gloomberb help <command>", "Show a command's usage, options, and examples"],
+      ["gloomberb ticker SAN:EPA", "Name the listing of a symbol that trades in several places (or --exchange EPA)"],
     ], { width }),
   ];
 
@@ -177,14 +187,10 @@ function editDistance(left: string, right: string): number {
   return previous[right.length]!;
 }
 
-/** The closest command token to a mistyped one, or null when nothing is plausibly meant. */
-export function suggestCliCommand(token: string, candidates: Iterable<string>): string | null {
-  const needle = token.trim().toLowerCase();
-  if (!needle || needle.startsWith("-")) return null;
+function closestName(needle: string, candidates: Iterable<string>): string | null {
   const allowed = needle.length <= 4 ? 1 : 2;
   let best: { name: string; score: number } | null = null;
   for (const candidate of candidates) {
-    if (candidate.startsWith("-")) continue;
     // A clear prefix ("tick" for "ticker") beats an edit of the same size.
     const score = needle.length >= 3 && candidate.startsWith(needle)
       ? 0.5
@@ -193,4 +199,20 @@ export function suggestCliCommand(token: string, candidates: Iterable<string>): 
     if (!best || score < best.score) best = { name: candidate, score };
   }
   return best?.name ?? null;
+}
+
+/** The closest command token to a mistyped one, or null when nothing is plausibly meant. */
+export function suggestCliCommand(token: string, candidates: Iterable<string>): string | null {
+  const needle = token.trim().toLowerCase();
+  if (!needle || needle.startsWith("-")) return null;
+  return closestName(needle, [...candidates].filter((candidate) => !candidate.startsWith("-")));
+}
+
+/** The closest of a command's options to a mistyped one (`--rnage` for `--range`), or null. */
+export function suggestCliOption(flag: string, options: Iterable<string>): string | null {
+  const needle = flag.trim().toLowerCase().replace(/^-+/, "");
+  if (!needle) return null;
+  const byName = new Map([...options].map((option) => [option.replace(/^-+/, ""), option] as const));
+  const name = closestName(needle, byName.keys());
+  return name == null ? null : byName.get(name)!;
 }

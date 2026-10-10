@@ -541,18 +541,23 @@ describe("performUpdate", () => {
     }
   });
 
-  it("replaces the binary when the downloaded asset checksum matches", async () => {
+  // Release assets are gzipped; the checksum covers the downloaded bytes.
+  test.each([
+    ["an uncompressed", false],
+    ["a gzipped", true],
+  ])("replaces the binary when %s asset's checksum matches", async (_label, compressed) => {
     const originalExecPath = process.execPath;
     const originalArgv = process.argv;
     const tempDir = mkdtempSync(join(tmpdir(), "gloomberb-update-"));
     const execPath = join(tempDir, "gloomberb");
     const nextBinary = Buffer.from("verified-binary");
-    const checksum = createHash("sha256").update(nextBinary).digest("hex");
+    const asset = compressed ? gzipSync(nextBinary) : nextBinary;
+    const checksum = createHash("sha256").update(asset).digest("hex");
     const progress: UpdateProgress[] = [];
 
     writeFileSync(execPath, Buffer.from("old-binary"));
     chmodSync(execPath, 0o755);
-    globalThis.fetch = (async () => new Response(nextBinary, { status: 200 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response(asset, { status: 200 })) as typeof fetch;
 
     try {
       Object.defineProperty(process, "execPath", { value: execPath, configurable: true });
@@ -564,6 +569,7 @@ describe("performUpdate", () => {
         downloadUrl: "https://example.com/gloomberb",
         publishedAt: "2026-04-03T00:00:00Z",
         updateAction: { kind: "self" },
+        compressed,
         checksum,
       }, (entry) => { progress.push(entry); });
 

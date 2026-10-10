@@ -1,8 +1,8 @@
 import { Box, Span, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { blendHex } from "../../../theme/colors";
-import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
-import { gpuAxisTicks, gpuBasisColor, gpuBasisLabel, gpuPrice, type GpuLadderRow } from "./model";
+import { truncateToDisplayWidth } from "../../../utils/format";
+import { gpuAxisLabels, gpuBasisColor, gpuBasisLabel, gpuPrice, type GpuAxisLabel, type GpuLadderRow } from "./model";
 
 const LABEL_CELLS = 28;
 const VALUE_CELLS = 17;
@@ -10,14 +10,13 @@ const VALUE_CELLS = 17;
 const position = (value: number, low: number, high: number) => high > low ? (value - low) / (high - low) : 0.5;
 const percent = (ratio: number) => `${(Math.max(0, Math.min(1, ratio)) * 100).toFixed(2)}%`;
 
-/** The domain every basis shares, padded to whole axis steps so the ends never touch a band. */
-function gpuLadderDomain(rows: readonly GpuLadderRow[]): { low: number; high: number; ticks: number[] } | null {
+/** The domain every basis shares, padded so the ends never touch a band. */
+function gpuLadderDomain(rows: readonly GpuLadderRow[]): { low: number; high: number } | null {
   if (!rows.length) return null;
   const min = Math.min(...rows.map((row) => row.min));
   const max = Math.max(...rows.map((row) => row.max));
   const pad = Math.max((max - min) * 0.04, max * 0.02, 0.05);
-  const low = Math.max(0, min - pad), high = max + pad;
-  return { low, high, ticks: gpuAxisTicks(low, high).filter((tick) => tick >= low && tick <= high) };
+  return { low: Math.max(0, min - pad), high: max + pad };
 }
 
 /** Terminal cells of one track: thin rule for the range, heavy for the quartiles, a bar at the median. */
@@ -51,7 +50,10 @@ export function GpuPriceLadder({ rows, width, height, selected }: {
   const valueCells = wide ? VALUE_CELLS : 6;
   // Two cells of padding, two gaps, and one spare so the value never clips.
   const trackCellsWidth = Math.max(8, width - labelCells - valueCells - 5);
-  const { low, high, ticks } = domain;
+  const { low, high } = domain;
+  // Labels may hang into the empty label and value columns of the axis row, so the end ticks stay centred.
+  const room = { left: labelCells + 1, right: valueCells + 1 };
+  const labels = gpuAxisLabels(low, high, trackCellsWidth, room);
   return (
     <Box flexDirection="column" width={width} height={shown.length + 1} paddingX={1} data-gloom-role="gpu-price-ladder">
       {shown.map((row) => {
@@ -91,37 +93,31 @@ export function GpuPriceLadder({ rows, width, height, selected }: {
           </Box>
         );
       })}
-      <Box flexDirection="row" height={1} gap={1}>
-        <Box width={labelCells} flexShrink={0} />
-        <GpuLadderAxis ticks={ticks} low={low} high={high} width={trackCellsWidth} desktop={desktop} />
-      </Box>
+      <GpuLadderAxis labels={labels} width={trackCellsWidth} room={room} desktop={desktop} />
     </Box>
   );
 }
 
-function GpuLadderAxis({ ticks, low, high, width, desktop }: { ticks: number[]; low: number; high: number; width: number; desktop: boolean }) {
+/**
+ * Each label centred on its tick, on the scale the bands and markers use. The
+ * desktop places real elements by percentage, as it does the markers; the
+ * terminal writes the whole axis row so an end label can hang past the track.
+ */
+function GpuLadderAxis({ labels, width, room, desktop }: { labels: readonly GpuAxisLabel[]; width: number; room: { left: number; right: number }; desktop: boolean }) {
   const colors = useThemeColors();
-  const label = (tick: number) => `$${Number.isInteger(tick) ? tick : tick.toFixed(1)}`;
   if (desktop) {
     return (
-      <Box width={width} height={1} flexShrink={0} style={{ position: "relative" }}>
-        {ticks.map((tick, index) => {
-          const ratio = position(tick, low, high);
-          const align = index === 0 ? "0%" : index === ticks.length - 1 ? "-100%" : "-50%";
-          return <Box key={tick} style={{ position: "absolute", left: percent(ratio), transform: `translateX(${align})` }}>
-            <Text fg={colors.textDim}>{label(tick)}</Text>
-          </Box>;
-        })}
+      <Box flexDirection="row" height={1}>
+        <Box width={room.left} flexShrink={0} />
+        <Box width={width} height={1} flexShrink={0} style={{ position: "relative" }}>
+          {labels.map((label) => <Box key={label.value} style={{ position: "absolute", left: percent(label.ratio), transform: "translateX(-50%)", whiteSpace: "nowrap" }}>
+            <Text fg={colors.textDim}>{label.text}</Text>
+          </Box>)}
+        </Box>
       </Box>
     );
   }
-  const line = Array.from({ length: width }, () => " ");
-  for (const [index, tick] of ticks.entries()) {
-    const text = label(tick);
-    const center = Math.round(position(tick, low, high) * (width - 1));
-    const start = index === 0 ? 0 : index === ticks.length - 1 ? width - displayWidth(text) : center - Math.floor(text.length / 2);
-    if (start < 0 || start + text.length > width || line.slice(Math.max(0, start - 1), start + text.length + 1).some((char) => char !== " ")) continue;
-    for (let i = 0; i < text.length; i++) line[start + i] = text[i]!;
-  }
-  return <Box width={width} height={1} flexShrink={0}><Text fg={colors.textDim}>{line.join("")}</Text></Box>;
+  const line = Array.from({ length: room.left + width + room.right }, () => " ");
+  for (const label of labels) for (let i = 0; i < label.text.length; i++) line[room.left + label.start + i] = label.text[i]!;
+  return <Box height={1} flexShrink={0}><Text fg={colors.textDim}>{line.join("").trimEnd()}</Text></Box>;
 }

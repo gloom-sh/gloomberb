@@ -19,7 +19,7 @@ import {
 import type { CommandBarFieldValue, CommandBarWorkflowField } from "../command-bar/workflow/types";
 import { TERMINAL_MESSAGE_KEYS } from "../textarea-keys";
 import { Checkbox } from "../ui/checkbox";
-import { FieldLabel, NumberField, TextField } from "../ui/fields";
+import { FieldLabel, FRAMED_TEXTAREA_DESKTOP_STYLE, NumberField, TextField } from "../ui/fields";
 import { SelectField, type SelectFieldHandle } from "../ui/select-field";
 import { FORM_TEXTAREA_ROWS } from "./model";
 
@@ -132,7 +132,7 @@ function FormTextarea({
         flexGrow={1}
         wrapText
         {...(desktop
-          ? { style: { padding: "6px 8px", lineHeight: "18px" }, onKeyDown: submitOnModifiedEnter }
+          ? { style: FRAMED_TEXTAREA_DESKTOP_STYLE, onKeyDown: submitOnModifiedEnter }
           : { keyBindings: TERMINAL_MESSAGE_KEYS, onSubmit: onSubmitField })}
         onInput={(nextValue: string) => onChange(nextValue)}
       />

@@ -240,7 +240,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
               if (column.id === "contracts") return { text: item.row.count.toLocaleString("en-US"), value: item.row.count, color: colors.textDim };
               if (column.id === "scope") return { text: awardScope(item.row.source), color: colors.textDim };
               return item.row.sharePercent === null ? missingCell(colors)
-                : { ...shareCell(`${item.row.sharePercent.toFixed(1)}%`, maxShare ? item.row.sharePercent / maxShare : null, column.width, colors, state.selected, desktop), value: item.row.sharePercent };
+                : { ...shareCell(`${item.row.sharePercent.toFixed(1)}%`, maxShare ? item.row.sharePercent / maxShare : null, column.width, colors, state.selected), value: item.row.sharePercent };
             }
             const award = item.row;
             if (column.id === "date") return { text: award.awardDate, value: award.awardDate };

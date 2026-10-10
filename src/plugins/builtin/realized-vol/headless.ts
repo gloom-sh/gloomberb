@@ -4,10 +4,12 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadCurrentAtmIv, loadRealizedVolatilityHistory } from "./client";
 import { projectRealizedVolatility, type CurrentAtmIvSnapshot } from "./model";
 import { ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
+import { DAILY_CLOSES } from "../shared/report-freshness";
 
 export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPaneDefinition<"bundle"> {
   return {
     shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
+    freshness: { ...DAILY_CLOSES, observedKey: "date", oldest: null },
     describe: (args) => `${initialView === "graph" ? "HVG" : "HVT"} ${args.symbols[0] ?? ""}`,
     discovery: { screenshotReadiness: "live-dom", limitations: ["IV is a dated current observation; HIVG has the stored IV history."] },
     options: [

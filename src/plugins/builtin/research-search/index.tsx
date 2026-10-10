@@ -37,6 +37,7 @@ export const researchSearchPlugin: GloomPlugin = {
   panes: [
     {
       id: RESEARCH_SEARCH_PANE_ID,
+      reportFreshness: { status: "not-a-feed", basis: "search results" },
       name: "Research Search",
       icon: "RS",
       component: ResearchSearchPane,

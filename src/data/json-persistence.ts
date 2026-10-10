@@ -1,21 +1,35 @@
 import type { AppPersistencePort } from "../core/app-service-ports";
 import type { PluginStateRecord } from "./plugin-state-store";
 import type { SessionSnapshotRecord } from "./session-store";
-import { MemoryResourceStore } from "./memory-resource-store";
+import { resourceRecordKey, WriteThroughResourceStore } from "./memory-resource-store";
+import type { CachedResourceRecord, ResourceCacheKey } from "./resource-store";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./json-storage";
 import { isRecord } from "../utils/guards";
 
 type PluginState = Record<string, Record<string, PluginStateRecord>>;
 type Sessions = Record<string, SessionSnapshotRecord>;
+type SavedResources = Record<string, CachedResourceRecord>;
 
 export class JsonPersistence implements AppPersistencePort {
-  readonly resources = new MemoryResourceStore();
+  /** In memory, except the records `keepResource` picks, which outlive a reload like the positions do. */
+  readonly resources: WriteThroughResourceStore;
   private readonly pluginStateData: SafeJsonStorage<PluginState>;
   private readonly sessionData: SafeJsonStorage<Sessions>;
+  private readonly resourceData: SafeJsonStorage<SavedResources>;
 
-  constructor(storage?: StorageLike) {
+  constructor(storage?: StorageLike, { keepResource = () => false }: { keepResource?: (key: ResourceCacheKey) => boolean } = {}) {
     this.pluginStateData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.pluginState, {}, (value): value is PluginState => isRecord(value));
     this.sessionData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.session, {}, (value): value is Sessions => isRecord(value));
+    this.resourceData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.resources, {}, (value): value is SavedResources => isRecord(value));
+    const saved = Object.values(this.resourceData.get()).filter((record) => isRecord(record) && typeof record.kind === "string");
+    this.resources = new WriteThroughResourceStore(saved, {
+      set: (record) => this.resourceData.set({ ...this.resourceData.get(), [resourceRecordKey(record)]: record }),
+      delete: (key) => {
+        const next = { ...this.resourceData.get() };
+        delete next[resourceRecordKey(key)];
+        this.resourceData.set(next);
+      },
+    }, keepResource);
   }
 
   readonly pluginState = {

@@ -195,7 +195,8 @@ for (const cache of ["parsed", "coordinator"] as const) {
       const view = await mount(spec, new Date(now), scenario === "historical-pan"
         ? { requestViewport: { start: new Date("2026-09-21T19:30:00Z"), end: new Date("2026-09-21T19:45:00Z") } } : {});
       expect(view.current().loading).toBe(true);
-      const expected = scenario === "preopen" || scenario.startsWith("historical") ? [130, 145] : [];
+      // Bars without a session record still reach the last close, which answers the pre-market.
+      const expected = scenario === "preopen" || scenario === "unknown" || scenario.startsWith("historical") ? [130, 145] : [];
       expect(view.current().series.find(series => series.id === "price")?.points.map(point => point.value) ?? []).toEqual(expected);
       expect(view.current().series.find(series => series.id === "volume")?.points.map(point => point.value) ?? [])
         .toEqual(expected.length ? [30, 45] : []);

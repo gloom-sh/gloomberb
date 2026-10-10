@@ -409,6 +409,56 @@ describe("ChatContent channel sidebar", () => {
     }
   });
 
+  test("the Message action on the card of someone with no public profile starts the DM, selects it and leaves the composer ready", async () => {
+    const juniper = {
+      id: "u-juniper",
+      username: "juniper",
+      displayName: "Juniper Park",
+      profilePublic: false,
+      acceptUnknownDms: true,
+    };
+    const controller = createController({
+      messages: [{ ...makeMessage(1), user: juniper }],
+      sessionToken: "token-123",
+      user: { id: "u1", username: "ada", emailVerified: true },
+    });
+    installServerChannels(controller);
+    controller.refreshChannels = async () => {};
+    controller.refreshChannelMessages = async () => {};
+    const openedTargets: Array<{ username?: string }> = [];
+    const originalOpenDirectChannel = apiClient.openDirectChannel.bind(apiClient);
+    apiClient.openDirectChannel = async (target) => {
+      openedTargets.push(target);
+      return { id: "dm:juniper", name: "@juniper", kind: "direct", created_at: "2026-07-03T09:30:00.000Z", dmUser: juniper };
+    };
+    const selectedChannels: string[] = [];
+    const ChannelPane = createChannelPane(controller, "everyone", (channelId) => {
+      selectedChannels.push(channelId);
+    });
+
+    try {
+      await act(async () => {
+        await tui.render(<ChannelPane />, { width: 90, height: 14 });
+      });
+      await flushFrame();
+      await tui.clickFrameText("juniper");
+      await flushFrame();
+      await tui.clickFrameText("Message");
+      await flushFrame();
+
+      expect(openedTargets).toEqual([{ username: "juniper" }]);
+      expect(selectedChannels).toEqual(["dm:juniper"]);
+      await act(async () => {
+        await tui.setup().mockInput.typeText("hi");
+        await tui.setup().renderOnce();
+      });
+      await flushFrame();
+      expect(tui.frame()).toContain("> hi");
+    } finally {
+      apiClient.openDirectChannel = originalOpenDirectChannel;
+    }
+  });
+
   test("offers a sidebar profile shortcut only until the account profile is filled in", async () => {
     const controller = createController({ sessionToken: "token-123" });
     installServerChannels(controller);

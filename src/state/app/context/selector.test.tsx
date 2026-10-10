@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useRef, useState, type Dispatch } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createRpcLoopback } from "../../../test-support/rpc-loopback";
+import { crashReportsEnabled, flushCrashReports, installCrashReporter, resetCrashReporterForTests } from "../../../telemetry/crash-reports";
+import { decodeRpcValue, encodeRpcValue } from "../../../renderers/electrobun/shared/rpc-codec";
+import { nameRpcTimeout } from "../../../renderers/electrobun/view/rpc-timeout";
 import { AppContext, AppProvider, PaneInstanceProvider, createInitialState, useAppDispatch, useAppSelector, usePaneSettingValue, usePaneStateValue, usePaneTicker, usePaneTitle, type AppAction } from "./index";
 import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
 import { applyTheme } from "../../../theme/colors";
@@ -11,6 +15,7 @@ import type { DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindo
 const TEST_PANE_ID = "ticker-detail:test";
 
 let capturedDispatch: Dispatch<AppAction> | null = null;
+let capturedConfig: AppConfig | null = null;
 let capturedPaneSetting: ((value: string) => void) | null = null;
 
 function createTickerDetailConfig(symbol: string): AppConfig {
@@ -35,6 +40,11 @@ function createTickerDetailConfig(symbol: string): AppConfig {
 
 function DispatchCapture() {
   capturedDispatch = useAppDispatch();
+  return null;
+}
+
+function ConfigCapture() {
+  capturedConfig = useAppSelector((state) => state.config);
   return null;
 }
 
@@ -104,6 +114,7 @@ describe("pane selectors", () => {
 
   afterEach(() => {
     capturedDispatch = null;
+    capturedConfig = null;
     capturedPaneSetting = null;
     applyTheme(DEFAULT_THEME);
   });
@@ -282,6 +293,64 @@ describe("pane selectors", () => {
     expect(mainSnapshots).toHaveLength(1);
     expect(mainSnapshots[0]?.config.theme).toBe("green");
     expect(themePreviews).toHaveLength(0);
+  });
+
+  test("a main state sync that times out is no unhandled rejection, and its snapshot is sent again", async () => {
+    // The Bun side swallows the first request, so the view's own request timer gives up on it.
+    const requests: DesktopSharedStateSnapshot[] = [];
+    const firstTimedOut = Promise.withResolvers<void>();
+    const send = createRpcLoopback((request) => {
+      requests.push(decodeRpcValue<{ snapshot: DesktopSharedStateSnapshot }>((request as { payload: unknown }).payload).snapshot);
+      return requests.length === 1 ? new Promise(() => {}) : null;
+    }, { maxRequestTime: 20 });
+    const bridge: DesktopWindowBridge = {
+      ...createDesktopBridge("main"),
+      syncMainState: async (snapshot) => {
+        const payload = { snapshot };
+        await nameRpcTimeout("desktop.syncMainState", payload, () => send({
+          method: "desktop.syncMainState",
+          payload: encodeRpcValue(payload),
+        }).finally(() => firstTimedOut.resolve()));
+      },
+    };
+    const reported: string[] = [];
+    const uninstall = installCrashReporter({
+      surface: "desktop",
+      isEnabled: () => crashReportsEnabled(null),
+      getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
+      send: async (payload) => { reported.push(...payload.errors.map((error) => error.message)); },
+    });
+    try {
+      await tui.render(
+        <AppProvider config={createTickerDetailConfig("AAPL")} desktopBridge={bridge}>
+          <DispatchCapture />
+          <ConfigCapture />
+        </AppProvider>,
+        { width: 24, height: 4 },
+      );
+      await tui.setup().renderOnce();
+      await firstTimedOut.promise;
+      // Bun fails the test for a rejection nobody handled, once the timeout has run its course.
+      await Bun.sleep(10);
+      expect(requests).toHaveLength(1);
+
+      // A config with the same content gives the same snapshot, which the failed send must not suppress.
+      await act(() => {
+        capturedDispatch?.({ type: "SET_CONFIG", config: { ...capturedConfig! } });
+      });
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+      expect(requests).toHaveLength(2);
+      expect(requests[1]!.config).toEqual(requests[0]!.config);
+      expect(requests[1]!.mainStateRevision).toBe(requests[0]!.mainStateRevision! + 1);
+
+      // A real stall is still reported, once, under the same name.
+      await flushCrashReports({ timeoutMs: 500 });
+      expect(reported).toEqual([expect.stringMatching(/^RPC request timed out: desktop\.syncMainState after ~\d+s$/)]);
+    } finally {
+      uninstall();
+      resetCrashReporterForTests();
+    }
   });
 
   test("does not hydrate a stale desktop echo after a newer layout switch", async () => {

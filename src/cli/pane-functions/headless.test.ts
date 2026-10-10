@@ -18,9 +18,12 @@ import { getPaneFunctionCapability, normalizeCapabilityOptions } from "./capabil
 import {
   buildHeadlessPaneLoadArgs,
   buildHeadlessFunctionReport,
+  headlessReportTables,
   renderHeadlessPaneText,
   serializeHeadlessPaneResult,
 } from "./headless";
+import { deriveHeadlessFreshness } from "./freshness";
+import { renderReportCsv, selectReportTables } from "../report-tables";
 
 const args: HeadlessPaneLoadArgs = {
   rawArgument: "",
@@ -85,6 +88,26 @@ describe("headless pane printer", () => {
         rows: [{ name: "CPI", value: 2.45 }],
       },
     });
+  });
+
+  test("report rows keep midnight instants while calendar series dates stay short", () => {
+    const definition: HeadlessPaneDefinition<"rows"> = {
+      shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [] }),
+    };
+    const result: HeadlessRowsResult = { rows: [
+      { name: "Date", observedAt: new Date("2026-10-09T00:00:00Z") },
+      { name: "ISO", observedAt: "2026-10-09T00:00:00Z" },
+      { name: "Calendar", observedAt: "2026-10-09" },
+    ] };
+    const lines = renderHeadlessPaneText(definition, result, args, "Times").split("\n");
+    expect(lines.find((line) => line.startsWith("Date"))).toContain("2026-10-09 00:00 UTC");
+    expect(lines.find((line) => line.startsWith("ISO"))).toContain("2026-10-09 00:00 UTC");
+    expect(lines.find((line) => line.startsWith("Calendar"))?.trim()).toEndWith("2026-10-09");
+    const series: HeadlessPaneDefinition<"series"> = {
+      shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }),
+    };
+    const text = renderHeadlessPaneText(series, { series: [{ id: "daily", label: "Daily", points: [{ date: "2026-10-09", close: 1 }] }] }, args, "Series");
+    expect(text.split("\n").find((line) => line.startsWith("Daily"))).not.toContain("UTC");
   });
 
   test("renders bundle row and entry sections", () => {
@@ -168,7 +191,7 @@ describe("headless pane printer", () => {
     };
 
     const text = renderHeadlessPaneText(definition, result, args, "News");
-    expect(text).toContain("As of: 2026-09-03 12:00 UTC");
+    expect(text.split("\n").at(-1)).toContain("As of 2026-09-03 12:00 UTC");
     expect(text).toContain("Markets open");
     expect(jsonData(definition, result)).toMatchObject({
       ok: true,
@@ -178,6 +201,25 @@ describe("headless pane printer", () => {
       },
     });
   });
+});
+
+test("every report shape ends with its source, as-of and status line, and JSON carries the same facts", async () => {
+  const results: Array<[HeadlessPaneDefinition, string]> = [
+    [{ shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [{ name: "AAPL", dataSource: "delayed", updatedAt: Date.parse("2026-10-08T19:59:00Z") }] }) }, "Delayed"],
+    [{ shape: "bundle", argument: { kind: "none" }, options: [], freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
+      load: () => ({ sections: [{ title: "Filings", rows: [{ form: "10-K", asOf: "2026-09-30" }] }] }) }, "Not a live feed (filed data)"],
+    [{ shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [{ id: "x", label: "X", points: [{ date: "2026-10-08", value: 1 }] }] }) }, "Status not reported"],
+    [{ shape: "snapshot", argument: { kind: "none" }, options: [], load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Open" }] }) }, "Status not reported"],
+  ];
+  for (const [definition, status] of results) {
+    const report = await buildHeadlessFunctionReport({
+      headless: definition, token: "TEST", label: "Test", options: {}, instance: {}, capability: { id: "test" },
+    } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-freshness") } as MarketContext, "");
+    const last = report.text.split("\n").at(-1)!.replace(/\x1b\[[0-9;]*m/g, "");
+    expect(last).toStartWith(`Source: ${definition.freshness?.source ?? "Gloom Cloud"} | As of 2026-`);
+    expect(last).toEndWith(` | ${status}`);
+    expect(report.data.freshness).toMatchObject({ source: definition.freshness?.source ?? "Gloom Cloud", asOf: expect.stringMatching(/^2026-/), retrievedAt: expect.any(String) });
+  }
 });
 
 describe("headless pane arguments and options", () => {
@@ -290,6 +332,36 @@ test("headless text preserves applicable coverage notices once before the export
 });
 
 
+test("a report's caveats print as Notes, one per line, apart from the failures under Errors, and JSON carries both", async () => {
+  const definition: HeadlessPaneDefinition<"rows"> = {
+    shape: "rows", argument: { kind: "none" }, options: [], columns: [{ key: "value", header: "Value" }],
+    load: () => ({
+      rows: [{ value: 1 }], complete: false,
+      notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],
+      errors: ["Treasury yield: Internal server error"],
+    }),
+  };
+  const report = await buildHeadlessFunctionReport({
+    headless: definition, token: "notes", label: "Notes", options: {}, instance: {}, capability: { id: "notes" },
+  } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-notes") } as MarketContext, "");
+  const lines = report.text.split("\n");
+  expect(lines).toContain("Notes:");
+  expect(lines).toContain("  ETH-USD is excluded from the risk estimate.");
+  expect(lines).toContain("  1 holding had no current quote; weighted at the latest completed close.");
+  expect(lines).toContain("Errors: Treasury yield: Internal server error");
+  expect(report.data).toMatchObject({
+    complete: false, errors: ["Treasury yield: Internal server error"],
+    notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],
+  });
+  // Notes alone leave a complete report complete.
+  const noted = await buildHeadlessFunctionReport({
+    headless: { ...definition, load: () => ({ rows: [{ value: 1 }], notes: ["Matched by date."] }) }, token: "notes", label: "Notes", options: {}, instance: {}, capability: { id: "notes" },
+  } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-notes") } as MarketContext, "");
+  expect(noted.data.complete).toBe(true);
+  expect(noted.text).toContain("Notes: Matched by date.");
+  expect(noted.text).not.toContain("Errors");
+});
+
 test("series text distinguishes explicit percent, basis-point and index units without scaling exports", () => {
   const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
   const result: HeadlessSeriesResult = { series: [
@@ -307,8 +379,151 @@ test("series text distinguishes explicit percent, basis-point and index units wi
   expect(text.split("\n").find(line => line.includes("Unknown unit"))).toMatch(/0\s+-/);
   expect(text.split("\n").find(line => line.includes("Missing value"))).toMatch(/-\s+%/);
   expect(jsonData(definition, result)).toMatchObject({ data: { series: result.series } });
-  const csv = serializeCliResult({ data: serializeHeadlessPaneResult(definition, result) }, { ...DEFAULT_CLI_OPTIONS, format: "csv" });
-  expect(csv).toContain('""unit"":""%"",""points"":[{""date"":""2026-09-10"",""value"":2.7}]');
-  expect(csv).toContain('""unit"":""bp"",""points"":[{""date"":""2026-09-10"",""value"":270}]');
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "Research", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
+  expect(csv).toContain("# section: Credit percent\nDate,Value (%)\n2026-09-10,2.7\n");
+  expect(csv).toContain("# section: Credit basis points\nDate,Value (bp)\n2026-09-10,270\n");
   expect(renderHeadlessPaneText(definition, { series: [result.series[3]!] }, args, "Unknown")).not.toContain("Unit");
+});
+
+async function reportOf(definition: HeadlessPaneDefinition, rawArgument = "") {
+  return buildHeadlessFunctionReport({
+    headless: definition, token: "TEST", label: "Test report", options: {}, instance: {}, capability: { id: "test" },
+  } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-csv") } as MarketContext, rawArgument);
+}
+
+function csvOf(report: Awaited<ReturnType<typeof reportOf>>, section?: string): string[] {
+  return serializeCliResult({ data: report.data }, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, {
+    text: () => report.text, tables: selectReportTables(report.tables, section),
+  }).split("\n");
+}
+
+const FILED = { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" } as const;
+
+describe("fn --csv", () => {
+  test("a bundle writes each section as its own table with the displayed headers, entries as Metric,Value", async () => {
+    const report = await reportOf({
+      shape: "bundle", argument: { kind: "none" }, options: [], freshness: FILED,
+      columns: [{ key: "shortName", header: "Index" }, { key: "price", header: "Last", align: "right", format: (value) => value == null ? "-" : Number(value).toLocaleString("en-US") }],
+      load: () => ({
+        sections: [
+          { title: "Americas", rows: [{ shortName: "SPX", price: 7812.71, asOf: "2026-10-08" }] },
+          { title: "Asia-Pacific", rows: [{ shortName: "KOSPI", price: null, asOf: "2026-10-08" }] },
+          { title: "Summary", entries: [{ label: "Breadth", value: 0.615, formatted: "61.5%" }, { label: "Leaders", value: ["SPX", "DAX"] }] },
+          { title: "Rates", columns: [{ key: "observedAt", header: "observedAt" }, { key: "detail", header: "Detail" }], rows: [{ observedAt: "2026-10-08", detail: { tenor: "2Y", bid: 4.1 } }] },
+        ],
+        errors: ["^KS11: No quote provider available for ^KS11"],
+        notes: ["Breadth counts constituents above their 50-day average."],
+        metadata: { requested: 20, available: 19, notices: ["Showing world indices."] },
+      }),
+    });
+    expect(csvOf(report)).toEqual([
+      "# section: Americas",
+      "Index,Last",
+      "SPX,7812.71",
+      "",
+      "# section: Asia-Pacific",
+      "Index,Last",
+      "KOSPI,",
+      "",
+      "# section: Summary",
+      "Metric,Value",
+      "Breadth (%),61.5",
+      "Leaders,SPX; DAX",
+      "",
+      "# section: Rates",
+      "Observed At,Detail",
+      "2026-10-08,\"tenor: 2Y, bid: 4.1\"",
+      "",
+      "# Source: SEC EDGAR | As of 2026-10-08 | Not a live feed (filed data)",
+      "# incomplete: 19 of 20 available",
+      "# error: ^KS11: No quote provider available for ^KS11",
+      "# note: Showing world indices.",
+      "# note: Breadth counts constituents above their 50-day average.",
+    ]);
+    // --section writes that one table alone, with the closing lines.
+    expect(csvOf(report, "summary").slice(0, 4)).toEqual(["Metric,Value", "Breadth (%),61.5", "Leaders,SPX; DAX", ""]);
+    expect(csvOf(report, "2").slice(0, 2)).toEqual(["Index,Last", "KOSPI,"]);
+    expect(() => csvOf(report, "Europe")).toThrow("No section \"Europe\". Sections: Americas, Asia-Pacific, Summary, Rates, or a number from 1 to 4.");
+  });
+
+  test("a report over several symbols is one table with its symbol column; missing symbols close it", async () => {
+    const report = await reportOf({
+      shape: "rows", argument: { kind: "tickers" }, options: [], freshness: { ...FILED, observedKey: "date" },
+      columns: [
+        { key: "symbol", header: "Symbol" },
+        { key: "date", header: "Date", format: (value) => String(value).slice(0, 10) },
+        { key: "volume", header: "Volume", align: "right", format: (value) => `${(Number(value) / 1e6).toFixed(2)}M` },
+      ],
+      load: () => ({
+        rows: [
+          { symbol: "HP", date: "2026-10-01T00:00:00.000Z", volume: 37_614_444 },
+          { symbol: "SBK.JO", date: "2026-10-01T00:00:00.000Z", volume: 1_838_873 },
+        ],
+        unavailableSymbols: ["XYZ"],
+      }),
+    }, "HP SBK.JO XYZ");
+    expect(csvOf(report)).toEqual([
+      "Symbol,Date,Volume",
+      "HP,2026-10-01,37614444",
+      "SBK.JO,2026-10-01,1838873",
+      "",
+      "# Source: SEC EDGAR | As of 2026-10-01 00:00 UTC | Not a live feed (filed data)",
+      "# incomplete: no data for XYZ",
+    ]);
+  });
+
+  test("a series writes every point with its date, one table per series, then its statistics", async () => {
+    const report = await reportOf({
+      shape: "series", argument: { kind: "none" }, options: [], freshness: FILED,
+      load: () => ({
+        series: [
+          { id: "aapl", label: "AAPL", unit: "USD", points: [{ date: "2026-10-07", open: 1, high: 2.5, low: 0.5, close: 2, volume: 900 }, { date: "2026-10-08", open: 2, high: 3, low: 1.5, close: 2.5, volume: 1000 }] },
+          { id: "ratio", label: "Ratio", points: [{ date: Date.parse("2026-10-08T14:30:00Z"), value: 0.1 + 0.2 }] },
+        ],
+        stats: { correlation: 0.8123 },
+      }),
+    });
+    expect(csvOf(report).slice(0, 13)).toEqual([
+      "# section: AAPL",
+      "Date,Open (USD),High (USD),Low (USD),Close (USD),Volume",
+      "2026-10-07,1,2.5,0.5,2,900",
+      "2026-10-08,2,3,1.5,2.5,1000",
+      "",
+      "# section: Ratio",
+      "Time,Value",
+      "2026-10-08T14:30:00Z,0.3",
+      "",
+      "# section: Statistics",
+      "Metric,Value",
+      "correlation,0.8123",
+      "",
+    ]);
+  });
+
+  test("a snapshot writes its items under the declared columns", async () => {
+    const report = await reportOf({
+      shape: "snapshot", argument: { kind: "none" }, options: [], freshness: FILED,
+      columns: [{ key: "headline", header: "Headline" }, { key: "tickers", header: "Tickers" }],
+      load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Markets open, \"calm\"", tickers: ["SPY", "QQQ"] }] }),
+    });
+    expect(csvOf(report)).toEqual([
+      "Headline,Tickers",
+      "\"Markets open, \"\"calm\"\"\",SPY; QQQ",
+      "",
+      "# Source: SEC EDGAR | As of 2026-10-08 19:59 UTC | Not a live feed (filed data)",
+    ]);
+  });
+
+  test("--json stays the full envelope", async () => {
+    const report = await reportOf({
+      shape: "rows", argument: { kind: "none" }, options: [], columns: [{ key: "name", header: "Name" }],
+      load: () => ({ rows: [{ name: "CPI", detail: { value: 2.45 } }] }),
+    });
+    const json = { ...DEFAULT_CLI_OPTIONS, format: "json" as const };
+    const withTables = serializeCliResult({ data: report.data }, json, { text: () => report.text, tables: report.tables });
+    expect(withTables).toBe(serializeCliResult({ data: report.data }, json, { text: () => report.text }));
+    expect(Object.keys(JSON.parse(withTables).data)).toEqual([
+      "kind", "target", "capabilityId", "symbols", "options", "rowCount", "empty", "complete", "unavailableSymbols", "columns", "rows", "freshness",
+    ]);
+  });
 });

@@ -80,6 +80,12 @@ export type ContextMenuContext =
     layoutIndex: number;
     layoutName: string;
     active: boolean;
+  }
+  | {
+    /** A person's name or @mention in the chat. */
+    kind: "chat-user";
+    userId: string;
+    username: string | null;
   };
 
 export function hasRunnableContextMenuItem(items: readonly ContextMenuItem[]): boolean {

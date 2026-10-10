@@ -10,6 +10,7 @@ import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
+import { resolveCliListing } from "../listing-arg";
 import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
@@ -24,6 +25,7 @@ import {
   type ParsedPaneFunctionArgs,
 } from "./options";
 import {
+  capabilityHasOption,
   capabilityPaneSettings,
   getHeadlessPaneDefinition,
   getPaneFunctionCapability,
@@ -45,6 +47,8 @@ export interface ResolvedPaneFunction {
   optionSettings: Record<string, unknown>;
   capability: PaneFunctionCapability;
   options: NormalizedPaneFunctionOptions;
+  /** `--section` of a report: the table `--csv` and `--ndjson` write, when the function has no `section` option of its own. */
+  tableSection?: string | true;
 }
 
 async function buildPaneInstance(
@@ -94,19 +98,65 @@ async function buildPaneInstance(
   };
 }
 
-export async function resolvePaneFunction(
+function findPaneFunction(registry: PaneFunctionCatalog, target: string): { template?: PaneTemplateDef; pane?: PaneDef } | null {
+  const entry = buildPaneFunctionLookup(registry).get(normalizeLookupToken(target));
+  if (!entry) return null;
+  const template = "paneId" in entry && "description" in entry ? entry as PaneTemplateDef : undefined;
+  return { template, pane: template ? registry.panes.get(template.paneId) : entry as PaneDef };
+}
+
+/**
+ * `fn ANR SAN --exchange EPA` is `fn ANR SAN:EPA`: a function that takes one
+ * ticker gets the listing in its argument, and an exchange the app does not
+ * know fails with the venues the symbol trades on.
+ */
+export async function applyListingArgument(
   registry: PaneFunctionCatalog,
   context: MarketContext,
   args: ParsedPaneFunctionArgs,
-  resolutionSettings: { strictHeadlessOptions?: boolean } = {},
+): Promise<ParsedPaneFunctionArgs> {
+  const found = args.target ? findPaneFunction(registry, args.target) : null;
+  if (!found?.pane || !args.arg || /\s/.test(args.arg)) return args;
+  const headless = getHeadlessPaneDefinition(found.template, found.pane);
+  const takesOneTicker = headless ? headless.argument.kind === "ticker" : found.template?.shortcut?.argKind === "ticker";
+  // A function with an exchange option of its own (DIST) keeps it.
+  if (!takesOneTicker || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
+    return args;
+  }
+  const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
+  const listing = await resolveCliListing(args.arg, exchange, context);
+  const { exchange: _exchange, ...options } = args.options;
+  return { ...args, arg: listing.key, options, listing };
+}
+
+/**
+ * `--section` picks one table of a report's `--csv` or `--ndjson` output. A
+ * function that has a `section` option of its own (CALLS: which part of a
+ * transcript) keeps the flag; its report is one table, so there is nothing to
+ * pick there.
+ */
+function takeTableSection(
+  capability: PaneFunctionCapability,
+  options: ParsedPaneFunctionArgs["options"],
+): { options: ParsedPaneFunctionArgs["options"]; tableSection?: string | true } {
+  if (!("section" in options) || capabilityHasOption(capability, "section")) return { options };
+  const { section, ...rest } = options;
+  return { options: rest, tableSection: section };
+}
+
+export async function resolvePaneFunction(
+  registry: PaneFunctionCatalog,
+  context: MarketContext,
+  parsedArgs: ParsedPaneFunctionArgs,
+  resolutionSettings: { strictHeadlessOptions?: boolean; tableSection?: boolean } = {},
 ): Promise<ResolvedPaneFunction> {
+  let args = parsedArgs;
   if (!args.target) {
     throw new Error("Usage: gloomberb fn <function-or-pane> [argument] [--key value]");
   }
 
-  const lookup = buildPaneFunctionLookup(registry);
-  const entry = lookup.get(normalizeLookupToken(args.target));
-  if (!entry) {
+  const found = findPaneFunction(registry, args.target);
+  if (!found) {
     const shortcuts = [...registry.paneTemplates.values()]
       .map((template) => template.shortcut?.prefix)
       .filter((prefix): prefix is string => !!prefix)
@@ -114,25 +164,26 @@ export async function resolvePaneFunction(
     throw new Error(`Unknown function or pane "${args.target}". Try one of: ${shortcuts.slice(0, 18).join(", ")}`);
   }
 
-  const template = "paneId" in entry && "description" in entry ? entry as PaneTemplateDef : undefined;
-  const pane = template
-    ? registry.panes.get(template.paneId)
-    : entry as PaneDef;
+  const { template, pane } = found;
   if (!pane) {
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }
   const createOptions = buildCreateOptions(template, args.arg);
   const headless = getHeadlessPaneDefinition(template, pane);
   const capability = getPaneFunctionCapability(template, pane);
+  let tableSection: string | true | undefined;
+  if (resolutionSettings.tableSection) {
+    const taken = takeTableSection(capability, args.options);
+    args = { ...args, options: taken.options };
+    tableSection = taken.tableSection;
+  }
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
     strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
   });
-  const settings = capability.botSafe
-    ? {
-      ...optionSettings(args.options),
-      ...capabilityPaneSettings(capability, normalizedOptions),
-    }
-    : optionSettings(args.options);
+  const settings = {
+    ...optionSettings(args.options),
+    ...capabilityPaneSettings(capability, normalizedOptions),
+  };
   if (args.requireBotSafe) {
     validateTickerCardinality(capability, createOptions);
   }
@@ -149,6 +200,7 @@ export async function resolvePaneFunction(
     optionSettings: settings,
     capability,
     options: normalizedOptions,
+    ...(tableSection !== undefined ? { tableSection } : {}),
   };
   resolved.instance = await buildPaneInstance(resolved, context, args.arg);
   return resolved;

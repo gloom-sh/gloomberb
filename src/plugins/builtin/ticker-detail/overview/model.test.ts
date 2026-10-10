@@ -4,9 +4,9 @@ import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
 import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./model";
 import { createTestTicker } from "../../../../test-support/ticker";
 
-function overview(fundamentals: Fundamentals) {
+function overview(fundamentals: Fundamentals, financialCurrency?: string) {
   return Object.fromEntries(buildOverviewStats({
-    quote: undefined, fundamentals, quoteCurrency: "HKD", baseCurrency: "USD", toBase: (value) => value,
+    quote: undefined, fundamentals, financialCurrency, quoteCurrency: "HKD", baseCurrency: "USD", toBase: (value) => value,
   }).map(({ label, value }) => [label, value]));
 }
 
@@ -25,8 +25,17 @@ test("summary money keeps unknown units explicit without borrowing listing curre
     EPS: "CN¥4.22", Revenue: "1.22T CNY", "Net Income": "85.7B CNY", FCF: "-96.6B CNY",
   });
   expect(overview({ financialCurrency: " ", eps: 0, revenue: 0, netIncome: NaN, freeCashFlow: Infinity }))
-    .toEqual({ EPS: "0.00 (ccy?)", Revenue: "0 (ccy?)", "Net Income": "—", FCF: "—" });
+    .toEqual({ "P/E (TTM)": "N/M", EPS: "0.00 (ccy?)", Revenue: "0 (ccy?)", "Net Income": "—", FCF: "—" });
   expect(overview({})).toEqual({});
+});
+
+test("summary money falls back to the statements' reporting currency, and a zero enterprise value is left out", () => {
+  const figures = { eps: 31.43, revenue: 202.08e9, netIncome: 46.98e9, freeCashFlow: 36.96e9, enterpriseValue: 0 };
+  // The quote's HKD never stands in: the statements' currency is the only fallback.
+  expect(overview(figures, "ZAR")).toEqual({ EPS: "ZAR\u00a031.43", Revenue: "202.08B ZAR", "Net Income": "46.98B ZAR", FCF: "36.96B ZAR" });
+  expect(overview({ ...figures, financialCurrency: "USD" }, "ZAR")).toMatchObject({ Revenue: "202.08B USD" });
+  expect(overview(figures, " ")).toMatchObject({ EPS: "31.43 (ccy?)", Revenue: "202.08B (ccy?)" });
+  expect(overview({ ...figures, enterpriseValue: 5e9 }, "ZAR")).toMatchObject({ EV: "5B HKD" });
 });
 
 test("holdings and short interest read as fractions; blank, zero and past figures are left out", () => {

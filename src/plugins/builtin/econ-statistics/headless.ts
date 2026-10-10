@@ -123,6 +123,8 @@ export function projectStatsHeadlessBundle(
 
 export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  // Each row checks its own release schedule and says when it is stale.
+  freshness: { source: "FRED", status: "not-a-feed", basis: "published statistics" },
   argument: {
     kind: "free-text",
     placeholder: "statistic",

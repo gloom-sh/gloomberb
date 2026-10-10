@@ -7,6 +7,7 @@ import type {
 import type {
   HeadlessPaneApiClient,
   HeadlessPaneDefinition,
+  HeadlessPaneFreshness,
   HeadlessPaneLoadArgs,
   HeadlessPaneOptionDef,
   HeadlessSnapshotResult,
@@ -88,6 +89,17 @@ export function loadHiloSnapshot(
   return loadScannerSnapshot<ScannerHiloPayload>(client, "hilo", signal, timeoutMs);
 }
 
+/**
+ * The scanner says which instance served it, real-time or the delayed one free
+ * accounts get, and whether it is running: a closed session's scan is final,
+ * and a degraded one may have fallen behind.
+ */
+function scannerFreshness(payload: Pick<ScannerHiloPayload, "access" | "delayMinutes" | "status">): HeadlessPaneFreshness {
+  if (payload.status === "closed") return { status: "not-a-feed", basis: "closed session" };
+  if (payload.status === "degraded") return { status: "stale" };
+  return payload.access === "realtime" ? { status: "live" } : { status: "delayed", delayMinutes: payload.delayMinutes };
+}
+
 function projectHiloSnapshot(
   payload: ScannerHiloPayload,
   minPrice: HiloMinPrice,
@@ -99,6 +111,7 @@ function projectHiloSnapshot(
     asOf: new Date(payload.asOf).toISOString(),
     items: [...lows, ...highs],
     ...(payload.status === "degraded" ? { errors: ["Scanner feed degraded"] } : {}),
+    freshness: scannerFreshness(payload),
     metadata: {
       ...(payload.access === "delayed" ? { notices: [`Delayed ${payload.delayMinutes} minutes`] } : {}),
       status: payload.status,
@@ -214,6 +227,7 @@ function projectFlowSnapshot(
     asOf: new Date(payload.asOf).toISOString(),
     items: events.map((event) => ({ ...event })),
     ...(payload.status === "degraded" ? { errors: ["Scanner feed degraded"] } : {}),
+    freshness: scannerFreshness(payload),
     metadata: {
       status: payload.status,
       access: payload.access,

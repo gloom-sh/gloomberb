@@ -54,7 +54,12 @@ function resolveScroll(event: MouseLikeEvent) {
   };
 }
 
-export function cellMouseEvent(event: MouseLikeEvent, type?: string) {
+/**
+ * `ahead` is where the browser predicts the pointer will be a moment later
+ * (`getPredictedEvents`), for drawing what follows it; hit tests and releases
+ * keep the real point.
+ */
+export function cellMouseEvent(event: MouseLikeEvent, type?: string, ahead?: { clientX: number; clientY: number } | null) {
   const preciseX = event.clientX / WEB_CELL_WIDTH;
   const preciseY = event.clientY / WEB_CELL_HEIGHT;
   return {
@@ -63,6 +68,8 @@ export function cellMouseEvent(event: MouseLikeEvent, type?: string) {
     y: Math.max(0, Math.floor(preciseY)),
     preciseX: Math.max(0, preciseX),
     preciseY: Math.max(0, preciseY),
+    predictedX: ahead ? Math.max(0, ahead.clientX / WEB_CELL_WIDTH) : undefined,
+    predictedY: ahead ? Math.max(0, ahead.clientY / WEB_CELL_HEIGHT) : undefined,
     pixelX: event.clientX,
     pixelY: event.clientY,
     button: event.button,

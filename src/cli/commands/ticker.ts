@@ -1,7 +1,8 @@
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
+import { fundamentalsCurrency, reportedEnterpriseValue } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
-import { formatPriceEarnings } from "../../utils/price-earnings";
+import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../utils/market-capitalization";
 import {
   formatCompact,
@@ -20,7 +21,12 @@ import {
   wrapText,
   type CliStatEntry,
 } from "../../utils/cli-output";
-import { exchangeShortName, marketStateLabel } from "../../market-data/market/status";
+import {
+  exchangeShortName,
+  getExtendedSessionDisplay,
+  getRegularSessionDisplay,
+  marketStateLabel,
+} from "../../market-data/market/status";
 import type { AppConfig } from "../../types/config";
 import type { FinancialStatement, TickerFinancials } from "../../types/financials";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
@@ -44,6 +50,14 @@ import {
 } from "../helpers";
 import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isUsEquityTicker } from "../../utils/sec";
+import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
+import { failIfNotTraded, ListingArgError, listingIdentity, resolveCliListing, type CliListing } from "../listing-arg";
+import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
+import { cliFreshnessFooter } from "../result";
+import { providerMissReason } from "../../sources/provider-errors";
+import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
+import type { ReportFreshness } from "../pane-functions/freshness";
+import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -52,6 +66,8 @@ const MAX_PROSE_WIDTH = 100;
 const METADATA_SEPARATOR = "  ·  ";
 
 interface TickerCommandDependencies {
+  /** `--exchange`: the listing, for a symbol that trades in several places. */
+  exchange?: string;
   initMarketData?: () => Promise<MarketContext>;
   fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
@@ -87,8 +103,24 @@ function buildStatementMetrics(statement: FinancialStatement, currency?: string)
     ["Total Debt", money(statement.totalDebt)],
     ["Equity", money(statement.totalEquity)],
     ["Diluted EPS", money(statement.eps, true)],
-    ["Diluted Shares", formatCompact(statement.dilutedShares)],
+    // Labelled only when the service says the row counts receipts.
+    ["Diluted Shares", statement.dilutedShares != null && statement.shareBasis === "depositary_receipt"
+      ? `${formatCompact(statement.dilutedShares)} (ADR equivalent)`
+      : formatCompact(statement.dilutedShares)],
   ];
+}
+
+/**
+ * A receipt's count is its ordinary shares expressed in receipts, as its
+ * market cap is; the ordinary count follows when the service gives it.
+ */
+function sharesOutstandingText(fundamentals: TickerFinancials["fundamentals"], inReceipts: boolean): string {
+  const shares = fundamentals?.sharesOutstanding;
+  if (shares == null || !inReceipts) return formatCompact(shares);
+  const ordinary = fundamentals?.shareBasis === "depositary_receipt" ? fundamentals.underlyingOrdinaryShares : undefined;
+  return ordinary != null && Number.isFinite(ordinary) && ordinary > 0
+    ? `${formatCompact(shares)} (ADR equivalent = ${formatCompact(ordinary)} ordinary shares)`
+    : `${formatCompact(shares)} (ADR equivalent)`;
 }
 
 /** Provider prose is wrapped; `verbatim` keeps the user's own spacing, such as a table in a note. */
@@ -229,86 +261,190 @@ function enterpriseValueCurrency(
     || undefined;
 }
 
+/** A fundamentals line: the text the report prints, and for CSV the figure behind it in `unit`. */
+interface FundamentalsMetric {
+  label: string;
+  text: string;
+  value?: number | string | null;
+  unit?: string;
+}
+
+type MetricFigure = Omit<FundamentalsMetric, "label">;
+
+/** An amount in the currency the source reported it in; `ccy?` when it named none, as the text says. */
+function reportedMoney(value: number | undefined, currency: string | undefined, perShare = false): MetricFigure {
+  return { text: formatReportedMoney(value, currency, perShare), value, unit: currency?.trim() || "ccy?" };
+}
+
+function percentFigure(fraction: number | null | undefined, format: (value: number) => string): MetricFigure {
+  return fraction != null ? { text: format(fraction), value: fraction * 100, unit: "%" } : { text: "—" };
+}
+
+function multipleFigure(value: ReturnType<typeof priceEarningsOnEarnings> | number | undefined): MetricFigure {
+  const text = formatPriceEarnings(value, 2);
+  return { text, value: typeof value === "number" && Number.isFinite(value) && value > 0 ? value : text === "N/M" ? text : null };
+}
+
 function fundamentalsMetrics(
   quote: TickerFinancials["quote"],
   fundamentals: TickerFinancials["fundamentals"],
-  marketCapText: string,
+  profile: TickerFinancials["profile"],
+  marketCap: MetricFigure,
   priceReturns: { return1Y?: number | null; return3Y?: number | null },
-  enterpriseValueText = formatReportedMoney(fundamentals?.enterpriseValue, enterpriseValueCurrency(quote, fundamentals)),
-): Array<[string, string]> {
+  reportingCurrency: string | undefined,
+  enterpriseValue = reportedMoney(reportedEnterpriseValue(fundamentals), enterpriseValueCurrency(quote, fundamentals)),
+): FundamentalsMetric[] {
+  const signed = (value: number) => colorBySign(formatPercent(value), value);
+  const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
   return [
-    ["Market Cap", marketCapText],
-    ["Enterprise Value", enterpriseValueText],
-    ["P/E (TTM)", formatPriceEarnings(fundamentals?.trailingPE, 2)],
-    ["Forward P/E", formatPriceEarnings(fundamentals?.forwardPE, 2)],
-    ["PEG", fundamentals?.pegRatio != null ? formatNumber(fundamentals.pegRatio, 2) : "—"],
-    ["EPS", formatReportedMoney(fundamentals?.eps, fundamentals?.financialCurrency, true)],
-    [`Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`, fundamentals?.dividendYield != null ? formatFractionPercentCell(fundamentals.dividendYield) : "—"],
-    ["Revenue", formatReportedMoney(fundamentals?.revenue, fundamentals?.financialCurrency)],
-    ["Net Income", formatReportedMoney(fundamentals?.netIncome, fundamentals?.financialCurrency)],
-    ["Operating Cash Flow", formatReportedMoney(fundamentals?.operatingCashFlow, fundamentals?.financialCurrency)],
-    ["Free Cash Flow", formatReportedMoney(fundamentals?.freeCashFlow, fundamentals?.financialCurrency)],
+    { label: "Market Cap", ...marketCap },
+    { label: "Enterprise Value", ...enterpriseValue },
+    // A multiple over a loss is N/M, even beside a positive one the source served from an older period.
+    { label: "P/E (TTM)", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
+    { label: "Forward P/E", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)) },
+    { label: "PEG", ...multipleFigure(fundamentals?.pegRatio) },
+    // The flows and EPS are one trailing-twelve-month block, the same twelve months for each line.
+    { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, reportingCurrency, true) },
+    {
+      label: `Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`,
+      ...percentFigure(fundamentals?.dividendYield, formatFractionPercentCell),
+    },
+    { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, reportingCurrency) },
+    { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, reportingCurrency) },
+    { label: "Operating Cash Flow (TTM)", ...reportedMoney(fundamentals?.operatingCashFlow, reportingCurrency) },
+    { label: "Free Cash Flow (TTM)", ...reportedMoney(fundamentals?.freeCashFlow, reportingCurrency) },
     // Levels, not changes, so they carry no sign.
-    ["Operating Margin", fundamentals?.operatingMargin != null ? formatFractionPercentCell(fundamentals.operatingMargin) : "—"],
-    ["Profit Margin", fundamentals?.profitMargin != null ? formatFractionPercentCell(fundamentals.profitMargin) : "—"],
-    ["Revenue Growth", fundamentals?.revenueGrowth != null ? colorBySign(formatPercent(fundamentals.revenueGrowth), fundamentals.revenueGrowth) : "—"],
-    ["Last Quarter Growth", fundamentals?.lastQuarterGrowth != null ? colorBySign(formatPercent(fundamentals.lastQuarterGrowth), fundamentals.lastQuarterGrowth) : "—"],
-    ["1Y Return", priceReturns.return1Y != null ? colorBySign(formatPercent(priceReturns.return1Y), priceReturns.return1Y) : "—"],
-    ["3Y Return", priceReturns.return3Y != null ? colorBySign(formatPercent(priceReturns.return3Y), priceReturns.return3Y) : "—"],
-    ["Shares Outstanding", formatCompact(fundamentals?.sharesOutstanding)],
+    { label: "Operating Margin", ...percentFigure(fundamentals?.operatingMargin, formatFractionPercentCell) },
+    { label: "Profit Margin", ...percentFigure(fundamentals?.profitMargin, formatFractionPercentCell) },
+    { label: "Revenue Growth", ...percentFigure(fundamentals?.revenueGrowth, signed) },
+    { label: "Last Quarter Growth", ...percentFigure(fundamentals?.lastQuarterGrowth, signed) },
+    { label: "1Y Return", ...percentFigure(priceReturns.return1Y, signed) },
+    { label: "3Y Return", ...percentFigure(priceReturns.return3Y, signed) },
+    {
+      label: "Shares Outstanding",
+      text: sharesOutstandingText(fundamentals, receipt),
+      value: fundamentals?.sharesOutstanding,
+      ...(receipt ? { unit: "ADR equivalent" } : {}),
+    },
   ];
 }
 
-const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS"]);
+function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, string]> {
+  return metrics.map((metric) => [metric.label, metric.text]);
+}
+
+const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
+
+type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string };
+
+/** The lines `fundamentals` or `valuation` reports, the ones with a value. */
+function fundamentalsReportMetrics(financials: FundamentalsReportData, view: "fundamentals" | "valuation"): FundamentalsMetric[] {
+  const quote = financials.quote;
+  const fundamentals = financials.fundamentals;
+  const capitalization = selectMarketCapitalization(quote, fundamentals);
+  const marketCap: MetricFigure = capitalization
+    ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
+    : { text: "—" };
+  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials));
+  return (view === "valuation"
+    ? metrics.filter(({ label }) => VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield"))
+    : metrics).filter((metric) => metric.text !== "—");
+}
 
 /** Text for `gloomberb fundamentals` and `gloomberb valuation`: the ticker report's fundamentals without the rest. */
 export function renderFundamentalsReport(
-  financials: TickerFinancials & { symbol: string },
+  financials: FundamentalsReportData,
   view: "fundamentals" | "valuation",
 ): string {
   const quote = financials.quote;
-  const fundamentals = financials.fundamentals;
   const profile = financials.profile;
-  const capitalization = selectMarketCapitalization(quote, fundamentals);
-  const marketCapText = capitalization
-    ? `${formatCompact(capitalization.value)} ${capitalization.currency}`
-    : "—";
-  const metrics = fundamentalsMetrics(quote, fundamentals, marketCapText, computeTickerPriceReturns(financials));
   const symbol = quote?.symbol ?? financials.symbol;
   const name = quote?.name && quote.name !== symbol ? ` ${cliStyles.bold(quote.name)}` : "";
   const lines = [`${cliStyles.accent(symbol)}${name}`];
   const profileParts = [
+    financials.exchange ? exchangeLabel(financials.exchange) : undefined,
     profile?.sector ? `Sector ${profile.sector}` : undefined,
     profile?.industry ? `Industry ${profile.industry}` : undefined,
   ].filter((part): part is string => !!part);
   if (profileParts.length > 0) lines.push(cliStyles.muted(profileParts.join(METADATA_SEPARATOR)));
 
-  const shown = view === "valuation"
-    ? metrics.filter(([label]) => VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield"))
-    : metrics;
   const before = lines.length;
-  appendMetricSection(lines, view === "valuation" ? "Valuation" : "Fundamentals", shown);
+  appendMetricSection(lines, view === "valuation" ? "Valuation" : "Fundamentals", metricLines(fundamentalsReportMetrics(financials, view)));
   if (lines.length === before) lines.push("", cliStyles.muted(`No ${view} reported for ${financials.symbol}.`));
   if (view === "fundamentals") appendTextSection(lines, "Description", profile?.description);
   return lines.join("\n");
 }
 
+/**
+ * `fundamentals` and `valuation` for `--csv` and `--ndjson`: the metrics as
+ * `Metric,Value` with each unit in its label, and for `fundamentals` the
+ * company profile the text prints around them.
+ */
+export function fundamentalsReportTables(
+  financials: FundamentalsReportData,
+  view: "fundamentals" | "valuation",
+  freshness: ReportFreshness,
+): CliReportTables {
+  const metrics = fundamentalsReportMetrics(financials, view);
+  const tables = [exportEntriesTable(
+    view === "valuation" ? "Valuation" : "Fundamentals",
+    metrics.map((metric) => ({ label: metric.label, value: metric.value, formatted: metric.text, unit: metric.unit })),
+  )];
+  if (view === "fundamentals") {
+    const quote = financials.quote;
+    const profile = financials.profile;
+    tables.push(exportEntriesTable("Profile", [
+      { label: "Symbol", value: quote?.symbol ?? financials.symbol },
+      { label: "Name", value: quote?.name },
+      { label: "Exchange", value: financials.exchange ? exchangeLabel(financials.exchange) : undefined },
+      { label: "Sector", value: profile?.sector },
+      { label: "Industry", value: profile?.industry },
+      { label: "Description", value: profile?.description?.trim() },
+    ].filter((entry) => typeof entry.value === "string" && entry.value.trim().length > 0)));
+  }
+  return {
+    tables,
+    footer: reportFooterLines({
+      freshness,
+      notes: metrics.length === 0 ? [`No ${view} reported for ${financials.symbol}.`] : [],
+    }),
+  };
+}
+
+/** "Euronext Paris (EPA)": the venue the report is for, named in full when the app knows it. */
+function listingVenueLabel(
+  listingExchange: string | undefined,
+  quote: TickerFinancials["quote"],
+  financials: TickerFinancials,
+  tickerFile: TickerRecord | null,
+): string {
+  const exchangeName = quote?.exchangeName ?? financials.quoteMetadata?.listingExchangeName ?? tickerFile?.metadata.exchange;
+  const venue = canonicalExchange(listingExchange || quote?.listingExchangeName || exchangeName);
+  return isKnownExchangeCode(venue) ? exchangeLabel(venue) : exchangeShortName(exchangeName, quote?.fullExchangeName);
+}
+
 export async function buildTickerReport({
   symbol,
+  listingExchange,
   tickerFile,
   financials,
   config,
   toBase,
   notes,
+  quoteNote,
   recentNews = [],
   recentSecFilings = [],
 }: {
   symbol: string;
+  /** The exchange the command named, as a canonical code. */
+  listingExchange?: string;
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
   config: AppConfig;
   toBase: (value: number, fromCurrency: string) => Promise<number>;
   notes?: string;
+  /** Why there is no quote, when a source said; "Quote unavailable." otherwise. */
+  quoteNote?: string;
   recentNews?: NewsArticle[];
   recentSecFilings?: SecFilingItem[];
 }): Promise<string> {
@@ -323,10 +459,10 @@ export async function buildTickerReport({
   const lines: string[] = [];
 
   lines.push(`${cliStyles.accent(quote?.symbol ?? symbol)} ${cliStyles.bold(name)}`);
-  if (!quote) lines.push(cliStyles.muted("Quote unavailable."));
+  if (!quote) lines.push(cliStyles.muted(quoteNote ?? QUOTE_UNAVAILABLE));
 
   const summaryParts = [
-    exchangeShortName(quote?.exchangeName ?? financials.quoteMetadata?.listingExchangeName ?? tickerFile?.metadata.exchange, quote?.fullExchangeName) || undefined,
+    listingVenueLabel(listingExchange, quote, financials, tickerFile) || undefined,
     (quote?.currency || financials.quoteMetadata?.currency || tickerFile?.metadata.currency)
       ? `Currency ${quote?.currency || financials.quoteMetadata?.currency || tickerFile?.metadata.currency}` : undefined,
     quote?.marketState ? marketStateLabel(quote.marketState) : undefined,
@@ -370,19 +506,28 @@ export async function buildTickerReport({
       : `${formatCompact(capitalization.value)} ${capitalization.currency}`
     : "—";
   // Shown in the same currency as the market cap, so the two can be compared.
-  const enterpriseValue = fundamentals?.enterpriseValue;
+  const enterpriseValue = reportedEnterpriseValue(fundamentals);
   const evCurrency = enterpriseValueCurrency(quote, fundamentals);
   // A minor unit such as GBp stays as reported: the converter would read it as the major currency.
-  const convertedEnterpriseValue = enterpriseValue != null && Number.isFinite(enterpriseValue) && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
+  const convertedEnterpriseValue = enterpriseValue != null && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
     ? await toBase(enterpriseValue, evCurrency) : Number.NaN;
   const enterpriseValueText = Number.isFinite(convertedEnterpriseValue)
     ? `${formatCompact(convertedEnterpriseValue)} ${config.baseCurrency}`
     : formatReportedMoney(enterpriseValue, evCurrency);
 
   if (quote) {
+    // As the Overview reads it: the regular session, then the extended-hours print against its close.
+    const session = getRegularSessionDisplay(quote)!;
+    const extended = getExtendedSessionDisplay(quote);
+    const extendedRow = (kind: "PRE" | "POST") => extended?.session === kind
+      ? colorBySign(
+        `${formatMarketPriceWithCurrency(extended.price, quote.currency, quoteOptions)} (${formatPercentRaw(extended.changePercent)})`,
+        extended.change,
+      )
+      : "—";
     appendMetricSection(lines, "Quote", [
-      ["Last", colorBySign(formatMarketPriceWithCurrency(quote.price, quote.currency, quoteOptions), quote.change)],
-      ["Change", colorBySign(`${formatMarketChangeWithCurrency(quote.change, quote.currency, quoteOptions, quote.price)} (${formatPercentRaw(quote.changePercent)})`, quote.change)],
+      ["Last", colorBySign(formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions), session.change)],
+      ["Change", colorBySign(`${formatMarketChangeWithCurrency(session.change, quote.currency, quoteOptions, session.price)} (${formatPercentRaw(session.changePercent)})`, session.change)],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       ["Day Range", quote.low != null || quote.high != null
         ? formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)
@@ -396,22 +541,12 @@ export async function buildTickerReport({
     ]);
 
     appendMetricSection(lines, "Extended Hours", [
-      ["Pre-Market", quote.preMarketPrice != null
-        ? colorBySign(
-          `${formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, quoteOptions)} (${formatPercentRaw(quote.preMarketChangePercent)})`,
-          quote.preMarketChange ?? 0,
-        )
-        : "—"],
-      ["After Hours", quote.postMarketPrice != null
-        ? colorBySign(
-          `${formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, quoteOptions)} (${formatPercentRaw(quote.postMarketChangePercent)})`,
-          quote.postMarketChange ?? 0,
-        )
-        : "—"],
+      ["Pre-Market", extendedRow("PRE")],
+      ["After Hours", extendedRow("POST")],
     ]);
   }
 
-  appendMetricSection(lines, "Fundamentals", fundamentalsMetrics(quote, fundamentals, marketCapText, priceReturns, enterpriseValueText));
+  appendMetricSection(lines, "Fundamentals", metricLines(fundamentalsMetrics(quote, fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText })));
 
   if (capitalization?.provenance.kind === "fundamentals") {
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));
@@ -469,6 +604,7 @@ export async function buildTickerReport({
 
 function buildTickerStructuredData({
   symbol,
+  listing,
   tickerFile,
   financials,
   config,
@@ -477,6 +613,7 @@ function buildTickerStructuredData({
   recentSecFilings,
 }: {
   symbol: string;
+  listing: CliListing;
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
   config: AppConfig;
@@ -486,8 +623,10 @@ function buildTickerStructuredData({
 }) {
   const quote = financials.quote;
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
+  const identity = listingIdentity(listing, quote);
   return {
     symbol,
+    listing: { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name },
     quote: quote ? {
       symbol: quote.symbol,
       instrumentType: quote.instrumentType,
@@ -518,10 +657,10 @@ function buildTickerStructuredData({
       watchlists: formatWatchlistNames(config, tickerFile.metadata.watchlists),
       positions: tickerFile.metadata.positions,
     } : null,
-    fundamentals: financials.fundamentals || priceReturns.return1Y != null || priceReturns.return3Y != null ? {
+    fundamentals: financials.fundamentals || priceReturns.return1Y != null || priceReturns.return3Y != null ? exportedFundamentals({
       ...financials.fundamentals,
       ...priceReturns,
-    } : undefined,
+    }) : undefined,
     profile: financials.profile,
     financialCurrency: financials.financialCurrency ?? null,
     latestAnnual: latestFinancialPeriod(financials.annualStatements, row => row.date) ?? null,
@@ -547,23 +686,42 @@ function buildTickerStructuredData({
   };
 }
 
+const QUOTE_UNAVAILABLE = "Quote unavailable.";
+
+/** Asks for the quote the report lacks once more, for the reason the data service gave when it had none. */
+async function quoteUnavailableNote(dataProvider: MarketContext["dataProvider"], symbol: string, exchange: string): Promise<string> {
+  try {
+    await dataProvider.getQuote(symbol, exchange);
+  } catch (error) {
+    return providerMissReason(error) ?? QUOTE_UNAVAILABLE;
+  }
+  return QUOTE_UNAVAILABLE;
+}
+
 export async function ticker(symbol: string, dependencies: TickerCommandDependencies = {}) {
   const initMarketDataFn = dependencies.initMarketData ?? initMarketData;
   const failCommand = dependencies.fail ?? fail;
   await withMarketData(initMarketDataFn, async ({ config, store, dataProvider, dataDir }) => {
-    const normalized = symbol.trim().toUpperCase();
-    const tickerFile = await store.loadTicker(normalized);
-    const exchange = tickerFile?.metadata.exchange ?? "";
+    let listing: CliListing;
+    try {
+      listing = await resolveCliListing(symbol, dependencies.exchange, { store, dataProvider });
+    } catch (error) {
+      if (error instanceof ListingArgError) failCommand(error.message, error.details);
+      throw error;
+    }
+    // A named listing goes by its key (SAN:EPA); a bare symbol by its saved listing, as before.
+    const normalized = listing.key;
+    const tickerFile = listing.saved;
+    const { symbol: requestSymbol, exchange } = listing.request;
     const toBase = createBaseConverter(dataProvider, config.baseCurrency);
 
     let financials: TickerFinancials | null = null;
     try {
-      financials = await dataProvider.getTickerFinancials(normalized, exchange);
+      financials = await dataProvider.getTickerFinancials(requestSymbol, exchange);
     } catch (error) {
-      failCommand(
-        `Failed to fetch data for ${normalized}.`,
-        error instanceof Error ? error.message : String(error),
-      );
+      // A known exchange the symbol is not listed on: say where it is.
+      await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });
+      failCommand(`Failed to fetch data for ${normalized}.`, error instanceof Error ? error.message : String(error));
     }
 
     const hasResearchData = financials && (
@@ -579,25 +737,30 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       || financials.quarterlyStatements.length > 0
     );
     if (!financials || (!hasResearchData && !tickerFile?.metadata.positions.some((position) => position.shares !== 0))) {
+      await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });
       failCommand(`No research data available for ${normalized}.`);
     }
     const resolvedFinancials = financials as TickerFinancials;
     const quote = resolvedFinancials.quote;
 
     const notesFiles = new NotesFiles(dataDir);
+    const listingName = listingIdentity(listing, quote).name;
     const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
-      notesFiles.load(normalized),
+      notesFiles.load(tickerFile?.metadata.ticker ?? normalized),
       dataProvider.getNews({
         feed: "ticker",
         // Still set for news plugins that read the deprecated scope.
         scope: "ticker",
-        ticker: normalized,
+        ticker: requestSymbol,
         exchange: exchange || quote?.exchangeName || "",
         tickerTier: "primary",
         limit: NEWS_ITEM_LIMIT,
       }),
+      // Outside the US the lookup checks the SEC registrant against the listing's company,
+      // and refuses another company's filings.
       shouldFetchSecFilings(tickerFile, resolvedFinancials) && dataProvider.getSecFilings
-        ? dataProvider.getSecFilings(normalized, SEC_FILING_LIMIT, exchange || quote?.exchangeName || "")
+        ? dataProvider.getSecFilings(requestSymbol, SEC_FILING_LIMIT, exchange || quote?.exchangeName || "",
+          listingName ? { listingName } : undefined)
         : Promise.resolve([]),
     ]);
 
@@ -605,11 +768,16 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const recentNews = newsResult.status === "fulfilled" ? newsResult.value : [];
     const recentSecFilings = secFilingsResult.status === "fulfilled" ? secFilingsResult.value : [];
 
+    // The quote is the feed in this report; without one, the fundamentals date it.
+    const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
+    const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
     if (dependencies.printResult) {
       dependencies.printResult({
-        warnings: quote ? undefined : ["Quote unavailable."],
+        freshness,
+        warnings: quote ? undefined : [quoteNote!],
         data: buildTickerStructuredData({
           symbol: normalized,
+          listing,
           tickerFile,
           financials: resolvedFinancials,
           config,
@@ -623,13 +791,16 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
 
     console.log(await buildTickerReport({
         symbol: normalized,
+        listingExchange: listing.exchange,
         tickerFile,
         financials: resolvedFinancials,
         config,
         toBase,
         notes,
+        quoteNote,
         recentNews,
         recentSecFilings,
     }));
+    if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
   });
 }

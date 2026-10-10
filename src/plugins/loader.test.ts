@@ -6,7 +6,7 @@ import { join } from "path";
 import type { CrashReportsPayload } from "../api-client";
 import { flushCrashReports, installCrashReporter, resetCrashReporterForTests } from "../telemetry/crash-reports";
 import { VERSION } from "../version";
-import { listPluginDirectories, loadExternalPlugin, readPluginCommit } from "./loader";
+import { listPluginDirectories, loadExternalPlugin, readPluginCommit, unresolvedSpecifier } from "./loader";
 
 const scratch: string[] = [];
 
@@ -156,11 +156,24 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
     const loaded = await loadExternalPlugin(gateway, "cli", { fresh: true });
     await flushCrashReports({ timeoutMs: 500 });
 
+    // Bun 1.3 names the module, 1.4 the package alone.
+    const unresolved = /Cannot find (?:module 'gloom-fixture-peer\/bridge'|package 'gloom-fixture-peer')/;
     expect(loaded?.needsRestart).toBeUndefined();
-    expect(loaded?.error).toContain("Cannot find module 'gloom-fixture-peer/bridge'");
+    expect(loaded?.error).toMatch(unresolved);
     expect(sent.flatMap((payload) => payload.errors.map((error) => error.message))).toEqual([
-      expect.stringContaining("Cannot find module 'gloom-fixture-peer/bridge'"),
+      expect.stringMatching(unresolved),
     ]);
+  });
+
+  test("checks the subpath when the message names only the package", () => {
+    // Bun 1.4's wording for `import "gloom-fixture-peer/bridge"`: the peer's
+    // index exists, so judging by the package alone would ask for a restart.
+    const err = Object.assign(new Error("Cannot find package 'gloom-fixture-peer' imported from /plugins/gloom-fixture-gateway/plugin.ts"), {
+      code: "ERR_MODULE_NOT_FOUND",
+      specifier: "gloom-fixture-peer/bridge",
+    });
+    expect(unresolvedSpecifier(err, err.message)).toBe("gloom-fixture-peer/bridge");
+    expect(unresolvedSpecifier(new Error("x"), "Cannot find module 'gloom-fixture-peer/bridge' from '/plugins/a.ts'")).toBe("gloom-fixture-peer/bridge");
   });
 });
 

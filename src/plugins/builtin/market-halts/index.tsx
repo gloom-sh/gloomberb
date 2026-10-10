@@ -17,6 +17,7 @@ export const marketHaltsPlugin: GloomPlugin = {
   panes: [
     {
       id: MARKET_HALTS_PANE_ID,
+      reportFreshness: { source: "Nasdaq Trader" },
       name: "Market Halts",
       icon: "H",
       component: MarketHaltsPane,

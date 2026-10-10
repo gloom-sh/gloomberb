@@ -6,7 +6,6 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
-import { useRafCallback } from "../../../../react/use-raf-callback";
 import {
   type DockDividerLayout,
   type DockGeometryOptions,
@@ -24,6 +23,7 @@ import {
 } from "./index";
 import type { ActionMenuState } from "../action-menu-overlay";
 import type { DividerPreviewState } from "../native/window-state";
+import { createLiveDragStore, IDLE_DRAG, type LiveDragStore } from "./live";
 import type { WindowEditState } from "../../window-edit/mode";
 import { useShellActiveDrag } from "../active-drag";
 import { useShellNativePointerRuntime } from "../native/pointer-runtime";
@@ -58,6 +58,9 @@ export interface ShellMouseEvent {
   button?: number;
   preciseX?: number;
   preciseY?: number;
+  /** Desktop: where the browser predicts the pointer a moment later, for drawing only. */
+  predictedX?: number;
+  predictedY?: number;
   /** Whether a later handler has claimed this pointer interaction. */
   isDefaultPrevented?: () => boolean;
   stopPropagation: () => void;
@@ -71,88 +74,97 @@ export interface VisibleFloatingPane {
 
 export interface ShellDragRuntimeState {
   cancelActiveDrag: () => void;
-  dividerPreview: DividerPreviewState | null;
-  dividerPreviewRef: MutableRefObject<DividerPreviewState | null>;
-  dockPreview: DragPreview | null;
-  dockPreviewRef: MutableRefObject<DragPreview | null>;
-  dragCursor: { x: number; y: number } | null;
-  dragFloatingRect: { paneId: string; rect: FloatingRect } | null;
   dragRef: MutableRefObject<DragMode | null>;
   hasActiveDrag: () => boolean;
-  setDragCursor: Dispatch<SetStateAction<{ x: number; y: number } | null>>;
+  /** Positions that follow the pointer, outside React state. */
+  live: LiveDragStore;
+  /** The tiled pane whose drop grid is under the pointer. */
+  setHoverTarget: (targetId: string | null) => void;
+  startDrag: (drag: DragMode) => void;
   updateDividerPreview: (next: DividerPreviewState | null) => void;
   updateDockPreview: (next: DragPreview | null) => void;
   updateDragFloatingRect: (next: { paneId: string; rect: FloatingRect } | null) => void;
 }
 
+function sameRect(a: LayoutBounds, b: LayoutBounds): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+function sameDragPreview(a: DragPreview | null, b: DragPreview | null): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.kind !== b.kind || !sameRect(a.rect, b.rect)) return false;
+  if (a.kind === "snap" && b.kind === "snap") return a.position === b.position;
+  if (a.kind === "dock" && b.kind === "dock") {
+    const [x, y] = [a.target, b.target];
+    if (x.kind === "frame" && y.kind === "frame") return x.edge === y.edge;
+    if (x.kind === "leaf" && y.kind === "leaf") return x.targetId === y.targetId && x.position === y.position;
+  }
+  return false;
+}
+
 export function useShellDragRuntimeState({
   contentHeight,
-  throttleFloatingPreview = false,
+  nativePaneChrome,
   width,
 }: {
   contentHeight: number;
-  throttleFloatingPreview?: boolean;
+  nativePaneChrome: boolean;
   width: number;
 }): ShellDragRuntimeState {
   const dragRef = useRef<DragMode | null>(null);
-  const [dragFloatingRect, setDragFloatingRect] = useState<{ paneId: string; rect: FloatingRect } | null>(null);
-  const pendingDragFloatingRectRef = useRef<{ paneId: string; rect: FloatingRect } | null>(null);
-  const [dragCursor, setDragCursor] = useState<{ x: number; y: number } | null>(null);
-  const [dividerPreview, setDividerPreview] = useState<DividerPreviewState | null>(null);
-  const [dockPreview, setDockPreview] = useState<DragPreview | null>(null);
-  const dividerPreviewRef = useRef<DividerPreviewState | null>(null);
-  const dockPreviewRef = useRef<DragPreview | null>(null);
-  const flushDragFloatingRect = useRafCallback(() => {
-    setDragFloatingRect(pendingDragFloatingRectRef.current);
-  });
+  const [live] = useState(createLiveDragStore);
 
   const updateDragFloatingRect = useCallback((next: { paneId: string; rect: FloatingRect } | null) => {
-    const constrainedNext = next
+    const current = live.get();
+    const floating = next
       ? { paneId: next.paneId, rect: constrainFloatingRectToBounds(next.rect, width, contentHeight) }
       : null;
-    pendingDragFloatingRectRef.current = constrainedNext;
-    if (!next) {
-      setDragFloatingRect(null);
-      return;
-    }
-    if (!throttleFloatingPreview) {
-      setDragFloatingRect(constrainedNext);
-      return;
-    }
-    flushDragFloatingRect();
-  }, [contentHeight, flushDragFloatingRect, throttleFloatingPreview, width]);
+    // A desktop pane on the move follows by restyling itself (`move`); its
+    // start and end, a resize and every terminal frame redraw through React.
+    const follows = nativePaneChrome
+      && floating !== null
+      && current.floating?.paneId === floating.paneId
+      && current.paneDrag?.paneId === floating.paneId;
+    if (follows) live.move({ floating });
+    else live.set({ floating });
+  }, [contentHeight, live, nativePaneChrome, width]);
+
+  const setHoverTarget = useCallback((targetId: string | null) => {
+    live.set({ hoverTargetId: targetId });
+  }, [live]);
 
   const updateDividerPreview = useCallback((next: DividerPreviewState | null) => {
-    dividerPreviewRef.current = next;
-    setDividerPreview(next);
-  }, []);
+    const current = live.get().divider;
+    // The desktop divider follows by restyling itself; React hears only that it started or ended.
+    if (nativePaneChrome && next && current?.pathKey === next.pathKey) live.move({ divider: next });
+    else live.set({ divider: next });
+  }, [live, nativePaneChrome]);
 
   const updateDockPreview = useCallback((next: DragPreview | null) => {
-    dockPreviewRef.current = next;
-    setDockPreview(next);
-  }, []);
+    // Recomputed on every move; only a different target is news.
+    if (sameDragPreview(live.get().dockPreview, next)) return;
+    live.set({ dockPreview: next });
+  }, [live]);
+
+  const startDrag = useCallback((drag: DragMode) => {
+    dragRef.current = drag;
+    live.set({ paneDrag: drag.type === "pane-drag" ? { paneId: drag.paneId, mode: drag.mode } : null });
+  }, [live]);
 
   const cancelActiveDrag = useCallback(() => {
     dragRef.current = null;
-    updateDragFloatingRect(null);
-    setDragCursor(null);
-    updateDividerPreview(null);
-    updateDockPreview(null);
-  }, [updateDividerPreview, updateDockPreview, updateDragFloatingRect]);
+    live.set(IDLE_DRAG);
+  }, [live]);
 
   const hasActiveDrag = useCallback(() => dragRef.current != null, []);
 
   return {
     cancelActiveDrag,
-    dividerPreview,
-    dividerPreviewRef,
-    dockPreview,
-    dockPreviewRef,
-    dragCursor,
-    dragFloatingRect,
     dragRef,
     hasActiveDrag,
-    setDragCursor,
+    live,
+    setHoverTarget,
+    startDrag,
     updateDividerPreview,
     updateDockPreview,
     updateDragFloatingRect,

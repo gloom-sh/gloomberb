@@ -1,17 +1,18 @@
 import { useEffect, useMemo } from "react";
 import type {
   DockDividerLayout,
+  DockLeafLayout,
   FloatingRect,
   LayoutBounds,
   ResolvedPane,
 } from "../../../../layout/pane-manager";
 import { useNativeRenderer } from "../../../../ui";
 import type { DragPreview } from "../drag";
+import { IDLE_DRAG, useLiveDrag, useLiveHoverOverlay, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
 import {
   buildNativeTransientOccluders,
   buildNativeWindowState,
   resolveNativeDockDividers,
-  type DividerPreviewState,
 } from "./window-state";
 import type { WindowEditDockMovePreview } from "../../window-edit/presentation";
 
@@ -24,18 +25,18 @@ interface ShellNativeSurfaceMenuState {
   maxRows?: number;
 }
 
-interface UseShellNativeSurfaceWindowStateOptions {
-  activeHoverOverlay: Parameters<typeof buildNativeTransientOccluders>[0]["activeHoverOverlay"];
-  activePaneDrag: { paneId: string; mode: "docked" | "floating" } | null;
+interface ShellNativeSurfaceSyncProps {
   appHeaderHeight: number;
   commandBarNativeOccluder: LayoutBounds | null;
   contentHeight: number;
   dialogOpen: boolean;
-  dividerPreview: DividerPreviewState | null;
   dockDividerLayouts: DockDividerLayout[];
   dockedPanes: ResolvedPane[];
-  dragFloatingRect: { paneId: string; rect: FloatingRect } | null;
-  effectiveDockPreview: DragPreview | null;
+  /** The tiled panes a moving pane can be dropped on. */
+  dockLeafLayouts: DockLeafLayout[];
+  /** A pane from another window over this one's edge. */
+  externalDockPreview: DragPreview | null;
+  live: LiveDragStore;
   menuState: ShellNativeSurfaceMenuState | null;
   nativeWindowModePanelRect: LayoutBounds | null;
   visibleFloatingPanes: Array<{ pane: ResolvedPane; rect: FloatingRect }>;
@@ -43,26 +44,40 @@ interface UseShellNativeSurfaceWindowStateOptions {
   windowModeDockMovePreview: WindowEditDockMovePreview | null;
 }
 
-export function useShellNativeSurfaceWindowState({
-  activeHoverOverlay,
-  activePaneDrag,
+const NO_LEAVES: DockLeafLayout[] = [];
+const selectAll = (geometry: LiveDragGeometry) => geometry;
+const selectIdle = () => IDLE_DRAG;
+
+/**
+ * Keeps the native image surfaces clear of the layout. A component of its own,
+ * so following a drag redraws nothing but this.
+ */
+export function ShellNativeSurfaceSync({
   appHeaderHeight,
   commandBarNativeOccluder,
   contentHeight,
   dialogOpen,
-  dividerPreview,
   dockDividerLayouts,
   dockedPanes,
-  dragFloatingRect,
-  effectiveDockPreview,
+  dockLeafLayouts,
+  externalDockPreview,
+  live,
   menuState,
   nativeWindowModePanelRect,
   visibleFloatingPanes,
   width,
   windowModeDockMovePreview,
-}: UseShellNativeSurfaceWindowStateOptions) {
+}: ShellNativeSurfaceSyncProps): null {
   // Only terminal hosts draw kitty images that need to stay clear of the layout.
   const nativeSurfaceManager = useNativeRenderer().nativeSurfaceManager;
+  const {
+    paneDrag: activePaneDrag,
+    floating: dragFloatingRect,
+    divider: dividerPreview,
+    dockPreview,
+  } = useLiveDrag(live, nativeSurfaceManager ? selectAll : selectIdle);
+  const effectiveDockPreview = dockPreview ?? externalDockPreview;
+  const activeHoverOverlay = useLiveHoverOverlay(live, nativeSurfaceManager ? dockLeafLayouts : NO_LEAVES);
   const nativeTransientOccluders = useMemo(() => buildNativeTransientOccluders({
     activeHoverOverlay,
     activePaneDrag,
@@ -124,4 +139,5 @@ export function useShellNativeSurfaceWindowState({
   useEffect(() => {
     nativeSurfaceManager?.setWindowState(nativeWindowState);
   }, [nativeSurfaceManager, nativeWindowState]);
+  return null;
 }

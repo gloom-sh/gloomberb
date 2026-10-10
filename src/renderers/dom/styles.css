@@ -140,9 +140,11 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   -webkit-user-select: none;
   user-select: none;
 }
-[data-gloom-role="pane-grip"],
-[data-gloom-role="pane-header-chrome"] {
+[data-gloom-role="pane-header"][data-drag-surface="pane"] {
   cursor: grab;
+}
+[data-gloom-role="pane-header-tabs"] {
+  cursor: default;
 }
 [data-gloom-role="pane-header"] [data-gloom-role="tab-button"],
 [data-gloom-role="pane-header"] button,
@@ -157,12 +159,20 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="pane-restore"] {
   cursor: pointer;
 }
-body.gloom-dragging [data-gloom-role="pane-grip"],
-body.gloom-dragging [data-gloom-role="pane-header-chrome"] {
+/* Up for the length of a drag (see drag-shield.ts): the grabbing cursor
+   everywhere, and no hover under the pointer. */
+[data-gloom-role="drag-shield"] {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
   cursor: grabbing;
 }
-body.gloom-dragging {
-  cursor: grabbing;
+/* Surfaces that drag a pane, its size or a split keep the whole pointer
+   stream: a touch or pen press on them never starts a pan or zoom. */
+[data-gloom-role="pane-header"][data-drag-surface="pane"],
+[data-gloom-role="resize-handle"],
+[data-gloom-role="dock-divider"] {
+  touch-action: none;
 }
 [data-gloom-role="pane-title"] {
   overflow: hidden;
@@ -281,11 +291,35 @@ body.gloom-dragging {
     0 0 0 4px color-mix(in srgb, var(--gloom-border-focused) 28%, transparent);
   pointer-events: none;
 }
+/* Heat map tiles animate only transforms and opacity, which the compositor
+   runs on its own: a tile sliding from its old place after a relayout, the
+   previous colour fading out over the new one, and a light flash on a tile
+   whose move just jumped. */
+@keyframes gloom-heat-glide-a {
+  from { transform: translate(var(--heat-glide-x, 0), var(--heat-glide-y, 0)); }
+  to { transform: none; }
+}
+@keyframes gloom-heat-glide-b {
+  from { transform: translate(var(--heat-glide-x, 0), var(--heat-glide-y, 0)); }
+  to { transform: none; }
+}
+@keyframes gloom-heat-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes gloom-heat-pulse {
+  0%, 100% { opacity: 0; }
+  30% { opacity: 0.16; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-gloom-role="heat-tile"],
+  [data-gloom-role="heat-tile"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
 [data-gloom-role="chart-surface"] {
   cursor: crosshair;
-}
-body.gloom-dragging [data-gloom-role="chart-surface"] {
-  cursor: grabbing;
 }
 [data-gloom-role="tab-list"] {
   scrollbar-width: none;

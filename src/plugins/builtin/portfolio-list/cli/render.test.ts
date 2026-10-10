@@ -11,6 +11,10 @@ import { showCollection } from "./render";
 import { portfolioCliCommand } from "./portfolio-command";
 import { createTestTicker } from "../../../../test-support/ticker";
 import { createTestCliContext } from "../../../../test-support/cli-context";
+import { MemoryResourceStore } from "../../../../data/memory-resource-store";
+import { persistBrokerAccounts } from "../../../../brokers/account-cache";
+import type { BrokerAdapter } from "../../../../types/broker";
+import type { BrokerAccount } from "../../../../types/trading";
 
 const ticker: TickerRecord = createTestTicker("AAPL", "Apple", {
   portfolios: ["main"],
@@ -18,7 +22,7 @@ const ticker: TickerRecord = createTestTicker("AAPL", "Apple", {
 });
 const quote = { symbol: "AAPL", price: 90, currency: "USD", change: -5, changePercent: -5.26, previousClose: 95, lastUpdated: Date.now() };
 
-test("CLI rejects blank acquisition cost before resolving or writing a ticker, and accepts explicit zero", async () => {
+test("CLI rejects blank acquisition cost and bare CASH before resolving or writing a ticker, and accepts explicit zero", async () => {
   const config = createDefaultConfig("/unused-cost-parser");
   let reads = 0;
   const saved: TickerRecord[] = [];
@@ -31,6 +35,9 @@ test("CLI rejects blank acquisition cost before resolving or writing a ticker, a
     expect(saved).toEqual([]);
     expect(reads).toBe(0);
   }
+  // Bare CASH once resolved to the company trading as CASH and valued the cash as its shares.
+  await expect(portfolioCliCommand.execute(["position", "set", "main", "CASH", "500000", "1", "USD"], ctx)).rejects.toThrow("cash line");
+  expect(reads).toBe(0);
   const logger = spyOn(console, "log").mockImplementation(() => {});
   try { await portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", "0"], ctx); }
   finally { logger.mockRestore(); }
@@ -54,7 +61,7 @@ test("ticker and collection CLI reconcile short P&L and withhold totals for a mi
     }).context);
   } finally { logger.mockRestore(); }
   const result = output.join("\n");
-  expect(result).toMatch(/Total P&L[^\n]*—/);
+  expect(result).toMatch(/TOTAL[^\n]*—/);
   expect(result).toContain("P&L unavailable for MISSING");
   expect(result).toContain("+$100");
 });
@@ -242,4 +249,24 @@ test("portfolio CLI quote context follows the selected contract and unresolved i
   try { await showCollection("b", { ...ctx, cliOptions: DEFAULT_CLI_OPTIONS }); } finally { logger.mockRestore(); }
   expect(output.join("\n")).toContain("+$400");
   expect(calls).toHaveLength(2);
+});
+
+test("a broker account's saved cash stands in for cash entered by hand, so it is never counted twice", async () => {
+  const resources = new MemoryResourceStore();
+  const instance = { id: "ibkr-main", brokerType: "ibkr", label: "IBKR", config: {} };
+  persistBrokerAccounts(resources, instance, { id: "ibkr" } as unknown as BrokerAdapter,
+    [{ accountId: "U1", name: "U1", currency: "USD", totalCashValue: 1_000, updatedAt: 1 } as BrokerAccount]);
+  const config = createDefaultConfig("/unused-broker-cash");
+  config.brokerInstances = [instance];
+  config.portfolios = [{ id: "broker:ibkr-main:U1", name: "U1", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-main",
+    brokerAccountId: "U1", cash: { amount: 50_000, currency: "USD" }, targetWeights: { AAPL: 80 } }];
+  const held: TickerRecord = { metadata: { ...ticker.metadata, portfolios: [config.portfolios[0]!.id],
+    positions: [{ portfolio: config.portfolios[0]!.id, shares: 100, avgCost: 80, currency: "USD", broker: "ibkr" }] } };
+  const cli = createTestCliContext({ config, store: { loadAllTickers: async () => [held] },
+    persistence: { close() {}, resources }, dataProvider: createTestDataProvider({ getQuote: async () => quote }) }, { format: "json" });
+  await showCollection("U1", cli.context);
+  const { data, metadata } = cli.printed[0]!.result;
+  expect(metadata).toMatchObject({ total: 10_000, cash: { source: "broker", amount: 1_000, value: 1_000, weight: 10 } });
+  expect(data[0]).toMatchObject({ marketValue: 9_000, weight: 90, targetWeight: 80, drift: 10, tradeValue: -1_000 });
+  expect(data[0].tradeShares).toBeCloseTo(-1_000 / 90, 8);
 });

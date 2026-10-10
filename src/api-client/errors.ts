@@ -12,6 +12,8 @@ export class ApiRequestError extends Error {
     readonly retryAfterMs?: number,
     /** The body's `error` field, e.g. a broker route's "unsupported" or "tool_error". */
     readonly code?: string,
+    /** The rest of a JSON error body, for a route that says more, e.g. which user refused a chat. */
+    readonly details?: Readonly<Record<string, unknown>>,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -76,6 +78,16 @@ export function parseApiErrorMessage(body: string): string {
     return parts.join(" ") || body;
   } catch {
     return htmlErrorTitle(body) ?? body;
+  }
+}
+
+/** A JSON error body as an object, or undefined for any other body. */
+export function parseApiErrorDetails(body: string): Readonly<Record<string, unknown>> | undefined {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
+  } catch {
+    return undefined;
   }
 }
 

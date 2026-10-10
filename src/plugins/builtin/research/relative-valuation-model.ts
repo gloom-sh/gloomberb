@@ -1,5 +1,6 @@
-import { comparablePriceEarnings } from "../../../utils/price-earnings";
+import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
+import { reportedEnterpriseValue } from "../../../utils/fundamentals";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
 export const RELATIVE_VALUATION_STALE_QUOTE_NOTICE = "Quote stale: quote-based values unavailable";
@@ -10,11 +11,20 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
   const fundamentals = financials?.fundamentals;
   const quoteStale = quote?.stale === true;
   const capitalization = selectMarketCapitalization(quoteStale ? undefined : quote, fundamentals);
+  const enterpriseValue = reportedEnterpriseValue(fundamentals);
+  // A zero or non-finite enterprise value is the source's gap, and the ratio it serves beside it comes from the same observation.
+  const enterpriseValueGap = fundamentals?.enterpriseValue != null && enterpriseValue == null;
   const compatibleCurrency = !!fundamentals?.financialCurrency && !!quote?.currency
     && fundamentals.financialCurrency === quote.currency;
   const reportedMultiples = {
     trailingPE: fundamentals?.trailingPE != null && Number.isFinite(fundamentals.trailingPE) ? fundamentals.trailingPE : null,
     forwardPE: fundamentals?.forwardPE != null && Number.isFinite(fundamentals.forwardPE) ? fundamentals.forwardPE : null,
+  };
+  // A multiple over a loss reads N/M even when the source served a positive one beside it.
+  const { trailingPE: trailingNotMeaningful, forwardPE: forwardNotMeaningful } = notMeaningfulMultiples(fundamentals);
+  const notMeaningful = {
+    ...(trailingNotMeaningful ? { trailingPE: trailingNotMeaningful } : {}),
+    ...(forwardNotMeaningful ? { forwardPE: forwardNotMeaningful } : {}),
   };
   return {
     price: quoteStale ? null : quote?.price ?? null,
@@ -35,15 +45,17 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
     marketCap: capitalization?.value ?? null,
     marketCapCurrency: capitalization?.currency ?? null,
     marketCapProvenance: capitalization?.provenance ?? null,
-    trailingPE: comparablePriceEarnings(reportedMultiples.trailingPE),
-    forwardPE: comparablePriceEarnings(reportedMultiples.forwardPE),
+    trailingPE: trailingNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.trailingPE),
+    forwardPE: forwardNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.forwardPE),
     reportedMultiples,
+    /** Why a multiple is N/M: its earnings base is zero or a loss. */
+    notMeaningful,
     // Vendor ADR ratios can mix unverified valuation and reporting units too.
-    evSales: !compatibleCurrency ? null
+    evSales: !compatibleCurrency || enterpriseValueGap ? null
       : fundamentals?.enterpriseToRevenue != null && Number.isFinite(fundamentals.enterpriseToRevenue)
         ? fundamentals.enterpriseToRevenue
-        : fundamentals?.enterpriseValue != null && fundamentals.revenue != null && fundamentals.revenue > 0
-          ? fundamentals.enterpriseValue / fundamentals.revenue : null,
+        : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
+          ? enterpriseValue / fundamentals.revenue : null,
     fcfYield: capitalization && fundamentals?.financialCurrency === capitalization.currency
       && fundamentals.freeCashFlow != null && Number.isFinite(fundamentals.freeCashFlow) && capitalization.value > 0
       ? fundamentals.freeCashFlow / capitalization.value : null,

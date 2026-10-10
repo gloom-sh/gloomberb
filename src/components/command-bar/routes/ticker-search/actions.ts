@@ -64,6 +64,9 @@ export function useCommandBarTickerSearchActions({
     // text goes quiet rather than repeating it.
     const badge = formatInstrumentBadge(candidate);
     const right = candidate.exchangeLabel || candidate.primaryExchangeLabel || candidate.right || undefined;
+    // The candidate's detail leads with the name; the rest repeats the badge or venue.
+    const leadingName = candidate.detail.split(" | ")[0]?.trim();
+    const name = leadingName && leadingName.toUpperCase() !== candidate.label.toUpperCase() ? leadingName : undefined;
 
     if (candidate.kind === "ticker" && candidate.ticker) {
       return {
@@ -74,6 +77,7 @@ export function useCommandBarTickerSearchActions({
         instrumentType: candidate.instrumentType,
         detail,
         badge,
+        name,
         right,
         category: candidate.category,
         kind: "ticker",
@@ -97,6 +101,7 @@ export function useCommandBarTickerSearchActions({
       instrumentType: candidate.instrumentType,
       detail,
       badge,
+      name,
       right,
       category: candidate.category,
       kind: "search",

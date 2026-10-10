@@ -65,6 +65,7 @@ const askgModule: PluginModule = {
   },
   panes: [{
     id: ASKG_PANE_ID,
+    reportFreshness: { status: "not-a-feed", basis: "generated answer" },
     name: "Ask Gloom",
     icon: "K",
     component: ASKGPane,

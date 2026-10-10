@@ -91,11 +91,15 @@ export function clampWorldMapViewport(
   width: number,
   height: number,
   yUnitAspect = 1,
+  maxZoom = MAX_WORLD_MAP_ZOOM,
 ): WorldMapViewport {
-  const zoom = clamp(viewport.zoom, 1, MAX_WORLD_MAP_ZOOM);
+  const zoom = clamp(viewport.zoom, 1, maxZoom);
   if (zoom <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
 
   const { availableWidth, effectiveHeight, latitudeSpan } = mapExtent(width, height, yUnitAspect);
+  // A plot with no area yet (a pane mid-layout) says nothing about what fits:
+  // keep the centre rather than resetting it to the middle of the world.
+  if (availableWidth <= 0 || effectiveHeight <= 0) return { ...viewport, zoom };
   const scale = fittedWorldMapScale(width, height, yUnitAspect) * zoom;
   const halfLongitude = availableWidth / (2 * scale);
   const halfLatitude = effectiveHeight / (2 * scale);
@@ -115,6 +119,19 @@ export function clampWorldMapViewport(
   };
 }
 
+/** A viewport read back from saved pane state, or null when it is not one. */
+export function savedWorldMapViewport(value: unknown, maxZoom = MAX_WORLD_MAP_ZOOM): WorldMapViewport | null {
+  if (!value || typeof value !== "object") return null;
+  const { zoom, centerLongitude, centerLatitude } = value as Partial<WorldMapViewport>;
+  if (![zoom, centerLongitude, centerLatitude].every((part) => typeof part === "number" && Number.isFinite(part))) return null;
+  if (zoom! <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
+  return {
+    zoom: Math.min(zoom!, maxZoom),
+    centerLongitude: clamp(centerLongitude!, -180, 180),
+    centerLatitude: clamp(centerLatitude!, MIN_LATITUDE, MAX_LATITUDE),
+  };
+}
+
 export function zoomWorldMapViewport(
   viewport: WorldMapViewport,
   width: number,
@@ -122,8 +139,9 @@ export function zoomWorldMapViewport(
   point: WorldMapPoint,
   zoomFactor: number,
   yUnitAspect = 1,
+  maxZoom = MAX_WORLD_MAP_ZOOM,
 ): WorldMapViewport {
-  const nextZoom = clamp(viewport.zoom * zoomFactor, 1, MAX_WORLD_MAP_ZOOM);
+  const nextZoom = clamp(viewport.zoom * zoomFactor, 1, maxZoom);
   if (nextZoom <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
 
   const geographic = unprojectWorldPoint(point.x, point.y, width, height, yUnitAspect, viewport);
@@ -133,7 +151,7 @@ export function zoomWorldMapViewport(
     zoom: nextZoom,
     centerLongitude: geographic.longitude - (point.x - availableWidth / 2) / scale,
     centerLatitude: geographic.latitude + (point.y * unitAspect - effectiveHeight / 2) / scale,
-  }, width, height, yUnitAspect);
+  }, width, height, yUnitAspect, maxZoom);
 }
 
 export function panWorldMapViewport(
@@ -143,6 +161,7 @@ export function panWorldMapViewport(
   deltaX: number,
   deltaY: number,
   yUnitAspect = 1,
+  maxZoom = MAX_WORLD_MAP_ZOOM,
 ): WorldMapViewport {
   if (viewport.zoom <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
   const scale = worldMapScale(width, height, yUnitAspect, viewport);
@@ -151,7 +170,7 @@ export function panWorldMapViewport(
     zoom: viewport.zoom,
     centerLongitude: viewport.centerLongitude - deltaX / scale,
     centerLatitude: viewport.centerLatitude + (deltaY * unitAspect) / scale,
-  }, width, height, yUnitAspect);
+  }, width, height, yUnitAspect, maxZoom);
 }
 
 export function clusterWorldVenues(

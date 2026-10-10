@@ -738,6 +738,7 @@ class GloomApiClient {
   getCloudEarningsCalendar = this.data.getCloudEarningsCalendar.bind(this.data);
   getCloudEarningsHistory = this.data.getCloudEarningsHistory.bind(this.data);
   getCloudFredSeries = this.data.getCloudFredSeries.bind(this.data);
+  getCloudFredSeriesCatalog = this.data.getCloudFredSeriesCatalog.bind(this.data);
   getCloudCryptoMarkets = this.data.getCloudCryptoMarkets.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
@@ -771,6 +772,7 @@ class GloomApiClient {
   getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);
   getCloudCotContract = this.data.getCloudCotContract.bind(this.data);
   creditDocuments = this.data.creditDocuments.bind(this.data);
+  geo = this.data.geo.bind(this.data);
   getCloudHiring = this.data.getCloudHiring.bind(this.data);
   getCloudAppRankHistory = this.data.getCloudAppRankHistory.bind(this.data);
   getCloudAppAttention = this.data.getCloudAppAttention.bind(this.data);
@@ -822,6 +824,7 @@ class GloomApiClient {
   getRiskReports = this.data.getRiskReports.bind(this.data);
   getRiskReport = this.data.getRiskReport.bind(this.data);
   getCloudSecFilings = this.data.getCloudSecFilings.bind(this.data);
+  getCloudSecBeneficialOwners = this.data.getCloudSecBeneficialOwners.bind(this.data);
   getCloudSecFilingDocuments = this.data.getCloudSecFilingDocuments.bind(this.data);
   getCloudSecFilingContent = this.data.getCloudSecFilingContent.bind(this.data);
   getCloudSec13F = this.data.getCloudSec13F.bind(this.data);

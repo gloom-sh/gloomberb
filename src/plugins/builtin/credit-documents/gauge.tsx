@@ -1,17 +1,14 @@
 import type { CreditHeadroom } from "../../../api-client/credit-documents";
+import { ratioBarGlyphs } from "../../../components/ui/ratio-bar";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { covenantUsage, headroomTone } from "./model";
 
-const EIGHTHS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 /** Where the limit sits along the gauge; the rest shows how far a breach runs past it. */
 const LIMIT_AT = 0.8;
 
-function blocks(cells: number): string {
-  const full = Math.floor(cells);
-  const eighth = Math.round((cells - full) * 8);
-  return eighth === 8 ? "█".repeat(full + 1) : `${"█".repeat(full)}${EIGHTHS[eighth]}`;
-}
+/** `cells` of a run `span` cells long, in eighth-cell block glyphs. */
+const blocks = (cells: number, span: number) => ratioBarGlyphs(cells / span, span, { resolution: "eighth" });
 
 /**
  * How much of a covenant's limit the reported metric uses, against a marker at
@@ -44,10 +41,10 @@ export function HeadroomGauge({ covenant, width, selected }: { covenant: CreditH
   // In cells the limit is a whole column: usage 1 fills up to it, a breach runs through it.
   const limit = Math.min(width - 1, Math.round(width * LIMIT_AT));
   const cells = Math.min(width, Math.max(0, usage) * limit);
-  const after = cells > limit + 1 ? blocks(cells - limit - 1) : "";
+  const after = cells > limit + 1 ? blocks(cells - limit - 1, width - limit - 1) : "";
   return (
     <Box flexDirection="row" width={width} overflow="hidden">
-      <Text fg={fill}>{blocks(Math.min(cells, limit)).padEnd(limit)}</Text>
+      <Text fg={fill}>{blocks(Math.min(cells, limit), limit).padEnd(limit)}</Text>
       <Text fg={marker} bg={cells > limit ? fill : undefined}>│</Text>
       {after ? <Text fg={fill}>{after}</Text> : null}
     </Box>

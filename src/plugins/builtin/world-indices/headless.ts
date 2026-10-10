@@ -15,6 +15,7 @@ import {
   WORLD_INDICES,
   type IndexEntry,
 } from "./indices";
+import { quoteFreshnessFields } from "../shared/report-freshness";
 
 const COLUMNS = [
   { key: "shortName", header: "Index" },
@@ -69,6 +70,7 @@ function projectWorldIndicesHeadless(
         rows: regionEntries.map((entry) => {
           const quote = loaded.quotes.get(entry.symbol);
           return {
+            ...quoteFreshnessFields(quote),
             ...entry,
             price: quote?.price ?? null,
             unit: "index points",

@@ -52,3 +52,15 @@ export function filterFilingsByForms(filings: readonly SecFilingItem[], forms: r
     return accepted.has(form) || (form.endsWith("/A") && accepted.has(form.slice(0, -2)));
   });
 }
+
+/** A form as typed or filed, without punctuation or the `SC`/`SCHEDULE` prefix of ownership schedules. */
+function compactFilingForm(form: string): string {
+  return form.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^(?:SCHEDULE|SC)(?=\d)/, "");
+}
+
+/** `13D` matches SC 13D, SCHEDULE 13D and their amendments; `10-K` matches 10-K and 10-K/A. */
+export function filingFormMatches(form: string, wanted: string): boolean {
+  const target = compactFilingForm(wanted);
+  const actual = compactFilingForm(form);
+  return !!target && (actual === target || actual === `${target}A`);
+}

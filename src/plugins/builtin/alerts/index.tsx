@@ -282,6 +282,7 @@ export const alertsPlugin: GloomPlugin = {
 
     ctx.registerPane({
       id: "alerts",
+      reportFreshness: { source: "Your alerts", status: "not-a-feed", basis: "your alert rules" },
       name: "Alerts",
       icon: "A",
       component: AlertsPane,

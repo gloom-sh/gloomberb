@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Text, Textarea, type InputRenderable, type TextareaRenderable } from "../../ui";
+import { Box, Text, Textarea, useUiCapabilities, type InputRenderable, type TextareaRenderable } from "../../ui";
 import { t } from "../../i18n";
 import { useDialogKeyboard, type PromptContext } from "../../ui/dialog";
 import { useThemeColors } from "../../theme/theme-context";
 import { Button } from "./button";
-import { TextField } from "./fields";
+import { FRAMED_TEXTAREA_DESKTOP_STYLE, TextField } from "./fields";
 import { DialogFrame } from "./frame";
 
 export interface TextPromptDialogProps extends PromptContext<string> {
@@ -48,6 +48,7 @@ export function TextPromptDialog({
   footer,
 }: TextPromptDialogProps) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const inputRef = useRef<InputRenderable | null>(null);
   const textareaRef = useRef<TextareaRenderable | null>(null);
   const [value, setValue] = useState(initialValue);
@@ -97,6 +98,7 @@ export function TextPromptDialog({
               backgroundColor={colors.panel}
               flexGrow={1}
               wrapText
+              {...(nativePaneChrome ? { style: FRAMED_TEXTAREA_DESKTOP_STYLE } : {})}
               keyBindings={[
                 { name: "return", action: "submit" },
                 { name: "linefeed", action: "submit" },

@@ -1,4 +1,5 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
+import { RatioBar } from "../../../components/ui/ratio-bar";
 import { SplitBar } from "../../../components/ui/split-bar";
 import { blendHex } from "../../../theme/colors";
 import type { ThemeColors } from "../../../theme/colors";
@@ -39,21 +40,15 @@ export function listingCell(key: string | null | undefined, colors: ThemeColors,
  * so the eye compares lengths down the column. The bar gives way first in a
  * narrow column; the number never does.
  */
-export function shareCell(text: string, ratio: number | null, width: number, colors: ThemeColors, selected: boolean, desktop: boolean,
+export function shareCell(text: string, ratio: number | null, width: number, colors: ThemeColors, selected: boolean,
   color = blendHex(colors.bg, colors.borderFocused, 0.6)): DataTableCell {
   const textCells = displayWidth(text);
   const barCells = width - textCells - 1;
   if (ratio == null || !(ratio > 0) || barCells < 4) return { text, color: selected ? colors.selectedText : colors.text };
-  const fill = Math.max(0, Math.min(1, ratio));
-  const ink = selected ? colors.selectedText : color;
-  // The desktop draws the bar on a faint track; terminal cells draw the length alone, at half-cell steps,
+  // The desktop draws the bar on a faint track; terminal cells draw the length alone,
   // since a track of block cells would join the rows above and below into one wall.
-  const units = Math.max(1, Math.round(fill * barCells * 2));
   return { text, content: <Box flexDirection="row" height={1} width={width} overflow="hidden" alignItems="center">
-    <Box width={barCells} flexShrink={0} flexDirection="row" alignItems="center">
-      {desktop ? <SplitBar width={barCells} parts={[{ id: "share", value: fill, color: ink }, { id: "rest", value: 1 - fill, color: blendHex(colors.bg, color, 0.2) }]} />
-        : <Text fg={ink}>{`${"█".repeat(Math.floor(units / 2))}${units % 2 ? "▌" : ""}`}</Text>}
-    </Box>
+    <RatioBar ratio={ratio} width={barCells} color={selected ? colors.selectedText : color} track />
     <Box flexGrow={1} justifyContent="flex-end"><Text fg={selected ? colors.selectedText : colors.text}>{` ${text}`}</Text></Box>
   </Box> };
 }

@@ -29,6 +29,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   onUserHover,
   onUserHoverEnd,
   onUserActivate,
+  onUserContextMenu,
   beginReplyTo,
   beginEditMessage,
   jumpToMessage,
@@ -114,6 +115,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           onUserHover={onUserHover}
           onUserHoverEnd={onUserHoverEnd}
           onUserActivate={onUserActivate}
+          onUserContextMenu={onUserContextMenu}
           {...actionProps}
         />
       )}
@@ -135,6 +137,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
               onUserHover={onUserHover}
               onUserHoverEnd={onUserHoverEnd}
               onUserActivate={onUserActivate}
+              onUserContextMenu={onUserContextMenu}
             />
           </Box>
           {state.grouped && <ChatMessageActions floating {...actionProps} />}

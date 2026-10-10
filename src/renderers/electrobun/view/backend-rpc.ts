@@ -14,7 +14,8 @@ import {
 } from "../shared/protocol";
 import { decodeRpcResponse, decodeRpcValue, encodeRpcValue } from "../shared/rpc-codec";
 import { subscribeCapability, type CapabilitySubscriptionOptions } from "./capability-subscription";
-import { nameRpcTimeout } from "./rpc-timeout";
+import { RpcTimeoutError } from "../../../utils/rpc-timeout-error";
+import { nameRpcTimeout, RPC_MAX_REQUEST_TIME_MS } from "./rpc-timeout";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 
 type BackendMessages = ElectrobunDesktopRpcSchema["webview"]["messages"];
@@ -43,7 +44,7 @@ function emit<K extends BackendMessageName>(name: K, message: BackendMessages[K]
 }
 
 const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
-  maxRequestTime: 120_000,
+  maxRequestTime: RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {
       "remote.request": async (message: RemoteControlRequestMessage) => {
@@ -107,15 +108,20 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
 
 const electroview = new Electroview({ rpc });
 
+const BRIDGE_READY_LIMIT_MS = 5_000;
+
 async function waitForBridgeReady(): Promise<void> {
   const start = Date.now();
-  while (Date.now() - start < 5_000) {
+  while (Date.now() - start < BRIDGE_READY_LIMIT_MS) {
     if (electroview.bunSocket?.readyState === WebSocket.OPEN) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error("Electrobun RPC socket did not open in time.");
+  throw new RpcTimeoutError("Electrobun RPC socket did not open in time.", {
+    elapsedMs: Date.now() - start,
+    limitMs: BRIDGE_READY_LIMIT_MS,
+  });
 }
 
 export function backendRequest<T = unknown>(

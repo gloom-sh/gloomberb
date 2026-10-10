@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { TextareaRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
 import {
@@ -44,6 +44,7 @@ export function useChatComposerRuntime({
   useDefaultControllerChannel,
   draftAttachmentCount = 0,
   onPastedImagePaths,
+  onConversationStartError,
   onDiscordCommand,
 }: {
   applyingExternalDraftRef: MutableRef<boolean>;
@@ -75,6 +76,8 @@ export function useChatComposerRuntime({
   draftAttachmentCount?: number;
   /** Set where pasted file paths can attach (the terminal): the paths, and the text that named them. */
   onPastedImagePaths?: (paths: string[], pasted: string) => void;
+  /** A `/dm` or `/group` command the server refused, with the names it asked for. */
+  onConversationStartError?: (error: unknown, usernames: string[]) => void;
   /** Runs a /discord command. Without it the command is sent as text. */
   onDiscordCommand?: (command: DiscordComposerCommand) => void;
 }) {
@@ -259,7 +262,7 @@ export function useChatComposerRuntime({
         if (composerCommand.draft) {
           controller.setChannelDraft(channel.id, composerCommand.draft);
         }
-      }).catch(() => {});
+      }).catch((error: unknown) => onConversationStartError?.(error, [composerCommand.username]));
       return;
     }
     if (composerCommand?.kind === "discord" && onDiscordCommand) {
@@ -276,7 +279,7 @@ export function useChatComposerRuntime({
         channelIdRef.current = channel.id;
         onChannelChange?.(channel.id);
         clearLocalComposer();
-      }).catch(() => {});
+      }).catch((error: unknown) => onConversationStartError?.(error, composerCommand.usernames));
       return;
     }
     const sendChannelId = useDefaultControllerChannel ? channelId : channelIdRef.current;
@@ -297,6 +300,7 @@ export function useChatComposerRuntime({
     controller,
     inputValueRef,
     onChannelChange,
+    onConversationStartError,
     onDiscordCommand,
     expandDirectSection,
     persistDraft,
@@ -355,20 +359,31 @@ export function useChatComposerRuntime({
     }
   }, [focused, inputFocused, inputRef]);
 
-  useEffect(() => {
+  // The terminal textarea reports edits only through `onContentChange`. It
+  // mounts with the composer, which can come after this hook first runs (the
+  // saved session landing after the first render on a cold launch, sign-in or
+  // email verification finishing, a narrow pane going back to the thread), and
+  // a ref change rerenders nothing. So after every render, bind whichever
+  // textarea is there now, and let go of the one it replaced.
+  const commitLocalDraftRef = useRef(commitLocalDraft);
+  commitLocalDraftRef.current = commitLocalDraft;
+  const boundTextareaRef = useRef<TextareaRenderable | null>(null);
+  useLayoutEffect(() => {
     const textarea = inputRef.current;
+    const bound = boundTextareaRef.current;
+    if (textarea === bound) return;
+    if (bound) bound.onContentChange = undefined;
+    boundTextareaRef.current = textarea;
     if (!textarea) return;
-
     textarea.onContentChange = () => {
-      commitLocalDraft(textarea.editBuffer.getText());
+      commitLocalDraftRef.current(textarea.editBuffer.getText());
     };
-
-    return () => {
-      if (textarea) {
-        textarea.onContentChange = undefined;
-      }
-    };
-  }, [commitLocalDraft, inputRef]);
+  });
+  useLayoutEffect(() => () => {
+    const bound = boundTextareaRef.current;
+    boundTextareaRef.current = null;
+    if (bound) bound.onContentChange = undefined;
+  }, []);
 
   useEffect(() => {
     if (canSend || !replyTo) return;

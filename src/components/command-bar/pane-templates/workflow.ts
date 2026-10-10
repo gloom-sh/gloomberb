@@ -165,6 +165,7 @@ export function useCommandBarPaneTemplateActions({
           trimmedList,
           activeCollectionId,
           buildWorkflowDeps(),
+          template.shortcut?.keepArgToken,
         );
         const createOptions = {
           arg: trimmedList,

@@ -22,6 +22,7 @@ import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types"
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../portfolio-list/position-metrics";
 import { liveDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../portfolio-list/live-valuation";
 import { formatReportedMoney } from "../../../../utils/reported-money";
+import { fundamentalsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 
@@ -68,24 +69,30 @@ function compactPositionAccount(position: TickerPosition): string {
 export function buildOverviewStats({
   quote,
   fundamentals,
+  financialCurrency,
   quoteCurrency,
   baseCurrency,
   marketCapExchangeRates = new Map(),
   nextEarnings,
+  depositaryReceipt = false,
   today,
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
+  /** The currency the statements report in, for fundamentals that declare none. */
+  financialCurrency?: TickerFinancials["financialCurrency"];
   quoteCurrency: string;
   baseCurrency: string;
   toBase: CurrencyConverter;
   marketCapExchangeRates?: ReadonlyMap<string, number>;
   nextEarnings?: NextEarnings;
+  /** The share count is in depositary receipts, not ordinary shares. */
+  depositaryReceipt?: boolean;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;
 }): StatField[] {
   const stats: StatField[] = [];
-  const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentals?.financialCurrency, perShare);
+  const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency }), perShare);
 
   if (quote?.volume != null) {
     // Live figures keep their decimals (12.30M, not 12.3M) so the digits hold still.
@@ -105,7 +112,11 @@ export function buildOverviewStats({
     });
   }
   if (fundamentals?.sharesOutstanding) {
-    stats.push({ label: "Shares Out", value: formatCompact(fundamentals.sharesOutstanding) });
+    stats.push({
+      label: "Shares Out",
+      value: formatCompact(fundamentals.sharesOutstanding),
+      ...(depositaryReceipt ? { detail: ["ADR equivalent", "in ADRs"] } : {}),
+    });
   }
   if (finite(fundamentals?.floatShares) && fundamentals.floatShares > 0) {
     stats.push({ label: "Float", value: formatCompact(fundamentals.floatShares) });
@@ -122,7 +133,7 @@ export function buildOverviewStats({
     stats.push({ label: "EPS", value: money(fundamentals.eps, true) });
   }
   if (fundamentals?.pegRatio != null) {
-    stats.push({ label: "PEG", value: formatNumber(fundamentals.pegRatio, 2) });
+    stats.push({ label: "PEG", value: formatPriceEarnings(fundamentals.pegRatio, 2) });
   }
   // A report the payload still lists after its day has passed is not the next one.
   if (today && nextEarnings && ISO_DATE.test(nextEarnings.date) && nextEarnings.date >= today) {
@@ -171,10 +182,11 @@ export function buildOverviewStats({
       valueColor: priceColor(fundamentals.revenueGrowth),
     });
   }
+  const enterpriseValue = reportedEnterpriseValue(fundamentals);
   if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
-  } else if (fundamentals?.enterpriseValue != null) {
-    stats.push({ label: "EV", value: formatCompactCurrency(fundamentals.enterpriseValue, quoteCurrency) });
+  } else if (enterpriseValue != null) {
+    stats.push({ label: "EV", value: formatCompactCurrency(enterpriseValue, quoteCurrency) });
   }
   if (finite(fundamentals?.beta)) {
     stats.push({ label: "Beta", value: formatNumber(fundamentals.beta, 2), link: RELATIONSHIP_GRAPH });

@@ -106,21 +106,28 @@ export function useQuoteStreaming(
   const paneInView = usePaneInView();
   const coordinator = getSharedMarketDataCoordinator();
 
-  const normalizedEntries = new Map<string, QuoteSubscriptionTarget>();
-  for (const target of targets) {
-    const resolved = normalizeQuoteStreamSubscriptionTarget(target);
-    if (!resolved) continue;
-    const normalized = paneInView ? resolved : downgradeOffscreenQuoteTarget(resolved);
-    const key = buildQuoteStreamSubscriptionKey(normalized);
-    normalizedEntries.set(key, normalized);
-  }
-  const sortedEntries = [...normalizedEntries.entries()].sort(([left], [right]) => left.localeCompare(right));
-  const normalizedTargets = sortedEntries.map(([, target]) => target);
-  const subscriptionKey = sortedEntries.map(([key]) => key).join("|");
-  const identityKey = [...new Set(normalizedTargets.map(buildQuoteStreamSubscriptionIdentityKey))]
-    .sort()
-    .join("\u001f");
-  const coordinatorTargets = toCoordinatorQuoteTargets(normalizedTargets);
+  // Keyed on the array, not its contents: callers memoize their targets, and a
+  // portfolio re-renders on every data frame, where re-keying and sorting a
+  // thousand targets cost a few milliseconds each time.
+  const { coordinatorTargets, identityKey, subscriptionKey } = useMemo(() => {
+    const normalizedEntries = new Map<string, QuoteSubscriptionTarget>();
+    for (const target of targets) {
+      const resolved = normalizeQuoteStreamSubscriptionTarget(target);
+      if (!resolved) continue;
+      const normalized = paneInView ? resolved : downgradeOffscreenQuoteTarget(resolved);
+      const key = buildQuoteStreamSubscriptionKey(normalized);
+      normalizedEntries.set(key, normalized);
+    }
+    const sortedEntries = [...normalizedEntries.entries()].sort(([left], [right]) => left.localeCompare(right));
+    const normalizedTargets = sortedEntries.map(([, target]) => target);
+    return {
+      coordinatorTargets: toCoordinatorQuoteTargets(normalizedTargets),
+      identityKey: [...new Set(normalizedTargets.map(buildQuoteStreamSubscriptionIdentityKey))]
+        .sort()
+        .join("\u001f"),
+      subscriptionKey: sortedEntries.map(([key]) => key).join("|"),
+    };
+  }, [paneInView, targets]);
   const latestSubscriptionRef = useRef({
     identityKey,
     subscriptionKey,
@@ -208,11 +215,16 @@ export function useQuoteUpdates(
 ): void {
   const appActive = useAppVisible();
   const coordinator = getSharedMarketDataCoordinator();
-  const normalizedTargets = normalizeQuoteStreamSubscriptionTargets(targets);
-  const instrumentKey = normalizedTargets
-    .map((target) => buildQuoteKey(instrumentFromQuoteTarget(target)))
-    .sort()
-    .join("\u001f");
+  const { instrumentKey, normalizedTargets } = useMemo(() => {
+    const normalized = normalizeQuoteStreamSubscriptionTargets(targets);
+    return {
+      instrumentKey: normalized
+        .map((target) => buildQuoteKey(instrumentFromQuoteTarget(target)))
+        .sort()
+        .join("\u001f"),
+      normalizedTargets: normalized,
+    };
+  }, [targets]);
   const instruments = useMemo(() => uniqueQuoteInstruments(normalizedTargets), [instrumentKey]);
 
   useQuoteStreaming(targets, { enabled: liveStreaming });
@@ -270,12 +282,15 @@ export function useLiveQuoteEntries(
   subscriptionStartedAt: number;
 } {
   const appActive = useAppVisible();
-  const normalizedTargets = normalizeQuoteStreamSubscriptionTargets(targets);
-  const targetKey = [...new Set(
-    normalizedTargets.map((target) => buildQuoteStreamSubscriptionIdentityKey(target)),
-  )]
-    .sort()
-    .join("\u001f");
+  const { normalizedTargets, targetKey } = useMemo(() => {
+    const normalized = normalizeQuoteStreamSubscriptionTargets(targets);
+    return {
+      normalizedTargets: normalized,
+      targetKey: [...new Set(normalized.map((target) => buildQuoteStreamSubscriptionIdentityKey(target)))]
+        .sort()
+        .join("\u001f"),
+    };
+  }, [targets]);
   const liveStreaming = options.liveStreaming !== false;
   const freshnessKey = options.freshnessScopeKey ?? targetKey;
   const subscriptionKey = `${appActive ? "active" : "inactive"}\u001f${liveStreaming ? "live" : "poll"}\u001f${freshnessKey}`;

@@ -17,6 +17,7 @@ import {
 } from "./model";
 import { relevantInsiderAmendments } from "./amendments";
 import { formatInsiderName } from "./display";
+import { SEC_FILINGS } from "../shared/report-freshness";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
@@ -84,6 +85,7 @@ export function createInsiderHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: { ...SEC_FILINGS, basis: "Form 4 filings", observedKey: "filingDate" },
     argument: {
       kind: "ticker",
       placeholder: "ticker",

@@ -444,6 +444,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   // views say what they need in the body, with the import action.
   const notices = [
     ...riskCoverageNotices(model?.coverage),
+    ...(model?.notes ?? []),
     ...(model?.warnings ?? []),
     ...(derived.error ? [derived.error] : []),
     ...(resource.error ? [resource.error] : []),

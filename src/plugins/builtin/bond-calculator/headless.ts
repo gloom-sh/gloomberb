@@ -32,6 +32,7 @@ export const bondCalculatorHeadless: HeadlessPaneDefinition<"bundle"> = {
     return {
       complete: errors.length === 0,
       errors,
+      freshness: { source: "Your inputs, US Treasury", status: "not-a-feed", basis: "calculator", asOf: result.spread?.asOf ?? null },
       metadata: { settlement: draft.settlement, terms: result.terms, source: "Manual bond inputs; Treasury par yields via Gloom Cloud / FRED",
         treasuryAsOf: result.spread?.asOf ?? null, percentile: null, percentileReason: "Hypothetical bond has no historical sample", units: "Prices and DV01 per 100 face", mode: draft.mode },
       sections: [

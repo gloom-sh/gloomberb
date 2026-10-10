@@ -3,6 +3,7 @@ import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import {
   buildPortfolioHeatmapAssets,
+  heatmapSizeBy,
   fallbackHeatmapCollectionId,
   heatmapFollowsCollection,
   heatmapPortfolioPanes,
@@ -123,8 +124,8 @@ test("holdings are sized by market value in the portfolio's currency, and a name
   expect(assets[1]).toMatchObject({ sizeCaption: "Value", changePercent: -2, hasChange: true });
 });
 
-test("watchlist names are sized by the square root of market cap in the base currency", () => {
-  const { assets } = buildPortfolioHeatmapAssets({
+test("watchlist names default to the square root of market cap; a saved market-cap choice is honored", () => {
+  const board = (sizeBy?: "market-cap" | "sqrt-market-cap") => buildPortfolioHeatmapAssets({
     tickers: [ticker("IWM"), ticker("SPY"), ticker("7203", { currency: "JPY" })],
     financials: new Map<string, TickerFinancials>([
       ["SPY", { ...quote("SPY"), fundamentals: { marketCap: 400, marketCapCurrency: "USD" } }],
@@ -134,10 +135,33 @@ test("watchlist names are sized by the square root of market cap in the base cur
     kind: "watchlist",
     currency: "USD",
     exchangeRates: new Map([["JPY", 0.01]]),
-  });
-  expect(assets.map((asset) => [asset.symbol, asset.size, asset.weight, asset.showSize])).toEqual([
-    ["7203", 900, 30, true],
-    ["SPY", 400, 20, true],
-    ["IWM", null, 20, false],
-  ]);
+    sizeBy,
+  }).assets.map((asset) => [asset.symbol, asset.size, asset.weight, asset.showSize]);
+  // The caption keeps the real cap; only the area takes the square root.
+  const sqrt = [["7203", 900, 30, true], ["SPY", 400, 20, true], ["IWM", null, 20, false]];
+  expect(board()).toEqual(sqrt);
+  expect(board("sqrt-market-cap")).toEqual(sqrt);
+  expect(board("market-cap")).toEqual([["7203", 900, 900, true], ["SPY", 400, 400, true], ["IWM", null, 400, false]]);
+  expect(heatmapSizeBy(undefined)).toBe("sqrt-market-cap");
+  expect(heatmapSizeBy("market-cap")).toBe("market-cap");
+});
+
+test("a portfolio is sized by position value whatever the size setting says", () => {
+  const holdings = (sizeBy: "market-cap" | "sqrt-market-cap") => buildPortfolioHeatmapAssets({
+    tickers: [
+      ticker("AAPL", { portfolios: ["main"], positions: [{ portfolio: "main", shares: 9, broker: "manual" }] }),
+      ticker("MSFT", { portfolios: ["main"], positions: [{ portfolio: "main", shares: 1, broker: "manual" }] }),
+    ],
+    financials: new Map<string, TickerFinancials>([
+      ["AAPL", quote("AAPL", { price: 100 })],
+      ["MSFT", quote("MSFT", { price: 100 })],
+    ]),
+    collectionId: "main",
+    kind: "portfolio",
+    currency: "USD",
+    exchangeRates: new Map(),
+    sizeBy,
+  }).assets.map((asset) => [asset.symbol, Math.round(asset.weight ?? 0)]);
+  expect(holdings("sqrt-market-cap")).toEqual([["AAPL", 900], ["MSFT", 100]]);
+  expect(holdings("market-cap")).toEqual(holdings("sqrt-market-cap"));
 });

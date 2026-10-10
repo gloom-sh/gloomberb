@@ -87,6 +87,7 @@ export async function loadSectorRows(
         quoteIssue,
         lastReportedPrice,
         quoteUpdatedAt: quote && Number.isFinite(quote.lastUpdated) ? quote.lastUpdated : null,
+        quoteDataSource: quote?.dataSource,
         changePercent,
         return1M: month?.value ?? null,
         return1Y: year?.value ?? null,

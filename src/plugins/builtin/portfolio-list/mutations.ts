@@ -1,5 +1,5 @@
 import type { AppConfig } from "../../../types/config";
-import type { Portfolio, TickerPosition, TickerRecord, Watchlist } from "../../../types/ticker";
+import type { Portfolio, PortfolioCash, TickerPosition, TickerRecord, Watchlist } from "../../../types/ticker";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { slugifyName } from "../../../utils/slugify";
 import { parseCollectionRef } from "../cloud/team/collections";
@@ -147,6 +147,60 @@ export function adoptHeldPortfolioCurrencies(config: AppConfig, tickers: Iterabl
     if (currency && currency !== "USD") next = withPortfolioCurrency(next, portfolio.id, currency);
   }
   return next;
+}
+
+function updatePortfolio(config: AppConfig, portfolioId: string, update: (portfolio: Portfolio) => Portfolio): AppConfig {
+  if (!config.portfolios.some((portfolio) => portfolio.id === portfolioId)) throw new Error("Portfolio not found.");
+  return {
+    ...config,
+    portfolios: config.portfolios.map((portfolio) => (portfolio.id === portfolioId ? update(portfolio) : portfolio)),
+  };
+}
+
+/** Records the cash held beside a portfolio's positions, replacing any earlier entry. */
+export function setPortfolioCash(config: AppConfig, portfolioId: string, cash: PortfolioCash): AppConfig {
+  const currency = cash.currency.trim().toUpperCase();
+  if (!Number.isFinite(cash.amount)) throw new Error("Cash amount must be a valid number.");
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error(`"${cash.currency}" is not a currency code such as USD or EUR.`);
+  return updatePortfolio(config, portfolioId, (portfolio) => ({ ...portfolio, cash: { amount: cash.amount, currency } }));
+}
+
+export function clearPortfolioCash(config: AppConfig, portfolioId: string): { config: AppConfig; changed: boolean } {
+  const portfolio = config.portfolios.find((entry) => entry.id === portfolioId);
+  if (!portfolio?.cash) return { config, changed: false };
+  return {
+    config: updatePortfolio(config, portfolioId, ({ cash: _cash, ...rest }) => rest),
+    changed: true,
+  };
+}
+
+/** Sets one target weight, in percent, keyed by ticker symbol (`CASH` for the cash line). */
+export function setPortfolioTargetWeight(config: AppConfig, portfolioId: string, symbol: string, weight: number): AppConfig {
+  if (!Number.isFinite(weight) || weight < 0 || weight > 100) throw new Error("Target weight must be between 0% and 100%.");
+  if (!symbol.trim()) throw new Error("Ticker symbol is required.");
+  return updatePortfolio(config, portfolioId, (portfolio) => ({
+    ...portfolio,
+    targetWeights: { ...portfolio.targetWeights, [symbol]: weight },
+  }));
+}
+
+/** Removes one symbol's target, or every target when no symbol is given. */
+export function clearPortfolioTargetWeights(
+  config: AppConfig,
+  portfolioId: string,
+  symbol?: string,
+): { config: AppConfig; removed: string[] } {
+  const portfolio = config.portfolios.find((entry) => entry.id === portfolioId);
+  const current = portfolio?.targetWeights ?? {};
+  const removed = symbol == null ? Object.keys(current) : Object.keys(current).filter((key) => key === symbol);
+  if (removed.length === 0) return { config, removed };
+  const remaining = Object.fromEntries(Object.entries(current).filter(([key]) => !removed.includes(key)));
+  return {
+    config: updatePortfolio(config, portfolioId, ({ targetWeights: _targets, ...rest }) => (
+      Object.keys(remaining).length > 0 ? { ...rest, targetWeights: remaining } : rest
+    )),
+    removed,
+  };
 }
 
 export function createManualPortfolio(

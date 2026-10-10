@@ -13,6 +13,7 @@ import { WebMenu } from "../desktop/menu";
 import { WebPopover } from "../desktop/popover";
 import { useHorizontalOverflow } from "./overflow-fade";
 import { useTopSurfaceColor } from "./top-surface";
+import { hideDragShield, showDragShield } from "./drag-shield";
 
 type CssVars = CSSProperties & Record<`--${string}`, string>;
 
@@ -106,7 +107,7 @@ export function WebTabs({
     const cleanup = () => {
       document.removeEventListener("mousemove", handleMove);
       document.removeEventListener("mouseup", handleUp);
-      document.body.classList.remove("gloom-dragging");
+      hideDragShield();
       dragCleanupRef.current = null;
       dragOffsetXRef.current = 0;
       dragSourceWidthRef.current = 0;
@@ -120,7 +121,7 @@ export function WebTabs({
       moveEvent.preventDefault();
       dragOffsetXRef.current = offsetX;
       sourceElement.style.transform = `translateX(${offsetX}px) scale(1.03)`;
-      document.body.classList.add("gloom-dragging");
+      showDragShield();
       setDragTargetValue(resolveTarget(sourceBounds.left + offsetX + sourceBounds.width / 2));
     };
     const handleUp = (upEvent: MouseEvent) => {

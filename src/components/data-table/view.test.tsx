@@ -7,6 +7,7 @@ import {
   PaneInstanceProvider,
   createInitialState,
 } from "../../state/app/context";
+import { PaneKeyboardScrollController } from "../../state/pane-scroll-registry";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { Box, Text } from "../../ui";
@@ -126,6 +127,61 @@ function LargeSelectionHarness({
   );
 }
 
+/** A read-only table: no cursor, so the pane scroll keys are what move it. */
+function NoCursorHarness() {
+  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-data-table-view-no-cursor-test"));
+  return (
+    <AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="data-table-view-no-cursor-test">
+        <PaneKeyboardScrollController paneId="data-table-view-no-cursor-test" focused />
+        <DataTableView<Row, Column>
+          focused
+          selection={{ kind: "none" }}
+          columns={columns}
+          items={largeRows}
+          sortColumnId={null}
+          sortDirection="asc"
+          getItemKey={(row) => row.id}
+          renderCell={(row): DataTableCell => ({ text: row.title })}
+          emptyStateTitle="No rows"
+        />
+      </PaneInstanceProvider>
+    </AppContext>
+  );
+}
+
+let rerenderParent: (() => void) | undefined;
+let parentRenderedCells = 0;
+const renderCountedCell = (row: Row): DataTableCell => {
+  parentRenderedCells += 1;
+  return { text: row.title };
+};
+
+/** Builds `selection` inline, as most panes do, with a stable `renderCell`. */
+function InlineSelectionHarness() {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [, setRenderCount] = useState(0);
+  rerenderParent = () => setRenderCount((count) => count + 1);
+  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-data-table-view-inline-test"));
+  return (
+    <AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="data-table-view-inline-test">
+        <DataTableView<Row, Column>
+          focused
+          selection={{ kind: "index", selectedIndex, onChange: (index) => setSelectedIndex(index) }}
+          columns={columns}
+          items={largeRows}
+          sortColumnId={null}
+          sortDirection="asc"
+          getItemKey={(row) => row.id}
+          renderCell={renderCountedCell}
+          emptyStateTitle="No rows"
+        />
+      </PaneInstanceProvider>
+    </AppContext>
+  );
+}
+
 let setDeferredRows: ((rows: Row[]) => void) | undefined;
 let setRequestedIndex: ((index: number) => void) | undefined;
 
@@ -235,6 +291,27 @@ describe("DataTableView", () => {
     expect(cursorChanges).toBe(0);
   });
 
+  test("leaves the scroll keys to the pane when the table has no cursor", async () => {
+    // A key the table claims is stopped, as in the app, so the pane scroll keys skip it.
+    const pressTracked = (event: TestKeyEvent) => tui.emitKeypress(event, { trackPropagation: true });
+    await tui.render(<NoCursorHarness />, { width: 60, height: 12 });
+    await renderSettled();
+    expect(tui.frame()).toContain("Row 0");
+
+    await pressTracked({ name: "pagedown", sequence: "\u001B[6~" });
+    await renderSettled();
+    expect(tui.frame()).not.toContain("Row 0\n");
+    expect(tui.frame()).toContain("Row 10");
+
+    await pressTracked({ name: "end", sequence: "\u001B[F" });
+    await renderSettled();
+    expect(tui.frame()).toContain("Row 999");
+
+    await pressTracked({ name: "home", sequence: "\u001B[H" });
+    await renderSettled();
+    expect(tui.frame()).toContain("Row 0");
+  });
+
   test("keeps selection current across repeated keypresses before the next render", async () => {
     await tui.render(<Harness />, { width: 60, height: 12 });
 
@@ -284,6 +361,22 @@ describe("DataTableView", () => {
     await renderSettled();
 
     expect(renderedCells - beforeNavigation).toBeLessThanOrEqual(4);
+  });
+
+  test("keeps unchanged rows memoized when the parent re-renders with an inline selection", async () => {
+    await tui.render(<InlineSelectionHarness />, { width: 60, height: 12 });
+    await renderSettled();
+
+    parentRenderedCells = 0;
+    await act(async () => { rerenderParent?.(); });
+    await renderSettled();
+    expect(parentRenderedCells).toBe(0);
+
+    // A keypress commits the selection, which re-renders the parent with a new
+    // selection object; only the two rows whose selected state flipped repaint.
+    await emitKeypress({ name: "down", sequence: "\u001B[B" });
+    await renderSettled();
+    expect(parentRenderedCells).toBeLessThanOrEqual(4);
   });
 });
 

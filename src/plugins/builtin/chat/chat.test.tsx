@@ -1094,6 +1094,14 @@ describe("ChatContent", () => {
     expect(rows.filter((row) => row.startsWith(" bob ") && row.includes("Discord"))).toHaveLength(1);
     expect(header("Grace H")).toContain("Discord");
     expect(header("cy")).not.toContain("Discord");
+
+    // Every name opens a card but a Discord ghost's: there is no profile and no one to message.
+    await tui.clickFrameText("Grace H");
+    await flushFrame();
+    expect(tui.frame().split("Grace H")).toHaveLength(2);
+    await tui.clickFrameText(" cy ");
+    await flushFrame();
+    expect(tui.frame()).toContain("@cy");
   });
 
   test("shows a saved-login read-only footer when a session token is cached", async () => {

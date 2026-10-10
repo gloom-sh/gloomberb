@@ -44,6 +44,7 @@ import {
 import type { AppAction, AppState } from "../../../core/state/app/state";
 import { scheduleConfigSave } from "../../config-save-scheduler";
 import { LOW_PRIORITY_CONFIG_SAVE_DEBOUNCE_MS } from "../../persist-scheduler";
+import { fireAndForget } from "../../../utils/fire-and-forget";
 
 export {
   appReducer,
@@ -565,10 +566,16 @@ export function AppProvider({
     if (signature === lastMainSyncRef.current) return;
     lastMainSyncRef.current = signature;
     latestMainStateRevisionRef.current += 1;
-    void desktopBridge.syncMainState({
-      ...snapshot,
-      mainStateRevision: latestMainStateRevisionRef.current,
-    });
+    // A snapshot that did not arrive must not count as sent. Forget it, unless
+    // a newer one has replaced it, so the next effect run sends it again. The
+    // two syncs below dedupe the same way.
+    fireAndForget(
+      desktopBridge.syncMainState({ ...snapshot, mainStateRevision: latestMainStateRevisionRef.current }),
+      "desktop.syncMainState",
+      () => {
+        if (lastMainSyncRef.current === signature) lastMainSyncRef.current = null;
+      },
+    );
   }, [
     buildDesktopSnapshot,
     desktopBridge,
@@ -581,9 +588,12 @@ export function AppProvider({
 
   useEffect(() => {
     if (desktopBridge?.kind !== "main" || !desktopBridge.syncThemePreview) return;
-    if (lastThemePreviewSyncRef.current === state.themePreview) return;
-    lastThemePreviewSyncRef.current = state.themePreview;
-    void desktopBridge.syncThemePreview({ theme: state.themePreview });
+    const theme = state.themePreview;
+    if (lastThemePreviewSyncRef.current === theme) return;
+    lastThemePreviewSyncRef.current = theme;
+    fireAndForget(desktopBridge.syncThemePreview({ theme }), "desktop.setThemePreview", () => {
+      if (lastThemePreviewSyncRef.current === theme) lastThemePreviewSyncRef.current = undefined;
+    });
   }, [desktopBridge, state.themePreview]);
 
   useEffect(() => {
@@ -598,7 +608,13 @@ export function AppProvider({
     const paneSignature = serializePaneState(state.paneState[desktopBridge.paneId]);
     if (paneSignature === lastDetachedPaneSyncRef.current) return;
     lastDetachedPaneSyncRef.current = paneSignature;
-    void desktopBridge.replaceDetachedPaneState(desktopBridge.paneId, state.paneState[desktopBridge.paneId] ?? {});
+    fireAndForget(
+      desktopBridge.replaceDetachedPaneState(desktopBridge.paneId, state.paneState[desktopBridge.paneId] ?? {}),
+      "desktop.replaceDetachedPaneState",
+      () => {
+        if (lastDetachedPaneSyncRef.current === paneSignature) lastDetachedPaneSyncRef.current = null;
+      },
+    );
   }, [desktopBridge, serializePaneState, state.paneState]);
 
   useLayoutEffect(() => {

@@ -7,6 +7,8 @@ const percent = (value: unknown) => typeof value === "number" ? `${(value * 100)
 
 export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker" },
+  // Dated by the month of its last monthly close.
+  freshness: { status: "not-a-feed", basis: "monthly closes", maxAgeMinutes: 45 * 24 * 60 },
   describe: (args) => `SEAS ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: ["Local-price closes; dividends and FX are excluded."] },
   options: [

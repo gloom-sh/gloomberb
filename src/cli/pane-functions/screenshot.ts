@@ -72,6 +72,9 @@ import { getCloudApiBaseUrl } from "../../api-client/request";
 import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/external-plugins";
 import type { ResolvedSeries } from "../../time-series/types";
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
+import { accessGateSentence } from "./access-gate";
+import { findCollection } from "../../plugins/builtin/portfolio-list/cli/render";
+import { peekCachedBrokerAccounts } from "../../plugins/builtin/portfolio-list/cached-account";
 import {
   paneEvidenceMismatches,
   paneScreenshotEvidenceHook,
@@ -623,6 +626,9 @@ export async function buildDesktopShotPayload(
     deviceScaleFactor,
     watermark,
     tickers,
+    ...(COLLECTION_PANE_IDS.has(resolved.pane.id)
+      ? { brokerAccounts: peekCachedBrokerAccounts(context.config, context.persistence?.resources) }
+      : {}),
     financials,
     ...(instrumentFinancials?.length ? { instrumentFinancials } : {}),
     ...(historyVariants?.length ? { historyVariants } : {}),
@@ -651,8 +657,9 @@ async function collectShotSymbolsWithCollections(
   context: MarketContext,
   rawArg: string,
 ): Promise<string[]> {
-  const symbols = collectShotSymbols(resolved, rawArg);
-  if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) return symbols;
+  if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) return collectShotSymbols(resolved, rawArg);
+  // `shot PF Retirement` names a portfolio, not a ticker to fetch.
+  const symbols = rawArg.trim() && findCollection(context.config, rawArg) ? [] : collectShotSymbols(resolved, rawArg);
   const members = (await context.store.loadAllTickers())
     .filter(({ metadata }) => metadata.portfolios.length > 0 || metadata.watchlists.length > 0)
     .map(({ metadata }) => metadata.ticker);
@@ -857,7 +864,7 @@ export function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKe
 export function shotUnusableReasonFor(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
-  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected">,
+  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected" | "accessGate">,
   unavailableSymbols: string[],
   semanticMismatch: boolean,
 ): string {
@@ -871,6 +878,7 @@ export function shotUnusableReasonFor(
     return `No intraday price history is available for ${symbol} for the requested session window.`;
   }
   if (render.loadingStateDetected) return "The pane was still loading when the screenshot was captured.";
+  if (render.accessGate) return accessGateSentence(render.accessGate);
   if (render.errorStateDetected) return "The pane rendered an error state.";
   if (render.emptyStateDetected) return "The pane rendered an empty state.";
   if (unavailableSymbols.length > 0) return `Data is unavailable for ${unavailableSymbols.join(", ")}.`;

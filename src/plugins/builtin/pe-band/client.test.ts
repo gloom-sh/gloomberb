@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { EarningsHistoryPayload } from "../../../api-client/earnings";
+import type { CloudMarketResponse, CloudPricePointPayload } from "../../../api-client/types";
 import type { MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
@@ -18,7 +19,8 @@ const history = (symbol: string): EarningsHistoryPayload => ({ asOf: new Date(no
   reports: [report(symbol, "2020-01-30", "2019-12"), report(symbol, "2020-04-30", null)] });
 const recorder = (answer: (symbol: string) => Promise<EarningsHistoryPayload>) => {
   const calls: Array<[string, number | undefined]> = [];
-  return { calls, getCloudEarningsHistory: (symbol: string, limit?: number) => { calls.push([symbol, limit]); return answer(symbol); } };
+  return { calls, getCloudEarningsHistory: (symbol: string, limit?: number) => { calls.push([symbol, limit]); return answer(symbol); },
+    getCloudHistory: async (): Promise<CloudMarketResponse<CloudPricePointPayload[]>> => { throw new Error("no FX history asked"); } };
 };
 
 describe("P/E band inputs", () => {
@@ -33,6 +35,30 @@ describe("P/E band inputs", () => {
     const bySymbol = await loadPeBandInputs({ instrument: { symbol: "AAPL" } }, provider({ listingExchangeName: "NYSE" }), coordinator, quoted);
     expect(quoted.calls).toEqual([["AAPL", 40]]);
     expect(bySymbol.reports).toHaveLength(1);
+  });
+
+  test("a dollar price with EPS in another currency loads that pair's daily closes once, from before the oldest statement", async () => {
+    const statements = (dates: string[]) => dates.map((date) => ({ date, currency: "TWD", eps: 10 }));
+    const adr = createTestDataProvider({ getTickerFinancials: async () => createTestFinancials({ quote: createTestQuote({ currency: "USD" }),
+      annualStatements: statements(["2022-12-31", "2023-12-31"]), quarterlyStatements: statements(["2024-03-31"]) }) });
+    const day = (offset: number) => new Date(now - offset * 86_400_000).toISOString().slice(0, 10);
+    const asked: Array<[string, string | undefined]> = [];
+    const answer = (data: CloudPricePointPayload[], stale = false) => ({ ...recorder(async (symbol) => history(symbol)),
+      getCloudHistory: async (symbol: string, _exchange: string, params?: { startDate?: string }) => {
+        asked.push([symbol, params?.startDate]);
+        return { status: "success", data, stale } as CloudMarketResponse<CloudPricePointPayload[]>;
+      } });
+    const closes = [3, 2, 1].map((offset) => ({ date: day(offset), close: 32 } as CloudPricePointPayload));
+
+    const loaded = await loadPeBandInputs({ instrument: { symbol: "TSM", exchange: "NYSE" } }, adr, coordinator, answer(closes));
+    // Taiwan dollars quote per dollar, so the pair inverts to dollars per Taiwan dollar.
+    expect(asked).toEqual([["TWD=X", "2022-12-17"]]);
+    expect(loaded.fx.get("TWD")?.closes.get(day(1))).toBe(1 / 32);
+    expect(loaded.fxError).toBeNull();
+
+    const stale = await loadPeBandInputs({ instrument: { symbol: "TSM", exchange: "NYSE" } }, adr, coordinator, answer(closes, true));
+    expect(stale.fx.size).toBe(0);
+    expect(stale.fxError).toBe("daily TWD FX closes are stale");
   });
 
   test("leave listings elsewhere alone, and carry on without reports when the history fails or is empty", async () => {

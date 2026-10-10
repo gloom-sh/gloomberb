@@ -18,8 +18,8 @@ export const earningsRippleModule: PluginModule = {
   }],
   paneTemplates: [{
     id: "earnings-ripple-pane", paneId: "earnings-ripple", label: "Earnings Ripple",
-    description: "Customers of your holdings that report soon, with the share of each holding's revenue they make up.",
-    keywords: ["ripl", "ripple", "earnings", "customers", "supply chain", "exposure", "read-through"],
+    description: "Customers and suppliers of your holdings that report soon, with the disclosed revenue share, and with Pro the companies two hops away.",
+    keywords: ["ripl", "ripple", "earnings", "customers", "supply chain", "exposure", "read-through", "suppliers", "two hop", "second order"],
     shortcut: { prefix: "RIPL", argPlaceholder: "tickers", argKind: "ticker-list", argOptional: true, openWithoutArg: true },
     headless: earningsRippleHeadless,
     canCreate: () => true,

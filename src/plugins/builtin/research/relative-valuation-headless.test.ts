@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { relativeValuationValues } from "./relative-valuation-model";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
@@ -28,6 +29,24 @@ test("fresh quotes do not hide stale fundamentals in a peer research report", as
   expect(refreshed.complete).toBe(true);
   expect(refreshed.errors).toEqual([]);
   expect(refreshed.metadata?.staleFundamentalsSymbols).toEqual([]);
+});
+
+test("relative valuation rows carry their quote's feed, so the report can name its status", async () => {
+  const now = Date.now();
+  const ctx = {
+    signal: new AbortController().signal,
+    marketData: createTestDataProvider({
+      async getTickerFinancials(symbol) {
+        return { annualStatements: [], quarterlyStatements: [], priceHistory: [],
+          quote: { symbol, price: 10, change: 0, changePercent: 0, currency: "USD", lastUpdated: now, dataSource: "delayed" as const, marketCap: 100 },
+          fundamentals: { financialCurrency: "USD", enterpriseValue: 200, revenue: 50 },
+        };
+      },
+    }),
+  } as HeadlessPaneContext;
+  const result = await relativeValuationHeadless.load({ symbols: ["AAA"], argument: ["AAA"], rawArgument: "AAA", options: {} }, ctx);
+  expect(result.rows[0]).toMatchObject({ dataSource: "delayed" });
+  expect(deriveHeadlessFreshness(relativeValuationHeadless, result, now)).toMatchObject({ status: "delayed" });
 });
 
 test("relative valuations share derived metrics, preserve zeroes, and identify missing peers", async () => {
@@ -94,6 +113,14 @@ test("provider EV/S requires verified compatible reporting units even when a rat
   expect(relativeValuationValues(financials).evSales).toBe(4.2);
   financials.fundamentals.enterpriseToRevenue = NaN;
   expect(relativeValuationValues(financials).evSales).toBe(4);
+
+  // A zero or non-finite enterprise value (a bank's) is a gap, and the ratio served beside it is junk from the same source.
+  for (const enterpriseValue of [0, Number.NaN]) {
+    financials.fundamentals = { financialCurrency: "USD", enterpriseToRevenue: -1.055, enterpriseValue, revenue: 25 };
+    expect(relativeValuationValues(financials).evSales).toBeNull();
+  }
+  financials.fundamentals = { financialCurrency: "USD", enterpriseToRevenue: 4.2, enterpriseValue: 100, revenue: 25 };
+  expect(relativeValuationValues(financials).evSales).toBe(4.2);
 });
 
 test("loss-making peers retain reported multiples without ranking them as cheap earnings", async () => {

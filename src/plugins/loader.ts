@@ -204,6 +204,18 @@ export function pluginsMissingHostExports(): string[] {
 /** Bun's wording when an import does not resolve, from a native import. */
 const UNRESOLVED_MODULE = /Cannot find (?:module|package) '([^']+)'/;
 
+/**
+ * The specifier an import failed to resolve. Bun puts it on the error as
+ * `specifier`; the message is only a fallback, because from Bun 1.4 it names
+ * the package alone ("Cannot find package 'peer' imported from …" for
+ * `peer/bridge`), and the subpath decides whether the peer has the file.
+ */
+export function unresolvedSpecifier(err: unknown, message: string): string | undefined {
+  const specifier = (err as { specifier?: unknown } | null)?.specifier;
+  if (typeof specifier === "string" && specifier) return specifier;
+  return UNRESOLVED_MODULE.exec(message)?.[1];
+}
+
 /** Imported at another commit earlier in this process, with files besides the entry that Bun keeps. */
 function hasStaleModules(pluginDir: string, commit: string | null): boolean {
   if (!importedCommits.has(pluginDir) || importedCommits.get(pluginDir) === commit) return false;
@@ -300,7 +312,7 @@ export async function loadExternalPlugin(
     // A sibling plugin it imports that is linked now but was not when this
     // process first resolved it. Bun keeps that failure until a restart, which
     // is all the plugin needs: not a crash.
-    const unresolved = UNRESOLVED_MODULE.exec(message)?.[1];
+    const unresolved = unresolvedSpecifier(err, message);
     if (unresolved && isLinkedPeerModule(pluginDir, unresolved)) {
       loaderLog.info(`${directory} loads after a restart: ${message}`);
       return { ...base, plugin: placeholder, needsRestart: true };

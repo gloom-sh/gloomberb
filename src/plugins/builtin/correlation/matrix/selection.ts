@@ -1,6 +1,6 @@
 import { chartTableLayout } from "../../../../components/chart-table/layout";
-import { alignDailyCloses } from "../compute";
-import { buildRelationshipReturns, buildRollingCorrelationPoints } from "../relationship/model";
+import { alignDailyCloses, pairedChanges } from "../compute";
+import { buildRollingCorrelationPoints } from "../relationship/model";
 import type { CorrelationRangePreset } from "../settings";
 import type { CorrelationSeries } from "./model";
 
@@ -49,7 +49,9 @@ export function buildMatrixPairHistory(
   const aligned = alignDailyCloses(left?.prices ?? [], right?.prices ?? []).map((point) => ({
     ...point, date: new Date(`${point.dateKey}T00:00:00Z`),
   }));
-  const returns = buildRelationshipReturns(aligned);
+  const returns = pairedChanges(aligned, left?.basis, right?.basis).map(({ dateKey, left: leftReturn, right: rightReturn }) => ({
+    dateKey, date: new Date(`${dateKey}T00:00:00Z`), leftReturn, rightReturn,
+  }));
   const points = buildRollingCorrelationPoints(returns, window);
   const byTime = new Map(points.map((point) => [point.date.getTime(), point.close]));
   const values = points.map((point) => point.close);

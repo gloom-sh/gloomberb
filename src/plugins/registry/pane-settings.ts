@@ -31,7 +31,9 @@ export interface ResolvedRegistryPaneQuickSetting extends PaneQuickSettingDef {
   label: string;
   description?: string;
   value: boolean;
-  field: PaneSettingField & { type: "toggle" };
+  field: PaneSettingField;
+  /** What pressing the control writes to the field. */
+  nextValue: boolean | string;
 }
 
 export function resolveRegistryPaneQuickSettings(
@@ -39,17 +41,34 @@ export function resolveRegistryPaneQuickSettings(
 ): ResolvedRegistryPaneQuickSetting[] {
   if (!resolved?.paneDef.quickSettings?.length) return [];
 
-  return resolved.paneDef.quickSettings.flatMap((quickSetting) => {
-    const field = resolved.settingsDef.fields.find((candidate) => (
-      candidate.key === quickSetting.key && candidate.type === "toggle"
-    ));
-    if (!field || field.type !== "toggle") return [];
+  return resolved.paneDef.quickSettings.flatMap((quickSetting): ResolvedRegistryPaneQuickSetting[] => {
+    const field = resolved.settingsDef.fields.find((candidate) => candidate.key === quickSetting.key);
+    if (!field) return [];
+    if (quickSetting.visible && !quickSetting.visible(resolved.context)) return [];
+    if (quickSetting.onValue != null) {
+      if (field.type !== "select") return [];
+      const onValue = quickSetting.onValue;
+      const offValue = field.options.find((option) => option.value !== onValue)?.value;
+      if (offValue == null || !field.options.some((option) => option.value === onValue)) return [];
+      const value = resolved.context.settings[quickSetting.key] === onValue;
+      return [{
+        ...quickSetting,
+        label: quickSetting.label ?? field.label,
+        description: field.description,
+        value,
+        field,
+        nextValue: value ? offValue : onValue,
+      }];
+    }
+    if (field.type !== "toggle") return [];
+    const value = resolved.context.settings[quickSetting.key] === true;
     return [{
       ...quickSetting,
       label: quickSetting.label ?? field.label,
       description: field.description,
-      value: resolved.context.settings[quickSetting.key] === true,
+      value,
       field,
+      nextValue: !value,
     }];
   });
 }

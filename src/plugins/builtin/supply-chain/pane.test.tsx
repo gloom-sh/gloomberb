@@ -63,7 +63,7 @@ test("preview keeps evidence-bearing rows, shows the standard upgrade, and narro
   await mount(65, 17, "flow");
   const frame = await tui.waitForFrameToContain("Known company");
   expect(frame).toContain("COUNTERPARTY");
-  expect(frame).toContain("Upgrade to see every relationship");
+  expect(frame).toContain("Upgrade to Pro");
   expect(frame).not.toContain("Suppliers");
   await tui.destroy();
   data.says[0] = supplyRow("Known company", { nativeAmount: 315_813, nativeCurrency: "JPY", nativeScale: 1_000_000 });

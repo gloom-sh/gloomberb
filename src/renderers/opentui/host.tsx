@@ -108,6 +108,11 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     enableMouseMovement: true,
   });
   const root = createRoot(renderer);
+  // Every mounted ScrollBox listens for `selection` and many components for
+  // `resize`, so the counts grow with the panes on screen (14 and 18 with one
+  // DES open at 80x24) and fall back when they close. Node's default warning
+  // at 11 is not a leak here, and it prints over the panes.
+  renderer.setMaxListeners(0);
   installResolutionEventBridge(renderer);
   // Streamed quotes apply and notify on one clock of up to 10 Hz: every
   // visible row stays live while a burst of ticks costs one terminal redraw,

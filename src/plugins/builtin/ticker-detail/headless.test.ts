@@ -63,6 +63,31 @@ test("financial exports distinguish provider dates from SEC period evidence and 
   expect(result.columns?.find(({ key }) => key === "2023-08-31")?.header).toContain("provider date");
 });
 
+test("financial exports put share counts in ADRs only for the periods the service says count receipts", async () => {
+  // BHP on NYSE from Gloom Cloud: FY2026 and FY2025 on the receipts, 2 ordinary shares each.
+  const fy = (date: string, shareBasis: "depositary_receipt" | undefined, ordinarySharesNumber: number) => ({
+    date, currency: "USD", ...(shareBasis ? { shareBasis } : {}), ordinarySharesNumber, totalAssets: 100e9,
+  });
+  const load = (annualStatements: ReturnType<typeof fy>[]) => financialStatementsHeadless.load(args(["BHP:NYSE"], { period: "annual", statement: "balance" }), {
+    marketData: createTestDataProvider({ async getTickerFinancials() {
+      return { fundamentals: { isDepositaryReceipt: true, adrRatio: 2, shareBasis: "depositary_receipt" as const }, annualStatements, quarterlyStatements: [], priceHistory: [] };
+    } }),
+  } as HeadlessPaneContext);
+
+  const receipts = await load([fy("2025-06-30", "depositary_receipt", 2_536_000_000), fy("2026-06-30", "depositary_receipt", 2_540_081_549)]);
+  expect(receipts.rows.find((row) => row.id === "ordinarySharesNumber:1")?.metric).toBe("Ordinary Shares (bn ADRs)");
+  expect(receipts.metadata).toMatchObject({ shareBasis: "depositary_receipt", adrRatio: 2 });
+  expect(receipts.metadata?.notices).toContain("Share counts are in ADRs and EPS is per ADR; 1 ADR = 2 ordinary shares.");
+
+  // An older period the service left unclaimed still counts ordinaries: no label, and no growth across the bases.
+  const mixed = await load([fy("2025-06-30", undefined, 5_080_163_098), fy("2026-06-30", "depositary_receipt", 2_540_081_549)]);
+  const ordinary = mixed.rows.find((row) => row.id === "ordinarySharesNumber:1")!;
+  expect(ordinary.metric).toBe("Ordinary Shares (bn)");
+  expect((ordinary.cells as Array<{ growth: number | null }>)[0]!.growth).toBeNull();
+  expect(mixed.metadata?.shareBasis).toBeNull();
+  expect(mixed.metadata?.notices).toContain("Share counts are in ADRs and EPS is per ADR for 2026-06-30 (1 ADR = 2 ordinary shares); other periods as reported.");
+});
+
 test("quote comparison retains successful exchange-qualified inputs when a peer fails", async () => {
   const ctx = {
     signal: new AbortController().signal,
@@ -76,7 +101,7 @@ test("quote comparison retains successful exchange-qualified inputs when a peer 
     }),
   } as HeadlessPaneContext;
   const result = await quoteComparisonHeadless.load(args(["ABC", "MISSING"]), ctx);
-  expect(result.rows).toEqual([{ symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD", marketCap: null, updatedAt: 123 }]);
+  expect(result.rows).toEqual([{ symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD", marketCap: null, updatedAt: 123, stale: false }]);
   expect(result.unavailableSymbols).toEqual(["MISSING"]);
   expect(result.errors).toEqual(["MISSING: No quote"]);
 });

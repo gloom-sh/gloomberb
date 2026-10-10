@@ -11,11 +11,22 @@ import {
   type CliTableColumn,
 } from "../utils/cli-output";
 import { serializeCsv } from "../utils/csv";
+import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
+import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
+import { renderReportCsv, renderReportNdjson, type CliReportTables } from "./report-tables";
+import { windowRows, type RowWindow, type RowWindowOptions } from "./row-window";
 
 export interface CliResult<T = unknown> {
   data: T;
   metadata?: Record<string, unknown>;
   warnings?: string[];
+  /**
+   * Source, as-of and status of market data, as every `fn` report states them
+   * (docs/usage.md#how-current-a-report-is): the last line of the text output
+   * and `metadata.freshness` in JSON. CSV and NDJSON stay rows only, unless
+   * the command passes `tables`, whose footer carries it.
+   */
+  freshness?: ReportFreshness;
 }
 
 export interface CliErrorObject {
@@ -47,21 +58,34 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   empty?: string;
   /** Text-mode block printed above the rows, for figures that are not rows. */
   summary?: (data: T) => string;
+  /** Text-mode line printed first, naming what the result is about, such as the listing a symbol resolved to. */
+  heading?: string;
+  /**
+   * The row key holding each row's date, which makes the rows a dated series:
+   * `--tail` keeps the newest rows whichever way the series runs, and a
+   * `--limit` that keeps the oldest says so, under the text table and as
+   * `metadata.rows` in JSON.
+   */
+  dateKey?: string;
+  /** How many rows to show when neither `--limit` nor `--tail` is given; every row when absent. */
+  defaultLimit?: number;
+  /**
+   * What CSV and NDJSON write instead of the rows: a report's tables as the
+   * text view shows them, CSV with its `# section:` and closing `#` lines.
+   */
+  tables?: CliReportTables;
 }
 
-interface CliResultJsonEnvelope<T> extends CliResult<T> {
+interface CliResultJsonEnvelope<T> extends Omit<CliResult<T>, "freshness"> {
   ok: true;
   columns?: Array<Pick<CliResultColumn, "key" | "header" | "align" | "width">>;
 }
 
 type TextCellContext = "table" | "record";
 
-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
-const TIME_KEY = /(?:At|Time|Timestamp)$/;
+// Keys whose epoch-millisecond numbers are times rather than counts or prices.
+const TIME_KEY = /(?:At|Time|Timestamp|Updated|AsOf)$|^(?:asOf|timestamp)$/;
 const IDENTIFIER_KEY = /^id$|Id$/;
-// Epoch milliseconds between 2001 and 2286, so counts and prices are never read as dates.
-const EPOCH_MS_MIN = 1e12;
-const EPOCH_MS_MAX = 1e13;
 const KEY_ACRONYMS: Record<string, string> = {
   api: "API",
   cik: "CIK",
@@ -75,14 +99,28 @@ const KEY_ACRONYMS: Record<string, string> = {
   usd: "USD",
 };
 
-function applyLimit<T>(data: T, limit?: number): T {
-  if (!Array.isArray(data) || limit == null) return data;
-  return data.slice(0, limit) as T;
+function rowWindowOptions(options: CliGlobalOptions, renderOptions: Pick<CliResultRenderOptions, "defaultLimit">): RowWindowOptions {
+  return options.tail != null ? { tail: options.tail } : { limit: options.limit ?? renderOptions.defaultLimit };
 }
 
-function asRows<T, Row>(data: T, limit?: number, rows?: (data: T) => Row[]): Row[] {
-  const resolvedRows = rows ? rows(data) : (Array.isArray(data) ? data : [data]) as Row[];
-  return limit == null ? resolvedRows : resolvedRows.slice(0, limit);
+function windowed<Row>(
+  rows: readonly Row[],
+  options: CliGlobalOptions,
+  renderOptions: Pick<CliResultRenderOptions, "dateKey" | "defaultLimit">,
+): RowWindow<Row> {
+  const { dateKey } = renderOptions;
+  const dateOf = dateKey ? (row: Row) => (isPlainObject(row) ? row[dateKey] : undefined) : undefined;
+  return windowRows(rows, rowWindowOptions(options, renderOptions), dateOf);
+}
+
+function asRows<T, Row>(data: T, rows?: (data: T) => Row[]): Row[] {
+  return rows ? rows(data) : (Array.isArray(data) ? data : [data]) as Row[];
+}
+
+/** What JSON says about rows the window cut, under `metadata.rows`. */
+function cutMetadata(window: RowWindow<unknown>) {
+  if (window.rows.length >= window.total) return null;
+  return { shown: window.rows.length, total: window.total, kept: window.kept, ...(window.note ? { note: window.note } : {}) };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -106,13 +144,8 @@ export function humanizeCliKey(key: string): string {
     .join(" ");
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-function formatLocalDateTime(date: Date): string {
-  if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+function isTimeValue(key: string | undefined, value: number): boolean {
+  return key != null && TIME_KEY.test(key) && isEpochMilliseconds(value);
 }
 
 // Six significant digits hide float noise (0.9499999999999886) without cutting real precision;
@@ -132,16 +165,13 @@ function formatTextValue(
 ): string {
   const missing = context === "record" ? cliStyles.muted("-") : "";
   if (value == null || value === "") return missing;
-  if (value instanceof Date) return formatLocalDateTime(value);
+  // Times print in UTC with the zone named, never in the host's zone; JSON and CSV keep the raw value.
+  if (value instanceof Date) return formatUtcTime(value);
   if (typeof value === "boolean") return value ? "yes" : "no";
-  if (typeof value === "number") {
-    if (key && TIME_KEY.test(key) && value >= EPOCH_MS_MIN && value < EPOCH_MS_MAX) {
-      return formatLocalDateTime(new Date(value));
-    }
-    return formatTextNumber(value);
-  }
+  if (typeof value === "number") return isTimeValue(key, value) ? formatUtcTime(value) : formatTextNumber(value);
   if (typeof value === "string") {
-    return ISO_DATE_TIME.test(value) ? formatLocalDateTime(new Date(value)) || value : value;
+    // A date and time without a zone stays as the source wrote it: its zone is unknown.
+    return isZonedIsoDateTime(value) ? formatUtcTime(value) : value;
   }
   if (Array.isArray(value)) {
     if (value.length === 0) return context === "record" ? cliStyles.muted("none") : "";
@@ -198,9 +228,7 @@ function isEmptyTextValue(value: unknown): boolean {
 function inferTextColumns(rows: Record<string, unknown>[]): CliResultColumn<Record<string, unknown>>[] {
   return inferColumns(rows).map((column) => {
     const values = rows.map((row) => row?.[column.key]).filter((value) => !isEmptyTextValue(value));
-    const numeric = values.length > 0 && values.every((value) => typeof value === "number" && !(
-      TIME_KEY.test(column.key) && value >= EPOCH_MS_MIN && value < EPOCH_MS_MAX
-    ));
+    const numeric = values.length > 0 && values.every((value) => typeof value === "number" && !isTimeValue(column.key, value));
     return {
       ...column,
       header: humanizeCliKey(column.key),
@@ -304,23 +332,44 @@ function overflowsTerminal<Row extends Record<string, unknown>>(rows: Row[]): bo
   return width > terminalWidth;
 }
 
+/** The closing source, as-of and status line of a text result, for output printed without `printResult`. */
+export function cliFreshnessFooter(freshness: ReportFreshness): string {
+  return cliStyles.muted(formatFreshnessLine(freshness));
+}
+
 export function serializeCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
   result: CliResult<T>,
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row> = {},
 ): string {
+  const { freshness, ...rest } = result;
   if (options.format === "json") {
     const columns = serializeColumns(renderOptions.columns);
+    const window = Array.isArray(result.data) ? windowed(result.data as unknown[], options, renderOptions) : null;
+    const cut = window ? cutMetadata(window) : null;
     const envelope: CliResultJsonEnvelope<T> = {
       ok: true,
-      ...result,
-      data: applyLimit(result.data, options.limit),
+      ...rest,
+      ...(freshness || cut ? { metadata: { ...rest.metadata, ...(freshness ? { freshness } : {}), ...(cut ? { rows: cut } : {}) } } : {}),
+      data: window ? window.rows as T : result.data,
       ...(columns?.length ? { columns } : {}),
     };
     return JSON.stringify(envelope, null, 2);
   }
+  const body = serializeCliRows(rest, options, renderOptions);
+  if (options.format !== "text" || !freshness) return body;
+  return body ? `${body}\n\n${cliFreshnessFooter(freshness)}` : cliFreshnessFooter(freshness);
+}
 
-  const rows = asRows(result.data, options.limit, renderOptions.rows);
+function serializeCliRows<T, Row extends Record<string, unknown>>(
+  result: CliResult<T>,
+  options: CliGlobalOptions,
+  renderOptions: CliResultRenderOptions<T, Row>,
+): string {
+  if (renderOptions.tables && options.format === "csv") return renderReportCsv(renderOptions.tables);
+  if (renderOptions.tables && options.format === "ndjson") return renderReportNdjson(renderOptions.tables);
+  const window = windowed(asRows(result.data, renderOptions.rows), options, renderOptions);
+  const rows = window.rows;
   if (options.format === "ndjson") {
     return rows.map((row) => JSON.stringify(row)).join("\n");
   }
@@ -331,11 +380,13 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
     return renderOptions.text(result.data);
   }
   const summary = renderOptions.summary?.(result.data) ?? "";
+  const withHeading = (text: string) => renderOptions.heading ? `${renderOptions.heading}\n${text}` : text;
   if (rows.length === 0) {
-    return summary || cliStyles.muted(renderOptions.empty ?? "No results.");
+    return withHeading(summary || cliStyles.muted(renderOptions.empty ?? "No results."));
   }
-  const body = renderTextRows(rows as Row[], result.data, renderOptions);
-  return summary ? `${summary}\n\n${body}` : body;
+  const table = renderTextRows(rows as Row[], result.data, renderOptions);
+  const body = window.note ? `${table}\n${cliStyles.muted(window.note)}` : table;
+  return withHeading(summary ? `${summary}\n\n${body}` : body);
 }
 
 function renderTextRows<T, Row extends Record<string, unknown>>(
@@ -365,8 +416,9 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
   if (output) process.stdout.write(`${output}\n`);
-  // Structured formats carry warnings in the envelope; text mode would otherwise lose them.
-  if (options.format === "text") {
+  // JSON carries warnings in its envelope. Text, CSV and NDJSON are only the
+  // rows, so a warning goes to stderr, out of a file the rows are piped into.
+  if (options.format !== "json" && !options.quiet) {
     for (const warning of result.warnings ?? []) {
       console.error(`${cliStyles.warning("warning:")} ${warning}`);
     }

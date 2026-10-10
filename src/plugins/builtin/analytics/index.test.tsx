@@ -400,7 +400,7 @@ describe("PortfolioAnalyticsPane", () => {
 
     const frame = tui.frame();
     expect(frame).toMatch(figure("Net Liq", "125.0k"));
-    expect(frame).toMatch(figure("Val", "113.6k"));
+    expect(frame).toMatch(figure("Gross", "113.6k"));
     expect(frame).toMatch(figure("Margin Lev", "0.9x"));
     expect(frame).toMatch(figure("Cash", "-50.0k"));
     expect(frame).toMatch(figure("Day", "+900.00"));
@@ -517,7 +517,9 @@ describe("PortfolioAnalyticsPane", () => {
     const frame = tui.frame();
     expect(frame).toContain("Main Portfolio");
     expect(frame).toContain("Flex DU12345");
-    expect(frame).toMatch(figure("Val", "1.4k"));
+    // No account for this broker portfolio: its equity is unknown, and its positions are only its gross.
+    expect(frame).toMatch(figure("Net Liq", "—"));
+    expect(frame).toMatch(figure("Gross", "1.4k"));
     expect(frame).toMatch(figure("P&L", "+400.00 +40.00%"));
     expect(frame).toContain("Technology               100.0%       1.4k    +400.00  +40.00%");
     expect(frame).not.toContain("1.3k");

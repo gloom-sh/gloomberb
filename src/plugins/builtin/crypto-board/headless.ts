@@ -40,6 +40,9 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["CRYP"],
     dataRequirements: ["Gloom Cloud crypto markets"],
   },
+  // A board snapshot refreshed every few minutes; the pane streams, the report does not.
+  // Crypto trades around the clock, so a snapshot an hour old has stopped refreshing.
+  freshness: { status: "delayed", maxAgeMinutes: 60 },
   async load(args, ctx) {
     const kind = args.options.list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;
     const data = await fetchCryptoMarkets(ctx.apiClient);

@@ -13,6 +13,7 @@ import {
 } from "react";
 import type { ScrollBoxRenderable } from "../../../ui/host";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { isHeaderStripScrollBox, scrollBoxScrollsVertically } from "../../../ui/scroll-box-axis";
 import { callMouseHandler } from "./mouse";
 import { cleanDomProps, commonStyle } from "./style";
 import { useScrollbarActivity } from "../scrollbar-activity";
@@ -48,15 +49,15 @@ function contentInsetStyle(props: Record<string, unknown>, contentOptions: unkno
 export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unknown> & { children?: ReactNode }>(
   function WebScrollBox({ children, contentOptions, ...props }, ref) {
     const elementRef = useRef<HTMLDivElement | null>(null);
-    const isHeaderLikeScroller = props.scrollX === true && props.scrollY !== true && props.height === 1;
+    const isHeaderLikeScroller = isHeaderStripScrollBox(props);
     /**
      * OpenTUI's ScrollBox scrolls vertically unless told otherwise, so this one
      * has to as well: a pane that renders a ScrollBox and nothing more expects
-     * the wheel to work, and used to get an unscrollable box that only its own
-     * arrow-key handler could move. The one-row horizontal strips (tab bars,
-     * table headers, chart legends) are the exception and scroll on their axis.
+     * the wheel and the arrow keys to work (the pane keyboard scroll registry
+     * reads the same rule). The one-row horizontal strips (tab bars, table
+     * headers, chart legends) are the exception and scroll on their axis.
      */
-    const scrollYEnabled = props.scrollY !== false && !isHeaderLikeScroller;
+    const scrollYEnabled = scrollBoxScrollsVertically(props);
     const [horizontalScrollBarVisible, setHorizontalScrollBarVisible] = useState(
       () => props.scrollX === true && !isHeaderLikeScroller,
     );

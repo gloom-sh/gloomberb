@@ -1,5 +1,5 @@
 import type { TickerRecord } from "../types/ticker";
-import { canonicalExchange, US_LISTING_EXCHANGES } from "./exchanges";
+import { canonicalExchange, parsePublicTickerKey, US_LISTING_EXCHANGES } from "./exchanges";
 
 /** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
 const US_EQUITY_EXCHANGES = new Set([
@@ -100,6 +100,18 @@ export function isKnownNonUsEquityTicker(ticker: TickerRecord | null | undefined
   if (!isEquityType(primaryContract?.secType ?? ticker.metadata.assetCategory)) return true;
   return [primaryContract?.primaryExchange, primaryContract?.exchange, ticker.metadata.exchange]
     .some((exchange) => normalize(exchange).length > 0);
+}
+
+/**
+ * The venue an SEC issuer lookup has to respect: a listing outside the US,
+ * whose bare symbol the SEC may know as another company (SAN is Banco
+ * Santander in New York, Sanofi in Paris). Null for a US venue, a routing
+ * destination or no venue at all, which look the symbol up as a US ticker.
+ */
+export function nonUsSecListingVenue(ticker: string, exchange?: string): string | null {
+  const venue = parsePublicTickerKey(ticker).exchange ?? canonicalExchange(exchange);
+  if (!venue || ROUTING_EXCHANGES.has(venue) || isUsExchange(venue)) return null;
+  return venue;
 }
 
 /**

@@ -45,6 +45,7 @@ describe("PaneContent", () => {
           component={ThemeColorProbe}
           paneId="theme-preview:test"
           paneType="test"
+          title="Test"
           focused
           width={24}
           height={4}
@@ -76,6 +77,7 @@ describe("PaneContent", () => {
           component={LanguageProbe}
           paneId="language:test"
           paneType="test"
+          title="Test"
           focused
           width={24}
           height={4}

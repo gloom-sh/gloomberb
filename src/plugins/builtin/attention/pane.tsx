@@ -58,7 +58,7 @@ function Evidence({ row, data, width, height }: { row: DetailRow; data: Attentio
   const sameDay = row.evidence.periodStart.slice(0, 10) === row.evidence.periodEnd.slice(0, 10);
   const period = sameDay ? `${hour(row.evidence.periodStart)} to ${row.evidence.periodEnd.slice(11, 16)} UTC` : `${hour(row.evidence.periodStart)} to ${date(row.evidence.periodEnd)}`;
   const latest = point?.bucketStart === row.history.at(-1)?.bucketStart;
-  return <ScrollBox width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
+  return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     <KeyValueRow label="Listing" value={row.symbol} detail={row.name ?? undefined} labelWidth={20} />
     <SectionHeading title="Publication" />
     <KeyValueRow label="Research hours" value={number(row.researchUnits)} detail={`rounded to ${data.privacy.rounding}`} labelWidth={20} />
@@ -159,7 +159,7 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
   const cell = (row: AttentionRow | AttentionGroup | Locked, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (isLocked(row)) return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === "name" ? "Additional research" : "Hidden"}</Text></Blurred> }
       : { text: column.id === columns[0]!.id && row.id === "locked:0" ? "Pro" : "░░░", color: colors.textDim };
-    if (column.id === "sharePct") return { ...shareCell(number(row.sharePct, 1), maxShare ? row.sharePct / maxShare : null, column.width, colors, state.selected, desktop), value: row.sharePct };
+    if (column.id === "sharePct") return { ...shareCell(number(row.sharePct, 1), maxShare ? row.sharePct / maxShare : null, column.width, colors, state.selected), value: row.sharePct };
     if ("symbol" in row) {
       const numeric = typeof row[column.id as keyof AttentionRow] === "number" ? row[column.id as keyof AttentionRow] as number : undefined;
       switch (column.id) {

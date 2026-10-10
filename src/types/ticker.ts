@@ -56,6 +56,21 @@ export interface Portfolio {
   lastSyncedAt?: number;
   /** Set on paper portfolios shared with a team; the server holds the items. */
   teamId?: string;
+  /**
+   * Cash held beside the positions, entered by hand. A broker account that
+   * reports its own cash is shown instead of this.
+   */
+  cash?: PortfolioCash;
+  /**
+   * Target weights in percent of the total value, cash included, keyed by
+   * ticker symbol; `CASH` is the cash line.
+   */
+  targetWeights?: Record<string, number>;
+}
+
+export interface PortfolioCash {
+  amount: number;
+  currency: string;
 }
 
 export interface Watchlist {

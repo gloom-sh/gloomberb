@@ -4,7 +4,9 @@ import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
 import { getCurrencySymbol } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
+import { headlineQuoteDisplay } from "../column-values";
 import { isManualPortfolio } from "../mutations";
+import type { AllocationHolding } from "../allocation";
 import {
   getPortfolioPositionMetrics,
   getPortfolioQuoteDisplay,
@@ -46,6 +48,8 @@ export interface PortfolioSummaryTotals {
   livePriced?: boolean;
   /** Lots with a current quote. Broker account snapshots move by these. */
   pricedLots?: PricedPortfolioLot[];
+  /** Every ticker of a portfolio valued for weights and targets (see allocation.ts). */
+  allocationHoldings?: AllocationHolding[];
 }
 
 const CURRENCY_CODE = /^[A-Z]{3}$/;
@@ -112,6 +116,7 @@ export function calculatePortfolioSummaryTotals(
   const unavailableConversions = new Set<string>();
   let livePriced = true;
   const pricedLots: PricedPortfolioLot[] = [];
+  const allocationHoldings: AllocationHolding[] = [];
   const now = Date.now();
   const toBase = (value: number, currency: string) => {
     const converted = convertCurrency(value, currency, totalsCurrency, exchangeRates);
@@ -127,8 +132,10 @@ export function calculatePortfolioSummaryTotals(
     const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
     if (!isPortfolio) {
-      if (activeQuote?.changePercent != null) {
-        watchlistChangeSum += activeQuote.changePercent;
+      // The CHG% column's value, so Avg Day is the mean of that column.
+      const changePercent = headlineQuoteDisplay(activeQuote, quote)?.changePercent;
+      if (changePercent != null) {
+        watchlistChangeSum += changePercent;
         watchlistCount++;
       }
       continue;
@@ -139,20 +146,24 @@ export function calculatePortfolioSummaryTotals(
     }, quote);
     activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
     const { totalPriceUnits, grossPriceUnits, totalCost } = positionMetrics;
-    if (positionMetrics.positionCount === 0) continue;
+    if (positionMetrics.positionCount === 0) {
+      // Not held, so a missing rate is no gap in the totals: it only leaves the trade in units out.
+      const unitPrice = activeQuote ? convertCurrency(activeQuote.price, quoteCurrency, totalsCurrency, exchangeRates) : null;
+      allocationHoldings.push({ symbol: ticker.metadata.ticker, held: false, marketValue: 0, units: 0, unitPrice });
+      continue;
+    }
+    const toBaseQuote = (value: number) => toBase(value, quoteCurrency);
+    const currentUnitPrice = activeQuote ? toBaseQuote(activeQuote.price) : null;
     hasPositions = true;
     hasShorts ||= positionMetrics.hasShorts;
     totalCostBasis += totalCost;
     if (!positionMetrics.hasCostBasis) unavailableCostSymbols.add(ticker.metadata.ticker);
 
-    const toBaseQuote = (value: number) => toBase(value, quoteCurrency);
-    const positionPnl = resolvePortfolioPositionPnl(positionMetrics,
-      activeQuote ? toBaseQuote(activeQuote.price) : null);
+    const positionPnl = resolvePortfolioPositionPnl(positionMetrics, currentUnitPrice);
     signedUnrealizedPnl += positionPnl.value ?? Number.NaN;
     pnlBases.add(positionPnl.basis);
     if (positionPnl.basis === "broker-snapshot" || positionPnl.basis === "mixed") brokerPnlSymbols.add(ticker.metadata.ticker);
 
-    const currentUnitPrice = activeQuote ? toBaseQuote(activeQuote.price) : null;
     const freshQuote = currentUnitPrice != null && Number.isFinite(currentUnitPrice)
       && !!quote && !isQuoteStaleForCurrentSession(quote, now);
     if (!freshQuote || quote.dataSource === "delayed" || quote.dataSource === "snapshot") livePriced = false;
@@ -172,6 +183,13 @@ export function calculatePortfolioSummaryTotals(
     }
 
     const marketValue = resolvePortfolioMarketValue(positionMetrics, currentUnitPrice);
+    allocationHoldings.push({
+      symbol: ticker.metadata.ticker,
+      held: true,
+      marketValue: marketValue?.net ?? null,
+      units: positionMetrics.totalShares,
+      unitPrice: currentUnitPrice,
+    });
     if (marketValue) {
       totalMktValue += marketValue.gross;
       netMktValue += marketValue.net;
@@ -216,5 +234,6 @@ export function calculatePortfolioSummaryTotals(
     ...(unavailableConversions.size > 0 ? { unavailableConversions: [...unavailableConversions].sort() } : {}),
     ...(isPortfolio ? { livePriced: hasPositions && livePriced } : {}),
     ...(pricedLots.length > 0 ? { pricedLots } : {}),
+    ...(isPortfolio ? { allocationHoldings } : {}),
   };
 }

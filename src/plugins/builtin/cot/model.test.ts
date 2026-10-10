@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { fetchCotBoard, loadCotDetail, validateCotContract } from "./client";
-import { COT_MAJOR_CODES, cotChartSeries, cotContractCode, cotLegendValue, cotNetPoints, cotScope } from "./model";
+import { COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotLegendValue, cotNetPoints, cotScope } from "./model";
+import { cotModule } from "./index";
 
 function position(): CotClassSummary {
   const percentile = { value: null, rank: null, sampleCount: 2, windowStart: "2025-09-15", windowEnd: "2026-09-15",
@@ -65,6 +66,35 @@ test("price-source failure leaves report history readable and never substitutes 
   expect(resultCorn.priceSymbol).toBe("ZC=F");
   // A market code is never an equity alias: Soybean Meal's ZM stays Zoom's.
   expect(cotContractCode("ZM")).toBeNull();
+});
+
+test("CME crypto roots name their CFTC market, and only a typed argument or crypto ticker opens one", async () => {
+  expect(["BTC", "eth", "MBT", "MET", "XRP", "SOL", "btc=f"].map(cotContractCode)).toEqual(["133741", "146021", "133742", "146022", "176740", "177741", "133741"]);
+  expect(COT_ROOT_OPTIONS.filter((row) => ["BTC", "MBT", "MET", "XRP"].includes(row.value)).map((row) => row.label))
+    .toEqual(["BTC Bitcoin", "MBT Micro Bitcoin", "MET Micro Ether", "XRP"]);
+  // BTC and ETH are Grayscale's mini trusts and MET is MetLife: under the cursor, the bare symbol is the equity's.
+  expect(["BTC", "ETH", "MBT", "MET", "SOL", "XRP"].map(cotContractCodeForTicker)).toEqual([null, null, null, null, null, null]);
+  expect(["BTC-USD", "eth-usd", "BTC=F", "MBT=F", "XRP-USD", "SOL=F"].map(cotContractCodeForTicker)).toEqual(["133741", "146021", "133741", "133742", "176740", "177741"]);
+  // A micro is a product, not a coin: no pair stands for it.
+  expect(["MBT-USD", "MET-USD", "DOGE-USD", "ZM", null].map(cotContractCodeForTicker)).toEqual([null, null, null, null, null]);
+  // The roots that already follow the cursor still do, as does a typed CFTC code.
+  expect(["ES", "CL=F", "067651"].map(cotContractCodeForTicker)).toEqual(["13874A", "067651", "067651"]);
+
+  const template = cotModule.paneTemplates![0]!;
+  const open = (arg: string | undefined, activeTicker: string | null) => template.createInstance!({ activeTicker } as never, { arg } as never);
+  expect(await open("BTC", "AAPL")).toMatchObject({ title: "COT BTC", params: { code: "133741" } });
+  expect(await open("mbt", null)).toMatchObject({ title: "COT MBT", params: { code: "133742" } });
+  expect(await open(undefined, "BTC")).toMatchObject({ title: "CFTC Positioning", params: undefined });
+  expect(await open(undefined, "ETH-USD")).toMatchObject({ title: "COT ETH", params: { code: "146021" } });
+
+  // Bitcoin and ether chart their front price; the micros, XRP and SOL have no five-year history to chart.
+  const requested: string[] = [];
+  const detail = (code: string) => loadCotDetail(code, "legacy", { getCloudCotContract: async () => ({ ...payload(), contract: { ...payload().contract!, contractCode: code } }),
+    getCloudHistory: async (symbol) => { requested.push(symbol); return { status: "success", data: [] } as never; } });
+  expect((await detail("133741")).priceSymbol).toBe("BTC=F");
+  expect((await detail("146021")).priceSymbol).toBe("ETH=F");
+  for (const code of ["133742", "146022", "176740", "177741"]) expect(await detail(code)).toMatchObject({ priceSymbol: null, priceWarning: null });
+  expect(requested).toEqual(["BTC=F", "ETH=F"]);
 });
 
 test("missing migration gives unavailable state; access failures remain access failures", async () => {

@@ -76,7 +76,7 @@ export function buildCorrelationSettingsDef(): PaneSettingsDef {
       {
         key: "symbolsText",
         label: "Tickers",
-        description: `Enter up to ${MAX_CORRELATION_TICKERS} tickers. Empty uses the default CORR preset.`,
+        description: `Enter up to ${MAX_CORRELATION_TICKERS} tickers or map series (GEO:HORMUZ). Empty uses the default CORR preset.`,
         type: "text",
         placeholder: formatTickerListInput(DEFAULT_CORRELATION_SYMBOLS),
       },

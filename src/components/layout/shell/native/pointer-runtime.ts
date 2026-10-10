@@ -42,7 +42,7 @@ export function useShellNativePointerRuntime({
   commandBarOpen = false,
 }: UseShellNativePointerRuntimeOptions) {
   const {
-    dragRef,
+    startDrag,
     updateDividerPreview,
     updateDragFloatingRect,
   } = dragRuntime;
@@ -87,17 +87,17 @@ export function useShellNativePointerRuntime({
 
     const pointer = getShellPointer(event);
     focusNativePane(paneId);
-    dragRef.current = {
+    startDrag({
       type: "pane-drag",
       paneId,
       mode: "floating",
       startX: pointer.x,
       startY: pointer.y,
       origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-    };
+    });
     updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
     event.preventDefault();
-  }, [commandBarOpen, dragRef, focusNativePane, getShellPointer, nativePaneChrome, transientFocusActive, updateDragFloatingRect, windowMode]);
+  }, [commandBarOpen, focusNativePane, getShellPointer, nativePaneChrome, startDrag, transientFocusActive, updateDragFloatingRect, windowMode]);
 
   const startNativeDockedDrag = useCallback((paneId: string, rect: LayoutBounds, event: ShellMouseEvent) => {
     if (!nativePaneChrome) return;
@@ -108,16 +108,16 @@ export function useShellNativePointerRuntime({
 
     const pointer = getShellPointer(event);
     focusNativePane(paneId);
-    dragRef.current = {
+    startDrag({
       type: "pane-drag",
       paneId,
       mode: "docked",
       startX: pointer.x,
       startY: pointer.y,
       origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-    };
+    });
     event.preventDefault();
-  }, [commandBarOpen, dragRef, focusNativePane, getShellPointer, nativePaneChrome, transientFocusActive, windowMode]);
+  }, [commandBarOpen, focusNativePane, getShellPointer, nativePaneChrome, startDrag, transientFocusActive, windowMode]);
 
   const startNativeFloatResize = useCallback((paneId: string, rect: FloatingRect, event: ShellMouseEvent) => {
     if (!nativePaneChrome) return;
@@ -130,17 +130,17 @@ export function useShellNativePointerRuntime({
     } else {
       focusNativePane(paneId);
     }
-    dragRef.current = {
+    startDrag({
       type: "float-resize",
       paneId,
       startX: pointer.x,
       startY: pointer.y,
       origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-    };
+    });
     updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
     event.stopPropagation();
     event.preventDefault();
-  }, [commandBarOpen, dragRef, focusNativePane, getShellPointer, nativePaneChrome, selectWindowModePane, transientFocusActive, updateDragFloatingRect, windowMode]);
+  }, [commandBarOpen, focusNativePane, getShellPointer, nativePaneChrome, selectWindowModePane, startDrag, transientFocusActive, updateDragFloatingRect, windowMode]);
 
   const startNativeDividerDrag = useCallback((divider: DockDividerLayout, event: ShellMouseEvent) => {
     if (!nativePaneChrome) return;
@@ -152,7 +152,7 @@ export function useShellNativePointerRuntime({
       setMenuState(null);
       setHoveredMenuItemId(null);
     }
-    dragRef.current = {
+    startDrag({
       type: "divider",
       path: divider.path,
       axis: divider.axis,
@@ -160,7 +160,7 @@ export function useShellNativePointerRuntime({
       startY: pointer.y,
       startRatio: divider.ratio,
       bounds: divider.bounds,
-    };
+    });
     updateDividerPreview({
       pathKey: divider.path.join("."),
       rect: divider.rect,
@@ -168,7 +168,7 @@ export function useShellNativePointerRuntime({
     });
     event.stopPropagation();
     event.preventDefault();
-  }, [commandBarOpen, dragRef, getShellPointer, menuState, nativePaneChrome, setHoveredMenuItemId, setMenuState, transientFocusActive, updateDividerPreview]);
+  }, [commandBarOpen, getShellPointer, menuState, nativePaneChrome, setHoveredMenuItemId, setMenuState, startDrag, transientFocusActive, updateDividerPreview]);
 
   const handlePaneAction = useCallback((paneId: string, rect: LayoutBounds, event: ShellMouseEvent) => {
     if (commandBarOpen) return;

@@ -3,6 +3,7 @@ import type {
   HeadlessPaneColumn,
   HeadlessPaneContext,
   HeadlessPaneDefinition,
+  HeadlessPaneFreshness,
   HeadlessPaneLoadArgs,
   HeadlessRowsResult,
 } from "../../../types/plugin";
@@ -137,9 +138,12 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
 }
 
 /** EVTS: the market board, whatever ticker is given. */
+const EARNINGS_CALENDAR: HeadlessPaneFreshness = { status: "not-a-feed", basis: "calendar" };
+
 function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: EARNINGS_CALENDAR,
     argument: { kind: "ticker", placeholder: "ticker", description: "Optional; the board is the same.", minimum: 0, maximum: 1 },
     options: [
       { key: "limit", description: "Maximum rows.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
@@ -155,6 +159,7 @@ function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaul
 function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: EARNINGS_CALENDAR,
     argument: {
       kind: "symbol-list",
       placeholder: "tickers",

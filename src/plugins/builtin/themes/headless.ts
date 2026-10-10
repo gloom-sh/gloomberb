@@ -6,6 +6,9 @@ import { aggregateText, DEFAULT_SORT, matchTheme, memberPrice, percent, PERIOD_L
 const periods: HeadlessPaneColumn[] = THEME_PERIODS.map((key) => ({ key, header: PERIOD_LABELS[key], align: "right", format: (value) => percent(value as number | null) }));
 export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
+  // The pane's stored snapshot: 15-minute delayed prices, refreshed every 15 minutes. As in the pane,
+  // the payload's stale flags are historical; a snapshot over 30 minutes old is what reads stale.
+  freshness: { status: "delayed", delayMinutes: 15, maxAgeMinutes: 30, ignoreStaleFlags: true },
   argument: { kind: "free-text", optional: true, placeholder: "theme", description: "Theme name or keyword, such as nuclear; omit for all themes." },
   options: [],
   discovery: { aliases: ["THEM"], dataRequirements: ["Gloom Cloud stored equity snapshot"],

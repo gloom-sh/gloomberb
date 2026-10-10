@@ -345,8 +345,10 @@ export function WebTextField({
           focusedBackgroundColor={plain ? "transparent" : resolvedBackgroundColor}
           cursorColor={colors.textBright}
           style={{
-            paddingLeft: plain ? 0 : comfortable ? 8 : 10,
-            paddingRight: plain ? 0 : comfortable ? 8 : 10,
+            // A framed field keeps its text one cell off the frame; a plain one
+            // sits flush in the row or band that holds it.
+            paddingLeft: plain ? 0 : "var(--cell-w)",
+            paddingRight: plain ? 0 : "var(--cell-w)",
             borderRadius: plain ? 0 : CONTROL_RADIUS,
             // The field is taller than a cell, so the input takes the inner
             // height and centers its text on the box's own line.
@@ -581,8 +583,10 @@ export function WebDialogFrame({
       </Box>
       {children}
       {footer && (
+        // Sized by its line, not one cell: a cell-high box with this padding
+        // left the key line hanging out of its bottom.
         <Box
-          height={1}
+          flexShrink={0}
           style={{
             borderTop: `1px solid ${panelBorder(colors)}`,
             paddingTop: 8,

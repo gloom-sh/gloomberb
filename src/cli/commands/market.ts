@@ -1,6 +1,6 @@
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
-import type { EarningsEvent, QuoteBatchResult, SecFilingItem } from "../../types/data-provider";
+import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
   AnalystResearchData,
@@ -13,8 +13,9 @@ import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, 
 import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
-import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
-import { CLI_COMMAND_GROUPS } from "../help";
+import { isoDate, parsePositiveInt, rejectExtraArgs, requireOneArg, takeFlag, takeOption } from "./command-utils";
+import type { BuiltinCliCommandDef } from "../command-options";
+import { CLI_COMMAND_GROUPS, TABLE_SECTION_OPTION } from "../help";
 import {
   formatChangePercentCell,
   formatCountCell,
@@ -33,14 +34,84 @@ import {
 } from "../../plugins/builtin/research/analyst-model";
 import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
-import { renderFundamentalsReport } from "./ticker";
-import { historyPriceDecimals, historyRows } from "../history-rows";
+import { fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
+import type { CliResultColumn } from "../result";
+import {
+  exportRowsTable,
+  reportFooterLines,
+  selectReportTables,
+  type CliReportTables,
+} from "../report-tables";
+import {
+  historyFacts,
+  historyFlagNote,
+  historyAllRangeYears,
+  historyIntervalsByRange,
+  historyNotes,
+  historyPriceDecimals,
+  historyRows,
+  historyUnit,
+} from "../history-rows";
+import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
+import { formatUtcTime } from "../../utils/utc-time";
+import { isFiniteNumber } from "../../utils/guards";
+import { exportedFundamentals } from "../../utils/price-earnings";
+import { fundamentalsFreshness, quotesFreshness, rowsFreshness } from "../freshness";
+import {
+  barHistoryFreshness,
+  barResolutionFromDates,
+  REPORTED_DATA,
+  SEC_FILINGS,
+} from "../../plugins/builtin/shared/report-freshness";
+import {
+  EXCHANGE_OPTION,
+  isNoProviderError,
+  listingHeading,
+  listingIdentity,
+  listingTitle,
+  listingVenues,
+  loadForListing,
+  loadListingQuote,
+  notTradedMessage,
+  otherListingsMessage,
+  requireCliListing,
+  type CliListing,
+  type ListingIdentity,
+} from "../listing-arg";
+import { providerMissReason } from "../../sources/provider-errors";
+import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
+import { isCryptoPairSymbol } from "../../utils/crypto-pair";
+import { isUsListingExchange } from "../../utils/exchanges";
+import { nonUsSecListingVenue } from "../../utils/sec";
+import type { MarketContext } from "../types";
+import { windowRows } from "../row-window";
+import { crossRate, describeFxRate, isUsableRate, parseFxRequest } from "../fx-pair";
+import {
+  holderListFacts,
+  holderShareBasisMarker,
+  holderShareBasisNote,
+  holderValueBasis,
+  moneyColumnHeader,
+  nonUsHolderCaveat,
+  sharedReportDate,
+} from "../../plugins/builtin/holders/report-header";
+import { formatHolderOwnershipPercent, holderValueCurrency } from "../../plugins/builtin/holders/format";
+import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
+import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
+import {
+  BENEFICIAL_REPORT_COLUMNS,
+  beneficialCoverageNotices,
+  beneficialListComplete,
+  beneficialListFacts,
+  beneficialListUnreadable,
+  beneficialRouteForm,
+  buildBeneficialReportRows,
+  HOLDER_FORMS,
+  parseHolderForm,
+  type HolderForm,
+} from "../../plugins/builtin/holders/beneficial-report";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
-const EXCHANGE_OPTION = {
-  flags: "--exchange <code>",
-  description: "Listing exchange, for a symbol that trades in several places",
-};
 const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);
 
 type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & { error: string | null };
@@ -67,6 +138,11 @@ function normalizeSymbols(args: string[]): string[] {
     .filter(Boolean);
 }
 
+/** What JSON metadata says about the listing a command resolved. */
+function listingMetadata(identity: ListingIdentity) {
+  return { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name };
+}
+
 const QUOTE_LEAD_COLUMNS = [
   { key: "symbol", header: "Symbol" },
   { key: "name", header: "Name" },
@@ -86,7 +162,8 @@ function quoteColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS,
     { key: "currency", header: "Cur" },
-    { key: "source", header: "Source" },
+    // Whether the price is real-time or delayed: a feed state, not where it came from.
+    { key: "source", header: "Feed", format: (value: unknown) => value === "live" || value === "delayed" ? value : "" },
     { key: "updatedAt", header: "Updated" },
   ];
 }
@@ -199,6 +276,7 @@ function holderRows(data: HolderData, ownerTypes?: Set<string>) {
     value: holder.value ?? null,
     percentHeld: holder.percentHeld ?? null,
     changeShares: holder.changeShares ?? null,
+    shareBasis: holder.shareBasis ?? null,
   }));
 }
 
@@ -332,46 +410,134 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   if (symbols.length === 0) ctx.fail(`Usage: gloomberb ${commandName} <symbol...>`);
 
   await withMarketData(ctx, async (market) => {
-    const results = await market.dataProvider.getQuotesBatch(
-      symbols.map((symbol) => ({ symbol, exchange })),
-      { forceRefresh: ctx.cliOptions.refresh },
-    );
-    const data = results.map((result) => ({
-      target: result.target,
-      quote: result.quote,
-      error: errorMessage(result.error),
+    // With several symbols, --exchange is for the ones that name no exchange of their own.
+    const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
+      symbol, exchange, market, ctx, { ownExchangeWins: symbols.length > 1 },
+    )));
+    const targets: QuoteSubscriptionTarget[] = listings.map((listing) => ({ symbol: listing.request.symbol, exchange: listing.request.exchange }));
+    const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh });
+    const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
+    // A listing with no quote on an exchange its symbol is not listed on says so, and a bare
+    // symbol no source quotes names its other listings; venues are only looked up for those.
+    const request = { command: commandName, noun: "quote" };
+    const unquoted = await Promise.all(results.map(async (result, index) => {
+      if (result.quote) return null;
+      const listing = listingOf(result, index);
+      const notTraded = await notTradedMessage(listing, market);
+      if (notTraded) return { message: notTraded, details: undefined, oneLine: notTraded };
+      const other = isNoProviderError(result.error) ? await otherListingsMessage(listing, market, request) : null;
+      return other && { ...other, oneLine: `${other.message} Other listings: ${other.others.join(", ")}.` };
     }));
-    ctx.printResult({ data }, { rows: quoteRows, columns: commandName === "compare" ? compareColumns() : quoteColumns() });
+    if (listings.length === 1 && unquoted[0]) ctx.fail(unquoted[0].message, unquoted[0].details);
+    const notTraded = unquoted.map((entry) => entry?.oneLine ?? null);
+    // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
+    const data = results.map((result, index) => ({
+      target: result.target,
+      listing: listingMetadata(listingIdentity(listingOf(result, index), result.quote)),
+      quote: result.quote,
+      error: notTraded[index] ?? errorMessage(result.error),
+    }));
+    // Text mode shows only "unavailable" in the cell; the JSON rows already carry each reason.
+    const notes = ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [];
+    ctx.printResult({
+      data,
+      warnings: notes.length > 0 ? notes : undefined,
+      freshness: quotesFreshness(data.map((row) => row.quote)),
+    }, {
+      rows: quoteRows,
+      columns: commandName === "compare" ? compareColumns() : quoteColumns(),
+    });
   });
 }
+
+/** A crypto pair that will not load points at the crypto board. Structured formats keep the error as thrown. */
+function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandDef["execute"]>[1]): never {
+  if (ctx.cliOptions.format !== "text" || !isCryptoPairSymbol(symbol)) throw error;
+  return ctx.fail(errorMessage(error) ?? `No history available for ${symbol}`, CRYPTO_BOARD_HINT);
+}
+
+const HISTORY_USAGE = "history <symbol> [--range <range>]";
+const HISTORY_ALL_RANGE = `ALL gives the full history the source has, up to ${historyAllRangeYears()} years`;
+/** Options people reach for to ask for dates, which history answers with a range. */
+const DATE_WINDOW_OPTIONS = new Set(["--from", "--to", "--start", "--end", "--since", "--until", "--date", "--start-date", "--end-date"]);
 
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const range = parseRange(takeOption(args, "--range"), ctx);
-  const requestedExchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb history <symbol> [--range <range>]", ctx);
+  const requestedExchange = takeOption(args, "--exchange");
+  const raw = requireOneArg(args, HISTORY_USAGE, "symbol", ctx);
   await withMarketData(ctx, async (market) => {
-    const localTicker = requestedExchange ? null : await market.store.loadTicker(symbol);
-    const exchange = requestedExchange || localTicker?.metadata.exchange || "";
+    const listing = await requireCliListing(raw, requestedExchange, market, ctx);
+    const { symbol, exchange } = listing.request;
     const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
-    const { points, resolution } = market.dataProvider.getPriceHistoryWithMetadata
-      ? await market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
-      : { points: await market.dataProvider.getPriceHistory(symbol, exchange, range, context), resolution: null };
-    const data = historyRows(points, resolution);
-    const decimals = historyPriceDecimals(data, localTicker?.metadata.assetCategory);
+    const load = () => market.dataProvider.getPriceHistoryWithMetadata
+      ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
+      : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points) => ({ points, resolution: null }));
+    const [{ points, resolution }, quote] = await Promise.all([
+      loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, {
+        command: range === "1Y" ? "history" : `history --range ${range}`, noun: "history",
+      })
+        .catch((error) => failHistory(error, listing.key, ctx)),
+      loadListingQuote(market.dataProvider, listing),
+    ]);
+    const identity = listingIdentity(listing, quote);
+    // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
+    const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
+    const unit = historyUnit(listing.symbol, listed ?? quote);
+    const data = historyRows(points, resolution, unit.currency);
+    const interval = data[0]?.interval ?? null;
+    const decimals = historyPriceDecimals(data, listing.saved?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
     // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
     const intraday = data.some((row) => row.date.length > 10);
-    ctx.printResult({ data, metadata: { symbol, range, exchange, resolution } }, {
+    // A bar history: dated by its last bar, stale once bars of its size stop arriving.
+    const freshness = rowsFreshness(data, {
+      ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
+      observedKey: "date",
+      oldest: null,
+    });
+    const notes = [...historyNotes(range, interval, data[0]?.date), historyFlagNote(data) ?? []].flat();
+    const priceColumns: CliResultColumn[] = [
+      intraday
+        ? { key: "date", header: "Time", format: (value) => typeof value === "string" ? formatUtcTime(value) : "" }
+        : { key: "date", header: "Date" },
+      { key: "open", header: "Open", align: "right", format: price },
+      { key: "high", header: "High", align: "right", format: price },
+      { key: "low", header: "Low", align: "right", format: price },
+      { key: "close", header: "Close", align: "right", format: price },
+      { key: "volume", header: "Volume", align: "right", format: formatCountCell },
+    ];
+    // Text shows a flag only on a bar that has one; the column is dropped when none does.
+    const flagColumn: CliResultColumn = {
+      key: "flag", header: "Flag", format: (value) => typeof value === "string" ? cliStyles.warning(value) : "",
+    };
+    ctx.printResult({
+      data,
+      metadata: {
+        ...listingMetadata(identity),
+        range,
+        resolution,
+        requestedRange: range,
+        currency: unit.currency,
+        unit: unit.unit,
+        interval,
+        firstDate: data[0]?.date ?? null,
+        lastDate: data.at(-1)?.date ?? null,
+        bars: data.length,
+        asOf: freshness?.asOf ?? null,
+      },
+      ...(notes.length > 0 ? { warnings: notes } : {}),
+      freshness,
+    }, {
+      heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
+      dateKey: "date",
+      textColumns: [...priceColumns, flagColumn],
+      // Every exported row says its currency and bar size, so it survives head and concatenation.
       columns: [
-        intraday
-          ? { key: "date", header: "Time (UTC)", format: (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "" }
-          : { key: "date", header: "Date" },
-        { key: "open", header: "Open", align: "right", format: price },
-        { key: "high", header: "High", align: "right", format: price },
-        { key: "low", header: "Low", align: "right", format: price },
-        { key: "close", header: "Close", align: "right", format: price },
-        { key: "volume", header: "Volume", align: "right", format: formatCountCell },
+        ...priceColumns,
+        { key: "currency", header: "Currency" },
+        { key: "interval", header: "Interval" },
+        flagColumn,
       ],
     });
   });
@@ -379,46 +545,84 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 
 type FinancialsView = "statements" | "fundamentals" | "valuation";
 
+const STATEMENT_COLUMNS: CliResultColumn<ReturnType<typeof financialStatementRows>[number]>[] = [
+  { key: "date", header: "Date" },
+  { key: "revenue", header: "Revenue", align: "right", format: (value) => value == null ? "" : formatCompact(Number(value)) },
+  { key: "grossProfit", header: "Gross", align: "right", format: (value) => value == null ? "" : formatCompact(Number(value)) },
+  { key: "operatingIncome", header: "Op Inc", align: "right", format: (value) => value == null ? "" : formatCompact(Number(value)) },
+  { key: "netIncome", header: "Net Inc", align: "right", format: (value) => value == null ? "" : formatCompact(Number(value)) },
+  { key: "eps", header: "EPS", align: "right", format: (value) => value == null ? "" : formatPerShareNumber(Number(value)) },
+  { key: "currency", header: "Cur" },
+];
+
 async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], view: FinancialsView) {
   const args = [...rawArgs];
-  const exchange = takeOption(args, "--exchange") ?? "";
+  const exchangeOption = takeOption(args, "--exchange");
+  const sectionFlag = args.some((arg) => arg === "--section" || arg.startsWith("--section="));
+  const section = takeOption(args, "--section");
   const commandName = view === "statements" ? "financials" : view;
-  const symbol = requireArg(args[0]?.toUpperCase(), `Usage: gloomberb ${commandName} <symbol>`, ctx);
+  const tabular = ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson";
+  if (sectionFlag && !tabular) ctx.fail("--section picks one table of --csv or --ndjson output.");
+  if (sectionFlag && !section?.trim()) ctx.fail("--section needs a section title or number.");
+  const raw = requireOneArg(args, `${commandName} <symbol>`, "symbol", ctx);
+  const selectTables = (tables: CliReportTables) => {
+    try {
+      return selectReportTables(tables, section);
+    } catch (error) {
+      return ctx.fail(error instanceof Error ? error.message : String(error));
+    }
+  };
   await withMarketData(ctx, async (market) => {
-    const financials = await market.dataProvider.getTickerFinancials(symbol, exchange, {
-      cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
-    });
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const financials = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
+      listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
+    ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
+    const identity = listingIdentity(listing, financials.quote);
     const data: FinancialsCliData = {
-      symbol,
-      exchange,
+      symbol: listing.key,
+      exchange: identity.exchange,
       providerId: financials.quote?.providerId ?? null,
       ...financials,
     };
     if (view !== "statements") {
-      ctx.printResult({ data }, { text: (financialsData) => renderFundamentalsReport(financialsData, view) });
+      const freshness = fundamentalsFreshness(financials);
+      ctx.printResult({
+        // JSON reads a multiple over a loss as null with its reason, never as a number.
+        data: { ...data, fundamentals: exportedFundamentals(data.fundamentals) },
+        freshness,
+      }, {
+        text: () => renderFundamentalsReport(data, view),
+        ...(tabular ? { tables: selectTables(fundamentalsReportTables(data, view, freshness)) } : {}),
+      });
       return;
     }
+    const rows = financialStatementRows(data);
+    const freshness = rowsFreshness(rows, {
+      ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null,
+    });
+    // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
+    const tables = tabular
+      ? selectTables({
+        tables: [exportRowsTable("Annual statements", STATEMENT_COLUMNS, rows)],
+        footer: reportFooterLines({ freshness }),
+      })
+      : undefined;
     ctx.printResult({
       data,
       metadata: {
-        symbol,
+        ...listingMetadata(identity),
         providerId: financials.quote?.providerId,
         annualStatements: financials.annualStatements.length,
         quarterlyStatements: financials.quarterlyStatements.length,
-        fundamentals: financials.fundamentals,
+        fundamentals: exportedFundamentals(financials.fundamentals),
         profile: financials.profile,
       },
+      freshness,
     }, {
-      rows: financialStatementRows,
-      columns: [
-        { key: "date", header: "Date" },
-        { key: "revenue", header: "Revenue", align: "right", value: (row) => row.revenue == null ? "" : formatCompact(Number(row.revenue)) },
-        { key: "grossProfit", header: "Gross", align: "right", value: (row) => row.grossProfit == null ? "" : formatCompact(Number(row.grossProfit)) },
-        { key: "operatingIncome", header: "Op Inc", align: "right", value: (row) => row.operatingIncome == null ? "" : formatCompact(Number(row.operatingIncome)) },
-        { key: "netIncome", header: "Net Inc", align: "right", value: (row) => row.netIncome == null ? "" : formatCompact(Number(row.netIncome)) },
-        { key: "eps", header: "EPS", align: "right", format: (value) => value == null ? "" : formatPerShareNumber(Number(value)) },
-        { key: "currency", header: "Cur" },
-      ],
+      heading: listingHeading(identity),
+      rows: () => rows,
+      columns: STATEMENT_COLUMNS,
+      ...(tables && ctx.cliOptions.format === "csv" ? { tables } : {}),
     });
   });
 }
@@ -426,24 +630,41 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
 async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const feed = parseNewsFeed(takeOption(args, "--feed"));
-  const ticker = args[0]?.toUpperCase();
+  const exchangeOption = takeOption(args, "--exchange");
+  if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloomberb news <symbol> --exchange <code>");
+  rejectExtraArgs(args, 1, { usage: "news [symbol] [--feed <feed>]", takes: "one symbol at most", advice: "Run it once per symbol." }, ctx);
   await withMarketData(ctx, async (market) => {
-    const limit = ctx.cliOptions.limit ?? 20;
-    const articles = await market.dataProvider.getNews({
-      feed: feed ?? (ticker ? "ticker" : "latest"),
+    const listing = args[0] ? await requireCliListing(args[0], exchangeOption, market, ctx) : null;
+    // Stories come newest first, so the newest n are the first n either way.
+    const limit = ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 20;
+    const loadNews = () => market.dataProvider.getNews({
+      feed: feed ?? (listing ? "ticker" : "latest"),
       // Still set for news plugins that read the deprecated scope.
-      scope: ticker ? "ticker" : "global",
-      ticker,
+      scope: listing ? "ticker" : "global",
+      ticker: listing?.request.symbol,
+      exchange: listing?.request.exchange || undefined,
       limit,
     });
-    ctx.printResult({ data: articles, metadata: { ticker: ticker ?? null, feed: feed ?? null } }, {
+    const [articles, quote] = await Promise.all([
+      listing ? loadForListing(listing, market, ctx, loadNews, (found) => found.length === 0) : loadNews(),
+      listing ? loadListingQuote(market.dataProvider, listing) : null,
+    ]);
+    const identity = listing ? listingIdentity(listing, quote) : null;
+    ctx.printResult({
+      data: articles,
+      metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null },
+      freshness: rowsFreshness(newsRows(articles), {
+        status: "not-a-feed", basis: "published stories", observedKey: "publishedAt", oldest: null,
+      }),
+    }, {
+      ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
       columns: [
-        // UTC, as the news panes print it, rather than the host zone unlabeled.
+        // UTC with the zone named, as every CLI time prints, rather than the host zone unlabeled.
         {
           key: "publishedAt",
-          header: "Published (UTC)",
-          format: (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "",
+          header: "Published",
+          format: (value) => typeof value === "string" ? formatUtcTime(value) : "",
         },
         { key: "source", header: "Source", maxWidth: 20 },
         { key: "title", header: "Title" },
@@ -454,22 +675,68 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   });
 }
 
+const FILING_COLUMNS = [
+  { key: "filingDate", header: "Date" },
+  { key: "form", header: "Form" },
+  { key: "companyName", header: "Company", maxWidth: 24 },
+  { key: "url", header: "URL", optional: true },
+];
+
+/** The US listing the SEC files a symbol under, from the symbol's venues: NYSE for SAN's Banco Santander. */
+async function registrantUsExchange(market: MarketContext, symbol: string, registrantName: string): Promise<string | null> {
+  const venues = (await listingVenues(symbol, market).catch(() => []))
+    .filter((venue) => !nonUsSecListingVenue(symbol, venue.exchange) && !areDifferentCompanies(venue.name, registrantName));
+  return (venues.find((venue) => isUsListingExchange(venue.exchange)) ?? venues[0])?.exchange ?? null;
+}
+
 async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.limit ?? 15, "Count", ctx);
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb filings <symbol>", ctx);
+  // Filings come newest first, so --tail asks for the same first n as --limit.
+  const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 15, "Count", ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const form = takeOption(args, "--form")?.trim() || null;
+  const raw = requireOneArg(args, "filings <symbol> [--count <n>] [--form <form>]", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
-    const filings = await market.dataProvider.getSecFilings(symbol, count, exchange);
-    ctx.printResult({ data: filings, metadata: { symbol } }, {
-      rows: filingRows,
-      columns: [
-        { key: "filingDate", header: "Date" },
-        { key: "form", header: "Form" },
-        { key: "companyName", header: "Company", maxWidth: 24 },
-        { key: "url", header: "URL", optional: true },
-      ],
-    });
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const { symbol, exchange } = listing.request;
+    // A listing outside the US sends its company to the lookup, which needs its quote first.
+    const quotePromise = loadListingQuote(market.dataProvider, listing);
+    const identity = nonUsSecListingVenue(symbol, exchange) ? listingIdentity(listing, await quotePromise) : null;
+    try {
+      const context = identity?.name ? { listingName: identity.name } : undefined;
+      const [filings, quote] = await Promise.all([
+        loadForListing(listing, market, ctx, () => form
+          // A form filter searches every filing the service lists for the issuer, as the SEC pane does.
+          ? market.dataProvider.getSecFilings(symbol, SEC_FILING_FETCH_LIMIT, exchange, context)
+            .then((all) => all.filter((filing) => filingFormMatches(filing.form, form)).slice(0, count))
+          : market.dataProvider.getSecFilings(symbol, count, exchange, context),
+        (found) => found.length === 0),
+        quotePromise,
+      ]);
+      const resolved = identity ?? listingIdentity(listing, quote);
+      ctx.printResult({
+        data: filings,
+        metadata: { ...listingMetadata(resolved), ...(form ? { form } : {}) },
+        freshness: rowsFreshness(filingRows(filings), { ...SEC_FILINGS, observedKey: "filingDate" }),
+      }, {
+        heading: listingHeading(resolved),
+        rows: filingRows,
+        columns: FILING_COLUMNS,
+        empty: form ? `No ${form} filings found for ${listingTitle(resolved)}.` : `No SEC filings found for ${listingTitle(resolved)}.`,
+      });
+    } catch (error) {
+      if (!(error instanceof SecRegistrantMismatchError)) throw error;
+      // Another company's filings never show under this listing; say whose they were.
+      const message = secRegistrantMismatchMessage(
+        error.listing, error.registrantName, await registrantUsExchange(market, error.listing.symbol, error.registrantName),
+      );
+      const resolved = identity ?? listingIdentity(listing, await quotePromise);
+      ctx.printResult({
+        data: [] as SecFilingItem[],
+        metadata: { ...listingMetadata(resolved), secRegistrant: error.registrantName },
+        warnings: ctx.cliOptions.format === "text" ? undefined : [message],
+      }, { rows: filingRows, columns: FILING_COLUMNS, empty: message });
+    }
   });
 }
 
@@ -487,6 +754,52 @@ function insiderSummary(data: HolderData, ownerTypes: Set<string>): string {
   return [share, transactions].filter(Boolean).join("\n");
 }
 
+/** `holders --form 13d|13g|all`: the 13D/13G beneficial owners, joined by name to the 13F holders. */
+async function printBeneficialOwners(
+  listing: CliListing,
+  market: MarketContext,
+  form: Exclude<HolderForm, "13f">,
+  history: boolean,
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+) {
+  const { symbol, exchange } = listing.request;
+  const [payload, holders, quote] = await Promise.all([
+    loadForListing(listing, market, ctx, () => fetchBeneficialOwners(symbol, { form: beneficialRouteForm(form), history })),
+    market.dataProvider.getHolders?.(symbol, exchange).catch(() => null) ?? null,
+    loadListingQuote(market.dataProvider, listing),
+  ]);
+  const identity = listingIdentity(listing, quote);
+  const rows = buildBeneficialReportRows(payload, { history, holders });
+  const notices = beneficialCoverageNotices(payload.coverage);
+  ctx.printResult({
+    data: rows,
+    ...(notices.length ? { warnings: notices } : {}),
+    metadata: {
+      ...listingMetadata(identity),
+      name: identity.name ?? (payload.companyName || null),
+      cik: payload.cik || null,
+      form,
+      history,
+      asOf: payload.asOf,
+      coverage: payload.coverage,
+      complete: beneficialListComplete(payload),
+    },
+  }, {
+    heading: `${listingHeading(identity)}${cliStyles.muted(beneficialListFacts(payload, form, rows.length, history).map((fact) => `  ·  ${fact}`).join(""))}`,
+    textColumns: BENEFICIAL_REPORT_COLUMNS,
+    columns: [
+      ...BENEFICIAL_REPORT_COLUMNS,
+      { key: "status", header: "Status" },
+      { key: "filerCik", header: "Filer CIK" },
+      { key: "accessionNumber", header: "Accession" },
+      { key: "filingUrl", header: "URL" },
+    ],
+    empty: beneficialListUnreadable(payload)
+      ? `13D/13G filings for ${listingTitle(identity)} are listed but could not be read.`
+      : `No 13D/13G filings in the last 4 years for ${listingTitle(identity)}.`,
+  });
+}
+
 async function runHolders(
   rawArgs: string[],
   ctx: Parameters<CliCommandDef["execute"]>[1],
@@ -494,43 +807,115 @@ async function runHolders(
   ownerTypes?: Set<string>,
 ) {
   const args = [...rawArgs];
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), `Usage: gloomberb ${commandName} <symbol>`, ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const formOption = commandName === "holders" ? takeOption(args, "--form") : undefined;
+  const history = commandName === "holders" && takeFlag(args, "--history");
+  const raw = requireOneArg(args, `${commandName} <symbol>`, "symbol", ctx);
+  const form = formOption == null ? "13f" : parseHolderForm(formOption);
+  if (!form) ctx.fail(`Unknown form "${formOption}".`, `Use one of ${HOLDER_FORMS.join(", ")}.`);
+  if (form === "13f" && history) ctx.fail("--history lists 13D/13G reports.", "Add --form 13d, 13g or all.");
   await withMarketData(ctx, async (market) => {
-    const data = await market.dataProvider.getHolders(symbol, exchange);
-    ctx.printResult({ data, metadata: { symbol, summary: data.summary } }, {
-      rows: (holderData) => holderRows(holderData, ownerTypes),
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    if (form !== "13f") return printBeneficialOwners(listing, market, form, history, ctx);
+    const [data, quote] = await Promise.all([
+      loadForListing(
+        listing, market, ctx,
+        () => market.dataProvider.getHolders(listing.request.symbol, listing.request.exchange),
+        (found) => found.holders.length === 0,
+        { command: commandName, noun: "holder data" },
+      ),
+      loadListingQuote(market.dataProvider, listing),
+    ]);
+    const identity = listingIdentity(listing, quote);
+    const rows = holderRows(data, ownerTypes);
+    const shown = windowRows(rows, ctx.cliOptions).rows.length;
+    const institutional = !ownerTypes?.has("insider");
+    const total = institutional ? data.summary?.institutionsCount ?? null : null;
+    const reportDate = sharedReportDate(rows);
+    // A London line's values can be dollars from the 13F filings; the listing's currency is not their unit.
+    const valueCurrency = holderValueCurrency(data);
+    const valueBasis = rows.length > 0 ? holderValueBasis(reportDate, data.valueBasis, valueCurrency) : null;
+    const positionsBasis = rows.length > 0 ? nonUsHolderCaveat(identity.exchange || data.exchange, data.currency) : null;
+    const shareBasisNote = holderShareBasisNote(data, rows);
+    const markedRows = rows.some((row) => holderShareBasisMarker(row));
+    // The heading names the listing; its unit, date and how much of the list follows on the same line.
+    const facts = holderListFacts({
+      currency: valueCurrency, listingCurrency: data.currency, asOf: data.asOf, shown, reported: rows.length, total,
+    });
+    ctx.printResult({
+      data,
+      metadata: {
+        ...listingMetadata(identity),
+        summary: data.summary,
+        currency: data.currency ?? null,
+        valueCurrency: valueCurrency ?? null,
+        asOf: data.asOf ?? null,
+        shown,
+        reported: rows.length,
+        total,
+        truncated: shown < (total ?? rows.length),
+        valueBasis,
+        positionsBasis,
+      },
+    }, {
+      heading: `${listingHeading(identity)}${cliStyles.muted(facts.map((fact) => `  ·  ${fact}`).join(""))}`,
+      rows: () => rows,
       columns: [
         { key: "type", header: "Type" },
         { key: "name", header: "Holder" },
         { key: "reportDate", header: "Date" },
         { key: "shares", header: "Shares", align: "right", format: formatCountCell },
-        { key: "value", header: "Value", align: "right", value: (row) => row.value == null ? "" : formatCompact(Number(row.value)) },
-        { key: "percentHeld", header: "% Held", align: "right", format: formatFractionPercentCell },
+        // Marks the rows of a home line held as receipts; absent when no row is.
+        ...(markedRows ? [{ key: "shareBasis", header: "Basis", value: (row: Record<string, unknown>) => holderShareBasisMarker(row) }] : []),
+        {
+          key: "value",
+          header: moneyColumnHeader("Value", valueCurrency),
+          align: "right",
+          value: (row) => row.value == null ? "" : formatCompact(Number(row.value)),
+        },
+        {
+          key: "percentHeld",
+          header: "% Held",
+          align: "right",
+          format: (value) => isFiniteNumber(value) ? formatHolderOwnershipPercent(value) : "",
+        },
       ],
-      ...(commandName === "insider" && ownerTypes
-        ? { summary: (holderData: HolderData) => insiderSummary(holderData, ownerTypes) }
-        : {}),
-      empty: `No holders reported for ${symbol}.`,
+      summary: (holderData: HolderData) => [
+        [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? ""].filter(Boolean).join(" "),
+        commandName === "insider" && ownerTypes ? insiderSummary(holderData, ownerTypes) : "",
+      ].filter(Boolean).join("\n"),
+      empty: `No holders reported for ${listingTitle(identity)}.`,
     });
   });
 }
 
 async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb analyst <symbol>", ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const raw = requireOneArg(args, "analyst <symbol>", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
-    const data = await market.dataProvider.getAnalystResearch(symbol, exchange);
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const [data, quote] = await Promise.all([
+      loadForListing(
+        listing, market, ctx, () => market.dataProvider.getAnalystResearch(listing.request.symbol, listing.request.exchange),
+        undefined, { command: "analyst", noun: "analyst research" },
+      ),
+      loadListingQuote(market.dataProvider, listing),
+    ]);
+    const identity = listingIdentity(listing, quote);
     ctx.printResult({
       data,
       metadata: {
-        symbol,
+        ...listingMetadata(identity),
         recommendationRating: data.recommendationRating,
         priceTarget: data.priceTarget,
         recommendations: data.recommendations,
       },
+      freshness: rowsFreshness(analystRows(data), {
+        ...REPORTED_DATA, basis: "analyst ratings", observedKey: "date", oldest: null,
+      }, { stale: data.stale === true }),
     }, {
+      heading: listingHeading(identity),
       rows: analystRows,
       summary: analystSummary,
       columns: [
@@ -546,11 +931,26 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 
 async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb events <symbol>", ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const raw = requireOneArg(args, "events <symbol>", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
-    const data = await market.dataProvider.getCorporateActions(symbol, exchange);
-    ctx.printResult({ data, metadata: { symbol } }, {
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const [data, quote] = await Promise.all([
+      loadForListing(
+        listing, market, ctx, () => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange),
+        undefined, { command: "events", noun: "corporate events" },
+      ),
+      loadListingQuote(market.dataProvider, listing),
+    ]);
+    const identity = listingIdentity(listing, quote);
+    ctx.printResult({
+      data,
+      metadata: listingMetadata(identity),
+      freshness: rowsFreshness(corporateActionRows(data), {
+        ...REPORTED_DATA, basis: "corporate actions", observedKey: "date", oldest: null,
+      }),
+    }, {
+      heading: listingHeading(identity),
       rows: corporateActionRows,
       columns: [
         { key: "date", header: "Date" },
@@ -564,22 +964,38 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
 async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const expiration = takeOption(args, "--expiration");
-  const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb options <symbol> [--expiration <unix>]", ctx);
+  const exchangeOption = takeOption(args, "--exchange");
+  const raw = requireOneArg(args, "options <symbol> [--expiration <unix>]", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const { symbol, exchange } = listing.request;
     const expirationDate = expiration == null ? undefined : Number(expiration);
-    const result = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
-      .load({ force: ctx.cliOptions.refresh });
-    const chain = result?.value ?? await market.dataProvider.getOptionsChain(symbol, exchange, expirationDate, {
-      cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
-    });
+    const quotePromise = loadListingQuote(market.dataProvider, listing);
+    const { result, chain } = await loadForListing(listing, market, ctx, async () => {
+      const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
+        .load({ force: ctx.cliOptions.refresh });
+      return {
+        result: cached,
+        chain: cached?.value ?? await market.dataProvider.getOptionsChain(symbol, exchange, expirationDate, {
+          cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
+        }),
+      };
+    }, undefined, { command: "options", noun: "options chain" });
+    const identity = listingIdentity(listing, await quotePromise);
     // A failed refresh falls back to the stored chain, which can be days old.
     const refreshWarning = result?.refreshError == null ? null
       : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
         + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
-    const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, exchange, Date.now());
+    const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, identity.exchange, Date.now());
     const warnings = refreshWarning ? [refreshWarning] : sessionWarning ? [sessionWarning] : undefined;
-    ctx.printResult({ data: chain, metadata: { symbol, expirations: chain.expirationDates }, warnings }, {
+    // Dated by the chain's last trade; a chain that failed to refresh is the stored one, stale.
+    const freshness = rowsFreshness([], { asOf: chain.asOf ?? null }, {
+      ...(chain.dataSource ? { dataSource: chain.dataSource } : {}),
+      ...(chain.delayMinutes != null ? { delayMinutes: chain.delayMinutes } : {}),
+      stale: refreshWarning != null,
+    });
+    ctx.printResult({ data: chain, metadata: { ...listingMetadata(identity), expirations: chain.expirationDates }, warnings, freshness }, {
+      heading: listingHeading(identity),
       rows: optionRows,
       columns: [
         { key: "side", header: "Side" },
@@ -596,44 +1012,78 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
+const FX_USAGE = "fx <currency> | fx <base>/<quote>";
+
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const currency = requireArg(rawArgs[0]?.trim().toUpperCase(), "Usage: gloomberb fx <currency>", ctx);
+  const raw = requireOneArg(rawArgs, FX_USAGE, "currency or pair", ctx);
   await withMarketData(ctx, async (market) => {
-    const baseCurrency = market.config.baseCurrency.trim().toUpperCase();
+    const request = parseFxRequest(raw, market.config.baseCurrency);
+    if ("error" in request) return ctx.fail(request.error, `Usage: gloomberb ${FX_USAGE}`);
+    const { currency, baseCurrency } = request;
+    const pair = `${currency}/${baseCurrency}`;
+    const reasons = new Map<string, string>();
     const load = (code: string) => market.dataProvider.getCachedQuery("getExchangeRate", [code])
-      .load({ force: ctx.cliOptions.refresh }).catch(() => null);
-    const legs = currency === baseCurrency ? [] : await Promise.all([load(currency), load(baseCurrency)]);
-    const [from, base] = legs;
-    const rate = currency === baseCurrency ? 1 : from && base ? from.value / base.value : Number.NaN;
-    if (!Number.isFinite(rate) || rate <= 0) ctx.fail(`Exchange rate unavailable for ${currency}/${baseCurrency}`);
+      .load({ force: ctx.cliOptions.refresh }).catch((error) => {
+        const reason = providerMissReason(error);
+        if (reason) reasons.set(code, reason);
+        return null;
+      });
+    // Every rate is a cross of two USD legs; a code priced in itself needs none.
+    const codes = currency === baseCurrency ? [] : [currency, baseCurrency];
+    const legs = await Promise.all(codes.map(load));
+    const missing = codes.filter((_code, index) => !isUsableRate(legs[index]?.value));
+    if (missing.length > 0) {
+      // A reason the data service gave for the first missing leg says more than the generic line.
+      const reason = missing.map((code) => reasons.get(code)).find(Boolean);
+      if (reason) ctx.fail(reason);
+      ctx.fail(
+        `Exchange rate unavailable for ${missing.join(" and ")}.`,
+        `${pair} is crossed from each currency's USD rate, and none came back for ${missing.join(" or ")}. Check the ISO code.`,
+      );
+    }
+    const rate = codes.length === 0 ? 1 : crossRate(legs[0]?.value, legs[1]?.value);
     // A cross rate is only as current as its older leg.
     const observed = legs.flatMap((leg) => leg?.asOf ?? []);
     const asOf = observed.length > 0 ? new Date(Math.min(...observed)).toISOString() : null;
     const stale = legs.some((leg) => leg != null && (leg.staleAt <= Date.now() || leg.refreshError != null));
-    ctx.printResult({ data: [{ currency, baseCurrency, rate, asOf, stale }] }, {
-      layout: "record",
+    const row = { currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate };
+    ctx.printResult({ data: [row] }, {
+      text: () => {
+        const time = asOf ? `As of ${formatUtcTime(asOf)}` : "";
+        const when = stale ? cliStyles.warning(time ? `${time}, stale` : "Stale") : time && cliStyles.muted(time);
+        return [describeFxRate(request, rate), when].filter(Boolean).join("\n");
+      },
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },
         { key: "rate", header: "Rate", align: "right" },
-        ...(asOf || stale ? [{
-          key: "asOf",
-          header: "As Of",
-          format: (value: unknown, row: { stale: boolean }) => (
-            row.stale ? cliStyles.warning(`${value ?? ""} stale`.trim()) : String(value ?? "")
-          ),
-        }] : []),
+        { key: "asOf", header: "As Of" },
+        { key: "stale", header: "Stale" },
+        { key: "pair", header: "Pair" },
+        { key: "inverse", header: "Inverse", align: "right" },
       ],
     });
   });
 }
 
 async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const symbols = normalizeSymbols([...rawArgs]);
+  const args = [...rawArgs];
+  const exchangeOption = takeOption(args, "--exchange");
+  const symbols = normalizeSymbols(args);
   if (symbols.length === 0) ctx.fail("Usage: gloomberb earnings <symbol...>");
   await withCliServices(ctx, async (services) => {
-    const events = await services.dataProvider.getEarningsCalendar(symbols);
-    ctx.printResult({ data: events }, {
+    const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
+      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1 },
+    )));
+    const events = await loadForListing(
+      listings, services, ctx,
+      () => services.dataProvider.getEarningsCalendar(listings.map((listing) => listing.key)),
+      (found) => found.length === 0,
+    );
+    ctx.printResult({
+      data: events,
+      freshness: rowsFreshness(earningsRows(events), { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
+    }, {
       rows: earningsRows,
       columns: [
         { key: "date", header: "Date" },
@@ -647,7 +1097,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
   });
 }
 
-export const marketDataCliCommands: CliCommandDef[] = [
+export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   {
     name: "quote",
     description: "Show the latest price for one or more symbols",
@@ -655,7 +1105,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.research,
       usage: ["quote <symbol...>"],
       options: [EXCHANGE_OPTION],
-      examples: ["quote AAPL MSFT NVDA", "quote BTC-USD EURUSD=X", "quote AAPL --json"],
+      examples: ["quote AAPL MSFT NVDA", "quote SAN:EPA BHP:ASX", "quote BTC-USD EURUSD=X", "quote AAPL --json"],
     },
     execute: (args, ctx) => runQuote(args, ctx, "quote"),
   },
@@ -666,7 +1116,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.research,
       usage: ["compare <symbol...>"],
       options: [EXCHANGE_OPTION],
-      examples: ["compare KO PEP", "compare SPY QQQ IWM --csv"],
+      examples: ["compare KO PEP", "compare SAN:EPA SAN:NYSE", "compare SPY QQQ IWM --csv"],
     },
     execute: (args, ctx) => runQuote(args, ctx, "compare"),
   },
@@ -675,13 +1125,23 @@ export const marketDataCliCommands: CliCommandDef[] = [
     description: "Fetch open, high, low, close, and volume over a range",
     help: {
       group: CLI_COMMAND_GROUPS.research,
-      usage: ["history <symbol> [--range <range>]"],
+      usage: [HISTORY_USAGE],
       options: [
-        { flags: "--range <range>", description: `${TIME_RANGES.join(", ")} (default 1Y)` },
+        { flags: "--range <range>", description: `${TIME_RANGES.join(", ")} (default 1Y); ${HISTORY_ALL_RANGE}` },
         EXCHANGE_OPTION,
       ],
-      examples: ["history AAPL", "history AAPL --range 5Y --csv > aapl.csv"],
+      sections: [{
+        title: "Bars",
+        lines: [
+          `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for.`,
+          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every exported row (--csv, --ndjson, --json) carries currency, interval and flag.",
+        ],
+      }],
+      examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history ZAR=X --tail 5", "history AAPL --range 5Y --csv > aapl.csv"],
     },
+    unknownOptionHint: (flag) => DATE_WINDOW_OPTIONS.has(flag)
+      ? `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`
+      : null,
     execute: runHistory,
   },
   {
@@ -694,7 +1154,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
         { flags: "--expiration <unix>", description: "Expiration as Unix seconds; defaults to the nearest one" },
         EXCHANGE_OPTION,
       ],
-      examples: ["options AAPL", "options AAPL --json"],
+      examples: ["options AAPL", "options AAPL:NASDAQ --json"],
     },
     execute: runOptions,
   },
@@ -731,8 +1191,8 @@ export const marketDataCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["financials <symbol>"],
-      options: [EXCHANGE_OPTION],
-      examples: ["financials MSFT", "financials MSFT --json"],
+      options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
+      examples: ["financials MSFT", "financials SAN:EPA", "financials MSFT --json", "financials MSFT --csv > msft.csv"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "statements"),
   },
@@ -742,8 +1202,8 @@ export const marketDataCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["fundamentals <symbol>"],
-      options: [EXCHANGE_OPTION],
-      examples: ["fundamentals NVDA"],
+      options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
+      examples: ["fundamentals NVDA", "fundamentals ASML:AMS", "fundamentals NVDA --csv --section fundamentals"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "fundamentals"),
   },
@@ -753,8 +1213,8 @@ export const marketDataCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["valuation <symbol>"],
-      options: [EXCHANGE_OPTION],
-      examples: ["valuation NVDA"],
+      options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
+      examples: ["valuation NVDA", "valuation BP:LSE", "valuation NVDA --csv"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "valuation"),
   },
@@ -764,7 +1224,8 @@ export const marketDataCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["earnings <symbol...>"],
-      examples: ["earnings AAPL MSFT GOOGL"],
+      options: [EXCHANGE_OPTION],
+      examples: ["earnings AAPL MSFT GOOGL", "earnings SAN:EPA"],
     },
     execute: runEarnings,
   },
@@ -775,7 +1236,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["events <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["events KO"],
+      examples: ["events KO", "events BHP:ASX"],
     },
     execute: runEvents,
   },
@@ -786,18 +1247,22 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["analyst <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["analyst TSLA"],
+      examples: ["analyst TSLA", "analyst SAN:EPA"],
     },
     execute: runAnalyst,
   },
   {
     name: "holders",
-    description: "Fetch institutional, fund, and insider holders",
+    description: "Fetch institutional holders, or the 13D/13G beneficial owners",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
-      usage: ["holders <symbol>"],
-      options: [EXCHANGE_OPTION],
-      examples: ["holders AAPL"],
+      usage: ["holders <symbol> [--form 13f|13d|13g|all] [--history]"],
+      options: [
+        { flags: "--form <form>", description: "13f for the holder table (default); 13d, 13g or all for beneficial owners over 5%" },
+        { flags: "--history", description: "With --form 13d, 13g or all, every report newest first instead of the latest per filer" },
+        EXCHANGE_OPTION,
+      ],
+      examples: ["holders AAPL", "holders SAN:EPA", "holders CAR --form all", "holders CAR --form 13g --history --json"],
     },
     execute: (args, ctx) => runHolders(args, ctx, "holders"),
   },
@@ -808,7 +1273,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["insider <symbol>"],
       options: [EXCHANGE_OPTION],
-      examples: ["insider NVDA"],
+      examples: ["insider NVDA", "insider BP:LSE"],
     },
     execute: (args, ctx) => runHolders(args, ctx, "insider", new Set(["insider", "direct"])),
   },
@@ -823,7 +1288,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
         title: "13F filings",
         lines: ["For each fund's reported position and its change over the quarter, run gloomberb fn 13F <symbol>."],
       }],
-      examples: ["13f AAPL"],
+      examples: ["13f AAPL", "13f BP:NYSE"],
     },
     execute: (args, ctx) => runHolders(args, ctx, "13f", new Set(["institution", "fund"])),
   },
@@ -832,12 +1297,13 @@ export const marketDataCliCommands: CliCommandDef[] = [
     description: "Fetch recent SEC filings",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
-      usage: ["filings <symbol> [--count <n>]"],
+      usage: ["filings <symbol> [--count <n>] [--form <form>]"],
       options: [
         { flags: "--count <n>", description: "Number of filings (default 15)" },
+        { flags: "--form <form>", description: "Only this form and its amendments, such as 10-K or 13D" },
         EXCHANGE_OPTION,
       ],
-      examples: ["filings AAPL", "filings AAPL --count 40 --json"],
+      examples: ["filings AAPL", "filings BHP:ASX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],
     },
     execute: runFilings,
   },
@@ -849,18 +1315,26 @@ export const marketDataCliCommands: CliCommandDef[] = [
       usage: ["news [symbol] [--feed <feed>]"],
       options: [
         { flags: "--feed <feed>", description: "latest, top, or breaking for market news (default latest)" },
+        EXCHANGE_OPTION,
       ],
-      examples: ["news", "news TSLA", "news --feed top --limit 10"],
+      examples: ["news", "news TSLA", "news SAN:EPA", "news --feed top --limit 10"],
     },
     execute: runNews,
   },
   {
     name: "fx",
-    description: "Convert a currency into your base currency",
+    description: "Convert a currency into your base currency, or quote a pair such as USD/NGN",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["fx <currency>"],
-      examples: ["fx EUR", "fx JPY --json"],
+      usage: ["fx <currency>", "fx <base>/<quote>"],
+      sections: [{
+        title: "Direction",
+        lines: [
+          "A bare code is one unit of it in your base currency. A pair reads as markets quote it: USD/NGN is how many NGN one USD buys. Two codes neither of which is USD, such as ZAR/NGN, cross through their USD rates.",
+          "The answer states both directions: 1 NGN = 0.000752791 USD  (USD/NGN 1328.39). --json, --csv and --ndjson carry rate (base currency per currency), pair, inverse, asOf and stale.",
+        ],
+      }],
+      examples: ["fx EUR", "fx NGN", "fx USD/NGN", "fx ZAR/NGN", "fx JPY --json"],
     },
     execute: runFx,
   },

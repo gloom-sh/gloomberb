@@ -912,7 +912,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       await flushFrame();
       const after = tui.frame();
       expect(after).not.toContain("⚠");
-      expect(after).toMatch(/AAPL\s+100\s+1\.2k\s+\+200\.00\s+\+20\.00%/);
+      expect(after).toMatch(/AAPL\s+100\.00\s+1\.2k\s+\+200\.00\s+\+20\.00%/);
     });
   }
 

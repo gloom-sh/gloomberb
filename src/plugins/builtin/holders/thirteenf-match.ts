@@ -1,4 +1,4 @@
-import { listThirteenFForms, searchThirteenFFunds } from "../thirteenf/api";
+import { listThirteenFForms, normalizeCik, searchThirteenFFunds } from "../thirteenf/api";
 import { isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
 import { buildPeriodReports } from "../thirteenf/model";
 import type { HolderRow } from "./types";
@@ -40,6 +40,34 @@ export function bestFundMatch(holderName: string, funds: Array<{ cik: string; na
     return shorter.split(" ").length >= 2 && ` ${longer} `.includes(` ${shorter} `);
   });
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * The 13F holder row that is a 13D/13G filer: the row whose matched 13F
+ * manager has the filer's CIK, else the one row whose name is the filer's once
+ * normalised. A parent or subsidiary with a longer name is not the filer, and
+ * two rows with the filer's name leave it unmatched. A manager's CIK can
+ * change (BlackRock's 13G filer did in 2024) while its 13F match keeps the
+ * old one, so an exact name is not overruled by a CIK.
+ */
+export function matchFilerToHolder<Row extends { id: string; name: string }>(
+  filer: { filerCik: string | null; filerName: string },
+  rows: readonly Row[],
+  fundMatches: ReadonlyMap<string, Pick<Holder13FMatch, "cik">> = new Map(),
+): Row | undefined {
+  const cik = filer.filerCik ? normalizeCik(filer.filerCik) : null;
+  const matchedCik = (row: Row) => {
+    const match = fundMatches.get(row.id);
+    return match ? normalizeCik(match.cik) : null;
+  };
+  if (cik) {
+    const byCik = rows.filter((row) => matchedCik(row) === cik);
+    if (byCik.length === 1) return byCik[0];
+  }
+  const name = normalizeName(filer.filerName);
+  if (!name) return undefined;
+  const byName = rows.filter((row) => normalizeName(row.name) === name);
+  return byName.length === 1 ? byName[0] : undefined;
 }
 
 export async function loadHolder13FMatches(

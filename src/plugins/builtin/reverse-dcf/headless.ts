@@ -9,6 +9,7 @@ const implied = (value: ImpliedGrowth | null) => !value ? null : value.kind === 
 
 export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker" },
+  freshness: { status: "not-a-feed", basis: "price and reported cash flows" },
   describe: (args) => `RDCF ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: ["Trailing twelve-month free cash flow against the reported enterprise value."] },
   options: [
@@ -35,6 +36,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...Object.fromEntries(row.implied.map((value, index) => [`t${index}`, implied(value)])) })) },
       ],
       complete: !inputs.stale && !inputs.error && !model.error,
+      ...(inputs.stale ? { freshness: { status: "stale" as const } } : {}),
       unavailableSymbols: model.implied ? [] : [instrument.symbol],
       errors: [inputs.error, model.error].filter((value): value is string => !!value),
       metadata: { currency: model.currency, discountRate, terminalGrowth: TERMINAL_GROWTH, discountRates: DISCOUNT_RATES,

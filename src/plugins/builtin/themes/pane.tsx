@@ -8,6 +8,7 @@ import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
+import { useMembersMenu } from "../shared/members-menu";
 import { cachedMembers, cachedThemes, loadMembers, loadThemes } from "./client";
 import { aggregateText, coverageWidth, DEFAULT_SORT, matchTheme, memberColumns, memberPrice, percent, sortMembers, sortThemes, themeColumns, type ThemeSort } from "./model";
 
@@ -37,6 +38,8 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   useSnapshotFooter("themes:members", resource, focused);
+  const memberList = useMemo(() => data ? { title: data.theme.name, watchlistName: data.theme.name, members: rows } : null, [data, rows]);
+  useMembersMenu("themes:members-menu", memberList);
   const renderCell = useCallback((row: ThemeMember, column: DataTableColumn): DataTableCell => {
     if (column.id === "symbol") return { text: row.symbol, color: colors.textBright };
     if (column.id === "name") return { text: row.name ?? "--", color: colors.text };

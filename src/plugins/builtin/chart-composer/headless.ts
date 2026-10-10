@@ -2,8 +2,10 @@ import { financialPeriodCoverage } from "../../../time-series/financial-period-c
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
 import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from "../../../time-series/market";
-import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
-import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
+import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessSeries, HeadlessSeriesResult } from "../../../types/headless";
+import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSpec, ChartSpec, ChartViewportSpec } from "../../../time-series/types";
+import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
+import { GEO_SERIES_CAPABILITY_ID } from "./series-expression";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
 import { intersectChartResolutionSupport, isIntradayResolution, normalizeChartResolutionSupport, type ManualChartResolution } from "../../../time-series/resolution";
 import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
@@ -16,6 +18,7 @@ import { createChartSeriesResolver } from "../../../capabilities";
 import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
+import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -34,6 +37,23 @@ export interface ChartPaneModel extends HeadlessSeriesResult {
       requestedSession: string | null;
       unavailableReason: string | null;
     }>;
+  };
+}
+
+/**
+ * Map series read straight from the Cloud client, so a report or screenshot
+ * charts them where plugin capability handlers are not running; every other
+ * capability series goes through the registry as before.
+ */
+function headlessCapabilityResolver(context: HeadlessPaneContext) {
+  const registry = context.capabilities ? createChartSeriesResolver(context.capabilities) : null;
+  return async (source: CapabilitySeriesSource, viewport: ChartViewportSpec, spec: ChartSeriesSpec) => {
+    if (source.capabilityId === GEO_SERIES_CAPABILITY_ID) {
+      const request = <T,>(path: string, init?: RequestInit) => context.apiClient.geo<T>(path, { ...init, signal: init?.signal ?? context.signal });
+      return resolveGeoChartSeries(request, source.seriesId, viewport, context.signal);
+    }
+    if (!registry) throw new Error(`Chart series capability "${source.capabilityId}" is unavailable. Enable its plugin or provider.`);
+    return registry(source, viewport, spec);
   };
 }
 
@@ -101,7 +121,7 @@ export async function loadChartPaneModel(
         if (!primary || rank < primary.rank) primaryHistories.set(key, { key: variantKey, rank });
       }
     },
-    ...(context.capabilities ? { resolveCapabilitySeries: createChartSeriesResolver(context.capabilities) } : {}),
+    resolveCapabilitySeries: headlessCapabilityResolver(context),
     loadFredSeries: async (request) => ({
       data: await context.apiClient.getCloudFredSeries(request.seriesId, {
         startDate: request.startDate,
@@ -189,6 +209,20 @@ export async function loadChartPaneModel(
   };
 }
 
+/**
+ * Price series are bar histories, stale once bars of the coarsest size stop
+ * arriving; fundamentals, valuations and economic series are reported data.
+ */
+function chartFreshness(series: readonly HeadlessSeries[]): HeadlessPaneFreshness {
+  const order = ["1wk", "1mo"];
+  const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
+  if (!series.length || resolutions.some((resolution) => !resolution)) return { ...REPORTED_DATA, basis: "reported and published data" };
+  const coarsest = resolutions.reduce((worst, resolution) => (
+    order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst
+  ), resolutions[0]);
+  return barHistoryFreshness(coarsest);
+}
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
@@ -262,6 +296,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }
       }
       model.snapshot.intradayHistories = intradayHistories;
+      model.freshness = chartFreshness(model.series);
       const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
         priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);
       if (priceDomainFailures.length) {

@@ -6,7 +6,7 @@ Bug reports and pull requests are welcome. Please follow the [code of conduct](C
 
 ## Running locally
 
-Requires [Bun](https://bun.sh).
+Requires [Bun](https://bun.sh) 1.3.11, the version CI runs (`packageManager` in `package.json`). Install it with `curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.11"`, and recheck a test that fails only on another version against 1.3.11 before chasing it.
 
 ```bash
 git clone https://github.com/gloom-sh/gloomberb.git
@@ -106,7 +106,7 @@ Tests run on `bun test` and sit next to the code they cover as `*.test.ts` or `*
 
 ### Host imports
 
-Built-in code under `src/` imports the host by relative path (`../../../ui`, `../../../components`, `../../../public/react`, `../../../theme/colors`). The `gloomberb/*` specifiers are the external-plugin API: Bun on Linux resolves them as a package self-reference, so typecheck and tests pass, but the Windows desktop bundle cannot resolve them and the Windows verify workflow on `main` fails.
+Built-in code under `src/` imports the host by relative path (`../../../ui`, `../../../components`, `../../../public/react`, `../../../theme/colors`). The `gloomberb/*` specifiers are the external-plugin API: Bun on Linux resolves them as a package self-reference, so typecheck and tests pass, but the Windows desktop bundle cannot resolve them and the Windows verify workflow on `main` fails. `src/architecture/import-boundaries.test.ts` fails on a `gloomberb` or `gloomberb/*` import in built-in code.
 
 ### One component for every renderer
 

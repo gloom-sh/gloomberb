@@ -27,9 +27,21 @@ function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSS
   const backgroundColor = focused && typeof props.focusedBackgroundColor === "string"
     ? props.focusedBackgroundColor
     : props.backgroundColor;
+  const base = commonStyle(props);
+  const overrides = props.style as CSSProperties | undefined;
 
   return {
-    ...commonStyle(props),
+    ...base,
+    // Flush unless the caller insets the text. Longhands, never the `padding`
+    // shorthand: React writes style keys in order, and a shorthand here landed
+    // after a caller's `paddingLeft` and wiped it, so every bordered field's
+    // text sat on its border.
+    ...(overrides?.padding === undefined ? {
+      paddingTop: base.paddingTop ?? 0,
+      paddingRight: base.paddingRight ?? 0,
+      paddingBottom: base.paddingBottom ?? 0,
+      paddingLeft: base.paddingLeft ?? 0,
+    } : {}),
     display: "block",
     resize: "none",
     border: "none",
@@ -40,10 +52,9 @@ function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSS
     overflow: multiline ? "auto" : "hidden",
     width: cellWidth(props.width) ?? "100%",
     height: cellHeight(props.height) ?? (multiline ? "100%" : "var(--cell-h)"),
-    padding: 0,
     margin: 0,
     caretColor: typeof props.cursorColor === "string" ? props.cursorColor : "auto",
-    ...(props.style as CSSProperties | undefined),
+    ...overrides,
   };
 }
 

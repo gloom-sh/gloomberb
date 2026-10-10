@@ -8,7 +8,13 @@ import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
-import { exchangeShortName, marketStateColor, marketStateLabel } from "../../../market-data/market/status";
+import {
+  exchangeShortName,
+  getExtendedSessionDisplay,
+  getRegularSessionDisplay,
+  marketStateColor,
+  marketStateLabel,
+} from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
 import { useViewport } from "../../../react/input";
 import { useAppSelector } from "../../../state/app/context";
@@ -20,6 +26,7 @@ import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
+import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
 import {
   CompactRangeBar,
   FundamentalsGrid,
@@ -131,9 +138,12 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const quoteSummaryWidth = quoteBookInline ? Math.max(20, contentWidth - quoteBookWidth - 2) : contentWidth;
   // Price, change and ranges keep the instrument's decimals on every streamed tick.
   const moneyOptions = liveQuoteFormatOptions(quote, quote?.currency, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
-  const quotePriceText = quote ? formatMarketPriceWithCurrency(quote.price, quote.currency, moneyOptions) : "";
-  const quoteChangeText = quote ? formatSignedMarketPrice(quote.change, moneyOptions) : "";
-  const quotePercentText = quote ? `(${formatPercentRaw(quote.changePercent)})` : "";
+  // The headline is the regular session, which stops at the close; extended trading is the line below it.
+  const sessionQuote = getRegularSessionDisplay(quote);
+  const extendedQuote = getExtendedSessionDisplay(quote);
+  const quotePriceText = sessionQuote ? formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions) : "";
+  const quoteChangeText = sessionQuote ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
+  const quotePercentText = sessionQuote ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
   const companyName = [ticker.metadata.name, quote?.name].find((name) => name && name !== ticker.metadata.ticker) ?? "";
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
@@ -179,11 +189,13 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const stats = buildOverviewStats({
     quote,
     fundamentals,
+    financialCurrency: financials?.financialCurrency,
     quoteCurrency,
     baseCurrency,
     toBase,
     marketCapExchangeRates: exchangeRates,
     nextEarnings: financials?.nextEarnings,
+    depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     // Report and ex-dividend dates are the listing's calendar days.
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
   });
@@ -241,7 +253,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
               </Box>
             )}
 
-            {quote && (
+            {sessionQuote && (
               <Box
                 flexDirection={stackQuoteSummary ? "column" : "row"}
                 gap={stackQuoteSummary ? 0 : 2}
@@ -249,30 +261,19 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
               >
                 <FigureText>{quotePriceText}</FigureText>
                 <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}>
-                  <FigureText part="sub" change={quote.change}>{quoteChangeText}</FigureText>
-                  <FigureText part="sub" change={quote.change}>{quotePercentText}</FigureText>
+                  <FigureText part="sub" change={sessionQuote.change}>{quoteChangeText}</FigureText>
+                  <FigureText part="sub" change={sessionQuote.change}>{quotePercentText}</FigureText>
                 </Box>
               </Box>
             )}
-            {quote && (quote.marketState === "PRE" || quote.marketState === "PREPRE") && quote.preMarketPrice != null && (
+            {extendedQuote && (
               <Box flexDirection="row" gap={2}>
-                <Text fg={colors.textDim}>{t("Pre-Market")}:</Text>
-                <Text fg={priceColor(quote.preMarketChange ?? 0)}>
-                  {formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, moneyOptions)}
+                <Text fg={colors.textDim}>{extendedQuote.session === "PRE" ? t("Pre-Market") : t("After-Hours")}:</Text>
+                <Text fg={priceColor(extendedQuote.change ?? 0)}>
+                  {formatMarketPriceWithCurrency(extendedQuote.price, quote?.currency, moneyOptions)}
                 </Text>
-                <Text fg={priceColor(quote.preMarketChange ?? 0)}>
-                  {formatSignedMarketPrice(quote.preMarketChange, moneyOptions)} ({formatPercentRaw(quote.preMarketChangePercent)})
-                </Text>
-              </Box>
-            )}
-            {quote && (quote.marketState === "POST" || quote.marketState === "POSTPOST") && quote.postMarketPrice != null && (
-              <Box flexDirection="row" gap={2}>
-                <Text fg={colors.textDim}>{t("After-Hours")}:</Text>
-                <Text fg={priceColor(quote.postMarketChange ?? 0)}>
-                  {formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, moneyOptions)}
-                </Text>
-                <Text fg={priceColor(quote.postMarketChange ?? 0)}>
-                  {formatSignedMarketPrice(quote.postMarketChange, moneyOptions)} ({formatPercentRaw(quote.postMarketChangePercent)})
+                <Text fg={priceColor(extendedQuote.change ?? 0)}>
+                  {formatSignedMarketPrice(extendedQuote.change, moneyOptions)} ({formatPercentRaw(extendedQuote.changePercent)})
                 </Text>
               </Box>
             )}
@@ -293,7 +294,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
           <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={contentWidth}>
             {hasDayRange && (
               <CompactRangeBar
-                current={quote.price}
+                current={sessionQuote?.price ?? quote.price}
                 low={quote.low!}
                 high={quote.high!}
                 label={dayRangeLabel}
@@ -307,7 +308,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
             )}
             {yearRange && (
               <CompactRangeBar
-                current={quote.price}
+                current={sessionQuote?.price ?? quote.price}
                 low={yearRange.low}
                 high={yearRange.high}
                 label={yearRangeLabel}

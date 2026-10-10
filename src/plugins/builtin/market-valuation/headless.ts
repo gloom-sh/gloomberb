@@ -120,6 +120,8 @@ function projectValuationHeadlessBundle(
 
 export const marketValuationHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  // Each indicator row checks its own release schedule and says when it is stale.
+  freshness: { status: "not-a-feed", basis: "published statistics" },
   argument: {
     kind: "free-text",
     placeholder: "indicator",

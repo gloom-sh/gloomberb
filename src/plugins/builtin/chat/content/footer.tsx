@@ -6,8 +6,7 @@ import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-ti
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
-import { hasPublicChatProfileInfo } from "../message/profile-popover";
-import { chatAuthorName } from "../ghost-user";
+import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { chatMessageOpenTargets, type ChatOpenTarget } from "./open-targets";
 import { openChatImageViewer } from "../attachments/desktop";
 
@@ -29,7 +28,6 @@ export function useChatFooter({
   catalog,
   openTicker,
   openAttachPicker,
-  currentUserId,
   profilePopoverUser,
   showProfilePopover,
   closeProfilePopover,
@@ -46,6 +44,7 @@ export function useChatFooter({
   jumpToMessage,
   needsProfileSetup,
   openProfileSetup,
+  authorMessageAction,
 }: {
   /**
    * The composer or the New DM overlay owns the keyboard. Hints about the
@@ -65,7 +64,6 @@ export function useChatFooter({
   openTicker: (symbol: string) => void;
   /** Opens the composer's file picker; null where images cannot be attached. */
   openAttachPicker: (() => void) | null;
-  currentUserId: string | undefined;
   profilePopoverUser: ChatUserSummary | null;
   showProfilePopover: (user: ChatUserSummary) => void;
   closeProfilePopover: () => void;
@@ -84,6 +82,8 @@ export function useChatFooter({
   jumpToMessage: (messageId: string) => void;
   needsProfileSetup: boolean;
   openProfileSetup: () => void;
+  /** "Message @author" for the selected message, where its author can be written to. */
+  authorMessageAction: { label: string; run: () => void } | null;
 }) {
   const dialog = useOptionalDialog();
   const rendererHost = useRendererHost();
@@ -136,8 +136,8 @@ export function useChatFooter({
     if (target) openTarget(target);
   }, [dialog, openTarget, openTargets]);
 
-  const author = selectedMessage?.user ?? null;
-  const authorHasProfile = !!author && (author.id === currentUserId || hasPublicChatProfileInfo(author));
+  // A Discord ghost has no card to show.
+  const author = selectedMessage && !isDiscordGhost(selectedMessage.user) ? selectedMessage.user : null;
   // A card opened from the keyboard follows the selection: moving on closes it.
   const keyboardProfileRef = useRef(false);
   const toggleAuthorProfile = useCallback(() => {
@@ -187,6 +187,7 @@ export function useChatFooter({
     selectedIdx,
     setChannelNotificationsEnabled,
     toggleAuthorProfile,
+    authorMessageAction,
   });
   latest.current = {
     beginEditMessage,
@@ -204,7 +205,9 @@ export function useChatFooter({
     selectedIdx,
     setChannelNotificationsEnabled,
     toggleAuthorProfile,
+    authorMessageAction,
   };
+  const authorMessageLabel = composing ? null : authorMessageAction?.label ?? null;
 
   usePaneFooter("chat", () => {
     const hints: PaneHint[] = [];
@@ -214,7 +217,8 @@ export function useChatFooter({
       else if (canSend) hints.push({ id: "reply", key: "Enter", label: "reply", title: "Reply", onPress: () => latest.current.beginReplyTo(latest.current.selectedIdx, { deferFocus: true }) });
       if (canEdit) hints.push({ id: "edit", key: "e", label: "dit", title: "Edit Message", onPress: () => { latest.current.beginEditMessage(latest.current.selectedIdx, { deferFocus: true }); } });
       if (openTargets.length > 0) hints.push({ id: "open", key: "o", label: "pen", title: openTargetTitle, onPress: () => { void latest.current.openSelectedTargets(); } });
-      if (authorHasProfile) hints.push({ id: "profile", key: "p", label: "rofile", title: "Show Profile", onPress: () => latest.current.toggleAuthorProfile() });
+      // Every author but a Discord ghost has a card, if only their name and a way to write to them.
+      if (author) hints.push({ id: "profile", key: "p", label: "rofile", title: "Show Profile", onPress: () => latest.current.toggleAuthorProfile() });
     } else if (!composing && canSend) {
       hints.push({ id: "compose", key: "i", label: " compose", title: "Compose", onPress: () => queueMicrotask(() => latest.current.focusComposer()) });
     }
@@ -236,6 +240,11 @@ export function useChatFooter({
     }
 
     const menu: ContextMenuItem[] = [];
+    // No key of its own: a stray press would start a conversation. The pane
+    // menu (.) and a right-click on the name reach it.
+    if (authorMessageLabel) {
+      menu.push({ id: "message-author", label: authorMessageLabel, onSelect: () => latest.current.authorMessageAction?.run() });
+    }
     if (canCycleChannels) {
       menu.push(
         { id: "previous-channel", label: "Previous Channel", accelerator: "[", onSelect: () => { latest.current.cycleChannel(-1); } },
@@ -256,7 +265,8 @@ export function useChatFooter({
     }
     return { hints, menu };
   }, [
-    authorHasProfile,
+    author,
+    authorMessageLabel,
     canAttachImages,
     failedSend,
     canCycleChannels,

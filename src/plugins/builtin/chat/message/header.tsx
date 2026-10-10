@@ -1,4 +1,5 @@
-import { Box, Text } from "../../../../ui";
+import { useRef } from "react";
+import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { displayWidth } from "../../../../utils/format";
 import { chatAuthorName, isDiscordGhost } from "../ghost-user";
@@ -75,31 +76,40 @@ export function ChatMessageHeader({
   onUserHover,
   onUserHoverEnd,
   onUserActivate,
+  onUserContextMenu,
   ...actionProps
-}: ChatMessageActionProps & Pick<ChatMessageBaseProps, "msg" | "onUserHover" | "onUserHoverEnd" | "onUserActivate"> & {
+}: ChatMessageActionProps & Pick<ChatMessageBaseProps, "msg" | "onUserHover" | "onUserHoverEnd" | "onUserActivate" | "onUserContextMenu"> & {
   /** Host row props: width, background and hover or selection hooks. */
   rowProps: Record<string, unknown>;
   /** The terminal sizes the author cell to its label. */
   fitAuthorWidth?: boolean;
 }) {
   const authorLabel = chatAuthorName(msg.user);
-  // A Discord ghost has no Gloom profile to open.
+  // A Discord ghost has no Gloom profile to open and no one to message.
   const hasProfile = !isDiscordGhost(msg.user);
+  const { nativeContextMenu } = useUiCapabilities();
+  // The card opens beside the name the pointer is on.
+  const nameRef = useRef<BoxRenderable | null>(null);
   return (
     <Box {...rowProps} flexDirection="row" height={1} paddingLeft={1}>
       <Box
+        ref={nameRef}
         width={fitAuthorWidth ? displayWidth(authorLabel) : undefined}
         height={1}
         {...(hasProfile
           ? {
-            onMouseOver: () => onUserHover(msg.user),
-            onMouseMove: () => onUserHover(msg.user),
+            onMouseOver: () => onUserHover(msg.user, nameRef.current),
+            onMouseMove: () => onUserHover(msg.user, nameRef.current),
             onMouseOut: onUserHoverEnd,
-            onMouseDown: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+            "data-gloom-context-menu-surface": "true",
+            onMouseDown: (event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
               event.preventDefault?.();
               event.stopPropagation?.();
-              onUserActivate?.(msg.user);
+              // A native menu opens on the right-click's contextmenu event instead.
+              if (event.button === 2 && nativeContextMenu === true) return;
+              onUserActivate?.(msg.user, nameRef.current);
             },
+            onContextMenu: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event, nameRef.current),
             style: { cursor: "pointer" },
           }
           : {})}

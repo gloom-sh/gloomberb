@@ -1,9 +1,11 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
 import { bucketShare, debtNotices } from "./model";
+import { SEC_FILINGS } from "../shared/report-freshness";
 
 export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: SEC_FILINGS,
   argument: {
     kind: "ticker",
     description: "SEC reporting issuer ticker.",
@@ -84,6 +86,8 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
         },
       ],
       metadata: { ...data },
+      // The latest filing dates the report; the history rows are past years, not stale data.
+      freshness: { asOf: data.latest?.asOf ?? null },
     };
   },
 };

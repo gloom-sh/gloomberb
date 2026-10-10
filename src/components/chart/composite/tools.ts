@@ -600,3 +600,11 @@ export function drawChartToolOverlay(
   drawLine(data, width, height, x0, y0, x1, y1, tint, 1.4);
   return { width, height, pixels: data };
 }
+
+export interface ChartToolSpan {
+  startXRatio: number;
+  endXRatio: number;
+  /** The anchor's own time, which can sit outside the view once it pans. */
+  startTime: number;
+  color: string;
+}

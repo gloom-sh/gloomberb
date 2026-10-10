@@ -10,11 +10,13 @@ import type { ManualChartResolution } from "../time-series/resolution";
 import type { SnapshotMarketData } from "../market-data/snapshot-provider";
 import type { InstrumentRef } from "../market-data/request-types";
 import type { TickerRecord } from "../types/ticker";
+import type { BrokerAccount } from "../types/trading";
 import type { PaneRuntimeState } from "../core/state/app/state";
 import type { RemoteUiNodeSnapshot } from "../remote/types";
 import type { DatedObservation } from "../plugins/builtin/market-valuation/series";
 import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared/protocol";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../utils/http-proxy-response";
+import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { readVisibleKeyValues } from "./visible-key-values";
 import { SHOT_API_PROXY_PREFIX, SHOT_HTTP_BRIDGE_PATH, SHOT_MARKET_BRIDGE_PATH } from "./desktop-pane-shot-routes";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
@@ -53,6 +55,8 @@ export interface DesktopPaneShotPayload {
   /** Label drawn at the right edge of the pane title bar; null draws nothing. */
   watermark?: string | null;
   tickers: TickerRecord[];
+  /** Broker accounts as last synced, by profile, so a broker portfolio shows its equity and cash. */
+  brokerAccounts?: Record<string, BrokerAccount[]>;
   financials: Array<[string, TickerFinancials]>;
   instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
   historyVariants?: SnapshotMarketData["historyVariants"];
@@ -93,6 +97,8 @@ interface DesktopPaneShotRenderedCell {
   columnId?: string;
   columnLabel: string;
   text: string;
+  /** The ISO instant behind a cell whose text shortens a time ("Wed 11:27"), from the table cell's export value. */
+  instant?: string;
 }
 
 export interface DesktopPaneShotRenderedRow {
@@ -105,6 +111,8 @@ export interface DesktopPaneShotRenderedRow {
 
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
+  /** Text of the pane footers, where a pane says whether its data is live, delayed or stale. */
+  footerText?: string;
   visibleKeyValues?: Array<{ label: string; text: string }>;
   rows: DesktopPaneShotRenderedRow[];
   truncated: boolean;
@@ -114,6 +122,8 @@ export interface DesktopPaneShotRenderResult {
   errorStateMarkers: string[];
   emptyStateDetected: boolean;
   emptyStateMarkers: string[];
+  /** A wall that needs an account, or a Pro lock on part of the pane. */
+  accessGate?: PaneAccessGate | null;
   semanticUi: RemoteUiNodeSnapshot[];
 }
 
@@ -472,14 +482,22 @@ const LOADING_STATE_PATTERNS = [
   /\bRendering pane\.{3}/gi,
 ];
 
+const SIGN_IN_WALL_PATTERNS = [
+  /\bSign in to\b/gi,
+  /\bVerify your email\b/gi,
+  /\brequires signup and email verification\b/gi,
+];
+
+const PRO_WALL_PATTERNS = [
+  /\bpart of Gloom Cloud Pro\b/gi,
+];
+
 const ERROR_STATE_PATTERNS = [
   /\b[^.]{1,100} unavailable\./gi,
   /\bFailed to fetch\b/gi,
   /\bCould not load\b/gi,
-  /\bSign in to\b/gi,
-  /\bVerify your email\b/gi,
-  /\brequires signup and email verification\b/gi,
-  /\bpart of Gloom Cloud Pro\b/gi,
+  ...SIGN_IN_WALL_PATTERNS,
+  ...PRO_WALL_PATTERNS,
   /\bCloud API request failed\b/gi,
 ];
 
@@ -569,12 +587,14 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
               ) {
                 truncationReasons.add("one or more cells are visibly clipped");
               }
+              const instant = cell.getAttribute("data-gloom-cell-instant");
               return {
                 ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
                 columnLabel: typeof semanticColumn.label === "string"
                   ? semanticColumn.label
                   : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
                 text,
+                ...(instant ? { instant } : {}),
               };
             }).filter((cell) => cell.text.length > 0);
             if (cells.length === 0) return;
@@ -605,6 +625,10 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
       }
       return {
         visibleText: root.innerText || root.textContent || "",
+        footerText: [...root.querySelectorAll('[data-gloom-role="pane-footer"]')]
+          .map((footer) => normalize(footer.innerText || footer.textContent))
+          .filter(Boolean)
+          .join(" "),
         visibleKeyValues: (${readVisibleKeyValues.toString()})(root),
         error: window.__GLOOM_CLI_SHOT_ERROR__ || "",
         loadingStateDetected: root.querySelector('[data-gloom-status="loading"]') !== null,
@@ -612,6 +636,9 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         // An empty sub-section off screen, such as a ticker's news list below
         // the fold, does not make the captured view empty.
         emptyStateDetected: [...root.querySelectorAll('[data-gloom-status="empty"]')].some(isVisible),
+        // The shared sign-in wall and the Pro lock prompt every gated pane draws.
+        accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
+          : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
         rows,
         truncated: truncationReasons.size > 0,
         truncationReasons: [...truncationReasons],
@@ -623,11 +650,13 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
     result?: {
       value?: {
         visibleText?: string;
+        footerText?: string;
         visibleKeyValues?: Array<{ label: string; text: string }>;
         error?: string;
         loadingStateDetected?: boolean;
         errorStateDetected?: boolean;
         emptyStateDetected?: boolean;
+        accessGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
         truncationReasons?: string[];
@@ -641,6 +670,8 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
   const loadingStateMarkers = stateMarkers(visibleText, LOADING_STATE_PATTERNS);
   const errorStateMarkers = stateMarkers(visibleText, ERROR_STATE_PATTERNS);
   const emptyStateMarkers = stateMarkers(visibleText, EMPTY_STATE_PATTERNS);
+  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || stateMarkers(visibleText, SIGN_IN_WALL_PATTERNS).length > 0 ? "sign-in"
+    : value?.accessGate === "pro" || stateMarkers(visibleText, PRO_WALL_PATTERNS).length > 0 ? "pro" : null;
   const rows = Array.isArray(value?.rows) ? value.rows : [];
   const textShowsEllipsis = rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
   const truncationReasons = Array.isArray(value?.truncationReasons)
@@ -651,6 +682,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
   }
   return {
     visibleText,
+    footerText: typeof value?.footerText === "string" ? value.footerText : "",
     visibleKeyValues: Array.isArray(value?.visibleKeyValues) ? value.visibleKeyValues : [],
     rows,
     truncated: value?.truncated === true || textShowsEllipsis,
@@ -660,6 +692,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
     errorStateMarkers,
     emptyStateDetected: value?.emptyStateDetected === true || emptyStateMarkers.length > 0,
     emptyStateMarkers,
+    accessGate,
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };
 }

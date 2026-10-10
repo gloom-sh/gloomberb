@@ -1,5 +1,7 @@
 import { apiClient } from "../../../api-client";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
+import { fxLegForCurrency } from "../../../market-data/coordinator/fx-legs";
+import { dailyFxCloses, FxHistoryError, type FxCloses } from "../../../market-data/fx-closes";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { ManualChartResolution } from "../../../time-series/resolution";
 import type { DataProvider } from "../../../types/data-provider";
@@ -8,6 +10,7 @@ import { abortable, abortError, settleWithin } from "../../../utils/async-deadli
 import { errorMessage } from "../../../utils/errors";
 import { isUsListingExchange } from "../../../utils/exchanges";
 import { fetchEarningsHistory } from "../earnings/client";
+import { epsFxCurrencies } from "./model";
 import { reportDatesFrom, type ReportDate } from "./report-dates";
 
 export interface PeBandInputs {
@@ -20,6 +23,10 @@ export interface PeBandInputs {
   historyError: string | null;
   /** Report dates for US listings; empty for the rest and when the earnings history is unavailable. */
   reports: ReportDate[];
+  /** Daily FX closes for each currency a dollar-priced listing reports its EPS in. */
+  fx: Map<string, FxCloses>;
+  /** Why a currency's FX closes are missing; its EPS then stays unconverted. */
+  fxError: string | null;
   fetchedAt: number;
 }
 
@@ -31,7 +38,40 @@ const REPORT_LIMIT = 40;
 /** Report dates only refine the figures' dates, so the pane does not wait longer than this for them. */
 const REPORT_DEADLINE_MS = 8_000;
 
-type ReportClient = Pick<typeof apiClient, "getCloudEarningsHistory">;
+/** Daily FX closes back this far before the oldest statement, so its weeks find a close. */
+const FX_LEAD_DAYS = 14;
+/** About thirty years of daily closes; a longer reply is not a daily FX history. */
+const FX_MAX_ROWS = 8_000;
+
+type ReportClient = Pick<typeof apiClient, "getCloudEarningsHistory" | "getCloudHistory">;
+
+/**
+ * Completed daily closes of each currency's dollar pair, from just before the
+ * oldest statement in that currency. Never rejects but on cancel: a missing
+ * or stale history is said in `error`, and that currency's EPS stays unconverted.
+ */
+async function loadFxCloses(financials: TickerFinancials, client: ReportClient, signal: AbortSignal | undefined, now: Date):
+  Promise<{ fx: Map<string, FxCloses>; error: string | null }> {
+  const fx = new Map<string, FxCloses>();
+  const errors: string[] = [];
+  const rows = [...financials.annualStatements, ...financials.quarterlyStatements];
+  await Promise.all(epsFxCurrencies(financials).map(async (currency) => {
+    const leg = fxLegForCurrency(currency)!;
+    const oldest = rows.filter((row) => row.currency?.trim().toUpperCase() === currency && Number.isFinite(Date.parse(row.date)))
+      .reduce((min, row) => Math.min(min, Date.parse(row.date)), now.getTime());
+    try {
+      const response = await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", {
+        interval: "1day", startDate: new Date(oldest - FX_LEAD_DAYS * 86_400_000).toISOString().slice(0, 10),
+        endDate: now.toISOString().slice(0, 10), outputsize: FX_MAX_ROWS,
+      }, signal ? { signal } : undefined);
+      fx.set(currency, dailyFxCloses(response, leg, now, FX_MAX_ROWS));
+    } catch (error) {
+      if (signal?.aborted) throw abortError(CANCELLED);
+      errors.push(`daily ${currency} FX closes are ${error instanceof FxHistoryError && error.problem === "stale" ? "stale" : "unavailable"}`);
+    }
+  }));
+  return { fx, error: errors.length ? errors.join("; ") : null };
+}
 
 /** Never rejects: a listing without reports, an outage or a refused session leaves the figures as they are. */
 function loadReportDates(symbol: string, client: ReportClient): Promise<ReportDate[]> {
@@ -73,12 +113,17 @@ export async function loadPeBandInputs(
   const entry = chart.status === "fulfilled" ? chart.value : null;
   const history = entry ? resolveEntryValue(entry) ?? [] : [];
   const quote = value?.quote;
-  const reports = await abortable(early ?? (isUsListingExchange(quote?.listingExchangeName ?? quote?.exchangeName ?? quote?.fullExchangeName)
-    ? loadReportDates(instrument.symbol, cloud) : Promise.resolve([])), request.signal, CANCELLED);
+  const [reports, fx] = await abortable(Promise.all([
+    early ?? (isUsListingExchange(quote?.listingExchangeName ?? quote?.exchangeName ?? quote?.fullExchangeName)
+      ? loadReportDates(instrument.symbol, cloud) : Promise.resolve([])),
+    value ? loadFxCloses(value, cloud, request.signal, new Date(now)) : Promise.resolve({ fx: new Map<string, FxCloses>(), error: null }),
+  ]), request.signal, CANCELLED);
   return {
     financials: value,
     history,
     reports,
+    fx: fx.fx,
+    fxError: fx.error,
     stale: !!value?.fundamentals?.stale || !!entry?.error || (entry?.staleAt != null && entry.staleAt <= now),
     error: financials.status === "rejected" ? errorMessage(financials.reason) : null,
     historyError: chart.status === "rejected" ? errorMessage(chart.reason)

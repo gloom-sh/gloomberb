@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { act, useReducer, type ReactElement } from "react";
 import { Box } from "../../../ui";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -8,19 +8,23 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { correlationModule } from ".";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
+import { apiClient } from "../../../api-client";
+import { resetGeoCatalogCache } from "../../../api-client/geo";
+import { createGeoFixtureRequest } from "../../../test-support/test-fixture-geo";
 
 const TEST_PANE_ID = "correlation:test";
 
 const tui = createOpenTuiTestHarness();
 
-function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
+function CorrelationHarness({ runtime, symbols = ["AAPL", "MSFT"] }: { runtime: PluginRuntimeAccess; symbols?: string[] }) {
   const config = createTestPaneConfig("/tmp/gloomberb-correlation-test", {
     instanceId: TEST_PANE_ID,
     paneId: "correlation",
     settings: {
-      rangePreset: "1Y",
-      symbols: ["AAPL", "MSFT"],
-      symbolsText: "AAPL, MSFT",
+      // The geo fixture's counts end on 2026-10-04; 5Y keeps them in range.
+      rangePreset: symbols.some((symbol) => symbol.startsWith("GEO:")) ? "5Y" : "1Y",
+      symbols,
+      symbolsText: symbols.join(", "),
     },
   });
   const [state, dispatch] = useReducer(appReducer, undefined, () => {
@@ -197,5 +201,32 @@ describe("correlationModule", () => {
     expect(frame).toContain("AAPL, MSFT");
     expect(frame).not.toMatch(/XAAPL|MSFTX/);
     expect(frame).not.toContain("NVDA");
+  });
+
+  test("a map series keeps its last values through a failed refresh", async () => {
+    let failing = false;
+    const fixture = createGeoFixtureRequest();
+    const geo = spyOn(apiClient, "geo").mockImplementation(((path: string, init?: RequestInit) => (
+      failing ? Promise.reject(new Error("Too many requests.")) : fixture(path, init)
+    )) as typeof apiClient.geo);
+    try {
+      await tui.render(<CorrelationHarness runtime={createTestPluginRuntime()} symbols={["GEO:HORMUZ", "GEO:SUEZ"]} />, { width: 60, height: 8 });
+      // The fixture's daily changes for the two straits correlate at -0.10.
+      await tui.waitForFrameToContain("-0.10");
+
+      failing = true;
+      const calls = geo.mock.calls.length;
+      await tui.emitKeypress({ name: "r", sequence: "r" }, { trackPropagation: true, afterCommit: true });
+      // Each series' lookup and points fail, then the catalog check says whether map series exist at all.
+      await act(async () => {
+        while (geo.mock.calls.length < calls + 3) await new Promise((resolve) => setTimeout(resolve, 5));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      await tui.renderFrames(2);
+      expect(tui.frame()).toContain("-0.10");
+    } finally {
+      geo.mockRestore();
+      resetGeoCatalogCache();
+    }
   });
 });

@@ -113,11 +113,22 @@ export async function loadQuoteEntry({
       const attempts = [createAttempt(source, startedAt, "success")];
       return quoteStore.update(key, (current) => readyQuoteEntry(current, resolvedQuote, source, attempts, { keepNewerHeldQuote: true }));
     } catch (error) {
-      const classified = classifyError(error);
-      const attempt = createAttempt(dataProvider.id, startedAt, EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error", classified.reasonCode, classified.message);
-      return quoteStore.update(key, (current) => errorEntry(current, attempt));
+      return storeQuoteFailure(quoteStore, key, dataProvider.id, startedAt, error);
     }
   });
+}
+
+function storeQuoteFailure(
+  quoteStore: QueryStore<Quote>,
+  key: string,
+  providerId: string,
+  startedAt: number,
+  error: unknown,
+): QueryEntry<Quote> {
+  const classified = classifyError(error);
+  const status = EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error";
+  const attempt = createAttempt(providerId, startedAt, status, classified.reasonCode, classified.message);
+  return quoteStore.update(key, (current) => errorEntry(current, attempt));
 }
 
 interface LoadQuoteBatchEntriesOptions {
@@ -152,14 +163,22 @@ export async function loadQuoteBatchEntries({
   }
 
   if (misses.length > 0 && dataProvider.getQuotesBatch) {
+    const startedAt = Date.now();
     const batchResults = await dataProvider.getQuotesBatch(
       misses.map((instrument) => quoteTargetFromInstrument(instrument)),
       { forceRefresh: options.forceRefresh },
     );
     batchResults.forEach((item, index) => {
       const instrument = misses[index];
-      if (!instrument || !item.quote) return;
+      if (!instrument) return;
       const key = buildQuoteKey(instrument);
+      if (!item.quote) {
+        // The batch already asked for this one, one by one where the batch
+        // answer fell short, and says why it failed. Asking again here would
+        // only send the same request a second time.
+        if (item.error != null) results.set(key, storeQuoteFailure(quoteStore, key, dataProvider.id, startedAt, item.error));
+        return;
+      }
       const quote = resolveQuote?.(instrument, item.quote) ?? item.quote;
       const source = quote.providerId ?? dataProvider.id;
       const attempts = [createAttempt(source, Date.now(), "success")];

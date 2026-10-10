@@ -19,6 +19,7 @@ const COLUMNS: HeadlessPaneColumn[] = [
 
 export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
+  freshness: { status: "not-a-feed", basis: "reported deals" },
   argument: {
     kind: "ticker",
     optional: true,

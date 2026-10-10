@@ -38,7 +38,21 @@ export interface QuoteMetadata {
   fieldSources?: Partial<Record<"currency" | "instrumentType", QuoteMetadataSource>>;
 }
 
-export interface Quote {
+/**
+ * What a record's share counts count: depositary receipts or the ordinary
+ * shares behind them. Gloom Cloud states it only when it established it.
+ */
+export type ShareBasis = "depositary_receipt" | "ordinary";
+
+/** How a depositary receipt relates to the ordinary shares, as Gloom Cloud states it. */
+interface DepositaryReceiptFacts {
+  /** Whether the listing is a depositary receipt; absent when unknown. */
+  isDepositaryReceipt?: boolean;
+  /** Ordinary shares per receipt, on a receipt's own records. */
+  adrRatio?: number;
+}
+
+export interface Quote extends DepositaryReceiptFacts {
   /** Applies to this price observation; a stored position cannot supply it. */
   priceBasis?: PriceBasis;
   /** Daily fund net asset value; independent of the units used to format its price. */
@@ -58,6 +72,9 @@ export interface Quote {
   regularClose?: number;
   /** Exchange-local date of regularClose; separate from the daily previous-close reference. */
   regularCloseSessionDate?: string;
+  /** Move of that completed regular session from the one before it, in this quote's currency; set and cleared together with regularClose. */
+  regularChange?: number;
+  regularChangePercent?: number;
   /** Provider's exchange-local session date for the daily quote reference. */
   changeSessionDate?: string;
   high52w?: number;
@@ -106,7 +123,11 @@ export interface QuoteContribution extends Quote {
 
 export type QuoteContributionMap = Record<string, QuoteContribution>;
 
-export interface Fundamentals {
+export interface Fundamentals extends DepositaryReceiptFacts {
+  /** Every share count here is on this basis, the basis of the listing's price and market cap; absent when unproven. */
+  shareBasis?: ShareBasis;
+  /** On a receipt, the ordinary shares behind `sharesOutstanding`. */
+  underlyingOrdinaryShares?: number;
   source?: "gloom";
   fetchedAt?: string;
   stale?: boolean;
@@ -177,6 +198,8 @@ export interface HolderRecord {
   percentHeld?: number;
   changeShares?: number;
   changePercent?: number;
+  /** Set when the position's filing ties it to the receipts or to the ordinary shares. */
+  shareBasis?: ShareBasis;
 }
 
 interface HolderSummary {
@@ -186,11 +209,18 @@ interface HolderSummary {
   institutionsCount?: number;
 }
 
-export interface HolderData {
+export interface HolderData extends DepositaryReceiptFacts {
   providerId?: string;
   symbol: string;
   name?: string;
+  /** The listing's price currency. */
   currency?: string;
+  /** The currency of `value`, which can differ from the listing's (USD on a London line priced from 13F filings). */
+  valueCurrency?: string;
+  /** Reported shares times the latest price, or times the price at the report date. */
+  valueBasis?: "latest_price" | "period_end_price";
+  /** Set when every row is on one basis. */
+  shareBasis?: ShareBasis;
   exchange?: string;
   asOf?: string;
   summary?: HolderSummary;
@@ -427,6 +457,8 @@ export interface ReportedEarningsCohort {
 export interface EarningsResultProvenance { version: 1; reported: ReportedEarningsCohort }
 
 export interface FinancialStatement {
+  /** The basis of this row's share counts and per-share earnings; absent when unproven. */
+  shareBasis?: ShareBasis;
   /** @deprecated No longer populated. */
   earningsResult?: EarningsResultProvenance;
   /** EPS lines unavailable for this period, for example because they disagree with the row's own income and shares. */

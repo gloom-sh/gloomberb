@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiClient, type CloudWorldVenueMapPayload, type CloudWorldVenuePayload } from "../../../api-client";
+import type { CloudWorldVenuePayload } from "../../../api-client";
 import {
   DataTableView,
   EmptyState,
@@ -17,19 +17,20 @@ import {
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
-import { useAsyncResource, usePluginPaneState } from "../../../public/react";
+import { useAsyncResource, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { loadWorldVenues } from "./client";
+import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
+import { LayeredMapView } from "./layered-pane";
+import { activeLayerTokens, isPlainMap, LAYERS_SETTING_KEY, resolveActiveLayers, VENUES_SETTING_KEY } from "./layers";
 import { WorldVenueMap } from "./map";
-import {
-  filterWorldVenues,
-  formatVenueCountdown,
-  formatVenueLocalTime,
-  venueRemainingSeconds,
-} from "./model";
+import { filterWorldVenues, formatVenueLocalTime } from "./model";
+import { useGeoCatalog } from "./use-geo";
+import { SelectedVenueHeader } from "./venue-header";
 
-export const WORLD_VENUE_MAP_PANE_ID = "world-venue-map";
+export { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 
 type VenueColumnId = "status" | "mic" | "name" | "time";
 type VenueColumn = DataTableColumn & { id: VenueColumnId };
@@ -45,41 +46,28 @@ function venueColumns(width: number): VenueColumn[] {
   ];
 }
 
-function SelectedVenueHeader({
-  venue,
-  checkedAt,
-  now,
-  width,
-}: {
-  venue: CloudWorldVenuePayload | null;
-  checkedAt: number;
-  now: number;
-  width: number;
-}) {
-  if (!venue) return <Box height={2} />;
-  const remaining = formatVenueCountdown(venueRemainingSeconds(venue, checkedAt, now));
-  const state = venue.isOpen ? "OPEN" : "CLOSED";
-  const transition = remaining ? `${venue.isOpen ? "closes" : "opens"} ${remaining}` : "";
-  return (
-    <Box flexDirection="column" height={2} width={width} paddingX={1}>
-      <Box flexDirection="row" justifyContent="space-between" width="100%">
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{venue.mic}</Text>
-        <Text fg={venue.isOpen ? colors.positive : colors.textDim}>{state}</Text>
-      </Box>
-      <Text fg={colors.textMuted}>
-        {`${venue.city}, ${venue.country} · ${formatVenueLocalTime(venue.timezone, now)}${transition ? ` · ${transition}` : ""}`}
-      </Text>
-    </Box>
-  );
+/**
+ * One map for anything with a place. A plain MAP shows venues under the
+ * server's default layers; geo layers come from the server's catalog, so a
+ * server without them leaves the venue map exactly as it was.
+ */
+export function WorldVenueMapPane(props: PaneProps) {
+  const [layerSetting] = usePaneSettingValue<unknown>(LAYERS_SETTING_KEY, null);
+  const [venuesSetting] = usePaneSettingValue<boolean | undefined>(VENUES_SETTING_KEY, undefined);
+  const { catalog, settled } = useGeoCatalog();
+  const settings = useMemo(() => ({ [LAYERS_SETTING_KEY]: layerSetting, [VENUES_SETTING_KEY]: venuesSetting }), [layerSetting, venuesSetting]);
+  const plain = isPlainMap(settings);
+  const tokens = useMemo(() => activeLayerTokens(settings, catalog?.layers), [catalog, settings]);
+  const layers = useMemo(() => resolveActiveLayers(tokens, catalog?.layers), [catalog, tokens]);
+  if (layers.length) return <LayeredMapView {...props} layers={layers} tokens={tokens} plain={plain} />;
+  // A preset or a plain map waits for the catalog rather than flashing the venue map first.
+  if ((plain || tokens.length) && !settled) {
+    return <PaneStatusBody loading align="center" width={props.width} height={props.height} loadingLabel="Loading map..." />;
+  }
+  return <VenueMapView {...props} />;
 }
 
-async function loadWorldVenues(): Promise<CloudWorldVenueMapPayload> {
-  const response = await apiClient.getCloudWorldVenues();
-  if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
-  return response.stale ? { ...response.data, stale: true } : response.data;
-}
-
-export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
+function VenueMapView({ focused, width, height }: PaneProps) {
   // A background refresh keeps the venues on screen, so loading only shows before the first answer.
   const { data, loading, error, load } = useAsyncResource(loadWorldVenues);
   const [query, setQuery] = useState("");
@@ -134,6 +122,7 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
 
   const { nativePaneChrome } = useUiCapabilities();
   const [storedSidebarWidth, setStoredSidebarWidth] = usePluginPaneState<number | null>("sidebarWidth", null);
+  const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
   const [draggedSidebarWidth, setDraggedSidebarWidth] = useState<number | null>(null);
   const horizontal = shouldShowPaneSidebar(data?.venues.length ?? 0, width, height);
   // Venue names need more room than a conversation list, so the width the pane
@@ -223,7 +212,7 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
   }
 
   const map = (
-    <Box flexDirection="column" width={mapWidth} height={mapSectionHeight} overflow="hidden">
+    <Box key="map" flexDirection="column" width={mapWidth} height={mapSectionHeight} overflow="hidden">
       <SelectedVenueHeader venue={selectedVenue} checkedAt={data.checkedAt} now={now} width={mapWidth} />
       <WorldVenueMap
         venues={venues}
@@ -231,6 +220,8 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
         width={mapWidth}
         height={mapHeight}
         onSelect={(venue) => setSelectedMic(venue.mic)}
+        savedViewport={savedViewport}
+        onViewportSettled={setSavedViewport}
       />
     </Box>
   );

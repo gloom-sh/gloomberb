@@ -14,13 +14,16 @@ import {
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
-import { resolvePaneFunction, type ResolvedPaneFunction } from "./resolver";
+import { applyListingArgument, resolvePaneFunction, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
 import { defaultScreenshotPath, renderDesktopShot } from "./screenshot";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
+import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
+import { loadForListing } from "../listing-arg";
+import { selectReportTables } from "../report-tables";
 
 async function withPaneRuntime<T>(
   ctx: CliCommandContext,
@@ -31,13 +34,13 @@ async function withPaneRuntime<T>(
     registry: PaneFunctionCatalog;
     resolved: ResolvedPaneFunction;
   }) => Promise<T>,
-  settings: { strictHeadlessOptions?: boolean } = {},
+  settings: { strictHeadlessOptions?: boolean; tableSection?: boolean } = {},
 ): Promise<T> {
-  const parsed = parsePaneFunctionArgs(args, ctx.cliOptions);
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
+      const parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions));
       const resolved = await resolvePaneFunction(registry, context, parsed, settings);
       return await run({ parsed, context, registry, resolved });
     } finally {
@@ -57,22 +60,37 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           + `Use "gloomberb catalog ${resolved.token}" to inspect readiness.`,
         );
       }
+      const tabular = ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson";
+      if (resolved.tableSection !== undefined && !tabular) {
+        throw new Error("--section picks one table of --csv or --ndjson output.");
+      }
+      if (resolved.tableSection === true) throw new Error("--section needs a section title or number.");
+      // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       const report = await withPersistedCloudSession(
         context,
-        () => buildFunctionReport(resolved, context, parsed.arg),
+        () => loadForListing(
+          parsed.listing ?? [],
+          context,
+          ctx,
+          () => buildFunctionReport(resolved, context, parsed.arg),
+          (built) => built.data.empty || !built.data.complete,
+        ),
       );
       if (parsed.requireBotSafe && (report.data.empty || !report.data.complete)) {
         const unavailable = report.data.unavailableSymbols.length > 0
           ? ` Missing data for ${report.data.unavailableSymbols.join(", ")}.`
           : "";
+        const gated = incompleteReportGateMessage(resolved.token, report.data.errors);
+        if (gated) throw new Error(gated);
         throw new Error(
           `${resolved.token} did not produce a complete bot-safe report.${unavailable}`,
         );
       }
       ctx.printResult({ data: report.data }, {
         text: () => report.text,
+        ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });
-    }, { strictHeadlessOptions: true });
+    }, { strictHeadlessOptions: true, tableSection: true });
   });
 }
 
@@ -110,7 +128,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
       ctx.printResult({ data: result }, {
         text: (data) => {
           const issues = [
-            data.empty ? "empty" : null,
+            data.render.accessGate && (data.empty || !data.usable) ? accessGateStatus(data.render.accessGate) : data.empty ? "empty" : null,
             data.complete ? null : "incomplete",
             data.semanticMismatch ? "does not match the data" : null,
             data.usable ? null : "not usable",

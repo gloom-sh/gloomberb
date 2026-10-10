@@ -4,12 +4,13 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
 import { formatPriceObservation } from "../../../market-data/market/format";
 import { cleanFloat32Price } from "../../../cli/history-rows";
+import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 
 export const COT_CLASSES: Record<CotFamily, Array<{ value: CotClass; label: string }>> = {
   legacy: [{ value: "noncommercial", label: "Noncommercial" }, { value: "commercial", label: "Commercial" }, { value: "nonreportable", label: "Nonreportable" }],
   disaggregated: [{ value: "managed-money", label: "Managed Money" }, { value: "producer", label: "Producer/Merchant" }, { value: "swap", label: "Swap Dealers" }, { value: "other-reportable", label: "Other Reportables" }, { value: "nonreportable", label: "Nonreportable" }],
 };
-const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: string | null; name: string }> = {
+const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: string | null; name: string; crypto?: true }> = {
   ZN: { code: "043602", exchange: "CBT", priceSymbol: "ZN=F", name: "10-Year T-Note" },
   ZQ: { code: "045601", exchange: "CBT", priceSymbol: "ZQ=F", name: "30-Day Fed Funds" },
   CL: { code: "067651", exchange: "NYM", priceSymbol: "CL=F", name: "WTI Crude Oil" },
@@ -18,14 +19,27 @@ const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: strin
   VX: { code: "1170E1", exchange: "CFE", priceSymbol: null, name: "VIX Futures" },
   SR3: { code: "134741", exchange: "CME", priceSymbol: null, name: "3-Month SOFR" },
   ES: { code: "13874A", exchange: "CME", priceSymbol: "ES=F", name: "E-Mini S&P 500" },
+  // CME crypto, verified against the CFTC board on 2026-10-09. Only the standard
+  // bitcoin and ether contracts return five years of front-price history; the
+  // micros, XRP and SOL come back with a single bar, so they chart no price.
+  BTC: { code: "133741", exchange: "CME", priceSymbol: "BTC=F", name: "Bitcoin", crypto: true },
+  ETH: { code: "146021", exchange: "CME", priceSymbol: "ETH=F", name: "Ether", crypto: true },
+  MBT: { code: "133742", exchange: "CME", priceSymbol: null, name: "Micro Bitcoin", crypto: true },
+  MET: { code: "146022", exchange: "CME", priceSymbol: null, name: "Micro Ether", crypto: true },
+  SOL: { code: "177741", exchange: "CME", priceSymbol: null, name: "Solana", crypto: true },
+  XRP: { code: "176740", exchange: "CME", priceSymbol: null, name: "XRP", crypto: true },
 };
 /** The roots `cotContractCode` accepts, labeled "ZQ 30-Day Fed Funds". */
-export const COT_ROOT_OPTIONS = Object.entries(ROOTS).map(([root, row]) => ({ value: root, label: `${root} ${row.name}` }));
+export const COT_ROOT_OPTIONS = Object.entries(ROOTS).map(([root, row]) => ({ value: root, label: root === row.name ? root : `${root} ${row.name}` }));
+/** The crypto roots named for a coin, which a coin pair (BTC-USD) can stand for. The micros have no pair. */
+const COIN_PAIR_ROOTS: ReadonlySet<string> = new Set(["BTC", "ETH", "SOL", "XRP"]);
 /**
  * Front-month price overlays for major markets without a root alias, each
  * checked to return five years of daily history (2026-09-24). Keyed by CFTC
  * code, never added to ROOTS: an alias would also claim the equity ticker under
  * the cursor (ZM, ZS, PL). No cash index stands in, so the dollar index has none.
+ * Bitcoin and ether are in ROOTS, where `cotContractCodeForTicker` keeps the
+ * same guard for their aliases.
  */
 const PRICE_OVERLAYS: Record<string, { exchange: string; priceSymbol: string }> = {
   "209742": { exchange: "CME", priceSymbol: "NQ=F" }, "239742": { exchange: "CME", priceSymbol: "RTY=F" },
@@ -37,7 +51,6 @@ const PRICE_OVERLAYS: Record<string, { exchange: string; priceSymbol: string }> 
   "096742": { exchange: "CME", priceSymbol: "6B=F" }, "090741": { exchange: "CME", priceSymbol: "6C=F" },
   "232741": { exchange: "CME", priceSymbol: "6A=F" }, "092741": { exchange: "CME", priceSymbol: "6S=F" },
   "095741": { exchange: "CME", priceSymbol: "6M=F" },
-  "133741": { exchange: "CME", priceSymbol: "BTC=F" }, "146021": { exchange: "CME", priceSymbol: "ETH=F" },
   "023651": { exchange: "NYM", priceSymbol: "NG=F" }, "111659": { exchange: "NYM", priceSymbol: "RB=F" },
   "022651": { exchange: "NYM", priceSymbol: "HO=F" }, "06765T": { exchange: "NYM", priceSymbol: "BZ=F" },
   "085692": { exchange: "CMX", priceSymbol: "HG=F" }, "076651": { exchange: "NYM", priceSymbol: "PL=F" },
@@ -77,10 +90,30 @@ export const COT_SCOPES = [{ value: "major", label: "Major markets" }, { value: 
 export type CotScope = typeof COT_SCOPES[number]["value"];
 export function cotScope(value: unknown): CotScope { return value === "all" ? "all" : "major"; }
 
+/** A CFTC code or root typed as an argument or stored in a pane: every alias, crypto included. */
 export function cotContractCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const input = value.trim().toUpperCase().replace(/=F$/, "");
   return ROOTS[input === "VIX" ? "VX" : input]?.code ?? (/^[0-9A-Z]{5}[0-9A-Z+]$/.test(input) ? input : null);
+}
+/** What a market that is neither a root nor a CFTC code is told, with ones that work. */
+export function cotUnknownMarketMessage(value: unknown): string {
+  const roots = ["ES", "CL", "GC", "ZN"].filter((root) => ROOTS[root]);
+  return `Unknown market "${String(value)}". Try ${roots.join(", ")} or a CFTC market code such as ${ROOTS.GC!.code}.`;
+}
+/**
+ * The code for the ticker under the cursor, when COT is opened without an
+ * argument. The crypto aliases are also US ticker symbols (Grayscale's mini
+ * trusts are BTC and ETH, MetLife is MET), so a bare one is the equity's and
+ * never claims the market: only a futures symbol (BTC=F) or a coin pair
+ * (BTC-USD) does.
+ */
+export function cotContractCodeForTicker(ticker: unknown): string | null {
+  if (typeof ticker !== "string") return null;
+  const coin = cryptoPairCoin(ticker);
+  if (coin) return COIN_PAIR_ROOTS.has(coin) ? ROOTS[coin]!.code : null;
+  const input = ticker.trim().toUpperCase().replace(/=F$/, "");
+  return ROOTS[input]?.crypto && !isFuturesSymbol(ticker) ? null : cotContractCode(ticker);
 }
 /** The verified futures root a CFTC code belongs to, for titles readers recognize. */
 export function cotRoot(code: string): string | null {

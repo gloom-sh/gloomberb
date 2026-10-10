@@ -4,6 +4,7 @@ import { volumePercent, volumePointStatus, volumeQuantity } from "./model";
 
 export const shortVolumeHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "US equity ticker.", placeholder: "ticker" },
+  freshness: { source: "FINRA", status: "not-a-feed", basis: "daily short volume", cadence: "daily", observedKey: "date", oldest: null },
   discovery: { aliases: ["SIV"], dataRequirements: ["Gloom Cloud FINRA daily short volume"],
     limitations: ["Regular-session off-exchange volume, not short interest", "Short volume includes exempt volume", "One-year history depends on source discovery and ingestion"] },
   options: [

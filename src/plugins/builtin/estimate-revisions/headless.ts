@@ -3,6 +3,7 @@ import { fetchEstimates } from "./client";
 import { estimateCurrent, periodLabel, pinnedEstimatePeriods } from "./model";
 export const estimateRevisionsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
+  freshness: { status: "not-a-feed", basis: "analyst estimates" },
   argument: {
     kind: "ticker",
     placeholder: "ticker",

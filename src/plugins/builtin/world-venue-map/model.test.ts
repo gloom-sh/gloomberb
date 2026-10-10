@@ -6,6 +6,7 @@ import {
   filterWorldVenues,
   panWorldMapViewport,
   projectWorldPoint,
+  savedWorldMapViewport,
   unprojectWorldPoint,
   venueRemainingSeconds,
   zoomWorldMapViewport,
@@ -81,5 +82,13 @@ describe("world venue map model", () => {
     expect(panned.centerLongitude).toBeLessThan(zoomed.centerLongitude);
     expect(panWorldMapViewport(DEFAULT_WORLD_MAP_VIEWPORT, width, height, 40, 0)).toEqual(DEFAULT_WORLD_MAP_VIEWPORT);
     expect(zoomWorldMapViewport(zoomed, width, height, cursor, 0.01)).toEqual(DEFAULT_WORLD_MAP_VIEWPORT);
+  });
+
+  test("a saved view is read back only when it is one, within the map's zoom", () => {
+    expect(savedWorldMapViewport({ zoom: 80, centerLongitude: 54.4, centerLatitude: 24.5 }, 64)).toEqual({ zoom: 64, centerLongitude: 54.4, centerLatitude: 24.5 });
+    expect(savedWorldMapViewport({ zoom: 1, centerLongitude: 54.4, centerLatitude: 24.5 })).toEqual(DEFAULT_WORLD_MAP_VIEWPORT);
+    for (const junk of [null, "x", {}, { zoom: Number.NaN, centerLongitude: 0, centerLatitude: 0 }, { zoom: 4, centerLongitude: "1", centerLatitude: 0 }]) {
+      expect(savedWorldMapViewport(junk)).toBeNull();
+    }
   });
 });

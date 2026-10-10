@@ -53,6 +53,11 @@ const PORTFOLIO_COLUMN_DEFS: ColumnConfig[] = [
   { id: "cost_basis", label: "COST", width: 10, align: "right", format: "compact" },
   { id: "mkt_value", label: "MKT VAL", width: 10, align: "right", format: "compact" },
   { id: "weight", label: "WEIGHT", width: 8, align: "right", format: "percent" },
+  // TARGET is the analyst price target; these are the portfolio's own target weights.
+  { id: "target_weight", label: "TGT WT", width: 7, align: "right", format: "percent" },
+  { id: "drift", label: "DRIFT", width: 8, align: "right", format: "percent" },
+  { id: "trade", label: "TRADE", width: 9, align: "right", format: "number" },
+  { id: "trade_value", label: "TRADE VAL", width: 10, align: "right", format: "compact" },
   { id: "day_pnl", label: "DAY", width: 10, align: "right", format: "compact" },
   { id: "pnl", label: "P&L", width: 10, align: "right", format: "compact" },
   { id: "pnl_pct", label: "P&L%", width: 8, align: "right", format: "percent" },
@@ -69,6 +74,10 @@ const PORTFOLIO_ONLY_COLUMN_IDS = new Set([
   "cost_basis",
   "mkt_value",
   "weight",
+  "target_weight",
+  "drift",
+  "trade",
+  "trade_value",
   "day_pnl",
   "pnl",
   "pnl_pct",
@@ -142,8 +151,26 @@ function resolveCollectionOptions(entries: CollectionEntry[]): PaneSettingOption
   }));
 }
 
+/** Columns that read a portfolio's target weights. */
+const TARGET_COLUMN_IDS = new Set(["target_weight", "drift", "trade", "trade_value"]);
+/** What a portfolio with targets shows when the pane's columns name none of them. */
+const REBALANCE_COLUMN_IDS = ["weight", "target_weight", "drift", "trade"];
+
+/**
+ * A portfolio with target weights shows WEIGHT, TGT WT, DRIFT and TRADE beside
+ * its market value, unless the pane's columns already pick target columns.
+ */
+function withTargetColumns(columnIds: string[]): string[] {
+  if (columnIds.some((id) => TARGET_COLUMN_IDS.has(id))) return columnIds;
+  const missing = REBALANCE_COLUMN_IDS.filter((id) => !columnIds.includes(id));
+  const anchor = columnIds.includes("weight") ? columnIds.indexOf("weight") : columnIds.indexOf("mkt_value");
+  const at = anchor >= 0 ? anchor + 1 : columnIds.length;
+  return [...columnIds.slice(0, at), ...missing, ...columnIds.slice(at)];
+}
+
 function describeColumnOption(column: ColumnConfig): string {
   if (column.id === PRICE_SPARKLINE_COLUMN_ID) return "One-month price sparkline.";
+  if (TARGET_COLUMN_IDS.has(column.id)) return "Shown by default once the portfolio has target weights.";
   return PORTFOLIO_ONLY_COLUMN_IDS.has(column.id)
     ? "Visible only when this pane is showing a portfolio."
     : "Visible for watchlists and portfolios.";
@@ -222,8 +249,12 @@ export function resolvePortfolioPaneCollectionId(
   return resolveActiveCollectionId(currentCollectionId, visibleCollections);
 }
 
-export function resolveVisibleColumns(columnIds: string[], isPortfolioTab: boolean): ColumnConfig[] {
-  const resolved = columnIds
+export function resolveVisibleColumns(
+  columnIds: string[],
+  isPortfolioTab: boolean,
+  { targetWeights = false }: { targetWeights?: boolean } = {},
+): ColumnConfig[] {
+  const resolved = (isPortfolioTab && targetWeights ? withTargetColumns(columnIds) : columnIds)
     .map((columnId) => PORTFOLIO_COLUMNS_BY_ID.get(columnId))
     .filter((column): column is ColumnConfig => column != null)
     .filter((column) => isPortfolioTab || !PORTFOLIO_ONLY_COLUMN_IDS.has(column.id));

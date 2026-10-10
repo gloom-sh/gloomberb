@@ -186,6 +186,7 @@ export function createEarningsCallsHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: { source: "Company earnings calls", status: "not-a-feed", basis: "transcripts" },
     argument: {
       kind: "ticker",
       placeholder: "ticker",

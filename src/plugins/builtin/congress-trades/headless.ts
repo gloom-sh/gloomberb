@@ -104,6 +104,7 @@ export function createCongressHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    freshness: { source: "House and Senate disclosures", status: "not-a-feed", basis: "filed reports" },
     argument: {
       kind: "ticker",
       optional: true,

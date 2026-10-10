@@ -25,7 +25,10 @@ export const paneSchemas = {
     discovery: {
       id: "return-correlation",
       aliases: ["correlation", "return correlation", "correlation matrix", "pearson correlation"],
-      limitations: ["Correlation is computed from daily returns with at least five shared observations."],
+      limitations: [
+        "Correlation is computed from daily returns with at least five shared observations.",
+        "GEO:<series> entries correlate a map series' daily change with the others on shared dates.",
+      ],
       screenshotReadiness: "partial",
     },
   },

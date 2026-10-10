@@ -57,27 +57,32 @@ test("a broker portfolio's positions come largest first with weights and totals 
   const all = await collectionHoldingsHeadless.load(args(BROKER.id), context());
   // A holding without a quote has no market value and goes last, not first.
   expect(all.rows.map((row) => row.symbol)).toEqual(["MSFT", "NVDA", "TSLA", "AAPL", "1211"]);
-  expect(all.errors).toEqual(["No market value or P&L for 1211; totals leave them out."]);
+  expect(all.errors).toEqual(["No market value or P&L for 1211; totals and weights leave them out."]);
 
   const result = await collectionHoldingsHeadless.load(args(BROKER.id, { limit: 3 }), context());
 
   expect(result.rows.map((row) => row.symbol)).toEqual(["MSFT", "NVDA", "TSLA"]);
   expect(result.rows[0]).toMatchObject({ shares: 30, price: 400, marketValue: 12_000, unrealizedPnl: 3_000, priceCurrency: "USD" });
-  // A short is negative exposure and still weighs by its size.
+  // A short is negative exposure and weighs against the net total, as `portfolio show` weighs it.
   expect(result.rows[2]).toMatchObject({ shares: -20, marketValue: -5_000, unrealizedPnl: 1_000 });
-  expect(result.rows[0]!.weight).toBeCloseTo((12_000 / 29_000) * 100, 8);
+  expect(result.rows[0]!.weight).toBeCloseTo((12_000 / 19_000) * 100, 8);
+  expect(result.rows[2]!.weight).toBeCloseTo((-5_000 / 19_000) * 100, 8);
   expect(result.metadata).toMatchObject({
     collection: { kind: "portfolio", id: BROKER.id, broker: true },
     currency: "USD",
     positions: 5,
     totals: { marketValue: 19_000, grossMarketValue: 29_000, unrealizedPnl: 9_500 },
-    notices: ["2 more positions not shown; totals include every position."],
+    notices: [
+      "2 more positions not shown; totals include every position.",
+      // No account was synced here, so the total weighs only the positions.
+      expect.stringContaining("cash and margin are unknown"),
+    ],
   });
 });
 
 test("a watchlist reads by name, and an unknown id lists the ones that exist", async () => {
   const watchlist = await collectionHoldingsHeadless.load(args("tech"), context());
-  expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5 }]);
+  expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5, stale: false, updatedAt: expect.any(Number) }]);
   expect(watchlist.metadata).toMatchObject({ collection: { kind: "watchlist", id: "tech" }, tickers: 1 });
 
   await expect(collectionHoldingsHeadless.load(args("default"), context()))

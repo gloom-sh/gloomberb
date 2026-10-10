@@ -4,6 +4,7 @@ import type { PluginModule } from "../plugin-module";
 export const buildoutModule: PluginModule = {
   panes: [{
     id: "buildout",
+    reportFreshness: { status: "not-a-feed", basis: "infrastructure research" },
     name: "TheBuildout",
     icon: "T",
     component: BuildoutPane,

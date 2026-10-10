@@ -15,7 +15,10 @@ import { useShortcut } from "../../../react/input";
 import { buildChartKey } from "../../../market-data/selectors";
 import { formatTickerListInput } from "../../../tickers/list";
 import { isPlainKey } from "../../../utils/keyboard";
-import { formatCorrelation } from "./compute";
+import { useAsyncResource } from "../../../react/async-resource";
+import { cloudGeoRequest } from "../world-venue-map/client";
+import { geoSeriesToken, loadGeoCorrelationHistory } from "./geo";
+import { formatCorrelation, type DailyClose } from "./compute";
 import {
   CORRELATION_RANGE_OPTIONS,
   DEFAULT_CORRELATION_SYMBOLS,
@@ -37,6 +40,7 @@ import {
   ROW_HEADER_WIDTH,
   buildCorrelationMatrix,
   buildCorrelationPaneTitle,
+  buildGeoCorrelationSeries,
   buildStatusSummary,
   type CorrelationSeries,
   displaySymbol,
@@ -49,6 +53,13 @@ import { correlationHeadless, relationshipHeadless } from "./headless";
 import { CORRELATION_HISTORY_RESOLUTION } from "./history";
 import { buildMatrixPairHistory, clampMatrixCursor, matrixChartRows, matrixSelection, moveMatrixCursor, type MatrixCursor } from "./matrix/selection";
 import { MatrixPairChart } from "./matrix/pair-chart";
+
+/** A map series' values and when they arrived; after a failed load, the error and any values kept from before. */
+interface GeoSeriesLoad {
+  values?: DailyClose[];
+  fetchedAt?: number;
+  error?: string;
+}
 
 function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
@@ -75,9 +86,12 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const matrixScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const horizontalScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
+  const entries = settings.symbolsError ? [] : settings.symbols;
+  const geoEntries = entries.filter((entry) => geoSeriesToken(entry));
+  const geoKey = geoEntries.join(",");
   const instruments = useMemo(() => {
     if (settings.symbolsError) return [];
-    return settings.symbols.map((symbol) => {
+    return settings.symbols.filter((symbol) => !geoSeriesToken(symbol)).map((symbol) => {
       const ticker = tickers.get(symbol);
       return {
         symbol,
@@ -103,6 +117,28 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
 
   const chartEntries = useChartQueries(chartRequests);
 
+  // Map series load beside the tickers; one that fails leaves the others and every ticker pair working.
+  // A failed refresh keeps the series' last values for the same range, as a ticker keeps its last history.
+  const geoRetainedRef = useRef(new Map<string, { values: DailyClose[]; fetchedAt: number }>());
+  const geoLoader = useMemo(() => geoKey ? async () => {
+    const range = settings.rangePreset;
+    const results = await Promise.allSettled(geoEntries.map((entry) => (
+      loadGeoCorrelationHistory(cloudGeoRequest, geoSeriesToken(entry)!, range)
+    )));
+    return new Map(geoEntries.map((entry, index): [string, GeoSeriesLoad] => {
+      const result = results[index]!;
+      const key = `${range}|${entry}`;
+      if (result.status === "fulfilled") {
+        const loaded = { values: result.value, fetchedAt: Date.now() };
+        geoRetainedRef.current.set(key, loaded);
+        return [entry, loaded];
+      }
+      const error = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      return [entry, { ...geoRetainedRef.current.get(key), error }];
+    }));
+  } : null, [geoKey, settings.rangePreset]);
+  const geoHistory = useAsyncResource(geoLoader, { keepPreviousData: true });
+
   const seriesBySymbol = useMemo(() => {
     const map = new Map<string, CorrelationSeries>();
     for (let i = 0; i < instruments.length; i++) {
@@ -112,10 +148,21 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       const entry = chartEntries.get(key);
       map.set(instrument.symbol, getSeriesForEntry(instrument.symbol, entry, settings.rangePreset));
     }
+    for (const symbol of geoEntries) {
+      const loaded = geoHistory.data?.get(symbol);
+      map.set(symbol, !loaded
+        ? { symbol, prices: [], basis: "difference", status: "loading", observationCount: 0 }
+        : loaded.values
+          ? {
+            ...buildGeoCorrelationSeries(symbol, loaded.values),
+            loading: geoHistory.loading, refreshError: loaded.error, fetchedAt: loaded.fetchedAt,
+          }
+          : { symbol, prices: [], basis: "difference", status: "error", observationCount: 0, refreshError: loaded.error });
+    }
     return map;
-  }, [chartEntries, chartRequests, instruments, settings.rangePreset]);
+  }, [chartEntries, chartRequests, instruments, settings.rangePreset, geoKey, geoHistory.data, geoHistory.loading]);
 
-  const symbols = instruments.map((instrument) => instrument.symbol);
+  const symbols = entries;
   const symbolsKey = symbols.join(",");
   const cursor = clampMatrixCursor(cellCursor, symbols.length);
   const selection = matrixSelection(symbols, cursor);
@@ -139,15 +186,20 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const refresh = useCallback(() => {
     const coordinator = getSharedMarketDataCoordinator();
     for (const request of chartRequests) void coordinator?.loadChart(request, { forceRefresh: true });
-  }, [chartRequests]);
+    if (geoKey) void geoHistory.reload();
+  }, [chartRequests, geoKey, geoHistory.reload]);
 
   const openSymbol = useCallback((symbol: string) => {
+    if (geoSeriesToken(symbol)) {
+      createPaneFromTemplate("chart-composer-pane", { arg: symbol });
+      return;
+    }
     if (tickers.has(symbol)) {
       pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
       return;
     }
     navigateTicker(symbol);
-  }, [navigateTicker, pinTicker, tickers]);
+  }, [createPaneFromTemplate, navigateTicker, pinTicker, tickers]);
 
   /** Hovered symbols remain a keyboard starting point; Left reaches their row cursor. */
   const moveCursor = (key: string) => {
@@ -170,6 +222,8 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       event.preventDefault();
       event.stopPropagation();
       if (hoveredSymbol && symbols.includes(hoveredSymbol)) openSymbol(hoveredSymbol);
+      // Ratio and beta are price measures, so a pair with a map series charts both in G instead.
+      else if (pair && pair.some((entry) => geoSeriesToken(entry))) createPaneFromTemplate("chart-composer-pane", { arg: formatTickerListInput(pair) });
       else if (pair) createPaneFromTemplate("relationship-graph-pane", { symbols: pair, arg: formatTickerListInput(pair) });
       else openSymbol(selection[0]);
     }
@@ -210,13 +264,13 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const headerBg = colors.panel;
-  const rowHeaderWidth = Math.max(
-    ROW_HEADER_WIDTH,
-    Math.min(12, Math.max(0, ...symbols.map((symbol) => displaySymbol(symbol).length)) + 2),
-  );
+  const labelWidth = Math.max(0, ...symbols.map((symbol) => displaySymbol(symbol).length));
+  const rowHeaderWidth = Math.max(ROW_HEADER_WIDTH, Math.min(12, labelWidth + 2));
+  // A map series label (SUEZ.TANKER) is wider than a ticker's: columns keep room for it and the matrix scrolls instead.
+  const minCellWidth = Math.max(MIN_MATRIX_CELL_WIDTH, labelWidth + 2);
   const cellCount = Math.max(1, symbols.length);
-  const availableCellWidth = Math.floor((Math.max(width - rowHeaderWidth - 4, cellCount * MIN_MATRIX_CELL_WIDTH)) / cellCount);
-  const cellWidth = Math.max(MIN_MATRIX_CELL_WIDTH, Math.min(MATRIX_CELL_WIDTH, availableCellWidth));
+  const availableCellWidth = Math.floor((Math.max(width - rowHeaderWidth - 4, cellCount * minCellWidth)) / cellCount);
+  const cellWidth = Math.max(minCellWidth, Math.min(MATRIX_CELL_WIDTH, availableCellWidth));
   // Rows are exactly as wide as the matrix (after the one-cell inset), so the
   // zebra and hover bands stop at the last column instead of running on.
   const matrixRowWidth = 1 + rowHeaderWidth + symbols.length * cellWidth;
@@ -401,9 +455,9 @@ export const correlationModule: PluginModule = {
       headless: correlationHeadless,
       paneId: "correlation",
       label: "Correlation Matrix",
-      description: "Date-aligned Pearson correlation matrix for ticker returns.",
+      description: "Date-aligned Pearson correlation matrix for ticker returns and map series such as GEO:HORMUZ.",
       keywords: ["correlation", "corr", "matrix", "pearson", "returns", "covariance"],
-      shortcut: { prefix: "CORR", argPlaceholder: "tickers", argKind: "ticker-list" },
+      shortcut: { prefix: "CORR", argPlaceholder: "tickers", argKind: "ticker-list", keepArgToken: (token) => !!geoSeriesToken(token) },
       wizard: [
         {
           key: "tickers",

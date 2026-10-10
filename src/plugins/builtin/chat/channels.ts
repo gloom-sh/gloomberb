@@ -4,6 +4,8 @@ import type { AppConfig } from "../../../types/config";
 import { t } from "../../../i18n";
 import { chatController } from "./controller";
 import { formatChannelLabel } from "./channel-labels";
+import { describeConversationStartError, knownConversationRefusal } from "./direct-messages";
+import { buildChatUserByUsername } from "./content/user-map";
 
 export const DEFAULT_CHAT_CHANNEL_ID = "everyone";
 export const LAST_VISITED_CHAT_CHANNEL_KEY = "lastChatChannelId";
@@ -87,9 +89,23 @@ export async function openDmTargetFromCommand(ctx: GloomPluginContext, usernames
     openDefaultChatPane(ctx);
     return;
   }
-  const channel = usernames.length === 1
-    ? await chatController.openDirectChannel({ username: usernames[0] })
-    : await chatController.openGroupChannel({ usernames });
+  // The command bar shows a thrown message as it is, so it says why.
+  const snapshot = chatController.getSnapshot();
+  const userByUsername = buildChatUserByUsername(snapshot.channels, snapshot.messages);
+  const refusal = knownConversationRefusal(usernames, {
+    userByUsername,
+    currentUserId: snapshot.user?.id,
+    channels: snapshot.channels,
+  });
+  if (refusal) throw new Error(refusal);
+  let channel: ChatChannel;
+  try {
+    channel = usernames.length === 1
+      ? await chatController.openDirectChannel({ username: usernames[0] })
+      : await chatController.openGroupChannel({ usernames });
+  } catch (error) {
+    throw new Error(describeConversationStartError(error, usernames, userByUsername));
+  }
   openChatChannelFromCommand(ctx, channel.id);
 }
 

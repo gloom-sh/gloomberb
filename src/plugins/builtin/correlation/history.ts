@@ -17,3 +17,5 @@ export async function loadCorrelationHistory(
 }
 
 export const CORRELATION_RETURN_BASIS = "Local-price close-to-close returns between shared UTC dates; cash distributions and FX conversion are excluded, and exchange closing times may differ.";
+
+export const GEO_CORRELATION_CHANGE_BASIS = "Map series (GEO:) use the change in daily value between the same shared UTC dates, because counts such as transits can be zero.";

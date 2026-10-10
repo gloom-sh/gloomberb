@@ -593,26 +593,45 @@ export function DataTableView<
     && (!isNavigable || isNavigable(item, index))
   ), [effectiveSelectedIndex, isNavigable]);
 
+  // The row handlers reach the latest cursor logic through a ref, so their
+  // identity survives a parent render. Most callers build `selection` inline,
+  // which used to give every handler a new identity on each render and made
+  // every visible row re-render its cells, even when nothing in it changed.
+  const rowHandlerStateRef = useRef({
+    activateIndex,
+    onRowContextMenu: tableProps.onRowContextMenu,
+    onRowMouseDown: tableProps.onRowMouseDown,
+    updateCursorIndex,
+  });
+  rowHandlerStateRef.current = {
+    activateIndex,
+    onRowContextMenu: tableProps.onRowContextMenu,
+    onRowMouseDown: tableProps.onRowMouseDown,
+    updateCursorIndex,
+  };
+
   const handleTableSelect = useCallback((_item: T, index: number) => {
-    updateCursorIndex(index, { commit: "immediate" });
-  }, [updateCursorIndex]);
+    rowHandlerStateRef.current.updateCursorIndex(index, { commit: "immediate" });
+  }, []);
 
   const handleTableActivate = useCallback((_item: T, index: number) => {
-    activateIndex(index);
-  }, [activateIndex]);
+    rowHandlerStateRef.current.activateIndex(index);
+  }, []);
 
   const handleRowMouseDown = useCallback((item: T, index: number, event: any) => {
-    const handled = tableProps.onRowMouseDown?.(item, index, event);
+    const latest = rowHandlerStateRef.current;
+    const handled = latest.onRowMouseDown?.(item, index, event);
     if (handled === true) {
-      updateCursorIndex(index, { commit: "immediate" });
+      latest.updateCursorIndex(index, { commit: "immediate" });
     }
     return handled;
-  }, [tableProps.onRowMouseDown, updateCursorIndex]);
+  }, []);
 
   const handleRowContextMenu = useCallback((item: T, index: number, event: any) => {
-    updateCursorIndex(index, { commit: "immediate" });
-    tableProps.onRowContextMenu?.(item, index, event);
-  }, [tableProps.onRowContextMenu, updateCursorIndex]);
+    const latest = rowHandlerStateRef.current;
+    latest.updateCursorIndex(index, { commit: "immediate" });
+    latest.onRowContextMenu?.(item, index, event);
+  }, []);
 
   // Wide tables scroll their columns on Shift+Left/Right, the way a chart pans,
   // and on Ctrl+Left/Right where the OS leaves those alone (macOS takes them to
@@ -653,7 +672,9 @@ export function DataTableView<
       event.preventDefault();
       return;
     }
-    if (tableProps.items.length === 0) return;
+    // Without a cursor there is nothing for these keys to move, so they stay
+    // free for the pane scroll keys to scroll the rows.
+    if (tableProps.items.length === 0 || selection.kind === "none") return;
 
     if (isPlainKey(event, "j", "down")) {
       stopTableKey(event);

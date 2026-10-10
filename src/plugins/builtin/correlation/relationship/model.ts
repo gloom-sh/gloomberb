@@ -72,7 +72,7 @@ function alignRelationshipPrices(leftPoints: PricePoint[], rightPoints: PricePoi
   }));
 }
 
-export function buildRelationshipReturns(aligned: readonly Omit<RelationshipAlignedPoint, "ratio">[]): RelationshipReturnPoint[] {
+function buildRelationshipReturns(aligned: readonly Omit<RelationshipAlignedPoint, "ratio">[]): RelationshipReturnPoint[] {
   const returns: RelationshipReturnPoint[] = [];
   for (let index = 1; index < aligned.length; index++) {
     const previous = aligned[index - 1]!;

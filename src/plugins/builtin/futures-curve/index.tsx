@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { futuresCurveCache } from "./client";
 import { futuresCurveHeadless } from "./headless";
-import { CURVE_HORIZONS, CURVE_ROOTS, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
+import { CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
 import { FuturesCurvePane } from "./pane";
 
 export const futuresCurveModule: PluginModule = {
@@ -17,14 +17,14 @@ export const futuresCurveModule: PluginModule = {
     }),
   }],
   paneTemplates: [{ id: "futures-curve-pane", paneId: "futures-curve", label: "Futures Curve",
-    description: "Listed futures contracts, historical curves, roll yield and open interest including VIX futures.",
+    description: "Listed futures contracts, historical curves, roll yield and open interest including VIX and CME crypto futures.",
     keywords: ["ctm", "futures", "curve", "contango", "backwardation", "roll", "vix"],
     shortcut: { prefix: "CTM", aliases: ["CT"], argKind: "text", argPlaceholder: "root", argOptional: true,
       argOptions: () => CURVE_ROOTS },
     headless: futuresCurveHeadless,
     createInstance: (context, options) => {
       const input = options?.arg?.trim();
-      const root = input ? normalizeCurveRoot(input) : normalizeCurveRoot(context.activeTicker) ?? "ES";
+      const root = input ? normalizeCurveRoot(input) : curveRootForTicker(context.activeTicker) ?? "ES";
       return { title: `CTM ${root ?? input}`, params: { root: root ?? input ?? "ES" }, placement: "floating" };
     },
   }],

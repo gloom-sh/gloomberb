@@ -84,6 +84,12 @@ export interface PortfolioAccountStateResult {
   accountState: ResolvedPortfolioAccountState | null;
   /** Set when the broker refused to list accounts, so "no cash" is not mistaken for a clean empty. */
   accountsError: string | null;
+  /**
+   * The broker's last call failed, such as the sync at startup after its
+   * sign-in lapsed. Accounts are listed only while it is connected, so this
+   * is the only word of why the account is missing or stale.
+   */
+  brokerError: string | null;
 }
 
 /**
@@ -111,5 +117,9 @@ export function usePortfolioAccountState(
     () => resolvePortfolioAccountState(portfolio, state, snapshot),
     [portfolio, snapshot, state.brokerAccounts, state.config],
   );
-  return useMemo(() => ({ accountState, accountsError: live.error }), [accountState, live.error]);
+  const brokerError = live.status?.state === "error" ? live.status.message?.trim() || "Broker unavailable" : null;
+  return useMemo(
+    () => ({ accountState, accountsError: live.error, brokerError }),
+    [accountState, brokerError, live.error],
+  );
 }

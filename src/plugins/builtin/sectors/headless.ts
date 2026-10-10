@@ -32,6 +32,8 @@ export function projectSectorRows(
     loading: false,
     quoteUnavailable: !byEtf.get(definition.etf) || byEtf.get(definition.etf)?.quoteUnavailable === true,
     quoteSessionDate: byEtf.get(definition.etf)?.quoteSessionDate ?? null,
+    quoteUpdatedAt: byEtf.get(definition.etf)?.quoteUpdatedAt ?? null,
+    quoteDataSource: byEtf.get(definition.etf)?.quoteDataSource,
     quoteIssue: byEtf.get(definition.etf)?.quoteIssue ?? null,
     lastReportedPrice: byEtf.get(definition.etf)?.lastReportedPrice ?? null,
     returnIntegrity: byEtf.get(definition.etf)?.returnIntegrity ?? {},
@@ -58,6 +60,8 @@ export function createSectorsHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
+    // Dated by each ETF's quote; the shared session date is the returns' end, not an observation.
+    freshness: { observedKey: "quoteUpdatedAt" },
     argument: { kind: "none" },
     options: [{
       key: "collection",
@@ -81,7 +85,11 @@ export function createSectorsHeadless(
       return {
         unavailableSymbols: unavailableSymbols.length > 0 ? unavailableSymbols : undefined,
         errors: rows.flatMap((row) => sectorRowIssues(row).map((issue) => `${row.etf}: ${issue}.`)),
-        rows: rows.map((row) => ({ ...row })),
+        // The quote behind each row says whether it is real-time or delayed, and how current it is.
+        rows: rows.map(({ quoteDataSource, ...row }) => ({
+          ...row,
+          ...(quoteDataSource === "live" || quoteDataSource === "delayed" ? { dataSource: quoteDataSource } : {}),
+        })),
         metadata: {
           collection: collectionId,
           available: outcomes.filter((outcome) => outcome.row).length,

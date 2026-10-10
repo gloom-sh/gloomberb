@@ -87,8 +87,8 @@ export function useShellTerminalPointerRuntime({
   windowMode,
 }: UseShellTerminalPointerRuntimeOptions) {
   const {
-    dragFloatingRect,
-    dragRef,
+    live,
+    startDrag,
     updateDividerPreview,
     updateDragFloatingRect,
   } = dragRuntime;
@@ -112,7 +112,7 @@ export function useShellTerminalPointerRuntime({
 
       for (const { pane, rect: visibleRect } of sortedFloatingPanes(visibleFloatingPanes)) {
         const paneId = pane.instance.instanceId;
-        const rect = getVisibleFloatingRect(visibleRect, paneId, dragFloatingRect, width, contentHeight);
+        const rect = getVisibleFloatingRect(visibleRect, paneId, live.get().floating, width, contentHeight);
         if (!pointInRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height }, event.x, shellY)) continue;
 
         const relativeX = event.x - rect.x;
@@ -120,13 +120,13 @@ export function useShellTerminalPointerRuntime({
         selectWindowModePane(paneId);
 
         if (relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
-          dragRef.current = {
+          startDrag({
             type: "float-resize",
             paneId,
             startX: preciseX,
             startY: preciseShellY,
             origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          };
+          });
           updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
         }
 
@@ -138,7 +138,7 @@ export function useShellTerminalPointerRuntime({
       if (!transientFocusActive) {
         for (const divider of dockDividerLayouts) {
           if (!pointInRect(divider.rect, event.x, shellY)) continue;
-          dragRef.current = {
+          startDrag({
             type: "divider",
             path: divider.path,
             axis: divider.axis,
@@ -146,7 +146,7 @@ export function useShellTerminalPointerRuntime({
             startY: preciseShellY,
             startRatio: divider.ratio,
             bounds: divider.bounds,
-          };
+          });
           updateDividerPreview({
             pathKey: divider.path.join("."),
             rect: divider.rect,
@@ -179,7 +179,7 @@ export function useShellTerminalPointerRuntime({
 
       for (const { pane, rect: visibleRect } of sortedFloatingPanes(visibleFloatingPanes)) {
         const paneId = pane.instance.instanceId;
-        const rect = getVisibleFloatingRect(visibleRect, paneId, dragFloatingRect, width, contentHeight);
+        const rect = getVisibleFloatingRect(visibleRect, paneId, live.get().floating, width, contentHeight);
         if (!pointInRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height }, event.x, shellY)) continue;
         const relativeX = event.x - rect.x;
         const relativeY = shellY - rect.y;
@@ -212,13 +212,13 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (!transientFocusActive && relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
-          dragRef.current = {
+          startDrag({
             type: "float-resize",
             paneId,
             startX: preciseX,
             startY: preciseShellY,
             origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          };
+          });
           updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
           event.stopPropagation();
           event.preventDefault();
@@ -230,14 +230,14 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (relativeY === 0) {
-          dragRef.current = {
+          startDrag({
             type: "pane-drag",
             paneId,
             mode: "floating",
             startX: preciseX,
             startY: preciseShellY,
             origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          };
+          });
           updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
           event.stopPropagation();
           event.preventDefault();
@@ -248,7 +248,7 @@ export function useShellTerminalPointerRuntime({
 
       for (const divider of dockDividerLayouts) {
         if (!pointInRect(divider.rect, event.x, shellY)) continue;
-        dragRef.current = {
+        startDrag({
           type: "divider",
           path: divider.path,
           axis: divider.axis,
@@ -256,7 +256,7 @@ export function useShellTerminalPointerRuntime({
           startY: preciseShellY,
           startRatio: divider.ratio,
           bounds: divider.bounds,
-        };
+        });
         updateDividerPreview({
           pathKey: divider.path.join("."),
           rect: divider.rect,
@@ -308,14 +308,14 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (relativeY === 0) {
-          dragRef.current = {
+          startDrag({
             type: "pane-drag",
             paneId: leaf.instanceId,
             mode: "docked",
             startX: preciseX,
             startY: preciseShellY,
             origRect: { x: leaf.rect.x, y: leaf.rect.y, width: leaf.rect.width, height: leaf.rect.height },
-          };
+          });
           event.stopPropagation();
           event.preventDefault();
           return;
@@ -333,12 +333,11 @@ export function useShellTerminalPointerRuntime({
     contentHeight,
     dockDividerLayouts,
     dockLeafLayouts,
-    dragFloatingRect,
-    dragRef,
     focusPane,
     focusedPaneId,
     handleActiveDrag,
     handleFloatingClose,
+    live,
     restoreFullscreen,
     menuState,
     openPaneMenu,
@@ -346,6 +345,7 @@ export function useShellTerminalPointerRuntime({
     selectWindowModePane,
     setHoveredMenuItemId,
     setMenuState,
+    startDrag,
     transientFocusActive,
     updateDividerPreview,
     updateDragFloatingRect,

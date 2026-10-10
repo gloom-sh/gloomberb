@@ -151,7 +151,7 @@ export function gpuPriceLadder(rows: readonly GpuBoardRow[], model: string): Gpu
 }
 
 /** Round dollar ticks for a price axis: one, two or five times a power of ten, four to six of them. */
-export function gpuAxisTicks(low: number, high: number): number[] {
+function gpuAxisTicks(low: number, high: number): number[] {
   if (!(high > low)) return [low];
   const raw = (high - low) / 5;
   const power = 10 ** Math.floor(Math.log10(raw));
@@ -159,6 +159,32 @@ export function gpuAxisTicks(low: number, high: number): number[] {
   const ticks: number[] = [];
   for (let tick = Math.floor(low / step) * step; tick <= high + step * 0.999; tick += step) ticks.push(Math.round(tick * 1000) / 1000);
   return ticks;
+}
+
+export interface GpuAxisLabel { value: number; text: string; ratio: number; start: number }
+
+/**
+ * Labels for a price axis `cells` wide over `low`..`high`: each centred on its
+ * tick's own value, on the linear scale the bands and markers use (`ratio`, and
+ * `start`, the first cell on the terminal), with the decimals the tick step
+ * needs so neighbours never read alike ($2.0 $2.1 $2.2, $2.05 $2.10). A label
+ * that would touch its neighbour or run past the room beside the axis is left
+ * out, never moved off its value.
+ */
+export function gpuAxisLabels(low: number, high: number, cells: number, room: { left: number; right: number } = { left: 0, right: 0 }): GpuAxisLabel[] {
+  const ticks = gpuAxisTicks(low, high).filter((tick) => tick >= low && tick <= high);
+  const digits = [0, 1, 2, 3].find((places) => ticks.every((tick) => Math.abs(Number(tick.toFixed(places)) - tick) < 1e-9)) ?? 3;
+  const labels: GpuAxisLabel[] = [];
+  for (const value of ticks) {
+    const text = `$${value.toFixed(digits)}`;
+    const ratio = high > low ? (value - low) / (high - low) : 0.5;
+    // The cell a track draws this value in, so the label's middle sits on the marker's cell.
+    const start = Math.round(ratio * (cells - 1)) - Math.floor(text.length / 2);
+    const previous = labels.at(-1);
+    if (start < -room.left || start + text.length > cells + room.right || (previous && start <= previous.start + previous.text.length)) continue;
+    labels.push({ value, text, ratio, start });
+  }
+  return labels;
 }
 
 /** Published notices use their effective date; observed changes use the dated evidence. */

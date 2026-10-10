@@ -3,7 +3,8 @@ import { CachedQuery, type CachedValue } from "../../data/cached-query";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, MarketDataRequestContext, SecFilingItem } from "../../types/data-provider";
 import type { AnalystResearchData, CorporateActionsData, HolderData } from "../../types/financials";
 import { canonicalExchange } from "../../utils/exchanges";
-import { shouldLogProviderError } from "../provider-errors";
+import { nonUsSecListingVenue } from "../../utils/sec";
+import { noProviderError, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
 import { hasBrokerContext, withBrokerTimeout } from "./brokers";
 import { publicListingExchange } from "../listing-target";
 import { buildVariantKey, compactUrl, listCachedResources, resolveCachePolicy, type ProviderRouterCachePolicyKey } from "./cache";
@@ -110,6 +111,7 @@ export class ProviderRouterCachedRoutes {
         let best: CachedValue<unknown> | null = null;
         let bestRank = -1;
         let lastError: unknown;
+        const misses: ProviderMissNote = {};
         for (const provider of providers) {
           try {
             const request = route.request(provider, force);
@@ -122,6 +124,7 @@ export class ProviderRouterCachedRoutes {
             if (rank > bestRank) { best = result; bestRank = rank; }
           } catch (error) {
             lastError = error;
+            noteProviderMiss(misses, error);
             if (shouldLogProviderError(error)) this.deps.logProviderError(`${provider.id} failed: ${error}`);
           }
         }
@@ -132,7 +135,7 @@ export class ProviderRouterCachedRoutes {
           const policy = resolveCachePolicy(undefined, route.policy);
           return { value: route.empty(), fetchedAt, staleAt: fetchedAt + policy.staleMs, expiresAt: fetchedAt + policy.expireMs, source: "" };
         }
-        throw new Error(route.error);
+        throw noProviderError(route.error, misses);
       },
     });
     this.queries.set(key, query);
@@ -220,9 +223,11 @@ export class ProviderRouterCachedRoutes {
       };
       case "getSecFilings": {
         const [symbol, count = 15, listingExchange, requestContext] = args as CachedAssetArgs<"getSecFilings">;
+        const exact = buildVariantKey([["exchange", canonicalExchange(listingExchange)], ["count", count]]);
         return {
           kind: "sec-filings", policy: "secFilings", entityKey: this.deps.getEntityKey(symbol, requestContext?.instrument),
-          variants: [...new Set([buildVariantKey([["exchange", canonicalExchange(listingExchange)], ["count", count]]), buildVariantKey([["count", count]]), ""])],
+          // A non-US listing never reads the bare symbol's filings: SAN in Paris is Sanofi, SAN at the SEC is Santander.
+          variants: nonUsSecListingVenue(symbol, listingExchange) ? [exact] : [...new Set([exact, buildVariantKey([["count", count]]), ""])],
           request: (provider, force) => provider.getSecFilings?.(symbol, count, listingExchange, force ? { ...requestContext, cacheMode: "refresh" } : requestContext),
           throwLastError: true, error: `No SEC filings provider available for ${symbol}`,
         };

@@ -285,7 +285,8 @@ function defaultHeadlessExecutor(
     return {
       result: serializeHeadlessPaneResult(loaded.definition, result),
       rowCount: headlessRowCount(loaded.definition, result),
-      ...(result.errors?.length ? { errors: result.errors } : {}),
+      // Ask Gloom reads a caveat as a partial result, so notes join the errors here.
+      ...(result.errors?.length || result.notes?.length ? { errors: [...(result.errors ?? []), ...(result.notes ?? [])] } : {}),
     };
   };
 }

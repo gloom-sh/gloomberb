@@ -1,5 +1,7 @@
 import type { MarketState, Quote } from "../../types/financials";
 import { blendHex, colors, priceColor, type ThemeColors } from "../../theme/colors";
+import { isFiniteNumber } from "../../utils/guards";
+import { quoteTradingDay } from "../quotes/day-range";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
 const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
@@ -18,6 +20,12 @@ export interface ActiveQuoteDisplay {
   price: number;
   change?: number;
   changePercent?: number;
+}
+
+export type ExtendedSession = "PRE" | "POST";
+
+export interface ExtendedSessionDisplay extends ActiveQuoteDisplay {
+  session: ExtendedSession;
 }
 
 export function marketStateLabel(state: MarketState): string {
@@ -124,6 +132,11 @@ export function exchangeShortName(exchangeName?: string, fullExchangeName?: stri
   return map[name] || name;
 }
 
+/**
+ * The live print against the daily reference, extended hours included: what
+ * a position is worth now and its day P&L. A headline that shows an
+ * extended-hours line beside it uses getRegularSessionDisplay instead.
+ */
 export function getActiveQuoteDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
   if (!quote) return null;
   if ((quote.marketState === "PRE" || quote.marketState === "PREPRE") && quote.preMarketPrice != null) {
@@ -140,4 +153,142 @@ export function getActiveQuoteDisplay(quote: Quote | null | undefined): ActiveQu
       changePercent: change != null ? (change / previousClose!) * 100 : undefined };
   }
   return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
+}
+
+function isPositive(value: number | undefined): value is number {
+  return isFiniteNumber(value) && value > 0;
+}
+
+interface CompletedRegularSession {
+  close: number;
+  /** The close's move from the session before it, when the quote reports it with the close. */
+  reported: { change: number; changePercent: number } | null;
+}
+
+function reportedRegularMove(quote: Quote, close: number): CompletedRegularSession["reported"] {
+  const change = quote.regularChange;
+  if (!isFiniteNumber(change)) return null;
+  const reference = close - change;
+  const changePercent = isFiniteNumber(quote.regularChangePercent)
+    ? quote.regularChangePercent
+    : isPositive(reference) ? (change / reference) * 100 : null;
+  return changePercent == null ? null : { change, changePercent };
+}
+
+/**
+ * The regular session the quote's day follows, once it is over: after hours,
+ * overnight, and through a weekend or holiday until the next pre-market, and
+ * in the pre-market when the quote reports the last session's close and move,
+ * which its own previous close can no longer give once the day has rolled.
+ * Only a US listing with extended trading reports one. Without a reported
+ * close, an after-hours print less its move from the close gives it. Null in
+ * the regular session.
+ */
+function completedRegularSession(quote: Quote): CompletedRegularSession | null {
+  const state = quote.marketState;
+  if (state == null || state === "REGULAR") return null;
+  const close = quote.regularClose;
+  if (isPositive(close)) {
+    const closeDate = quote.regularCloseSessionDate;
+    const reported = reportedRegularMove(quote, close);
+    if (state === "PRE") {
+      // The quote's own day is today; the close must be an earlier one, with its move.
+      const today = quoteTradingDay(quote);
+      return reported && closeDate && today && closeDate < today ? { close, reported } : null;
+    }
+    if (closeDate ? closeDate === quoteTradingDay(quote) : state === "POST") return { close, reported };
+  }
+  if (state === "POST" && isFiniteNumber(quote.postMarketPrice) && isFiniteNumber(quote.postMarketChange)) {
+    const derived = quote.postMarketPrice - quote.postMarketChange;
+    if (derived > 0) return { close: derived, reported: null };
+  }
+  return null;
+}
+
+function completedRegularClose(quote: Quote): number | null {
+  return completedRegularSession(quote)?.close ?? null;
+}
+
+/**
+ * The day's headline: the regular session, which stops at its close. Once it
+ * is over, and in the pre-market while the quote carries the last session's
+ * close and move, the price is that close and the move is its own, so
+ * extended trading never moves it; the extended print is
+ * getExtendedSessionDisplay. A close without its reported move is measured
+ * against the previous close. In the pre-market without that close and move
+ * the headline is the live price against the previous close, as the
+ * pre-market line is.
+ */
+export function getRegularSessionDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
+  if (!quote) return null;
+  const session = completedRegularSession(quote);
+  if (session == null) return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
+  const { close, reported } = session;
+  if (reported) return { price: close, ...reported };
+  const reference = isPositive(quote.previousClose)
+    ? quote.previousClose
+    : isFiniteNumber(quote.change) && isPositive(quote.price - quote.change) ? quote.price - quote.change : null;
+  if (reference == null) return { price: close };
+  const change = close - reference;
+  return { price: close, change, changePercent: (change / reference) * 100 };
+}
+
+/**
+ * getRegularSessionDisplay once the regular session is over (and in the
+ * pre-market, while the quote carries the last session's close and move), null
+ * while it is open. A table row headlines this when it has a column for the
+ * extended move: the close and its move stay put, and the extended column is
+ * the only figure that follows the extended print.
+ */
+export function getCompletedRegularSessionDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
+  return quote && completedRegularClose(quote) != null ? getRegularSessionDisplay(quote) : null;
+}
+
+/**
+ * The pre-market or after-hours print, measured from the regular close before
+ * it, while the quote has one: the pre-market until the open, the after-hours
+ * session from the close, and its last print until the next pre-market. Null
+ * when there is no extended print to show.
+ */
+export function getExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
+  if (!quote) return null;
+  const state = quote.marketState;
+  if (state === "PRE" || state === "PREPRE") {
+    if (isFiniteNumber(quote.preMarketPrice)) {
+      // Against the close the headline shows, so the two cannot disagree about it.
+      const close = state === "PRE" && quote.preMarketPrice > 0 ? completedRegularClose(quote) : null;
+      if (close != null) {
+        const change = quote.preMarketPrice - close;
+        return { session: "PRE", price: quote.preMarketPrice, change, changePercent: (change / close) * 100 };
+      }
+      return { session: "PRE", price: quote.preMarketPrice, change: quote.preMarketChange, changePercent: quote.preMarketChangePercent };
+    }
+    if (state === "PRE") return null;
+  }
+  const close = completedRegularClose(quote);
+  if (close == null) {
+    return state === "POST" && isFiniteNumber(quote.postMarketPrice)
+      ? { session: "POST", price: quote.postMarketPrice, change: quote.postMarketChange, changePercent: quote.postMarketChangePercent }
+      : null;
+  }
+  const price = state === "POST" ? quote.postMarketPrice ?? quote.price : quote.price;
+  // Once the session is over, a last print at the close means nothing traded after it.
+  if (!isPositive(price) || (state !== "POST" && price === close)) return null;
+  const change = price - close;
+  return { session: "POST", price, change, changePercent: (change / close) * 100 };
+}
+
+/** The extended display only while its session is open: the pre-market or the after-hours session. */
+function getOpenExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
+  return quote?.marketState === "PRE" || quote?.marketState === "POST" ? getExtendedSessionDisplay(quote) : null;
+}
+
+/**
+ * The move a board of tiles colors by: the open pre-market or after-hours
+ * session's, from the regular close, otherwise the day's regular session.
+ */
+export function getSessionMoveDisplay(
+  quote: Quote | null | undefined,
+): (ActiveQuoteDisplay & { session?: ExtendedSession }) | null {
+  return getOpenExtendedSessionDisplay(quote) ?? getRegularSessionDisplay(quote);
 }

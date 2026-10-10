@@ -58,3 +58,24 @@ export function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefine
     promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
   });
 }
+
+/**
+ * Aborts when the caller's signal does or after `timeoutMs`, whichever comes
+ * first, with that signal's reason. Wired by hand because AbortSignal.any is
+ * missing from the older system WebViews the desktop app runs in.
+ */
+export function signalWithTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  if (!signal) return timeout;
+  if (signal.aborted) return signal;
+  const controller = new AbortController();
+  const fromCaller = () => controller.abort(signal.reason);
+  const fromTimeout = () => controller.abort(timeout.reason);
+  signal.addEventListener("abort", fromCaller, { once: true });
+  timeout.addEventListener("abort", fromTimeout, { once: true });
+  controller.signal.addEventListener("abort", () => {
+    signal.removeEventListener("abort", fromCaller);
+    timeout.removeEventListener("abort", fromTimeout);
+  }, { once: true });
+  return controller.signal;
+}

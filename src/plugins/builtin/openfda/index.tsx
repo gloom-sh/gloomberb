@@ -31,6 +31,7 @@ export const openFdaPlugin: GloomPlugin = {
   panes: [
     {
       id: OPENFDA_PANE_ID,
+      reportFreshness: { source: "US FDA", status: "not-a-feed", basis: "published reports" },
       name: "FDA Reports",
       icon: "F",
       component: OpenFdaPane,

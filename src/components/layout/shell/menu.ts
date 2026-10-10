@@ -17,6 +17,7 @@ import {
 import { PANE_MANAGEMENT_ACCELERATORS, type PaneManagementAccelerators } from "./shortcuts";
 import { t } from "../../../i18n";
 import { displayWidth } from "../../../utils/format";
+import { fireAndForget } from "../../../utils/fire-and-forget";
 
 const MENU_MIN_WIDTH = 18;
 const MENU_MAX_WIDTH = 44;
@@ -174,7 +175,7 @@ export function menuForPane(
       label: "Pop Out",
       accelerator: accelerators.popOut,
       onSelect: () => {
-        void desktopWindowBridge.popOutPane?.(pane.instance.instanceId);
+        fireAndForget(desktopWindowBridge.popOutPane?.(pane.instance.instanceId), "desktop.popOutPane");
       },
     });
   }

@@ -2,7 +2,8 @@ import { pricePointIntegrity, type PriceHistoryIntegrity } from "../../../../uti
 import type { QueryEntry } from "../../../../market-data/result-types";
 import { colors } from "../../../../theme/colors";
 import type { PricePoint } from "../../../../types/financials";
-import { dailyCloses, correlateDailyCloses, type CorrelationResult, type DailyClose } from "../compute";
+import { dailyCloses, correlateDailyCloses, type ChangeBasis, type CorrelationResult, type DailyClose } from "../compute";
+import { geoSeriesToken } from "../geo";
 import type { CorrelationRangePreset } from "../settings";
 import { clipPriceHistoryToRange } from "../../../../time-series/history-window";
 
@@ -17,6 +18,8 @@ export type SeriesStatus = "loading" | "ready" | "insufficient" | "empty" | "err
 export interface CorrelationSeries {
   symbol: string;
   prices: DailyClose[];
+  /** Prices correlate returns; a map series correlates its daily change. */
+  basis?: ChangeBasis;
   status: SeriesStatus;
   observationCount: number;
   integrity?: PriceHistoryIntegrity[];
@@ -25,7 +28,10 @@ export interface CorrelationSeries {
   fetchedAt?: number | null;
 }
 
+/** A map series shows its alias (HORMUZ, SUEZ.TANKER): the GEO prefix would leave no room for the name. */
 export function displaySymbol(symbol: string): string {
+  const geo = geoSeriesToken(symbol);
+  if (geo) return geo.length > 10 ? geo.slice(0, 10) : geo;
   return symbol.length > 5 ? symbol.slice(0, 5) : symbol;
 }
 
@@ -87,6 +93,15 @@ export function buildCorrelationSeries(symbol: string, history: readonly PricePo
   };
 }
 
+/** A map series' values as a matrix input: zero counts are kept, changes are level differences. */
+export function buildGeoCorrelationSeries(symbol: string, values: DailyClose[]): CorrelationSeries {
+  const observationCount = Math.max(0, values.length - 1);
+  return {
+    symbol, prices: values, basis: "difference", observationCount,
+    status: values.length === 0 ? "empty" : observationCount < MIN_CORRELATION_OBSERVATIONS ? "insufficient" : "ready",
+  };
+}
+
 export function rowHeaderColor(status: SeriesStatus): string {
   switch (status) {
     case "loading":
@@ -122,7 +137,7 @@ export function buildCorrelationMatrix(
       const rowSeries = seriesBySymbol.get(rowSym);
       const colSeries = seriesBySymbol.get(colSym);
       const result = rowSeries && colSeries
-        ? correlateDailyCloses(rowSeries.prices, colSeries.prices, MIN_CORRELATION_OBSERVATIONS)
+        ? correlateDailyCloses(rowSeries.prices, colSeries.prices, MIN_CORRELATION_OBSERVATIONS, rowSeries.basis, colSeries.basis)
         : { correlation: null, sampleSize: 0 };
       results.set(pairKey(rowSym, colSym), result);
       if (rowIndex < colIndex) {

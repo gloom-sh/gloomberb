@@ -57,7 +57,12 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A seeded strategy starts at the spot its quote mids imply; the last print is reported beside it.
     const lastPrint = midVolatility && !supplied(settings.spot) && market.spot != null && money(market.spot) !== money(position!.spot)
       ? market.spot : null;
+    const chain = market.chain;
     return {
+      freshness: suppliedInputs
+        ? { source: "Your inputs", status: "not-a-feed", basis: "scenario" }
+        : { asOf: market.asOf, ...(chain?.dataSource === "live" || chain?.dataSource === "delayed" ? { status: chain.dataSource } : {}),
+          ...(chain?.delayMinutes ? { delayMinutes: chain.delayMinutes } : {}) },
       sections: scenario ? [
         { title: "Position", columns: [
           { key: "side", header: "Side" }, { key: "strike", header: "Strike" }, { key: "expiry", header: "Expiry" },

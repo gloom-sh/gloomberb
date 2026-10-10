@@ -15,16 +15,18 @@ export const attentionHeadless: HeadlessPaneDefinition<"bundle"> = {
     const metadata = { asOf: data.asOf, stale: data.stale, complete: data.status === "ready" && !data.truncated,
       status: data.status, periodStart: data.periodStart, periodEnd: data.periodEnd, entitlement: data.entitlement,
       privacy: data.privacy, coverage: data.coverage, methodologyUrl: data.methodologyUrl, selectedListing: data.selectedListing ?? null, historyEvidence: data.historyEvidence ?? null, unit: "rounded researcher-hours" };
-    if (tab === "sectors" || tab === "countries") return { metadata, sections: [{ title: tab === "sectors" ? "Sector attention" : "Country attention",
+    // Published hour by hour, so not a feed, but the service says when publication has fallen behind.
+    const freshness = { status: data.stale ? "stale" as const : "not-a-feed" as const, basis: "hourly publication" };
+    if (tab === "sectors" || tab === "countries") return { metadata, freshness, sections: [{ title: tab === "sectors" ? "Sector attention" : "Country attention",
       columns: [{ key: "name", header: "Group" }, { key: "researchUnits", header: "Research hours" }, { key: "sharePct", header: "Share %" }, { key: "tickers", header: "Tickers" }], rows: data[tab].map((row) => ({ ...row })) }] };
-    if (tab === "history") return { metadata, sections: [{ title: "Published hourly history", columns: [{ key: "symbol", header: "Ticker" },
+    if (tab === "history") return { metadata, freshness, sections: [{ title: "Published hourly history", columns: [{ key: "symbol", header: "Ticker" },
       { key: "bucketStart", header: "Hour (UTC)" }, { key: "researchUnits", header: "Research hours" }],
       rows: data.history && data.selectedListing ? data.history.map((point) => ({ symbol: data.selectedListing!.symbol, ...point })) : data.rows.flatMap((row) => row.history.map((point) => ({ symbol: row.symbol, ...point }))) }] };
-    if (tab === "evidence") return { metadata, sections: [{ title: "Publication evidence", columns: [{ key: "symbol", header: "Ticker" },
+    if (tab === "evidence") return { metadata, freshness, sections: [{ title: "Publication evidence", columns: [{ key: "symbol", header: "Ticker" },
       { key: "periodStart", header: "Period start" }, { key: "periodEnd", header: "Period end" }, { key: "asOf", header: "Published" },
       { key: "confidence", header: "Quality" }, { key: "marketAsOf", header: "Market as of" }],
       rows: data.rows.map((row) => ({ symbol: row.symbol, ...row.evidence, baselinePeriods: row.baselinePeriods, marketAsOf: row.marketAsOf, news: row.news })) }] };
-    return { metadata, sections: [{ title: tab === "abnormal" ? "Abnormal attention" : "Research ranking", columns: [
+    return { metadata, freshness, sections: [{ title: tab === "abnormal" ? "Abnormal attention" : "Research ranking", columns: [
       { key: "rank", header: "Rank" }, { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" }, { key: "researchUnits", header: "Research hours" },
       { key: "sharePct", header: "Share %" }, { key: "zScore", header: "Latest-hour Z-score" }, { key: "priceChangePct", header: "Price %" },
       { key: "relativeVolume", header: "Relative volume" }, { key: "sector", header: "Sector" }, { key: "country", header: "Country" },

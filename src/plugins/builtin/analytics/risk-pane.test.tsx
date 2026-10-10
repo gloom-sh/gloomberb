@@ -167,7 +167,7 @@ test("a broker account the basket only partly covers states its coverage and lis
   lines = frame();
   const twd = lines.find((line) => line.trimStart().startsWith("TWD1"));
   expect(twd).toContain("left out");
-  expect(twd).toContain("Foreign holdings: historical FX returns required");
+  expect(twd).toContain("Foreign holdings: daily FX closes unavailable");
   expect(lines.at(-1)).toContain("covers 78% of market value");
 });
 
@@ -177,7 +177,7 @@ test("below the coverage minimum the risk view says why instead of a table of da
   const lines = (await renderPane(130, 20, {}, { portfolio: BROKER_PORTFOLIO, tickers }))();
   const text = lines.join("\n");
   expect(text).toContain("Qualifying holdings cover 5% of market value; basket estimates need 50%.");
-  expect(text).toContain("Most of what is left out: Foreign holdings: historical FX returns required");
+  expect(text).toContain("Most of what is left out: Foreign holdings: daily FX closes unavailable");
   expect(text).not.toContain("60D basket return");
   expect(text).not.toContain("history unavailable");
 });

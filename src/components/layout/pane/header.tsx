@@ -5,7 +5,7 @@ import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { Tabs } from "../../ui/tabs";
-import { Icon, IconButton } from "../../ui/icon";
+import { ICON_GLYPHS, Icon, IconButton } from "../../ui/icon";
 import type { PaneHeaderTabsRegistration } from "./header-tabs";
 import { nativePaneHeaderRows } from "./sizing";
 
@@ -68,9 +68,14 @@ interface PaneHeaderTitleBar {
   trailing?: ReactNode;
 }
 
+/** A quick setting's terminal button: its glyph with a space either side. */
+function quickSettingText(setting: { icon: PaneHeaderQuickSetting["icon"] }): string {
+  return ` ${ICON_GLYPHS[setting.icon]} `;
+}
+
 export interface PaneHeaderQuickSetting {
   key: string;
-  icon: "zap";
+  icon: "zap" | "sqrt";
   label: string;
   description?: string;
   active: boolean;
@@ -139,7 +144,7 @@ export function PaneHeader({
   const closeText = fullscreen ? PANE_HEADER_RESTORE : floating ? PANE_HEADER_CLOSE : "";
   const onCornerMouseDown = fullscreen ? onRestoreMouseDown : onCloseMouseDown;
   const lockText = locked ? PANE_HEADER_LOCK : "";
-  const terminalQuickSettingsWidth = quickSettings.reduce((total) => total + displayWidth(" ⚡ "), 0)
+  const terminalQuickSettingsWidth = quickSettings.reduce((total, setting) => total + displayWidth(quickSettingText(setting)), 0)
     + displayWidth(lockText);
   const textColor = paneTitleText(visuallyFocused, floating);
   const topInset = topRule ? 1 : 0;
@@ -147,8 +152,9 @@ export function PaneHeader({
     capturePointerDrag(nativeRenderer, terminalHeaderRef.current);
     onHeaderMouseDown?.(event);
   }, [nativeRenderer, onHeaderMouseDown]);
-  // The grip, the title and the empty bar move the pane. A fullscreen pane
-  // cannot move, so there they move the desktop window instead.
+  // The whole bar moves the pane: the grip, the title, the empty space and its
+  // padding. Tabs and buttons stop the press before it gets here. A fullscreen
+  // pane cannot move, so there the bar moves the desktop window instead.
   const windowDrag = Boolean(titleBar) || (fullscreen && titleBarOverlay === true && nativeWindowChrome === true);
   const beginPaneDrag = (event: { stopPropagation?: () => void }) => {
     event.stopPropagation?.();
@@ -162,12 +168,9 @@ export function PaneHeader({
     }
     void rendererHost.startWindowDrag?.();
   };
-  const paneDragHandlers = {
-    onMouseDown: beginPaneDrag,
-    onMouseDrag: onHeaderMouseDrag,
-    onMouseDragEnd: onHeaderMouseDragEnd,
-  };
-  const chromeHandlers = windowDrag ? { onMouseDown: beginWindowDrag } : paneDragHandlers;
+  const barHandlers = windowDrag
+    ? { onMouseDown: beginWindowDrag }
+    : { onMouseDown: beginPaneDrag, onMouseDrag: onHeaderMouseDrag, onMouseDragEnd: onHeaderMouseDragEnd };
 
   if (nativePaneChrome) {
     const ruleColor = visuallyFocused ? colors.borderFocused : colors.border;
@@ -182,6 +185,8 @@ export function PaneHeader({
         data-floating={floating ? "true" : "false"}
         data-focused={focused ? "true" : "false"}
         data-window-mode-selected={windowModeSelected ? "true" : "false"}
+        data-drag-surface={windowDrag ? "window" : "pane"}
+        {...barHandlers}
         onMouseMove={onHeaderMouseMove}
         onContextMenu={onHeaderContextMenu}
         style={{
@@ -202,13 +207,13 @@ export function PaneHeader({
         }}
       >
         {!titleBar && (
-          <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: 6 }} {...paneDragHandlers}>
+          <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: 6 }}>
             <Icon name="grip" size={12} color={visuallyFocused ? colors.borderFocused : colors.textMuted} />
           </Box>
         )}
         {/* Full header height, so trimming the title to its capitals never lets
             this clip cut descenders. */}
-        <Box data-gloom-role="pane-header-chrome" minWidth={0} flexShrink={tabs ? 0 : 1} overflow="hidden" flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", ...(tabs ? { maxWidth: "40%" } : {}) }} {...chromeHandlers}>
+        <Box data-gloom-role="pane-header-chrome" minWidth={0} flexShrink={tabs ? 0 : 1} overflow="hidden" flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", ...(tabs ? { maxWidth: "40%" } : {}) }}>
           <Text
             fg={textColor}
             selectable={false}
@@ -273,14 +278,14 @@ export function PaneHeader({
         {quickSettings.map((setting) => (
           <Box key={setting.key} data-gloom-role="pane-quick-setting" data-setting-key={setting.key}>
             <IconButton
-              icon="zap"
+              icon={setting.icon}
               label={`${setting.label}: ${setting.active ? "on" : "off"}`}
               pressed={setting.active}
               onPress={setting.onMouseDown ? (event) => setting.onMouseDown?.(event) : undefined}
             />
           </Box>
         ))}
-        <Box data-gloom-role="pane-header-chrome" flexGrow={1} minWidth={0} {...chromeHandlers} />
+        <Box flexGrow={1} minWidth={0} />
         {locked && (
           <Box data-gloom-role="pane-lock">
             <IconButton icon="lock" label="Locked: the close shortcut leaves this pane open" color={colors.textMuted} />
@@ -340,7 +345,7 @@ export function PaneHeader({
         {quickSettings.map((setting) => (
           <TerminalPaneButton
             key={setting.key}
-            text=" ⚡ "
+            text={quickSettingText(setting)}
             fg={setting.active ? colors.warning : colors.textDim}
             role="pane-quick-setting"
             onMouseDown={setting.onMouseDown}
@@ -391,7 +396,7 @@ export function PaneHeader({
       {quickSettings.map((setting) => (
         <TerminalPaneButton
           key={setting.key}
-          text=" ⚡ "
+          text={quickSettingText(setting)}
           fg={setting.active ? colors.warning : colors.textDim}
           role="pane-quick-setting"
           onMouseDown={setting.onMouseDown}

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../types/financials";
-import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "./price-history";
+import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "./price-history";
 
 describe("history freshness follows bar cadence", () => {
   const now = Date.parse("2026-09-10T19:39:09Z");
@@ -136,6 +136,189 @@ describe("normalizePriceHistory", () => {
   });
 });
 
+describe("US history between sessions", () => {
+  // Thursday 2026-10-08 closed at 20:00Z (16:00 EDT) and Friday opens at 13:30Z.
+  // The last bar of each size opens before the close: 19:59Z, 19:55Z, 19:45Z, and the half-hour 19:30Z for 1h.
+  const CLOSE_BARS = { "1m": "19:59", "5m": "19:55", "15m": "19:45", "1h": "19:30" } as const;
+  const stale = (last: string, at: string, interval: keyof typeof CLOSE_BARS, options: { exchange?: string; symbol?: string } = {}) =>
+    isPriceHistoryStaleForCurrentWindow([{ date: new Date(last), close: 100 }], Date.parse(at),
+      { ...options, intervalMs: priceHistoryIntervalMs(interval) });
+  // A venue spelled out, a bare symbol, and the index and fund the CLI reports.
+  const LISTINGS = [{ exchange: "NASDAQ" }, { exchange: "NYSE" }, {}, { symbol: "SPY" }, { symbol: "^GSPC" }];
+
+  test("the last session answers through the pre-market, weekends and holidays, whatever the bar size or venue spelling", () => {
+    for (const listing of LISTINGS) {
+      for (const interval of Object.keys(CLOSE_BARS) as Array<keyof typeof CLOSE_BARS>) {
+        const thursday = `2026-10-08T${CLOSE_BARS[interval]}:00Z`;
+        const friday = `2026-10-09T${CLOSE_BARS[interval]}:00Z`;
+        // 04:00 ET, the quiet middle of the pre-market, the hour before the open, and the open itself.
+        for (const at of ["2026-10-09T08:00:00Z", "2026-10-09T11:35:00Z", "2026-10-09T13:00:00Z", "2026-10-09T13:30:00Z"]) {
+          expect(stale(thursday, at, interval, listing)).toBe(false);
+        }
+        // Friday's bars on Saturday, Sunday and Monday before the open.
+        for (const at of ["2026-10-10T12:00:00Z", "2026-10-11T15:00:00Z", "2026-10-12T11:35:00Z"]) {
+          expect(stale(friday, at, interval, listing)).toBe(false);
+        }
+        // After the close the same day: the post-market sessions.
+        for (const at of ["2026-10-08T21:00:00Z", "2026-10-09T00:30:00Z"]) {
+          expect(stale(thursday, at, interval, listing)).toBe(false);
+        }
+      }
+    }
+  });
+
+  test("a holiday and an early close do not hide the session before them", () => {
+    // Thanksgiving 2026-11-26 is closed and the Friday after closes at 13:00 EST (18:00Z).
+    const wednesday = "2026-11-25T20:55:00Z";
+    for (const at of ["2026-11-26T09:00:00Z", "2026-11-26T15:00:00Z", "2026-11-26T20:30:00Z", "2026-11-27T12:00:00Z", "2026-11-27T14:45:00Z"]) {
+      expect(stale(wednesday, at, "5m", { exchange: "NASDAQ" })).toBe(false);
+    }
+    // Friday's session ends at its early close, not at 16:00.
+    const earlyClose = "2026-11-27T17:55:00Z";
+    for (const at of ["2026-11-27T19:00:00Z", "2026-11-28T12:00:00Z", "2026-11-30T12:00:00Z", "2026-11-30T14:00:00Z"]) {
+      expect(stale(earlyClose, at, "5m", { exchange: "NYSE" })).toBe(false);
+    }
+    // Wednesday's bars do not cover Friday's session, once its first delayed bar is due.
+    expect(stale(wednesday, "2026-11-27T15:01:00Z", "5m", { exchange: "NASDAQ" })).toBe(true);
+    expect(stale(earlyClose, "2026-11-30T15:01:00Z", "5m", { exchange: "NASDAQ" })).toBe(true);
+  });
+
+  test("the last session answers after the open only until the new session's first delayed bar is due", () => {
+    // Allowed lag after the 13:30Z open: 30 minutes for 1m and 5m, 45 for 15m, 2h15 for 1h.
+    for (const [interval, lastCurrent, firstStale] of [
+      ["1m", "2026-10-09T14:00:00Z", "2026-10-09T14:01:00Z"],
+      ["5m", "2026-10-09T14:00:00Z", "2026-10-09T14:01:00Z"],
+      ["15m", "2026-10-09T14:15:00Z", "2026-10-09T14:16:00Z"],
+      ["1h", "2026-10-09T15:45:00Z", "2026-10-09T15:46:00Z"],
+    ] as const) {
+      const thursday = `2026-10-08T${CLOSE_BARS[interval]}:00Z`;
+      for (const listing of LISTINGS) {
+        expect(stale(thursday, lastCurrent, interval, listing)).toBe(false);
+        expect(stale(thursday, firstStale, interval, listing)).toBe(true);
+      }
+    }
+  });
+
+  test("a copy that missed a session or stopped short of its close stays behind", () => {
+    for (const listing of LISTINGS) {
+      // Wednesday's close on Friday's pre-market: Thursday is missing.
+      expect(stale("2026-10-07T19:55:00Z", "2026-10-09T11:35:00Z", "5m", listing)).toBe(true);
+      expect(stale("2026-10-07T19:55:00Z", "2026-10-09T13:00:00Z", "5m", listing)).toBe(true);
+      // Thursday at 10:00 ET, 14:00Z: a copy taken early in the session.
+      expect(stale("2026-10-08T14:00:00Z", "2026-10-09T11:35:00Z", "1m", listing)).toBe(true);
+      expect(stale("2026-10-08T14:30:00Z", "2026-10-09T11:35:00Z", "1h", listing)).toBe(true);
+      expect(stale("2026-10-08T19:20:00Z", "2026-10-09T11:35:00Z", "5m", listing)).toBe(true);
+      // Bars from days earlier on a weekend, and Thursday's when Friday's session is missing.
+      expect(stale("2026-10-07T19:55:00Z", "2026-10-10T12:00:00Z", "5m", listing)).toBe(true);
+      expect(stale("2026-10-08T19:55:00Z", "2026-10-11T15:00:00Z", "5m", listing)).toBe(true);
+      // Thursday's bars once Friday trades, and Friday's once Monday does.
+      expect(stale("2026-10-08T19:55:00Z", "2026-10-09T15:00:00Z", "5m", listing)).toBe(true);
+      expect(stale("2026-10-09T19:55:00Z", "2026-10-12T15:00:00Z", "5m", listing)).toBe(true);
+    }
+    // The 2026-11-26 holiday does not excuse Tuesday's bars on Friday morning.
+    expect(stale("2026-11-24T20:55:00Z", "2026-11-27T12:00:00Z", "5m", { exchange: "NASDAQ" })).toBe(true);
+  });
+});
+
+describe("TASE history between sessions", () => {
+  // Israel is on UTC+3 until 25 October. Monday to Thursday the cash market closes at 17:30 (14:30Z) and
+  // Friday at 13:50 (10:50Z). Cloud's last bar of each session opens before the closing auction: 17:09
+  // and 13:29 local at 5m, 16:50 and 12:50 at 1h.
+  const stale = (last: string, at: string, interval: "5m" | "1h" = "5m") =>
+    isPriceHistoryStaleForCurrentWindow([{ date: new Date(last), close: 100 }], Date.parse(at),
+      { exchange: "TASE", symbol: "LUMI", intervalMs: priceHistoryIntervalMs(interval) });
+  const FRIDAY = { "5m": "2026-10-09T10:29:00Z", "1h": "2026-10-09T09:50:00Z" } as const;
+  const THURSDAY = { "5m": "2026-10-08T14:09:00Z", "1h": "2026-10-08T13:50:00Z" } as const;
+
+  test("a complete Friday session answers after its early close, over the weekend and into Monday's open", () => {
+    for (const interval of ["5m", "1h"] as const) {
+      // 14:30 and 18:09 Friday, Saturday, Sunday, Monday 08:00, and Monday 10:20 before its first delayed bar is due.
+      for (const at of ["2026-10-09T11:30:00Z", "2026-10-09T15:09:00Z", "2026-10-10T12:00:00Z", "2026-10-11T12:00:00Z",
+        "2026-10-12T05:00:00Z", "2026-10-12T07:20:00Z"]) {
+        expect(stale(FRIDAY[interval], at, interval), `${interval} ${at}`).toBe(false);
+      }
+    }
+  });
+
+  test("a Friday copy that stopped at midday is behind once the market closed", () => {
+    expect(stale("2026-10-09T09:04:00Z", "2026-10-09T11:30:00Z")).toBe(true);
+    expect(stale("2026-10-09T09:04:00Z", "2026-10-09T15:09:00Z")).toBe(true);
+    expect(stale("2026-10-09T07:50:00Z", "2026-10-09T15:09:00Z", "1h")).toBe(true);
+  });
+
+  test("Monday to Thursday keep the 17:30 close, which Friday's early close does not move", () => {
+    for (const interval of ["5m", "1h"] as const) {
+      for (const at of ["2026-10-08T15:30:00Z", "2026-10-09T05:00:00Z"]) {
+        expect(stale(THURSDAY[interval], at, interval), `${interval} ${at}`).toBe(false);
+      }
+    }
+    // Where a Friday copy would end, a Thursday one has missed the afternoon.
+    expect(stale(FRIDAY["5m"].replace("-09T", "-08T"), "2026-10-08T15:30:00Z")).toBe(true);
+    expect(stale("2026-10-08T11:00:00Z", "2026-10-08T15:30:00Z")).toBe(true);
+  });
+});
+
+describe("round-the-clock coin history", () => {
+  // 07:29Z on a Friday: the US market closed 11 hours ago and opens in six.
+  const now = Date.parse("2026-10-09T07:29:00Z");
+  const MIN = 60_000;
+  // Bars every `step` minutes up to `last`, with none inside the hole.
+  const bars = (last: string, step: number, hole?: [string, string]): PricePoint[] => {
+    const end = Date.parse(last);
+    const times = Array.from({ length: 200 }, (_, index) => end - (199 - index) * step * MIN)
+      .filter((time) => !hole || time <= Date.parse(hole[0]) || time >= Date.parse(hole[1]));
+    return times.map((time) => ({ date: new Date(time), close: 85_000 }));
+  };
+  const stale = (points: PricePoint[], step: number, options: { symbol?: string; exchange?: string }) =>
+    isPriceHistoryStaleForCurrentWindow(points, now, { ...options, intervalMs: step * MIN });
+
+  test("a coin is judged by the age of its latest bar, not by the US session, whatever the exchange says", () => {
+    const twoHoursOld = bars("2026-10-09T05:15:00Z", 5);
+    // Judged as a US listing it reaches the latest close and reads as current.
+    expect(stale(twoHoursOld, 5, {})).toBe(false);
+    expect(stale(twoHoursOld, 5, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(twoHoursOld, 5, { symbol: "ETH/USD" })).toBe(true);
+    expect(stale(twoHoursOld, 5, { symbol: "BTC-USD:CCC" })).toBe(true);
+    // The crypto venue's two-hour allowance is not the rule either.
+    expect(stale(bars("2026-10-09T06:25:00Z", 5), 5, { exchange: "CCC" })).toBe(true);
+    // Two bars and the publishing allowance: 25 minutes at 5m, 2h15 at 1h.
+    expect(stale(bars("2026-10-09T07:04:00Z", 5), 5, { symbol: "BTC-USD" })).toBe(false);
+    expect(stale(bars("2026-10-09T07:03:00Z", 5), 5, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(bars("2026-10-09T05:14:00Z", 60), 60, { symbol: "BTC-USD" })).toBe(false);
+    expect(stale(bars("2026-10-09T05:13:00Z", 60), 60, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(bars("2026-10-08T19:00:00Z", 60), 60, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(bars("2026-10-08T19:00:00Z", 60), 60, { exchange: "CCC" })).toBe(true);
+    // A daily series is judged by its cache policy.
+    expect(isPriceHistoryStaleForCurrentWindow(bars("2026-10-08T00:00:00Z", 1440), now, { symbol: "BTC-USD", intervalMs: 1440 * MIN })).toBe(false);
+  });
+
+  test("a hole of hours in the last six hours is behind, an older one is not", () => {
+    expect(stale(bars("2026-10-09T07:25:00Z", 5, ["2026-10-09T03:00:00Z", "2026-10-09T05:30:00Z"]), 5, { symbol: "BTC-USD" })).toBe(true);
+    expect(stale(bars("2026-10-09T07:25:00Z", 5, ["2026-10-08T22:00:00Z", "2026-10-09T01:00:00Z"]), 5, { symbol: "BTC-USD" })).toBe(false);
+    // Hourly bars tolerate a gap of three bars.
+    expect(stale(bars("2026-10-09T06:00:00Z", 60, ["2026-10-09T01:00:00Z", "2026-10-09T04:00:00Z"]), 60, { symbol: "BTC-USD" })).toBe(false);
+    expect(stale(bars("2026-10-09T06:00:00Z", 60, ["2026-10-09T01:00:00Z", "2026-10-09T05:00:00Z"]), 60, { symbol: "BTC-USD" })).toBe(true);
+  });
+
+  test("other listings keep their own rules: fiat pairs, equities and a bare BTC fund", () => {
+    const afterHours = bars("2026-10-09T05:15:00Z", 5);
+    expect(stale(afterHours, 5, { symbol: "EUR-USD" })).toBe(false);
+    expect(stale(afterHours, 5, { symbol: "BTC" })).toBe(false);
+    // Thursday's regular session stays current until the next open.
+    expect(stale(bars("2026-10-08T19:55:00Z", 5), 5, { symbol: "AAPL", exchange: "NASDAQ" })).toBe(false);
+  });
+
+  test("a bare coin's daily copy is refetched within the hour and a stale server answer never counts as settled", () => {
+    const daily = ["2026-10-07T00:00:00Z", "2026-10-08T00:00:00Z"].map((date) => ({ date: new Date(date), close: 85_000 }));
+    const state = (symbol: string, fetched: string) => calendarHistoryFetchState(daily, Date.parse(fetched), now, { symbol, intervalMs: 1440 * MIN });
+    expect(state("BTC-USD", "2026-10-09T05:00:00Z")).toBe("unsettled");
+    expect(state("BTC-USD", "2026-10-09T06:45:00Z")).toBe("current");
+    expect(state("AAPL", "2026-10-09T05:00:00Z")).toBe("current");
+    expect(reachesLatestSettledSession(daily, now, { symbol: "AAPL", intervalMs: 1440 * MIN })).toBe(true);
+    expect(reachesLatestSettledSession(daily, now, { symbol: "BTC-USD", intervalMs: 1440 * MIN })).toBe(false);
+  });
+});
+
 describe("calendar history fetched copies", () => {
   const DAY = 86_400_000;
   const at = (iso: string) => Date.parse(iso);
@@ -200,10 +383,12 @@ describe("calendar history fetched copies", () => {
     expect(outdated(bars("2026-09-17T00:00:00Z", "2026-09-18T00:00:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T12:00:00Z", { exchange: "" })).toBe(false);
     // The feed labels BSE bars at the 09:15 IST open, the previous New York date.
     expect(outdated(bars("2026-09-21T03:45:00Z", "2026-09-22T03:45:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T02:00:00Z", { exchange: "" })).toBe(false);
-    // KRX is closed for Chuseok 09-24 to 09-26 and publishes no calendar here:
-    // one refetch after each weekday close it cannot tell from a session.
-    const krx = bars("2026-09-22T00:00:00Z", "2026-09-23T00:00:00Z");
-    expect(polls(krx, "2026-09-23T08:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "KRX")).toBe(2);
+    // The JSE is closed for Heritage Day on 09-24 and publishes no calendar here:
+    // one refetch after each weekday close, the holiday's included.
+    const toWednesday = bars("2026-09-22T00:00:00Z", "2026-09-23T00:00:00Z");
+    expect(polls(toWednesday, "2026-09-23T16:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "JSE")).toBe(2);
+    // KRX Chuseok, 09-24 to 09-26, is covered: no missing session before Monday.
+    expect(polls(toWednesday, "2026-09-23T08:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "KRX")).toBe(0);
     // SSE Golden Week, Oct 1-7, is covered: no missing session before Oct 8 opens.
     const sse = bars("2026-09-29T00:00:00Z", "2026-09-30T00:00:00Z");
     expect(polls(sse, "2026-09-30T08:00:00Z", "2026-10-01T00:00:00Z", "2026-10-08T00:00:00Z", "SSE")).toBe(0);

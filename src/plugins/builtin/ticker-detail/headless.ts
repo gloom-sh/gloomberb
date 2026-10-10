@@ -6,7 +6,11 @@ import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import { pricePointValues, priceHistoryIntegrityNotice } from "../../../utils/price-history-integrity";
-import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
+import {
+  buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
+  formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
+} from "./financials/model";
+import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
 import {
@@ -25,10 +29,13 @@ import {
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
+import { barHistoryFreshness, barResolutionFromDates, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
 
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["financial-analysis-pane"],
   shape: "rows",
+  // Dated by the latest reported period; earlier periods are the statement's history.
+  freshness: { ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null },
   description: "Annual or quarterly financial statement rows for one ticker: the income statement, balance sheet, cash flow, or a ratio table.",
   describe: ({ symbols, options }) => `Financial Statements | ${symbols[0]} | ${options.period} | ${options.statement}`,
   async load({ symbols, options }, ctx) {
@@ -49,8 +56,18 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     const statementCurrency = financialStatementCurrency(financials, [
       ...financials.annualStatements, ...financials.quarterlyStatements,
     ]);
-    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation }) => ({
+    // Gloom Cloud states when a period's share counts and EPS are on the receipts.
+    const receiptPeriods = table?.statements.filter(({ shareBasis }) => shareBasis === "depositary_receipt").map(({ date }) => date) ?? [];
+    const allReceipts = receiptPeriods.length > 0 && receiptPeriods.length === table?.statements.length;
+    const shareBases = new Set(table?.statements.map(({ shareBasis }) => shareBasis ?? null));
+    const ratio = adrRatioText(financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio);
+    const shareBasisNotice = receiptPeriods.length === 0 || !table?.rows.some(isPerShareFinancialRow) ? null
+      : allReceipts
+        ? `Share counts are in ADRs and EPS is per ADR${ratio ? `; ${ratio}` : ""}.`
+        : `Share counts are in ADRs and EPS is per ADR for ${receiptPeriods.join(", ")}${ratio ? ` (${ratio})` : ""}; other periods as reported.`;
+    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis }) => ({
       date, currency: currency ?? statementCurrency ?? null,
+      shareBasis: shareBasis ?? null,
       availableAt: availableAt ?? null,
       fieldAvailability: fieldAvailability ? { ...fieldAvailability } : null,
       ...(fieldSources ? { fieldSources } : {}),
@@ -65,7 +82,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       label: formatFinancialHeader(date, [currency ?? statementCurrency, table.unit].filter(Boolean).join(" ") || undefined, dateSource, false, aggregation?.periodEnd).trim(),
     })) ?? [];
     const rows = table?.rows.map((row) => ({
-      id: row.id, kind: row.kind, metric: row.unitLabel,
+      id: row.id, kind: row.kind, metric: allReceipts ? receiptShareCountLabel(row) : row.unitLabel,
       cells: row.cells.map((cell, index) => ({
         date: dates[index]?.date ?? "", value: cell.value ?? null,
         growth: cell.growth ?? null, formatted: cell.valueText.trim(), growthFormatted: cell.growthText.trim(),
@@ -89,7 +106,9 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
         period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
-        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE] : [],
+        shareBasis: shareBases.size === 1 ? [...shareBases][0] ?? null : null,
+        ...(receiptPeriods.length > 0 ? { adrRatio: financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio ?? null } : {}),
+        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, ...(shareBasisNotice ? [shareBasisNotice] : [])] : [],
         limitations: financialStatementLimitations(financials),
         dateProvenance: financialStatementDateNotice(table?.statements ?? []),
       },
@@ -206,6 +225,7 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
           ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
           change: display.change, changePercent: display.changePercent,
           marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
+          ...quoteFreshnessFields(quote),
         };
       }),
       unavailableSymbols: loaded.unavailableSymbols, errors: loaded.errors,
@@ -239,6 +259,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       };
     }).sort((left, right) => left.date.localeCompare(right.date));
     const notice = priceHistoryIntegrityNotice(rows.filter((row) => row.integrity).length);
-    return { rows, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
+    // A bar history: dated by its last bar, stale once bars of its size stop arriving.
+    const freshness = { ...barHistoryFreshness(barResolutionFromDates(rows.map((row) => row.date))), observedKey: "date", oldest: null };
+    return { rows, freshness, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
   },
 };

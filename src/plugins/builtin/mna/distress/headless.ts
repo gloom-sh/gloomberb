@@ -140,6 +140,7 @@ const text = (value: unknown) => (typeof value === "string" ? value : "");
 
 export const distressHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
+  freshness: { source: "Public filings and insolvency notices", status: "not-a-feed", basis: "filed records" },
   description: "Dated public records about companies in difficulty: US 8-K bankruptcy, obligation and listing filings, SEC going-concern disclosures, Taiwan exchange listing designations, and French and UK company insolvency notices. No scores or predictions.",
   argument: { kind: "none" },
   discovery: {

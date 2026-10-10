@@ -5,6 +5,7 @@ import { TextAttributes } from "../../../ui";
 import type { ListRowState, ListViewItem, ListViewProps } from "../../../components/ui/list-view";
 import { blendHex, hoverBg, type ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
+import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
 import { isInsideDialogSurface } from "../host/focus-scope";
 import { isEditableKeyboardTarget } from "../key-event";
 import {
@@ -58,6 +59,10 @@ function DefaultDesktopRow({
   );
 }
 
+const FRAMED_LIST_PADDING_PX = 4;
+/** What a framed list adds above and below its rows: padding and a 1px border on each side. */
+const FRAMED_LIST_CHROME_PX = 2 * (FRAMED_LIST_PADDING_PX + 1);
+
 function listRowStyle(selected: boolean, disabled: boolean, colors: ThemeColors): CSSProperties {
   return {
     borderRadius: CONTROL_RADIUS,
@@ -109,6 +114,16 @@ export function WebListView({
   const tabStopIndex = selectedIndex >= 0 && items[selectedIndex] && !items[selectedIndex].disabled
     ? selectedIndex : items.findIndex((item) => !item.disabled);
   const effectiveSurface = surface ?? (scrollable ? "framed" : "plain");
+  // `height` counts terminal rows. A list that is not meant to scroll takes
+  // only the rows it has, up to that many; one with more rows than that
+  // scrolls inside the height instead of drawing over whatever follows it.
+  const rowsHeight = items.length === 0 ? 1 : items.length * rowHeight + (items.length - 1) * rowGap;
+  const overflowsHeight = !scrollable && height != null && rowsHeight > height;
+  const scrolls = scrollable || overflowsHeight;
+  // The frame's padding and border sit outside the rows it was asked to hold.
+  const scrollHeight = overflowsHeight
+    ? `${height * WEB_CELL_HEIGHT + (effectiveSurface === "plain" ? 0 : FRAMED_LIST_CHROME_PX)}px`
+    : height;
   const frameStyle = effectiveSurface === "plain"
     ? {
       border: "none",
@@ -119,12 +134,12 @@ export function WebListView({
     : {
       border: `1px solid ${panelBorder(colors)}`,
       borderRadius: CONTROL_RADIUS,
-      padding: 4,
+      padding: FRAMED_LIST_PADDING_PX,
       backgroundColor: subtlePanelFill(colors),
     };
 
   useEffect(() => {
-    if (!scrollable || !autoScrollToIndex || activeScrollIndex < 0) return;
+    if (!scrolls || !autoScrollToIndex || activeScrollIndex < 0) return;
     const scrollBox = scrollRef.current;
     if (!scrollBox) return;
     const safeIndex = Math.min(activeScrollIndex, items.length - 1);
@@ -136,16 +151,16 @@ export function WebListView({
     } else if (rowBottom > scrollBox.scrollTop + viewportHeight) {
       scrollBox.scrollTo(rowBottom - viewportHeight);
     }
-  }, [activeScrollIndex, autoScrollToIndex, items.length, rowHeight, rowStride, scrollable]);
+  }, [activeScrollIndex, autoScrollToIndex, items.length, rowHeight, rowStride, scrolls]);
 
   useEffect(() => {
-    if (!scrollable) return;
+    if (!scrolls) return;
     const scrollBox = scrollRef.current;
     if (!scrollBox) return;
     if (scrollBox.verticalScrollBar) {
       scrollBox.verticalScrollBar.visible = items.length * rowStride - rowGap > (scrollBox.viewport?.height ?? 0);
     }
-  }, [items.length, height, flexGrow, rowGap, rowStride, scrollable]);
+  }, [items.length, height, flexGrow, rowGap, rowStride, scrolls]);
 
   // The dialog or pane around the list moves its cursor (j/k, Home/End). A row
   // Tab or a press left focused follows it, or Space and Enter would act on the
@@ -156,8 +171,8 @@ export function WebListView({
     const active = document.activeElement;
     if (!list || !active || !list.contains(active) || isEditableKeyboardTarget(active)) return;
     const row = list.querySelectorAll<HTMLElement>('[role="option"]')[selectedIndex];
-    if (row && !row.contains(active)) row.focus({ preventScroll: scrollable });
-  }, [listDomId, scrollable, selectedIndex]);
+    if (row && !row.contains(active)) row.focus({ preventScroll: scrolls });
+  }, [listDomId, scrolls, selectedIndex]);
 
   const rows = items.length === 0
     ? (
@@ -233,11 +248,21 @@ export function WebListView({
     });
 
   return (
-    <Box id={listDomId} flexDirection="column" height={height} flexGrow={flexGrow} gap={1} role="listbox" aria-label={remoteLabel}>
-      {scrollable ? (
+    <Box
+      id={listDomId}
+      flexDirection="column"
+      height={scrollable ? height : undefined}
+      // A list sized by its container gives up height to it, and scrolls.
+      minHeight={scrollable && height == null ? 0 : undefined}
+      flexGrow={flexGrow}
+      gap={1}
+      role="listbox"
+      aria-label={remoteLabel}
+    >
+      {scrolls ? (
         <ScrollBox
           ref={scrollRef}
-          height={height}
+          height={scrollHeight}
           flexGrow={flexGrow}
           scrollY
           focusable={false}

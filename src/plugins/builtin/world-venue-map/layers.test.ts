@@ -1,0 +1,133 @@
+import { describe, expect, test } from "bun:test";
+import type { GeoLayerInfo } from "../../../api-client/geo";
+import {
+  activeLayerTokens,
+  applyMapSetting,
+  buildMapSettingsDef,
+  entityOpenZoom,
+  entityTableBbox,
+  geoViewForViewport,
+  LAYERS_SETTING_KEY,
+  parseMapPreset,
+  readVenuesSetting,
+  resolveActiveLayers,
+  VENUES_SETTING_KEY,
+  WORLD_GEO_VIEW,
+} from "./layers";
+import { DEFAULT_WORLD_MAP_VIEWPORT } from "./model";
+
+function layer(id: string, group: string, cadence: GeoLayerInfo["cadence"] = "static", extra: Partial<GeoLayerInfo> = {}): GeoLayerInfo {
+  return {
+    id, name: id, group, geometry: "point", cadence, refreshSeconds: cadence === "live" ? 30 : null, asOf: null, count: null,
+    status: "ok", access: "free", columns: [{ key: "label", label: "Name" }], series: [], defaultVisible: false, ...extra,
+  };
+}
+
+const catalog = [
+  layer("chokepoints", "ships", "daily"),
+  layer("vessels", "ships", "live"),
+  layer("ports", "ports", "daily"),
+  layer("airports", "air"),
+  layer("flights", "air", "live"),
+  layer("pipelines", "energy"),
+  layer("oil-gas-fields", "energy"),
+  layer("terminals", "energy"),
+  layer("tankers-live", "ships", "live"),
+];
+
+describe("map layers", () => {
+  test("presets expand groups and stay within the live and total caps, newest first to stay", () => {
+    expect(parseMapPreset("ships")).toEqual({ layers: ["ships"], venues: false });
+    expect(parseMapPreset("ports, airports venues")).toEqual({ layers: ["ports", "airports"], venues: true });
+    expect(parseMapPreset("  ")).toBeNull();
+    // One word keeps the venue map without layers.
+    expect(parseMapPreset("venues")).toEqual({ layers: [], venues: true });
+
+    expect(resolveActiveLayers(["energy"], catalog).map((entry) => entry.id)).toEqual(["pipelines", "oil-gas-fields", "terminals"]);
+    expect(resolveActiveLayers(["ships"], catalog).map((entry) => entry.id)).toEqual(["chokepoints", "vessels", "tankers-live"]);
+    // A third live layer does not fit: the earliest live pick gives way.
+    expect(resolveActiveLayers(["flights", "ships"], catalog).map((entry) => entry.id)).toEqual(["chokepoints", "vessels", "tankers-live"]);
+    // Four at most in all.
+    expect(resolveActiveLayers(["ports", "energy", "airports"], catalog).map((entry) => entry.id))
+      .toEqual(["pipelines", "oil-gas-fields", "terminals", "airports"]);
+    expect(resolveActiveLayers(["nope"], catalog)).toEqual([]);
+    expect(resolveActiveLayers(["ships"], null)).toEqual([]);
+  });
+
+  test("the picker only exists with a catalog, and edits keep venues and drop the oldest pick", () => {
+    expect(buildMapSettingsDef({}, null)).toBeUndefined();
+    expect(buildMapSettingsDef({}, [])).toBeUndefined();
+
+    const def = buildMapSettingsDef({}, catalog)!;
+    expect(def.fields.map((field) => field.key)).toEqual([VENUES_SETTING_KEY, "layers:ships", "layers:ports", "layers:air", "layers:energy"]);
+    expect(def.values?.[VENUES_SETTING_KEY]).toBe(true);
+
+    // A plain venue map that gains a layer keeps its venues.
+    const withPorts = applyMapSetting({}, "layers:ports", ["ports"], catalog);
+    expect(withPorts).toEqual({ [LAYERS_SETTING_KEY]: ["ports"], [VENUES_SETTING_KEY]: true });
+
+    const full = applyMapSetting(withPorts, "layers:energy", ["pipelines", "oil-gas-fields", "terminals"], catalog);
+    expect(full[LAYERS_SETTING_KEY]).toEqual(["ports", "pipelines", "oil-gas-fields", "terminals"]);
+    const capped = applyMapSetting(full, "layers:air", ["airports"], catalog);
+    expect(capped[LAYERS_SETTING_KEY]).toEqual(["pipelines", "oil-gas-fields", "terminals", "airports"]);
+    // Unticking a layer removes only that one.
+    expect(applyMapSetting(capped, "layers:energy", ["terminals"], catalog)[LAYERS_SETTING_KEY]).toEqual(["terminals", "airports"]);
+  });
+
+  test("the view covers the world until zoomed, then a rounded box", () => {
+    expect(geoViewForViewport(DEFAULT_WORLD_MAP_VIEWPORT, 120, 60)).toBe(WORLD_GEO_VIEW);
+    const view = geoViewForViewport({ zoom: 4, centerLongitude: 103.8, centerLatitude: 1.3 }, 120, 60);
+    expect(view.zoom).toBe(2);
+    const [west, south, east, north] = view.bbox;
+    expect(west).toBeLessThan(103.8);
+    expect(east).toBeGreaterThan(103.8);
+    expect(south).toBeLessThan(1.3);
+    expect(north).toBeGreaterThan(1.3);
+    expect(east - west).toBeLessThan(120);
+    // Edges snap to half degrees, so small pans reuse the same request.
+    expect(view.bbox.every((edge) => Number.isInteger(edge * 2))).toBe(true);
+  });
+
+  test("a plain MAP shows venues under the server's default layers; a chosen map keeps what it chose", () => {
+    const withDefaults = [
+      layer("chokepoints", "ships", "daily", { defaultVisible: true }),
+      layer("vessels", "ships", "live", { defaultVisible: true }),
+      layer("flights", "air", "live", { defaultVisible: true }),
+      layer("ports", "ports", "daily", { defaultVisible: true, status: "unavailable" }),
+    ];
+    // At most two defaults, never one that cannot serve.
+    expect(activeLayerTokens({}, withDefaults)).toEqual(["chokepoints", "vessels"]);
+    expect(readVenuesSetting({}, 2)).toBe(true);
+    // Without a catalog, or with no defaults, the plain map is the venue map.
+    expect(activeLayerTokens({}, null)).toEqual([]);
+    expect(activeLayerTokens({}, catalog)).toEqual([]);
+    // Saved choices stay as they were: a preset, `MAP venues`, a picker edit.
+    expect(activeLayerTokens({ [LAYERS_SETTING_KEY]: ["ships"], [VENUES_SETTING_KEY]: false }, withDefaults)).toEqual(["ships"]);
+    expect(readVenuesSetting({ [LAYERS_SETTING_KEY]: ["ships"], [VENUES_SETTING_KEY]: false }, 2)).toBe(false);
+    expect(activeLayerTokens({ [LAYERS_SETTING_KEY]: [], [VENUES_SETTING_KEY]: true }, withDefaults)).toEqual([]);
+    expect(activeLayerTokens({ [VENUES_SETTING_KEY]: true }, withDefaults)).toEqual([]);
+
+    // The picker shows what a plain map draws, and the first edit writes it down.
+    const def = buildMapSettingsDef({}, withDefaults)!;
+    expect(def.values?.["layers:ships"]).toEqual(["chokepoints", "vessels"]);
+    expect(def.values?.[VENUES_SETTING_KEY]).toBe(true);
+    expect(applyMapSetting({}, VENUES_SETTING_KEY, false, withDefaults))
+      .toEqual({ [LAYERS_SETTING_KEY]: ["chokepoints", "vessels"], [VENUES_SETTING_KEY]: false });
+    expect(applyMapSetting({}, "layers:ships", ["chokepoints"], withDefaults))
+      .toEqual({ [LAYERS_SETTING_KEY]: ["chokepoints"], [VENUES_SETTING_KEY]: true });
+  });
+
+  test("a layer drawn only from a zoom opens its entities there, and its table follows the map once that close", () => {
+    const flights = layer("flights", "air", "live", { minZoom: 5 });
+    const ports = layer("ports", "ports", "daily");
+    // Flights draw from the server's zoom 5; opening one must not land at 4, where none are asked for.
+    expect(Math.log2(entityOpenZoom(flights))).toBeGreaterThanOrEqual(5);
+    expect(entityOpenZoom(ports)).toBe(16);
+    expect(entityOpenZoom({ geometry: "line" })).toBe(4);
+
+    const close = { bbox: [2, 47, 13, 53] as [number, number, number, number], zoom: 5.4 };
+    expect(entityTableBbox(flights, close)).toEqual(close.bbox);
+    expect(entityTableBbox(flights, { ...close, zoom: 3 })).toBeUndefined();
+    expect(entityTableBbox(ports, close)).toBeUndefined();
+  });
+});

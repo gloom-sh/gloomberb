@@ -116,6 +116,8 @@ export interface MarketDataRequestContext {
   historyRequestKey?: string;
   /** Intraday history should include pre-market and after-hours bars where the source has them. */
   historySession?: "extended";
+  /** The listing's company, from its own quote: an SEC lookup for a non-US listing checks the registrant against it. */
+  listingName?: string;
 }
 
 export interface CachedFinancialsTarget {
