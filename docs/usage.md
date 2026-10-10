@@ -620,6 +620,8 @@ Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Ja
 
 ## Market and macro plugins
 
+Macro is now three plugins you can switch separately in `PL`: Rates & Macro (ECO, ECST, CPI, GC, WIRP, BTMM, CBR, VIX, VOLS, VAL), Credit & Bonds (CDS, CDX, SOVR, CRD, AUCT, YAS) and Earnings (ERN, EVTS, CALLS). Panes, shortcuts, settings and saved state are unchanged. If Macro was switched off, all three start off; `gloomberb plugin disable macro` and `gloomberb plugin enable macro` switch all three at once. An older Gloomberb signed in to the same account shows Macro off only while all three are off.
+
 Polls lives in its own repository rather than inside the app. It reads one third-party site directly, so the plugin can ship a fix the day that site changes instead of waiting for an app release.
 
 Existing installations restore it once after upgrading, keeping its saved panes: the pane and template ids are unchanged. A deliberate removal is respected. To install it by hand:
