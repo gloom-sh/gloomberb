@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { KpiObservation } from "../../../api-client/company-kpis";
+import { listingAbroad } from "../../../api-client/paths";
 import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, PaneStatusBody, QueryBar, SectionHeading,
   useChartTableSelection, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type PaneHint } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -57,15 +58,21 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
   </Box>;
 }
 
+/** The pane's ticker, with the venue and company a listing abroad is asked about by. */
+function useCompanyListing() {
+  const { symbol, ticker } = usePaneTickerIdentity();
+  const abroad = symbol ? listingAbroad(symbol, ticker?.metadata.exchange, ticker?.metadata.name) : null;
+  return { symbol, exchange: abroad?.exchange, name: abroad?.name, key: JSON.stringify([symbol, abroad?.exchange, abroad?.name]) };
+}
 export function CompanyKpisPane(props: PaneProps) {
-  const { symbol } = usePaneTickerIdentity();
-  return <CompanyView key={`${symbol}:kpis`} {...props} symbol={symbol} mode="kpis" />;
+  const { key, ...listing } = useCompanyListing();
+  return <CompanyView key={`${key}:kpis`} {...props} {...listing} mode="kpis" />;
 }
 export function CompanyGuidancePane(props: PaneProps) {
-  const { symbol } = usePaneTickerIdentity();
-  return <CompanyView key={`${symbol}:guidance`} {...props} symbol={symbol} mode="guidance" />;
+  const { key, ...listing } = useCompanyListing();
+  return <CompanyView key={`${key}:guidance`} {...props} {...listing} mode="guidance" />;
 }
-function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { symbol: string | null; mode: CompanyMode }) {
+function CompanyView({ symbol, exchange, name, mode, width, height, focused }: PaneProps & { symbol: string | null; exchange?: string; name?: string; mode: CompanyMode }) {
   const colors = useThemeColors();
   const host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
@@ -76,8 +83,9 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
   const openUpgrade = useCloudUpgradeAction(mode === "kpis" ? "kpis" : "guide");
   const [snapshotSetting] = usePaneSettingValue<CompanyDataset | null>("companySnapshot", null);
   const snapshot = useMemo(() => { try { return snapshotSetting ? validateCompanyData(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
-  const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadCompanyData(mode, symbol!, accessKey, force), [mode, symbol, accessKey, snapshot]);
-  const resource = useAsyncResource(symbol ? loader : null, { initialData: () => symbol ? cachedCompanyData(mode, symbol, accessKey) : null, clearOnError: isAccessDenied });
+  const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null })
+    : loadCompanyData(mode, symbol!, accessKey, force, { exchange, name }), [mode, symbol, exchange, name, accessKey, snapshot]);
+  const resource = useAsyncResource(symbol ? loader : null, { initialData: () => symbol ? cachedCompanyData(mode, symbol, accessKey, { exchange, name }) : null, clearOnError: isAccessDenied });
   const data = resource.data?.payload;
   const kpis = data && "series" in data ? data : null;
   const guidance = data && "guidance" in data ? data : null;

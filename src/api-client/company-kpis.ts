@@ -1,3 +1,5 @@
+import { listingAbroad, type IssuerListingParams } from "./paths";
+
 type QuoteMatchMode = "exact" | "whitespace" | "nfkc_whitespace";
 
 type KpiBasis = "reported" | "adjusted" | "constant_currency" | "organic"
@@ -147,7 +149,17 @@ export interface KpiQueryOptions {
   /** Point-in-time publication cutoff; excludes later restatements and actuals. */
   asOf?: string
 }
-export function companyDisclosurePath(section: "kpis" | "guidance", symbol: string, options: KpiQueryOptions): string {
+/**
+ * A US listing or a bare symbol asks for the symbol as before. A listing abroad
+ * asks for its bare symbol with its venue and company, so it never reads the
+ * disclosures of a US company that has the same symbol.
+ */
+export function companyDisclosurePath(section: "kpis" | "guidance", symbol: string, options: KpiQueryOptions, listing: IssuerListingParams = {}): string {
   const query = new URLSearchParams(Object.entries(options).filter((entry): entry is [string, string] => entry[1] != null));
-  return `/cloud/company-${section}/${encodeURIComponent(symbol)}?${query}`;
+  const abroad = listingAbroad(symbol, listing.exchange, listing.name);
+  if (abroad) {
+    query.set("exchange", abroad.exchange);
+    if (abroad.name) query.set("name", abroad.name);
+  }
+  return `/cloud/company-${section}/${encodeURIComponent(abroad?.symbol ?? symbol)}?${query}`;
 }

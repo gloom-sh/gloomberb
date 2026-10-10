@@ -125,6 +125,33 @@ test("different depths do not share an in-flight result, equivalent normalized r
   expect(requested).toEqual([{ ticker: "SYN", limit: 50 }, { ticker: "SYN", limit: 200 }]);
 });
 
+test("a listing abroad never shares calls with its US namesake, and refuses the namesake's calls", async () => {
+  attachEarningsCallsPersistence(new MemoryPluginPersistence());
+  const call = (id: string, companyName: string) => ({ ...calls[0]!, id, ticker: "AI", companyName });
+  const requested: Array<Parameters<Client["getCloudEarningsCalls"]>[0]> = [];
+  let venueAware = false;
+  // A server that predates venue-aware lookups ignores the venue and lists C3.ai's calls.
+  const client = clientWith(async (params = {}) => {
+    requested.push(params);
+    return { calls: [venueAware && params.exchange ? call("paris", "Air Liquide S.A.") : call("us", "C3.ai, Inc.")] };
+  });
+  const ids = (result: { calls: CloudEarningsCallPayload[] }) => result.calls.map((row) => row.id);
+  const [us, abroad] = await Promise.all([
+    loadEarningsCallsWithClient(client, "AI"),
+    loadEarningsCallsWithClient(client, "AI", { exchange: "XPAR", name: "Air Liquide S.A." }),
+  ]);
+  expect([ids(us), ids(abroad)]).toEqual([["us"], []]);
+  venueAware = true;
+  expect(ids(await loadEarningsCallsWithClient(client, "AI:EPA", { name: "Air Liquide S.A.", force: true }))).toEqual(["paris"]);
+  expect(ids(await loadEarningsCallsWithClient(client, "AI"))).toEqual(["us"]);
+  expect(ids(await loadEarningsCallsWithClient(client, "AI", { exchange: "EPA", name: "Air Liquide S.A." }))).toEqual(["paris"]);
+  expect(requested).toEqual([
+    { ticker: "AI", limit: 50 },
+    { ticker: "AI", exchange: "EPA", name: "Air Liquide S.A.", limit: 50 },
+    { ticker: "AI:EPA", exchange: "EPA", name: "Air Liquide S.A.", limit: 50 },
+  ]);
+});
+
 test("an older response cannot overwrite a force-refreshed list in persistence", async () => {
   attachEarningsCallsPersistence(new MemoryPluginPersistence());
   let finishOld!: (value: CloudEarningsCallListPayload) => void;

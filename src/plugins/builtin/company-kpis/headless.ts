@@ -1,4 +1,5 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { companyQuery, fetchCompanyData, type CompanyMode } from "./client";
 
 export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bundle"> {
@@ -19,7 +20,8 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
     describe: (args) => `${mode === "kpis" ? "Company KPIs" : "Company guidance"} | ${args.symbols[0]}`,
     async load(args, ctx) {
       const options = companyQuery(args.options);
-      const data = await fetchCompanyData(mode, args.symbols[0]!, options, ctx.apiClient);
+      const symbol = args.symbols[0]!;
+      const data = await fetchCompanyData(mode, symbol, options, ctx.apiClient, await resolveHeadlessIssuerListing(ctx, symbol));
       return { complete: !data.truncated, errors: data.truncated ? [data.access === "preview" ? "Full disclosures and history require Gloom Pro" : "Response limit reached; narrow the metric or date range"] : [],
         sections: "series" in data ? [
           { title: "Latest KPIs", rows: data.series.map((series) => ({ ...series.latest })) },

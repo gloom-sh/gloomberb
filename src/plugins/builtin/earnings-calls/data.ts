@@ -5,6 +5,8 @@ import {
   type CloudEarningsTranscriptPayload,
 } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
+import { listingAbroad, type IssuerListingParams, type ListingAbroad } from "../../../api-client/paths";
+import { areDifferentCompanies } from "../../../sources/sec-registrant";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
 
 type EarningsCallsApiClient = Pick<
@@ -16,7 +18,8 @@ const LIST_KIND = "calls";
 const TRANSCRIPT_KIND = "transcript";
 const CACHE_SOURCE = "earnings-calls";
 const CACHE_SCHEMA_VERSION = 1;
-const LIST_CACHE_SCHEMA_VERSION = 2;
+// Version 3: a listing abroad is keyed by its venue and company, not its symbol alone.
+const LIST_CACHE_SCHEMA_VERSION = 3;
 
 /** The call list changes as new transcripts publish. */
 const LIST_CACHE_POLICY = {
@@ -94,19 +97,36 @@ function listOffset(value: number | undefined): number {
   return value !== undefined && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
-function listKey(ticker: string | null, limit: number, offset: number): string {
-  return offset > 0 ? JSON.stringify([ticker, limit, offset]) : JSON.stringify([ticker, limit]);
+/** A listing abroad is its venue and company, so it never shares an entry with a US company of the same symbol. */
+function listKey(ticker: string | null, abroad: ListingAbroad | null, limit: number, offset: number): string {
+  const identity = abroad ? [abroad.symbol, abroad.exchange, abroad.name ?? null] : ticker;
+  return offset > 0 ? JSON.stringify([identity, limit, offset]) : JSON.stringify([identity, limit]);
 }
+
+/**
+ * A server that predates venue-aware lookups ignores the venue and lists the
+ * calls of the US company with the same symbol: AI in Paris would show C3.ai.
+ * Those calls are another company's, so they are dropped, and without the
+ * listing's company they cannot be told apart.
+ */
+function listingCalls(calls: CloudEarningsCallPayload[], abroad: ListingAbroad | null): CloudEarningsCallPayload[] {
+  if (!abroad) return calls;
+  const name = abroad.name;
+  return name ? calls.filter((call) => !areDifferentCompanies(name, call.companyName)) : [];
+}
+
+type EarningsCallsLoadOptions = IssuerListingParams & { force?: boolean; limit?: number; offset?: number };
 
 export async function loadEarningsCallsWithClient(
   client: EarningsCallsApiClient,
   ticker: string | null,
-  options?: { force?: boolean; limit?: number; offset?: number },
+  options?: EarningsCallsLoadOptions,
 ): Promise<EarningsCallsResult> {
   const normalizedTicker = ticker?.trim().toUpperCase() || null;
+  const abroad = normalizedTicker ? listingAbroad(normalizedTicker, options?.exchange, options?.name) : null;
   const limit = listLimit(options?.limit);
   const offset = listOffset(options?.offset);
-  const key = listKey(normalizedTicker, limit, offset);
+  const key = listKey(normalizedTicker, abroad, limit, offset);
   const force = options?.force ?? false;
   // Only the first page is worth keeping. A later page is an artefact of how
   // far somebody scrolled, over a shelf that reorders as transcripts publish,
@@ -131,11 +151,12 @@ export async function loadEarningsCallsWithClient(
   const request = client
     .getCloudEarningsCalls({
       ticker: normalizedTicker ?? undefined,
+      ...(abroad ? { exchange: abroad.exchange, ...(abroad.name ? { name: abroad.name } : {}) } : {}),
       limit,
       ...(offset > 0 ? { offset } : {}),
     })
     .then((payload) => {
-      const calls = payload.calls ?? [];
+      const calls = listingCalls(payload.calls ?? [], abroad);
       const value = { calls, pending: payload.pending === true, unknownTicker: payload.unknownTicker === true };
       // A list with calls still being produced changes by the minute, so it
       // is not worth keeping; a list of finished transcripts is.
@@ -190,7 +211,7 @@ export async function loadEarningsCallsWithClient(
 
 export function loadEarningsCalls(
   ticker: string | null,
-  options?: { force?: boolean; limit?: number; offset?: number },
+  options?: EarningsCallsLoadOptions,
 ): Promise<EarningsCallsResult> {
   return loadEarningsCallsWithClient(apiClient, ticker, options);
 }

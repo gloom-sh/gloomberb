@@ -63,6 +63,24 @@ test("paid caches are isolated across account, entitlement and function; access 
   await expect(fetchCompanyData("kpis", "EXAMPLE", {}, { getCloudCompanyKpis: async () => { throw new ApiRequestError("unavailable", 503); }, getCloudCompanyGuidance: async () => guidancePayload() })).rejects.toThrow("not available yet");
 });
 
+test("a listing abroad and its US namesake never share a request or a cache entry", async () => {
+  companyKpisCache.attach(new MemoryPluginPersistence());
+  const requested: string[] = [];
+  setCloudApiFetchTransport(async (input) => {
+    const url = new URL(input, "https://example.test");
+    requested.push(`${url.pathname}${url.search}`);
+    // Answered under the bare symbol it was asked about; the venue tells the two companies apart.
+    return Response.json(kpisPayload({ symbol: "AI", methodology: url.searchParams.get("exchange") ? "Air Liquide" : "C3.ai" }));
+  });
+  const paris = { exchange: "XPAR", name: "Air Liquide S.A." };
+  const [abroad, us] = await Promise.all([loadCompanyData("kpis", "AI", "alice:full", false, paris), loadCompanyData("kpis", "AI", "alice:full")]);
+  expect([abroad.payload.methodology, us.payload.methodology]).toEqual(["Air Liquide", "C3.ai"]);
+  expect(requested.sort()).toEqual(["/cloud/company-kpis/AI", "/cloud/company-kpis/AI?exchange=EPA&name=Air+Liquide+S.A."]);
+  expect(cachedCompanyData("kpis", "AI:EPA", "alice:full", { name: "Air Liquide S.A." })?.payload.methodology).toBe("Air Liquide");
+  expect(cachedCompanyData("kpis", "AI", "alice:full")?.payload.methodology).toBe("C3.ai");
+  expect(cachedCompanyData("kpis", "AI:XNYS", "alice:full")).toBeNull();
+});
+
 
 test("bounded values retain their signs and cannot become exact chart points, changes or unknown-period guide groups", () => {
   const bound = observation({ value: 600, unit: "count", currency: null, valueQualifier: "greater_than" });

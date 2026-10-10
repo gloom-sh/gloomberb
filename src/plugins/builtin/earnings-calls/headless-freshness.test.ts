@@ -15,7 +15,7 @@ for (const stale of [false, true]) {
       const store = new MemoryPluginPersistence();
       attachEarningsCallsPersistence(store);
       if (stale) store.seedResource("calls", JSON.stringify(["FIRST", 200]), { calls: [call] },
-        { sourceKey: "earnings-calls", schemaVersion: 2, stale: true, expired: true });
+        { sourceKey: "earnings-calls", schemaVersion: 3, stale: true, expired: true });
       store.seedResource("transcript", call.id, transcript, { sourceKey: "earnings-calls", schemaVersion: 1 });
       apiClient.setSessionToken("controlled-test-session");
       setCloudApiFetchTransport(async () => stale
@@ -24,7 +24,7 @@ for (const stale of [false, true]) {
       const report = await buildHeadlessFunctionReport({
         headless: earningsCallsHeadless, token: "CALLS", label: "Earnings Calls",
         options: { quarter, section: "guidance", limit: 20, offset: 0 }, instance: { settings: {} }, capability: { id: "transcript" },
-      } as never, { config: createDefaultConfig("/tmp/unused-offline-transcript-report") } as never, "FIRST");
+      } as never, { config: createDefaultConfig("/tmp/unused-offline-transcript-report"), store: { loadTicker: async () => null } } as never, "FIRST");
       expect(report.data).toMatchObject({ complete: !stale, rowCount: 1, unavailableSymbols: [],
         metadata: { stale, callListFetchedAt: expect.any(Number), callListPending: false, fiscalQuarter: 1, callAt: call.callAt },
       });

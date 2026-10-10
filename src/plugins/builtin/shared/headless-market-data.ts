@@ -1,10 +1,42 @@
+import type { IssuerListingParams } from "../../../api-client/paths";
+import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { clipPriceHistoryToRange } from "../../../time-series/history-window";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { nonUsSecListingVenue } from "../../../utils/sec";
 
 export async function resolveHeadlessInstrument(ctx: HeadlessPaneContext, symbol: string) {
   return ctx.resolveInstrument ? ctx.resolveInstrument(symbol) : parsePublicTickerKey(symbol);
+}
+
+/**
+ * The venue and company an issuer lookup names for a listing abroad: the
+ * venue from the key or the saved listing, the company from the listing's own
+ * quote. A US listing or a symbol with no venue names neither.
+ */
+export async function resolveIssuerListing(
+  key: string,
+  exchange: string | undefined,
+  marketData: Pick<DataProvider, "getQuote">,
+): Promise<IssuerListingParams> {
+  const venue = nonUsSecListingVenue(key, exchange);
+  if (!venue) return {};
+  try {
+    const quote = await marketData.getQuote(parsePublicTickerKey(key).symbol, venue);
+    const quoteVenue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+    // A quote that prices another venue names another listing's company.
+    const name = !quoteVenue || quoteVenue === venue ? quote.name?.trim() : undefined;
+    return name ? { exchange: venue, name } : { exchange: venue };
+  } catch {
+    return { exchange: venue };
+  }
+}
+
+/** `resolveIssuerListing` for a report's ticker, with the venue of the saved listing when the key has none. */
+export async function resolveHeadlessIssuerListing(ctx: HeadlessPaneContext, key: string): Promise<IssuerListingParams> {
+  const { exchange } = await resolveHeadlessInstrument(ctx, key);
+  return resolveIssuerListing(key, exchange, ctx.marketData);
 }
 
 export async function loadHeadlessFinancials(ctx: HeadlessPaneContext, key: string) {

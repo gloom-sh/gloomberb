@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { companyDisclosurePath } from "./company-kpis";
 import {
   cloudEarningsCallsPath, cloudSecFilingsPath, normalizeIssuerResearchTicker,
   cloudFilingEventsPath, cloudProxyStatementPath, cloudProxyStatementsPath,
@@ -26,7 +27,6 @@ test("issuer research never infers a US issuer from foreign, unknown or routing 
   for (const key of ["SHOP:XTSE", "ASML:XAMS", "7203:JPX", "BABA:XHKG", "VOD.L", "VOD.L:XLON", "SAP.DE", "AAPL:SMART", "AAPL:UNKNOWN", "AAPL:US", "AAPL", "BRK.B"]) {
     expect(normalizeIssuerResearchTicker(key)).toBe(key);
     expect(cloudProxyStatementsPath(key)).toBe(`/cloud/proxies/${encodeURIComponent(key)}`);
-    expect(new URL(cloudEarningsCallsPath({ ticker: key }), "https://example.test").searchParams.get("ticker")).toBe(key);
   }
 });
 
@@ -50,4 +50,47 @@ test("SEC filings send a non-US listing's bare symbol with its venue and name, a
   ]) {
     expect(cloudSecFilingsPath({ ticker: ticker!, exchange, name: "Ignored Inc.", limit: 5 })).toBe(path!);
   }
+});
+
+type IssuerLookup = (ticker: string, exchange?: string, name?: string) => string;
+const ISSUER_LOOKUPS: Record<string, IssuerLookup> = {
+  calls: (ticker, exchange, name) => cloudEarningsCallsPath({ ticker, exchange, name, limit: 5 }),
+  kpis: (ticker, exchange, name) => companyDisclosurePath("kpis", ticker, {}, { exchange, name }),
+  guidance: (ticker, exchange, name) => companyDisclosurePath("guidance", ticker, { metric: "revenue" }, { exchange, name }),
+};
+
+/** The symbol a lookup asks about, from its path or its `ticker` query, with the rest of the query. */
+function sentListing(path: string) {
+  const url = new URL(path, "https://example.test");
+  const { limit: _limit, metric: _metric, ticker, ...rest } = Object.fromEntries(url.searchParams);
+  return { symbol: ticker ?? decodeURIComponent(url.pathname.split("/").at(-1)!), ...rest };
+}
+
+test("calls, KPIs and guidance ask for a listing abroad by its bare symbol, venue and company", () => {
+  for (const [kind, lookup] of Object.entries(ISSUER_LOOKUPS)) {
+    // AI in Paris is Air Liquide; AI in New York is C3.ai.
+    for (const [ticker, exchange] of [["AI", "EPA"], ["AI:EPA", undefined], ["AI:XPAR", "NYSE"], ["AI", "XPAR"]]) {
+      expect({ kind, ...sentListing(lookup(ticker!, exchange, " Air Liquide S.A. ")) })
+        .toEqual({ kind, symbol: "AI", exchange: "EPA", name: "Air Liquide S.A." });
+    }
+    expect({ kind, ...sentListing(lookup("BP", "XLON", "BP p.l.c.")) }).toEqual({ kind, symbol: "BP", exchange: "LSE", name: "BP p.l.c." });
+    // Without its company the venue still keeps the listing apart from the US symbol.
+    expect({ kind, ...sentListing(lookup("BP:LSE")) }).toEqual({ kind, symbol: "BP", exchange: "LSE" });
+  }
+  expect(cloudEarningsCallsPath({ ticker: "AI", exchange: "EPA", name: "Air Liquide S.A.", limit: 50 }))
+    .toBe("/cloud/transcripts?ticker=AI&exchange=EPA&name=Air+Liquide+S.A.&limit=50");
+  expect(companyDisclosurePath("kpis", "AI:EPA", { asOf: "2026-06-30" }, { name: "Air Liquide S.A." }))
+    .toBe("/cloud/company-kpis/AI?asOf=2026-06-30&exchange=EPA&name=Air+Liquide+S.A.");
+});
+
+test("calls, KPIs and guidance keep the exact lookup old clients sent for a US listing or a bare symbol", () => {
+  for (const [ticker, exchange, calls, disclosures] of [
+    ["AI", undefined, "ticker=AI", "AI"], ["AI", "NYSE", "ticker=AI", "AI"], ["AI:XNYS", undefined, "ticker=AI", "AI%3AXNYS"],
+    ["AAPL", "SMART", "ticker=AAPL", "AAPL"], ["AAPL:SMART", undefined, "ticker=AAPL%3ASMART", "AAPL%3ASMART"], ["VOD.L", undefined, "ticker=VOD.L", "VOD.L"],
+  ]) {
+    expect(ISSUER_LOOKUPS.calls!(ticker!, exchange, "Ignored Inc.")).toBe(`/cloud/transcripts?${calls}&limit=5`);
+    expect(ISSUER_LOOKUPS.kpis!(ticker!, exchange, "Ignored Inc.")).toBe(`/cloud/company-kpis/${disclosures}?`);
+    expect(ISSUER_LOOKUPS.guidance!(ticker!, exchange, "Ignored Inc.")).toBe(`/cloud/company-guidance/${disclosures}?metric=revenue`);
+  }
+  expect(cloudEarningsCallsPath({ limit: 50, includePending: true })).toBe("/cloud/transcripts?limit=50&includePending=true");
 });

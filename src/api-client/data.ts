@@ -65,6 +65,7 @@ import {
   cloudJobsPath,
   cloudJobsPostingsPath,
   type CloudJobsPostingsParams,
+  type IssuerListingParams,
   cloudProxyStatementPath,
   cloudFilingEventsPath,
   cloudRiskReportPath,
@@ -489,12 +490,13 @@ export class CloudDataApi {
     return this.request<CatalystStatus>("/cloud/catalysts/status");
   }
 
-  async getCloudCompanyKpis(symbol: string, options: KpiQueryOptions = {}): Promise<KpisPayload> {
-    return this.request<KpisPayload>(companyDisclosurePath("kpis", symbol, options));
+  /** `listing` names a listing abroad's venue and company; a US listing needs neither. */
+  async getCloudCompanyKpis(symbol: string, options: KpiQueryOptions = {}, listing: IssuerListingParams = {}): Promise<KpisPayload> {
+    return this.request<KpisPayload>(companyDisclosurePath("kpis", symbol, options, listing));
   }
 
-  async getCloudCompanyGuidance(symbol: string, options: KpiQueryOptions = {}): Promise<GuidancePayload> {
-    return this.request<GuidancePayload>(companyDisclosurePath("guidance", symbol, options));
+  async getCloudCompanyGuidance(symbol: string, options: KpiQueryOptions = {}, listing: IssuerListingParams = {}): Promise<GuidancePayload> {
+    return this.request<GuidancePayload>(companyDisclosurePath("guidance", symbol, options, listing));
   }
   async getCloudPerpsBoard(query: PerpBoardQuery = {}): Promise<PerpBoardPayload> {
     return this.request(`/cloud/perps/board?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`);

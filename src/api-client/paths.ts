@@ -58,7 +58,15 @@ export type CloudCongressHouseParams = {
   minAmount?: number;
 };
 
-export type CloudEarningsCallsParams = {
+/** The listing an issuer lookup is for, so a listing abroad never reads a US namesake. */
+export type IssuerListingParams = {
+  /** The listing's venue. Sent only for a venue outside the US, with `name`. */
+  exchange?: string;
+  /** The listing's company name, from its ticker or its own quote. */
+  name?: string;
+};
+
+export type CloudEarningsCallsParams = IssuerListingParams & {
   ticker?: string;
   limit?: number;
   offset?: number;
@@ -305,11 +313,42 @@ export function cloudJobsMoversPath(limit?: number, offset?: number): string {
   return appendQuery("/cloud/jobs", search);
 }
 
+/** A listing outside the US, as an issuer lookup names it: its bare symbol, venue and company. */
+export interface ListingAbroad {
+  symbol: string;
+  exchange: string;
+  name?: string;
+}
+
+/**
+ * The listing abroad a ticker names, from its key or the given venue: AI in
+ * Paris is Air Liquide, AI in New York is C3.ai. Null for a US listing, a
+ * routing destination or a symbol with no venue, which keep their US lookup.
+ */
+export function listingAbroad(ticker: string, exchange?: string, name?: string | null): ListingAbroad | null {
+  const venue = nonUsSecListingVenue(ticker, exchange);
+  if (!venue) return null;
+  const company = name?.trim();
+  return { symbol: parsePublicTickerKey(ticker).symbol, exchange: venue, ...(company ? { name: company } : {}) };
+}
+
+/** Sets a listing abroad's venue and company on an issuer lookup. */
+function setListingAbroad(search: URLSearchParams, listing: ListingAbroad | null): void {
+  if (!listing) return;
+  search.set("exchange", listing.exchange);
+  if (listing.name) search.set("name", listing.name);
+}
+
+/** A US listing or a bare symbol looks up its US ticker as before; a listing abroad names its venue and company. */
 export function cloudEarningsCallsPath(
   params: CloudEarningsCallsParams = {},
 ): string {
   const search = new URLSearchParams();
-  if (params.ticker) search.set("ticker", normalizeIssuerResearchTicker(params.ticker));
+  if (params.ticker) {
+    const abroad = listingAbroad(params.ticker, params.exchange, params.name);
+    search.set("ticker", abroad?.symbol ?? normalizeIssuerResearchTicker(params.ticker));
+    setListingAbroad(search, abroad);
+  }
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.includePending) search.set("includePending", "true");
@@ -355,17 +394,13 @@ export function cloudProxyStatementPath(ticker: string, year: number): string {
  * its symbol can be another company's US ticker.
  */
 export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
-  const venue = nonUsSecListingVenue(params.ticker, params.exchange);
+  const abroad = listingAbroad(params.ticker, params.exchange, params.name);
   const search = new URLSearchParams({
-    ticker: venue ? parsePublicTickerKey(params.ticker).symbol : normalizeIssuerResearchTicker(params.ticker),
+    ticker: abroad?.symbol ?? normalizeIssuerResearchTicker(params.ticker),
   });
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
-  if (venue) {
-    search.set("exchange", venue);
-    const name = params.name?.trim();
-    if (name) search.set("name", name);
-  }
+  setListingAbroad(search, abroad);
   return appendQuery("/cloud/sec/filings", search);
 }
 

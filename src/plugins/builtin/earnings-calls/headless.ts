@@ -8,6 +8,7 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessRowsResult,
 } from "../../../types/plugin";
+import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import {
   callStatusLabel,
   isPendingTranscript,
@@ -57,10 +58,10 @@ export interface EarningsCallsHeadlessDependencies {
 }
 
 const defaultDependencies: EarningsCallsHeadlessDependencies = {
-  loadCalls: (ticker, limit, context) => loadEarningsCallsWithClient(
+  loadCalls: async (ticker, limit, context) => loadEarningsCallsWithClient(
     context.apiClient,
     ticker,
-    { limit },
+    { limit, ...(ticker ? await resolveHeadlessIssuerListing(context, ticker) : {}) },
   ),
   loadTranscript: (callId, context) => loadTranscriptWithClient(context.apiClient, callId),
 };
