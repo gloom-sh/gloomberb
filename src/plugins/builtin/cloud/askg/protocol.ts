@@ -129,6 +129,11 @@ interface ToolManifest {
   columns?: ToolManifestColumn[];
   inputSchema?: ToolInputSchema;
   confirm: "never" | "always";
+  /**
+   * How long the server may wait for the call. A tool that asks first
+   * declares the minute a person needs to answer; the server gives it that
+   * window (a server from before it, 10 s), and says which in each frame.
+   */
   timeoutMs: number;
 }
 
@@ -277,7 +282,11 @@ export type ToolResultStatus =
   | "partial"
   | "cancelled";
 
-/** Reports a completed server tool or an accepted client execution. */
+/**
+ * Reports a completed server tool or an accepted client execution. It also
+ * reports a delegated call the turn gave up on (`timeout`, or `cancelled` when
+ * its script ended), which closes a confirmation prompt still open for it.
+ */
 interface ASKGToolExecutedEvent extends ASKGEventBase {
   type: "tool-executed";
   turnId: string;

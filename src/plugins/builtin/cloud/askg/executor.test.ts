@@ -112,6 +112,35 @@ describe("ASKG delegated tool executor", () => {
     ]);
   });
 
+  test("an approval late in the minute still runs the write while the server waits", async () => {
+    const minute = { ...watchlistAddManifest, timeoutMs: 60_000 };
+    let clock = Date.parse("2026-10-01T12:00:00.000Z");
+    const writes: unknown[] = [];
+    const tools = createASKGToolExecutor({
+      manifests: [minute],
+      registry: emptyRegistry,
+      context: emptyContext,
+      remoteHandler: async (request) => {
+        writes.push(request);
+        return { ok: true, data: { changed: true } };
+      },
+      now: () => clock,
+    });
+    const frame = call(minute, {
+      requiresConfirmation: true,
+      timeoutMs: 60_000,
+      expiresAt: new Date(clock + 60_000).toISOString(),
+    });
+
+    // The person clicks after 50 s: 10 s of the server's minute are left.
+    clock += 50_000;
+    expect(await tools.execute(frame, { confirmed: true })).toMatchObject({ status: "ok" });
+    // Past the server's minute nothing is written.
+    clock += 10_000;
+    expect(await tools.execute(frame, { confirmed: true })).toMatchObject({ status: "timeout" });
+    expect(writes).toHaveLength(1);
+  });
+
   test("denies a server tier that does not match the advertised tier", async () => {
     let executions = 0;
     const tools = executor({

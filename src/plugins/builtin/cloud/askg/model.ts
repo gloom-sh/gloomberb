@@ -16,6 +16,9 @@ import type {
 } from "./protocol";
 import { capToolNote } from "./notes";
 
+/** What a call that waited too long for approval says, in the timeline and to Gloom. */
+export const NOT_APPROVED_IN_TIME_NOTE = "Not approved in time, so nothing was changed.";
+
 /** Lifecycle of one row in the tool timeline. */
 type ASKGToolRowStatus =
   | ToolResultStatus
@@ -327,12 +330,25 @@ function applyEvent(
       }
       // The client already holds the full result for its own tools; the server
       // echo only confirms the status it recorded.
-      return patchToolRow(next, event.toolCallId, (row) => ({
-        ...row,
-        source: event.source,
-        status: row.status === "running" || row.status === "pending" ? event.status : row.status,
-        elapsedMs: row.elapsedMs ?? event.summary.elapsedMs,
-      }));
+      return patchToolRow(next, event.toolCallId, (row) => {
+        // The turn gave up on a call still waiting for approval: its prompt
+        // closes, and nothing was run.
+        if (row.status === "awaiting-confirmation") {
+          return {
+            ...row,
+            source: event.source,
+            status: event.status,
+            elapsedMs: event.summary.elapsedMs,
+            ...(event.status === "timeout" ? { note: NOT_APPROVED_IN_TIME_NOTE } : {}),
+          };
+        }
+        return {
+          ...row,
+          source: event.source,
+          status: row.status === "running" || row.status === "pending" ? event.status : row.status,
+          elapsedMs: row.elapsedMs ?? event.summary.elapsedMs,
+        };
+      });
     }
     case "tool-result-ack":
       return next;

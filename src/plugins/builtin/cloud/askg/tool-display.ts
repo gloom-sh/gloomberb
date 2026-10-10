@@ -321,6 +321,7 @@ function failureLine(row: ASKGToolRow): string {
   const note = row.note?.trim() ?? "";
   switch (row.status) {
     case "timeout":
+      if (/not approved in time/i.test(note)) return "Not approved in time";
       return /answered without it/i.test(note) ? "Took too long, so Gloom answered without it" : "Took too long to answer";
     case "cancelled":
       return "Stopped";

@@ -32,6 +32,7 @@ import { describeTrimmedLists, fitResultToBytes } from "./result-budget";
 import {
   remoteRequestForTool,
   resolveRemoteToolBinding,
+  toolExecutionTimeoutMs,
 } from "./manifest";
 import {
   ASKGUndoManager,
@@ -236,7 +237,11 @@ function inferRemoteRowCount(value: unknown): number | undefined {
   return 1;
 }
 
-function effectiveTimeoutMs(call: ASKGToolCallEvent, now: number): number {
+/**
+ * How much longer the server waits for this call, by its frame: its timeout,
+ * and never past the time it expires.
+ */
+export function toolCallRemainingMs(call: ASKGToolCallEvent, now: number): number {
   const declared = Math.max(0, call.timeoutMs);
   const expiresAt = Date.parse(call.expiresAt);
   if (!Number.isFinite(expiresAt)) return declared;
@@ -368,7 +373,7 @@ export function createASKGToolExecutor(
       return base({ status: "denied", note: "This tool call requires local confirmation." });
     }
 
-    const timeoutMs = Math.min(manifest.timeoutMs, effectiveTimeoutMs(call, now()));
+    const timeoutMs = Math.min(toolExecutionTimeoutMs(manifest), toolCallRemainingMs(call, now()));
     try {
       const value = await runWithDeadline(async (signal): Promise<ExecutionValue> => {
         if (manifest.source === "headless") {
