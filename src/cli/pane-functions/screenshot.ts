@@ -9,7 +9,7 @@ import { dirname, resolve } from "path";
 import { mkdir } from "fs/promises";
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import { CHART_COMPOSER_PANE_ID, type AppConfig } from "../../types/config";
-import type { OptionsChain, PricePoint, TickerFinancials } from "../../types/financials";
+import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { slugifyName } from "../../utils/slugify";
 import {
@@ -94,7 +94,9 @@ import {
   withShotPriceHistory,
   withShotSeasonalityHistory,
 } from "./data";
-import { renderedReportNotices } from "./report-notices";
+import { renderedReportFreshness, renderedReportNotices } from "./report-notices";
+import { deriveRenderedFreshness, statusLineVariants, type ReportFreshness } from "./freshness";
+import { quotesFreshness } from "../freshness";
 import {
   financialRatioRenderMismatches,
   financialRatioShotEvidence,
@@ -430,6 +432,8 @@ export interface PaneScreenshotResult {
   dataEvidence: PaneScreenshotDataEvidence | null;
   /** What the pane says its view leaves out, such as OMON's "21 of 145 strikes". */
   notices?: string[];
+  /** How current the captured data is, as the capture's status line says it; absent with `--no-status`. */
+  freshness?: ReportFreshness;
   outputPath: string;
   render: DesktopPaneShotRenderResult & {
     expectedText: string[];
@@ -694,6 +698,55 @@ function shotPriceHistoryRange(resolved: ResolvedPaneFunction): TimeRange | null
   }
 }
 
+/** The bridge, keeping every quote it serves the page: what a pane that loads its own quotes (WEI) shows. */
+function recordBridgedQuotes(bridge: DesktopPaneShotBridge): { bridge: DesktopPaneShotBridge; quotes: Quote[] } {
+  const quotes: Quote[] = [];
+  const keep = (value: unknown) => {
+    if (isRecord(value) && typeof value.symbol === "string" && typeof value.price === "number") quotes.push(value as unknown as Quote);
+  };
+  return {
+    quotes,
+    bridge: {
+      ...bridge,
+      async marketData(operation, args) {
+        const result = await bridge.marketData(operation, args);
+        if (operation === "getQuote") keep(result);
+        if (operation === "getQuotesBatch" && Array.isArray(result)) {
+          for (const entry of result) keep(isRecord(entry) ? entry.quote : null);
+        }
+        return result;
+      },
+    },
+  };
+}
+
+/**
+ * How current a capture's data is. A pane that says what its data is (its
+ * declared status, or a feed it publishes, such as OMON's chain or the news
+ * wire's delay) is taken at its word; otherwise the quotes it shows date it,
+ * with their delay and where their markets stand; otherwise what the
+ * rendered view carries, which may be nothing.
+ */
+function shotFreshness(
+  resolved: Pick<ResolvedPaneFunction, "pane">,
+  payload: Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">,
+  render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "footerText" | "rows">,
+  bridgedQuotes: readonly Quote[],
+  now = Date.now(),
+): ReportFreshness {
+  const declared = { ...resolved.pane.reportFreshness, ...renderedReportFreshness(render.semanticUi ?? []) };
+  const quotes = [
+    ...payload.financials.map(([, financials]) => financials.quote),
+    ...(payload.instrumentFinancials ?? []).map(({ financials }) => financials.quote),
+    ...bridgedQuotes,
+  ];
+  const quoted = declared.status ? undefined : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now);
+  return quoted ?? deriveRenderedFreshness(declared, {
+    footerText: render.footerText ?? "",
+    cellTimes: render.rows.flatMap((row) => row.cells.flatMap((cell) => (cell.instant ? [cell.instant] : []))),
+  }, now);
+}
+
 export async function renderDesktopShot({
   resolved,
   context,
@@ -704,6 +757,7 @@ export async function renderDesktopShot({
   theme,
   scale,
   watermark,
+  statusLine = false,
   options,
   captureImage = true,
 }: {
@@ -716,6 +770,8 @@ export async function renderDesktopShot({
   theme?: string | null;
   scale?: number;
   watermark?: string | null;
+  /** Draw the dated status line in the capture's footer. Reports and `--no-status` leave it out. */
+  statusLine?: boolean;
   options: Record<string, string | true>;
   captureImage?: boolean;
 }): Promise<PaneScreenshotResult> {
@@ -724,6 +780,7 @@ export async function renderDesktopShot({
   const previousSessionToken = apiClient.getSessionToken();
   let payload: DesktopPaneShotPayload;
   let render: DesktopPaneShotRenderResult;
+  let freshness: ReportFreshness | undefined;
   apiClient.setSessionToken(apiProxy.sessionToken);
   try {
     payload = await buildDesktopShotPayload(
@@ -737,16 +794,24 @@ export async function renderDesktopShot({
       scale ?? 1,
       watermark ?? null,
     );
+    if (statusLine && captureImage) payload.statusLine = true;
+    const recorded = recordBridgedQuotes(createDesktopShotBridge(context));
+    const shotPayload = payload;
     render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy, {
       captureImage,
-      bridge: createDesktopShotBridge(context),
+      bridge: recorded.bridge,
+      statusLine: (rendered) => {
+        freshness = shotFreshness(resolved, shotPayload, rendered, recorded.quotes);
+        return statusLineVariants(freshness);
+      },
     });
   } finally {
     apiClient.setSessionToken(previousSessionToken);
   }
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
-  return assessPaneScreenshot(resolved, payload, render, rawArg, outputPath);
+  const assessed = assessPaneScreenshot(resolved, payload, render, rawArg, outputPath);
+  return freshness ? { ...assessed, freshness } : assessed;
 }
 
 /** What a rendered capture shows, and whether it is fit to use. */

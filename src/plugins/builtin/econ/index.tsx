@@ -24,6 +24,7 @@ import {
   attachEconCalendarPersistence,
   actualColor,
   calendarDisplayRows,
+  CALENDAR_TIME_ZONE_LABEL,
   dayLabel,
   formatCountdown,
   formatStaleness,
@@ -42,6 +43,7 @@ import {
 } from "./calendar-model";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { tableColumnWidth } from "../../../components/ui/table-layout";
 
 const IMPACT_LABELS: Record<ImpactFilter, string> = {
   all: "All",
@@ -169,7 +171,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   ), [calendar.reload]);
 
   const columns = useMemo<EconCalendarColumn[]>(() => {
-    const timeWidth = 6;
+    // The header names the zone, so the column is as wide as the header needs.
+    const timeLabelText = `TIME (${CALENDAR_TIME_ZONE_LABEL})`;
+    const timeWidth = tableColumnWidth({ width: 6, label: timeLabelText });
     const impactWidth = 4;
     const flagWidth = 3;
     const actualWidth = 9;
@@ -183,7 +187,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const eventWidth = Math.max(minEventWidth, width - 3 - columnCount - fixedWidth);
 
     return [
-      { id: "time", label: "TIME", width: timeWidth, align: "left" },
+      { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
       { id: "impact", label: "IMP", width: impactWidth, align: "left" },
       { id: "country", label: "CTY", width: flagWidth, align: "left" },
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },

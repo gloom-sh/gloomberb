@@ -62,41 +62,44 @@ export function impactIndicator(impact: EconImpact): { text: string; color: stri
   }
 }
 
+/** The UTC day of an instant, so a release sits under the same day on every machine. */
 function dateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return d.toISOString().slice(0, 10);
 }
 
 /**
- * Rows are grouped by local day, so the time beside them is local too. The
- * payload's `time` is the UTC clock time and would put a 23:00 UTC release
- * under the next local day at "23:00".
+ * The release's UTC clock time. Rows group by UTC day and the column header
+ * names the zone, as `gloomberb econ` prints it; local time would move a 23:00
+ * UTC release under another day and read differently on every machine.
  */
 export function timeLabel(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return d.toISOString().slice(11, 16);
 }
+
+/** The zone the calendar's times and days are in, for the column header. */
+export const CALENDAR_TIME_ZONE_LABEL = "UTC";
 
 export function dayLabel(d: Date, today: Date): string {
   const dk = dateKey(d);
   const todayKey = dateKey(today);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const yesterday = dateKey(new Date(today.getTime() - dayMs));
+  const tomorrow = dateKey(new Date(today.getTime() + dayMs));
 
-  const dayName = DAY_NAMES[d.getDay()]!;
-  const monthName = MONTH_NAMES[d.getMonth()]!;
-  const dateNum = d.getDate();
+  const dayName = DAY_NAMES[d.getUTCDay()]!;
+  const monthName = MONTH_NAMES[d.getUTCMonth()]!;
+  const dateNum = d.getUTCDate();
   const suffix = `${dayName} ${monthName} ${dateNum}`;
 
   if (dk === todayKey) return `TODAY · ${suffix}`;
-  if (dk === dateKey(tomorrow)) return `TOMORROW · ${suffix}`;
-  if (dk === dateKey(yesterday)) return `YESTERDAY · ${suffix}`;
+  if (dk === tomorrow) return `TOMORROW · ${suffix}`;
+  if (dk === yesterday) return `YESTERDAY · ${suffix}`;
   return suffix;
 }
 
 /**
  * Events (already in time order; `eventIdx` indexes them) under a header per
- * local day, with NOW before the first event still to come. When that event is
+ * UTC day, with NOW before the first event still to come. When that event is
  * on a later day, NOW sits above that day's header, since the present is still
  * on the earlier day.
  */

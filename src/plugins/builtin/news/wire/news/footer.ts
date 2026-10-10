@@ -10,6 +10,7 @@ import { CLOUD_NEWS_DELAY_HOURS } from "../../../../../api-client/plan-access";
 import { usePaneStatusLinkFooter } from "../../../../../components/layout/pane/status-footer";
 import { usePluginAppActions } from "../../../../runtime";
 import { useOptionalPaneInstanceId } from "../../../../../state/app/context";
+import { useRemoteUiNode } from "../../../../../remote/semantic-tree";
 
 interface NewsFooterArticle {
   title?: string | null;
@@ -58,6 +59,15 @@ export function useNewsArticleFooter({
     segmentId: "news-access",
     placement: "news-footer",
     shortcutScope: `${registrationId}:news-upgrade`,
+  });
+
+  // A report or capture of the pane says how far its stories are held back, as the footer does.
+  useRemoteUiNode({
+    role: "report-freshness",
+    label: "News freshness",
+    getMetadata: () => (access.hasProAccess
+      ? { status: "live" }
+      : { status: "delayed", delayMinutes: CLOUD_NEWS_DELAY_HOURS * 60 }),
   });
 
   const accessInfo = useMemo<PaneFooterSegment[]>(() => {

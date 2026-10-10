@@ -1,10 +1,14 @@
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, setSystemTime, test } from "bun:test";
 import type { ResolvedPaneFunction } from "./resolver";
 import { assessPaneScreenshot, type PaneScreenshotResult } from "./screenshot";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import { buildDomPaneReportFromRender } from "./dom";
 import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
+
+// The status line names the year only when it is not the current one.
+beforeAll(() => setSystemTime(new Date("2026-10-10T12:00:00Z")));
+afterAll(() => setSystemTime());
 
 test("marks rendered reports as truncated when a visible cell contains an ellipsis", () => {
   const resolved = {
@@ -86,7 +90,7 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
     "2026-10-07T11:27:00.000Z,Deal,PSKY,M&A",
     "2026-10-02T14:00:00.000Z,Sanctions,,Regulatory",
     "",
-    "# Source: Gloom Cloud | As of 2026-10-07 11:27 UTC | Not a live feed (published stories)",
+    "# Source: Gloom Cloud · Wed 7 Oct 11:27 UTC · not a live feed (published stories)",
   ]);
 });
 
@@ -181,6 +185,6 @@ test("states the expiry a rendered OMON shows and dates the report by the chain 
   const report = buildDomPaneReportFromRender(resolved, screenshot);
   expect(report.text.split("\n").slice(0, 3)).toEqual(["Options", "", "Expiry 2028-01-21 (469d)"]);
   expect(report.data.metadata).toMatchObject({ expiry: { date: "2028-01-21", daysToExpiry: 469 } });
-  expect(formatFreshnessLine(report.data.freshness)).toBe("Source: Gloom Cloud | As of 2026-10-09 19:59 UTC | Delayed 15 min");
+  expect(formatFreshnessLine(report.data.freshness)).toBe("Source: Gloom Cloud · Fri 9 Oct 19:59 UTC · 15 min delayed");
   expect(renderReportCsv(report.tables)).toContain("# note: Expiry 2028-01-21 (469d)");
 });

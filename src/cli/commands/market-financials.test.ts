@@ -67,7 +67,7 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
     "2024-12-31,189471000000,,,45818000000,26.179,ZAR",
     "2025-12-31,202080000000,,,51215000000,29.876,ZAR",
     "",
-    "# Source: Gloom Cloud | As of 2025-12-31 | Not a live feed (financial statements)",
+    "# Source: Gloom Cloud · Wed 31 Dec 2025 · not a live feed (financial statements)",
   ]);
   // NDJSON already wrote the statement rows flat, so it is unchanged.
   expect((await run("financials", [], "ndjson"))[0]).toBe(

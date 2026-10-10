@@ -32,6 +32,8 @@ export interface ParsedPaneFunctionArgs {
   scale: number;
   /** Small label drawn in the pane title bar, e.g. a domain; null draws nothing. */
   watermark: string | null;
+  /** A screenshot carries its dated status line in the pane footer; `--no-status` sets this false. */
+  status?: boolean;
   requireBotSafe: boolean;
   /** The listing a one-ticker function's argument named, once `applyListingArgument` has resolved it. */
   listing?: ListingArg;
@@ -76,6 +78,7 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
   let theme: string | null = null;
   let scale = 1;
   let watermark: string | null = null;
+  let status = true;
   let requireBotSafe = false;
 
   for (let index = 0; index < args.length; index += 1) {
@@ -94,6 +97,11 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
     const equalsIndex = raw.indexOf("=");
     const key = equalsIndex >= 0 ? raw.slice(0, equalsIndex) : raw;
     const inlineValue = equalsIndex >= 0 ? raw.slice(equalsIndex + 1) : undefined;
+    // A switch: the token after it is the function's argument, never its value.
+    if (normalizeOptionKey(key) === "noStatus" && inlineValue === undefined) {
+      status = false;
+      continue;
+    }
     const next = args[index + 1];
     const nextValue = inlineValue === undefined && next && !next.startsWith("--") ? args[++index] : true;
     const value: string | true = inlineValue ?? nextValue ?? true;
@@ -118,6 +126,7 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
       scale = parseScale(value);
     } else if (normalizedKey === "watermark" && value !== true) {
       watermark = value.trim() || null;
+
     } else if (normalizedKey === "arguments" && value !== true) {
       Object.assign(options, parseArgumentsOption(value));
     } else {
@@ -132,7 +141,7 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
   // so a function without a tail option says so instead of ignoring it.
   if (globalOptions.limit != null) options.limit = String(globalOptions.limit);
   if (globalOptions.tail != null) options.tail = String(globalOptions.tail);
-  return { target, arg, options, outputPath, width, height, theme, scale, watermark, requireBotSafe };
+  return { target, arg, options, outputPath, width, height, theme, scale, watermark, status, requireBotSafe };
 }
 
 export function parsePaneCatalogArgs(args: string[]): ParsedPaneCatalogArgs {

@@ -418,6 +418,17 @@ export interface CloudEconEventPayload {
   impact: CloudEconImpact;
 }
 
+/** CPI, payrolls and FOMC statement days as published, as GET /cloud/econ/release-days serves them. */
+export interface CloudMacroReleaseDaysPayload {
+  /** When the publishers' pages were read, ISO. */
+  checkedAt: string;
+  /** The last New York day the lists are complete for. */
+  coveredThrough: string;
+  sources: string[];
+  /** New York dates, oldest first. */
+  releases: Record<"cpi" | "jobs" | "fomc", string[]>;
+}
+
 export interface CloudFredObservationPayload {
   date: string;
   value: number | null;

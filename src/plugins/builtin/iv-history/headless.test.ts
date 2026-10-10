@@ -40,7 +40,7 @@ describe("VCA dates", () => {
     expect(title).not.toContain("live");
     expect(keys).not.toContain("date");
     expect(keys).not.toContain("rankDate");
-    expect(footer).toBe("Source: Gloom Cloud | As of 2026-10-09 | Not a live feed (daily implied volatility)");
+    expect(footer).toBe("Source: Gloom Cloud · Fri 9 Oct · not a live feed (daily implied volatility)");
   });
 
   test("a trade-close reading on its rank date says so once", async () => {
@@ -59,7 +59,7 @@ describe("VCA dates", () => {
     expect(keys).toContain("rankDate");
     expect([0, 1, 2].map((index) => cell("date", index))).toEqual(["2026-10-09 quote", "2026-10-09 close", "2026-10-08 quote"]);
     expect([0, 1, 2].map((index) => cell("rankDate", index))).toEqual(["2026-10-09 close", "2026-10-09 close", "2026-10-08 close"]);
-    expect(footer).toContain("As of 2026-10-09 |");
+    expect(footer).toContain(" · Fri 9 Oct · ");
   });
 
   test("a quote ahead of its rank says which close the rank is on", async () => {

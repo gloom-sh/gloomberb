@@ -179,6 +179,7 @@ function createCoreCliCommands(
           { flags: "--theme <id>", description: "Render with another theme, such as amber or colorblind; gloomberb config themes lists them" },
           { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
           { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
+          { flags: "--no-status", description: "Leave out the dated status line (as-of, delay, market hours) drawn in the pane footer" },
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
           EXCHANGE_OPTION,
         ],
@@ -187,6 +188,7 @@ function createCoreCliCommands(
           "shot HP BHP:ASX",
           "shot DDIS MSFT --tab history",
           "shot HP NVDA --width 1600 --theme green",
+          "shot QQ AAPL,MSFT --no-status",
         ],
       },
       execute: async (args, ctx) => {
