@@ -23,6 +23,21 @@ export const ONBOARDING_DESKTOP = {
   buttonHeight: "28px",
 } as const;
 
+/** Cells the terminal card spends on its border and padding: what its content does not get. */
+export const TERMINAL_CARD_INSET = { columns: 6, rows: 4 } as const;
+
+/** The terminal card's size in cells: what a step asks for, clamped to what the viewport leaves. */
+export function terminalCardSize(viewport: { width: number; height: number }, width: number, height: number) {
+  const overlayHeight = Math.max(1, viewport.height - 1);
+  const availableWidth = Math.max(1, viewport.width - 4);
+  const availableHeight = Math.max(1, overlayHeight - 1);
+  return {
+    overlayHeight,
+    width: Math.min(Math.max(42, Math.min(width, availableWidth)), availableWidth),
+    height: Math.min(Math.max(10, Math.min(height, availableHeight)), availableHeight),
+  };
+}
+
 export function OnboardingModal({
   children,
   width = 66,
@@ -81,11 +96,7 @@ export function OnboardingModal({
     );
   }
 
-  const overlayHeight = Math.max(1, viewport.height - 1);
-  const availableWidth = Math.max(1, viewport.width - 4);
-  const availableHeight = Math.max(1, overlayHeight - 1);
-  const cardWidth = Math.min(Math.max(42, Math.min(width, availableWidth)), availableWidth);
-  const cardHeight = Math.min(Math.max(10, Math.min(height, availableHeight)), availableHeight);
+  const { overlayHeight, width: cardWidth, height: cardHeight } = terminalCardSize(viewport, width, height);
   const top = Math.max(0, Math.floor((overlayHeight - cardHeight) / 2));
   const left = Math.max(0, Math.floor((viewport.width - cardWidth) / 2));
 
@@ -216,11 +227,14 @@ export function OnboardingTitle({
   titleSuffix,
   description,
   standalone = false,
+  compact = false,
 }: {
   step?: string;
   title: string;
   /** No progress header above it, so it sits at the top of the card. */
   standalone?: boolean;
+  /** Terminal only: no blank rows around the description, for a card with no rows to spare. */
+  compact?: boolean;
   /** Short qualifier after the title, e.g. how many months yearly saves. */
   titleSuffix?: string;
   description?: string;
@@ -282,8 +296,8 @@ export function OnboardingTitle({
       </Box>
       {description ? (
         <>
-          <Box height={1} />
-          <Box minHeight={2}>
+          {compact ? null : <Box height={1} />}
+          <Box minHeight={compact ? undefined : 2}>
             <Text fg={colors.textDim} wrapText>{description}</Text>
           </Box>
         </>
@@ -531,19 +545,25 @@ export function OnboardingChoiceList({
 export function OnboardingFeature({
   title,
   description,
+  rows = 2,
 }: {
   title: string;
   description: string;
+  /** Terminal rows for the title and the description under it; 1 keeps the title alone. The DOM card sizes to its text. */
+  rows?: number;
 }) {
   const colors = useThemeColors();
   const desktop = useUiCapabilities().nativePaneChrome === true;
   if (!desktop) {
+    const descriptionRows = Math.max(0, rows - 1);
     return (
-      <Box height={2} flexDirection="row" minWidth={0}>
+      <Box height={1 + descriptionRows} flexDirection="row" minWidth={0}>
         <Box width={2} height={1}><Text fg={colors.positive}>· </Text></Box>
         <Box flexDirection="column" flexGrow={1} minWidth={0}>
           <Box height={1} overflow="hidden"><Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text></Box>
-          <Box height={1} overflow="hidden"><Text fg={colors.textMuted}>{description}</Text></Box>
+          {descriptionRows > 0 ? (
+            <Box height={descriptionRows} overflow="hidden"><Text fg={colors.textMuted}>{description}</Text></Box>
+          ) : null}
         </Box>
       </Box>
     );
