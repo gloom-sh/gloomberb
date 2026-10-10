@@ -827,7 +827,7 @@ export const ja: Record<string, string> = {
   "run the Equity Diagnostic": "Equity Diagnostic を実行",
   "stream the market scanners": "マーケットスキャナーをストリーミング",
   "manage your Gloom Cloud account": "Gloom Cloud アカウントを管理",
-  "ask questions about any pane in the terminal": "ターミナル内のどのペインについても質問",
+  "ask questions about anything on screen": "画面上のあらゆる内容について質問",
   "search X": "X を検索",
   "{shortcut}, then Resend Verification Email": "{shortcut} から「確認メールを再送信」",
   "editing": "編集",

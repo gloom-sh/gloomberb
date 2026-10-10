@@ -125,6 +125,7 @@ describe("ASKG protocol", () => {
           note: "Fresh quote",
           sample: { symbol: "NVDA", price: 180 },
         },
+        args: { symbols: ["NVDA"] },
       },
       { type: "tool-result-ack", seq: 5, turnId: "turn-1", toolCallId: "call-1" },
       {

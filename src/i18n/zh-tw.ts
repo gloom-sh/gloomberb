@@ -827,7 +827,7 @@ export const zhTW: Record<string, string> = {
   "run the Equity Diagnostic": "執行 Equity Diagnostic",
   "stream the market scanners": "接收即時市場掃描",
   "manage your Gloom Cloud account": "管理你的 Gloom Cloud 帳戶",
-  "ask questions about any pane in the terminal": "針對終端機中的任一面板提問",
+  "ask questions about anything on screen": "針對畫面上的任何內容提問",
   "search X": "搜尋 X",
   "{shortcut}, then Resend Verification Email": "按 {shortcut}，然後選擇「重新發送驗證郵件」",
   "editing": "編輯中",

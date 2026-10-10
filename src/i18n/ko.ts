@@ -825,7 +825,7 @@ export const ko: Record<string, string> = {
   "run the Equity Diagnostic": "Equity Diagnostic을 실행",
   "stream the market scanners": "마켓 스캐너를 스트리밍",
   "manage your Gloom Cloud account": "Gloom Cloud 계정을 관리",
-  "ask questions about any pane in the terminal": "터미널의 모든 패널에 대해 질문",
+  "ask questions about anything on screen": "화면에 보이는 모든 내용에 대해 질문",
   "search X": "X를 검색",
   "{shortcut}, then Resend Verification Email": "{shortcut} 후 인증 이메일 재전송",
   "editing": "편집 중",

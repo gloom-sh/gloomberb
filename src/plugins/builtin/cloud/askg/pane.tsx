@@ -1451,7 +1451,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     return (
       <SignInWall
         placement="gp-signin"
-        action="ask questions about any pane in the terminal"
+        action="ask questions about anything on screen"
         needsVerification={planAccess.signedIn}
       />
     );

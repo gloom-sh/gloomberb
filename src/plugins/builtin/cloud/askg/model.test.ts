@@ -80,6 +80,36 @@ describe("askgReducer", () => {
     });
   });
 
+  test("a server tool row keeps the arguments its event carried, and has none from a server that sends none", () => {
+    const executed = (seq: number, extra: Record<string, unknown>) => ({
+      seq,
+      type: "tool-executed",
+      turnId: "turn-1",
+      toolCallId: `server-${seq}`,
+      name: "market.quotes",
+      source: "server",
+      status: "ok",
+      summary: { rowCount: 2, elapsedMs: 90, truncated: false, note: "1 requested quote was unavailable." },
+      ...extra,
+    }) as ASKGSseEvent;
+    const [withArgs, older, malformed] = apply(
+      withTurn(),
+      executed(1, { args: { symbols: ["NVDA", "AMD"], limit: 2 } }),
+      executed(2, {}),
+      executed(3, { args: ["NVDA"] }),
+    ).turns[0]!.tools;
+
+    expect(withArgs).toMatchObject({
+      origin: "server",
+      args: { symbols: ["NVDA", "AMD"], limit: 2 },
+      argumentSummary: "NVDA,AMD · limit=2",
+    });
+    // The same row as an older server sends it: no arguments, the note as the summary.
+    expect(older).toMatchObject({ origin: "server", argumentSummary: "1 requested quote was unavailable." });
+    expect(older).not.toHaveProperty("args");
+    expect(malformed).not.toHaveProperty("args");
+  });
+
   test("drops events a resumed stream replays", () => {
     const streamed = apply(
       withTurn(),

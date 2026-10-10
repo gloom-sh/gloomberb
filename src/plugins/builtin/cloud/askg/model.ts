@@ -303,10 +303,13 @@ function applyEvent(
       // A call this client ran keeps its own row whatever the echo says it
       // was: replacing it would drop its write tier, result and undo.
       if (event.source === "server" && !hasClientRow(next, event.toolCallId)) {
+        // A server older than the field sends none, like a stored call that kept none.
+        const args = isRecord(event.args) ? event.args : undefined;
         return patchTurn(next, event.turnId, (turn) => appendToolRow(turn, {
           toolCallId: event.toolCallId,
           name: event.name,
-          argumentSummary: event.summary.note ?? "",
+          argumentSummary: args ? summarizeToolArguments(args) : (event.summary.note ?? ""),
+          ...(args ? { args } : {}),
           writeTier: "read",
           origin: "server",
           source: event.source,

@@ -827,7 +827,7 @@ export const zhCN: Record<string, string> = {
   "run the Equity Diagnostic": "运行 Equity Diagnostic",
   "stream the market scanners": "接收实时市场扫描",
   "manage your Gloom Cloud account": "管理你的 Gloom Cloud 账户",
-  "ask questions about any pane in the terminal": "就终端中的任意面板提问",
+  "ask questions about anything on screen": "就屏幕上的任何内容提问",
   "search X": "搜索 X",
   "{shortcut}, then Resend Verification Email": "按 {shortcut}，然后选择“重新发送验证邮件”",
   "editing": "编辑中",

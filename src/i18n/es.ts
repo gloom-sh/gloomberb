@@ -813,7 +813,7 @@ export const es: Record<string, string> = {
   "run the Equity Diagnostic": "ejecutar el Equity Diagnostic",
   "stream the market scanners": "recibir los escáneres de mercado en vivo",
   "manage your Gloom Cloud account": "gestionar tu cuenta de Gloom Cloud",
-  "ask questions about any pane in the terminal": "hacer preguntas sobre cualquier panel del terminal",
+  "ask questions about anything on screen": "hacer preguntas sobre cualquier cosa en pantalla",
   "search X": "buscar en X",
   "{shortcut}, then Resend Verification Email": "{shortcut} y luego Reenviar correo de verificación",
   "editing": "editando",

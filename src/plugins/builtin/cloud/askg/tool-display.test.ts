@@ -103,6 +103,20 @@ describe("describeToolRow", () => {
     })).toMatchObject({ title: "Corporate actions", subject: "", line: "Returned 26 of at least 152 rows" });
     expect(server({ name: "market.quotes", status: "error", note: "The market.quotes tool failed." }).line).toBe("Could not load this");
   });
+
+  test("a server tool names what it read from the arguments the platform sent", () => {
+    const server = (name: string, args: ASKGToolRow["args"]) => describeToolRow(row({ origin: "server", name, args }));
+    expect(server("market.quotes", { symbols: ["NVDA", "AMD"], limit: 2 })).toMatchObject({ title: "Quotes", subject: "NVDA, AMD" });
+    expect(server("market.history", { symbol: "700", exchange: "HKEX", interval: "1day" })).toMatchObject({ subject: "700" });
+    expect(server("sec.filings", { ticker: "NVDA", offset: 0 })).toMatchObject({ title: "SEC filings", subject: "NVDA" });
+    // News filters by ticker or by text, and a default fills the other with an empty list.
+    const feed = { feed: "latest", topics: [], limit: 20 };
+    expect(server("news.stories", { ...feed, tickers: ["NVDA"] })).toMatchObject({ title: "News", subject: "NVDA" });
+    expect(server("news.stories", { ...feed, query: "chip export rules", tickers: [] }).subject).toBe('"chip export rules"');
+    expect(server("news.stories", { ...feed, tickers: [] }).subject).toBe("");
+    // The options that are not the subject stay in the open row.
+    expect(server("market.quotes", { symbols: ["NVDA"], limit: 2 }).arguments).toEqual([{ label: "limit", value: "2" }]);
+  });
 });
 
 describe("turnTimelineIds", () => {

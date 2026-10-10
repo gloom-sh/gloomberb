@@ -286,6 +286,12 @@ interface ASKGToolExecutedEvent extends ASKGEventBase {
   source: ToolManifestSource;
   status: ToolResultStatus;
   summary: ToolExecutionSummary;
+  /**
+   * What a tool the platform ran was asked, so its row can name the subject.
+   * Absent on an older server, on a tool this client ran, and on a call whose
+   * arguments were empty or too large to send.
+   */
+  args?: Record<string, JsonValue>;
 }
 
 /** Confirms that one client tool result was accepted by the turn loop. */

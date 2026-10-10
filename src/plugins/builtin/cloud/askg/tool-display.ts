@@ -92,7 +92,7 @@ const RESOURCE_SUBJECTS: Record<string, string> = {
 };
 
 /** Arguments that pick the subject; every other one is a detail. */
-const SUBJECT_KEYS = ["symbol", "symbols", "text", "query", "paneId", "resource", "portfolioId", "collectionId"];
+const SUBJECT_KEYS = ["symbol", "symbols", "text", "query", "paneId", "resource", "portfolioId", "collectionId", "ticker", "tickers"];
 /** Options that say which view was read, worth a word next to the subject. */
 const QUALIFIER_KEYS = ["view", "range", "period", "component", "series"];
 
@@ -140,7 +140,12 @@ function subjectFromArgs(args: Record<string, JsonValue>, context: ToolDisplayCo
   for (const key of SUBJECT_KEYS) {
     const value = args[key];
     if (value == null || value === "") continue;
-    if (key === "symbol" || key === "symbols") return symbolList(value);
+    if (key === "symbol" || key === "symbols" || key === "ticker" || key === "tickers") {
+      // An empty list, which a tool's defaults fill in, leaves the next key to name the subject.
+      const symbols = symbolList(value);
+      if (symbols) return symbols;
+      continue;
+    }
     const text = scalarText(value);
     if (!text) continue;
     if (key === "resource") return RESOURCE_SUBJECTS[text] ?? text.replace(/^[a-z]+:\/\//, "");
@@ -363,8 +368,9 @@ export function describeToolRow(row: ASKGToolRow, context: ToolDisplayContext = 
   const mark = markFor(row);
   const args = row.args ?? {};
   const script = isScriptRow(row);
-  // A server tool's note is a caveat about its result, not what it read, so a
-  // live server row has no subject; a stored one keeps its arguments.
+  // A server tool's note is a caveat about its result, not what it read, so
+  // its subject comes from its arguments. A row the platform sent none for,
+  // an older server or arguments too large to send, has no subject.
   const subject = script ? "" : subjectFromArgs(args, context);
   const qualifier = script ? "" : qualifierFromArgs(args);
   const finished = mark !== "running" && mark !== "waiting";
