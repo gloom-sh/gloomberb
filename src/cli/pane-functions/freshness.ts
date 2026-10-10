@@ -8,7 +8,7 @@ import type {
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
-import { parseReportTime, type ReportTime } from "../../utils/utc-time";
+import { localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
 import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose } from "../../market-data/market/freshness";
 import { reportMarketSession, type ReportMarket, type SessionObservation } from "./market-session";
@@ -42,6 +42,11 @@ export interface ReportFreshness {
   basis?: string;
   /** The local date of the session close `asOf` is, when the newest observation is its venue's latest close. */
   asOfClose?: string;
+  /**
+   * Whose trading day the dated as-of (`asOfClose`, or a date-only `asOf`) is,
+   * when one market's calendar dates it: `US`, or a venue code such as `ASX`.
+   */
+  tradingDayMarket?: string;
   /** Where the venues of a quote report stand now, from their session calendars. */
   market?: ReportMarket;
   /** When this report was built. */
@@ -320,9 +325,11 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
       }
     }
   }
-  const { market, closeDate } = reportMarketSession(signals.sessions, now);
+  const { market, closeDate, closeMarket } = reportMarketSession(signals.sessions, now);
   // The close wording dates the newest observation, so only when that is what `asOf` is.
   const asOfClose = closeDate && asOf && !declaredAsOf ? closeDate : null;
+  const tradingDayMarket = asOfClose ? closeMarket
+    : asOf?.dateOnly ? declared.tradingDayMarket?.trim() || null : null;
 
   return {
     source: declared.source?.trim() || DEFAULT_REPORT_SOURCE,
@@ -335,6 +342,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(partial ?? {}),
     ...(status === "not-a-feed" && declared.basis ? { basis: declared.basis } : {}),
     ...(asOfClose ? { asOfClose } : {}),
+    ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
     retrievedAt: new Date(now).toISOString(),
   };
@@ -401,20 +409,35 @@ const DAY_MS = 24 * 60 * 60_000;
 /** A reopen further ahead than this reads with its date, not just its weekday. */
 const WEEKDAY_ONLY_MS = 6 * DAY_MS;
 
-/** `Fri 9 Oct` for a `YYYY-MM-DD` date, with the year when it is not the year of `now`. */
-function dayText(date: string, now: number): string {
+/**
+ * `Fri 9 Oct 2026` for a `YYYY-MM-DD` date. Always with its year: a report
+ * read later, or pasted somewhere, still says which day it means.
+ */
+function dayText(date: string): string {
   const day = new Date(`${date.slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(day.getTime())) return date;
-  const year = day.getUTCFullYear() === new Date(now).getUTCFullYear() ? "" : ` ${day.getUTCFullYear()}`;
-  return `${WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}${year}`;
+  return `${WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]} ${day.getUTCFullYear()}`;
 }
 
-/** `Fri 9 Oct 23:59 UTC`, or `Fri 9 Oct` for a date. */
-function timeText(value: string, now: number): string {
+/**
+ * `US trading day Fri 9 Oct 2026`: a date names whose day it is when one
+ * market's calendar dates it, so a reader a day ahead of New York does not take
+ * the US Friday for their own. Never shifted to the reader's zone.
+ */
+function tradingDayText(date: string, market: string | undefined): string {
+  return market ? `${market} trading day ${dayText(date)}` : dayText(date);
+}
+
+/**
+ * `Fri 9 Oct 2026 23:59 UTC`, or `Fri 9 Oct 2026` for a date. With `local`, the
+ * reader's own time follows when they set a zone: `(Sat 10 Oct 08:59 Asia/Tokyo)`.
+ */
+function timeText(value: string, local: boolean): string {
   const time = parseReportTime(value);
   if (!time) return value;
   const iso = new Date(time.time).toISOString();
-  return time.dateOnly ? dayText(iso, now) : `${dayText(iso, now)} ${iso.slice(11, 16)} UTC`;
+  if (time.dateOnly) return dayText(iso);
+  return `${dayText(iso)} ${iso.slice(11, 16)} UTC${local ? localTimeSuffix(time.time) : ""}`;
 }
 
 /**
@@ -479,28 +502,31 @@ function statusText(freshness: ReportFreshness, short = false): string {
  * The dated as-of: a session close, a UTC time, a date, or when the report was
  * retrieved; with the oldest observation unless `short`.
  */
-function asOfText(freshness: ReportFreshness, now: number, short = false): string {
-  if (!freshness.asOf) return `retrieved ${timeText(freshness.retrievedAt, now)}`;
-  const asOf = freshness.asOfClose ? `${dayText(freshness.asOfClose, now)} close` : timeText(freshness.asOf, now);
-  return freshness.oldest && !short ? `${asOf} (oldest ${dayText(freshness.oldest, now)})` : asOf;
+function asOfText(freshness: ReportFreshness, short: boolean, local: boolean): string {
+  if (!freshness.asOf) return `retrieved ${timeText(freshness.retrievedAt, local)}`;
+  const market = freshness.tradingDayMarket;
+  const asOf = freshness.asOfClose
+    ? `${tradingDayText(freshness.asOfClose, market)} close`
+    : parseReportTime(freshness.asOf)?.dateOnly ? tradingDayText(freshness.asOf, market) : timeText(freshness.asOf, local);
+  return freshness.oldest && !short ? `${asOf} (oldest ${dayText(freshness.oldest)})` : asOf;
 }
 
 /**
  * When the first venue opens again: its UTC time when that is later the same
  * UTC day, else its weekday at the venue (`Mon`), with the date a week out.
  */
-function reopenText(market: ReportMarket, now: number): string | null {
+function reopenText(market: ReportMarket, now: number, local: boolean): string | null {
   if (!market.reopensAt || !market.reopensOn) return null;
   const at = Date.parse(market.reopensAt);
   if (!Number.isFinite(at)) return null;
   const iso = new Date(at).toISOString();
-  if (iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return `${iso.slice(11, 16)} UTC`;
-  return at - now > WEEKDAY_ONLY_MS ? dayText(market.reopensOn, now) : WEEKDAYS[new Date(`${market.reopensOn}T00:00:00Z`).getUTCDay()]!;
+  if (iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return `${iso.slice(11, 16)} UTC${local ? localTimeSuffix(at) : ""}`;
+  return at - now > WEEKDAY_ONLY_MS ? dayText(market.reopensOn) : WEEKDAYS[new Date(`${market.reopensOn}T00:00:00Z`).getUTCDay()]!;
 }
 
 /** `markets closed until Mon`; `short` is the compact form a narrow capture falls back to (`reopens Mon`). */
-function marketText(market: ReportMarket, now: number, short = false): string {
-  const reopen = reopenText(market, now);
+function marketText(market: ReportMarket, now: number, short: boolean, local: boolean): string {
+  const reopen = reopenText(market, now, local);
   switch (market.state) {
     case "open":
       return short ? "open" : "markets open";
@@ -525,6 +551,8 @@ interface StatusLineDetail {
   status?: "short";
   /** `reopens Mon` for `markets closed until Mon`; `none` leaves the market out. */
   market?: "short" | "none";
+  /** Leave out the reader's local time beside UTC times. */
+  local?: "none";
 }
 
 /**
@@ -533,10 +561,11 @@ interface StatusLineDetail {
  */
 function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = {}): string[] {
   const now = Date.parse(freshness.retrievedAt);
+  const local = detail.local !== "none";
   return [
-    asOfText(freshness, now, detail.asOf === "short"),
+    asOfText(freshness, detail.asOf === "short", local),
     statusText(freshness, detail.status === "short"),
-    ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short")] : []),
+    ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
   ];
 }
 
@@ -555,16 +584,17 @@ export function formatStatusLine(freshness: ReportFreshness): string {
 /**
  * The status line from longest to shortest, for a capture to take the first
  * that fits its width. The date and the delay stay to the last; the market
- * part shortens, then the oldest observation and the stale total go, then
- * the market part.
+ * part shortens, then the reader's local time, the oldest observation and the
+ * stale total go, then the market part.
  */
 export function statusLineVariants(freshness: ReportFreshness): string[] {
   const details: StatusLineDetail[] = [
     {},
     { market: "short" },
-    { asOf: "short", market: "short" },
-    { asOf: "short", status: "short", market: "short" },
-    { asOf: "short", status: "short", market: "none" },
+    { market: "short", local: "none" },
+    { asOf: "short", market: "short", local: "none" },
+    { asOf: "short", status: "short", market: "short", local: "none" },
+    { asOf: "short", status: "short", market: "none", local: "none" },
   ];
   return [...new Set(details.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
 }

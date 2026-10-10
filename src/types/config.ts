@@ -298,6 +298,12 @@ export interface AppConfig {
   telemetry?: TelemetryConfig;
   starPrompt?: StarPromptConfig;
   /**
+   * The IANA zone (`Asia/Tokyo`) the CLI and function reports show a local
+   * time in, beside every UTC time. Absent prints UTC alone. Trading-day dates
+   * are never shifted by it.
+   */
+  timezone?: string;
+  /**
    * Presentation mode: the panes fill the window, without the header or the
    * status bar, for a screen that is shown rather than worked at. Absent is off.
    */

@@ -162,7 +162,7 @@ describe("report CSV and NDJSON", () => {
       "Index,Last",
       "DAX,25087.27",
       "",
-      "# Source: Gloom Cloud · Fri 9 Oct 18:28 UTC · delayed",
+      "# Source: Gloom Cloud · Fri 9 Oct 2026 18:28 UTC · delayed",
       "# incomplete: 19 of 20 available",
       "# error: ^KS11: No quote provider available for ^KS11",
       "# note: Two bars are unavailable.",

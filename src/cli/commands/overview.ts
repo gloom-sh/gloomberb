@@ -33,7 +33,7 @@ import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
 import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
 import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
-import { newestReportTime, oldestReportTime } from "../../utils/utc-time";
+import { localTimeSuffix, newestReportTime, oldestReportTime } from "../../utils/utc-time";
 import { quotesFreshness, rowsFreshness } from "../freshness";
 
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
@@ -180,12 +180,12 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
   });
 }
 
-/** The UTC date, or the UTC time with its zone named, of an event's timestamp. */
+/** The UTC date, or the UTC time with its zone named (and the reader's own beside it), of an event's timestamp. */
 function utcDateTimePart(value: unknown, part: "date" | "time"): string {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return "";
   const iso = date.toISOString();
-  return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC`;
+  return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC${localTimeSuffix(date.getTime())}`;
 }
 
 const ECON_USAGE = "econ [--country <region>] [--impact <level>] [--from <yyyy-mm-dd>]";

@@ -90,6 +90,7 @@ export function normalizeLoadedConfig(
     seededPlugins: sanitizeUniqueStringList(candidate.seededPlugins),
     ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
     ...(candidate.presentationMode === true ? { presentationMode: true } : {}),
+    ...(typeof candidate.timezone === "string" && candidate.timezone.trim() ? { timezone: candidate.timezone.trim() } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
     theme: sanitizeTheme(candidate.theme, defaults.theme),

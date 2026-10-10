@@ -35,7 +35,7 @@ import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
-import { formatUtcTime } from "../../utils/utc-time";
+import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 
 interface SerializableHeadlessColumn {
@@ -317,7 +317,7 @@ function displayInstant(value: string): string {
   if (!Number.isFinite(time)) return value;
   const iso = new Date(time).toISOString();
   if (iso.slice(17, 23) === "00.000") return displayTime(time);
-  return `${iso.slice(0, iso.endsWith(".000Z") ? 19 : 23).replace("T", " ")} UTC`;
+  return `${iso.slice(0, iso.endsWith(".000Z") ? 19 : 23).replace("T", " ")} UTC${localTimeSuffix(time)}`;
 }
 
 /** Drops binary floating-point noise (4.019999999999996) without rounding real digits. */

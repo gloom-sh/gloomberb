@@ -24,6 +24,7 @@ import {
   wrapText,
   type CliStatEntry,
 } from "../../utils/cli-output";
+import { renderGlossaryEntries, type GlossaryLookup } from "../glossary";
 
 export interface PaneFunctionCatalog {
   panes: ReadonlyMap<string, PaneDef>;
@@ -381,21 +382,43 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   return lines.join("\n");
 }
 
-export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: ParsedPaneCatalogArgs): string {
+/**
+ * The glossary part of a search: the meaning of a term the query names, or
+ * the terms that hold its words, to look up next.
+ */
+function renderCatalogGlossary(glossary: GlossaryLookup, width: number): string {
+  const defined = glossary.exact.length > 0 ? [renderSection("Glossary"), ...renderGlossaryEntries(glossary.exact)] : [];
+  const others = glossary.partial.map((entry) => entry.term).join(", ");
+  const related = others
+    ? wrapText(`${defined.length > 0 ? "Related" : "Glossary"}: ${others}. gloomberb catalog glossary <term> explains one.`, width)
+      .map((line) => cliStyles.muted(line))
+    : [];
+  return [...defined, ...related].join("\n");
+}
+
+export function renderPaneCatalogReport(
+  entries: PaneCatalogEntry[],
+  args: ParsedPaneCatalogArgs,
+  glossary: GlossaryLookup = { exact: [], partial: [] },
+): string {
   const query = args.query.trim().toLowerCase();
   const exact = query
     ? entries.find((entry) => entry.token.toLowerCase() === query)
       ?? entries.find((entry) => entry.aliases.some((alias) => alias.toLowerCase() === query))
     : undefined;
   if (exact) return renderCatalogEntry(exact);
-  if (args.query && entries.length === 1) return renderCatalogEntry(entries[0]!);
 
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
+  const terms = renderCatalogGlossary(glossary, width);
+  const withTerms = (text: string) => terms ? `${text}\n\n${terms}` : text;
+  if (args.query && entries.length === 1) return withTerms(renderCatalogEntry(entries[0]!));
+
   const note = (text: string) => wrapText(text, width).map((line) => cliStyles.muted(line)).join("\n");
   if (entries.length === 0) {
-    return note(args.query
+    if (glossary.exact.length > 0) return terms;
+    return withTerms(note(args.query
       ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`
-      : "No functions are available.");
+      : "No functions are available."));
   }
 
   const shown = entries.slice(0, args.limit);
@@ -424,5 +447,5 @@ export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: Parse
       ? `gloomberb catalog <function> shows its options and examples. Add --all to list all ${entries.length}.`
       : "gloomberb catalog <function> shows its options and examples."),
   ];
-  return lines.join("\n");
+  return withTerms(lines.join("\n"));
 }

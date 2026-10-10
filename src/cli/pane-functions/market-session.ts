@@ -93,17 +93,29 @@ function closeDateOf(observation: SessionObservation, session: VenueSession, now
 }
 
 /**
+ * Whose trading day a close on this venue is: `US` for the US listing venues,
+ * which share one calendar, `FX` for currency pairs, whose day turns in New
+ * York, the venue's code elsewhere. Null when no calendar dates it and the
+ * close is only a UTC date.
+ */
+function closeMarketOf(exchange: string, session: VenueSession): string | null {
+  if (exchange === FX_VENUE) return "FX";
+  if (!session.last || !session.timeZone) return null;
+  return isUsListingExchange(exchange) ? "US" : exchange;
+}
+
+/**
  * Where the markets behind a quote report stand now, and whether the newest
- * observation is a close. Null market when the venues disagree (Tokyo open,
- * New York closed), trade around the clock, or none can be placed; a report
- * then says nothing rather than guess.
+ * observation is a close, and whose. Null market when the venues disagree
+ * (Tokyo open, New York closed), trade around the clock, or none can be
+ * placed; a report then says nothing rather than guess.
  */
 export function reportMarketSession(
   observations: readonly SessionObservation[],
   now: number,
-): { market: ReportMarket | null; closeDate: string | null } {
+): { market: ReportMarket | null; closeDate: string | null; closeMarket: string | null } {
   const sessions = new Map<string, VenueSession>();
-  let newest: { observation: SessionObservation; session: VenueSession } | null = null;
+  let newest: { observation: SessionObservation; session: VenueSession; exchange: string } | null = null;
   for (const observation of observations) {
     const exchange = canonicalExchange(observation.exchange);
     if (!exchange) continue;
@@ -112,22 +124,24 @@ export function reportMarketSession(
     if (!session) continue;
     sessions.set(key, session);
     if (observation.time && (!newest || observation.time.time > (newest.observation.time?.time ?? -Infinity))) {
-      newest = { observation, session };
+      newest = { observation, session, exchange };
     }
   }
   const states = new Set([...sessions.values()].map((session) => session.state));
-  if (states.size !== 1 || states.has("always")) return { market: null, closeDate: null };
+  if (states.size !== 1 || states.has("always")) return { market: null, closeDate: null, closeMarket: null };
   const state = [...states][0] as ReportMarketState;
   const reopen = state === "closed" || state === "pre-market"
     ? [...sessions.values()].reduce<{ date: string; open: number } | null>((first, session) => (
       session.next && (!first || session.next.open < first.open) ? session.next : first
     ), null)
     : null;
+  const closeDate = (state === "closed" || state === "pre-market") && newest ? closeDateOf(newest.observation, newest.session, now) : null;
   return {
     market: {
       state,
       ...(reopen ? { reopensAt: new Date(reopen.open).toISOString(), reopensOn: reopen.date } : {}),
     },
-    closeDate: (state === "closed" || state === "pre-market") && newest ? closeDateOf(newest.observation, newest.session, now) : null,
+    closeDate,
+    closeMarket: closeDate && newest ? closeMarketOf(newest.exchange, newest.session) : null,
   };
 }

@@ -58,6 +58,7 @@ export const treasuryAuctionsModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 28 },
       tableExport: true,
+      reportFreshness: { source: "US Treasury", status: "not-a-feed", basis: "auction results" },
       settings: treasuryAuctionsSettings(),
     },
   ],

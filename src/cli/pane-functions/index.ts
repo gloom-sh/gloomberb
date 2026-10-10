@@ -16,7 +16,7 @@ import {
 } from "./options";
 import { applyListingArgument, resolvePaneFunction, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
-import { defaultScreenshotPath, renderDesktopShot } from "./screenshot";
+import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings } from "./screenshot";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
@@ -24,6 +24,15 @@ import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import { loadForListing } from "../listing-arg";
 import { selectReportTables } from "../report-tables";
+import {
+  GLOSSARY,
+  glossaryRecord,
+  lookupGlossary,
+  renderGlossaryEntries,
+  renderGlossaryIndex,
+  renderReportGlossary,
+  reportGlossary,
+} from "../glossary";
 
 async function withPaneRuntime<T>(
   ctx: CliCommandContext,
@@ -86,8 +95,13 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           `${resolved.token} did not produce a complete bot-safe report.${unavailable}`,
         );
       }
-      ctx.printResult({ data: report.data }, {
-        text: () => report.text,
+      // --explain follows the report with the terms it shows; JSON lists them under `glossary`.
+      const glossary = parsed.explain ? reportGlossary(resolved.token, report.text) : null;
+      const data = glossary
+        ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
+        : report.data;
+      ctx.printResult({ data }, {
+        text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });
     }, { strictHeadlessOptions: true, tableSection: true });
@@ -126,7 +140,9 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
           `${resolved.token} did not produce a usable bot-safe screenshot: ${result.unusableReason ?? "unknown reason"}`,
         );
       }
-      ctx.printResult({ data: result }, {
+      // Text prints a warning on stderr, out of the way of piped output; JSON carries it in the envelope.
+      const warnings = shotSizeWarnings(parsed.clamped, parsed);
+      ctx.printResult({ data: result, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: (data) => {
           const issues = [
             data.render.accessGate && (data.empty || !data.usable) ? accessGateStatus(data.render.accessGate) : data.empty ? "empty" : null,
@@ -151,9 +167,30 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
   });
 }
 
+/** `catalog glossary [term]` and `catalog explain <term>`, which need no market data. */
+function runGlossary(term: string, ctx: CliCommandContext): void {
+  if (!term) {
+    ctx.printResult({ data: GLOSSARY.map(glossaryRecord) }, { text: renderGlossaryIndex });
+    return;
+  }
+  const { exact, partial } = lookupGlossary(term);
+  const entries = [...exact, ...partial];
+  if (entries.length === 0) {
+    ctx.fail(`No glossary entry for "${term}".`, "gloomberb catalog glossary lists every term.");
+  }
+  ctx.printResult({ data: entries.map(glossaryRecord) }, { text: () => renderGlossaryEntries(entries).join("\n") });
+}
+
+const GLOSSARY_ACTIONS = new Set(["glossary", "explain"]);
+
 export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     const parsed = parsePaneCatalogArgs(args);
+    const [action = "", ...term] = parsed.query.split(/\s+/);
+    if (GLOSSARY_ACTIONS.has(action.toLowerCase())) {
+      runGlossary(term.join(" "), ctx);
+      return;
+    }
     const effectiveParsed = {
       ...parsed,
       limit: ctx.cliOptions.limit ?? parsed.limit,
@@ -166,8 +203,10 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
           ? entries.filter((entry) => entry.capability.botSafe)
           : entries;
         const filtered = filterPaneCatalogEntries(botSafeEntries, parsed.query);
+        // A search also finds the terms it names; text only, the JSON stays a list of functions.
+        const glossary = lookupGlossary(parsed.query);
         ctx.printResult({ data: filtered.slice(0, effectiveParsed.limit) }, {
-          text: () => renderPaneCatalogReport(filtered, effectiveParsed),
+          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary),
         });
       } finally {
         registry.destroy();

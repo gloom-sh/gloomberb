@@ -166,6 +166,14 @@ export interface HeadlessPaneFreshness {
    * completed session has passed after the newest (a day's lag is allowed).
    */
   cadence?: "daily";
+  /**
+   * Whose trading day a dated (`YYYY-MM-DD`) as-of is, as a reader names the
+   * market: `US` for a US trading or business day. The report then reads
+   * `US trading day Fri 9 Oct 2026`, so a reader whose day is already Saturday
+   * does not take the US Friday for theirs. Leave it out when the dates are not
+   * one market's.
+   */
+  tradingDayMarket?: string;
   /** The newest observation is stale once this time (the next scheduled release) has passed by a day. */
   nextExpectedAt?: string | number | Date | null;
 }

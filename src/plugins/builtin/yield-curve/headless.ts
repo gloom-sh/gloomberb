@@ -64,6 +64,18 @@ const CURVE_PUBLISHERS: Record<CurveId, string> = {
   ca: "Bank of Canada",
 };
 
+/** Whose business days each curve's dates are, so a report names the day it means. */
+const CURVE_MARKETS: Record<CurveId, string> = {
+  us: "US",
+  "us-real": "US",
+  "us-breakeven": "US",
+  "eu-aaa": "Euro area",
+  de: "Germany",
+  gb: "UK",
+  jp: "Japan",
+  ca: "Canada",
+};
+
 export function createYieldCurveHeadless(
   dependencies: YieldCurveHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
@@ -87,7 +99,16 @@ export function createYieldCurveHeadless(
         pluginState: { pluginId: "macro", key: "yield-curve:tab" } },
     ],
     columns: COLUMNS,
-    describe: "Yield Curves",
+    // The title names the curve, as the pane's Curve select does.
+    describe: (args) => {
+      if (args.options.tab === "world") return "Yield Curves | World";
+      try {
+        const curve = curveIdOf(args.options.curve) ?? parseCurveArgument(args.argument).curve ?? "us";
+        return `Yield Curves | ${curveOption(curve).label}`;
+      } catch {
+        return "Yield Curves";
+      }
+    },
     async load(args, context) {
       if (args.options.tab === "world") {
         const rows = await loadWorld(context);
@@ -119,7 +140,7 @@ export function createYieldCurveHeadless(
       const twosTens = spread("2s10s");
       return {
         // Each curve is its official publisher's daily close; a past date is a historical curve, not a feed.
-        freshness: { source: CURVE_PUBLISHERS[curve], status: "not-a-feed",
+        freshness: { source: CURVE_PUBLISHERS[curve], status: "not-a-feed", tradingDayMarket: CURVE_MARKETS[curve],
           ...(requestedDate ? { basis: "historical curve" } : { basis: "daily curve", cadence: "daily" }) },
         ...(comparePoints ? { columns: COMPARE_COLUMNS } : {}),
         rows: rows.map((point) => {

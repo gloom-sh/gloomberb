@@ -31,7 +31,7 @@ import {
   type DesktopPaneShotPayload,
   type DesktopPaneShotRenderResult,
 } from "../desktop-pane-shot";
-import { optionPaneState } from "./options";
+import { optionPaneState, SHOT_SIZE_LIMITS, type ShotSizeClamp } from "./options";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { MarketContext } from "../types";
 import { capabilityPluginState } from "./capabilities";
@@ -449,6 +449,34 @@ export interface PaneScreenshotResult {
 export function defaultScreenshotPath(resolved: ResolvedPaneFunction, rawArg: string): string {
   const suffix = slugifyName([resolved.token, rawArg].filter(Boolean).join("-"), "pane");
   return resolve(process.cwd(), `gloomberb-${suffix}.png`);
+}
+
+/**
+ * The pixels of the PNG a `shot` of this size writes: the layout snapped to
+ * whole cells, drawn at the device scale factor (twice the layout size, as
+ * `--scale` trades cells for glyph size at the same output size).
+ */
+function shotImagePixels(widthPx: number, heightPx: number, scale = 1): { width: number; height: number } {
+  const device = DEFAULT_SHOT_DEVICE_SCALE_FACTOR * scale;
+  return {
+    width: Math.round(Math.max(1, Math.floor(widthPx / scale / DESKTOP_CELL_WIDTH_PX)) * DESKTOP_CELL_WIDTH_PX * device),
+    height: Math.round(Math.max(1, Math.floor(heightPx / scale / DESKTOP_CELL_HEIGHT_PX)) * DESKTOP_CELL_HEIGHT_PX * device),
+  };
+}
+
+/** What `shot` says when it drew another size than the one asked for, naming the PNG it wrote. */
+export function shotSizeWarnings(
+  clamped: readonly ShotSizeClamp[] | undefined,
+  size: { width: number; height: number; scale?: number },
+): string[] {
+  if (!clamped?.length) return [];
+  const pixels = shotImagePixels(size.width, size.height, size.scale);
+  return clamped.map(({ dimension, requested, used }) => {
+    const { min, max } = SHOT_SIZE_LIMITS[dimension];
+    const bound = requested < min ? `below the ${min} minimum` : `above the ${max} maximum`;
+    const drawn = dimension === "width" ? `${pixels.width} px wide` : `${pixels.height} px tall`;
+    return `--${dimension} ${requested} is ${bound}, so the capture used ${used} and the PNG is ${drawn}.`;
+  });
 }
 
 export async function buildDesktopShotPayload(
