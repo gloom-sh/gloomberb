@@ -51,6 +51,12 @@ export interface ReportFreshness {
   tradingDayMarket?: string;
   /** Where the venues of a quote report stand now, from their session calendars. */
   market?: ReportMarket;
+  /**
+   * For a dataset (declared `dataset`, with no quote among its rows): whole UTC
+   * days from the last day its newest observation covers to when this report
+   * was built. A capture's status line then reads `observed Sun 4 Oct · lag 6d`.
+   */
+  lagDays?: number;
   /** When this report was built. */
   retrievedAt: string;
 }
@@ -260,6 +266,25 @@ function overdue(declared: HeadlessPaneFreshness, asOf: ReportTime | null, now: 
   return declared.cadence === "daily" && sessionsAfter(asOf, now, 2) > 1;
 }
 
+/**
+ * Whole UTC days from the last day an observation covers to `now`: its own
+ * day, or the last day of the month, quarter or year a periodic date starts.
+ * September's figure read on 10 Oct lags 10 days, not 39.
+ */
+function datasetLagDays(observed: ReportTime, periodicity: ReportFreshness["periodicity"], now: number): number {
+  const day = new Date(observed.time);
+  const year = day.getUTCFullYear();
+  const month = day.getUTCMonth();
+  const through = !periodicity ? Date.UTC(year, month, day.getUTCDate())
+    // Day 0 of the month after the period is its last day.
+    : periodicity === "monthly" ? Date.UTC(year, month + 1, 0)
+      : periodicity === "quarterly" ? Date.UTC(year, month - (month % 3) + 3, 0)
+        : Date.UTC(year, 12, 0);
+  const today = new Date(now);
+  const todayStart = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  return Math.max(0, Math.round((todayStart - through) / DAY_MS));
+}
+
 interface FreshnessInputs {
   declared: HeadlessPaneFreshness;
   signals: FeedSignals;
@@ -332,6 +357,11 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const asOfClose = closeDate && asOf && !declaredAsOf ? closeDate : null;
   const tradingDayMarket = asOfClose ? closeMarket
     : asOf?.dateOnly ? declared.tradingDayMarket?.trim() || null : null;
+  const periodicity = declared.periodicity && asOf?.dateOnly ? declared.periodicity : undefined;
+  // Rows that are quotes (a feed, a venue's session) keep the market line, even on a dataset's pane.
+  const quoted = signals.live || signals.delayed || signals.sessions.length > 0;
+  const lagDays = declared.dataset && asOf && !quoted && (status === "not-a-feed" || status === "stale")
+    ? datasetLagDays(asOf, periodicity, now) : null;
 
   return {
     source: declared.source?.trim() || DEFAULT_REPORT_SOURCE,
@@ -343,10 +373,11 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(status === "stale" && staleAt ? { ageMinutes: Math.max(0, Math.floor((now - staleAt.time) / 60_000)) } : {}),
     ...(partial ?? {}),
     ...(status === "not-a-feed" && declared.basis ? { basis: declared.basis } : {}),
-    ...(declared.periodicity && asOf?.dateOnly ? { periodicity: declared.periodicity } : {}),
+    ...(periodicity ? { periodicity } : {}),
     ...(asOfClose ? { asOfClose } : {}),
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
+    ...(lagDays != null ? { lagDays } : {}),
     retrievedAt: new Date(now).toISOString(),
   };
 }
@@ -596,21 +627,69 @@ function capitalize(text: string): string {
   return text ? `${text[0]!.toUpperCase()}${text.slice(1)}` : text;
 }
 
+/** `Sun 4 Oct`, with the year only when it is not the year of the capture, which the lag counts from. */
+function observedDayText(date: string, retrievedAt: string): string {
+  const text = dayText(date);
+  return date.slice(0, 4) === retrievedAt.slice(0, 4) ? text.replace(/ \d{4}$/, "") : text;
+}
+
+interface DatasetLineDetail {
+  /** Leave out the source. */
+  source?: "none";
+  /** Leave out the oldest observation. */
+  oldest?: "none";
+  /** Count stale rows without their total. */
+  status?: "short";
+}
+
 /**
- * The plain status line of a report or capture, without its source:
- * `Fri 9 Oct close · 15 min delayed · markets closed until Mon`.
+ * A dataset's status line: its source, the newest observation's date (the
+ * period, for monthly to annual data) and how many days it lags, then which
+ * rows are stale, if any. No market part: a dataset has no session.
+ */
+function datasetLineParts(freshness: ReportFreshness, asOf: string, lagDays: number, detail: DatasetLineDetail = {}): string[] {
+  const period = freshness.periodicity;
+  const dated = (date: string) => (period ? periodText(date, period) : observedDayText(date, freshness.retrievedAt));
+  const oldest = freshness.oldest && detail.oldest !== "none" ? ` (oldest ${dated(freshness.oldest)})` : "";
+  const partly = freshness.staleCount != null && freshness.observationCount != null;
+  const stale = freshness.status !== "stale" ? null
+    : !partly ? "stale"
+      : detail.status === "short" ? `${freshness.staleCount} stale` : `${freshness.staleCount} of ${freshness.observationCount} stale`;
+  return [
+    ...(detail.source === "none" ? [] : [`Source: ${freshness.source}`]),
+    `observed ${dated(asOf)}${period ? ` (${period})` : ""}${oldest}`,
+    `lag ${lagDays}d`,
+    ...(stale ? [stale] : []),
+  ];
+}
+
+/**
+ * The plain status line of a capture: the longest of `statusLineVariants`,
+ * `Fri 9 Oct close · 15 min delayed · markets closed until Mon` for quotes.
  */
 export function formatStatusLine(freshness: ReportFreshness): string {
-  return capitalize(statusLineParts(freshness).join(" · "));
+  return statusLineVariants(freshness)[0]!;
 }
 
 /**
  * The status line from longest to shortest, for a capture to take the first
- * that fits its width. The date and the delay stay to the last; the market
- * part shortens, then the reader's local time, the oldest observation and the
- * stale total go, then the market part.
+ * that fits its width. Quotes and other reports leave out their source: the
+ * date and the delay stay to the last; the market part shortens, then the
+ * reader's local time, the oldest observation and the stale total go, then
+ * the market part. A dataset reads `Source: Gloom Cloud · observed Sun 4 Oct · lag 6d`
+ * and gives up its oldest observation, the stale total, then its source.
  */
 export function statusLineVariants(freshness: ReportFreshness): string[] {
+  if (freshness.lagDays != null && freshness.asOf) {
+    const { asOf, lagDays } = freshness;
+    const datasetDetails: DatasetLineDetail[] = [
+      {},
+      { oldest: "none" },
+      { oldest: "none", status: "short" },
+      { source: "none", oldest: "none", status: "short" },
+    ];
+    return [...new Set(datasetDetails.map((detail) => capitalize(datasetLineParts(freshness, asOf, lagDays, detail).join(" · "))))];
+  }
   const details: StatusLineDetail[] = [
     {},
     { market: "short" },

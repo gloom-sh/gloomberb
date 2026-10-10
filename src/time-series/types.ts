@@ -178,8 +178,10 @@ export interface ResolvedSeries {
    */
   listing?: { symbol: string; exchange: string };
   /** Price/volume observations and their derived studies, including 24/7
-   * markets. Independent of whether the chart compresses exchange sessions. */
-  observationKind?: "market";
+   * markets. Independent of whether the chart compresses exchange sessions.
+   * `dataset`: a capability's published observations (vessel transits),
+   * whose values the legend dates because they arrive days late. */
+  observationKind?: "market" | "dataset";
   /** Regular-session move supplied with the latest market quote. */
   latestChangePercent?: number;
   /** The previous session's close, set on a one-day chart's price series and drawn as its reference line. */

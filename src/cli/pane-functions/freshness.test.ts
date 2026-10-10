@@ -58,6 +58,47 @@ describe("report freshness", () => {
     ]);
   });
 
+  test("a dataset cites its source, observation date and lag; quote rows on its pane keep the market line", () => {
+    const SAT = Date.parse("2026-10-10T22:47:00Z");
+    const transits = { source: "Gloom Cloud", status: "not-a-feed" as const, basis: "reported and published data", dataset: true };
+    const dataset = deriveHeadlessFreshness(rows(transits), { rows: [
+      { asOf: "2026-10-04T00:00:00Z", stale: false }, { asOf: "2026-09-27T00:00:00Z", stale: true },
+    ] }, SAT);
+    expect(dataset).toMatchObject({ lagDays: 6, oldest: "2026-09-27T00:00:00.000Z" });
+    expect(statusLineVariants(dataset)).toEqual([
+      "Source: Gloom Cloud · observed Sun 4 Oct (oldest Sun 27 Sep) · lag 6d · 1 of 2 stale",
+      "Source: Gloom Cloud · observed Sun 4 Oct · lag 6d · 1 of 2 stale",
+      "Source: Gloom Cloud · observed Sun 4 Oct · lag 6d · 1 stale",
+      "Observed Sun 4 Oct · lag 6d · 1 stale",
+    ]);
+    // The fn footer keeps its wording.
+    expect(formatFreshnessLine(dataset)).toBe("Source: Gloom Cloud · Sun 4 Oct 2026 00:00 UTC (oldest Sun 27 Sep 2026) · 1 of 2 stale");
+    // GPU's Equities tab: quotes on a dataset's pane read as quotes.
+    const quoted = deriveHeadlessFreshness(rows({ dataset: true }), { rows: [
+      { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") },
+    ] }, SAT);
+    expect(quoted.lagDays).toBeUndefined();
+    expect(formatStatusLine(quoted)).toBe("US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon");
+    // Undeclared, dated data is not a dataset.
+    expect(deriveHeadlessFreshness(rows({ status: "not-a-feed" }), { rows: [{ asOf: "2026-10-04" }] }, SAT).lagDays).toBeUndefined();
+  });
+
+  test("a dataset's lag counts whole UTC days from the last day its observation covers", () => {
+    const lag = (asOf: string, now: string, periodicity?: "monthly" | "quarterly" | "annual") => {
+      const freshness = deriveHeadlessFreshness(rows({ status: "not-a-feed", dataset: true, ...(periodicity ? { periodicity } : {}) }), { rows: [{ asOf }] }, Date.parse(now));
+      return `${freshness.lagDays} ${formatStatusLine(freshness)}`;
+    };
+    // Calendar days, not elapsed hours: late Monday to just past midnight Saturday is five.
+    expect(lag("2026-10-05T23:59:00Z", "2026-10-10T00:01:00Z")).toBe("5 Source: Gloom Cloud · observed Mon 5 Oct · lag 5d");
+    expect(lag("2026-10-10T07:19:00Z", "2026-10-10T22:47:00Z")).toBe("0 Source: Gloom Cloud · observed Sat 10 Oct · lag 0d");
+    // A period lags from its last day; the date names its year when that is not the capture's.
+    expect(lag("2026-09-01", "2026-10-10T12:00:00Z", "monthly")).toBe("10 Source: Gloom Cloud · observed Sep 2026 (monthly) · lag 10d");
+    expect(lag("2026-07-01", "2026-10-10T12:00:00Z", "quarterly")).toBe("10 Source: Gloom Cloud · observed Q3 2026 (quarterly) · lag 10d");
+    expect(lag("2025-01-01", "2026-01-31T12:00:00Z", "annual")).toBe("31 Source: Gloom Cloud · observed 2025 (annual) · lag 31d");
+    expect(lag("2026-10-01", "2026-10-10T12:00:00Z", "monthly")).toBe("0 Source: Gloom Cloud · observed Oct 2026 (monthly) · lag 0d");
+    expect(lag("2025-12-28", "2026-01-02T12:00:00Z")).toBe("5 Source: Gloom Cloud · observed Sun 28 Dec 2025 · lag 5d");
+  });
+
   test("is live only when the data says so, and the worst row decides", () => {
     const live = { dataSource: "live", lastUpdated: NOW - 60_000 };
     expect(line(rows(), { rows: [live, live] }))

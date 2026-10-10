@@ -5,7 +5,7 @@ import { POWER_TABS, powerTab } from "./model";
 
 export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
-  freshness: { source: "Grid operator queues and utility filings", status: "not-a-feed", basis: "published records" },
+  freshness: { source: "Grid operator queues and utility filings", status: "not-a-feed", basis: "published records", dataset: true },
   argument: { kind: "free-text", optional: true, placeholder: "ticker", description: "Optional listed developer or utility ticker, with exchange suffix where needed." },
   options: [
     { key: "tab", type: "enum", settingKey: "tab", defaultValue: "queue", values: POWER_TABS.map(({ value }) => ({ value })), description: "Queue, history, outcomes, large loads, utility exposure, capacity or coverage." },

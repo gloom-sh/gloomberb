@@ -184,6 +184,14 @@ export interface HeadlessPaneFreshness {
   tradingDayMarket?: string;
   /** The newest observation is stale once this time (the next scheduled release) has passed by a day. */
   nextExpectedAt?: string | number | Date | null;
+  /**
+   * Observations of the world collected and published some days after they
+   * happen (vessel transits, job postings, rental prices, grid queues), not
+   * quotes. A screenshot then cites the source, the newest observation's date
+   * and its lag in days (`Source: Gloom Cloud · observed Sun 4 Oct · lag 6d`),
+   * never a market's session. Rows that are quotes keep the market line.
+   */
+  dataset?: boolean;
 }
 
 interface HeadlessPaneResultBase {

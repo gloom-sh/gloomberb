@@ -543,6 +543,25 @@ function followLatestMarketObservation(
 }
 
 /**
+ * A chart of capability series alone (CHOKE's vessel transits) ends at its
+ * newest observation, not today: such data is published days late, and an
+ * axis running on to today would read as days with nothing in them. The
+ * start stays where the range put it, so no empty span opens on the left.
+ */
+function endAtNewestObservation(bounds: DateBounds, series: readonly ResolvedSeries[]): DateBounds {
+  if (bounds.end === null) return bounds;
+  let newest = Number.NEGATIVE_INFINITY;
+  for (const entry of series) {
+    for (const point of entry.points) {
+      const timestamp = point.date.getTime();
+      if (point.value !== null && Number.isFinite(timestamp) && timestamp > newest) newest = timestamp;
+    }
+  }
+  if (!Number.isFinite(newest) || newest >= bounds.end || (bounds.start !== null && newest <= bounds.start)) return bounds;
+  return { start: bounds.start, end: newest };
+}
+
+/**
  * 1D shows the latest trading session of the chart's first market listing,
  * from its open to the newest bar, with the close before it as a reference.
  * Null keeps the rolling day: crypto, FX and venues without known hours.
@@ -1125,6 +1144,7 @@ function baseCapabilitySeries(
     axis: spec.axis === "right" ? "right" : spec.axis === "left" ? "left" : loaded.axis,
     panelId: spec.panelId,
     interpolation: spec.interpolation,
+    observationKind: loaded.observationKind ?? "dataset",
     points,
   };
 }
@@ -1913,9 +1933,12 @@ async function resolveChartSpecPass(
     ? latestSessionView(primaryRaw, rawSeries.filter((entry) => entry.observationKind === "market"),
       extendedHistories.has(primaryRaw?.id ?? ""), quoteReferences.get(primaryRaw?.id ?? ""))
     : null;
+  const capabilityOnly = spec.series.length > 0 && spec.series.every(({ source }) => source.kind === "capability");
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
-    : sessionView?.bounds ?? followLatestMarketObservation(initialVisibleBounds, rawSeries);
+    : sessionView?.bounds ?? (capabilityOnly
+      ? endAtNewestObservation(initialVisibleBounds, rawSeries)
+      : followLatestMarketObservation(initialVisibleBounds, rawSeries));
   if (sessionView?.priorClose != null && primaryRaw?.transform === "raw"
     && primaryRaw.unitGroup.startsWith("price") && primaryRaw.unitGroup !== "price:unknown") {
     const index = rawSeries.indexOf(primaryRaw);

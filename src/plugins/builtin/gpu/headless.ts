@@ -17,7 +17,8 @@ const columns = [
 ];
 
 export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
-  shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "GPU", description: "GPU model, such as H100 or B200." },
+  // Observed rental prices; the Equities tab's quotes keep their market line.
+  shape: "bundle", freshness: { dataset: true }, argument: { kind: "free-text", optional: true, placeholder: "GPU", description: "GPU model, such as H100 or B200." },
   options: [{ key: "tab", type: "enum", values: GPU_TABS.map(({ value }) => ({ value })), defaultValue: "board", description: "Board, sourced history, dated changes or related equities." }],
   discovery: { aliases: ["GPU"], dataRequirements: ["GPU rental price observations"],
     limitations: ["List prices, provider-declared spot and asks are distinct bases",

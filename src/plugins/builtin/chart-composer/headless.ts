@@ -212,11 +212,16 @@ export async function loadChartPaneModel(
 /**
  * Price series are bar histories, stale once bars of the coarsest size stop
  * arriving; fundamentals, valuations and economic series are reported data.
+ * A chart of capability series alone (CHOKE's vessel transits) is a dataset,
+ * dated by its newest observation and how far behind that is.
  */
-function chartFreshness(series: readonly HeadlessSeries[]): HeadlessPaneFreshness {
+function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): HeadlessPaneFreshness {
   const order = ["1wk", "1mo"];
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
-  if (!series.length || resolutions.some((resolution) => !resolution)) return { ...REPORTED_DATA, basis: "reported and published data" };
+  const dataset = spec.series.length > 0 && spec.series.every(({ source }) => source.kind === "capability");
+  if (!series.length || resolutions.some((resolution) => !resolution)) {
+    return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}) };
+  }
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst
   ), resolutions[0]);
@@ -296,7 +301,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }
       }
       model.snapshot.intradayHistories = intradayHistories;
-      model.freshness = chartFreshness(model.series);
+      model.freshness = chartFreshness(model.series, model.spec);
       const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
         priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);
       if (priceDomainFailures.length) {
